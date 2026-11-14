@@ -125,18 +125,35 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   - [x] Rome Remastered: plan + trace build v7 03323ef0 (merged 9d5fef16); romeremastered_data_run.ps1 A100 / B67 / C50.
     Feral D3D11 Forward+ (no G-buffer, velocity, TAA, jitter): no RR, no GI / PT, no torch shadows in round 1; DLSS via
     the helper, RT sun shadows into CSMResolve's mask, RT AO into ASSAO's target planned. Replay start form a guess.
-  - [ ] Shogun 2: running.
+  - [x] Shogun 2: plan + trace build 8603a212 / 45571fa6 (merged aacfac9a); shogun2_data_run.ps1 (battle / naval replay,
+    campaign_load: guessed forms). RT on the old InstallScene path (no host for static_checks), WriteSun texel 0 only;
+    the game's NGX DLSS (one bridge per process: the HDR add-on's, DLSS add-on through cross_addon). Installed 00:16
+    ("shogun2 t1 addon" + "dlss addon", --first; DevKit renamed aside; no helper; the game's nvngx_dlss 310.5.2 kept).
+  - [x] Rome Remastered phase I part 1 (branch, not merged): aeff1928 stability wiring (device_loss, output_encoding),
+    e0c594ea CSMResolve / ASSAO hook points + two Test rows (off), 4d6f63c4 README v8; the rest waits for the run.
   - [x] Trace builds STAMPED + INSTALLED 00:08-00:09 with tw_install.py --first: Thrones "thrones t1" + helper110 (helper
     DLLs + NVIDIA 310.9.16 copied, none before), WH2 "wh2 t1" + helper110 (symlink + the 10-27 helper aside, helper DLLs
     copied), Rome Remastered "romer t1" (no helper). ATN files unchanged by hash. Phase I trace-free items started in all
     three worktrees; data runs from 01:00 (the scripts' window), Thrones -> WH2 -> Rome Remastered -> Shogun 2.
-- [ ] Data runs, one game at a time (medium-effort agent each; trace builds merged, stamped "<game> t1", installed with
+- [x] Phase I part 1 (trace-free, on the branches, not merged): Thrones 0ef93203..f70d5285 (graphics_page, sun draws 8/4 +
+  WARP 50 sun PS, Light Through Foliage, Attila graphics rows (proof B by disassembly), Faster Game CPU Code float->half
+  only (Experimental), Smoke Shadows both kinds; shared graphics_page::Bindings::smoke_map_tested default true). WH2
+  3f9d9b0e..1f7dfc7d (SetViewportChains, Graphics 2 of 2 = Attila's, Hue Clip measured 100, graphics_page, Round v48);
+  PT GI sun colour blocked (SH branch, two diffuse ends). Shogun 2 0b4f02ef..00e18b87 (W3 rt_sun texel 2 + cube, W4 helper
+  upscaler beside the game's DLSS, W5 helper FG + Reflex, W6, W7a, W8 part; HDR v66 / DLSS v58); rt_scene.hpp can't be
+  included (it pulls anti_aliasing.hpp's shaders): NOT DONE smoke via rt_scene; smallest step: split the light / smoke
+  installers out of rt_scene.hpp's AA include (shared, after the game branches are merged). Rome Remastered: see above.
+- [ ] Data runs from 01:01, one medium-effort agent (tools/tw/round_notes/data_run_brief.md), one game at a time; trace builds merged, stamped "<game> t1", installed with
   --first; fresh backups; Shogun 2's DevKit aside; its nvngx_dlss 310.5.2 -> 310.9.16 renamed aside).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
 ## LATE NIGHT ROUNDS (2026-11-13 23:10, two worktree agents, offline; installed state = NIGHT MERGES 22:59)
-- [ ] Rome II round 3 (worktree agent): point light shadows (b2 constant-buffer lights), smoke shadows (shared VS list
+- [x] Rome II round 3 MERGED b2be3612 (e93bc2e1 Torch and Fire Shadows from point_light_PS b2, fed8a67e Smoke Shadows +
+  shared SmokeVertexShader list + rt_particle_quads.hlsli, fecc800b README Round 3): Attila / Thrones / Rome II / WH3 /
+  Pharaoh / Troy / WH1 / WH2 shaders byte-identical, page dumps unchanged but Rome II's new rows; WARP smoke_r3 ALL PASS.
+  Step 3 (RT water reflections) resumed in the same worktree.
+- [ ] (old line) Rome II round 3 (worktree agent): point light shadows (b2 constant-buffer lights), smoke shadows (shared VS list
   in InstallSmokeShadows), RT water reflections if time; Round 3 README; built only.
 - [x] Screen-Space AO debug view MERGED 4e5a662c (worktree-agent-ab80c0b7cc4beb3f4: fbb368f9, d7eb5a55, 64daf016):
   rt_scene::InstallSunDebugAmbient (Pharaoh's lambda shared; Pharaoh onto it, same hook / place / mapping / log line), Troy /

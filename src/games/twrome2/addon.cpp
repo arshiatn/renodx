@@ -11,6 +11,8 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <shared_mutex>
+#include <span>
 #include <string>
 
 #include <deps/imgui/imgui.h>
@@ -40,6 +42,9 @@
 #include "./more_tests.h"
 #include "./engine_tweaks.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "./rt_particle_quads_085DDEDD_gs.h"
+#include "./rt_particle_quads_18FE5E2B_gs.h"
+#include "./rt_particle_quads_B5D63E8A_gs.h"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -172,6 +177,238 @@ void ApplyHDRPreset(
       },                                                                                              \
   }
 
+// The point lights without the game's cube shadow maps, the only ones drawn in ATN's runs (A1, A2, C1, N1, L1, L2, S1: 802 and
+// 784 draws): pointlightsmoothfalloff ps30 slm_highdef and skinlm_highdef (point shadows hardware gather 5.0). The two with the
+// maps (3B5C9DAF, D2F190A8) keep them. Ours (shaders/pointlight00-01: the game's code x the light's traced visibility) draw
+// only where the rays are bound (OnLightShadowsDraw): 7CB7BB8A's copy compiles up to 0.12% apart from the game's bytes (WARP
+// tools/tw/rome2/lights_r3), so without the rays the game's own.
+constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0xEB8E5349, 0x7CB7BB8A};
+constexpr std::array<std::span<const uint8_t>, 2> RAY_TRACED_LIGHT_SHADERS = {__0xEB8E5349, __0x7CB7BB8A};
+
+// Smoke Shadows' particles (Experimental, off): each smoke effect has its own generated vertex and pixel shader (drawn only
+// together) and draws each particle as an instance of a quad (6 indices). In ATN's runs (proof level A):
+// impact_hit_generic_heavy 7DF7491E / 18FE5E2B (shaders/smokefromarrow00), fire_smoke_loop and campaign_fire_smoke_loop
+// AF6C187A / 085DDEDD, destruction_spawnmesh_heavy B6F63295 / B5D63E8A (explosionsmoke00); one rt_particle_quads build a
+// pair, with its pixel shader's alpha (WARP tools/tw/rome2/smoke_r3). The permutations of other shadow modes, 31C72F52 /
+// 7115DE09 (18FE5E2B's) and 803E1461 / CC3CB1B7 (B5D63E8A's), in no trace: the same slots and alpha (B, and on WARP). Fire
+// (explosion_heavy), the units' dust (terrain_impact, entity_terrain), trails and torches stay out.
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 3> SMOKE_VERTEX_SHADERS = {{
+    {.hash = 0x7DF7491E, .quad_shader = __rt_particle_quads_18FE5E2B},
+    {.hash = 0xAF6C187A, .quad_shader = __rt_particle_quads_085DDEDD},
+    {.hash = 0xB6F63295, .quad_shader = __rt_particle_quads_B5D63E8A},
+}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 7> SMOKE_PIXEL_SHADERS = {
+    {{.hash = 0x18FE5E2B}, {.hash = 0x31C72F52}, {.hash = 0x7115DE09}, {.hash = 0x085DDEDD}, {.hash = 0xB5D63E8A}, {.hash = 0x803E1461}, {.hash = 0xCC3CB1B7}}};
+
+// Torch and Fire Shadows: in a light draw where rt_scene's light hook (InstallPointLights, registered before this) bound this
+// frame's lit bits at t42, ours draws in the game's place and the game's is bound again after it (finalize).
+struct LightShadows {
+  std::shared_mutex mutex;
+  ID3D11Device* device = nullptr;  // ours' (compared only)
+  std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, 2> ours;  // RAY_TRACED_LIGHT_SHADERS'
+  Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;          // bound again after the draw
+  bool logged = false;
+};
+LightShadows light_shadows;
+constexpr auto OnLightShadowsDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
+  const auto light = std::ranges::find(POINT_LIGHT_SHADERS, command.matched_shader_hash);
+  if (light == POINT_LIGHT_SHADERS.end()) return {};
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> lit_bits;
+  native->PSGetShaderResources(42, 1, lit_bits.GetAddressOf());
+  if (!lit_bits) return {};
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& state = light_shadows;
+  const std::unique_lock lock(state.mutex);
+  if (state.device != device.Get()) {
+    state.device = nullptr;
+    for (size_t index = 0; index < state.ours.size(); ++index) {
+      state.ours[index].Reset();
+      if (FAILED(device->CreatePixelShader(RAY_TRACED_LIGHT_SHADERS[index].data(), RAY_TRACED_LIGHT_SHADERS[index].size(), nullptr,
+                                           state.ours[index].GetAddressOf()))) {
+        return {};
+      }
+    }
+    state.device = device.Get();
+  }
+  native->PSGetShader(state.game_shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
+  native->PSSetShader(state.ours[light - POINT_LIGHT_SHADERS.begin()].Get(), nullptr, 0);
+  if (!std::exchange(state.logged, true)) {
+    renodx::utils::log::i("[Total War] First run: Torch and Fire Shadows: a light drawn with the rays.");
+  }
+  return {.finalize_callback = [](Context& drawn, const void*) {
+    auto* drawn_native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&drawn_native);
+    auto& drawn_state = light_shadows;
+    const std::unique_lock drawn_lock(drawn_state.mutex);
+    if (drawn_native != nullptr) {
+      drawn_native->PSSetShader(drawn_state.game_shader.Get(), nullptr, 0);
+    }
+    drawn_state.game_shader.Reset();
+  }};
+};
+
+// Only our shaders' device (nullptr: the addon's end, DetachAddon).
+void OnDestroyLightShadowsDevice(reshade::api::device* device) {
+  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
+  auto& state = light_shadows;
+  const std::unique_lock lock(state.mutex);
+  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
+  for (auto& shader : state.ours) shader.Reset();
+  state.device = nullptr;
+}
+
+// Ray-Traced Water Reflections (Experimental: the Reflections method Ray-Traced, off by default). The water is drawn forward
+// after its reflections 7C9C8ECF (helpers screen_space_reflections_ps, below the render size: the scene copy t0, the depth
+// before the water t1, the water's height map t2 / s2, b0 its camera and heights) and has no G-buffer of its own. Before
+// 7C9C8ECF, rt_water_surface puts the water where 7C9C8ECF finds it (each render pixel's view ray against the height map)
+// into a copy of the depth and writes the water's guides there; rt_scene's Reflections trace from that copy (the positions
+// again; rt_host's rewrite_guides has nothing left to do) and ours (shaders/waterreflection00) returns the rays' reflection
+// where they are bound and left from the water (b10). This frame's water, as the game's own reflections take it.
+struct WaterRays {
+  std::mutex mutex;
+  ID3D11Device* device = nullptr;  // the objects' (compared only)
+  Microsoft::WRL::ComPtr<ID3D11ComputeShader> surface;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> constants;
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> depth;  // R32, the game's depth's size
+  Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> depth_uav;
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> depth_view;
+  bool logged = false;
+
+  void Release() {
+    surface.Reset();
+    constants.Reset();
+    depth_view.Reset();
+    depth_uav.Reset();
+    depth.Reset();
+    device = nullptr;
+  }
+};
+WaterRays water_rays;
+
+// Before 7C9C8ECF. True: the rays left from the water this frame (ours draws them: no march).
+bool TraceWaterReflections(reshade::api::command_list* cmd_list) {
+  auto& rays = twattila::rt_scene::internal::runtime;
+  float water_roughness = 0.f;
+  {
+    const std::unique_lock lock(rays.mutex);
+    if (!rays.settings.reflections || !rays.settings.water_reflections) return false;
+    water_roughness = rays.settings.water_soft ? twattila::rt_scene::WATER_SOFT_ROUGHNESS : 0.f;
+  }
+  if (!twattila::rt_scene::internal::active.load(std::memory_order_relaxed) || !twattila::anti_aliasing::GuidesWritten()
+      || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) {
+    return false;
+  }
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return false;
+  const auto [width, height] = twattila::anti_aliasing::RenderSize();
+  std::array<ID3D11ShaderResourceView*, 2> inputs = {};  // the depth before the water, the height map
+  native->PSGetShaderResources(1, static_cast<UINT>(inputs.size()), inputs.data());
+  Microsoft::WRL::ComPtr<ID3D11SamplerState> height_sampler;
+  native->PSGetSamplers(2, 1, height_sampler.GetAddressOf());
+  Microsoft::WRL::ComPtr<ID3D11Buffer> params;
+  native->PSGetConstantBuffers(0, 1, params.GetAddressOf());
+  D3D11_TEXTURE2D_DESC depth_desc = {};
+  if (Microsoft::WRL::ComPtr<ID3D11Resource> resource; inputs[0] != nullptr) {
+    inputs[0]->GetResource(resource.GetAddressOf());
+    if (Microsoft::WRL::ComPtr<ID3D11Texture2D> texture; SUCCEEDED(resource.As(&texture))) texture->GetDesc(&depth_desc);
+  }
+  const auto release = [](auto* object) {
+    if (object != nullptr) object->Release();
+  };
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> surface_depth;
+  auto& state = water_rays;
+  if (inputs[1] != nullptr && height_sampler && params && depth_desc.SampleDesc.Count == 1 && width != 0 && height != 0
+      && width <= depth_desc.Width && height <= depth_desc.Height) {
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    const std::unique_lock lock(state.mutex);
+    D3D11_TEXTURE2D_DESC kept_desc = {};
+    if (state.depth) state.depth->GetDesc(&kept_desc);
+    if (state.device != device.Get() || kept_desc.Width != depth_desc.Width || kept_desc.Height != depth_desc.Height) {
+      state.Release();
+      const D3D11_TEXTURE2D_DESC desc = {.Width = depth_desc.Width, .Height = depth_desc.Height, .MipLevels = 1, .ArraySize = 1,
+                                         .Format = DXGI_FORMAT_R32_TYPELESS, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                         .BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE};
+      D3D11_UNORDERED_ACCESS_VIEW_DESC uav_desc = {.Format = DXGI_FORMAT_R32_FLOAT, .ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D};
+      D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = DXGI_FORMAT_R32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D};
+      view_desc.Texture2D.MipLevels = 1;
+      const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      if (SUCCEEDED(device->CreateComputeShader(__rt_water_surface.data(), __rt_water_surface.size(), nullptr, state.surface.GetAddressOf()))
+          && SUCCEEDED(device->CreateBuffer(&constants_desc, nullptr, state.constants.GetAddressOf()))
+          && SUCCEEDED(device->CreateTexture2D(&desc, nullptr, state.depth.GetAddressOf()))
+          && SUCCEEDED(device->CreateUnorderedAccessView(state.depth.Get(), &uav_desc, state.depth_uav.GetAddressOf()))
+          && SUCCEEDED(device->CreateShaderResourceView(state.depth.Get(), &view_desc, state.depth_view.GetAddressOf()))) {
+        state.device = device.Get();
+      }
+    }
+    if (state.device == device.Get()) {
+      const std::array<uint32_t, 4> constants = {width, height, std::bit_cast<uint32_t>(water_roughness), 0u};
+      native->UpdateSubresource(state.constants.Get(), 0, nullptr, constants.data(), 0, 0);
+      // The compute bindings it changes put back (the game's next dispatch may count on them).
+      Microsoft::WRL::ComPtr<ID3D11ComputeShader> game_shader;
+      std::array<ID3D11ShaderResourceView*, 2> game_views = {};
+      std::array<ID3D11UnorderedAccessView*, 5> game_uavs = {};
+      std::array<ID3D11Buffer*, 2> game_constants = {};
+      std::array<ID3D11SamplerState*, 1> game_sampler = {};
+      native->CSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
+      native->CSGetShaderResources(0, static_cast<UINT>(game_views.size()), game_views.data());
+      native->CSGetUnorderedAccessViews(0, static_cast<UINT>(game_uavs.size()), game_uavs.data());
+      native->CSGetConstantBuffers(0, static_cast<UINT>(game_constants.size()), game_constants.data());
+      native->CSGetSamplers(0, 1, game_sampler.data());
+      const auto& bridge = twattila::dlaa_bridge::bridge;
+      const std::array<ID3D11UnorderedAccessView*, 5> uavs = {state.depth_uav.Get(), bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
+                                                              bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
+      const std::array<ID3D11Buffer*, 2> constant_buffers = {params.Get(), state.constants.Get()};
+      constexpr std::array<UINT, 5> KEEP_COUNTS = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
+      native->CSSetShader(state.surface.Get(), nullptr, 0);
+      native->CSSetShaderResources(0, static_cast<UINT>(inputs.size()), inputs.data());
+      native->CSSetUnorderedAccessViews(0, static_cast<UINT>(uavs.size()), uavs.data(), KEEP_COUNTS.data());
+      native->CSSetConstantBuffers(0, static_cast<UINT>(constant_buffers.size()), constant_buffers.data());
+      native->CSSetSamplers(0, 1, height_sampler.GetAddressOf());
+      native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
+      native->CSSetShader(game_shader.Get(), nullptr, 0);
+      native->CSSetUnorderedAccessViews(0, static_cast<UINT>(game_uavs.size()), game_uavs.data(), KEEP_COUNTS.data());
+      native->CSSetShaderResources(0, static_cast<UINT>(game_views.size()), game_views.data());
+      native->CSSetConstantBuffers(0, static_cast<UINT>(game_constants.size()), game_constants.data());
+      native->CSSetSamplers(0, 1, game_sampler.data());
+      std::ranges::for_each(game_views, release);
+      std::ranges::for_each(game_uavs, release);
+      std::ranges::for_each(game_constants, release);
+      std::ranges::for_each(game_sampler, release);
+      surface_depth = state.depth_view;
+    }
+  }
+  std::ranges::for_each(inputs, release);
+  if (!surface_depth) return false;
+  const bool reflected = twattila::rt_scene::BindReflections(cmd_list, false, true, surface_depth.Get());
+  bool water_traced = false;
+  {
+    const std::unique_lock lock(rays.mutex);
+    water_traced = rays.water_traced;
+  }
+  if (!(reflected && water_traced)) return false;
+  const std::unique_lock lock(state.mutex);
+  if (!std::exchange(state.logged, true)) {
+    renodx::utils::log::i("[Total War] First run: Ray-Traced Water Reflections: the water's surface from its height map, 7C9C8ECF drawn with the rays.");
+  }
+  return true;
+}
+
+// Only our objects' device (nullptr: the addon's end, DetachAddon).
+void OnDestroyWaterRaysDevice(reshade::api::device* device) {
+  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
+  auto& state = water_rays;
+  const std::unique_lock lock(state.mutex);
+  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
+  state.Release();
+}
+
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
@@ -198,14 +435,22 @@ void BuildRuntimeData() {
       UpgradeRTVReplaceShader(0x30F36F29),
       __ALL_CUSTOM_SHADERS,
   };
+  // Torch and Fire Shadows' light shaders stay the game's: ours only where the rays are bound (OnLightShadowsDraw).
+  for (const uint32_t hash : POINT_LIGHT_SHADERS) {
+    custom_shaders.erase(hash);
+  }
   // The depth of field passes (16-bit targets, before the tone mapper) are not the tone mapper: anti-aliasing / DLSS
   // and the screen-space shadows' frame end come after the tone mapper's draw only.
   for (const uint32_t depth_of_field : {0xA674585Bu, 0x25BD6591u, 0xE0885F7Fu, 0x30F36F29u}) {
     custom_shaders[depth_of_field].on_drawn = nullptr;
   }
-  // The water's reflections (waterreflection00): the hierarchical march's pyramid, from its depth (t1).
-  custom_shaders[0x7C9C8ECF].on_draw = [](auto* cmd_list) { return twattila::ssr_hiz::OnReflectionDraw(cmd_list, 1); };
-  custom_shaders[0x7C9C8ECF].on_drawn = twattila::ssr_hiz::OnReflectionDrawn;
+  // The water's reflections (waterreflection00): the rays' where they left from the water (TraceWaterReflections), else the
+  // hierarchical march's pyramid from its depth (t1).
+  custom_shaders[0x7C9C8ECF].on_draw = [](auto* cmd_list) { return twattila::ssr_hiz::OnReflectionDraw(cmd_list, 1, !TraceWaterReflections(cmd_list)); };
+  custom_shaders[0x7C9C8ECF].on_drawn = [](auto* cmd_list) {
+    twattila::ssr_hiz::OnReflectionDrawn(cmd_list);
+    twattila::rt_scene::BindReflections(cmd_list, false, false);
+  };
   // Lens flares 00-03 and the vignette, drawn on the output after hdr_to_screen and its anti-aliasing (A2 trace_06
   // l.3315-3319): part of frame generation's HUD-less image, as Attila's.
   for (const uint32_t hash : {0xAFC2E867u, 0x68E9A1CEu, 0x69F4AEFCu, 0xB7758434u, 0x3968DBAEu}) {
@@ -1419,7 +1664,7 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows and AO multiply the game's
-// shadow maps and SSAO; no ray-traced reflections (FidelityFX SSSR on the water), no point lights, fog or smoke hooked.
+// shadow maps and SSAO; no ray-traced reflections (FidelityFX SSSR on the water), no fog hooked.
 // The game's MSAA keeps the anti-aliasing's DLAA / DLSS and with them every ray-traced effect off (anti_aliasing.hpp).
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
@@ -1447,7 +1692,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                                  "their 100% detail. Looks better, can cost some performance.",
     .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. FidelityFX SSSR: AMD's hierarchical ray march, exact, no gaps, reaching\n"
-                           "across the screen, usually faster.",
+                           "across the screen, usually faster. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
+    .reflections_rays_label = "Ray-Traced (DXR, Experimental)",
     .water_caustics_label = "Water Caustics (Experimental)",
 };
 
@@ -1703,7 +1949,9 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders);
+  // The water's reflections read the ray-traced reflections (TraceWaterReflections): their rows, the water's too.
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  twattila::rt_scene::internal::water_pass = true;
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
@@ -1812,13 +2060,40 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
-  // Mode's pages. Fog and smoke shadows keep their 0: nothing here hooks them yet; Water Caustics its 0 (untested here).
+  // Mode's pages. Fog Shadows keep their 0 (nothing here hooks the fog yet), Smoke Shadows (Experimental) theirs (no game run
+  // has shown them yet), Water Caustics its 0 (untested here).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedSmokeShadows" || setting->key == "WaterCaustics") {
       setting->default_value = 0.f;
     }
+    // Torch and fire light in fog and smoke: no fog hooked here and no particle shader reads it.
+    if (setting->key == "RayTracedLightGlow") {
+      setting->is_visible = [] { return false; };
+    }
+    // Every reflection here is the water's: the method alone (Water Reflections kept on, unseen). Nothing reads the specular
+    // occlusion: its row binds nothing.
+    if (setting->key == "RayTracedWaterReflections") {
+      setting->default_value = 1.f;
+      setting->is_visible = [] { return false; };
+    }
+    if (setting->key == "RayTracedSpecularOcclusion") {
+      setting->binding = nullptr;
+      setting->is_visible = [] { return false; };
+    }
   }
+  // Torch and Fire Shadows from rays (Pharaoh's row), after the preset's defaults: off (no game run has shown the lights read).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedPointLightShadows",
+      .binding = &rt_sliders.local_lights,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Torch and Fire Shadows (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Torches and fires cast their shadows from rays too.\n"
+                 "With Path-Traced Global Illumination they also light what the screen never saw.",
+      .labels = {"Off", "On"},
+  });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
@@ -1827,7 +2102,7 @@ void ConfigureAddon() {
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
                                              .water_caustics_tested = false,
-                                             .has_reflections = false,
+                                             .lights_own_row = true,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -1928,7 +2203,21 @@ bool AttachAddon() {
   rt_host.cascade_target = [](const D3D11_TEXTURE2D_DESC& desc) {
     return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
   };
+  // Ray-Traced Water Reflections: rt_water_surface wrote the water's guides with its depth (TraceWaterReflections); 7C9C8ECF's
+  // views are no G-buffer to write them from.
+  rt_host.rewrite_guides = [](ID3D11DeviceContext*) {};
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, rt_host);
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyWaterRaysDevice);
+  // Torch and Fire Shadows: one draw a light (VS E98DDC06, POSITION0 only: a 792-index sphere), the light in point_light_PS b2
+  // (c0 position, c1 colour and reach); ours drawn in place of the light shaders without the game's cube shadows where the
+  // rays are bound (after rt_scene's hook: registration order).
+  twattila::rt_scene::InstallPointLights(POINT_LIGHT_SHADERS, 2);
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyLightShadowsDevice);
+  for (const uint32_t hash : POINT_LIGHT_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnLightShadowsDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
+  twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   // Ray-Traced Shadows Only (Skip the Shadow Maps): the atlas's casters skipped; its other readers in ATN's runs (the battle
   // water and river, the campaign's sea) take the rays' shadow (WARP tools/tw/rome2/water_r2: t49 unbound bit-identical,
   // t49 = 1 every comparison shadowed).
@@ -1962,6 +2251,11 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  renodx::utils::command_action::Unregister(OnLightShadowsDraw);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyLightShadowsDevice);
+  OnDestroyLightShadowsDevice(nullptr);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyWaterRaysDevice);
+  OnDestroyWaterRaysDevice(nullptr);
   twattila::engine_tests::StopAtStart(&at_start_stop);
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();

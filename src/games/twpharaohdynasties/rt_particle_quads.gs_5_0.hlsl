@@ -28,6 +28,8 @@
 // CMake's shader rule takes no gs_ target: after a change run from the repository's root
 // bin\fxc.exe src\games\twpharaohdynasties\rt_particle_quads.gs_5_0.hlsl -T gs_5_0 -E main /O3 /Qstrip_reflect /nologo /Vn __rt_particle_quads /Fh src\games\twpharaohdynasties\rt_particle_quads_gs.h
 
+#include "../twattila/rt_particle_quads.hlsli"
+
 struct Corner {
   float4 position : SV_POSITION;  // clip space, z with the depth bias
   float4 colour : COLOR;          // w: the particle's alpha
@@ -40,14 +42,6 @@ struct Corner {
   float4 frame_y : TEXCOORD6;
   float4 frame_z : TEXCOORD7;
   float3 corner : TEXCOORD8;      // the corner in the quad's own coordinates
-};
-
-// rt_core.hpp's stream output declaration: rt_smoke's centre and age, colour and opacity, size and scale, emitter.
-struct Record {
-  float4 centre : SV_POSITION;
-  float4 colour : COLOR;
-  float3 size : TEXCOORD3;
-  float4 emitter : TEXCOORD0;  // x (a register of its own: the declaration takes its first component)
 };
 
 // 3F1B86E1's EMITTER_CONSTANTS_PS.
@@ -73,25 +67,6 @@ cbuffer camera : register(b0) {
 Texture2DArray<float4> diffuse : register(t6);
 StructuredBuffer<EmitterConstants> emitters : register(t8);
 SamplerState diffuse_sampler : register(s3);
-
-float Cross(float2 a, float2 b) {
-  return (a.x * b.y) - (a.y * b.x);
-}
-
-// What one unit of the corner's x and y moves a value that is affine in the corner, from its values at the three corners
-// (`along_first`, `along_second`: the corners' offsets from the first, `area` their cross product).
-void Axes(float4 first, float4 second, float4 third, float2 along_first, float2 along_second, float area, out float4 axis_x, out float4 axis_y) {
-  axis_x = (((second - first) * along_second.y) - ((third - first) * along_first.y)) / area;
-  axis_y = (((third - first) * along_first.x) - ((second - first) * along_second.x)) / area;
-}
-
-// The mip level of a sample at the quad's centre, as the pixel shader's own (D3D's isotropic level): the uv's change
-// across one pixel, `uv_x` and `uv_y` its change along the corner's axes, `per_pixel` the inverse of the pixels' change.
-float MipLevel(float2 uv_x, float2 uv_y, float2x2 per_pixel, float2 texels) {
-  const float2 across = ((uv_x * per_pixel[0][0]) + (uv_y * per_pixel[1][0])) * texels;
-  const float2 down = ((uv_x * per_pixel[0][1]) + (uv_y * per_pixel[1][1])) * texels;
-  return log2(max(length(across), length(down)));
-}
 
 [maxvertexcount(1)]
 void main(triangle Corner corners[3], uint primitive : SV_PrimitiveID, inout PointStream<Record> records) {
@@ -130,10 +105,7 @@ void main(triangle Corner corners[3], uint primitive : SV_PrimitiveID, inout Poi
   float4 clip_y;
   Axes(corners[0].position, corners[1].position, corners[2].position, along_first, along_second, area, clip_x, clip_y);
   const float4 clip = (corners[0].position * first) + (corners[1].position * second) + (corners[2].position * third);
-  const float2 half_viewport = 0.5f * camera[29].xy;
-  const float2 pixels_x = ((clip_x.xy * clip.w) - (clip.xy * clip_x.w)) / (clip.w * clip.w) * half_viewport;
-  const float2 pixels_y = ((clip_y.xy * clip.w) - (clip.xy * clip_y.w)) / (clip.w * clip.w) * half_viewport;
-  const float2x2 per_pixel = float2x2(pixels_y.y, -pixels_y.x, -pixels_x.y, pixels_x.x) / Cross(pixels_x, pixels_y);
+  const float2x2 per_pixel = PerPixel(clip, clip_x, clip_y, 0.5f * camera[29].xy);
 
   const Corner particle = corners[0];
   const EmitterConstants emitter = emitters[particle.emitter.x];
