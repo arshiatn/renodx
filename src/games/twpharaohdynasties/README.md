@@ -46,6 +46,46 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     stops at walls and units; the lit side as bright as before; no flicker as fires start and go out.
 27. v67: with it on, ReShade.log "the particle lights streamed from their vertex shader" once, at the first fire.
 
+### Parity round 2 (2026-11-14; built only, not run in game)
+
+- **New: Fog Strength** (Extra, 0 to 2, default 1), on every fog the game ships, also the ones the maintainer's settings
+  don't draw. That covers the battle fog's upsample (also its own full-resolution fallback along edges), low spec, MSAA,
+  the campaign fog, new fog, the legacy fog, and the shader model 4.1 versions: 24 shaders. The game's shaders are patched
+  as it creates them. At 1 every output is the game's to the bit. Otherwise the fog's light is multiplied by the strength
+  and its transmittance follows (never below 0); the legacy fog's opacity stops at 1. WARP (`fog_v54 strength`, every
+  shader on the game's bytes): at 1 0 values differ, at 0 / 0.5 / 1.75 / 2 0 misses, both controls fail.
+- **New (Experimental, off): Fog & Sky Smoothing** (Attila's rows) on the legacy fog. It is the only fog here that reads
+  the sky cube; the battle and campaign fogs read a high-resolution 2D sky. In no trace (older maps). Off, the game's own
+  shader runs. WARP (`fog_v54 legacy`): off, the game's bits; Low to High on a one-colour sky, the game's (controls fail).
+- **New: sails and ropes cast in the rays** (as Attila's sails; in no trace). WARP: their world positions match the game's
+  to 4e-07 (controls 5 and 8.6, wrong). The sail symbols, a decal, stay out.
+- The campaign vegetation out of view (round 1) is now WARP'd on Pharaoh's own bytes (WH2's tool, Pharaoh's shader): ok,
+  controls fail.
+- The smoke checks (`smoke_v57`, `smoke_v61`) work again: they follow the quad shader's includes; both ALL PASSED.
+- Page dump against round 1: only the three new rows; after RT/PT no new difference from Attila's.
+
+Test lines (the maintainer):
+
+1. Fog Strength 0 / 1 / 2, a hazy battle: no fog / the game's / thicker; no fog left along unit and wall edges at 0.
+2. Fog Strength 0 and 2 in the campaign: the campaign's haze goes and thickens the same way.
+3. A sea or river battle with ships, RT/PT preset: the sails and ropes cast; no flicker as they move.
+4. If a map uses the older fog: Fog & Sky Smoothing Low to High removes lines in the fogged sky.
+
+Not done (what, why, smallest step):
+
+- Sprite Soldier Shadows: the imposters (dx11_imposter, VS 370A7440, GS 27A16995) build their cards in a geometry shader;
+  the rays' sun-facing capture takes a vertex shader. Provable offline: a capture GS path in `twattila/rt_core.hpp`
+  (shared), then a WARP of the imposter cards turned to the sun.
+- Particle Resolution / Smooth Half-Size Particles / edges: the shared particle layer is keyed on Attila's particle shaders.
+  Smallest step: map Pharaoh's particle passes (the burning siege's W2 trace) onto it.
+- Grass Height Distance: Pharaoh's grass (dx11_grass) has no fixed fade in its pixel shader (Attila's 100 m). Its fade is
+  in the vertex shader's grass constants (E710D4E7 g_fade_distances), probably what Grass Distance already moves. Needs
+  E710D4E7's cb1 in a battle trace at two Grass Distance values.
+- Level-B casters (in no trace) not added: feather and fur units (15389925, 2C5A6427, 5CE17813, 72BD9CFD, 621E86DD + their
+  shadow VS) need their pixel shaders' cut-out masks (a battle trace with those units close); banners 2C00FCA9 / AF88E0A3,
+  phar_standard_dynamic 281A331A / 85086BAE, terrain blend 8C511965 / 515FA244, fire meshes F5AFBFFD (tessellated) need a
+  settlement or siege trace for their pixel shaders; 026CBC61 needs its reads in a campaign trace (doubles?).
+
 ### Parity round (2026-11-14; built only, not run in game)
 
 Rows other TW add-ons have, brought over where Pharaoh's own shaders were read. Off or unchanged by default unless said.
@@ -92,11 +132,8 @@ Test lines (the maintainer):
 
 Not done (what, why, smallest step):
 
-- Fog Strength: the fog's last stages (8D0D7355 / 13A8B466 / 0945ADC5, dual-source) couldn't be proven: the WARP compare
-  tool's random constants break the fog upsample, the decompile of 13A8B466 fails (ldms). Smallest step: fog_v54's WARP case
-  with a strength constant (rgb x s, transmittance 1 + (T - 1) s).
-- Fog and Sky Smoothing: it goes into the same fog shaders (0945ADC5, 13A8B466), unproven for the same reasons. Smallest
-  step: the fog WARP case above first.
+- Fog Strength: done in round 2.
+- Fog and Sky Smoothing: done in round 2 (the legacy fog, the only one reading the sky cube).
 - Sprite Soldier Shadows: no sprite soldier drawn in any of the 24 traces. Smallest step: a trace of a large battle zoomed out.
 - Particle Resolution / Smooth Half-Size Particles / edges: the shared particle layer is keyed on Attila's particle shaders;
   Pharaoh's particle draws need mapping first. Smallest step: the burning siege's trace (W2) read for its particle passes.
