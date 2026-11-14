@@ -11,9 +11,9 @@
 //    the game's SV_Position (to the float rounding of its terms), its w the UV (POSITION0.w, NORMAL0.w) as two halves.
 //    CONTROL: the capture a second later differs (the wind is in play).
 // 3. VFX Brightness (src/games/twtroy/vfx_brightness.hpp's Patch) on the game's particle pixel shaders 563BA3E8 and 9C8987DD:
-//    the patched program is the game's plus dcl_constantbuffer cb8 and one mad (disassembly), WARP takes it, and drawn over a
-//    grid of random interpolants, emitters, textures and constants it gives the game's bits with cb8 unbound and with cb8.x 0
-//    (the slider at 1); CONTROL cb8.x 1 (the slider at 2) differs.
+//    the patched program is the game's plus dcl_constantbuffer cb7 and one mad (disassembly), WARP takes it, and drawn over a
+//    grid of random interpolants, emitters, textures and constants it gives the game's bits with cb7 unbound and with cb7.x 0
+//    (the slider at 1); CONTROL cb7.x 1 (the slider at 2) differs.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -487,10 +487,12 @@ static void TestVfxBrightness(const std::string& game_folder) {
     // right before the fog test.
     const auto before = Disassembly(game);
     const auto after = Disassembly(patched);
+    const std::string slot = std::to_string(twtroy::vfx_brightness::SLOT);
     auto declarations = after[0];
-    std::erase(declarations, std::string("dcl_constantbuffer CB8[1], immediateIndexed"));
+    std::erase(declarations, "dcl_constantbuffer CB" + slot + "[1], immediateIndexed");
     auto instructions = after[1];
-    const auto inserted = std::ranges::find_if(instructions, [](const std::string& line) { return line.starts_with("mad ") && line.find("cb8[0]") != std::string::npos; });
+    const auto inserted = std::ranges::find_if(
+        instructions, [&](const std::string& line) { return line.starts_with("mad ") && line.find("cb" + slot + "[0]") != std::string::npos; });
     std::string mad;
     bool placed = false;
     if (inserted != instructions.end()) {
@@ -498,7 +500,7 @@ static void TestVfxBrightness(const std::string& game_folder) {
       const std::string colour = mad.substr(4, mad.find('.') - 4);
       auto movc = inserted;
       while (movc != instructions.begin() && (*(movc - 1) == "endif" || *(movc - 1) == "else")) --movc;
-      placed = mad == "mad " + colour + ".xyz, " + colour + ".xyzx, cb8[0].xxxx, " + colour + ".xyzx" && movc != instructions.begin()
+      placed = mad == "mad " + colour + ".xyz, " + colour + ".xyzx, cb" + slot + "[0].xxxx, " + colour + ".xyzx" && movc != instructions.begin()
                && (movc - 1)->starts_with("movc " + colour + ".xyz,") && (inserted + 1) != instructions.end()
                && (inserted + 1)->starts_with("and r0.x, r0.w, cb");
       instructions.erase(inserted);
@@ -615,7 +617,7 @@ static void TestVfxBrightness(const std::string& game_folder) {
                                                .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
     ComPtr<ID3D11Texture2D> staging;
     device->CreateTexture2D(&staging_desc, nullptr, &staging);
-    const auto draw = [&](ID3D11PixelShader* pixel_shader, const float* slot8) {
+    const auto draw = [&](ID3D11PixelShader* pixel_shader, const float* brightness_constant) {
       context->ClearState();
       const float clear[4] = {SENTINEL, SENTINEL, SENTINEL, SENTINEL};
       context->ClearRenderTargetView(target_view.Get(), clear);
@@ -632,7 +634,7 @@ static void TestVfxBrightness(const std::string& game_folder) {
       for (const auto& sampler : samplers) bound_samplers.push_back(sampler.Get());
       context->PSSetSamplers(0, static_cast<UINT>(bound_samplers.size()), bound_samplers.data());
       auto bound_buffers = buffers;
-      if (slot8 != nullptr) bound_buffers[twtroy::vfx_brightness::SLOT] = ConstantBuffer(slot8, 16);
+      if (brightness_constant != nullptr) bound_buffers[twtroy::vfx_brightness::SLOT] = ConstantBuffer(brightness_constant, 16);
       std::vector<ID3D11Buffer*> raw;
       for (const auto& buffer : bound_buffers) raw.push_back(buffer.Get());
       context->PSSetConstantBuffers(0, static_cast<UINT>(raw.size()), raw.data());
@@ -655,12 +657,12 @@ static void TestVfxBrightness(const std::string& game_folder) {
     for (size_t i = 0; i < reference.size(); i += 4) drawn += (reference[i + 3] != SENTINEL) ? 1 : 0;
     size_t differing = 0;
     const bool unbound = SameBits(draw(patched_shader.Get(), nullptr), reference, &differing);
-    CHECK(unbound, "%s: cb8 unbound: %zu of %zu floats off the game's", name, differing, reference.size());
+    CHECK(unbound, "%s: cb7 unbound: %zu of %zu floats off the game's", name, differing, reference.size());
     const bool one = SameBits(draw(patched_shader.Get(), at_one), reference, &differing);
     CHECK(one, "%s: at 1: %zu of %zu floats off the game's", name, differing, reference.size());
     SameBits(draw(patched_shader.Get(), at_two), reference, &differing);
     CHECK(drawn > 0 && differing > 0, "%s: CONTROL at 2 the game's (%zu of %zu pixels drawn)", name, drawn, reference.size() / 4);
-    std::printf("%s: patched = the game's + cb8 and '%s'; the game's bits at 1 and unbound over %zu drawn pixels; CONTROL at 2: %zu "
+    std::printf("%s: patched = the game's + cb7 and '%s'; the game's bits at 1 and unbound over %zu drawn pixels; CONTROL at 2: %zu "
                 "floats differ\n", name, mad.c_str(), drawn, differing);
   }
 }

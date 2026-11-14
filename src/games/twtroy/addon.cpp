@@ -30,6 +30,7 @@
 #include "../twattila/ao_pass.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/light_count.hpp"
+#include "../twattila/particle_layer.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
@@ -1091,6 +1092,41 @@ void BuildRuntimeData() {
         .labels = {"Off", "Low", "Medium", "High"},
     },
     new renodx::utils::settings::Setting{
+        .key = "VfxHalfResolution",
+        .binding = &twattila::particle_layer::half_resolution_row,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Particle Resolution",
+        .section = "Extra (Experimental)",
+        .tooltip = "Smoke, fire and dust drawn at half or a quarter of the render's size.\n"
+                   "Much faster in big fires and smoke, softer particles.",
+        .labels = {"Full", "Half", "Quarter"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxFullResolutionEdges",
+        .binding = &twattila::particle_layer::edges_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 1.f,
+        .label = "Full-Resolution Particle Edges",
+        .section = "Extra (Experimental)",
+        .tooltip = "Smoke, fire and dust stay sharp against the outlines of units, trees and walls:\n"
+                   "drawn at full size there. Small cost.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxParticleSmoothing",
+        .binding = &twattila::particle_layer::smoothing_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Half-Size Particles",
+        .section = "Extra (Experimental)",
+        .tooltip = "Half-size smoke, fire and dust keep clean edges against units and flicker less.\n"
+                   "Small cost.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
+    },
+    new renodx::utils::settings::Setting{
         .key = "filmgrain",
         .binding = &shader_injection.filmgrain,
         .default_value = 1.f,
@@ -1427,6 +1463,17 @@ float lod_bias_trilinear_row = 0.f;
 // Shadow Map Size (shadow_map.hpp, Experimental): the highest Shadows setting's shadow map, an index into SHADOW_MAP_SIZES.
 float shadow_map_size = 0.f;
 constexpr std::array<uint32_t, 4> SHADOW_MAP_SIZES = {0, 8192, 12288, 16384};  // 0: the game's (6144)
+// Particle Resolution (twattila/particle_layer.hpp): Troy's lit particles are one instanced draw a frame (VS F5CE48CC with
+// 563BA3E8 in all 26 of ATN's traced frames with particles; its other lit permutations by name, vfx_brightness::HASHES),
+// blended over (one / inverse source alpha) into the display-size light buffer at the render size against the read-only
+// depth. The VS also draws their lights (643FC156) and decals (F591CEAE, 6195BD2C): the lit pixel shaders open the layer.
+// It goes in before the light buffer's next reader: the luma statistics (hdr_tone_mapper cs50_compute_luma_stats F9B80B32,
+// a dispatch: the first in all 26), the indicators drawn into it after the particles (indicator ps40_main_deferred 56D3757C:
+// 7 of 26, so they stay over them), else the tone mappers by name (ps_aces_tone_mapper 0C12E608 next in every trace;
+// basic, reinhard, constant, with bloom and gamma, its stencil alpha). tools/tw/troy/par_t_particle_order.txt.
+constexpr std::array<uint32_t, 7> PARTICLE_LAYER_READERS = {0x56D3757C, 0x0C12E608, 0xB18957BA, 0x36D6DB61,
+                                                            0x510F88E4, 0x6A0A3F5D, 0x34E339A1};
+constexpr std::array<uint32_t, 1> PARTICLE_LAYER_DISPATCH_READERS = {0xF9B80B32};
 // Shadow Casters Out of View and the hills' (Graphics 1 of 2, Experimental): SCENE_SHADERS' cascade_keep casters.
 float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
@@ -1708,6 +1755,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f, false, (shader_injection.ssao_resolution != 0.f) ? 2.f : 1.f,
                             false);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  twattila::particle_layer::Update(swapchain);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
   static uint32_t ao_frame = 0;
@@ -2281,6 +2329,11 @@ bool AttachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Smoke Shadows without rays: the smoke's dimming into the sun draws' t49 (their x(1 - t49) patch), after the rays' occlusion.
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
+  // Last on the particle draws: the smoke's capture, VFX Brightness (its cb7) and view_share's render scale see the game's
+  // targets and camera; the camera's target size at c31 (Troy's camera_VS_PS: g_viewport_origin at c30).
+  twattila::particle_layer::Install(twtroy::vfx_brightness::HASHES, PARTICLE_LAYER_READERS,
+                                   {.dispatch_readers = PARTICLE_LAYER_DISPATCH_READERS, .render_target_dimensions = 31});
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
 
   reshade::register_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
   twattila::device_loss::InstallLast();
@@ -2309,6 +2362,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twtroy::vfx_brightness::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
   twattila::water_reflections::Uninstall();
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
@@ -2325,6 +2379,7 @@ void DetachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
   twattila::smoke_map::Uninstall();
+  twattila::particle_layer::Uninstall();
   twtroy::vfx_brightness::Uninstall();
   twtroy::shadow_map::Uninstall();
   twattila::ao_filter::Uninstall();

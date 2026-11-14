@@ -33,9 +33,9 @@
 // shader of Troy's (ps_main_high_quality with and without the game's MSAA, each shadow method and shader model; effects
 // quality 0-2's ps_main) holds that colour in the temporary a movc rC.xyz writes right before it tests g_draw_flags' fog
 // bit (and rA.x, rB.w, cb_vfx[0].x; and rA.x, rA.x, l(0x40000000)): tools\tw\troy\par_t_vfx_anchors.py, one test each. They
-// are patched as the game creates them: before that test mad rC.xyz, rC.xyzx, cb8[0].xxxx, rC.xyzx, cb8 declared; the addon
-// binds cb8 on every one of their draws with the slider minus 1 (WH3's fog_strength form: whatever another draw left at cb8
-// never reaches them). At 1 (or cb8 unbound: 0) the game's colour, to the bit (x 0 + x). ps_overlay (E76256B8, 8577C86B)
+// are patched as the game creates them: before that test mad rC.xyz, rC.xyzx, cb7[0].xxxx, rC.xyzx, cb7 declared; the addon
+// binds cb7 on every one of their draws with the slider minus 1 (WH3's fog_strength form: whatever another draw left at cb7
+// never reaches them). At 1 (or cb7 unbound: 0) the game's colour, to the bit (x 0 + x). ps_overlay (E76256B8, 8577C86B)
 // stays out (not Pharaoh's either).
 // test\tw_troy_shaders part 3: each patched program is the game's plus those two, and on WARP the game's bits at 1.
 namespace twtroy::vfx_brightness {
@@ -48,13 +48,14 @@ constexpr std::array<uint32_t, 10> HASHES = {
     0x9C8987DD, 0x0699391F,                          // ps_main: shader model 5, 4.1
 };
 // Free in all of them (they read cb0-cb5); 12 is the render scale's, 13 the add-on's.
-constexpr UINT SLOT = 8;
+// Not b8: Particle Resolution (twattila/particle_layer.hpp) binds its layer constants there on the particle draws.
+constexpr UINT SLOT = 7;
 
 // `code` with the brightness before the fog test. Empty: no such test, or no movc rC.xyz right before it.
 inline std::vector<uint8_t> Patch(std::span<const uint8_t> code) {
   constexpr uint32_t OP_AND = 1, OP_ELSE = 18, OP_ENDIF = 21, OP_MAD = 50, OP_MOVC = 55, OP_DCL_TEMPS = 104;
   constexpr uint32_t IMMEDIATE_SCALAR = 0x00004001, FOG_BIT = 0x40000000;
-  // rC.xyz (mask), rC.xyzx (swizzle), cb8[0].xxxx (swizzle, 2D immediate index); dcl_constantbuffer cb8[1], immediateIndexed.
+  // rC.xyz (mask), rC.xyzx (swizzle), cb7[0].xxxx (swizzle, 2D immediate index); dcl_constantbuffer cb7[1], immediateIndexed.
   constexpr uint32_t TEMP_XYZ = 2u | (0x7u << 4) | (1u << 20);
   constexpr uint32_t TEMP_SWIZZLE_XYZX = 2u | (1u << 2) | (0x24u << 4) | (1u << 20);
   constexpr uint32_t CONSTANT_XXXX = 2u | (1u << 2) | (8u << 12) | (2u << 20);
@@ -144,7 +145,8 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
 
 }  // namespace internal
 
-// A particle draw: the slider minus 1 at cb8 for it, the draw's own put back after it.
+// A particle draw: the slider minus 1 at cb7 for it, the draw's own put back after it (in finalize: after Particle
+// Resolution's, which draws its Full-Resolution Particle Edges again there).
 constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
   if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
@@ -174,7 +176,7 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
     }
     native->PSGetConstantBuffers(SLOT, 1, runtime.game_buffer.ReleaseAndGetAddressOf());
     native->PSSetConstantBuffers(SLOT, 1, runtime.buffer.GetAddressOf());
-    return {.post_callback = [](Context& post, const void*) {
+    return {.finalize_callback = [](Context& post, const void*) {
       auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
       renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
       if (post_native == nullptr) return;
