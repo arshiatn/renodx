@@ -142,6 +142,7 @@ struct ShaderInjectData {
 
   // Appended (parity round 2026-11-14).
   float someindicators;  // Unit/Building Indicator Brightness: x the indicators' and fire-arc / deployment lines' colour in HDR
+  float fog_strength;    // Fog Strength: x the battle fog's opacity (extinction 16AB86F4; its light: addon.cpp FogRays' b8), 1 the game's
 };
 
 #define SI shader_injection

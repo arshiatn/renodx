@@ -142,6 +142,7 @@ void ApplyResetPreset() {
 
       // Active extra controls
       {"bloom", 1.f},
+      {"fog_strength", 1.f},
       {"vignette", 1.f},
       {"distortion", 1.f},
       {"sharpening", 1.f},
@@ -285,13 +286,19 @@ void OnDestroyDevice(reshade::api::device* device) {
 }  // namespace frame_copy
 
 // Our copy of one of the game's pixel shaders with the rays applied (shaders/*_0x<hash>), drawn in its place only where
-// rt_scene's hook for that draw (registered before this one) bound the rays at `SLOT`; otherwise the game's own bytes run.
+// rt_scene's hook for that draw (registered before this one) bound the rays at `SLOT`, or where `strength` (set: the fog's
+// Fog Strength) is off 1; otherwise the game's own bytes run. With `strength` set, ours reads it at b8 as the slider minus 1
+// (Warhammer III's fog route), bound whenever ours runs and the game's b8 put back after.
 template <uint32_t HASH, UINT SLOT>
 struct RaysShader {
   static constexpr uint32_t SHADER = HASH;
   static inline std::span<const uint8_t> code;
   static inline Microsoft::WRL::ComPtr<ID3D11PixelShader> ours;
   static inline Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;
+  static inline const float* strength = nullptr;
+  static inline Microsoft::WRL::ComPtr<ID3D11Buffer> strength_buffer;
+  static inline float strength_written = 1.f;
+  static inline Microsoft::WRL::ComPtr<ID3D11Buffer> game_b8;
 
   // BuildRuntimeData: our bytes kept for the swap; the game's shader is left as it is.
   static void Take(renodx::mods::shader::CustomShaders* shaders) {
@@ -305,26 +312,47 @@ struct RaysShader {
     if (native == nullptr) return {};
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> rays;
     native->PSGetShaderResources(SLOT, 1, rays.GetAddressOf());
-    if (!rays) return {};
+    if (!rays && (strength == nullptr || *strength == 1.f)) return {};
     if (!ours) {
       Microsoft::WRL::ComPtr<ID3D11Device> device;
       native->GetDevice(device.GetAddressOf());
       if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, ours.GetAddressOf()))) return {};
-      renodx::utils::log::i(std::format("[Total War] First run: {:08X} drawn with the rays (t{}).", HASH, SLOT));
+      renodx::utils::log::i(std::format("[Total War] First run: {:08X} drawn with the rays (t{}) or its strength.", HASH, SLOT));
+    }
+    if (strength != nullptr) {
+      const std::array<float, 4> above_one = {*strength - 1.f, 0.f, 0.f, 0.f};
+      if (!strength_buffer) {
+        Microsoft::WRL::ComPtr<ID3D11Device> device;
+        native->GetDevice(device.GetAddressOf());
+        const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(above_one), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        const D3D11_SUBRESOURCE_DATA data = {.pSysMem = above_one.data()};
+        if (FAILED(device->CreateBuffer(&desc, &data, strength_buffer.GetAddressOf()))) return {};
+      } else if (strength_written != *strength) {
+        native->UpdateSubresource(strength_buffer.Get(), 0, nullptr, above_one.data(), 0, 0);
+      }
+      strength_written = *strength;
+      native->PSGetConstantBuffers(8, 1, game_b8.ReleaseAndGetAddressOf());
+      native->PSSetConstantBuffers(8, 1, strength_buffer.GetAddressOf());
     }
     native->PSGetShader(game_shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
     native->PSSetShader(ours.Get(), nullptr, 0);
     return {.finalize_callback = [](Context& drawn, const void*) {
       auto* drawn_native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
       renodx::utils::directx::TryNativeFromReShadeProxy(&drawn_native);
-      if (drawn_native != nullptr) drawn_native->PSSetShader(game_shader.Get(), nullptr, 0);
+      if (drawn_native != nullptr) {
+        drawn_native->PSSetShader(game_shader.Get(), nullptr, 0);
+        if (strength != nullptr) drawn_native->PSSetConstantBuffers(8, 1, game_b8.GetAddressOf());
+      }
       game_shader.Reset();
+      game_b8.Reset();
     }};
   };
 
   static void OnDestroyDevice(reshade::api::device*) {
     ours.Reset();
     game_shader.Reset();
+    strength_buffer.Reset();
+    game_b8.Reset();
   }
 };
 
@@ -464,6 +492,7 @@ void BuildRuntimeData() {
   SpotLightRays::Take(&custom_shaders);
   GoboSpotLightRays::Take(&custom_shaders);
   FogRays::Take(&custom_shaders);
+  FogRays::strength = &shader_injection.fog_strength;
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.
@@ -1017,6 +1046,17 @@ void BuildRuntimeData() {
         .label = "Lens Flare",
         .section = "Extra",
         .tooltip = "Sun lens flares. 0 = off.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
+        .key = "fog_strength",
+        .binding = &shader_injection.fog_strength,
+        .default_value = 1.f,
+        .label = "Fog Strength",
+        .section = "Extra",
+        .tooltip = "How thick the game's fog and haze are. 0 = none, 1 = the game's, 2 = double.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
