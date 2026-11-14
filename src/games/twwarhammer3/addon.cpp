@@ -2818,6 +2818,10 @@ float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 featur
 float below_100_detail_row = 1.f;
 float lod_bias_trilinear_row = 0.f;
 float reflection_lobe_row = 0.f;
+// Faster Reflections: Own ReSTIR on Attila's narrower lobe, whatever Reuse and the lobe's row say. The 4K harness at ATN's
+// Warhammer III rows (helper113, reflections pass): his rows (squared lobe, no reuse) 1.35-1.42 ms, this 1.06; Own ReSTIR on the
+// squared lobe 2.27-2.32.
+float reflections_faster_row = 0.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
@@ -3389,6 +3393,11 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   shader_injection.shadow_map_scale = twwarhammer3::shadow_map_size::Scale();
   rt_settings.cheap_fog_alone = true;
   rt_settings.reflection_squared_lobe = reflection_lobe_row != 0.f;
+  if (reflections_faster_row != 0.f) {
+    rt_settings.reflection_reuse = false;
+    rt_settings.reflection_own = true;
+    rt_settings.reflection_squared_lobe = false;
+  }
   rt_settings.reflection_fog = reflections::fog_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
@@ -3801,6 +3810,18 @@ void ConfigureAddon() {
       .tooltip = "Ray-traced reflections blur by the material as the game's own light does: less mirror-like on armour.\n"
                  "Can be noisier.",
       .labels = {"Off", "On"},
+      .is_enabled = [] { return reflections_faster_row == 0.f; },
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedReflectionFaster",
+      .binding = &reflections_faster_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Faster Reflections (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Ray-traced reflections with their own ReSTIR samples and a narrower lobe: about 0.3 ms faster at 4K.\n"
+                 "Armour and metal look more mirror-like. In place of Reuse and Reflections as Rough as the Game's.",
+      .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedReflectionLight",
@@ -4113,6 +4134,9 @@ void ConfigureAddon() {
   // The page names Reflection Quality "Quality"; here it is untested in game.
   for (auto* setting : settings) {
     if (setting->key == "ssr_quality") setting->label = "Quality (Experimental)";
+    if (setting->key == "RayTracedReflectionReuse") {
+      setting->is_enabled = [enabled = setting->is_enabled] { return reflections_faster_row == 0.f && enabled(); };
+    }
   }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 

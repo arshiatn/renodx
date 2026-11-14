@@ -15,6 +15,11 @@
   the smoke behind it, where the game's composite gives the pixels next to the edge about half. Attila's way, the edge
   pixels drawn again at full size, would replay every effect mesh's material in the half layer (all 95 traces have them)
   for half a texel more.
+- New: **Faster Reflections (Experimental, off)** under the ray-traced reflections (ATN's OK): their own ReSTIR samples on
+  Attila's narrower lobe, in place of Reuse and Reflections as Rough as the Game's (both greyed while on). 4K harness
+  (helper113, the reflections pass at ATN's Warhammer III rows, 3 x 300 frames): his rows 1.35-1.42 ms, this 1.06 ms. Own
+  ReSTIR is cheap on the narrow lobe only: with Reflections as Rough as the Game's on it costs 2.27-2.32 ms. Armour and metal
+  look more mirror-like. Shared step: the graphics page places the row where a game has it (other games' pages unchanged).
 
 ### Whole-frame check's code items (2026-11-14, shared with Attila; built only, not run in game)
 
