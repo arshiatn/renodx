@@ -14,6 +14,11 @@
 //    off, or no camera yet: the game's bits; on: no farther than where a soldier of its size is N pixels tall (h x focal /
 //    d = N at random 0.5), the game's spread kept, nearer game distances untouched, sizes past 3 as 0; printed: where
 //    each size switches at 4K with a 40 degree vertical field of view.
+// 6. Two Shadow Cascades Under Rays (graphics_hooks.hpp shadow_map) over the shadow setup's code as empire.retail.dll ships
+//    it (read from disk: tests.exe [empire.retail.dll]; no relocation in these bytes), in a page of ours as the found code:
+//    its pattern once; off, Set writes Shadow Map Size's bytes alone, as before the row (2x: the six sizes; 1x: the game's
+//    bytes); on, the four cascade immediates (Max's and High's +0x98 and +0x84) become Medium's own (read after the pattern),
+//    nothing else; off again and 1x: the game's bytes; CONTROL: Medium's writes not as known, on writes nothing.
 #include <windows.h>
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -24,6 +29,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -64,7 +71,7 @@ struct ViewDevice : mock::Device {
   reshade::api::resource get_resource_from_view(reshade::api::resource_view view) const override { return {view.handle}; }
 };
 
-int main() {
+int main(int argc, char** argv) {
   hooks::internal::original_unit_distances = &GameUnitDistances;
   hooks::internal::hooks_active = true;
   bool installed = true;  // Update only takes the scales (no module to hook)
@@ -211,6 +218,81 @@ int main() {
               "bits\n",
               focal, switch_at[0], switch_at[1], switch_at[2], switch_at[3]);
   settle({1.f, 1.f, 1.f, 1.f}, 0.f, 0.f);
+
+  // 6.
+  {
+    namespace shadow = hooks::shadow_map::internal;
+    std::ifstream stream(argc > 1 ? argv[1] : R"(C:\Program Files (x86)\Steam\steamapps\common\Total War Attila\empire.retail.dll)",
+                         std::ios::binary);
+    CHECK(stream.good());
+    const std::string file((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    const uint8_t* found = tw::engine_tweaks::FindPattern({file}, shadow::PATTERN);
+    CHECK(found != nullptr);
+    const auto after = static_cast<size_t>(found - reinterpret_cast<const uint8_t*>(file.data())) + 1;
+    CHECK(tw::engine_tweaks::FindPattern({std::string_view(file).substr(after)}, shadow::PATTERN) == nullptr);
+    constexpr size_t BYTES = shadow::CODE_SIZE + shadow::MEDIUM_CASCADES.size();
+    const std::vector<uint8_t> game(found, found + BYTES);
+    auto* page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    CHECK(page != nullptr);
+    std::memcpy(page, game.data(), BYTES);
+    shadow::code = page;
+    const auto differing = [&](const std::vector<uint8_t>& expected) {
+      std::vector<size_t> at;
+      for (size_t index = 0; index < BYTES; ++index) {
+        if (page[index] != expected[index]) at.push_back(index);
+      }
+      return at;
+    };
+    // Before the row: the six sizes x 2 over the game's bytes.
+    std::vector<uint8_t> sizes_2x = game;
+    for (size_t index = 0; index < shadow::SIZE_OFFSETS.size(); ++index) {
+      const float size = shadow::GAME_SIZES[index] * 2.f;
+      std::memcpy(sizes_2x.data() + shadow::SIZE_OFFSETS[index], &size, sizeof(size));
+    }
+    hooks::shadow_map::Set(1.f, false);
+    CHECK(differing(game).empty());
+    hooks::shadow_map::Set(2.f, false);
+    CHECK(differing(sizes_2x).empty());
+    // On: Medium's own immediates (its count, 2, and +0x84, 0) at Max's and High's places, nothing else.
+    uint32_t medium_count;
+    uint32_t medium_84;
+    std::memcpy(&medium_count, game.data() + shadow::CODE_SIZE + 6, sizeof(medium_count));
+    std::memcpy(&medium_84, game.data() + shadow::CODE_SIZE + 16, sizeof(medium_84));
+    CHECK(medium_count == 2 && medium_84 == 0);
+    hooks::shadow_map::Set(2.f, true);
+    std::vector<uint8_t> two = sizes_2x;
+    for (size_t index = 0; index < shadow::CASCADE_OFFSETS.size(); ++index) {
+      const uint32_t value = (index % 2 == 0) ? medium_count : medium_84;
+      std::memcpy(two.data() + shadow::CASCADE_OFFSETS[index], &value, sizeof(value));
+    }
+    CHECK(differing(two).empty());
+    const auto changed = differing(sizes_2x);
+    CHECK(!changed.empty());
+    for (const size_t index : changed) {
+      CHECK(std::ranges::any_of(shadow::CASCADE_OFFSETS, [&](size_t offset) { return index >= offset && index < offset + 4; }));
+    }
+    // Off again, then the game's size: the game's bytes.
+    hooks::shadow_map::Set(2.f, false);
+    CHECK(differing(sizes_2x).empty());
+    hooks::shadow_map::Set(2.f, true);
+    hooks::shadow_map::Uninstall();
+    CHECK(differing(game).empty());
+    // CONTROL: Medium's count not 2 after the pattern (another build or mod): on writes no cascade.
+    page[shadow::CODE_SIZE + 6] = 3;
+    std::vector<uint8_t> other_medium = game;
+    other_medium[shadow::CODE_SIZE + 6] = 3;
+    hooks::shadow_map::Set(1.f, true);
+    CHECK(differing(other_medium).empty());
+    hooks::shadow_map::Set(2.f, true);
+    std::vector<uint8_t> other_medium_2x = sizes_2x;
+    other_medium_2x[shadow::CODE_SIZE + 6] = 3;
+    CHECK(differing(other_medium_2x).empty());
+    shadow::code = nullptr;
+    VirtualFree(page, 0, MEM_RELEASE);
+    std::printf("6 shadow cascades: pattern once in the shipped empire.retail.dll; off: Shadow Map Size's bytes alone; on: %zu bytes "
+                "differ, all in Max's and High's cascade immediates (Medium's %u / %u); back: the game's bytes; CONTROL: "
+                "another Medium, none written\n", changed.size(), medium_count, medium_84);
+  }
   std::printf("PASS\n");
   return 0;
 }

@@ -1,5 +1,6 @@
 # Attila's soldier shadows under the rays (tests.cpp): the UnitDistances hook's index 16 in each state of Ray-Traced
-# Shadows Only. Needs the Attila addon built in build32 (rt_scene.hpp includes its embedded shaders: build32\
+# Shadows Only; Two Shadow Cascades Under Rays over the shadow setup's code in Attila's empire.retail.dll (Steam folder).
+# Needs the Attila addon built in build32 (rt_scene.hpp includes its embedded shaders: build32\
 # twattila.include). Run as x86 (the game's) and amd64.
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86')
 $ErrorActionPreference = 'Stop'
