@@ -44,7 +44,8 @@ Not done:
   the sky for the paths needs WH3's harmonics form in rt_sun plus a WH2 ambient patch at two places (WARP), then
   `InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4)`.
 - Smoke Shadows: the particles (VS C3300B96 / 1FC776EF, GS 4660626E, PS DDABB799 / F32116B4 / 687378DB) are Attila's form
-  (one vertex a particle, a geometry shader's quads); the capture's layout against WH2's is unchecked.
+  (one vertex a particle, a geometry shader's quads) with Attila's output signature, but they read structured buffers where
+  Attila's read texture arrays: what each output means needs a WARP check before Attila's particle capture takes them.
 - Ray-traced water reflections: WH2's water resolve is not mapped yet.
 - Shadow Casters Out of View: the casters the rays miss (far tree billboards 62C6A599 / C1A857A3, rigidtextureblend 2 bones
   7DF335FF, six atlas-only shadow vertex shaders) are not in the scene yet.
