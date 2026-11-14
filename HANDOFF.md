@@ -280,7 +280,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   shared rt_scene LightInstances + InstallPointLights(instances), rt_core LocalLight.shadows_only + indirect smoke,
   rt_particle_quads_instancing.hlsli: Pharaoh / Troy / WH2 GS headers byte-identical). Agent on 75914932 out of view.
   Troy told: fires 643FC156 can go on top of the new rt_scene light reader.
-- [ ] ReSTIR U1 / U2 (branch worktree-agent-afd5e1bbbc7a65b04, NOT merged): off = helper110 proven (38 headers cmp, DUMP,
+- [x] ReSTIR U1 / U2 (branch worktree-agent-afd5e1bbbc7a65b04, merged later as helper111 / 112; ticked by the 1114 audit): off = helper110 proven (38 headers cmp, DUMP,
   all_modes 178 / 179 + 1 memory flake); cost rt_lights 2.20 -> 0.81 (U1) / 0.90 (U2) ms at 29 lights. Quality FAILED as a
   unified reservoir (U1 66 %, U2 20.5 % rRMSE vs RR + importance 1.98 %, Steady 5.15 %: the sun's bounce outweighs the torches).
   Redesign 39a8e204 (one light per bounce texel apart from the reservoir) being measured; helper111 only if it holds.
@@ -498,7 +498,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   opt-in: other games' rt_core suites PASS x86 + amd64, page dumps unchanged; tw_romer_rays case 7). Rome Remastered agent DONE
   (3 DO NOW left: Upscaling Debug View (shared opt-in in AppendAa), Bend's Softer Away + Debug View). ATN runs: Battle Objects
   Tested / Solid / All, 67 / 50 % with RT/PT, README test lines, a FrameTraceReads trace at 67 % + a siege with fire.
-- [ ] FABLE 5.2 MEDIUM reset hunt started (ATN's OK; worktree, scratch fbl_): review capture -> bridge -> helper, DRED in the
+- [x] FABLE 5.2 MEDIUM reset hunt (DONE b53fbfa4) started (ATN's OK; worktree, scratch fbl_): review capture -> bridge -> helper, DRED in the
   harness, battle kinds fed at real sizes (max 3 resets), fix + proof, safe-side row stays until proven.
 - [x] WH3 parity round MERGED b6cb52a1 (table tools/tw/wh3_parity/parity_1114.md: 188 have / 2 do now left / 2 trace / 81 won't;
   Indicator Brightness (Experimental; MBOIT resolve 492ED8DA left out), four own-flag tests (Far Tree Block Shadows, Point Light
@@ -565,7 +565,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Agent resumed: sm4 smoke / particle layer, SSR quality in the 8 sm4 + MSAA builds, Thrones' vfx wrappers.
 - [ ] ATN ~19:xx: "No more performance improvements on our side and the game's?" From attila_frame_results.md, NOT yet done:
   (1) the game's shadow pass under Rays Replace + Skip (cpl1 4.4-4.8 ms render thread culling / submitting 1561 skipped draws),
-  (2) G0 grass scrub radius clamp (bit-exact; E 3-5 ms workers + 0.5-0.9 render thread at maxed grass), (3) add-on worker
+  (2) G0 grass scrub radius clamp (ALREADY DONE f158b659: 1114 audit; bit-exact; E 3-5 ms workers + 0.5-0.9 render thread at maxed grass), (3) add-on worker
   detours 1.2 ms, (4) the render thread's 12 ms unnamed tail (research), (5) Capture 0.9 + DrawObjectMotion 0.63 (after the
   redesign). CPU perf agent (cpu_) started on 1-4, Attila first, then Rome II / Thrones. ATN's A/B list: Small Soldiers as
   Sprites, game Shadows Medium + Two Shadow Cascades, Lean Reuse, Light Bounce Half, pause Wallpaper Engine (3.0 ms GPU).
@@ -582,13 +582,13 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [ ] ATN 14:3x: "improve the author's code / any other fmod / anything else on the game's side?" heapfix's own code stays
   its author's (own use only); our own detours on the game's functions (tools/tw/cpu_profile/report.md sections 2 and 6)
   were in no brief (the Nothing dropped miss). Owner: cpu_ agent, round 2 (sent 14:3x), each bit-exact offline, Experimental:
-  - [ ] G2a software float->half 0x169a220 (98 sites; 4.3 ms workers, ~0.7 render at grass): bit-exact over all 2^32 inputs
-  - [ ] G2b CRT fmod 0x1a05cc0 (x87 fprem, 81 sites; 1.6-1.9 ms workers, 0.3 render)
-  - [ ] U3 x87 truncation block +0x17f6515 (4.1 ms workers at 8x, 0.5 render; heapfix's live bytes checked first)
+  - [x] ALREADY DONE 11a0b65c (Faster Game CPU Code; my list was wrong): G2a software float->half 0x169a220 (98 sites; 4.3 ms workers, ~0.7 render at grass): bit-exact over all 2^32 inputs
+  - [x] ALREADY DONE 11a0b65c: G2b CRT fmod 0x1a05cc0 (x87 fprem, 81 sites; 1.6-1.9 ms workers, 0.3 render)
+  - [ ] U3 only the heapfix-aware variant (the plain patch is in 11a0b65c): x87 truncation block +0x17f6515 (4.1 ms workers at 8x, 0.5 render; heapfix's live bytes checked first)
   - [ ] U5 animation pack loop 0x182e080 (2.29 ms render thread at 8x)
   - [ ] render-list append, lock xadd per item 0x17ae370 / 3d0 / 420 (6.2 ms workers, 0.9 render at 8x; research first)
   - [ ] the game's introsort 0xda6b0 / 0xda4b0 (3.5 ms workers at maxed grass; only with an equal-key order proof)
-  - [ ] the same functions in Rome II / Thrones, found by bytes
+  - [x] ALREADY DONE for float->half / fmod / x87: Rome II 0246a786, Thrones 2c89ced4 (the rest: with each item)
   - [ ] APPROVED by ATN 14:5x, owner hfp_ agent (game runs, Constantinople auto_save.replay, camera moved left at the start
     so artillery, units, walls and shots are on screen): heapfix A = 7.0, P = prefetch-only sort, B = last night's parallel
     sort, interleaved A,P,B in three scenarios (ATN's settings GPU-bound; CPU-bound rays off + Ultra Performance; everything
@@ -600,6 +600,31 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   analysis reports (Nsight, CPU / GPU recordings, heapfix, draw redesign cost map, Rome Remastered hunt, round notes) against
   HANDOFF, commits and the running agents' scopes; report tools/tw/round_notes/audit_1114.md. Each MISSING line becomes a
   checkbox here with an owner.
+  DONE: 125 rows: done 29, owned 32, maintainer 17, dropped on purpose 13, missing ~33 distinct. My round-2 CPU list held
+  finished work (fmod / float->half / x87 / G0: 11a0b65c, f158b659): the CPU brief is corrected. Owners of the missing:
+  - [ ] cpu_ agent, round 3 (sent): the workers' unnamed 36.8 ms, memcpy / memset 4.44 + 1.08, frame allocator 2.40 + 0.39,
+    soldier update 2.87 + 0.45, render-list execution 1.35 render, battle draw loop 0.67 (cpl2 pickles); off-screen soldiers
+    keep their last pose / far soldiers half-rate animation (Experimental); unit-only mesh LOD (count parts per LOD first)
+  - [ ] hfp_ agent (sent): heapfix's whole test set + eqtest on every packaged variant; battle_draw_batching A/B (2.16 ms)
+  - [ ] GPU PERF ROUND (one agent after the drw_ merge; helper / rt_core): (a) FIRST Rome Remastered reset suspect 3 (a
+    cluster set kept after the game rewrites an index buffer under the same key: offline check); (b) units ray-tracing
+    range row (Experimental; cluster pass 1.8-2.58 ms GPU over 18.7-22.6 M soldier triangles; harness GPU Trace with
+    HARNESS_COMPACT_STRESS and a distance cut); (c) the game side of the three ray hand-offs (~1.3-1.7 ms; cpl2 pass_timing
+    per command); (d) WH3 grass read-back without the wait (>= 1.2 ms in grassy sieges; smallest step in lines 34-36);
+    (e) bit-identical ReSTIR reuse from a per-texel surface record (~0.7 ms); (f) score Lean + 3 neighbours (0.98 -> 0.69 ms)
+    and radius 6; (g) f16 reservoir layout, torch U2 Half while moving (11.5 % vs 5.2 % rRMSE), a separate light reservoir;
+    (h) do light draws repeat frame to frame (the -1.4 ms sort reuse); (i) per-draw leftovers (resource upgrade hash set
+    0.196 ms, 2461 skipped caster commands); (j) game passes doubled under RT/PT (~0.18 ms); (k) the add-on's own GPU passes
+    0.48-0.53 ms; (l) PT GI fallbacks, grass specular into the GI cache, OMM transient pools, helper commit under Nsight;
+    (m) quality scorer: a smoke / fog scene (Faster Smoke Shadow Build unscored), reflections / water, history off, RR 310.9
+  - [ ] GPU GRASS (perf_plan G1; one agent after cpu_ ends: Attila's grass code): phase 0 = a Grass Dump button +
+    grass_replay.py; estimate -5 to -10 ms render thread, -20 to -37 ms workers at maxed grass when CPU-bound
+  - [ ] Look-changing GPU savings (half-rate rays for grass / far soldiers, float16 animation pages; 0.2-0.6 ms each):
+    Experimental rows, owner the GPU PERF ROUND after (a)-(m)
+  - [ ] ATN DECIDES: one cascade instead of two (after the Shadows Medium A/B); WH3 own ReSTIR reflections (~0.3 ms cheaper,
+    picture differs); dead keys in ATN's ini (GraphicsModelDetail, GraphicsUnitDetail, GraphicsUnitFade*); the grass
+    settings note text; HAGS (ATN's Windows setting, effect unmeasured)
+  - [ ] Unit round D (WH3 cross-pass unit capture key) and E (TBB grain rows), line 37: owner PARITY ROUND 2 WH3
 - [x] ATN 14:2x: the lessons of the last 16 h into the skill (tools/tw/round_notes/lessons_1114.md, 24 lines): SKILL.md
   "Nothing dropped" rule (every open line of a report = a checkbox with an owner; SHARED STEP; parity gate), Finishing a
   round + release.md 5 / 7 / 8 (Fable at the end, parity, reports read to the end), rows in testing / helper-fg-stability /
@@ -941,7 +966,7 @@ change goes in an Experimental row, off. One commit + push to origin atn-mods pe
 
 - [x] (coordinator) rebuilt at HEAD 21:02-21:03 (64c640dd), STAMPED + INSTALLED 21:04 (tools/tw/round_v151/install_v65.py):
   Attila v158, WH3 v57, Pharaoh v65, helper109 in all three; ATN files unchanged by hash; old files .in-use-20261113_210411.
-- [ ] The scrub race (two threads scaling one model first): fix it under the lock (a bug: models keep farther LODs
+- [x] The scrub race (DONE 84461a1d) (two threads scaling one model first): fix it under the lock (a bug: models keep farther LODs
   than the slider); queued for the next Attila round.
 ## PHARAOH V64: TORCH SHADOWS + DEBUG VIEWS (2026-11-13 evening, offline; Pharaoh v63 / helper107 installed)
 Rules: no game start, no Steam folder touched, no stamp / install (ATN does those), no DevKit near game folders, never
