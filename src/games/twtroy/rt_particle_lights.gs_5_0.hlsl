@@ -8,7 +8,8 @@
 // each streamed out as the light the pixel shader draws: its world position (TEXCOORD4.xyz, the particle's: the mesh branch
 // writes it apart from the volume's vertex), reach (TEXCOORD2.x) and colour (COLOR0.rgb x COLOR0.a x 2500, the pixel
 // shader's own). An instance the vertex shader leaves undrawn (emitter left out or not a mesh: SV_Position (-10, -10, -10, 0)
-// or 0) gets reach 0. The input is F5CE48CC's whole output signature (WARP tools\tw\troy\fires: the same elements).
+// or 0) gets reach 0. The input is F5CE48CC's whole output signature (WARP tools\tw\troy\fires: the same elements). Pharaoh's
+// fires (5AD46115 with 109B79CE, the same output signature: WARP tools\tw\pharaoh\fires) take it too.
 // CMake's shader rule takes no gs_ target: after a change run from the repository's root
 // bin\fxc.exe src\games\twtroy\rt_particle_lights.gs_5_0.hlsl -T gs_5_0 -E main /O3 /Qstrip_reflect /nologo /Vn __rt_particle_lights /Fh src\games\twtroy\rt_particle_lights_gs.h
 
