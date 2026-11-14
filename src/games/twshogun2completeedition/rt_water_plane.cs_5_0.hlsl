@@ -9,8 +9,8 @@
 // g_decal_ocean_projection_plane, from its last draw): each render pixel's view ray against it where the scene lies under it
 // (g_sea). The water planes' meshes were drawn again depth-only (t1, g_meshes): where they are nearer than the scene. There:
 // the water's depth (u0, the plane's through the camera's view_projection), the guides of water (u1-u4: no diffuse albedo,
-// specular albedo 0.02, normal up, roughness 0.03) and the water mask (u5: 1, for the resolve and the water's pixel
-// shaders); elsewhere the scene's depth, the guides as written, mask 0.
+// specular albedo 0.02, normal up, roughness 0.03 or Softer Water Reflections' more) and the water mask (u5: 1, for the
+// resolve and the water's pixel shaders); elsewhere the scene's depth, the guides as written, mask 0.
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -25,6 +25,7 @@ cbuffer water_plane : register(b1)
   uint2 g_render_size;
   uint g_sea;     // the plane is the sea's (drawn last frame)
   uint g_meshes;  // t1 holds the water planes' depth
+  float g_water_roughness;  // Softer Water Reflections' least roughness (0: the water's own)
 };
 
 Texture2D<float> depth_tex : register(t0);   // ssrhiz00's t0
@@ -73,7 +74,7 @@ void main(uint3 id : SV_DispatchThreadID)
     diffuse_albedo[id.xy] = float4(0.f, 0.f, 0.f, 1.f);
     specular_albedo[id.xy] = float4(0.02f, 0.02f, 0.02f, 1.f);
     normals[id.xy] = float4(normal, 0.f);
-    roughness[id.xy] = 0.03f;
+    roughness[id.xy] = max(0.03f, g_water_roughness);
   }
   surface_depth[id.xy] = surface;
   water_mask[id.xy] = water ? 1.f : 0.f;

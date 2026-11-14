@@ -21,9 +21,12 @@
 #include <include/reshade.hpp>
 
 #include <embed/shaders.h>
-// Shadow Casters Out of View: Pharaoh's geometry shaders (its shadow vertex shaders' output signatures are these ones').
+// Shadow Casters Out of View: Pharaoh's geometry shaders (its shadow vertex shaders' output signatures are these ones'), and
+// Troy's leaves without a fade (RT_NO_FADE: the same signature as this game's rigidleaf_v3 vs40_shadow).
+#include "../twpharaohdynasties/rt_outside_view_branch_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_world_gs.h"
+#include "../twtroy/rt_outside_view_leaf_gs.h"
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
@@ -138,9 +141,11 @@ void ApplyResetPreset() {
       {"saturation_tpm", 1.f},
 
       // Active extra controls
+      {"bloom", 1.f},
       {"vignette", 1.f},
       {"distortion", 1.f},
       {"sharpening", 1.f},
+      {"some_indicators", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -344,12 +349,17 @@ using FogRays = RaysShader<0x492B87C7, 43>;
 // buffer (ONE / INV_SRC_ALPHA, at half size); the others are decals (61AFC16D, DE44A861), the particles' lights (51B21D74),
 // overlay (73514DBC) and distortion (F0998601). The one-vertex C3300B96 drew in none. 1FC776EF's output signature and its
 // writes to it are Pharaoh's 109B79CE's (fxc -dumpbin): Pharaoh's quad shader at F32116B4's slots
-// (rt_particle_quads.gs_5_0.hlsl). Its lower-effects twins DDABB799 / 687378DB (t4, s3, t7: one slot below) drew in no
-// trace: left out.
+// (rt_particle_quads.gs_5_0.hlsl). Its lower-effects twins ps_main DDABB799 and ps_main_high_quality without shadows
+// 687378DB (in no trace: level B) bind its diffuse array, sampler and emitter constants one slot below (t4 / s3 / t7, the
+// same 80-byte constants; fxc -dumpbin) and take the alpha as it does (sRGB decode x the particle's, crush): shifted by 1.
 constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{
     {.hash = 0x1FC776EF, .quad_shader = __rt_particle_quads, .indirect = true},
 }};
-constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADERS = {{{.hash = 0xF32116B4}}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 3> SMOKE_PIXEL_SHADERS = {{
+    {.hash = 0xF32116B4},
+    {.hash = 0xDDABB799, .view_shift = 1, .sampler_shift = 1},
+    {.hash = 0x687378DB, .view_shift = 1, .sampler_shift = 1},
+}};
 
 // Rays Replace Shadow Maps (Experimental, off; Pharaoh's way): the six sun shaders whose shadow the screen-space shadows
 // patched (the data run's log: hardware gather 5.0, standard and skin, single-sampled and MSAA) read the sun's atlas
@@ -990,6 +1000,17 @@ void BuildRuntimeData() {
                1.f, 0.f),
 
     new renodx::utils::settings::Setting{
+        .key = "bloom",
+        .binding = &shader_injection.bloom,
+        .default_value = 1.f,
+        .label = "Bloom",
+        .section = "Extra",
+        .tooltip = "The glow around bright lights. 0 = off, 1 = the game's.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
         .key = "lensflare",
         .binding = &shader_injection.lensflare,
         .default_value = 1.f,
@@ -1069,6 +1090,19 @@ void BuildRuntimeData() {
         .tooltip = "Smooths the sky's banding and adds fine dither.\n"
                    "Higher: removes wider bands, softens sky details more.",
         .labels = {"Off", "Low", "Medium", "High"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "some_indicators",
+        .binding = &shader_injection.someindicators,
+        .default_value = 1.f,
+        .label = "Unit/Building Indicator Brightness (Experimental)",
+        .section = "Extra",
+        .tooltip = "Brightness of the indicators under units and buildings, fire arcs and deployment lines.\n"
+                   "Lower helps at night. 1 = the game's.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.1f",
+        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "VfxParticleSmoothing",
@@ -1504,8 +1538,9 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 24> MOTION_SHADERS =
 // the G-buffer's channels 1-4 from their first slot.
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_port.py): the main view's terrain, rigid objects, tree
 // branches and leaves and units, and their capture versions (world positions; leaves also UVs).
-// The floating unit banners (rigidtextureblend, 2 bones, 7DF335FF) stay out: the game gives them no shadow (no atlas draw in
-// any trace of the data run).
+// The floating unit banners (rigidtextureblend, 2 bones, 7DF335FF) stay out: in battle the game gives them no shadow (no atlas
+// draw in any battle trace). The campaign draws two of them into its atlas (ATN's traces 03-14): not held yet (its world is
+// its TEXCOORD0, but the outside-view shader drops what is in the view, which the main pass holds for the others).
 // 16AFAF14's alpha-tested materials (sorted): each discards where its diffuse map's alpha (x the instance's fade, v6.w) is
 // below 0.5 at TEXCOORD1.xy (the vertex's TEXCOORD0, the VS's o2), the helper's cut-out; captured with that UV
 // (rt_capture_rigid_standard_cut_out). Drawn in ATN's traces and the data run's (tools/tw/wh2/runs): fences, palms and props
@@ -1518,7 +1553,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 5> CUT_OUT_MASKS = {{
     {.pixel_shader = 0xD960DC10},             // rigidambientmapmesh ps40_gbuffer_alpha_test
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 25> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 29> SCENE_SHADERS = {{
     {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
     {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
     {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
@@ -1552,6 +1587,15 @@ constexpr std::array<twattila::rt_scene::SceneShader, 25> SCENE_SHADERS = {{
     {.hash = 0xE2C36310, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0x2EE37868, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0x2A54DBEE, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    // Their siblings whose main passes are held but which drew in no trace (the caster census: "in view only"), by their bytes
+    // (tools/tw/wh2/par_w2_shadow_sigs.txt: the signature of a held row or of Pharaoh's / Troy's, the world the output the
+    // projected position comes from): the dismembering units (weightedwithburn vs40_shadow_dismember, weighted
+    // vs40_shadow_4_bones_dismember: TEXCOORD2 as 2EE37868), the branches (rigidbranch_v3 vs40_shadow: TEXCOORD5 as Pharaoh's
+    // 5AFB107C), the leaves (rigidleaf_v3 vs40_shadow: as Troy's A295269F, cut out by 5A67E9AA's t0 test, its alpha below 0.5).
+    {.hash = 0x1EC06D3B, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0x3FDF97B2, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0x100F52AF, .dynamic = true, .cascade_keep = __rt_outside_view_branch},
+    {.hash = 0x00326F05, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_leaf},
     // The campaign's trees and plants (rigidcampaignvegetation vs40_shadow; ATN's 2026-11-14 campaign traces: 49 draws a frame,
     // the shadow pass's only): TEXCOORD0 the world, TEXCOORD1 the UV of 5906CF6E's t0 test (its diffuse map's alpha below 0.5).
     {.hash = 0x7D979F60, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
@@ -1829,9 +1873,10 @@ void ConfigureAddon() {
   // in the tooltips), then More Tests (more_tests.h).
   engine_tests = twattila::engine_tests::Only(twattila::engine_tests::Attila(), more_tests::ATTILA_TESTS);
   for (auto& test : engine_tests) {
-    std::erase_if(test.option.tweaks, [](const tw::engine_tweaks::Tweak& tweak) {
-      return std::ranges::find(more_tests::MISSING_VALUES, tweak.name) != more_tests::MISSING_VALUES.end();
-    });
+    // Attila's top is its 90% x 1.11; this game's 97% (Warhammer2.exe's constructor) reaches 100% at 1.03.
+    if (test.key == "AudioDefaultMemoryLimit") {
+      test.max = 1.03f;
+    }
     if (const auto tooltip = std::ranges::find(more_tests::TOOLTIPS, test.key, &std::pair<std::string, std::string>::first); tooltip != more_tests::TOOLTIPS.end()) {
       test.tooltip = tooltip->second;
     }

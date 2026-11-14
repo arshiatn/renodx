@@ -1,5 +1,43 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### Parity round (2026-11-14; built only, not run in game)
+
+Attila's page and features against this game's (table: `tools/tw/wh2/parity_1114.md`; Warhammer2.exe only read, never
+written). No shared code changed.
+- **New: Bloom (Extra, 0-2, 1 = the game's)** on the tone mapper's bloom add (2333E142, both paths). WARP: at 1 the
+  game's bits in every Rendering Mode (0 differ; control at 0.5 differs).
+- **New: Unit/Building Indicator Brightness (Experimental; Extra, HDR only, 1 = the game's)** on the indicators under units
+  and buildings (659C9A32, 11 traces) and the fire-arc / deployment lines (gridspline 2EF4FBEB, 13728DC3). WARP: SDR at
+  any value and HDR at 1 are the game's bits.
+- **Graphics 2 of 2 tests**: 19 rows taken out whose values the game never reads (no code use, no pointer to them); five
+  of Attila's in (Grass on Slopes, Warped Shadows, New Shadows, Sound / Voice Memory Fill Limit; Sound's top 1.03 = 100%).
+- **Smoke Shadows' lower-effects twins** (DDABB799, 687378DB: one slot below F32116B4's) now cast as the high one. WARP:
+  passes at their slots, fails unshifted.
+- **Shadow Casters Out of View** (on in RT/PT) also keeps the dismembering units', the branches' and the leaves' shadow
+  passes (1EC06D3B, 3FDF97B2, 100F52AF, 00326F05: the same outputs as the rows already kept; in no trace yet).
+
+Test list (RT/PT unless named):
+1. Bloom 0 and 2 in a sunny battle: the glow goes and doubles; 1 looks as before.
+2. Indicator Brightness 0.3 at night: unit rings, building markers and fire arcs dimmer; the rest of the picture unchanged.
+3. Effects Quality below Ultra, a burning city: Smoke Shadows still shade the ground under the smoke.
+4. A forest battle, turn the camera away from the trees: their shadows stay (leaves, branches).
+5. Grass on Slopes 0 and Warped / New Shadows on, one battle each: no crash; say what changed.
+
+Not done:
+- Fog Strength: the fog's two shaders are known (16AB86F4, 492B87C7); needs Warhammer III's constant-buffer route and a WARP
+  check. Grass Height Distance: the grass VS 71EB7463, its motion and capture copies (three shaders and a WARP check).
+- Depth of Field, Fog & Sky Smoothing and the three VFX Brightness rows: their passes drew in no trace (a cutscene, a fogged
+  battle, a snow or rain battle with FrameTraceReads).
+- Smoke shadows without rays: needs a 64-bit camera / sun host (shared step for every 64-bit game).
+- Campaign army banners (7DF335FF): the campaign draws two into its shadow atlas; they need an outside-view variant that keeps
+  what is in view (an opt-in define in the shared geometry shader) and a row. In battle the game gives banners no shadow.
+- Units and props in no trace, not in the rays: weighted2_liquid, weighted4_animated_overlay, rigid_character_prop_liquid,
+  rigid_wind_worldspace (capture versions + a GPU check); the alpha ones, sails and ropes, campaign trees, sprite soldiers,
+  the sand dome and the tessellated displacement meshes need a trace first.
+- Won't get: Attila's exe-code rows (this exe is protected), rows whose values this game lacks or never reads, Attila's
+  own SSR rows, Modded Auto Exposure (this game computes exposure on the CPU), Particle Resolution (the game already draws
+  its lit particles at half size).
+
 ### v50 (2026-11-14: RT/PT as Attila's; stamped and installed 10:45 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Far Tree and Smoke Shadows and Water
@@ -82,8 +120,10 @@ Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon6
 
 Not done:
 - The campaign's far terrain (above).
-- Smoke Shadows' lower-effects twins DDABB799 / 687378DB drew in no trace (one slot below F32116B4's: a shift away).
-- Out of the rays: the depth-only EF11AD35 (no world to read) and the floating banners 7DF335FF (the game gives them none).
+- Smoke Shadows' lower-effects twins DDABB799 / 687378DB drew in no trace (one slot below F32116B4's: a shift away; done in
+  the parity round).
+- Out of the rays: the depth-only EF11AD35 (no world to read) and the floating banners 7DF335FF (the game gives them none in
+  battle; the campaign's two: parity round).
 - The rigid default shader 6B25B4D2 also draws the battle water, the campaign sea and overlays into the G-buffer; they stay
   casters (the water is opaque there, nothing under it shows; listing its 25 traced materials would drop untraced ones).
 - Particle Resolution (Attila's particle layer): the game already draws its lit particles at half size into its own layer

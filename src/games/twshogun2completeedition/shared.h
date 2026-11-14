@@ -117,6 +117,13 @@ struct ShaderInjectData {
   float v35_highlight_saturation;
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
+  // sss.hlsli: Bend's samples and modes as Attila's rows (the DLSS addon's SSSHardSamples, SSSFadeSamples, SSSIgnoreEdges,
+  // SSSAlongRay, SSSMirrorEdges): the counts 0 the game's (8, 16), the modes 0 the game's (off).
+  float sss_hard_samples;
+  float sss_fade_samples;
+  float sss_ignore_edges;
+  float sss_along_ray;
+  float sss_mirror_edges;
 };
 
 #define SI  shader_injection

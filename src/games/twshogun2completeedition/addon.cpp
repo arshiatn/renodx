@@ -11,6 +11,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -981,6 +982,18 @@ void ReadDlssAddonOptions() {
   read_bend("SSSEdgeThreshold", 0.1f, &shader_injection.sss_edge_threshold);
   read_bend("SSSPrecisionOffset", 1.f, &shader_injection.sss_precision_offset);
   read_bend("SSSFoliageLight", 1.f, &shader_injection.sss_foliage_light);
+  read_bend("SSSIgnoreEdges", 1.f, &shader_injection.sss_ignore_edges);
+  read_bend("SSSAlongRay", 1.f, &shader_injection.sss_along_ray);
+  read_bend("SSSMirrorEdges", 1.f, &shader_injection.sss_mirror_edges);
+  // The DLSS addon's choices (0 the game's: 8 and 16, its sss.hlsli's HARD_SHADOW_SAMPLES / FADE_OUT_SAMPLES).
+  constexpr std::array<float, 4> HARD_SAMPLES = {0.f, 4.f, 16.f, 32.f};
+  constexpr std::array<float, 5> FADE_SAMPLES = {0.f, 4.f, 8.f, 32.f, 64.f};
+  int hard_samples = 0;
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSHardSamples", hard_samples);
+  shader_injection.sss_hard_samples = HARD_SAMPLES[std::clamp(hard_samples, 0, static_cast<int>(HARD_SAMPLES.size()) - 1)];
+  int fade_samples = 0;
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSFadeSamples", fade_samples);
+  shader_injection.sss_fade_samples = FADE_SAMPLES[std::clamp(fade_samples, 0, static_cast<int>(FADE_SAMPLES.size()) - 1)];
   int shadow_map_stability = 0;
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ShadowMapStability", shadow_map_stability);
   shader_injection.shadow_map_stability = static_cast<float>(std::clamp(shadow_map_stability, 0, 2));
@@ -1037,15 +1050,24 @@ void ReadDlssAddonOptions() {
   ray_tracing.sprite_shadows = read_on("RayTracedSpriteShadows", false);
   ray_tracing.far_tree_shadows = read_on("RayTracedFarTreeShadows", false);
   ray_tracing.casters_out_of_view = ray_tracing.sun_shadows && read_on("RayTracedUnitsOutOfView", false);
+  // Attila's Smooth Banner Shadows (RT_SHEETS_UNSELFED: the cloth the pixel shows doesn't shade itself) and Grass Shadow Range
+  // (rays from pixels farther than it pass the grass), both the helper's.
+  ray_tracing.sheets_unselfed = read_on("RayTracedSheetsUnselfed", false);
+  read_float("RayTracedGrassShadowRange", 0.f, 0.f, 200.f, &ray_tracing.grass_shadow_range);
   ray_tracing.ambient_occlusion = read_on("RayTracedAmbientOcclusion", false);
   read_float("RayTracedAmbientRange", 2.f, 0.25f, 5.f, &ray_tracing.ambient_range);
   ray_tracing.ambient_rays = read_count("RayTracedAORays", 2, 1, 8);
   ray_tracing.ambient_quarter = read_on("RayTracedAOQuarter", false);
+  // Attila's AO under Ray Reconstruction: 1 REBLUR (RT_AO_REBLUR, only while Ray Reconstruction runs), 0 the light history.
+  ray_tracing.ao_reblur = read_on("RayTracedAoReblur", false);
   ray_tracing.reflections = read_on("RayTracedReflections", false);
   ray_tracing.specular_occlusion = read_on("RayTracedSpecularOcclusion", false);
   ray_tracing.water_reflections = read_on("RayTracedWaterReflections", false);
   ray_tracing.reflection_samples = read_count("RayTracedReflectionSamples", 1, 1, 8);
   ray_tracing.water_steady = read_on("RayTracedWaterSteady", false);
+  // Softer Water Reflections (Attila's): the water's guide rougher (ray_tracing.hpp WaterSurface), its reflections' history
+  // from the water's own positions (rt_core's RT_REFLECTIONS_WATER_POSITIONS).
+  ray_tracing.water_soft = ray_tracing.water_reflections && read_on("RayTracedWaterSoft", false);
   ray_tracing.local_lights = read_on("RayTracedLocalLights", false);
   ray_tracing.fog_shadows = read_on("RayTracedFogShadows", false);
   // No torch light in the fog (fog01 takes the sun's part alone): the helper traces none.
@@ -1249,9 +1271,10 @@ void ConfigureAddon() {
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
         .hdr_encoding = [](int output) {
-          // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
+          // The DLSS addon's frame generation (its HelperFrameGeneration since its v58; Tales' FrameGeneration is no longer
+          // written) takes no scRGB: HDR10 with it.
           bool frame_generation = false;
-          reshade::get_config_value(nullptr, "Shogun 2 DLSS", "FrameGeneration", frame_generation);
+          reshade::get_config_value(nullptr, "Shogun 2 DLSS", "HelperFrameGeneration", frame_generation);
           return (output == twattila::output_encoding::HDR10 || frame_generation) ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
     });
