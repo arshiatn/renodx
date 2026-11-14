@@ -40,6 +40,7 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/water_effects.hpp"
 #include "../twattila/test_hooks.hpp"
+#include "./grass_height.hpp"
 #include "./more_tests.h"
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
@@ -293,13 +294,27 @@ float rays_banner_light_row = 0.f;
 constexpr std::array<twattila::water_effects::WaterShader, 1> WATER_SHADERS = {{
     {.hash = 0x44B4A2F0, .lighting_slot = 3, .world_input = 3, .refraction_slot = 4, .normal_slot = 3},
 }};
-// Cut-outs on More Models (Experimental, off): the units' pixel shaders that clip at their base map's alpha 0.5 at TEXCOORD1
-// (tools/tw/wh1/cut_out_census_wh1.txt, by their asm: fx__weighted's G-buffer 1ACA3E8C / F4333A3C, alpha overlay F0BB1D3C,
-// forward 0BF2DB7F), cut out in the rays through the units' captures with that UV (rt_capture_unit*_cut_out, part 13).
+// Cut-outs on More Models (Experimental, off): the pixel shaders that clip at their base map's alpha 0.5 at TEXCOORD1
+// (tools/tw/wh1/cut_out_census_wh1.txt, by their asm), cut out in the rays through their vertex shaders' captures with that UV
+// (rt_capture_unit*_cut_out, rt_capture_rigid_*_cut_out; part 13). Units: fx__weighted's G-buffer 1ACA3E8C / F4333A3C,
+// alpha overlay F0BB1D3C, forward 0BF2DB7F. Props (51EDFD6E: rigidstandard and rigidambientmapmesh; 875BB987: the
+// buildings' emissive alpha), each discard read (rt-scene.md row 52): G-buffer alpha_test 62D6B112 / AC040709 (t0), shroud
+// 290E3252 (t1), alpha_test_shroud_fizzle 187DE6F6 (t1; its second discard, oblique triangles against a noise, is a
+// dissolve: level C, left), alpha overlay E4BDB3C0 (t4; its second discard is the screen's clip rectangle), emissive alpha
+// 7C0A909C (t0). Their alpha is the diffuse map's x the instance's fade (TEXCOORD5.w / 1000, 1 when shown), or a vertex
+// colour's with g_untextured (debug). Left solid: the screen clip rectangles (7865CDC9, 897EDF09, BCB9B1D6), the
+// two-layer and burning masks (rigidtextureblend D855CF5B, branches 4CF47121: level C); the leaves 744FDFF0, campaign
+// plants 73C9A8D6 and far cards C5875F67 are masked already (their mask slots).
 float rays_unit_cut_outs_row = 0.f;
-constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
+constexpr std::array<twattila::rt_scene::PixelMask, 10> CUT_OUT_MASKS = {{
     {.pixel_shader = 0x0BF2DB7F, .slot = 5, .uv_semantic_index = 1},
+    {.pixel_shader = 0x187DE6F6, .slot = 1, .uv_semantic_index = 1},
     {.pixel_shader = 0x1ACA3E8C, .slot = 0, .uv_semantic_index = 1},
+    {.pixel_shader = 0x290E3252, .slot = 1, .uv_semantic_index = 1},
+    {.pixel_shader = 0x62D6B112, .slot = 0, .uv_semantic_index = 1},
+    {.pixel_shader = 0x7C0A909C, .slot = 0, .uv_semantic_index = 1},
+    {.pixel_shader = 0xAC040709, .slot = 0, .uv_semantic_index = 1},
+    {.pixel_shader = 0xE4BDB3C0, .slot = 4, .uv_semantic_index = 1},
     {.pixel_shader = 0xF0BB1D3C, .slot = 4, .uv_semantic_index = 1},
     {.pixel_shader = 0xF4333A3C, .slot = 0, .uv_semantic_index = 1},
 }};
@@ -312,6 +327,8 @@ constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHAD
     {.hash = 0x9FD3EC63, .quad_shader = __rt_particle_quads, .indirect = true},
 }};
 constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADERS = {{{.hash = 0x122F218C}}};
+// Ray tracing's (twattila/rt_scene.hpp); here for the hooks BuildRuntimeData sets (the water row at F2CCEF86).
+twattila::rt_scene::Sliders rt_sliders;
 // Skip the Game's Reflection Passes (Experimental, off): under the rays' reflections the resolve's replacement (ssr00) reads
 // neither the march's hits (t5) nor the scene's light mips (t6), and nothing else reads them or the hierarchical depth
 // (tools/tw/wh1/reader_census_wh1.txt, ATN's 34 frames): those passes go with the march (test part 14). Decided at the depth's
@@ -448,7 +465,19 @@ void BuildRuntimeData() {
   }
   // Skip the Game's Reflection Passes: the hierarchical depth (copy F2CCEF86, gathers 7AA39EE9) and both mip chains
   // (preconvolve copy 4D96DAB5, downscale F9870DE2, blurs E7A82FC2 / 53E74A97); the frame's rays asked for at the copy.
+  // Ray-Traced Water Reflections (Experimental, off; Warhammer III's water pass): the battle water 44B4A2F0 draws into the
+  // G-buffer and the depth after the sun draws (ATN's traces: its targets 0-2 the sun draws' t5-t7, its depth written), so
+  // the frame's rays left from the bed under it. The copy, the pass's first dispatch, reads that depth at t0: the rays
+  // traced there leave from the water (its positions, and the guides again: RewriteSunGuides; test part 19).
   custom_shaders[0xF2CCEF86].on_draw = [](auto* cmd_list) {
+    if (rt_sliders.water_reflections != 0.f && twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) {
+      if (auto* native = twattila::rt_scene::internal::NativeContext(cmd_list); native != nullptr) {
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> depth;
+        native->CSGetShaderResources(0, 1, depth.GetAddressOf());
+        const twattila::rt_scene::internal::ComputeState kept(native);
+        twattila::rt_scene::Reflections(native, depth.Get());
+      }
+    }
     reflection_passes_skipped = rays_skip_reflection_passes_row != 0.f && !twattila::rt_scene::OnReflectionMarch(cmd_list);
     return !reflection_passes_skipped;
   };
@@ -949,6 +978,17 @@ void BuildRuntimeData() {
                1.f, 0.f),
 
     new renodx::utils::settings::Setting{
+        .key = "bloom",
+        .binding = &shader_injection.bloom,
+        .default_value = 1.f,
+        .label = "Bloom",
+        .section = "Extra",
+        .tooltip = "Bloom multiplier.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
         .key = "lensflare",
         .binding = &shader_injection.lensflare,
         .default_value = 1.f,
@@ -1423,8 +1463,6 @@ std::atomic<bool> at_start_stop = false;
 HMODULE addon_module_handle = nullptr;
 twattila::feature_settings::SssSliders sss_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
-// Ray tracing's (twattila/rt_scene.hpp).
-twattila::rt_scene::Sliders rt_sliders;
 // Texture LOD Bias on All Textures (Graphics 1 of 2, Experimental): the trilinear samplers too
 // (texture_lod_bias.hpp SetWrappingTrilinear).
 float lod_bias_trilinear_row = 0.f;
@@ -1522,9 +1560,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x2A7775B0, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x7858BE0F, .capture_shader = __rt_capture_terrain_custom_sm41, .terrain = true},
     {.hash = 0xBDCF1803, .capture_shader = __rt_capture_terrain_custom_material_sm41, .terrain = true},
-    {.hash = 0x51EDFD6E, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_51ed},
+    {.hash = 0x51EDFD6E, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_51ed, .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true,
+     .cut_out_row = &rays_unit_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
     {.hash = 0xF6DBA4F4, .capture_shader = __rt_capture_rigid_standard_sm41, .rows_shader = __motion_record_rigid_rigidambientmapfiremesh_f6db},
-    {.hash = 0x875BB987, .capture_shader = __rt_capture_rigid_default},
+    {.hash = 0x875BB987, .capture_shader = __rt_capture_rigid_default, .cut_out_shader = __rt_capture_rigid_default_cut_out, .clip_cut_outs = true,
+     .cut_out_row = &rays_unit_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
     {.hash = 0xD1A96B76, .capture_shader = __rt_capture_rigid_vertexpush},
     {.hash = 0xDBCC30FD, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_dbcc, .thin_row = &rays_banner_light_row},
     {.hash = 0xC1E79772, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_c1e7},
@@ -1682,6 +1722,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
     .water_caustics_label = "Water Caustics (Experimental)",
+    .water_reflections_label = "Water Reflections (Experimental)",
+    .water_reflections_tooltip = "Rivers and lakes reflect what the rays find from their own surface, also off screen.\n"
+                                 "Off: the rays start at the bed under the water.",
     .fog_shadows_label = "Fog Shadows (Experimental)",
     .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Cloud shadows stay the game's;\n"
                             "what is outside the view casts none. Off: the rays' shadows on top of the game's shadow maps.",
@@ -1855,6 +1898,7 @@ void ConfigureAddon() {
       {"GraphicsShadowDistance", 1.f},
       {"GraphicsSmallShadows", 1.f},
       {"GraphicsUnitShadows", 1.f},
+      {"GrassHeightDistance", 1.f},
   };
   for (const auto& test : engine_tests) {
     // Its option's start: the game's (1x, Game's or -1).
@@ -1980,6 +2024,20 @@ void ConfigureAddon() {
       .section = engine_tests.empty() ? std::string("More Tests") : engine_tests.front().section,
       .tint = 0xFFD23C,
   });
+  // Attila's row: the grass shaders' own distance (g_inv_lod_distance, 100 m) / the row (grass_height.hpp). Experimental:
+  // none of ATN's 36 traces drew grass (level B: test/tw_warhammer_shaders part 18 on the game's bytes).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "GrassHeightDistance",
+      .binding = &shader_injection.grass_height_distance,
+      .default_value = 1.f,
+      .label = "Grass Height Distance (Experimental)",
+      .section = twattila::engine_tests::GRASS,
+      .tooltip = "Grass blades shrink and fade into the ground with distance, gone at 100 m (the game's).\n"
+                 "Higher: full grass farther away.",
+      .min = 0.25f,
+      .max = 10.f,
+      .format = "%.2fx",
+  });
   twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
 
   // Appended Settings (Ambient Occlusion, Global Illumination, Screen-Space Shadows, Anti-Aliasing)
@@ -1987,6 +2045,8 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  // Ray-Traced Water Reflections' rows shown: the water pass at F2CCEF86.
+  twattila::rt_scene::internal::water_pass = true;
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
@@ -2126,12 +2186,13 @@ void ConfigureAddon() {
   // (Experimental), as Warhammer II's: ATN's 2026-11-14 traces show g_hdr_on and g_use_spherical_harmonics on.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows and the torches' light in it start off (Experimental: no game run has shown them here), Smoke Shadows too
-  // (Experimental and left out of RT/PT: smoke_shadows_tested), Specular Occlusion, Far Tree Shadows and Water Caustics too
-  // (Experimental); RT/PT turns them on, as Attila's (rays_preset_as_attila). Before Apply:
+  // (Experimental and left out of RT/PT: smoke_shadows_tested), Specular Occlusion, Far Tree Shadows, Water Caustics and
+  // Ray-Traced Water Reflections too (Experimental); RT/PT turns them on, as Attila's (rays_preset_as_attila). Before Apply:
   // No RT/PT and Reset read these defaults as the page is built.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
-        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedFarTreeShadows" || setting->key == "WaterCaustics") {
+        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedFarTreeShadows" || setting->key == "WaterCaustics"
+        || setting->key == "RayTracedWaterReflections") {
       setting->default_value = 0.f;
     }
   }
@@ -2167,15 +2228,11 @@ void ConfigureAddon() {
                                              .rays_preset_as_attila = true,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
-  // Skip the Shadow Maps here: the water and the forward-lit units take the rays' shadow (SHADOW_READER_SHADERS). Cut-outs on
-  // More Models: the units' alone here (CUT_OUT_MASKS).
+  // Skip the Shadow Maps here: the water and the forward-lit units take the rays' shadow (SHADOW_READER_SHADERS).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedSkipCascades") {
       setting->tooltip = "With Rays Replace Shadow Maps: nothing is drawn into the game's shadow maps. Faster with many units and\n"
                          "buildings. Water and the other forward-lit surfaces take the rays' shadow too.";
-    }
-    if (setting->key == "RayTracedUnseenCutOuts") {
-      setting->tooltip = "Rays see the soldiers' fur, feathers and frayed cloth with the holes the game cuts in them.";
     }
   }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -2202,6 +2259,17 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
 
+  // Rows saved at an old default, cleared once: Ray-Traced Water Reflections was hidden at 1 (it did nothing) before the
+  // water pass; now Experimental, off.
+  constexpr int SETTINGS_REVISION = 1;
+  if (int revision = 0; !reshade::get_config_value(nullptr, renodx::utils::settings::global_name.c_str(), "SettingsRevision", revision)
+                        || revision < SETTINGS_REVISION) {
+    for (const char* preset : {"-preset1", "-preset2", "-preset3"}) {
+      reshade::set_config_value(nullptr, (renodx::utils::settings::global_name + preset).c_str(), "RayTracedWaterReflections",
+                                static_cast<const char*>(nullptr));
+    }
+    reshade::set_config_value(nullptr, renodx::utils::settings::global_name.c_str(), "SettingsRevision", SETTINGS_REVISION);
+  }
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
   // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).
@@ -2222,6 +2290,9 @@ bool AttachAddon() {
   };
   // The point lights' diffuse scale: their shaders' 0.318310 x 0.01 (g_hdr_on 1; the sun's too).
   rt_host.local_light_scale = 0.0031831f;
+  // Ray-Traced Water Reflections (F2CCEF86): the guides again from the sun draw's G-buffer channels, the water drawn into
+  // them since (TW_HOST's RewriteGuides reads PS slots 0-2: the reflection pass is compute).
+  rt_host.rewrite_guides = twattila::anti_aliasing::RewriteSunGuides;
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
   // Torch and Fire Shadows: the point lights (one instanced draw each, VS B5B5BFA4 with PS D0C67938 or 5D1695BC; its
   // instances POSITION1 the colour, POSITION2 the place and reach, as Warhammer II's), then ours over the game's shader
@@ -2302,6 +2373,9 @@ bool AttachAddon() {
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  // Grass Height Distance: the grass shaders' distance read x cb8, bound at their draws (after view_share's patches).
+  twwarhammer::grass_height::Install(&shader_injection.grass_height_distance);
+  reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer::grass_height::OnDestroyDevice);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).

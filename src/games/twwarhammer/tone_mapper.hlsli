@@ -19,7 +19,7 @@ float3 ApplyWarhammerSCurve(float3 color)
 
 float4 ToneMapperHdr(float4 scene_sample, float4 bloom_sample, float2 black_white_points)
 {
-  float3 hdr_color = max(scene_sample.xyz + bloom_sample.xyz, 0.f.xxx);
+  float3 hdr_color = max(scene_sample.xyz + bloom_sample.xyz * SI.bloom, 0.f.xxx);
 
   // Keep the game's adaptive black/white-point exposure, but do not upper
   // clamp luminance to the white point. This retains highlight headroom.
