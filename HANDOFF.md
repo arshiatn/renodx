@@ -207,6 +207,16 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   dialog on ATN's screen: Nsight agent told to stay headless.
 - [x] Troy: ATN's own Epic start 02:49-02:55 (campaign, then a night siege, asked to set the game's AA off):
   atn_trace_watch 14 traces (troy/runs/ATN_session2_024858); sent to the Troy agent. Troy's prefs still gfx_aa 2 on disk.
+- [x] WH2 round 2 MERGED 5a19a9d4 (Path-Traced AO with WH2's own rt_sun; shared PatchAmbient AMBIENT_AFTER_HARMONICS (the
+  old rule patched the fade-out cube in all 31 WH2 sun PS, harmless: t51 never bound); Far Tree Shadows, Shadow Casters /
+  Hills Out of View; other games' patched bytes unchanged). NOT DONE: spot lights (instance layout differs: shared reader
+  needs a layout parameter), Smoke (WH2's VS writes the atlas UV at TEXCOORD3: own record shader in rt_core, shared).
+- [x] Unified ReSTIR DI + GI: study only (tools/tw/restir_unified/plan.md; branch worktree-agent-afd5e1bbbc7a65b04 f9350977
+  not merged, HANDOFF-only). No DI reservoir exists (rt_lights = visibility bits, the game shades torches). U1 (torch light
+  through the bounce: saves rt_lights 0.4 / 1.5 / 5.6 ms at 3 / 32 / 32 Steady lights, but no torch specular, softer
+  moving shadows) or U2 (keep the game's torches, bounce supplies a shadow ratio: bridge + every game's point-light PS,
+  several nights): ATN DECIDES. Smallest step: helper-only U1 prototype behind RENODX_TW_LIGHTS_IN_BOUNCE + a harness
+  comparison against Steady.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
