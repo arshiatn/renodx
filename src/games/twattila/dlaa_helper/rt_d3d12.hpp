@@ -4695,11 +4695,12 @@ class RtScene12 {
                                  {RT_NRD_FINISH_AMBIENT, sizeof(RT_NRD_FINISH_AMBIENT)}, nrd_width, nrd_height, AMBIENT_TEXTURES, frame);
     }
 #endif
-    // Torch and Fire Light in the Light Bounce (helper111): the paths take the first 32 lights; rt_lights leaves them dark,
-    // or with RT_LIGHT_RATIO (Torch and Fire Shadows from the Light Bounce) writes the last bounce's shadow ratio.
-    const bool lights_in_bounce = local_lights && lights_bounce_pipeline_ && reuse_lights_mode_ != 0 && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 >= frame
-                                  && ((shared.rt_flags & dlaa_bridge::RT_LIGHTS_IN_BOUNCE) != 0 || LightsInBounceTest() != 0);
-    const bool light_ratio = lights_in_bounce && ((shared.rt_flags & dlaa_bridge::RT_LIGHT_RATIO) != 0 || LightsInBounceTest() == 3u);
+    // Torch and Fire Light in the Light Bounce (helper111): the paths take the first 32 lights; rt_lights leaves them dark
+    // (only after a bounce that carried them), or with RT_LIGHT_RATIO (Torch and Fire Shadows from the Light Bounce) writes
+    // the last bounce's shadow ratio (whenever asked: the game's light shaders read the words as ratios; 1 until one is kept).
+    const bool lights_asked = local_lights && lights_bounce_pipeline_ && ((shared.rt_flags & dlaa_bridge::RT_LIGHTS_IN_BOUNCE) != 0 || LightsInBounceTest() != 0);
+    const bool light_ratio = lights_asked && ((shared.rt_flags & dlaa_bridge::RT_LIGHT_RATIO) != 0 || LightsInBounceTest() == 3u);
+    const bool lights_in_bounce = light_ratio || (lights_asked && reuse_lights_mode_ != 0 && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 >= frame);
     const uint32_t lights_mode = light_ratio ? 3u : (lights_in_bounce ? 1u : 0u);
     const bool ratio_kept = light_ratio && light_ratio_[0] && EnsureHistory(HISTORY_RATIO, frame) && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame;
     // v18: rays a pixel toward the sun and each light, the lights' radius for soft shadows (rt_lights: under RR).
