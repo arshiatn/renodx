@@ -45,6 +45,7 @@
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
+#include "./rt_outside_view_world_uv_gs.h"
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "./ao_trace.hpp"
@@ -1491,7 +1492,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 24> MOTION_SHADERS =
 // branches and leaves and units, and their capture versions (world positions; leaves also UVs).
 // The floating unit banners (rigidtextureblend, 2 bones, 7DF335FF) stay out: the game gives them no shadow (no atlas draw in
 // any trace of the data run).
-constexpr std::array<twattila::rt_scene::SceneShader, 23> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 24> SCENE_SHADERS = {{
     {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
     {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
     {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
@@ -1525,6 +1526,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 23> SCENE_SHADERS = {{
     {.hash = 0xE2C36310, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0x2EE37868, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0x2A54DBEE, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    // The campaign's trees and plants (rigidcampaignvegetation vs40_shadow; ATN's 2026-11-14 campaign traces: 49 draws a frame,
+    // the shadow pass's only): TEXCOORD0 the world, TEXCOORD1 the UV of 5906CF6E's t0 test (its diffuse map's alpha below 0.5).
+    {.hash = 0x7D979F60, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
 }};
 
 // The SSR's copy (environment_specular_light ps40_copy) samples the resolve's output (7E1CDD0A, its content at the render

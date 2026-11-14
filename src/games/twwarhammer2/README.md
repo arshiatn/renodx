@@ -12,14 +12,20 @@
   of both shaders put the rays' visibility on the light the surface takes; their light shafts stay the game's. They rank among
   the torches by their colour but light nothing in the paths, the fog or the glow (a spot would light all around there).
   Shared: `rt_scene::InstallPointLights` takes where a light family's instances keep each light (`LightInstances`, the point
-  lights' by default) and a second family. WARP: `tools/tw/warp_tests/spot_wh2` (RESULT_SPOT).
+  lights' by default) and a second family. WARP `tools/tw/warp_tests/spot_wh2` passes: nothing bound, the game's bits; each
+  pixel's bit exact; a light the rays don't have, as the game draws it; shafts kept (3Dmigoto's -pi in the shafts' atan2 put
+  back to the game's).
 - **New: Smoke Shadows (Experimental, off).** Every lit particle in the traces is one indirect draw of 1FC776EF (a GPU-sorted
   list, 19597 in the siege) with F32116B4: the same vertex shader family and outputs as Pharaoh's, so Pharaoh's quad shader at
   F32116B4's slots (now `twattila/rt_particle_quads_instancing.hlsli`, Pharaoh's bytes the same). The rays' capture streams
-  indirect draws out (`SmokeVertexShader::indirect`: 65536 records emptied first, the GPU's count filled). WARP:
-  `tools/tw/warp_tests/smoke_wh2` (RESULT_SMOKE).
+  indirect draws out (`SmokeVertexShader::indirect`: 65536 records emptied first, the GPU's count filled). WARP
+  `tools/tw/warp_tests/smoke_wh2` passes: places, sizes, opacity and mip level as the game's shaders draw them, every record
+  past the GPU's count empty (its controls fail).
 - **The campaign's trees and plants in the rays** (rigidcampaignvegetation 41147CD3, 156 draws a frame, in no scene before):
-  as drawn (their wind, their lean toward a high camera), cut out by their diffuse map's alpha. RESULT_TREES
+  as drawn (their wind, their lean toward a high camera), cut out by their diffuse map's alpha. GPU check: the capture's world
+  position times the camera is the game's SV_Position (1e-8 relative). Out of the view (Shadow Casters Out of View, Experimental, off): their shadow-pass
+  version 7D979F60 (49 draws), cut out by 5906CF6E's alpha test, through Pharaoh's `rt_outside_view` with a new `RT_WORLD_UV`
+  variant (its other variants' bytes the same); WARP `tools/tw/warp_tests/outside_view_wh2` passes.
 - **Rays Replace Shadow Maps through the shared hook** (`twattila/sun_replace_maps.hpp` with its sampler slot, s1 here):
   the same as before.
 - Checked, nothing to change: the siege's walls, buildings, units, trees and terrain are all in the rays (the caster census
@@ -34,9 +40,10 @@ Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon6
 2. A siege at night with Torch and Fire Shadows: the city's spot lights shadow walls and soldiers; their cones as before.
 3. Smoke Shadows on, a burning siege: the smoke shades the ground and walls under it. Send ReShade.log (1FC776EF's line).
 4. The campaign: forests take ray-traced AO and shadows, no dark patches under trees; frame time as v48.
+5. Shadow Casters Out of View on, the campaign at a low camera: trees just off screen shadow into it as leaves, not cards.
 
 Not done:
-- The campaign's far terrain (above) and the campaign trees' shadow-pass version 7D979F60 out of the view.
+- The campaign's far terrain (above).
 - Smoke Shadows' lower-effects twins DDABB799 / 687378DB drew in no trace (one slot below F32116B4's: a shift away).
 
 ### Round v48 (2026-11-14, Attila's package with the data run's findings; built only, not run in game)
