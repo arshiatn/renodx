@@ -57,6 +57,10 @@ namespace twattila::light_bounce {
 
 using Microsoft::WRL::ComPtr;
 
+// SunDraw::ambient_final_sites' Warhammer II form (screen_space_shadows::PatchAmbient): one place, after the spherical
+// harmonics' if.
+constexpr uint32_t AMBIENT_AFTER_HARMONICS = UINT32_MAX;
+
 // One of the game's sun light draws: its pixel shader, whether it is the standard lighting model's (the trace follows
 // the frame's first), its G-buffer's first slot (normal, colour, constants, depth: 4), its camera's, its lighting_VS_PS'
 // and sun_direction's first float there (the screen-space shadows'), its camera's layout when not Attila's (for the
@@ -73,7 +77,8 @@ struct SunDraw {
   UINT ao_slot = UINT_MAX;
   // Warhammer III: its cb_ssao, whose two overscans say where the AO texture holds a pixel (UINT_MAX: where it is on screen).
   UINT ssao_constants_slot = UINT_MAX;
-  // How many places its final ambient is made in (screen_space_shadows::PatchAmbient; 0: the first cube read, Attila's).
+  // How many places its final ambient is made in (screen_space_shadows::PatchAmbient; 0: the first cube read, Attila's;
+  // AMBIENT_AFTER_HARMONICS: Warhammer II's one place).
   uint32_t ambient_final_sites = 0;
   // For its light_bounce.hlsli's BounceDiffuseAlbedo, where a game's sun shaders differ.
   float diffuse_rule = 0.f;

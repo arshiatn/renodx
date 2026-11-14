@@ -7,6 +7,8 @@
 // output (rt_core.hpp, SceneShader::sun_facing): the game's card turned to the sun instead of the camera, showing the tree from
 // there, so its shadow keeps its shape and does not swing with the view. With the camera level with the tree the game's own card
 // is this one (no tilt, no push toward the camera). t0: rt_sun, its first texel the direction toward the sun.
+// RT_FAR_TREE_NO_CONSTANTS (Warhammer II: its card vertex shaders bind no tree constants, b1 holds another draw's): every card
+// the game draws, its view's face.
 #include "../twattila/rt_capture.hlsli"
 
 Texture2D<float4> t_rt_sun : register(t0);
@@ -15,10 +17,15 @@ cbuffer camera : register(b0) {
   float3 camera_position : packoffset(c0);
 };
 
+#ifdef RT_FAR_TREE_NO_CONSTANTS
+static const float g_billboard_cull_distance_end = 0.f;
+static const int g_single_face = 0;
+#else
 cbuffer tree_billboard_constants : register(b1) {
   float g_billboard_cull_distance_end : packoffset(c4.y);
   int g_single_face : packoffset(c5);
 };
+#endif
 
 void main(
   float4 v0 : POSITION0,
