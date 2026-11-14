@@ -21,7 +21,8 @@
 // CMake's shader rule takes no gs_ target: after a change run from the repository's root, once a variant
 // bin\fxc.exe src\games\twpharaohdynasties\rt_outside_view.gs_5_0.hlsl -T gs_5_0 -E main /O3 /Qstrip_reflect /nologo /D RT_WORLD /Vn __rt_outside_view_world /Fh src\games\twpharaohdynasties\rt_outside_view_world_gs.h
 // (RT_UNIT __rt_outside_view_unit _unit_gs.h, RT_BRANCH __rt_outside_view_branch _branch_gs.h, RT_LEAF __rt_outside_view_leaf
-// _leaf_gs.h, RT_CARD __rt_outside_view_card _card_gs.h).
+// _leaf_gs.h, RT_CARD __rt_outside_view_card _card_gs.h); Troy's leaves: /D RT_LEAF /D RT_NO_FADE /Vn __rt_outside_view_leaf
+// /Fh src\games\twtroy\rt_outside_view_leaf_gs.h.
 #include "../twattila/rt_capture.hlsli"
 
 cbuffer MainView : register(b0) {
@@ -50,7 +51,9 @@ struct Corner {
   float4 position : SV_Position;
   float2 uv : TEXCOORD1;
   float burn : TEXCOORD3;
-  float fade : TEXCOORD4;
+#ifndef RT_NO_FADE
+  float fade : TEXCOORD4;  // Troy's leaf shadow VS A295269F writes none: RT_NO_FADE (twtroy/rt_outside_view_leaf_gs.h)
+#endif
   float4 world : TEXCOORD2;
 };
 #elif defined(RT_CARD)
