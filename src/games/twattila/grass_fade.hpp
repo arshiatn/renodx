@@ -42,6 +42,7 @@ namespace twattila::grass_fade {
 
 using Microsoft::WRL::ComPtr;
 
+// Attila's; another game's twins by name go to Install (Thrones of Britannia: the same patterns, its own hashes).
 constexpr std::array<uint32_t, 13> HASHES = {
     0x7B0FF908, 0x39F985CD, 0x57591D38,                          // gbuffer_no_clip, gbuffer, gbuffer_ms
     0x9FA74069, 0x0F7F49E2, 0x1BDE4E9D, 0x5ADA3882, 0x88D39D8E,  // forward_lit_oit (each shadow method)
@@ -56,6 +57,7 @@ namespace internal {
 
 struct Runtime {
   std::mutex mutex;
+  std::span<const uint32_t> hashes = HASHES;  // the game's (Install), set before it creates its shaders
   float fade = 0.01f;  // per metre: 0.01 / Grass Height Distance (the pre-pass's distances 1 / fade, half of it)
   std::unordered_map<uint32_t, std::vector<uint8_t>> patched;  // by the game's hash (kept: it may create them again)
   ComPtr<ID3D11Device> device;
@@ -127,7 +129,7 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     // The game's hash, also of a shader the render scale patched first (the terrain reads).
     const auto scaled = view_share::OriginalHash(desc->code);
     const uint32_t hash = scaled.value_or(renodx::utils::hash::ComputeCRC32(code.data(), code.size()));
-    if (std::ranges::find(HASHES, hash) == HASHES.end() && hash != PREFILL_HASH) continue;
+    if (std::ranges::find(runtime.hashes, hash) == runtime.hashes.end() && hash != PREFILL_HASH) continue;
     const std::unique_lock lock(runtime.mutex);
     auto [entry, added] = runtime.patched.try_emplace(hash);
     if (added) {
@@ -195,10 +197,11 @@ inline void Update(float height_distance) {
   internal::runtime.fade = 0.01f / std::max(height_distance, 0.009998622f);
 }
 
-// Before the game creates its shaders.
-inline void Install() {
+// Before the game creates its shaders: its grass pixel shaders with the fade (default Attila's).
+inline void Install(std::span<const uint32_t> hashes = HASHES) {
+  internal::runtime.hashes = hashes;
   renodx::utils::pipeline::RegisterOnCreateCallback(internal::OnCreatePipeline);
-  for (const uint32_t hash : HASHES) {
+  for (const uint32_t hash : hashes) {
     renodx::utils::command_action::Register(
         OnGrassDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }

@@ -10,14 +10,10 @@
 #ifndef SRC_GAMES_TWATTILA_RT_GRASS_HLSLI_
 #define SRC_GAMES_TWATTILA_RT_GRASS_HLSLI_
 
-// A game without Grass Height Distance defines RT_GRASS_HEIGHT_DISTANCE before (Thrones of Britannia: 1, the game's).
-#ifndef RT_GRASS_HEIGHT_DISTANCE
 #include "./shared.h"
-#define RT_GRASS_HEIGHT_DISTANCE SI.grass_height_distance
-#endif
 
 float RtGrassShrink(float3 instance_position, float3 camera_position) {
-  return max(0.05, 1 - min(1, distance(instance_position, camera_position) * (0.01 / RT_GRASS_HEIGHT_DISTANCE)));
+  return max(0.05, 1 - min(1, distance(instance_position, camera_position) * (0.01 / SI.grass_height_distance)));
 }
 
 #endif  // SRC_GAMES_TWATTILA_RT_GRASS_HLSLI_
