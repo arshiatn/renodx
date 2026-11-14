@@ -21,6 +21,7 @@
 // Shadow Casters Out of View: Pharaoh's geometry shaders (Warhammer II's shadow vertex shaders', the same as these).
 #include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_world_gs.h"
+#include "./rt_outside_view_colour_world_gs.h"
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
@@ -1553,7 +1554,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 33> MOTION_SHADERS =
 // The floating unit banners (rigidtextureblend, 2 bones, E7F0D71A) stay out: the game gives them no shadow (no atlas draw in
 // any of ATN's 2026-11-14 traces). So does the campaign's far terrain (rigidterrain geometry_41_global, CDCF1ADD): no atlas
 // draw either, and no trace shows where it lies against the near terrain.
-constexpr std::array<twattila::rt_scene::SceneShader, 40> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0x10401C91, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x06AB0766, .capture_shader = __rt_capture_terrain_geom_new_sm41, .terrain = true},
     {.hash = 0x5696080B, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1608,6 +1609,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 40> SCENE_SHADERS = {{
     // vs40_shadow, fx__weighted vs40_shadow and its 4 bones, Warhammer II's E2C36310, 2EE37868, 2A54DBEE (the same code and
     // signatures), so Pharaoh's rt_outside_view as there. Every frame as drawn.
     {.hash = 0x0E0E36F6, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    // The campaign trees' shadow VS (rigidcampaigntrees vs40_shadow; in no trace): COLOR0 before its world (TEXCOORD0), so
+    // the shared GS's RT_COLOR_WORLD variant (test part 22).
+    {.hash = 0x3888C71F, .dynamic = true, .cascade_keep = __rt_outside_view_colour_world},
     {.hash = 0x2E5BBBA1, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0x63BA47F1, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
 }};
