@@ -1249,9 +1249,10 @@ void ConfigureAddon() {
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
         .hdr_encoding = [](int output) {
-          // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
+          // The DLSS addon's frame generation (its HelperFrameGeneration since its v58; Tales' FrameGeneration is no longer
+          // written) takes no scRGB: HDR10 with it.
           bool frame_generation = false;
-          reshade::get_config_value(nullptr, "Shogun 2 DLSS", "FrameGeneration", frame_generation);
+          reshade::get_config_value(nullptr, "Shogun 2 DLSS", "HelperFrameGeneration", frame_generation);
           return (output == twattila::output_encoding::HDR10 || frame_generation) ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
     });
