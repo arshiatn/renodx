@@ -144,6 +144,7 @@ struct ShaderInjectData {
   float someindicators;  // Unit/Building Indicator Brightness: x the indicators' and fire-arc / deployment lines' colour in HDR
   float fog_strength;    // Fog Strength: x the battle fog's opacity (extinction 16AB86F4; its light: addon.cpp FogRays' b8), 1 the game's
   float grass_height_distance;  // Grass Height Distance: x the grass's 100 m (its height, normal and pre-pass), 1 the game's
+  float dof;  // Depth of Field: x its circle of confusion (depth_of_field pixel_dof_coc), 1 the game's, 0 off
 };
 
 #define SI shader_injection
