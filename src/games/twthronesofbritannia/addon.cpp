@@ -37,6 +37,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/light_bounce.hpp"
+#include "../twattila/particle_layer.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
@@ -890,6 +891,43 @@ void BuildRuntimeData() {
                    "Higher: removes wider bands, softens sky details more.",
         .labels = {"Off", "Low", "Medium", "High"},
     },
+    // Particle Resolution as Attila's (twattila/particle_layer.hpp; shaders/vfx00 and vfx01, Attila's: WARP
+    // tools/tw/thrones/vfx_test).
+    new renodx::utils::settings::Setting{
+        .key = "VfxHalfResolution",
+        .binding = &twattila::particle_layer::half_resolution_row,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Particle Resolution (Experimental)",
+        .section = "Extra",
+        .tooltip = "Smoke, fire and dust drawn at half or a quarter of the render's size.\n"
+                   "Much faster in big fires and smoke, softer particles.",
+        .labels = {"Full", "Half", "Quarter"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxFullResolutionEdges",
+        .binding = &twattila::particle_layer::edges_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 1.f,
+        .label = "Full-Resolution Particle Edges",
+        .section = "Extra",
+        .tooltip = "Smoke, fire and dust stay sharp against the outlines of units, trees and walls:\n"
+                   "drawn at full size there. Small cost.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxParticleSmoothing",
+        .binding = &twattila::particle_layer::smoothing_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Half-Size Particles",
+        .section = "Extra",
+        .tooltip = "Half-size smoke, fire and dust keep clean edges against units and flicker less.\n"
+                   "Small cost.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
+    },
     // new renodx::utils::settings::Setting{
     //     .key = "some_indicators",
     //     .binding = &shader_injection.someindicators,
@@ -1366,6 +1404,14 @@ constexpr std::array<uint32_t, 92> UNIT_CUT_OUT_PIXEL_SHADERS = {
 // traces, its low twin 08F47D8C by name).
 constexpr std::array<uint32_t, 7> SHADOW_READER_SHADERS = {0xC9FBACCB, 0x2E9F5935, 0xACE33D5D, 0xF5379F78, 0xF7E011A4, 0xDE739661, 0x08F47D8C};
 
+// Particle Resolution (twattila/particle_layer.hpp): the light buffer's readers after the particles, where their layer goes
+// in: the luma downsample (781681E4, next after the particles in every trace of the data run and ATN's campaign), else the
+// tone mappers (Attila's twins by name and this game's replaced hdr_to_screen ones).
+constexpr std::array<uint32_t, 20> PARTICLE_LAYER_READERS = {
+    0x781681E4, 0x8BF6B657, 0x95398068, 0x6E20B0EF, 0xD0FAF089, 0x0D18E0E9, 0x40462368, 0x1A8B4861, 0x0872321D, 0x55D276C9,
+    0x7E15EB30, 0x572661FA, 0x10D135FB, 0xD3F8514D, 0xBA669496, 0x9A80FD94, 0x01A26750, 0x76428D7D, 0x7B522144, 0xBF43914D,
+};
+
 // What only the campaign map draws (ATN's campaign traces against the battle traces): its borders' VS (Attila's, in every
 // campaign frame), the shroud plane's VS, its sea (waterplane ps30_campaign, the low twin by name).
 constexpr std::array<uint32_t, 4> CAMPAIGN_SHADERS = {0x0CC96E53, 0x2860172D, 0xDE739661, 0x08F47D8C};
@@ -1516,6 +1562,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  twattila::particle_layer::Update(swapchain);
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
   // preset's is XeSS on Intel's, else FSR.
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -2170,6 +2217,9 @@ bool AttachAddon() {
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
+  // After the smoke's capture on the same draws (it sees the game's targets and camera).
+  twattila::particle_layer::Install(twattila::rt_scene::PARTICLE_VERTEX_SHADER, PARTICLE_LAYER_READERS);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
 
   twattila::device_loss::InstallLast();
 
@@ -2210,6 +2260,8 @@ void DetachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
   twattila::smoke_map::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
+  twattila::particle_layer::Uninstall();
   twattila::graphics_hooks::shadow_map::Uninstall();
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
