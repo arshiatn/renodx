@@ -1558,6 +1558,13 @@ constexpr std::array<twattila::rt_scene::SceneShader, 22> SCENE_SHADERS = {{
     {.hash = 0x2A54DBEE, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
 }};
 
+// The SSR's copy (environment_specular_light ps40_copy) samples the resolve's output (7E1CDD0A, its content at the render
+// share) at the quad's whole uv: ATN's 2026-11-14 traces 07-14 and 22-30 (vp 1920x1080 / 1280x720 reading t0 3840x2160).
+// The portraits' tone mapper 1C42B26B (sprite.hlsl, vp 214x214) reads a display-size chain: left.
+constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
+    {.shader_hash = 0x7F23C472, .slots = 0b1},
+}};
+
 // Path-Traced AO and the paths' sky (rt_sun.cs_5_0.hlsl): each one makes its diffuse ambient in its first if on c11.y
 // (spherical harmonics: t_world_spherical_harmonics one slot below lighting_VS_PS in all 31) and multiplies it by the
 // diffuse colour right after (screen_space_shadows::PatchAmbient's AMBIENT_AFTER_HARMONICS).
@@ -2225,7 +2232,7 @@ bool AttachAddon() {
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   {}, {}, {}, {},
+                                   RENDER_SCALE_READS, {}, {}, {},
                                    {
                                        .value_hashes = {0x1AB80044, 0x2DCA8E30, 0xA03688A3, 0xC960A275, 0xE091B8C4, 0xF2484739, 0x1494188B,
                                                         0x1579598F, 0x3115B6D3, 0x37237EC7, 0xDF7EA1A3, 0x2333E142, 0xD2A0FF23, 0x5E0BC81E,
