@@ -346,7 +346,10 @@ bool SkipGameSsao() {
   return rays_ao_alone_row != 0.f && runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
          && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
 }
-constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{
+// Light Through Banners: the sails (as the rays, Attila's sails; part 10: SV_Position first) and the banners with their row.
+constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{
+    {.hash = 0xE4B46D0E},
+    {.hash = 0x52C2D565},
     {.hash = 0xDBCC30FD, .row = &rays_banner_light_row},
     {.hash = 0xE7F0D71A, .row = &rays_banner_light_row},
 }};
@@ -1554,7 +1557,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 33> MOTION_SHADERS =
 // The floating unit banners (rigidtextureblend, 2 bones, E7F0D71A) stay out: the game gives them no shadow (no atlas draw in
 // any of ATN's 2026-11-14 traces). So does the campaign's far terrain (rigidterrain geometry_41_global, CDCF1ADD): no atlas
 // draw either, and no trace shows where it lies against the near terrain.
-constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 48> SCENE_SHADERS = {{
     {.hash = 0x10401C91, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x06AB0766, .capture_shader = __rt_capture_terrain_geom_new_sm41, .terrain = true},
     {.hash = 0x5696080B, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1605,6 +1608,16 @@ constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0xCA6BCF19, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
     {.hash = 0xB9C6AA36, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
     {.hash = 0xC2A5FA81, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    // Cloth (in none of ATN's traces: level B), captured every frame as Attila's and Rome II's (the CPU moves them): sails
+    // (sail vs40_main E4B46D0E; its sm_4_1 twin 52C2D565 the same code and signatures) thin, their world the world_matrix (cb1)
+    // x the vertex; ropes solid as Rome II's 4F90C2B5: rope vs40_main 7BD6E8CB (a ribbon turned to the camera, make_wind_motion_vs.py
+    // :world) and the instanced vs40_main_rigid 1CEFE3BB (turned in the camera's view space: rt_capture_rope_rigid). The sail
+    // symbols (sailsymbol 4CB13100 / A8612F21, depth 186E462C) lie on their sail (its world_matrix and inputs): left out as
+    // Attila, Rome II and Pharaoh leave theirs. Test part 23.
+    {.hash = 0xE4B46D0E, .capture_shader = __rt_capture_sail, .dynamic = true, .thin = true},
+    {.hash = 0x52C2D565, .capture_shader = __rt_capture_sail, .dynamic = true, .thin = true},
+    {.hash = 0x7BD6E8CB, .capture_shader = __rt_capture_rope, .dynamic = true},
+    {.hash = 0x1CEFE3BB, .capture_shader = __rt_capture_rope_rigid, .dynamic = true},
     // The shadow pass's casters into the atlas, what is out of the main view (Shadow Casters Out of View): fx__rigidcommon
     // vs40_shadow, fx__weighted vs40_shadow and its 4 bones, Warhammer II's E2C36310, 2EE37868, 2A54DBEE (the same code and
     // signatures), so Pharaoh's rt_outside_view as there. Every frame as drawn.
@@ -1614,6 +1627,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0x3888C71F, .dynamic = true, .cascade_keep = __rt_outside_view_colour_world},
     {.hash = 0x2E5BBBA1, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0x63BA47F1, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    // The cloth's shadow pass (in no trace): sail vs40_depth F91E642E and rope vs40_depth CF629296 write the world at TEXCOORD0
+    // (RT_WORLD); the rigid rope's vs40_depth_rigid 52D806A0 writes its centre line there, so its capture version runs in its
+    // place (the ribbon as the shadow camera sees it, SceneShader::cascade_world). Test part 23.
+    {.hash = 0xF91E642E, .dynamic = true, .thin = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0xCF629296, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0x52D806A0, .capture_shader = __rt_capture_rope_rigid, .dynamic = true, .cascade_keep = __rt_outside_view_world, .cascade_world = true},
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.

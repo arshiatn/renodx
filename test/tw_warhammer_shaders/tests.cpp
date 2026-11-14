@@ -41,8 +41,8 @@
 //    colour): the game's diffuse per unit albedo over its length the guides' normal; the game's ambient per unit albedo
 //    (every cube side 1) with specular colour 0.3 and 0 the guides' diffuse albedo over the albedo (1 - specular colour);
 //    their roughness 1 - gloss. CONTROLS: the angles read the other way, the diffuse albedo without the specular colour.
-// 10. Light Through All Banners: the banners' vertex shaders (rigidtextureblend DBCC30FD, its 2 bones E7F0D71A) output
-//    SV_Position first (register 0), which sss_thin reads; Coloured Shadows' albedo_power 1: 230F2241's diffuse is linear in
+// 10. Light Through All Banners: the banners' vertex shaders (rigidtextureblend DBCC30FD, its 2 bones E7F0D71A) and the sails'
+//    (E4B46D0E, 52C2D565: Light Through Banners) output SV_Position first (register 0), which sss_thin reads; Coloured Shadows' albedo_power 1: 230F2241's diffuse is linear in
 //    channel 2's colour (its slope from 0.1 to 0.3 the one from 0.3 to 0.9; a squared colour makes it 3 times). CONTROL:
 //    the imposter's vertex shader 381E079E (POSITION first) fails the first.
 // 11. Light Through Foliage's bit (foliage_material_bit 128): the leaves' G-buffer shader 744FDFF0 (its bytes, drawn as part
@@ -111,6 +111,14 @@
 // 22. The campaign trees' shadow VS out of view: the game's 3888C71F with the shared GS's RT_COLOR_WORLD variant (WH1's
 //    rt_outside_view_colour_world_gs.h) after it, 5 triangles of random inputs: with no main view (b0 0: every triangle
 //    outside) each corner the game's TEXCOORD0 world. CONTROL: a main view holding them collapses some.
+// 23. The cloth casters (none in ATN's traces): the game's sails E4B46D0E / 52C2D565, rope 7BD6E8CB and instanced rope
+//    1CEFE3BB streamed out for 16 vertices of random inputs under 4 random cameras (a rotation and a move, a perspective) and
+//    world matrices, against our captures (the build's embed/rt_capture_sail, _rope, _rope_rigid): their world x the draw's
+//    camera (view_projection; the rigid rope's view then projection) the game's SV_Position. The shadow pass's sail
+//    F91E642E and rope CF629296 with Pharaoh's RT_WORLD geometry shader after them, the rigid rope's 52D806A0 through
+//    rt_capture_rope_rigid: with no main view each corner kept, the game's TEXCOORD0 (the rigid rope's: its SV_Position by the
+//    shadow camera). CONTROLS: the captures without the world_matrix's row, without the ribbon, the rigid ribbon not turned
+//    back from the view; a main view holding the shadow pass's corners collapses some.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -136,6 +144,7 @@
 // The add-on's settings buffer (b13) as the shaders read it.
 #include "../../src/games/twwarhammer/shared.h"
 #include "../../src/games/twwarhammer/rt_outside_view_colour_world_gs.h"
+#include "../../src/games/twpharaohdynasties/rt_outside_view_world_gs.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -1600,7 +1609,7 @@ static void TestThin(const std::string& dump) {
     reflection->GetOutputParameterDesc(0, &output);
     return output.SystemValueType == D3D_NAME_POSITION && output.Register == 0;
   };
-  const bool banners = position_first(0xDBCC30FD) && position_first(0xE7F0D71A);
+  const bool banners = position_first(0xDBCC30FD) && position_first(0xE7F0D71A) && position_first(0xE4B46D0E) && position_first(0x52C2D565);
   const bool imposter = position_first(0x381E079E);
   const auto bytes = GameBytes(dump, 0x230F2241);
   const auto diffuse = [&bytes](float albedo) {
@@ -1608,9 +1617,9 @@ static void TestThin(const std::string& dump) {
   };
   const float low = (diffuse(0.3f) - diffuse(0.1f)) / 0.2f;
   const float high = (diffuse(0.9f) - diffuse(0.3f)) / 0.6f;
-  CHECK(banners && !imposter, "thin: the banners' SV_Position first %d, CONTROL the imposter's %d", banners, imposter);
+  CHECK(banners && !imposter, "thin: the banners' and sails' SV_Position first %d, CONTROL the imposter's %d", banners, imposter);
   CHECK(low > 0.f && Near(high / low, 1.f, 1e-4f), "thin: 230F2241's diffuse slopes %.8g, %.8g (linear: equal)", low, high);
-  std::printf("Light Through All Banners: DBCC30FD / E7F0D71A output SV_Position first %s (CONTROL the imposter's %s); 230F2241's diffuse "
+  std::printf("Light Through Banners: DBCC30FD / E7F0D71A and the sails E4B46D0E / 52C2D565 output SV_Position first %s (CONTROL the imposter's %s); 230F2241's diffuse "
               "slopes %.8g / %.8g (ratio %.6f: linear, albedo_power 1)\n",
               banners ? "yes" : "NO", imposter ? "YES" : "no", low, high, high / low);
 }
@@ -2078,6 +2087,229 @@ static void TestTreeShadows(const std::string& dump) {
   std::printf("tree shadows: 3888C71F + rt_outside_view_colour_world, 15 corners out of view, %d misses against its TEXCOORD0; CONTROL in view: %d "
               "corners collapsed\n",
               misses, collapsed);
+}
+
+// Part 23's camera at b0 (camera's c0-c12; c9-c13 left 0 for a main view holding nothing, `main_view` its c10-c13 instead):
+// camera_position c0, view c1-c4 (a rotation and a move: rows orthonormal), projection c5-c8, view_projection c9-c12.
+struct ClothCamera {
+  std::array<float, 48 * 4> c = {};
+  std::array<std::array<float, 4>, 4> view = {};
+  std::array<std::array<float, 4>, 4> projection = {};
+  std::array<std::array<float, 4>, 4> view_projection = {};
+};
+
+static ClothCamera MakeClothCamera(const std::array<float, 6>& pose, bool with_view_projection) {
+  ClothCamera camera;
+  const auto [yaw, pitch, roll] = std::array<float, 3>{pose[0], pose[1], pose[2]};
+  const std::array<std::array<float, 3>, 3> yaw_rows = {{{std::cos(yaw), 0.f, -std::sin(yaw)}, {0.f, 1.f, 0.f}, {std::sin(yaw), 0.f, std::cos(yaw)}}};
+  const std::array<std::array<float, 3>, 3> pitch_rows = {{{1.f, 0.f, 0.f}, {0.f, std::cos(pitch), std::sin(pitch)}, {0.f, -std::sin(pitch), std::cos(pitch)}}};
+  const std::array<std::array<float, 3>, 3> roll_rows = {{{std::cos(roll), std::sin(roll), 0.f}, {-std::sin(roll), std::cos(roll), 0.f}, {0.f, 0.f, 1.f}}};
+  const auto times = [](const std::array<std::array<float, 3>, 3>& a, const std::array<std::array<float, 3>, 3>& b) {
+    std::array<std::array<float, 3>, 3> product = {};
+    for (size_t i = 0; i < 3; ++i) {
+      for (size_t j = 0; j < 3; ++j) {
+        for (size_t k = 0; k < 3; ++k) product[i][j] += a[i][k] * b[k][j];
+      }
+    }
+    return product;
+  };
+  const auto rotation = times(roll_rows, times(pitch_rows, yaw_rows));
+  for (size_t row = 0; row < 3; ++row) {
+    camera.view[row] = {rotation[row][0], rotation[row][1], rotation[row][2], pose[3 + row]};
+  }
+  camera.view[3] = {0.f, 0.f, 0.f, 1.f};
+  constexpr float NEAR_PLANE = 0.5f;
+  constexpr float FAR_PLANE = 4000.f;
+  camera.projection = {{{1.2f, 0.f, 0.f, 0.f}, {0.f, 2.1f, 0.f, 0.f},
+                        {0.f, 0.f, FAR_PLANE / (FAR_PLANE - NEAR_PLANE), -NEAR_PLANE * FAR_PLANE / (FAR_PLANE - NEAR_PLANE)}, {0.f, 0.f, 1.f, 0.f}}};
+  for (size_t i = 0; i < 4; ++i) {
+    for (size_t j = 0; j < 4; ++j) {
+      for (size_t k = 0; k < 4; ++k) camera.view_projection[i][j] += camera.projection[i][k] * camera.view[k][j];
+    }
+  }
+  // The camera's place: -(rotation transposed x the move).
+  for (size_t axis = 0; axis < 3; ++axis) {
+    for (size_t row = 0; row < 3; ++row) camera.c[axis] -= rotation[row][axis] * pose[3 + row];
+  }
+  for (size_t row = 0; row < 4; ++row) {
+    std::copy_n(camera.view[row].begin(), 4, camera.c.begin() + ((1 + row) * 4));
+    std::copy_n(camera.projection[row].begin(), 4, camera.c.begin() + ((5 + row) * 4));
+    if (with_view_projection) std::copy_n(camera.view_projection[row].begin(), 4, camera.c.begin() + ((9 + row) * 4));
+  }
+  return camera;
+}
+
+static std::array<float, 4> Times(const std::array<std::array<float, 4>, 4>& rows, const std::array<float, 4>& point) {
+  std::array<float, 4> out = {};
+  for (size_t row = 0; row < 4; ++row) {
+    for (size_t k = 0; k < 4; ++k) out[row] += rows[row][k] * point[k];
+  }
+  return out;
+}
+
+static void TestCloth(const std::string& root, const std::string& dump) {
+  const std::string games = root + "/src/games";
+  const std::string embed = root + "/build/twwarhammer.include/embed/";
+  uint32_t state = 2311u;
+  const auto unit = [&state](float low, float high) {
+    state = state * 1664525u + 1013904223u;
+    return low + ((high - low) * static_cast<float>(state >> 8) / 16777216.f);
+  };
+  const auto vertices_for = [&unit](std::span<const uint8_t> game, int count) {
+    ComPtr<ID3D11ShaderReflection> reflection;
+    std::vector<float> vertices;
+    if (game.empty() || FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) {
+      return vertices;
+    }
+    D3D11_SHADER_DESC desc = {};
+    reflection->GetDesc(&desc);
+    UINT floats = 0;
+    for (UINT index = 0; index < desc.InputParameters; ++index) {
+      D3D11_SIGNATURE_PARAMETER_DESC input = {};
+      reflection->GetInputParameterDesc(index, &input);
+      floats += static_cast<UINT>(std::bit_width(static_cast<UINT>(input.Mask)));
+    }
+    for (int vertex = 0; vertex < count; ++vertex) {
+      for (UINT component = 0; component < floats; ++component) vertices.push_back(unit(-2.f, 2.f));
+    }
+    return vertices;
+  };
+  const auto compiled = [](const std::string& source, const std::string& path) {
+    const auto code = CompileText(source, path, "main", "vs_4_0");
+    const auto* bytes = static_cast<const uint8_t*>(code->GetBufferPointer());
+    return std::vector<uint8_t>(bytes, bytes + code->GetBufferSize());
+  };
+  const std::string sail_path = games + "/twwarhammer/rt_capture_sail.vs_4_0.hlsl";
+  const std::string rope_path = games + "/twwarhammer/rt_capture_rope.vs_4_0.hlsl";
+  const std::string rigid_path = games + "/twwarhammer/rt_capture_rope_rigid.vs_4_0.hlsl";
+  const auto sail = Bytes(embed + "rt_capture_sail.cso");
+  const auto rope = Bytes(embed + "rt_capture_rope.cso");
+  const auto rigid = Bytes(embed + "rt_capture_rope_rigid.cso");
+  // CONTROLS: the sail without its world_matrix's first row, the rope without its ribbon, the rigid rope's ribbon not turned
+  // back from the view (its offset taken as the world's).
+  const auto sail_control = compiled(Without(ReadText(sail_path), "r0.x = dot(v0.xyzw, world_matrix._m00_m10_m20_m30);", "r0.x = v0.x;"), sail_path);
+  const auto rope_control = compiled(Without(ReadText(rope_path), "r2.xyz = r1.xyz * v3.xxx + v0.xyz;", "r2.xyz = v0.xyz;"), rope_path);
+  const auto rigid_control = compiled(Without(ReadText(rigid_path), "(across.x * view_rows[0].xyz) + (across.y * view_rows[1].xyz)", "float3(across, 0.f)"),
+                                      rigid_path);
+  const std::array<Streamed, 1> clip_out = {{{"SV_Position", 0, 4}}};
+  const std::array<Streamed, 1> world_out = {{{"TEXCOORD", 0, 4}}};
+  struct Main {
+    uint32_t hash;
+    std::span<const uint8_t> capture;
+    std::span<const uint8_t> control;
+    bool view_space;  // the rigid ropes: view (c1-c4) then projection (c5-c8), not view_projection
+  };
+  const std::array<Main, 4> mains = {{
+      {0xE4B46D0E, sail, sail_control, false},
+      {0x52C2D565, sail, sail_control, false},
+      {0x7BD6E8CB, rope, rope_control, false},
+      {0x1CEFE3BB, rigid, rigid_control, true},
+  }};
+  int values = 0;
+  int misses = 0;
+  int control = 0;
+  float worst = 0.f;
+  for (const auto& [hash, capture, control_capture, view_space] : mains) {
+    const auto game = GameBytes(dump, hash);
+    if (game.empty()) {
+      CHECK(false, "cloth: %08X's bytes", hash);
+      continue;
+    }
+    const auto vertices = vertices_for(game, 16);
+    for (int run = 0; run < 4; ++run) {
+      const auto camera = MakeClothCamera({unit(-3.f, 3.f), unit(-1.f, 1.f), unit(-0.5f, 0.5f), unit(-30.f, 30.f), unit(-30.f, 30.f), unit(5.f, 40.f)}, true);
+      std::array<float, 3 * 4> world_matrix = {};
+      for (float& value : world_matrix) value = unit(-2.f, 2.f);
+      const auto camera_buffer = Constants(camera.c.data(), sizeof(camera.c));
+      const auto world_buffer = Constants(world_matrix.data(), sizeof(world_matrix));
+      const std::array<ID3D11Buffer*, 2> constants = {camera_buffer.Get(), world_buffer.Get()};
+      const auto expected = StreamOut(game, game, clip_out, vertices, constants);
+      const auto ours = StreamOut(game, capture, world_out, vertices, constants);
+      const auto other = StreamOut(game, control_capture, world_out, vertices, constants);
+      CHECK(expected.size() == 64 && ours.size() == 64 && other.size() == 64, "cloth %08X: stream out %zu / %zu / %zu", hash, expected.size(), ours.size(),
+            other.size());
+      if (expected.size() != 64 || ours.size() != 64 || other.size() != 64) break;
+      const auto project = [&](const float* world) {
+        const std::array<float, 4> point = {world[0], world[1], world[2], world[3]};
+        return view_space ? Times(camera.projection, Times(camera.view, point)) : Times(camera.view_projection, point);
+      };
+      for (size_t vertex = 0; vertex < 16; ++vertex) {
+        const auto clip = project(&ours[vertex * 4]);
+        const auto control_clip = project(&other[vertex * 4]);
+        const float size = std::max(1.f, std::fabs(expected[(vertex * 4) + 3]));
+        bool control_differs = false;
+        for (size_t axis = 0; axis < 4; ++axis) {
+          ++values;
+          const float off = std::fabs(clip[axis] - expected[(vertex * 4) + axis]) / size;
+          worst = std::max(worst, off);
+          misses += (off < 1e-5f) ? 0 : 1;
+          control_differs = control_differs || std::fabs(control_clip[axis] - expected[(vertex * 4) + axis]) / size > 1e-3f;
+        }
+        control += control_differs ? 1 : 0;
+      }
+    }
+  }
+  CHECK(values == 4 * 4 * 16 * 4 && misses == 0 && control > 3 * 4 * 16 / 2, "cloth main: %d values, %d misses (worst %.3g), CONTROL %d differ", values,
+        misses, worst, control);
+  std::printf("cloth main: rt_capture_sail / _rope / _rope_rigid against E4B46D0E, 52C2D565, 7BD6E8CB, 1CEFE3BB: their world x the draw's camera "
+              "= the game's SV_Position, %d values, %d misses (worst %.3g relative); CONTROLS (no world_matrix row, no ribbon, the ribbon not "
+              "turned back from the view): %d of 256 corners differ\n",
+              values, misses, worst, control);
+
+  // The shadow pass (cascade_keep, Pharaoh's RT_WORLD geometry shader after it): with no main view (b0's c10-c13 0) every
+  // triangle kept, each corner the game's TEXCOORD0 world (sail F91E642E, rope CF629296); the rigid rope's 52D806A0 through
+  // rt_capture_rope_rigid, its world x the shadow camera's view and projection the game's SV_Position.
+  const std::span<const uint8_t> keep(__rt_outside_view_world, sizeof(__rt_outside_view_world));
+  const std::array<Streamed, 1> kept_out = {{{"SV_Position", 0, 4}}};
+  int depth_values = 0;
+  int depth_misses = 0;
+  int collapsed = 0;
+  float depth_worst = 0.f;
+  for (const uint32_t hash : {0xF91E642Eu, 0xCF629296u, 0x52D806A0u}) {
+    const auto game = GameBytes(dump, hash);
+    if (game.empty()) {
+      CHECK(false, "cloth: %08X's bytes", hash);
+      continue;
+    }
+    const auto vertices = vertices_for(game, 15);
+    const bool rigid_rope = hash == 0x52D806A0u;
+    const auto camera = MakeClothCamera({unit(-3.f, 3.f), unit(-1.f, 1.f), unit(-0.5f, 0.5f), unit(-30.f, 30.f), unit(-30.f, 30.f), unit(5.f, 40.f)}, false);
+    auto holding = camera;
+    for (size_t row = 0; row < 4; ++row) holding.c[((10 + row) * 4) + row] = 1.f;  // a main view holding the world as clip space, w 4
+    holding.c[(13 * 4) + 3] = 4.f;
+    std::array<float, 3 * 4> world_matrix = {};
+    for (float& value : world_matrix) value = unit(-2.f, 2.f);
+    const auto none_buffer = Constants(camera.c.data(), sizeof(camera.c));
+    const auto holding_buffer = Constants(holding.c.data(), sizeof(holding.c));
+    const auto world_buffer = Constants(world_matrix.data(), sizeof(world_matrix));
+    const std::array<ID3D11Buffer*, 2> none_constants = {none_buffer.Get(), world_buffer.Get()};
+    const std::array<ID3D11Buffer*, 2> holding_constants = {holding_buffer.Get(), world_buffer.Get()};
+    const std::span<const uint8_t> streamed = rigid_rope ? std::span<const uint8_t>(rigid) : std::span<const uint8_t>(game);
+    const auto expected = StreamOut(game, game, rigid_rope ? clip_out : world_out, vertices, none_constants);
+    const auto kept = StreamOut(game, streamed, kept_out, vertices, none_constants, nullptr, keep);
+    const auto held = StreamOut(game, streamed, kept_out, vertices, holding_constants, nullptr, keep);
+    CHECK(expected.size() == 60 && kept.size() == 60 && held.size() == 60, "cloth %08X kept: stream out %zu / %zu / %zu", hash, expected.size(), kept.size(),
+          held.size());
+    if (expected.size() != 60 || kept.size() != 60 || held.size() != 60) continue;
+    for (size_t vertex = 0; vertex < 15; ++vertex) {
+      const std::array<float, 4> world = {kept[vertex * 4], kept[(vertex * 4) + 1], kept[(vertex * 4) + 2], kept[(vertex * 4) + 3]};
+      const auto got = rigid_rope ? Times(camera.projection, Times(camera.view, world)) : world;
+      const float size = rigid_rope ? std::max(1.f, std::fabs(expected[(vertex * 4) + 3])) : 1.f;
+      for (size_t axis = 0; axis < (rigid_rope ? 4u : 3u); ++axis) {
+        ++depth_values;
+        const float off = std::fabs(got[axis] - expected[(vertex * 4) + axis]) / size;
+        depth_worst = std::max(depth_worst, off);
+        depth_misses += (off < 1e-5f) ? 0 : 1;
+      }
+      depth_misses += (world[3] == 1.f) ? 0 : 1;
+      collapsed += std::memcmp(&held[vertex * 4], &kept[vertex * 4], 16) != 0 ? 1 : 0;
+    }
+  }
+  CHECK(depth_values == (15 * 3 * 2) + (15 * 4) && depth_misses == 0 && collapsed > 0, "cloth shadow pass: %d values, %d misses (worst %.3g), CONTROL %d collapsed",
+        depth_values, depth_misses, depth_worst, collapsed);
+  std::printf("cloth shadow pass: F91E642E / CF629296 + rt_outside_view_world, 52D806A0 through rt_capture_rope_rigid: 15 corners each out of view, %d "
+              "values, %d misses (worst %.3g); CONTROL a main view holding them: %d corners collapsed\n",
+              depth_values, depth_misses, depth_worst, collapsed);
 }
 
 static void TestAoAlone(const std::string& games, const std::string& dump) {
@@ -2852,6 +3084,7 @@ int main(int argc, char** argv) {
   TestBloom(argv[1], argv[2]);
   TestPlaced(argv[1], argv[2]);
   TestTreeShadows(argv[2]);
+  TestCloth(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
