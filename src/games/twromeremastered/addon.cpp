@@ -36,6 +36,7 @@
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/draw_dispatch.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/frame_generation.hpp"
@@ -2078,6 +2079,7 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
 
   // After RenoDX, which drops these copies.
   reshade::register_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
@@ -2108,6 +2110,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
 
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);

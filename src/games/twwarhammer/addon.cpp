@@ -29,6 +29,7 @@
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../twattila/light_bounce.hpp"
+#include "../twattila/draw_dispatch.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
@@ -2389,6 +2390,7 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
   // Before the Light Bounce's (its callback draws the sun draw again).
   // Ray tracing's at the sun draws first: its trace for the screen-space shadows and the AO filter after it.
   // The shadow pass's casters (cascade_keep) as Warhammer II's: their constants kept, world positions; the atlas the sun's
@@ -2538,6 +2540,7 @@ void DetachAddon() {
   twattila::ao_filter::Uninstall();
   tw::engine_tweaks::Uninstall(graphics_options);
 
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);

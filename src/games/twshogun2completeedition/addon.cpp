@@ -32,6 +32,7 @@
 #include "../../utils/settings.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../twattila/light_bounce.hpp"
+#include "../twattila/draw_dispatch.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/lighting_settings.hpp"
@@ -1435,6 +1436,7 @@ bool AttachAddon() {
   });
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
   // Before the Light Bounce's callbacks on the same sun draws: this frame's trace first.
   ray_tracing_installed = ray_tracing_settings.sun_shadows || ray_tracing_settings.ambient_occlusion || ray_tracing_settings.light_bounce
                           || ray_tracing_settings.reflections || ray_tracing_settings.local_lights || ray_tracing_settings.fog_shadows
@@ -1503,6 +1505,7 @@ void DetachAddon() {
   twattila::frame_generation::Uninstall();
   twshogun2::hdr_link::SetUpscale(nullptr);
 
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);

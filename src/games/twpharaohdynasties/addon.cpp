@@ -32,6 +32,7 @@
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../twattila/ao_pass.hpp"
+#include "../twattila/draw_dispatch.hpp"
 #include "../twattila/contact_shadows_off.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/light_count.hpp"
@@ -2901,6 +2902,7 @@ bool AttachAddon() {
                                         .apply_code = __0xDE4F92CD},
                                        &rt_sliders);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
   // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads). No AO pass hook
   // keeps it here (ssao01 binds no camera).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
@@ -3076,6 +3078,7 @@ void DetachAddon() {
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();
 
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);

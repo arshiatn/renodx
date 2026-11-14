@@ -37,6 +37,7 @@
 #include "../../utils/settings.hpp"
 #include "../talesofarise_dlss/matrix.hpp"
 #include "../twattila/frame_generation.hpp"
+#include "../twattila/draw_dispatch.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
@@ -4154,6 +4155,7 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
   twattila::rt_scene::Install(SCENE_SHADERS, {}, RT_HOST);
   for (const uint32_t shader_hash : CAMPAIGN_SHADERS) {
     renodx::utils::command_action::Register(
@@ -4304,6 +4306,7 @@ void DetachAddon() {
   twwarhammer3::taa_dlss::Uninstall();
   twattila::frame_generation::Uninstall();
 
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);

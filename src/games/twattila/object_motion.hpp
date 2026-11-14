@@ -30,6 +30,7 @@
 #include <include/reshade.hpp>
 
 #include "../../utils/command_action.hpp"
+#include "../../utils/command_action_fast.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/pipeline.hpp"
@@ -1753,6 +1754,11 @@ inline void Install(const Shaders& shaders, MakeView make_view) {
         internal::OnAnyDraw,
         {.shader_hash = 0u, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW
                                              | renodx::utils::command_action::COMMAND_TYPE_INDIRECT});
+    // OnAnyDraw acts only while a moving draw left the game's targets or bindings changed.
+    renodx::utils::command_action::fast::SetGate(internal::OnAnyDraw, {.active = [](reshade::api::command_list*) {
+                                                   return internal::targets_kept.load(std::memory_order_relaxed)
+                                                          || internal::bindings_kept.load(std::memory_order_relaxed);
+                                                 }});
     reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindRenderTargets);
   }
   // Units: the game's writes of their animation pages.
@@ -1764,6 +1770,7 @@ inline void Install(const Shaders& shaders, MakeView make_view) {
 
 inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnMovingDraw);
+  renodx::utils::command_action::fast::ClearGate(internal::OnAnyDraw);
   renodx::utils::command_action::Unregister(internal::OnAnyDraw);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindRenderTargets);
   reshade::unregister_event<reshade::addon_event::map_texture_region>(internal::OnMapTextureRegion);
