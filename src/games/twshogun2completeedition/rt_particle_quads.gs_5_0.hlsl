@@ -7,11 +7,11 @@
 // rt_particle_quads): particle.hlsl vs particle_vertex_30 (BEA3F2D4) draws each particle as an instance of a quad (6 indices,
 // the battle trace's 1536 indices for 256 instances), so its stream output gives corners. This takes each instance's first
 // triangle (SV_PrimitiveID even) and writes one record (rt_smoke's three float4): the centre and the size of the quad, its
-// colour and the opacity its lit pixel shaders (volumetric_particle_alpha 3D0BC5F1, its splat F3018626: bytes read) draw at
+// colour and the opacity its lit pixel shader (volumetric_particle_alpha 3D0BC5F1: bytes read) draws at
 // that centre. The vertex shader's outputs (fxc /dumpbin of BEA3F2D4): TEXCOORD5 the corner in world space (what it projects
 // with view_projection), COLOR0 the colour and alpha, TEXCOORD0.xy / TEXCOORD1.xy the two cells' uv, TEXCOORD3.w the blend
-// between them, TEXCOORD4.z the alpha scale. The pixel shaders' alpha: saturate(TEXCOORD4.z x COLOR0.w x lerp(the texture's
-// alpha at both cells)), their texture t0 and sampler s3; their campaign shroud and soft edge (view-dependent) left out. The
+// between them, TEXCOORD4.z the alpha scale. The pixel shader's alpha: saturate(TEXCOORD4.z x COLOR0.w x lerp(the texture's
+// alpha at both cells)), its texture t0 and sampler s3; its campaign shroud and soft edge (view-dependent) left out. The
 // triangle is half of a rectangle: its longest edge the quad's diagonal, the corner across from it the quad's (0, 0), so the
 // centre is that edge's middle and the size the other two edges' lengths; the mip level as the pixel shader's sample takes it
 // there (twattila/rt_particle_quads.hlsli's helpers on those quad coordinates and camera_VS_PS's g_viewport_dimensions, c38).
