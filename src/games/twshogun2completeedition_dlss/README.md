@@ -489,6 +489,12 @@ that pass (waterplane, ocean: debug18's trace) keeps the motion of what is under
 - **Ray-traced fog shadows (Experimental)** (RayTracedFogShadows) and **Upscaling debug view** (UpscalingDebugView,
   with the helper's upscaler).
 
+## v59 (2026-11-14): rows for the HDR addon v67 (built only, not run in game)
+
+- Ray Tracing: **Path-traced AO (Experimental)** (RayTracedPathAmbient, under Path tracing), **Ray-traced specular
+  occlusion (Experimental)** (RayTracedSpecularOcclusion); both in No RT/PT and Reset, not in RT/PT.
+- Graphics (Advanced): **Light through foliage (Experimental)** (SSSFoliageLight, 0-1).
+
 
 ### F4/F8 sampler ownership (2026-11-09, GPT-6 Astra)
 Sampler slots now own original COM references and are scoped to each device. References replaced in slot callbacks are released after unlocking. Duplicate sampler-init notifications preserve existing owned clones; teardown restores originals and clears each device cache. Final-release callbacks no longer acquire slot locks, and nested addon-callback suppression is preserved. WARP tests pass x86/x64 for originals surviving game release, clone identity preservation, two-device isolation, tracking restoration, per-device cleanup and shutdown. All 14 shared consumers built. No game run.
