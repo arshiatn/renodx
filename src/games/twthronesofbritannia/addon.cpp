@@ -157,6 +157,7 @@ void ApplyResetPreset() {
       {"distortion", 1.f},
       {"filmgrain", 1.f},
       {"some_indicators", 1.f},
+      {"vfx_base_brightness", 1.f},
       {"v31_exposure", 1.f},
       {"v31_highlights", 1.f},
       {"v31_shadows", 1.f},
@@ -947,7 +948,20 @@ void BuildRuntimeData() {
         .labels = {"Off", "On"},
         .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
     },
-    // Attila's Extra (Experimental) rows on Attila's shaders, the same bytes here (shaders/markersbattle00-02).
+    // Attila's Extra (Experimental) rows on Attila's shaders, the same bytes here (shaders/vfx00 / vfx01, markersbattle00-02).
+    // Attila's snow and weather rows stay out: its shaders pick them by the particle array's slices 1 and 7, not read here.
+    new renodx::utils::settings::Setting{
+        .key = "vfx_base_brightness",
+        .binding = &shader_injection.vfxbasebrightness,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 1.0f,
+        .label = "VFX Brightness: Flame, Dust, Clouds & Smoke",
+        .section = "Extra (Experimental)",
+        .tooltip = "Brightness of smoke, clouds, dust, and flame. This does not boost the inner fire color.",
+        .min = 1.0f,
+        .max = 30.0f,
+        .format = "%.1f",
+    },
     new renodx::utils::settings::Setting{
         .key = "some_indicators",
         .binding = &shader_injection.someindicators,
