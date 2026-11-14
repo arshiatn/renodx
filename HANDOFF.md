@@ -597,7 +597,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     resolved by hand. After the cherry-picks: rome2 / attila / thrones x86 + wh1 / wh2 x64 built; tw_rays_captures ALL
     PASSED (Rome II T + G). Lesson 25 + SKILL.md: owned pieces go into every ledger first. Waiting: the 3 Vfx particle rows
     and DrawScrub / Grass Trace NEED A TRACE; rays_preset_as_attila and Hue Clip 90 vs 80 are ATN's.
-  - [ ] WH3 DONE on its branch (f8a6353d Rarer Objects in the Rays: tessellated D5D2905E / 958EC025; 6f4c5065 Particle
+  - [x] WH3 MERGED 17efac2b (after 9eefea13 combined tw_rays_captures with Rome II's cases: ALL PASSED; 2b5ce800
+    tw_psychov35 part 1 skips Rome II's r_ shaders: PASS x86 + amd64). Not rerun after the merge: other consumers,
+    page dumps, parity_check (final verification). The agent's WARP + test exe at 19:40-19:41 overlapped a gap in the
+    bench's quiet lock: hfp_ checks that start and now holds the lock for the whole batch. Was: WH3 DONE on its branch (f8a6353d Rarer Objects in the Rays: tessellated D5D2905E / 958EC025; 6f4c5065 Particle
     Edges by Depth; da965fc9 Faster Reflections, ATN-approved Experimental: 1.35-1.42 -> 1.06 ms in the 4K harness, only
     with Attila's narrower lobe; 5d570f20 unit draws' geometry in FrameTraceReads for unit round D): parity_check w exits 0
     (0 / 79 / 123). ShadowCascades WON'T (no cascade count in WH3), SkipShadowPass SHARED STEP CPU round 4, the GS line =
