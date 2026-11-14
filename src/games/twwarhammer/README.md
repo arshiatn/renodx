@@ -1,6 +1,45 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
-### r4 (2026-11-14: Hue Clip default 40, ATN's choice; stamped and installed with renodx-tw-dlaa64.exe helper112, not run in game)
+### AO / SSR reader census (2026-11-14 late morning; built only, not run in game)
+
+- **Reader census from ATN's traces (no new trace)**: tools/tw/wh1/wh1_reader_census.py follows the targets of the game's
+  SSAO and SSR passes to every later read in ATN's 36 traces of 2026-11-14 (34 with both; 100%, 50%, 33%; battle and
+  campaign): reader_census_wh1.txt. The SSAO is four compute passes (sweep 0C83DB37, collect 38F6D9B6, blurs E3DA9A8D /
+  4C1918DA) on two R8 targets; no other pass binds them; its one reader is the sun draws' t_ssao (in the dump only the 30
+  directionallight shaders declare it; the traced sun reads the add-on's copy, the AO filter's or the rays' combine). The SSR
+  is the hierarchical depth (copy F2CCEF86, 10 gathers 7AA39EE9), two mip chains (preconvolve copy 4D96DAB5 of the scene's
+  light, then downscale F9870DE2 and blurs E7A82FC2 / 53E74A97 over it and over the march's hits: 30 passes), the march
+  021D7515 and its blurs 4EBDA7FA / 537CAD4B, the resolve 6B80E35B (ours) and the copy into the scene 69A57B14; nothing
+  else binds their targets. The half-size depth (gbufferdepth 865B80D7) is the particles' and the alpha composition's too.
+  Under the rays' AO the game's SSAO is no double work (the rays' AO multiplies it, "on top of the game's SSAO"); under the
+  rays' reflections the march and its blurs were already left out, the depth and the mip chains (42 passes) were not.
+- **Skip the Game's Reflection Passes (Experimental, off; Reflections, with Ray-Traced)**: those 42 passes left out while
+  the rays' reflections are bound. The resolve reads neither the march's hits nor the light mips then (test part 14: its
+  texels bit-identical whatever they hold; without the rays it writes what the game's 6B80E35B does).
+- **Rays' AO Alone (Experimental, off; Ambient Occlusion, with Ray-Traced)**: Warhammer III's way: the game's SSAO left out
+  while the rays feed the sun's AO, the collect's output cleared to open, so the rays' AO stands alone (lighter than on top
+  of the SSAO). Part 15: the cleared target gives the rays' combine their AO exactly; CF0C5118 / 230F2241 read t_ssao's red
+  only.
+
+Test list (in game, ATN):
+1. Battle, RT/PT with Ray-Traced reflections, Skip the Game's Reflection Passes on: water and armour the same as off;
+   the frame a little faster; Game's SSR or Specular Occlusion alone: the row hidden or no change.
+2. Battle, Ray-Traced AO, Rays' AO Alone on: corners lighter than off (no SSAO under the rays' AO), no frame without AO
+   when turning the camera; off: as before.
+
+Not done: a GPU time for the two rows (no game run); Path-Traced AO: the game's SSAO stays under it (the rays' AO setting
+is off there, so Rays' AO Alone is hidden and does nothing).
+
+### r5 (2026-11-14: RT/PT as Attila's; "wh1 r5", stamped and installed 10:45 with renodx-tw-dlaa64.exe helper112, not run in game; the reader census above came after it)
+
+- **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Far Tree Shadows on, Smoke Shadows on
+  (hidden: not hooked here), Light Through Foliage 0.5 (rests under the rays); of this game's own rows Shadow Casters Out of
+  View on (as Warhammer III's), Rays Replace and Skip the Shadow Maps and Cut-outs on More Models off. Defaults, labels and
+  No RT/PT as before.
+- **Fixed**: No RT/PT (Recommended) and Reset turned Water Caustics on (the page read its default before it was zeroed);
+  RT/PT turns it on, as Attila's.
+
+### r4 (2026-11-14: Hue Clip default 40, ATN's choice; stamped and installed 10:10 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - **Hue Clip default 40** (Attila's), was 90 (WH1's own tone mappers measured closest to SDR at 80-90). Test: Recommended
   (PsychoV35), fires and sky against SDR.
@@ -87,7 +126,7 @@ Test list (in game, ATN):
 
 Not done: Fog Shadows (WH1's battle fog is analytic, no shadowed march to give the
 rays); the campaign's far terrain CDCF1ADD (where it lies against the near terrain); the SSR march's patch below 100%
-(021D7515, needs a picture); the reader census without SSAO / SSR (needs ATN's start with both off).
+(021D7515, needs a picture). The reader census: done from ATN's traces (AO / SSR reader census above).
 
 ### Phase I (2026-11-14; built only, not run in game)
 

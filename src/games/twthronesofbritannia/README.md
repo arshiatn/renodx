@@ -1,5 +1,9 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
+### r4 (2026-11-14: RT/PT as Attila's; "thrones r4", stamped and installed 10:45 with renodx-tw-dlaa64.exe helper112, not run in game)
+
+- **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Light Through All Banners, Far Tree, Smoke and Sprite Soldier Shadows and Water Caustics on, Light Through Foliage 0.5 and the smoke's shadows without rays 1 (both rest under the rays). Their defaults, labels and No RT/PT stay as they were.
+
 ### Round 3 (2026-11-14, grass, banners, CPU code; "thrones r3", stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 New:

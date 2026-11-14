@@ -956,9 +956,11 @@ void OnOverlay(reshade::api::effect_runtime*) {
     };
     constexpr std::array<const char*, 2> OFF_ON_NAMES = {"Off", "On"};
     ImGui::TextWrapped("Needs an RTX GPU and renodx-tw-dlaa64.exe next to the addons.");
-    // The presets (twattila/graphics_page.hpp's): RT/PT is ATN's RAYS_PRESET in this section's keys (no Path-Traced AO
-    // here: ray-traced AO in its place), No RT/PT turns every ray-traced effect off and keeps their rows, Reset puts
-    // every row at its default. Whole values go in as integers (the checkboxes and choices read ints).
+    // The presets (twattila/graphics_page.hpp's): RT/PT is Attila's (ATN 2026-11-14): every row at its default, then
+    // RAYS_PRESET with Attila's values in this section's keys; Shadow casters out of view and point light shadows on (as
+    // Warhammer III's), ray-traced AO kept on (the HDR addon turns it off itself while Path-traced AO runs: the campaign
+    // keeps it). No RT/PT turns every ray-traced effect off and keeps their rows, Reset puts every row at its default.
+    // Whole values go in as integers (the checkboxes and choices read ints).
     constexpr std::pair<const char*, float> RAYS_OFF[] = {
         {"RayTracedSunShadows", 0.f},
         {"RayTracedAmbientOcclusion", 0.f},
@@ -974,6 +976,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedSunShadows", 1.f},
         {"RayTracedShadowSoftness", 0.8f},
         {"RayTracedLeafLight", 1.f},
+        {"RayTracedColouredShadows", 1.f},
+        {"RayTracedSpriteShadows", 1.f},
+        {"RayTracedFarTreeShadows", 1.f},
+        {"RayTracedUnitsOutOfView", 1.f},
         {"RayTracedAmbientOcclusion", 1.f},
         {"RayTracedLocalLights", 1.f},
         {"RayTracedLightSoftness", 0.25f},
@@ -985,9 +991,17 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightBounceResolution", 0.f},
         {"RayTracedLightBounceRange", 50.f},
         {"PathTracingBounces", 1.f},
+        {"RayTracedPathAmbient", 1.f},
+        {"RayTracedPathSkyApart", 1.f},
+        {"RayTracedPathKeptCube", 1.f},
         {"RayTracedReflections", 1.f},
         {"RayTracedReflectionSamples", 1.f},
+        {"RayTracedReflectionReuse", 2.f},
+        {"RayTracedWaterReflections", 1.f},
+        {"RayTracedWaterSteady", 1.f},
+        {"RayTracedSpecularOcclusion", 1.f},
         {"RayTracedFogShadows", 1.f},
+        {"RayTracedLeafMicromaps", 1.f},
     };
     constexpr std::pair<const char*, float> RAYS_RESET[] = {
         {"RayTracedShadowSoftness", 0.5f},
@@ -1040,10 +1054,11 @@ void OnOverlay(reshade::api::effect_runtime*) {
       }
     };
     if (preset_button("RT/PT##rays", RT_COLOR,
-                      "Every ray-traced effect and path tracing on, as ATN plays (restart the game).\n"
-                      "Turns the Global Illumination on, and Ray Reconstruction where DLSS runs without it.")) {
+                      "Every ray-traced effect and path tracing on, as ATN plays; the rest of this section at its default\n"
+                      "(restart the game). Turns the Global Illumination on, and Ray Reconstruction where DLSS runs without it.")) {
+      write_rays(RAYS_RESET);
       write_rays(RAYS_PRESET);
-      gi.strength = std::max(gi.strength, 1.f);
+      gi.strength = 1.f;
       save_gi();
       // Without Ray Reconstruction the rays have only the built-in denoisers (Attila's preset: F).
       if (upscaler_choice.load() == 1 && ray_reconstruction_choice.load() == 0) {

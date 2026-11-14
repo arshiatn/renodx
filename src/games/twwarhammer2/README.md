@@ -1,5 +1,11 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### v50 (2026-11-14: RT/PT as Attila's; stamped and installed 10:45 with renodx-tw-dlaa64.exe helper112, not run in game)
+
+- **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Far Tree and Smoke Shadows and Water
+  Caustics on, Light Through Foliage 0.5 (rests under the rays); of this game's own rows Shadow Casters Out of View on (as
+  Warhammer III's), Rays Replace and Skip the Shadow Maps and Hills Out of View off. Defaults, labels and No RT/PT as before.
+
 ### Round v49 (2026-11-14, ATN's session traces of 03:38-03:48; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - **Fixed below 100%: the screen-space reflections came out twice their size.** The SSR's copy (environment_specular_light

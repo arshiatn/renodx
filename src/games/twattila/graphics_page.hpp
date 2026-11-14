@@ -97,6 +97,9 @@ inline const std::string SHADOWS_SECTION = "Shadows";
 inline const std::string GI_SECTION = "Global Illumination";
 inline const std::string REFLECTIONS_SECTION = "Reflections and Water";
 inline const std::string RT_SECTION = "Ray Tracing Extra Options";
+// Light Through Foliage's and the smoke's shadows without rays' defaults where a game run has shown them (Attila's).
+constexpr float FOLIAGE_LIGHT_DEFAULT = 0.5f;
+constexpr float SMOKE_MAP_DEFAULT = 1.f;
 constexpr uint32_t TITLE_TINT = 0x7FBFFF;
 constexpr uint32_t MORE_TINT = 0xFFB86B;
 constexpr uint32_t WARNING_TINT = 0xFF5050;
@@ -235,6 +238,10 @@ struct Bindings {
   bool far_cards_tested = true;  // false: Sprite Soldier and Far Tree Shadows the same (their defaults the game's to set)
   bool water_caustics_tested = true;  // false: Water Caustics left out of RT/PT (its default the game's to set)
   bool banner_light_tested = true;  // false: Light Through All Banners left out of RT/PT (its default the game's to set)
+  // RT/PT as Attila's whatever the *_tested flags above say (ATN 2026-11-14): the rows they leave out in it, Light Through
+  // Foliage and the smoke's shadows without rays at Attila's defaults (both rest under the rays' sun shadows), Shadow
+  // Casters Out of View on (as Warhammer III's). Their defaults and labels stay the game's.
+  bool rays_preset_as_attila = false;
   bool has_path_ambient = true;  // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   // Point light shadows have their own row (RT/PT turns it on); Fog Shadows, light in the fog and RIS stay off in that preset.
   bool lights_own_row = false;
@@ -755,12 +762,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     // The paths' AO multiplying the game's (ChooseAo's Path-Traced): GT-VBAO goes off with it, else it ran hidden under the paths.
     if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
-    std::erase_if(rays_values, [smoke = b.smoke_shadows_tested, caustics = b.water_caustics_tested, cards = b.far_cards_tested,
-                                banners = b.banner_light_tested](const Values::value_type& preset) {
-      const auto& [key, value] = preset;
-      return (key == "RayTracedSmokeShadows" && !smoke) || (key == "WaterCaustics" && !caustics)
-             || ((key == "RayTracedSpriteShadows" || key == "RayTracedFarTreeShadows") && !cards) || (key == "RayTracedBannerLight" && !banners);
-    });
+    if (b.rays_preset_as_attila) {
+      rays_values.insert(rays_values.end(), {{"ScreenSpaceShadowsFoliage", FOLIAGE_LIGHT_DEFAULT},
+                                             {"SmokeShadowMapStrength", SMOKE_MAP_DEFAULT},
+                                             {"RayTracedUnitsOutOfView", 1.f}});
+    } else {
+      std::erase_if(rays_values, [smoke = b.smoke_shadows_tested, caustics = b.water_caustics_tested, cards = b.far_cards_tested,
+                                  banners = b.banner_light_tested](const Values::value_type& preset) {
+        const auto& [key, value] = preset;
+        return (key == "RayTracedSmokeShadows" && !smoke) || (key == "WaterCaustics" && !caustics)
+               || ((key == "RayTracedSpriteShadows" || key == "RayTracedFarTreeShadows") && !cards) || (key == "RayTracedBannerLight" && !banners);
+      });
+    }
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the
@@ -797,7 +810,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Add(new Setting{
           .key = "ScreenSpaceShadowsFoliage",
           .binding = &b.sss->foliage_light,
-          .default_value = b.foliage_light_tested ? 0.5f : 0.f,
+          .default_value = b.foliage_light_tested ? FOLIAGE_LIGHT_DEFAULT : 0.f,
           .label = b.foliage_light_tested ? "Light Through Foliage" : "Light Through Foliage (Experimental)",
           .section = section,
           .tooltip = "How much sun comes through the shadows grass and leaves cast: they are thin. Walls and soldiers\n"
@@ -820,7 +833,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Add(new Setting{
           .key = "SmokeShadowMapStrength",
           .binding = b.smoke_strength,
-          .default_value = b.smoke_map_tested ? 1.f : 0.f,
+          .default_value = b.smoke_map_tested ? SMOKE_MAP_DEFAULT : 0.f,
           .label = b.smoke_map_tested ? "Smoke Shadows" : "Smoke Shadows (Experimental)",
           .section = section,
           .tooltip = "Smoke and dust dim the sun on what lies below them. No rays, any GPU. Needs in-game shadows on.\n0: off.",
@@ -1126,6 +1139,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedAORange", .section = section, .shown = rays, .label = "Range"});
     page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
     page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
+    page.Take({.match = "RayTracedAOAlone", .section = section, .shown = rays, .only_some_games = true});
     page.Take({.match = "RayTracedPathSkyApart", .section = section, .shown = ao_is(AO_PATHS), .label = "Own Sky Rays"});
     page.Take({.match = "RayTracedPathKeptCube", .section = section, .shown = ao_is(AO_PATHS), .label = "Steady Bounce Light (Experimental)"});
     page.Take({.match = "RayTracedPathProbeSky", .section = section, .shown = ao_is(AO_PATHS), .only_some_games = true});
@@ -1217,6 +1231,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Take({.match = "RayTracedReflectionFog", .section = section, .shown = rays, .only_some_games = true});
       page.Take({.match = "RayTracedReflectionLobe", .section = section, .shown = rays, .only_some_games = true});
       page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = b.texts->specular_occlusion_label});
+      page.Take({.match = "RayTracedSkipGameReflections", .section = section, .shown = rays, .only_some_games = true});
     }
     page.Take({.match = "WaterClarity", .section = section, .shown = always, .only_some_games = true});
     page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = b.texts->water_caustics_label, .only_some_games = true});

@@ -349,16 +349,60 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] ATN ~10:00 (awake briefly): tests 1-3 (Lean default, torch rows, REBLUR under RR) themselves; Aftermath: not shipped
   (so no licence text in the zips); WH1 Hue Clip default 40 -> WH1 r4 7d21a0b0 installed 10:10 (page dump default=40;
   ATN's own WH1 ReShade.ini keeps hue_clip=50 until Reset / Recommended); ATN restarted the PC (zombies gone).
-- [ ] ATN ~10:1x: "I like my RT/PT preset of Attila ... put the new games to Attila's preset (sliders that don't exist in
-  Attila: a value as you fit)": agent aligning Thrones / WH2 / Troy / WH1 / Shogun 2 / Rome Remastered RT/PT to Attila's
-  (page dumps vs page_a_1114final); then build, stamp, install.
-- [ ] ATN's Rome Remastered trace (67 % / 50 %): FrameTrace=1 added to its ReShade.ini (backup
-  tools/tw/romeremastered/ini_backup_20261114_101134), multi_watch running ~75 min; remove the key after.
+- [x] ATN ~10:1x: "I like my RT/PT preset of Attila ... put the new games to Attila's preset (sliders that don't exist in
+  Attila: a value as you fit)": MERGED ba290b8c (graphics_page Bindings::rays_preset_as_attila opt-in; Thrones, WH2, Troy,
+  WH1, Shogun 2 DLSS; page dumps after RT/PT = Attila's but per-game tone mapping / AO keys; Attila / WH3 unchanged; Rome
+  Remastered has no RT/PT button = ATN decides) + WH1 0124b5dc (No RT/PT / Reset wrote Water Caustics 1: default zeroed
+  before Apply). Built 10:37 at 0124b5dc (both lines exit 0); page dumps *_rtpt1040: Attila / WH3 = 1114final, Thrones /
+  WH2 / Troy / WH1 after RT/PT = Attila's but tone mapping / AO / FasterGameCpuCode, WH1 No RT/PT WaterCaustics 1 -> 0.
+  INSTALLED 10:45 (dry run first, ATN's files unchanged): thrones r4, wh2 v50, troy v54, wh1 r5, "shogun2 v73 dlss addon"
+  (HDR addon v72 unchanged: tw_install.py now keeps an unchanged add-on's earlier stamp, as the helper's; backup
+  tw_install.py.bak_1114b); helper112 everywhere. READMEs: own sections.
+- [x] WH1 AO / SSR reader census MERGED 0c28a0ea (from ATN's 36 traces, no new run: Skip the Game's Reflection Passes (42
+  passes under RT reflections) + Rays' AO Alone (WH3's SkipGameSsao; changes the look: ATN decides), Experimental off;
+  WARP parts 14 / 15). Not installed (after wh1 r5). WH1 agent DONE.
+- [ ] ATN ~10:4x: (1) Rome Remastered on Attila's page layout + preset buttons (the skill has it: shaders-ui rows 59 / 65)
+  -> Rome Remastered agent after resets / DLAA / DLSS below 100 %; (2) its base-game input bug (keys / clicks stop
+  registering; players' fix RunAsDate year 2020): study the date-dependent input path read-only, then a detour of that one
+  routine as an Experimental row; (3) Nsight: a whole-frame Attila check plan (game D3D11 + add-on + helper; 32-bit: tool
+  per part), fixes behind switches with off = bit-identical, ONE in-game Attila run allowed on the Constantinople replay;
+  then WH3 (harness only; an in-game run needs ATN's OK); (4) heapfix (Attila CPU Performance Fix): no fork / publish; its
+  code in WH3 = "elsewhere" in its licence: needs the author's written OK first (ATN asks him).
+- [x] ATN's Rome Remastered runs (FrameTrace=1 in its ReShade.ini, backup ini_backup_20261114_101134; prefs
+  resolution_scale-1 100 -> 67 -> 50, backup prefs_backup_20261114_102403): in-game Resolution Scale change CRASHED
+  (exe +0x6ee594, null sRGB RTV); 67 % run 10:24 (17 traces runs/ATN_multi_romer_102433; battle start "hung multiple
+  times" = two GPU resets of the helper's ray-tracing device 10:27:42 / :50, rays off after; no RR in the log); 50 % run
+  10:31-10:35 rays off, clean (15 traces runs/ATN_multi_romer_103123). 10:36 FrameTrace=1 removed, scale back to 100 (ATN's
+  own ini changes kept; backup restore_backup_20261114_103625). Crash FIXED on the agent's branch f6a7cfc4 (Renderer::Resize
+  took the upgraded RGBA16 back buffer format; detour passes the game's 8-bit one; tw_romer_dlaa case 5), not merged yet:
+  agent on the resets, DLAA below 100 %, DLSS below 100 % from the traces.
 - [ ] ATN ~10:2x: "fix the nsight issue ... then improve the performance in Attila": Nsight agent resumed: phase A a
   replay-able helper mode (own fence / textures, no factory RR device, clusters off), capture + replay + shader swap;
   phase B Attila perf variants behind switches (GPU Trace + quality scorer; defaults bit-identical; no GPU job while a
   game runs). WH1 agent resumed: AO / SSR reader census from the existing traces (else a trace with gfx_ssao /
   gfx_screen_space_reflections false set by us, DLSS Performance).
+- [ ] Rome Remastered battle GPU resets: safe-side fix a8afd660 on the agent's branch (rays take only the tested capture
+  kinds; banners out; row Ray Tracing Battle Objects (Test): Tested / Solid / All = v11; WARP tw_romer_rays case 1). Not
+  merged. ATN TEST later: a battle with rays at Tested, Solid, All: the first to reset names the group. RR not involved.
+  ATN ~11:2x: when the Rome Remastered agent's work is merged, a Fable 5.2 agent (medium effort, ATN's OK) hunts the battle
+  reset: read-only review of the capture -> bridge -> helper path for the battle kinds, a harness repro from the battle
+  traces, DRED breadcrumbs in the harness, then fixes proven offline (the Tested / Solid / All row stays until then).
+  Proposed, ATN to confirm: after ALL merges, a Fable 5.2 review (high) of the shared code before the next install.
+- [ ] ATN ~11:0x: "Other games didn't miss any of the skills, right? If they did, we have to do them too." Page dumps at
+  0c28a0ea: Thrones / WH2 / Troy / WH1 / WH3 lack many Attila rows (Graphics* engine rows, SSR rows, fog / sky / bloom,
+  particle resolution, smoke-map rows, grass height, torch-from-paths rows ...). PARITY ROUND, brief
+  tools/tw/round_notes/parity_brief_1114.md (base fdfb307e): worktree agents Thrones (par_th_), WH2 (par_w2_), Troy
+  (par_t_), WH1 (par_w1_), Shogun 2 (par_s2_): parity table by feature (HAVE / DO NOW / NEEDS A TRACE / WON'T GET + proof)
+  + the DO NOW items, Experimental off; Rome Remastered's agent does the same after its page move; read-only survey of WH3 /
+  Pharaoh / Rome II (par_old_: tools/tw/round_notes/parity_<game>_1114.md). After the merges: one shared step moves the torch
+  rows from Path Tracing (RayTracedLightsInBounce / RayTracedLightShadowRatio) into graphics_page for every game that can
+  carry them. Merge one branch at a time, verify the merged tree once, stamp, install.
+- [ ] Forge's points (01:35 screenshots): scorer covers RMSE / SMAPE / boiling / swimming / covariance (done); Nsight GPU Trace
+  done, replay + shader swap = Nsight agent phase A; SER per pass in GPU Trace added to the Nsight agent; unified DI + GI
+  reservoir failed as one reservoir (U1 66 % / U2 20.5 % rRMSE), shipped as the light-per-bounce-texel rows (helper111).
+- [ ] ATN ~11:0x: heapfix in WH3: the author is fine; first prove it doable + a gain in our RT/PT preset in a jungle battle,
+  then ATN sends him the whole code. Feasibility agent (hfw3_, private under tools/tw/heapfix_wh3; no game run: a WH3 A/B
+  needs ATN's OK).
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
 ## LATE NIGHT ROUNDS (2026-11-13 23:10, two worktree agents, offline; installed state = NIGHT MERGES 22:59)

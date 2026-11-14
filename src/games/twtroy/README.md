@@ -1,5 +1,9 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### v54 (2026-11-14: RT/PT as Attila's; stamped and installed 10:45 with renodx-tw-dlaa64.exe helper112, not run in game)
+
+- **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Far Tree and Smoke Shadows and Water Caustics on, Light Through Foliage 0.5 (rests under the rays); of this game's own rows Shadow Casters Out of View on (as Warhammer III's), Rays Replace and Skip the Shadow Maps and Hills Out of View off. Defaults, labels and No RT/PT as before.
+
 ### Round v53 (2026-11-14, stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - **New (Experimental): Water Clarity and Water Caustics** (under Reflections and Water). Clarity 1 is the game's look; higher lets you see deeper into rivers, lakes and the sea. Caustics (off; battles only) adds rippling light on the bed. They use Pharaoh's rows on Troy's 68 water shaders (every sea, lake and river variant). WARP (`tools/tw/troy/water`, Pharaoh's water test on Troy's bytes): all 68 give the game's bits at the defaults; Clarity and the caustics match the game with its opacity or refraction scaled (worst 4.8e-7). Every control moves.
