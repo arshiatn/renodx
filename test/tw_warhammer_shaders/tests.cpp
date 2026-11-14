@@ -41,8 +41,8 @@
 //    colour): the game's diffuse per unit albedo over its length the guides' normal; the game's ambient per unit albedo
 //    (every cube side 1) with specular colour 0.3 and 0 the guides' diffuse albedo over the albedo (1 - specular colour);
 //    their roughness 1 - gloss. CONTROLS: the angles read the other way, the diffuse albedo without the specular colour.
-// 10. Light Through All Banners: the banners' vertex shaders (rigidtextureblend DBCC30FD, its 2 bones E7F0D71A) output
-//    SV_Position first (register 0), which sss_thin reads; Coloured Shadows' albedo_power 1: 230F2241's diffuse is linear in
+// 10. Light Through All Banners: the banners' vertex shaders (rigidtextureblend DBCC30FD, its 2 bones E7F0D71A) and the sails'
+//    (E4B46D0E, 52C2D565: Light Through Banners) output SV_Position first (register 0), which sss_thin reads; Coloured Shadows' albedo_power 1: 230F2241's diffuse is linear in
 //    channel 2's colour (its slope from 0.1 to 0.3 the one from 0.3 to 0.9; a squared colour makes it 3 times). CONTROL:
 //    the imposter's vertex shader 381E079E (POSITION first) fails the first.
 // 11. Light Through Foliage's bit (foliage_material_bit 128): the leaves' G-buffer shader 744FDFF0 (its bytes, drawn as part
@@ -111,6 +111,26 @@
 // 22. The campaign trees' shadow VS out of view: the game's 3888C71F with the shared GS's RT_COLOR_WORLD variant (WH1's
 //    rt_outside_view_colour_world_gs.h) after it, 5 triangles of random inputs: with no main view (b0 0: every triangle
 //    outside) each corner the game's TEXCOORD0 world. CONTROL: a main view holding them collapses some.
+// 23. The cloth casters (none in ATN's traces): the game's sails E4B46D0E / 52C2D565, rope 7BD6E8CB and instanced rope
+//    1CEFE3BB streamed out for 16 vertices of random inputs under 4 random cameras (a rotation and a move, a perspective) and
+//    world matrices, against our captures (the build's embed/rt_capture_sail, _rope, _rope_rigid): their world x the draw's
+//    camera (view_projection; the rigid rope's view then projection) the game's SV_Position. The shadow pass's sail
+//    F91E642E and rope CF629296 with Pharaoh's RT_WORLD geometry shader after them, the rigid rope's 52D806A0 through
+//    rt_capture_rope_rigid: with no main view each corner kept, the game's TEXCOORD0 (the rigid rope's: its SV_Position by the
+//    shadow camera). CONTROLS: the captures without the world_matrix's row, without the ribbon, the rigid ribbon not turned
+//    back from the view; a main view holding the shadow pass's corners collapses some.
+// 24. The SSR raycast 021D7515 below 100% (the game's bytes, patched by view_share.hpp's Reflect / Patch as the runtime does:
+//    run.ps1 copies them out as view_share_patch): a room of four planes (64 x 64 view pixels, its hierarchical depth's 6
+//    mips min / max) at 100% on 64 x 64 targets and at 50% on 128 x 128 targets whose top-left 64 x 64 hold the same texels
+//    (cb12 0.5, the rest 7): at every half-size pixel of the view the same march (its hit, and its length in the half-size
+//    texture's uv half as long). CONTROLS: the game's bytes, the patch with cb12 unbound differ. Printed: with the rest of the
+//    depth near (0.2), how many differ (the march's bounds are the texture's half size, not the view's).
+// 25. Modded Auto Exposure: our compute_luma_stats (shaders/autoexposure00, the build's embed/0x96BCFCBB.cso) against the
+//    game's 96BCFCBB over a 512 x 288 scene (a gradient, fire specks, a sun past the white limit), each after the game's clear
+//    166E783A, last frame's sum copied out of the statistics before the clear as the add-on does: off (t1 unbound or bound),
+//    or on without a sum at t1, the game's minimum / maximum / sum and bloom source bit for bit; on with Sensitivity 1 the
+//    maximum last frame's average x 2 (the minimum, sum and source the game's); Sensitivity 16 the game's. CONTROL: the capped
+//    maximum lower than the game's.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -136,6 +156,7 @@
 // The add-on's settings buffer (b13) as the shaders read it.
 #include "../../src/games/twwarhammer/shared.h"
 #include "../../src/games/twwarhammer/rt_outside_view_colour_world_gs.h"
+#include "../../src/games/twpharaohdynasties/rt_outside_view_world_gs.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -1600,7 +1621,7 @@ static void TestThin(const std::string& dump) {
     reflection->GetOutputParameterDesc(0, &output);
     return output.SystemValueType == D3D_NAME_POSITION && output.Register == 0;
   };
-  const bool banners = position_first(0xDBCC30FD) && position_first(0xE7F0D71A);
+  const bool banners = position_first(0xDBCC30FD) && position_first(0xE7F0D71A) && position_first(0xE4B46D0E) && position_first(0x52C2D565);
   const bool imposter = position_first(0x381E079E);
   const auto bytes = GameBytes(dump, 0x230F2241);
   const auto diffuse = [&bytes](float albedo) {
@@ -1608,9 +1629,9 @@ static void TestThin(const std::string& dump) {
   };
   const float low = (diffuse(0.3f) - diffuse(0.1f)) / 0.2f;
   const float high = (diffuse(0.9f) - diffuse(0.3f)) / 0.6f;
-  CHECK(banners && !imposter, "thin: the banners' SV_Position first %d, CONTROL the imposter's %d", banners, imposter);
+  CHECK(banners && !imposter, "thin: the banners' and sails' SV_Position first %d, CONTROL the imposter's %d", banners, imposter);
   CHECK(low > 0.f && Near(high / low, 1.f, 1e-4f), "thin: 230F2241's diffuse slopes %.8g, %.8g (linear: equal)", low, high);
-  std::printf("Light Through All Banners: DBCC30FD / E7F0D71A output SV_Position first %s (CONTROL the imposter's %s); 230F2241's diffuse "
+  std::printf("Light Through Banners: DBCC30FD / E7F0D71A and the sails E4B46D0E / 52C2D565 output SV_Position first %s (CONTROL the imposter's %s); 230F2241's diffuse "
               "slopes %.8g / %.8g (ratio %.6f: linear, albedo_power 1)\n",
               banners ? "yes" : "NO", imposter ? "YES" : "no", low, high, high / low);
 }
@@ -2078,6 +2099,575 @@ static void TestTreeShadows(const std::string& dump) {
   std::printf("tree shadows: 3888C71F + rt_outside_view_colour_world, 15 corners out of view, %d misses against its TEXCOORD0; CONTROL in view: %d "
               "corners collapsed\n",
               misses, collapsed);
+}
+
+// Part 23's camera at b0 (camera's c0-c12; c9-c13 left 0 for a main view holding nothing, `main_view` its c10-c13 instead):
+// camera_position c0, view c1-c4 (a rotation and a move: rows orthonormal), projection c5-c8, view_projection c9-c12.
+struct ClothCamera {
+  std::array<float, 48 * 4> c = {};
+  std::array<std::array<float, 4>, 4> view = {};
+  std::array<std::array<float, 4>, 4> projection = {};
+  std::array<std::array<float, 4>, 4> view_projection = {};
+};
+
+static ClothCamera MakeClothCamera(const std::array<float, 6>& pose, bool with_view_projection) {
+  ClothCamera camera;
+  const auto [yaw, pitch, roll] = std::array<float, 3>{pose[0], pose[1], pose[2]};
+  const std::array<std::array<float, 3>, 3> yaw_rows = {{{std::cos(yaw), 0.f, -std::sin(yaw)}, {0.f, 1.f, 0.f}, {std::sin(yaw), 0.f, std::cos(yaw)}}};
+  const std::array<std::array<float, 3>, 3> pitch_rows = {{{1.f, 0.f, 0.f}, {0.f, std::cos(pitch), std::sin(pitch)}, {0.f, -std::sin(pitch), std::cos(pitch)}}};
+  const std::array<std::array<float, 3>, 3> roll_rows = {{{std::cos(roll), std::sin(roll), 0.f}, {-std::sin(roll), std::cos(roll), 0.f}, {0.f, 0.f, 1.f}}};
+  const auto times = [](const std::array<std::array<float, 3>, 3>& a, const std::array<std::array<float, 3>, 3>& b) {
+    std::array<std::array<float, 3>, 3> product = {};
+    for (size_t i = 0; i < 3; ++i) {
+      for (size_t j = 0; j < 3; ++j) {
+        for (size_t k = 0; k < 3; ++k) product[i][j] += a[i][k] * b[k][j];
+      }
+    }
+    return product;
+  };
+  const auto rotation = times(roll_rows, times(pitch_rows, yaw_rows));
+  for (size_t row = 0; row < 3; ++row) {
+    camera.view[row] = {rotation[row][0], rotation[row][1], rotation[row][2], pose[3 + row]};
+  }
+  camera.view[3] = {0.f, 0.f, 0.f, 1.f};
+  constexpr float NEAR_PLANE = 0.5f;
+  constexpr float FAR_PLANE = 4000.f;
+  camera.projection = {{{1.2f, 0.f, 0.f, 0.f}, {0.f, 2.1f, 0.f, 0.f},
+                        {0.f, 0.f, FAR_PLANE / (FAR_PLANE - NEAR_PLANE), -NEAR_PLANE * FAR_PLANE / (FAR_PLANE - NEAR_PLANE)}, {0.f, 0.f, 1.f, 0.f}}};
+  for (size_t i = 0; i < 4; ++i) {
+    for (size_t j = 0; j < 4; ++j) {
+      for (size_t k = 0; k < 4; ++k) camera.view_projection[i][j] += camera.projection[i][k] * camera.view[k][j];
+    }
+  }
+  // The camera's place: -(rotation transposed x the move).
+  for (size_t axis = 0; axis < 3; ++axis) {
+    for (size_t row = 0; row < 3; ++row) camera.c[axis] -= rotation[row][axis] * pose[3 + row];
+  }
+  for (size_t row = 0; row < 4; ++row) {
+    std::copy_n(camera.view[row].begin(), 4, camera.c.begin() + ((1 + row) * 4));
+    std::copy_n(camera.projection[row].begin(), 4, camera.c.begin() + ((5 + row) * 4));
+    if (with_view_projection) std::copy_n(camera.view_projection[row].begin(), 4, camera.c.begin() + ((9 + row) * 4));
+  }
+  return camera;
+}
+
+static std::array<float, 4> Times(const std::array<std::array<float, 4>, 4>& rows, const std::array<float, 4>& point) {
+  std::array<float, 4> out = {};
+  for (size_t row = 0; row < 4; ++row) {
+    for (size_t k = 0; k < 4; ++k) out[row] += rows[row][k] * point[k];
+  }
+  return out;
+}
+
+static void TestCloth(const std::string& root, const std::string& dump) {
+  const std::string games = root + "/src/games";
+  const std::string embed = root + "/build/twwarhammer.include/embed/";
+  uint32_t state = 2311u;
+  const auto unit = [&state](float low, float high) {
+    state = state * 1664525u + 1013904223u;
+    return low + ((high - low) * static_cast<float>(state >> 8) / 16777216.f);
+  };
+  const auto vertices_for = [&unit](std::span<const uint8_t> game, int count) {
+    ComPtr<ID3D11ShaderReflection> reflection;
+    std::vector<float> vertices;
+    if (game.empty() || FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) {
+      return vertices;
+    }
+    D3D11_SHADER_DESC desc = {};
+    reflection->GetDesc(&desc);
+    UINT floats = 0;
+    for (UINT index = 0; index < desc.InputParameters; ++index) {
+      D3D11_SIGNATURE_PARAMETER_DESC input = {};
+      reflection->GetInputParameterDesc(index, &input);
+      floats += static_cast<UINT>(std::bit_width(static_cast<UINT>(input.Mask)));
+    }
+    for (int vertex = 0; vertex < count; ++vertex) {
+      for (UINT component = 0; component < floats; ++component) vertices.push_back(unit(-2.f, 2.f));
+    }
+    return vertices;
+  };
+  const auto compiled = [](const std::string& source, const std::string& path) {
+    const auto code = CompileText(source, path, "main", "vs_4_0");
+    const auto* bytes = static_cast<const uint8_t*>(code->GetBufferPointer());
+    return std::vector<uint8_t>(bytes, bytes + code->GetBufferSize());
+  };
+  const std::string sail_path = games + "/twwarhammer/rt_capture_sail.vs_4_0.hlsl";
+  const std::string rope_path = games + "/twwarhammer/rt_capture_rope.vs_4_0.hlsl";
+  const std::string rigid_path = games + "/twwarhammer/rt_capture_rope_rigid.vs_4_0.hlsl";
+  const auto sail = Bytes(embed + "rt_capture_sail.cso");
+  const auto rope = Bytes(embed + "rt_capture_rope.cso");
+  const auto rigid = Bytes(embed + "rt_capture_rope_rigid.cso");
+  // CONTROLS: the sail without its world_matrix's first row, the rope without its ribbon, the rigid rope's ribbon not turned
+  // back from the view (its offset taken as the world's).
+  const auto sail_control = compiled(Without(ReadText(sail_path), "r0.x = dot(v0.xyzw, world_matrix._m00_m10_m20_m30);", "r0.x = v0.x;"), sail_path);
+  const auto rope_control = compiled(Without(ReadText(rope_path), "r2.xyz = r1.xyz * v3.xxx + v0.xyz;", "r2.xyz = v0.xyz;"), rope_path);
+  const auto rigid_control = compiled(Without(ReadText(rigid_path), "(across.x * view_rows[0].xyz) + (across.y * view_rows[1].xyz)", "float3(across, 0.f)"),
+                                      rigid_path);
+  const std::array<Streamed, 1> clip_out = {{{"SV_Position", 0, 4}}};
+  const std::array<Streamed, 1> world_out = {{{"TEXCOORD", 0, 4}}};
+  struct Main {
+    uint32_t hash;
+    std::span<const uint8_t> capture;
+    std::span<const uint8_t> control;
+    bool view_space;  // the rigid ropes: view (c1-c4) then projection (c5-c8), not view_projection
+  };
+  const std::array<Main, 4> mains = {{
+      {0xE4B46D0E, sail, sail_control, false},
+      {0x52C2D565, sail, sail_control, false},
+      {0x7BD6E8CB, rope, rope_control, false},
+      {0x1CEFE3BB, rigid, rigid_control, true},
+  }};
+  int values = 0;
+  int misses = 0;
+  int control = 0;
+  float worst = 0.f;
+  for (const auto& [hash, capture, control_capture, view_space] : mains) {
+    const auto game = GameBytes(dump, hash);
+    if (game.empty()) {
+      CHECK(false, "cloth: %08X's bytes", hash);
+      continue;
+    }
+    const auto vertices = vertices_for(game, 16);
+    for (int run = 0; run < 4; ++run) {
+      const auto camera = MakeClothCamera({unit(-3.f, 3.f), unit(-1.f, 1.f), unit(-0.5f, 0.5f), unit(-30.f, 30.f), unit(-30.f, 30.f), unit(5.f, 40.f)}, true);
+      std::array<float, 3 * 4> world_matrix = {};
+      for (float& value : world_matrix) value = unit(-2.f, 2.f);
+      const auto camera_buffer = Constants(camera.c.data(), sizeof(camera.c));
+      const auto world_buffer = Constants(world_matrix.data(), sizeof(world_matrix));
+      const std::array<ID3D11Buffer*, 2> constants = {camera_buffer.Get(), world_buffer.Get()};
+      const auto expected = StreamOut(game, game, clip_out, vertices, constants);
+      const auto ours = StreamOut(game, capture, world_out, vertices, constants);
+      const auto other = StreamOut(game, control_capture, world_out, vertices, constants);
+      CHECK(expected.size() == 64 && ours.size() == 64 && other.size() == 64, "cloth %08X: stream out %zu / %zu / %zu", hash, expected.size(), ours.size(),
+            other.size());
+      if (expected.size() != 64 || ours.size() != 64 || other.size() != 64) break;
+      const auto project = [&](const float* world) {
+        const std::array<float, 4> point = {world[0], world[1], world[2], world[3]};
+        return view_space ? Times(camera.projection, Times(camera.view, point)) : Times(camera.view_projection, point);
+      };
+      for (size_t vertex = 0; vertex < 16; ++vertex) {
+        const auto clip = project(&ours[vertex * 4]);
+        const auto control_clip = project(&other[vertex * 4]);
+        const float size = std::max(1.f, std::fabs(expected[(vertex * 4) + 3]));
+        bool control_differs = false;
+        for (size_t axis = 0; axis < 4; ++axis) {
+          ++values;
+          const float off = std::fabs(clip[axis] - expected[(vertex * 4) + axis]) / size;
+          worst = std::max(worst, off);
+          misses += (off < 1e-5f) ? 0 : 1;
+          control_differs = control_differs || std::fabs(control_clip[axis] - expected[(vertex * 4) + axis]) / size > 1e-3f;
+        }
+        control += control_differs ? 1 : 0;
+      }
+    }
+  }
+  CHECK(values == 4 * 4 * 16 * 4 && misses == 0 && control > 3 * 4 * 16 / 2, "cloth main: %d values, %d misses (worst %.3g), CONTROL %d differ", values,
+        misses, worst, control);
+  std::printf("cloth main: rt_capture_sail / _rope / _rope_rigid against E4B46D0E, 52C2D565, 7BD6E8CB, 1CEFE3BB: their world x the draw's camera "
+              "= the game's SV_Position, %d values, %d misses (worst %.3g relative); CONTROLS (no world_matrix row, no ribbon, the ribbon not "
+              "turned back from the view): %d of 256 corners differ\n",
+              values, misses, worst, control);
+
+  // The shadow pass (cascade_keep, Pharaoh's RT_WORLD geometry shader after it): with no main view (b0's c10-c13 0) every
+  // triangle kept, each corner the game's TEXCOORD0 world (sail F91E642E, rope CF629296); the rigid rope's 52D806A0 through
+  // rt_capture_rope_rigid, its world x the shadow camera's view and projection the game's SV_Position.
+  const std::span<const uint8_t> keep(__rt_outside_view_world, sizeof(__rt_outside_view_world));
+  const std::array<Streamed, 1> kept_out = {{{"SV_Position", 0, 4}}};
+  int depth_values = 0;
+  int depth_misses = 0;
+  int collapsed = 0;
+  float depth_worst = 0.f;
+  for (const uint32_t hash : {0xF91E642Eu, 0xCF629296u, 0x52D806A0u}) {
+    const auto game = GameBytes(dump, hash);
+    if (game.empty()) {
+      CHECK(false, "cloth: %08X's bytes", hash);
+      continue;
+    }
+    const auto vertices = vertices_for(game, 15);
+    const bool rigid_rope = hash == 0x52D806A0u;
+    const auto camera = MakeClothCamera({unit(-3.f, 3.f), unit(-1.f, 1.f), unit(-0.5f, 0.5f), unit(-30.f, 30.f), unit(-30.f, 30.f), unit(5.f, 40.f)}, false);
+    auto holding = camera;
+    for (size_t row = 0; row < 4; ++row) holding.c[((10 + row) * 4) + row] = 1.f;  // a main view holding the world as clip space, w 4
+    holding.c[(13 * 4) + 3] = 4.f;
+    std::array<float, 3 * 4> world_matrix = {};
+    for (float& value : world_matrix) value = unit(-2.f, 2.f);
+    const auto none_buffer = Constants(camera.c.data(), sizeof(camera.c));
+    const auto holding_buffer = Constants(holding.c.data(), sizeof(holding.c));
+    const auto world_buffer = Constants(world_matrix.data(), sizeof(world_matrix));
+    const std::array<ID3D11Buffer*, 2> none_constants = {none_buffer.Get(), world_buffer.Get()};
+    const std::array<ID3D11Buffer*, 2> holding_constants = {holding_buffer.Get(), world_buffer.Get()};
+    const std::span<const uint8_t> streamed = rigid_rope ? std::span<const uint8_t>(rigid) : std::span<const uint8_t>(game);
+    const auto expected = StreamOut(game, game, rigid_rope ? clip_out : world_out, vertices, none_constants);
+    const auto kept = StreamOut(game, streamed, kept_out, vertices, none_constants, nullptr, keep);
+    const auto held = StreamOut(game, streamed, kept_out, vertices, holding_constants, nullptr, keep);
+    CHECK(expected.size() == 60 && kept.size() == 60 && held.size() == 60, "cloth %08X kept: stream out %zu / %zu / %zu", hash, expected.size(), kept.size(),
+          held.size());
+    if (expected.size() != 60 || kept.size() != 60 || held.size() != 60) continue;
+    for (size_t vertex = 0; vertex < 15; ++vertex) {
+      const std::array<float, 4> world = {kept[vertex * 4], kept[(vertex * 4) + 1], kept[(vertex * 4) + 2], kept[(vertex * 4) + 3]};
+      const auto got = rigid_rope ? Times(camera.projection, Times(camera.view, world)) : world;
+      const float size = rigid_rope ? std::max(1.f, std::fabs(expected[(vertex * 4) + 3])) : 1.f;
+      for (size_t axis = 0; axis < (rigid_rope ? 4u : 3u); ++axis) {
+        ++depth_values;
+        const float off = std::fabs(got[axis] - expected[(vertex * 4) + axis]) / size;
+        depth_worst = std::max(depth_worst, off);
+        depth_misses += (off < 1e-5f) ? 0 : 1;
+      }
+      depth_misses += (world[3] == 1.f) ? 0 : 1;
+      collapsed += std::memcmp(&held[vertex * 4], &kept[vertex * 4], 16) != 0 ? 1 : 0;
+    }
+  }
+  CHECK(depth_values == (15 * 3 * 2) + (15 * 4) && depth_misses == 0 && collapsed > 0, "cloth shadow pass: %d values, %d misses (worst %.3g), CONTROL %d collapsed",
+        depth_values, depth_misses, depth_worst, collapsed);
+  std::printf("cloth shadow pass: F91E642E / CF629296 + rt_outside_view_world, 52D806A0 through rt_capture_rope_rigid: 15 corners each out of view, %d "
+              "values, %d misses (worst %.3g); CONTROL a main view holding them: %d corners collapsed\n",
+              depth_values, depth_misses, depth_worst, collapsed);
+}
+
+// Part 24's room for the raycast 021D7515, seen from the origin along +z (view identity, 90 degrees, depth near 0.5 / far
+// 100 in [0, 1]): floor y = -1, back wall z = 8, side walls x = -3 / +3, their normals into the room; 64 x 64 view pixels.
+struct RaycastRoom {
+  std::vector<Float4> normal;    // gbuffer_channel_1: t5's two angles, gloss 1
+  std::vector<Float4> specular;  // gbuffer_channel_3: specular colour 0.5, flags 1 (SSR)
+  std::vector<std::vector<Float4>> depth;  // t_hierarchical_depth's mips, 32 x 32 down to 1 x 1: min, max of the 2 x 2 below
+  std::array<float, 28 * 4> camera = {};
+};
+
+static RaycastRoom MakeRaycastRoom() {
+  constexpr UINT VIEW = 64;
+  constexpr float NEAR_PLANE = 0.5f;
+  constexpr float FAR_PLANE = 100.f;
+  constexpr float A = FAR_PLANE / (FAR_PLANE - NEAR_PLANE);
+  constexpr float B = -NEAR_PLANE * FAR_PLANE / (FAR_PLANE - NEAR_PLANE);
+  constexpr float PI = 3.14159265f;
+  RaycastRoom room;
+  std::vector<float> full_depth(VIEW * VIEW);
+  for (UINT y = 0; y < VIEW; ++y) {
+    for (UINT x = 0; x < VIEW; ++x) {
+      const float ndc_x = ((static_cast<float>(x) + 0.5f) / VIEW * 2.f) - 1.f;
+      const float ndc_y = 1.f - ((static_cast<float>(y) + 0.5f) / VIEW * 2.f);
+      float distance = 8.f;  // along z: the back wall
+      std::array<float, 3> normal = {0.f, 0.f, -1.f};
+      if (ndc_y < 0.f && -1.f / ndc_y < distance) {
+        distance = -1.f / ndc_y;
+        normal = {0.f, 1.f, 0.f};
+      }
+      if (ndc_x != 0.f && 3.f / std::fabs(ndc_x) < distance) {
+        distance = 3.f / std::fabs(ndc_x);
+        normal = {(ndc_x < 0.f) ? 1.f : -1.f, 0.f, 0.f};
+      }
+      full_depth[(y * VIEW) + x] = A + (B / distance);
+      const float theta = std::asin(normal[1]);
+      const float phi = std::atan2(normal[2], normal[0]);
+      room.normal.push_back({(theta + (PI / 2.f)) / PI, (phi + PI) / (2.f * PI), 1.f, 0.f});
+      room.specular.push_back({0.5f, 0.5f, 0.5f, 1.f / 255.f});
+    }
+  }
+  std::vector<Float4> level;
+  for (UINT y = 0; y < VIEW / 2; ++y) {
+    for (UINT x = 0; x < VIEW / 2; ++x) {
+      const std::array<float, 4> block = {full_depth[(2 * y * VIEW) + (2 * x)], full_depth[(2 * y * VIEW) + (2 * x) + 1],
+                                          full_depth[(((2 * y) + 1) * VIEW) + (2 * x)], full_depth[(((2 * y) + 1) * VIEW) + (2 * x) + 1]};
+      level.push_back({*std::ranges::min_element(block), *std::ranges::max_element(block), 0.f, 0.f});
+    }
+  }
+  room.depth.push_back(level);
+  for (UINT size = VIEW / 4; size >= 1; size /= 2) {
+    const auto& below = room.depth.back();
+    std::vector<Float4> next;
+    for (UINT y = 0; y < size; ++y) {
+      for (UINT x = 0; x < size; ++x) {
+        Float4 texel = {2.f, -1.f, 0.f, 0.f};
+        for (UINT k = 0; k < 4; ++k) {
+          const Float4& child = below[(((2 * y) + (k / 2)) * size * 2) + (2 * x) + (k % 2)];
+          texel[0] = std::min(texel[0], child[0]);
+          texel[1] = std::max(texel[1], child[1]);
+        }
+        next.push_back(texel);
+      }
+    }
+    room.depth.push_back(next);
+  }
+  auto& c = room.camera;
+  for (size_t row = 0; row < 3; ++row) c[((1 + row) * 4) + row] = 1.f;  // view: identity
+  c[(4 * 4) + 3] = 1.f;
+  c[(5 * 4) + 0] = 1.f;  // projection
+  c[(6 * 4) + 1] = 1.f;
+  c[(7 * 4) + 2] = A;
+  c[(7 * 4) + 3] = B;
+  c[(8 * 4) + 2] = 1.f;
+  c[(21 * 4) + 0] = 1.f;  // its inverse
+  c[(22 * 4) + 1] = 1.f;
+  c[(23 * 4) + 3] = 1.f;
+  c[(24 * 4) + 2] = 1.f / B;
+  c[(24 * 4) + 3] = -A / B;
+  c[(25 * 4) + 0] = NEAR_PLANE;
+  c[(25 * 4) + 1] = FAR_PLANE;
+  return room;
+}
+
+// The raycast's u0 (the march's hit: x 1 hit / 0, y 65504 x 2^-(its length in the half-size texture's uv)) over `size` x
+// `size` targets (the view's 64 x 64 top-left, the rest `rest`; the hierarchical depth's mips as many as the view's), cb12
+// `share` (0: unbound).
+static std::vector<Float4> RunRaycast(std::span<const uint8_t> code, const RaycastRoom& room, UINT size, float share, float rest) {
+  constexpr UINT VIEW = 64;
+  ComPtr<ID3D11ComputeShader> shader;
+  if (FAILED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))) return {};
+  const auto padded = [&](const std::vector<Float4>& texels, UINT view, UINT whole) {
+    std::vector<Float4> out(static_cast<size_t>(whole) * whole, Float4{rest, rest, rest, rest});
+    for (UINT y = 0; y < view; ++y) std::copy_n(texels.begin() + (static_cast<ptrdiff_t>(y) * view), view, out.begin() + (static_cast<ptrdiff_t>(y) * whole));
+    return out;
+  };
+  const UINT levels = static_cast<UINT>(room.depth.size());
+  std::vector<std::vector<Float4>> mips;
+  std::vector<D3D11_SUBRESOURCE_DATA> initial;
+  for (UINT mip = 0; mip < levels; ++mip) mips.push_back(padded(room.depth[mip], (VIEW / 2) >> mip, (size / 2) >> mip));
+  for (UINT mip = 0; mip < levels; ++mip) initial.push_back({.pSysMem = mips[mip].data(), .SysMemPitch = ((size / 2) >> mip) * 16});
+  const D3D11_TEXTURE2D_DESC depth_desc = {.Width = size / 2, .Height = size / 2, .MipLevels = levels, .ArraySize = 1,
+                                           .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                           .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  ComPtr<ID3D11Texture2D> depth;
+  device->CreateTexture2D(&depth_desc, initial.data(), depth.GetAddressOf());
+  ComPtr<ID3D11ShaderResourceView> depth_view;
+  device->CreateShaderResourceView(depth.Get(), nullptr, depth_view.GetAddressOf());
+  std::vector<Float4> jitter(64 * 64);
+  for (size_t at = 0; at < jitter.size(); ++at) jitter[at] = {0.1f + (0.8f * static_cast<float>(at % 7) / 7.f), 0.3f, 0.9f, 0.f};
+  const std::array<ID3D11ShaderResourceView*, 4> views = {View(size, size, padded(room.normal, VIEW, size)).Detach(),
+                                                          View(size, size, padded(room.specular, VIEW, size)).Detach(), depth_view.Get(),
+                                                          View(64, 64, jitter).Detach()};
+  const auto output = Texture(size / 2, size / 2, nullptr, D3D11_BIND_UNORDERED_ACCESS);
+  ComPtr<ID3D11UnorderedAccessView> uav;
+  device->CreateUnorderedAccessView(output.Get(), nullptr, uav.GetAddressOf());
+  auto camera = room.camera;
+  const auto extent = static_cast<float>(size);
+  camera[(27 * 4) + 0] = extent;  // g_screen_size: the targets'
+  camera[(27 * 4) + 1] = extent;
+  camera[(27 * 4) + 2] = 1.f / extent;
+  camera[(27 * 4) + 3] = 1.f / extent;
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const std::array<float, 4> render_scale = {share, share, share, share};
+  const auto scale = Constants(render_scale.data(), 16);
+  const D3D11_SAMPLER_DESC point = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                    .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&point, sampler.GetAddressOf());
+  const std::array<ID3D11SamplerState*, 2> samplers = {sampler.Get(), sampler.Get()};
+  context->CSSetShader(shader.Get(), nullptr, 0);
+  context->CSSetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
+  if (share > 0.f) context->CSSetConstantBuffers(12, 1, scale.GetAddressOf());
+  context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+  context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+  context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
+  context->Dispatch((size / 2 + 31) / 32, (size / 2 + 31) / 32, 1);
+  context->ClearState();
+  views[0]->Release();
+  views[1]->Release();
+  views[3]->Release();
+  return Read(output.Get());
+}
+
+static void TestRaycast(const std::string& dump) {
+  const auto game = GameBytes(dump, 0x021D7515);
+  if (game.empty()) {
+    CHECK(false, "raycast: 021D7515's bytes");
+    return;
+  }
+  // As the runtime patches it (view_share::OnCreatePipeline with Warhammer's Install: no region reads, no whole textures,
+  // SetViewportChains(true)).
+  const twattila::dxbc::Program program = twattila::dxbc::Read(game);
+  const auto patched = view_share_patch::Patch(game, view_share_patch::Reflect(game, program), 0, true);
+  CHECK(!patched.code.empty(), "raycast: 021D7515 not patched");
+  if (patched.code.empty()) return;
+  const auto room = MakeRaycastRoom();
+  constexpr UINT HALF_VIEW = 32;
+  constexpr float NO_MARCH = 0.00001f;
+  const auto full = RunRaycast(patched.code, room, 64, 0.f, 7.f);
+  const auto half = RunRaycast(patched.code, room, 128, 0.5f, 7.f);
+  const auto half_game = RunRaycast(game, room, 128, 0.f, 7.f);
+  const auto half_unbound = RunRaycast(patched.code, room, 128, 0.f, 7.f);
+  const auto half_near = RunRaycast(patched.code, room, 128, 0.5f, 0.2f);
+  CHECK(full.size() == 32 * 32 && half.size() == 64 * 64 && half_game.size() == 64 * 64 && half_unbound.size() == 64 * 64 && half_near.size() == 64 * 64,
+        "raycast: outputs");
+  if (full.size() != 32 * 32 || half.size() != 64 * 64 || half_game.size() != 64 * 64 || half_unbound.size() != 64 * 64 || half_near.size() != 64 * 64) return;
+  const auto length = [](float encoded) { return -std::log2(encoded / 65504.f); };
+  // The same march in the view's texels: the same hit (x) and, where it marched, half its length in the twice as wide texture's uv.
+  const auto same = [&](const Float4& at_full, const Float4& at_half) {
+    if (at_full[0] != at_half[0]) return false;
+    if (at_full[1] == NO_MARCH || at_half[1] == NO_MARCH) return at_full[1] == at_half[1];
+    return std::fabs(length(at_half[1]) - (length(at_full[1]) / 2.f)) <= 1e-4f * std::max(1.f, length(at_full[1]));
+  };
+  int equal = 0;
+  int hits = 0;
+  int marched = 0;
+  int game_differs = 0;
+  int unbound_differs = 0;
+  int near_differs = 0;
+  for (UINT y = 0; y < HALF_VIEW; ++y) {
+    for (UINT x = 0; x < HALF_VIEW; ++x) {
+      const auto& a = full[(y * HALF_VIEW) + x];
+      equal += same(a, half[(y * 64) + x]) ? 1 : 0;
+      hits += (a[0] == 1.f) ? 1 : 0;
+      marched += (a[1] != NO_MARCH) ? 1 : 0;
+      game_differs += same(a, half_game[(y * 64) + x]) ? 0 : 1;
+      unbound_differs += same(a, half_unbound[(y * 64) + x]) ? 0 : 1;
+      near_differs += same(a, half_near[(y * 64) + x]) ? 0 : 1;
+    }
+  }
+  constexpr int PIXELS = HALF_VIEW * HALF_VIEW;
+  CHECK(equal == PIXELS && hits > PIXELS / 8 && marched - hits > PIXELS / 8 && game_differs > PIXELS / 4 && unbound_differs > PIXELS / 4,
+        "raycast 50%% vs 100%%: %d of %d the same (hits %d, marched %d); CONTROLS the game's bytes %d, cb12 unbound %d differ", equal, PIXELS, hits, marched,
+        game_differs, unbound_differs);
+  std::printf("raycast 021D7515 patched (%u positions, %u projected reads) at 50%% vs 100%%: %d of %d half-size pixels the same march (hits %d, "
+              "misses %d, not marched %d; the rest of the targets 7); CONTROLS the game's bytes %d, cb12 unbound %d differ; with the rest of the "
+              "depth 0.2 (near, not the far a cleared depth holds) %d differ\n",
+              patched.ndc, patched.projected, equal, PIXELS, hits, marched - hits, PIXELS - marched, game_differs, unbound_differs, near_differs);
+}
+
+// The luma statistics (96BCFCBB's u1: minimum, maximum, sum) and its bloom source (u0) of `code` over `scene` (512 x 288),
+// after the game's clear 166E783A on `stats` (16 bytes, raw), Modded Auto Exposure's rows in b13 and `last_sum` at t1 (null:
+// unbound).
+struct LumaRun {
+  std::array<uint32_t, 3> stats = {};
+  std::vector<Float4> source;
+};
+
+static LumaRun RunLuma(std::span<const uint8_t> code, std::span<const uint8_t> clear, ID3D11ShaderResourceView* scene, ID3D11Buffer* stats,
+                       ID3D11ShaderResourceView* last_sum, float protection, float stops) {
+  ComPtr<ID3D11ComputeShader> shader;
+  ComPtr<ID3D11ComputeShader> clear_shader;
+  if (FAILED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))
+      || FAILED(device->CreateComputeShader(clear.data(), clear.size(), nullptr, clear_shader.GetAddressOf()))) {
+    return {};
+  }
+  const D3D11_UNORDERED_ACCESS_VIEW_DESC raw = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER,
+                                                .Buffer = {.FirstElement = 0, .NumElements = 4, .Flags = D3D11_BUFFER_UAV_FLAG_RAW}};
+  ComPtr<ID3D11UnorderedAccessView> stats_view;
+  device->CreateUnorderedAccessView(stats, &raw, stats_view.GetAddressOf());
+  context->CSSetShader(clear_shader.Get(), nullptr, 0);
+  context->CSSetUnorderedAccessViews(0, 1, stats_view.GetAddressOf(), nullptr);
+  context->Dispatch(1, 1, 1);
+  context->ClearState();
+  std::array<float, 32 * 4> camera = {};
+  for (const size_t reg : {29u, 31u}) {
+    camera[(reg * 4) + 0] = 512.f;
+    camera[(reg * 4) + 1] = 288.f;
+    camera[(reg * 4) + 2] = 1.f / 512.f;
+    camera[(reg * 4) + 3] = 1.f / 288.f;
+  }
+  const std::array<float, 4> limits = {0.001f, 0.5f, 0.05f, 64.f};  // luma_stats_buffer: black, -, -, white
+  ShaderInjectData injected = {};
+  injected.auto_exposure_highlight_protection = protection;
+  injected.auto_exposure_highlight_headroom_stops = stops;
+  std::vector<uint8_t> injected_bytes((sizeof(injected) + 15) & ~size_t{15});
+  std::memcpy(injected_bytes.data(), &injected, sizeof(injected));
+  const std::array<ID3D11Buffer*, 2> buffers = {Constants(camera.data(), sizeof(camera)).Detach(), Constants(limits.data(), sizeof(limits)).Detach()};
+  const auto settings_buffer = Constants(injected_bytes.data(), static_cast<UINT>(injected_bytes.size()));
+  const auto source = Texture(512, 512, nullptr, D3D11_BIND_UNORDERED_ACCESS);
+  ComPtr<ID3D11UnorderedAccessView> source_view;
+  device->CreateUnorderedAccessView(source.Get(), nullptr, source_view.GetAddressOf());
+  const D3D11_SAMPLER_DESC bilinear = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                       .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&bilinear, sampler.GetAddressOf());
+  const std::array<ID3D11UnorderedAccessView*, 2> outputs = {source_view.Get(), stats_view.Get()};
+  context->CSSetShader(shader.Get(), nullptr, 0);
+  context->CSSetConstantBuffers(0, 2, buffers.data());
+  context->CSSetConstantBuffers(13, 1, settings_buffer.GetAddressOf());
+  context->CSSetShaderResources(0, 1, &scene);
+  if (last_sum != nullptr) context->CSSetShaderResources(1, 1, &last_sum);
+  context->CSSetSamplers(0, 1, sampler.GetAddressOf());
+  context->CSSetUnorderedAccessViews(0, 2, outputs.data(), nullptr);
+  context->Dispatch(64, 64, 1);
+  context->ClearState();
+  for (auto* buffer : buffers) buffer->Release();
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), stats);
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  LumaRun run;
+  if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+    std::memcpy(run.stats.data(), mapped.pData, 12);
+    context->Unmap(staging.Get(), 0);
+  }
+  run.source = Read(source.Get());
+  return run;
+}
+
+static void TestLuma(const std::string& root, const std::string& dump) {
+  const auto game = GameBytes(dump, 0x96BCFCBB);
+  const auto clear = GameBytes(dump, 0x166E783A);
+  const auto ours = Bytes(root + "/build/twwarhammer.include/embed/0x96BCFCBB.cso");
+  if (game.empty() || clear.empty()) {
+    CHECK(false, "luma: 96BCFCBB / 166E783A's bytes");
+    return;
+  }
+  // A scene of 512 x 288: a lit gradient (0.05 - 2.5), fire specks (30) and a sun (400, past the white limit 64).
+  std::vector<Float4> texels(512 * 288);
+  for (UINT y = 0; y < 288; ++y) {
+    for (UINT x = 0; x < 512; ++x) {
+      const float lit = 0.05f + (2.45f * static_cast<float>(x + y) / 798.f);
+      Float4 texel = {lit, lit * 0.8f, lit * 0.6f, 1.f};
+      if ((x * 7 + y * 13) % 97 == 0) texel = {30.f, 12.f, 3.f, 1.f};
+      if (x >= 400 && x < 424 && y >= 20 && y < 44) texel = {400.f, 380.f, 300.f, 1.f};
+      texels[(y * 512) + x] = texel;
+    }
+  }
+  const D3D11_TEXTURE2D_DESC scene_desc = {.Width = 512, .Height = 288, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                           .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  const D3D11_SUBRESOURCE_DATA scene_data = {.pSysMem = texels.data(), .SysMemPitch = 512 * 16};
+  ComPtr<ID3D11Texture2D> scene_texture;
+  device->CreateTexture2D(&scene_desc, &scene_data, scene_texture.GetAddressOf());
+  ComPtr<ID3D11ShaderResourceView> scene;
+  device->CreateShaderResourceView(scene_texture.Get(), nullptr, scene.GetAddressOf());
+  const D3D11_BUFFER_DESC stats_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS,
+                                        .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
+  const D3D11_BUFFER_DESC kept_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                       .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
+  ComPtr<ID3D11Buffer> stats;
+  ComPtr<ID3D11Buffer> kept;
+  device->CreateBuffer(&stats_desc, nullptr, stats.GetAddressOf());
+  device->CreateBuffer(&kept_desc, nullptr, kept.GetAddressOf());
+  const D3D11_SHADER_RESOURCE_VIEW_DESC kept_view_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX,
+                                                          .BufferEx = {.FirstElement = 0, .NumElements = 4, .Flags = D3D11_BUFFEREX_SRV_FLAG_RAW}};
+  ComPtr<ID3D11ShaderResourceView> kept_view;
+  device->CreateShaderResourceView(kept.Get(), &kept_view_desc, kept_view.GetAddressOf());
+  // As the add-on at the clear: last frame's sum (bytes 8 - 11 of the game's statistics) into ours.
+  const auto keep_sum = [&] {
+    const D3D11_BOX sum_bytes = {.left = 8, .top = 0, .front = 0, .right = 12, .bottom = 1, .back = 1};
+    context->CopySubresourceRegion(kept.Get(), 0, 0, 0, 0, stats.Get(), 0, &sum_bytes);
+  };
+  const auto expected = RunLuma(game, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
+  const auto off = RunLuma(ours, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
+  keep_sum();
+  const auto off_bound = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 0.f, 1.f);
+  keep_sum();
+  const auto capped = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 1.f);
+  keep_sum();
+  const auto wide = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 16.f);
+  const auto unbound = RunLuma(ours, clear, scene.Get(), stats.Get(), nullptr, 1.f, 1.f);
+  CHECK(expected.source.size() == 512 * 512 && off.source.size() == 512 * 512 && capped.source.size() == 512 * 512, "luma: outputs");
+  if (expected.source.size() != 512 * 512 || off.source.size() != 512 * 512 || capped.source.size() != 512 * 512) return;
+  const auto same_source = [&](const LumaRun& run) { return std::memcmp(run.source.data(), expected.source.data(), expected.source.size() * 16) == 0; };
+  // The cap as the shader makes it (last frame's sum: this scene's), within a float's rounding of the quantised value.
+  const float black = 0.001f;
+  const float span = 64.f - black;
+  const double average = black + (static_cast<double>(span) * (static_cast<double>(expected.stats[2]) / 4294967296.0));
+  const double ceiling = std::min(4294967295.0, 4294967296.0 * std::max(average * 2.0 - black, 0.0) / span);
+  const double expected_max = std::min(static_cast<double>(expected.stats[1]), ceiling);
+  const bool off_same = off.stats == expected.stats && off_bound.stats == expected.stats && unbound.stats == expected.stats && same_source(off) &&
+                        same_source(off_bound) && same_source(unbound);
+  const bool capped_right = capped.stats[0] == expected.stats[0] && capped.stats[2] == expected.stats[2] && same_source(capped) &&
+                            std::fabs(static_cast<double>(capped.stats[1]) - expected_max) <= 4294967296.0 * 2e-6;
+  const bool wide_same = wide.stats == expected.stats && same_source(wide);
+  CHECK(off_same && capped_right && wide_same && capped.stats[1] < expected.stats[1],
+        "luma: off %d, capped %d (max %u, expected %.0f, the game's %u), Sensitivity 16 the game's %d", off_same, capped_right, capped.stats[1], expected_max,
+        expected.stats[1], wide_same);
+  std::printf("Modded Auto Exposure: our 96BCFCBB off (t1 unbound, bound, or on without last frame's sum) the game's bits (min %08X max %08X sum %08X, "
+              "the bloom's 512 x 512 source) %s; on, Sensitivity 1: max %08X = last frame's average x 2 (expected %.0f; the game's %08X: CONTROL "
+              "lower), min and sum and source the game's %s; Sensitivity 16 the game's %s\n",
+              expected.stats[0], expected.stats[1], expected.stats[2], off_same ? "yes" : "NO", capped.stats[1], expected_max, expected.stats[1],
+              capped_right ? "yes" : "NO", wide_same ? "yes" : "NO");
 }
 
 static void TestAoAlone(const std::string& games, const std::string& dump) {
@@ -2852,6 +3442,9 @@ int main(int argc, char** argv) {
   TestBloom(argv[1], argv[2]);
   TestPlaced(argv[1], argv[2]);
   TestTreeShadows(argv[2]);
+  TestCloth(argv[1], argv[2]);
+  TestRaycast(argv[2]);
+  TestLuma(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
