@@ -980,6 +980,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedSpriteShadows", 1.f},
         {"RayTracedFarTreeShadows", 1.f},
         {"RayTracedUnitsOutOfView", 1.f},
+        {"RayTracedSheetsUnselfed", 1.f},
         {"RayTracedAmbientOcclusion", 1.f},
         {"RayTracedLocalLights", 1.f},
         {"RayTracedLightSoftness", 0.25f},
@@ -1011,6 +1012,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedSpriteShadows", 0.f},
         {"RayTracedFarTreeShadows", 0.f},
         {"RayTracedUnitsOutOfView", 0.f},
+        {"RayTracedSheetsUnselfed", 0.f},
+        {"RayTracedGrassShadowRange", 0.f},
+        {"RayTracedAoReblur", 0.f},
         {"RayTracedAmbientRange", 2.f},
         {"RayTracedAORays", 2.f},
         {"RayTracedAOQuarter", 0.f},
@@ -1095,6 +1099,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
     choice("Shadow casters out of view (Experimental)", "RayTracedUnitsOutOfView", 0, OFF_ON_NAMES,
            "Buildings, rocks, trees, sails and banners behind the camera cast ray-traced shadows into view too, far soldiers with Sprite "
            "soldier shadows (restart the game).");
+    choice("Smooth banner shadows (Experimental)", "RayTracedSheetsUnselfed", 0, OFF_ON_NAMES,
+           "Banners, sails and other cloth don't shade themselves: no blocky triangles on them. Shadows of other things stay.");
+    slider("Grass shadow range (Experimental)", "RayTracedGrassShadowRange", 0.f, 0.f, 200.f, "%.0f m",
+           "Past this distance grass casts no ray-traced shadows (on itself or the ground): faster over fields. 0 m: everywhere.");
     ImGui::EndDisabled();
     const bool ambient = checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion",
                                   "Shade in corners and under things from rays, with the game's (the darker).\n"
@@ -1104,6 +1112,12 @@ void OnOverlay(reshade::api::effect_runtime*) {
     count("Ray-traced AO rays", "RayTracedAORays", 2, 8, "More rays: less noise. Heavier.");
     checkbox("Ray-traced AO at a quarter rate", "RayTracedAOQuarter",
              "One pixel of each 2 x 2 traced a frame, in turn: a quarter of the rays (DLSS smooths it). Faster.");
+    if (upscaler_choice.load() == 1 && ray_reconstruction_choice.load() != 0) {
+      constexpr std::array<const char*, 2> AO_DENOISERS = {"Light History", "REBLUR"};
+      choice("AO under Ray Reconstruction (Experimental)", "RayTracedAoReblur", 0, AO_DENOISERS,
+             "Light History: the AO keeps a little of its last frames, Ray Reconstruction cleans the rest.\n"
+             "REBLUR: NVIDIA's denoiser cleans it first: steadier when moving, uses more memory, can darken corners.");
+    }
     ImGui::EndDisabled();
     const bool local_lights = checkbox("Ray-traced point light shadows", "RayTracedLocalLights",
                                        "Shadows from rays for the nearest, brightest point lights (fires, torches): what stands between them and the\n"

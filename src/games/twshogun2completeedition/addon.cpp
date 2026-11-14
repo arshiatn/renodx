@@ -1037,10 +1037,16 @@ void ReadDlssAddonOptions() {
   ray_tracing.sprite_shadows = read_on("RayTracedSpriteShadows", false);
   ray_tracing.far_tree_shadows = read_on("RayTracedFarTreeShadows", false);
   ray_tracing.casters_out_of_view = ray_tracing.sun_shadows && read_on("RayTracedUnitsOutOfView", false);
+  // Attila's Smooth Banner Shadows (RT_SHEETS_UNSELFED: the cloth the pixel shows doesn't shade itself) and Grass Shadow Range
+  // (rays from pixels farther than it pass the grass), both the helper's.
+  ray_tracing.sheets_unselfed = read_on("RayTracedSheetsUnselfed", false);
+  read_float("RayTracedGrassShadowRange", 0.f, 0.f, 200.f, &ray_tracing.grass_shadow_range);
   ray_tracing.ambient_occlusion = read_on("RayTracedAmbientOcclusion", false);
   read_float("RayTracedAmbientRange", 2.f, 0.25f, 5.f, &ray_tracing.ambient_range);
   ray_tracing.ambient_rays = read_count("RayTracedAORays", 2, 1, 8);
   ray_tracing.ambient_quarter = read_on("RayTracedAOQuarter", false);
+  // Attila's AO under Ray Reconstruction: 1 REBLUR (RT_AO_REBLUR, only while Ray Reconstruction runs), 0 the light history.
+  ray_tracing.ao_reblur = read_on("RayTracedAoReblur", false);
   ray_tracing.reflections = read_on("RayTracedReflections", false);
   ray_tracing.specular_occlusion = read_on("RayTracedSpecularOcclusion", false);
   ray_tracing.water_reflections = read_on("RayTracedWaterReflections", false);
