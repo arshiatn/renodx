@@ -2099,7 +2099,7 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (twattila/graphics_page.hpp, as Attila's and Rome II's), ATN's RT/PT preset as the defaults of
   // what the methods leave, then Settings Mode's pages. Light Through Foliage, both Smoke Shadows, Water Caustics and the
   // sprite soldiers' and far trees' ray-traced shadows Experimental (no run has shown them here); Light Through All Banners
-  // off (no trace has drawn the unit banners).
+  // off (no trace has drawn the unit banners). RT/PT sets them all as Attila's does (ATN 2026-11-14).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     if (setting->key == "RayTracedSmokeShadows" || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows"
@@ -2119,7 +2119,8 @@ void ConfigureAddon() {
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
-                                             .banner_light_tested = false});
+                                             .banner_light_tested = false,
+                                             .rays_preset_as_attila = true});
   // Faster Game CPU Code (engine_code_row) and Water Caustics Experimental, off.
   for (auto* setting : settings) {
     if (setting->key != "FasterGameCpuCode" && setting->key != "WaterCaustics") continue;

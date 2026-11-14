@@ -2137,8 +2137,7 @@ void ConfigureAddon() {
   // leave, then Settings Mode's pages. Only what this game hooks: no water pass for the rays (its rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it, Far Tree Shadows and Smoke Shadows start off (Experimental: no game run has shown
-  // them here yet), Specular Occlusion too; RT/PT turns all but the smoke (smoke_shadows_tested) and the far trees on
-  // (far_cards_tested), as ATN's list does.
+  // them here yet), Specular Occlusion too; RT/PT turns them on, as Attila's (rays_preset_as_attila).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
         || setting->key == "RayTracedSpecularOcclusion") {
@@ -2196,6 +2195,7 @@ void ConfigureAddon() {
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
+                                             .rays_preset_as_attila = true,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
