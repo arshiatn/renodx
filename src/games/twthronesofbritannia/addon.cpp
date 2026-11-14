@@ -1276,6 +1276,7 @@ float big_battle_fix = 0.f;
 float small_soldiers_as_sprites = 0.f;
 float sprite_size = 20.f;  // pixels on screen
 float shadow_map_size = 0.f;  // the game's sizes x 2^this (graphics_hooks.hpp shadow_map)
+float shadow_cascades_row = 0.f;  // Two Shadow Cascades Under Rays (graphics_hooks.hpp shadow_map)
 float shadow_pass_row = 0.f;  // Skip the Game's Shadow Map Work (twattila/shadow_pass.hpp)
 tw::engine_tweaks::Option dead_units;
 tw::engine_tweaks::Option unit_animation;  // shared pose
@@ -1644,9 +1645,11 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   // settings[3]->default_value = renodx::utils::swapchain::ComputeReferenceWhite(peak.value());
 }
 
-// The shadow map size, before the game builds its shadows.
+// The shadow map size and cascades, before the game builds its shadows.
 void OnInitDevice(reshade::api::device*) {
-  twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size), false);
+  twattila::graphics_hooks::shadow_map::Install(
+      std::exp2(shadow_map_size),
+      shadow_cascades_row != 0.f && twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).shadows_only);
 }
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
@@ -1691,7 +1694,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::THRONES);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
-  twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), false);
+  twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
       {
           .unit_detail = {unit_detail[0].scale, unit_detail[1].scale, unit_detail[2].scale, unit_detail[3].scale},
@@ -1990,6 +1993,17 @@ void ConfigureAddon() {
           .tooltip = "Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
                      "with it). More video memory. Applies after a restart.",
           .labels = {"2048 (Game's)", "4096", "8192"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedShadowCascades",
+          .binding = &shadow_cascades_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Two Shadow Cascades Under Rays (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows: the game prepares 2 shadow cascades, as at Shadows Medium, instead of 4.\n"
+                     "The rays shadow instead; faster in forests. Applies after a restart.",
+          .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedSkipShadowPass",

@@ -15,6 +15,7 @@ Attila's fixes for the game's other builds, the same bytes here (Thrones' files 
 
 - Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
 - Round 2 (built only, not run in game): **Rarer Objects in the Rays (Experimental, off; the rays' More Options)**, as Attila's: with the game's Tessellation on its tessellated objects, and the ropes, cast ray-traced shadows (Attila's capture shaders: the game's bytes are Attila's). Offline: `tw_attila_builds -Game twthronesofbritannia` (T, R, Q on WARP).
+- Round 2 (built only, not run in game): **Two Shadow Cascades Under Rays (Experimental, off; the rays' More Options, applies after a restart)**, as Attila's: with ray-traced shadows the game prepares 2 shadow cascades, as at Shadows Medium, instead of 4 (Shadows Max) or 3 (High). The same shadow setup code as Attila's: `tw_unit_shadows` parts 6 / 7 now also over Thrones' `empire.retail.dll`.
 
 The rest of Attila's page and shader fixes this game can take (table: tools/tw/thrones/parity_1114.md).
 
