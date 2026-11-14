@@ -31,7 +31,7 @@ Project workflow skills live under `.agents/skills/<name>/SKILL.md`. When a requ
 - `analysis-graphing` - dark-theme plots, curve comparisons, hue sweeps, LUT statistics, and other analysis figures.
 - `hdr-test-pattern-generation` - deterministic SDR/HDR ramps, charts, sweeps, color bars, and synthetic validation images.
 - `bt2020-png-generation` - BT.2020/BT.2100 PQ PNG output, cICP/ICC signaling, and HDR PNG validation.
-- `game-port-method` - the engine-neutral port method for any game (Total War, UE4, CryEngine): proof levels, the maintainer's rules, measurement, test lists, agents and tools, helper and bridge, fast draw dispatch, UE4 and CryEngine notes, the HDR-only snapshot release check.
+- `game-port-method` - the engine-neutral port method for any game (Total War, UE4, CryEngine): proof levels, the maintainer's rules, measurement, test lists, agents and tools, helper and bridge, fast draw dispatch, UE4 and CryEngine notes, the HDR-only snapshot release check, one add-on or two.
 - `tw-port-checklist` - bringing up a Total War game or porting, reviewing or debugging TW features: bring-up order, per-game facts, RT shadow coverage, AO/GI replacement, render scale and DLSS, helper, frame generation, stability, tests, release, shared `twattila` code.
 
 For human discoverability, `.agents/skills/README.md` summarizes the skills and their handoff boundaries.

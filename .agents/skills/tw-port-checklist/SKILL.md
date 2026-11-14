@@ -82,7 +82,7 @@ Non-TW games (Tales of Arise, Ryse, Expeditions: Rome and later ones) follow `ga
 
 - `twattila/rt_core.hpp` through a host's `scene_draw` and `main_view` (Ryse, Expeditions); the helper and `dlaa_bridge` (Ryse, Expeditions, and Shogun 2, a TW game with two addons); `psycho35_settings.hpp` and `credits.hpp` in every HDR addon.
 - The other way: `talesofarise_dlss/` (NGX, frame generation, pixel trace) is included by Attila and the helper, so a change there rebuilds both.
-- They have two addons each (HDR plus `_dlss`, graphics rows in the DLSS overlay), their own trace header (`talesofarise_dlss/frame_trace.hpp`) and tool folders beside `tools/tw` (`toa`, `ryse`, `exr`, `expeditions`, `shogun2`, `ingame`).
+- They have two addons each (`game-port-method`'s [addon-split.md](../game-port-method/references/addon-split.md)), their own trace header (`talesofarise_dlss/frame_trace.hpp`) and tool folders beside `tools/tw` (`toa`, `ryse`, `exr`, `expeditions`, `shogun2`, `ingame`).
 
 ## Checks by kind of change
 
