@@ -627,7 +627,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
       InstallThin, inside twattila/screen_space_shadows.hpp): an opt-in there or a Shogun copy. Owner: PARITY ROUND 3
   - [ ] PARITY ROUND 3 (one agent, p3_, started ~21:30): the three lines above, then parity_check over every game at HEAD
 - [ ] CPU ROUND 4 (cpu4_, started ~21:30): the five game-code items + author patches (memfast 65-127 B, loopfetch site,
-  x87 block question); writes bench variants + a run plan; the coordinator runs the Constantinople bench after it
+  x87 block question); writes bench variants + a run plan
+- [x] ATN 21:2x: Attila's number_of_threads set to 16 (ATN's preferences.script.txt 559f4696 -> 432ba846; fresh backup
+  tools/tw/attila_prefs_backup_20261114_211544); CPU Set rule 0-15 stays; the parallel sort is dropped
+- [ ] ATN 21:2x: ONE Constantinople bench after ALL CPU and GPU rounds of this batch (not after each): every round's
+  candidates as variants against heapfix P, then the CPU set vs affinity A/B. Owner: coordinator, before the install
     - [ ] caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
       so parity_check settles Rome Remastered's casters itself. Owner: coordinator, after parity round 2 (shared script)
 - Was: SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
