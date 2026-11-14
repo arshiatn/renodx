@@ -30,6 +30,7 @@
 #include "../twattila/ao_pass.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/light_count.hpp"
+#include "../twattila/particle_layer.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
@@ -47,13 +48,17 @@
 #include "../twattila/water_effects.hpp"
 #include "../twattila/water_reflections.hpp"
 #include "./more_tests.h"
+#include "./shadow_map.hpp"
 #include "./tweak_objects.hpp"
+#include "./vfx_brightness.hpp"
 #include "../twpharaohdynasties/trace_reads.hpp"
 // Pharaoh's outside-view geometry shaders (built bytes): Troy's shadow vertex shaders write the same outputs (SCENE_SHADERS).
 #include "../twpharaohdynasties/rt_outside_view_branch_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_card_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_world_gs.h"
+#include "../twwarhammer2/rt_outside_view_world_uv_gs.h"
+#include "./rt_outside_view_colour_world_uv_gs.h"
 #include "./rt_outside_view_leaf_gs.h"
 #include "./rt_particle_lights_gs.h"
 #include "./rt_particle_quads_gs.h"
@@ -69,6 +74,8 @@ namespace {
 
 ShaderInjectData shader_injection;
 float current_settings_mode = 0.f;
+// VFX Brightness (vfx_brightness.hpp, Experimental): the lit particles' colour x this.
+float vfx_brightness_row = 1.f;
 
 
 bool IsExtendedMode() {
@@ -149,6 +156,7 @@ void ApplyResetPreset() {
       {"vignette", 1.f},
       {"dof", 1.f},
       {"fog_strength", 1.f},
+      {"vfx_base_brightness", 1.f},
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
       {"some_indicators", 1.0f},
@@ -193,6 +201,7 @@ void ApplyPsychoRecommended() {
       {"vignette", 1.f},
       {"dof", 1.f},
       {"fog_strength", 1.f},
+      {"vfx_base_brightness", 1.f},
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
       {"some_indicators", 1.0f},
@@ -986,6 +995,17 @@ void BuildRuntimeData() {
         .format = "%.2f",
     },
     new renodx::utils::settings::Setting{
+        .key = "vfx_base_brightness",
+        .binding = &vfx_brightness_row,
+        .default_value = 1.f,
+        .label = "VFX Brightness (Experimental)",
+        .section = "Extra (Experimental)",
+        .tooltip = "Brightness of smoke, dust, fire and other particle effects, before the fog. 1 = the game's.",
+        .min = 0.f,
+        .max = 10.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
         .key = "chromaticaberration",
         .binding = &shader_injection.chromaticaberration,
         .default_value = 1.f,
@@ -1071,6 +1091,41 @@ void BuildRuntimeData() {
         .tooltip = "Smooths the sky's banding and adds fine dither.\n"
                    "Higher: removes wider bands, softens sky details more.",
         .labels = {"Off", "Low", "Medium", "High"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxHalfResolution",
+        .binding = &twattila::particle_layer::half_resolution_row,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Particle Resolution",
+        .section = "Extra (Experimental)",
+        .tooltip = "Smoke, fire and dust drawn at half or a quarter of the render's size.\n"
+                   "Much faster in big fires and smoke, softer particles.",
+        .labels = {"Full", "Half", "Quarter"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxFullResolutionEdges",
+        .binding = &twattila::particle_layer::edges_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 1.f,
+        .label = "Full-Resolution Particle Edges",
+        .section = "Extra (Experimental)",
+        .tooltip = "Smoke, fire and dust stay sharp against the outlines of units, trees and walls:\n"
+                   "drawn at full size there. Small cost.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxParticleSmoothing",
+        .binding = &twattila::particle_layer::smoothing_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Half-Size Particles",
+        .section = "Extra (Experimental)",
+        .tooltip = "Half-size smoke, fire and dust keep clean edges against units and flicker less.\n"
+                   "Small cost.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
     },
     new renodx::utils::settings::Setting{
         .key = "filmgrain",
@@ -1406,6 +1461,20 @@ twattila::smoke_map::Sliders smoke_map_sliders;
 // Texture LOD Bias on All Textures (Graphics 1 of 2, Experimental): the trilinear samplers too
 // (texture_lod_bias.hpp SetWrappingTrilinear).
 float lod_bias_trilinear_row = 0.f;
+// Shadow Map Size (shadow_map.hpp, Experimental): the highest Shadows setting's shadow map, an index into SHADOW_MAP_SIZES.
+float shadow_map_size = 0.f;
+constexpr std::array<uint32_t, 4> SHADOW_MAP_SIZES = {0, 8192, 12288, 16384};  // 0: the game's (6144)
+// Particle Resolution (twattila/particle_layer.hpp): Troy's lit particles are one instanced draw a frame (VS F5CE48CC with
+// 563BA3E8 in all 26 of ATN's traced frames with particles; its other lit permutations by name, vfx_brightness::HASHES),
+// blended over (one / inverse source alpha) into the display-size light buffer at the render size against the read-only
+// depth. The VS also draws their lights (643FC156) and decals (F591CEAE, 6195BD2C): the lit pixel shaders open the layer.
+// It goes in before the light buffer's next reader: the luma statistics (hdr_tone_mapper cs50_compute_luma_stats F9B80B32,
+// a dispatch: the first in all 26), the indicators drawn into it after the particles (indicator ps40_main_deferred 56D3757C:
+// 7 of 26, so they stay over them), else the tone mappers by name (ps_aces_tone_mapper 0C12E608 next in every trace;
+// basic, reinhard, constant, with bloom and gamma, its stencil alpha). tools/tw/troy/par_t_particle_order.txt.
+constexpr std::array<uint32_t, 7> PARTICLE_LAYER_READERS = {0x56D3757C, 0x0C12E608, 0xB18957BA, 0x36D6DB61,
+                                                            0x510F88E4, 0x6A0A3F5D, 0x34E339A1};
+constexpr std::array<uint32_t, 1> PARTICLE_LAYER_DISPATCH_READERS = {0xF9B80B32};
 // Shadow Casters Out of View and the hills' (Graphics 1 of 2, Experimental): SCENE_SHADERS' cascade_keep casters.
 float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
@@ -1471,7 +1540,16 @@ constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
     {.pixel_shader = 0x8A83B40C},  // rigidstandard gbuffer_alpha_test
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
+// The campaign's trees and plants (rigidcampaignvegetation vs40_main 04C7C807) draw twice: the depth prefill BD1C437E (t0.w)
+// and the G-buffer 74B2E609 (t2.w, both below 0.5 at (TEXCOORD0.w, TEXCOORD1.w) discarded): the G-buffer draw alone, its
+// diffuse map at t2. Its MSAA G-buffer EAEF01A9 stays out (no rays under the game's MSAA).
+constexpr std::array<twattila::rt_scene::PixelMask, 1> VEGETATION_MASKS = {{{.pixel_shader = 0x74B2E609, .slot = 2}}};
+// The campaign's trees (rigidcampaigntrees vs40_main 07321725) and their G-buffer 07295514: it discards where t0.w x a
+// dissolve map falls below the distance fade, and again against the angle to the camera; the rays cut at t0.w alone (the
+// helper's 0.5), as the campaign's plants. In no trace (level B: sessions 2 / 3 drew 54D2CFBD's forests).
+constexpr std::array<twattila::rt_scene::PixelMask, 1> CAMPAIGN_TREE_MASKS = {{{.pixel_shader = 0x07295514, .slot = 0}}};
+
+constexpr std::array<twattila::rt_scene::SceneShader, 39> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1493,6 +1571,14 @@ constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
     {.hash = 0x26A41B7D, .capture_shader = __rt_capture_unit_4_bones, .dynamic = true},
     {.hash = 0xB9B62F83, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
     {.hash = 0x3CEE34E8, .capture_shader = __rt_capture_unit_4_bones_dismember, .dynamic = true},
+    // The fur-clad units (weighted4_fur_alpha EE95696C: 26A41B7D's skinning plus the fur's sway; the census's NOT HELD,
+    // in no trace): level B, WARP test\tw_troy_shaders.
+    {.hash = 0xEE95696C, .capture_shader = __rt_capture_unit_4_bones_fur, .dynamic = true},
+    // The sails (sail.hlsl vs40_main 18CE6F5A; in no trace, level B): thin, captured every frame (the CPU moves them), as
+    // Attila's. Their emblems (sailsymbol 592E666F) lie on them: left out (a second capture of the same cloth). The ropes
+    // (rope 5F79A748 / 88D8E9E9) are ribbons turned to the camera: edge-on to the sun, no shadow from the main pass's
+    // (Attila leaves its 8D0D26B9 out too).
+    {.hash = 0x18CE6F5A, .capture_shader = __rt_capture_sail, .dynamic = true, .thin = true},
     {.hash = 0x0AF83680, .capture_shader = __rt_capture_grass_0af8, .dynamic = true, .foliage = true, .grass = true},
     // The drawn grass (grass.hlsl vs40_main: 2026-10-27's battle, 7 draws, 9.7 M indices; ATN's 2026-11-14 traces), its UV
     // at o2.xy (TEXCOORD0; Pharaoh's twin E710D4E7 has it at o3).
@@ -1503,14 +1589,37 @@ constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
     // game's start distance or under the shroud; no shadow-pass draw, so only with Far Tree Shadows): turned to the sun, their
     // alpha DAEF2EEF's t0 (below 0.5 discarded, as the helper's cut-out). Its vertex shader reads the shroud at t0: rt_sun at t1.
     {.hash = 0xDF8EAF69, .capture_shader = __rt_capture_campaign_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .sun_slot = 1, .far_tree = true},
+    // The campaign's trees and plants (rigidcampaignvegetation vs40_main 04C7C807: ATN's campaign traces, 10 of 33, 18 draws
+    // a frame), every frame as drawn (their wind and their lean toward a high camera), Warhammer II's 41147CD3 capture made
+    // again from Troy's bytes (rt_capture_campaign_vegetation: the camera at b0, the wind at b1). WARP: test\tw_troy_shaders.
+    {.hash = 0x04C7C807, .capture_shader = __rt_capture_campaign_vegetation, .dynamic = true, .foliage = true, .pixel_masks = VEGETATION_MASKS},
+    {.hash = 0x07321725, .capture_shader = __rt_capture_campaign_trees, .foliage = true, .pixel_masks = CAMPAIGN_TREE_MASKS},
     // The shadow pass's casters (the 6144 x 6144 R32 atlas, 2 x 2 cascades; its vertex shaders' view-projection at cb0[9-12]):
     // what is out of the main view still casts there (Pharaoh's rt_outside_view geometry shaders: each variant's input is a
     // prefix of these vertex shaders' outputs, fxc /dumpbin, and their world position is that output: tools\tw\troy\
     // troy_signatures.txt, troy_output_writes_casters.txt). Every frame as drawn; far cards cut out by 9004F948's t2, leaves by
     // 3372DE0B's t0 (t_diffuse_map). Troy's leaves write no TEXCOORD4: their variant without it (RT_NO_FADE, our own header).
     {.hash = 0xA295269F, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_leaf},
+    // The placed grass in the shadow pass (rigidgrass vs40_shadow_grass 62E0F935; its main pass 0AF83680 held; in no trace,
+    // level B): TEXCOORD0 the world its SV_Position is made from (o1 = r0), TEXCOORD1 the UV (o2 = v1.xy) of 6B93F8A7's t0
+    // test: Warhammer II's RT_WORLD_UV (its input a prefix of these outputs). That test also weighs the alpha by the blade's
+    // angle to the light and a dissolve map; the rays cut at the alpha alone, as the main pass's grass.
+    {.hash = 0x62E0F935, .dynamic = true, .foliage = true, .grass = true, .cascade_keep = __rt_outside_view_world_uv},
+    // The campaign's trees and plants in the shadow pass (rigidcampaignvegetation vs40_shadow 42093D29: 6 of 33 traces): Warhammer
+    // II's 7D979F60 signature, TEXCOORD0 the world (w the fade 9F6D9081 dithers by: left out), TEXCOORD1 the UV of its t0 test.
+    {.hash = 0x42093D29, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
+    // The sails in the shadow pass (sail.hlsl vs40_depth F4B04EF3; level B): SV_Position, then TEXCOORD0 the world (o1 = r0).
+    {.hash = 0xF4B04EF3, .dynamic = true, .thin = true, .cascade_keep = __rt_outside_view_world},
+    // The campaign's trees in the shadow pass (rigidcampaigntrees vs40_shadow 5192C0BA; in no trace, level B): COLOR0 first,
+    // then TEXCOORD0 the world (w POSITION0.w), TEXCOORD1 the UV of 07295514's t0 test: RT_WORLD_UV with RT_COLOUR.
+    {.hash = 0x5192C0BA, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_colour_world_uv},
     {.hash = 0xAF7C4636, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0xC8DA195D, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    // The campaign's terrain tiles in the shadow pass (rigidterrain vs41_shadow_new 0D70D820: ATN's campaign traces, 10 of
+    // 33, depth only; its main pass 981F929B held): AF7C4636's output signature (fxc /dumpbin), TEXCOORD0 the world its
+    // SV_Position is made from (o1 = r2, o0 = r2 x cb0[9-12]). Its siblings vs41_custom_geom_shadow 38232691 and
+    // geometry_41_global_shadow 86308DEA write SV_Position alone: no world for these geometry shaders (left out).
+    {.hash = 0x0D70D820, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0x83A7A039, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0xCB8BA7B6, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0xAEE2A80A, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
@@ -1648,6 +1757,11 @@ constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {
     {.shader_hash = 0xE885C018, .gbuffer_slot = 6, .camera_slot = 1, .lighting_slot = 3, .sun_direction = 4, .ao_slot = 4},  // skinlm_interior
 }};
 
+// The shadow map size, before the game builds its shadows (Pharaoh's place).
+void OnInitDevice(reshade::api::device*) {
+  twtroy::shadow_map::Install(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
+}
+
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
@@ -1660,6 +1774,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f, false, (shader_injection.ssao_resolution != 0.f) ? 2.f : 1.f,
                             false);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  twattila::particle_layer::Update(swapchain);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
   static uint32_t ao_frame = 0;
@@ -1686,12 +1801,14 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     smoke_map_settings.strength = 0.f;
   }
   twattila::smoke_map::Update(smoke_map_settings);
+  twtroy::vfx_brightness::Update(vfx_brightness_row);
   rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
+  twtroy::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
   twattila::light_count::OnPresent(rt_sliders.debug_log != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
@@ -1877,6 +1994,18 @@ void ConfigureAddon() {
   }
   graphics_options = {};
   for (auto& test : engine_tests) graphics_options.push_back(&test.option);
+  // graphics_page moves it under Shadows (shown with the game's shadow maps); its presets leave it alone.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "GraphicsShadowMapSize",
+      .binding = &shadow_map_size,
+      .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+      .default_value = 0.f,
+      .label = "Shadow Map Size (Experimental)",
+      .section = "Graphics (Experimental)",
+      .tooltip = "Sharper sun shadows that flicker less, at the highest Shadows setting. More video memory\n"
+                 "(16384: 1 GB or more). Applies after a restart or after changing the game's Shadows option.",
+      .labels = {"6144 (Game's)", "8192", "12288", "16384"},
+  });
   graphics_status = tw::engine_tweaks::StatusLine();
   settings.push_back(graphics_status);
 
@@ -2062,6 +2191,7 @@ bool AttachAddon() {
   ConfigureAddon();
 
   twattila::device_loss::Install();
+  reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
@@ -2086,6 +2216,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twtroy::vfx_brightness::OnDestroyDevice);
   // Water Clarity and Caustics: every row a material water (the patched copy swapped in at the draw), as Pharaoh's.
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
@@ -2210,11 +2341,18 @@ bool AttachAddon() {
   // Log Details' light count: the point lights and the night siege's fires (particle lights 643FC156, VS F5CE48CC: one draw,
   // 192k indices in ATN's session 2; Pharaoh's 5AD46115).
   twattila::light_count::Install(0x143A02ED, 0x643FC156);
+  // After view_share's (anti_aliasing::Install): the particle shaders it patched first keep their game hash.
+  twtroy::vfx_brightness::Install();
   twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Smoke Shadows without rays: the smoke's dimming into the sun draws' t49 (their x(1 - t49) patch), after the rays' occlusion.
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
+  // Last on the particle draws: the smoke's capture, VFX Brightness (its cb7) and view_share's render scale see the game's
+  // targets and camera; the camera's target size at c31 (Troy's camera_VS_PS: g_viewport_origin at c30).
+  twattila::particle_layer::Install(twtroy::vfx_brightness::HASHES, PARTICLE_LAYER_READERS,
+                                   {.dispatch_readers = PARTICLE_LAYER_DISPATCH_READERS, .render_target_dimensions = 31});
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
 
   reshade::register_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
   twattila::device_loss::InstallLast();
@@ -2228,6 +2366,7 @@ void DetachAddon() {
 
   twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
@@ -2241,6 +2380,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twtroy::vfx_brightness::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
   twattila::water_reflections::Uninstall();
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
@@ -2257,6 +2398,9 @@ void DetachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
   twattila::smoke_map::Uninstall();
+  twattila::particle_layer::Uninstall();
+  twtroy::vfx_brightness::Uninstall();
+  twtroy::shadow_map::Uninstall();
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();
 

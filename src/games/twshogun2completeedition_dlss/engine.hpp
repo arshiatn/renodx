@@ -17,9 +17,12 @@
 // unchanged): the code the addon hooks or patches is found by byte patterns.
 namespace twshogun2::engine {
 
+inline const wchar_t* ModuleName() {
+  return (GetModuleHandleW(L"empire.retail.x64.dll") != nullptr) ? L"empire.retail.x64.dll" : L"CE.dll";
+}
+
 inline HMODULE Module() {
-  HMODULE module = GetModuleHandleW(L"empire.retail.x64.dll");
-  return module != nullptr ? module : GetModuleHandleW(L"CE.dll");
+  return GetModuleHandleW(ModuleName());
 }
 
 // The first match of a byte pattern ("48 8B ?? ...") in the engine's executable sections, or null.

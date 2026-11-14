@@ -895,3 +895,62 @@ untested).
 Checks: both addons build (x64); test/tw_shogun2_shaders PASS with new parts 14 (auto exposure against the game's cso), 15
 (the three indicators bit for bit), 16 (campaign overlay 33% against 100%), water rows in 8-9 and the naval casters in 11;
 static_checks 0 findings. No shared code changed.
+
+### Parity round 3 (2026-11-14; built only, not run in game)
+
+On atn-mods 16126f41, with ATN's rule for the round (every setting, not only the highest: a pass or quality level his
+settings don't draw is still ported where its bytes prove it). Table: tools/shogun2/pkg_1114/parity_1114.md, now HAVE 45
+(3 also DO NOW done), DO NOW 22 of which 17 done, NEEDS A TRACE 3, WON'T GET 14, not mine 1.
+
+- **RT/PT as Attila's**: Torch and fire light in fog 1, Water caustics 1 (and Water clarity 1) in RAYS_PRESET; the rows stay
+  Experimental and off by default. games_compare against Attila after RT/PT: only the per-game rows [d8c055e5].
+- **Ray-traced smoke shadows** + **Smoke shadow quality** (Experimental, off; Attila's keys, RT/PT 1 / Ultra as Attila's):
+  rt_core's particle capture with a quad geometry shader for the particles' vertex shader BEA3F2D4 (a quad an instance: one
+  record from its first triangle), the lit draws those with 3D0BC5F1 [06e73078]. Its hook is now removed on Uninstall, and
+  the screen splats (F3018626 with BE1EFFF5: clip space, no world position) are out of its list [993d6a0a].
+- **Ray-Traced Water Reflections, Water clarity, Water caustics at every water quality**: the sea's low and medium (ocean02
+  5487502A, ocean03 E73D4A5E) and the rivers' and lakes' low (waterplane01 892D56F9, drawn in the low trace) replaced as
+  their high siblings; the caustics code shared by both water planes (shaders/water.hlsli) [48b168e7].
+- **Shadow casters out of view** for what the data run never drew: burning buildings (124C85A5, placed as AC25DAB8),
+  wind-swayed meshes (EDCD8445), soldiers drawn without the animation map (1E0425DE), grass with the in-game grass shadows
+  on (F6CBD06E, masked) [2a7c2c95], and the other far tree cards (rigidtreebillboard_3k 63E273F4) [a9cc5307].
+- **Engine values** (DLSS addon, Graphics, Experimental, Attila's keys): Plant Wind Sway, Rope Distance, Shadow Cascade Blend,
+  Campaign Sun Camera Depth, Campaign Cloud Distance, each x the game's; a reader for Shogun's tweak form
+  (twshogun2completeedition_dlss/tweak_objects.hpp: the value at object + 0xb8) [c8f33535].
+
+Test lines:
+1. RT/PT, then a night battle with torches in fog: Torch and fire light in fog on; the glow not too bright.
+2. RT/PT, battle with burning buildings, Ray-traced smoke shadows on: the smoke dims the sun's light on the ground under it;
+   no dark squares, no flicker; Smoke shadow quality Low / Maximum changes holes in thick smoke.
+3. In-game water quality Low, then Medium: a sea battle and a river battle with Ray-traced water reflections on: the
+   reflections as at High; Water clarity 4 / Water caustics 1 on the river as at High.
+4. Shadow casters out of view on, a siege with burning buildings behind the camera: their shadows stay when the camera turns.
+5. In-game grass shadows on, Shadow casters out of view on: grass shadows from behind the camera, no blocky squares.
+6. In-game tree detail at its other setting (the 3k far cards): far tree shadows from behind the camera, not misplaced.
+7. Engine values: Rope Distance 4 in a naval battle (ropes drawn farther), Plant Wind Sway 2 (grass and trees bend more),
+   Shadow Cascade Blend 2 (softer seams between shadow distances), Campaign Cloud Distance 2 on the campaign map.
+
+Not done (what, why, smallest step):
+- SSS Softness and Softer away from the caster: Shogun's Bend writes the sun's mask inside the game's sss00 / sss01 with the
+  cascades in it, so a blur after it would soften the cascades too, and Softer away needs Bend's hit distance (extended
+  FindHit) out of that pass: bigger than the item. Step: a second UAV from sss.hlsli with Bend's occlusion alone (and its
+  penumbra), then Attila's sss_soft on it before the cascades multiply in. Coloured, banner light and debug view after it.
+- Particle edges and smoothing: WH2's particle_smoothing pass on the particle target that vfxoverlay00 (3C9BC2F9) reads,
+  before it composites (a command_action on 3C9BC2F9, Experimental off).
+- Sharpening: a CAS compute on a copy of the game's DLSS evaluate output (game_dlss.hpp's evaluate hook) or the helper's,
+  Extra Sharpness as Attila's, off.
+- AO temporal / denoise: Attila's ao_pass.hpp temporal on Shogun's AO output (ssao01 98BB1159's result, WH2's
+  line_sweep_ao.hpp has no temporal path), off.
+- Terrain out of view (18C15273): won't get: its pixel shader 5D425E22 writes z / w into a colour target, no cascade draw (the
+  traces' shadow passes draw no terrain tile).
+- TAA (86DEC3DF / B8BF0C82) below 100%: won't get: the render scale runs only with the game's DLSS, which the game runs in
+  place of TAA (traces debug2: TAA jitters, DLSS not), so TAA never runs below 100%.
+
+Page dump (page_s2_r3e.txt, against page_s2_after2.txt): new rows RayTracedSmokeShadows, RayTracedSmokeQuality,
+GraphicsPlantSway, GraphicsRopeDistance, GraphicsShadowCascadeBlend, GraphicsCampaignSunCameraDepth, GraphicsCampaignClouds
+and the engine values' status line (Advanced). Against Attila after RT/PT: only AntiAliasingRayReconstruction,
+RayTracedAmbientOcclusion, RayTracedLightBounce, SwapChainEncoding, hue_clip and peak_white_nits (per game).
+
+Checks: both addons build (x64); test/tw_shogun2_shaders PASS with part 17 (the quad shader), parts 8-9 for all six water
+shaders, parts 10-11 for the five new casters; test/tw_shogun2_tweaks PASS (new: the reader on the game's DLL, read only,
+against capstone's list). No shared code changed.

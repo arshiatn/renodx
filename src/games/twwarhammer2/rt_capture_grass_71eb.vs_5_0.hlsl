@@ -1,6 +1,8 @@
 // Attila world_uv_o3 motion (anti_aliasing.hpp): the game's 0x71EB7463 with its world position and UV for ray tracing's stream output
 // (rt_scene.hpp).
 // Made by tools\tw\attila_motion\make_wind_motion_vs.py.
+// Grass Height Distance (SI.grass_height_distance) as the game's grass00: tools/tw/wh2/par_w2_make_grass.py.
+#include "./shared.h"
 
 cbuffer camera : register(b0)
 {
@@ -113,7 +115,7 @@ void GameMain(
   r0.xyz = -camera_position.xyz + r0.xyz;
   r0.x = dot(r0.xyz, r0.xyz);
   r0.x = sqrt(r0.x);
-  r0.x = saturate(g_inv_lod_distance * r0.x);
+  r0.x = saturate(GRASS_INV_DISTANCE(g_inv_lod_distance) * r0.x);  // RenoDX: Grass Height Distance
   r0.y = saturate(v4.w);
   r0.x = r0.y * -r0.x + 1;
   r0.y = 0.600000024 + v0.y;

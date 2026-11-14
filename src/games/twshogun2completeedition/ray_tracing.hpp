@@ -16,6 +16,7 @@
 #include <mutex>
 #include <span>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <include/reshade.hpp>
@@ -31,6 +32,7 @@
 #include "../twattila/rt_core.hpp"
 #include "../twpharaohdynasties/rt_outside_view_leaf_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_world_gs.h"
+#include "./rt_particle_quads_gs.h"
 #include "../twwarhammer3/rt_outside_view_gs.h"
 #include "./upscaling.hpp"
 
@@ -96,8 +98,13 @@ constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
 // had these two families in view only, and rigidambientmapmesh_mtb's (7B067623: 4 of the naval traces; AC25DAB8 with a TEXCOORD1
 // it never reads) placed as AC25DAB8's. Ships' sails and sail symbols (A42F9EDE / F7EDF855: their mesh by the draw's world_matrix
 // at b1; F7EDF855 20 draws, 34K corners in the naval trace) masked as their pixel shader's first test, ropes (4E3EE717: ribbons
-// turned to the shadow camera, solid) world alone.
-inline const std::array<twattila::rt_scene::SceneShader, 12> SCENE_SHADERS = {{
+// turned to the shadow camera, solid) world alone. Drawn in none of the data run's traces (other settings and scenes; their
+// capture versions tested against the game's csos): burning buildings (rigidburning / rigidburningpanel 124C85A5: AC25DAB8's
+// inputs and rows, placed as it), wind-swayed rigid meshes (rigidvertexwind EDCD8445) and soldiers drawn without the animation
+// map (variantweighted 1E0425DE: bones from its matrix stack at b1) world alone, and grass with the in-game grass shadows on
+// (rigidgrass F6CBD06E: its shrink and sway from the pass's camera) masked as its pixel shader's test, and the other far tree
+// cards (rigidtreebillboard_3k 63E273F4: g_num_billboard_faces views in its atlas) as 30C453EE's.
+inline const std::array<twattila::rt_scene::SceneShader, 17> SCENE_SHADERS = {{
     {.hash = 0xAC25DAB8, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
     {.hash = 0x7B067623, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
     {.hash = 0xB0E006EE, .capture_shader = __rt_capture_cascade_variant, .rows_shader = __rt_rows_cascade_variant, .moving = true,
@@ -120,13 +127,30 @@ inline const std::array<twattila::rt_scene::SceneShader, 12> SCENE_SHADERS = {{
      .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
     {.hash = 0x4E3EE717, .capture_shader = __rt_capture_cascade_rope, .dynamic = true, .cascade_keep = __rt_outside_view_world,
      .cascade_world = true},
+    {.hash = 0x124C85A5, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
+    {.hash = 0xEDCD8445, .capture_shader = __rt_capture_cascade_wind, .dynamic = true, .cascade_keep = __rt_outside_view_world,
+     .cascade_world = true},
+    {.hash = 0x1E0425DE, .capture_shader = __rt_capture_cascade_weighted, .dynamic = true, .cascade_keep = __rt_outside_view_world,
+     .cascade_world = true},
+    {.hash = 0xF6CBD06E, .capture_shader = __rt_capture_cascade_grass, .dynamic = true, .foliage = true, .grass = true,
+     .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
+    {.hash = 0x63E273F4, .capture_shader = __rt_capture_cascade_far_tree_3k, .dynamic = true, .foliage = true, .sun_facing = true,
+     .far_tree = true, .mask_slot = 1, .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
 }};
+// Smoke Shadows (Experimental): the particles' vertex shader (particle.hlsl particle_vertex_30, BEA3F2D4: a quad an instance)
+// through rt_particle_quads (one record an instance), the lit draws those with volumetric_particle_alpha 3D0BC5F1 (texture
+// t0, sampler s3 as the quad shader reads them); the fire glow (40744308) and distortion (E9F802DE) draws with the same vertex
+// shader cast nothing. The alpha splats (F3018626) draw with particle_screen_splat_vertex_30 (BE1EFFF5: clip xy straight from
+// its vertices, no world position; trace root_d24): smoke on the screen, nothing to cast.
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{{.hash = 0xBEA3F2D4, .quad_shader = __rt_particle_quads}}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADERS = {{{.hash = 0x3D0BC5F1}}};
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).
 constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0x5CBF4FB6, 0x57139F8D};
 // The battle fog's light (fog01, battlefog ps40_main_inscattering: the sun's part through rt_fog.hlsli's RtFogSun).
 constexpr uint32_t FOG_LIGHT_SHADER = 0x4355E897;
-// The battles' rivers and lakes (waterplane ps30_battle_high / medium / ultra_water_quality): Ray-Traced Water Reflections.
-constexpr uint32_t WATER_PLANE_SHADER = 0x9B9EC116;
+// The battles' rivers and lakes (waterplane ps30_battle_high / medium / ultra_water_quality, ps30_battle_low_water_quality):
+// Ray-Traced Water Reflections.
+constexpr std::array<uint32_t, 2> WATER_PLANE_SHADERS = {0x9B9EC116, 0x892D56F9};
 
 namespace internal {
 
@@ -602,13 +626,13 @@ inline void KeepColor(reshade::api::command_list* cmd_list) {
   bridge.color_square_root = false;
 }
 
-// Ray-Traced Water Reflections (Experimental): the sea (ocean high 16ADFD60, ultra 6B8954A6) and the battles' rivers and
-// lakes (waterplane, 9B9EC116) are drawn forward after the reflections with no G-buffer of their own. Before the reflections' first pass
-// (ssrhiz00: its t0 the depth, b0 the camera), with water drawn in the last frame, the water planes' meshes are drawn
+// Ray-Traced Water Reflections (Experimental): the sea (ocean low 5487502A, medium E73D4A5E, high 16ADFD60, ultra 6B8954A6) and
+// the battles' rivers and lakes (waterplane, 9B9EC116 and low 892D56F9) are drawn forward after the reflections with no
+// G-buffer of their own. Before the reflections' first pass (ssrhiz00: its t0 the depth, b0 the camera), with water drawn in the last frame, the water planes' meshes are drawn
 // again depth-only with this frame's camera (OnWaterDraw's records) and rt_water_plane puts the sea's plane and them into a
 // copy of the depth with the water's guides and a mask; the reflections are traced from it (rt_core Reflections: the
 // positions again). The resolve leaves the mask's pixels to the environment (shaders/ssrresolve00), the water takes the
-// rays' reflection there (shaders/ocean00, waterplane00).
+// rays' reflection there (shaders/ocean00-03, waterplane00-01).
 inline void WaterSurface(reshade::api::command_list* cmd_list) {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
@@ -766,9 +790,9 @@ inline void BindWaterMask(reshade::api::command_list* cmd_list, bool compute, bo
   }
 }
 
-// The sea's draw (ocean high 16ADFD60, ultra 6B8954A6): its plane for the next frame's WaterSurface (ocean_VS at VS b1:
+// The sea's draw (ocean low 5487502A, medium E73D4A5E, high 16ADFD60, ultra 6B8954A6): its plane for the next frame's WaterSurface (ocean_VS at VS b1:
 // c1, g_decal_ocean_projection_plane, taken with its normal up), the rays' reflections (b10, t46 / t47) and the water mask
-// for its pixel shader (shaders/ocean00, 01); `bind` false after it: unbound.
+// for its pixel shader (shaders/ocean00-03); `bind` false after it: unbound.
 inline void OnSeaDraw(reshade::api::command_list* cmd_list, bool bind) {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
@@ -789,9 +813,9 @@ inline void OnSeaDraw(reshade::api::command_list* cmd_list, bool bind) {
   BindWaterMask(cmd_list, false, bind);
 }
 
-// A battle water plane's draw (waterplane high / medium / ultra, 9B9EC116; the main view's, with the reflections and the
+// A battle water plane's draw (waterplane high / medium / ultra 9B9EC116, low 892D56F9; the main view's, with the reflections and the
 // water's on): kept for the next frame's WaterSurface (internal::WaterDraw), the rays' reflections and the water mask bound
-// for its pixel shader (shaders/waterplane00), unbound after.
+// for its pixel shader (shaders/waterplane00, 01), unbound after.
 constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
   constexpr bool INDEXED = std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>;
@@ -867,7 +891,18 @@ constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::u
 
 // Before the Light Bounce's sun draw hooks (registration order: this frame's trace first). `casters_out_of_view`: SCENE_SHADERS
 // listed (off: none, the scene as before: no listed draws, the captured buffer's clip-space room whole).
-inline void Install(bool casters_out_of_view) {
+// rt_scene.hpp's OnParticleDraw (this host can't include rt_scene.hpp): named, so Uninstall can remove it (the shared
+// command_action registry outlives this module).
+constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (twattila::rt_scene::internal::active.load(std::memory_order_relaxed) || twattila::rt_scene::internal::runtime.settings.stream_particles) {
+    twattila::rt_scene::internal::CaptureParticles(command);
+  }
+  return {};
+};
+inline bool smoke_shadows_installed = false;
+
+// `smoke_shadows`: rt_scene.hpp's InstallSmokeShadows' steps on rt_core's statics (off: no particle hook, as before).
+inline void Install(bool casters_out_of_view, bool smoke_shadows) {
   expeditionsrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
   twattila::rt_scene::InstallScene(casters_out_of_view ? std::span<const twattila::rt_scene::SceneShader>(SCENE_SHADERS)
                                                        : std::span<const twattila::rt_scene::SceneShader>(),
@@ -885,8 +920,20 @@ inline void Install(bool casters_out_of_view) {
   }
   renodx::utils::command_action::Register(
       internal::OnFogDraw, {.shader_hash = FOG_LIGHT_SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
-  renodx::utils::command_action::Register(
-      OnWaterDraw, {.shader_hash = WATER_PLANE_SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  for (const uint32_t shader_hash : WATER_PLANE_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnWaterDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
+  if (smoke_shadows) {
+    smoke_shadows_installed = true;
+    twattila::rt_scene::internal::smoke_vertex_shaders = SMOKE_VERTEX_SHADERS;
+    twattila::rt_scene::internal::smoke_pixel_shaders = SMOKE_PIXEL_SHADERS;
+    if (!twattila::rt_scene::internal::clip_captures) {
+      reshade::register_event<reshade::addon_event::init_pipeline>(twattila::rt_scene::internal::OnInitPipeline);
+    }
+    renodx::utils::command_action::Register(
+        OnParticleDraw, {.shader_hash = SMOKE_VERTEX_SHADERS[0].hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 }
 
 inline void Uninstall() {
@@ -894,6 +941,12 @@ inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnPointLightDraw);
   renodx::utils::command_action::Unregister(internal::OnFogDraw);
   renodx::utils::command_action::Unregister(OnWaterDraw);
+  if (std::exchange(smoke_shadows_installed, false)) {
+    renodx::utils::command_action::Unregister(OnParticleDraw);
+    if (!twattila::rt_scene::internal::clip_captures) {
+      reshade::unregister_event<reshade::addon_event::init_pipeline>(twattila::rt_scene::internal::OnInitPipeline);
+    }
+  }
   twattila::light_bounce::SetRayTracedTrace(nullptr);
   twattila::rt_scene::internal::sun_colour = 0;
   twattila::rt_scene::UninstallScene();

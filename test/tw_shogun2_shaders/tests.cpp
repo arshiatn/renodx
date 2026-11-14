@@ -9,16 +9,19 @@
 // 3. upscale_output and its Upscaling Debug View (TestOutput).
 // 4. sss_foliage_depth, Light Through Foliage's depth (TestFoliage).
 // 5-6. rt_capture_tree_billboard and rt_capture_imposter against the game's csos (TestBillboard, TestImposter; their folder third).
-// 7. rt_water_plane (TestWaterPlane). 8-9. ocean00 / 01 and waterplane00 against the game's csos (TestWaters).
-// 10. rt_capture / rt_rows_cascade_rigid and _variant against the game's 0xAC25DAB8 / 0x7B067623 / 0xB0E006EE (TestPlacedShadow).
+// 7. rt_water_plane (TestWaterPlane). 8-9. ocean00-03 and waterplane00-01 against the game's csos (TestWaters).
+// 10. rt_capture / rt_rows_cascade_rigid and _variant against the game's 0xAC25DAB8 / 0x7B067623 / 0x124C85A5 / 0xB0E006EE
+//     (TestPlacedShadow).
 // 11. rt_capture_cascade_cloth / imposter / tree / far_tree / unit through Pharaoh's outside-view geometry shaders against the
 //     game's 0x8A00A1D4 / 0xE3DA20D4 / 0x5851CA62 / 0x6F20485E / 0x30C453EE / 0xA22FA941, sail / rope against 0xA42F9EDE /
-//     0xF7EDF855 / 0x4E3EE717 (TestCascadeLeaves).
+//     0xF7EDF855 / 0x4E3EE717, wind / weighted / grass / far_tree_3k against 0xEDCD8445 / 0x1E0425DE / 0xF6CBD06E / 0x63E273F4
+//     (TestCascadeLeaves).
 // 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
 // 13. Coloured Shadows in shaders/sunlight00-03 (TestSunTint).
 // 14. autoexposure00's Modded Auto Exposure against the game's 0x8233E11F (TestAutoExposure).
 // 15. indicator00-02's Indicator Brightness against the game's 0xD12FA660 / 0xC454C1EA / 0xC57C222D (TestIndicators).
 // 16. campaignoverlay00 at 33% against 100% and the game's 0xD7E27B35 (TestCampaignOverlay).
+// 17. rt_particle_quads (Smoke Shadows' quad shader for 0xBEA3F2D4's outputs) on synthetic quads (TestParticleQuads).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -991,10 +994,10 @@ class FolderInclude : public ID3DInclude {
   std::vector<std::filesystem::path> folders_;
 };
 
-// 8-9. shaders/ocean00, ocean01 and waterplane00 (the rays' reflection in the water's pixel shaders) against the game's
-//      (0x16ADFD60's, 0x6B8954A6's, 0x9B9EC116's csos) on a 32 x 32 target, same inputs, in the probe and the sky branch: the rays unbound, bound with no
+// 8-9. shaders/ocean00-03 and waterplane00-01 (the rays' reflection in the water's pixel shaders: every water quality) against
+//      the game's (0x16ADFD60's, 0x6B8954A6's, 0x5487502A's, 0xE73D4A5E's, 0x9B9EC116's, 0x892D56F9's csos) on a 32 x 32 target, same inputs, in the probe and the sky branch: the rays unbound, bound with no
 //      hits (share 0), or flagged off (b10 0: CONTROL): the five outputs the game's; the rays' light (share 1, flags 1): the
-//      colour changes where the mask is 1 and nowhere else. waterplane00's Water Clarity and Caustics (b13): at clarity 1,
+//      colour changes where the mask is 1 and nowhere else. waterplane00 / 01's Water Clarity and Caustics (b13): at clarity 1,
 //      caustics 0 the game's outputs; clarity 4 and caustics 1 each change the colour (CONTROL that they reach it).
 static void TestWater(const std::string& games, const std::string& folder, const WaterShader& water) {
   std::ifstream file(folder + "/0x" + water.hash + ".ps_5_0.cso", std::ios::binary);
@@ -1155,7 +1158,7 @@ static void TestWater(const std::string& games, const std::string& folder, const
   };
   const auto same = [](float x, float y) { return (std::isnan(x) && std::isnan(y)) || std::fabs(x - y) <= (1e-4f * std::max(std::fabs(x), std::fabs(y))) + 1e-5f; };
   size_t differs_unbound = 0, differs_kept = 0, changed = 0, changed_outside = 0, control_changed = 0;
-  const bool water_rows = std::wcscmp(water.ours, L"waterplane00_0x9B9EC116") == 0;
+  const bool water_rows = std::wcsncmp(water.ours, L"waterplane", 10) == 0;
   size_t differs_neutral = 0, clearer = 0, caustics = 0;
   const auto injection = [](float clarity, float strength) {
     ShaderInjectData data = {};
@@ -1250,10 +1253,21 @@ static void TestWaters(const std::string& games, const std::string& folder) {
             {.hash = "6B8954A6", .ours = L"ocean01_0x6B8954A6", .vertex_source = ocean_vertex, .plain_slots = {0, 1, 2, 3, 7, 8, 9, 10, 11},
              .harmonics_slot = 7, .single_slots = {12}, .cube_slot = 4, .cube_array_slots = {5, 6}, .samplers = 9, .scalars = {0.3f, 0.7f, 0.f, 0.f},
              .ocean_scalars = {0.02f, 50.f, 0.5f, 0.3f, 0.1f, 2.f, 0.f, 0.f}});
+  // Low (no harmonics: its slot past the textures) and medium water quality.
+  TestWater(games, folder,
+            {.hash = "5487502A", .ours = L"ocean02_0x5487502A", .vertex_source = ocean_vertex, .plain_slots = {0, 1, 2, 6, 7, 8},
+             .harmonics_slot = 16, .single_slots = {}, .cube_slot = 3, .cube_array_slots = {4, 5}, .samplers = 8, .scalars = {0.3f, 0.7f, 0.f, 0.f}});
+  TestWater(games, folder,
+            {.hash = "E73D4A5E", .ours = L"ocean03_0xE73D4A5E", .vertex_source = ocean_vertex, .plain_slots = {0, 1, 2, 3, 7, 8, 9, 10, 11},
+             .harmonics_slot = 7, .single_slots = {12}, .cube_slot = 4, .cube_array_slots = {5, 6}, .samplers = 9, .scalars = {0.3f, 0.7f, 0.f, 0.f}});
+  const std::vector<float> plane_scalars = {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.f, 1.f, -1000.f, 1000.f, -1000.f, 1000.f, 0.f};
   TestWater(games, folder,
             {.hash = "9B9EC116", .ours = L"waterplane00_0x9B9EC116", .vertex_source = plane_vertex, .plain_slots = {3, 4, 5, 6, 7, 8},
-             .harmonics_slot = 3, .single_slots = {}, .cube_slot = 0, .cube_array_slots = {1, 2}, .samplers = 7,
-             .scalars = {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.f, 1.f, -1000.f, 1000.f, -1000.f, 1000.f, 0.f}});
+             .harmonics_slot = 3, .single_slots = {}, .cube_slot = 0, .cube_array_slots = {1, 2}, .samplers = 7, .scalars = plane_scalars});
+  // Low water quality: no t_diffuse (the rest one slot down).
+  TestWater(games, folder,
+            {.hash = "892D56F9", .ours = L"waterplane01_0x892D56F9", .vertex_source = plane_vertex, .plain_slots = {3, 4, 5, 6, 7},
+             .harmonics_slot = 3, .single_slots = {}, .cube_slot = 0, .cube_array_slots = {1, 2}, .samplers = 6, .scalars = plane_scalars});
 }
 
 // 10. rt_capture_cascade_rigid and rt_rows_cascade_rigid (Shadow Casters Out of View: the shadow pass's rigid casters placed by their
@@ -1263,7 +1277,8 @@ static void TestWaters(const std::string& games, const std::string& folder) {
 //     (|x|, |y| <= w), kept as v6-v8 elsewhere; with cb0 all 0 (a new mesh's first rows) all kept. CONTROL: the view turned away
 //     leaves out another set. The same for variantrigid vs30_shadow (0xB0E006EE: rt_capture / rt_rows_cascade_variant, its rows
 //     v8-v10) with its sway's weight (v6.w) 0; with it 1 the game's corners stray from ours by the sway alone, under 2 cm. The rigid
-//     versions also against rigidambientmapmesh_mtb vs30_shadow (0x7B067623: the same with a TEXCOORD1 it never reads).
+//     versions also against rigidambientmapmesh_mtb vs30_shadow (0x7B067623: the same with a TEXCOORD1 it never reads) and
+//     rigidburning vs30_shadow (0x124C85A5: the same with a POSITION5 it never reads, POSITION0's w 1 as a mesh's).
 struct RigidShadowVertex {
   std::array<std::array<float, 4>, 10> inputs;  // v0-v9
 };
@@ -1437,7 +1452,13 @@ static void TestPlacedShadow(const std::string& games, const std::string& folder
 //     horses) against 0xA22FA941 with a random animation map at t0 (two bones a corner, its instance's row): TEXCOORD0 the game's
 //     SV_Position, through the world-only geometry shader. rt_capture_cascade_sail (ships' sails and sail symbols) against
 //     0xA42F9EDE / 0xF7EDF855 with a random world_matrix at b1, rt_capture_cascade_rope against 0x4E3EE717 (ribbons turned to
-//     the camera at c0, world alone). Through Pharaoh's outside-view geometry shader with a main view at cb0[10-13] (as rt_core streams them out): the
+//     the camera at c0, world alone). rt_capture_cascade_wind against 0xEDCD8445 (rigid rows swayed by COLOR0.w and the wind at
+//     b1), rt_capture_cascade_weighted against 0x1E0425DE (the units' bones from a random matrix stack at b1), world alone;
+//     rt_capture_cascade_grass against 0xF6CBD06E (blades shrunk and swayed from a camera at c0 with a random inv_view, clumps
+//     up to 375 m away: some past the wind's reach). rt_capture_cascade_far_tree_3k against 0x63E273F4 (the other far cards: 8
+//     views in a row, the UV its pixel shader 0x9D7E2040 reads, (u + view) / 8, the nearer view; a faded card a NaN). Through
+//     Pharaoh's outside-view geometry shader with a main view at
+//     cb0[10-13] (as rt_core streams them out): the
 //     triangles wholly outside it (the CPU's test of the game's corners) kept, their world positions and UVs (two halves in w) the
 //     game's; the others collapsed onto their first corner. CONTROL: the view turned away keeps another set.
 struct ClothVertex {
@@ -1492,8 +1513,8 @@ static const D3D11_INPUT_ELEMENT_DESC CLOTH_LAYOUT[] = {
     {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0}};
 
 // What a capture version writes: a leaf's world (TEXCOORD2) and UV (TEXCOORD1) for RT_LEAF, a far card's the same with the UV in
-// its atlas view, a unit's world alone (TEXCOORD0) for RT_WORLD.
-enum class CascadeCorners { leaf, far_card, world };
+// its atlas view (30C453EE's four views, or 63E273F4's `face_count` in a row), a unit's world alone (TEXCOORD0) for RT_WORLD.
+enum class CascadeCorners { leaf, far_card, card_faces, world };
 
 // The soldiers' and horses' shadow vertex (0xA22FA941): POSITION0-8, TEXCOORD0-5 (the instance's world rows at 0-2), its row in
 // the animation map (TEXCOORD6) and TEXCOORD7.
@@ -1526,8 +1547,9 @@ template <typename Vertex>
 static void TestCascadeLeaf(const std::string& games, const std::string& folder, const char* name, const wchar_t* capture_name,
                             std::span<const D3D11_INPUT_ELEMENT_DESC> layout, const std::vector<Vertex>& vertices,
                             std::span<ID3D11Buffer* const> constants, CascadeCorners corners = CascadeCorners::leaf,
-                            ID3D11ShaderResourceView* vertex_view = nullptr) {
+                            ID3D11ShaderResourceView* vertex_view = nullptr, float face_count = 0.f) {
   const bool atlas = corners == CascadeCorners::far_card;
+  const bool faces = corners == CascadeCorners::card_faces;
   const bool with_uv = corners != CascadeCorners::world;
   const auto [game_code, capture] = Shaders(games, folder, name, capture_name);
   const auto run = [&](const void* code, size_t size, const char* semantic, UINT index, BYTE components) {
@@ -1535,8 +1557,20 @@ static void TestCascadeLeaf(const std::string& games, const std::string& folder,
   };
   const auto game_world = run(game_code.data(), game_code.size(), "SV_POSITION", 0, 4);
   // A far card's TEXCOORD1: the UV, the atlas view and the blend toward the next.
-  auto game_uv = with_uv ? run(game_code.data(), game_code.size(), "TEXCOORD", 1, atlas ? 4 : 2)
+  auto game_uv = with_uv ? run(game_code.data(), game_code.size(), "TEXCOORD", 1, (atlas || faces) ? 4 : 2)
                          : std::vector<std::array<float, 4>>(vertices.size());
+  if (faces) {
+    // CONTROL: the cards look at every view, each with its next under and over half.
+    uint64_t seen = 0;
+    for (auto& uv : game_uv) {
+      const float next = (uv[3] > 0.5f) ? 1.f : 0.f;
+      seen |= uint64_t{1} << ((static_cast<int>(uv[2]) * 2) + static_cast<int>(next));
+      uv[0] = (uv[0] + std::fmod(uv[2] + next, face_count)) / face_count;
+    }
+    const uint64_t all = (uint64_t{1} << (2 * static_cast<int>(face_count))) - 1;
+    CHECK(seen == all, "CONTROL: %s: the cards' views and blends 0x%llX, not all %d", name, static_cast<unsigned long long>(seen),
+          2 * static_cast<int>(face_count));
+  }
   if (atlas) {
     // CONTROL: the cards look at all four views, each with its next under and over half.
     uint32_t seen = 0;
@@ -1601,6 +1635,21 @@ static void TestCascadeLeaf(const std::string& games, const std::string& folder,
   std::printf("%ls (0x%s): %zu corners the game's world%s; %zu of %zu triangles out of view kept, %zu differ turned away\n", capture_name,
               name, vertices.size(), with_uv ? " and UV" : "", kept, vertices.size() / 3, turned_differs);
 }
+
+// Grass in the shadow pass (0xF6CBD06E): POSITION0, TEXCOORD0 (xy), NORMAL0-1, COLOR0, its clump's rows TEXCOORD1-3 (the place in w).
+struct GrassVertex {
+  std::array<std::array<float, 4>, 8> inputs;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC GRASS_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 96, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 112, D3D11_INPUT_PER_VERTEX_DATA, 0}};
 
 static void TestCascadeLeaves(const std::string& games, const std::string& folder) {
   std::mt19937 random(12);
@@ -1675,6 +1724,33 @@ static void TestCascadeLeaves(const std::string& games, const std::string& folde
   const auto faded_world = StreamOut(card_capture->GetBufferPointer(), card_capture->GetBufferSize(), "TEXCOORD", 2, 4, BILLBOARD_LAYOUT, faded,
                                      card_constants, nullptr);
   CHECK(std::isnan(faded_world[0][0]), "rt_capture_cascade_far_tree: a faded card not a NaN");
+  // The other card set (0x63E273F4): POSITION0 the corner, TEXCOORD0 the UV, TEXCOORD1 the place (w the fade), TEXCOORD2 the
+  // facing (w the size); 8 views (tree_billboard_constants at b1: c1.w). 128 cards: every view and half seen.
+  std::vector<std::array<std::array<float, 4>, 4>> cards_3k;
+  for (int triangle = 0; triangle < 128; ++triangle) {
+    const std::array<float, 4> place = {100.f * spread(random), 100.f * spread(random), 100.f * spread(random), 0.55f + (0.45f * spread(random))};
+    const std::array<float, 4> facing = {spread(random), spread(random), spread(random), 5.f + (4.f * spread(random))};
+    for (int corner = 0; corner < 3; ++corner) {
+      cards_3k.push_back({{{spread(random), 0.5f + (0.5f * spread(random)), 0.f, 1.f},
+                           {0.5f + (0.5f * spread(random)), 0.5f + (0.5f * spread(random)), 0.f, 0.f}, place, facing}});
+    }
+  }
+  static const D3D11_INPUT_ELEMENT_DESC CARD_3K_LAYOUT[] = {
+      {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+  const std::array<float, 8> billboard = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 8.f};
+  const auto billboard_buffer = Constants(billboard.data(), sizeof(billboard));
+  const std::array<ID3D11Buffer*, 2> card_3k_constants = {camera_buffer.Get(), billboard_buffer.Get()};
+  TestCascadeLeaf(games, folder, "63E273F4", L"rt_capture_cascade_far_tree_3k", CARD_3K_LAYOUT, cards_3k, card_3k_constants,
+                  CascadeCorners::card_faces, nullptr, 8.f);
+  const auto [card_3k_code, card_3k_capture] = Shaders(games, folder, "63E273F4", L"rt_capture_cascade_far_tree_3k");
+  std::vector<std::array<std::array<float, 4>, 4>> faded_3k(1, cards_3k[0]);
+  faded_3k[0][2][3] = 0.f;
+  const auto faded_3k_world = StreamOut(card_3k_capture->GetBufferPointer(), card_3k_capture->GetBufferSize(), "TEXCOORD", 2, 4, CARD_3K_LAYOUT,
+                                        faded_3k, card_3k_constants, nullptr);
+  CHECK(std::isnan(faded_3k_world[0][0]), "rt_capture_cascade_far_tree_3k: a faded card not a NaN");
   // Soldiers and horses: 22 bones (their bytes k / 255: three texels each from 3k) in 8 instances' rows of a random animation map;
   // a corner's two bones, its blend (v5.w) and both positions (v0, v1) random, its instance's world rows at TEXCOORD0-2.
   std::vector<std::array<float, 4>> bones(64 * 8);
@@ -1703,6 +1779,56 @@ static void TestCascadeLeaves(const std::string& games, const std::string& folde
   }
   TestCascadeLeaf(games, folder, "A22FA941", L"rt_capture_cascade_unit", UNIT_LAYOUT, units, card_constants, CascadeCorners::world,
                   animation_view.Get());
+  // The same corners drawn without the animation map: their bones from a random matrix stack (150 registers) at b1.
+  std::vector<std::array<float, 4>> stack(150);
+  for (auto& row : stack) row = {spread(random), spread(random), spread(random), 10.f * spread(random)};
+  const auto stack_buffer = Constants(stack.data(), static_cast<UINT>(stack.size() * sizeof(stack[0])));
+  const std::array<ID3D11Buffer*, 2> weighted_constants = {camera_buffer.Get(), stack_buffer.Get()};
+  TestCascadeLeaf(games, folder, "1E0425DE", L"rt_capture_cascade_weighted", UNIT_LAYOUT, units, weighted_constants, CascadeCorners::world);
+  // Wind-swayed rigid meshes: the rigid shadow vertex (rows v6-v8), the sway's weight COLOR0.w (v5.w) from 0 to 1.
+  std::vector<RigidShadowVertex> swaying;
+  for (int triangle = 0; triangle < 64; ++triangle) {
+    const std::array<float, 3> centre = {100.f * spread(random), 5.f * spread(random), 100.f * spread(random)};
+    const float turn = spread(random) * 3.14159f;
+    for (int corner = 0; corner < 3; ++corner) {
+      RigidShadowVertex vertex = {};
+      for (auto& input : vertex.inputs) input = {spread(random), spread(random), spread(random), spread(random)};
+      vertex.inputs[0] = {2.f * spread(random), 2.f * spread(random), 2.f * spread(random), 1.f};
+      vertex.inputs[5][3] = 0.5f + (0.5f * spread(random));
+      vertex.inputs[6] = {std::cos(turn), 0.f, std::sin(turn), centre[0]};
+      vertex.inputs[7] = {0.f, 1.f, 0.f, centre[1]};
+      vertex.inputs[8] = {-std::sin(turn), 0.f, std::cos(turn), centre[2]};
+      swaying.push_back(vertex);
+    }
+  }
+  TestCascadeLeaf(games, folder, "EDCD8445", L"rt_capture_cascade_wind", RIGID_SHADOW_LAYOUT, swaying, tree_constants, CascadeCorners::world);
+  // Grass: the pass's camera at (10, 20, -30) with a random inv_view (c18-21), inv_lod_distance 0.01 (grass_PS at b2); clumps
+  // turned about y, up to 375 m away (the wind's reach 300 m).
+  std::array<float, 44 * 4> grass_camera = camera;
+  grass_camera[0] = 10.f;
+  grass_camera[1] = 20.f;
+  grass_camera[2] = -30.f;
+  for (int value = 18 * 4; value < 22 * 4; ++value) grass_camera[value] = spread(random);
+  const auto grass_camera_buffer = Constants(grass_camera.data(), sizeof(grass_camera));
+  const std::array<float, 4> lod = {0.01f, 0.f, 0.f, 0.f};
+  const auto lod_buffer = Constants(lod.data(), sizeof(lod));
+  std::vector<GrassVertex> grass;
+  for (int triangle = 0; triangle < 64; ++triangle) {
+    const std::array<float, 3> clump = {250.f * spread(random), 5.f * spread(random), 250.f * spread(random)};
+    const float turn = spread(random) * 3.14159f;
+    for (int corner = 0; corner < 3; ++corner) {
+      GrassVertex vertex = {};
+      for (auto& input : vertex.inputs) input = {spread(random), spread(random), spread(random), spread(random)};
+      vertex.inputs[0][3] = 1.f;
+      vertex.inputs[4][3] = 0.5f + (0.5f * spread(random));
+      vertex.inputs[5] = {std::cos(turn), 0.f, std::sin(turn), clump[0]};
+      vertex.inputs[6] = {0.f, 1.f, 0.f, clump[1]};
+      vertex.inputs[7] = {-std::sin(turn), 0.f, std::cos(turn), clump[2]};
+      grass.push_back(vertex);
+    }
+  }
+  const std::array<ID3D11Buffer*, 3> grass_constants = {grass_camera_buffer.Get(), wind_buffer.Get(), lod_buffer.Get()};
+  TestCascadeLeaf(games, folder, "F6CBD06E", L"rt_capture_cascade_grass", GRASS_LAYOUT, grass, grass_constants);
   // Sails: their mesh near the origin, a random turn and place in world_matrix (three registers, a column each); ropes: their
   // ribbons around random points, the shadow camera at c0.
   const float sail_turn = spread(random) * 3.14159f;
@@ -2312,6 +2438,167 @@ static void TestCampaignOverlay(const std::string& games, const std::string& fol
               control_differs, game_full.size());
 }
 
+// 17. rt_particle_quads (Smoke Shadows' records from particle_vertex_30 0xBEA3F2D4's outputs: TEXCOORD5 world, COLOR0, the two
+//     cells' uv in TEXCOORD0.xy / TEXCOORD1.xy, their blend TEXCOORD3.w, the alpha scale TEXCOORD4.z) on 48 random rectangles in
+//     space, each two triangles (the first's corners in any of three orders, its right angle anywhere), drawn as the game draws a
+//     quad an instance: one record per quad, its centre the rectangle's, its size its two sides, its colour COLOR0's, its
+//     opacity saturate(TEXCOORD4.z x COLOR0.w x lerp(alpha at the two cells' centre uv)) with a texture whose alpha is its u
+//     (one mip). CONTROL: the second triangles write nothing (48 records for 96 triangles).
+static void TestParticleQuads(const std::string& games) {
+  struct QuadCorner {
+    std::array<float, 4> position, colour, uv, uv_next, view, alpha, world;
+  };
+  constexpr char VERTEX_SOURCE[] =
+      "struct Corner { float4 position : SV_POSITION; float4 colour : COLOR0; float4 uv : TEXCOORD0; float4 uv_next : TEXCOORD1;"
+      "  float4 view : TEXCOORD3; float4 alpha : TEXCOORD4; float4 world : TEXCOORD5; };"
+      "Corner main(Corner corner) { return corner; }";
+  const std::array<D3D11_INPUT_ELEMENT_DESC, 7> layout = {{
+      {"SV_POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 96, D3D11_INPUT_PER_VERTEX_DATA, 0}}};
+  ComPtr<ID3DBlob> vertex_code;
+  D3DCompile(VERTEX_SOURCE, sizeof(VERTEX_SOURCE) - 1, nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_code.GetAddressOf(), nullptr);
+  const std::wstring path(games.begin(), games.end());
+  FolderInclude include(path + L"/twshogun2completeedition");
+  ComPtr<ID3DBlob> geometry_code;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/rt_particle_quads.gs_5_0.hlsl").c_str(), nullptr, &include, "main",
+                                "gs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, geometry_code.GetAddressOf(), errors.GetAddressOf()))) {
+    std::printf("rt_particle_quads: %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+    std::exit(2);
+  }
+  const std::array<D3D11_SO_DECLARATION_ENTRY, 4> entries = {{{0, "SV_POSITION", 0, 0, 4, 0}, {0, "COLOR", 0, 0, 4, 0},
+                                                               {0, "TEXCOORD", 3, 0, 3, 0}, {0, "TEXCOORD", 0, 0, 1, 0}}};
+  const UINT stride = 48;
+  ComPtr<ID3D11GeometryShader> geometry;
+  device->CreateGeometryShaderWithStreamOutput(geometry_code->GetBufferPointer(), geometry_code->GetBufferSize(), entries.data(),
+                                               static_cast<UINT>(entries.size()), &stride, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                                               geometry.GetAddressOf());
+  ComPtr<ID3D11VertexShader> vertex;
+  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex.GetAddressOf());
+  ComPtr<ID3D11InputLayout> input;
+  device->CreateInputLayout(layout.data(), static_cast<UINT>(layout.size()), vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(),
+                            input.GetAddressOf());
+  // The texture: alpha = u (16 x 16, one mip), point sampled at its texel centres' grid.
+  std::vector<std::array<float, 4>> texels(256);
+  for (int y = 0; y < 16; ++y) {
+    for (int x = 0; x < 16; ++x) texels[(y * 16) + x] = {1.f, 1.f, 1.f, (static_cast<float>(x) + 0.5f) / 16.f};
+  }
+  const auto texture_view = Srv(Texture(16, 16, DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), 16 * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  std::array<float, 39 * 4> camera = {};
+  camera[0] = 1000.f;  // the camera far from every quad
+  camera[(38 * 4) + 0] = camera[(38 * 4) + 1] = 1024.f;
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  std::mt19937 random(17);
+  std::uniform_real_distribution<float> spread(-1.f, 1.f);
+  struct Expected {
+    std::array<float, 3> centre;
+    std::array<float, 2> size;
+    std::array<float, 4> colour;
+  };
+  std::vector<QuadCorner> corners;
+  std::vector<Expected> expected;
+  for (int quad = 0; quad < 48; ++quad) {
+    const std::array<float, 3> centre = {50.f * spread(random), 50.f * spread(random), 50.f * spread(random)};
+    // Two perpendicular axes: a random unit vector and one across it.
+    std::array<float, 3> axis_a = {spread(random), spread(random), spread(random)};
+    const float length_a = std::hypot(axis_a[0], axis_a[1], axis_a[2]);
+    for (auto& value : axis_a) value /= length_a;
+    const std::array<float, 3> helper = (std::fabs(axis_a[1]) < 0.9f) ? std::array<float, 3>{0.f, 1.f, 0.f} : std::array<float, 3>{1.f, 0.f, 0.f};
+    std::array<float, 3> axis_b = {(axis_a[1] * helper[2]) - (axis_a[2] * helper[1]), (axis_a[2] * helper[0]) - (axis_a[0] * helper[2]),
+                                   (axis_a[0] * helper[1]) - (axis_a[1] * helper[0])};
+    const float length_b = std::hypot(axis_b[0], axis_b[1], axis_b[2]);
+    for (auto& value : axis_b) value /= length_b;
+    const std::array<float, 2> size = {1.f + (2.f * (spread(random) + 1.f)), 1.f + (2.f * (spread(random) + 1.f))};
+    const std::array<float, 4> colour = {0.5f + (0.5f * spread(random)), 0.5f + (0.5f * spread(random)), 0.5f + (0.5f * spread(random)),
+                                         0.5f + (0.5f * spread(random))};
+    const float blend = 0.5f + (0.5f * spread(random));
+    const float scale = 0.75f + (0.5f * spread(random));
+    // Its uv: the first cell over u 0.1-0.4, the second over 0.5-0.9 (both along axis a).
+    const auto corner_at = [&](float a, float b) {
+      QuadCorner corner = {};
+      for (int axis = 0; axis < 3; ++axis) corner.world[axis] = centre[axis] + (axis_a[axis] * a * size[0]) + (axis_b[axis] * b * size[1]);
+      corner.world[3] = 1.f;
+      corner.position = {a, b, 0.5f, 1.f};
+      corner.colour = colour;
+      corner.uv = {0.25f + (0.3f * a), 0.5f + (0.3f * b), 0.f, 0.f};
+      corner.uv_next = {0.7f + (0.4f * a), 0.5f + (0.3f * b), 0.f, 0.f};
+      corner.view = {0.f, 0.f, 0.f, blend};
+      corner.alpha = {0.f, 0.f, scale, 0.f};
+      return corner;
+    };
+    const std::array<QuadCorner, 4> quad_corners = {corner_at(-0.5f, -0.5f), corner_at(0.5f, -0.5f), corner_at(-0.5f, 0.5f), corner_at(0.5f, 0.5f)};
+    // The first triangle 0, 1, 2 (its right angle at corner 0), rotated by the quad's number; the second 2, 1, 3.
+    const std::array<int, 3> first = {0, 1, 2};
+    for (int index = 0; index < 3; ++index) corners.push_back(quad_corners[first[(index + quad) % 3]]);
+    for (const int index : {2, 1, 3}) corners.push_back(quad_corners[index]);
+    const float alpha = std::clamp(scale * (colour[3] * (0.25f + (blend * (0.7f - 0.25f)))), 0.f, 1.f);
+    expected.push_back({.centre = centre, .size = size, .colour = {colour[0], colour[1], colour[2], alpha}});
+  }
+  const auto count = static_cast<UINT>(corners.size());
+  const D3D11_BUFFER_DESC vertex_desc = {.ByteWidth = count * static_cast<UINT>(sizeof(QuadCorner)), .Usage = D3D11_USAGE_DEFAULT,
+                                         .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+  const D3D11_SUBRESOURCE_DATA vertex_data = {.pSysMem = corners.data()};
+  ComPtr<ID3D11Buffer> vertex_buffer;
+  device->CreateBuffer(&vertex_desc, &vertex_data, vertex_buffer.GetAddressOf());
+  const D3D11_BUFFER_DESC out_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+  ComPtr<ID3D11Buffer> out;
+  device->CreateBuffer(&out_desc, nullptr, out.GetAddressOf());
+  ComPtr<ID3D11Query> statistics;
+  const D3D11_QUERY_DESC query_desc = {.Query = D3D11_QUERY_SO_STATISTICS};
+  device->CreateQuery(&query_desc, statistics.GetAddressOf());
+  const UINT vertex_stride = sizeof(QuadCorner);
+  const UINT offset = 0;
+  context->IASetInputLayout(input.Get());
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &vertex_stride, &offset);
+  context->VSSetShader(vertex.Get(), nullptr, 0);
+  context->GSSetShader(geometry.Get(), nullptr, 0);
+  context->GSSetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
+  context->GSSetShaderResources(0, 1, texture_view.GetAddressOf());
+  context->GSSetSamplers(3, 1, sampler.GetAddressOf());
+  context->SOSetTargets(1, out.GetAddressOf(), &offset);
+  context->Begin(statistics.Get());
+  context->Draw(count, 0);
+  context->End(statistics.Get());
+  context->ClearState();
+  D3D11_QUERY_DATA_SO_STATISTICS written = {};
+  while (context->GetData(statistics.Get(), &written, sizeof(written), 0) != S_OK) {}
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), out.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  std::vector<std::array<float, 12>> records(count);
+  std::memcpy(records.data(), mapped.pData, static_cast<size_t>(count) * stride);
+  context->Unmap(staging.Get(), 0);
+  size_t bad = 0;
+  for (size_t quad = 0; quad < expected.size(); ++quad) {
+    const auto& record = records[quad];
+    const auto& want = expected[quad];
+    bool same = true;
+    for (int axis = 0; axis < 3; ++axis) same = same && std::fabs(record[axis] - want.centre[axis]) < 1e-3f;
+    const std::array<float, 2> sizes = {std::min(record[8], record[9]), std::max(record[8], record[9])};
+    same = same && std::fabs(sizes[0] - std::min(want.size[0], want.size[1])) < 1e-3f && std::fabs(sizes[1] - std::max(want.size[0], want.size[1])) < 1e-3f;
+    for (int channel = 0; channel < 4; ++channel) same = same && std::fabs(record[4 + channel] - want.colour[channel]) < 2e-3f;
+    bad += same ? 0 : 1;
+  }
+  CHECK(bad == 0 && written.NumPrimitivesWritten == expected.size(), "rt_particle_quads: %zu of %zu records wrong, %llu written", bad,
+        expected.size(), written.NumPrimitivesWritten);
+  std::printf("rt_particle_quads: %zu quads (their first triangles' corners in three orders) one record each, centre, size, colour and "
+              "opacity right; %llu records for %u triangles\n",
+              expected.size(), written.NumPrimitivesWritten, count / 3);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -2337,6 +2624,10 @@ int main(int argc, char** argv) {
     std::vector<D3D11_INPUT_ELEMENT_DESC> mtb_layout(std::begin(RIGID_SHADOW_LAYOUT), std::end(RIGID_SHADOW_LAYOUT));
     mtb_layout.push_back({"TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0});
     TestPlacedShadow<RigidShadowVertex>(games, argv[3], "7B067623", L"rt_capture_cascade_rigid", L"rt_rows_cascade_rigid", mtb_layout, 6, 0);
+    // Burning buildings: their POSITION5 over TEXCOORD0's first half (unread).
+    std::vector<D3D11_INPUT_ELEMENT_DESC> burning_layout(std::begin(RIGID_SHADOW_LAYOUT), std::end(RIGID_SHADOW_LAYOUT));
+    burning_layout.push_back({"POSITION", 5, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0});
+    TestPlacedShadow<RigidShadowVertex>(games, argv[3], "124C85A5", L"rt_capture_cascade_rigid", L"rt_rows_cascade_rigid", burning_layout, 6, 0);
     TestPlacedShadow<VariantShadowVertex>(games, argv[3], "B0E006EE", L"rt_capture_cascade_variant", L"rt_rows_cascade_variant",
                                           VARIANT_SHADOW_LAYOUT, 8, 6);
     TestCascadeLeaves(games, argv[3]);
@@ -2346,6 +2637,7 @@ int main(int argc, char** argv) {
     TestCampaignOverlay(games, argv[3]);
   }
   TestSunTint(games);
+  TestParticleQuads(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

@@ -21,6 +21,7 @@
 // Shadow Casters Out of View: Pharaoh's geometry shaders (Warhammer II's shadow vertex shaders', the same as these).
 #include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_world_gs.h"
+#include "./rt_outside_view_colour_world_gs.h"
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
@@ -1553,7 +1554,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 33> MOTION_SHADERS =
 // The floating unit banners (rigidtextureblend, 2 bones, E7F0D71A) stay out: the game gives them no shadow (no atlas draw in
 // any of ATN's 2026-11-14 traces). So does the campaign's far terrain (rigidterrain geometry_41_global, CDCF1ADD): no atlas
 // draw either, and no trace shows where it lies against the near terrain.
-constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0x10401C91, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x06AB0766, .capture_shader = __rt_capture_terrain_geom_new_sm41, .terrain = true},
     {.hash = 0x5696080B, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1591,6 +1592,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     // F2BEEA62: the diffuse map at t1 too; in no trace) is the same code, signatures and constants (fxc -dumpbin).
     {.hash = 0x84797031, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true, .mask_slot = 1},
     {.hash = 0x1A7891F6, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true, .mask_slot = 1},
+    // The campaign's trees (rigidcampaigntrees vs40_main; in none of ATN's traces) and the props' liquid
+    // (rigid_character_prop_liquid vs40_main; in none): placed by their instance rows (POSITION1-3, rt_rows_campaign_trees / prop_liquid),
+    // their world the game's TEXCOORD0 (test part 21). The trees' G-buffer PS D61D20DE clips nothing: solid. Their shadow VS
+    // (3888C71F; the liquid's is 0E0E36F6, held) is not: trees out of view cast no rays' shadow.
+    {.hash = 0xA8BB2DB2, .capture_shader = __rt_capture_campaign_trees, .rows_shader = __rt_rows_campaign_trees},
+    {.hash = 0x766D159E, .capture_shader = __rt_capture_prop_liquid, .rows_shader = __rt_rows_prop_liquid},
     // Far trees' cards (rigidtreebillboard vs40_main; ATN's battles: 18-20 draws a frame), turned to the sun (Far Tree Shadows),
     // cut out by their tree map's alpha (C5875F67 t3). Its sm_5_0 and sm_4_1 twins B9C6AA36 (the MSAA G-buffer's, E6F4B7E7 /
     // 5314925A) and C2A5FA81 (the debug views') are the same code, signatures and constants, their tree map at t3 too; in no
@@ -1602,6 +1609,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     // vs40_shadow, fx__weighted vs40_shadow and its 4 bones, Warhammer II's E2C36310, 2EE37868, 2A54DBEE (the same code and
     // signatures), so Pharaoh's rt_outside_view as there. Every frame as drawn.
     {.hash = 0x0E0E36F6, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    // The campaign trees' shadow VS (rigidcampaigntrees vs40_shadow; in no trace): COLOR0 before its world (TEXCOORD0), so
+    // the shared GS's RT_COLOR_WORLD variant (test part 22).
+    {.hash = 0x3888C71F, .dynamic = true, .cascade_keep = __rt_outside_view_colour_world},
     {.hash = 0x2E5BBBA1, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0x63BA47F1, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
 }};

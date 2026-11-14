@@ -133,6 +133,7 @@ struct ShaderInjectData {
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
   float fog_strength;              // battlefog00's opacity x this (1: the game's), as Attila's
+  float ssr_quality;               // waterreflection00: x the game's quality_factor (1: the game's), Attila's Reflection Quality
 };
 
 #define SI shader_injection
