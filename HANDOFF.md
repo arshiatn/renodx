@@ -508,6 +508,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   tw_unit_pack_rounds PASS; shared graphics_page motion_in_draw opt-in, Attila's page identical); 29 unclear scale rows
   settled (24 sun OK; 4 SSR sm4 / 4.1 bugs only at gfx_shadermodel 1-2: not fixed, trace listed; 0FB73442 in no trace).
   Thrones agent DONE. Note: its WARP checks use small tool exes under tools/tw/thrones (as earlier rounds), not quarantined.
+  Round 3 MERGED e73b72c5: the 4 sm4 / 4.1 SSR builds fixed below 100 % (suite test/tw_thrones_ssr), far card builds
+  98AA2F91 / A86B4247 + sprite build E42AE09F held; 43 unreplaced builds listed (Attila's bytes too: particles in other shader
+  models / shadow methods, point lights with point shadows, MSAA builds, bloom tone mappers). Thrones agent DONE.
+- [ ] ATTILA GAPS agent started (atg_, worktree): share Thrones' ssr02-05 with Attila, E42AE09F / far card builds held, the 11
+  other vfx builds, MSAA battlefog + point lights, tessellated rigid 9AEE504E (opt-in rt_core), ropes / sail symbols.
 - [x] Rome Remastered parity round MERGED c0a61b2d (table tools/tw/romeremastered/parity_1114.md: 47 features, 13 have / 3 do
   now left / 6 trace / 24 won't; credits, Bend rows + Softness, GitHub button; no PT GI -> no torch rows). Input bug (task B):
   study only: the wall clock is a seconds-since-2001 double; obfuscated code at 0xbbaa60 reads GetMessageTime; the
