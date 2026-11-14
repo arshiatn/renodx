@@ -44,6 +44,7 @@
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
+#include "../twattila/water_reflections.hpp"
 #include "./more_tests.h"
 #include "../twpharaohdynasties/trace_reads.hpp"
 // Pharaoh's outside-view geometry shaders (built bytes): Troy's shadow vertex shaders write the same outputs (SCENE_SHADERS).
@@ -366,6 +367,9 @@ void BuildRuntimeData() {
       // UpgradeRTVReplaceShader(EMPTY),
       __ALL_CUSTOM_SHADERS,
   };
+  // The water's reflection apply (shaders/ssrapply00): ours only where the rays left from the water or below 100%
+  // (twattila/water_reflections.hpp OnWaterApplyDraw), as Pharaoh's.
+  custom_shaders.erase(0x00645DA1);
   // Ambient Occlusion: Visibility Bitmask in place of the AO's horizontal blur: the addon's own shader
   // (ao_bitmask_blur, twwarhammer2/line_sweep_ao.hpp) with the blur's bindings; the blur's replacement stays the game's
   // code (Game's costs what it did). The collect always runs: where no blur runs (Warhammer II at some settings), the
@@ -1633,6 +1637,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
   rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
+  // The game's reflections fall on the water alone (its apply 00645DA1, as Pharaoh's): twattila/water_reflections.hpp's gate.
+  twattila::water_reflections::GateSettings(&rt_settings);
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -1707,8 +1713,8 @@ namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
 // (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO, the paths take the sky from the sun
-// shaders' ambient cube; point lights (143A02ED), smoke (F5CE48CC) and the water's Clarity and Caustics hooked, no
-// ray-traced reflections or fog.
+// shaders' ambient cube; point lights (143A02ED), smoke (F5CE48CC), the water's Clarity and Caustics and its ray-traced
+// reflections (the game's reflections fall on the water alone, Pharaoh's texts) hooked, no fog.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -1716,8 +1722,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                      "and shadows. The rest at its default.",
     .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"
                        "The rest of this page at its default.",
-    .rays_tooltip = "Ray-traced shadows, path-traced ambient occlusion and Global Illumination at my settings.\n"
-                    "The rest of this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
+    .rays_tooltip = "Ray-traced shadows and water reflections, path-traced ambient occlusion and Global Illumination at my\n"
+                    "settings. The rest of this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
@@ -1733,9 +1739,15 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
     .water_caustics_label = "Water Caustics (Experimental)",
+    .water_reflections_label = "Water Reflections (Experimental)",
+    .water_reflections_tooltip = "Rivers and the sea reflect what the rays find, also off screen. Needs in-game Screen Space\n"
+                                 "Reflections on. Off: the game's reflections.",
     .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Water, effects and the shadows the game\n"
                             "baked for the map (past about 200 m) keep the game's. Use with Shadow Casters Out of View.\n"
                             "Off: the rays' shadows on top of the game's shadow maps.",
+    .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
+                           "Game's SSR: the original. DXR: from rays, also what is off screen or hidden (turn Water Reflections\n"
+                           "on below). Needs an upscaler.",
 };
 
 void ConfigureAddon() {
@@ -1836,7 +1848,9 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders);
+  // The water's reflection apply reads the ray-traced reflections (twattila/water_reflections.hpp): their rows, the water's too.
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  twattila::rt_scene::internal::water_pass = true;
 
   // Appended Settings (HDR10)
   {
@@ -1918,20 +1932,23 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
   // Mode's pages. Only what this game hooks: the paths' sky from the sun shaders' ambient cube (InstallSunDraws' 24),
   // foliage in the screen-space shadows (bit 128) and casters out of view (the shadow pass's; both Experimental, off: no
-  // game run has shown them here), Rays Replace Shadow Maps, point lights, smoke and the water's Clarity and Caustics
-  // (Experimental, off); no ray-traced reflections or fog (their rows stay hidden).
+  // game run has shown them here), Rays Replace Shadow Maps, point lights, smoke, the water's Clarity and Caustics and its
+  // ray-traced reflections (Experimental, off); no fog (its rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it (hidden: not hooked here) and Smoke Shadows (no game run has shown the particles'
-  // records in this game) start off, Far Tree Shadows (Experimental: the cards' capture is new here) and Specular Occlusion
-  // too (Experimental before the page); RT/PT turns all but the smoke and far trees on, as ATN's list does.
+  // records in this game) start off, Far Tree Shadows too (Experimental: the cards' capture is new here); RT/PT turns all but
+  // the smoke and far trees on, as ATN's list does.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
-        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedFarTreeShadows") {
+        || setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
     }
   }
+  // Water Reflections (Experimental, off: no game run has shown the apply with the rays here; RT/PT turns it on, as ATN's list
+  // does), Specular Occlusion and the reflections' Samples and Reuse where the water alone takes them, as Pharaoh's.
+  twattila::water_reflections::SetRows(&settings, &rt_sliders);
   // Water Clarity at the game's 1 and Water Caustics off (Experimental: no game run has shown them here yet; RT/PT leaves the
-  // caustics off, water_caustics_tested), Pharaoh's rows.
+  // caustics off, water_caustics_tested), Pharaoh's rows, under Reflections and Water.
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
@@ -1981,7 +1998,6 @@ void ConfigureAddon() {
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .lights_own_row = true,
-                                             .has_reflections = false,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -2034,6 +2050,15 @@ bool AttachAddon() {
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
+  // Ray-Traced Water Reflections (twattila/water_reflections.hpp, Pharaoh's): the twins of Pharaoh's ssr_new chain, the same
+  // order in ATN's traces (the water's G-buffer after the sun draw, extract_mask 1CE9217F, then these). Traced at backward_ssr
+  // C1DC66B4 (its depth from t0: Troy's binds no mask before it; the light, R16G16B16A16F, at t2); where they left from the
+  // water, downsample C2017771 and its 10 downsample_mip 9877558C and 10 lute_mip F49D4738 left out and our apply 00645DA1
+  // drawn (shaders/ssrapply00; WARP tools\tw\troy\water\ssr_rays).
+  twattila::water_reflections::Install(&custom_shaders,
+                                       {.backward_ssr = 0xC1DC66B4, .inputs_slot = 0, .chain = {0xC2017771, 0x9877558C, 0xF49D4738}, .apply = 0x00645DA1,
+                                        .apply_code = __0x00645DA1},
+                                       &rt_sliders);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The tests' clock first: the Light Bounce's callback draws the sun draws itself (none after it runs).
   for (const auto& draw : LIGHT_BOUNCE_DRAWS) {
@@ -2119,6 +2144,10 @@ bool AttachAddon() {
   };
   // The point light PS's diffuse scale (143A02ED's literal 0x389FB405, Pharaoh's).
   rt_host.local_light_scale = 7.615242e-05f;
+  // The water's reflections (water_reflections' OnBackwardSsr): its guides again from the sun draw's G-buffer channels, the
+  // water drawn into them since, and its R16G16B16A16F light copied, as Pharaoh's.
+  rt_host.rewrite_guides = twattila::anti_aliasing::RewriteSunGuides;
+  rt_host.light_copy = __rt_light_copy;
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
   twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // The point lights (ATN's session 3: two instanced draws a frame, VS 6CFF8F83 with PS 143A02ED after the sun draw; 64-byte
@@ -2155,6 +2184,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  twattila::water_reflections::Uninstall();
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::engine_tests::StopAtStart(&at_start_stop);

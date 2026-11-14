@@ -1,10 +1,13 @@
-// ssr_new ps50_apply (the screen-space reflections into the light buffer: its SSR over the cube, the sun's lobe and the
-// fog, by the water's weight): the game's 00645DA1 (3Dmigoto decompile), below 100% at the render share as Pharaoh's
-// twin DE4F92CD (v62 / v63). The quad VS A0EA5C9E's TEXCOORD0 runs 0-1 over the viewport (ATN's 2026-11-14 33% traces:
-// vb0 uv (0, 1) at NDC (-1, -1)), and the game reads its display-size textures at TEXCOORD0 x their size: below 100% that
-// is TEXCOORD0 x the draw's share, the SSR colour's distortion x the share too, its roughness level one lower per halving.
-// Its NDC from TEXCOORD0 alone stays (the view's own). At 100% (cb12 unbound) the game's result: WARP tools\tw\troy\ssr_share.
+// ssr_new ps50_apply (the screen-space reflections into the light buffer: its SSR over the cube, by the water's weight):
+// the game's 00645DA1 (3Dmigoto decompile), below 100% at the render share as Pharaoh's twin DE4F92CD (v62 / v63), and with
+// the ray-traced reflections in its SSR's place where they left from the water (twattila/water_reflections.hpp
+// OnWaterApplyDraw; twattila/rt_reflection.hlsli; Pharaoh's v56 form). The quad VS A0EA5C9E's TEXCOORD0 runs 0-1 over the
+// viewport (ATN's 2026-11-14 33% traces: vb0 uv (0, 1) at NDC (-1, -1)), and the game reads its display-size textures at
+// TEXCOORD0 x their size: below 100% that is TEXCOORD0 x the draw's share, the SSR colour's distortion x the share too, its
+// roughness level one lower per halving. Its NDC from TEXCOORD0 alone stays (the view's own). At 100% with the rays unbound
+// (cb12, t47 unbound) the game's result: WARP tools\tw\troy\ssr_share and tools\tw\troy\water\ssr_rays.
 #include "../../twattila/render_scale.hlsli"
+#include "../../twattila/rt_reflection.hlsli"
 
 cbuffer environment_PS : register(b0)
 {
@@ -68,6 +71,7 @@ void main(
   r0.zw = uv * r0.xy;
   r1.xy = (int2)r0.zw;
   r1.zw = float2(0,0);
+  const int2 rt_render_pixel = (int2)r1.xy;
   r0.z = t_mask_src.Load(r1.xyw).x;
   r0.w = cmp((int)r0.z == 0);
   if (r0.z == 0) {
@@ -127,15 +131,24 @@ void main(
     r0.xy = float2(0.5,0.5) * r0.xy;
     r0.xy = r0.xy / r3.xy;
     r0.xy = uv * r0.xy + r6.xy * share;
-    // The roughness' level is in the SSR colour's texels; below 100% the colour has the share of them: log2 of the share lower.
-    const float ssr_level = (share.x < 1.f) ? max(r3.w + 0.5f * log2(share.x * share.y), 0.f) : r3.w;
-    r6.xyzw = t_colour_src.SampleLevel(s_trilinear_sampler_s, r0.xy, ssr_level).xyzw;
-    r3.xyz = float3(5,5,5) * r6.xyz;
-    r6.xyz = r3.xyz * r3.xyz;
-    r0.x = sqrt(r3.w);
-    r0.x = saturate(-r0.x * 0.5 + 1.29999995);
-    r0.x = r6.w * r0.x;
-    r0.x = r2.y ? r0.x : r6.w;
+    const bool rt_water = RtReflectionsBound() && RtWaterReflections();
+    if (rt_water) {
+      const float4 rt_traced = t_rt_reflection.Load(int3(rt_render_pixel, 0));
+      // At most 25 a channel, as the game's march: its RGBA8 colour x 5, squared. Their share met in place of the SSR's
+      // confidence and its fade with distance (the rays reach as far).
+      r6.xyz = min(max(rt_traced.rgb, 0.f), 25.f);
+      r0.x = saturate(rt_traced.a);
+    } else {
+      // The roughness' level is in the SSR colour's texels; below 100% the colour has the share of them: log2 of the share lower.
+      const float ssr_level = (share.x < 1.f) ? max(r3.w + 0.5f * log2(share.x * share.y), 0.f) : r3.w;
+      r6.xyzw = t_colour_src.SampleLevel(s_trilinear_sampler_s, r0.xy, ssr_level).xyzw;
+      r3.xyz = float3(5,5,5) * r6.xyz;
+      r6.xyz = r3.xyz * r3.xyz;
+      r0.x = sqrt(r3.w);
+      r0.x = saturate(-r0.x * 0.5 + 1.29999995);
+      r0.x = r6.w * r0.x;
+      r0.x = r2.y ? r0.x : r6.w;
+    }
     r0.y = cmp(r0.x < 1);
     if (r0.y != 0) {
       r5.y = r2.w * 2 + -1;
@@ -156,7 +169,12 @@ void main(
       r2.yzw = g_skydome_lerp * r4.xyz + r2.yzw;
       }
       r2.yzw = g_environment_scale * r2.yzw;
-      r3.xyz = r3.xyz * r3.xyz + -r2.yzw;
+      if (rt_water) {
+        r2.yzw = RtOccludedEnvironment(rt_render_pixel, r2.yzw);
+        r3.xyz = r6.xyz + -r2.yzw;
+      } else {
+        r3.xyz = r3.xyz * r3.xyz + -r2.yzw;
+      }
       r6.xyz = r3.xyz * r0.xxx + r2.yzw;
     }
     if (r2.x != 0) {

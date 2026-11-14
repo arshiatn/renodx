@@ -1,5 +1,23 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### Round v53 (2026-11-14, built only, not run in game)
+
+- **New (Experimental): Water Clarity and Water Caustics** (under Reflections and Water). Clarity 1 is the game's look; higher lets you see deeper into rivers, lakes and the sea. Caustics (off; battles only) adds rippling light on the bed. They use Pharaoh's rows on Troy's 68 water shaders (every sea, lake and river variant). WARP (`tools/tw/troy/water`, Pharaoh's water test on Troy's bytes): all 68 give the game's bits at the defaults; Clarity and the caustics match the game with its opacity or refraction scaled (worst 4.8e-7). Every control moves.
+- **New (Experimental, off; on in RT/PT): ray-traced Water Reflections.** Rivers and the sea reflect what the rays find, also off screen, in place of the game's screen-space reflections. Pharaoh's hooks are now shared code (`twattila/water_reflections.hpp`, Pharaoh unchanged), on Troy's twins of the same chain, and Troy's reflection shader got the rays in Pharaoh's form. WARP (`tools/tw/troy/water/ssr_rays`): with no rays bound it gives the game's bits at 100%, 50% and 67%. With the rays it matches the expected blend (worst 3.4e-6), including below 100%, where it reads the render pixel. Specular Occlusion halves the game's cube to the bit. Every control fails.
+
+Test list (in-game AA off, in-game Screen Space Reflections on, DLSS, RT/PT preset):
+1. A river or coastal battle, Reflections Ray-Traced and Water Reflections on: the water mirrors hills, walls and units, also those off screen.
+2. The same with Reflections back on Game's SSR: the game's reflections, unchanged.
+3. Water Reflections on, DLSS Performance: the reflections line up with the scene, no offset at the screen's edges.
+4. Softer Water Reflections on, then Samples and Reuse: softer, less noisy reflections.
+5. Specular Occlusion on: the sky's reflection darkens under bridges and next to walls.
+6. Water Clarity 4 in a river battle: the riverbed shows deeper; 1 looks as before.
+7. Water Caustics 1 in a battle by shallow water: light ripples on the bed; none on the campaign map.
+8. Campaign map with Water Clarity above 1: the sea and lakes clearer, the coast unchanged.
+9. The game's MSAA on: the game's own reflections stay (no black water).
+
+Not done: the fires' particle lights in the rays (now on top of the WH2 agent's point light reader); Light Through Banners on sails (no trace draws a ship); the leaves' cut-out at 0.5 (the game's 0.01, and its fade).
+
 ### Round v52 (2026-11-14, built only, not run in game)
 
 - **New (Experimental, off): Smoke Shadows.** Smoke and dust dim the ray-traced sunlight, as in Pharaoh: Troy's particle shaders are Pharaoh's twins (the vertex shader reads the particle's orientation as halves; the lit pixel shaders bind their textures one slot higher). WARP (`tools/tw/troy/smoke`, Pharaoh's smoke test on Troy's bytes and ATN's constants): every particle's place and size 0 of 120 apart, its opacity 0 of 69 apart for both pixel shaders (worst 9.1e-7), the texture level 0 of 23; every control fails as it must.
