@@ -5,7 +5,10 @@
 // turned bright along the right edge, ~32 render px at any scale (ATN debug22 / 23). Below 100% the lookup stays half a
 // texel of its coarsest mip inside the rendered part.
 // RenoDX: the ray-traced reflections (twattila/rt_reflection.hlsli, ray_tracing.hpp): where bound, the rays' light in
-// place of the march's hit, the share of rays that met a surface its confidence.
+// place of the march's hit, the share of rays that met a surface its confidence. The pass adds (reflection -
+// environment) x confidence onto the scene, whose sun light already holds the environment's specular: with Specular
+// Occlusion bound (t46) the environment's closed share comes off too (scene + output: occluded environment +
+// confidence x (reflection - occluded environment)); unbound, the same math as the game's.
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -73,6 +76,9 @@ RWTexture2D<float3> t_out_radiance : register(u0);
 #define cmp -
 #include "./ssr.hlsli"
 #include "../../twattila/rt_reflection.hlsli"
+// Ray-Traced Water Reflections' mask (ray_tracing.hpp WaterSurface; unbound: 0): there the rays left from the sea above
+// this surface, so it keeps the environment alone (the sea drawn over it reflects them).
+Texture2D<float> t_rt_water : register(t45);
 
 
 [numthreads(32, 32, 1)]
@@ -183,7 +189,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     }
     r7.xyw = t_in_radiance.SampleLevel(s_trilinear_sampler_s, r0.xy, r3.w).xyz;
     const bool rt_reflected = RtReflectionsBound();
-    const float4 rt_traced = rt_reflected ? t_rt_reflection.Load(int3(rt_texel, 0)) : 0.f;
+    const float4 rt_traced = (rt_reflected && t_rt_water.Load(int3(rt_texel, 0)) < 0.5f) ? t_rt_reflection.Load(int3(rt_texel, 0)) : 0.f;
     if (rt_reflected) r7.xyw = rt_traced.rgb;
     r3.x = t_ssao.SampleLevel(s_ssao_s, r0.zw, 0).x;
     r0.y = (int)r3.y | 1;
@@ -264,15 +270,16 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     } else {
       r3.xyw = r7.xyw * r0.yzw;
     }
+    const float3 rt_open_environment = RtOccludedEnvironment(rt_texel, r1.xzw);
     r0.x = -1 + r0.x;
     r0.x = r2.w * r0.x + 1;
     r0.y = 16.666666 * r3.z;
     r1.y = saturate(r1.y);
     r0.y = r1.y * r0.y;
-    r0.xzw = r3.xyw * r0.xxx + -r1.xzw;
+    r0.xzw = r3.xyw * r0.xxx + -rt_open_environment;
     r0.y = min(1, r0.y);
     if (rt_reflected) r0.y = rt_traced.a;
-    r0.xyz = r0.xzw * r0.yyy;
+    r0.xyz = r0.xzw * r0.yyy - (r1.xzw - rt_open_environment);
   } else {
     r0.xyz = float3(0,0,0);
   }

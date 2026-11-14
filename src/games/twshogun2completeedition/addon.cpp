@@ -37,6 +37,7 @@
 #include "../twshogun2completeedition_dlss/dlss_jitter.hpp"
 #include "../twshogun2completeedition_dlss/hdr_link.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
+#include "./foliage_light.hpp"
 #include "./ray_tracing.hpp"
 #include "./upscaling.hpp"
 #include "../twattila/reflex.hpp"
@@ -295,6 +296,7 @@ void BuildRuntimeData() {
       CustomShaderEntry(0x13C66077),  // ssrfilter00 (hit buffer blur x)
       CustomShaderEntry(0x073A6CF3),  // ssrfilter01 (hit buffer blur y)
       CustomShaderEntry(0xF87ECE85),  // ssrresolve00 (reflection colour)
+      CustomShaderEntry(0x16ADFD60),  // ocean00 (ocean high: Ray-Traced Water Reflections)
       CustomShaderEntry(0xA00FE3A3),  // ssao00 (ambient occlusion line sweeps)
       CustomShaderEntry(0x98BB1159),  // ssao01 (ambient occlusion collect: the Visibility Bitmask AO)
       CustomShaderEntry(0x5CBF4FB6),  // pointlight00
@@ -352,17 +354,30 @@ void BuildRuntimeData() {
   // 0x80196ECA: generic, left out only between the HiZ and the resolve), the march (ssrray00) and its blurs.
   custom_shaders[0x97624E56].on_draw = [](auto* cmd_list) {
     reflection_passes = ray_tracing_installed;
+    if (ray_tracing_installed) twshogun2::ray_tracing::WaterSurface(cmd_list);
     return !ray_tracing_installed || twattila::rt_scene::OnReflectionMarch(cmd_list);
   };
   custom_shaders[0xF87ECE85].on_draw = [](auto* cmd_list) {
     reflection_passes = false;
-    if (ray_tracing_installed) twattila::rt_scene::BindReflections(cmd_list, true, true);
+    if (ray_tracing_installed) {
+      twattila::rt_scene::BindReflections(cmd_list, true, true);
+      twshogun2::ray_tracing::BindWaterMask(cmd_list, true, true);
+    }
     return true;
   };
   custom_shaders[0xF87ECE85].on_drawn = [](auto* cmd_list) {
     if (!ray_tracing_installed) return;
     twattila::rt_scene::BindReflections(cmd_list, true, false);
+    twshogun2::ray_tracing::BindWaterMask(cmd_list, true, false);
     twshogun2::ray_tracing::KeepColor(cmd_list);
+  };
+  // Ray-Traced Water Reflections (ray_tracing.hpp OnSeaDraw): the sea's plane, the rays' reflections for shaders/ocean00.
+  custom_shaders[0x16ADFD60].on_draw = [](auto* cmd_list) {
+    if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, true);
+    return true;
+  };
+  custom_shaders[0x16ADFD60].on_drawn = [](auto* cmd_list) {
+    if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, false);
   };
   for (const uint32_t hash : {0x5C0AF498u, 0x13C66077u, 0x073A6CF3u}) {
     custom_shaders[hash].on_draw = [](auto* cmd_list) { return !ray_tracing_installed || twattila::rt_scene::OnReflectionMarch(cmd_list); };
@@ -375,6 +390,16 @@ void BuildRuntimeData() {
     };
   }
 
+  // Light Through Foliage (foliage_light.hpp): the screen-space shadow passes' depth (sss00 and Remastered CE's at t3,
+  // sss01 and its at t0) with the foliage negative while the row is on, the game's put back after.
+  for (const auto [hash, depth_slot] : {std::pair{0x34ECD06Eu, 3u}, std::pair{0x9147EB4Eu, 3u}, std::pair{0x1B529672u, 0u},
+                                        std::pair{0x7FA1D600u, 0u}}) {
+    custom_shaders[hash].on_draw = [depth_slot](reshade::api::command_list* cmd_list) {
+      twshogun2::foliage_light::OnShadowPass(cmd_list, depth_slot, shader_injection.sss_foliage_light);
+      return true;
+    };
+    custom_shaders[hash].on_drawn = twshogun2::foliage_light::OnShadowPassDone;
+  }
   // Render scale: captured on the game's own reflections copy and battle fog (drawn every frame before the depth of
   // field and the auto exposure), reset after the tonemaps.
   for (const uint32_t hash : {0x962CEB71u, 0xA61D2853u, 0x4355E897u}) {
@@ -951,6 +976,7 @@ void ReadDlssAddonOptions() {
   read_bend("SSSContrast", 8.f, &shader_injection.sss_contrast);
   read_bend("SSSEdgeThreshold", 0.1f, &shader_injection.sss_edge_threshold);
   read_bend("SSSPrecisionOffset", 1.f, &shader_injection.sss_precision_offset);
+  read_bend("SSSFoliageLight", 1.f, &shader_injection.sss_foliage_light);
   int shadow_map_stability = 0;
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ShadowMapStability", shadow_map_stability);
   shader_injection.shadow_map_stability = static_cast<float>(std::clamp(shadow_map_stability, 0, 2));
@@ -1003,11 +1029,15 @@ void ReadDlssAddonOptions() {
   ray_tracing.sun_shadows = read_on("RayTracedSunShadows", false);
   read_float("RayTracedShadowSoftness", 0.5f, 0.f, 3.f, &ray_tracing.sun_softness);
   ray_tracing.leaf_light = read_on("RayTracedLeafLight", false);
+  ray_tracing.sprite_shadows = read_on("RayTracedSpriteShadows", false);
+  ray_tracing.far_tree_shadows = read_on("RayTracedFarTreeShadows", false);
   ray_tracing.ambient_occlusion = read_on("RayTracedAmbientOcclusion", false);
   read_float("RayTracedAmbientRange", 2.f, 0.25f, 5.f, &ray_tracing.ambient_range);
   ray_tracing.ambient_rays = read_count("RayTracedAORays", 2, 1, 8);
   ray_tracing.ambient_quarter = read_on("RayTracedAOQuarter", false);
   ray_tracing.reflections = read_on("RayTracedReflections", false);
+  ray_tracing.specular_occlusion = read_on("RayTracedSpecularOcclusion", false);
+  ray_tracing.water_reflections = read_on("RayTracedWaterReflections", false);
   ray_tracing.reflection_samples = read_count("RayTracedReflectionSamples", 1, 1, 8);
   ray_tracing.local_lights = read_on("RayTracedLocalLights", false);
   ray_tracing.fog_shadows = read_on("RayTracedFogShadows", false);
@@ -1023,6 +1053,11 @@ void ReadDlssAddonOptions() {
   ray_tracing.light_bounce_rays = read_count("RayTracedLightBounceRays", 4, 1, 16);
   read_choice("RayTracedLightBounceResolution", 1, 3, &ray_tracing.light_bounce_resolution);
   ray_tracing.path_tracing = read_on("PathTracing", false);
+  // Path-Traced AO (twattila/rt_scene.hpp SettingsOf's): the paths bring the sky's light, the ray-traced AO off. Needs
+  // the ray-traced Global Illumination's paths and the Global Illumination (its apply adds them).
+  ray_tracing.path_ambient = ray_tracing.path_tracing && ray_tracing.light_bounce && shader_injection.light_bounce_strength > 0.f
+                             && read_on("RayTracedPathAmbient", false);
+  if (ray_tracing.path_ambient) ray_tracing.ambient_occlusion = false;
   // 3 and 4 measured as 2 in Attila (twattila/rt_scene.hpp SettingsOf): the key's older values taken as 2.
   ray_tracing.path_bounces = read_count("PathTracingBounces", 2, 1, 2);
   ray_tracing.sharc = ray_tracing.path_tracing && read_on("RayTracedSharc", false);
@@ -1077,7 +1112,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   auto rays = ray_tracing_settings;
   const bool any_rays = ray_tracing_installed
                         && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.local_lights
-                            || rays.fog_shadows);
+                            || rays.fog_shadows || rays.specular_occlusion);
   twshogun2::upscaling::SetUse({
       .ray_tracing = ray_tracing_installed,
       .guides = ray_tracing_installed && (rays.reflections || rays.path_tracing),
@@ -1306,7 +1341,8 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's callbacks on the same sun draws: this frame's trace first.
   ray_tracing_installed = ray_tracing_settings.sun_shadows || ray_tracing_settings.ambient_occlusion || ray_tracing_settings.light_bounce
-                          || ray_tracing_settings.reflections || ray_tracing_settings.local_lights;
+                          || ray_tracing_settings.reflections || ray_tracing_settings.local_lights || ray_tracing_settings.fog_shadows
+                          || ray_tracing_settings.specular_occlusion;
   if (ray_tracing_installed) {
     twshogun2::ray_tracing::Install();
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);
@@ -1329,6 +1365,10 @@ bool AttachAddon() {
       shader_injection.sun_shadow_softness, (ray_tracing_installed ? "installed" : "not installed"),
       ray_tracing_settings.sun_shadows, ray_tracing_settings.ambient_occlusion, ray_tracing_settings.light_bounce,
       ray_tracing_settings.reflections, ray_tracing_settings.local_lights, ray_tracing_settings.path_tracing));
+  // Light Through Foliage's G-buffer constants from the sun light draws: before the Light Bounce's (its own draw skips
+  // the later callbacks).
+  twshogun2::foliage_light::Install(twshogun2::ray_tracing::SUN_DRAWS);
+  reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::foliage_light::OnDestroyDevice);
   // Light Bounce (twattila/light_bounce.hpp): the sun light draws (ray_tracing.hpp's, replaced here).
   twattila::light_bounce::Install(twshogun2::ray_tracing::SUN_DRAWS);
 
@@ -1355,6 +1395,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
   twattila::light_bounce::Uninstall();
+  twshogun2::foliage_light::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::foliage_light::OnDestroyDevice);
   if (ray_tracing_installed) {
     twshogun2::ray_tracing::Uninstall();
     reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);

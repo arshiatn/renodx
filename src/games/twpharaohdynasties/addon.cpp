@@ -43,6 +43,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/view_share.hpp"
 #include "../twattila/water_effects.hpp"
@@ -1625,73 +1626,11 @@ void OnDestroyContactShadowsDevice(reshade::api::device* device) {
 // the atlas's other readers (water, rivers, particles, the fog without Fog Shadows). The game's sampler is bound again after
 // the draw (finalize: the Light Bounce draws the sun draw itself and bypasses). Skip the Shadow Maps (under it): rt_scene's
 // Ray-Traced Shadows Only skips the atlas's draws (its learned map is Host::cascade_target's, so never the baked one). WARP on
-// the game's bytes with the traces' constants: tools\tw\pharaoh\sun_test (P).
+// the game's bytes with the traces' constants: tools\tw\pharaoh\sun_test (P). The hook: twattila/sun_replace_maps.hpp.
 constexpr std::array<uint32_t, 12> ATLAS_SUN_SHADERS = {0xF883F5B2, 0xFA856110, 0x1549C88A, 0xE238D4C7, 0x24FD1318, 0x6AFC2ACA,
                                                         0xC701CDD0, 0xE5A6A379, 0x3323BDCC, 0x47DDD6EE, 0x955658C3, 0xF4E19A48};
-constexpr UINT ATLAS_SAMPLER_SLOT = 2;
 float rays_replace_maps_row = 0.f;
 float rays_skip_cascades_row = 0.f;
-struct AtlasLit {
-  std::shared_mutex mutex;
-  ID3D11Device* device = nullptr;  // the sampler's (compared only)
-  Microsoft::WRL::ComPtr<ID3D11SamplerState> always;
-  Microsoft::WRL::ComPtr<ID3D11SamplerState> game_sampler;  // bound again after the draw
-  bool logged = false;
-};
-AtlasLit atlas_lit;
-constexpr auto OnSunReplaceMaps = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (rays_replace_maps_row == 0.f || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> rays;
-  native->PSGetShaderResources(twattila::screen_space_shadows::internal::MASK_SLOT, 1, rays.GetAddressOf());
-  // With the rays' sun shadows on, t49 holds theirs alone (no screen-space mask beside them).
-  if (!rays || !twattila::rt_scene::SunShadowsTraced()) return {};
-  Microsoft::WRL::ComPtr<ID3D11Device> device;
-  native->GetDevice(device.GetAddressOf());
-  auto& state = atlas_lit;
-  const std::unique_lock lock(state.mutex);
-  if (state.device != device.Get()) {
-    state.always.Reset();
-    state.device = nullptr;
-    // Point: each comparison exactly 1.
-    const D3D11_SAMPLER_DESC desc = {.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT,
-                                     .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
-                                     .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
-                                     .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
-                                     .ComparisonFunc = D3D11_COMPARISON_ALWAYS,
-                                     .MaxLOD = D3D11_FLOAT32_MAX};
-    if (FAILED(device->CreateSamplerState(&desc, state.always.GetAddressOf()))) return {};
-    state.device = device.Get();
-  }
-  native->PSGetSamplers(ATLAS_SAMPLER_SLOT, 1, state.game_sampler.ReleaseAndGetAddressOf());
-  native->PSSetSamplers(ATLAS_SAMPLER_SLOT, 1, state.always.GetAddressOf());
-  if (!std::exchange(state.logged, true)) {
-    renodx::utils::log::i("[Total War] First run: Rays Replace Shadow Maps: the sun draws' per-frame shadow maps read as lit (the rays shadow).");
-  }
-  return {.finalize_callback = [](Context& drawn, const void*) {
-    auto* drawn_native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
-    renodx::utils::directx::TryNativeFromReShadeProxy(&drawn_native);
-    auto& drawn_state = atlas_lit;
-    const std::unique_lock drawn_lock(drawn_state.mutex);
-    if (drawn_native != nullptr) {
-      drawn_native->PSSetSamplers(ATLAS_SAMPLER_SLOT, 1, drawn_state.game_sampler.GetAddressOf());
-    }
-    drawn_state.game_sampler.Reset();
-  }};
-};
-
-// Only our sampler's device (nullptr: the addon's end, DetachAddon).
-void OnDestroyAtlasLitDevice(reshade::api::device* device) {
-  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
-  auto& state = atlas_lit;
-  const std::unique_lock lock(state.mutex);
-  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
-  state.always.Reset();
-  state.device = nullptr;
-}
-
 // Fog Shadows (FOG_SHADERS): in a draw where rt_scene's fog hook (InstallFogShadows, registered before this) bound this frame's
 // rays at t43, our copy (shaders/battlefog00: the march's gate false, the sun's light in the fog x the rays) draws in its place
 // and the game's shader is bound again after it (finalize); otherwise the game's own bytes.
@@ -3041,11 +2980,7 @@ bool AttachAddon() {
   }
   // Rays Replace Shadow Maps: also after the screen-space shadows' and before the Light Bounce's. Skip the Shadow Maps through
   // Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
-  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
-  for (const uint32_t shader_hash : ATLAS_SUN_SHADERS) {
-    renodx::utils::command_action::Register(
-        OnSunReplaceMaps, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
-  }
+  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &rays_replace_maps_row);
   twattila::rt_scene::InstallShadowsOnly();
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also
   // at 100% (twattila/frame_trace.hpp). The sun light draws' (standard and skin) and the tone mapper's constants once
@@ -3162,9 +3097,7 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(OnSunContactShadows);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyContactShadowsDevice);
   OnDestroyContactShadowsDevice(nullptr);
-  renodx::utils::command_action::Unregister(OnSunReplaceMaps);
-  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
-  OnDestroyAtlasLitDevice(nullptr);
+  twattila::sun_replace_maps::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::rt_scene::Uninstall();
   renodx::utils::command_action::Unregister(OnFogShadowsDraw);

@@ -205,6 +205,7 @@ float sss_thickness = 0.f;       // overlay
 float sss_contrast = 0.f;        // overlay
 float sss_edge_threshold = 0.f;  // overlay
 int sss_precision_offset = 0;    // overlay
+float sss_foliage_light = 0.f;   // overlay: ReShade.ini SSSFoliageLight (HDR addon foliage_light.hpp), Light Through Foliage
 // Ambient Occlusion (GT-VBAO) and Global Illumination (GT-VBGI, the Light Bounce): the HDR addon's
 // (twattila/lighting_settings.hpp's settings; it reads these from ReShade.ini). Defaults: ATN's recommended presets
 // (Global Illumination off).
@@ -715,6 +716,11 @@ void OnOverlay(reshade::api::effect_runtime*) {
                       "A small offset for depth imprecision: less shadow acne far away, contact shadows start a bit later.")) {
       reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSPrecisionOffset", sss_precision_offset);
     }
+    if (float_slider("Light through foliage (Experimental)", &sss_foliage_light, 0.f, 1.f, "%.2f", 0.f,
+                     "How much sun comes through the screen-space shadows grass and leaves cast: they are thin. Walls and\n"
+                     "soldiers keep their full shadows, on foliage too. 0: as dark as any other shadow.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSFoliageLight", sss_foliage_light);
+    }
   }
   if (choice_slider("Shadow map resolution", &shadow_map_resolution, SHADOW_MAP_RESOLUTIONS.size(),
                     SHADOW_MAP_RESOLUTIONS[shadow_map_resolution], GRAPHICS_DEFAULT.shadow_map_resolution,
@@ -961,6 +967,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightBounce", 0.f},
         {"PathTracing", 0.f},
         {"RayTracedFogShadows", 0.f},
+        {"RayTracedPathAmbient", 0.f},
+        {"RayTracedSpecularOcclusion", 0.f},
     };
     constexpr std::pair<const char*, float> RAYS_PRESET[] = {
         {"RayTracedSunShadows", 1.f},
@@ -984,6 +992,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
     constexpr std::pair<const char*, float> RAYS_RESET[] = {
         {"RayTracedShadowSoftness", 0.5f},
         {"RayTracedLeafLight", 0.f},
+        {"RayTracedSpriteShadows", 0.f},
+        {"RayTracedFarTreeShadows", 0.f},
         {"RayTracedAmbientRange", 2.f},
         {"RayTracedAORays", 2.f},
         {"RayTracedAOQuarter", 0.f},
@@ -993,6 +1003,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightSteady", 0.f},
         {"RayTracedLightRange", 0.f},
         {"RayTracedReflectionSamples", 1.f},
+        {"RayTracedWaterReflections", 0.f},
         {"RayTracedLightBounceRays", 4.f},
         {"RayTracedLightBounceRange", 10.f},
         {"RayTracedLightBounceResolution", 1.f},
@@ -1049,6 +1060,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
     slider("Ray-traced shadow softness", "RayTracedShadowSoftness", 0.5f, 0.f, 3.f, "%.2f",
            "The sun's size in degrees: shadows softer away from what casts them. 0: sharp.");
     checkbox("Light through leaves", "RayTracedLeafLight", "Leaves let some sunlight through ray-traced shadows (where they reach past the game's).");
+    choice("Sprite soldier shadows (Experimental)", "RayTracedSpriteShadows", 0, OFF_ON_NAMES,
+           "The flat far soldiers' ray-traced shadows keep their shape as the camera turns.");
+    choice("Far tree shadows (Experimental)", "RayTracedFarTreeShadows", 0, OFF_ON_NAMES, "The flat far trees cast ray-traced shadows too.");
     ImGui::EndDisabled();
     const bool ambient = checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion",
                                   "Shade in corners and under things from rays, with the game's (the darker).\n"
@@ -1087,7 +1101,12 @@ void OnOverlay(reshade::api::effect_runtime*) {
                                       "Needs the game's screen-space reflections on.");
     ImGui::BeginDisabled(!reflections);
     count("Ray-traced reflection samples", "RayTracedReflectionSamples", 1, 8, "Rays per pixel on rough surfaces: less noise, heavier.");
+    choice("Ray-traced sea reflections (Experimental)", "RayTracedWaterReflections", 0, OFF_ON_NAMES,
+           "The sea reflects ships, coasts and units with rays (water quality High).");
     ImGui::EndDisabled();
+    const bool specular_occlusion = checkbox("Ray-traced specular occlusion (Experimental)", "RayTracedSpecularOcclusion",
+                                             "The sky's reflection taken off shiny surfaces where something stands over them (inside\n"
+                                             "doorways, under hulls and roofs). Needs the game's screen-space reflections on.");
     const bool bounce = checkbox("Ray-traced Global Illumination", "RayTracedLightBounce",
                                  "The Global Illumination's light found with rays: no guessing behind what you see, light from farther.\n"
                                  "Needs the Global Illumination on.");
@@ -1106,11 +1125,14 @@ void OnOverlay(reshade::api::effect_runtime*) {
     count("Path tracing bounces", "PathTracingBounces", 2, 2, "Bounces past the first where the camera sees nothing. 1: faster, a little darker.");
     choice("SHaRC radiance cache (Experimental)", "RayTracedSharc", 0, OFF_ON_NAMES,
            "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).");
+    choice("Path-traced AO (Experimental)", "RayTracedPathAmbient", 0, OFF_ON_NAMES,
+           "The paths bring the sky's light in place of the game's ambient: shade wherever the sky can't reach.\n"
+           "In battles, in place of ray-traced AO (the campaign map keeps it). Needs Ray-traced Global Illumination.");
     ImGui::EndDisabled();
     choice("Path tracing SER (Experimental)", "RayTracedPathSer", 0, OFF_ON_NAMES,
            "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.");
     ImGui::EndDisabled();
-    if (sun_shadows || ambient || local_lights || fog_shadows || reflections || bounce) {
+    if (sun_shadows || ambient || local_lights || fog_shadows || reflections || specular_occlusion || bounce) {
       if (upscaler_choice.load() != 0 && !(upscaler_choice.load() == 1 && ray_reconstruction_choice.load() != 0)) {
         constexpr std::array<const char*, 2> DENOISERS = {"Built-in", "NRD"};
         choice("Ray tracing denoiser (Experimental)", "RayTracingDenoiser", 0, DENOISERS,
@@ -1328,6 +1350,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
     sss_edge_threshold = std::clamp(value, 0.f, 0.1f);
   }
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSPrecisionOffset", value)) sss_precision_offset = std::clamp(value, 0, 1);
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSFoliageLight", value)) sss_foliage_light = std::clamp(value, 0.f, 1.f);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", value) && value >= 0
                       && value < static_cast<int>(SSS_STABILITIES.size())) {
     sss_stability = value;

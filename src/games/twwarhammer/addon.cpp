@@ -28,13 +28,16 @@
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
+#include "./trace_reads.hpp"
 
 constexpr char BUILD_DATE[] = __DATE__;
 constexpr char BUILD_TIME[] = __TIME__;
@@ -61,8 +64,10 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 3.f;
 }
 
-// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; Attila's engine, part 4).
-constexpr float HUE_CLIP_DEFAULT = 40.f;
+// Hue Clip Emulation's default: closest to the game's SDR picture on WH1's own tone mappers (test/tw_psychov35 part 5 curve
+// 7, with the battle's whiteout 0 / 10 from ATN's traces): fire's signed hue crosses 0 between 0.80 and 0.90 (|mean| 4.41 at
+// 0.90), sky's between 1.00 and 1.25. Attila's 40 came from its own stock path's highlight limit, which WH1's has not.
+constexpr float HUE_CLIP_DEFAULT = 90.f;
 
 // bool IsModdedAutoExposureEnabled() {
 //   return shader_injection.auto_exposure_highlight_protection == 1.f;
@@ -259,6 +264,8 @@ void BuildRuntimeData() {
         .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
     },
+    twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
+                                  [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
     // Gamma Correction //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .value_type = renodx::utils::settings::SettingValueType::BULLET,
@@ -1145,6 +1152,9 @@ twattila::feature_settings::SssSliders sss_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
+// Texture LOD Bias on All Textures (Graphics 1 of 2, Experimental): the trilinear samplers too
+// (texture_lod_bias.hpp SetWrappingTrilinear).
+float lod_bias_trilinear_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1302,8 +1312,13 @@ constexpr std::array<twattila::light_bounce::SunDraw, 31> LIGHT_BOUNCE_DRAWS = {
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
+  // preset's is XeSS on Intel's, else FSR.
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
   static uint32_t ao_frame = 0;
@@ -1313,6 +1328,11 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
   const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
+  // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
+  auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
+  sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
+  twattila::screen_space_shadows::Update(swapchain, sss_settings);
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
@@ -1327,6 +1347,33 @@ extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Total War: Warhammer by ATN";  // TODO: change me!
 
 namespace {
+
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here (as Warhammer II's). The rays' sun shadows multiply the
+// game's shadow maps (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO (its line sweeps);
+// reflections on the game's SSR resolve; no point lights, fog, water or smoke hooked.
+constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
+    .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
+    .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
+    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its ambient occlusion,\n"
+                     "shadows and reflections. The rest at its default.",
+    .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"
+                       "The rest of this page at its default.",
+    .rays_tooltip = "Ray-traced shadows, reflections and ambient occlusion, path-traced Global Illumination at my settings.\n"
+                    "The rest of this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
+                    "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
+    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
+                      "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "Needs an upscaler.",
+    .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
+                  "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
+                  "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
+                  "thin ones.\n"
+                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.",
+    .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+    .reflections_tooltip = "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
+                           "Game's SSR: the original. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
+};
 
 void ConfigureAddon() {
   if (configured) return;
@@ -1448,8 +1495,17 @@ void ConfigureAddon() {
       {.name = "VERY_LARGE_IMPOSTER_SHADOW_DISTANCE"},
       {.name = "entity_display_shadow_max_shadow_distance"},
   };
-  // Graphics 2 of 2's tests: Attila's that this game has, then More Tests (more_tests.h).
+  // Graphics 2 of 2's tests: Attila's that this game has, as it has them (without the values it lacks, its own game values
+  // in the tooltips), then More Tests (more_tests.h).
   engine_tests = twattila::engine_tests::Only(twattila::engine_tests::Attila(), more_tests::ATTILA_TESTS);
+  for (auto& test : engine_tests) {
+    std::erase_if(test.option.tweaks, [](const tw::engine_tweaks::Tweak& tweak) {
+      return std::ranges::find(more_tests::MISSING_VALUES, tweak.name) != more_tests::MISSING_VALUES.end();
+    });
+    if (const auto tooltip = std::ranges::find(more_tests::TOOLTIPS, test.key, &std::pair<std::string, std::string>::first); tooltip != more_tests::TOOLTIPS.end()) {
+      test.tooltip = tooltip->second;
+    }
+  }
   {
     auto more = more_tests::MoreTests();
     engine_tests.insert(engine_tests.end(), more.begin(), more.end());
@@ -1461,12 +1517,12 @@ void ConfigureAddon() {
       .label = "Engine values: not searched yet",
       .section = "Graphics (Experimental)",
   };
-  // Graphics presets (ATN): MAX (every graphics setting at its maximum) and Reset (all
-  // graphics settings at their defaults; not the ambient occlusion or the Light Bounce).
+  // Graphics presets (ATN): MAX (every graphics setting at its maximum) and Reset (all graphics settings and tests at their
+  // defaults, as Attila's; not the ambient occlusion or the Light Bounce).
   shadow_map.tweaks = {
       {.name = "shadowmap_extreme_quality", .flag = true},
   };
-  const std::vector<std::pair<std::string, float>> graphics_defaults = {
+  std::vector<std::pair<std::string, float>> graphics_defaults = {
       {"GraphicsShadowMapSize", 0.f},
       {"GraphicsUnitDetailVerySmall", 1.f},
       {"GraphicsUnitDetailSmall", 1.f},
@@ -1486,6 +1542,10 @@ void ConfigureAddon() {
       {"GraphicsSmallShadows", 1.f},
       {"GraphicsUnitShadows", 1.f},
   };
+  for (const auto& test : engine_tests) {
+    // Its option's start: the game's (1x, Game's or -1).
+    graphics_defaults.emplace_back(test.key, test.option.scale);
+  }
   const std::vector<std::pair<std::string, float>> graphics_max = {
       {"GraphicsShadowMapSize", 1.f},
       {"GraphicsUnitDetailVerySmall", 8.f},
@@ -1513,7 +1573,7 @@ void ConfigureAddon() {
           .label = "Reset",
           .section = "Graphics (Experimental)",
           .group = "graphics-presets",
-          .tooltip = "Every graphics setting back to its default.",
+          .tooltip = "Every graphics setting and test back to its default.",
           .on_change = [graphics_defaults]() { renodx::utils::settings::UpdateSettings(graphics_defaults); },
       },
       new renodx::utils::settings::Setting{
@@ -1690,7 +1750,32 @@ void ConfigureAddon() {
     if (std::ranges::find(engine_sections, test.section) == engine_sections.end()) engine_sections.push_back(test.section);
   }
   twattila::feature_settings::SetTints({}, engine_sections);
-  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections);
+
+  // Graphics 1 of 2's layout (as Warhammer II's and Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave,
+  // then Settings Mode's pages. Only what this game hooks: no Rays Replace Shadow Maps or casters out of view (the shadow pass
+  // is not read yet), no foliage in the screen-space shadows, no point lights, fog, water or smoke (their rows stay hidden).
+  // The paths' sky from the game's ambient is installed (InstallSunDraws' cube, its Path-Traced Ambient row Experimental, off),
+  // but not in the AO methods or RT/PT until a WH1 trace shows g_hdr_on and g_use_spherical_harmonics (plan_1114.md item 5).
+  twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  // Fog Shadows, the torches' light in it and Smoke Shadows start off (hidden: not hooked here yet), Specular Occlusion too
+  // (Experimental before the page); RT/PT turns all but the smoke on, as ATN's list does.
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
+        || setting->key == "RayTracedSpecularOcclusion") {
+      setting->default_value = 0.f;
+    }
+  }
+  twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
+                                             .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row,
+                                             .texts = &PAGE_TEXTS,
+                                             .has_foliage_light = false,
+                                             .smoke_shadows_tested = false,
+                                             .water_caustics_tested = false,
+                                             .has_path_ambient = false,
+                                             .rays_replace_ao = false,
+                                             .rays_multiply_maps = true});
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
 }
@@ -1705,6 +1790,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
+  // The data run's RENODX_TW_SET / SHOT / PROFILE (nothing without them), timed from the first present.
+  twattila::test_hooks::Install(&settings, true);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
@@ -1727,15 +1814,42 @@ bool AttachAddon() {
   // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads). No AO pass hook
   // keeps it here (the game's AO is compute line sweeps).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
-  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. The ambient cube at c2 and the sun colour at c1
+  // as Attila's (the sun PS's lighting_VS_PS RDEF); the paths' sun scale in rt_sun.cs_5_0.hlsl. Not hooked: the unlit (ulm) and
+  // default reflection sun PS (ED3BDD4C drawn in the 10-27 battle trace): they write the G-buffer's colour or black, no light.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // The data run's frame traces (tools\tw\wh1\plan_1114.md; twattila/frame_trace.hpp): on demand (renodx_trace_now next to the
+  // exe) and at 100% too. The camera's g_screen_size / g_viewport_dimensions at c27 / c29 as Attila's (the sun PS's camera RDEF,
+  // 230F2241: offsets 432 / 464). Constants once each (the sun PS bind cb0-cb6): the 11 single-sampled sun PS (directionallight
+  // slm / skinlm), the tone mappers (basic D275C403, constant 9C8E40E6, with bloom 7759B956, with bloom and gamma 50DEBCD2), the
+  // point and spot lights' VS (B5B5BFA4 / 7053708A, F0C3E3A1 / 90EA5679), the battle fog (E684D54E, its VS E768F804), the battle
+  // water (waterplane gather 4.1 / 5.0: 5C9DF968, 44B4A2F0) and river (B5C25930), the lit particles (63D80213, 122F218C; their
+  // blend and the dynamic-light one's, C4D57D81) and their VS's buffers (3883A15B, 9FD3EC63); the lights' instances with
+  // FrameTraceReads (trace_reads.hpp).
+  // The game maps some uvs to its viewport itself (uv x (c29.zw x c31.xy): the weather effects 3619B413, 4BEEAAE2, 5B006315,
+  // 9A369793; tools\tw\wh1\scale_census_wh1_base.txt): view_share leaves them.
+  twattila::view_share::SetViewportChains(true);
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS);
+                                   RENDER_SCALE_READS, {}, {}, {},
+                                   {
+                                       .value_hashes = {0x230F2241, 0x27AF3D62, 0x2B3F8DC8, 0xC601C862, 0xCF0C5118, 0x9547FB5E, 0x1CE77E85,
+                                                        0x4324BBE8, 0xA14D4C74, 0xA359A234, 0xB8F4B964, 0xD275C403, 0x9C8E40E6, 0x7759B956,
+                                                        0x50DEBCD2, 0xB5B5BFA4, 0x7053708A, 0xF0C3E3A1, 0x90EA5679, 0xE684D54E, 0xE768F804,
+                                                        0x5C9DF968, 0x44B4A2F0, 0xB5C25930, 0x63D80213, 0x122F218C},
+                                       .value_slots = 7,
+                                       .value_floats = 256,
+                                       .on_demand = true,
+                                       .at_100 = true,
+                                       .blend_hashes = {0x63D80213, 0x122F218C, 0xC4D57D81},
+                                       .vertex_input_hashes = {0x3883A15B, 0x9FD3EC63},
+                                       .instances_apart = true,
+                                       .draw_reads = twwarhammer::trace_reads::Read,
+                                   });
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
@@ -1758,6 +1872,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  twattila::test_hooks::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);

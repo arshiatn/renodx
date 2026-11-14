@@ -2,6 +2,35 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+## v10 (2026-11-14, phase I part 3: ray tracing; built only, not run in game)
+
+- Graphics (Experimental, Advanced, off; restart the game after turning one on): **Ray-Traced Sun Shadows** and
+  **Ray-Traced Ambient Occlusion** (`ray_tracing.hpp` on the TW helper's DXR, `twattila/rt_core.hpp`). The scene: the
+  game's depth prepass (terrain, buildings, trees), captured every frame; soldiers, grass and far tree cards stay out
+  (the game's own shadows keep them). Traced before ASSAO's apply; the traced sun multiplies the game's shadow mask, the
+  traced AO ASSAO's result: the game's shadows and AO stay, the rays add theirs. With **Remove the Game's Sun Shadows
+  (Test)** on, the shadows are the rays' alone (the same for AO). Needs the full download; DLAA not needed.
+- Test: `test/tw_romer_rays` (WARP: the scene's draws, the trace's camera, the sun, the multiply, and the game's own
+  forward PBR shader lit with the multiplied mask and AO as with the products).
+
+Test (ATN): a battle with Ray-Traced Sun Shadows (restart): small buildings' and trees' contact shadows sharper, the
+game's shadows still there; with the Test row on the rays' alone; then Ray-Traced AO; the frame rate with each.
+
+## v9 (2026-11-14, phase I part 2: from ATN's first traces; built only, not run in game)
+
+- Graphics (Experimental, Advanced) > **Anti-Aliasing**: Game's (default) / **DLAA** (`dlaa.hpp`). NVIDIA's DLAA through
+  the TW helper (the add-on now needs the full download for it; a red note says so when the helper is missing). The game
+  has no TAA, jitter or motion vectors: a Halton jitter goes into the main camera (VS b5) at its upload, the camera's
+  motion comes from the depth (Attila's `aa_dlaa_prepare` / `aa_dlaa_finish`), DLAA runs after ResolveMainColor and
+  the game's SMAA finds no edges under it. 100% Resolution Scale only (below it the log says why it is off); the game's
+  FXAA still runs on top; MSAA: off. No object motion yet: moving units ghost more than the camera's motion.
+- Log: `[Rome Remastered] DLAA: on, WxH.` once, or `DLAA: off: ...` with the reason; a traced frame marks `DLAA ...`.
+- Test: `test/tw_romer_dlaa` (WARP: the trace's cameras, the motion against a CPU reprojection, the colour round trip).
+
+Test (ATN): Anti-Aliasing DLAA, the game's Anti-Aliasing SMAA or off, Resolution Scale 100%: a still battle and the
+campaign map steady (no shake), edges smooth; the log's DLAA line; at 67% the log's "off" line and no shake; DLAA back
+to Game's: SMAA's edges back.
+
 ## v8 (2026-11-14, phase I part 1: trace-free items; built only, not run in game)
 
 - Stability: `twattila/device_loss.hpp` (a removed device's chain let go before the new one, stall lines) and

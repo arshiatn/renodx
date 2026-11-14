@@ -1,28 +1,29 @@
 // Shogun 2's own ray tracing and helper-upscaler compute shaders (src/games/twshogun2completeedition) on WARP.
 // tests <repo root> <DLSS input capture folder>
-// 1. rt_sun (its wrapper) with the lighting buffers of the 2026-11-14 data run's three sun draws (trace_scale0.txt:
-//    battle ED1BED93 b2, sea ED1BED93 b2, campaign C3E0E939 b3; the 16 registers rt_sun reads): texel 0 the way to the
-//    sun, texel 1 untouched, texel 2 sun_colour x 1.90384671e-005 (sunlight00-03's diffuse literal), texels 3-8 the
-//    cube c3-c8 with the unscaled weights. CONTROLS: Attila's scale switch on (the shared file's default; nine registers
-//    past Shogun 2's cube at c3 it reads c12.x, g_cloud_shadow_lerp) must differ where that is above 0 (battle 0.5,
-//    campaign 0.2732) and match where it is 0 (sea); the light scale 1 (the wrapper before) must differ.
+// 1. rt_sun (Shogun 2's own) with the 2026-11-14 data run's three sun draws (battle, sea, campaign: lighting_VS_PS,
+//    the camera, environment_PS) and synthetic harmonics against the sun shaders' ambient (TestSun).
 // 2. upscale_inputs with the capture's frame 0 (render 2560x1440: RGBA16F colour, R24G8 depth, RG16F motion, NGX motion
 //    scale (-1, 1)) into the bridge's formats one texel larger each way: the colour (its square root and not), the depth
 //    as stored, the motion x the scale, nothing past the render size. CONTROLS: motion scale (1, 1) and the square root
 //    off must differ.
 // 3. upscale_output and its Upscaling Debug View (TestOutput).
+// 4. sss_foliage_depth, Light Through Foliage's depth (TestFoliage).
+// 5-6. rt_capture_tree_billboard and rt_capture_imposter against the game's csos (TestBillboard, TestImposter; their folder third).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <random>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -109,93 +110,199 @@ static bool Near(float a, float b, float relative) {
   return std::fabs(a - b) <= (relative * std::max(std::fabs(a), std::fabs(b))) + 1e-30f;
 }
 
-// The first 16 registers of the data run's lighting buffers (rt_sun's cbuffer).
+// The data run's sun draws: the first 16 registers of lighting_VS_PS (rt_sun reads to c14), the camera's position
+// (camera_VS_PS c0) and environment_PS c0-c5 (the probe grid: area c3, size c4.x as a uint, lerp c4.z, terms c5.w).
 struct SunDraw {
   const char* name;
   std::array<float, 64> lighting;
+  std::array<float, 4> camera;
+  std::array<float, 24> environment;
 };
 static const std::array<SunDraw, 3> SUN_DRAWS = {{
-    {.name = "battle ED1BED93 b2",
+    {.name = "battle ED1BED93",
      .lighting = {-0.7960979f, -0.5877858f, 0.1440006f, 9.459185e-39f, 84112.55f, 71577.57f, 49356.4f, 1.f, 1.f, 1.092847e-38f, 1.046938e-38f,
                   1.056113e-38f, 0.2828865f, 0.5209318f, 1.f, 2.938806e-39f, 0.1855839f, 0.2251126f, 0.2623321f, 9.275548e-39f, 0.4870255f,
                   0.5041848f, 0.5121719f, 1.010206e-38f, 0.03784777f, 0.06576082f, 0.01148963f, 8.90818e-39f, 0.1782103f, 0.2059063f, 0.236235f,
                   1.046941e-38f, 0.1549197f, 0.2253252f, 0.3116145f, 9.275529e-39f, 0.0004800692f, 0.004606451f, 0.006022009f, 9.091843e-39f,
                   0.02067193f, 0.04099049f, 0.05384444f, 1.401298e-45f, 1.f, 0.f, 9.431818f, 300.f, 0.5f, 9.183704e-39f, 1.065305e-38f,
-                  9.275545e-39f, -1024.f, -1024.f, 1024.f, 1024.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f, 9.00003e-39f, 8.908199e-39f}},
-    {.name = "sea ED1BED93 b2",
+                  9.275545e-39f, -1024.f, -1024.f, 1024.f, 1024.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f, 9.00003e-39f, 8.908199e-39f},
+     .camera = {637.9034f, 94.96758f, 21.81959f, 0.f},
+     .environment = {0.7960978f, 0.5877857f, -0.1440006f, 7.216687e-43f, 1.f, 10.f, 100000.f, 1.f, 1.f, 0.f, 0.f, 1.f, -1024.f, -1024.f, 1024.f,
+                     1024.f, 7.006492e-45f, 25.f, 1.f, 0.661202f, 0.f, 10.f, 1.f, 9.f}},
+    {.name = "sea ED1BED93",
      .lighting = {-0.9207556f, -0.3894183f, -0.02371511f, 1.401298e-45f, 42567.57f, 42567.57f, 42567.57f, 1.f, 0.273224f, 0.f, 1.401298e-45f,
                   3.761622e-37f, 0.431058f, 0.4802828f, 0.5899238f, 1.509546e-39f, 0.5115643f, 0.5709938f, 0.7114751f, 1.641559e-39f, 0.2423867f,
                   0.2754562f, 0.3265477f, 1.837411e-40f, 0.01018352f, 0.06104831f, 0.09266015f, 4.484155e-44f, 0.2285052f, 0.3219273f, 0.5068477f,
                   1.469438e-39f, 0.4680364f, 0.5627694f, 0.7438115f, 1.469438e-39f, 0.02350721f, 0.07074028f, 0.06077817f, 2.296168e-41f,
                   0.009838917f, 0.03318591f, 0.004290012f, 1.401298e-45f, 1.f, 0.f, 1.f, 0.f, 0.f, 2.984752e-39f, 0.f, 0.f, -1024.f, -1024.f,
-                  1024.f, 1024.f, 0.f, 1.5f, 0.f, 0.f, 0.f, 1.f, 0.f, 2.296028e-41f}},
-    {.name = "campaign C3E0E939 b3",
+                  1024.f, 1024.f, 0.f, 1.5f, 0.f, 0.f, 0.f, 1.f, 0.f, 2.296028e-41f},
+     .camera = {-183.4287f, 90.f, 480.9623f, 0.f},
+     .environment = {0.9207556f, 0.3894183f, 0.02371511f, 1.015599e-34f, 0.15f, 10.f, 100000.f, 1.f, 0.5932106f, 0.f, 0.f, 1.f, -1024.f, -1024.f,
+                     1024.f, 1024.f, 7.006492e-45f, 25.f, 1.f, 0.240437f, 0.076503f, 5.7386f, 0.639344f, 9.f}},
+    {.name = "campaign C3E0E939",
      .lighting = {-0.9427759f, -0.2034619f, 0.2641531f, 2.062166e-07f, 150000.f, 150000.f, 150000.f, 1.f, 0.661202f, 4032.942f, 5.438893e-20f,
                   2.062166e-07f, 0.2942063f, 0.2942063f, 0.2942063f, 8.631999e-43f, 0.2526698f, 0.2556754f, 0.263554f, 8.631999e-43f, 0.228759f,
                   0.2939129f, 0.4690664f, 8.631999e-43f, 0.001834614f, 0.01617394f, 0.0001349572f, 8.631999e-43f, 0.4920455f, 0.5278161f,
                   0.7307833f, 8.631999e-43f, 0.578449f, 0.578449f, 0.578449f, 8.631999e-43f, 0.01930526f, 0.04002449f, 0.05108619f, 8.631999e-43f,
                   0.02965025f, 0.06060925f, 0.09691535f, 1.401298e-45f, 0.f, 0.f, 3.f, 350.f, 0.2732f, 8.631999e-43f, 2.232359e-15f, 8.631999e-43f,
-                  -266.f, -266.f, 266.f, 266.f, 0.f, 2.033898f, 0.f, 0.f, 0.f, 1.f, 2.213649e-15f, 8.631999e-43f}},
+                  -266.f, -266.f, 266.f, 266.f, 0.f, 2.033898f, 0.f, 0.f, 0.f, 1.f, 2.213649e-15f, 8.631999e-43f},
+     .camera = {-266.f, 12.70201f, 247.1187f, 0.f},
+     .environment = {0.9427759f, 0.2034619f, -0.2641531f, 5.739719e-42f, 1.f, 10.f, 100000.f, 1.f, 3.333333f, 0.f, 0.f, 1.f, -266.f, -266.f, 266.f,
+                     266.f, 2.242078e-44f, 256.f, 1.f, 0.52459f, 0.f, 10.f, 1.f, 9.f}},
 }};
 
-// rt_sun's nine texels from one lighting buffer (ray_tracing.hpp's SUN_OFFSETS: sun_direction 0, cube 12, sun_colour 4).
-static std::array<std::array<float, 4>, 9> RunSun(ID3D11ComputeShader* shader, const std::array<float, 64>& lighting) {
+using SunTexels = std::array<std::array<float, 4>, 9>;
+using Harmonics = std::vector<std::array<float, 4>>;  // (grid x 3)^2 texels, RGBA32F
+
+static uint32_t Bits(float value) {
+  uint32_t bits = 0;
+  std::memcpy(&bits, &value, 4);
+  return bits;
+}
+
+// rt_sun's nine texels from one draw (ray_tracing.hpp's SUN_OFFSETS: sun_direction 0, cube 12, sun_colour 4).
+static SunTexels RunSun(ID3D11ComputeShader* shader, const SunDraw& draw, const std::array<float, 72>& lighting, const std::array<float, 24>& environment,
+                        const Harmonics& current, const Harmonics& previous) {
   constexpr std::array<uint32_t, 8> SUN_OFFSETS = {0, 12, 0, 0, 4, 0, 0, 0};
-  constexpr float SENTINEL = 7.f;
-  const std::vector<std::array<float, 4>> initial(9, {SENTINEL, SENTINEL, SENTINEL, SENTINEL});
+  const std::vector<std::array<float, 4>> initial(9, {7.f, 7.f, 7.f, 7.f});
   const auto texture = Texture(9, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, initial.data(), 9 * 16, D3D11_BIND_UNORDERED_ACCESS);
   ComPtr<ID3D11UnorderedAccessView> uav;
   device->CreateUnorderedAccessView(texture.Get(), nullptr, uav.GetAddressOf());
-  const std::array<ID3D11Buffer*, 2> buffers = {Constants(lighting.data(), 256).Detach(), Constants(SUN_OFFSETS.data(), 32).Detach()};
+  const UINT side = static_cast<UINT>(std::lround(std::sqrt(static_cast<double>(current.size()))));
+  const std::array<ComPtr<ID3D11Texture2D>, 2> harmonics = {
+      Texture(side, side, DXGI_FORMAT_R32G32B32A32_FLOAT, current.data(), side * 16, D3D11_BIND_SHADER_RESOURCE),
+      Texture(side, side, DXGI_FORMAT_R32G32B32A32_FLOAT, previous.data(), side * 16, D3D11_BIND_SHADER_RESOURCE)};
+  std::array<ComPtr<ID3D11ShaderResourceView>, 2> views;
+  for (size_t i = 0; i < 2; ++i) device->CreateShaderResourceView(harmonics[i].Get(), nullptr, views[i].GetAddressOf());
+  const std::array<ComPtr<ID3D11Buffer>, 4> buffers = {Constants(lighting.data(), 288), Constants(SUN_OFFSETS.data(), 32),
+                                                       Constants(draw.camera.data(), 16), Constants(environment.data(), 96)};
+  const std::array<ID3D11Buffer*, 4> bound = {buffers[0].Get(), buffers[1].Get(), buffers[2].Get(), buffers[3].Get()};
+  const std::array<ID3D11ShaderResourceView*, 2> bound_views = {views[0].Get(), views[1].Get()};
   context->CSSetShader(shader, nullptr, 0);
-  context->CSSetConstantBuffers(0, 2, buffers.data());
+  context->CSSetConstantBuffers(0, 4, bound.data());
+  context->CSSetShaderResources(0, 2, bound_views.data());
   context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
   context->Dispatch(1, 1, 1);
   context->ClearState();
-  for (auto* buffer : buffers) buffer->Release();
-  std::array<std::array<float, 4>, 9> texels = {};
+  SunTexels texels = {};
   std::memcpy(texels.data(), Read(texture.Get(), 16).data(), sizeof(texels));
   return texels;
 }
 
-static bool SameTexels(const std::array<std::array<float, 4>, 9>& a, const std::array<std::array<float, 4>, 9>& b) {
-  for (size_t texel = 0; texel < a.size(); ++texel) {
+// The game's harmonics at an axis normal, as sunlight00's loop addresses them (decompiled: r11 the cell's and next cell's
+// texel corners x 3 clamped to 3 x size - 3, a and b along x at the cell's row, c and d at the next row) and weights them
+// (r15 / r16's one-hot terms: 1, n.x, n.y, n.z, n.x n.z, n.z n.y, n.x n.y, 3 n.z^2 - 1, n.x^2 - n.y^2), clamped at 0.
+static std::array<float, 3> GameHarmonics(const Harmonics& texels, const SunDraw& draw, const std::array<float, 24>& environment,
+                                          const std::array<float, 3>& n) {
+  const auto size = static_cast<int>(Bits(environment[16]));
+  const int width = size * 3;
+  float place[2] = {};
+  int cell[2] = {};
+  int next[2] = {};
+  for (int axis = 0; axis < 2; ++axis) {
+    const float position = draw.camera[axis * 2];
+    const float relative = (position - environment[12 + axis]) / (environment[14 + axis] - environment[12 + axis]);
+    place[axis] = std::clamp((relative * static_cast<float>(size)) - 0.5f, 0.f, static_cast<float>(size - 1));
+    const float whole = std::floor(place[axis]);
+    place[axis] -= whole;
+    cell[axis] = std::min(static_cast<int>(whole) * 3, (size * 3) - 3);
+    next[axis] = std::min((static_cast<int>(whole) * 3) + 3, (size * 3) - 3);
+  }
+  const std::array<float, 9> weights = {1.f, n[0], n[1], n[2], n[0] * n[2], n[2] * n[1], n[0] * n[1], (n[2] * n[2] * 3.f) - 1.f, (n[0] * n[0]) - (n[1] * n[1])};
+  const int terms = static_cast<int>(std::lround(environment[23]));
+  std::array<float, 3> sum = {};
+  for (int term = 0; term < terms && term < 9; ++term) {
+    const int column = term % 3;
+    const int row = term / 3;
+    for (int channel = 0; channel < 3; ++channel) {
+      const float a = texels[((cell[1] + row) * width) + cell[0] + column][channel];
+      const float b = texels[((cell[1] + row) * width) + next[0] + column][channel];
+      const float c = texels[((next[1] + row) * width) + cell[0] + column][channel];
+      const float d = texels[((next[1] + row) * width) + next[0] + column][channel];
+      const float near_row = a + (place[0] * (b - a));
+      const float far_row = c + (place[0] * (d - c));
+      sum[channel] += (near_row + (place[1] * (far_row - near_row))) * weights[term];
+    }
+  }
+  for (float& value : sum) value = std::max(value, 0.f);
+  return sum;
+}
+
+static bool SameSky(const SunTexels& a, const SunTexels& b) {
+  for (size_t texel = 3; texel < 9; ++texel) {
     for (size_t channel = 0; channel < 4; ++channel) {
-      if (!Near(a[texel][channel], b[texel][channel], 1e-6f)) return false;
+      if (!Near(a[texel][channel], b[texel][channel], 1e-5f)) return false;
     }
   }
   return true;
 }
 
+// 1. rt_sun: texel 0 the way to the sun, texel 1 untouched, texel 2 sun_colour x 1.90384671e-005, texels 3-8 the sun
+//    shaders' diffuse ambient at the six sides (with the harmonics flag c10.w: g_cube_ambient_influence x the cube + the
+//    rest x g_ambient_fudge_factor x the harmonics at the camera's place; without: the fudge factor x the cube; the
+//    previous harmonics by g_specular_probe_lerp below 0.999), w 1 but texel 6's 0. Synthetic harmonics (seeded) in grids
+//    the traced sizes (5 x 5, 16 x 16 probes). CONTROLS: the shared rt_sun (the cube alone, texel 6's w 1) differs; the
+//    flag cleared and the previous harmonics at lerp 0.4 change the sky where the influence is below 1 (sea, campaign),
+//    not in the battle (influence and fudge factor 1: the cube alone, as the game's).
 static void TestSun(const std::string& games) {
   const auto shader = Compile(games + "/twshogun2completeedition/rt_sun.cs_5_0.hlsl");
-  const D3D_SHADER_MACRO switch_on[] = {{"TW_RT_SUN_LIGHT_SCALE", "1.90384671e-005f"}, {nullptr, nullptr}};
-  const auto attila_switch = Compile(games + "/twattila/rt_sun.cs_5_0.hlsl", switch_on);
-  const D3D_SHADER_MACRO before[] = {{"TW_RT_SUN_SCALE_SWITCH", "0"}, {nullptr, nullptr}};
-  const auto unscaled_light = Compile(games + "/twattila/rt_sun.cs_5_0.hlsl", before);
-  constexpr std::array<float, 6> WEIGHTS = {1.f, 1.f, 0.8f, 1.f, 1.f, 1.f};
+  const D3D_SHADER_MACRO shared_macros[] = {{"TW_RT_SUN_SCALE_SWITCH", "0"}, {"TW_RT_SUN_LIGHT_SCALE", "1.90384671e-005f"}, {nullptr, nullptr}};
+  const auto shared = Compile(games + "/twattila/rt_sun.cs_5_0.hlsl", shared_macros);
+  std::mt19937 random(1114);
+  std::uniform_real_distribution<float> coefficient(-0.3f, 0.9f);
   for (const auto& draw : SUN_DRAWS) {
-    const auto& c = draw.lighting;
-    const auto texels = RunSun(shader.Get(), c);
-    const float length = std::sqrt((c[0] * c[0]) + (c[1] * c[1]) + (c[2] * c[2]));
-    for (size_t axis = 0; axis < 3; ++axis) {
-      CHECK(Near(texels[0][axis], -c[axis] / length, 1e-5f), "%s: sun way %zu %g", draw.name, axis, texels[0][axis]);
-      CHECK(Near(texels[2][axis], c[4 + axis] * 1.90384671e-005f, 1e-6f), "%s: sun light %zu %g", draw.name, axis, texels[2][axis]);
-    }
-    CHECK(texels[0][3] == 1.f && texels[2][3] == 1.f, "%s: w %g %g", draw.name, texels[0][3], texels[2][3]);
-    CHECK(texels[1][0] == 7.f && texels[1][3] == 7.f, "%s: texel 1 written %g", draw.name, texels[1][0]);
-    for (size_t side = 0; side < 6; ++side) {
+    const auto size = static_cast<size_t>(Bits(draw.environment[16]));
+    Harmonics current(size * 3 * size * 3);
+    Harmonics previous(current.size());
+    for (auto& texel : current) texel = {coefficient(random), coefficient(random), coefficient(random), 1.f};
+    for (auto& texel : previous) texel = {coefficient(random), coefficient(random), coefficient(random), 1.f};
+    std::array<float, 72> lighting = {};
+    std::copy(draw.lighting.begin(), draw.lighting.end(), lighting.begin());
+    const auto& c = lighting;
+    const bool harmonics_on = Bits(c[43]) != 0u;
+    for (const float probe_lerp : {draw.environment[18], 0.4f}) {
+      auto environment = draw.environment;
+      environment[18] = probe_lerp;
+      const auto texels = RunSun(shader.Get(), draw, lighting, environment, current, previous);
+      const float length = std::sqrt((c[0] * c[0]) + (c[1] * c[1]) + (c[2] * c[2]));
       for (size_t axis = 0; axis < 3; ++axis) {
-        CHECK(texels[3 + side][axis] == c[12 + (side * 4) + axis], "%s: cube %zu.%zu %g", draw.name, side, axis, texels[3 + side][axis]);
+        CHECK(Near(texels[0][axis], -c[axis] / length, 1e-5f), "%s: sun way %zu %g", draw.name, axis, texels[0][axis]);
+        CHECK(Near(texels[2][axis], c[4 + axis] * 1.90384671e-005f, 1e-6f), "%s: sun light %zu %g", draw.name, axis, texels[2][axis]);
       }
-      CHECK(Near(texels[3 + side][3], WEIGHTS[side], 1e-6f), "%s: cube weight %zu %g", draw.name, side, texels[3 + side][3]);
+      CHECK(texels[0][3] == 1.f && texels[2][3] == 1.f && texels[1][0] == 7.f && texels[1][3] == 7.f, "%s: texels 0-2", draw.name);
+      for (size_t side = 0; side < 6; ++side) {
+        std::array<float, 3> normal = {};
+        normal[side / 2] = ((side & 1) != 0) ? -1.f : 1.f;
+        auto harmonics = GameHarmonics(current, draw, environment, normal);
+        if (probe_lerp < 0.999f) {
+          const auto before = GameHarmonics(previous, draw, environment, normal);
+          for (size_t channel = 0; channel < 3; ++channel) harmonics[channel] = before[channel] + (probe_lerp * (harmonics[channel] - before[channel]));
+        }
+        for (size_t channel = 0; channel < 3; ++channel) {
+          const float cube = c[12 + (side * 4) + channel];
+          const float expected = harmonics_on ? ((c[8] * cube) + ((1.f - c[8]) * c[57] * harmonics[channel])) : (c[57] * cube);
+          CHECK(std::fabs(texels[3 + side][channel] - expected) <= 1e-5f + (1e-5f * std::fabs(expected)), "%s lerp %g: sky %zu.%zu %g, expected %g",
+                draw.name, probe_lerp, side, channel, texels[3 + side][channel], expected);
+        }
+        CHECK(texels[3 + side][3] == ((side == 3) ? 0.f : 1.f), "%s: sky weight %zu %g", draw.name, side, texels[3 + side][3]);
+      }
+      // The harmonics count where the influence is below 1 (the battle's is 1: the cube alone, as the game's).
+      const bool harmonics_count = harmonics_on && c[8] < 1.f;
+      if (probe_lerp != draw.environment[18]) {
+        const auto other = RunSun(shader.Get(), draw, lighting, draw.environment, current, previous);
+        CHECK(SameSky(texels, other) != harmonics_count, "%s: CONTROL the previous harmonics at lerp 0.4", draw.name);
+        continue;
+      }
+      const bool cube_alone = SameSky(texels, RunSun(shared.Get(), draw, lighting, environment, current, previous));
+      CHECK(!cube_alone, "%s: CONTROL the shared rt_sun's sky matched", draw.name);
+      auto no_flag = lighting;
+      no_flag[43] = 0.f;
+      // Cleared: the fudge factor x the cube, the same only where the influence and the fudge factor are 1 (the battle).
+      CHECK(SameSky(texels, RunSun(shader.Get(), draw, no_flag, environment, current, previous)) == (c[8] == 1.f && c[57] == 1.f),
+            "%s: CONTROL the flag cleared", draw.name);
+      std::printf("rt_sun %s: influence %.3f fudge %.3f harmonics %s, grid %zu: sky +y %.4f %.4f %.4f (cube %.4f %.4f %.4f)\n", draw.name, c[8], c[57],
+                  harmonics_on ? "on" : "off", size, texels[5][0], texels[5][1], texels[5][2], c[20], c[21], c[22]);
     }
-    const bool switch_on = c[48] > 0.f;  // c12.x: the shared switch's float (the cube's first + 36)
-    const bool switched_same = SameTexels(texels, RunSun(attila_switch.Get(), c));
-    CHECK(switched_same != switch_on, "%s: CONTROL Attila's switch (c12.x %g) %s", draw.name, c[48], switched_same ? "same" : "differs");
-    CHECK(!SameTexels(texels, RunSun(unscaled_light.Get(), c)), "%s: CONTROL the light scale 1 matched", draw.name);
-    std::printf("rt_sun %s: sun light %.4f %.4f %.4f (c1 %.0f), cube +y %.4f %.4f %.4f; Attila's switch %s\n", draw.name, texels[2][0], texels[2][1],
-                texels[2][2], c[4], texels[5][0], texels[5][1], texels[5][2], switched_same ? "the same (c12.x 0)" : "differs (c12.x > 0)");
   }
 }
 
@@ -400,6 +507,600 @@ static void TestOutput(const std::string& games) {
               checked);
 }
 
+// 4. sss_foliage_depth (Light Through Foliage) with the capture's depth (R24G8) and synthetic G-buffer constants whose
+//    alpha byte cycles 0-255 by pixel: the depth negative exactly where the byte has 128, the stored depth elsewhere.
+//    CONTROL: the alpha byte 127 (every other bit) leaves the depth.
+static void TestFoliage(const std::string& games, const std::string& capture) {
+  UINT width = 0;
+  UINT height = 0;
+  const auto depth = Load(capture + "/shogun2_dlss_capture_0_depth.bin", &width, &height);
+  std::vector<uint16_t> constants(static_cast<size_t>(width) * height * 4);
+  for (size_t pixel = 0; pixel < static_cast<size_t>(width) * height; ++pixel) {
+    // The alpha as the G-buffer's RGBA16F holds byte / 255 (exact enough in half for round(x 255)).
+    const float alpha = static_cast<float>(pixel % 256) / 255.f;
+    uint32_t bits = 0;
+    std::memcpy(&bits, &alpha, 4);
+    const uint32_t exponent = (bits >> 23) & 0xFF;
+    const uint16_t half = (alpha == 0.f) ? 0 : static_cast<uint16_t>(((exponent - 112) << 10) | ((bits >> 13) & 0x3FF));
+    constants[(pixel * 4) + 3] = half;
+  }
+  const auto depth_texture = Texture(width, height, DXGI_FORMAT_R24G8_TYPELESS, depth.data(), width * 4, D3D11_BIND_SHADER_RESOURCE);
+  const auto constants_texture = Texture(width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, constants.data(), width * 8, D3D11_BIND_SHADER_RESOURCE);
+  std::array<ComPtr<ID3D11ShaderResourceView>, 2> views;
+  const D3D11_SHADER_RESOURCE_VIEW_DESC depth_view = {.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
+                                                      .Texture2D = {.MipLevels = 1}};
+  device->CreateShaderResourceView(depth_texture.Get(), &depth_view, views[0].GetAddressOf());
+  device->CreateShaderResourceView(constants_texture.Get(), nullptr, views[1].GetAddressOf());
+  const auto target = Texture(width, height, DXGI_FORMAT_R32_FLOAT, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
+  ComPtr<ID3D11UnorderedAccessView> uav;
+  device->CreateUnorderedAccessView(target.Get(), nullptr, uav.GetAddressOf());
+  const auto shader = Compile(games + "/twshogun2completeedition/sss_foliage_depth.cs_5_0.hlsl");
+  const std::array<ID3D11ShaderResourceView*, 2> bound = {views[0].Get(), views[1].Get()};
+  context->CSSetShader(shader.Get(), nullptr, 0);
+  context->CSSetShaderResources(0, 2, bound.data());
+  context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
+  context->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
+  context->ClearState();
+  const auto out = Read(target.Get(), 4);
+  size_t bad = 0, negative = 0, control_negative = 0;
+  for (size_t pixel = 0; pixel < static_cast<size_t>(width) * height; ++pixel) {
+    uint32_t stored = 0;
+    std::memcpy(&stored, depth.data() + (pixel * 4), 4);
+    const float expected_depth = static_cast<float>(stored & 0xFFFFFFu) / 16777215.f;
+    float value = 0.f;
+    std::memcpy(&value, out.data() + (pixel * 4), 4);
+    const bool foliage = ((pixel % 256) & 128u) != 0u;
+    bad += Near(value, foliage ? -expected_depth : expected_depth, 1e-6f) ? 0 : 1;
+    negative += (value < 0.f) ? 1 : 0;
+    control_negative += ((pixel % 256) == 127 && value < 0.f) ? 1 : 0;
+  }
+  CHECK(bad == 0, "%zu pixels' depth wrong", bad);
+  CHECK(control_negative == 0, "CONTROL: %zu pixels with the byte 127 negative", control_negative);
+  std::printf("sss_foliage_depth %ux%u: %zu foliage pixels negative (half the bytes have 128)\n", width, height, negative);
+}
+
+// 5. rt_capture_tree_billboard (far trees as sun-facing captures, in clip space as the game's) against the game's own
+//    rigidtreebillboard vertex shader (0xFAAE535B's cso, streamed out: its SV_Position and o3.zw view and blend) with the
+//    camera put toward the sun, looking at the tree: for 8 sun ways x 8 tree facings the capture's card is the game's
+//    and at a right angle to the sun's way, its UV the game's nearer view (u - 0.25 x view), a faded card (v4.w 0) a
+//    NaN. CONTROL: the game's views with the camera on the far side differ.
+// 6. rt_capture_imposter (sprite soldiers turned to the sun) against the game's imposter vertex shader (0x03FB2979's cso)
+//    with the camera level with the soldier on the sun's way: standing and flat cards are the game's, so is the UV.
+//    CONTROL: with the camera a quarter turn away the game's cards differ.
+struct BillboardVertex {
+  std::array<float, 4> position, normal;
+  std::array<float, 2> uv;
+  std::array<float, 4> colour, place, facing;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC BILLBOARD_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 56, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 72, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+// The imposter's vertex: POSITION0-3 (POSITION1, the last frame's place, unused here) and TEXCOORD0.
+struct ImposterVertex {
+  std::array<float, 4> place;
+  std::array<float, 3> last_place;
+  std::array<float, 4> frame, corner, flat;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC IMPOSTER_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 1, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 44, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 60, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+// One output (`semantic`, `components` of it) of a vertex shader for each of `vertices` (points), streamed out; its
+// constants at b0.., rt_sun at t0.
+template <typename Vertex>
+static std::vector<std::array<float, 4>> StreamOut(const void* code, size_t size, const char* semantic, UINT index, BYTE components,
+                                                   std::span<const D3D11_INPUT_ELEMENT_DESC> layout, const std::vector<Vertex>& vertices,
+                                                   std::span<ID3D11Buffer* const> constants, ID3D11ShaderResourceView* sun) {
+  const D3D11_SO_DECLARATION_ENTRY entry = {.Stream = 0, .SemanticName = semantic, .SemanticIndex = index, .StartComponent = 0,
+                                            .ComponentCount = components, .OutputSlot = 0};
+  const UINT stride = 16;
+  ComPtr<ID3D11GeometryShader> stream;
+  device->CreateGeometryShaderWithStreamOutput(code, size, &entry, 1, &stride, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf());
+  ComPtr<ID3D11VertexShader> vertex;
+  device->CreateVertexShader(code, size, nullptr, vertex.GetAddressOf());
+  ComPtr<ID3D11InputLayout> input;
+  device->CreateInputLayout(layout.data(), static_cast<UINT>(layout.size()), code, size, input.GetAddressOf());
+  const auto count = static_cast<UINT>(vertices.size());
+  const D3D11_BUFFER_DESC vertex_desc = {.ByteWidth = count * static_cast<UINT>(sizeof(Vertex)), .Usage = D3D11_USAGE_DEFAULT,
+                                         .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+  const D3D11_SUBRESOURCE_DATA vertex_data = {.pSysMem = vertices.data()};
+  ComPtr<ID3D11Buffer> vertex_buffer;
+  device->CreateBuffer(&vertex_desc, &vertex_data, vertex_buffer.GetAddressOf());
+  const D3D11_BUFFER_DESC out_desc = {.ByteWidth = count * 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+  ComPtr<ID3D11Buffer> out;
+  device->CreateBuffer(&out_desc, nullptr, out.GetAddressOf());
+  const UINT vertex_stride = sizeof(Vertex);
+  const UINT offset = 0;
+  context->IASetInputLayout(input.Get());
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+  context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &vertex_stride, &offset);
+  context->VSSetShader(vertex.Get(), nullptr, 0);
+  context->VSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
+  context->VSSetShaderResources(0, 1, &sun);
+  context->GSSetShader(stream.Get(), nullptr, 0);
+  context->SOSetTargets(1, out.GetAddressOf(), &offset);
+  context->Draw(count, 0);
+  context->ClearState();
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = count * 16, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), out.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  std::vector<std::array<float, 4>> result(count);
+  std::memcpy(result.data(), mapped.pData, count * 16);
+  context->Unmap(staging.Get(), 0);
+  return result;
+}
+
+// A game shader's cso (`folder`/0x<name>.vs_5_0.cso) and our capture version (twshogun2completeedition/<capture>.vs_5_0.hlsl).
+static std::pair<std::vector<char>, ComPtr<ID3DBlob>> Shaders(const std::string& games, const std::string& folder, const char* name,
+                                                            const wchar_t* capture_name) {
+  std::ifstream file(folder + "/0x" + name + ".vs_5_0.cso", std::ios::binary);
+  std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const std::wstring path(games.begin(), games.end());
+  ComPtr<ID3DBlob> capture;
+  ComPtr<ID3DBlob> errors;
+  if (game_code.empty()
+      || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/" + capture_name + L".vs_5_0.hlsl").c_str(), nullptr,
+                                   D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "vs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
+                                   capture.GetAddressOf(), errors.GetAddressOf()))) {
+    std::printf("missing 0x%s, or %s\n", name, errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+    std::exit(2);
+  }
+  return {std::move(game_code), capture};
+}
+
+static ComPtr<ID3D11ShaderResourceView> SunView(const std::array<float, 4>& toward_sun) {
+  const std::vector<std::array<float, 4>> texels(9, toward_sun);
+  const auto texture = Texture(9, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), 9 * 16, D3D11_BIND_SHADER_RESOURCE);
+  ComPtr<ID3D11ShaderResourceView> view;
+  device->CreateShaderResourceView(texture.Get(), nullptr, view.GetAddressOf());
+  return view;
+}
+
+static void TestBillboard(const std::string& games, const std::string& folder) {
+  const auto [game_code, capture] = Shaders(games, folder, "FAAE535B", L"rt_capture_tree_billboard");
+  size_t checked = 0, bad_view = 0, bad_card = 0, far_side_differs = 0;
+  bool faded_nan = false;
+  for (int sun_way = 0; sun_way < 8; ++sun_way) {
+    const float sun_angle = (static_cast<float>(sun_way) * 0.785398f) + 0.1f;
+    const std::array<float, 4> toward_sun = {std::cos(sun_angle) * 0.8f, 0.6f, std::sin(sun_angle) * 0.8f, 1.f};
+    const auto sun_view = SunView(toward_sun);
+    for (int turn = 0; turn < 8; ++turn) {
+      const float facing_angle = (static_cast<float>(turn) * 0.785398f) + 0.3f;
+      const std::array<float, 4> place = {100.f, 5.f, -40.f, 1.f};
+      std::vector<BillboardVertex> vertices;
+      for (int corner = 0; corner < 4; ++corner) {
+        vertices.push_back({.position = {(corner & 1) ? 1.f : -1.f, (corner & 2) ? 1.f : 0.f, 0.f, 1.f}, .normal = {0.f, 0.f, 1.f, 0.f},
+                            .uv = {0.8f, 0.5f}, .colour = {1.f, 1.f, 1.f, 1.f}, .place = place,
+                            .facing = {std::cos(facing_angle), 0.f, std::sin(facing_angle), 10.f}});
+      }
+      vertices.push_back(vertices[0]);
+      vertices.back().place[3] = 0.f;  // faded out
+      // The view and view_projection the identity (clip space is the world), the view's forward (_m02, _m22: c4.xz) from
+      // the sun to the tree, as a camera at the sun looks.
+      std::array<float, 44 * 4> camera = {};
+      for (int row = 0; row < 4; ++row) camera[((2 + row) * 4) + row] = camera[((10 + row) * 4) + row] = 1.f;
+      const float across = std::hypot(toward_sun[0], toward_sun[2]);
+      camera[(4 * 4) + 0] = -toward_sun[0] / across;
+      camera[(4 * 4) + 2] = -toward_sun[2] / across;
+      for (const float away : {1000.f, -1000.f}) {
+        camera[0] = place[0] + (toward_sun[0] * away);
+        camera[1] = 50.f;
+        camera[2] = place[2] + (toward_sun[2] * away);
+        const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+        const std::array<ID3D11Buffer*, 1> constants = {camera_buffer.Get()};
+        const auto game = StreamOut(game_code.data(), game_code.size(), "TEXCOORD", 1, 4, BILLBOARD_LAYOUT, vertices, constants, sun_view.Get());
+        const auto game_card = StreamOut(game_code.data(), game_code.size(), "SV_POSITION", 0, 4, BILLBOARD_LAYOUT, vertices, constants, sun_view.Get());
+        const auto ours = StreamOut(capture->GetBufferPointer(), capture->GetBufferSize(), "SV_POSITION", 0, 4, BILLBOARD_LAYOUT, vertices,
+                                    constants, sun_view.Get());
+        const auto our_uv = StreamOut(capture->GetBufferPointer(), capture->GetBufferSize(), "TEXCOORD", 1, 2, BILLBOARD_LAYOUT, vertices,
+                                      constants, sun_view.Get());
+        for (int corner = 0; corner < 4; ++corner) {
+          const float game_view = game[corner][2] + ((game[corner][3] > 0.5f) ? 1.f : 0.f);
+          const float our_view = std::round((0.8f - our_uv[corner][0]) / 0.25f);
+          if (away < 0.f) {
+            far_side_differs += (game_view != our_view) ? 1 : 0;
+            continue;
+          }
+          ++checked;
+          bad_view += (game_view == our_view && our_uv[corner][1] == 0.5f) ? 0 : 1;
+          const float along_sun = ((ours[corner][0] - place[0]) * toward_sun[0]) + ((ours[corner][2] - place[2]) * toward_sun[2]);
+          const bool game_card_same = std::fabs(ours[corner][0] - game_card[corner][0]) < 1e-3f && std::fabs(ours[corner][1] - game_card[corner][1]) < 1e-3f
+                                      && std::fabs(ours[corner][2] - game_card[corner][2]) < 1e-3f && ours[corner][3] == game_card[corner][3];
+          bad_card += (std::fabs(along_sun) < 1e-3f && game_card_same) ? 0 : 1;
+        }
+        faded_nan = faded_nan || (away > 0.f && std::isnan(ours[4][0]));
+      }
+    }
+  }
+  CHECK(bad_view == 0 && bad_card == 0 && checked == 256, "views %zu, cards %zu of %zu", bad_view, bad_card, checked);
+  CHECK(faded_nan, "a faded card not a NaN");
+  CHECK(far_side_differs > 0, "CONTROL: the far side's views all matched");
+  std::printf("rt_capture_tree_billboard: %zu corners the game's view toward the sun, %zu of 256 differ from the far side\n", checked,
+              far_side_differs);
+}
+
+static void TestImposter(const std::string& games, const std::string& folder) {
+  const auto [game_code, capture] = Shaders(games, folder, "03FB2979", L"rt_capture_imposter");
+  const std::array<float, 4> size = {0.125f, 0.25f, 0.f, 0.f};
+  const auto size_buffer = Constants(size.data(), sizeof(size));
+  const std::array<float, 4> place = {30.f, 2.f, 70.f, 3.f};
+  std::vector<ImposterVertex> vertices;
+  for (int corner = 0; corner < 6; ++corner) {
+    const float side = (corner & 1) ? 0.6f : -0.6f;
+    vertices.push_back({.place = place, .last_place = {place[0], place[1], place[2]},
+                        .frame = {0.375f + (0.01f * static_cast<float>(corner)), 0.5f, 0.f, (corner < 4) ? 0.5f : -0.5f},
+                        .corner = {(corner & 1) ? 1.f : 0.f, (corner & 2) ? 1.f : 0.f, side, 0.f},
+                        .flat = {0.f, side, (corner & 2) ? 0.9f : 0.f, (corner & 2) ? 1.8f : 0.f}});
+  }
+  size_t checked = 0, bad_card = 0, bad_uv = 0, turned_differs = 0;
+  for (int sun_way = 0; sun_way < 8; ++sun_way) {
+    const float sun_angle = (static_cast<float>(sun_way) * 0.785398f) + 0.2f;
+    const std::array<float, 4> toward_sun = {std::cos(sun_angle) * 0.7f, 0.714f, std::sin(sun_angle) * 0.7f, 1.f};
+    const auto sun_view = SunView(toward_sun);
+    for (const float turn : {0.f, 1.5708f}) {
+      std::array<float, 44 * 4> camera = {};
+      for (int row = 0; row < 4; ++row) camera[((2 + row) * 4) + row] = camera[((10 + row) * 4) + row] = 1.f;
+      camera[0] = place[0] + (std::cos(sun_angle + turn) * 500.f);
+      camera[1] = place[1];
+      camera[2] = place[2] + (std::sin(sun_angle + turn) * 500.f);
+      const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+      const std::array<ID3D11Buffer*, 2> constants = {camera_buffer.Get(), size_buffer.Get()};
+      const auto run = [&](const void* code, size_t code_size, const char* semantic, UINT index, BYTE components) {
+        return StreamOut(code, code_size, semantic, index, components, IMPOSTER_LAYOUT, vertices, constants, sun_view.Get());
+      };
+      const auto game_card = run(game_code.data(), game_code.size(), "SV_POSITION", 0, 4);
+      const auto game_uv = run(game_code.data(), game_code.size(), "TEXCOORD", 1, 2);
+      const auto ours = run(capture->GetBufferPointer(), capture->GetBufferSize(), "SV_POSITION", 0, 4);
+      const auto our_uv = run(capture->GetBufferPointer(), capture->GetBufferSize(), "TEXCOORD", 1, 2);
+      for (size_t corner = 0; corner < vertices.size(); ++corner) {
+        bool same = true;
+        for (int axis = 0; axis < 4; ++axis) same = same && std::fabs(ours[corner][axis] - game_card[corner][axis]) < 1e-3f;
+        if (turn != 0.f) {
+          turned_differs += same ? 0 : 1;
+          continue;
+        }
+        ++checked;
+        bad_card += same ? 0 : 1;
+        bad_uv += (std::fabs(our_uv[corner][0] - game_uv[corner][0]) < 1e-6f && std::fabs(our_uv[corner][1] - game_uv[corner][1]) < 1e-6f) ? 0 : 1;
+      }
+    }
+  }
+  CHECK(bad_card == 0 && bad_uv == 0 && checked == 48, "cards %zu, UVs %zu of %zu", bad_card, bad_uv, checked);
+  CHECK(turned_differs > 0, "CONTROL: the turned camera's cards all matched");
+  std::printf("rt_capture_imposter: %zu corners (32 standing, 16 flat) the game's toward the sun, %zu of 48 differ a quarter turn away\n",
+              checked, turned_differs);
+}
+
+// 7. rt_water_plane (Ray-Traced Water Reflections' sea surface) for a camera 50 m over the sea (the plane y 0) looking
+//    down: the seabed half (y -3) and the sky's far depth get the plane's depth (the CPU's), the water's guides (normal up,
+//    specular 0.02, roughness 0.03) and mask 1; the land half (y +2) keeps its depth and guides, mask 0. CONTROL: a plane
+//    over the camera marks nothing.
+static std::array<std::array<double, 4>, 4> Inverse(std::array<std::array<double, 4>, 4> matrix) {
+  std::array<std::array<double, 4>, 4> inverse = {{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}};
+  for (int column = 0; column < 4; ++column) {
+    int pivot = column;
+    for (int row = column + 1; row < 4; ++row) pivot = (std::fabs(matrix[row][column]) > std::fabs(matrix[pivot][column])) ? row : pivot;
+    std::swap(matrix[column], matrix[pivot]);
+    std::swap(inverse[column], inverse[pivot]);
+    const double scale = 1.0 / matrix[column][column];
+    for (int index = 0; index < 4; ++index) {
+      matrix[column][index] *= scale;
+      inverse[column][index] *= scale;
+    }
+    for (int row = 0; row < 4; ++row) {
+      const double factor = (row == column) ? 0.0 : matrix[row][column];
+      for (int index = 0; index < 4; ++index) {
+        matrix[row][index] -= factor * matrix[column][index];
+        inverse[row][index] -= factor * inverse[column][index];
+      }
+    }
+  }
+  return inverse;
+}
+
+static ComPtr<ID3D11UnorderedAccessView> Uav(ID3D11Texture2D* texture) {
+  ComPtr<ID3D11UnorderedAccessView> view;
+  device->CreateUnorderedAccessView(texture, nullptr, view.GetAddressOf());
+  return view;
+}
+
+static ComPtr<ID3D11ShaderResourceView> Srv(ID3D11Resource* resource) {
+  ComPtr<ID3D11ShaderResourceView> view;
+  device->CreateShaderResourceView(resource, nullptr, view.GetAddressOf());
+  return view;
+}
+
+static void TestWaterPlane(const std::string& games) {
+  const auto shader = Compile(games + "/twshogun2completeedition/rt_water_plane.cs_5_0.hlsl");
+  constexpr UINT SIZE = 64;
+  constexpr double HEIGHT = 50.0;
+  constexpr double FOCAL = 1.5;
+  const double a = 1000.0 / 999.0;
+  const double b = -a;
+  // clip = (x, y, z, 1) M: looking down from (0, 50, 0), screen up along +z, depth a + b / (50 - y); its columns at c10-13.
+  const std::array<std::array<double, 4>, 4> matrix = {{{FOCAL, 0, 0, 0}, {0, 0, -a, -1}, {0, FOCAL, 0, 0}, {0, 0, (a * HEIGHT) + b, HEIGHT}}};
+  const auto inverse = Inverse(matrix);
+  std::array<float, 34 * 4> camera = {};
+  camera[1] = static_cast<float>(HEIGHT);
+  for (int row = 0; row < 4; ++row) {
+    for (int column = 0; column < 4; ++column) {
+      camera[((10 + column) * 4) + row] = static_cast<float>(matrix[row][column]);
+      camera[((30 + column) * 4) + row] = static_cast<float>(inverse[row][column]);
+    }
+  }
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  std::vector<float> depth(SIZE * SIZE);
+  std::vector<bool> water(SIZE * SIZE);
+  for (UINT y = 0; y < SIZE; ++y) {
+    for (UINT x = 0; x < SIZE; ++x) {
+      const double across = ((x + 0.5) / SIZE * 2.0) - 1.0;
+      const bool sky = 1.0 - ((y + 0.5) / SIZE * 2.0) > 0.75;
+      depth[(y * SIZE) + x] = sky ? 1.f : static_cast<float>(a + (b / (HEIGHT - ((across < 0.0) ? -3.0 : 2.0))));
+      water[(y * SIZE) + x] = sky || across < 0.0;
+    }
+  }
+  const auto depth_texture = Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, depth.data(), SIZE * 4, D3D11_BIND_SHADER_RESOURCE);
+  const auto depth_view = Srv(depth_texture.Get());
+  const float plane_depth = static_cast<float>(a + (b / HEIGHT));
+  size_t marked = 0, bad = 0, control_marked = 0;
+  for (const float plane_w : {0.f, -60.f}) {
+    const std::vector<uint8_t> grey(SIZE * SIZE * 4, 0x80);
+    const std::vector<float> nines(SIZE * SIZE * 4, 9.f);
+    const std::array<ComPtr<ID3D11Texture2D>, 6> targets = {
+        Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS),
+        Texture(SIZE, SIZE, DXGI_FORMAT_R8G8B8A8_UNORM, grey.data(), SIZE * 4, D3D11_BIND_UNORDERED_ACCESS),
+        Texture(SIZE, SIZE, DXGI_FORMAT_R8G8B8A8_UNORM, grey.data(), SIZE * 4, D3D11_BIND_UNORDERED_ACCESS),
+        Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, nines.data(), SIZE * 16, D3D11_BIND_UNORDERED_ACCESS),
+        Texture(SIZE, SIZE, DXGI_FORMAT_R8_UNORM, grey.data(), SIZE, D3D11_BIND_UNORDERED_ACCESS),
+        Texture(SIZE, SIZE, DXGI_FORMAT_R8_UNORM, grey.data(), SIZE, D3D11_BIND_UNORDERED_ACCESS)};
+    std::array<ComPtr<ID3D11UnorderedAccessView>, 6> views;
+    std::array<ID3D11UnorderedAccessView*, 6> bound = {};
+    for (size_t index = 0; index < views.size(); ++index) {
+      views[index] = Uav(targets[index].Get());
+      bound[index] = views[index].Get();
+    }
+    const std::array<uint32_t, 8> plane = {0u, Bits(1.f), 0u, Bits(plane_w), SIZE, SIZE, 0u, 0u};
+    const auto plane_buffer = Constants(plane.data(), sizeof(plane));
+    const std::array<ID3D11Buffer*, 2> buffers = {camera_buffer.Get(), plane_buffer.Get()};
+    context->CSSetShader(shader.Get(), nullptr, 0);
+    context->CSSetShaderResources(0, 1, depth_view.GetAddressOf());
+    context->CSSetConstantBuffers(0, 2, buffers.data());
+    context->CSSetUnorderedAccessViews(0, 6, bound.data(), nullptr);
+    context->Dispatch(SIZE / 8, SIZE / 8, 1);
+    context->ClearState();
+    const auto surface = Read(targets[0].Get(), 4);
+    const auto specular = Read(targets[2].Get(), 4);
+    const auto normals = Read(targets[3].Get(), 16);
+    const auto roughness = Read(targets[4].Get(), 1);
+    const auto mask = Read(targets[5].Get(), 1);
+    for (size_t pixel = 0; pixel < depth.size(); ++pixel) {
+      float surface_depth = 0.f;
+      std::array<float, 4> normal = {};
+      std::memcpy(&surface_depth, surface.data() + (pixel * 4), 4);
+      std::memcpy(normal.data(), normals.data() + (pixel * 16), 16);
+      if (plane_w != 0.f) {
+        control_marked += (mask[pixel] != 0 || surface_depth != depth[pixel]) ? 1 : 0;
+        continue;
+      }
+      marked += (mask[pixel] == 255) ? 1 : 0;
+      const bool water_ok = std::fabs(surface_depth - plane_depth) < 1e-5f && mask[pixel] == 255 && normal[0] == 0.f && normal[1] == 1.f
+                            && normal[2] == 0.f && roughness[pixel] == 8 && specular[pixel * 4] == 5;
+      const bool land_ok = surface_depth == depth[pixel] && mask[pixel] == 0 && normal[1] == 9.f && roughness[pixel] == 0x80 && specular[pixel * 4] == 0x80;
+      bad += (water[pixel] ? water_ok : land_ok) ? 0 : 1;
+    }
+  }
+  const auto expected = static_cast<size_t>(std::ranges::count(water, true));
+  CHECK(bad == 0 && marked == expected, "%zu pixels wrong, %zu marked of %zu", bad, marked, expected);
+  CHECK(control_marked == 0, "CONTROL: %zu pixels marked under a plane over the camera", control_marked);
+  std::printf("rt_water_plane %ux%u: %zu water pixels the plane's depth and guides, the rest kept; 0 with the plane over the camera\n", SIZE, SIZE,
+              marked);
+}
+
+// 8. shaders/ocean00 (the rays' reflection in the sea's pixel shader) against the game's ocean high (0x16ADFD60's cso) on a
+//    32 x 32 target, same inputs, in its probe and its sky branch: the rays unbound, bound with no hits (share 0), or
+//    flagged off (b10 0: CONTROL): its five outputs the game's; the rays' light (share 1, flags 1): the colour changes where
+//    the mask is 1 and nowhere else.
+static void TestOcean(const std::string& games, const std::string& folder) {
+  std::ifstream file(folder + "/0x16ADFD60.ps_5_0.cso", std::ios::binary);
+  const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const std::wstring path(games.begin(), games.end());
+  const char* vertex_source =
+      "void main(uint id : SV_VertexID, out float4 p : SV_Position0, out float3 c : COLOR0, out float4 t0 : TEXCOORD0, out float4 t1 : TEXCOORD1,\n"
+      "          out float4 t2 : TEXCOORD2, out float4 t3 : TEXCOORD3, out float4 t4 : TEXCOORD4, out float4 t5 : TEXCOORD5, out float4 t6 : TEXCOORD6) {\n"
+      "  const float2 uv = float2((id << 1) & 2, id & 2);\n"
+      "  p = float4(uv * float2(2, -2) + float2(-1, 1), 0.5, 1);\n"
+      "  c = float3(uv, 0.5);\n"
+      "  t0 = float4(uv.x * 40 - 20, 0.5, uv.y * 40 - 20, 1);\n"
+      "  t1 = p;\n"
+      "  t2 = float4(uv * 0.5, 0.5, 1);\n"
+      "  t3 = float4(0.8, uv, 0);\n"
+      "  t4 = float4(uv * 3, uv * 2);\n"
+      "  t5 = float4(normalize(float3(uv.x - 0.5, -0.4, uv.y - 0.5)), 30);\n"
+      "  t6 = float4(uv, 10, 1);\n"
+      "}\n";
+  ComPtr<ID3DBlob> vertex_code;
+  ComPtr<ID3DBlob> ours_code;
+  ComPtr<ID3DBlob> errors;
+  if (game_code.empty()
+      || FAILED(D3DCompile(vertex_source, std::strlen(vertex_source), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_code.GetAddressOf(),
+                           errors.GetAddressOf()))
+      || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/ocean00_0x16ADFD60.ps_5_0.hlsl").c_str(), nullptr,
+                                   D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(),
+                                   errors.GetAddressOf()))) {
+    std::printf("missing 0x16ADFD60, or %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+    std::exit(2);
+  }
+  ComPtr<ID3D11VertexShader> vertex;
+  ComPtr<ID3D11PixelShader> game;
+  ComPtr<ID3D11PixelShader> ours;
+  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex.GetAddressOf());
+  device->CreatePixelShader(game_code.data(), game_code.size(), nullptr, game.GetAddressOf());
+  device->CreatePixelShader(ours_code->GetBufferPointer(), ours_code->GetBufferSize(), nullptr, ours.GetAddressOf());
+  constexpr UINT SIZE = 32;
+  std::mt19937 random(7);
+  std::uniform_real_distribution<float> unit(0.05f, 0.95f);
+  const auto values = [&](size_t count) {
+    std::vector<float> filled(count);
+    for (auto& value : filled) value = unit(random);
+    return filled;
+  };
+  // t0-t3, t7 (the harmonics: 3 x 3 cells of 3 x 3), t8-t11 RGBA; t12 one channel; t4 a cube; t5 / t6 cube arrays of the probe grid's 4.
+  std::array<ComPtr<ID3D11ShaderResourceView>, 13> views;
+  for (const UINT slot : {0u, 1u, 2u, 3u, 7u, 8u, 9u, 10u, 11u}) {
+    const UINT width = (slot == 7) ? 9 : 8;
+    const auto texels = values(static_cast<size_t>(width) * width * 4);
+    views[slot] = Srv(Texture(width, width, DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), width * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+  }
+  const auto single = values(64);
+  views[12] = Srv(Texture(8, 8, DXGI_FORMAT_R32_FLOAT, single.data(), 32, D3D11_BIND_SHADER_RESOURCE).Get());
+  for (const UINT slot : {4u, 5u, 6u}) {
+    const UINT faces = (slot == 4) ? 6 : 24;
+    const D3D11_TEXTURE2D_DESC desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = faces, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                       .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE};
+    std::vector<std::vector<float>> face_texels(faces);
+    std::vector<D3D11_SUBRESOURCE_DATA> initial(faces);
+    for (UINT face = 0; face < faces; ++face) {
+      face_texels[face] = values(64);
+      initial[face] = {.pSysMem = face_texels[face].data(), .SysMemPitch = 64};
+    }
+    ComPtr<ID3D11Texture2D> cube;
+    device->CreateTexture2D(&desc, initial.data(), cube.GetAddressOf());
+    D3D11_SHADER_RESOURCE_VIEW_DESC view = {.Format = desc.Format,
+                                            .ViewDimension = (slot == 4) ? D3D11_SRV_DIMENSION_TEXTURECUBE : D3D11_SRV_DIMENSION_TEXTURECUBEARRAY};
+    if (slot == 4) {
+      view.TextureCube = {.MipLevels = 1};
+    } else {
+      view.TextureCubeArray = {.MipLevels = 1, .NumCubes = 4};
+    }
+    device->CreateShaderResourceView(cube.Get(), &view, views[slot].GetAddressOf());
+  }
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_WRAP, .AddressW = D3D11_TEXTURE_ADDRESS_WRAP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  const std::array<ID3D11SamplerState*, 9> samplers = {sampler.Get(), sampler.Get(), sampler.Get(), sampler.Get(), sampler.Get(),
+                                                       sampler.Get(), sampler.Get(), sampler.Get(), sampler.Get()};
+  std::array<float, 44 * 4> camera = {};
+  camera[1] = 30.f;
+  for (int row = 0; row < 4; ++row) camera[((2 + row) * 4) + row] = camera[((10 + row) * 4) + row] = 1.f;
+  camera[35 * 4] = 1.5f;  // time_in_sec
+  camera[(37 * 4) + 0] = camera[(37 * 4) + 1] = SIZE;
+  camera[(37 * 4) + 2] = camera[(37 * 4) + 3] = 1.f / SIZE;
+  std::array<float, 7 * 4> environment = {0.3f, -0.8f, 0.5f, 0.f, 1.f, 10.f, 0.8f, 0.5f, 1.f, 1.f, 1.f, 1.f, -20.f, -20.f, 20.f, 20.f};
+  environment[16] = std::bit_cast<float>(2u);  // g_probe_grid_size
+  environment[18] = 0.5f;                      // g_specular_probe_lerp
+  environment[23] = 9.f;                       // g_spherical_harmonic_terms
+  std::array<float, 18 * 4> lighting = {};
+  const auto lighting_values = values(lighting.size());
+  std::copy(lighting_values.begin(), lighting_values.end(), lighting.begin());
+  lighting[0] = 0.3f;
+  lighting[1] = -0.8f;
+  lighting[2] = 0.5f;
+  lighting[7] = 1.f;                              // sun_specular
+  lighting[43] = std::bit_cast<float>(1u);        // g_use_spherical_harmonics
+  lighting[47] = 0.f;                             // g_cloud_shadow_scale
+  const std::array<float, 4> wind = {0.3f, 0.7f, 0.f, 0.f};
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const auto lighting_buffer = Constants(lighting.data(), sizeof(lighting));
+  const auto wind_buffer = Constants(wind.data(), sizeof(wind));
+  std::vector<float> traced(SIZE * SIZE * 4);
+  std::vector<float> mask(SIZE * SIZE);
+  for (size_t pixel = 0; pixel < mask.size(); ++pixel) {
+    traced[(pixel * 4) + 0] = 3.f;
+    traced[(pixel * 4) + 1] = 0.5f;
+    traced[(pixel * 4) + 2] = 0.1f;
+    mask[pixel] = ((pixel % SIZE) < SIZE / 2) ? 1.f : 0.f;
+  }
+  const auto mask_view = Srv(Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, mask.data(), SIZE * 4, D3D11_BIND_SHADER_RESOURCE).Get());
+  const auto traced_with = [&](float share) {
+    for (size_t pixel = 0; pixel < mask.size(); ++pixel) traced[(pixel * 4) + 3] = share;
+    return Srv(Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, traced.data(), SIZE * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+  };
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 2> rays = {traced_with(0.f), traced_with(1.f)};
+  const std::array<uint32_t, 4> flags_on = {1u, 0u, 0u, 0u};
+  const std::array<uint32_t, 4> flags_off = {};
+  const std::array<ComPtr<ID3D11Buffer>, 2> flags = {Constants(flags_off.data(), 16), Constants(flags_on.data(), 16)};
+  // One pass: its five outputs (RGBA x 3, then two singles), as floats.
+  const auto run = [&](ID3D11PixelShader* pixel_shader, ID3D11Buffer* environment_buffer, ID3D11ShaderResourceView* rays_view, ID3D11Buffer* flag) {
+    std::array<ComPtr<ID3D11Texture2D>, 5> outputs;
+    std::array<ComPtr<ID3D11RenderTargetView>, 5> targets;
+    std::array<ID3D11RenderTargetView*, 5> bound = {};
+    for (size_t index = 0; index < outputs.size(); ++index) {
+      outputs[index] = Texture(SIZE, SIZE, (index < 3) ? DXGI_FORMAT_R32G32B32A32_FLOAT : DXGI_FORMAT_R32_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET);
+      device->CreateRenderTargetView(outputs[index].Get(), nullptr, targets[index].GetAddressOf());
+      bound[index] = targets[index].Get();
+    }
+    std::array<ID3D11ShaderResourceView*, 13> bound_views = {};
+    for (size_t index = 0; index < views.size(); ++index) bound_views[index] = views[index].Get();
+    const std::array<ID3D11Buffer*, 4> buffers = {camera_buffer.Get(), environment_buffer, lighting_buffer.Get(), wind_buffer.Get()};
+    const D3D11_VIEWPORT viewport = {.Width = SIZE, .Height = SIZE, .MaxDepth = 1.f};
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(vertex.Get(), nullptr, 0);
+    context->PSSetShader(pixel_shader, nullptr, 0);
+    context->PSSetShaderResources(0, 13, bound_views.data());
+    context->PSSetSamplers(0, 9, samplers.data());
+    context->PSSetConstantBuffers(0, 4, buffers.data());
+    if (rays_view != nullptr) {
+      context->PSSetShaderResources(45, 1, mask_view.GetAddressOf());
+      context->PSSetShaderResources(47, 1, &rays_view);
+      context->PSSetConstantBuffers(10, 1, &flag);
+    }
+    context->RSSetViewports(1, &viewport);
+    context->OMSetRenderTargets(5, bound.data(), nullptr);
+    context->Draw(3, 0);
+    context->ClearState();
+    std::array<std::vector<float>, 5> result;
+    for (size_t index = 0; index < outputs.size(); ++index) {
+      const auto bytes = Read(outputs[index].Get(), (index < 3) ? 16 : 4);
+      result[index].resize(bytes.size() / 4);
+      std::memcpy(result[index].data(), bytes.data(), bytes.size());
+    }
+    return result;
+  };
+  const auto same = [](float x, float y) { return (std::isnan(x) && std::isnan(y)) || std::fabs(x - y) <= (1e-4f * std::max(std::fabs(x), std::fabs(y))) + 1e-5f; };
+  size_t differs_unbound = 0, differs_kept = 0, changed = 0, changed_outside = 0, control_changed = 0;
+  for (const float probes : {1.f, 0.f}) {
+    environment[17] = probes;  // g_specular_probes_count
+    const auto environment_buffer = Constants(environment.data(), sizeof(environment));
+    const auto reference = run(game.Get(), environment_buffer.Get(), nullptr, nullptr);
+    const auto unbound = run(ours.Get(), environment_buffer.Get(), nullptr, nullptr);
+    const auto no_hits = run(ours.Get(), environment_buffer.Get(), rays[0].Get(), flags[1].Get());
+    const auto control = run(ours.Get(), environment_buffer.Get(), rays[1].Get(), flags[0].Get());
+    const auto hits = run(ours.Get(), environment_buffer.Get(), rays[1].Get(), flags[1].Get());
+    for (size_t output = 0; output < 5; ++output) {
+      const size_t channels = (output < 3) ? 4 : 1;
+      for (size_t value = 0; value < reference[output].size(); ++value) {
+        const float expected = reference[output][value];
+        const bool water = mask[value / channels] > 0.5f;
+        differs_unbound += same(unbound[output][value], expected) ? 0 : 1;
+        differs_kept += same(no_hits[output][value], expected) ? 0 : 1;
+        control_changed += same(control[output][value], expected) ? 0 : 1;
+        changed += (water && output == 0 && !same(hits[output][value], expected)) ? 1 : 0;
+        changed_outside += ((!water || output != 0) && !same(hits[output][value], expected)) ? 1 : 0;
+      }
+    }
+  }
+  CHECK(differs_unbound == 0 && differs_kept == 0, "%zu values differ unbound, %zu with no hits", differs_unbound, differs_kept);
+  CHECK(changed > 0 && changed_outside == 0, "%zu colour values changed under the mask, %zu elsewhere", changed, changed_outside);
+  CHECK(control_changed == 0, "CONTROL: %zu values changed with the flags off", control_changed);
+  std::printf("ocean00 32x32, probe and sky branches: the game's outputs unbound / no hits / flags off; %zu colour values the rays' under the mask\n",
+              changed);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -413,6 +1114,13 @@ int main(int argc, char** argv) {
   TestSun(games);
   TestInputs(games, argv[2]);
   TestOutput(games);
+  TestFoliage(games, argv[2]);
+  TestWaterPlane(games);
+  if (argc > 3) {
+    TestBillboard(games, argv[3]);
+    TestImposter(games, argv[3]);
+    TestOcean(games, argv[3]);
+  }
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

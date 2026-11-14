@@ -16,8 +16,9 @@
 // 4. Report: PsychoV35's hue (OkLab) against the game's own SDR picture (the same chain in its SDR mode) where SDR
 //    reaches its clip, for fire, sky blue and 48 hues, Hue Clip 0 to 1 (sky to 2): what the default comes from.
 // 5. The same for the other games' kinds of stock curve (hue_curves.hlsl: a luminance curve then each channel clipped,
-//    or a curve on each channel), PsychoV35 right after Hue Clip as their shaders call it. Its WH3 form (WH2's) agrees
-//    with part 4's WH3 (1.00).
+//    or a curve on each channel), PsychoV35 right after Hue Clip as their shaders call it. Its WH3 form agrees with part
+//    4's WH3 (1.00); WH2's own t00 (curve 6: its anchored handoff, at burns 0.1, 0.3 and 0.5) too (1.00); WH1's tone
+//    mappers (curve 7: Attila's engine Hue Clip without the highlight limit, the stock whiteout off and 0 to 10).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -38,6 +39,7 @@
 #include <map>
 #include <numbers>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace attila {
@@ -911,13 +913,29 @@ static void ReportHue(const Chain& chain) {
   const char* const curve_names[] = {"5. Luminance Reinhard + clip (WH2)", "5. Luminance Hable + clip (Rome Remastered)",
                                      "5. Clip alone (RUSE)", "5. Hable per channel (Ryse)",
                                      "5. UE film per AP1 channel (Tales, Expeditions, Shogun 2)", "5. ACES fit per channel (Troy, Pharaoh)"};
-  for (int curve = 0; curve < 6; ++curve) {
-    games.push_back({curve_names[curve], [&, curve](float mode, float hue_clip) {
+  // Then Warhammer II's own t00 (curve 6) at three of its maps' burns, white where its stock curve reaches 1.
+  std::vector<std::tuple<std::string, int, float>> curves;
+  for (int curve = 0; curve < 6; ++curve) curves.emplace_back(curve_names[curve], curve, 0.f);
+  for (const float burn : {0.1f, 0.3f, 0.5f}) {
+    char name[64];
+    std::snprintf(name, sizeof(name), "5. WH2's t00 (2333E142), burn %.1f", burn);
+    curves.emplace_back(name, 6, 1.f / burn - 0.999f);
+  }
+  // Then Warhammer's tone mappers (curve 7), white 1: without the stock whiteout, and with whiteout_start 0 / end 10 (t00
+  // D275C403's bloom_buffer in ATN's 2026-11-14 battle traces; his campaign's 0.144 / 10).
+  curves.emplace_back("5. WH1's tone mappers (D275C403), no whiteout", 7, 0.f);
+  curves.emplace_back("5. WH1's tone mappers (D275C403), whiteout 0 to 10", 7, 10.f);
+  for (const auto& [curve_name, curve, white] : curves) {
+    games.push_back({curve_name.c_str(), [&, curve, white](float mode, float hue_clip) {
                        Bindings bindings;
-                       bindings.views["scene"] = Texture2D(WIDTH, HEIGHT, Scene(columns, first_stop, stops_per_row, 1.f));
+                       bindings.views["scene"] = Texture2D(WIDTH, HEIGHT, Scene(columns, first_stop, stops_per_row, (curve == 6) ? std::sqrt(white) : 1.f));
                        bindings.words["curve"] = F({static_cast<float>(curve)});
                        bindings.words["strength"] = F({hue_clip});
                        bindings.words["sdr"] = F({mode == 0.f ? 1.f : 0.f});
+                       bindings.words["white"] = F({white});
+                       // Curve 7: `white` is the whiteout's end (0: none, its start and end far above white).
+                       bindings.words["whiteout_start"] = F({(curve == 7 && white == 0.f) ? 1e6f : 0.f});
+                       bindings.words["whiteout_end"] = F({(curve == 7 && white == 0.f) ? 2e6f : white});
                        bindings.injection = Bytes(AttilaInjection(3.f, 0.f));
                        std::vector<Float3> linear;
                        for (const auto& o : Draw(*chain.curves, bindings)) linear.push_back({o[0], o[1], o[2]});

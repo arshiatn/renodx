@@ -316,7 +316,9 @@ struct Camera {
 // Games whose scene shaders are too many to list (Ryse) give `scene_draw` instead: every draw is asked whether it is a
 // scene draw (an opaque one into the G-buffer), which fills in its shader (its vertex shader's hash: the game's own,
 // streamed out; whether skinned: `skinned_vertex_shader`), and `capture_camera` reads the draw's camera from the
-// context (`camera` is then not needed).
+// context (`camera` is then not needed). A shader it gives a capture version (SceneShader::capture_shader: in clip space
+// with the draw's own constants, as the game's SV_Position and UV) is streamed out through that version (Shogun 2's
+// sun-facing cards); none: the game's own, as before.
 struct Host {
   bool (*camera)(ID3D11Buffer* buffer, Camera* camera) = nullptr;
   std::array<UINT, 2> (*render_size)() = nullptr;
@@ -444,6 +446,7 @@ struct DeviceObjects {
   std::vector<ComPtr<ID3D11GeometryShader>> capture_outputs;
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_outputs;  // the game's own, by their hash
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_uv_outputs;  // with the UV (their foliage)
+  std::unordered_map<uint32_t, ComPtr<ID3D11VertexShader>> game_capture_shaders;  // Host::scene_draw's capture versions, by the game's hash
   ComPtr<ID3D11Buffer> cascade_camera;  // SceneShader::cascade_keep's cb0 (Host::cascade_world: its b0): the main view's matrix at [10-13]
   ComPtr<ID3D11Buffer> cascade_no_view;  // All 0: a new mesh's first rows, none left out
   ComPtr<ID3D11Buffer> captured;  // stream output: world positions, three per triangle
@@ -1744,6 +1747,8 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   ID3D11VertexShader* capture_vertex_shader = nullptr;
   ID3D11GeometryShader* stream_output = nullptr;
+  // Host::scene_draw's capture version, in clip space as the game's.
+  const bool own_capture = host.scene_draw != nullptr && !shader.capture_shader.empty() && !cascade_draw && !shader.tessellated;
   if (!place && clip_space) {
     const uint32_t streamed_shader =
         shader.tessellated ? renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::domain_shader, &command.bound_state_cache)
@@ -1761,7 +1766,14 @@ void Capture(Context& command, const SceneShader& shader) {
       if (cascade_draw) {
         streamed_code = (clip_uv ? shader.cascade_keep_uv : shader.cascade_keep);
       }
-      if (streamed_code.empty() && code != game_code.end()) streamed_code = code->second;
+      if (own_capture) {
+        streamed_code = shader.capture_shader;
+        if (FAILED(device->CreateVertexShader(streamed_code.data(), streamed_code.size(), nullptr,
+                                              objects.game_capture_shaders[streamed_shader].ReleaseAndGetAddressOf()))) {
+          streamed_code = {};
+        }
+      }
+      if (streamed_code.empty() && code != game_code.end() && !own_capture) streamed_code = code->second;
       if (streamed_code.empty()
           || FAILED(device->CreateGeometryShaderWithStreamOutput(streamed_code.data(), streamed_code.size(), entries.data(), outputs,
                                                                   STRIDES.data(), outputs, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
@@ -1774,6 +1786,7 @@ void Capture(Context& command, const SceneShader& shader) {
     }
     if (!made->second) return;
     stream_output = made->second.Get();
+    if (own_capture) capture_vertex_shader = objects.game_capture_shaders[streamed_shader].Get();
   } else if (!place || sway) {
     capture_vertex_shader = (cut_out ? objects.cut_out_shaders : objects.capture_shaders)[index].Get();
     stream_output = (cut_out ? objects.cut_out_outputs : objects.capture_outputs)[index].Get();
@@ -1831,7 +1844,7 @@ void Capture(Context& command, const SceneShader& shader) {
     const std::array<ID3D11Buffer*, 2> targets = {shader.tessellated ? objects.tessellated.Get() : objects.captured.Get(), objects.captured_uv.Get()};
     const std::array<UINT, 2> stream_offsets = {shader.tessellated ? (runtime.tessellated_draws == 0 ? 0u : UINT_MAX) : (next_vertex * 16),
                                                 next_vertex * 8};
-    if (!clip_space) native->VSSetShader(capture_vertex_shader, nullptr, 0);
+    if (!clip_space || own_capture) native->VSSetShader(capture_vertex_shader, nullptr, 0);
     native->GSSetShader(stream_output, nullptr, 0);
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
     // A capture version turned to the sun reads rt_sun; the game's shadow vertex shader (a cascade draw) turns its cards to the sun itself,

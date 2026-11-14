@@ -3,7 +3,14 @@
 // curve, as the games' shaders call them. run.ps1 compiles it with Attila's folder as the include path (/I).
 // curve: 0 luminance Extended Reinhard (white 4) then each channel clipped (WH2; WH3's form), 1 luminance Hable then
 // the clip (Rome Remastered), 2 the clip alone (RUSE), 3 Hable on each channel (Ryse), 4 UE's film curve on each AP1
-// channel (Tales of Arise, Expeditions: Rome, Shogun 2's), 5 the ACES fit on each channel (Troy, Pharaoh).
+// channel (Tales of Arise, Expeditions: Rome, Shogun 2's), 5 the ACES fit on each channel (Troy, Pharaoh), 6 Warhammer
+// II's t00 (2333E142) as it runs: its Extended Reinhard x(1 + x / W) / (1 + x) with W = 1 / burn - 0.999 (`white`), the
+// handoff anchored at its mid gray and log-log slope, Hue Clip toward the stock luminance / handoff, PsychoV35 at 0.18
+// (its hdr_to_screen with the grade at identity), 7 Warhammer's tone mappers (twwarhammer/tone_mapper.hlsli: t00 D275C403,
+// t09 7759B956, t10 9C8E40E6) as they run with the exposure's black 0 and white 1 and the S-curve at identity: Hue Clip
+// toward the luminance clamped at white (Attila's engine form without its highlight limit), PsychoV35 at 0.18; their SDR
+// picture the stock path: the whiteout toward white from white + `whiteout_start` to white + `whiteout_end`, the
+// luminance clamped at white, each channel clipped.
 // sdr 1: the game's SDR picture (its curve, each channel clipped at 1).
 #include "shared.h"
 #include "psycho35.hlsli"
@@ -14,7 +21,9 @@ cbuffer curve_params : register(b0) {
   float curve;
   float strength;
   float sdr;
-  float unused;
+  float white;  // curve 6: W
+  float whiteout_start;  // curve 7: g_whiteout_start, g_whiteout_end
+  float whiteout_end;
 };
 
 static const float HABLE_W = 11.2f;
@@ -76,7 +85,27 @@ float4 main(float4 position : SV_Position) : SV_Target {
   float3 hued;
   float mid_gray = 0.18f;
   [branch]
-  if (kind <= 2) {
+  if (kind == 6) {
+    // twwarhammer2/shaders/t00_0x2333E142.ps_5_0.hlsl's HDR path (exposure 1).
+    const float inv_w = 1.f / max(white, 0.00010000763f);
+    const float stock_y = y * (1.f + y * inv_w) / (1.f + y);
+    if (sdr != 0.f) return float4(saturate(c * ((y > 0.f) ? stock_y / y : 0.f)), 1.f);
+    const float x_mid = 0.36f / (0.82f + sqrt(0.6724f + 0.72f * inv_w));
+    const float slope = 1.f + (x_mid * inv_w) / (1.f + x_mid * inv_w) - x_mid / (1.f + x_mid);
+    const float handoff_y = 0.18f * pow(max(y / x_mid, 0.f), slope);
+    hued = c * ((y > 0.f) ? handoff_y / y : 0.f);
+    if (strength > 0.f && handoff_y > 0.f) hued = renodx::tonemap::psychov::HueClip(hued, stock_y / handoff_y, strength);
+  } else if (kind == 7) {
+    if (sdr != 0.f) {
+      // t00_0xD275C403.ps_4_0.hlsl's stock path (bloom in c).
+      const float high = max(max(c.r, c.g), max(c.b, 0.00100000005f));
+      const float whiteout = saturate((y - (1.f + whiteout_start)) / (whiteout_end - whiteout_start));
+      const float3 whited = (1.f - c / high) * whiteout * y + c;
+      const float whited_y = renodx::color::y::from::BT709(whited);
+      return float4(saturate(whited * ((whited_y > 0.f) ? clamp(whited_y, 0.f, 1.f) / whited_y : 1.f)), 1.f);
+    }
+    hued = (strength > 0.f) ? renodx::tonemap::psychov::AttilaEngineHueClip(c, y, c, 0.f, 0.f, 1.f, false, strength) : c;
+  } else if (kind <= 2) {
     const float clip_scale = (y > 0.f) ? LuminanceCurve(y, kind) / y : 0.f;
     if (sdr != 0.f) return float4(saturate(c * clip_scale), 1.f);
     hued = renodx::tonemap::psychov::HueClip(c, clip_scale, strength);

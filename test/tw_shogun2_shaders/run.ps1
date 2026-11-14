@@ -1,7 +1,10 @@
 # Shogun 2's rt_sun and upscale_inputs compute shaders on WARP (tests.cpp): rt_sun with the 2026-11-14 data run's
 # lighting buffers, upscale_inputs with a DLSS input capture (the DLSS addon's "Capture DLSS inputs": its folder holds
 # shogun2_dlss_capture_0_*.bin; only read). Holds tools/tw's GPU job lock while it runs when -Lock names it.
-param([Parameter(Mandatory = $true)][string]$Capture, [ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64', [string]$Lock = '')
+# -GameShaders: the folder of the game's dumped csos (0xFAAE535B, 0x03FB2979 .vs_5_0.cso, 0x16ADFD60.ps_5_0.cso: parts 5, 6,
+# 8), only read.
+param([Parameter(Mandatory = $true)][string]$Capture, [ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64', [string]$Lock = '',
+      [string]$GameShaders = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_shogun2_shaders'
@@ -18,7 +21,10 @@ if ($Lock -ne '') {
   Set-Content -LiteralPath $Lock -Value "tw_shogun2_shaders (WARP) $(Get-Date -Format s)"
 }
 try {
-  & (Join-Path $testBuild 'shogun2_shaders.exe') $repairRoot $Capture
+  # Also kept in last_run.txt (a failing run's lines survive a caller's pipeline).
+  $arguments = @($repairRoot, $Capture)
+  if ($GameShaders -ne '') { $arguments += $GameShaders }
+  & (Join-Path $testBuild 'shogun2_shaders.exe') @arguments | Tee-Object -FilePath (Join-Path $testBuild 'last_run.txt')
   if ($LASTEXITCODE -ne 0) { throw 'Shogun 2 shader test failed' }
 } finally {
   if ($Lock -ne '') { Remove-Item -LiteralPath $Lock -Force -Confirm:$false }

@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <cmath>
 #include <cstdint>
 #include <mutex>
 #include <span>
@@ -48,14 +50,31 @@ namespace twshogun2::ray_tracing {
 
 using Microsoft::WRL::ComPtr;
 
-// The sun light draws (the addon's sunlight00-03): camera_VS_PS at b0, the G-buffer (normal, colour, constants, depth)
-// from gbuffer_slot, lighting_VS_PS (the sun from c0) at b2 or b3. Also the Light Bounce's.
+// The sun light draws (the addon's sunlight00-03): camera_VS_PS at b0, environment_PS at b1, the G-buffer (normal,
+// colour, constants, depth) from gbuffer_slot, lighting_VS_PS (the sun from c0) at b2 or b3, the world's harmonics (and
+// the previous ones after them) at t2 or t4 (rt_sun's sky). Also the Light Bounce's. The campaign map's: lighting at b3.
 constexpr std::array<twattila::light_bounce::SunDraw, 4> SUN_DRAWS = {{
-    {.shader_hash = 0xED1BED93, .standard = true, .gbuffer_slot = 7, .lighting_slot = 2, .sun_direction = 0},
-    {.shader_hash = 0x5496DE73, .standard = true, .gbuffer_slot = 7, .lighting_slot = 2, .sun_direction = 0},
-    {.shader_hash = 0xC3E0E939, .standard = true, .gbuffer_slot = 9, .lighting_slot = 3, .sun_direction = 0},
-    {.shader_hash = 0xD5FDDE8F, .standard = true, .gbuffer_slot = 9, .lighting_slot = 3, .sun_direction = 0},
+    {.shader_hash = 0xED1BED93, .standard = true, .gbuffer_slot = 7, .lighting_slot = 2, .sun_direction = 0, .sky_harmonics_slot = 2,
+     .environment_slot = 1},
+    {.shader_hash = 0x5496DE73, .standard = true, .gbuffer_slot = 7, .lighting_slot = 2, .sun_direction = 0, .sky_harmonics_slot = 2,
+     .environment_slot = 1},
+    {.shader_hash = 0xC3E0E939, .standard = true, .gbuffer_slot = 9, .lighting_slot = 3, .sun_direction = 0, .sky_harmonics_slot = 4,
+     .environment_slot = 1},
+    {.shader_hash = 0xD5FDDE8F, .standard = true, .gbuffer_slot = 9, .lighting_slot = 3, .sun_direction = 0, .sky_harmonics_slot = 4,
+     .environment_slot = 1},
 }};
+constexpr UINT CAMPAIGN_LIGHTING_SLOT = 3;
+// The scene's families by their G-buffer vertex shaders (shader_names.txt; the 2026-11-14 data run's battle drew 11
+// cloth and 90 grass G-buffer draws): cloth (sails, banners) thin sheets (RT_THIN), rigidgrass / rigidgrasswet the
+// grass (RT_GRASS, the grass's share of the alpha-tested corners). The sprite soldiers (imposter, 03FB2979: 68 draws)
+// face the camera as drawn; with Sprite Soldier Shadows on they face the sun (rt_capture_imposter). The far trees
+// (rigidtreebillboard, FAAE535B: 98; its pixel shader reads its mask by a UV it works out, so the scene left them out)
+// only with Far Tree Shadows on, facing the sun (rt_capture_tree_billboard: its mask the diffuse map's alpha at t1, the
+// UV at TEXCOORD1). rigidtreebillboard_3k (4B0E8CE6) drew in none of the traces.
+constexpr uint32_t CLOTH_VERTEX_SHADER = 0xBDFF60D4;
+constexpr uint32_t GRASS_VERTEX_SHADER = 0xB7A0270E;
+constexpr uint32_t IMPOSTER_VERTEX_SHADER = 0x03FB2979;
+constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).
 constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0x5CBF4FB6, 0x57139F8D};
 // The battle fog's light (fog01, battlefog ps40_main_inscattering: the sun's part through rt_fog.hlsli's RtFogSun).
@@ -69,10 +88,23 @@ constexpr uint32_t CAMERA_VIEW_PROJECTION = 10;
 constexpr uint32_t CAMERA_VIEWPORT = 38;
 // The traced visibilities' slots (shaders/rt_sun.hlsli).
 constexpr UINT VISIBILITY_SLOT = 40;
-// rt_sun's b1 (twattila/rt_sun.cs_5_0.hlsl): lighting_VS_PS's first floats of the sun's direction (c0), the ambient cube
-// (c3-c8: +x, -x, +y, -y, +z, -z, index 0 where the normal's axis is 0 or more; the paths' sky) and the sun colour (c1;
-// the paths' sun light with Path-Traced Ambient, not offered here).
+// rt_sun's b1 (rt_sun.cs_5_0.hlsl): lighting_VS_PS's first floats of the sun's direction (c0), the ambient cube (c3-c8:
+// +x, -x, +y, -y, +z, -z, index 0 where the normal's axis is 0 or more; with the harmonics the paths' sky) and the sun
+// colour (c1; the paths' sun light with Path-Traced AO). Its third: 0 (Shogun 2's rt_sun makes the same sky either way).
 constexpr std::array<uint32_t, 8> SUN_OFFSETS = {0, 12, 0, 0, 4, 0, 0, 0};
+
+// Ray-Traced Water Reflections' objects (WaterSurface): rt_water_plane, its constants, the water's depth (R32) and mask
+// (R8) at the depth's size.
+struct Water {
+  ComPtr<ID3D11ComputeShader> shader;
+  ComPtr<ID3D11Buffer> constants;
+  ComPtr<ID3D11Texture2D> depth;
+  ComPtr<ID3D11UnorderedAccessView> depth_uav;
+  ComPtr<ID3D11ShaderResourceView> depth_view;
+  ComPtr<ID3D11Texture2D> mask;
+  ComPtr<ID3D11UnorderedAccessView> mask_uav;
+  ComPtr<ID3D11ShaderResourceView> mask_view;
+};
 
 struct State {
   std::mutex mutex;
@@ -88,6 +120,22 @@ struct State {
   ComPtr<ID3D11ComputeShader> sun;
   ComPtr<ID3D11Buffer> sun_offsets;
   bool failed = false;
+  bool campaign = false;  // the last sun draw the campaign map's (no Path-Traced AO there: its overlay takes the ambient)
+  // Path-Traced AO: the sun draws' lighting_VS_PS copied without the game's ambient (the cube and the harmonics' flag
+  // zero: the shaders' own math gives none), once a frame for each buffer; the game's put back after the draw.
+  ComPtr<ID3D11Buffer> no_ambient;
+  ComPtr<ID3D11Buffer> ambient_lighting;
+  UINT ambient_lighting_bytes = 0;
+  uint64_t ambient_frame = UINT64_MAX;
+  ID3D11Buffer* ambient_source = nullptr;  // compared only
+  ComPtr<ID3D11Buffer> game_lighting;
+  UINT game_lighting_slot = 0;
+  // Ray-Traced Water Reflections: the sea's plane (its normal up) from its last draw, the frame of it, the frame the rays
+  // left from it (its mask valid).
+  std::array<float, 4> sea_plane = {};
+  uint64_t sea_frame = UINT64_MAX;
+  uint64_t water_frame = UINT64_MAX;
+  Water water;
 };
 static State state;
 
@@ -142,17 +190,34 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   D3D11_TEXTURE2D_DESC depth_texture_desc = {};
   if (FAILED(depth_resource.As(&depth_texture))) return false;
   depth_texture->GetDesc(&depth_texture_desc);
+  bool sprite_shadows = false;
   {
     const std::unique_lock lock(state.mutex);
     if (state.depth_size != std::array<UINT, 2>{depth_texture_desc.Width, depth_texture_desc.Height}) return false;
+    sprite_shadows = state.settings.sprite_shadows;
   }
+  const bool far_tree = shader->hash == TREE_BILLBOARD_VERTEX_SHADER;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
   if (!upscaling::PrepareBridge(device.Get(), depth_texture_desc.Width, depth_texture_desc.Height)
-      || !twattila::rt_scene::SceneCoverage(native, shader)) {
+      || !(far_tree || twattila::rt_scene::SceneCoverage(native, shader))) {
     return false;
   }
-  shader->dynamic = twattila::rt_scene::SkinnedVertexShader(shader->hash);
+  shader->thin = shader->hash == CLOTH_VERTEX_SHADER;
+  shader->grass = shader->hash == GRASS_VERTEX_SHADER;
+  // Sun-facing cards (rt_core skips the far trees with Far Tree Shadows off): drawn from rebuilt buffers, captured every frame.
+  if (far_tree) {
+    shader->capture_shader = __rt_capture_tree_billboard;
+    shader->far_tree = true;
+    shader->foliage = true;
+    shader->uv_semantic = "TEXCOORD";
+    shader->uv_semantic_index = 1;
+    shader->mask_slot = 1;
+  } else if (shader->hash == IMPOSTER_VERTEX_SHADER && sprite_shadows) {
+    shader->capture_shader = __rt_capture_imposter;
+  }
+  shader->sun_facing = !shader->capture_shader.empty();
+  shader->dynamic = shader->sun_facing || twattila::rt_scene::SkinnedVertexShader(shader->hash);
   return true;
 }
 
@@ -171,6 +236,10 @@ inline bool PrepareObjects(ID3D11DeviceContext* native) {
   state.guides.Reset();
   state.sun.Reset();
   state.sun_offsets.Reset();
+  state.no_ambient.Reset();
+  state.ambient_lighting.Reset();
+  state.ambient_lighting_bytes = 0;
+  state.water = {};
   const D3D11_BUFFER_DESC offsets_desc = {.ByteWidth = sizeof(SUN_OFFSETS), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_SUBRESOURCE_DATA offsets_data = {.pSysMem = SUN_OFFSETS.data()};
   state.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
@@ -184,10 +253,16 @@ inline bool PrepareObjects(ID3D11DeviceContext* native) {
 
 // The sun for this frame's trace (toward it) and the paths' sun and sky from a sun draw's lighting_VS_PS, once a frame
 // (rt_sun), in the addon's own context state.
-inline void WriteSun(ID3D11DeviceContext* native, UINT lighting_slot) {
+inline void WriteSun(ID3D11DeviceContext* native, const twattila::light_bounce::SunDraw& draw) {
   auto& bridge = twattila::dlaa_bridge::bridge;
   ComPtr<ID3D11Buffer> lighting;
-  native->PSGetConstantBuffers(lighting_slot, 1, lighting.GetAddressOf());
+  native->PSGetConstantBuffers(draw.lighting_slot, 1, lighting.GetAddressOf());
+  std::array<ComPtr<ID3D11Buffer>, 2> camera_environment;
+  native->PSGetConstantBuffers(draw.camera_slot, 1, camera_environment[0].GetAddressOf());
+  native->PSGetConstantBuffers(draw.environment_slot, 1, camera_environment[1].GetAddressOf());
+  std::array<ComPtr<ID3D11ShaderResourceView>, 2> harmonics;
+  native->PSGetShaderResources(draw.sky_harmonics_slot, 1, harmonics[0].GetAddressOf());
+  native->PSGetShaderResources(draw.sky_harmonics_slot + 1, 1, harmonics[1].GetAddressOf());
   ComPtr<ID3D11DeviceContext1> native1;
   if (!bridge.rt_sun.uav || !lighting || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
   {
@@ -196,10 +271,12 @@ inline void WriteSun(ID3D11DeviceContext* native, UINT lighting_slot) {
     state.sun_frame = state.frame;
   }
   const talesofarise::dlss::ContextStateScope scope(native1.Get(), state.private_state.Get());
-  ID3D11Buffer* constants[] = {lighting.Get(), state.sun_offsets.Get()};
+  ID3D11Buffer* constants[] = {lighting.Get(), state.sun_offsets.Get(), camera_environment[0].Get(), camera_environment[1].Get()};
   ID3D11UnorderedAccessView* sun = bridge.rt_sun.uav.Get();
   native->CSSetShader(state.sun.Get(), nullptr, 0);
-  native->CSSetConstantBuffers(0, 2, constants);
+  native->CSSetConstantBuffers(0, 4, constants);
+  ID3D11ShaderResourceView* harmonic_views[] = {harmonics[0].Get(), harmonics[1].Get()};
+  native->CSSetShaderResources(0, 2, harmonic_views);
   native->CSSetUnorderedAccessViews(0, 1, &sun, nullptr);
   native->Dispatch(1, 1, 1);
 }
@@ -229,8 +306,57 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot) {
   native->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
 }
 
-// The frame's first sun light draw: the sun, the guides and the trace; every one: the traced visibilities bound (put back
-// after).
+// Path-Traced AO this frame (rt_core: on once the paths ran long enough, and they ran last frame).
+inline bool PathAmbientNow() {
+  auto& runtime = twattila::rt_scene::internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  return runtime.path_ambient_on && runtime.bounced_frame + 1 >= runtime.frame;
+}
+
+// The draw's lighting_VS_PS replaced by its copy without the game's ambient (the cube c3-c8 and the harmonics' flag c10.w
+// zero, as rt_scene.hpp's OnPathAmbientDraw does with Attila's cube); the game's kept to put back. False: the game's stays.
+inline bool LightingWithoutAmbient(ID3D11DeviceContext* native, UINT slot) {
+  ComPtr<ID3D11Buffer> game_lighting;
+  native->PSGetConstantBuffers(slot, 1, game_lighting.GetAddressOf());
+  if (!game_lighting) return false;
+  D3D11_BUFFER_DESC desc = {};
+  game_lighting->GetDesc(&desc);
+  constexpr UINT CUBE_OFFSET = 3 * 16;
+  constexpr UINT CUBE_BYTES = 6 * 16;
+  constexpr UINT HARMONICS_FLAG_OFFSET = (10 * 16) + 12;
+  if (desc.ByteWidth < HARMONICS_FLAG_OFFSET + 4) return false;
+  const std::unique_lock lock(state.mutex);
+  if (!state.device) return false;
+  if (state.ambient_lighting_bytes != desc.ByteWidth) {
+    state.ambient_lighting.Reset();
+    state.ambient_lighting_bytes = 0;
+    const D3D11_BUFFER_DESC copy = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    if (FAILED(state.device->CreateBuffer(&copy, nullptr, state.ambient_lighting.GetAddressOf()))) return false;
+    state.ambient_lighting_bytes = desc.ByteWidth;
+  }
+  if (!state.no_ambient) {
+    constexpr std::array<float, CUBE_BYTES / 4> ZEROS = {};
+    const D3D11_BUFFER_DESC zeros = {.ByteWidth = CUBE_BYTES, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = ZEROS.data()};
+    if (FAILED(state.device->CreateBuffer(&zeros, &data, state.no_ambient.GetAddressOf()))) return false;
+  }
+  if (state.ambient_frame != state.frame || state.ambient_source != game_lighting.Get()) {
+    native->CopyResource(state.ambient_lighting.Get(), game_lighting.Get());
+    const D3D11_BOX cube = {.left = 0, .top = 0, .front = 0, .right = CUBE_BYTES, .bottom = 1, .back = 1};
+    native->CopySubresourceRegion(state.ambient_lighting.Get(), 0, CUBE_OFFSET, 0, 0, state.no_ambient.Get(), 0, &cube);
+    const D3D11_BOX flag = {.left = 0, .top = 0, .front = 0, .right = 4, .bottom = 1, .back = 1};
+    native->CopySubresourceRegion(state.ambient_lighting.Get(), 0, HARMONICS_FLAG_OFFSET, 0, 0, state.no_ambient.Get(), 0, &flag);
+    state.ambient_frame = state.frame;
+    state.ambient_source = game_lighting.Get();
+  }
+  native->PSSetConstantBuffers(slot, 1, state.ambient_lighting.GetAddressOf());
+  state.game_lighting = std::move(game_lighting);
+  state.game_lighting_slot = slot;
+  return true;
+}
+
+// The frame's first sun light draw: the sun, the guides and the trace; every one: the traced visibilities bound and, with
+// Path-Traced AO, the lighting without the game's ambient (the paths bring the sky's light instead; put back after).
 constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& draw = command.template GetCallbackData<twattila::light_bounce::SunDraw>();
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
@@ -254,20 +380,27 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
     if (SUCCEEDED(depth_resource.As(&depth_texture))) depth_texture->GetDesc(&depth_desc);
     const std::unique_lock lock(state.mutex);
     state.depth_size = {depth_desc.Width, depth_desc.Height};
+    state.campaign = draw.lighting_slot == CAMPAIGN_LIGHTING_SLOT;
   }
-  WriteSun(native, draw.lighting_slot);
+  WriteSun(native, draw);
   if (settings.reflections || settings.path_tracing || upscaling::Reconstructing()) WriteGuides(native, draw.gbuffer_slot);
   if (twattila::rt_scene::Camera camera; Camera(camera_buffer.Get(), &camera)) twattila::rt_scene::Trace(native, depth.Get(), camera);
   const auto [sun, ambient] = twattila::rt_scene::Visibilities();
   const std::array<ID3D11ShaderResourceView*, 2> visibilities = {settings.sun_shadows ? sun : nullptr,
                                                                  settings.ambient_occlusion ? ambient : nullptr};
-  if (visibilities[0] == nullptr && visibilities[1] == nullptr) return {};
+  const bool no_ambient = draw.lighting_slot != CAMPAIGN_LIGHTING_SLOT && PathAmbientNow() && LightingWithoutAmbient(native, draw.lighting_slot);
+  if (visibilities[0] == nullptr && visibilities[1] == nullptr && !no_ambient) return {};
   native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(visibilities.size()), visibilities.data());
-  return {.post_callback = [](Context& command, const void*) {
+  // Put back in finalize callbacks: the Light Bounce draws the sun draw itself (bypass), which skips post callbacks.
+  return {.finalize_callback = [](Context& command, const void*) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
     renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+    if (native == nullptr) return;
     constexpr std::array<ID3D11ShaderResourceView*, 2> NONE = {};
-    if (native != nullptr) native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(NONE.size()), NONE.data());
+    native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(NONE.size()), NONE.data());
+    const std::unique_lock lock(state.mutex);
+    if (state.game_lighting) native->PSSetConstantBuffers(state.game_lighting_slot, 1, state.game_lighting.GetAddressOf());
+    state.game_lighting.Reset();
   }};
 };
 
@@ -321,12 +454,19 @@ inline const twattila::rt_scene::Host HOST = {
     .guides_written = GuidesWritten,
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
+    // The water's guides are rt_water_plane's (WaterSurface), written with its depth.
+    .rewrite_guides = [](ID3D11DeviceContext*) {},
 };
 
 // Every present: the settings and a new frame.
-inline void Update(const twattila::rt_scene::Settings& settings) {
+inline void Update(twattila::rt_scene::Settings settings) {
   {
     const std::unique_lock lock(internal::state.mutex);
+    // The campaign map keeps the game's ambient (its overlay is lit by it in the sun shader): ray-traced AO there.
+    if (internal::state.campaign && settings.path_ambient) {
+      settings.path_ambient = false;
+      settings.ambient_occlusion = true;
+    }
     internal::state.settings = settings;
     ++internal::state.frame;
   }
@@ -365,10 +505,146 @@ inline void KeepColor(reshade::api::command_list* cmd_list) {
   bridge.color_square_root = false;
 }
 
+// Ray-Traced Water Reflections (Experimental): the sea (ocean high, 16ADFD60) is drawn forward after the reflections with
+// no G-buffer of its own. Before the reflections' first pass (ssrhiz00: its t0 the depth, b0 the camera), with the sea
+// drawn in the last frame, rt_water_plane puts the sea's plane into a copy of the depth with the water's guides and a mask,
+// and the reflections are traced from it (rt_core Reflections: the positions again). The resolve leaves the mask's pixels
+// to the environment (shaders/ssrresolve00), the sea takes the rays' reflection there (shaders/ocean00).
+inline void WaterSurface(reshade::api::command_list* cmd_list) {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  ComPtr<ID3D11DeviceContext1> native1;
+  if (native == nullptr || !GuidesWritten() || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
+  ComPtr<ID3D11ShaderResourceView> depth;
+  ComPtr<ID3D11Buffer> camera;
+  native->CSGetShaderResources(0, 1, depth.GetAddressOf());
+  native->CSGetConstantBuffers(0, 1, camera.GetAddressOf());
+  ComPtr<ID3D11Resource> resource;
+  if (depth) depth->GetResource(resource.GetAddressOf());
+  ComPtr<ID3D11Texture2D> texture;
+  if (!camera || !resource || FAILED(resource.As(&texture))) return;
+  D3D11_TEXTURE2D_DESC desc = {};
+  texture->GetDesc(&desc);
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& state = internal::state;
+  internal::Water water;
+  std::array<uint32_t, 8> constants = {};
+  {
+    const std::unique_lock lock(state.mutex);
+    const auto& size = state.render_size;
+    if (!(state.settings.reflections && state.settings.water_reflections) || state.sea_frame + 1 < state.frame || size[0] == 0
+        || desc.SampleDesc.Count != 1 || desc.Width < size[0] || desc.Height < size[1] || !internal::PrepareObjects(native)) {
+      return;
+    }
+    auto& kept = state.water;
+    D3D11_TEXTURE2D_DESC kept_desc = {};
+    if (kept.depth) kept.depth->GetDesc(&kept_desc);
+    if (kept_desc.Width != desc.Width || kept_desc.Height != desc.Height) {
+      const D3D11_TEXTURE2D_DESC depth_desc = {.Width = desc.Width, .Height = desc.Height, .MipLevels = 1, .ArraySize = 1,
+                                               .Format = DXGI_FORMAT_R32_TYPELESS, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                               .BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE};
+      D3D11_TEXTURE2D_DESC mask_desc = depth_desc;
+      mask_desc.Format = DXGI_FORMAT_R8_UNORM;
+      const D3D11_UNORDERED_ACCESS_VIEW_DESC uav_desc = {.Format = DXGI_FORMAT_R32_FLOAT, .ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D};
+      D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = DXGI_FORMAT_R32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D};
+      view_desc.Texture2D.MipLevels = 1;
+      const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = sizeof(constants), .Usage = D3D11_USAGE_DEFAULT,
+                                                .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      kept = {};
+      if (FAILED(device->CreateComputeShader(__rt_water_plane.data(), __rt_water_plane.size(), nullptr, kept.shader.GetAddressOf()))
+          || FAILED(device->CreateBuffer(&constants_desc, nullptr, kept.constants.GetAddressOf()))
+          || FAILED(device->CreateTexture2D(&depth_desc, nullptr, kept.depth.GetAddressOf()))
+          || FAILED(device->CreateUnorderedAccessView(kept.depth.Get(), &uav_desc, kept.depth_uav.GetAddressOf()))
+          || FAILED(device->CreateShaderResourceView(kept.depth.Get(), &view_desc, kept.depth_view.GetAddressOf()))
+          || FAILED(device->CreateTexture2D(&mask_desc, nullptr, kept.mask.GetAddressOf()))
+          || FAILED(device->CreateUnorderedAccessView(kept.mask.Get(), nullptr, kept.mask_uav.GetAddressOf()))
+          || FAILED(device->CreateShaderResourceView(kept.mask.Get(), nullptr, kept.mask_view.GetAddressOf()))) {
+        kept = {};
+        return;
+      }
+    }
+    water = kept;
+    const auto& plane = state.sea_plane;
+    constants = {std::bit_cast<uint32_t>(plane[0]), std::bit_cast<uint32_t>(plane[1]), std::bit_cast<uint32_t>(plane[2]),
+                 std::bit_cast<uint32_t>(plane[3]), size[0], size[1], 0u, 0u};
+  }
+  {
+    const talesofarise::dlss::ContextStateScope scope(native1.Get(), state.private_state.Get());
+    const auto& bridge = twattila::dlaa_bridge::bridge;
+    ID3D11Buffer* buffers[] = {camera.Get(), water.constants.Get()};
+    std::array<ID3D11UnorderedAccessView*, 6> targets = {water.depth_uav.Get(),    bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
+                                                         bridge.normals.uav.Get(), bridge.roughness.uav.Get(),      water.mask_uav.Get()};
+    native->UpdateSubresource(water.constants.Get(), 0, nullptr, constants.data(), 0, 0);
+    native->CSSetShader(water.shader.Get(), nullptr, 0);
+    native->CSSetConstantBuffers(0, 2, buffers);
+    native->CSSetShaderResources(0, 1, depth.GetAddressOf());
+    native->CSSetUnorderedAccessViews(0, static_cast<UINT>(targets.size()), targets.data(), nullptr);
+    native->Dispatch((constants[4] + 7) / 8, (constants[5] + 7) / 8, 1);
+    // Unbound here: the private state keeps its bindings, the depth and guides are read elsewhere.
+    targets = {};
+    ID3D11ShaderResourceView* no_view = nullptr;
+    native->CSSetUnorderedAccessViews(0, static_cast<UINT>(targets.size()), targets.data(), nullptr);
+    native->CSSetShaderResources(0, 1, &no_view);
+  }
+  twattila::rt_scene::Reflections(native, water.depth_view.Get());
+  bool traced = false;
+  {
+    auto& rays = twattila::rt_scene::internal::runtime;
+    const std::unique_lock lock(rays.mutex);
+    traced = rays.water_traced;
+  }
+  const std::unique_lock lock(state.mutex);
+  state.water_frame = traced ? state.frame : UINT64_MAX;
+}
+
+// rt_water_plane's mask at t45 (this frame's, where the rays left from the sea) for the resolve (`compute`) or the sea's
+// draw; `bind` false: unbound.
+inline void BindWaterMask(reshade::api::command_list* cmd_list, bool compute, bool bind) {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr) return;
+  ComPtr<ID3D11ShaderResourceView> mask;
+  if (bind) {
+    const std::unique_lock lock(internal::state.mutex);
+    if (internal::state.water_frame == internal::state.frame) mask = internal::state.water.mask_view;
+  }
+  if (compute) {
+    native->CSSetShaderResources(45, 1, mask.GetAddressOf());
+  } else {
+    native->PSSetShaderResources(45, 1, mask.GetAddressOf());
+  }
+}
+
+// The sea's draw (ocean high, 16ADFD60): its plane for the next frame's WaterSurface (ocean_VS at VS b1: c1,
+// g_decal_ocean_projection_plane, taken with its normal up), the rays' reflections (b10, t46 / t47) and the water mask
+// for its pixel shader (shaders/ocean00); `bind` false after it: unbound.
+inline void OnSeaDraw(reshade::api::command_list* cmd_list, bool bind) {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr) return;
+  ComPtr<ID3D11Buffer> ocean;
+  if (bind) native->VSGetConstantBuffers(1, 1, ocean.GetAddressOf());
+  std::array<float, 4> plane = {};
+  if (ocean && expeditionsrome::dlss::constants::Read(ocean.Get(), 16, std::as_writable_bytes(std::span(plane)))) {
+    const float length = std::sqrt((plane[0] * plane[0]) + (plane[1] * plane[1]) + (plane[2] * plane[2]));
+    const float up = (plane[1] < 0.f) ? -length : length;
+    if (length > 0.f && std::abs(plane[1]) > 0.9f * length) {
+      const std::unique_lock lock(internal::state.mutex);
+      internal::state.sea_plane = {plane[0] / up, plane[1] / up, plane[2] / up, plane[3] / up};
+      internal::state.sea_frame = internal::state.frame;
+    }
+  }
+  twattila::rt_scene::BindReflections(cmd_list, false, bind);
+  BindWaterMask(cmd_list, false, bind);
+}
+
 // Before the Light Bounce's sun draw hooks (registration order: this frame's trace first).
 inline void Install() {
   expeditionsrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
   twattila::rt_scene::InstallScene({}, HOST);
+  // The paths' sun light with Path-Traced AO (rt_core's RT_PATH_SUN_LIGHT, as rt_scene.hpp's InstallSunDraws sets it).
+  twattila::rt_scene::internal::sun_colour = internal::SUN_OFFSETS[4];
   twattila::light_bounce::SetRayTracedTrace(&twattila::rt_scene::internal::TraceLightBounce);
   for (const auto& draw : SUN_DRAWS) {
     renodx::utils::command_action::Register(
@@ -387,6 +663,7 @@ inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnPointLightDraw);
   renodx::utils::command_action::Unregister(internal::OnFogDraw);
   twattila::light_bounce::SetRayTracedTrace(nullptr);
+  twattila::rt_scene::internal::sun_colour = 0;
   twattila::rt_scene::UninstallScene();
   expeditionsrome::dlss::constants::Use(DLL_PROCESS_DETACH);
 }
@@ -413,6 +690,11 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     internal::state.guides.Reset();
     internal::state.sun.Reset();
     internal::state.sun_offsets.Reset();
+    internal::state.no_ambient.Reset();
+    internal::state.ambient_lighting.Reset();
+    internal::state.ambient_lighting_bytes = 0;
+    internal::state.game_lighting.Reset();
+    internal::state.water = {};
     internal::state.failed = false;
   }
   twattila::rt_scene::OnDestroyDevice(device);
