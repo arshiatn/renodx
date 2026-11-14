@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "../../utils/settings.hpp"
+#include "./credits.hpp"
 #include "./feature_settings.hpp"
 #include "./lighting_settings.hpp"
 #include "./rt_scene.hpp"
@@ -121,7 +122,7 @@ constexpr uint32_t TITLE_TINT = 0x7FBFFF;
 constexpr uint32_t MORE_TINT = 0xFFB86B;
 constexpr uint32_t WARNING_TINT = 0xFF5050;
 constexpr uint32_t NOTICE_TINT = 0xFFE066;
-constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
+using credits::FULL_DOWNLOAD_NOTE;
 
 // What the page says that is true of one game only.
 struct Texts {

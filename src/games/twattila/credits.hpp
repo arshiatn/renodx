@@ -5,8 +5,11 @@
 
 #pragma once
 
-// About's lines for third-party work shared by several add-ons (their own lines stay in each add-on).
+// About's lines for third-party work shared by several add-ons (their own lines stay in each add-on), and the red line
+// every HDR add-on shows when it runs alone (no renodx-tw-dlaa64.exe next to it).
 namespace twattila::credits {
+
+constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
 
 // What ships with the Total War helper (renodx-tw-dlaa64.exe; Shogun 2's, Ryse's and Expeditions: Rome's ray tracing too).
 constexpr const char* HELPER =

@@ -700,6 +700,13 @@ void BuildRuntimeData() {
           .tint = 0xFFD23C,
       },
       new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::FULL_DOWNLOAD_NOTE,
+          .section = "General",
+          .tint = 0xFF5050,
+          .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
+      },
+      new renodx::utils::settings::Setting{
           .key = "peak_white_nits",
           .binding = &shader_injection.peak_white_nits,
           .default_value = 1000.f,
@@ -1504,6 +1511,14 @@ void ConfigureAddon() {
           .group = "line_1",
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/totalwarshogun2completeedition/mods/3"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
       },
   });
 
