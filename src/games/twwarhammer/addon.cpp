@@ -1731,8 +1731,10 @@ bool AttachAddon() {
   // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads). No AO pass hook
   // keeps it here (the game's AO is compute line sweeps).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
-  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. The ambient cube at c2 and the sun colour at c1
+  // as Attila's (the sun PS's lighting_VS_PS RDEF); the paths' sun scale in rt_sun.cs_5_0.hlsl. Not hooked: the unlit (ulm) and
+  // default reflection sun PS (ED3BDD4C drawn in the 10-27 battle trace): they write the G-buffer's colour or black, no light.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   // The data run's frame traces (tools\tw\wh1\plan_1114.md; twattila/frame_trace.hpp): on demand (renodx_trace_now next to the
   // exe) and at 100% too. The camera's g_screen_size / g_viewport_dimensions at c27 / c29 as Attila's (the sun PS's camera RDEF,

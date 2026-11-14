@@ -5,7 +5,13 @@
 - **Render scale below 100%**: the weather effects (3619B413, 4BEEAAE2, 5B006315, 9A369793; 5B006315 drawn in the 10-27
   battle trace at 50%) map their uv to the viewport themselves: view_share leaves them (`SetViewportChains(true)`); the scale
   census's BUG (A) 4 -> 0. The SSR resolve replacement (6B80E35B) takes the frame's share where view_share patches the game's
-  bytes: the position from the view's uv, the projected uv in the targets' share.
+  bytes: the position from the view's uv, the projected uv in the targets' share. test/tw_warhammer_shaders: 50% the same as
+  100% on WARP, the march's direction the same; controls without each share differ.
+- **The paths' sky and sun** (`InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4)`): rt_sun takes the ambient cube (c2-c7) x 1 and the
+  sun colour (c1) x 0.318310 x 0.01, what the game's sun shaders light the diffuse colour by with g_hdr_on 1 (all 31 the same;
+  230F2241's own bytes measured on WARP: 0.0031831, 0.318310 with g_hdr_on 0). Float 44 is g_hdr_on here, not Attila's
+  ambient switch: WH1's rt_sun wrapper turns that off. Path-Traced Ambient's rows now show (Experimental, off). The unlit
+  (ulm) and default reflection sun PS stay unhooked: they write the G-buffer's colour or black.
 
 ### Trace build (2026-11-14, for the data run; built only, not run in game)
 
