@@ -625,7 +625,16 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     both add-ons built after the merge). ShadowCascades / Sharpening / Extra Sharpness WON'T with proof.
     - [ ] OPEN: ScreenSpaceShadowsColoured and ScreenSpaceShadowsBannerLight need the banners' own depth (Attila's
       InstallThin, inside twattila/screen_space_shadows.hpp): an opt-in there or a Shogun copy. Owner: PARITY ROUND 3
-  - [ ] PARITY ROUND 3 (one agent, p3_, started ~21:30): the three lines above, then parity_check over every game at HEAD
+  - [x] PARITY ROUND 3 MERGED (cherry-picks 8a21362e Shogun 2 SSS Light Through Banners + Coloured Shadows, Experimental;
+    bf8be7e4 Pharaoh F81881EB held + motion_unit_weightedcommon_f818 FIXED: asm_to_hlsl's float4 registers made the bone
+    bytes denormals that fxc flushed to 0, every vertex skinned with bone 0; new --bits flag in tools/tw/attila_motion/
+    asm_to_hlsl.py). Merge conflict in test/tw_screen_space_shadows: the torch fix's case 9 and Shogun's case 9 -> Shogun's
+    is case 10; suite PASS x86 + amd64 after the merge; Attila / Shogun 2 / Pharaoh built. parity_check over all 10
+    games: 0 OPEN (waiting: Attila 2, Thrones 4, Rome II 8, Troy 6, WH3 80, WH1 8, WH2 5, Pharaoh 35, Rome Remastered
+    46, Shogun 2 13: traces). FasterRenderLists: Rome II / Rome Remastered WON'T (byte search), WH3 / Pharaoh / Shogun 2
+    SHARED STEP -> CPU ROUND 5. Attila's "Point lights with point shadows" -> GPU ROUND 2A (research).
+    - [ ] tools: compare_test.cpp zeroes uint vertex inputs (can't catch bone-index bugs); dump_any.py doesn't retry when
+      a worktree's shaders.h lacks generated headers. Owner: coordinator, tools pass after the batch
 - [x] EVERY-PRESET GPU AUDIT DONE (tools/tw/preset_audit/; bench runs pre_presets_atn_220233 + pre_rerun_atn_225427, all
   used starts VALID, ATN's files 0 mismatches). TAKEN (cherry-pick of 10e6c41e): Bend Torch and Fire Shadows fix in
   sss_lights.cs (shared, 9 consumers): HLSL's && loaded both lights of every pair; bit-exact (tw_screen_space_shadows
@@ -670,6 +679,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     writer behind 0x17dab80), ATN DECIDES
 - [x] ATN 21:2x: Attila's number_of_threads set to 16 (ATN's preferences.script.txt 559f4696 -> 432ba846; fresh backup
   tools/tw/attila_prefs_backup_20261114_211544); CPU Set rule 0-15 stays; the parallel sort is dropped
+- [ ] ROUNDS STARTED ~23:40 (base bf8be7e4): GPU 2A g2a_ (the add-on's D3D11 side: units capture +3.8 ms, shadow-map
+  redraw under rays, sprite spike, Bend torches' +2.3 ms, GT-VBAO / VBGI / SSSR, WH3 grass read-back, Attila point-light
+  shadows research); GPU 2B g2b_ (helper scene build 3.96 ms, per-draw leftovers, J2 / J3 / A32, scorer scenes + scored
+  look verdicts; Lean follow-ups as plans only); GPU GRASS phase 0 grass_ (Grass Dump button, grass_replay, design);
+  CPU 5 cpu5_ (render-list headers 64 B apart, Faster Render Lists for WH3 / Pharaoh / Shogun 2). Each writes bench
+  variants for the end-of-batch bench.
 - [ ] ATN 21:2x: ONE Constantinople bench after ALL CPU and GPU rounds of this batch (not after each): every round's
   candidates as variants against heapfix P, then the CPU set vs affinity A/B. Owner: coordinator, before the install
     - [ ] caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
