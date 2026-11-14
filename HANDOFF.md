@@ -135,7 +135,15 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     DLLs + NVIDIA 310.9.16 copied, none before), WH2 "wh2 t1" + helper110 (symlink + the 10-27 helper aside, helper DLLs
     copied), Rome Remastered "romer t1" (no helper). ATN files unchanged by hash. Phase I trace-free items started in all
     three worktrees; data runs from 01:00 (the scripts' window), Thrones -> WH2 -> Rome Remastered -> Shogun 2.
-- [ ] Data runs, one game at a time (medium-effort agent each; trace builds merged, stamped "<game> t1", installed with
+- [x] Phase I part 1 (trace-free, on the branches, not merged): Thrones 0ef93203..f70d5285 (graphics_page, sun draws 8/4 +
+  WARP 50 sun PS, Light Through Foliage, Attila graphics rows (proof B by disassembly), Faster Game CPU Code float->half
+  only (Experimental), Smoke Shadows both kinds; shared graphics_page::Bindings::smoke_map_tested default true). WH2
+  3f9d9b0e..1f7dfc7d (SetViewportChains, Graphics 2 of 2 = Attila's, Hue Clip measured 100, graphics_page, Round v48);
+  PT GI sun colour blocked (SH branch, two diffuse ends). Shogun 2 0b4f02ef..00e18b87 (W3 rt_sun texel 2 + cube, W4 helper
+  upscaler beside the game's DLSS, W5 helper FG + Reflex, W6, W7a, W8 part; HDR v66 / DLSS v58); rt_scene.hpp can't be
+  included (it pulls anti_aliasing.hpp's shaders): NOT DONE smoke via rt_scene; smallest step: split the light / smoke
+  installers out of rt_scene.hpp's AA include (shared, after the game branches are merged). Rome Remastered: see above.
+- [ ] Data runs from 01:01, one medium-effort agent (tools/tw/round_notes/data_run_brief.md), one game at a time; trace builds merged, stamped "<game> t1", installed with
   --first; fresh backups; Shogun 2's DevKit aside; its nvngx_dlss 310.5.2 -> 310.9.16 renamed aside).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
