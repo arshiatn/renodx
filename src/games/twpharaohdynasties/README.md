@@ -49,6 +49,10 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 ### Parity round 2 (2026-11-14; built only, not run in game)
 
 - Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's) (its fires' particle lights too); Sprite Soldier Shadows (Experimental, off: the sprite soldiers in the rays through a geometry-shader capture, WARP test/tw_rays_captures), out of RT/PT; Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
+- Evening (the parity check's open lines; built only, not run in game):
+  - **New: the campaign's trees cast in the rays** (rigidcampaigntrees 16D14106, and out of view through their shadow pass
+    81696642; in no trace): Troy's capture and geometry shader, whose shaders are Pharaoh's line for line. WARP (`test/tw_pharaoh`
+    1): the game's world positions to the bit, the UVs within half precision; the controls fail.
 
 - **New: Fog Strength** (Extra, 0 to 2, default 1), on every fog the game ships, also the ones the maintainer's settings
   don't draw. That covers the battle fog's upsample (also its own full-resolution fallback along edges), low spec, MSAA,

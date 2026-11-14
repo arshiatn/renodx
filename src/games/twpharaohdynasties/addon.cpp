@@ -66,6 +66,7 @@
 #include "./rt_outside_view_unit_gs.h"
 #include "./rt_outside_view_world_gs.h"
 #include "../twwarhammer2/rt_outside_view_world_uv_gs.h"
+#include "../twtroy/rt_outside_view_colour_world_uv_gs.h"
 #include "./fog_strength.hpp"
 #include "./rt_particle_quads_gs.h"
 #include "./shared.h"
@@ -1923,7 +1924,11 @@ constexpr std::array<twattila::rt_scene::PixelMask, 8> CUT_OUT_MASKS = {{
 // shadow there the game's kept baked map.
 // The sprite soldiers' G-buffer pixel shader (imposter ps40_main_gbuffer): their scene draws (SCENE_SHADERS' imposter rows).
 constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixel_shader = 0x03D4B559}}};
-constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
+// The campaign's trees (rigidcampaigntrees vs40_main 16D14106) and their G-buffer E924C902: it discards where t0.w x a dissolve
+// map falls below the distance fade, and again against the angle to the camera (Troy's 07295514 instruction for instruction,
+// the fade at cb1 there cb0); the rays cut at t0.w alone (the helper's 0.5), as Troy's.
+constexpr std::array<twattila::rt_scene::PixelMask, 1> CAMPAIGN_TREE_MASKS = {{{.pixel_shader = 0xE924C902, .slot = 0}}};
+constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1945,6 +1950,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     // The campaign's far trees (campaigntreebillboards 0xCE5AA8D1, Troy's DF8EAF69 at 0.47 x: no shadow-pass draw, so only with Far
     // Tree Shadows): turned to the sun, their alpha 7CB58C1B's t0 (below 0.5 discarded). Its vertex shader reads the shroud at t0.
     {.hash = 0xCE5AA8D1, .capture_shader = __rt_capture_campaign_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .sun_slot = 1, .far_tree = true},
+    // The campaign's trees (rigidcampaigntrees vs40_main 16D14106; in no trace, level B): Troy's 07321725 line for line, its
+    // capture (rigid, instanced, rows in POSITION1-3, no wind; the UV o3.xy of E924C902's t0 test). WARP: test\tw_pharaoh.
+    {.hash = 0x16D14106, .capture_shader = __rt_capture_campaign_trees, .foliage = true, .pixel_masks = CAMPAIGN_TREE_MASKS},
     // Cloth (phar_rigid_battle_cloth_wind) and flags (rigid_default_flag): sheets moved by the time and the wind, every frame.
     {.hash = 0x2F2A0E7E, .capture_shader = __rt_capture_cloth_wind, .dynamic = true, .thin = true},
     {.hash = 0x8DE94E2F, .capture_shader = __rt_capture_flag, .dynamic = true, .thin = true},
@@ -1975,6 +1983,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     // C7350ED5 = its 5906CF6E): TEXCOORD0 the world, TEXCOORD1 the UV of the t0 test (alpha below 0.5). WARP on its own bytes:
     // tools\tw\warp_tests\outside_view_pharaoh_veg.
     {.hash = 0x3368E9E7, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
+    // The campaign's trees in the shadow pass (rigidcampaigntrees vs40_shadow 81696642; in no trace, level B): Troy's 5192C0BA
+    // line for line, COLOR0 first, then TEXCOORD0 the world, TEXCOORD1 the UV of E924C902's t0 test: Troy's RT_WORLD_UV + RT_COLOUR.
+    {.hash = 0x81696642, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_colour_world_uv},
     // The sprite soldiers (imposter vs40_main_gs: points its gs_main turns into cards; in no trace, level B): streamed out through
     // twattila/rt_capture_imposter_gs in place of gs_main (SceneShader::capture_geometry_shader), the card turned to the sun; only
     // the G-buffer draw (ps40_main_gbuffer 03D4B559: its t0's alpha the cut-out, from 0.376), as Sprite Soldier Shadows
