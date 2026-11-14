@@ -655,6 +655,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   - [ ] render_pass_behavior / shader_injection_behavior suites need ReShade 6.7.3's DLL (a download): ATN DECIDES
   - [ ] The agent started 6 amd64 replay builds early while quiet_run.lock existed (the hfp_ A/B window): every hfp_ start
     was checked for compilers and the A-to-A spreads stayed small; the 16-thread run re-measures P anyway
+- [ ] ATN ~19:3x RULE SET (CPU Set Setter: a CPU SET, not affinity, of the first 16 logical CPUs = V-cache CCD with SMT):
+  hfp_ told GO. ATN's policy for the CPU fix: everything that makes the game faster is wanted; whatever changes the
+  author's code or files goes to him as ready-to-review code + notes (never shipped by us); game code his fix doesn't touch
+  stays in our add-on (and he gets a note so nothing collides). Owner of the author-side patches: CPU ROUND 4 (memfast
+  65-127 B, his disabled loopfetch prefetch site in the animation pack loop, the x87 block over his bytes), each with tests
+  and a bench A/B against P.
+  - [ ] After everything: one A/B of ATN's CPU set rule against an affinity rule of the same 16 CPUs (ATN switches the
+    rule; we measure). Owner: the bench, ATN's OK at the time
 - [ ] ATN 19:xx: (1) a 16-thread test: ATN sets CPU Set Setter's Attila rule to the V-cache CCD's 16 logical CPUs (now 8
   cores), then CPU-bound P with number_of_threads 8 / 12 / 16, and P vs B4 vs B8 (sort threads) at the best count in the
   three scenes. hfp_ agent preparing (variants, tests, runner); NOT started until ATN confirms the rule. (2) The same siege
