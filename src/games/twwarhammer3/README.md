@@ -4,7 +4,9 @@
 
 - New: **Unit/Building Indicator Brightness (Extra, Experimental)**, as Attila's: the selection markers' colour x the slider
   in HDR modes. At 1 (default) and in SDR the game's own shaders run; WARP: our copies of fx_indicator's four colour passes
-  are the game's bits at 1. Indicators drawn through the game's transparency (MBOIT) path keep the game's brightness.
+  are the game's bits at 1. Indicators drawn through the game's transparency path (MBOIT resolve 492ED8DA) follow it too:
+  that copy is within 2.2e-4 of the game's on random inputs at 1 (fxc orders its moment solve differently), with the
+  game's early depth test.
 - New, Graphics 2 of 2 (Tests), each Game's / Off / On, Game's (default) writes nothing: **Far Tree Block Shadows**
   (enable_billboard_block_shadows), **Point Light Shadow Maps** (ENABLE_POINT_LIGHT_SHADOWS), **Debris Shadows**
   (ENABLE_DYNAMIC_SHADOWS_FOR_INCIDENTAL_DESTRUCTION), **Ragdolls** (ENABLE_SIMPLE_RAG_DOLL_UPDATE). The addon finds each at
@@ -51,8 +53,6 @@
   - Scale census rows at 100% only: CC3AC345 reads its reflections at the pixel it writes (both targets the display's
     size, below 100% too: wh3_batch6 run1 trace_22), so nothing stretches (the census took the radiance's mip writes for a
     render share). 82AB9635 (fx_sprite, the bloom at the view's uv) is in no trace: needs one that draws it below 100%.
-  - The indicators' MBOIT resolve (492ED8DA): our copy was not the game's bits at 1. Smallest step: its moment math put
-    back in the game's order against fxc's listing.
   - Snow / rain / storm VFX rows: need a trace of a snow or storm battle.
 
 ## v59 (2026-11-14 night; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)

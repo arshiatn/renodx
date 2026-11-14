@@ -1720,7 +1720,7 @@ void BuildRuntimeData() {
   // Unit/Building Indicator Brightness: fx_indicator's colour passes (names.tsv; its VS 550C70F2), in no trace (no unit selected in
   // them): level B. Ours only off 1 in an HDR mode, else the game's bytes. Not fx_indicator_mboit (E01EE900 writes moments, no colour;
   // our copy of its resolve 492ED8DA wasn't the game's bits at 1 on WARP and lost its early depth test).
-  for (const uint32_t hash : {0xE441DBFFu, 0x709BE774u, 0xA7748703u, 0xDE0524D6u}) {
+  for (const uint32_t hash : {0xE441DBFFu, 0x709BE774u, 0xA7748703u, 0xDE0524D6u, 0x492ED8DAu}) {
     custom_shaders[hash].on_replace = [](auto*) { return shader_injection.someindicators != 1.f && IsHDRMode(); };
   }
   // The game's auto exposure runs only where a scene's environment turns it on (in none of 95 traces): logged once.
