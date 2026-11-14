@@ -265,6 +265,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   lock twice (told: atomic create + re-check). Reuse optimisation handed to the ReSTIR agent after U1 / U2.
 - [x] Thrones round 2 MERGED 3da5efd9 (campaign census, Particle Resolution + edges + smooth half-size, Experimental);
   agent resumed: Light Through All Banners, Grass Height Distance, Faster Game CPU Code if provable.
+- [x] Shogun 2 round 5 MERGED acfa8633 (W7d rigid casters out of view AC25DAB8 by rows v6-v8, Experimental off, needs a
+  restart; shared rt_core Host::cascade_last_view opt-in: Attila x64 / build32, WH3, Ryse, Ryse DLSS, Expeditions DLSS,
+  Rome Remastered rebuilt, their rt_core suites PASS). Agent resumed: cloth 8A00A1D4 + sprites E3DA20D4 (world route).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
