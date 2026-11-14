@@ -65,7 +65,7 @@ inline std::vector<twattila::engine_tests::EngineTest> MoreTests() {
        .max = 2.f,
        .option = {.tweaks = {{.name = "gbuffer_blend_edges_amount_battle"}, {.name = "gbuffer_blend_edges_amount_campaign"}}}},
       // Attila's key for its far trees' shadow switch (enable_tree_display_billboard_shadow_capsules there).
-      Switch(GRASS, "GraphicsFarTreeShadowShapes", "Far Tree Shadows", "Flat far trees, drawn in blocks, cast shadows.",
+      Switch(GRASS, "GraphicsFarTreeShadowShapes", "Far Tree Block Shadows", "Flat far trees, drawn in blocks, cast shadows.",
              "enable_billboard_block_shadows"),
 
       shadow_reach("GraphicsTest_battle_shadow_split_0", "Battle Shadow Map 1", "battle_shadow_split_0", 500.f),
