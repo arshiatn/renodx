@@ -435,6 +435,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Pharaoh / Rome II (par_old_: tools/tw/round_notes/parity_<game>_1114.md). After the merges: one shared step moves the torch
   rows from Path Tracing (RayTracedLightsInBounce / RayTracedLightShadowRatio) into graphics_page for every game that can
   carry them. Merge one branch at a time, verify the merged tree once, stamp, install.
+- [x] Rome Remastered task C MERGED cb98cd5e (DLSS below 100 % with the ray rows on; shared rt_core Host::depth_at_render_size
+  opt-in: other games' rt_core suites PASS x86 + amd64, page dumps unchanged; tw_romer_rays case 7). Rome Remastered agent DONE
+  (3 DO NOW left: Upscaling Debug View (shared opt-in in AppendAa), Bend's Softer Away + Debug View). ATN runs: Battle Objects
+  Tested / Solid / All, 67 / 50 % with RT/PT, README test lines, a FrameTraceReads trace at 67 % + a siege with fire.
+- [ ] FABLE 5.2 MEDIUM reset hunt started (ATN's OK; worktree, scratch fbl_): review capture -> bridge -> helper, DRED in the
+  harness, battle kinds fed at real sizes (max 3 resets), fix + proof, safe-side row stays until proven.
 - [x] WH3 parity round MERGED b6cb52a1 (table tools/tw/wh3_parity/parity_1114.md: 188 have / 2 do now left / 2 trace / 81 won't;
   Indicator Brightness (Experimental; MBOIT resolve 492ED8DA left out), four own-flag tests (Far Tree Block Shadows, Point Light
   Shadow Maps, Debris Shadows, Ragdolls), traced casters 03298FD5 + 1C3500F0 held (census 44 -> 46), 54 engine rows level A
