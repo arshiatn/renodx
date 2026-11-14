@@ -1,5 +1,9 @@
 // battlefog.hlsl ps40_main_inscattering: the battle fog's light (haze), added to the scene. HDR: x Battle Fog.
+// Ray-traced fog shadows (ray_tracing.hpp OnFogDraw): the sun's part of the light x the sun's visibility along the
+// pixel's ray (rt_fog.hlsli; nothing bound: 1); the sky's part as it was (RT_FOG_SHADE 0: the two are apart here).
+#define RT_FOG_SHADE 0.f
 #include "../shared.h"
+#include "../../twattila/rt_fog.hlsli"
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -478,7 +482,7 @@ void main(
   } else {
     r1.xyz = g_ambient_fudge_factor * ambient_cube_tb[0].xyz;
   }
-  r1.xyz = sun_colour.xyz * float3(1.90384671e-005,1.90384671e-005,1.90384671e-005) + r1.xyz;
+  r1.xyz = sun_colour.xyz * float3(1.90384671e-005,1.90384671e-005,1.90384671e-005) * RtFogSun(v0.xy) + r1.xyz;
   r0.xyz = r1.xyz * r0.xyz;
   o0.xyz = g_fog_lerp * r0.xyz * ((HDR >= 1.f) ? SI.battle_fog : 1.f);
   o0.w = g_fog_lerp;

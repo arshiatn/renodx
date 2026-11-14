@@ -105,7 +105,7 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   (Skill: LESSONS + CHECKS ROUND; Rome II rounds 1 + 2 (ROME II BRING-UP, NIGHT MERGES); installed 22:59 (NIGHT
   MERGES); round report tools/tw/round_notes/night_1113_report.md.)
 
-## FOUR GAMES TO THE ATTILA PACKAGE (2026-11-14 night; ATN asleep, weekly budget: use it)
+## SIX GAMES TO THE ATTILA PACKAGE (2026-11-14 night; ATN asleep, weekly budget: use it; Troy + WH1 added 01:50)
 ATN (2026-11-13 ~23:40): after the skill update, plan and do the whole Attila package for Thrones, WH2, Shogun 2 Complete
 Edition and Rome Remastered, in parallel; in-game runs only for traces, few, agents at medium effort. Troy / WH1 next
 time. ATN tests Attila / WH3 / Pharaoh / Rome II and the rest after waking: nothing may run in a game then.
@@ -135,8 +135,40 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     DLLs + NVIDIA 310.9.16 copied, none before), WH2 "wh2 t1" + helper110 (symlink + the 10-27 helper aside, helper DLLs
     copied), Rome Remastered "romer t1" (no helper). ATN files unchanged by hash. Phase I trace-free items started in all
     three worktrees; data runs from 01:00 (the scripts' window), Thrones -> WH2 -> Rome Remastered -> Shogun 2.
-- [ ] Data runs, one game at a time (medium-effort agent each; trace builds merged, stamped "<game> t1", installed with
+- [x] Phase I part 1 (trace-free, on the branches, not merged): Thrones 0ef93203..f70d5285 (graphics_page, sun draws 8/4 +
+  WARP 50 sun PS, Light Through Foliage, Attila graphics rows (proof B by disassembly), Faster Game CPU Code float->half
+  only (Experimental), Smoke Shadows both kinds; shared graphics_page::Bindings::smoke_map_tested default true). WH2
+  3f9d9b0e..1f7dfc7d (SetViewportChains, Graphics 2 of 2 = Attila's, Hue Clip measured 100, graphics_page, Round v48);
+  PT GI sun colour blocked (SH branch, two diffuse ends). Shogun 2 0b4f02ef..00e18b87 (W3 rt_sun texel 2 + cube, W4 helper
+  upscaler beside the game's DLSS, W5 helper FG + Reflex, W6, W7a, W8 part; HDR v66 / DLSS v58); rt_scene.hpp can't be
+  included (it pulls anti_aliasing.hpp's shaders): NOT DONE smoke via rt_scene; smallest step: split the light / smoke
+  installers out of rt_scene.hpp's AA include (shared, after the game branches are merged). Rome Remastered: see above.
+- [x] DATA RUNS 01:01-01:29 (one medium-effort agent; no script changed; ATN's files the same by hash on every start; no
+  GPU reset, Committed 21-22.5 GB, no markers or processes left): Thrones S1 siege / S2 replay / S3 night (9 traces,
+  tools/tw/thrones/runs), WH2 A-F (11 traces, tools/tw/wh2/runs; A's 4 scales the same size: check the scale reached them),
+  Shogun 2 battle / naval / campaign (12 traces, tools/shogun2/pkg_1114/runs/data_1114_012352; the campaign CRASHED 84 s in,
+  1 s after RenderScale back to 0: Shogun agent reads the dump first), Rome Remastered NOT RUN (the exe has RUNASADMIN in
+  AppCompatFlags\Layers: UAC prompt; ATN must clear it or start from the menu; script $start bug). Phase I part 2 resumed
+  in all four worktrees. Skill a5c6d897: RUNASADMIN row, tools/tw/ps_param_shadow.ps1.
+- [ ] (old line) Data runs from 01:01, one medium-effort agent (tools/tw/round_notes/data_run_brief.md), one game at a time; trace builds merged, stamped "<game> t1", installed with
   --first; fresh backups; Shogun 2's DevKit aside; its nvngx_dlss 310.5.2 -> 310.9.16 renamed aside).
+- [x] Rome Remastered v8 MERGED 28a753f5 (stability wiring, two Test rows, Trace One Frame; script -Form + RUNASADMIN refuse).
+- [ ] ATN 01:50 (awake briefly): start Rome Remastered now (the RUNASADMIN flag was gone at 01:51: its data run resumed),
+  and plan + do Troy and WH1 too, at the same time. Two more worktree agents (tools/tw/troy, tools/tw/wh1; same brief,
+  base 28a753f5); tw_install.py troy / wh1 entries (Epic folders under C:/Program Files/Epic Games; WH1 prefs EOS/scripts).
+- [x] Rome Remastered starts: 01:51 the replay form (-replay:play:...file="temp/battle.rpy") quit 4 s in, before any
+  window or device (add-on never loaded; its logs lost to the restore: script now keeps game_logs, skill ad644a65);
+  01:56 menu form (no arguments): 60 s up, add-on loaded, swap chain, no 3D frame (ATN's options window / menu need
+  clicks), 2 empty traces (romeremastered/runs/data_1114_015643/M). Rome Remastered traces need ATN's menu start with
+  rome2\atn_trace_watch.ps1 (plan_1114.md sections 7-8). No further agent start tonight.
+- [x] Shogun 2 phase I MERGED d378aac2 (14 commits: W3 rt_sun texel 2 + cube, W4 helper upscaler beside the game's DLSS,
+  W5 helper FG + Reflex, W6, W7a, W8 part, W10 fog shadows (Experimental), W11 presets, rt_sun ~52525x too bright fixed,
+  Upscaling Debug View, test/tw_shogun2_shaders WARP PASS; HDR v66 / DLSS v58). Campaign crash = the game's own exit
+  path (heightmap.dat unmapped before the campaign renderer's destructor; no add-on frame; test 9 settles it). The
+  helper ships now (tw_install.py shogun2 uses_helper True: helper110 + DLLs + NVIDIA 310.9.16 replace the game's 310.5.2).
+  Round 2 on the branch: PT AO (SH sky), foliage light, families, water, casters out of view.
+- [ ] 02:00 ATN started Rome Remastered from the menu, loads a battle and goes to bed: atn_trace_watch.ps1 (25 min, every
+  20 s, romeremastered/runs/ATN_battle_*), gpu_job.lock held by the coordinator; then close the game through its window.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 

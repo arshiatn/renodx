@@ -1,8 +1,10 @@
 // ---- Created with 3Dmigoto v1.3.16 on Mon Oct 26 08:23:01 2026
 // The water's screen-space reflections (helpers.hlsl). RenoDX: with Reflection Method Hierarchical, the march is
 // Attila's hierarchical one (twattila/ssr_march.hlsli, in world space here) instead of the game's fixed 200 x quality
-// steps: no gaps, no length limit.
+// steps: no gaps, no length limit. With Ray-Traced Water Reflections (twrome2/addon.cpp TraceWaterReflections: the rays
+// left from this water's surface, rt_water_surface) the rays' reflection where bound.
 #include "../shared.h"
+#include "../../twattila/rt_reflection.hlsli"
 
 cbuffer screen_space_refl_params : register(b0)
 {
@@ -87,6 +89,18 @@ void main(
   r0.x = -r1.y * r0.x + camera_position_and_reflection_height.y;
   r0.xzw = r1.xzw / r0.xxx;
   r1.xyz = camera_position_and_reflection_height.xyz + r0.xzw;
+
+  // RenoDX: the rays' light and the share of them that met a surface at this pixel's render pixel (where the depth is
+  // read), the game's fade from 150 m up kept: blended (the draw's blend on, a trace's m0=fb) as the march's colour and
+  // confidence are.
+  [branch]
+  if (RtReflectionsBound() && RtWaterReflections()) {
+    uint width, height;
+    depth_tex.GetDimensions(width, height);
+    const float4 traced = t_rt_reflection.Load(int3((v1.xy * float2(1.f, -1.f) + float2(0.f, 1.f)) * float2(width, height), 0));
+    o0 = float4(traced.rgb, traced.a * saturate(0.01f * (250.f - r0.y)));
+    return;
+  }
 
   // RenoDX: from the water's surface along the view ray mirrored in it (r1.xyz; r0.y: the camera's height above it,
   // the game's fade from 150 m up kept).
