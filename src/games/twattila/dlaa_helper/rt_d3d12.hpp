@@ -3950,11 +3950,16 @@ class RtScene12 {
           units_refitted = refit;
         }
       }
-      // The smoke: built anew each request (its particles change), for its rays' traversal.
+      // The smoke: built anew each request (its particles change), for its rays' traversal; Smoke BLAS Fast Build
+      // (RT_SCENE_SMOKE_FAST_BUILD, or RENODX_TW_SMOKE_FAST_BUILD for the harness) for a fast build (262,144 particles at
+      // 4K: 1.69 -> 1.03 ms), the rays meeting its particles in another order.
       if (smoke_count != 0) {
+        const bool fast_build = (shared.rt_scene_flags & dlaa_bridge::RT_SCENE_SMOKE_FAST_BUILD) != 0
+                                || GetEnvironmentVariableW(L"RENODX_TW_SMOKE_FAST_BUILD", nullptr, 0) != 0;
         const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {
             .Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL,
-            .Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE,
+            .Flags = (fast_build ? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD
+                                 : D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE),
             .NumDescs = static_cast<UINT>(smoke_count),
             .DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY,
             .pGeometryDescs = unit_geometries.data() + unit_count,

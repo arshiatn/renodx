@@ -144,6 +144,9 @@ struct Settings {
   bool fast_leaves = false;
   float grass_shadow_range = 0.f;
   float grass_range = 0.f;
+  // Smoke BLAS Fast Build (Experimental, with Smoke Shadows; helper113, bridge RT_SCENE_SMOKE_FAST_BUILD): the smoke's BLAS
+  // built faster each frame, its particles met in another order.
+  bool smoke_fast_build = false;
   // Path Tracing SER (Experimental): the paths' and reflections' rays with DXR 1.2's shader execution reordering.
   bool path_ser = false;
   // SHaRC Radiance Cache (Experimental, with Path Tracing): NVIDIA's SHaRC for what the screen does not know.
@@ -2875,6 +2878,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .sway_range = runtime.settings.sway_range,
       .grass_shadow_range = runtime.settings.grass_shadow_range,
       .grass_range = runtime.settings.grass_range,
+      .scene_flags = (runtime.settings.smoke_fast_build ? dlaa_bridge::RT_SCENE_SMOKE_FAST_BUILD : 0u),
   };
   if (stamped) native->End(timing.stamps[1].Get());
   const bool traced = dlaa_bridge::TraceScene(native, request);

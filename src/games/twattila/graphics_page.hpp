@@ -881,6 +881,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto more_rays = more(&more_shadows, rays);
     const auto more_lights = [b, more_rays] { return more_rays() && b.rt->local_lights != 0.f; };
     page.Take({.match = "RayTracedSmokeQuality", .section = section, .shown = more_rays});
+    page.Take({.match = "RayTracedSmokeFastBuild", .section = section, .shown = more_rays, .only_some_games = true});
     page.Take({.match = "RayTracedPointLightShadows", .section = section, .shown = more_rays, .only_some_games = true});
     page.Take({.match = "RayTracedParticleLightShadows", .section = section, .shown = more_lights, .only_some_games = true});
     page.Take({.match = "RayTracedLightSoftness", .section = section, .shown = more_lights});
