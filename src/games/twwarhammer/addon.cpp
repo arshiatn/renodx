@@ -181,6 +181,13 @@ void ApplyRecommendedPreset() {
   renodx::utils::settings::UpdateSettings({{"tonemapper", 3.f}, {"video_autohdr", 0.2f}});
 }
 
+// SDR (monitors without HDR), as Attila's: Reset, Rendering Mode SDR, no video AutoHDR. Its button also sets Output SDR; a
+// first start on a display without Windows HDR takes it by itself (output_encoding's first_start_without_hdr).
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}, {"video_autohdr", 0.f}});
+}
+
 #define UpgradeRTVReplaceShader(value)                                                                \
   {                                                                                                   \
       value,                                                                                          \
@@ -658,7 +665,7 @@ void BuildRuntimeData() {
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "HDR (PsychoV31) and Video AutoHDR 0.20, the rest at its default.",
+        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.",
         .on_change = []() { ApplyRecommendedPreset(); },
     },
     new renodx::utils::settings::Setting{
@@ -669,6 +676,19 @@ void BuildRuntimeData() {
         .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.",
         .on_change = []() {
           ApplyResetPreset();
+        },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .section = "Presets",
+        .group = "preset-line-2",
+        .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it was\n"
+                   "HDR), no video AutoHDR. The game's and the UI's white are your monitor's own white.",
+        .tint = 0xFFC107,
+        .on_change = []() {
+          ApplySdrPreset();
+          renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
         },
     },
     // Extra //////////////////////////////////////////////////////////////////////////////////////
@@ -1995,6 +2015,9 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
+    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset (as Attila's).
+    float saved_mode = 0.f;
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
@@ -2004,6 +2027,7 @@ void ConfigureAddon() {
           const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
           return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
     });
     settings.push_back(setting);
   }
@@ -2045,6 +2069,14 @@ void ConfigureAddon() {
           .group = "line_1",
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/totalwarwarhammer/mods/1"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
       },
   });
 
