@@ -18,8 +18,8 @@
 // 5. Toggling on and off 200 times while 4 threads run B's float to half: their results stay A's, no fault.
 // 6. Timing, A against B: float to half on sprite-like rows, the truncation, fmod(x, 1).
 // 7. The truncation block as the Attila CPU Performance Fix leaves it: left alone, the other two still found.
-// Thrones of Britannia's DLL the same way (engine_code's THRONES_BUILD, picked by its truncation's pattern): its RVAs,
-// its CRT's state, its truncation's stack slots.
+// Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
+// their RVAs, their CRT's state, their truncation's stack slots.
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
 #include <windows.h>
 #include <xmmintrin.h>
@@ -88,6 +88,8 @@ constexpr TestBuild ATTILA = {"Attila", &twattila::engine_code::internal::ATTILA
                               0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28};
 constexpr TestBuild THRONES = {"Thrones of Britannia", &twattila::engine_code::internal::THRONES_BUILD, 0x1707eb0, 0x186aa48, 0x186aa6c,
                                0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18};
+constexpr TestBuild ROME2 = {"Rome II", &twattila::engine_code::internal::ROME2_BUILD, 0x1368030, 0x14b434a, 0x14b436e, 0x169ca30,
+                             0x19ebd74, 0x21263cc, 0x2126394, 0x1c, 0x20};
 
 uint32_t Read32(const uint8_t* at) {
   uint32_t value;
@@ -387,7 +389,11 @@ int main(int argc, char** argv) {
   uint8_t* game = Map(file, &image_size);
   uint8_t* patched = Map(file, &image_size);
   CHECK(game != nullptr && patched != nullptr);
-  const TestBuild& build = (Matches(game + text_rva, text_size, ec::THRONES_TRUNCATION) == 1 ? THRONES : ATTILA);
+  const TestBuild* found = &ATTILA;
+  for (const TestBuild* candidate : {&THRONES, &ROME2}) {
+    if (Matches(game + text_rva, text_size, candidate->code->truncation) == 1) found = candidate;
+  }
+  const TestBuild& build = *found;
   std::printf("empire.retail.dll build %08lX, %zu bytes: %s's\n", nt->FileHeader.TimeDateStamp, file.size(), build.game);
   for (uint8_t* image : {game, patched}) {
     Write32(image + build.matherr_rva, Read32(image + build.cookie_rva));
