@@ -1184,6 +1184,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedPathSer", .section = section, .shown = more_paths, .label = "Shader Execution Reordering",
                .tooltip = (b.has_reflections ? "" : "Shader execution reordering for Path Tracing (DXR 1.2, RTX 40 / 50 series): may be faster.")});
     page.Take({.match = "RayTracedSharc", .section = section, .shown = more_paths, .label = "SHaRC Radiance Cache"});
+    page.Take({.match = "RayTracedReuseLean", .section = section, .shown = more_paths});
     page.Add(EmptyLine(section));
   }
 

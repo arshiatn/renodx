@@ -1013,6 +1013,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightBounceResolution", 1.f},
         {"PathTracingBounces", 2.f},
         {"RayTracedSharc", 0.f},
+        {"RayTracedReuseLean", 0.f},
         {"RayTracedPathSkyApart", 0.f},
         {"RayTracedPathKeptCube", 0.f},
         {"RayTracedPathSer", 0.f},
@@ -1149,6 +1150,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
     count("Path tracing bounces", "PathTracingBounces", 2, 2, "Bounces past the first where the camera sees nothing. 1: faster, a little darker.");
     choice("SHaRC radiance cache (Experimental)", "RayTracedSharc", 0, OFF_ON_NAMES,
            "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).");
+    choice("Lean ReSTIR reuse (Experimental)", "RayTracedReuseLean", 0, OFF_ON_NAMES,
+           "A faster ReSTIR GI for path tracing: the same look in tests.");
     const bool path_ambient = choice("Path-traced AO (Experimental)", "RayTracedPathAmbient", 0, OFF_ON_NAMES,
                                      "The paths bring the sky's light in place of the game's ambient: shade wherever the sky can't reach.\n"
                                      "In battles, in place of ray-traced AO (the campaign map keeps it). Needs Ray-traced Global Illumination.")

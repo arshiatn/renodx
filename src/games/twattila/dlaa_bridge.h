@@ -275,11 +275,14 @@ constexpr uint32_t RT_REFLECTIONS_WATER_POSITIONS = 1048576;
 // light learned from the screen stays as learned.
 constexpr uint32_t RT_PATH_SUN_LIGHT = 2097152;
 // A Light Bounce request's with path tracing and RT_PATH_REUSE (helpers before 111 ignore it): the trace's RT_LIGHTS_IN_BOUNCE
-// lights as ReSTIR GI candidates.
+// lights, one picked by its light and traced a shadow ray for each bounce texel in ReSTIR GI's reuse.
 constexpr uint32_t RT_PATH_LIGHTS_IN_BOUNCE = 1u << 22;
 // With RT_PATH_LIGHTS_IN_BOUNCE (the trace's RT_LIGHT_RATIO): the lights' samples left out of the bounce (the game shades
 // them), their shadow ratio kept for the next trace.
 constexpr uint32_t RT_PATH_LIGHT_RATIO = 1u << 23;
+// Lean ReSTIR Reuse (a Light Bounce request's with path tracing and RT_PATH_REUSE; helpers before 112 ignore it): the
+// reuse's neighbours by their positions and reservoirs' normals, not their whole surfaces (not with RT_PATH_LIGHTS_IN_BOUNCE).
+constexpr uint32_t RT_PATH_REUSE_LEAN = 1u << 24;
 constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
 constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
 constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;

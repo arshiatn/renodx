@@ -1630,8 +1630,11 @@ class RtScene12 {
         if (reuse) {
           list->ResourceBarrier(1, &uav_barrier);
           Mark(list, L"reuse");
-          // Lean Reuse (RENODX_TW_REUSE_LEAN, a test switch): the neighbours with fewer fetches (rt_path.hlsli ReuseTexel).
-          const bool lean = reuse_lean_pipeline_ && GetEnvironmentVariableW(L"RENODX_TW_REUSE_LEAN", nullptr, 0) != 0;
+          // Lean ReSTIR Reuse (RT_PATH_REUSE_LEAN, or RENODX_TW_REUSE_LEAN for the harness): the neighbours with fewer
+          // fetches (rt_path.hlsli ReuseTexel).
+          const bool lean = reuse_lean_pipeline_
+                            && ((version >= 31 && (requested & dlaa_bridge::RT_PATH_REUSE_LEAN) != 0)
+                                || GetEnvironmentVariableW(L"RENODX_TW_REUSE_LEAN", nullptr, 0) != 0);
           list->SetPipelineState((lights_mode != 0 ? reuse_lights_pipeline_ : (lean ? reuse_lean_pipeline_ : reuse_pipeline_)).Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
           reuse_frame_ = frame;

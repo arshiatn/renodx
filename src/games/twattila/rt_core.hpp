@@ -148,12 +148,14 @@ struct Settings {
   bool path_ser = false;
   // SHaRC Radiance Cache (Experimental, with Path Tracing): NVIDIA's SHaRC for what the screen does not know.
   bool sharc = false;
+  // Lean ReSTIR Reuse (Experimental, with Path Tracing; helper112, bridge RT_PATH_REUSE_LEAN): ReSTIR GI's reuse with fewer fetches.
+  bool reuse_lean = false;
   // Importance-Sampled Torch Shadows (Experimental): two shadow rays a pixel toward the local lights, picked by their light.
   bool light_importance = false;
   // Steady Torch Shadows (Experimental): every light a pixel reaches traced every frame, each soft ray to the same disk point.
   bool light_steady = false;
   // With path-traced Light Bounce (helper111, bridge RT_LIGHTS_IN_BOUNCE): Torch and Fire Light in the Light Bounce (the
-  // first 32 lights' light and shadow from the paths' ReSTIR GI reservoir, the game's light shaders adding none of it), or
+  // first 32 lights' light and shadow from ReSTIR GI's reuse, one light a bounce texel, the game's light shaders adding none of it), or
   // with light_ratio Torch and Fire Shadows from the Light Bounce (the game's light shaders keep their light, its shadow the
   // bounce's ratio; at most 32 lights). Both Experimental, off.
   bool lights_in_bounce = false;
@@ -2943,6 +2945,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
                                                      | ((runtime.path_ambient_on && sun_colour != 0) ? dlaa_bridge::RT_PATH_SUN_LIGHT : 0u)
                                                      | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                                                      | (runtime.settings.sharc ? dlaa_bridge::RT_PATH_SHARC : 0u)
+                                                     | (runtime.settings.reuse_lean ? dlaa_bridge::RT_PATH_REUSE_LEAN : 0u)
                                                      | ((runtime.lights_in_bounce != 0) ? dlaa_bridge::RT_PATH_LIGHTS_IN_BOUNCE : 0u)
                                                      | ((runtime.lights_in_bounce == 3) ? dlaa_bridge::RT_PATH_LIGHT_RATIO : 0u)
                                                      | (dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u))
