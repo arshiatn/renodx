@@ -332,6 +332,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   fixed 48f1a03d, PASS) and tw_screen_space_shadows (Shogun 2 W7a / W7b changed sss00-02 bytes on purpose: agent proves
   defaults = fc24dbce on WARP and updates the allowed list); static_checks 0 findings, scan_register nothing. Zombie
   game processes (Rome2 x6, shogun2, Rome Remastered: 0 threads) left from ATN's session: runner + installer skip them.
+- [x] tw_screen_space_shadows case 8 MERGED 02d030c9 (Shogun 2 sss00-02 at defaults = fc24dbce on WARP). Every suite PASS.
+- [x] Nsight agent DONE (tools/tw/nsight/README.md): frame boundary changes nothing (GPU Trace 8.72 ms as helper110);
+  NO replay: NVAPI clusters take 35-68 ms under capture, the RR device (ID3D12DeviceFactory) and the cross-process shared
+  fence can't be replayed (fix: a harness mode with its own fence, not built); commit growth under injection still unknown.
+  Reuse variants by GPU Trace (radius 6: 1.40 ms, 3 neighbours 1.5 ms vs 2.5-2.9). Aftermath: free use + donations OK,
+  DLL redistributable with its own LICENSE, headers / lib not: proposal = dev-only RENODX_TW_AFTERMATH, ATN DECIDES.
+- [x] Worktree junctions into the main checkout (bin, build\downloads, external\*) removed link-only from finished
+  worktrees (targets checked intact); ReSTIR's worktree keeps its two until it finishes. Memory: reference_worktree_junctions.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
