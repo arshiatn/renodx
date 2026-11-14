@@ -484,6 +484,10 @@ that pass (waterplane, ocean: debug18's trace) keeps the motion of what is under
 - Texture LOD bias on all textures (Experimental, below 100%).
 - Ray Tracing: the rows the HDR addon v66 reads (Attila's keys), extras shown with an effect on; Record Ray Tracing
   Profile through hdr_link.hpp. Graphics (Advanced): Bend's SSS thickness, contrast, edge threshold, precision offset.
+- Ray Tracing presets: **RT/PT** (ATN's, Attila's: every effect, path tracing, the Global Illumination on, Ray
+  Reconstruction F with the helper's DLSS), **No RT/PT (Recommended)** (every effect off, sliders kept), **Reset**.
+- **Ray-traced fog shadows (Experimental)** (RayTracedFogShadows) and **Upscaling debug view** (UpscalingDebugView,
+  with the helper's upscaler).
 
 
 ### F4/F8 sampler ownership (2026-11-09, GPT-6 Astra)

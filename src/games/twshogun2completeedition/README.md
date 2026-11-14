@@ -621,6 +621,12 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   softness (RR), GI resolution (no Checkerboard), path bounces up to 2, leaf micromaps, GPU baking, fast leaves, NRD
   (with the helper's upscaler), SER, SHaRC, Rays a Pixel, log details, scene test.
 - Bend's thickness, contrast, edge threshold and precision offset as rows (sss.hlsli; 0 the game's).
+- **Ray-traced fog shadows** (Experimental, off): the battle fog's sun light (fog01) shaded along each ray by the
+  helper's fog trace (twattila/rt_fog.hlsli, as Warhammer III); the sky's part of the fog as it was.
+- **Upscaling Debug View**: the motion the helper's upscaler gets, over the picture (upscale_output).
+- rt_sun: the paths' sun light in the game's units (sunlight00-03's x 1.90384671e-005; read with Path-Traced AO only).
+  test/tw_shogun2_shaders checks rt_sun with the data run's lighting buffers, upscale_inputs with a DLSS capture and
+  the Debug View on WARP.
 - The helper starts only with a ray tracing row on at launch, Upscaler not the game's DLSS, or frame generation on.
 
 ## v65: wrong constants from the decompiler (built only, not run in game)
