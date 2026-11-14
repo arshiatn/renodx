@@ -408,7 +408,13 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   frame while playing: ATN's app setting), trim per-draw callbacks, grass numbers, Light Bounce Half (-1.2 ms, ATN), fewer
   hand-offs (design), smoke cap (needs a stress mode). No gain: SER, cluster build flags. WH3 harness 8.4-8.5 ms. Agent next:
   callbacks trim, cascade row, smoke stress mode, hand-off design. ns-replay-mode 25125baa + 8357ef5c MERGED 29b54d18
-  (all_modes 179 / 179).
+  (all_modes 179 / 179). Code items MERGED 77958ae7: light readback key sort + order reuse (identical; -0.5 ms amd64, up to
+  -0.84 ms when the lights repeat), Attila Two Shadow Cascades Under Rays (Experimental; tw_unit_shadows part 6 over the
+  shipped dll bytes). Hot callbacks (cpl2): OnDrawIndexed 2.22 ms (no identical cut: redesign), Capture 0.90, light sort 0.84,
+  DrawObjectMotion 0.63; workers OnDrawScrub 1.79, ScaleModelLods 1.16. Smoke stress: cap 262,144 = build 1.80 ms;
+  PREFER_FAST_BUILD -0.66 ms (not bit-identical). Hand-off design: merge requests 0.1-0.3 ms; 2.9 ms untimed helper work.
+  BITDEFENDER: blocked a scratch x86 benchmark exe of the Nsight agent; path stopped, exe deleted; ATN TOLD. Agent resumed:
+  smoke fast-build row (Experimental), the 2.9 ms helper work.
 - [ ] ATN ~11:4x: the skill checks the whole dump for render scale (scale_census.py) but casters only in traces: agent
   (cdc_, worktree) adds caster_census.py --whole-dump (every VS classified, held / NOT HELD / not a caster), validates on
   Attila + Pharaoh e34c6089 palms, runs it for nine games (tools/tw/round_notes/caster_dump_<game>.txt), skill lines; results
