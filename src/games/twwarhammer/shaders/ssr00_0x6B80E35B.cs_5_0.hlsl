@@ -57,6 +57,7 @@ RWTexture2D<float3> t_out_radiance : register(u0);
 #define cmp -
 
 #include "../../twattila/rt_reflection.hlsli"
+#include "../../twattila/render_scale.hlsli"
 
 
 [numthreads(32, 32, 1)]
@@ -86,7 +87,9 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     r5.z = r2.y;
     r4.xz = r5.xz * r4.xx;
     r2.y = 1 + -r2.z;
-    r3.xy = r0.zw * float2(2,-2) + float2(-1,1);
+    // RenoDX: below 100% the view is the top-left share of the targets (r0.zw a texture uv): the position from the view's
+    // uv, as view_share patches the game's own bytes (NDC at instruction 17; the projected uv below at 67).
+    r3.xy = (r0.zw / FrameRenderShare()) * float2(2,-2) + float2(-1,1);
     r3.w = 1;
     r5.x = dot(r3.xyzw, inv_view_projection._m00_m10_m20_m30);
     r5.y = dot(r3.xyzw, inv_view_projection._m01_m11_m21_m31);
@@ -136,7 +139,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     r7.y = dot(r5.xyzw, projection._m01_m11_m21_m31);
     r2.x = dot(r5.xyzw, projection._m03_m13_m23_m33);
     r2.xz = r7.xy / r2.xx;
-    r2.xz = r2.xz * float2(0.5,-0.5) + float2(0.5,0.5);
+    r2.xz = (r2.xz * float2(0.5,-0.5) + float2(0.5,0.5)) * FrameRenderShare();
     r0.xy = -r0.xy * g_screen_size.zw + r2.xz;
     r2.x = dot(r0.xy, r0.xy);
     r2.x = rsqrt(r2.x);

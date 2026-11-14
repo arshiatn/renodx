@@ -1,5 +1,12 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Phase I (2026-11-14; built only, not run in game)
+
+- **Render scale below 100%**: the weather effects (3619B413, 4BEEAAE2, 5B006315, 9A369793; 5B006315 drawn in the 10-27
+  battle trace at 50%) map their uv to the viewport themselves: view_share leaves them (`SetViewportChains(true)`); the scale
+  census's BUG (A) 4 -> 0. The SSR resolve replacement (6B80E35B) takes the frame's share where view_share patches the game's
+  bytes: the position from the view's uv, the projected uv in the targets' share.
+
 ### Trace build (2026-11-14, for the data run; built only, not run in game)
 
 - **Frame traces on demand and at 100%** (`twattila/frame_trace.hpp` Options, as Warhammer II's): `renodx_trace_now` next to

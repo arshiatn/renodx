@@ -1742,6 +1742,9 @@ bool AttachAddon() {
   // water (waterplane gather 4.1 / 5.0: 5C9DF968, 44B4A2F0) and river (B5C25930), the lit particles (63D80213, 122F218C; their
   // blend and the dynamic-light one's, C4D57D81) and their VS's buffers (3883A15B, 9FD3EC63); the lights' instances with
   // FrameTraceReads (trace_reads.hpp).
+  // The game maps some uvs to its viewport itself (uv x (c29.zw x c31.xy): the weather effects 3619B413, 4BEEAAE2, 5B006315,
+  // 9A369793; tools\tw\wh1\scale_census_wh1_base.txt): view_share leaves them.
+  twattila::view_share::SetViewportChains(true);
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
