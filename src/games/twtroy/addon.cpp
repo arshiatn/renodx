@@ -47,6 +47,7 @@
 #include "../twpharaohdynasties/rt_outside_view_card_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_world_gs.h"
+#include "./rt_outside_view_leaf_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -1404,7 +1405,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 20> MOTION_SHADERS =
 // cards also UVs). The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do
 // the far forest's blocks (rigidtreebillboard vs40_main_block 1FD86210): cards facing the camera with no shadow-pass draw,
 // as Pharaoh's FE92BA2D.
-constexpr std::array<twattila::rt_scene::SceneShader, 27> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1429,8 +1430,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 27> SCENE_SHADERS = {{
     // The shadow pass's casters (the 6144 x 6144 R32 atlas, 2 x 2 cascades; its vertex shaders' view-projection at cb0[9-12]):
     // what is out of the main view still casts there (Pharaoh's rt_outside_view geometry shaders: each variant's input is a
     // prefix of these vertex shaders' outputs, fxc /dumpbin, and their world position is that output: tools\tw\troy\
-    // troy_signatures.txt, troy_output_writes_casters.txt). Every frame as drawn; far cards cut out by 9004F948's t2. The leaves
-    // (A295269F) stay out: Troy's write no TEXCOORD4, which Pharaoh's RT_LEAF variant reads.
+    // troy_signatures.txt, troy_output_writes_casters.txt). Every frame as drawn; far cards cut out by 9004F948's t2, leaves by
+    // 3372DE0B's t0 (t_diffuse_map). Troy's leaves write no TEXCOORD4: their variant without it (RT_NO_FADE, our own header).
+    {.hash = 0xA295269F, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_leaf},
     {.hash = 0xAF7C4636, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0xC8DA195D, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0x83A7A039, .dynamic = true, .cascade_keep = __rt_outside_view_world},
