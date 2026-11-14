@@ -21,6 +21,9 @@
 // 5. The fur-clad units (weighted4_fur_alpha vs40_main_4_bones_fur 621E86DD): the capture (rt_capture_unit_4_bones_fur) from
 //    random skinned vertices is the game's TEXCOORD0 (the skinned position plus the fur's sway); CONTROL 4A716936's capture
 //    (no sway) differs.
+// 6. The 8-bone models (weightedcommon vs40_main_8_bones F81881EB): from random 8-bone vertices (bone bytes 0-5, some weights
+//    under 1/256) the capture (rt_capture_unit_8_bones) is the game's TEXCOORD0 and the motion shader's
+//    (motion_unit_weightedcommon_f818) SV_Position the game's; CONTROL the game's with every bone byte 0 differs.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -28,6 +31,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -573,24 +577,28 @@ static void TestCampaignVegetation(const std::string& game_folder, const std::st
               now_error, uv_error, later_error);
 }
 
-// The fur-clad units: the capture against the game's 621E86DD, both streamed out from the same random skinned vertices.
-static void TestFur(const std::string& game_folder, const std::string& built_folder) {
-  const auto game = ReadFile(game_folder + "\\0x621E86DD.vs_5_0.cso");
-  const auto capture = ReadFile(built_folder + "\\rt_capture_unit_4_bones_fur.cso");
-  const auto control = ReadFile(built_folder + "\\rt_capture_unit_4_bones.cso");
-  CHECK(!game.empty() && !capture.empty() && !control.empty(), "fur: the csos");
-  if (game.empty() || capture.empty() || control.empty()) return;
+// The units' random numbers (a linear congruential generator, each test's own from 4242).
+struct Random {
   uint32_t seed = 4242;
-  const auto random = [&seed](float low, float high) {
+  float operator()(float low, float high) {
     seed = seed * 1664525u + 1013904223u;
     return low + (high - low) * static_cast<float>(seed >> 8) / 16777216.f;
-  };
-  // The animation map (64 x 64 texels of random rows) and the selection ids.
+  }
+};
+
+// The units' vertex-stage bindings: the camera, rigid_config (zeros) and the animation map's size at b0-b2; the animation
+// map (64 x 64 texels of random rows) at t0 and the selection ids at t1.
+struct UnitBindings {
+  std::array<ComPtr<ID3D11Buffer>, 3> constants;
+  std::array<ComPtr<ID3D11ShaderResourceView>, 2> textures;
+};
+
+static UnitBindings MakeUnitBindings(Random* random) {
   constexpr UINT MAP = 64;
   std::vector<float> rows(MAP * MAP * 4);
-  for (float& value : rows) value = random(-1.f, 1.f);
+  for (float& value : rows) value = (*random)(-1.f, 1.f);
   std::vector<uint32_t> ids(MAP * MAP);
-  for (uint32_t& id : ids) id = static_cast<uint32_t>(random(0.f, 65536.f));
+  for (uint32_t& id : ids) id = static_cast<uint32_t>((*random)(0.f, 65536.f));
   const auto make_view = [](DXGI_FORMAT format, const void* data, UINT pitch) {
     const D3D11_TEXTURE2D_DESC desc = {.Width = MAP, .Height = MAP, .MipLevels = 1, .ArraySize = 1, .Format = format,
                                        .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
@@ -601,8 +609,40 @@ static void TestFur(const std::string& game_folder, const std::string& built_fol
     if (texture) device->CreateShaderResourceView(texture.Get(), nullptr, &view);
     return view;
   };
-  const std::array<ComPtr<ID3D11ShaderResourceView>, 2> textures = {make_view(DXGI_FORMAT_R32G32B32A32_FLOAT, rows.data(), MAP * 16),
-                                                                     make_view(DXGI_FORMAT_R32_UINT, ids.data(), MAP * 4)};
+  const std::array<float, 20> rigid_config = {};
+  const std::array<float, 4> animation_size = {MAP, 1.f / MAP, MAP, 1.f / MAP};
+  return {.constants = {ConstantBuffer(CAMERA.data(), sizeof(CAMERA)), ConstantBuffer(rigid_config.data(), sizeof(rigid_config)),
+                        ConstantBuffer(animation_size.data(), sizeof(animation_size))},
+          .textures = {make_view(DXGI_FORMAT_R32G32B32A32_FLOAT, rows.data(), MAP * 16), make_view(DXGI_FORMAT_R32_UINT, ids.data(), MAP * 4)}};
+}
+
+// The worst difference of `values` from `reference` (relative past 1).
+static double Worst(const std::vector<float>& reference, const std::vector<float>& values) {
+  double error = 0.0;
+  for (size_t index = 0; index < reference.size(); ++index) {
+    error = std::max(error, std::abs(static_cast<double>(values[index]) - reference[index]) / std::max(1.0, std::abs(static_cast<double>(reference[index]))));
+  }
+  return error;
+}
+
+// The points of `reference` (4 floats each) the skinning placed off the origin (the animation map's rows in play).
+static int OffOrigin(const std::vector<float>& reference) {
+  int moved = 0;
+  for (size_t point = 0; point + 3 < reference.size(); point += 4) {
+    if (std::abs(reference[point]) + std::abs(reference[point + 1]) + std::abs(reference[point + 2]) > 1e-3) ++moved;
+  }
+  return moved;
+}
+
+// The fur-clad units: the capture against the game's 621E86DD, both streamed out from the same random skinned vertices.
+static void TestFur(const std::string& game_folder, const std::string& built_folder) {
+  const auto game = ReadFile(game_folder + "\\0x621E86DD.vs_5_0.cso");
+  const auto capture = ReadFile(built_folder + "\\rt_capture_unit_4_bones_fur.cso");
+  const auto control = ReadFile(built_folder + "\\rt_capture_unit_4_bones.cso");
+  CHECK(!game.empty() && !capture.empty() && !control.empty(), "fur: the csos");
+  if (game.empty() || capture.empty() || control.empty()) return;
+  Random random;
+  const UnitBindings bindings = MakeUnitBindings(&random);
   // Each vertex 15 inputs x 4 floats: POSITION0 the bind pose, POSITION1 four bone indices (x 255), POSITION2 their weights,
   // POSITION3 a normal with the fur's length in w, the rest (tangents, the instance's rows, the base row in TEXCOORD3.x) random.
   constexpr int VERTICES = 256;
@@ -619,36 +659,77 @@ static void TestFur(const std::string& game_folder, const std::string& built_fol
       }
     }
   }
-  const std::array<float, 20> rigid_config = {};
-  const std::array<float, 4> animation_size = {MAP, 1.f / MAP, MAP, 1.f / MAP};
-  const std::array<ComPtr<ID3D11Buffer>, 3> constants = {ConstantBuffer(CAMERA.data(), sizeof(CAMERA)), ConstantBuffer(rigid_config.data(), sizeof(rigid_config)),
-                                                         ConstantBuffer(animation_size.data(), sizeof(animation_size))};
-  const auto reference = StreamOut(game, "TEXCOORD", vertices, constants, 0, textures);
-  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, constants, 0, textures);
-  const auto unswayed = StreamOut(control, "TEXCOORD", vertices, constants, 0, textures);
+  const auto reference = StreamOut(game, "TEXCOORD", vertices, bindings.constants, 0, bindings.textures);
+  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, bindings.constants, 0, bindings.textures);
+  const auto unswayed = StreamOut(control, "TEXCOORD", vertices, bindings.constants, 0, bindings.textures);
   if (reference.size() != VERTICES * 4 || worlds.size() != VERTICES * 4 || unswayed.size() != VERTICES * 4) {
     CHECK(false, "fur: stream output sizes");
     return;
   }
-  const auto worst = [&reference](const std::vector<float>& world) {
-    double error = 0.0;
-    for (size_t index = 0; index < reference.size(); ++index) {
-      error = std::max(error, std::abs(static_cast<double>(world[index]) - reference[index]) / std::max(1.0, std::abs(static_cast<double>(reference[index]))));
-    }
-    return error;
-  };
-  int moved = 0;  // vertices the skinning placed off the origin (the animation map's rows in play)
-  for (int vertex = 0; vertex < VERTICES; ++vertex) {
-    if (std::abs(reference[vertex * 4]) + std::abs(reference[vertex * 4 + 1]) + std::abs(reference[vertex * 4 + 2]) > 1e-3) ++moved;
-  }
-  const double error = worst(worlds);
-  const double control_error = worst(unswayed);
+  const int moved = OffOrigin(reference);
+  const double error = Worst(reference, worlds);
+  const double control_error = Worst(reference, unswayed);
   CHECK(moved > VERTICES / 2, "fur: only %d of %d vertices skinned off the origin", moved, VERTICES);
   CHECK(error < 1e-6, "fur: the capture %g off the game's world position", error);
   CHECK(control_error > 1e-3, "fur: CONTROL the 4-bone capture without the sway = the game's (%g)", control_error);
   std::printf("5 621E86DD: the capture's world within %.2g of the game's (%d of %d vertices skinned off the origin); CONTROL "
               "4A716936's capture %.2g\n",
               error, moved, VERTICES, control_error);
+}
+
+// The 8-bone models: the capture and the motion shader against the game's F81881EB, all streamed out from the same random
+// 8-bone vertices.
+static void TestEightBones(const std::string& game_folder, const std::string& built_folder) {
+  const auto game = ReadFile(game_folder + "\\0xF81881EB.vs_5_0.cso");
+  const auto capture = ReadFile(built_folder + "\\rt_capture_unit_8_bones.cso");
+  const auto motion = ReadFile(built_folder + "\\motion_unit_weightedcommon_f818.cso");
+  CHECK(!game.empty() && !capture.empty() && !motion.empty(), "8 bones: the csos");
+  if (game.empty() || capture.empty() || motion.empty()) return;
+  Random random;
+  const UnitBindings bindings = MakeUnitBindings(&random);
+  // Each vertex 16 inputs x 4 floats: POSITION1 eight bone indices (0-5) two bytes to a uint, POSITION2-3 the weights (the
+  // shader drops those under 1/256 and takes the first bone's index for theirs), TEXCOORD3.x the base row, the rest random.
+  constexpr int VERTICES = 256;
+  constexpr int INPUTS = 16;
+  std::vector<float> vertices;
+  int dropped = 0;  // weights under 1/256 (POSITION2.xyz, POSITION3.xyz)
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    for (int input = 0; input < INPUTS; ++input) {
+      for (int component = 0; component < 4; ++component) {
+        float value = random(-1.f, 1.f);
+        if (input == 1) value = std::bit_cast<float>(static_cast<uint32_t>(random(0.f, 6.f)) | (static_cast<uint32_t>(random(0.f, 6.f)) << 8));
+        if (input == 2 || input == 3) value = random(0.f, 0.12f);
+        if ((input == 2 || input == 3) && component < 3 && value < 1.f / 256.f) ++dropped;
+        if (input == 11 && component == 0) value = std::floor(random(0.f, 40.f));
+        vertices.push_back(value);
+      }
+    }
+  }
+  // CONTROL: every bone byte 0 (what fxc made of the translation with float registers).
+  std::vector<float> boneless = vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) std::fill_n(boneless.begin() + (vertex * INPUTS + 1) * 4, 4, 0.f);
+  const auto reference = StreamOut(game, "TEXCOORD", vertices, bindings.constants, 0, bindings.textures);
+  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, bindings.constants, 0, bindings.textures);
+  const auto positions = StreamOut(game, "SV_Position", vertices, bindings.constants, 0, bindings.textures);
+  const auto motion_positions = StreamOut(motion, "SV_Position", vertices, bindings.constants, 0, bindings.textures);
+  const auto boneless_reference = StreamOut(game, "TEXCOORD", boneless, bindings.constants, 0, bindings.textures);
+  if (reference.size() != VERTICES * 4 || worlds.size() != VERTICES * 4 || positions.size() != VERTICES * 4
+      || motion_positions.size() != VERTICES * 4 || boneless_reference.size() != VERTICES * 4) {
+    CHECK(false, "8 bones: stream output sizes");
+    return;
+  }
+  const int moved = OffOrigin(reference);
+  const double error = Worst(reference, worlds);
+  const double motion_error = Worst(positions, motion_positions);
+  const double control_error = Worst(reference, boneless_reference);
+  CHECK(moved > VERTICES / 2, "8 bones: only %d of %d vertices skinned off the origin", moved, VERTICES);
+  CHECK(dropped > 0, "8 bones: no weight under 1/256 (the dropped bones' index not in play)");
+  CHECK(error < 1e-6, "8 bones: the capture %g off the game's world position", error);
+  CHECK(motion_error < 1e-5, "8 bones: the motion shader's SV_Position %g off the game's", motion_error);
+  CHECK(control_error > 1e-3, "8 bones: CONTROL every bone byte 0 = the game's (%g)", control_error);
+  std::printf("6 F81881EB: the capture's world within %.2g of the game's, the motion shader's SV_Position within %.2g (%d of %d "
+              "vertices skinned off the origin, %d weights dropped); CONTROL every bone byte 0 %.2g\n",
+              error, motion_error, moved, VERTICES, dropped, control_error);
 }
 
 int main(int argc, char** argv) {
@@ -666,6 +747,7 @@ int main(int argc, char** argv) {
   TestPlacedRopes(argv[1], argv[2]);
   TestCampaignVegetation(argv[1], argv[2]);
   TestFur(argv[1], argv[2]);
+  TestEightBones(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
   return failures == 0 ? 0 : 1;
 }

@@ -46,6 +46,19 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     stops at walls and units; the lit side as bright as before; no flicker as fires start and go out.
 27. v67: with it on, ReShade.log "the particle lights streamed from their vertex shader" once, at the first fire.
 
+### Parity round 3 (2026-11-14; built only, not run in game)
+
+- **New: the 8-bone models cast in the rays** (weightedcommon vs40_main_8_bones F81881EB; in no trace), solid as the other
+  units, and **their motion vectors fixed** (motion_unit_weightedcommon_f818, already in DLSS's object motion, had every bone
+  at index 0). The cause: the disassembly's translation kept the bone bytes in float registers, which fxc takes for
+  flushed denormals (0); `asm_to_hlsl.py --bits` keeps the registers as integers. WARP (`test/tw_pharaoh` 6, random 8-bone
+  vertices): the capture is the game's world position, the motion shader's SV_Position the game's; every bone byte 0 (the
+  control) differs.
+
+Test line (the maintainer):
+
+1. A battle where Frame Trace lists weightedcommon F81881EB, RT/PT, DLSS: those models cast and move without smearing.
+
 ### Parity round 2 (2026-11-14; built only, not run in game)
 
 - Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's) (its fires' particle lights too); Sprite Soldier Shadows (Experimental, off: the sprite soldiers in the rays through a geometry-shader capture, WARP test/tw_rays_captures), out of RT/PT; Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
@@ -130,10 +143,7 @@ Not done (what, why, smallest step):
   settlement or siege), terrain blend 8C511965 / 515FA244 (a battle with blended rocks: repeats of held draws?), the
   campaign's prefab sky ring 3EF23291, its global terrain 026CBC61 and blend-mask pieces 58733DB8 / 5DC7A874 (campaign
   traces with vertex reads).
-- The 8-bone models (weightedcommon F81881EB, never drawn in a trace): a capture from the disassembly's translation (the
-  fur's way) missed the game's positions on WARP by metres, and so does the plain translation, so the translation (also the
-  motion vectors' motion_unit_weightedcommon_f818) is suspect. Smallest step: find what the translation gets wrong (WARP
-  part by part), and a scene that draws these models.
+- The 8-bone models (weightedcommon F81881EB, never drawn in a trace): done in parity round 3 (above).
 
 ### Parity round (2026-11-14; built only, not run in game)
 

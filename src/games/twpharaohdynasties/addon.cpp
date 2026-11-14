@@ -1914,6 +1914,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 26> MOTION_SHADERS =
     {.hash = 0xE7792B60, .motion_shader = __motion_tree_campaignvegetation_e779},
     {.hash = 0xED0BC391, .motion_shader = __motion_sail_sail_ed0b, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sail_ed0b},
     {.hash = 0xF704C8EC, .motion_shader = __motion_leaf_leaf_v3_f704},
+    // The 8-bone models: translated with asm_to_hlsl.py --bits (in float registers fxc took the bone bytes for 0). WARP: test\tw_pharaoh.
     {.hash = 0xF81881EB, .motion_shader = __motion_unit_weightedcommon_f818, .kind = MotionKind::UNIT},
     {.hash = 0xF8FFE639, .motion_shader = __motion_unit_weighted_standard_2_feat_f8ff, .kind = MotionKind::UNIT},
     {.hash = 0xFF969484, .motion_shader = __motion_unit_weighted_ff96, .kind = MotionKind::UNIT},
@@ -1989,7 +1990,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 1> CAMPAIGN_TREE_MASKS = {{{
 // of its diffuse map's alpha (t2.w at (TEXCOORD0.w, TEXCOORD1.w)), Troy's 74B2E609's test; its MSAA G-buffer 191C5CCD stays
 // out (no rays under the game's MSAA), and so does its z-prefill B39D02A5 (the same draw again).
 constexpr std::array<twattila::rt_scene::PixelMask, 1> VEGETATION_MASKS = {{{.pixel_shader = 0xEB0089B4, .slot = 2}}};
-constexpr std::array<twattila::rt_scene::SceneShader, 37> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -2037,6 +2038,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 37> SCENE_SHADERS = {{
     // The fur-clad units (weighted4_fur_alpha vs40_main_4_bones_fur 621E86DD: the 4-bone skinning plus the fur's sway; in no
     // trace, level B), as Troy's EE95696C: solid, as the other units. WARP: test\tw_pharaoh.
     {.hash = 0x621E86DD, .capture_shader = __rt_capture_unit_4_bones_fur, .dynamic = true},
+    // The 8-bone models (weightedcommon vs40_main_8_bones F81881EB: 8 bone indices packed two to a uint; in no trace, level B):
+    // solid, as the other units. WARP: test\tw_pharaoh.
+    {.hash = 0xF81881EB, .capture_shader = __rt_capture_unit_8_bones, .dynamic = true},
     {.hash = 0xE710D4E7, .capture_shader = __rt_capture_grass_e710, .dynamic = true, .foliage = true, .grass = true},
     // The shadow pass's casters (pass 6 of tools\tw\pharaoh\phase2.md, into the 2 x 2 atlas): what is out of the main view still casts
     // there (rt_outside_view.gs_5_0.hlsl: the game's own draws, world positions from their vertex shaders' outputs). Every frame as drawn;
