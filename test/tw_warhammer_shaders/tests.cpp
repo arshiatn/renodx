@@ -102,6 +102,12 @@
 //    the game's bytes with 0.15 (within the S-curve LUT's 8-bit filter step, 1e-3); in HDR Bloom 0.5 with 0.3 bit-identical
 //    to Bloom 1 with 0.15. CONTROLS: the game's bytes with 0.15 differ from 0.3 past that step; HDR Bloom 1 with 0.3
 //    differs from 0.15.
+// 21. The campaign trees (A8BB2DB2) and the props' liquid (766D159E) in the rays: the game's bytes streamed out for 16
+//    vertices of random inputs (constants 0.3), their world at TEXCOORD0, against our captures (the build's
+//    embed/rt_capture_campaign_trees, rt_capture_prop_liquid: world at TEXCOORD0) and the rows version
+//    (rt_rows_campaign_trees / prop_liquid: rows x the vertex, the trees' world; the liquid's without its ripple, under
+//    1.4 cm in y).
+//    CONTROLS: each capture against the other's game shader differs.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -1938,6 +1944,82 @@ static void TestBloom(const std::string& root, const std::string& dump) {
   }
 }
 
+static void TestPlaced(const std::string& root, const std::string& dump) {
+  const std::string embed = root + "/build/twwarhammer.include/embed/";
+  uint32_t state = 2113u;
+  const auto unit = [&state](float low, float high) {
+    state = state * 1664525u + 1013904223u;
+    return low + ((high - low) * static_cast<float>(state >> 8) / 16777216.f);
+  };
+  std::array<float, 64 * 4> filled = {};
+  filled.fill(0.3f);
+  const auto buffer = Constants(filled.data(), sizeof(filled));
+  const std::array<ID3D11Buffer*, 3> constants = {buffer.Get(), buffer.Get(), buffer.Get()};
+  const std::array<Streamed, 1> world_out = {{{"TEXCOORD", 0, 4}}};
+  const std::array<Streamed, 3> rows_out = {{{"TEXCOORD", 0, 4}, {"TEXCOORD", 1, 4}, {"TEXCOORD", 2, 4}}};
+  const std::array<Streamed, 1> vertex_out = {{{"POSITION", 0, 4}}};
+  const std::array<std::pair<uint32_t, const char*>, 2> shaders = {{{0xA8BB2DB2u, "rt_capture_campaign_trees"}, {0x766D159Eu, "rt_capture_prop_liquid"}}};
+  int values = 0;
+  int misses = 0;
+  int row_misses = 0;
+  int control = 0;
+  for (size_t at = 0; at < shaders.size(); ++at) {
+    const auto& [hash, name] = shaders[at];
+    const auto game = GameBytes(dump, hash);
+    ComPtr<ID3D11ShaderReflection> reflection;
+    if (game.empty() || FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) {
+      CHECK(false, "placed: %08X's bytes", hash);
+      continue;
+    }
+    D3D11_SHADER_DESC desc = {};
+    reflection->GetDesc(&desc);
+    UINT floats = 0;
+    for (UINT index = 0; index < desc.InputParameters; ++index) {
+      D3D11_SIGNATURE_PARAMETER_DESC input = {};
+      reflection->GetInputParameterDesc(index, &input);
+      floats += static_cast<UINT>(std::bit_width(static_cast<UINT>(input.Mask)));
+    }
+    std::vector<float> vertices;
+    for (int vertex = 0; vertex < 16; ++vertex) {
+      for (UINT component = 0; component < floats; ++component) vertices.push_back(unit(-2.f, 2.f));
+    }
+    const auto expected = StreamOut(game, game, world_out, vertices, constants);
+    const auto ours = StreamOut(game, Bytes(embed + name + ".cso"), world_out, vertices, constants);
+    const auto other = StreamOut(game, Bytes(embed + shaders[1 - at].second + ".cso"), world_out, vertices, constants);
+    const auto placed = StreamOut(game, Bytes(embed + ((at == 0) ? "rt_rows_campaign_trees.cso" : "rt_rows_prop_liquid.cso")), rows_out, vertices, constants);
+    const std::string pass_through = "float4 main(float4 v : POSITION0) : POSITION0 { return v; }";
+    const auto vertex_code = CompileText(pass_through, "vertex out", "main", "vs_4_0");
+    const auto local = StreamOut(game, std::span(static_cast<const uint8_t*>(vertex_code->GetBufferPointer()), vertex_code->GetBufferSize()), vertex_out,
+                                 vertices, constants);
+    CHECK(!expected.empty() && ours.size() == expected.size() && other.size() == expected.size() && placed.size() == expected.size() * 3 &&
+              local.size() == expected.size(),
+          "placed: %08X's stream out", hash);
+    if (expected.empty() || ours.size() != expected.size() || other.size() != expected.size() || placed.size() != expected.size() * 3 ||
+        local.size() != expected.size()) {
+      continue;
+    }
+    for (size_t vertex = 0; vertex < expected.size() / 4; ++vertex) {
+      // The trees multiply the vertex as given (its w too), the liquid with w 1.
+      std::array<float, 4> position = {local[vertex * 4], local[(vertex * 4) + 1], local[(vertex * 4) + 2], (at == 0) ? local[(vertex * 4) + 3] : 1.f};
+      for (size_t axis = 0; axis < 3; ++axis) {
+        ++values;
+        const float want = expected[(vertex * 4) + axis];
+        misses += Near(ours[(vertex * 4) + axis], want, 1e-5f) || std::fabs(ours[(vertex * 4) + axis] - want) < 1e-6f ? 0 : 1;
+        control += std::fabs(other[(vertex * 4) + axis] - want) > 1e-4f ? 1 : 0;
+        float row = 0.f;
+        for (size_t k = 0; k < 4; ++k) row += placed[(vertex * 12) + (axis * 4) + k] * position[k];
+        const float allowed = (at == 1 && axis == 1) ? 0.0141f : 1e-4f;
+        row_misses += std::fabs(row - want) <= allowed ? 0 : 1;
+      }
+    }
+  }
+  CHECK(values == 96 && misses == 0 && row_misses == 0 && control > 48, "placed: %d values, %d misses, rows %d misses, CONTROL %d differ", values, misses,
+        row_misses, control);
+  std::printf("placed: rt_capture_campaign_trees / rt_capture_prop_liquid against A8BB2DB2 / 766D159E's TEXCOORD0, %d values, %d misses; rows x the "
+              "vertex %d misses; CONTROL each capture on the other: %d differ\n",
+              values, misses, row_misses, control);
+}
+
 static void TestAoAlone(const std::string& games, const std::string& dump) {
   constexpr UINT SIZE = 16;
   const std::string path = games + "/twattila/rt_ambient_combine.cs_5_0.hlsl";
@@ -2708,6 +2790,7 @@ int main(int argc, char** argv) {
   TestGrassHeight(argv[1], argv[2]);
   TestWaterPass(games, argv[2]);
   TestBloom(argv[1], argv[2]);
+  TestPlaced(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
