@@ -69,6 +69,7 @@ struct ShaderInjectData {
   float sss_contrast;
   float sss_edge_threshold;
   float sss_precision_offset;
+  float sss_foliage_light;  // sss.hlsli: Light Through Foliage, Bend's CasterLight (foliage_light.hpp; SSSFoliageLight, 0 off)
   // tonemap01: DLSS's jitter this frame (render pixels; the DLSS addon's, dlss_jitter.hpp), set before the draw
   float render_jitter_x;
   float render_jitter_y;

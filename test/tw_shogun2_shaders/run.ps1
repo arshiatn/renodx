@@ -18,7 +18,8 @@ if ($Lock -ne '') {
   Set-Content -LiteralPath $Lock -Value "tw_shogun2_shaders (WARP) $(Get-Date -Format s)"
 }
 try {
-  & (Join-Path $testBuild 'shogun2_shaders.exe') $repairRoot $Capture
+  # Also kept in last_run.txt (a failing run's lines survive a caller's pipeline).
+  & (Join-Path $testBuild 'shogun2_shaders.exe') $repairRoot $Capture | Tee-Object -FilePath (Join-Path $testBuild 'last_run.txt')
   if ($LASTEXITCODE -ne 0) { throw 'Shogun 2 shader test failed' }
 } finally {
   if ($Lock -ne '') { Remove-Item -LiteralPath $Lock -Force -Confirm:$false }
