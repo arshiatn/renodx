@@ -52,6 +52,7 @@
 #include "../twrome2/engine_tweaks.hpp"
 #include "./ao_trace.hpp"
 #include "./line_sweep_ao.hpp"
+#include "./particle_smoothing.hpp"
 #include "./trace_reads.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
@@ -1069,6 +1070,17 @@ void BuildRuntimeData() {
                    "Higher: removes wider bands, softens sky details more.",
         .labels = {"Off", "Low", "Medium", "High"},
     },
+    new renodx::utils::settings::Setting{
+        .key = "VfxParticleSmoothing",
+        .binding = &twwarhammer2::particle_smoothing::row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Half-Size Particles (Experimental)",
+        .section = "Extra",
+        .tooltip = "Smoke, fire and dust the game draws at half size flicker less.\n"
+                   "Small cost.",
+        .labels = {"Off", "On"},
+    },
     // new renodx::utils::settings::Setting{
     //     .key = "filmgrain",
     //     .binding = &shader_injection.filmgrain,
@@ -1604,6 +1616,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
   tw::ao_trace::OnPresent();
+  twwarhammer2::particle_smoothing::OnPresent();
   talesofarise::pixel_trace::OnPresent(queue);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
@@ -2210,6 +2223,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
+  twwarhammer2::particle_smoothing::Install();
   // Water Clarity and Caustics: every row a material water (the patched copy swapped in at the draw).
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
@@ -2333,6 +2348,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
+  twwarhammer2::particle_smoothing::Uninstall();
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::engine_tests::StopAtStart(&at_start_stop);
