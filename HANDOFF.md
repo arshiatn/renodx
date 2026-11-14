@@ -559,6 +559,17 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   dead engine rows removed (0 code uses, 0 pointers), 5 Attila tests, Bloom, Indicator Brightness (Experimental), smoke
   twins DDABB799 / 687378DB, 4 casters out of view (level B); census held 26 -> 30; no shared change). Agent resumed:
   fog_strength, GrassHeightDistance, 4 units / props captures, 7DF335FF campaign banners (opt-in shared GS define).
+  Round 2 MERGED 316aa162 (Fog Strength + Grass Height Distance incl. untraced permutations, Depth of Field, Fog & Sky
+  Smoothing (legacy fog), Indicator Brightness x3, Rarer Units and Props in the Rays (Experimental), Smooth Banner Shadows;
+  shared opt-ins rt_core SceneShader::held_row + GS RT_KEEP_IN_VIEW; held 35 -> 44). GS comment conflict resolved, all 11
+  variants recompile to their headers. WH2 agent DONE. Left: VFX rows (snow / rain trace), smoke without rays (shared 64-bit
+  host), ropes (sun-facing flag), GS sprites 370A7440, tessellated 4CC2D68F (shared step).
+- [x] Rome II round 2 MERGED f4f39372 (water reflections 7C9C8ECF fixed below 100 % + Reflection Quality, suite
+  test/tw_rome2_shaders; Light Through All Banners (Experimental; material 29 = the 4 army_banner_flag models; the traces draw
+  banners only as 3D UI); SSR rays / denoiser + Grass Height WON'T with proof; DrawScrub skip needs a Rome II hook + trace).
+  Rome II agent DONE.
+- [ ] Merged-HEAD build check started (both lines) after the many shared opt-ins (rt_core held_row / depth_at_render_size /
+  behaviours_at_cb3, particle_layer options, GS variants).
 - [x] Rome Remastered so far MERGED a4d6e0a6 (crash fix f6a7cfc4, reset safe side a8afd660, DLSS below 100 % 867187d4, Attila's
   page + Reset / No RT/PT / RT/PT 09a083f0 with opt-in graphics_page has_gtvbao / has_gi / every_row: Attila / WH3 / Thrones /
   WH2 / Troy / WH1 page dumps unchanged; dump target 'rr'). Not installed. Agent on: parity table + DO NOW, B (input bug), C
