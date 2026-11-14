@@ -297,6 +297,9 @@ struct SceneShader {
   bool far_tree = false;  // a far tree's billboard (with sun_facing)
   bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
   bool tessellated = false;
+  // Its draws are 3-control-point patches its hull and domain shaders tessellate and displace (Attila's tessellated rigid objects):
+  // captured as the triangles they are, without those two shaders (no displacement).
+  bool patch_triangles = false;
   bool indirect = false;  // its indirect draws too (the game's GPU-culled grass): CaptureIndirect
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
@@ -1363,7 +1366,8 @@ void Capture(Context& command, const SceneShader& shader) {
   const UINT row_texels = placed ? instances * 4u : 0u;
   D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
   native->IAGetPrimitiveTopology(&topology);
-  if (topology != (shader.tessellated ? D3D11_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST : D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST)
+  if (topology != (shader.tessellated ? D3D11_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST
+                   : (shader.patch_triangles ? D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST))
       || vertex_count == 0 || vertex_count > MAX_VERTICES) {
     if (vertex_count != 0) {
       const std::unique_lock lock(runtime.mutex);
@@ -1873,6 +1877,16 @@ void Capture(Context& command, const SceneShader& shader) {
   native->PSGetShader(game_pixel_shader.GetAddressOf(), nullptr, nullptr);
   native->SOGetTargets(1, game_output.GetAddressOf());
   native->PSSetShader(nullptr, nullptr, 0);
+  // SceneShader::patch_triangles: its patches drawn as a triangle list, no hull or domain shader.
+  ComPtr<ID3D11HullShader> patch_hull_shader;
+  ComPtr<ID3D11DomainShader> patch_domain_shader;
+  if (shader.patch_triangles) {
+    native->HSGetShader(patch_hull_shader.GetAddressOf(), nullptr, nullptr);
+    native->DSGetShader(patch_domain_shader.GetAddressOf(), nullptr, nullptr);
+    native->HSSetShader(nullptr, nullptr, 0);
+    native->DSSetShader(nullptr, nullptr, 0);
+    native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  }
   ComPtr<ID3D11Buffer> game_camera;
   UINT game_camera_first = 0;
   UINT game_camera_count = 0;
@@ -2090,6 +2104,11 @@ void Capture(Context& command, const SceneShader& shader) {
   native->VSSetShader(game_vertex_shader.Get(), nullptr, 0);
   native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
   native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
+  if (shader.patch_triangles) {
+    native->HSSetShader(patch_hull_shader.Get(), nullptr, 0);
+    native->DSSetShader(patch_domain_shader.Get(), nullptr, 0);
+    native->IASetPrimitiveTopology(topology);
+  }
   if (shader.tessellated) {
     ++runtime.tessellated_draws;
     return;

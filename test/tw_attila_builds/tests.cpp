@@ -20,6 +20,8 @@
 //    ulp, as battlefog00 since it was made).
 // G. Fog Strength 0.5: rgb bit for bit, alpha never above A's; CONTROL: some alpha moves.
 // H. Fog & Sky Smoothing Medium: CONTROL: some rgb moves.
+// The rays' captures of draws no trace has shown (Rarer Objects in the Rays), through stream output with the game's input layout
+// (CheckCaptures): the tessellated rigid 9AEE504E as triangles (T1-T4), the ropes 8D0D26B9 (R) and 3926A823 (Q).
 // tests.exe <the game's dumped csos> <the add-on's built csos (build32\<game>.include\embed)> <VFX Brightness's float in b13>
 //           <Fog Strength's float in b13 (-1: no fog builds)> [all: every build's replacement must be there]
 #include <d3d11.h>
@@ -519,6 +521,398 @@ static bool CheckFog(const Build& build, const std::string& dump, const std::str
   return ok;
 }
 
+// One draw through stream output (nothing rasterized): `vs` with the game's input layout (`layout_code`'s input signature, a
+// float4 an input in one vertex buffer: `vertices`), through `hs` / `ds` (patches of three) when given; the last stage's
+// `semantic` / `index` as float4s, as many vertices as it wrote.
+struct Stages {
+  const std::vector<uint8_t>* layout_code;
+  const std::vector<uint8_t>* vs;
+  const std::vector<uint8_t>* hs = nullptr;
+  const std::vector<uint8_t>* ds = nullptr;
+  std::array<ID3D11Buffer*, 3> constants = {};  // b0-b2 of every stage
+  ID3D11ShaderResourceView* ds_texture = nullptr;
+  ID3D11SamplerState* ds_sampler = nullptr;
+};
+
+static UINT InputCount(const std::vector<uint8_t>& code) {
+  ID3D11ShaderReflection* reflection = nullptr;
+  if (FAILED(D3DReflect(code.data(), code.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(&reflection)))) return 0;
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  UINT count = 0;
+  for (UINT i = 0; i < desc.InputParameters; ++i) {
+    D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+    reflection->GetInputParameterDesc(i, &parameter);
+    count += parameter.SystemValueType == D3D_NAME_UNDEFINED ? 1 : 0;
+  }
+  reflection->Release();
+  return count;
+}
+
+static std::vector<float> StreamOut(const Stages& stages, const std::vector<float>& vertices, D3D11_PRIMITIVE_TOPOLOGY topology, const char* semantic,
+                                    UINT index, BYTE components = 4) {
+  std::vector<float> out;
+  ID3D11ShaderReflection* reflection = nullptr;
+  if (FAILED(D3DReflect(stages.layout_code->data(), stages.layout_code->size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(&reflection)))) return out;
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  std::vector<D3D11_INPUT_ELEMENT_DESC> elements;
+  for (UINT i = 0; i < desc.InputParameters; ++i) {
+    D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+    reflection->GetInputParameterDesc(i, &parameter);
+    if (parameter.SystemValueType != D3D_NAME_UNDEFINED) continue;
+    elements.push_back({parameter.SemanticName, parameter.SemanticIndex, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, UINT(elements.size() * 16),
+                        D3D11_INPUT_PER_VERTEX_DATA, 0});
+  }
+  const UINT stride = UINT(elements.size() * 16);
+  const UINT count = UINT(vertices.size() * 4 / stride);
+  const auto& last = stages.ds != nullptr ? *stages.ds : *stages.vs;
+  const D3D11_SO_DECLARATION_ENTRY entry = {0, semantic, index, 0, components, 0};
+  const UINT out_stride = components * 4;
+  const UINT room = count * 64;  // a tessellated patch's vertices
+  const D3D11_BUFFER_DESC vertex_desc = {UINT(vertices.size() * 4), D3D11_USAGE_IMMUTABLE, D3D11_BIND_VERTEX_BUFFER, 0, 0, 0};
+  const D3D11_SUBRESOURCE_DATA vertex_data = {vertices.data(), 0, 0};
+  const D3D11_BUFFER_DESC out_desc = {room * 16, D3D11_USAGE_DEFAULT, D3D11_BIND_STREAM_OUTPUT, 0, 0, 0};
+  const D3D11_BUFFER_DESC read_desc = {room * 16, D3D11_USAGE_STAGING, 0, D3D11_CPU_ACCESS_READ, 0, 0};
+  const D3D11_QUERY_DESC query_desc = {D3D11_QUERY_SO_STATISTICS, 0};
+  ID3D11InputLayout* layout = nullptr;
+  ID3D11Buffer* vertex_buffer = nullptr;
+  ID3D11VertexShader* vs = nullptr;
+  ID3D11HullShader* hs = nullptr;
+  ID3D11DomainShader* ds = nullptr;
+  ID3D11GeometryShader* gs = nullptr;
+  ID3D11Buffer* output = nullptr;
+  ID3D11Buffer* read = nullptr;
+  ID3D11Query* query = nullptr;
+  const bool made = SUCCEEDED(device->CreateInputLayout(elements.data(), UINT(elements.size()), stages.layout_code->data(), stages.layout_code->size(), &layout))
+                    && SUCCEEDED(device->CreateBuffer(&vertex_desc, &vertex_data, &vertex_buffer))
+                    && SUCCEEDED(device->CreateVertexShader(stages.vs->data(), stages.vs->size(), nullptr, &vs))
+                    && (stages.hs == nullptr || SUCCEEDED(device->CreateHullShader(stages.hs->data(), stages.hs->size(), nullptr, &hs)))
+                    && (stages.ds == nullptr || SUCCEEDED(device->CreateDomainShader(stages.ds->data(), stages.ds->size(), nullptr, &ds)))
+                    && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(last.data(), last.size(), &entry, 1, &out_stride, 1, D3D11_SO_NO_RASTERIZED_STREAM,
+                                                                             nullptr, &gs))
+                    && SUCCEEDED(device->CreateBuffer(&out_desc, nullptr, &output)) && SUCCEEDED(device->CreateBuffer(&read_desc, nullptr, &read))
+                    && SUCCEEDED(device->CreateQuery(&query_desc, &query));
+  if (made) {
+    const UINT offset = 0;
+    context->IASetInputLayout(layout);
+    context->IASetVertexBuffers(0, 1, &vertex_buffer, &stride, &offset);
+    context->IASetPrimitiveTopology(topology);
+    context->VSSetShader(vs, nullptr, 0);
+    context->HSSetShader(hs, nullptr, 0);
+    context->DSSetShader(ds, nullptr, 0);
+    context->GSSetShader(gs, nullptr, 0);
+    context->PSSetShader(nullptr, nullptr, 0);
+    context->VSSetConstantBuffers(0, 3, stages.constants.data());
+    context->HSSetConstantBuffers(0, 3, stages.constants.data());
+    context->DSSetConstantBuffers(0, 3, stages.constants.data());
+    context->DSSetShaderResources(0, 1, &stages.ds_texture);
+    context->DSSetSamplers(0, 1, &stages.ds_sampler);
+    context->SOSetTargets(1, &output, &offset);
+    context->Begin(query);
+    context->Draw(count, 0);
+    context->End(query);
+    context->SOSetTargets(0, nullptr, nullptr);
+    context->HSSetShader(nullptr, nullptr, 0);
+    context->DSSetShader(nullptr, nullptr, 0);
+    context->GSSetShader(nullptr, nullptr, 0);
+    D3D11_QUERY_DATA_SO_STATISTICS statistics = {};
+    while (context->GetData(query, &statistics, sizeof(statistics), 0) == S_FALSE) {}
+    const UINT written = UINT(std::min<UINT64>(statistics.NumPrimitivesWritten * (topology == D3D11_PRIMITIVE_TOPOLOGY_POINTLIST ? 1 : 3), room));
+    context->CopyResource(read, output);
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(context->Map(read, 0, D3D11_MAP_READ, 0, &mapped))) {
+      const float* data = static_cast<const float*>(mapped.pData);
+      out.assign(data, data + size_t(written) * components);
+      context->Unmap(read, 0);
+    }
+  }
+  for (IUnknown* object : std::initializer_list<IUnknown*>{layout, vertex_buffer, vs, hs, ds, gs, output, read, query, reflection}) {
+    if (object != nullptr) object->Release();
+  }
+  return out;
+}
+
+// A camera_VS_PS (b0): camera_position, view (c1-c4), projection (c5-c8), view_projection (c9-c12), inv_view (c13-c16), each
+// matrix by its rows acting on column vectors (the shaders' dot(r, m._m0i_m1i_m2i_m3i) with column-major registers).
+struct Camera {
+  std::array<double, 3> position = {};
+  std::array<std::array<double, 4>, 4> view = {}, projection = {}, inv_view = {};
+  std::vector<float> Constants() const {
+    std::vector<float> values(36 * 4, 0.f);
+    for (int axis = 0; axis < 3; ++axis) values[axis] = float(position[axis]);
+    for (int row = 0; row < 4; ++row) {
+      for (int column = 0; column < 4; ++column) {
+        double combined = 0.0;
+        for (int k = 0; k < 4; ++k) combined += projection[row][k] * view[k][column];
+        values[(1 + row) * 4 + column] = float(view[row][column]);
+        values[(5 + row) * 4 + column] = float(projection[row][column]);
+        values[(9 + row) * 4 + column] = float(combined);
+        values[(13 + row) * 4 + column] = float(inv_view[row][column]);
+      }
+    }
+    return values;
+  }
+};
+
+// A camera at `position` looking along a random direction: view a rotation and translation, inv_view its inverse, a perspective.
+static Camera MakeCamera(const std::array<double, 3>& position) {
+  Camera camera;
+  camera.position = position;
+  // A random rotation (Gram-Schmidt of two random vectors).
+  std::array<double, 3> forward = {Range(-1.f, 1.f), Range(-1.f, 1.f), Range(-1.f, 1.f)};
+  std::array<double, 3> up = {Range(-1.f, 1.f), Range(-1.f, 1.f), Range(-1.f, 1.f)};
+  const auto normalize = [](std::array<double, 3>* v) {
+    const double length = std::sqrt((*v)[0] * (*v)[0] + (*v)[1] * (*v)[1] + (*v)[2] * (*v)[2]);
+    for (double& c : *v) c /= length;
+  };
+  normalize(&forward);
+  const double along = up[0] * forward[0] + up[1] * forward[1] + up[2] * forward[2];
+  for (int axis = 0; axis < 3; ++axis) up[axis] -= along * forward[axis];
+  normalize(&up);
+  const std::array<double, 3> right = {up[1] * forward[2] - up[2] * forward[1], up[2] * forward[0] - up[0] * forward[2], up[0] * forward[1] - up[1] * forward[0]};
+  const std::array<std::array<double, 3>, 3> rows = {right, up, forward};
+  for (int row = 0; row < 3; ++row) {
+    double translation = 0.0;
+    for (int axis = 0; axis < 3; ++axis) {
+      camera.view[row][axis] = rows[row][axis];
+      camera.inv_view[axis][row] = rows[row][axis];
+      translation -= rows[row][axis] * position[axis];
+    }
+    camera.view[row][3] = translation;
+    camera.inv_view[row][3] = position[row];
+  }
+  camera.view[3][3] = 1.0;
+  camera.inv_view[3][3] = 1.0;
+  const double focal = 1.5, near_plane = 0.5, far_plane = 5000.0;
+  camera.projection[0][0] = focal;
+  camera.projection[1][1] = focal * 16.0 / 9.0;
+  camera.projection[2][2] = far_plane / (far_plane - near_plane);
+  camera.projection[2][3] = -near_plane * far_plane / (far_plane - near_plane);
+  camera.projection[3][2] = 1.0;
+  return camera;
+}
+
+// Random rows of a placement (POSITION1-3 / the instance's world rows): turned and scaled within `turn`, moved within `move`.
+static std::array<std::array<float, 4>, 3> MakeRows(float turn, float move) {
+  std::array<std::array<float, 4>, 3> rows = {};
+  for (auto& row : rows) row = {Range(-turn, turn), Range(-turn, turn), Range(-turn, turn), Range(-move, move)};
+  return rows;
+}
+
+static bool SameBits(const float* a, const float* b, size_t count) { return std::memcmp(a, b, count * 4) == 0; }
+
+// The rays' captures of draws no trace has shown (Rarer Objects in the Rays: addon.cpp SCENE_SHADERS' held_row):
+// T. the tessellated rigid 9AEE504E (3-control-point patches; HS 0A3E0133, DS 1C0B3B3A), 64 patches, each its placement:
+//    T1 rt_capture_rigid_sm41's TEXCOORD0 (a triangle list, no hull or domain shader: rt_core.hpp SceneShader::patch_triangles)
+//       equals the game vertex shader's world position (its TEXCOORD0) bit for bit, w 1;
+//    T2 motion_record_rigid_sm41's rows (TEXCOORD0-2) are the vertices' POSITION1-3 bit for bit;
+//    T3 the game's whole chain (Tessellation 4, displacement 0.1) with the camera 17 km away (past 20 m: no tessellation, the
+//       displacement faded out) streams out the capture's triangles, patch for patch, their corners bit for bit;
+//    T4 CONTROL: with the camera among the patches (under 5 m: Tessellation 4 in full, the displacement in full) the chain's
+//       triangles leave the capture's plane, by at most the displacement (what the rays leave out within 20 m).
+// R. the rope 8D0D26B9: rt_capture_rope_sm3's TEXCOORD0 equals the game's world position (its TEXCOORD5) bit for bit.
+// Q. the placed rope 3926A823 (turned to the camera in view space): rt_capture_rope_rigid_sm3's TEXCOORD0 through the game's
+//    view and projection is the game's SV_Position within 1e-4 x |w|; CONTROL: its TEXCOORD5 (the rope's middle) is not.
+static bool CheckCaptures(const std::string& dump, const std::string& built) {
+  const auto rigid_game = Load(dump + "/0x9AEE504E.vs_5_0.cso");
+  const auto hull = Load(dump + "/0x0A3E0133.hs_5_0.cso");
+  const auto domain = Load(dump + "/0x1C0B3B3A.ds_5_0.cso");
+  const auto rigid_capture = Load(built + "/rt_capture_rigid_sm41.cso");
+  const auto rigid_rows = Load(built + "/motion_record_rigid_sm41.cso");
+  const auto rope_game = Load(dump + "/0x8D0D26B9.vs_4_0.cso");
+  const auto rope_capture = Load(built + "/rt_capture_rope_sm3.cso");
+  const auto placed_rope_game = Load(dump + "/0x3926A823.vs_4_0.cso");
+  const auto placed_rope_capture = Load(built + "/rt_capture_rope_rigid_sm3.cso");
+  for (const auto* code : {&rigid_game, &hull, &domain, &rigid_capture, &rigid_rows, &rope_game, &rope_capture, &placed_rope_game, &placed_rope_capture}) {
+    if (code->empty()) {
+      std::printf("captures: a shader is missing\n  FAILED\n");
+      return false;
+    }
+  }
+  bool ok = true;
+
+  // T: 64 patches, each its own placement; POSITION0 and the rows small (the world within 1.25 m of the origin).
+  constexpr UINT PATCHES = 64;
+  const UINT inputs = InputCount(rigid_game);  // POSITION0, TEXCOORD0, NORMAL0-2, COLOR0, POSITION1-7
+  std::vector<float> vertices;
+  for (UINT patch = 0; patch < PATCHES; ++patch) {
+    const auto rows = MakeRows(0.5f, 0.5f);
+    for (int corner = 0; corner < 3; ++corner) {
+      for (UINT input = 0; input < inputs; ++input) {
+        if (input == 0) {
+          vertices.insert(vertices.end(), {Range(-0.5f, 0.5f), Range(-0.5f, 0.5f), Range(-0.5f, 0.5f), 1.f});
+        } else if (input >= 6 && input <= 8) {
+          vertices.insert(vertices.end(), rows[input - 6].begin(), rows[input - 6].end());
+        } else {
+          vertices.insert(vertices.end(), {Range(0.f, 1.f), Range(0.f, 1.f), Range(0.f, 1.f), Range(0.f, 1.f)});
+        }
+      }
+    }
+  }
+  // rigid_config_PS: g_tesselation_factor 4, g_tesselation_displacement_scale 0.1; wind_VS 0. The HS culls patches facing away
+  // from cb0[3]: 0 (NaN: none culled).
+  ID3D11Buffer* config = MakeConstants({0.f, 0.f, 0.f, 0.f, 0.f, 4.f, 0.1f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f});
+  ID3D11Buffer* wind = MakeConstants(std::vector<float>(4, 0.f));
+  Camera far_camera = MakeCamera({1e4, 1e4, 1e4});
+  Camera near_camera = MakeCamera({0.0, 0.0, 0.0});
+  auto far_constants = far_camera.Constants();
+  auto near_constants = near_camera.Constants();
+  for (int k = 0; k < 4; ++k) far_constants[12 + k] = near_constants[12 + k] = 0.f;
+  ID3D11Buffer* far_buffer = MakeConstants(far_constants);
+  ID3D11Buffer* near_buffer = MakeConstants(near_constants);
+  ID3D11ShaderResourceView* displacement = MakeTexture(D3D_SRV_DIMENSION_TEXTURE2D, 77);
+  const D3D11_SAMPLER_DESC sampler_desc = {D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_TEXTURE_ADDRESS_WRAP,
+                                           0.f, 1, D3D11_COMPARISON_NEVER, {0.f, 0.f, 0.f, 0.f}, 0.f, D3D11_FLOAT32_MAX};
+  ID3D11SamplerState* sampler = nullptr;
+  device->CreateSamplerState(&sampler_desc, &sampler);
+  const Stages game_vs = {.layout_code = &rigid_game, .vs = &rigid_game, .constants = {far_buffer, config, wind}};
+  const Stages capture = {.layout_code = &rigid_game, .vs = &rigid_capture, .constants = {far_buffer, config, wind}};
+  const Stages record = {.layout_code = &rigid_game, .vs = &rigid_rows, .constants = {far_buffer, config, wind}};
+  Stages chain = {.layout_code = &rigid_game, .vs = &rigid_game, .hs = &hull, .ds = &domain, .constants = {far_buffer, config, wind},
+                  .ds_texture = displacement, .ds_sampler = sampler};
+  const auto captured = StreamOut(capture, vertices, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, "TEXCOORD", 0);
+  // The game's TEXCOORD0 is its xyz.
+  const auto world = StreamOut(game_vs, vertices, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, "TEXCOORD", 0, 3);
+  uint64_t t1_differ = 0, t1_w = 0;
+  for (size_t v = 0; v < PATCHES * 3 && captured.size() == PATCHES * 12 && world.size() == PATCHES * 9; ++v) {
+    t1_differ += SameBits(&captured[v * 4], &world[v * 3], 3) ? 0 : 1;
+    t1_w += captured[v * 4 + 3] == 1.f ? 0 : 1;
+  }
+  const bool t1 = captured.size() == PATCHES * 12 && world.size() == PATCHES * 9 && t1_differ == 0 && t1_w == 0;
+  std::printf("T tessellated rigid 9AEE504E (%u patches)\n  T1 capture vs the game's world position: %zu / %zu vertices, %llu differ, %llu w not 1 (0, 0)\n", PATCHES,
+              captured.size() / 4, world.size() / 3, (unsigned long long)t1_differ, (unsigned long long)t1_w);
+  uint64_t t2_differ = 0;
+  for (UINT row = 0; row < 3; ++row) {
+    const auto rows = StreamOut(record, vertices, D3D11_PRIMITIVE_TOPOLOGY_POINTLIST, "TEXCOORD", row);
+    for (size_t v = 0; v < PATCHES * 3; ++v) {
+      t2_differ += (rows.size() == PATCHES * 12 && SameBits(&rows[v * 4], &vertices[(v * inputs + 6 + row) * 4], 4)) ? 0 : 1;
+    }
+  }
+  std::printf("  T2 rows vs POSITION1-3: %llu of %u differ (0)\n", (unsigned long long)t2_differ, PATCHES * 9);
+  const auto far_chain = StreamOut(chain, vertices, D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST, "TEXCOORD", 0);
+  uint64_t t3_differ = 0;
+  // Corner order within a triangle is the tessellator's: compared as sets.
+  const auto sorted = [](const float* triangle) {
+    std::array<std::array<uint32_t, 3>, 3> corners = {};
+    for (int c = 0; c < 3; ++c) std::memcpy(corners[c].data(), triangle + c * 4, 12);
+    std::sort(corners.begin(), corners.end());
+    return corners;
+  };
+  for (UINT patch = 0; patch < PATCHES && far_chain.size() == captured.size(); ++patch) {
+    t3_differ += sorted(&far_chain[patch * 12]) == sorted(&captured[patch * 12]) ? 0 : 1;
+  }
+  const bool t3 = far_chain.size() == captured.size() && t3_differ == 0;
+  std::printf("  T3 the game's chain 17 km away: %zu triangles (%u), %llu differ from the capture's (0)\n", far_chain.size() / 12, PATCHES,
+              (unsigned long long)t3_differ);
+  chain.constants[0] = near_buffer;
+  const auto near_chain = StreamOut(chain, vertices, D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST, "TEXCOORD", 0);
+  const size_t per_patch = near_chain.size() / 12 / PATCHES;
+  double largest = 0.0;
+  uint64_t off_plane = 0;
+  for (UINT patch = 0; patch < PATCHES && per_patch > 0 && near_chain.size() == per_patch * PATCHES * 12; ++patch) {
+    const float* a = &captured[patch * 12];
+    const std::array<double, 3> e1 = {double(a[4]) - a[0], double(a[5]) - a[1], double(a[6]) - a[2]};
+    const std::array<double, 3> e2 = {double(a[8]) - a[0], double(a[9]) - a[1], double(a[10]) - a[2]};
+    std::array<double, 3> n = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
+    const double length = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    for (double& c : n) c /= length;
+    for (size_t v = patch * per_patch * 3; v < (patch + 1) * per_patch * 3; ++v) {
+      const float* p = &near_chain[v * 4];
+      const double distance = std::fabs((p[0] - a[0]) * n[0] + (p[1] - a[1]) * n[1] + (p[2] - a[2]) * n[2]);
+      largest = std::max(largest, distance);
+      off_plane += distance > 1e-3 ? 1 : 0;
+    }
+  }
+  const bool t4 = per_patch > 1 && near_chain.size() == per_patch * PATCHES * 12 && off_plane > 0 && largest <= 0.1 + 1e-4;
+  std::printf("  T4 CONTROL the chain among the patches: %zu triangles a patch (> 1), %llu of %zu corners off the capture's plane (> 0), at most %.4f (<= 0.1)\n",
+              per_patch, (unsigned long long)off_plane, near_chain.size() / 4, largest);
+  const bool t2 = t2_differ == 0;
+  std::printf("  %s\n", t1 && t2 && t3 && t4 ? "PASSED" : "FAILED");
+  ok = ok && t1 && t2 && t3 && t4;
+  for (IUnknown* object : std::initializer_list<IUnknown*>{config, wind, far_buffer, near_buffer, displacement, sampler}) {
+    if (object != nullptr) object->Release();
+  }
+
+  // R and Q: 300 vertices a rope, the camera 30-60 m away.
+  constexpr UINT ROPE_VERTICES = 300;
+  const Camera rope_camera = MakeCamera({Range(30.f, 60.f), Range(5.f, 20.f), Range(-60.f, -30.f)});
+  ID3D11Buffer* rope_constants = MakeConstants(rope_camera.Constants());
+  for (const bool placed : {false, true}) {
+    const auto& game_code = placed ? placed_rope_game : rope_game;
+    const UINT rope_inputs = InputCount(game_code);  // POSITION0, NORMAL0, TEXCOORD0-2 (and POSITION1-6 placed)
+    std::vector<float> rope;
+    for (UINT v = 0; v < ROPE_VERTICES; ++v) {
+      const auto rows = MakeRows(1.f, 10.f);
+      for (UINT input = 0; input < rope_inputs; ++input) {
+        if (input == 0) {
+          rope.insert(rope.end(), {Range(-10.f, 10.f), Range(0.f, 10.f), Range(-10.f, 10.f), 1.f});
+        } else if (input == 1) {
+          rope.insert(rope.end(), {Range(-1.f, 1.f), Range(-1.f, 1.f), Range(-1.f, 1.f), 0.f});
+        } else if (input == 3) {
+          rope.insert(rope.end(), {Range(0.02f, 0.2f), Range(0.f, 1.f), 0.f, 0.f});  // the width, the uv's v
+        } else if (input >= 5 && input <= 7) {
+          rope.insert(rope.end(), rows[input - 5].begin(), rows[input - 5].end());
+        } else {
+          rope.insert(rope.end(), {Range(0.f, 1.f), Range(0.f, 1.f), Range(0.f, 1.f), Range(0.f, 1.f)});
+        }
+      }
+    }
+    const Stages game_stages = {.layout_code = &game_code, .vs = &game_code, .constants = {rope_constants}};
+    const Stages capture_stages = {.layout_code = &game_code, .vs = placed ? &placed_rope_capture : &rope_capture, .constants = {rope_constants}};
+    const auto rope_world = StreamOut(capture_stages, rope, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, "TEXCOORD", 0);
+    const auto game_world = StreamOut(game_stages, rope, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, "TEXCOORD", 5);
+    const bool counted = rope_world.size() == ROPE_VERTICES * 4 && game_world.size() == ROPE_VERTICES * 4;
+    if (!placed) {
+      // CONTROL: the game's from another camera (the ribbon turns to it).
+      ID3D11Buffer* other_constants = MakeConstants(MakeCamera({-40.0, 30.0, 50.0}).Constants());
+      const Stages other_stages = {.layout_code = &game_code, .vs = &game_code, .constants = {other_constants}};
+      const auto other_world = StreamOut(other_stages, rope, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, "TEXCOORD", 5);
+      other_constants->Release();
+      uint64_t differ = 0, control_differ = 0;
+      for (UINT v = 0; v < ROPE_VERTICES && counted && other_world.size() == ROPE_VERTICES * 4; ++v) {
+        differ += SameBits(&rope_world[v * 4], &game_world[v * 4], 4) ? 0 : 1;
+        control_differ += SameBits(&rope_world[v * 4], &other_world[v * 4], 4) ? 0 : 1;
+      }
+      const bool r = counted && other_world.size() == ROPE_VERTICES * 4 && differ == 0 && control_differ > ROPE_VERTICES / 2;
+      std::printf("R rope 8D0D26B9: capture vs the game's world position: %zu vertices, %llu differ (0); CONTROL the game's from another camera: %llu differ (> %u)\n  %s\n",
+                  rope_world.size() / 4, (unsigned long long)differ, (unsigned long long)control_differ, ROPE_VERTICES / 2, r ? "PASSED" : "FAILED");
+      ok = ok && r;
+      continue;
+    }
+    const auto game_clip = StreamOut(game_stages, rope, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, "SV_Position", 0);
+    const auto clip_of = [&rope_camera](const float* world) {
+      std::array<double, 4> view = {}, clip = {};
+      for (int row = 0; row < 4; ++row) {
+        for (int k = 0; k < 4; ++k) view[row] += rope_camera.view[row][k] * double(k < 3 ? world[k] : 1.f);
+      }
+      for (int row = 0; row < 4; ++row) {
+        for (int k = 0; k < 4; ++k) clip[row] += rope_camera.projection[row][k] * view[k];
+      }
+      return clip;
+    };
+    uint64_t misses = 0, control_misses = 0;
+    for (UINT v = 0; v < ROPE_VERTICES && counted && game_clip.size() == ROPE_VERTICES * 4; ++v) {
+      const auto ours = clip_of(&rope_world[v * 4]);
+      const auto middle = clip_of(&game_world[v * 4]);
+      const double tolerance = 1e-4 * std::max(1.0, std::fabs(double(game_clip[v * 4 + 3])));
+      bool miss = false, control_miss = false;
+      for (int c = 0; c < 4; ++c) {
+        miss = miss || std::fabs(ours[c] - game_clip[v * 4 + c]) > tolerance;
+        control_miss = control_miss || std::fabs(middle[c] - game_clip[v * 4 + c]) > tolerance;
+      }
+      misses += miss ? 1 : 0;
+      control_misses += control_miss ? 1 : 0;
+    }
+    const bool q = counted && game_clip.size() == ROPE_VERTICES * 4 && misses == 0 && control_misses > ROPE_VERTICES / 2;
+    std::printf("Q placed rope 3926A823: capture through view and projection vs the game's SV_Position: %llu of %u miss (0); CONTROL the rope's middle: %llu miss (> %u)\n  %s\n",
+                (unsigned long long)misses, ROPE_VERTICES, (unsigned long long)control_misses, ROPE_VERTICES / 2, q ? "PASSED" : "FAILED");
+    ok = ok && q;
+  }
+  rope_constants->Release();
+  return ok;
+}
+
 int main(int argc, char** argv) {
   if (argc < 5) {
     std::printf("usage: tests.exe <the game's dumped csos> <the add-on's built csos> <VFX Brightness's float in b13> <Fog Strength's (-1 none)> [all]\n");
@@ -587,6 +981,12 @@ int main(int argc, char** argv) {
     }
     ++checked;
     passed += CheckFog(build, dump, built) ? 1 : 0;
+  }
+  if (all || std::ifstream(built + "/rt_capture_rope_sm3.cso").good()) {
+    ++checked;
+    passed += CheckCaptures(dump, built) ? 1 : 0;
+  } else {
+    std::printf("captures: not in this add-on (skipped)\n");
   }
   std::printf("%s: %d of %d\n", passed == checked && checked > 0 ? "PASS" : "FAIL", passed, checked);
   return passed == checked && checked > 0 ? 0 : 1;

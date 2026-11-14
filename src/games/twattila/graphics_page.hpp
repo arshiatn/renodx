@@ -208,6 +208,7 @@ struct Bindings {
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
   float* rays_branch_cut_outs = nullptr;  // Trunks and branches cut out in the rays as drawn; null: no such row
   float* rays_unseen_cut_outs = nullptr;  // Cut-out masks no trace has shown drawn (rt_core.hpp PixelMask::row); null: no such row
+  float* rays_untraced_casters = nullptr;  // Families drawn in no trace (rt_core.hpp SceneShader::held_row); null: no such row
   float* rays_start_past = nullptr;  // Rays start past what hides a pixel from the camera; null: no such row
   float* rays_faded_parts = nullptr;  // Instances the game fades out stay out of the rays (rt_core.hpp Host::faded_row); null: no such row
   float* rays_trunks_as_drawn = nullptr;  // Tree trunks captured every frame as drawn (rt_core.hpp SceneShader::dynamic_row); null: no such row
@@ -1055,6 +1056,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .label = "Cut-outs on More Models (Experimental)",
           .section = section,
           .tooltip = "Rays see more unit parts and props with the holes the game cuts in them.",
+          .is_visible = more_rays,
+      });
+    }
+    if (b.rays_untraced_casters != nullptr) {
+      page.Add(new Setting{
+          .key = "RayTracedUntracedCasters",
+          .binding = b.rays_untraced_casters,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Rarer Objects in the Rays (Experimental)",
+          .section = section,
+          .tooltip = "Ropes, and objects the game tessellates (its Tessellation on), also cast ray-traced shadows.",
           .is_visible = more_rays,
       });
     }
