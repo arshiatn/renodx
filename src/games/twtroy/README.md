@@ -1,5 +1,43 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### Round v50 (2026-11-14, built only, not run in game)
+
+- **New (Experimental, off): Rays Replace Shadow Maps and Skip the Shadow Maps.** The 12 sun shaders that read the per-frame shadow maps (the twins of Pharaoh's 12) take them as lit where the rays' shadow is bound, so the sun's shadow comes from the rays alone; the baked far map stays the game's. The hook moved from Pharaoh into shared code (`twattila/sun_replace_maps.hpp`, Pharaoh's behaviour unchanged). WARP (`tools/tw/troy/sun_test` v54 on the game's bytes, synthetic and ATN's trace constants): the 12 listed are exactly the sun shaders reading the atlas through s2; rays only = the game's with the atlas lit, 0 of 2,752,512 values apart; off again = today's; controls 1.26 M apart.
+
+Test list (in-game AA off, DLSS, RT/PT preset):
+1. Rays Replace Shadow Maps on: the sun's shadows come from the rays alone (Softness shows in full); far terrain keeps the game's baked shadow.
+2. Skip the Shadow Maps on (with 1): the same picture, a little faster; turning both off brings the game's shadows back.
+3. Rivers and the sea at Ultra Performance: reflections line up with the scene, rough water as soft as at DLAA.
+4. Shadow Casters Out of View on: tree (and leaf) shadows at the screen's edge stay while panning.
+5. DLAA, then DLSS Performance: dark scenes keep their shadow detail.
+6. Path-Traced AO: the sky light looks like the game's ambient.
+7. Coloured Shadows on: banner and sail shadows take their colour.
+8. Ultra Performance: GT-VBAO / SSAO fill the whole view; the campaign shroud's edge lines up.
+9. Rays on: grass and far trees cast ray-traced shadows (Far Tree Shadows on).
+10. Light Through Foliage 0.5: leaf and grass shadows let some sun through; walls stay dark.
+
+Not done: point lights / the fires' particle lights in the rays (a replaced 143A02ED reading rt_local_lights.hlsli: the session-3 reads give its 64-byte instances); campaign trees 54D2CFBD / billboards DF8EAF69 (a cut-out capture of Troy's rigid standard); the game's contact march off under ours (not moved into shared code: NOT DONE).
+
+### Round v49 (2026-11-14, ATN's third session's traces at 50% / 33%; built only, not run in game)
+
+- **Fixed: below 100% the water's and metal's screen-space reflections read the whole screen into the view.** The SSR apply 00645DA1 (its quad's TEXCOORD0 spans the viewport: the traces' vertex reads) now reads at the render share, as Pharaoh's twin (`shaders/ssrapply00`, one decompiler bug corrected). WARP: 100% the game's bytes to the bit; 33% = 100% (1 pixel in 6 scenes within 0.011: bilinear weights).
+- **New (Experimental, with Shadow Casters Out of View): leaves out of the view cast ray-traced shadows** (Troy's leaf shadow VS writes no TEXCOORD4: Pharaoh's geometry shader gets `RT_NO_FADE`, Pharaoh's bytes unchanged).
+- Facts from the traces: the AO, shroud and SSR fixes' shaders are drawn at 50% / 33% as the census assumed (now level A); point lights 143A02ED: two instanced draws a frame (7 lights in one, 64-byte instances) in the night battle and the campaign; the night's fires: particle lights 643FC156; the helper's RT log: static meshes in dynamic vertex buffers captured every frame (0.1-0.4 ms CPU).
+
+Test list (in-game AA off, DLSS Performance or Ultra Performance):
+1. Rivers and the sea: reflections line up with the scene at every Upscaling Mode (no stretched copy of the screen).
+2. Rough water: its reflections as soft at Ultra Performance as at DLAA.
+3. Shadow Casters Out of View on: tree shadows at the screen's edge stay while panning (leaves too, not only trunks).
+4. DLAA, then DLSS Performance: dark scenes keep their shadow detail (Round v48's encoding fix).
+5. RT/PT preset: battle and campaign render; Path-Traced AO's sky light looks like the game's ambient.
+6. Coloured Shadows on: banner and sail shadows take their colour, not a blue-grey tint everywhere.
+7. Ultra Performance: GT-VBAO / the game's SSAO fill the whole view; the campaign shroud's edge lines up.
+8. Rays on: grass and far trees cast ray-traced shadows (Far Tree Shadows on).
+9. Light Through Foliage 0.5: leaf and grass shadows let some sun through; walls stay dark.
+10. FSR / XeSS on another GPU: no DLSS start; the page's three presets switch cleanly.
+
+Not done: point lights and the fires' particle lights in the rays (a replaced 143A02ED reading rt_local_lights.hlsli, Pharaoh's fire02 form); Rays Replace Shadow Maps / Shadows Only (Pharaoh's OnSunReplaceMaps on Troy's 12 twins, then the sun test's v54 P-tests); the game's contact march off under ours (Pharaoh's OnSunContactShadows, best moved to shared code); campaign trees 54D2CFBD / billboards DF8EAF69 (a cut-out capture of Troy's rigid standard); the RT log of the new casters (session 3 ran the trace build).
+
 ### Round v48 (2026-11-14, Pharaoh's engine twin ported; built only, not run in game)
 
 Proof: Troy's shaders are Pharaoh's sources in another build (same-name twins; a few the same bytes), checked on Troy's own bytes (RDEF, signatures, instructions), WARP where code runs, and ATN's 2026-11-14 traces (campaign + night siege, 100%, in-game AA off). Tools: `tools/tw/troy` (plan_1114.md).
