@@ -107,6 +107,7 @@ void main(
   r0.z = -1.44269502 * r0.z;
   r0.z = exp2(r0.z);
   r0.z = 1 + -r0.z;
+  r0.z *= SI.dof;  // Depth of Field: the blur size x the row (1: the game's)
   r2.xyzw = float4(0,0,0,0);
   r0.w = 0;
   r3.x = 0;

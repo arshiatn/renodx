@@ -132,6 +132,7 @@ struct ShaderInjectData {
 
   // Appended (parity round, 2026-11-14).
   float fog_strength;  // the battle fog's opacity (shaders/battlefog00) x this, 1 the game's
+  float dof;           // depth of field's blur size (shaders/t03, t04, t06, t07: hdr_to_screen with depth of field) x this
 };
 
 #define SI shader_injection
