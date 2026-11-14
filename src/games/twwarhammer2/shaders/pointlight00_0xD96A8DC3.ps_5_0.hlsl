@@ -1,6 +1,6 @@
 // pointlightsmoothfalloff slm (D96A8DC3, VS D2A0FF23: a light an instance, POSITION1 its colour, POSITION2 its place and
 // reach): the game's, x the light's traced visibility (Torch and Fire Shadows: twattila/rt_scene.hpp InstallPointLights,
-// twattila/rt_local_lights.hlsli). Runs only with the rays' mask bound (addon.cpp traced_lights); otherwise the game's
+// twattila/rt_local_lights.hlsli). Runs only with the rays' mask bound (addon.cpp PointLightRays); otherwise the game's
 // own bytes do.
 #include "../../twattila/rt_local_lights.hlsli"
 
