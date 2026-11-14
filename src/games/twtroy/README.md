@@ -3,6 +3,7 @@
 ### Parity round (2026-11-14; built only, not run in game)
 
 - Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Sprite Soldier Shadows (Experimental, off: the sprite soldiers in the rays through a geometry-shader capture, WARP test/tw_rays_captures); the campaign trees cut out in the rays at the game's 0.01, not 0.5 (needs the next helper, 114); Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
+- Round 2 (built only, not run in game): **Rarer Objects in the Rays (Experimental, off; the rays' More Options)**, as Attila's: the ropes (ships, siege equipment) cast ray-traced shadows, and with Shadow Casters Out of View also from out of view. Their shaders are Warhammer's instruction for instruction, so Warhammer's captures (`tools/tw/round_notes/p2sm_ropes_asm.txt`). Tessellated objects stay out: this game's dump holds no hull or domain shader.
 
 Parity table against Attila's page: `tools/tw/troy/parity_1114.md` (have 20, done now 13, needs a trace 4, won't get 11 with
 proofs, open 3).
