@@ -1,5 +1,48 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### Parity round 2 (2026-11-14; built only, not run in game)
+
+The first round's doable leftovers (table: `tools/tw/wh2/parity_1114.md`).
+- **New: Fog Strength (Extra, 0-2, 1 = the game's)** on the battle fog (battle and campaign: its extinction 16AB86F4 and
+  in-scattering 492B87C7, the only fog shaders in ATN's traces), as Warhammer III's. WARP: at 1 the game's bits.
+- **New: Grass Height Distance (Grass & Trees tests, 0.25-10x)**: the grass's 100 m (its height, its normal's fade to the
+  ground's, its depth pre-pass) and its motion and ray-tracing copies. WARP: at 1 the game's bits.
+- **New: Rarer Units and Props in the Rays (Experimental, off; Ray Tracing Extra Options)**: every caster family in no trace
+  of ATN's (level B): liquid, animated-overlay and alpha-tested units (emissive / wind / overlay), liquid, wind-blown and
+  alpha-tested props, wind planes, sails and their symbols (thin, as Attila's), the campaign's older trees. The alpha-tested
+  ones cut out as their only G-buffer shaders clip (diffuse alpha below 0.5; blended passes left out). WARP: each capture's
+  world is the game's position, every cut-out UV the game's (three decompile slips fixed: a cbuffer pair read as one).
+- **The campaign's army banners cast ray-traced shadows** (7DF335FF): the game draws two into its shadow map on the campaign,
+  none in battle; they are now taken from there (with Shadow Casters Out of View, on in RT/PT). Shared: an opt-in define in
+  `twpharaohdynasties/rt_outside_view.gs_5_0.hlsl` (every other variant's bytes unchanged) and an opt-in row field in
+  `twattila/rt_core.hpp` (`SceneShader::held_row`, null as before).
+- **New: Depth of Field (Extra, 0-2, 1 = the game's, 0 off)** on its circle of confusion (C337D8E3, 91B4F89A).
+- **New: Fog & Sky Smoothing (Extra, Off-High + Strength)**, as Warhammer's and Attila's, on the legacy battle fog's sky.
+- **New: Smooth Banner Shadows (Experimental)**, Attila's row, now that sails are in the rays (on in RT/PT as Attila's).
+- **Every graphics level** (ATN: not everyone plays at highest settings): Fog Strength also on the fog's low-quality, PCF and
+  shader model 4.1 permutations and the legacy fog; Grass Height Distance on the MSAA pre-pass, the clipped and MSAA
+  G-buffer and the grass's shadow; Indicator Brightness on the indicators' forward, overlay and grid-border shaders. Each
+  WARP-tested against the game's bytes: at 1 / Off the game's bits (every pixel compared kept), controls differ.
+
+Test list (RT/PT unless named):
+1. Fog Strength 0 and 2 in a foggy battle and on the campaign: the fog goes and thickens; 1 looks as before.
+2. Grass Height Distance 3 in a grassy battle: full grass farther out, no ring where it ended; cost in the overlay.
+3. The campaign, an army on open ground: its banner's shadow on the ground as without rays.
+4. Rarer Units and Props in the Rays on, a battle with liquid / glowing / caped lords: their shadows sit under them, capes
+   and fur cut out; a coastal campaign with ships: sail shadows; older campaign trees cast.
+5. Depth of Field 0 and 2 in a cutscene (the game's Depth of Field on): no blur, more blur.
+6. Low graphics (fog / grass low, MSAA on): Fog Strength and Grass Height Distance still act; Fog & Sky Smoothing on a map
+   with the old fog (vertical lines in thick fog go).
+
+Not done:
+- The three VFX Brightness rows: which particle slices are rain / snow can't be read offline (a snow or rain battle with
+  FrameTraceReads).
+- Smoke shadows without rays: a 64-bit camera / sun host (a later shared step).
+- Ropes (camera-facing ribbons: their shadow would turn with the camera; a sun-facing version needs a shared capture flag),
+  sprite soldiers (expanded by a geometry shader: rt_core captures vertex shaders only), the tessellated displacement
+  meshes (hull / domain stages: no WARP path for them yet). Won't: the Tomb Kings' sand dome (only blended pixel shaders: a
+  see-through dome over the battle), the far global terrain (under the near patches: they'd shadow each other).
+
 ### Parity round (2026-11-14; built only, not run in game)
 
 Attila's page and features against this game's (table: `tools/tw/wh2/parity_1114.md`; Warhammer2.exe only read, never
@@ -25,15 +68,17 @@ Test list (RT/PT unless named):
 
 Not done:
 - Fog Strength: the fog's two shaders are known (16AB86F4, 492B87C7); needs Warhammer III's constant-buffer route and a WARP
-  check. Grass Height Distance: the grass VS 71EB7463, its motion and capture copies (three shaders and a WARP check).
+  check. Grass Height Distance: the grass VS 71EB7463, its motion and capture copies (three shaders and a WARP check). (Both
+  done in round 2, as the banners and the four units and props below.)
 - Depth of Field, Fog & Sky Smoothing and the three VFX Brightness rows: their passes drew in no trace (a cutscene, a fogged
-  battle, a snow or rain battle with FrameTraceReads).
+  battle, a snow or rain battle with FrameTraceReads). (The first two done in round 2, WARP against the game's bytes.)
 - Smoke shadows without rays: needs a 64-bit camera / sun host (shared step for every 64-bit game).
 - Campaign army banners (7DF335FF): the campaign draws two into its shadow atlas; they need an outside-view variant that keeps
   what is in view (an opt-in define in the shared geometry shader) and a row. In battle the game gives banners no shadow.
 - Units and props in no trace, not in the rays: weighted2_liquid, weighted4_animated_overlay, rigid_character_prop_liquid,
   rigid_wind_worldspace (capture versions + a GPU check); the alpha ones, sails and ropes, campaign trees, sprite soldiers,
-  the sand dome and the tessellated displacement meshes need a trace first.
+  the sand dome and the tessellated displacement meshes need a trace first. (Round 2: all but the ropes, sprites, sand dome
+  and tessellated meshes done offline, WARP against the game's bytes.)
 - Won't get: Attila's exe-code rows (this exe is protected), rows whose values this game lacks or never reads, Attila's
   own SSR rows, Modded Auto Exposure (this game computes exposure on the CPU), Particle Resolution (the game already draws
   its lit particles at half size).

@@ -29,9 +29,12 @@
 // _leaf_gs.h, RT_CARD __rt_outside_view_card _card_gs.h); Troy's leaves: /D RT_LEAF /D RT_NO_FADE /Vn __rt_outside_view_leaf
 // /Fh src\games\twtroy\rt_outside_view_leaf_gs.h; Warhammer II's campaign trees: /D RT_WORLD_UV /Vn __rt_outside_view_world_uv
 // /Fh src\games\twwarhammer2\rt_outside_view_world_uv_gs.h, its far cards: /D RT_CARD_SPLIT /Vn __rt_outside_view_card_split
-// /Fh src\games\twwarhammer2\rt_outside_view_card_split_gs.h; Warhammer's campaign trees: /D RT_COLOR_WORLD
-// /Vn __rt_outside_view_colour_world /Fh src\games\twwarhammer\rt_outside_view_colour_world_gs.h; Troy's campaign trees:
-// /D RT_WORLD_UV /D RT_COLOUR /Vn __rt_outside_view_colour_world_uv /Fh src\games\twtroy\rt_outside_view_colour_world_uv_gs.h.
+// /Fh src\games\twwarhammer2\rt_outside_view_card_split_gs.h, its campaign banners (RT_KEEP_IN_VIEW, opt-in: every triangle
+// kept, for a caster whose main pass isn't held; 7DF335FF's TEXCOORD0 the world): /D RT_WORLD /D RT_KEEP_IN_VIEW
+// /Vn __rt_outside_view_world_kept /Fh src\games\twwarhammer2\rt_outside_view_world_kept_gs.h; Warhammer's campaign trees:
+// /D RT_COLOR_WORLD /Vn __rt_outside_view_colour_world /Fh src\games\twwarhammer\rt_outside_view_colour_world_gs.h; Troy's
+// campaign trees: /D RT_WORLD_UV /D RT_COLOUR /Vn __rt_outside_view_colour_world_uv
+// /Fh src\games\twtroy\rt_outside_view_colour_world_uv_gs.h.
 #include "../twattila/rt_capture.hlsli"
 
 cbuffer MainView : register(b0) {
@@ -111,7 +114,12 @@ void main(triangle Corner corners[3], inout TriangleStream<Output> stream) {
     z[corner] = dot(world, main_view[12]);
     w[corner] = dot(world, main_view[13]);
   }
+#if defined(RT_KEEP_IN_VIEW)
+  // A caster the main pass never holds (Warhammer II's campaign banners 7DF335FF): what is in the view stays too.
+  const bool outside = true;
+#else
   const bool outside = all(w <= 0.f) || all(x > w) || all(x < -w) || all(y > w) || all(y < -w) || all(z > w);
+#endif
 #if defined(RT_CARD_SPLIT)
   // B7ED5B72 discards all of a card faded below half (its alpha x the fade x at most 1 against 0.5): collapsed too.
   const bool shown = outside && (corners[0].unfaded.x <= 0.5f);
