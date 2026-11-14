@@ -109,6 +109,7 @@ struct Sliders {
   float gpu_micromaps = 1.f;
   float smoke_shadows = 0.f;  // games whose particles InstallSmokeShadows hooks
   float smoke_quality = 1.f;
+  float smoke_fast_build = 0.f;  // SmokeFastBuildRow's (Attila, Warhammer III)
   float denoiser = 0.f;  // Ray Tracing Denoiser (Attila's page): Built-in, NRD
   float ao_reblur = 1.f;  // AO under Ray Reconstruction: Light History, REBLUR (games without graphics_page's row keep v34's REBLUR)
   float start_past = 0.f;  // Rays Start Past Hidden Shapes (Bindings::rays_start_past)
@@ -208,6 +209,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
                                 ? sliders.grass_range
                                 : sliders.grass_shadow_range,
       .grass_range = sliders.grass_range,
+      .smoke_fast_build = sliders.smoke_fast_build != 0.f,
       .path_ser = sliders.path_ser != 0.f,
       .sharc = sliders.sharc != 0.f,
       .reuse_lean = sliders.reuse_lean != 0.f,
@@ -1602,6 +1604,24 @@ inline void Uninstall() {
   }
   renodx::utils::command_action::Unregister(OnCutOutShadowDraw);
   UninstallScene();
+}
+
+// Smoke BLAS Fast Build (Experimental, off; helper113, Settings::smoke_fast_build): the row of the games that list it
+// (Attila, Warhammer III), next to Smoke Shadow Quality on the graphics page.
+inline renodx::utils::settings::Setting* SmokeFastBuildRow(Sliders* sliders, const feature_settings::AaSliders* aa) {
+  return new renodx::utils::settings::Setting{
+      .key = "RayTracedSmokeFastBuild",
+      .binding = &sliders->smoke_fast_build,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Faster Smoke Shadow Build (Experimental)",
+      .section = feature_settings::AA_SECTION,
+      .tooltip = "Smoke Shadows' particles are made ready for the rays faster each frame (about 0.6 ms in thick smoke).\n"
+                 "In thick smoke a sun ray may count other particles: slightly different smoke shadows.",
+      .labels = {"Off", "On"},
+      .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f && sliders->smoke_shadows != 0.f; },
+      .is_visible = [] { return internal::smoke_shadows_installed; },
+  };
 }
 
 // The settings after the anti-aliasing's (`ambient_alone`: the ray-traced ambient occlusion in place of the game's and

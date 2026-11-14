@@ -1870,6 +1870,7 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
+  settings.push_back(twattila::rt_scene::SmokeFastBuildRow(&rt_sliders, &aa_sliders));
   settings.push_back(new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::BUTTON,
       .label = "Time Each Pass (One Frame)",
