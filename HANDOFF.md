@@ -669,6 +669,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   stays in our add-on (and he gets a note so nothing collides). Owner of the author-side patches: CPU ROUND 4 (memfast
   65-127 B, his disabled loopfetch prefetch site in the animation pack loop, the x87 block over his bytes), each with tests
   and a bench A/B against P.
+  - [ ] When the 16-thread batch ends: TELL ATN the verdict right away; if 16 threads is slower than today's 8-core
+    numbers, ATN switches the rule back to the 8 V-cache cores (one thread a core)
   - [ ] After everything: one A/B of ATN's CPU set rule against an affinity rule of the same 16 CPUs (ATN switches the
     rule; we measure). Owner: the bench, ATN's OK at the time
 - [ ] ATN 19:xx: (1) a 16-thread test: ATN sets CPU Set Setter's Attila rule to the V-cache CCD's 16 logical CPUs (now 8
