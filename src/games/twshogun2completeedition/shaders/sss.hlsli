@@ -390,7 +390,13 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
   // Bend's window, so shadows switch fully on / off between frames; halved (Bend's other recommended value, 2) they
   // fade in. Then Bend's IgnoreEdgePixels: depth edges (thin geometry, grazing surfaces) cast no shadow.
   if (SI.sss_stability >= 1.f) dp.ShadowContrast = max(contrast * 0.5f, 1.f);
-  dp.IgnoreEdgePixels = (SI.sss_stability >= 2.f);
+  dp.IgnoreEdgePixels = (SI.sss_stability >= 2.f) || (SI.sss_ignore_edges != 0.f);
+  // Attila's Bend rows (0: the game's): the hard and fade-out samples (multiples of 4, within the count below), the depth
+  // read along the shadow's ray, the screen's edges mirrored.
+  if (SI.sss_hard_samples > 0.f) dp.HardShadowSamples = int(SI.sss_hard_samples);
+  if (SI.sss_fade_samples > 0.f) dp.FadeOutSamples = int(SI.sss_fade_samples);
+  dp.BilinearSamplingOffsetMode = (SI.sss_along_ray != 0.f);
+  dp.MirrorEdges = (SI.sss_mirror_edges != 0.f);
   dp.LightCoordinate = g_sss_light_coordinate;
   dp.WaveOffset = g_sss_wave_offset;
   dp.FarDepthValue = 1.0f;
