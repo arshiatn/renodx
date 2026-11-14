@@ -304,6 +304,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   MERGED 57a8266f; far cards 30C453EE not doable by rows (per-corner sun turn + own atlas view).
 - [x] WH2 Water Clarity / Caustics MERGED aa12ece2 (15 PS; shared water_effects type 4 + every_refraction, other games' 133
   rows byte-identical). Thrones agent: Faster Game CPU Code for Rome II if its routines match.
+- [x] Rome II Faster Game CPU Code MERGED (empire.retail.dll 6AB978BD; truncation 104.5 -> 43.0 ns, fmod 155 -> 71 ns;
+  Experimental off; rome2 gets a new build tonight).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
