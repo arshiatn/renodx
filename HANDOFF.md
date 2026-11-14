@@ -349,6 +349,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] ATN ~10:00 (awake briefly): tests 1-3 (Lean default, torch rows, REBLUR under RR) themselves; Aftermath: not shipped
   (so no licence text in the zips); WH1 Hue Clip default 40 -> WH1 r4 7d21a0b0 installed 10:10 (page dump default=40;
   ATN's own WH1 ReShade.ini keeps hue_clip=50 until Reset / Recommended); ATN restarted the PC (zombies gone).
+- [ ] ATN ~10:1x: "I like my RT/PT preset of Attila ... put the new games to Attila's preset (sliders that don't exist in
+  Attila: a value as you fit)": agent aligning Thrones / WH2 / Troy / WH1 / Shogun 2 / Rome Remastered RT/PT to Attila's
+  (page dumps vs page_a_1114final); then build, stamp, install.
+- [ ] ATN's Rome Remastered trace (67 % / 50 %): FrameTrace=1 added to its ReShade.ini (backup
+  tools/tw/romeremastered/ini_backup_20261114_101134), multi_watch running ~75 min; remove the key after.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
 ## LATE NIGHT ROUNDS (2026-11-13 23:10, two worktree agents, offline; installed state = NIGHT MERGES 22:59)
