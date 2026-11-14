@@ -1339,6 +1339,30 @@ constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils:
   return {};
 };
 
+// Grass Dump (graphics_hooks.hpp): the grass draws' instance rows in the two frames after the dumped scrub update.
+constexpr std::array<uint32_t, 2> GRASS_VERTEX_SHADERS = {0xF3741248, 0x01FA9CDE};
+constexpr auto OnGrassDumpDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (!twattila::graphics_hooks::GrassDumpReadsRows()) return {};
+  if constexpr (requires { command.arguments.index_count; }) {
+    twattila::graphics_hooks::AddGrassDumpRows(reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native()),
+                                               {.vertex_shader = command.matched_shader_hash,
+                                                .indexed = true,
+                                                .count = command.arguments.index_count,
+                                                .instances = command.arguments.instance_count,
+                                                .first = command.arguments.first_index,
+                                                .base_vertex = command.arguments.vertex_offset,
+                                                .first_instance = command.arguments.first_instance});
+  } else if constexpr (requires { command.arguments.vertex_count; }) {
+    twattila::graphics_hooks::AddGrassDumpRows(reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native()),
+                                               {.vertex_shader = command.matched_shader_hash,
+                                                .count = command.arguments.vertex_count,
+                                                .instances = command.arguments.instance_count,
+                                                .first = command.arguments.first_vertex,
+                                                .first_instance = command.arguments.first_instance});
+  }
+  return {};
+};
+
 // Light Through Foliage: grass and leaves (SCENE_SHADERS), and the rigid objects drawn after them.
 constexpr std::array<uint32_t, 5> FOLIAGE_VERTEX_SHADERS = {0x46C616F0, 0x5B880546, 0xCABCB9D1, 0xF3741248, 0x01FA9CDE};
 constexpr std::array<uint32_t, 4> AFTER_FOLIAGE_VERTEX_SHADERS = {0x347F3DD9, 0xD830AD9B, 0xB06CB969, 0x10FE7EBC};
@@ -1897,6 +1921,14 @@ void ConfigureAddon() {
         renodx::utils::log::i("[Total War] Grass trace asked: Grass Height Distance ", shader_injection.grass_height_distance);
       },
   });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+      .label = "Grass Dump",
+      .section = twattila::engine_tests::GRASS,
+      .tooltip = "One frame of the grass's placement into tw_grass_dump_1.bin (2, 3, ...) next to the game's exe\n"
+                 "(in a battle; a short pause while it writes).",
+      .on_change = [] { twattila::graphics_hooks::DumpGrass(); },
+  });
   twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
 
   // Appended Settings (Ambient Occlusion, Global Illumination)
@@ -2118,6 +2150,10 @@ bool AttachAddon() {
     renodx::utils::command_action::Register(
         OnCampaignDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
+  for (const uint32_t shader_hash : GRASS_VERTEX_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnGrassDumpDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   // The point lights' ray-traced shadows (their light shaders replaced: shaders/pointlight*).
   twattila::rt_scene::InstallPointLights(twattila::rt_scene::POINT_LIGHT_SHADERS);
   // The battle fog's ray-traced shadows (its shader replaced: shaders/battlefog00).
@@ -2176,6 +2212,7 @@ void DetachAddon() {
   twattila::shadow_pass::Uninstall();
   twattila::graphics_hooks::shadow_map::Uninstall();
   renodx::utils::command_action::Unregister(OnCampaignDraw);
+  renodx::utils::command_action::Unregister(OnGrassDumpDraw);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();

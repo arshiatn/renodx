@@ -7,6 +7,10 @@
 
 #include <intrin.h>
 #include <windows.h>
+#include <xmmintrin.h>
+
+#include <d3d11.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <array>
@@ -17,11 +21,15 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <limits>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include "../../utils/data.hpp"
@@ -321,6 +329,322 @@ struct GrassTrace {
   std::vector<std::pair<const uint8_t*, std::string>> models;
 };
 static GrassTrace grass_trace;
+
+// Grass Dump (tools/tw/grass_replay: phase 0 of grass placed on the GPU): one frame of the scrub, its input and what the
+// game builds from it, into tw_grass_dump_<n>.bin next to the exe. Asked, the next scrub update is timed alone (DUMP_TIMING);
+// the one after it (DUMP_SCENE) first writes the scene (the scrub's and its manager's fields, the code the cell loop and
+// DrawScrub run with the values they read through absolute addresses, the angle table, the byte grid, the scrub models with
+// their LODs and parts, every quadtree node with its records), then every cell loop and DrawScrub call while it runs
+// (DUMP_CALLS); the grass draws' instance rows follow for two frames (DUMP_ROWS, DUMP_ROWS_NEXT: a frame's grass may be
+// drawn after the next update began). The file: "TWGD", its version, then chunks (a 4-byte tag, a 4-byte size, the fields;
+// pointers 8 bytes) that grass_replay.py reads.
+constexpr int DUMP_IDLE = 0;
+constexpr int DUMP_TIMING = 1;
+constexpr int DUMP_SCENE = 2;
+constexpr int DUMP_CALLS = 3;
+constexpr int DUMP_ROWS = 4;
+constexpr int DUMP_ROWS_NEXT = 5;
+constexpr uint32_t DUMP_VERSION = 1;
+constexpr uint32_t DUMP_PRESENTS = 240;  // presents without the next scrub update: the dump ends (or is given up)
+constexpr size_t DUMP_SCRUB_BYTES = 0x120;
+constexpr size_t DUMP_MANAGER_BYTES = 0xc40;
+constexpr size_t DUMP_MODEL_BYTES = 0x40;
+constexpr size_t DUMP_LOD_BYTES = 0x48;
+constexpr size_t DUMP_PART_BYTES = 0x100;
+constexpr size_t DUMP_PARAMS_BYTES = 0x38;    // the cell loop's draw parameters (+0x1b8f60 sets 0x35 bytes)
+constexpr size_t DUMP_TABLE_BYTES = 256 * 8;  // the (cos, sin) table: an angle byte's 256 entries
+constexpr uint32_t DUMP_MAX_NODES = 1u << 18;
+constexpr uint32_t DUMP_MAX_PARTS = 64;
+constexpr uint64_t DUMP_MAX_GRID = 64u << 20;
+constexpr uint32_t DUMP_MAX_CELL_RECORDS = 1u << 22;
+constexpr size_t CELL_LOOP_BYTES = SCRUB_CELL_RETURN_OFFSET + 3;
+constexpr size_t DRAW_SCRUB_BYTES = 0x380;  // to its last return (+0x37d)
+// ScrubUpdate's quadtree (+0x88; its root +0x14, as the query +0x1898800 takes it), a node 0x3c bytes: bounds +0x4 to
+// +0x1b, the records' count +0x20 and list +0x24 (CELL_COUNT, CELL_RECORDS: a node is the cell loop's cell), its 4
+// children from +0x2c (none: 0). The byte grid +0xa0 (its row shift +0xa8, offset +0xb0, unsigned clamp +0xb4) and the
+// (cos, sin) table +0x118, as the cell loop reads them.
+constexpr size_t SCRUB_QUADTREE = 0x88;
+constexpr size_t QUADTREE_ROOT = 0x14;
+constexpr size_t NODE_BYTES = 0x3c;
+constexpr size_t NODE_CHILDREN = 0x2c;
+constexpr size_t SCRUB_GRID = 0xa0;
+constexpr size_t SCRUB_GRID_SHIFT = 0xa8;
+constexpr size_t SCRUB_GRID_CLAMP = 0xb4;
+constexpr size_t SCRUB_TABLE = 0x118;
+// A scrub model's LOD (DrawScrub): its parts' count +0x20 and list +0x24 (each part's draw at its vtable +0x10c), its
+// attachments' count +0x2c and list +0x30.
+constexpr size_t LOD_PART_COUNT = 0x20;
+constexpr size_t LOD_PARTS = 0x24;
+constexpr size_t LOD_ATTACHMENT_COUNT = 0x2c;
+constexpr size_t LOD_ATTACHMENTS = 0x30;
+constexpr size_t PART_DRAW_SLOT = 0x10c / 4;
+// The values the cell loop and DrawScrub read through absolute addresses in their code: the instruction's bytes before the
+// address, where it sits in the code, the value's offset from the address (a tweak's value at +0x48, +0xc0100 / +0xc0130).
+struct CodeValue {
+  size_t code_offset = 0;
+  std::string_view opcode;
+  size_t value_offset = 0;
+  bool draw_scrub = false;  // DrawScrub's code (else the cell loop's)
+};
+constexpr std::array<CodeValue, 7> CODE_VALUES = {{
+    {.code_offset = 0x43, .opcode = "\xB9", .value_offset = 0x48},    // scrub_node_always_render (a byte)
+    {.code_offset = 0xcb, .opcode = "\xF3\x0F\x59\x0D"},              // the bias's 1 / 65025
+    {.code_offset = 0xe5, .opcode = "\xB9", .value_offset = 0x48},    // grass_burn_override
+    {.code_offset = 0xff, .opcode = "\x0F\x2E\x05"},                  // -1: no burn override
+    {.code_offset = 0x117, .opcode = "\xF3\x0F\x59\x05"},             // the burn byte's 1 / 255
+    {.code_offset = 0x214, .opcode = "\xF3\x0F\x10\x2D"},             // the sign mask
+    {.code_offset = 0x11, .opcode = "\x3B\x05", .draw_scrub = true},  // the model index that draws nothing
+}};
+
+struct GrassDump {
+  std::atomic<int> state = DUMP_IDLE;
+  std::mutex mutex;
+  std::ofstream file;
+  std::filesystem::path path;
+  uint32_t sequence = 0;           // this run's dumps (each its own file: a second shows what changed in the battle)
+  const uint8_t* scrub = nullptr;  // the dumped scrub (its cell loop calls only)
+  int64_t clean_ticks = 0;         // the timed update's (QueryPerformanceCounter)
+  int64_t dump_ticks = 0;          // the dumped update's, its calls written while it ran
+  uint32_t presents = 0;           // since the state last changed
+  uint32_t nodes = 0;
+  uint64_t records = 0;
+  uint32_t cells = 0;
+  uint32_t draws = 0;
+  uint32_t row_draws = 0;
+  bool truncated = false;                                 // a cap reached (nodes, a cell's records, the grid)
+  std::vector<std::pair<uintptr_t, uint32_t>> rows_read;  // this window's instance buffers and first bytes read
+};
+static GrassDump grass_dump;
+// The cell loop's and DrawScrub's code as found, before their hooks (the dump's copy of the bytes they run).
+static const uint8_t* cell_loop_code = nullptr;
+static const uint8_t* draw_scrub_code = nullptr;
+
+// Whether `size` bytes from `at` can be read (committed, neither guard nor no-access pages): the dump follows the game's
+// pointers by the layouts above, read from the code, not proven for every battle.
+static bool Readable(const void* at, size_t size) {
+  if (at == nullptr) return false;
+  auto address = reinterpret_cast<uintptr_t>(at);
+  const uintptr_t end = address + size;
+  if (end < address) return false;
+  while (address < end) {
+    MEMORY_BASIC_INFORMATION info;
+    if (VirtualQuery(reinterpret_cast<const void*>(address), &info, sizeof(info)) == 0) return false;
+    if (info.State != MEM_COMMIT || (info.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0) return false;
+    address = reinterpret_cast<uintptr_t>(info.BaseAddress) + info.RegionSize;
+  }
+  return true;
+}
+
+// A dump chunk: its tag, then its fields in order (the size is set when it is written).
+struct DumpChunk {
+  std::vector<uint8_t> bytes;
+
+  explicit DumpChunk(std::string_view tag) : bytes(8) { std::memcpy(bytes.data(), tag.data(), 4); }
+
+  template <typename T>
+  DumpChunk& Add(const T& value) {
+    const auto* at = reinterpret_cast<const uint8_t*>(&value);
+    bytes.insert(bytes.end(), at, at + sizeof(T));
+    return *this;
+  }
+
+  DumpChunk& Pointer(const void* value) { return Add<uint64_t>(reinterpret_cast<uintptr_t>(value)); }
+
+  // `size` bytes from `at` (zeros for null): the game's own arguments, readable by contract.
+  DumpChunk& Raw(const void* at, size_t size) {
+    const size_t start = bytes.size();
+    bytes.resize(start + size);
+    if (at != nullptr) std::memcpy(bytes.data() + start, at, size);
+    return *this;
+  }
+
+  // A 4-byte flag (1: readable), then `size` bytes from `at` (zeros when not readable).
+  DumpChunk& Copy(const void* at, size_t size) {
+    const bool readable = Readable(at, size);
+    Add<uint32_t>(readable ? 1 : 0);
+    const size_t start = bytes.size();
+    bytes.resize(start + size);
+    if (readable) std::memcpy(bytes.data() + start, at, size);
+    return *this;
+  }
+
+  // Its fields, then `tail_size` bytes from `tail` (game memory written as it is).
+  void Write(std::ofstream* file, const void* tail = nullptr, size_t tail_size = 0) {
+    const auto size = static_cast<uint32_t>(bytes.size() - 8 + tail_size);
+    std::memcpy(bytes.data() + 4, &size, sizeof(size));
+    file->write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (tail_size != 0) file->write(static_cast<const char*>(tail), static_cast<std::streamsize>(tail_size));
+  }
+};
+
+// The calling thread's x87 control word (_control87's form; 0 on x64) and MXCSR: how the cell loop's floats round.
+static std::array<uint32_t, 2> FloatControl() {
+  unsigned int x87 = 0;
+#if defined(_M_IX86)
+  __control87_2(0, 0, &x87, nullptr);
+#endif
+  return {x87, _mm_getcsr()};
+}
+
+// The dump's last chunks and the file closed; its lock held.
+static void FinishGrassDump(std::string_view reason) {
+  auto& dump = grass_dump;
+  LARGE_INTEGER frequency;
+  QueryPerformanceFrequency(&frequency);
+  DumpChunk time("TIME");
+  time.Add<int64_t>(frequency.QuadPart).Add(dump.clean_ticks).Add(dump.dump_ticks).Add(dump.nodes).Add(dump.records)
+      .Add(dump.cells).Add(dump.draws).Add(dump.row_draws).Add<uint32_t>(dump.truncated ? 1 : 0);
+  time.Write(&dump.file);
+  DumpChunk("END_").Write(&dump.file);
+  dump.file.close();
+  renodx::utils::log::i("[Total War] Grass dump: ", dump.nodes, " nodes, ", dump.records, " records, ", dump.cells,
+                        " cells visited, ", dump.draws, " DrawScrub calls, ", dump.row_draws, " grass draws' rows",
+                        (dump.truncated ? " (a cap reached)" : ""), ", update ",
+                        static_cast<double>(dump.clean_ticks) * 1000.0 / static_cast<double>(frequency.QuadPart),
+                        " ms; ", reason, ": ", dump.path.string());
+  dump.state = DUMP_IDLE;
+}
+
+// DUMP_SCENE's update, before the game's: the file opened and the scene written (GrassDump), then DUMP_CALLS.
+static void StartGrassDump(const uint8_t* scrub) {
+  auto& dump = grass_dump;
+  const std::unique_lock lock(dump.mutex);
+  std::wstring exe(MAX_PATH, L'\0');
+  exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+  dump.path = std::filesystem::path(exe).parent_path() / std::format("tw_grass_dump_{}.bin", ++dump.sequence);
+  dump.file.open(dump.path, std::ios::binary | std::ios::trunc);
+  if (!dump.file) {
+    renodx::utils::log::e("[Total War] Grass dump: ", dump.path.string(), " could not be written");
+    dump.state = DUMP_IDLE;
+    return;
+  }
+  dump.file.write("TWGD", 4);
+  dump.file.write(reinterpret_cast<const char*>(&DUMP_VERSION), sizeof(DUMP_VERSION));
+  dump.scrub = scrub;
+  dump.nodes = 0;
+  dump.records = 0;
+  dump.cells = 0;
+  dump.draws = 0;
+  dump.row_draws = 0;
+  dump.truncated = false;
+  const auto pointer_at = [](const uint8_t* at) {
+    const uint8_t* value = nullptr;
+    if (Readable(at, sizeof(value))) std::memcpy(&value, at, sizeof(value));
+    return value;
+  };
+  const auto u32_at = [](const uint8_t* at) {
+    uint32_t value = 0;
+    if (Readable(at, sizeof(value))) std::memcpy(&value, at, sizeof(value));
+    return value;
+  };
+  const auto& known = scrub_values;
+  const uint8_t* manager = pointer_at(scrub + SCRUB_MANAGER);
+  // DrawScrub's camera as OnDrawScrub takes it (the scene's view, its getters' code read): NaN when not known.
+  std::array<float, 3> camera = {NAN, NAN, NAN};
+  if (verified_get_view.load(std::memory_order_relaxed) != nullptr && manager != nullptr) {
+    const uint8_t* scene = pointer_at(manager + MANAGER_SCENE);
+    if (scene != nullptr && Readable(scene + SCENE_VIEW + VIEW_POSITION, sizeof(camera))) {
+      std::memcpy(camera.data(), scene + SCENE_VIEW + VIEW_POSITION, sizeof(camera));
+    }
+  }
+  const auto control = FloatControl();
+  DumpChunk head("HEAD");
+  head.Pointer(GetModuleHandleW(L"empire.retail.dll")).Pointer(scrub).Pointer(manager).Add(known.game_cells)
+      .Add(known.game_bias).Add(known.written_cells).Add(known.written_bias)
+      .Add(grass_scale.load(std::memory_order_relaxed)).Add(grass_density.load(std::memory_order_relaxed))
+      .Add(control[0]).Add(control[1]).Add(camera).Add<uint32_t>(draw_scrub_read ? 1 : 0).Add(known.slot_count);
+  for (uint32_t slot = 0; slot < known.slot_count; ++slot) head.Add(known.slot_radius[slot]);
+  head.Write(&dump.file);
+  DumpChunk("SCRB").Copy(scrub, DUMP_SCRUB_BYTES).Write(&dump.file);
+  DumpChunk("MNGR").Pointer(manager).Copy(manager, DUMP_MANAGER_BYTES).Write(&dump.file);
+  DumpChunk("CODE").Add<uint32_t>(0).Pointer(cell_loop_code).Copy(cell_loop_code, CELL_LOOP_BYTES).Write(&dump.file);
+  DumpChunk("CODE").Add<uint32_t>(1).Pointer(draw_scrub_code).Copy(draw_scrub_code, DRAW_SCRUB_BYTES).Write(&dump.file);
+  if constexpr (sizeof(void*) == 4) {
+    for (size_t index = 0; index < CODE_VALUES.size(); ++index) {
+      const auto& value = CODE_VALUES[index];
+      const uint8_t* code = (value.draw_scrub ? draw_scrub_code : cell_loop_code);
+      const uint8_t* address = nullptr;
+      if (code != nullptr && Readable(code + value.code_offset, value.opcode.size() + 4)
+          && std::memcmp(code + value.code_offset, value.opcode.data(), value.opcode.size()) == 0) {
+        address = pointer_at(code + value.code_offset + value.opcode.size());
+      }
+      const bool readable = (address != nullptr && Readable(address + value.value_offset, 4));
+      DumpChunk("CVAL").Add(static_cast<uint32_t>(index)).Pointer(address).Add<uint32_t>(readable ? 1 : 0)
+          .Add(readable ? u32_at(address + value.value_offset) : 0u).Write(&dump.file);
+    }
+  }
+  const uint8_t* table = pointer_at(scrub + SCRUB_TABLE);
+  DumpChunk("TABL").Pointer(table).Copy(table, DUMP_TABLE_BYTES).Write(&dump.file);
+  // The grid's bytes the cell loop can index: (clamp << shift) + clamp at most, written as the game holds them.
+  const uint8_t* grid = pointer_at(scrub + SCRUB_GRID);
+  const uint32_t clamp = u32_at(scrub + SCRUB_GRID_CLAMP);
+  const uint64_t grid_size = (static_cast<uint64_t>(clamp) << (u32_at(scrub + SCRUB_GRID_SHIFT) & 31)) + clamp + 1;
+  const bool grid_written = (grid_size <= DUMP_MAX_GRID && Readable(grid, static_cast<size_t>(grid_size)));
+  dump.truncated |= (grid_size > DUMP_MAX_GRID);
+  DumpChunk("GRID").Pointer(grid).Add(grid_size).Add<uint32_t>(grid_written ? 1 : 0)
+      .Write(&dump.file, grid, grid_written ? static_cast<size_t>(grid_size) : 0);
+  // The scrub models (a slot's model as DrawScrub finds it: the manager's list +0x20, its count +0x1c), their LODs and parts,
+  // each model once.
+  const uint8_t* slots = pointer_at(scrub + SCRUB_MODELS);
+  const uint8_t* models = (manager != nullptr ? pointer_at(manager + 0x20) : nullptr);
+  const uint32_t model_count = (manager != nullptr ? u32_at(manager + 0x1c) : 0);
+  std::vector<const uint8_t*> written_models;
+  for (uint32_t slot = 0; slot < known.slot_count; ++slot) {
+    const uint32_t index = (slots != nullptr ? u32_at(slots + (slot * 4)) : UINT32_MAX);
+    const uint8_t* model = (models != nullptr && index < model_count ? pointer_at(models + (index * 4)) : nullptr);
+    DumpChunk("MODL").Add(slot).Add(index).Pointer(model).Copy(model, DUMP_MODEL_BYTES).Write(&dump.file);
+    if (model == nullptr || !Readable(model, DUMP_MODEL_BYTES) || std::ranges::find(written_models, model) != written_models.end()) continue;
+    written_models.push_back(model);
+    const uint32_t lod_count = std::min<uint32_t>(u32_at(model + 0x28), MAX_MODEL_LODS);
+    const uint8_t* lods = pointer_at(model + 0x2c);
+    for (uint32_t lod_index = 0; lod_index < lod_count; ++lod_index) {
+      const uint8_t* lod = pointer_at(lods + (lod_index * 4));
+      DumpChunk("LOD_").Pointer(model).Add(lod_index).Pointer(lod).Copy(lod, DUMP_LOD_BYTES).Write(&dump.file);
+      if (!Readable(lod, DUMP_LOD_BYTES)) continue;
+      const uint32_t part_count = std::min(u32_at(lod + LOD_PART_COUNT), DUMP_MAX_PARTS);
+      const uint8_t* parts = pointer_at(lod + LOD_PARTS);
+      for (uint32_t part_index = 0; part_index < part_count; ++part_index) {
+        const uint8_t* part = pointer_at(parts + (part_index * 4));
+        const uint8_t* vtable = (part != nullptr ? pointer_at(part) : nullptr);
+        const uint8_t* draw = (vtable != nullptr ? pointer_at(vtable + (PART_DRAW_SLOT * 4)) : nullptr);
+        DumpChunk("PART").Pointer(model).Add(lod_index).Add(part_index).Pointer(part).Pointer(vtable).Pointer(draw)
+            .Copy(part, DUMP_PART_BYTES).Write(&dump.file);
+      }
+      if (const uint32_t attachments = std::min(u32_at(lod + LOD_ATTACHMENT_COUNT), DUMP_MAX_PARTS); attachments != 0) {
+        DumpChunk("ATCH").Pointer(model).Add(lod_index).Add(attachments)
+            .Copy(pointer_at(lod + LOD_ATTACHMENTS), attachments * 4).Write(&dump.file);
+      }
+    }
+  }
+  // Every quadtree node from the root, its records as the game holds them.
+  const uint8_t* quadtree = pointer_at(scrub + SCRUB_QUADTREE);
+  std::vector<const uint8_t*> pending = {quadtree != nullptr ? pointer_at(quadtree + QUADTREE_ROOT) : nullptr};
+  std::unordered_set<const uint8_t*> seen;
+  while (!pending.empty()) {
+    const uint8_t* node = pending.back();
+    pending.pop_back();
+    if (node == nullptr || !seen.insert(node).second) continue;
+    if (dump.nodes == DUMP_MAX_NODES) {
+      dump.truncated = true;
+      break;
+    }
+    ++dump.nodes;
+    uint32_t count = u32_at(node + CELL_COUNT);
+    const uint8_t* records = pointer_at(node + CELL_RECORDS);
+    if (count > DUMP_MAX_CELL_RECORDS || !Readable(records, size_t{count} * RECORD_SIZE)) {
+      dump.truncated |= (count != 0);
+      count = 0;
+    }
+    dump.records += count;
+    DumpChunk("NODE").Pointer(node).Copy(node, NODE_BYTES).Pointer(records).Add(count)
+        .Write(&dump.file, records, size_t{count} * RECORD_SIZE);
+    if (!Readable(node, NODE_BYTES)) continue;
+    for (size_t child = 0; child < 4; ++child) pending.push_back(pointer_at(node + NODE_CHILDREN + (child * 4)));
+  }
+  dump.presents = 0;
+  dump.state = DUMP_CALLS;
+}
+
 static PackAnimations original_pack_animations = nullptr;
 static uint8_t* first_pack_return = nullptr;
 static std::atomic<bool> big_battle_fix = false;
@@ -571,7 +895,9 @@ static void __fastcall OnDrawScrub(uint8_t* manager, void* unused_edx, uint32_t 
   if (grass_trace.state.load(std::memory_order_relaxed) == 2) TraceScrub(manager, model, transform, params);
   // A record past every enabled LOD of its model: DrawScrub would draw nothing and change nothing (DRAW_SCRUB_NO_LOD), so
   // it isn't called. Its key as DrawScrub's: the camera as the getters it would call return it (the same functions as
-  // OnScrubUpdate's, their code read), the floats in its order.
+  // OnScrubUpdate's, their code read), the floats in its order. `picked`: the LOD DrawScrub takes (-1: none, -2: not known).
+  int32_t picked = -2;
+  std::array<float, 3> camera = {NAN, NAN, NAN};
   if (const void* get_view = verified_get_view.load(std::memory_order_relaxed);
       get_view != nullptr && lods != nullptr && params != nullptr) {
     uint8_t* scene;
@@ -582,7 +908,6 @@ static void __fastcall OnDrawScrub(uint8_t* manager, void* unused_edx, uint32_t 
       void** view_vtable;
       std::memcpy(&view_vtable, scene + SCENE_VIEW, sizeof(view_vtable));
       if (view_vtable[GET_POSITION_SLOT] == verified_get_position.load(std::memory_order_relaxed)) {
-        std::array<float, 3> camera;
         float lod_offset;
         float bias;
         std::memcpy(camera.data(), scene + SCENE_VIEW + VIEW_POSITION, sizeof(camera));
@@ -598,16 +923,27 @@ static void __fastcall OnDrawScrub(uint8_t* manager, void* unused_edx, uint32_t 
         uint8_t** entries;
         std::memcpy(&count, lods + 0x28, sizeof(count));
         std::memcpy(&entries, lods + 0x2c, sizeof(entries));
-        bool drawn = false;
-        for (uint32_t lod = 0; lod < count && !drawn; ++lod) {
+        picked = -1;
+        for (uint32_t lod = 0; lod < count && picked < 0; ++lod) {
           float distance;
           std::memcpy(&distance, entries[lod] + 0x38, sizeof(distance));
-          drawn = (distance > key && entries[lod][0x44] != 0);
+          if (distance > key && entries[lod][0x44] != 0) picked = static_cast<int32_t>(lod);
         }
-        if (!drawn) return;
       }
     }
   }
+  // Grass Dump: every call the cell loop makes, as it passes it.
+  if (grass_dump.state.load(std::memory_order_relaxed) == DUMP_CALLS && transform != nullptr) {
+    DumpChunk chunk("DRAW");
+    chunk.Pointer(manager).Add(model).Raw(transform, 12 * sizeof(float)).Add(third).Raw(params, DUMP_PARAMS_BYTES)
+        .Add(fifth).Add(camera).Add(picked).Add<uint32_t>(GetCurrentThreadId());
+    const std::unique_lock lock(grass_dump.mutex);
+    if (grass_dump.state == DUMP_CALLS) {
+      chunk.Write(&grass_dump.file);
+      ++grass_dump.draws;
+    }
+  }
+  if (picked == -1) return;
   original_draw_scrub(manager, unused_edx, model, transform, third, params, fifth);
 }
 
@@ -718,7 +1054,37 @@ static void __fastcall OnScrubUpdate(uint8_t* scrub, void* unused_edx) {
     grass_trace.models.clear();
     grass_trace.state = 2;
   }
+  // Grass Dump: the update after the ask timed alone, the next one written with its calls, the rows' windows moved on.
+  const int dump_state = grass_dump.state.load(std::memory_order_relaxed);
+  if (dump_state == DUMP_IDLE) return original_scrub_update(scrub, unused_edx);
+  if (dump_state == DUMP_SCENE) StartGrassDump(scrub);
+  if (dump_state >= DUMP_ROWS) {
+    const std::unique_lock lock(grass_dump.mutex);
+    if (grass_dump.state == DUMP_ROWS_NEXT) {
+      FinishGrassDump("written");
+    } else if (grass_dump.state == DUMP_ROWS) {
+      grass_dump.state = DUMP_ROWS_NEXT;
+      grass_dump.presents = 0;
+      grass_dump.rows_read.clear();
+    }
+  }
+  LARGE_INTEGER start;
+  QueryPerformanceCounter(&start);
   original_scrub_update(scrub, unused_edx);
+  LARGE_INTEGER end;
+  QueryPerformanceCounter(&end);
+  if (dump_state != DUMP_TIMING && dump_state != DUMP_SCENE) return;
+  const std::unique_lock lock(grass_dump.mutex);
+  if (dump_state == DUMP_TIMING && grass_dump.state == DUMP_TIMING) {
+    grass_dump.clean_ticks = end.QuadPart - start.QuadPart;
+    grass_dump.state = DUMP_SCENE;
+    grass_dump.presents = 0;
+  } else if (dump_state == DUMP_SCENE && grass_dump.state == DUMP_CALLS) {
+    grass_dump.dump_ticks = end.QuadPart - start.QuadPart;
+    grass_dump.state = DUMP_ROWS;
+    grass_dump.presents = 0;
+    grass_dump.rows_read.clear();
+  }
 }
 
 // A cell's records within the radius its records' slots need (OnScrubUpdate's, the same proof as the scrub's cells: a
@@ -728,6 +1094,7 @@ static void __fastcall OnScrubUpdate(uint8_t* scrub, void* unused_edx) {
 static void __fastcall OnScrubCell(uint8_t* scrub, void* unused_edx, const uint8_t* cell, const float* camera, CellEntry entry,
                                    float radius_squared, uint32_t last) {
   const auto& known = scrub_values;
+  const float game_radius_squared = radius_squared;
   if (hooks_active.load(std::memory_order_relaxed) && cell != nullptr && scrub == known.scrub && known.slot_count != 0) {
     uint32_t count;
     const uint8_t* records;
@@ -742,6 +1109,18 @@ static void __fastcall OnScrubCell(uint8_t* scrub, void* unused_edx, const uint8
       radius_squared = std::min(radius_squared, static_cast<float>(int64_t{radius} * radius));
     }
   }
+  // Grass Dump: the call as the game made it, the radius it goes on with, the thread's float rounding.
+  if (grass_dump.state.load(std::memory_order_acquire) == DUMP_CALLS && scrub == grass_dump.scrub) {
+    const auto control = FloatControl();
+    DumpChunk chunk("CALL");
+    chunk.Pointer(cell).Raw(camera, 3 * sizeof(float)).Add(entry).Add(game_radius_squared).Add(radius_squared).Add(last)
+        .Add(control[0]).Add(control[1]).Add<uint32_t>(GetCurrentThreadId());
+    const std::unique_lock lock(grass_dump.mutex);
+    if (grass_dump.state == DUMP_CALLS) {
+      chunk.Write(&grass_dump.file);
+      ++grass_dump.cells;
+    }
+  }
   original_scrub_cell(scrub, unused_edx, cell, camera, entry, radius_squared, last);
 }
 
@@ -749,6 +1128,88 @@ static void __fastcall OnScrubCell(uint8_t* scrub, void* unused_edx, const uint8
 
 // Grass Trace: one frame of the scrub into ReShade.log (from the next scrub update).
 inline void TraceGrass() { internal::grass_trace.state = 1; }
+
+// Grass Dump: the next frames' scrub into tw_grass_dump_<n>.bin next to the exe (internal::GrassDump).
+inline void DumpGrass() {
+  int idle = internal::DUMP_IDLE;
+  if (!internal::grass_dump.state.compare_exchange_strong(idle, internal::DUMP_TIMING)) {
+    renodx::utils::log::i("[Total War] Grass dump: one is already being written");
+    return;
+  }
+  const std::unique_lock lock(internal::grass_dump.mutex);
+  internal::grass_dump.presents = 0;
+  renodx::utils::log::i("[Total War] Grass dump asked (from the next grass update)");
+}
+
+// Whether the grass draws' rows are read now (one atomic: the grass draws' callback returns on it).
+inline bool GrassDumpReadsRows() {
+  const int state = internal::grass_dump.state.load(std::memory_order_relaxed);
+  return state == internal::DUMP_ROWS || state == internal::DUMP_ROWS_NEXT;
+}
+
+// A grass draw's arguments as the game gave them.
+struct GrassDraw {
+  uint32_t vertex_shader = 0;
+  bool indexed = false;
+  uint32_t count = 0;  // an instance's indices (or vertices)
+  uint32_t instances = 0;
+  uint32_t first = 0;  // the first index (or vertex)
+  int32_t base_vertex = 0;
+  uint32_t first_instance = 0;
+};
+
+// A grass draw while the dump reads rows: its mesh's and its instances' buffers as bound, and its instance rows read back
+// (a GPU wait, for the dump's frames only) once per instance range of a window (the prefill and the G-buffer share them).
+inline void AddGrassDumpRows(ID3D11DeviceContext* context, const GrassDraw& draw) {
+  auto& dump = internal::grass_dump;
+  if (!GrassDumpReadsRows() || context == nullptr) return;
+  std::array<ID3D11Buffer*, 2> buffers = {};
+  std::array<UINT, 2> strides = {};
+  std::array<UINT, 2> offsets = {};
+  context->IAGetVertexBuffers(0, 2, buffers.data(), strides.data(), offsets.data());
+  Microsoft::WRL::ComPtr<ID3D11Buffer> mesh;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> instances;
+  mesh.Attach(buffers[0]);
+  instances.Attach(buffers[1]);
+  Microsoft::WRL::ComPtr<ID3D11Buffer> index_buffer;
+  DXGI_FORMAT index_format = DXGI_FORMAT_UNKNOWN;
+  UINT index_offset = 0;
+  context->IAGetIndexBuffer(index_buffer.GetAddressOf(), &index_format, &index_offset);
+  D3D11_BUFFER_DESC desc = {};
+  if (instances != nullptr) instances->GetDesc(&desc);
+  const uint32_t start = offsets[1] + (draw.first_instance * strides[1]);
+  const auto range = std::make_pair(reinterpret_cast<uintptr_t>(instances.Get()), start);
+  bool read_before = false;
+  {
+    const std::unique_lock lock(dump.mutex);
+    read_before = std::ranges::find(dump.rows_read, range) != dump.rows_read.end();
+    if (!read_before) dump.rows_read.push_back(range);
+  }
+  std::vector<uint8_t> rows;
+  if (!read_before && instances != nullptr && strides[1] != 0) {
+    rows = frame_trace::ReadBuffer<uint8_t>(context, instances.Get(), start, draw.instances * strides[1]);
+  }
+  // The camera the draw places its grass with (camera_VS_PS c0, camera_position): the scrub's of which frame.
+  std::array<float, 4> camera = {NAN, NAN, NAN, NAN};
+  Microsoft::WRL::ComPtr<ID3D11Buffer> camera_buffer;
+  context->VSGetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
+  if (camera_buffer != nullptr) {
+    if (const auto values = frame_trace::ReadBuffer<float>(context, camera_buffer.Get(), 0, 4); values.size() == camera.size()) {
+      std::ranges::copy(values, camera.begin());
+    }
+  }
+  const std::unique_lock lock(dump.mutex);
+  if (dump.state != internal::DUMP_ROWS && dump.state != internal::DUMP_ROWS_NEXT) return;
+  internal::DumpChunk chunk("ROWS");
+  chunk.Add<uint32_t>(dump.state == internal::DUMP_ROWS ? 0 : 1).Add(dump.row_draws).Add(draw.vertex_shader)
+      .Add<uint32_t>(draw.indexed ? 1 : 0).Add(draw.count).Add(draw.instances).Add(draw.first).Add(draw.base_vertex)
+      .Add(draw.first_instance).Pointer(mesh.Get()).Add(offsets[0]).Add(strides[0]).Pointer(instances.Get())
+      .Add(offsets[1]).Add(strides[1]).Add(desc.ByteWidth).Pointer(index_buffer.Get())
+      .Add(static_cast<uint32_t>(index_format)).Add(index_offset).Add(camera).Add<uint32_t>(read_before ? 1 : 0)
+      .Add(static_cast<uint32_t>(rows.size()));
+  chunk.Write(&dump.file, rows.data(), rows.size());
+  if (dump.row_draws++ == 0) renodx::utils::log::i("[Total War] Grass dump: the grass draws' rows read");
+}
 
 // Every present: hooks / finds once empire.retail.dll is loaded (the result appended to `status`), then the sliders.
 // Rome II: its unit and dead unit hooks only.
@@ -772,6 +1233,20 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
   internal::tree_distance_squared_scale.store(scales.campaign_trees * scales.campaign_trees, std::memory_order_relaxed);
   internal::grass_scale.store(scales.grass_distance, std::memory_order_relaxed);
   internal::grass_density.store(std::max(scales.grass_density, 0.010001118f), std::memory_order_relaxed);
+  // Grass Dump: no grass update for DUMP_PRESENTS presents (out of a battle, or it ended): written as it is, or given up.
+  if (const int dump_state = internal::grass_dump.state.load(std::memory_order_relaxed);
+      dump_state != internal::DUMP_IDLE && dump_state != internal::DUMP_CALLS) {
+    const std::unique_lock lock(internal::grass_dump.mutex);
+    if (internal::grass_dump.state != internal::DUMP_IDLE && internal::grass_dump.state != internal::DUMP_CALLS
+        && ++internal::grass_dump.presents > internal::DUMP_PRESENTS) {
+      if (internal::grass_dump.state >= internal::DUMP_ROWS) {
+        internal::FinishGrassDump("the grass stopped updating, written");
+      } else {
+        internal::grass_dump.state = internal::DUMP_IDLE;
+        renodx::utils::log::i("[Total War] Grass dump given up: no grass update (not in a battle)");
+      }
+    }
+  }
   if (!*installed && !internal::hooks.empty()) {
     *installed = true;
     internal::hooks_active.store(true, std::memory_order_relaxed);
@@ -821,6 +1296,7 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
         };
         internal::draw_scrub_read = matches(draw_scrub, internal::DRAW_SCRUB_NO_LOD)
                                     && matches(draw_scrub + internal::DRAW_SCRUB_RETURN_OFFSET, internal::DRAW_SCRUB_RETURN);
+        internal::draw_scrub_code = reinterpret_cast<const uint8_t*>(draw_scrub);
         renodx::utils::log::i("[Total War] Graphics: grass records past every LOD ",
                               internal::draw_scrub_read ? "skip DrawScrub" : "go to DrawScrub (its code differs)");
       }
@@ -831,6 +1307,7 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
           cell_loop != nullptr
           && tw::engine_tweaks::FindPattern({std::string_view(cell_loop + internal::SCRUB_CELL_NEXT_OFFSET, 11)}, internal::SCRUB_CELL_NEXT) != nullptr
           && tw::engine_tweaks::FindPattern({std::string_view(cell_loop + internal::SCRUB_CELL_RETURN_OFFSET, 3)}, internal::SCRUB_CELL_RETURN) != nullptr) {
+        internal::cell_loop_code = reinterpret_cast<const uint8_t*>(cell_loop);
         add(internal::SCRUB_CELL, reinterpret_cast<void**>(&internal::original_scrub_cell),
             reinterpret_cast<void*>(&internal::OnScrubCell), "grass cells' radius");
       } else {
@@ -863,6 +1340,11 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
 // Addon detach: the hooks removed.
 inline void Uninstall() {
   internal::hooks_active.store(false, std::memory_order_relaxed);
+  if (internal::grass_dump.state.load() != internal::DUMP_IDLE) {
+    const std::unique_lock lock(internal::grass_dump.mutex);
+    if (internal::grass_dump.file.is_open()) internal::FinishGrassDump("the addon unloaded");
+    internal::grass_dump.state = internal::DUMP_IDLE;
+  }
   if (internal::hooks.empty()) return;
   try {
     internal::hook_lifetime.Uninstall(&internal::hooks);
