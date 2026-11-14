@@ -426,7 +426,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   nothing. Design C (per-command-list cache of bound handles + prepared lists, registration epoch, gates for the 3
   command-wide callbacks): saves ~0.52-0.56 ms (cpl2) / 0.37-0.39 (cpl1) of the 2.2 ms; Capture / DrawObjectMotion out of
   scope. Touches src/utils/command_action.hpp (every mod in atn-mods, upstream-merge conflicts), resource_upgrade.hpp,
-  view_share / object_motion gates. Phase 2 waits for ATN (scope / opt-in question) and then a Fable 5.2 High review.
+  view_share / object_motion gates. ATN ~19:xx: "Yes, TW-only opt-in" -> PHASE 2 started (run-time opt-in by the TW add-ons
+  only; new code in its own header, minimal hook in command_action.hpp; non-TW mods keep today's path; full proof plan);
+  then a FABLE 5.2 HIGH review of this change alone.
 - [ ] ATN ~11:4x: the skill checks the whole dump for render scale (scale_census.py) but casters only in traces: agent
   (cdc_, worktree) adds caster_census.py --whole-dump (every VS classified, held / NOT HELD / not a caster), validates on
   Attila + Pharaoh e34c6089 palms, runs it for nine games (tools/tw/round_notes/caster_dump_<game>.txt), skill lines; results
