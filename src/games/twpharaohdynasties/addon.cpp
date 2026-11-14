@@ -2645,6 +2645,10 @@ void ConfigureAddon() {
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
+                                             // Smooth Banner Shadows: the thin sheets (cloth 2F2A0E7E, flags 8DE94E2F) don't
+                                             // shade themselves (RT_SHEETS_UNSELFED). No Light Through All Banners: those
+                                             // sheets are always thin here, and the unit banners (76225B91) cast nothing.
+                                             .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = true,
