@@ -797,6 +797,9 @@ void ReuseTexel(uint2 id) {
   const float4 position = TexelSurface(id, normal, origin);
   if (position.w <= 0.f) {
     bounce[id] = 0.f;
+#if defined(TORCHES_IN_BOUNCE)
+    if ((lights_in_bounce & LIGHTS_MODE) == LIGHTS_RATIO_MODE) light_ratio[((lights_in_bounce & LIGHTS_RATIO_SET) != 0u) ? 1u : 0u][id] = 0.f;
+#endif
     return;
   }
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
@@ -824,10 +827,67 @@ void ReuseTexel(uint2 id) {
   // The chosen surface in view of this one (no light through walls); the integrand over its density.
   const float3 to_hit = combined.hit - origin;
   const float hit_distance = length(to_hit);
+#if defined(TORCHES_IN_BOUNCE)
+  // Torch and Fire Light in the Light Bounce (helper111; 2: the local lights' light alone, a measurement) and Torch and
+  // Fire Shadows from the Light Bounce (3), only in this build (rt_reuse_lights: every other is helper110's to the byte):
+  // one of the first BOUNCE_LIGHTS local lights a texel each frame, picked by the light it would give unshadowed, apart
+  // from the reservoir (in it the sun's bounce outweighed the torches: their samples seldom chosen); its shadow ray to a
+  // point of its disk under Ray Reconstruction (light_size: the helper sets it then, as rt_lights' rays), stopping short
+  // of its lamp.
+  const uint lights_mode = lights_in_bounce & LIGHTS_MODE;
+  float3 arriving = ((path_flags & PATH_SKY_APART) != 0u && lights_mode != 2u) ? bounce[id].rgb : 0.f;
+  if (lights_mode != 2u && combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
+    arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
+  }
+  float total = 0.f;  // the lights' unshadowed light here (luminance)
+  bool lit = false;
+  if (lights_mode != 0u && (path_flags & PATH_LOCAL_LIGHTS) != 0u) {
+    const uint light_total = min(light_count, BOUNCE_LIGHTS);
+    float3 direction;
+    float light_distance;
+    [loop]
+    for (uint index = 0u; index < light_total; ++index) total += Luminance(LightArriving(index, origin, normal, direction, light_distance));
+    if (total > 0.f) {
+      const float next = Random(uint3(id, frame * 16u + 7400u)) * total;
+      float running = 0.f;
+      uint picked = 0u;
+      float3 picked_light = 0.f;
+      [loop]
+      for (uint index = 0u; index < light_total && running <= next; ++index) {
+        const float3 here = LightArriving(index, origin, normal, direction, light_distance);
+        if (Luminance(here) <= 0.f) continue;
+        running += Luminance(here);
+        picked = index;
+        picked_light = here;
+      }
+      float3 to_lamp = lights[picked].xyz - origin;
+      if (light_size > 0.f) {
+        to_lamp += DiskPoint(normalize(to_lamp), light_size, float2(Random(uint3(id, frame * 16u + 7401u)), Random(uint3(id, frame * 16u + 7402u))));
+      }
+      const float lamp_distance = length(to_lamp);
+      lit = lamp_distance > 1e-3f && !Occluded(origin, to_lamp / lamp_distance, lamp_distance - min(LIGHT_CLEARANCE, 0.5f * lamp_distance), NO_GRASS_SMOKE);
+      // Its light over its odds (its luminance over the sum).
+      if (lit && lights_mode != LIGHTS_RATIO_MODE) arriving += picked_light * (total / Luminance(picked_light));
+    }
+  }
+  if (lights_mode == LIGHTS_RATIO_MODE) {
+    // The shadow ratio's sums (the lights' light here, shadowed by the picked one's ray, and unshadowed) kept over frames at
+    // the surface last frame's texel showed.
+    const uint written = ((lights_in_bounce & LIGHTS_RATIO_SET) != 0u) ? 1u : 0u;
+    float4 kept = 0.f;
+    uint2 previous_pixel;
+    if ((lights_in_bounce & LIGHTS_RATIO_VALID) != 0u && SeenLastFrame(position.xyz, previous_pixel)) {
+      kept = light_ratio[1u - written][min(previous_pixel / bounce_scale, uint2(bounce_width, bounce_height) - 1u)];
+    }
+    const float frames = min(kept.z + 1.f, RATIO_FRAMES);
+    light_ratio[written][id] = float4(lerp(kept.xy, float2(lit ? total : 0.f, total), 1.f / frames), frames, position.w);
+  }
+#else
   float3 arriving = ((path_flags & PATH_SKY_APART) != 0u) ? bounce[id].rgb : 0.f;
   if (combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
     arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
   }
+#endif
   bounce[id] = float4(arriving, distance(position.xyz, Camera()));
   if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = (combined.weight > 0.f) ? hit_distance : bounce_range;
 }

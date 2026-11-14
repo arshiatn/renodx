@@ -23,7 +23,22 @@ cbuffer Paths : register(b3) {
   float sky_range;         // metres: what blocks Path-Traced Ambient's sky (the AO's reach, as Ray-Traced AO)
   uint previous_square_root;  // 1: last frame's colour holds the light's square root (rt_path.hlsli PreviousLight)
   uint previous_positions_slice;  // last frame's positions' slice of previous_positions (rt_path.hlsli)
+#if defined(TORCHES_IN_BOUNCE)
+  uint lights_in_bounce;          // Torch and Fire Light in the Light Bounce: LIGHTS_* below (rt_path.hlsli, rt_lights)
+#endif
 };
+#if defined(TORCHES_IN_BOUNCE)
+// lights_in_bounce (only in the TORCHES_IN_BOUNCE builds: every other is helper110's to the byte): its mode (bits 0-1: 1
+// a local light's sample a bounce texel, its light in the bounce; 2 the bounce only theirs, a measurement; 3 Torch and
+// Fire Shadows from the Light Bounce: their shadow ratio into light_ratio, the bounce without them), the light_ratio set
+// written (a bounce request's) or read (a trace's), last frame's set valid.
+static const uint LIGHTS_MODE = 3u;
+static const uint LIGHTS_RATIO_MODE = 3u;
+static const uint LIGHTS_RATIO_SET = 16u;
+static const uint LIGHTS_RATIO_VALID = 32u;
+static const float RATIO_FRAMES = 12.f;  // the shadow ratio's history (frames)
+RWTexture2D<float4> light_ratio[2] : register(u56);  // at the bounce texels: shadowed, unshadowed torch light (luminance), frames, depth (0: none)
+#endif
 static const uint PATH_START_PAST = 2147483648u;  // RT_START_PAST: StartPast
 static const uint PATH_AMBIENT_HISTORY = 16384u;  // path_flags in the trace: last trace's ambient and positions are valid
 static const uint PATH_AMBIENT_PARITY = 32768u;   // its history read from set 1 (else 0)

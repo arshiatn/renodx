@@ -16,7 +16,7 @@
 Texture2D<uint> t_rt_light_mask : register(t42);
 cbuffer rt_local_lights : register(b9) {
   float4 rt_light_positions[128];  // xyz, w the reach (metres)
-  uint4 rt_light_count;            // x; y the glow (asfloat: torch and fire light in fog and smoke, 0 none); z the tiles' row
+  uint4 rt_light_count;            // x; y the glow (asfloat: torch and fire light in fog and smoke, 0 none); z the tiles' row; w 1: the mask holds shadow ratios
   float4 rt_light_colours[128];    // rgb
 };
 
@@ -61,7 +61,11 @@ float RtLocalLightVisibility(int2 render_pixel, float3 light_position) {
       nearest = slot;
     }
   }
-  return (nearest < 32u) ? (float)((t_rt_light_mask.Load(int3(render_pixel, 0)) >> nearest) & 1u) : 1.f;
+  if (nearest >= 32u) return 1.f;
+  const uint pixel_word = t_rt_light_mask.Load(int3(render_pixel, 0));
+  // b9's w 1 (Torch and Fire Shadows from the Light Bounce, bridge RT_LIGHT_RATIO): the word is the pixel's shadow ratio
+  // (a float, the same for all its lights), else its bits.
+  return (rt_light_count.w != 0u) ? saturate(asfloat(pixel_word)) : (float)((pixel_word >> nearest) & 1u);
 }
 
 #endif  // SRC_GAMES_TWATTILA_RT_LOCAL_LIGHTS_HLSLI_
