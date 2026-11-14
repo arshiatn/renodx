@@ -1,5 +1,6 @@
 # The ray tracing's context lookup (tests.cpp): rt_core.hpp's NativeContext against v157's, the same answers and the cost
-# a call; rt_scene.hpp's constant-buffer point lights (Rome II's), read and cost a call; on WARP. Needs the Attila addon
+# a call; rt_scene.hpp's constant-buffer point lights (Rome II's), read and cost a call; the instanced light draws' lights in
+# v160's order, to the bit, and the cost of a frame's sort; on WARP. Needs the Attila addon
 # built in build32 (rt_scene.hpp includes its embedded shaders: build32\twattila.include). Run as x86 (the game's) and amd64.
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86')
 $ErrorActionPreference = 'Stop'
