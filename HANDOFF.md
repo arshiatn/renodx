@@ -398,7 +398,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [ ] ATN ~11:4x: the skill checks the whole dump for render scale (scale_census.py) but casters only in traces: agent
   (cdc_, worktree) adds caster_census.py --whole-dump (every VS classified, held / NOT HELD / not a caster), validates on
   Attila + Pharaoh e34c6089 palms, runs it for nine games (tools/tw/round_notes/caster_dump_<game>.txt), skill lines; results
-  -> parity agents.
+  -> parity agents. MERGED 612079e9 (2f341c3a): held / in view only / NOT HELD / not a caster per game (Attila 39/16/12/108,
+  WH3 44/26/87/222, Pharaoh 28/13/41/182, Rome II 38/10/20/196 + 134 dead, Thrones 39/16/14/107, WH2 26/13/25/168, Troy
+  31/10/19/164, WH1 35/15/22/175, Shogun 2 34/12/0/83); tables tools/tw/round_notes/caster_dump_<game>.txt; each game's
+  NOT HELD list sent to its parity agent. QUEUED (no agent yet): Attila's own NOT HELD: traced 758C250B rigidterrainblend
+  vs30_main (maybe the held rocks' material pass); level B far cards 398BD3DF / B2585ABA, sprites E42AE09F, rigid 9AEE504E
+  (displacement), ropes / sail symbols.
 - [x] Rome Remastered DLSS below 100 % on the agent's branch 867187d4 (v9-v12 ran DLAA at render size; now DLSS from the
   tone mapper's render-size output into Feral's upscaler target 9F3C9B3D / 3C19543E, its draw skipped; FG keeps it as the
   HUD-less frame; tw_romer_dlaa case 6 WARP PASS; README v13). With a ray row on: still DLAA at render size + Feral's
