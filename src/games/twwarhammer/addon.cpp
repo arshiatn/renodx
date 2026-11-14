@@ -64,8 +64,10 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 3.f;
 }
 
-// Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; Attila's engine, part 4).
-constexpr float HUE_CLIP_DEFAULT = 40.f;
+// Hue Clip Emulation's default: closest to the game's SDR picture on WH1's own tone mappers (test/tw_psychov35 part 5 curve
+// 7, with the battle's whiteout 0 / 10 from ATN's traces): fire's signed hue crosses 0 between 0.80 and 0.90 (|mean| 4.41 at
+// 0.90), sky's between 1.00 and 1.25. Attila's 40 came from its own stock path's highlight limit, which WH1's has not.
+constexpr float HUE_CLIP_DEFAULT = 90.f;
 
 // bool IsModdedAutoExposureEnabled() {
 //   return shader_injection.auto_exposure_highlight_protection == 1.f;
