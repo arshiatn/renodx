@@ -1063,6 +1063,9 @@ void ReadDlssAddonOptions() {
   ray_tracing.path_ambient = ray_tracing.path_tracing && ray_tracing.light_bounce && shader_injection.light_bounce_strength > 0.f
                              && read_on("RayTracedPathAmbient", false);
   if (ray_tracing.path_ambient) ray_tracing.ambient_occlusion = false;
+  // Own Sky Rays and Steady Bounce Light (rt_sun's texel 3 w 1 and 4 w 1: its cube is the sky, in the game's units).
+  ray_tracing.path_sky_apart = read_on("RayTracedPathSkyApart", false);
+  ray_tracing.path_kept_cube = read_on("RayTracedPathKeptCube", false);
   // 3 and 4 measured as 2 in Attila (twattila/rt_scene.hpp SettingsOf): the key's older values taken as 2.
   ray_tracing.path_bounces = read_count("PathTracingBounces", 2, 1, 2);
   ray_tracing.sharc = ray_tracing.path_tracing && read_on("RayTracedSharc", false);

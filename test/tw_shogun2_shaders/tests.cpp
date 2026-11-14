@@ -11,8 +11,8 @@
 // 5-6. rt_capture_tree_billboard and rt_capture_imposter against the game's csos (TestBillboard, TestImposter; their folder third).
 // 7. rt_water_plane (TestWaterPlane). 8-9. ocean00 / 01 and waterplane00 against the game's csos (TestWaters).
 // 10. rt_capture / rt_rows_cascade_rigid against the game's 0xAC25DAB8 (TestRigidShadow).
-// 11. rt_capture_cascade_cloth / imposter through Pharaoh's outside-view geometry shader against the game's 0x8A00A1D4 / 0xE3DA20D4
-//     (TestCascadeLeaves).
+// 11. rt_capture_cascade_cloth / imposter / tree through Pharaoh's outside-view geometry shader against the game's 0x8A00A1D4 /
+//     0xE3DA20D4 / 0x5851CA62 / 0x6F20485E (TestCascadeLeaves).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -1302,15 +1302,36 @@ static void TestRigidShadow(const std::string& games, const std::string& folder)
               left_out, turned_differs);
 }
 
-// 11. rt_capture_cascade_cloth and rt_capture_cascade_imposter (cloth and sprite soldiers casting from out of view) against the game's
-//     shadow vertex shaders (0x8A00A1D4, 0xE3DA20D4 csos) with an identity view-projection (the imposter's shadow camera's view
-//     random): 64 random triangles each, every corner's world position (TEXCOORD2) the game's SV_Position and its UV (TEXCOORD1) the
+// 11. rt_capture_cascade_cloth, imposter and tree (cloth, sprite soldiers, leaves and branches casting from out of view) against the
+//     game's shadow vertex shaders (0x8A00A1D4, 0xE3DA20D4, 0x5851CA62, 0x6F20485E csos) with an identity view-projection (the
+//     imposter's shadow camera's view, the trees' rows, blend, time and wind random): 64 random triangles each, every corner's world position (TEXCOORD2) the game's SV_Position and its UV (TEXCOORD1) the
 //     game's. Through Pharaoh's outside-view geometry shader with a main view at cb0[10-13] (as rt_core streams them out): the
 //     triangles wholly outside it (the CPU's test of the game's corners) kept, their world positions and UVs (two halves in w) the
 //     game's; the others collapsed onto their first corner. CONTROL: the view turned away keeps another set.
 struct ClothVertex {
   std::array<std::array<float, 4>, 4> inputs;  // v0-v3
 };
+
+// The trees' vertex: POSITION0-6 (POSITION4 the UV), TEXCOORD0-6 (two instance row sets at 0-2 and 4-6).
+struct TreeVertex {
+  std::array<std::array<float, 4>, 14> inputs;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC TREE_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 6, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 96, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 112, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 128, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 144, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 160, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 176, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 192, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 6, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 208, D3D11_INPUT_PER_VERTEX_DATA, 0}};
 
 static const D3D11_INPUT_ELEMENT_DESC CLOTH_LAYOUT[] = {
     {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
@@ -1378,8 +1399,8 @@ static void TestCascadeLeaf(const std::string& games, const std::string& folder,
   CHECK(bad_world == 0 && bad_uv == 0, "%s: %zu world components, %zu UV components differ from the game's", name, bad_world, bad_uv);
   CHECK(bad_kept == 0 && kept > 0 && collapsed > 0, "%s: %zu streamed corners wrong, %zu kept, %zu collapsed", name, bad_kept, kept, collapsed);
   CHECK(turned_differs > 0, "CONTROL: %s: the view turned away kept the same triangles", name);
-  std::printf("%ls: %zu corners the game's world and UV; %zu of %zu triangles out of view kept, %zu differ turned away\n", capture_name,
-              vertices.size(), kept, vertices.size() / 3, turned_differs);
+  std::printf("%ls (0x%s): %zu corners the game's world and UV; %zu of %zu triangles out of view kept, %zu differ turned away\n", capture_name,
+              name, vertices.size(), kept, vertices.size() / 3, turned_differs);
 }
 
 static void TestCascadeLeaves(const std::string& games, const std::string& folder) {
@@ -1389,11 +1410,16 @@ static void TestCascadeLeaves(const std::string& games, const std::string& folde
   for (int row = 0; row < 4; ++row) camera[((10 + row) * 4) + row] = 1.f;
   // The imposter's shadow camera's view (c2-c5): random.
   for (int value = 2 * 4; value < 6 * 4; ++value) camera[value] = spread(random);
+  camera[35 * 4] = 38.696f;  // time_in_sec (the battle trace's)
   const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  // wind_VS: direction, gust, multipliers and strengths.
+  const std::array<float, 12> wind = {0.8f, -0.6f, 0.8f, -0.6f, 0.f, 1.f, 1.3f, 0.7f, 0.5f, 300.f, 200.f, 0.f};
+  const auto wind_buffer = Constants(wind.data(), sizeof(wind));
   const std::array<float, 4> size = {0.125f, 0.25f, 0.f, 0.f};
   const auto size_buffer = Constants(size.data(), sizeof(size));
   std::vector<ClothVertex> cloth;
   std::vector<ImposterVertex> imposters;
+  std::vector<TreeVertex> trees;
   for (int triangle = 0; triangle < 64; ++triangle) {
     const std::array<float, 3> centre = {100.f * spread(random), 100.f * spread(random), 100.f * spread(random)};
     const float frame = std::floor(2.f + (2.f * spread(random)));
@@ -1406,12 +1432,32 @@ static void TestCascadeLeaves(const std::string& games, const std::string& folde
                            .frame = {0.5f + (0.5f * spread(random)), 0.5f + (0.5f * spread(random)), spread(random), 0.5f * spread(random)},
                            .corner = {(corner & 1) ? 1.f : 0.f, (corner & 2) ? 1.f : 0.f, spread(random), 0.f},
                            .flat = {0.6f * spread(random), 0.6f * spread(random), 1.8f * spread(random), spread(random)}});
+      // Two row sets (a turn about y, the centre in w, the second a little apart), blended by v5.xy (summing to 1) at the sets
+      // v5.zw names; v6.w the sway's weight past the saturate's 0.7, v10.xy the phase and the fade.
+      TreeVertex tree = {};
+      auto& inputs = tree.inputs;
+      for (auto& input : inputs) input = {spread(random), spread(random), spread(random), spread(random)};
+      inputs[0] = {2.f * spread(random), 2.f * spread(random), 2.f * spread(random), 1.f};
+      const float blend = 0.5f + (0.5f * spread(random));
+      inputs[5] = {blend, 1.f - blend, (corner & 1) ? 1.f : 0.f, (corner & 2) ? 1.f : 0.f};
+      inputs[6][3] = 0.75f + (0.75f * spread(random));
+      for (const int first : {7, 11}) {
+        const float turn = spread(random) * 3.14159f;
+        const float apart = (first == 11) ? 0.3f : 0.f;
+        inputs[first] = {std::cos(turn), 0.f, std::sin(turn), centre[0] + apart};
+        inputs[first + 1] = {0.f, 1.f, 0.f, centre[1]};
+        inputs[first + 2] = {-std::sin(turn), 0.f, std::cos(turn), centre[2] - apart};
+      }
+      trees.push_back(tree);
     }
   }
   const std::array<ID3D11Buffer*, 1> cloth_constants = {camera_buffer.Get()};
   TestCascadeLeaf(games, folder, "8A00A1D4", L"rt_capture_cascade_cloth", CLOTH_LAYOUT, cloth, cloth_constants);
   const std::array<ID3D11Buffer*, 2> imposter_constants = {camera_buffer.Get(), size_buffer.Get()};
   TestCascadeLeaf(games, folder, "E3DA20D4", L"rt_capture_cascade_imposter", IMPOSTER_LAYOUT, imposters, imposter_constants);
+  const std::array<ID3D11Buffer*, 2> tree_constants = {camera_buffer.Get(), wind_buffer.Get()};
+  TestCascadeLeaf(games, folder, "5851CA62", L"rt_capture_cascade_tree", TREE_LAYOUT, trees, tree_constants);
+  TestCascadeLeaf(games, folder, "6F20485E", L"rt_capture_cascade_tree", TREE_LAYOUT, trees, tree_constants);
 }
 
 int main(int argc, char** argv) {

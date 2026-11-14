@@ -513,8 +513,10 @@ that pass (waterplane, ocean: debug18's trace) keeps the motion of what is under
 
 ## v63 (2026-11-14): the row's tooltip for the HDR addon v71 (built only, not run in game)
 
-- **Shadow casters out of view (Experimental)**: its tooltip names sails, banners and far soldiers too (HDR addon v71); the
+- **Shadow casters out of view (Experimental)**: its tooltip names trees, sails, banners and far soldiers too (HDR addon v71); the
   same key, still off, in Reset, not in RT/PT.
+- Under Path-traced AO: **own sky rays** (RayTracedPathSkyApart) and **steady bounce light** (RayTracedPathKeptCube), both
+  Experimental, off, in Reset, not in RT/PT.
 
 
 ### F4/F8 sampler ownership (2026-11-09, GPT-6 Astra)
