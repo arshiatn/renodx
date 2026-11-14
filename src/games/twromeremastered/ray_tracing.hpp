@@ -45,6 +45,10 @@ using Microsoft::WRL::ComPtr;
 static twattila::rt_scene::Sliders sliders;
 // Ray Tracing Battle Objects (Test): the untested draws let in (SceneDraw): 0 none, 1 solid ones, 2 all (v11).
 static float battle_scene = 0.f;
+// The helper's ray tracing device started again (a GPU reset or a stall) while Solid or All was traced: the untested
+// draws stay out until the game starts again (ATN's 2026-11-14 battle reset twice in 8 s, the second 0.2 s after the
+// scene came back; the reset hunt reproduced neither offline).
+static bool battle_scene_held = false;
 
 namespace internal {
 
@@ -69,6 +73,11 @@ constexpr std::array<uint32_t, 4> TESTED_VERTEX_SHADERS = {
     0x9594545F,  // PBR
     0x77472F17,  // BasicLit
 };
+
+// The helper's ray tracing device count as last seen, and the last trace's tick (the helper releases an unused scene only
+// after 10 s without one: a new count within 5 s of a trace is a lost or stalled device).
+static uint32_t helper_device = 0;
+static uint64_t trace_tick = 0;
 
 struct Objects {
   ComPtr<ID3D11Device> device;
@@ -114,7 +123,8 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   if (depth_state) depth_state->GetDesc(&depth_desc);
   if (!depth_desc.DepthEnable || depth_desc.DepthWriteMask != D3D11_DEPTH_WRITE_MASK_ALL) return false;
   if (!twattila::rt_scene::SceneCoverage(native, shader)) return false;
-  if (std::ranges::find(TESTED_VERTEX_SHADERS, shader->hash) == TESTED_VERTEX_SHADERS.end() && battle_scene < (shader->foliage ? 2.f : 1.f)) {
+  if (std::ranges::find(TESTED_VERTEX_SHADERS, shader->hash) == TESTED_VERTEX_SHADERS.end()
+      && (battle_scene_held || battle_scene < (shader->foliage ? 2.f : 1.f))) {
     return false;
   }
   shader->dynamic = true;
@@ -124,8 +134,20 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
 inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
                       uint32_t, const reshade::api::rect*) {
   // The rows as Attila's (they need an upscaler: DLSS), the render's scale the game's.
-  const twattila::rt_scene::Settings settings = twattila::rt_scene::SettingsOf(sliders, dlaa::sliders, 0.f, dlaa::RenderScale());
+  twattila::rt_scene::Settings settings = twattila::rt_scene::SettingsOf(sliders, dlaa::sliders, 0.f, dlaa::RenderScale());
   dlaa::rays = settings.sun_shadows || settings.ambient_occlusion;
+  // Solid and All are tests: the helper's device with DRED and the log's details (where the GPU stopped, the left-out
+  // triangles by vertex shader), as Log Details gives them; the device reads it at its start.
+  settings.debug_log |= battle_scene > 0.f;
+  if (const uint32_t device = twattila::dlaa_bridge::RayTracingDevice(); device != helper_device) {
+    helper_device = device;
+    if (battle_scene > 0.f && !battle_scene_held && GetTickCount64() < trace_tick + 5000) {
+      battle_scene_held = true;
+      renodx::utils::log::w(
+          "[Total War] Ray tracing: the helper's device started again with Battle Objects at Solid or All: the rays see the"
+          " tested objects only until the game starts again (why: renodx-tw-dlaa64.log).");
+    }
+  }
   twattila::rt_scene::Update(settings);
 }
 
@@ -247,6 +269,7 @@ inline void Trace(reshade::api::command_list* cmd_list) {
     native->CSSetUnorderedAccessViews(0, 1, bridge.rt_sun.uav.GetAddressOf(), nullptr);
     native->Dispatch(1, 1, 1);
   }
+  internal::trace_tick = GetTickCount64();
   twattila::rt_scene::Trace(native, depth.Get(),
                             {
                                 .view_projection = dlaa::internal::Transposed(camera.jittered_view_projection),
