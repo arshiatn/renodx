@@ -397,8 +397,9 @@ class RtScene12 {
           .maxTotalVertexCount = TRANSFER_VERTICES,  // each a texel of the request's
           .minPositionTruncateBitCount = 0,
       };
+      // The cluster BLASes (CLUSTER_BLASES) built in one call.
       cluster_blas_inputs_ = {
-          .maxArgCount = 1,
+          .maxArgCount = CLUSTER_BLASES,
           .flags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_NONE,
           .type = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_BUILD_BLAS_FROM_CLAS,
           .mode = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_EXPLICIT_DESTINATIONS,
@@ -4203,16 +4204,16 @@ class RtScene12 {
             list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
           }
         }
-        // The cluster BLASes one after another (the same scratch).
+        // The cluster BLASes in one call, an argument each (an empty run's BLAS built empty, never instanced): one call a
+        // BLAS with a barrier after each made a battle's grass and units wait for each other (4K harness, units + a grass
+        // field: clusters 2.55 -> 2.33 ms).
+        const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS blas_params = {
+            .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &blas_desc};
+        const bool blases_built = clas_built && cluster_count != 0
+                                  && NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &blas_params) == NVAPI_OK;
+        list->ResourceBarrier(1, &uav_barrier);
         for (size_t blas = 0; blas < CLUSTER_BLASES; ++blas) {
-          NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC run_desc = blas_desc;
-          run_desc.destinationAddressArray.StartAddress += blas * 8;
-          run_desc.indirectArgArray.StartAddress += blas * 16;
-          const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS run_params = {
-              .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &run_desc};
-          cluster_built[blas] = clas_built && blas_runs[blas].second != blas_runs[blas].first
-                                && NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &run_params) == NVAPI_OK;
-          list->ResourceBarrier(1, &uav_barrier);
+          cluster_built[blas] = blases_built && blas_runs[blas].second != blas_runs[blas].first;
         }
         units_clustered = cluster_built[0] || cluster_built[1] || cluster_built[2];
         smoke_clustered = cluster_built[3];
