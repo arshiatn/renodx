@@ -1,29 +1,40 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
-### Round 1 (2026-11-14, toward Attila's package, part 1: what needs no trace; built only, not run in game)
+### Round 1 (2026-11-14, toward Attila's package; built only, not run in game)
 
 New:
 - **Graphics 1 of 2 as Attila's and Rome II's page**: Anti-Aliasing Off / SMAA / CMAA2 / SMAA T2x / TAA / DLSS / FSR / XeSS, the page presets Reset / No RT/PT (Recommended) / RT/PT, TAA Motion Vectors, Trilinear LOD Bias, Frame Generation's method, the NRD denoiser row, cloth and sails without self-shadowing. HDR: an SDR preset for monitors without HDR (also on a first start without HDR), the full download note and GitHub (Downloads).
 - **The paths' sky and sun from the game's own light** (the sun draws' ambient cube and sun colour), not learned from the screen.
+- **The ray-traced scene as Attila's** (from the data run's traces): rocks blended into the terrain, soldiers' shields, plumes and other cut-out gear with their holes, grass in rows, swaying branches, imposter trees, the campaign map's trees and plants. **Sprite Soldier and Far Tree Shadows (Experimental, off)**.
+- **Ray-Traced Shadows Only**: rivers, the battle water, the sea, lit smoke and the campaign sea take the rays' shadows in place of the skipped shadow map.
+- **Ray-traced AO in place of the game's** (as Attila's), not on top of it.
+- **Water Clarity** (rivers and the battle water) and **Water Caustics (Experimental, off)**.
 - **Light Through Foliage (Experimental, off)** for Bend's screen-space shadows.
 - **Facial and Hand Animation Distance** apart from Unit Animation, **Campaign Plant Detail and Prop Distance** apart from Campaign Tree Detail (saved values carry over), **Grass Detail Distance**, **Grass Density** and Grass Trace (Grass & Trees (Tests)), **Small Soldiers as Sprites (Experimental, off)** with Sprite Size; the soldiers' 3D shadows dropped while the rays skip the sun's shadow map.
 - **Faster Game CPU Code (Experimental, off)**: Attila's faster half floats (the sprite soldiers); its other two routines are other code in this game and stay the game's.
 - **Smoke Shadows (Experimental, off)**, the rays' and the one without rays (any GPU), as Attila's.
 
 Fixed:
-- Nothing this round.
+- The game's ambient occlusion below 100% render scale (DLSS, FSR, XeSS, Below 100%): it was read from the wrong part of the screen.
 
-Not done (waiting for the data run's traces or a WARP slot): the ray-traced scene to Attila's (rows, cut-outs, campaign, far trees), the shadow readers, the scale fixes below 100%, Water Clarity and Caustics, Particle Resolution. Not possible as Attila's: Grass Height Distance, Light Through All Banners, the soldier draw rounding and fmod of Faster Game CPU Code.
+Not done:
+- Particle Resolution: this game draws its own lit particle shaders; Attila's replacements carry the particle layer's constants. Smallest step: Thrones' vfx00 / vfx01 from Attila's, WARP against these bytes.
+- Light Through All Banners, Grass Height Distance, the soldier draw rounding and fmod of Faster Game CPU Code: other code in this game (not possible as Attila's).
+- The campaign: no campaign trace yet; its rows go by shader names (Attila's twins). Smallest step: one campaign frame trace.
+- Water Clarity on the sea and the campaign lake: their shaders don't read the scatter it raises.
+- The 24 MSAA (`_ms`) passes below 100%: they run only with in-game MSAA, where no upscaler runs.
 
 Test (ATN):
 1. First start without ReShade.ini on an SDR monitor: the SDR preset; on HDR the picture as before.
-2. RT/PT with DLSS in a sunny battle: the sky's light on soldiers and walls matches the screen (not too blue or too dark).
-3. Facial / Hand Animation 8x, Grass Detail Distance 4x and Grass Density 2x in a battle: faces, hands and grass farther; FPS.
-4. Campaign Plant / Prop Distance 4x on the campaign map: plants and props farther.
-5. Small Soldiers as Sprites with TAA or DLSS: small far soldiers become sprites; Sprite Size moves where.
-6. Light Through Foliage 0.5 with Bend's shadows: grass and leaf shadows lighter, walls and soldiers full.
-7. Smoke Shadows 1 without rays, then the rays' with RT shadows: the ground under thick smoke darker.
-8. Faster Game CPU Code on: ReShade.log "half floats faster"; the same picture; FPS in a big battle.
+2. RT/PT with DLSS in a sunny battle: the sky's light matches the screen; Debug View Sun Shadows: shields, plumes, grass, rocks and tree cards cast.
+3. RT shadows by a river or the coast: water, sea and smoke shadowed like the ground; ReShade.log "forward shader ... patched" for C9FBACCB / F7E011A4.
+4. DLSS Performance with the game's AO, then RT AO: the AO stays on its objects; with RT AO no double darkening.
+5. Water Clarity 4 at a river, then Water Caustics 1: clearer water, rippling light on the bed.
+6. Facial / Hand Animation 8x, Grass Detail Distance 4x, Grass Density 2x, Campaign Plant / Prop 4x: detail farther; FPS.
+7. Small Soldiers as Sprites with TAA or DLSS: small far soldiers become sprites; Sprite Size moves where.
+8. Light Through Foliage 0.5 with Bend's shadows; Smoke Shadows 1 without rays, then the rays'.
+9. Sprite Soldier and Far Tree Shadows with RT shadows: far soldiers and tree cards cast; no black blocks.
+10. The campaign map with RT/PT: tree and plant shadows; Faster Game CPU Code on: log "half floats faster", FPS.
 
 Build: `cmake --build build32 --config Release --target renodx-twthronesofbritannia.addon32`.
 
