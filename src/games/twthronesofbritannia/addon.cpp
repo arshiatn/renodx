@@ -1464,24 +1464,31 @@ constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils:
 
 // Attila's water rows read again here (tools/tw/thrones/th_water_rows.py: the same bytes, else Thrones' twin by name, its
 // bindings from the reflection; WARP tools/tw/thrones/water_test). The seas' and the campaign lake's twins don't read
-// g_sea_bed_light_scatter: Water Clarity changes the rivers, the battle plane and the placed water meshes only.
+// g_sea_bed_light_scatter: their see-through is exp2(depth x a literal), -0.4 x log2(e) a metre in battles, -10 x log2(e)
+// on the campaign (each once, tools/tw/thrones/par_th_water_literals.py), a lane of a vector literal in the battle seas and
+// the campaign sea: Water Clarity scales that depth in a patched copy (material water, PatchWaterAbsorption).
+constexpr twattila::water_effects::WaterOpacity SEA_DEPTH_X = {.type = 4, .index = {0xBF13BB63, 0}, .component = 0, .component_only = true};
+constexpr twattila::water_effects::WaterOpacity SEA_DEPTH_Y = {.type = 4, .index = {0xBF13BB63, 0}, .component = 1, .component_only = true};
+constexpr uint32_t CAMPAIGN_DEPTH_LITERAL = 0xC166D4CA;
+constexpr twattila::water_effects::WaterOpacity CAMPAIGN_DEPTH = {.type = 4, .index = {CAMPAIGN_DEPTH_LITERAL, 0}};
 constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {{
     {.hash = 0x2E9F5935, .lighting_slot = 2, .world_input = 1, .refraction_slot = 2},  // battle river
     {.hash = 0xC9FBACCB, .lighting_slot = 2, .world_input = 3, .refraction_slot = 2},  // battle plane, Water Quality Ultra
     {.hash = 0x2E69BF8E, .lighting_slot = 1, .world_input = 3, .refraction_slot = 2},  // placed water meshes; the plane below Ultra
-    {.hash = 0xF7E011A4, .lighting_slot = 2, .world_input = 2, .refraction_slot = 6},  // battle sea, high / ultra
-    {.hash = 0xA9724510, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6},  // battle sea, medium
-    {.hash = 0x736DB670, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},  // battle sea, low
-    {.hash = 0xDE739661, .lighting_slot = 2, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign sea
-    {.hash = 0x08F47D8C, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign sea, low
-    {.hash = 0x4229959B, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign lake
+    {.hash = 0xF7E011A4, .lighting_slot = 2, .world_input = 2, .refraction_slot = 6, .material_water = true, .opacity = SEA_DEPTH_Y},  // battle sea, high / ultra
+    {.hash = 0xA9724510, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6, .material_water = true, .opacity = SEA_DEPTH_Y},  // battle sea, medium
+    {.hash = 0x736DB670, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5, .material_water = true, .opacity = SEA_DEPTH_X},  // battle sea, low
+    {.hash = 0xDE739661, .lighting_slot = 2, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true,
+     .opacity = {.type = 4, .index = {CAMPAIGN_DEPTH_LITERAL, 0}, .component = 2, .component_only = true}},  // campaign sea
+    {.hash = 0x08F47D8C, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true, .opacity = CAMPAIGN_DEPTH},  // campaign sea, low
+    {.hash = 0x4229959B, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true, .opacity = CAMPAIGN_DEPTH},  // campaign lake
     // Without shadows.
     {.hash = 0x52228234, .lighting_slot = 1, .world_input = 1, .refraction_slot = 2},
     {.hash = 0x5CB9A865, .lighting_slot = 1, .world_input = 1, .refraction_slot = 2},
-    {.hash = 0xBF93E312, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6},
-    {.hash = 0x761A07B1, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},
-    {.hash = 0xF6DFFEBC, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},
-    {.hash = 0xECB1E7B5, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},
+    {.hash = 0xBF93E312, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6, .material_water = true, .opacity = SEA_DEPTH_Y},
+    {.hash = 0x761A07B1, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5, .material_water = true, .opacity = SEA_DEPTH_X},
+    {.hash = 0xF6DFFEBC, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true, .opacity = CAMPAIGN_DEPTH},
+    {.hash = 0xECB1E7B5, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true, .opacity = CAMPAIGN_DEPTH},
 }};
 
 // The screen-space shadows' Light Through Foliage: grass and leaves, and the rigid objects drawn after them (Attila's
@@ -2248,6 +2255,8 @@ bool AttachAddon() {
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  // The seas and the campaign lake as material waters (the patched copy swapped in at the draw): their bytes as created.
+  renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::grass_fade::Install(GRASS_FADE_SHADERS);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's camera b0, shadowmap b1,
@@ -2335,6 +2344,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::grass_fade::OnDestroyDevice);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::grass_fade::Uninstall();
   twattila::engine_tests::StopAtStart(&at_start_stop);
   twattila::anti_aliasing::Uninstall();

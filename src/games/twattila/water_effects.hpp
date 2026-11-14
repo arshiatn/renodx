@@ -47,13 +47,16 @@ using Microsoft::WRL::ComPtr;
 // light a metre, 4 times as far still dark. Logged once where it applies.
 // The opacity a material water's absorption multiplies by (PatchWaterAbsorption): an operand, type 8 a constant buffer (index:
 // slot, register) or 1 an input (index: register, 0), and its component. Type 0: every mul by +-log2(e) (WH3's battle water).
-// Type 4 an immediate (index[0]: its bits): the mul or mad reading that literal scales the depth (Warhammer II's linear fades);
-// `divisor`: what it makes divides the depth instead, so it is divided by 1 / clarity.
+// Type 4 an immediate (index[0]: its bits, in the immediate's `component`): the mul or mad reading that literal scales the
+// depth (Warhammer II's linear fades); `divisor`: what it makes divides the depth instead, so it is divided by 1 / clarity.
+// `component_only`: only that component of the destination is scaled (Thrones' sea: one lane of a vector literal's mul is
+// the depth's, the others other terms).
 struct WaterOpacity {
   uint32_t type = 0;
   std::array<uint32_t, 2> index = {};
   uint32_t component = 0;
   bool divisor = false;
+  bool component_only = false;
 };
 struct WaterShader {
   uint32_t hash = 0;
@@ -218,7 +221,8 @@ inline std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, co
 // Beer-Lambert in battle_water and battle_river: every exp(x * log2(e)) of absorption x depth, per channel and for the material's
 // opacity. After each `mul rX, rY, l(+-1.442695)`: mul rX, rX, cb11[0].xxxx, which is what looking through 1 / clarity of the depth does.
 // An `opacity` operand (Pharaoh's water: exp2(-depth x opacity), no log2(e)): after each mul that reads it. An immediate (Warhammer
-// II's linear fades): after each mul or mad that reads it, a div by cb11[0].xxxx where it makes the depth's divisor.
+// II's linear fades): after each mul or mad that reads it, a div by cb11[0].xxxx where it makes the depth's divisor; with
+// `component_only` (Thrones' sea: exp2(depth x -0.4 log2(e)) in one lane) the mul writes that lane alone.
 inline std::vector<uint8_t> PatchWaterAbsorption(std::span<const uint8_t> code, const WaterOpacity& opacity) {
   constexpr uint32_t OP_MAD = 50, OP_MUL = 56, OP_DCL_CONSTANT_BUFFER = 89, OP_DCL_TEMPS = 104;
   constexpr uint32_t LOG2_E = 0x3FB8AA3B;
@@ -250,7 +254,7 @@ inline std::vector<uint8_t> PatchWaterAbsorption(std::span<const uint8_t> code, 
           const size_t operand_length = dxbc::ParseOperand(tokens, next, at + length, &operand);
           if (operand_length == 0) return {};
           absorption = absorption
-                       || (immediate ? (operand.type == opacity.type && operand.values[0] == opacity.index[0])
+                       || (immediate ? (operand.type == opacity.type && operand.values[opacity.component & 3] == opacity.index[0])
                                      : (operand.type == opacity.type && operand.mode == 2 && operand.select == opacity.component && !operand.relative
                                         && operand.index == opacity.index));
           next += operand_length;
@@ -258,7 +262,10 @@ inline std::vector<uint8_t> PatchWaterAbsorption(std::span<const uint8_t> code, 
       }
       if (absorption) {
         if ((tokens[at] & (1u << 13)) != 0 || (tokens[destination] & 0x001FF003) != 0x00100002) return {};
-        patched.insert(patched.end(), {(opacity.divisor ? dxbc::OP_DIV : OP_MUL) | (8u << 24), tokens[destination], tokens[destination + 1], 0x00100E46,
+        const uint32_t lane = 0x10u << (opacity.component & 3);
+        if (opacity.component_only && (tokens[destination] & lane) == 0) return {};
+        const uint32_t written = (opacity.component_only ? ((tokens[destination] & ~0xF0u) | lane) : tokens[destination]);
+        patched.insert(patched.end(), {(opacity.divisor ? dxbc::OP_DIV : OP_MUL) | (8u << 24), written, tokens[destination + 1], 0x00100E46,
                                        tokens[destination + 1], CLARITY_OPERAND, WATER_CLARITY_SLOT, 0u});
         ++found;
       }
