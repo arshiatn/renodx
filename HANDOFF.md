@@ -285,6 +285,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   unified reservoir (U1 66 %, U2 20.5 % rRMSE vs RR + importance 1.98 %, Steady 5.15 %: the sun's bounce outweighs the torches).
   Redesign 39a8e204 (one light per bounce texel apart from the reservoir) being measured; helper111 only if it holds.
   All agents told: atomic gpu_job.lock (two overwrites tonight).
+- [x] WH2 follow-up MERGED f8484655 (far cards 75914932 out of view, 16AFAF14 cut-outs in the rays = fix on by default,
+  Light Through Foliage for Bend, Experimental). Agent resumed: Particle Resolution (indirect layer path), Water Clarity.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
