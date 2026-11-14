@@ -242,6 +242,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] Rome Remastered v11 MERGED 6fccf345 (frame generation + Reflex via DLAA's HUD-less point, Screen-Space Shadows =
   twattila sss_bend into the mask, Ray Tracing Debug View, profile button; all Experimental, off; tw_romer_dlaa + rays PASS,
   case 6 proves the sun sign). Test list: tools/tw/round_notes/tests_1114.md.
+- [x] Shogun 2 round 4 MERGED 5601f257 (waterplane 9B9EC116 recorded + replayed depth-only, Ultra sea 6B8954A6: RT water
+  reflections on rivers, lakes, the Ultra sea; Experimental, off; HDR v69 / DLSS v61; WARP parts 7-9 PASS). NOT DONE: W7d
+  (cascades draw before the main view; rigid shadow 38-326M indices x instances vs a 29M budget): agent resumed on the
+  per-instance record (opt-in rt_core changes, every rt_core user's suite must stay unchanged).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
