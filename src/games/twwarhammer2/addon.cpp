@@ -37,6 +37,7 @@
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
+#include "../twattila/rt_capture_imposter_gs.h"
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
@@ -1631,7 +1632,9 @@ constexpr std::array<twattila::rt_scene::PixelMask, 10> CUT_OUT_MASKS = {{
     {.pixel_shader = 0xE5C2B901, .slot = 2},  // weighted4_animated_overlay_alpha ps_main_gbuffer
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 43> SCENE_SHADERS = {{
+// The sprite soldiers' G-buffer pixel shader (imposter ps40_main_gbuffer): their scene draws (SCENE_SHADERS' imposter rows).
+constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixel_shader = 0x5B1345B7}}};
+constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
     {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
     {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
@@ -1715,6 +1718,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 43> SCENE_SHADERS = {{
     // the shadow camera: TEXCOORD0 the UV with the view's whole part and blend, TEXCOORD1 the world; cut out by B7ED5B72's t0
     // test, a card faded below half left out as that shader leaves it.
     {.hash = 0x75914932, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .cascade_keep = __rt_outside_view_card_split},
+    // The sprite soldiers (imposter vs40_main_gs: points its gs_main turns into cards; in no trace, level B): streamed out through
+    // twattila/rt_capture_imposter_gs in place of gs_main (SceneShader::capture_geometry_shader), the card turned to the sun; only
+    // the G-buffer draw (ps40_main_gbuffer 5B1345B7: its t0's alpha the cut-out, from 0.376), as Sprite Soldier Shadows
+    // (Experimental, off). WARP against the game's bytes: test/tw_rays_captures (370A7440 + 29E8BDF7).
+    {.hash = 0x370A7440, .dynamic = true, .foliage = true, .sun_facing = true, .capture_geometry_shader = __rt_capture_imposter_gs, .pixel_masks = IMPOSTER_MASKS},
 }};
 
 // The SSR's copy (environment_specular_light ps40_copy) samples the resolve's output (7E1CDD0A, its content at the render
@@ -2308,13 +2316,13 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (as Pharaoh's and Warhammer III's), ATN's RT/PT preset as the defaults of what the methods
   // leave, then Settings Mode's pages. Only what this game hooks: no water pass for the rays (its rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
-  // Fog Shadows, the torches' light in it, Far Tree Shadows and Smoke Shadows start off (Experimental: no game run has shown
-  // them here yet), Specular Occlusion too; RT/PT turns them on, as Attila's (rays_preset_as_attila).
+  // Fog Shadows, the torches' light in it, Sprite Soldier and Far Tree Shadows and Smoke Shadows start off (Experimental: no
+  // game run has shown them here yet), Specular Occlusion too; RT/PT turns them on, as Attila's (rays_preset_as_attila).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
         || setting->key == "RayTracedSpecularOcclusion") {
       setting->default_value = 0.f;
-    } else if (setting->key == "RayTracedFarTreeShadows") {
+    } else if (setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
     }
   }
@@ -2418,6 +2426,9 @@ bool AttachAddon() {
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
 
+  // Rows saved at an old default, cleared once: Sprite Soldier Shadows was saved hidden at RT/PT's 1 (SetRaysPresetDefaults)
+  // until the sprite soldiers were in the rays; now Experimental, off.
+  twattila::graphics_page::ClearSavedRows(1, {"RayTracedSpriteShadows"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
   // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).

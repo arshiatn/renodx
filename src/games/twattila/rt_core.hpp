@@ -303,6 +303,11 @@ struct SceneShader {
   // Its draws are 3-control-point patches its hull and domain shaders tessellate and displace (Attila's tessellated rigid objects):
   // captured as the triangles they are, without those two shaders (no displacement).
   bool patch_triangles = false;
+  // Its draws are points the game's geometry shader turns into cards (the sprite soldiers of Warhammer, Troy, Warhammer II and
+  // Pharaoh): streamed out through this geometry shader in place of the game's (the game's vertex shader kept), which gives
+  // each point's card as one strip of 4 world positions with their UV (RtWorldUv), so 6 corners a point, a count known as a
+  // vertex shader capture's is. A world-space game's only (no clip captures). Empty: none.
+  std::span<const uint8_t> capture_geometry_shader;
   bool indirect = false;  // its indirect draws too (the game's GPU-culled grass): CaptureIndirect
   const char* uv_semantic = nullptr;
   UINT uv_semantic_index = 0;
@@ -494,6 +499,7 @@ struct DeviceObjects {
   std::vector<ComPtr<ID3D11VertexShader>> faded_rows_shaders;  // as the scene shaders (SceneShader::faded_rows_shader)
   std::vector<ComPtr<ID3D11GeometryShader>> faded_rows_outputs;
   std::vector<ComPtr<ID3D11GeometryShader>> capture_outputs;
+  std::vector<ComPtr<ID3D11GeometryShader>> capture_geometry_outputs;  // as the scene shaders (SceneShader::capture_geometry_shader)
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_outputs;  // the game's own, by their hash
   std::unordered_map<uint32_t, ComPtr<ID3D11GeometryShader>> game_uv_outputs;  // with the UV (their foliage)
   std::unordered_map<uint32_t, ComPtr<ID3D11VertexShader>> game_capture_shaders;  // Host::scene_draw's capture versions, by the game's hash
@@ -988,7 +994,12 @@ inline bool PrepareDevice(ID3D11Device* device) {
     auto& cut_out_output = objects.cut_out_outputs.emplace_back();
     auto& faded_rows_shader = objects.faded_rows_shaders.emplace_back();
     auto& faded_rows_output = objects.faded_rows_outputs.emplace_back();
-    return (shader.faded_rows_shader.empty()
+    auto& geometry_output = objects.capture_geometry_outputs.emplace_back();
+    return (shader.capture_geometry_shader.empty()
+            || SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.capture_geometry_shader.data(), shader.capture_geometry_shader.size(),
+                                                                      &output, 1, &STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                                                                      geometry_output.GetAddressOf())))
+           && (shader.faded_rows_shader.empty()
             || (SUCCEEDED(device->CreateVertexShader(shader.faded_rows_shader.data(), shader.faded_rows_shader.size(), nullptr, faded_rows_shader.GetAddressOf()))
                 && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.faded_rows_shader.data(), shader.faded_rows_shader.size(), rows_output.data(),
                                                                           static_cast<UINT>(rows_output.size()), &ROWS_STRIDE, 1,
@@ -1366,12 +1377,23 @@ void Capture(Context& command, const SceneShader& shader) {
   } else {
     vertex_count = arguments.vertex_count * (placed ? 1u : std::max(arguments.instance_count, 1u));
   }
+  // SceneShader::capture_geometry_shader: points in, two triangles out each.
+  const bool geometry_capture = !shader.capture_geometry_shader.empty();
+  if (geometry_capture) {
+    vertex_count *= 6;
+  }
   const UINT row_texels = placed ? instances * 4u : 0u;
   D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
   native->IAGetPrimitiveTopology(&topology);
-  if (topology != (shader.tessellated ? D3D11_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST
-                   : (shader.patch_triangles ? D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST))
-      || vertex_count == 0 || vertex_count > MAX_VERTICES) {
+  D3D11_PRIMITIVE_TOPOLOGY drawn_topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+  if (shader.tessellated) {
+    drawn_topology = D3D11_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST;
+  } else if (shader.patch_triangles) {
+    drawn_topology = D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST;
+  } else if (geometry_capture) {
+    drawn_topology = D3D11_PRIMITIVE_TOPOLOGY_POINTLIST;
+  }
+  if (topology != drawn_topology || vertex_count == 0 || vertex_count > MAX_VERTICES || (geometry_capture && clip_captures)) {
     if (vertex_count != 0) {
       const std::unique_lock lock(runtime.mutex);
       if (runtime.left_out_logged.insert(shader.hash).second) {
@@ -1812,7 +1834,11 @@ void Capture(Context& command, const SceneShader& shader) {
   // cascade_keep.
   const bool own_capture = !shader.capture_shader.empty() && !shader.tessellated && (cascade_draw ? shader.cascade_world : host.scene_draw != nullptr);
   const bool cascade_world = cascade_draw && (host.cascade_world || shader.cascade_world);
-  if (!place && clip_space) {
+  if (geometry_capture) {
+    // The game's vertex shader stays bound (capture_vertex_shader null).
+    stream_output = objects.capture_geometry_outputs[listed_index].Get();
+    if (stream_output == nullptr) return;
+  } else if (!place && clip_space) {
     const uint32_t streamed_shader =
         shader.tessellated ? renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::domain_shader, &command.bound_state_cache)
                            : shader.hash;
@@ -1920,9 +1946,18 @@ void Capture(Context& command, const SceneShader& shader) {
     if (!clip_space || own_capture) native->VSSetShader(capture_vertex_shader, nullptr, 0);
     native->GSSetShader(stream_output, nullptr, 0);
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
-    // A capture version turned to the sun reads rt_sun; the game's shadow vertex shader (a cascade draw) turns its cards to the sun itself,
-    // and its t0 stays as the game set it for the next draw.
-    if (shader.sun_facing && !cascade_draw) native->VSSetShaderResources(shader.sun_slot, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
+    // A capture version turned to the sun reads rt_sun (a geometry capture at its geometry shader, the game's view there put back
+    // after); the game's shadow vertex shader (a cascade draw) turns its cards to the sun itself, and its t0 stays as the game set it
+    // for the next draw.
+    ComPtr<ID3D11ShaderResourceView> game_geometry_view;
+    if (shader.sun_facing && !cascade_draw) {
+      if (geometry_capture) {
+        native->GSGetShaderResources(shader.sun_slot, 1, game_geometry_view.GetAddressOf());
+        native->GSSetShaderResources(shader.sun_slot, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
+      } else {
+        native->VSSetShaderResources(shader.sun_slot, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
+      }
+    }
     ComPtr<ID3D11ShaderResourceView> game_keep_view;
     ComPtr<ID3D11Buffer> game_keep_constants;
     if (!shader.tessellated_keep.empty()) {
@@ -2019,8 +2054,12 @@ void Capture(Context& command, const SceneShader& shader) {
       native->GSSetConstantBuffers(1, 1, game_keep_constants.GetAddressOf());
     }
     if (shader.sun_facing && !cascade_draw) {
-      ID3D11ShaderResourceView* no_view = nullptr;
-      native->VSSetShaderResources(shader.sun_slot, 1, &no_view);
+      if (geometry_capture) {
+        native->GSSetShaderResources(shader.sun_slot, 1, game_geometry_view.GetAddressOf());
+      } else {
+        ID3D11ShaderResourceView* no_view = nullptr;
+        native->VSSetShaderResources(shader.sun_slot, 1, &no_view);
+      }
     }
   }
   const UINT rows_vertex = next_vertex + (sway ? block_texels : (place ? 0u : vertex_count));
@@ -3899,9 +3938,11 @@ constexpr auto OnAnyDraw = []<typename Context>(Context&) -> renodx::utils::comm
 inline void InstallScene(std::span<const SceneShader> shaders, const Host& host) {
   internal::scene_shaders = shaders;
   internal::host = host;
-  // A cascade draw streaming out world positions (Host::cascade_world, SceneShader::cascade_world) is no clip-space capture.
+  // A cascade draw streaming out world positions (Host::cascade_world, SceneShader::cascade_world) is no clip-space capture, nor
+  // is a geometry capture (SceneShader::capture_geometry_shader).
   internal::clip_captures = host.scene_draw != nullptr || std::ranges::any_of(shaders, [&host](const SceneShader& shader) {
-                              return shader.capture_shader.empty() && !((host.cascade_world || shader.cascade_world) && !shader.cascade_keep.empty());
+                              return shader.capture_shader.empty() && shader.capture_geometry_shader.empty()
+                                     && !((host.cascade_world || shader.cascade_world) && !shader.cascade_keep.empty());
                             });
   internal::world_captures = internal::clip_captures && std::ranges::any_of(shaders, [](const SceneShader& shader) {
                                return !shader.rows_shader.empty() || shader.cascade_world;

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <format>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <set>
 #include <span>
@@ -89,6 +90,19 @@ inline void SetRaysPresetDefaults(std::vector<Setting*>* settings) {
       setting->default_value = preset->second;
     }
   }
+}
+
+// Rows saved at an old default (a preset saves every row, hidden ones too), cleared once: `keys` out of the three presets
+// where the game's SettingsRevision is below `revision`, which it becomes. In order of revision, before settings::Use.
+inline void ClearSavedRows(int revision, std::initializer_list<const char*> keys) {
+  const std::string& global = renodx::utils::settings::global_name;
+  if (int saved = 0; reshade::get_config_value(nullptr, global.c_str(), "SettingsRevision", saved) && saved >= revision) return;
+  for (const char* preset : {"-preset1", "-preset2", "-preset3"}) {
+    for (const char* key : keys) {
+      reshade::set_config_value(nullptr, (global + preset).c_str(), key, static_cast<const char*>(nullptr));
+    }
+  }
+  reshade::set_config_value(nullptr, global.c_str(), "SettingsRevision", revision);
 }
 
 inline const std::string AA_SECTION = "Anti-Aliasing and Upscaling";
@@ -241,6 +255,7 @@ struct Bindings {
   bool smoke_map_tested = true;  // false: the smoke's shadows without rays Experimental, off by default (as foliage_light_tested)
   bool smoke_shadows_tested = true;  // false: the rays' Smoke Shadows Experimental and left out of RT/PT (its default the game's to set)
   bool far_cards_tested = true;  // false: Sprite Soldier and Far Tree Shadows the same (their defaults the game's to set)
+  bool sprites_tested = true;  // false: Sprite Soldier Shadows Experimental and left out of RT/PT (its default the game's to set)
   bool water_caustics_tested = true;  // false: Water Caustics left out of RT/PT (its default the game's to set)
   bool banner_light_tested = true;  // false: Light Through All Banners left out of RT/PT (its default the game's to set)
   // RT/PT as Attila's whatever the *_tested flags above say (ATN 2026-11-14): the rows they leave out in it, Light Through
@@ -793,10 +808,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                                              {"RayTracedUnitsOutOfView", 1.f}});
     } else {
       std::erase_if(rays_values, [smoke = b.smoke_shadows_tested, caustics = b.water_caustics_tested, cards = b.far_cards_tested,
-                                  banners = b.banner_light_tested](const Values::value_type& preset) {
+                                  sprites = b.sprites_tested, banners = b.banner_light_tested](const Values::value_type& preset) {
         const auto& [key, value] = preset;
         return (key == "RayTracedSmokeShadows" && !smoke) || (key == "WaterCaustics" && !caustics)
-               || ((key == "RayTracedSpriteShadows" || key == "RayTracedFarTreeShadows") && !cards) || (key == "RayTracedBannerLight" && !banners);
+               || (key == "RayTracedSpriteShadows" && !(cards && sprites)) || (key == "RayTracedFarTreeShadows" && !cards)
+               || (key == "RayTracedBannerLight" && !banners);
       });
     }
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
@@ -919,7 +935,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       });
     }
     page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays,
-               .label = b.far_cards_tested ? "" : "Sprite Soldier Shadows (Experimental)"});
+               .label = (b.far_cards_tested && b.sprites_tested) ? "" : "Sprite Soldier Shadows (Experimental)"});
     page.Take({.match = "RayTracedFarTreeShadows", .section = section, .shown = more_rays,
                .label = b.far_cards_tested ? "" : "Far Tree Shadows (Experimental)"});
     if (b.rays_replace_maps != nullptr) {
