@@ -38,6 +38,7 @@
 #include "../twattila/engine_code.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/shadow_pass.hpp"
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/ssr_hiz.hpp"
 #include "../twattila/test_hooks.hpp"
@@ -1433,6 +1434,7 @@ twattila::feature_settings::AaSliders aa_sliders;
 twattila::rt_scene::Sliders rt_sliders;
 // Skip the Shadow Maps (Experimental, off): Ray-Traced Shadows Only with the rays' sun shadows (rt_scene InstallShadowsOnly).
 float rays_skip_cascades_row = 0.f;
+float shadow_pass_row = 0.f;  // Skip the Game's Shadow Map Work (twattila/shadow_pass.hpp: Rome II's one-argument Render)
 // Faster Game CPU Code (twattila/engine_code.hpp, Game::ROME2): Attila's three routines on this game's build (the soldier
 // draw's rounding at its own stack slots, float to half and fmod the same bytes; test/tw_engine_code with this game's DLL:
 // every register and the x87 state the game's). Experimental, off until a game run.
@@ -1765,6 +1767,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
           .focal_pixels = twattila::anti_aliasing::MainFocalPixels(),
       },
       &graphics_hooks_installed, graphics_status, twattila::graphics_hooks::Game::ROME2);
+  twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped());
 }
 
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
@@ -2094,6 +2097,17 @@ void ConfigureAddon() {
           .min = 0.25f,
           .max = 16.f,
           .format = "%.2fx",
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSkipShadowPass",
+          .binding = &shadow_pass_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Skip the Game's Shadow Map Work (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows: the game stops preparing most of the shadow map draws the rays replace.\n"
+                     "Less CPU time in forests and big battles.",
+          .labels = {"Off", "On"},
       },
       graphics_status,
       // Two empty lines between this section and the ambient occlusion (ATN).
@@ -2444,6 +2458,7 @@ bool AttachAddon() {
   // water and river, the campaign's sea) take the rays' shadow (WARP tools/tw/rome2/water_r2: t49 unbound bit-identical,
   // t49 = 1 every comparison shadowed).
   twattila::rt_scene::InstallShadowsOnly();
+  twattila::shadow_pass::Install();
   twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
   // Last of the sun draws' hooks: it draws the sun draws itself (no callback after it runs).
@@ -2487,6 +2502,7 @@ void DetachAddon() {
   tw::engine_tweaks::Uninstall(graphics_options);
   twattila::engine_code::Uninstall();
   twattila::graphics_hooks::Uninstall();
+  twattila::shadow_pass::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_pass::Uninstall();
   twattila::rt_scene::Uninstall();

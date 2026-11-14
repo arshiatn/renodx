@@ -23,7 +23,7 @@
 #include "./native_hook_lifetime.hpp"
 #include "./rt_scene.hpp"
 
-// Skip the Game's Shadow Map Work (Experimental; Attila, Thrones of Britannia): under the rays' sun shadows every caster
+// Skip the Game's Shadow Map Work (Experimental; Attila, Thrones of Britannia, Rome II): under the rays' sun shadows every caster
 // drawn into the sun's shadow map is skipped at the draw (rt_scene OnBindTargets / OnCasterDraw), after the render thread
 // set up and submitted it (Constantinople outside the walls: 1561 such draws in 4.4-4.8 ms of the render thread). Here
 // the model manager's draws of those passes (its rigid lists, trees and soldiers) are not made at all: each frame one of
@@ -42,12 +42,17 @@ namespace internal {
 // draw the sun's cascades (heapfix's pass timing). ret 8.
 constexpr std::string_view RENDER =
     "81 EC A4 00 00 00 57 8B F9 80 7F 04 00 0F 84 ?? ?? ?? ?? 53 8B 9C 24 B4 00 00 00 8B CB 55 56 8B 03 FF 50 3C";
+// Rome II's (+0x14b84a0, its vtable entry at +0x18d8be8): the same steps without the context, void __thiscall
+// Render(Renderable* self, Pass* pass), ret 4 (self in ebx, self +4 0: nothing, the pass's kind by its vtable +0x3c).
+constexpr std::string_view RENDER_ROME2 =
+    "81 EC A0 00 00 00 53 8B D9 89 5C 24 1C 80 7B 04 00 0F 84 ?? ?? ?? ?? 55 56 57 8B BC 24 B4 00 00 00 8B CF 8B 07 FF 50 3C";
 constexpr size_t SELF_ENABLED = 4;
 constexpr size_t PASS_KIND_SLOT = 0x3c / 4;
 constexpr uint32_t PASS_KINDS = 0x63;
 constexpr uint32_t LEARNED_CALLS = 16;
 
 using Render = void(__fastcall*)(uint8_t* self, void* unused_edx, void* context, uint8_t* pass);
+using RenderRome2 = void(__fastcall*)(uint8_t* self, void* unused_edx, uint8_t* pass);
 using PassKind = uint32_t(__fastcall*)(uint8_t* pass, void* unused_edx);
 
 struct Kind {
@@ -67,26 +72,29 @@ static uint32_t sun_binds = 0;
 static uint32_t other_binds = 0;
 static bool binds_counted = false;  // Install registered OnBindTargets
 static Render original_render = nullptr;
+static RenderRome2 original_render_rome2 = nullptr;
 static std::vector<renodx::utils::detour::Function> hooks;
 static tw::native_hooks::Lifetime hook_lifetime;
 static bool searched = false;
 
-static void __fastcall OnRender(uint8_t* self, void* unused_edx, void* context, uint8_t* pass) {
+// A Render call of either build: `draw` makes the game's call.
+template <typename Draw>
+static void OnPassDraw(const uint8_t* self, uint8_t* pass, const Draw& draw) {
   if (!active.load(std::memory_order_relaxed) || GetCurrentThreadId() != render_thread.load(std::memory_order_relaxed)
       || self[SELF_ENABLED] == 0 || pass == nullptr) {
-    return original_render(self, unused_edx, context, pass);
+    return draw();
   }
   void** pass_vtable;
   std::memcpy(&pass_vtable, pass, sizeof(pass_vtable));
   const uint32_t kind_index = reinterpret_cast<PassKind>(pass_vtable[PASS_KIND_SLOT])(pass, nullptr);
-  if (kind_index >= PASS_KINDS) return original_render(self, unused_edx, context, pass);
+  if (kind_index >= PASS_KINDS) return draw();
   auto& kind = kinds[kind_index];
   const uint32_t call = kind.calls++;
   if (!kind.mixed && kind.sun_only >= LEARNED_CALLS && call != frame % std::max(kind.last_calls, 1u)) return;
   const bool sun_at_start = rt_scene::SkippingCasters();
   const uint32_t sun_before = sun_binds;
   const uint32_t others_before = other_binds;
-  original_render(self, unused_edx, context, pass);
+  draw();
   if (kind.mixed) return;
   if (other_binds == others_before && (sun_at_start || sun_binds != sun_before) && rt_scene::SkippingCasters()) {
     ++kind.sun_only;
@@ -99,6 +107,14 @@ static void __fastcall OnRender(uint8_t* self, void* unused_edx, void* context, 
                           kind.mixed ? " draws more than the sun's map: always drawn"
                                      : " draws only into the sun's map: left out but one call a frame");
   }
+}
+
+static void __fastcall OnRender(uint8_t* self, void* unused_edx, void* context, uint8_t* pass) {
+  OnPassDraw(self, pass, [&] { original_render(self, unused_edx, context, pass); });
+}
+
+static void __fastcall OnRenderRome2(uint8_t* self, void* unused_edx, uint8_t* pass) {
+  OnPassDraw(self, pass, [&] { original_render_rome2(self, unused_edx, pass); });
 }
 
 static void OnBindTargets(reshade::api::command_list*, uint32_t, const reshade::api::resource_view*, reshade::api::resource_view) {
@@ -130,14 +146,19 @@ inline void Update(bool row, bool casters_skipped) {
   if (row && !internal::searched && internal::binds_counted) {
     internal::searched = true;
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
-    uint8_t* render = (module != nullptr)
-                          ? tw::engine_tweaks::FindPattern(tw::engine_tweaks::ModuleSections(module).code, internal::RENDER)
-                          : nullptr;
+    const std::vector<std::string_view> code = (module != nullptr ? tw::engine_tweaks::ModuleSections(module).code
+                                                                  : std::vector<std::string_view>{});
     std::string result = "not found";
-    if (render != nullptr) {
+    if (uint8_t* render = tw::engine_tweaks::FindPattern(code, internal::RENDER); render != nullptr) {
       internal::original_render = reinterpret_cast<internal::Render>(render);
       internal::hooks.emplace_back(&internal::original_render, &internal::OnRender,
                                    renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE);
+    } else if (uint8_t* render_rome2 = tw::engine_tweaks::FindPattern(code, internal::RENDER_ROME2); render_rome2 != nullptr) {
+      internal::original_render_rome2 = reinterpret_cast<internal::RenderRome2>(render_rome2);
+      internal::hooks.emplace_back(&internal::original_render_rome2, &internal::OnRenderRome2,
+                                   renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE);
+    }
+    if (!internal::hooks.empty()) {
       try {
         internal::hook_lifetime.Install(internal::hooks);
         result = "hooked";
