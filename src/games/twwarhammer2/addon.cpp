@@ -1829,6 +1829,10 @@ void ConfigureAddon() {
   // in the tooltips), then More Tests (more_tests.h).
   engine_tests = twattila::engine_tests::Only(twattila::engine_tests::Attila(), more_tests::ATTILA_TESTS);
   for (auto& test : engine_tests) {
+    // Attila's top is its 90% x 1.11; this game's 97% (Warhammer2.exe's constructor) reaches 100% at 1.03.
+    if (test.key == "AudioDefaultMemoryLimit") {
+      test.max = 1.03f;
+    }
     if (const auto tooltip = std::ranges::find(more_tests::TOOLTIPS, test.key, &std::pair<std::string, std::string>::first); tooltip != more_tests::TOOLTIPS.end()) {
       test.tooltip = tooltip->second;
     }

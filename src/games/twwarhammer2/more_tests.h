@@ -29,9 +29,17 @@ namespace more_tests {
 // Tree LODs, Far Tree Shadow Shapes, Object Detail Distances, Object Size Factors, Big Building Detail, Rope Distance,
 // Objects / Buildings Never Vanish, Building Distance Culling, Building Detail by Size, Fixed Building Detail Range,
 // Sprite Soldier Shadows, Shared Pose Scale, All Soldiers as Sprites, Campaign Trees / Plants Never Vanish.
+// In since the parity round: five whose values v48 took for absent (Pharaoh's constructor list, borrowed) but Warhammer2.exe
+// has, Find finds (find_emu.py) and its code reads (the survey): Grass on Slopes (GRASS_ANGLE_CULL_AMOUNT, 1 read),
+// Warped Shadows (warp_shadows, 3), New Shadows (new_shadows, 6), Sound / Voice Memory Fill Limit
+// (SOUND_DEFAULT_BUFFER_LOW_RATIO, SOUND_LOWER_ENGINE_DEFAULT_BUFFER_LOW_RATIO, 1 each). Sound File Memory stays out
+// (SOUND_WAVEFILE_BUFFER_SIZE_IN_KB: never read; its _TOOL twin is).
 inline const std::vector<std::string> ATTILA_TESTS = {
     "GraphicsPlantSway",
+    "GraphicsGrassSlopes",
     "GraphicsShadowCascadeBlend",
+    "GraphicsWarpedShadows",
+    "GraphicsNewShadows",
     "GraphicsTerrainShadows",
     "GraphicsCutsceneShadows",
     "GraphicsCutscenePointShadows",
@@ -46,7 +54,9 @@ inline const std::vector<std::string> ATTILA_TESTS = {
     "GraphicsTest_campaign_sea_transparency_override",
     "GraphicsTest_campaign_sea_uv_scale",
     "AudioDefaultMemory",
+    "AudioDefaultMemoryLimit",
     "AudioVoiceMemory",
+    "AudioVoiceMemoryLimit",
     "AudioStreamingMemory",
     "AudioStreamingManagerMemory",
 };
@@ -58,6 +68,7 @@ inline const std::vector<std::pair<std::string, std::string>> TOOLTIPS = {
     {"GraphicsBloodBuildUp", "How fast soldiers get bloody. Game: 0.05."},
     {"GraphicsCampaignSunCameraDepth", "How far towards the sun campaign shadows take in objects. Game: 12."},
     {"AudioDefaultMemory", "The audio engine's main memory. Restart the game. Game: 32 MB."},
+    {"AudioDefaultMemoryLimit", "How full it gets before sounds are dropped. Restart the game. Game: 97%."},
     {"AudioVoiceMemory", "Memory for the sounds playing at once: too small, and sounds cut out in big fights.\n"
                          "Restart the game. Game: 9.5 MB."},
     {"AudioStreamingMemory", "Memory for sounds streamed from disk (music, speech). Restart the game. Game: 4 MB."},
