@@ -46,7 +46,7 @@ cbuffer Camera : register(b2) {
   uint sway_flags;            // rt_sway.hlsli
   float sway_range;
   uint table_entries;  // a power of two: rt_d3d12.hpp placed_capacity_ x 2
-  float grass_range;   // Grass Ray Tracing Range (metres along the view; 0: any): rt_sway.hlsli GrassInRange
+  float grass_range;   // Grass Ray Tracing Range (metres along the view; 0: any): rt_sway.hlsli InViewRange
 };
 
 static const uint MODE_CLEAR = 0u;
@@ -93,7 +93,7 @@ static const float GRASS_VIEW_MARGIN = 16.f;
 // GRASS_VIEW_MARGIN, or past `grass_range`. Its shadows are short, and Grass Always Drawn draws every cell, also behind
 // the camera (ATN's debug28: trees' and grass's shadows flickering and gone with it).
 bool GrassInScene(float3 position) {
-  return GrassInRange(position, view_projection[3], grass_range)
+  return InViewRange(position, view_projection[3], grass_range)
          && (!any(view_projection[3] != 0.f)
              || NearView(float4(position, 1.f), view_projection[0], view_projection[1], view_projection[3], GRASS_VIEW_MARGIN));
 }

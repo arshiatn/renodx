@@ -3290,6 +3290,15 @@ class RtScene12 {
     // (their rows here: hidden, of a placed mesh, its rows copied). Grass Ray Tracing Range (in v31's padding: older addons
     // leave it 0, none): grass past it leaves both passes' scene, its swaying copies by the same cut.
     const float grass_range = (version >= 31) ? std::clamp(shared.rt_grass_range, 0.f, 1.0e4f) : 0.f;
+    // Units Ray Tracing Range (in v7's padding: older addons leave it 0, none): RT_UNIT draws' instances past it leave the
+    // compact pass's scene, in whole metres in the sway flags' high bits (the compact pass's constants are full). The
+    // harness's RENODX_TW_UNITS_RANGE: that range for every request.
+    static const float harness_units_range = [] {
+      std::array<wchar_t, 32> value = {};
+      return (GetEnvironmentVariableW(L"RENODX_TW_UNITS_RANGE", value.data(), static_cast<DWORD>(value.size())) != 0) ? std::wcstof(value.data(), nullptr) : 0.f;
+    }();
+    const uint32_t units_range =
+        static_cast<uint32_t>(std::clamp((harness_units_range > 0.f) ? harness_units_range : ((version >= 31) ? shared.rt_units_range : 0.f), 0.f, 65535.f));
     // RT_OWN_CUTOFF's alpha cut-off (in v8's padding: older addons leave it 0, the 0.5 of every other alpha-tested draw); the
     // harness's RENODX_TW_OWN_CUTOFF: every alpha-tested draw RT_OWN_CUTOFF at that.
     static const float harness_cutoff = [] {
@@ -3303,7 +3312,8 @@ class RtScene12 {
     };
     uint32_t sway_flags = 0;
     std::unordered_set<uint32_t> sway_rows;
-    if (sway_pipeline_ && version >= 18 && (shared.rt_sway_range > 0.f || (shared.rt_flags & dlaa_bridge::RT_SWAY_IN_VIEW) != 0 || grass_range > 0.f)
+    if (sway_pipeline_ && version >= 18
+        && (shared.rt_sway_range > 0.f || (shared.rt_flags & dlaa_bridge::RT_SWAY_IN_VIEW) != 0 || grass_range > 0.f || units_range != 0)
         && GrowBuffer(std::addressof(sway_arguments_), cluster_args_->GetDesc().Width, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
         && GrowBuffer(std::addressof(sway_lists_), clas_addresses_->GetDesc().Width, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
         && GrowBuffer(std::addressof(sway_counts_), SWAY_COUNTS_BYTES, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)) {
@@ -3605,7 +3615,7 @@ class RtScene12 {
         const uint64_t templates_address = templates_->GetGPUVirtualAddress();
         const std::array<uint32_t, 8> templates_dispatch = {
             static_cast<uint32_t>(templates_address), static_cast<uint32_t>(templates_address >> 32), template_bytes_, templated_clusters,
-            (cluster_room_ - built_limit_) * 32, sway_flags, std::bit_cast<uint32_t>(shared.rt_sway_range), std::bit_cast<uint32_t>(grass_range),
+            (cluster_room_ - built_limit_) * 32, sway_flags | (units_range << 16), std::bit_cast<uint32_t>(shared.rt_sway_range), std::bit_cast<uint32_t>(grass_range),
         };
         list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(templates_dispatch.size()), templates_dispatch.data(), 0);
         // The sway's view: the view-projection's rows 0, 1 and 3.

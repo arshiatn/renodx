@@ -145,6 +145,9 @@ struct Settings {
   bool fast_leaves = false;
   float grass_shadow_range = 0.f;
   float grass_range = 0.f;
+  // Units Ray Tracing Range (Experimental; older helpers ignore it): units farther than these metres are out of the scene
+  // (0: all in).
+  float units_range = 0.f;
   // Smoke BLAS Fast Build (Experimental, with Smoke Shadows; helper113, bridge RT_SCENE_SMOKE_FAST_BUILD): the smoke's BLAS
   // built faster each frame, its particles met in another order.
   bool smoke_fast_build = false;
@@ -2209,7 +2212,7 @@ void Capture(Context& command, const SceneShader& shader) {
     // A placed draw's swaying copy marked (its rows follow its blocks: never joined to another draw's).
     const uint32_t compact_flags = (flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN | dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SOLID_CUT_OUT
                                              | dlaa_bridge::RT_OWN_CUTOFF))
-                                   | (place ? dlaa_bridge::RT_INSTANCED : 0u);
+                                   | (place ? dlaa_bridge::RT_INSTANCED : 0u) | (unit ? dlaa_bridge::RT_UNIT : 0u);
     if (auto* last = (runtime.compact.empty() ? nullptr : &runtime.compact.back());
         last != nullptr && last->set == set_key && last->flags == compact_flags && last->slice == slice
         && last->first_vertex + (last->instances * (block_texels / draw_instances)) == next_vertex) {
@@ -2973,6 +2976,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .sway_range = runtime.settings.sway_range,
       .grass_shadow_range = runtime.settings.grass_shadow_range,
       .grass_range = runtime.settings.grass_range,
+      .units_range = runtime.settings.units_range,
       .scene_flags = (runtime.settings.smoke_fast_build ? dlaa_bridge::RT_SCENE_SMOKE_FAST_BUILD : 0u),
       .leaf_cutoff = leaf_cutoff,
   };

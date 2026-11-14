@@ -145,6 +145,9 @@ constexpr uint32_t RT_SOLID_CUT_OUT = 512;
 // An alpha-tested draw (with RT_FOLIAGE) whose game cuts it at `rt_leaf_cutoff`, not at the helper's 0.5 (Troy's campaign
 // trees at 0.01): its records and opacity micromaps at that (helpers before 114: 0.5).
 constexpr uint32_t RT_OWN_CUTOFF = 1024;
+// A unit's compact draw (skinned soldiers and horses: a dynamic draw that is no grass, cloth or terrain): past
+// `rt_units_range` its instances leave the scene (older helpers ignore it).
+constexpr uint32_t RT_UNIT = 2048;
 // Request flags.
 constexpr uint32_t RT_SUN_SHADOWS = 1;
 constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;
@@ -421,7 +424,9 @@ struct Shared {
   uint32_t rt_bounce_scale = 0;
   uint32_t rt_bounce_rays = 0;
   float rt_bounce_range = 0.f;
-  uint32_t rt_v7_padding = 0;
+  // The addon's (in v7's padding; an older addon leaves it 0: none): Units Ray Tracing Range, RT_UNIT draws' instances whose
+  // first vertex lies farther along the view (metres) out of the scene.
+  float rt_units_range = 0.f;
   // The addon's (v8): path tracing, reflections and specular occlusion (dlaa_helper/rt_path.hlsli), RT_PATH_* in
   // `rt_path_flags` (0: v7's Light Bounce trace). With RT_PATH_TRACING the Light Bounce request (2) path traces its
   // texels (`rt_path_bounces` surfaces past the first, `rt_path_samples` paths a texel). A request of its own

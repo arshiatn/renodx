@@ -92,6 +92,7 @@ struct Sliders {
   float fast_leaves = 0.f;
   float grass_shadow_range = 0.f;  // metres (0: everywhere)
   float grass_range = 0.f;         // metres (0: everywhere; placed grass, Attila)
+  float units_range = 0.f;         // metres (0: everywhere; compact unit draws)
   float path_ser = 0.f;
   float sharc = 0.f;
   float reuse_lean = 0.f;
@@ -212,6 +213,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
                                 ? sliders.grass_range
                                 : sliders.grass_shadow_range,
       .grass_range = sliders.grass_range,
+      .units_range = sliders.units_range,
       .smoke_fast_build = sliders.smoke_fast_build != 0.f,
       .path_ser = sliders.path_ser != 0.f,
       .sharc = sliders.sharc != 0.f,
@@ -1973,6 +1975,26 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_enabled = dlaa_on,
           // The helper leaves out placed grass's instances past the range (other games' grass has no instance rows).
           .is_visible = grass_placed,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedUnitsRange",
+          .binding = &sliders->units_range,
+          .default_value = 0.f,
+          .label = "Units Ray Tracing Range (Experimental)",
+          .section = section,
+          .tooltip = "Soldiers and horses farther than this are left out of the ray tracing (their shadows there are a few pixels):\n"
+                     "faster in big battles. 0 m: all units.",
+          .min = 0.f,
+          .max = 500.f,
+          .format = "%.0f m",
+          .is_enabled = dlaa_on,
+          // The helper leaves out the instances of units' compact draws (a scene table's skinned soldiers and horses;
+          // a host without a table, Rome Remastered's, marks every scene draw dynamic).
+          .is_visible = [] {
+            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) {
+              return shader.dynamic && !shader.grass && !shader.thin && !shader.tessellated && !shader.sun_facing && !shader.foliage;
+            });
+          },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedAmbientOcclusion",
