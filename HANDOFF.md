@@ -563,6 +563,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Smoothing; Rarer Objects in the Rays (Experimental: tessellated rigid 9AEE504E via shared opt-in rt_core
   SceneShader::patch_triangles, ropes 8D0D26B9 / 3926A823); point-light MSAA builds WON'T (no rays / scale under MSAA)).
   Agent resumed: sm4 smoke / particle layer, SSR quality in the 8 sm4 + MSAA builds, Thrones' vfx wrappers.
+- [ ] ATN ~19:xx: "No more performance improvements on our side and the game's?" From attila_frame_results.md, NOT yet done:
+  (1) the game's shadow pass under Rays Replace + Skip (cpl1 4.4-4.8 ms render thread culling / submitting 1561 skipped draws),
+  (2) G0 grass scrub radius clamp (bit-exact; E 3-5 ms workers + 0.5-0.9 render thread at maxed grass), (3) add-on worker
+  detours 1.2 ms, (4) the render thread's 12 ms unnamed tail (research), (5) Capture 0.9 + DrawObjectMotion 0.63 (after the
+  redesign). CPU perf agent (cpu_) started on 1-4, Attila first, then Rome II / Thrones. ATN's A/B list: Small Soldiers as
+  Sprites, game Shadows Medium + Two Shadow Cascades, Lean Reuse, Light Bounce Half, pause Wallpaper Engine (3.0 ms GPU).
 - [ ] SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
   capture path in rt_core (WH1 / Pharaoh / Troy / WH2 imposters), tessellated meshes via patch_triangles (WH1 / Troy / WH2),
   per-game leaf cut-off through the bridge (Troy 0.01), Faster Smoke Build row to the other smoke games, smoke without rays
