@@ -49,6 +49,7 @@
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/view_share.hpp"
 #include "../twattila/water_effects.hpp"
+#include "../twattila/water_reflections.hpp"
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "./dead_units.hpp"
@@ -438,7 +439,8 @@ void BuildRuntimeData() {
   };
   // The fog's in-scattering stays the game's: our copy is bound only for Fog Shadows' draws (OnFogShadowsDraw).
   custom_shaders.erase(FOG_SHADERS[0]);
-  // So does the water's reflection apply: ours only where the rays left from the water or below 100% (OnWaterApplyDraw).
+  // So does the water's reflection apply: ours only where the rays left from the water or below 100%
+  // (twattila/water_reflections.hpp OnWaterApplyDraw).
   custom_shaders.erase(0xDE4F92CD);
   // Ambient Occlusion: Visibility Bitmask in place of the AO's horizontal blur: the addon's own shader
   // (ao_bitmask_blur, twwarhammer2/line_sweep_ao.hpp) with the blur's bindings; the blur's replacement stays the game's
@@ -1571,163 +1573,6 @@ void OnDestroyFogShadowsDevice(reshade::api::device* device) {
   state.device = nullptr;
 }
 
-// Ray-Traced Water Reflections (Experimental, off; tools\tw\pharaoh\reflections_plan.md): the water is the only surface the
-// game's screen-space reflections touch (ssr_new: extract_mask 45A733D3 takes the G-buffer's channel 3 alpha bit 64, which only
-// the sea and the rivers write). The rays are traced once a frame at backward_ssr 9A55B7F2, after the water's G-buffer and
-// light: rt_scene's Reflections with the water's depth (t1: the positions and the guides again from it, rt_host's
-// rewrite_guides) and this frame's light (t3, R16G16B16A16F: rt_host's light_copy). Where they left from the water, the game's
-// chain is left out (backward_ssr, downsample 0B78827B and its 10 downsample_mip 55298A11 and 10 lute_mip F49D4738: in every
-// trace their target's only other reader is the apply) and our copy of the apply DE4F92CD (shaders/ssrapply00) draws with
-// the rays (OnWaterApplyDraw). Under the game's MSAA (its multisampled views t2 / t4 bound) the game's reflections stay.
-std::atomic<bool> water_rays = false;  // this frame's rays left from the water: the chain left out, our apply ready
-struct WaterReflections {
-  std::shared_mutex mutex;
-  ID3D11Device* device = nullptr;  // the apply's (compared only)
-  Microsoft::WRL::ComPtr<ID3D11PixelShader> apply;
-  Microsoft::WRL::ComPtr<ID3D11PixelShader> game_apply;  // bound again after the draw
-  bool msaa_logged = false;
-  bool logged = false;
-  bool scaled_logged = false;
-};
-WaterReflections water_reflections;
-// Our apply made on `device` (again on a new one); false: not made. With water_reflections' lock held.
-bool MakeWaterApply(ID3D11Device* device) {
-  auto& state = water_reflections;
-  if (state.device == device) return true;
-  state.apply.Reset();
-  state.device = nullptr;
-  if (FAILED(device->CreatePixelShader(__0xDE4F92CD.data(), __0xDE4F92CD.size(), nullptr, state.apply.GetAddressOf()))) return false;
-  state.device = device;
-  return true;
-}
-// False: left out (the rays left from the water).
-bool OnBackwardSsr(reshade::api::command_list* cmd_list) {
-  water_rays.store(false, std::memory_order_relaxed);
-  if (rt_sliders.reflections == 0.f || rt_sliders.water_reflections == 0.f || !twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) {
-    return true;
-  }
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return true;
-  // t1 the depth, t2 its multisampled view, t3 the light, t4 its multisampled view (9A55B7F2's RDEF; one sample: t2 / t4 are t1 / t3).
-  std::array<ID3D11ShaderResourceView*, 4> inputs = {};
-  native->CSGetShaderResources(1, static_cast<UINT>(inputs.size()), inputs.data());
-  const bool multisampled = std::ranges::any_of(inputs, [](ID3D11ShaderResourceView* view) {
-    if (view == nullptr) return false;
-    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
-    view->GetResource(resource.GetAddressOf());
-    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
-    D3D11_TEXTURE2D_DESC desc = {};
-    if (SUCCEEDED(resource.As(&texture))) texture->GetDesc(&desc);
-    return desc.SampleDesc.Count > 1;
-  });
-  std::array<ID3D11ShaderResourceView*, 2> views = {};
-  if (!multisampled) {
-    const twattila::rt_scene::internal::ComputeState kept(native);
-    views = twattila::rt_scene::Reflections(native, inputs[0], inputs[2]);
-  }
-  for (auto* view : inputs) {
-    if (view != nullptr) view->Release();
-  }
-  auto& state = water_reflections;
-  if (multisampled) {
-    const std::unique_lock lock(state.mutex);
-    if (!std::exchange(state.msaa_logged, true)) {
-      renodx::utils::log::i("[Total War] Ray-Traced Water Reflections: the game's MSAA is on, the game's reflections stay.");
-    }
-    return true;
-  }
-  bool water_traced = false;
-  {
-    auto& runtime = twattila::rt_scene::internal::runtime;
-    const std::unique_lock lock(runtime.mutex);
-    water_traced = views[0] != nullptr && runtime.settings.reflections && runtime.water_traced;
-  }
-  if (!water_traced) return true;
-  // Made before the chain is left out: without it the game's apply would read a buffer nothing wrote.
-  Microsoft::WRL::ComPtr<ID3D11Device> device;
-  native->GetDevice(device.GetAddressOf());
-  const std::unique_lock lock(state.mutex);
-  if (!MakeWaterApply(device.Get())) return true;
-  water_rays.store(true, std::memory_order_relaxed);
-  if (!std::exchange(state.logged, true)) {
-    renodx::utils::log::i("[Total War] First run: Ray-Traced Water Reflections: the game's screen-space reflections (9A55B7F2, 0B78827B and "
-                          "its 20 mips) left out, its apply DE4F92CD drawn with the rays.");
-  }
-  return false;
-}
-
-// The apply DE4F92CD where the rays left from the water this frame: the rays bound (t46, t47, b10: rt_scene's BindReflections)
-// and our copy in the game's place for this draw; the game's shader bound again and the rays unbound after it (finalize).
-// Below 100% ours also without the rays: the quad's TEXCOORD0 spans the viewport (A0EA5C9E's vb0 0..1 at any scale, B61
-// trace_50 l.3173), which the game's code takes for the target's uv, so it read the display-size textures whole; ours takes
-// the draw's share from cb12 (WARP tools\tw\warp_tests\pharaoh\apply_share_v62).
-constexpr auto OnWaterApplyDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  const bool rays = water_rays.load(std::memory_order_relaxed);
-  if ((!rays && twattila::frame_history::render_width.load(std::memory_order_relaxed) == 0)
-      || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) {
-    return {};
-  }
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
-  D3D11_VIEWPORT viewport = {};
-  UINT viewport_count = 1;
-  native->RSGetViewports(&viewport_count, &viewport);
-  Microsoft::WRL::ComPtr<ID3D11RenderTargetView> target;
-  native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
-  D3D11_TEXTURE2D_DESC target_desc = {};
-  if (Microsoft::WRL::ComPtr<ID3D11Resource> resource; target) {
-    target->GetResource(resource.GetAddressOf());
-    if (Microsoft::WRL::ComPtr<ID3D11Texture2D> texture; SUCCEEDED(resource.As(&texture))) texture->GetDesc(&target_desc);
-  }
-  if (viewport_count == 0 || target_desc.Width == 0 || target_desc.Height == 0) return {};
-  const float share_x = std::clamp(viewport.Width / static_cast<float>(target_desc.Width), 0.f, 1.f);
-  const float share_y = std::clamp(viewport.Height / static_cast<float>(target_desc.Height), 0.f, 1.f);
-  const bool scaled = share_x < 1.f || share_y < 1.f;
-  if (!rays && !scaled) return {};
-  const bool bound = rays && twattila::rt_scene::BindReflections(command.cmd_list, false, true);
-  Microsoft::WRL::ComPtr<ID3D11Device> device;
-  native->GetDevice(device.GetAddressOf());
-  auto& state = water_reflections;
-  const std::unique_lock lock(state.mutex);
-  if ((rays && !bound) || !MakeWaterApply(device.Get())) {
-    twattila::rt_scene::BindReflections(command.cmd_list, false, false);
-    return {};
-  }
-  if (scaled && !std::exchange(state.scaled_logged, true)) {
-    renodx::utils::log::i("[Total War] First run: the water's reflection apply DE4F92CD below 100%: ours with the draw's share (",
-                          share_x, " x ", share_y, ")", (rays ? ", with the rays." : ", the game's reflections."));
-  }
-  // zw (the frame's share) unread by ours: the draw's.
-  twattila::view_share::internal::Bind(native, {share_x, share_y, share_x, share_y}, reshade::api::pipeline_stage::pixel_shader);
-  native->PSGetShader(state.game_apply.ReleaseAndGetAddressOf(), nullptr, nullptr);
-  native->PSSetShader(state.apply.Get(), nullptr, 0);
-  return {.finalize_callback = [](Context& drawn, const void*) {
-    water_rays.store(false, std::memory_order_relaxed);
-    twattila::rt_scene::BindReflections(drawn.cmd_list, false, false);
-    auto* drawn_native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
-    renodx::utils::directx::TryNativeFromReShadeProxy(&drawn_native);
-    auto& drawn_state = water_reflections;
-    const std::unique_lock drawn_lock(drawn_state.mutex);
-    if (drawn_native != nullptr) {
-      drawn_native->PSSetShader(drawn_state.game_apply.Get(), nullptr, 0);
-    }
-    drawn_state.game_apply.Reset();
-  }};
-};
-
-// Only our apply's device (nullptr: the addon's end, DetachAddon).
-void OnDestroyWaterReflectionsDevice(reshade::api::device* device) {
-  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
-  auto& state = water_reflections;
-  const std::unique_lock lock(state.mutex);
-  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
-  state.apply.Reset();
-  state.device = nullptr;
-  water_rays.store(false, std::memory_order_relaxed);
-}
-
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
 bool graphics_found = false;
@@ -2072,16 +1917,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
   // Fog Shadows alone light no surface: no Ray Reconstruction for them (as Warhammer III's).
   rt_settings.cheap_fog_alone = true;
-  // The game's reflections fall on the water alone (its apply DE4F92CD): without Water Reflections nothing reads the rays'
-  // reflections or their specular occlusion, so neither is traced.
-  rt_settings.reflections = rt_settings.reflections && rt_settings.water_reflections;
-  rt_settings.specular_occlusion = rt_settings.specular_occlusion && rt_settings.reflections;
-  // Calm water is a mirror to the rays (one ray, no reuse): Samples and Reuse act, and show, only with Softer Water Reflections.
-  if (!rt_settings.water_soft) {
-    rt_settings.reflection_samples = 1;
-    rt_settings.reflection_reuse = false;
-    rt_settings.reflection_own = false;
-  }
+  // The game's reflections fall on the water alone (its apply DE4F92CD): twattila/water_reflections.hpp's gate.
+  twattila::water_reflections::GateSettings(&rt_settings);
   // Ray-traced shadows replace the screen-space ones (the Shadows method, as Attila's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
@@ -2585,7 +2422,7 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  // The water's reflection apply reads the ray-traced reflections (OnWaterApplyDraw): their rows, the water's too.
+  // The water's reflection apply reads the ray-traced reflections (twattila/water_reflections.hpp): their rows, the water's too.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
   twattila::rt_scene::internal::water_pass = true;
 
@@ -2691,28 +2528,16 @@ void ConfigureAddon() {
       setting->default_value = 0.f;
       setting->label = "Coloured Shadows (Experimental)";
       setting->tooltip = "The sun through cloth and flags takes their colour.";
-    } else if (setting->key == "RayTracedWaterReflections" || setting->key == "WaterCaustics") {
-      // Experimental, off (v56, v58: no game run has shown the apply with the rays or the caustics yet); RT/PT turns them on,
-      // as ATN's list does.
+    } else if (setting->key == "WaterCaustics") {
+      // Experimental, off (v58: no game run has shown the caustics yet); RT/PT turns them on, as ATN's list does.
       setting->default_value = 0.f;
     } else if (setting->key == "RayTracedSmokeShadows") {
       // Experimental, off (v57: no game run has shown the particles' records yet); RT/PT leaves it off (smoke_shadows_tested).
       setting->default_value = 0.f;
-    } else if (setting->key == "RayTracedSpecularOcclusion") {
-      // Only the water's reflected cube, with the water's own rays (OnPresent): shown with them.
-      setting->default_value = 0.f;
-      setting->tooltip = "The sky's reflection on the water dimmed where something blocks it. Needs Water Reflections.";
-      setting->is_visible = [] { return rt_sliders.reflections != 0.f && rt_sliders.water_reflections != 0.f; };
-    } else if (setting->key == "RayTracedReflectionSamples" || setting->key == "RayTracedReflectionReuse") {
-      // Calm water is a mirror to the rays (one ray, no reuse): these act on it with Softer Water Reflections alone.
-      setting->tooltip = (setting->key == "RayTracedReflectionSamples")
-                             ? "More rays per pixel in the water's softer reflections. Heavier."
-                             : "Less noise in the water's softer reflections.\n"
-                               "From ReSTIR GI: also the path-traced Light Bounce's samples (needs Path Tracing).\n"
-                               "Own ReSTIR: their own samples, reused over frames and between neighbours.";
-      setting->is_visible = [] { return rt_sliders.water_reflections != 0.f && rt_sliders.water_soft != 0.f; };
     }
   }
+  // Water Reflections (Experimental, off, v56) and the reflection rows the water alone takes: twattila/water_reflections.hpp.
+  twattila::water_reflections::SetRows(&settings, &rt_sliders);
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
@@ -2810,16 +2635,12 @@ bool AttachAddon() {
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
-  // Ray-Traced Water Reflections: traced at backward_ssr (OnBackwardSsr); where they left from the water, the chain after it
-  // left out too and our apply drawn (OnWaterApplyDraw).
-  custom_shaders[0x9A55B7F2] = {.crc32 = 0x9A55B7F2, .on_draw = &OnBackwardSsr};
-  for (const uint32_t shader_hash : {0x0B78827Bu, 0x55298A11u, 0xF49D4738u}) {
-    custom_shaders[shader_hash] = {.crc32 = shader_hash, .on_draw = [](auto*) { return !water_rays.load(std::memory_order_relaxed); }};
-  }
-  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyWaterReflectionsDevice);
-  renodx::utils::command_action::Register(
-      OnWaterApplyDraw, {.shader_hash = 0xDE4F92CD, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
-  renodx::utils::log::i("[Total War] Ray-Traced Water Reflections: hooks applied (9A55B7F2, 0B78827B, 55298A11, F49D4738, DE4F92CD).");
+  // Ray-Traced Water Reflections (twattila/water_reflections.hpp): traced at backward_ssr 9A55B7F2 (its inputs from t1); where
+  // they left from the water, the chain after it left out too (0B78827B, 55298A11, F49D4738) and our apply DE4F92CD drawn.
+  twattila::water_reflections::Install(&custom_shaders,
+                                       {.backward_ssr = 0x9A55B7F2, .inputs_slot = 1, .chain = {0x0B78827B, 0x55298A11, 0xF49D4738}, .apply = 0xDE4F92CD,
+                                        .apply_code = __0xDE4F92CD},
+                                       &rt_sliders);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads). No AO pass hook
   // keeps it here (ssao01 binds no camera).
@@ -2964,9 +2785,7 @@ void DetachAddon() {
   OnDestroyFogShadowsDevice(nullptr);
   twattila::light_count::Uninstall();
   renodx::utils::command_action::Unregister(OnSkyDomeGuides);
-  renodx::utils::command_action::Unregister(OnWaterApplyDraw);
-  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyWaterReflectionsDevice);
-  OnDestroyWaterReflectionsDevice(nullptr);
+  twattila::water_reflections::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();
