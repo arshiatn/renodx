@@ -1829,9 +1829,6 @@ void ConfigureAddon() {
   // in the tooltips), then More Tests (more_tests.h).
   engine_tests = twattila::engine_tests::Only(twattila::engine_tests::Attila(), more_tests::ATTILA_TESTS);
   for (auto& test : engine_tests) {
-    std::erase_if(test.option.tweaks, [](const tw::engine_tweaks::Tweak& tweak) {
-      return std::ranges::find(more_tests::MISSING_VALUES, tweak.name) != more_tests::MISSING_VALUES.end();
-    });
     if (const auto tooltip = std::ranges::find(more_tests::TOOLTIPS, test.key, &std::pair<std::string, std::string>::first); tooltip != more_tests::TOOLTIPS.end()) {
       test.tooltip = tooltip->second;
     }
