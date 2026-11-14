@@ -340,7 +340,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   DLL redistributable with its own LICENSE, headers / lib not: proposal = dev-only RENODX_TW_AFTERMATH, ATN DECIDES.
 - [x] Worktree junctions into the main checkout (bin, build\downloads, external\*) removed link-only from finished
   worktrees (targets checked intact); ReSTIR's worktree keeps its two until it finishes. Memory: reference_worktree_junctions.
-- [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
+- [x] Phase I DONE. helper112 MERGED 598b1b45 (Lean ReSTIR Reuse flag + row; off = helper110). Final check at 598b1b45:
+  both build lines exit 0, suites 50 / 50 runs exit 0, page dumps Attila (+3 rows + Nsight credit) / WH3 (+1 row + credit).
+- [x] INSTALLED 07:50 (stamped, dry run first, ATN's files unchanged, hashes checked, no game running): Attila v160, WH3 v59,
+  Pharaoh v67, Rome II r3, Thrones r3, WH2 v49, Troy v53, WH1 r3 (all helper112); Shogun 2 v72 + DLSS v64 and Rome
+  Remastered v11 --first with helper112 + NVIDIA DLLs 310.9.16 (Shogun 2's own nvngx_dlss 310.5.2 renamed aside).
+  READMEs 7a930173. Test lists: tools/tw/round_notes/tests_1114.md. Report: tools/tw/round_notes/morning_report_1114.md.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
 ## LATE NIGHT ROUNDS (2026-11-13 23:10, two worktree agents, offline; installed state = NIGHT MERGES 22:59)
