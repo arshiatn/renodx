@@ -142,6 +142,8 @@ struct ShaderInjectData {
   // Appended (parity round 2026-11-14).
   float dof;  // Depth of Field: the DOF tone mappers' (t05-t08) circle of confusion x this, 1 the game's, 0 off
   float fog_strength;  // Fog Strength: the fog's last passes x this at their cb8 (fog_strength.hpp), 1 the game's; no shader here reads it
+  float sky_smooth;           // Fog & Sky Smoothing on the legacy fog's sky cube (twattila/sky_smooth.hlsli): 0 off, 1 Low, 2 Medium, 3 High
+  float sky_smooth_strength;  // how wide, x 0 to 2
 };
 
 #define SI shader_injection

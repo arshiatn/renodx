@@ -140,6 +140,8 @@ void ApplyResetPreset() {
       {"vignette", 1.f},
       {"dof", 1.f},
       {"fog_strength", 1.f},
+      {"sky_smooth", 0.f},
+      {"sky_smooth_strength", 1.f},
       {"distortion", 1.f},
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
@@ -425,6 +427,9 @@ void OnDestroyDevice(reshade::api::device* device) {
 // baked map t0): Fog Shadows' (OnFogShadowsDraw). The other permutations (fetch4, gather 4.1, pcf, baked shadows only) were
 // drawn in no trace: left as the game's. WARP on the game's bytes: tools\tw\warp_tests\pharaoh\fog_v54.
 constexpr std::array<uint32_t, 1> FOG_SHADERS = {0x598C59F3};
+// Fog & Sky Smoothing: the legacy fog (dx11_battlefog main, dx11_legacybattlefog main_ms; in no trace), the only fog passes that read
+// the sky cube (shaders/legacyfog00 / 01, OnSkySmoothDraw).
+constexpr std::array<uint32_t, 2> SKY_SMOOTH_SHADERS = {0xD9F9A6C9, 0x51EC7FE0};
 
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
@@ -451,6 +456,8 @@ void BuildRuntimeData() {
   };
   // The fog's in-scattering stays the game's: our copy is bound only for Fog Shadows' draws (OnFogShadowsDraw).
   custom_shaders.erase(FOG_SHADERS[0]);
+  // The legacy fog: ours only with Fog & Sky Smoothing on (OnSkySmoothDraw).
+  for (const uint32_t hash : SKY_SMOOTH_SHADERS) custom_shaders.erase(hash);
   // So does the water's reflection apply: ours only where the rays left from the water or below 100%
   // (twattila/water_reflections.hpp OnWaterApplyDraw).
   custom_shaders.erase(0xDE4F92CD);
@@ -1083,6 +1090,29 @@ void BuildRuntimeData() {
         .format = "%.2f",
     },
     new renodx::utils::settings::Setting{
+        .key = "sky_smooth_strength",
+        .binding = &shader_injection.sky_smooth_strength,
+        .default_value = 1.f,
+        .label = "Fog & Sky Smoothing Strength",
+        .section = "Extra",
+        .tooltip = "How wide Fog & Sky Smoothing below reaches. 1 = default.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+        .is_enabled = [] { return shader_injection.sky_smooth != 0.f; },
+    },
+    new renodx::utils::settings::Setting{
+        .key = "sky_smooth",
+        .binding = &shader_injection.sky_smooth,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Fog & Sky Smoothing (Experimental)",
+        .section = "Extra",
+        .tooltip = "Removes the vertical lines and blocks the game's low-resolution sky leaves in thick fog\n"
+                   "(the older fog some maps use). Higher: smoother, a little heavier.",
+        .labels = {"Off", "Low", "Medium", "High"},
+    },
+    new renodx::utils::settings::Setting{
         .key = "distortion",
         .binding = &shader_injection.uvdistort,
         .default_value = 1.f,
@@ -1708,6 +1738,54 @@ void OnDestroyFogStrengthDevice(reshade::api::device* device) {
   fog_strength_state.above_one.Reset();
   fog_strength_state.game_buffer.Reset();
   fog_strength_state.device = nullptr;
+}
+
+// Fog & Sky Smoothing (SKY_SMOOTH_SHADERS): with the row on, our copy of the legacy fog (its sky cube smoothed, Fog Strength
+// from the same cb8) draws in place of the game's, which is bound again after it; off, the game's own bytes.
+struct SkySmoothing {
+  std::mutex mutex;
+  ID3D11Device* device = nullptr;  // ours' (compared only)
+  std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, SKY_SMOOTH_SHADERS.size()> ours;
+  Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;
+};
+SkySmoothing sky_smoothing;
+constexpr auto OnSkySmoothDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (shader_injection.sky_smooth == 0.f || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr) return {};
+  const size_t index = &command.template GetCallbackData<uint32_t>() - SKY_SMOOTH_SHADERS.data();
+  const std::array<std::span<const uint8_t>, SKY_SMOOTH_SHADERS.size()> codes = {__0xD9F9A6C9, __0x51EC7FE0};
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& state = sky_smoothing;
+  const std::unique_lock lock(state.mutex);
+  if (state.device != device.Get()) {
+    for (auto& shader : state.ours) shader.Reset();
+    state.device = device.Get();
+  }
+  if (!state.ours[index] && FAILED(device->CreatePixelShader(codes[index].data(), codes[index].size(), nullptr, state.ours[index].GetAddressOf()))) {
+    return {};
+  }
+  native->PSGetShader(state.game_shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
+  native->PSSetShader(state.ours[index].Get(), nullptr, 0);
+  return {.post_callback = [](Context& post, const void*) {
+    auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
+    const std::unique_lock post_lock(sky_smoothing.mutex);
+    if (post_native != nullptr) post_native->PSSetShader(sky_smoothing.game_shader.Get(), nullptr, 0);
+    sky_smoothing.game_shader.Reset();
+  }};
+};
+
+// Our shaders' device (nullptr: the addon's end, DetachAddon).
+void OnDestroySkySmoothDevice(reshade::api::device* device) {
+  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
+  const std::unique_lock lock(sky_smoothing.mutex);
+  if (device != nullptr && sky_smoothing.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
+  for (auto& shader : sky_smoothing.ours) shader.Reset();
+  sky_smoothing.game_shader.Reset();
+  sky_smoothing.device = nullptr;
 }
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
@@ -2923,6 +3001,11 @@ bool AttachAddon() {
     renodx::utils::command_action::Register(
         OnFogStrengthDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroySkySmoothDevice);
+  for (const uint32_t& hash : SKY_SMOOTH_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnSkySmoothDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &hash);
+  }
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
@@ -2974,6 +3057,9 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(OnFogStrengthDraw);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyFogStrengthDevice);
   OnDestroyFogStrengthDevice(nullptr);
+  renodx::utils::command_action::Unregister(OnSkySmoothDraw);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroySkySmoothDevice);
+  OnDestroySkySmoothDevice(nullptr);
   twattila::light_count::Uninstall();
   renodx::utils::command_action::Unregister(OnSkyDomeGuides);
   twattila::water_reflections::Uninstall();
