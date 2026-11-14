@@ -18,11 +18,14 @@
 //   RT_LEAF: A709F459 (rigidleaf_v3 vs40_shadow): TEXCOORD1 the UV of 6CA31B12's t0 test, TEXCOORD2's xyz the world.
 //   RT_CARD: EB2A56A1 (rigidtreebillboard vs40_shadow, turned to the shadow camera): TEXCOORD0 the card's UV and view (z; -1
 //     one face) of 31718466's t2 test, TEXCOORD1's xyz the world.
+//   RT_WORLD_UV: Warhammer II's 7D979F60 (rigidcampaignvegetation vs40_shadow): TEXCOORD0's xyz the world, TEXCOORD1 the UV of
+//     5906CF6E's t0 test.
 // CMake's shader rule takes no gs_ target: after a change run from the repository's root, once a variant
 // bin\fxc.exe src\games\twpharaohdynasties\rt_outside_view.gs_5_0.hlsl -T gs_5_0 -E main /O3 /Qstrip_reflect /nologo /D RT_WORLD /Vn __rt_outside_view_world /Fh src\games\twpharaohdynasties\rt_outside_view_world_gs.h
 // (RT_UNIT __rt_outside_view_unit _unit_gs.h, RT_BRANCH __rt_outside_view_branch _branch_gs.h, RT_LEAF __rt_outside_view_leaf
 // _leaf_gs.h, RT_CARD __rt_outside_view_card _card_gs.h); Troy's leaves: /D RT_LEAF /D RT_NO_FADE /Vn __rt_outside_view_leaf
-// /Fh src\games\twtroy\rt_outside_view_leaf_gs.h.
+// /Fh src\games\twtroy\rt_outside_view_leaf_gs.h; Warhammer II's campaign trees: /D RT_WORLD_UV /Vn __rt_outside_view_world_uv
+// /Fh src\games\twwarhammer2\rt_outside_view_world_uv_gs.h.
 #include "../twattila/rt_capture.hlsli"
 
 cbuffer MainView : register(b0) {
@@ -63,6 +66,12 @@ struct Corner {
   float fade : TEXCOORD3;
   float4 world : TEXCOORD1;
 };
+#elif defined(RT_WORLD_UV)
+struct Corner {
+  float4 position : SV_Position;
+  float4 world : TEXCOORD0;
+  float2 uv : TEXCOORD1;
+};
 #endif
 
 struct Output {
@@ -85,7 +94,7 @@ void main(triangle Corner corners[3], inout TriangleStream<Output> stream) {
   for (uint vertex = 0u; vertex < 3u; ++vertex) {
     const Corner kept = corners[outside ? vertex : 0u];
     Output output;
-#if defined(RT_LEAF)
+#if defined(RT_LEAF) || defined(RT_WORLD_UV)
     output.position = RtWorldUv(kept.world.xyz, kept.uv);
 #elif defined(RT_CARD)
     // 31718466 blends the two of the card's four views around z (a quarter of the UV each); the nearest here, as the main

@@ -63,10 +63,12 @@ namespace twattila::rt_scene {
 
 using Microsoft::WRL::ComPtr;
 
-// A local light a light draw had: world position, reach (metres); its colour (rgb).
+// A local light a light draw had: world position, reach (metres); its colour (rgb). `shadows_only`: its colour only ranks
+// it, the paths, the fog and the glow take none of its light (a spot light, lit all around there; its cone is its shader's).
 struct LocalLight {
   std::array<float, 4> light = {};
   std::array<float, 4> colour = {};
+  bool shadows_only = false;
 };
 
 struct Settings {
@@ -230,10 +232,13 @@ struct SmokePixelShader {
 
 // A particle vertex shader (InstallSmokeShadows) and how its draws stream their particles out: one a vertex, as it writes
 // them (no quad shader: its own code; Attila); or one an instance of a quad (indexed, six indices an instance: the geometry
-// shader `quad_shader` makes one record of an instance's first triangle; Pharaoh, Rome II).
+// shader `quad_shader` makes one record of an instance's first triangle; Pharaoh, Rome II). `indirect`: its indexed indirect
+// draws too, one a list of the game's GPU-sorted particles (Warhammer II), its count on the GPU: INDIRECT_PARTICLES
+// records emptied for it first, those past its count staying empty (no opacity: no shadow).
 struct SmokeVertexShader {
   uint32_t hash = 0;
   std::span<const uint8_t> quad_shader;
+  bool indirect = false;
 };
 
 struct SceneShader {
@@ -401,6 +406,8 @@ constexpr uint64_t SCENE_GONE_FRAMES = 30;
 // them every frame, burning smoke flickered at Ultra), the quads for those with opacity at most (rt_smoke; High twice these,
 // Ultra four times, Extreme 8, Maximum 16), their capture's key.
 constexpr UINT MAX_PARTICLES = 1u << 19;
+// An indirect particle draw's room (SmokeVertexShader::indirect; Warhammer II's sieges drew about 20000).
+constexpr UINT INDIRECT_PARTICLES = 1u << 16;
 constexpr UINT MAX_SMOKE_QUADS = 1u << 15;
 constexpr float SMOKE_LEAST = 0.05f;  // the opacity over area a particle needs for a quad, at the least
 constexpr uint64_t SMOKE_KEY = 0x534D4F4B45ull;
@@ -438,6 +445,7 @@ struct ParticleStream {
   ComPtr<ID3D11ShaderResourceView> srv;
   std::vector<ComPtr<ID3D11GeometryShader>> outputs;  // as smoke_vertex_shaders (null: none)
   ComPtr<ID3D11Buffer> behaviours;
+  ComPtr<ID3D11Buffer> empty;  // INDIRECT_PARTICLES empty records (where a vertex shader is indirect)
 };
 
 struct DeviceObjects {
@@ -2160,7 +2168,9 @@ void Capture(Context& command, const SceneShader& shader) {
 // constants at their own slots.
 template <typename Context>
 void CaptureParticles(Context& command) {
-  constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments>;
+  constexpr bool INDIRECT = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::IndirectArguments>;
+  // Through the quad shader (indexed, direct or indirect).
+  constexpr bool INDEXED = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DrawIndexedArguments> || INDIRECT;
   const auto vertex_shader = std::ranges::find(smoke_vertex_shaders, command.matched_shader_hash, &SmokeVertexShader::hash);
   if (vertex_shader == smoke_vertex_shaders.end()) return;
   UINT particle_count = 0;
@@ -2169,6 +2179,11 @@ void CaptureParticles(Context& command) {
     if (vertex_shader->quad_shader.empty()) {
       particle_count = command.arguments.vertex_count;
       first_vertex = command.arguments.first_vertex;
+    }
+  } else if constexpr (INDIRECT) {
+    if (vertex_shader->indirect && !vertex_shader->quad_shader.empty() && command.arguments.draw_count == 1
+        && command.arguments.command == reshade::api::indirect_command::draw_indexed) {
+      particle_count = INDIRECT_PARTICLES;
     }
   } else if constexpr (INDEXED) {
     if (!vertex_shader->quad_shader.empty() && command.arguments.index_count == 6) {
@@ -2218,6 +2233,13 @@ void CaptureParticles(Context& command) {
     const bool buffers = SUCCEEDED(device->CreateBuffer(&particles_desc, nullptr, stream.particles.GetAddressOf()))
                          && SUCCEEDED(device->CreateShaderResourceView(stream.particles.Get(), &particles_view, stream.srv.GetAddressOf()))
                          && SUCCEEDED(device->CreateBuffer(&behaviours_desc, &behaviours_data, stream.behaviours.GetAddressOf()));
+    if (buffers && std::ranges::any_of(smoke_vertex_shaders, &SmokeVertexShader::indirect)) {
+      const std::vector<uint8_t> empty_records(INDIRECT_PARTICLES * STRIDE);
+      const D3D11_BUFFER_DESC empty_desc = {.ByteWidth = INDIRECT_PARTICLES * STRIDE, .Usage = D3D11_USAGE_IMMUTABLE,
+                                            .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+      const D3D11_SUBRESOURCE_DATA empty_data = {.pSysMem = empty_records.data()};
+      device->CreateBuffer(&empty_desc, &empty_data, stream.empty.GetAddressOf());
+    }
     for (size_t index = 0; index < smoke_vertex_shaders.size(); ++index) {
       const SmokeVertexShader& shader = smoke_vertex_shaders[index];
       std::span<const uint8_t> output_code = shader.quad_shader;
@@ -2238,7 +2260,7 @@ void CaptureParticles(Context& command) {
   }
   ID3D11GeometryShader* particle_output = stream.outputs[vertex_shader - smoke_vertex_shaders.begin()].Get();
   const UINT count = std::min(particle_count, capacity - runtime.particles);
-  if (particle_output == nullptr || count == 0) return;
+  if (particle_output == nullptr || count == 0 || (INDIRECT && !stream.empty)) return;
   // The quad shader reads the vertex shader's constants with their ranges (D3D11.1).
   ComPtr<ID3D11DeviceContext1> native1;
   if (INDEXED && FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
@@ -2261,6 +2283,10 @@ void CaptureParticles(Context& command) {
   native->SOGetTargets(1, game_output.GetAddressOf());
   ID3D11Buffer* target = stream.particles.Get();
   const UINT offset = runtime.particles * 48;
+  if constexpr (INDIRECT) {
+    const D3D11_BOX room = {.left = 0, .top = 0, .front = 0, .right = count * 48, .bottom = 1, .back = 1};
+    native->CopySubresourceRegion(target, 0, offset, 0, 0, stream.empty.Get(), 0, &room);
+  }
   native->GSSetShader(particle_output, nullptr, 0);
   native->PSSetShader(nullptr, nullptr, 0);
   native->SOSetTargets(1, &target, &offset);
@@ -2290,7 +2316,11 @@ void CaptureParticles(Context& command) {
     native->GSSetSamplers(lit_shader->sampler_shift, SAMPLERS - lit_shader->sampler_shift, pixel_samplers.data());
     native1->GSSetConstantBuffers1(0, CONSTANTS, vertex_constants.data(), vertex_first_constants.data(), vertex_constant_counts.data());
     const auto& arguments = command.arguments;
-    native->DrawIndexedInstanced(arguments.index_count, count, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
+    if constexpr (INDIRECT) {
+      native->DrawIndexedInstancedIndirect(reinterpret_cast<ID3D11Buffer*>(arguments.buffer.handle), static_cast<UINT>(arguments.offset));
+    } else {
+      native->DrawIndexedInstanced(arguments.index_count, count, arguments.first_index, arguments.vertex_offset, arguments.first_instance);
+    }
     native->GSSetShaderResources(0, VIEWS, game_views.data());
     native->GSSetSamplers(0, SAMPLERS, game_samplers.data());
     native1->GSSetConstantBuffers1(0, CONSTANTS, game_constants.data(), game_first_constants.data(), game_constant_counts.data());
@@ -2716,10 +2746,11 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     // lit mask's first tile row (bridge v31), the colours.
     std::array<std::array<float, 4>, (dlaa_bridge::RT_ALL_LIGHTS * 2) + 1> constants = {};
     for (size_t index = 0; index < count; ++index) {
+      const std::array<float, 4> colour = (candidates[index].shadows_only ? std::array<float, 4>{} : candidates[index].colour);
       runtime.lights.push_back(candidates[index].light);
-      runtime.light_colours.push_back(candidates[index].colour);
+      runtime.light_colours.push_back(colour);
       constants[index] = candidates[index].light;
-      constants[dlaa_bridge::RT_ALL_LIGHTS + 1 + index] = candidates[index].colour;
+      constants[dlaa_bridge::RT_ALL_LIGHTS + 1 + index] = colour;
     }
     constants[dlaa_bridge::RT_ALL_LIGHTS] = {std::bit_cast<float>(static_cast<uint32_t>(count)), runtime.settings.light_glow,
                                              std::bit_cast<float>(dlaa_bridge::bridge.rt_light_tile_row), 0.f};
