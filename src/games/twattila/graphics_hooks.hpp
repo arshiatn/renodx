@@ -18,6 +18,7 @@
 #include <cstring>
 #include <exception>
 #include <format>
+#include <limits>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
@@ -206,6 +207,30 @@ constexpr size_t SCRUB_MODELS = 0x9c;
 constexpr uint32_t MAX_SCRUB_MODELS = 256;
 constexpr size_t MANAGER_LOD_OFFSET = 0xc34;  // a signed square, added to every key (+0x188afc0)
 constexpr size_t MAX_MODEL_LODS = 8;
+// void __thiscall ScrubCell(Scrub* scrub, const Cell* cell, const float* camera, CellBlock entry, float radius_squared,
+// uint32_t) (+0x1897a30, ret 0x40): the cell loop, one call a cell of the quadtree query (ScrubUpdate's TBB body +0x17db200:
+// the cell list entry's +0x8 to +0x37 by value, then float(+0x80 squared as an int)). A record (+0x24, 18 bytes each, +0x20
+// of them; its +0x10 byte its slot in the scrub's models) goes on to the grid, the bias, the transform and DrawScrub only
+// while its distance squared <= radius_squared ([esp + 0x184]; with scrub_node_always_render, +0xc0130, every record).
+// The same bytes in Thrones of Britannia; the next record (+0x42c) and the return (+0x44c) read at install.
+constexpr std::string_view SCRUB_CELL =
+    "81 EC 40 01 00 00 56 57 8B F9 8D 4C 24 08 89 BC 24 3C 01 00 00 E8 ?? ?? ?? ?? 8B 8C 24 4C 01 00 00 8B 41 20 89 84 24 "
+    "28 01 00 00 85 C0 0F 84 ?? ?? ?? ?? 33 C0 89 84 24 2C 01 00 00 0F 1F 40 00 8B 71 24 B9 ?? ?? ?? ?? 03 F0 8B 84 24 50 "
+    "01 00 00 89 B4 24 30 01 00 00 F3 0F 10 16 F3 0F 5C 10 F3 0F 10 46 04 F3 0F 5C 40 04 F3 0F 10 4E 08 F3 0F 5C 48 08 F3 "
+    "0F 59 D2 F3 0F 59 C0 F3 0F 59 C9 F3 0F 58 D0 F3 0F 58 D1 F3 0F 11 94 24 40 01 00 00 E8 ?? ?? ?? ?? 84 C0 75 4B F3 0F "
+    "10 84 24 84 01 00 00 0F 2F 84 24 40 01 00 00 0F 82";
+constexpr std::string_view SCRUB_CELL_NEXT = "83 C0 12 83 AC 24 28 01 00 00 01";  // add eax, 18; sub [esp + 0x128], 1
+constexpr size_t SCRUB_CELL_NEXT_OFFSET = 0x42c;
+constexpr std::string_view SCRUB_CELL_RETURN = "C2 40 00";
+constexpr size_t SCRUB_CELL_RETURN_OFFSET = 0x44c;
+constexpr size_t CELL_COUNT = 0x20;
+constexpr size_t CELL_RECORDS = 0x24;
+constexpr size_t RECORD_SIZE = 18;
+constexpr size_t RECORD_SLOT = 0x10;
+// The cell list entry's +0x8 to +0x37, passed on as the game pushed it.
+struct CellEntry {
+  std::array<uint32_t, 12> values = {};
+};
 
 // __thiscall through __fastcall: `this` in ecx, edx unused, the rest on the stack (callee pops).
 using UnitDistances = float*(__fastcall*)(void* display, void* unused_edx, float* out, uint32_t quality, uint32_t second,
@@ -218,6 +243,8 @@ using DrawTree = void*(__fastcall*)(uint8_t* manager, void* unused_edx, uint32_t
 using DrawScrub = void(__fastcall*)(uint8_t* manager, void* unused_edx, uint32_t model, const float* transform,
                                     uint32_t third, const uint8_t* params, uint32_t fifth);
 using ScrubUpdate = void(__fastcall*)(uint8_t* scrub, void* unused_edx);
+using ScrubCell = void(__fastcall*)(uint8_t* scrub, void* unused_edx, const uint8_t* cell, const float* camera, CellEntry entry,
+                                    float radius_squared, uint32_t last);
 
 struct ModelLods {
   uint32_t count = 0;
@@ -232,12 +259,17 @@ struct ScrubValues {
   float game_bias = 0.f;
   int32_t written_cells = 0;
   float written_bias = 0.f;
+  // Per slot of the scrub's models, the cell radius its records need (as the cells': ceil(sqrt(the farthest enabled LOD -
+  // min(+0xc34, 0))) + 1 m; 0: no enabled LOD; INT32_MAX: no model, or not below written_cells). slot_count 0: none known.
+  std::array<int32_t, MAX_SCRUB_MODELS> slot_radius = {};
+  uint32_t slot_count = 0;
 };
 
 static UnitDistances original_unit_distances = nullptr;
 static DrawTree original_draw_tree = nullptr;
 static DrawScrub original_draw_scrub = nullptr;
 static ScrubUpdate original_scrub_update = nullptr;
+static ScrubCell original_scrub_cell = nullptr;
 static ImposterDistance original_imposter_distance = nullptr;
 static uint8_t* imposter_distance_return = nullptr;
 static size_t caller_soldier = CALLER_SOLDIER;  // the game's (set at install)
@@ -602,26 +634,39 @@ static void __fastcall OnScrubUpdate(uint8_t* scrub, void* unused_edx) {
   std::memcpy(&manager, scrub + SCRUB_MANAGER, sizeof(manager));
   std::memcpy(&slot_count, scrub + SCRUB_MODEL_COUNT, sizeof(slot_count));
   std::memcpy(&slots, scrub + SCRUB_MODELS, sizeof(slots));
+  float lod_offset = 0.f;
+  if (manager != nullptr) {
+    std::memcpy(&lod_offset, manager + MANAGER_LOD_OFFSET, sizeof(lod_offset));
+  }
+  // Per slot too (OnScrubCell): a cell of grass alone then stops at the grass's reach, though far plants elsewhere keep the
+  // scrub's cells (ATN's G1 battle: 1600 m for 3 plants, 88% of the records visited past 310 m, 6 of them drawn).
+  known.slot_count = (manager != nullptr && slots != nullptr) ? std::min(slot_count, MAX_SCRUB_MODELS) : 0;
   float farthest = 0.f;  // distance squared; a NaN LOD never takes a record, an infinite one leaves the cells as they are
-  for (uint32_t slot = 0; manager != nullptr && slots != nullptr && slot < std::min(slot_count, MAX_SCRUB_MODELS); ++slot) {
+  for (uint32_t slot = 0; slot < known.slot_count; ++slot) {
+    known.slot_radius[slot] = INT32_MAX;
     const uint8_t* model = ScaleModelLods(manager, slots[slot], scale * scale);
     if (model == nullptr) continue;
     uint32_t count;
     uint8_t** entries;
     std::memcpy(&count, model + 0x28, sizeof(count));
     std::memcpy(&entries, model + 0x2c, sizeof(entries));
+    float slot_farthest = -std::numeric_limits<float>::infinity();
     for (uint32_t lod = 0; lod < count; ++lod) {
       float distance;
       std::memcpy(&distance, entries[lod] + 0x38, sizeof(distance));
-      if (entries[lod][0x44] != 0 && distance > farthest) {
-        farthest = distance;
-      }
+      if (entries[lod][0x44] == 0) continue;
+      if (distance > farthest) farthest = distance;
+      if (distance > slot_farthest) slot_farthest = distance;
+    }
+    // No enabled LOD past min(+0xc34, 0) (a key is never below it): its records draw nothing at any distance.
+    if (const double reach_squared = static_cast<double>(slot_farthest) - std::min(lod_offset, 0.f); !(reach_squared > 0.0)) {
+      known.slot_radius[slot] = 0;
+    } else if (const double radius = std::ceil(std::sqrt(reach_squared)) + 1.0; radius < known.written_cells) {
+      known.slot_radius[slot] = static_cast<int32_t>(radius);
     }
   }
   double reach = 0.0;  // metres (0: no scrub model with an enabled LOD found, the cells left as they are)
   if (farthest > 0.f) {
-    float lod_offset;
-    std::memcpy(&lod_offset, manager + MANAGER_LOD_OFFSET, sizeof(lod_offset));
     reach = std::sqrt(static_cast<double>(farthest) - std::min(lod_offset, 0.f));
     if (const double radius = std::ceil(reach) + 1.0; radius < known.written_cells) {
       known.written_cells = static_cast<int32_t>(radius);
@@ -674,6 +719,30 @@ static void __fastcall OnScrubUpdate(uint8_t* scrub, void* unused_edx) {
     grass_trace.state = 2;
   }
   original_scrub_update(scrub, unused_edx);
+}
+
+// A cell's records within the radius its records' slots need (OnScrubUpdate's, the same proof as the scrub's cells: a
+// record farther than its model's has no LOD): the cell loop sends the same records on, the others fail its distance
+// test before the grid, the bias, the transform and the DrawScrub call. The workers' (OnScrubUpdate wrote the radii before
+// the game's ScrubUpdate started them; its parallel_for returns after the last cell).
+static void __fastcall OnScrubCell(uint8_t* scrub, void* unused_edx, const uint8_t* cell, const float* camera, CellEntry entry,
+                                   float radius_squared, uint32_t last) {
+  const auto& known = scrub_values;
+  if (hooks_active.load(std::memory_order_relaxed) && cell != nullptr && scrub == known.scrub && known.slot_count != 0) {
+    uint32_t count;
+    const uint8_t* records;
+    std::memcpy(&count, cell + CELL_COUNT, sizeof(count));
+    std::memcpy(&records, cell + CELL_RECORDS, sizeof(records));
+    int32_t radius = 0;
+    for (uint32_t record = 0; record < count && radius < known.written_cells; ++record) {
+      const uint8_t slot = records[(record * RECORD_SIZE) + RECORD_SLOT];
+      radius = std::max(radius, (slot < known.slot_count) ? known.slot_radius[slot] : INT32_MAX);
+    }
+    if (radius < known.written_cells) {
+      radius_squared = std::min(radius_squared, static_cast<float>(int64_t{radius} * radius));
+    }
+  }
+  original_scrub_cell(scrub, unused_edx, cell, camera, entry, radius_squared, last);
 }
 
 }  // namespace internal
@@ -757,6 +826,16 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
       }
       add(internal::SCRUB_UPDATE, reinterpret_cast<void**>(&internal::original_scrub_update),
           reinterpret_cast<void*>(&internal::OnScrubUpdate), "grass cells");
+      // The cell loop only with its record step and return as read (its arguments' layout).
+      if (const auto* cell_loop = reinterpret_cast<const char*>(tw::engine_tweaks::FindPattern(sections.code, internal::SCRUB_CELL));
+          cell_loop != nullptr
+          && tw::engine_tweaks::FindPattern({std::string_view(cell_loop + internal::SCRUB_CELL_NEXT_OFFSET, 11)}, internal::SCRUB_CELL_NEXT) != nullptr
+          && tw::engine_tweaks::FindPattern({std::string_view(cell_loop + internal::SCRUB_CELL_RETURN_OFFSET, 3)}, internal::SCRUB_CELL_RETURN) != nullptr) {
+        add(internal::SCRUB_CELL, reinterpret_cast<void**>(&internal::original_scrub_cell),
+            reinterpret_cast<void*>(&internal::OnScrubCell), "grass cells' radius");
+      } else {
+        missing += std::format("{}grass cells' radius", missing.empty() ? "" : ", ");
+      }
       if (uint8_t* call = tw::engine_tweaks::FindPattern(sections.code, internal::FIRST_PACK_CALL); call != nullptr) {
         internal::first_pack_return = call + internal::FIRST_PACK_CALL_RETURN;
         add(internal::PACK_ANIMATIONS, reinterpret_cast<void**>(&internal::original_pack_animations),
