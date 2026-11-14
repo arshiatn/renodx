@@ -744,7 +744,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     (h) do light draws repeat frame to frame (the -1.4 ms sort reuse); (i) per-draw leftovers (resource upgrade hash set
     0.196 ms, 2461 skipped caster commands); (j) game passes doubled under RT/PT (~0.18 ms); (k) the add-on's own GPU passes
     0.48-0.53 ms; (l) PT GI fallbacks, grass specular into the GI cache, OMM transient pools, helper commit under Nsight;
-    (m) quality scorer: a smoke / fog scene (Faster Smoke Shadow Build unscored), reflections / water, history off, RR 310.9
+    (m) quality scorer: a smoke / fog scene (Faster Smoke Shadow Build unscored), reflections / water, history off, RR 310.9;
+    ATN 21:xx: look verdicts by score wherever a reference exists (ray effects against a many-sample reference without the
+    denoiser; "as vanilla" rows against the game's own picture), so ATN judges only taste rows (Hue Clip, look sliders)
   - [ ] GPU GRASS (perf_plan G1; one agent after cpu_ ends: Attila's grass code): phase 0 = a Grass Dump button +
     grass_replay.py; estimate -5 to -10 ms render thread, -20 to -37 ms workers at maxed grass when CPU-bound
   - [ ] Look-changing GPU savings (half-rate rays for grass / far soldiers, float16 animation pages; 0.2-0.6 ms each):
