@@ -255,6 +255,16 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Shadows D0C67938 / 5D1695BC, Rays Replace Shadow Maps (game-side), SSR share BUG 69A57B14 fixed; RT/PT preset turns on
   PT AO + torch shadows). NOT DONE: Skip the Shadow Maps (agent resumed: forward readers first), Fog Shadows (analytic),
   CDCF1ADD, raycast 021D7515 below 100%, AO / SSR reader census (needs ATN's start with SSAO + SSR off).
+- [x] WH1 Skip the Shadow Maps NOT DONE (merged README 49eff1b7: 7 forward readers, 2 outside the shared forward patch,
+  WARP control failed; attempt kept in tools/tw/wh1/skip_maps_attempt.diff); agent resumed (opt-in patch parameter,
+  cascade constants, then RR guides, sprites, thin sheets, Bend foliage, cut-outs, particles, water).
+- [x] Nsight DONE (tools/tw/nsight, README; memory reference_nsight_gpu_trace): helper110 8.4 ms at base clock, ReSTIR
+  reuse 2.55 (L2 bandwidth), trace 1.48 (RT core), reflections 1.27, PT 1.16 (registers). No capture / shader swap: the
+  helper has no frame boundary; NGFX_FrameBoundary_D3D12 (Apache-2.0 header, no-op without Nsight) = ATN DECIDES. The
+  45 GB process at 03:2x was the Nsight run (commit grows ~8 MB a frame under injection); the ReSTIR agent overwrote its
+  lock twice (told: atomic create + re-check). Reuse optimisation handed to the ReSTIR agent after U1 / U2.
+- [x] Thrones round 2 MERGED 3da5efd9 (campaign census, Particle Resolution + edges + smooth half-size, Experimental);
+  agent resumed: Light Through All Banners, Grass Height Distance, Faster Game CPU Code if provable.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
