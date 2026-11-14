@@ -2,6 +2,8 @@
 
 ### Parity round 5 (2026-11-14; built only, not run in game)
 
+- Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Sprite Soldier Shadows (Experimental, off: the sprite soldiers in the rays through a geometry-shader capture, WARP test/tw_rays_captures); Rarer Objects in the Rays (Experimental, off: objects the game tessellates); Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
+
 The table: tools/tw/wh1/parity_1114.md (HAVE 28, done now 17, left 2 (other agents' shared steps), needs a trace 3, won't
 get 13).
 

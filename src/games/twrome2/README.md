@@ -2,6 +2,8 @@
 
 ### Parity round 2 (2026-11-14; built only, not run in game)
 
+- Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
+
 New:
 - **Reflection Quality** (Reflections and Water's Quality; 1 the game's): the water's reflections take finer steps (Game's method) or more of them (Hierarchical). Attila's row.
 - **Light Through All Banners** (Shadows' More Options, Experimental, off; RT/PT leaves it off): the unit banners let sunlight through as thin cloth, in the rays and in Bend.

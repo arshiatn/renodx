@@ -2,6 +2,8 @@
 
 ### Parity round 2 (2026-11-14; built only, not run in game)
 
+- Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Sprite Soldier Shadows (Experimental, off: the sprite soldiers in the rays through a geometry-shader capture, WARP test/tw_rays_captures); objects the game tessellates under Rarer Units and Props in the Rays; Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are); Smoke Shadows without rays (Experimental, off, as Troy's).
+
 The first round's doable leftovers (table: `tools/tw/wh2/parity_1114.md`).
 - **New: Fog Strength (Extra, 0-2, 1 = the game's)** on the battle fog (battle and campaign: its extinction 16AB86F4 and
   in-scattering 492B87C7, the only fog shaders in ATN's traces), as Warhammer III's. WARP: at 1 the game's bits.

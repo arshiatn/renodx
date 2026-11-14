@@ -898,6 +898,8 @@ static_checks 0 findings. No shared code changed.
 
 ### Parity round 3 (2026-11-14; built only, not run in game)
 
+- Shared step (built only, not run in game): Torch and fire light / shadows from path tracing and Faster smoke shadow build in the DLSS overlay (Experimental, off), read by the HDR add-on.
+
 On atn-mods 16126f41, with ATN's rule for the round (every setting, not only the highest: a pass or quality level his
 settings don't draw is still ported where its bytes prove it). Table: tools/shogun2/pkg_1114/parity_1114.md, now HAVE 45
 (3 also DO NOW done), DO NOW 22 of which 17 done, NEEDS A TRACE 3, WON'T GET 14, not mine 1.

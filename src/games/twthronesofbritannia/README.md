@@ -13,6 +13,8 @@ Attila's fixes for the game's other builds, the same bytes here (Thrones' files 
 
 ### Parity round (2026-11-14; built only, not run in game)
 
+- Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
+
 The rest of Attila's page and shader fixes this game can take (table: tools/tw/thrones/parity_1114.md).
 
 New:

@@ -11,6 +11,8 @@
 
 ### Parity round (2026-11-14; built only, not run in game)
 
+- Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's).
+
 - New: **Unit/Building Indicator Brightness (Extra, Experimental)**, as Attila's: the selection markers' colour x the slider
   in HDR modes. At 1 (default) and in SDR the game's own shaders run; WARP: our copies of fx_indicator's four colour passes
   are the game's bits at 1. Indicators drawn through the game's transparency path (MBOIT resolve 492ED8DA) follow it too:

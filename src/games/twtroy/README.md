@@ -2,6 +2,8 @@
 
 ### Parity round (2026-11-14; built only, not run in game)
 
+- Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Sprite Soldier Shadows (Experimental, off: the sprite soldiers in the rays through a geometry-shader capture, WARP test/tw_rays_captures); the campaign trees cut out in the rays at the game's 0.01, not 0.5 (needs the next helper, 114); Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
+
 Parity table against Attila's page: `tools/tw/troy/parity_1114.md` (have 20, done now 13, needs a trace 4, won't get 11 with
 proofs, open 3).
 - **Fixed: Graphics 2 of 2 never changed anything.** Troy copies each engine value's name into a heap string, so the
