@@ -1,0 +1,168 @@
+/*
+ * Copyright (C) 2026 ArshiaTN
+ * SPDX-License-Identifier: MIT
+ */
+
+#pragma once
+
+#include <windows.h>
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cstdint>
+#include <cstring>
+#include <exception>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "../../utils/detour.hpp"
+#include "../../utils/log.hpp"
+#include "../twrome2/engine_tweaks.hpp"
+#include "./native_hook_lifetime.hpp"
+#include "./rt_scene.hpp"
+
+// Skip the Game's Shadow Map Work (Experimental; Attila, Thrones of Britannia): under the rays' sun shadows every caster
+// drawn into the sun's shadow map is skipped at the draw (rt_scene OnBindTargets / OnCasterDraw), after the render thread
+// set up and submitted it (Constantinople outside the walls: 1561 such draws in 4.4-4.8 ms of the render thread). Here
+// the model manager's draws of those passes (its rigid lists, trees and soldiers) are not made at all: each frame one of
+// them still is, in turn, so the cut-out census (rt_scene OnCutOutShadowDraw: the alpha-tested F79BFB14 draws) sees every
+// cascade within a few frames. Which passes those are is learned in game, not assumed: a pass kind every one of whose
+// calls drew into the sun's map alone (bound alone for drawing at its start or by it, nothing else bound, still at its
+// end), 16 calls without one that wasn't. Off, or without the rays' shadows: every call made as the game makes it.
+namespace twattila::shadow_pass {
+
+namespace internal {
+
+// void __thiscall Render(Renderable* self, Context* context, Pass* pass) (+0x17fa310, the model manager's renderable at
+// its +0x10, vtable +8; Thrones of Britannia +0x186e8a0, the same bytes): self +4 0: nothing; else the pass's kind (its
+// vtable +0x3c, 0 to 0x62: a switch, +0x17fa8a8) picks the lists drawn (+0xa88 to +0xb3c through +0x17ae940) and whether
+// the soldiers are (+0x17fb8a0, which runs the frame's first bone pack wherever it comes first). Its first calls of a frame
+// draw the sun's cascades (heapfix's pass timing). ret 8.
+constexpr std::string_view RENDER =
+    "81 EC A4 00 00 00 57 8B F9 80 7F 04 00 0F 84 ?? ?? ?? ?? 53 8B 9C 24 B4 00 00 00 8B CB 55 56 8B 03 FF 50 3C";
+constexpr size_t SELF_ENABLED = 4;
+constexpr size_t PASS_KIND_SLOT = 0x3c / 4;
+constexpr uint32_t PASS_KINDS = 0x63;
+constexpr uint32_t LEARNED_CALLS = 16;
+
+using Render = void(__fastcall*)(uint8_t* self, void* unused_edx, void* context, uint8_t* pass);
+using PassKind = uint32_t(__fastcall*)(uint8_t* pass, void* unused_edx);
+
+struct Kind {
+  uint32_t sun_only = 0;    // calls that drew into the sun's map alone
+  bool mixed = false;       // a call that bound another target, or ran with the map not bound
+  uint32_t calls = 0;       // this frame's
+  uint32_t last_calls = 0;  // the frame before's
+  bool logged = false;
+};
+
+// The render thread's (Render, the binds and the present run there; other threads' calls pass through).
+static std::array<Kind, PASS_KINDS> kinds;
+static uint32_t frame = 0;
+static std::atomic<DWORD> render_thread = 0;
+static std::atomic<bool> active = false;  // the row on and the casters skipped (Update, at the present)
+static uint32_t sun_binds = 0;
+static uint32_t other_binds = 0;
+static bool binds_counted = false;  // Install registered OnBindTargets
+static Render original_render = nullptr;
+static std::vector<renodx::utils::detour::Function> hooks;
+static tw::native_hooks::Lifetime hook_lifetime;
+static bool searched = false;
+
+static void __fastcall OnRender(uint8_t* self, void* unused_edx, void* context, uint8_t* pass) {
+  if (!active.load(std::memory_order_relaxed) || GetCurrentThreadId() != render_thread.load(std::memory_order_relaxed)
+      || self[SELF_ENABLED] == 0 || pass == nullptr) {
+    return original_render(self, unused_edx, context, pass);
+  }
+  void** pass_vtable;
+  std::memcpy(&pass_vtable, pass, sizeof(pass_vtable));
+  const uint32_t kind_index = reinterpret_cast<PassKind>(pass_vtable[PASS_KIND_SLOT])(pass, nullptr);
+  if (kind_index >= PASS_KINDS) return original_render(self, unused_edx, context, pass);
+  auto& kind = kinds[kind_index];
+  const uint32_t call = kind.calls++;
+  if (!kind.mixed && kind.sun_only >= LEARNED_CALLS && call != frame % std::max(kind.last_calls, 1u)) return;
+  const bool sun_at_start = rt_scene::SkippingCasters();
+  const uint32_t sun_before = sun_binds;
+  const uint32_t others_before = other_binds;
+  original_render(self, unused_edx, context, pass);
+  if (kind.mixed) return;
+  if (other_binds == others_before && (sun_at_start || sun_binds != sun_before) && rt_scene::SkippingCasters()) {
+    ++kind.sun_only;
+  } else {
+    kind.mixed = true;
+  }
+  if (!kind.logged && (kind.mixed || kind.sun_only == LEARNED_CALLS)) {
+    kind.logged = true;
+    renodx::utils::log::i("[Total War] Shadow map work: pass kind ", kind_index,
+                          kind.mixed ? " draws more than the sun's map: always drawn"
+                                     : " draws only into the sun's map: left out but one call a frame");
+  }
+}
+
+static void OnBindTargets(reshade::api::command_list*, uint32_t, const reshade::api::resource_view*, reshade::api::resource_view) {
+  if (!active.load(std::memory_order_relaxed) || GetCurrentThreadId() != render_thread.load(std::memory_order_relaxed)) return;
+  if (rt_scene::SkippingCasters()) {
+    ++sun_binds;
+  } else {
+    ++other_binds;
+  }
+}
+
+}  // namespace internal
+
+// After rt_scene::InstallShadowsOnly (its bind callback first: SkippingCasters is the bind's).
+inline void Install() {
+  internal::binds_counted = true;
+  reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindTargets);
+}
+
+// Every present (the render thread): `row` and whether this frame's casters are skipped (rt_scene::CastersSkipped). The
+// hook goes in the first time the row is on; without the row no game byte changes.
+inline void Update(bool row, bool casters_skipped) {
+  internal::render_thread.store(GetCurrentThreadId(), std::memory_order_relaxed);
+  for (auto& kind : internal::kinds) {
+    kind.last_calls = kind.calls;
+    kind.calls = 0;
+  }
+  ++internal::frame;
+  if (row && !internal::searched && internal::binds_counted) {
+    internal::searched = true;
+    HMODULE module = GetModuleHandleW(L"empire.retail.dll");
+    uint8_t* render = (module != nullptr)
+                          ? tw::engine_tweaks::FindPattern(tw::engine_tweaks::ModuleSections(module).code, internal::RENDER)
+                          : nullptr;
+    std::string result = "not found";
+    if (render != nullptr) {
+      internal::original_render = reinterpret_cast<internal::Render>(render);
+      internal::hooks.emplace_back(&internal::original_render, &internal::OnRender,
+                                   renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE);
+      try {
+        internal::hook_lifetime.Install(internal::hooks);
+        result = "hooked";
+      } catch (const std::exception& error) {
+        internal::hooks.clear();
+        result = std::string("hook failed: ") + error.what();
+      }
+    }
+    renodx::utils::log::i("[Total War] Shadow map work: the model manager's pass draw ", result);
+  }
+  internal::active.store(row && casters_skipped && !internal::hooks.empty(), std::memory_order_relaxed);
+}
+
+// Addon detach.
+inline void Uninstall() {
+  internal::active.store(false, std::memory_order_relaxed);
+  if (std::exchange(internal::binds_counted, false)) {
+    reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindTargets);
+  }
+  if (internal::hooks.empty()) return;
+  try {
+    internal::hook_lifetime.Uninstall(&internal::hooks);
+  } catch (const std::exception& error) {
+    renodx::utils::log::e("[Total War] Shadow map work hook could not be removed; addon retained until process exit: ", error.what());
+  }
+}
+
+}  // namespace twattila::shadow_pass

@@ -1477,6 +1477,11 @@ inline bool CastersSkipped() {
   return internal::runtime.settings.shadows_only && internal::runtime.occlusion_frame + 1 >= internal::runtime.frame;
 }
 
+// Whether the draws now go to the sun's shadow map and are skipped (OnBindTargets' last bind; the render thread's).
+inline bool SkippingCasters() {
+  return internal::skipping_casters.load(std::memory_order_relaxed);
+}
+
 // Ray-Traced Shadows Only: draws are skipped while the sun's shadow map is bound alone (depth only) for drawing.
 inline void OnBindTargets(reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view*,
                           reshade::api::resource_view dsv) {

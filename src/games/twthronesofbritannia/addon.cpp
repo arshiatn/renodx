@@ -43,6 +43,7 @@
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/shadow_pass.hpp"
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/ssr_hiz.hpp"
 #include "../twattila/test_hooks.hpp"
@@ -1275,6 +1276,7 @@ float big_battle_fix = 0.f;
 float small_soldiers_as_sprites = 0.f;
 float sprite_size = 20.f;  // pixels on screen
 float shadow_map_size = 0.f;  // the game's sizes x 2^this (graphics_hooks.hpp shadow_map)
+float shadow_pass_row = 0.f;  // Skip the Game's Shadow Map Work (twattila/shadow_pass.hpp)
 tw::engine_tweaks::Option dead_units;
 tw::engine_tweaks::Option unit_animation;  // shared pose
 tw::engine_tweaks::Option facial_animation;
@@ -1700,6 +1702,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
           .focal_pixels = twattila::anti_aliasing::MainFocalPixels(),
       },
       &graphics_hooks_installed, graphics_status, twattila::graphics_hooks::Game::THRONES);
+  twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped());
 }
 
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
@@ -1977,6 +1980,17 @@ void ConfigureAddon() {
           .tooltip = "Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
                      "with it). More video memory. Applies after a restart.",
           .labels = {"2048 (Game's)", "4096", "8192"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSkipShadowPass",
+          .binding = &shadow_pass_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Skip the Game's Shadow Map Work (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows: the game stops preparing most of the shadow map draws the rays replace.\n"
+                     "Less CPU time in forests and big battles.",
+          .labels = {"Off", "On"},
       },
       graphics_status,
       // Two empty lines between this section and the ambient occlusion (ATN).
@@ -2325,6 +2339,7 @@ bool AttachAddon() {
   // Ray-Traced Shadows Only: the sun's shadow map's casters skipped (the map the sun draws read); the forward passes that
   // read it take the rays' shadows instead.
   twattila::rt_scene::InstallShadowsOnly();
+  twattila::shadow_pass::Install();
   twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
   // The lit particles' other builds (shaders/vfx00<method>_*, vfx01_*: Attila's, the same bytes) read t49 and b9 themselves.
@@ -2377,6 +2392,7 @@ void DetachAddon() {
   tw::engine_tweaks::Uninstall(graphics_options);
   twattila::engine_code::Uninstall();
   twattila::graphics_hooks::Uninstall();
+  twattila::shadow_pass::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_pass::Uninstall();
   twattila::rt_scene::Uninstall();

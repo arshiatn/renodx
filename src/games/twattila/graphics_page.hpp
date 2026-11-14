@@ -983,6 +983,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedTreeReach", .section = section, .shown = more_rays, .only_some_games = true});
     page.Take({.match = "RayTracedShadowMapSize", .section = section, .shown = more_rays, .only_some_games = true});
     page.Take({.match = "RayTracedShadowCascades", .section = section, .shown = more_rays, .only_some_games = true});
+    page.Take({.match = "RayTracedSkipShadowPass", .section = section, .shown = more_rays, .only_some_games = true});
     if (b.rays_one_at_a_place != nullptr) {
       page.Add(new Setting{
           .key = "RayTracedOneAtAPlace",

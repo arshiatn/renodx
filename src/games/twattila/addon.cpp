@@ -54,6 +54,7 @@
 #include "./pass_timing.hpp"
 #include "./rt_scene.hpp"
 #include "./screen_space_shadows.hpp"
+#include "./shadow_pass.hpp"
 #include "./test_hooks.hpp"
 #include "./water_effects.hpp"
 #include "./smoke_map.hpp"
@@ -1047,6 +1048,7 @@ float sprite_size = 20.f;  // pixels on screen
 float ssr_denoiser = 1.f;  // ssr_hiz.hpp: the resolve's history
 float shadow_map_size = 0.f;  // the game's sizes x 2^this (graphics_hooks.hpp shadow_map)
 float shadow_cascades_row = 0.f;  // Two Shadow Cascades Under Rays (graphics_hooks.hpp shadow_map)
+float shadow_pass_row = 0.f;  // Skip the Game's Shadow Map Work (shadow_pass.hpp)
 twattila::feature_settings::SssSliders sss_sliders;
 twattila::smoke_map::Sliders smoke_map_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
@@ -1480,6 +1482,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           .focal_pixels = twattila::anti_aliasing::MainFocalPixels(),
       },
       &graphics_hooks_installed, graphics_status);
+  twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped());
 }
 
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
@@ -1787,6 +1790,17 @@ void ConfigureAddon() {
                      "The rays shadow instead; faster in forests. Applies after a restart. Locked by UI 4K Mod Compatibility.",
           .labels = {"Off", "On"},
           .is_enabled = [] { return !shadow_size_locked; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSkipShadowPass",
+          .binding = &shadow_pass_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Skip the Game's Shadow Map Work (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows: the game stops preparing most of the shadow map draws the rays replace.\n"
+                     "Less CPU time in forests and big battles.",
+          .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
           .key = "GraphicsBigBattleFix",
@@ -2106,6 +2120,7 @@ bool AttachAddon() {
   // Ray-Traced Shadows Only: the sun's shadow map's casters skipped (the map the sun draws read); the forward passes that
   // read it (near grass, particles) take the rays' shadows instead.
   twattila::rt_scene::InstallShadowsOnly();
+  twattila::shadow_pass::Install();
   twattila::screen_space_shadows::PatchForwardShadows(twattila::rt_scene::SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(twattila::rt_scene::SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(twattila::rt_scene::PARTICLE_BUILD_READERS);
@@ -2151,6 +2166,7 @@ void DetachAddon() {
   tw::engine_tweaks::Uninstall(graphics_options);
   twattila::engine_code::Uninstall();
   twattila::graphics_hooks::Uninstall();
+  twattila::shadow_pass::Uninstall();
   twattila::graphics_hooks::shadow_map::Uninstall();
   renodx::utils::command_action::Unregister(OnCampaignDraw);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
