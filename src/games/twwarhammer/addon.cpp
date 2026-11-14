@@ -294,13 +294,27 @@ float rays_banner_light_row = 0.f;
 constexpr std::array<twattila::water_effects::WaterShader, 1> WATER_SHADERS = {{
     {.hash = 0x44B4A2F0, .lighting_slot = 3, .world_input = 3, .refraction_slot = 4, .normal_slot = 3},
 }};
-// Cut-outs on More Models (Experimental, off): the units' pixel shaders that clip at their base map's alpha 0.5 at TEXCOORD1
-// (tools/tw/wh1/cut_out_census_wh1.txt, by their asm: fx__weighted's G-buffer 1ACA3E8C / F4333A3C, alpha overlay F0BB1D3C,
-// forward 0BF2DB7F), cut out in the rays through the units' captures with that UV (rt_capture_unit*_cut_out, part 13).
+// Cut-outs on More Models (Experimental, off): the pixel shaders that clip at their base map's alpha 0.5 at TEXCOORD1
+// (tools/tw/wh1/cut_out_census_wh1.txt, by their asm), cut out in the rays through their vertex shaders' captures with that UV
+// (rt_capture_unit*_cut_out, rt_capture_rigid_*_cut_out; part 13). Units: fx__weighted's G-buffer 1ACA3E8C / F4333A3C,
+// alpha overlay F0BB1D3C, forward 0BF2DB7F. Props (51EDFD6E: rigidstandard and rigidambientmapmesh; 875BB987: the
+// buildings' emissive alpha), each discard read (rt-scene.md row 52): G-buffer alpha_test 62D6B112 / AC040709 (t0), shroud
+// 290E3252 (t1), alpha_test_shroud_fizzle 187DE6F6 (t1; its second discard, oblique triangles against a noise, is a
+// dissolve: level C, left), alpha overlay E4BDB3C0 (t4; its second discard is the screen's clip rectangle), emissive alpha
+// 7C0A909C (t0). Their alpha is the diffuse map's x the instance's fade (TEXCOORD5.w / 1000, 1 when shown), or a vertex
+// colour's with g_untextured (debug). Left solid: the screen clip rectangles (7865CDC9, 897EDF09, BCB9B1D6), the
+// two-layer and burning masks (rigidtextureblend D855CF5B, branches 4CF47121: level C); the leaves 744FDFF0, campaign
+// plants 73C9A8D6 and far cards C5875F67 are masked already (their mask slots).
 float rays_unit_cut_outs_row = 0.f;
-constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
+constexpr std::array<twattila::rt_scene::PixelMask, 10> CUT_OUT_MASKS = {{
     {.pixel_shader = 0x0BF2DB7F, .slot = 5, .uv_semantic_index = 1},
+    {.pixel_shader = 0x187DE6F6, .slot = 1, .uv_semantic_index = 1},
     {.pixel_shader = 0x1ACA3E8C, .slot = 0, .uv_semantic_index = 1},
+    {.pixel_shader = 0x290E3252, .slot = 1, .uv_semantic_index = 1},
+    {.pixel_shader = 0x62D6B112, .slot = 0, .uv_semantic_index = 1},
+    {.pixel_shader = 0x7C0A909C, .slot = 0, .uv_semantic_index = 1},
+    {.pixel_shader = 0xAC040709, .slot = 0, .uv_semantic_index = 1},
+    {.pixel_shader = 0xE4BDB3C0, .slot = 4, .uv_semantic_index = 1},
     {.pixel_shader = 0xF0BB1D3C, .slot = 4, .uv_semantic_index = 1},
     {.pixel_shader = 0xF4333A3C, .slot = 0, .uv_semantic_index = 1},
 }};
@@ -1523,9 +1537,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x2A7775B0, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x7858BE0F, .capture_shader = __rt_capture_terrain_custom_sm41, .terrain = true},
     {.hash = 0xBDCF1803, .capture_shader = __rt_capture_terrain_custom_material_sm41, .terrain = true},
-    {.hash = 0x51EDFD6E, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_51ed},
+    {.hash = 0x51EDFD6E, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_51ed, .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true,
+     .cut_out_row = &rays_unit_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
     {.hash = 0xF6DBA4F4, .capture_shader = __rt_capture_rigid_standard_sm41, .rows_shader = __motion_record_rigid_rigidambientmapfiremesh_f6db},
-    {.hash = 0x875BB987, .capture_shader = __rt_capture_rigid_default},
+    {.hash = 0x875BB987, .capture_shader = __rt_capture_rigid_default, .cut_out_shader = __rt_capture_rigid_default_cut_out, .clip_cut_outs = true,
+     .cut_out_row = &rays_unit_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
     {.hash = 0xD1A96B76, .capture_shader = __rt_capture_rigid_vertexpush},
     {.hash = 0xDBCC30FD, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_dbcc, .thin_row = &rays_banner_light_row},
     {.hash = 0xC1E79772, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_c1e7},

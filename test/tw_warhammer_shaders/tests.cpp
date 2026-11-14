@@ -54,9 +54,10 @@
 //    clarity; the game's bytes with that c10 a metre deep equal its own half a metre deep (clarity 2; a flat surface, the
 //    depth buffer's ground by name). PatchWaterCaustics (on the game's bytes and on part 8's forward patch, as the runtime
 //    chains them): t51 unbound bit-identical. CONTROLS: the game's c10 a metre deep differs; t51 = 1 differs.
-// 13. Cut-outs on More Models: the units' capture versions with the UV (the build's embed/rt_capture_unit_cut_out.cso and
-//    its 4 bones', RT_CAPTURE_UV) stream out in TEXCOORD0's w the UV the game's 20A9E5FD / 3FC5424C give at TEXCOORD1 (what
-//    their pixel shaders' alpha test reads, tools/tw/wh1/cut_out_census_wh1.txt), as two halves. CONTROL: the captures
+// 13. Cut-outs on More Models: the units' and props' capture versions with the UV (the build's embed/rt_capture_unit_cut_out.cso,
+//    its 4 bones', rt_capture_rigid_standard_cut_out, rt_capture_rigid_default_cut_out: RT_CAPTURE_UV) stream out in
+//    TEXCOORD0's w the UV the game's 20A9E5FD / 3FC5424C / 51EDFD6E / 875BB987 give at TEXCOORD1 (what their pixel shaders'
+//    alpha test reads, tools/tw/wh1/cut_out_census_wh1.txt), as two halves. CONTROL: the captures
 //    without the UV.
 // 14. Skip the Game's Reflection Passes: under the rays' reflections (t47 bound) the resolve replacement (part 2's) writes
 //    bit-identical texels whatever the march's hits (t5) and the scene's light mips (t6) hold, so their passes go with the
@@ -1701,7 +1702,8 @@ static void TestCutOuts(const std::string& root, const std::string& dump) {
   int values = 0;
   int misses = 0;
   int control = 0;
-  for (const auto& [hash, name] : {std::pair{0x20A9E5FDu, "rt_capture_unit"}, std::pair{0x3FC5424Cu, "rt_capture_unit_4_bones"}}) {
+  for (const auto& [hash, name] : {std::pair{0x20A9E5FDu, "rt_capture_unit"}, std::pair{0x3FC5424Cu, "rt_capture_unit_4_bones"},
+                                    std::pair{0x51EDFD6Eu, "rt_capture_rigid_standard"}, std::pair{0x875BB987u, "rt_capture_rigid_default"}}) {
     const auto game = GameBytes(dump, hash);
     const auto cut_out = Bytes(embed + name + "_cut_out.cso");
     const auto plain = Bytes(embed + name + ".cso");
@@ -1747,9 +1749,9 @@ static void TestCutOuts(const std::string& root, const std::string& dump) {
       }
     }
   }
-  CHECK(values == 64 && misses == 0 && control > 0, "cut-outs: %d values, %d misses, CONTROL %d differ", values, misses, control);
-  std::printf("cut-outs: rt_capture_unit(_4_bones)_cut_out against 20A9E5FD / 3FC5424C's TEXCOORD1, %d values, %d misses; CONTROL without the UV: %d "
-              "differ\n",
+  CHECK(values == 128 && misses == 0 && control > 0, "cut-outs: %d values, %d misses, CONTROL %d differ", values, misses, control);
+  std::printf("cut-outs: rt_capture_unit(_4_bones)_cut_out, rt_capture_rigid_standard / default_cut_out against 20A9E5FD / 3FC5424C / 51EDFD6E / "
+              "875BB987's TEXCOORD1, %d values, %d misses; CONTROL without the UV: %d differ\n",
               values, misses, control);
 }
 
