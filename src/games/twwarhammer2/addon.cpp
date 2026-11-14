@@ -2097,16 +2097,17 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Pharaoh's and Warhammer III's), ATN's RT/PT preset as the defaults of what the methods
-  // leave, then Settings Mode's pages. Only what this game hooks: no casters out of view (the shadow pass is not read yet),
-  // no foliage in the screen-space shadows, no water or smoke (their rows stay hidden).
+  // leave, then Settings Mode's pages. Only what this game hooks: no foliage in the screen-space shadows, no water pass or
+  // smoke (their rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
-  // Fog Shadows and the torches' light in it start off (Experimental: no game run has shown them here yet), Smoke Shadows
-  // (hidden: not hooked here) and Specular Occlusion too; RT/PT turns all but the smoke on, as ATN's list does.
+  // Fog Shadows, the torches' light in it and Far Tree Shadows start off (Experimental: no game run has shown them here yet),
+  // Smoke Shadows (hidden: not hooked here) and Specular Occlusion too; RT/PT turns all but the smoke on, as ATN's list does.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
         || setting->key == "RayTracedSpecularOcclusion") {
       setting->default_value = 0.f;
     } else if (setting->key == "RayTracedFarTreeShadows") {
+      setting->default_value = 0.f;
       setting->label = "Far Tree Shadows (Experimental)";
     }
   }
