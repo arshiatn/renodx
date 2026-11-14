@@ -88,6 +88,14 @@
 //    CONTROL: cb8 0.5 against the game's at 0.01 differs in each. The rays' grass captures and Object Motion's grass (the
 //    build's embed/rt_capture_grass_*, motion_grass_grass_*): Grass Height Distance 2 equals 1 with c0.x 0.005; CONTROL 2
 //    against 1 differs.
+// 19. Ray-Traced Water Reflections (the water pass at F2CCEF86: the rays leave from the water's depth, the guides again from
+//    the sun draws' channels t5-t7, which ATN's traces show are the battle water's targets 0-2): the game's 44B4A2F0 (its
+//    bytes, drawn as part 12 draws it) writes at every pixel gloss 0.95, black albedo, specular colour 0.04 and channel 3's
+//    flags byte 64; WH1's guides (aa_rr_guides) over those channels give roughness 0.05 (under rt_path's 0.75: the rays
+//    reflect it), specular albedo 0.04, diffuse 0 and a unit normal. The resolve replacement (part 2's) with flags 64 under
+//    the rays: the whole reflection the rays' (their light x their share + the cubes' x the rest, over flags 1's rays minus
+//    the cubes: the same factor at every pixel), the march's hits and light mips unread. CONTROLS: the bed's G-buffer
+//    (part 9's gloss 0.3) gives other guides; without the rays the march's inputs change the water's reflection.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -678,6 +686,7 @@ struct ResolveRun {
   float hit = 65504.f;
   float radiance = 0.f;
   bool rays = false;
+  float flags = 1.f / 255.f;  // channel 3's alpha: the material's flags (1 SSR, 64 water)
 };
 
 static std::vector<Float4> RunResolve(ID3D11ComputeShader* shader, const ResolveRun& run) {
@@ -693,7 +702,7 @@ static std::vector<Float4> RunResolve(ID3D11ComputeShader* shader, const Resolve
       radiance[at] = {static_cast<float>(x) + 0.5f + run.radiance, static_cast<float>(y) + 0.5f + run.radiance, 1.f + run.radiance, 1.f};
       if (x >= VIEW || y >= VIEW) continue;
       normal[at] = {0.5f, 0.3125f, 0.5f, 0.f};
-      specular[at] = {0.5f, 0.5f, 0.5f, 1.f / 255.f};
+      specular[at] = {0.5f, 0.5f, 0.5f, run.flags};
       depth[at] = {0.1f, 0.f, 0.f, 0.f};
     }
   }
@@ -1797,6 +1806,61 @@ static void TestReflectionInputs(const std::string& games, const std::string& du
               rays_differ, PIXELS, rays_used, faithful, PIXELS, ours_differ, game_differ);
 }
 
+static void TestWaterPass(const std::string& games, const std::string& dump) {
+  const auto game = GameBytes(dump, 0x44B4A2F0);
+  const auto drawn = DrawForward(game, game, {.height = 4.f, .flat = true});
+  constexpr size_t PIXELS = 16;
+  int gbuffer_misses = 0;
+  int guide_misses = 0;
+  int bed_differ = 0;
+  const std::string path = games + "/twwarhammer/aa_rr_guides.cs_5_0.hlsl";
+  const auto guides = ComputeShader(ReadText(path), path);
+  for (size_t at = 0; at < PIXELS && drawn.size() == PIXELS * 4; ++at) {
+    const Float4& normal = drawn[at];
+    const Float4& colour = drawn[PIXELS + at];
+    const Float4& constants = drawn[(2 * PIXELS) + at];
+    gbuffer_misses += (Near(normal[2], 0.95f, 1e-6f) && colour[0] == 0.f && colour[1] == 0.f && colour[2] == 0.f && Near(constants[0], 0.04f, 1e-6f)
+                       && std::lround(constants[3] * 255.f) == 64)
+                          ? 0
+                          : 1;
+    const auto water = RunGuides(guides.Get(), {.albedo = colour[0], .normal = {normal[0], normal[1]}, .gloss = normal[2], .specular = constants[0]});
+    const float length = std::sqrt((water[2][0] * water[2][0]) + (water[2][1] * water[2][1]) + (water[2][2] * water[2][2]));
+    // Roughness and specular albedo in 16-bit unorm targets (a step 1.5e-5: 4e-4 of 0.04).
+    guide_misses += (Near(water[3][0], 0.05f, 1e-3f) && Near(water[1][0], 0.04f, 1e-3f) && water[0][0] == 0.f && Near(length, 1.f, 1e-4f)) ? 0 : 1;
+    const auto bed = RunGuides(guides.Get(), {.albedo = 0.5f, .normal = {normal[0], normal[1]}, .gloss = 0.3f, .specular = 0.3f});
+    bed_differ += (std::fabs(bed[3][0] - water[3][0]) > 0.1f) ? 1 : 0;
+  }
+  const std::string resolve_path = games + "/twwarhammer/shaders/ssr00_0x6B80E35B.cs_5_0.hlsl";
+  const auto resolve = ComputeShader(ReadText(resolve_path), resolve_path);
+  constexpr float WATER = 64.f / 255.f;
+  constexpr float MARCH = 64000.f;
+  const auto water_rays = RunResolve(resolve.Get(), {.rays = true, .flags = WATER});
+  const auto water_rays_marched = RunResolve(resolve.Get(), {.hit = MARCH, .radiance = 100.f, .rays = true, .flags = WATER});
+  const auto surface_rays = RunResolve(resolve.Get(), {.rays = true});
+  const auto water_game = RunResolve(resolve.Get(), {.flags = WATER});
+  const auto water_game_marched = RunResolve(resolve.Get(), {.hit = MARCH, .radiance = 100.f, .flags = WATER});
+  // Red: the rays 0.3 at share 0.8, the cubes 0.25: water 0.3 x 0.8 + 0.25 x 0.2 = 0.29, flags 1 (0.3 - 0.25) x 0.8 = 0.04.
+  int whole_misses = 0;
+  int march_read = 0;
+  int march_control = 0;
+  for (size_t at = 0; at < water_rays.size() && water_rays.size() == surface_rays.size(); ++at) {
+    whole_misses += Near(water_rays[at][0] * 0.04f, surface_rays[at][0] * 0.29f, 1e-5f) && water_rays[at][0] > 0.f ? 0 : 1;
+    march_read += std::memcmp(water_rays[at].data(), water_rays_marched[at].data(), 3 * sizeof(float)) != 0 ? 1 : 0;
+    march_control += std::memcmp(water_game[at].data(), water_game_marched[at].data(), 3 * sizeof(float)) != 0 ? 1 : 0;
+  }
+  const size_t texels = water_rays.size();
+  CHECK(drawn.size() == PIXELS * 4 && gbuffer_misses == 0, "water pass: 44B4A2F0's G-buffer %d misses of %zu", gbuffer_misses, PIXELS);
+  CHECK(guide_misses == 0 && bed_differ == static_cast<int>(PIXELS), "water pass: guides %d misses, CONTROL the bed's %d of %zu differ", guide_misses,
+        bed_differ, PIXELS);
+  CHECK(texels == 64 * 64 && whole_misses == 0 && march_read == 0, "water pass: resolve on water under the rays %d misses, march read in %d", whole_misses,
+        march_read);
+  CHECK(march_control > static_cast<int>(texels / 2), "water pass CONTROL: without the rays the march changes %d of %zu", march_control, texels);
+  std::printf("water pass: 44B4A2F0 gloss 0.95 / albedo 0 / specular 0.04 / flags 64 at %zu of %zu pixels; WH1's guides roughness 0.05, specular 0.04, "
+              "unit normal: %d misses (CONTROL the bed's %d differ); resolve on water under the rays the whole reflection: %d misses of %zu, the march "
+              "read in %d (CONTROL without the rays: %d differ)\n",
+              PIXELS - static_cast<size_t>(gbuffer_misses), PIXELS, guide_misses, bed_differ, whole_misses, texels, march_read, march_control);
+}
+
 static void TestAoAlone(const std::string& games, const std::string& dump) {
   constexpr UINT SIZE = 16;
   const std::string path = games + "/twattila/rt_ambient_combine.cs_5_0.hlsl";
@@ -2565,6 +2629,7 @@ int main(int argc, char** argv) {
   TestFog(argv[1], argv[2]);
   TestMarkers(argv[1], argv[2]);
   TestGrassHeight(argv[1], argv[2]);
+  TestWaterPass(games, argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
