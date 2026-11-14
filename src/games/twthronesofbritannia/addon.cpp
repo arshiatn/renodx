@@ -1513,9 +1513,11 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   shader_injection.ssao_scale = twattila::ao_pass::ResolutionScale(shader_injection.ssao_resolution);
+  // The rays' AO or the paths' in place of the game's (ssao00) and GT-VBAO's (not drawn), as Attila's.
+  shader_injection.rt_ambient_alone = (rt_settings.ambient_occlusion || rt_settings.path_ambient) ? 1.f : 0.f;
   shader_injection.ssao_frame =
-      twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f, shader_injection.ssao_temporal != 0.f,
-                                shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
+      twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f && shader_injection.rt_ambient_alone == 0.f,
+                                shader_injection.ssao_temporal != 0.f, shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f);
@@ -1865,8 +1867,8 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection, [] { return rt_sliders.light_bounce != 0.f && twattila::feature_settings::Upscaling(aa_sliders); });
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  // The rays' AO multiplies the game's (no ssao00 replacement here: rays_replace_ao false below), the reflections' pass hooked.
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION,
+  // The rays' AO in place of the game's and GT-VBAO (ssao00's rt_ambient_alone, as Attila's), the reflections' pass hooked.
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
 
   // Appended Settings (HDR10)
@@ -1978,8 +1980,7 @@ void ConfigureAddon() {
                                              .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
-                                             .water_caustics_tested = false,
-                                             .rays_replace_ao = false});
+                                             .water_caustics_tested = false});
   // Faster Game CPU Code Experimental, off (engine_code_row).
   for (auto* setting : settings) {
     if (setting->key != "FasterGameCpuCode") continue;
