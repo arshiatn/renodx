@@ -1544,7 +1544,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
 // diffuse map at t2. Its MSAA G-buffer EAEF01A9 stays out (no rays under the game's MSAA).
 constexpr std::array<twattila::rt_scene::PixelMask, 1> VEGETATION_MASKS = {{{.pixel_shader = 0x74B2E609, .slot = 2}}};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1566,6 +1566,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     {.hash = 0x26A41B7D, .capture_shader = __rt_capture_unit_4_bones, .dynamic = true},
     {.hash = 0xB9B62F83, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
     {.hash = 0x3CEE34E8, .capture_shader = __rt_capture_unit_4_bones_dismember, .dynamic = true},
+    // The fur-clad units (weighted4_fur_alpha EE95696C: 26A41B7D's skinning plus the fur's sway; the census's NOT HELD,
+    // in no trace): level B, WARP test\tw_troy_shaders.
+    {.hash = 0xEE95696C, .capture_shader = __rt_capture_unit_4_bones_fur, .dynamic = true},
     {.hash = 0x0AF83680, .capture_shader = __rt_capture_grass_0af8, .dynamic = true, .foliage = true, .grass = true},
     // The drawn grass (grass.hlsl vs40_main: 2026-10-27's battle, 7 draws, 9.7 M indices; ATN's 2026-11-14 traces), its UV
     // at o2.xy (TEXCOORD0; Pharaoh's twin E710D4E7 has it at o3).
