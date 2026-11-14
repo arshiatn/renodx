@@ -1,5 +1,39 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Phase I, round 2 (2026-11-14 night; built only, not run in game)
+
+- **The paths' sky from the spherical harmonics, Path-Traced AO (Experimental)**: ATN's traces have
+  g_use_spherical_harmonics on in every battle and campaign frame. rt_sun reads t_world_spherical_harmonics at the camera's
+  place (the playable area c17 in cells of 3 x 3 texels, all 9 terms; the cube when off); the ambient patch sits after the
+  harmonics' if on c11.z (shared PatchAmbient AMBIENT_AFTER_HARMONICS_Z: 15 of the 31 keep their ambient in rA.xzw; the
+  other games' bytes unchanged). Path-Traced (ReSTIR GI, Experimental) is in the AO methods; RT/PT picks it as WH2's does.
+- **More in the rays**: far tree cards (Warhammer II's capture: the same shader), the campaign's plants (placed, standing
+  and still as Attila's), Far Tree Shadows and Shadow Casters Out of View (Warhammer II's shadow shaders: the same code),
+  both Experimental, off. Out: floating banners and the campaign's far terrain (neither drawn into the shadow map).
+- **Torch and Fire Shadows (Experimental, off)**: the point lights' two shaders (smooth and linear falloff) with each
+  light's traced visibility; their instances as Warhammer II's (ATN's 03:30 traces: colour, place and reach 50 / 150 m).
+- **Rays Replace Shadow Maps (Experimental, off)**: the 18 sun shaders that read the shadow map see a cleared one while the
+  rays' shadow is bound: the rays' shadow alone, cloud shadows the game's. The maps are still drawn.
+- **Below 100%**: the SSR result added to the scene (69A57B14) reads its share (ATN's Performance / Ultra Performance
+  traces); the tone mapper's bloom read is right there (drawn after the bloom of the whole view).
+
+Test list (in game, ATN):
+1. Battle, RT/PT: AO method Path-Traced; corners and under units darker, open ground as before; no black or white frames.
+2. Campaign, RT/PT with Path-Traced AO: the sky's light on hills as before (compare Game's SSAO), no colour shift.
+3. Battle at DLSS Performance: SSR reflections on water and armour where they are at DLAA (no doubled or stretched copy).
+4. Battle with forest edges: Far Tree Shadows on, far trees cast shadows that stay put when the camera turns.
+5. Campaign close to forests: the plants and trees cast ray-traced shadows (RT/PT), none floating or swaying.
+6. Shadow Casters Out of View on: units behind the camera still shade the ground in front; off: as before.
+7. Night siege, Torch and Fire Shadows on: walls and units block the torches' light; off: the game's light.
+8. Rays Replace Shadow Maps on: one sun shadow (the rays'), Softness changes it; clouds' shadows still move.
+9. Water, forward-lit units and banners keep their shadows with every new row on.
+10. ReShade.log: "drawn with the rays" lines for D0C67938 / 5D1695BC, no device loss, the frame time as before.
+
+Not done: Skip the Shadow Maps (the shadow map's forward readers, water 44B4A2F0 and four unit / prop shaders, would lose
+their shadows: patch them first, as Rome II); Fog Shadows (WH1's battle fog is analytic, no shadowed march to give the
+rays); the campaign's far terrain CDCF1ADD (where it lies against the near terrain); the SSR march's patch below 100%
+(021D7515, needs a picture); the reader census without SSAO / SSR (needs ATN's start with both off).
+
 ### Phase I (2026-11-14; built only, not run in game)
 
 - **Render scale below 100%**: the weather effects (3619B413, 4BEEAAE2, 5B006315, 9A369793; 5B006315 drawn in the 10-27

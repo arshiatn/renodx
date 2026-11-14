@@ -27,6 +27,8 @@
 //    campaign plants (84797031, no wind, the camera below them: no lean) streamed out (TEXCOORD0), against
 //    rt_capture_campaign_vegetation (world and UV) and rt_rows_campaign_vegetation's rows x the vertex. CONTROLS: the camera
 //    turned 90 degrees, the camera above the plants: they differ.
+// 7. Torch and Fire Shadows' point light shaders (the build's embed/0x<hash>.cso, nothing at t42 / b9: the game's light)
+//    against the game's D0C67938 / 5D1695BC on a 4 x 4 G-buffer, 8 lights each. CONTROL: the other falloff differs.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -941,6 +943,133 @@ static void TestCasters(const std::string& root, const std::string& dump) {
               plant_values, plant_misses, uv_misses, row_misses, plant_control);
 }
 
+// The point light shaders' inputs (VS B5B5BFA4's outputs): a full-screen triangle with the light's colour (POSITION1) and
+// place and reach (POSITION2) from b0.
+static ComPtr<ID3D11VertexShader> light_vertex;
+
+// A point light shader's bytes drawn over a 4 x 4 G-buffer (each pixel its own normal, albedo, specular and depth; the
+// camera's inverse view-projection identity), its constants bound by name as the game's bytes (`game`: the build strips
+// ours of reflection) name them (g_hdr_on 1, gamma 1, the viewport offset 0 / scale 1); nothing at t42 / b9.
+static std::vector<Float4> DrawLight(std::span<const uint8_t> code, std::span<const uint8_t> game, const std::array<float, 8>& light, uint32_t seed) {
+  ComPtr<ID3D11PixelShader> shader;
+  if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))) return {};
+  ComPtr<ID3D11ShaderReflection> reflection;
+  if (FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) return {};
+  std::array<float, 40 * 4> camera = {};
+  for (size_t row = 0; row < 4; ++row) camera[(21 + row) * 4 + row] = 1.f;
+  camera[2] = -3.f;  // the camera behind
+  camera[27 * 4 + 0] = 4.f;
+  camera[27 * 4 + 1] = 4.f;
+  camera[27 * 4 + 2] = 0.25f;
+  camera[27 * 4 + 3] = 0.25f;
+  const std::array<float, 4> colorimetry = {0.f, 1.f, 1.f, 0.f};
+  std::array<float, 18 * 4> lighting = {};
+  lighting[44] = 1.f;  // g_hdr_on
+  const std::array<float, 4> viewport = {0.f, 0.f, 1.f, 1.f};
+  std::vector<Float4> gbuffer[4];
+  for (UINT pixel = 0; pixel < 16; ++pixel) {
+    seed = seed * 1664525u + 1013904223u;
+    const auto next = [&seed] {
+      seed = seed * 1664525u + 1013904223u;
+      return static_cast<float>(seed >> 8) / 16777216.f;
+    };
+    gbuffer[0].push_back({next(), next(), 0.f, 0.f});
+    gbuffer[1].push_back({next(), next(), next(), 0.f});
+    gbuffer[2].push_back({next() * 0.2f, next() * 0.2f, next() * 0.2f, static_cast<float>(pixel % 4) / 255.f});
+    gbuffer[3].push_back({0.2f + (next() * 0.6f), 0.f, 0.f, 0.f});
+  }
+  std::vector<ComPtr<ID3D11Buffer>> buffers;
+  std::vector<ComPtr<ID3D11ShaderResourceView>> views;
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  for (UINT index = 0; index < desc.BoundResources; ++index) {
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDesc(index, &bind);
+    const std::string name = bind.Name;
+    if (bind.Type == D3D_SIT_CBUFFER) {
+      D3D11_SHADER_BUFFER_DESC buffer_desc = {};
+      reflection->GetConstantBufferByName(bind.Name)->GetDesc(&buffer_desc);
+      std::vector<uint8_t> data((buffer_desc.Size + 15) & ~15u);
+      const auto fill = [&](const void* source, size_t bytes) { std::memcpy(data.data(), source, std::min(bytes, data.size())); };
+      if (name == "camera") fill(camera.data(), sizeof(camera));
+      if (name == "colorimetry_VS_PS") fill(colorimetry.data(), sizeof(colorimetry));
+      if (name == "lighting_VS_PS") fill(lighting.data(), sizeof(lighting));
+      if (name == "dynamic_light_PS") fill(viewport.data(), sizeof(viewport));
+      buffers.push_back(Constants(data.data(), static_cast<UINT>(data.size())));
+      context->PSSetConstantBuffers(bind.BindPoint, 1, buffers.back().GetAddressOf());
+    } else if (bind.Type == D3D_SIT_TEXTURE && name.starts_with("gbuffer_channel_")) {
+      views.push_back(View(4, 4, gbuffer[name[16] - '1']));
+      context->PSSetShaderResources(bind.BindPoint, 1, views.back().GetAddressOf());
+    }
+  }
+  const auto light_constants = Constants(light.data(), sizeof(light));
+  const auto target = Texture(4, 4, nullptr, D3D11_BIND_RENDER_TARGET);
+  ComPtr<ID3D11RenderTargetView> rtv;
+  device->CreateRenderTargetView(target.Get(), nullptr, rtv.GetAddressOf());
+  context->VSSetShader(light_vertex.Get(), nullptr, 0);
+  context->VSSetConstantBuffers(0, 1, light_constants.GetAddressOf());
+  context->PSSetShader(shader.Get(), nullptr, 0);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  const D3D11_VIEWPORT viewport_4 = {.Width = 4.f, .Height = 4.f, .MaxDepth = 1.f};
+  context->RSSetViewports(1, &viewport_4);
+  context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+  context->Draw(3, 0);
+  context->ClearState();
+  return Read(target.Get());
+}
+
+static void TestPointLights(const std::string& root, const std::string& dump) {
+  const auto vertex = CompileText("cbuffer light : register(b0) { float4 colour; float4 place; };"
+                                  "void main(uint id : SV_VertexID, out float4 position : SV_Position, out float4 uv : TEXCOORD0,"
+                                  " out float4 light_colour : POSITION1, out float4 light_place : POSITION2) {"
+                                  " const float2 corner = float2((id << 1) & 2, id & 2); position = float4(corner * float2(2, -2) + float2(-1, 1), 0, 1);"
+                                  " uv = 0; light_colour = colour; light_place = place; }",
+                                  "light", "main", "vs_5_0");
+  device->CreateVertexShader(vertex->GetBufferPointer(), vertex->GetBufferSize(), nullptr, light_vertex.GetAddressOf());
+  const std::string embed = root + "/build/twwarhammer.include/embed/";
+  int compared = 0;
+  int misses = 0;
+  int lit = 0;
+  int control = 0;
+  float largest = 0.f;
+  for (const uint32_t hash : {0xD0C67938u, 0x5D1695BCu}) {
+    const auto game = GameBytes(dump, hash);
+    char name[32];
+    std::snprintf(name, sizeof(name), "0x%08X.cso", hash);
+    const auto ours = Bytes(embed + name);
+    const auto other = GameBytes(dump, hash == 0xD0C67938u ? 0x5D1695BCu : 0xD0C67938u);
+    for (uint32_t run = 0; run < 8; ++run) {
+      // A light 1-3 m from the pixels (their world (-0.75..0.75, -0.75..0.75, 0.2..0.8)), reach 2-6 m, colour as ATN's torches.
+      const float turn = static_cast<float>(run) * 0.8f;
+      const std::array<float, 8> light = {15000.f, 5764.7f, 1529.4f, 1.f, std::sin(turn), std::cos(turn), -0.5f - (0.25f * static_cast<float>(run % 3)),
+                                          2.f + (0.5f * static_cast<float>(run))};
+      const auto expected = DrawLight(game, game, light, run);
+      const auto got = DrawLight(ours, game, light, run);
+      const auto falloff = DrawLight(other, other, light, run);
+      CHECK(expected.size() == 16 && got.size() == 16 && falloff.size() == 16, "%08X: the draws", hash);
+      if (expected.size() != 16 || got.size() != 16 || falloff.size() != 16) return;
+      for (size_t pixel = 0; pixel < 16; ++pixel) {
+        for (size_t channel = 0; channel < 4; ++channel) {
+          ++compared;
+          const float difference = std::fabs(expected[pixel][channel] - got[pixel][channel]);
+          largest = std::max(largest, difference);
+          if (!Near(expected[pixel][channel], got[pixel][channel], 1e-4f) && ++misses <= 4) {
+            std::printf("  %08X light %u pixel %zu channel %zu: the game's %.7g, ours %.7g\n", hash, run, pixel, channel, expected[pixel][channel],
+                        got[pixel][channel]);
+          }
+          lit += (channel < 3 && expected[pixel][channel] > 0.f) ? 1 : 0;
+          control += Near(expected[pixel][channel], falloff[pixel][channel], 1e-3f) ? 0 : 1;
+        }
+      }
+    }
+  }
+  CHECK(misses == 0 && lit > compared / 8 && control > 0, "point lights: %d values, %d misses, %d lit, CONTROL %d differ", compared, misses, lit,
+        control);
+  std::printf("point lights: pointlight00 / 01 (nothing at t42) against D0C67938 / 5D1695BC, %d values, %d misses (largest %.3g), %d lit; CONTROL the "
+              "other falloff: %d differ\n",
+              compared, misses, largest, lit, control);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -961,6 +1090,7 @@ int main(int argc, char** argv) {
   TestSharedBytes(games, argv[2]);
   TestResolve(games);
   TestCasters(argv[1], argv[2]);
+  TestPointLights(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
