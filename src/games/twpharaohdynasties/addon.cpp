@@ -65,6 +65,7 @@
 #include "./rt_outside_view_unit_gs.h"
 #include "./rt_outside_view_world_gs.h"
 #include "../twwarhammer2/rt_outside_view_world_uv_gs.h"
+#include "./fog_strength.hpp"
 #include "./rt_particle_quads_gs.h"
 #include "./shared.h"
 
@@ -138,6 +139,7 @@ void ApplyResetPreset() {
       {"godrays", 1.f},
       {"vignette", 1.f},
       {"dof", 1.f},
+      {"fog_strength", 1.f},
       {"distortion", 1.f},
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
@@ -1070,6 +1072,17 @@ void BuildRuntimeData() {
         .format = "%.2f",
     },
     new renodx::utils::settings::Setting{
+        .key = "fog_strength",
+        .binding = &shader_injection.fog_strength,
+        .default_value = 1.f,
+        .label = "Fog Strength",
+        .section = "Extra",
+        .tooltip = "How thick the game's fog and haze are. 0 = none, 1 = the game's, 2 = double.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
         .key = "distortion",
         .binding = &shader_injection.uvdistort,
         .default_value = 1.f,
@@ -1612,6 +1625,89 @@ void OnDestroyFogShadowsDevice(reshade::api::device* device) {
   if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
   state.ours.Reset();
   state.device = nullptr;
+}
+
+// Fog Strength (fog_strength.hpp): the fog's last passes, every permutation, patched as the game creates them (after the
+// render scale's patch: its hash still the game's); each of their draws gets the strength above one at cb8 (0 at 1: the
+// game's bits, WARP: tools\tw\warp_tests\pharaoh\fog_v54 strength), the draw's own cb8 back after it.
+struct FogStrength {
+  std::mutex mutex;
+  std::unordered_map<uint32_t, std::vector<uint8_t>> patched;  // by the game's hash; kept for the pipelines made from it
+  ID3D11Device* device = nullptr;  // the buffer's (compared only)
+  Microsoft::WRL::ComPtr<ID3D11Buffer> above_one;
+  float uploaded = 0.f;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> game_buffer;
+};
+FogStrength fog_strength_state;
+
+bool OnCreateFogStrengthPipeline(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
+                                 const reshade::api::pipeline_subobject* subobjects) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return false;
+  bool modified = false;
+  for (uint32_t index = 0; index < subobject_count; ++index) {
+    if (subobjects[index].type != reshade::api::pipeline_subobject_type::pixel_shader) continue;
+    auto* desc = static_cast<reshade::api::shader_desc*>(subobjects[index].data);
+    if (desc == nullptr || desc->code == nullptr || desc->code_size == 0) continue;
+    const std::span<const uint8_t> code(static_cast<const uint8_t*>(desc->code), desc->code_size);
+    const uint32_t hash = twattila::view_share::OriginalHash(desc->code).value_or(renodx::utils::hash::ComputeCRC32(code.data(), code.size()));
+    const auto shader = std::ranges::find(fog_strength::SHADERS, hash, &fog_strength::Shader::hash);
+    if (shader == fog_strength::SHADERS.end()) continue;
+    const std::unique_lock lock(fog_strength_state.mutex);
+    auto [entry, added] = fog_strength_state.patched.try_emplace(hash);
+    if (added) {
+      entry->second = fog_strength::Patch(code, shader->kind);
+      renodx::utils::log::i(std::format("[Total War] Fog Strength: fog shader {:08X} {}.", hash, entry->second.empty() ? "not patched" : "patched"));
+    }
+    if (entry->second.empty()) continue;
+    twattila::view_share::Repatched(desc->code, entry->second.data(), hash);
+    desc->code = entry->second.data();
+    desc->code_size = entry->second.size();
+    modified = true;
+  }
+  return modified;
+}
+
+constexpr auto OnFogStrengthDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr) return {};
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& state = fog_strength_state;
+  const std::unique_lock lock(state.mutex);
+  const std::array<float, 4> above_one = {shader_injection.fog_strength - 1.f, 0.f, 0.f, 0.f};
+  if (state.device != device.Get()) {
+    state.above_one.Reset();
+    state.device = nullptr;
+    const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(above_one), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = above_one.data()};
+    if (FAILED(device->CreateBuffer(&desc, &data, state.above_one.GetAddressOf()))) return {};
+    state.device = device.Get();
+    state.uploaded = above_one[0];
+  } else if (state.uploaded != above_one[0]) {
+    native->UpdateSubresource(state.above_one.Get(), 0, nullptr, above_one.data(), 0, 0);
+    state.uploaded = above_one[0];
+  }
+  native->PSGetConstantBuffers(fog_strength::SLOT, 1, state.game_buffer.ReleaseAndGetAddressOf());
+  native->PSSetConstantBuffers(fog_strength::SLOT, 1, state.above_one.GetAddressOf());
+  return {.post_callback = [](Context& post, const void*) {
+    auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
+    const std::unique_lock post_lock(fog_strength_state.mutex);
+    if (post_native != nullptr) post_native->PSSetConstantBuffers(fog_strength::SLOT, 1, fog_strength_state.game_buffer.GetAddressOf());
+    fog_strength_state.game_buffer.Reset();
+  }};
+};
+
+// Its buffer's device (nullptr: the addon's end, DetachAddon).
+void OnDestroyFogStrengthDevice(reshade::api::device* device) {
+  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
+  const std::unique_lock lock(fog_strength_state.mutex);
+  if (device != nullptr && fog_strength_state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
+  fog_strength_state.above_one.Reset();
+  fog_strength_state.game_buffer.Reset();
+  fog_strength_state.device = nullptr;
 }
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
@@ -2820,6 +2916,13 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyFogShadowsDevice);
   renodx::utils::command_action::Register(
       OnFogShadowsDraw, {.shader_hash = FOG_SHADERS[0], .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  // Fog Strength: after the render scale's create callback (view_share), so its patch goes on top of that one.
+  renodx::utils::pipeline::RegisterOnCreateCallback(OnCreateFogStrengthPipeline);
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyFogStrengthDevice);
+  for (const auto& shader : fog_strength::SHADERS) {
+    renodx::utils::command_action::Register(
+        OnFogStrengthDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
@@ -2867,6 +2970,10 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(OnFogShadowsDraw);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyFogShadowsDevice);
   OnDestroyFogShadowsDevice(nullptr);
+  renodx::utils::pipeline::UnregisterOnCreateCallback(OnCreateFogStrengthPipeline);
+  renodx::utils::command_action::Unregister(OnFogStrengthDraw);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyFogStrengthDevice);
+  OnDestroyFogStrengthDevice(nullptr);
   twattila::light_count::Uninstall();
   renodx::utils::command_action::Unregister(OnSkyDomeGuides);
   twattila::water_reflections::Uninstall();
