@@ -608,6 +608,23 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v68 (2026-11-14): sea reflections, sun-facing sprite soldiers and far trees (built only, not run in game)
+
+- **Ray-traced sea reflections** (Experimental, off; with ray-traced reflections): the sea (ocean, water quality High)
+  is drawn after the reflections with no G-buffer of its own, so before them rt_water_plane puts its plane (its vertex
+  shader's decal projection plane, from the last frame's draw) into a copy of the depth with the water's guides and a
+  mask; the rays leave from it, the resolve keeps the environment under the sea, and the sea's pixel shader (ocean00)
+  takes their reflection in place of the probes' / the sky's where they met something. Rivers and lakes (waterplane)
+  keep the game's.
+- **Sprite soldier shadows** (Experimental, off): the far soldiers' cards turn to the sun in the ray-traced scene
+  (rt_capture_imposter; off: they face the camera, as before). **Far tree shadows** (Experimental, off): the far tree
+  cards join the scene turned to the sun with the atlas view the sun sees (rt_capture_tree_billboard; the scene had
+  left them out).
+- Shared (twattila/rt_core.hpp): a scene_draw host's shader with a capture version streams out through it in clip
+  space (Ryse and Expeditions give none: their path is as before).
+- test/tw_shogun2_shaders parts 5-8: the captures against the game's csos (card, view, UV), rt_water_plane against
+  the CPU, ocean00 against the game's (its five outputs the game's unless the rays are bound and flagged), controls.
+
 ## v67 (2026-11-14): Path-traced AO, Light Through Foliage, specular occlusion (built only, not run in game)
 
 - **Path-traced AO** (Experimental, off; with path tracing and ray-traced GI): the paths bring the sky's light, the
