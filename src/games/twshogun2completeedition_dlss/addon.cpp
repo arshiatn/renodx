@@ -205,6 +205,7 @@ float sss_thickness = 0.f;       // overlay
 float sss_contrast = 0.f;        // overlay
 float sss_edge_threshold = 0.f;  // overlay
 int sss_precision_offset = 0;    // overlay
+float sss_foliage_light = 0.f;   // overlay: ReShade.ini SSSFoliageLight (HDR addon foliage_light.hpp), Light Through Foliage
 // Ambient Occlusion (GT-VBAO) and Global Illumination (GT-VBGI, the Light Bounce): the HDR addon's
 // (twattila/lighting_settings.hpp's settings; it reads these from ReShade.ini). Defaults: ATN's recommended presets
 // (Global Illumination off).
@@ -714,6 +715,11 @@ void OnOverlay(reshade::api::effect_runtime*) {
     if (choice_slider("SSS precision offset (Experimental)", &sss_precision_offset, OFF_ON.size(), OFF_ON[sss_precision_offset], 0,
                       "A small offset for depth imprecision: less shadow acne far away, contact shadows start a bit later.")) {
       reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSPrecisionOffset", sss_precision_offset);
+    }
+    if (float_slider("Light through foliage (Experimental)", &sss_foliage_light, 0.f, 1.f, "%.2f", 0.f,
+                     "How much sun comes through the screen-space shadows grass and leaves cast: they are thin. Walls and\n"
+                     "soldiers keep their full shadows, on foliage too. 0: as dark as any other shadow.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSFoliageLight", sss_foliage_light);
     }
   }
   if (choice_slider("Shadow map resolution", &shadow_map_resolution, SHADOW_MAP_RESOLUTIONS.size(),
@@ -1332,6 +1338,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
     sss_edge_threshold = std::clamp(value, 0.f, 0.1f);
   }
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSPrecisionOffset", value)) sss_precision_offset = std::clamp(value, 0, 1);
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSFoliageLight", value)) sss_foliage_light = std::clamp(value, 0.f, 1.f);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", value) && value >= 0
                       && value < static_cast<int>(SSS_STABILITIES.size())) {
     sss_stability = value;

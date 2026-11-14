@@ -37,6 +37,7 @@
 #include "../twshogun2completeedition_dlss/dlss_jitter.hpp"
 #include "../twshogun2completeedition_dlss/hdr_link.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
+#include "./foliage_light.hpp"
 #include "./ray_tracing.hpp"
 #include "./upscaling.hpp"
 #include "../twattila/reflex.hpp"
@@ -375,6 +376,16 @@ void BuildRuntimeData() {
     };
   }
 
+  // Light Through Foliage (foliage_light.hpp): the screen-space shadow passes' depth (sss00 and Remastered CE's at t3,
+  // sss01 and its at t0) with the foliage negative while the row is on, the game's put back after.
+  for (const auto [hash, depth_slot] : {std::pair{0x34ECD06Eu, 3u}, std::pair{0x9147EB4Eu, 3u}, std::pair{0x1B529672u, 0u},
+                                        std::pair{0x7FA1D600u, 0u}}) {
+    custom_shaders[hash].on_draw = [depth_slot](reshade::api::command_list* cmd_list) {
+      twshogun2::foliage_light::OnShadowPass(cmd_list, depth_slot, shader_injection.sss_foliage_light);
+      return true;
+    };
+    custom_shaders[hash].on_drawn = twshogun2::foliage_light::OnShadowPassDone;
+  }
   // Render scale: captured on the game's own reflections copy and battle fog (drawn every frame before the depth of
   // field and the auto exposure), reset after the tonemaps.
   for (const uint32_t hash : {0x962CEB71u, 0xA61D2853u, 0x4355E897u}) {
@@ -951,6 +962,7 @@ void ReadDlssAddonOptions() {
   read_bend("SSSContrast", 8.f, &shader_injection.sss_contrast);
   read_bend("SSSEdgeThreshold", 0.1f, &shader_injection.sss_edge_threshold);
   read_bend("SSSPrecisionOffset", 1.f, &shader_injection.sss_precision_offset);
+  read_bend("SSSFoliageLight", 1.f, &shader_injection.sss_foliage_light);
   int shadow_map_stability = 0;
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ShadowMapStability", shadow_map_stability);
   shader_injection.shadow_map_stability = static_cast<float>(std::clamp(shadow_map_stability, 0, 2));
@@ -1334,6 +1346,10 @@ bool AttachAddon() {
       shader_injection.sun_shadow_softness, (ray_tracing_installed ? "installed" : "not installed"),
       ray_tracing_settings.sun_shadows, ray_tracing_settings.ambient_occlusion, ray_tracing_settings.light_bounce,
       ray_tracing_settings.reflections, ray_tracing_settings.local_lights, ray_tracing_settings.path_tracing));
+  // Light Through Foliage's G-buffer constants from the sun light draws: before the Light Bounce's (its own draw skips
+  // the later callbacks).
+  twshogun2::foliage_light::Install(twshogun2::ray_tracing::SUN_DRAWS);
+  reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::foliage_light::OnDestroyDevice);
   // Light Bounce (twattila/light_bounce.hpp): the sun light draws (ray_tracing.hpp's, replaced here).
   twattila::light_bounce::Install(twshogun2::ray_tracing::SUN_DRAWS);
 
@@ -1360,6 +1376,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
   twattila::light_bounce::Uninstall();
+  twshogun2::foliage_light::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::foliage_light::OnDestroyDevice);
   if (ray_tracing_installed) {
     twshogun2::ray_tracing::Uninstall();
     reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);

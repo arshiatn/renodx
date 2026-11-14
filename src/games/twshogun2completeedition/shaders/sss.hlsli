@@ -381,6 +381,11 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
   const float contrast = (SI.sss_contrast > 0.f) ? SI.sss_contrast : g_sss_shadow_contrast;
   dp.ShadowContrast = contrast;
   dp.UsePrecisionOffset = (SI.sss_precision_offset != 0.f);
+#ifdef BEND_SSS_LIGHT_CASTERS
+  // Light Through Foliage (foliage_light.hpp's versions of this pass): the depth's foliage pixels negative, this share
+  // of the light through what they shadow.
+  dp.CasterLight = SI.sss_foliage_light;
+#endif
   // Shadow stability (v27, DLSS addon): the game's contrast 4 turns a depth difference into shadow within a quarter of
   // Bend's window, so shadows switch fully on / off between frames; halved (Bend's other recommended value, 2) they
   // fade in. Then Bend's IgnoreEdgePixels: depth edges (thin geometry, grazing surfaces) cast no shadow.
