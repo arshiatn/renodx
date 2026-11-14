@@ -384,6 +384,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [ ] Rome Remastered battle GPU resets: safe-side fix a8afd660 on the agent's branch (rays take only the tested capture
   kinds; banners out; row Ray Tracing Battle Objects (Test): Tested / Solid / All = v11; WARP tw_romer_rays case 1). Not
   merged. ATN TEST later: a battle with rays at Tested, Solid, All: the first to reset names the group. RR not involved.
+  ATN ~11:2x: when the Rome Remastered agent's work is merged, a Fable 5.2 agent (medium effort, ATN's OK) hunts the battle
+  reset: read-only review of the capture -> bridge -> helper path for the battle kinds, a harness repro from the battle
+  traces, DRED breadcrumbs in the harness, then fixes proven offline (the Tested / Solid / All row stays until then).
+  Proposed, ATN to confirm: after ALL merges, a Fable 5.2 review (high) of the shared code before the next install.
 - [ ] ATN ~11:0x: "Other games didn't miss any of the skills, right? If they did, we have to do them too." Page dumps at
   0c28a0ea: Thrones / WH2 / Troy / WH1 / WH3 lack many Attila rows (Graphics* engine rows, SSR rows, fog / sky / bloom,
   particle resolution, smoke-map rows, grass height, torch-from-paths rows ...). PARITY ROUND, brief
