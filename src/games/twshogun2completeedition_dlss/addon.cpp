@@ -206,6 +206,15 @@ float sss_contrast = 0.f;        // overlay
 float sss_edge_threshold = 0.f;  // overlay
 int sss_precision_offset = 0;    // overlay
 float sss_foliage_light = 0.f;   // overlay: ReShade.ini SSSFoliageLight (HDR addon foliage_light.hpp), Light Through Foliage
+// ReShade.ini SSSHardSamples, SSSFadeSamples (choices; the HDR addon has their counts), SSSIgnoreEdges, SSSAlongRay,
+// SSSMirrorEdges (HDR addon, sss.hlsli: Attila's Bend rows; 0 the game's). Advanced settings only, in no preset.
+constexpr std::array<const char*, 4> SSS_HARD_SAMPLES = {"Game's (8)", "4", "16", "32"};
+constexpr std::array<const char*, 5> SSS_FADE_SAMPLES = {"Game's (16)", "4", "8", "32", "64"};
+int sss_hard_samples = 0;  // overlay
+int sss_fade_samples = 0;  // overlay
+int sss_ignore_edges = 0;  // overlay
+int sss_along_ray = 0;     // overlay
+int sss_mirror_edges = 0;  // overlay
 // Ambient Occlusion (GT-VBAO) and Global Illumination (GT-VBGI, the Light Bounce): the HDR addon's
 // (twattila/lighting_settings.hpp's settings; it reads these from ReShade.ini). Defaults: ATN's recommended presets
 // (Global Illumination off).
@@ -720,6 +729,30 @@ void OnOverlay(reshade::api::effect_runtime*) {
                      "How much sun comes through the screen-space shadows grass and leaves cast: they are thin. Walls and\n"
                      "soldiers keep their full shadows, on foliage too. 0: as dark as any other shadow.")) {
       reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSFoliageLight", sss_foliage_light);
+    }
+    if (choice_slider("SSS hard shadow samples (Experimental)", &sss_hard_samples, SSS_HARD_SAMPLES.size(), SSS_HARD_SAMPLES[sss_hard_samples],
+                      0, "The samples next to each pixel that shadow it fully on their own: crisp contact shadows.\n"
+                         "Higher: darker, harder near contacts.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSHardSamples", sss_hard_samples);
+    }
+    if (choice_slider("SSS fade-out samples (Experimental)", &sss_fade_samples, SSS_FADE_SAMPLES.size(), SSS_FADE_SAMPLES[sss_fade_samples],
+                      0, "The last samples, which fade the shadow out. Higher: softer shadow ends.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSFadeSamples", sss_fade_samples);
+    }
+    if (choice_slider("SSS ignore edge pixels (Experimental)", &sss_ignore_edges, OFF_ON.size(), OFF_ON[sss_ignore_edges], 0,
+                      "Edge pixels cast no shadow: fewer stripes on flat ground under a low sun; thinner shadows from leaves.\n"
+                      "Shadow stability Steadiest does this too.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSIgnoreEdges", sss_ignore_edges);
+    }
+    if (choice_slider("SSS sample along the ray (Experimental)", &sss_along_ray, OFF_ON.size(), OFF_ON[sss_along_ray], 0,
+                      "Reads the depth along the shadow's ray instead of at pixel centres: better on grazing surfaces,\n"
+                      "can be more jagged elsewhere.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSAlongRay", sss_along_ray);
+    }
+    if (choice_slider("SSS mirror screen edges (Experimental)", &sss_mirror_edges, OFF_ON.size(), OFF_ON[sss_mirror_edges], 0,
+                      "Near the screen's edges, shadows from what lies past them are guessed from what is just inside.\n"
+                      "Off: no shadows there when they would come from off screen.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSMirrorEdges", sss_mirror_edges);
     }
   }
   if (choice_slider("Shadow map resolution", &shadow_map_resolution, SHADOW_MAP_RESOLUTIONS.size(),
@@ -1418,6 +1451,15 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   }
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSPrecisionOffset", value)) sss_precision_offset = std::clamp(value, 0, 1);
   if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSFoliageLight", value)) sss_foliage_light = std::clamp(value, 0.f, 1.f);
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSHardSamples", value)) {
+    sss_hard_samples = std::clamp(value, 0, static_cast<int>(SSS_HARD_SAMPLES.size()) - 1);
+  }
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSFadeSamples", value)) {
+    sss_fade_samples = std::clamp(value, 0, static_cast<int>(SSS_FADE_SAMPLES.size()) - 1);
+  }
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSIgnoreEdges", value)) sss_ignore_edges = std::clamp(value, 0, 1);
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSAlongRay", value)) sss_along_ray = std::clamp(value, 0, 1);
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSMirrorEdges", value)) sss_mirror_edges = std::clamp(value, 0, 1);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", value) && value >= 0
                       && value < static_cast<int>(SSS_STABILITIES.size())) {
     sss_stability = value;

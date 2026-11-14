@@ -11,6 +11,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -981,6 +982,18 @@ void ReadDlssAddonOptions() {
   read_bend("SSSEdgeThreshold", 0.1f, &shader_injection.sss_edge_threshold);
   read_bend("SSSPrecisionOffset", 1.f, &shader_injection.sss_precision_offset);
   read_bend("SSSFoliageLight", 1.f, &shader_injection.sss_foliage_light);
+  read_bend("SSSIgnoreEdges", 1.f, &shader_injection.sss_ignore_edges);
+  read_bend("SSSAlongRay", 1.f, &shader_injection.sss_along_ray);
+  read_bend("SSSMirrorEdges", 1.f, &shader_injection.sss_mirror_edges);
+  // The DLSS addon's choices (0 the game's: 8 and 16, its sss.hlsli's HARD_SHADOW_SAMPLES / FADE_OUT_SAMPLES).
+  constexpr std::array<float, 4> HARD_SAMPLES = {0.f, 4.f, 16.f, 32.f};
+  constexpr std::array<float, 5> FADE_SAMPLES = {0.f, 4.f, 8.f, 32.f, 64.f};
+  int hard_samples = 0;
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSHardSamples", hard_samples);
+  shader_injection.sss_hard_samples = HARD_SAMPLES[std::clamp(hard_samples, 0, static_cast<int>(HARD_SAMPLES.size()) - 1)];
+  int fade_samples = 0;
+  reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSFadeSamples", fade_samples);
+  shader_injection.sss_fade_samples = FADE_SAMPLES[std::clamp(fade_samples, 0, static_cast<int>(FADE_SAMPLES.size()) - 1)];
   int shadow_map_stability = 0;
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ShadowMapStability", shadow_map_stability);
   shader_injection.shadow_map_stability = static_cast<float>(std::clamp(shadow_map_stability, 0, 2));
