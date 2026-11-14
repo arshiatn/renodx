@@ -17,7 +17,8 @@
 //    reaches its clip, for fire, sky blue and 48 hues, Hue Clip 0 to 1 (sky to 2): what the default comes from.
 // 5. The same for the other games' kinds of stock curve (hue_curves.hlsl: a luminance curve then each channel clipped,
 //    or a curve on each channel), PsychoV35 right after Hue Clip as their shaders call it. Its WH3 form agrees with part
-//    4's WH3 (1.00); WH2's own t00 (curve 6: its anchored handoff, at burns 0.1, 0.3 and 0.5) too (1.00).
+//    4's WH3 (1.00); WH2's own t00 (curve 6: its anchored handoff, at burns 0.1, 0.3 and 0.5) too (1.00); WH1's tone
+//    mappers (curve 7: Attila's engine Hue Clip without the highlight limit, the stock whiteout off and 0 to 10).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -920,6 +921,10 @@ static void ReportHue(const Chain& chain) {
     std::snprintf(name, sizeof(name), "5. WH2's t00 (2333E142), burn %.1f", burn);
     curves.emplace_back(name, 6, 1.f / burn - 0.999f);
   }
+  // Then Warhammer's tone mappers (curve 7), white 1: without the stock whiteout, and with whiteout_start 0 / end 10 (t00
+  // D275C403's bloom_buffer in ATN's 2026-11-14 battle traces; his campaign's 0.144 / 10).
+  curves.emplace_back("5. WH1's tone mappers (D275C403), no whiteout", 7, 0.f);
+  curves.emplace_back("5. WH1's tone mappers (D275C403), whiteout 0 to 10", 7, 10.f);
   for (const auto& [curve_name, curve, white] : curves) {
     games.push_back({curve_name.c_str(), [&, curve, white](float mode, float hue_clip) {
                        Bindings bindings;
@@ -928,6 +933,9 @@ static void ReportHue(const Chain& chain) {
                        bindings.words["strength"] = F({hue_clip});
                        bindings.words["sdr"] = F({mode == 0.f ? 1.f : 0.f});
                        bindings.words["white"] = F({white});
+                       // Curve 7: `white` is the whiteout's end (0: none, its start and end far above white).
+                       bindings.words["whiteout_start"] = F({(curve == 7 && white == 0.f) ? 1e6f : 0.f});
+                       bindings.words["whiteout_end"] = F({(curve == 7 && white == 0.f) ? 2e6f : white});
                        bindings.injection = Bytes(AttilaInjection(3.f, 0.f));
                        std::vector<Float3> linear;
                        for (const auto& o : Draw(*chain.curves, bindings)) linear.push_back({o[0], o[1], o[2]});

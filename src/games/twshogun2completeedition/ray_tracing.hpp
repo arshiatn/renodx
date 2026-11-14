@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <cmath>
 #include <cstdint>
 #include <mutex>
 #include <span>
@@ -64,10 +66,15 @@ constexpr std::array<twattila::light_bounce::SunDraw, 4> SUN_DRAWS = {{
 constexpr UINT CAMPAIGN_LIGHTING_SLOT = 3;
 // The scene's families by their G-buffer vertex shaders (shader_names.txt; the 2026-11-14 data run's battle drew 11
 // cloth and 90 grass G-buffer draws): cloth (sails, banners) thin sheets (RT_THIN), rigidgrass / rigidgrasswet the
-// grass (RT_GRASS, the grass's share of the alpha-tested corners). Imposters (03FB2979: 68 draws) and tree billboards
-// (FAAE535B, 4B0E8CE6: 98) stay as drawn: they face the camera, their sun-facing capture versions are not made.
+// grass (RT_GRASS, the grass's share of the alpha-tested corners). The sprite soldiers (imposter, 03FB2979: 68 draws)
+// face the camera as drawn; with Sprite Soldier Shadows on they face the sun (rt_capture_imposter). The far trees
+// (rigidtreebillboard, FAAE535B: 98; its pixel shader reads its mask by a UV it works out, so the scene left them out)
+// only with Far Tree Shadows on, facing the sun (rt_capture_tree_billboard: its mask the diffuse map's alpha at t1, the
+// UV at TEXCOORD1). rigidtreebillboard_3k (4B0E8CE6) drew in none of the traces.
 constexpr uint32_t CLOTH_VERTEX_SHADER = 0xBDFF60D4;
 constexpr uint32_t GRASS_VERTEX_SHADER = 0xB7A0270E;
+constexpr uint32_t IMPOSTER_VERTEX_SHADER = 0x03FB2979;
+constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).
 constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0x5CBF4FB6, 0x57139F8D};
 // The battle fog's light (fog01, battlefog ps40_main_inscattering: the sun's part through rt_fog.hlsli's RtFogSun).
@@ -85,6 +92,19 @@ constexpr UINT VISIBILITY_SLOT = 40;
 // +x, -x, +y, -y, +z, -z, index 0 where the normal's axis is 0 or more; with the harmonics the paths' sky) and the sun
 // colour (c1; the paths' sun light with Path-Traced AO). Its third: 0 (Shogun 2's rt_sun makes the same sky either way).
 constexpr std::array<uint32_t, 8> SUN_OFFSETS = {0, 12, 0, 0, 4, 0, 0, 0};
+
+// Ray-Traced Water Reflections' objects (WaterSurface): rt_water_plane, its constants, the water's depth (R32) and mask
+// (R8) at the depth's size.
+struct Water {
+  ComPtr<ID3D11ComputeShader> shader;
+  ComPtr<ID3D11Buffer> constants;
+  ComPtr<ID3D11Texture2D> depth;
+  ComPtr<ID3D11UnorderedAccessView> depth_uav;
+  ComPtr<ID3D11ShaderResourceView> depth_view;
+  ComPtr<ID3D11Texture2D> mask;
+  ComPtr<ID3D11UnorderedAccessView> mask_uav;
+  ComPtr<ID3D11ShaderResourceView> mask_view;
+};
 
 struct State {
   std::mutex mutex;
@@ -110,6 +130,12 @@ struct State {
   ID3D11Buffer* ambient_source = nullptr;  // compared only
   ComPtr<ID3D11Buffer> game_lighting;
   UINT game_lighting_slot = 0;
+  // Ray-Traced Water Reflections: the sea's plane (its normal up) from its last draw, the frame of it, the frame the rays
+  // left from it (its mask valid).
+  std::array<float, 4> sea_plane = {};
+  uint64_t sea_frame = UINT64_MAX;
+  uint64_t water_frame = UINT64_MAX;
+  Water water;
 };
 static State state;
 
@@ -164,19 +190,34 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   D3D11_TEXTURE2D_DESC depth_texture_desc = {};
   if (FAILED(depth_resource.As(&depth_texture))) return false;
   depth_texture->GetDesc(&depth_texture_desc);
+  bool sprite_shadows = false;
   {
     const std::unique_lock lock(state.mutex);
     if (state.depth_size != std::array<UINT, 2>{depth_texture_desc.Width, depth_texture_desc.Height}) return false;
+    sprite_shadows = state.settings.sprite_shadows;
   }
+  const bool far_tree = shader->hash == TREE_BILLBOARD_VERTEX_SHADER;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
   if (!upscaling::PrepareBridge(device.Get(), depth_texture_desc.Width, depth_texture_desc.Height)
-      || !twattila::rt_scene::SceneCoverage(native, shader)) {
+      || !(far_tree || twattila::rt_scene::SceneCoverage(native, shader))) {
     return false;
   }
-  shader->dynamic = twattila::rt_scene::SkinnedVertexShader(shader->hash);
   shader->thin = shader->hash == CLOTH_VERTEX_SHADER;
   shader->grass = shader->hash == GRASS_VERTEX_SHADER;
+  // Sun-facing cards (rt_core skips the far trees with Far Tree Shadows off): drawn from rebuilt buffers, captured every frame.
+  if (far_tree) {
+    shader->capture_shader = __rt_capture_tree_billboard;
+    shader->far_tree = true;
+    shader->foliage = true;
+    shader->uv_semantic = "TEXCOORD";
+    shader->uv_semantic_index = 1;
+    shader->mask_slot = 1;
+  } else if (shader->hash == IMPOSTER_VERTEX_SHADER && sprite_shadows) {
+    shader->capture_shader = __rt_capture_imposter;
+  }
+  shader->sun_facing = !shader->capture_shader.empty();
+  shader->dynamic = shader->sun_facing || twattila::rt_scene::SkinnedVertexShader(shader->hash);
   return true;
 }
 
@@ -198,6 +239,7 @@ inline bool PrepareObjects(ID3D11DeviceContext* native) {
   state.no_ambient.Reset();
   state.ambient_lighting.Reset();
   state.ambient_lighting_bytes = 0;
+  state.water = {};
   const D3D11_BUFFER_DESC offsets_desc = {.ByteWidth = sizeof(SUN_OFFSETS), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_SUBRESOURCE_DATA offsets_data = {.pSysMem = SUN_OFFSETS.data()};
   state.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
@@ -412,6 +454,8 @@ inline const twattila::rt_scene::Host HOST = {
     .guides_written = GuidesWritten,
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
+    // The water's guides are rt_water_plane's (WaterSurface), written with its depth.
+    .rewrite_guides = [](ID3D11DeviceContext*) {},
 };
 
 // Every present: the settings and a new frame.
@@ -459,6 +503,140 @@ inline void KeepColor(reshade::api::command_list* cmd_list) {
   const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = render_size[0], .bottom = render_size[1], .back = 1};
   native->CopySubresourceRegion(bridge.color.texture.Get(), 0, 0, 0, 0, resource.Get(), 0, &region);
   bridge.color_square_root = false;
+}
+
+// Ray-Traced Water Reflections (Experimental): the sea (ocean high, 16ADFD60) is drawn forward after the reflections with
+// no G-buffer of its own. Before the reflections' first pass (ssrhiz00: its t0 the depth, b0 the camera), with the sea
+// drawn in the last frame, rt_water_plane puts the sea's plane into a copy of the depth with the water's guides and a mask,
+// and the reflections are traced from it (rt_core Reflections: the positions again). The resolve leaves the mask's pixels
+// to the environment (shaders/ssrresolve00), the sea takes the rays' reflection there (shaders/ocean00).
+inline void WaterSurface(reshade::api::command_list* cmd_list) {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  ComPtr<ID3D11DeviceContext1> native1;
+  if (native == nullptr || !GuidesWritten() || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
+  ComPtr<ID3D11ShaderResourceView> depth;
+  ComPtr<ID3D11Buffer> camera;
+  native->CSGetShaderResources(0, 1, depth.GetAddressOf());
+  native->CSGetConstantBuffers(0, 1, camera.GetAddressOf());
+  ComPtr<ID3D11Resource> resource;
+  if (depth) depth->GetResource(resource.GetAddressOf());
+  ComPtr<ID3D11Texture2D> texture;
+  if (!camera || !resource || FAILED(resource.As(&texture))) return;
+  D3D11_TEXTURE2D_DESC desc = {};
+  texture->GetDesc(&desc);
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& state = internal::state;
+  internal::Water water;
+  std::array<uint32_t, 8> constants = {};
+  {
+    const std::unique_lock lock(state.mutex);
+    const auto& size = state.render_size;
+    if (!(state.settings.reflections && state.settings.water_reflections) || state.sea_frame + 1 < state.frame || size[0] == 0
+        || desc.SampleDesc.Count != 1 || desc.Width < size[0] || desc.Height < size[1] || !internal::PrepareObjects(native)) {
+      return;
+    }
+    auto& kept = state.water;
+    D3D11_TEXTURE2D_DESC kept_desc = {};
+    if (kept.depth) kept.depth->GetDesc(&kept_desc);
+    if (kept_desc.Width != desc.Width || kept_desc.Height != desc.Height) {
+      const D3D11_TEXTURE2D_DESC depth_desc = {.Width = desc.Width, .Height = desc.Height, .MipLevels = 1, .ArraySize = 1,
+                                               .Format = DXGI_FORMAT_R32_TYPELESS, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                               .BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE};
+      D3D11_TEXTURE2D_DESC mask_desc = depth_desc;
+      mask_desc.Format = DXGI_FORMAT_R8_UNORM;
+      const D3D11_UNORDERED_ACCESS_VIEW_DESC uav_desc = {.Format = DXGI_FORMAT_R32_FLOAT, .ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D};
+      D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = DXGI_FORMAT_R32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D};
+      view_desc.Texture2D.MipLevels = 1;
+      const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = sizeof(constants), .Usage = D3D11_USAGE_DEFAULT,
+                                                .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      kept = {};
+      if (FAILED(device->CreateComputeShader(__rt_water_plane.data(), __rt_water_plane.size(), nullptr, kept.shader.GetAddressOf()))
+          || FAILED(device->CreateBuffer(&constants_desc, nullptr, kept.constants.GetAddressOf()))
+          || FAILED(device->CreateTexture2D(&depth_desc, nullptr, kept.depth.GetAddressOf()))
+          || FAILED(device->CreateUnorderedAccessView(kept.depth.Get(), &uav_desc, kept.depth_uav.GetAddressOf()))
+          || FAILED(device->CreateShaderResourceView(kept.depth.Get(), &view_desc, kept.depth_view.GetAddressOf()))
+          || FAILED(device->CreateTexture2D(&mask_desc, nullptr, kept.mask.GetAddressOf()))
+          || FAILED(device->CreateUnorderedAccessView(kept.mask.Get(), nullptr, kept.mask_uav.GetAddressOf()))
+          || FAILED(device->CreateShaderResourceView(kept.mask.Get(), nullptr, kept.mask_view.GetAddressOf()))) {
+        kept = {};
+        return;
+      }
+    }
+    water = kept;
+    const auto& plane = state.sea_plane;
+    constants = {std::bit_cast<uint32_t>(plane[0]), std::bit_cast<uint32_t>(plane[1]), std::bit_cast<uint32_t>(plane[2]),
+                 std::bit_cast<uint32_t>(plane[3]), size[0], size[1], 0u, 0u};
+  }
+  {
+    const talesofarise::dlss::ContextStateScope scope(native1.Get(), state.private_state.Get());
+    const auto& bridge = twattila::dlaa_bridge::bridge;
+    ID3D11Buffer* buffers[] = {camera.Get(), water.constants.Get()};
+    std::array<ID3D11UnorderedAccessView*, 6> targets = {water.depth_uav.Get(),    bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
+                                                         bridge.normals.uav.Get(), bridge.roughness.uav.Get(),      water.mask_uav.Get()};
+    native->UpdateSubresource(water.constants.Get(), 0, nullptr, constants.data(), 0, 0);
+    native->CSSetShader(water.shader.Get(), nullptr, 0);
+    native->CSSetConstantBuffers(0, 2, buffers);
+    native->CSSetShaderResources(0, 1, depth.GetAddressOf());
+    native->CSSetUnorderedAccessViews(0, static_cast<UINT>(targets.size()), targets.data(), nullptr);
+    native->Dispatch((constants[4] + 7) / 8, (constants[5] + 7) / 8, 1);
+    // Unbound here: the private state keeps its bindings, the depth and guides are read elsewhere.
+    targets = {};
+    ID3D11ShaderResourceView* no_view = nullptr;
+    native->CSSetUnorderedAccessViews(0, static_cast<UINT>(targets.size()), targets.data(), nullptr);
+    native->CSSetShaderResources(0, 1, &no_view);
+  }
+  twattila::rt_scene::Reflections(native, water.depth_view.Get());
+  bool traced = false;
+  {
+    auto& rays = twattila::rt_scene::internal::runtime;
+    const std::unique_lock lock(rays.mutex);
+    traced = rays.water_traced;
+  }
+  const std::unique_lock lock(state.mutex);
+  state.water_frame = traced ? state.frame : UINT64_MAX;
+}
+
+// rt_water_plane's mask at t45 (this frame's, where the rays left from the sea) for the resolve (`compute`) or the sea's
+// draw; `bind` false: unbound.
+inline void BindWaterMask(reshade::api::command_list* cmd_list, bool compute, bool bind) {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr) return;
+  ComPtr<ID3D11ShaderResourceView> mask;
+  if (bind) {
+    const std::unique_lock lock(internal::state.mutex);
+    if (internal::state.water_frame == internal::state.frame) mask = internal::state.water.mask_view;
+  }
+  if (compute) {
+    native->CSSetShaderResources(45, 1, mask.GetAddressOf());
+  } else {
+    native->PSSetShaderResources(45, 1, mask.GetAddressOf());
+  }
+}
+
+// The sea's draw (ocean high, 16ADFD60): its plane for the next frame's WaterSurface (ocean_VS at VS b1: c1,
+// g_decal_ocean_projection_plane, taken with its normal up), the rays' reflections (b10, t46 / t47) and the water mask
+// for its pixel shader (shaders/ocean00); `bind` false after it: unbound.
+inline void OnSeaDraw(reshade::api::command_list* cmd_list, bool bind) {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr) return;
+  ComPtr<ID3D11Buffer> ocean;
+  if (bind) native->VSGetConstantBuffers(1, 1, ocean.GetAddressOf());
+  std::array<float, 4> plane = {};
+  if (ocean && expeditionsrome::dlss::constants::Read(ocean.Get(), 16, std::as_writable_bytes(std::span(plane)))) {
+    const float length = std::sqrt((plane[0] * plane[0]) + (plane[1] * plane[1]) + (plane[2] * plane[2]));
+    const float up = (plane[1] < 0.f) ? -length : length;
+    if (length > 0.f && std::abs(plane[1]) > 0.9f * length) {
+      const std::unique_lock lock(internal::state.mutex);
+      internal::state.sea_plane = {plane[0] / up, plane[1] / up, plane[2] / up, plane[3] / up};
+      internal::state.sea_frame = internal::state.frame;
+    }
+  }
+  twattila::rt_scene::BindReflections(cmd_list, false, bind);
+  BindWaterMask(cmd_list, false, bind);
 }
 
 // Before the Light Bounce's sun draw hooks (registration order: this frame's trace first).
@@ -516,6 +694,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     internal::state.ambient_lighting.Reset();
     internal::state.ambient_lighting_bytes = 0;
     internal::state.game_lighting.Reset();
+    internal::state.water = {};
     internal::state.failed = false;
   }
   twattila::rt_scene::OnDestroyDevice(device);

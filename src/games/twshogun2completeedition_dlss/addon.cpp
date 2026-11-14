@@ -992,6 +992,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
     constexpr std::pair<const char*, float> RAYS_RESET[] = {
         {"RayTracedShadowSoftness", 0.5f},
         {"RayTracedLeafLight", 0.f},
+        {"RayTracedSpriteShadows", 0.f},
+        {"RayTracedFarTreeShadows", 0.f},
         {"RayTracedAmbientRange", 2.f},
         {"RayTracedAORays", 2.f},
         {"RayTracedAOQuarter", 0.f},
@@ -1001,6 +1003,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightSteady", 0.f},
         {"RayTracedLightRange", 0.f},
         {"RayTracedReflectionSamples", 1.f},
+        {"RayTracedWaterReflections", 0.f},
         {"RayTracedLightBounceRays", 4.f},
         {"RayTracedLightBounceRange", 10.f},
         {"RayTracedLightBounceResolution", 1.f},
@@ -1057,6 +1060,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
     slider("Ray-traced shadow softness", "RayTracedShadowSoftness", 0.5f, 0.f, 3.f, "%.2f",
            "The sun's size in degrees: shadows softer away from what casts them. 0: sharp.");
     checkbox("Light through leaves", "RayTracedLeafLight", "Leaves let some sunlight through ray-traced shadows (where they reach past the game's).");
+    choice("Sprite soldier shadows (Experimental)", "RayTracedSpriteShadows", 0, OFF_ON_NAMES,
+           "The flat far soldiers' ray-traced shadows keep their shape as the camera turns.");
+    choice("Far tree shadows (Experimental)", "RayTracedFarTreeShadows", 0, OFF_ON_NAMES, "The flat far trees cast ray-traced shadows too.");
     ImGui::EndDisabled();
     const bool ambient = checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion",
                                   "Shade in corners and under things from rays, with the game's (the darker).\n"
@@ -1095,6 +1101,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
                                       "Needs the game's screen-space reflections on.");
     ImGui::BeginDisabled(!reflections);
     count("Ray-traced reflection samples", "RayTracedReflectionSamples", 1, 8, "Rays per pixel on rough surfaces: less noise, heavier.");
+    choice("Ray-traced sea reflections (Experimental)", "RayTracedWaterReflections", 0, OFF_ON_NAMES,
+           "The sea reflects ships, coasts and units with rays (water quality High).");
     ImGui::EndDisabled();
     const bool specular_occlusion = checkbox("Ray-traced specular occlusion (Experimental)", "RayTracedSpecularOcclusion",
                                              "The sky's reflection taken off shiny surfaces where something stands over them (inside\n"

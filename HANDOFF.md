@@ -201,6 +201,28 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   (RmProfilingAdminOnly unset): ATN may allow them in the NVIDIA Control Panel; GPU Trace agent on the harness
   (tools/tw/nsight); (3) unified ReSTIR DI + GI reservoir (worktree agent; plan tools/tw/restir_unified/plan.md, helper111
   if feasible, Experimental row off = helper110 bit-identical).
+- [x] Rome Remastered v9 MERGED 70696220 (DLAA through the helper, Experimental; jitter into b5, motion from depth;
+  test/tw_romer_dlaa WARP PASS); tw_install.py romer uses_helper True. Round on the branch: RT sun shadows / AO, Bend.
+- [x] GPU counters: ATN allowed them for all users (RmProfilingAdminOnly 0, 02:4x). An ngfx call opened a Qt error
+  dialog on ATN's screen: Nsight agent told to stay headless.
+- [x] Troy: ATN's own Epic start 02:49-02:55 (campaign, then a night siege, asked to set the game's AA off):
+  atn_trace_watch 14 traces (troy/runs/ATN_session2_024858); sent to the Troy agent. Troy's prefs still gfx_aa 2 on disk.
+- [x] WH2 round 2 MERGED 5a19a9d4 (Path-Traced AO with WH2's own rt_sun; shared PatchAmbient AMBIENT_AFTER_HARMONICS (the
+  old rule patched the fade-out cube in all 31 WH2 sun PS, harmless: t51 never bound); Far Tree Shadows, Shadow Casters /
+  Hills Out of View; other games' patched bytes unchanged). NOT DONE: spot lights (instance layout differs: shared reader
+  needs a layout parameter), Smoke (WH2's VS writes the atlas UV at TEXCOORD3: own record shader in rt_core, shared).
+- [x] Unified ReSTIR DI + GI: study only (tools/tw/restir_unified/plan.md; branch worktree-agent-afd5e1bbbc7a65b04 f9350977
+  not merged, HANDOFF-only). No DI reservoir exists (rt_lights = visibility bits, the game shades torches). U1 (torch light
+  through the bounce: saves rt_lights 0.4 / 1.5 / 5.6 ms at 3 / 32 / 32 Steady lights, but no torch specular, softer
+  moving shadows) or U2 (keep the game's torches, bounce supplies a shadow ratio: bridge + every game's point-light PS,
+  several nights): ATN DECIDES. Smallest step: helper-only U1 prototype behind RENODX_TW_LIGHTS_IN_BOUNCE + a harness
+  comparison against Steady.
+- [x] Shogun 2 round 3 MERGED 22affa04 (sun-facing sprite / far tree captures, RT sea reflections, all Experimental;
+  shared rt_core Host::scene_draw capture_shader, unchanged without it; HDR v68 / DLSS v60). NOT DONE: waterplane
+  9B9EC116 (replay its 6 draws depth-only), other ocean qualities, W7d casters out of view.
+- [x] ATN's WH1 session 02:57-03:02 (battle, then campaign): 15 traces wh1/runs/ATN_session_025635 -> WH1 agent.
+- [ ] ATN 03:0x: "Can we just do both?" U1 + U2: the ReSTIR agent resumed: U1 prototype + harness comparison, then an
+  Experimental row (helper111, spare flag bits); U2 designed and started behind an off row.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
