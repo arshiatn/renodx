@@ -63,6 +63,10 @@ Not done:
 - Out of the rays: the depth-only EF11AD35 (no world to read) and the floating banners 7DF335FF (the game gives them none).
 - The rigid default shader 6B25B4D2 also draws the battle water, the campaign sea and overlays into the G-buffer; they stay
   casters (the water is opaque there, nothing under it shows; listing its 25 traced materials would drop untraced ones).
+- Particle Resolution (Attila's particle layer): this game's lit particles are one GPU-sorted indirect draw of their own
+  vertex shader, not Attila's; the layer needs an indirect path first (a shared change).
+- Water Clarity / Caustics: the battle water and the campaign sea are opaque G-buffer materials of the rigid default shader,
+  none of Pharaoh's water shaders; their operands not yet read.
 
 ### Round v48 (2026-11-14, Attila's package with the data run's findings; built only, not run in game)
 
