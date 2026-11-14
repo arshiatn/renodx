@@ -67,6 +67,9 @@ constexpr std::array<uint32_t, 21> LEFT_OUT_VERTEX_SHADERS = {
 // buildings). The same run's battle reset the helper's device twice within seconds of its start (its own terrain, trees,
 // props and alpha-tested plants in the scene, none of them in the campaign's); the others stay out unless
 // battle_scene lets them in.
+// The battle's terrain in the prepass (Terrain.hlsl VSMain, depth only; ATN's battle traces).
+constexpr uint32_t BATTLE_TERRAIN_VERTEX_SHADER = 0x7DD754DA;
+
 constexpr std::array<uint32_t, 4> TESTED_VERTEX_SHADERS = {
     0x8A00B527,  // AerialMap
     0xCDDA64F8,  // AerialMapTrees
@@ -130,6 +133,8 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   shader->dynamic = true;
   // Each draw its own capture: one mesh drawn with other object matrices (VS b7, outside rt_core's key) is other triangles.
   shader->every_draw = true;
+  // The battle's terrain: its triangles longer than a part's 200 m stay in (the helper's MAX_EDGE, as for terrain).
+  shader->terrain = shader->hash == BATTLE_TERRAIN_VERTEX_SHADER;
   return true;
 }
 

@@ -5,7 +5,8 @@
 // 1. SceneDraw: a prepass draw into the scene's depth (no target, depth written) is in the scene, captured every frame;
 //    out: a unit's, the grass's, a terrain overlay's, a banner's vertex shader, a draw with a target, another depth (the
 //    cascades'), depth not written (the forward pass's EQUAL); the battle's kinds only as Battle Objects lets them in
-//    (Tested: none, Solid: solid ones, All: an alpha-tested one too).
+//    (Tested: none, Solid: solid ones, All: an alpha-tested one too). The battle's terrain 7DD754DA flagged terrain (no
+//    200 m part limit), every draw its own capture (8.); CONTROL: a prop and the PBR kind are parts.
 // 2. The trace's camera: rt_positions (rt_core's bytes) with the jittered battle camera given transposed gives each
 //    pixel's world position on a ground plane (against the CPU), the sky 0, the eye where the view says; CONTROL: the
 //    camera untransposed is far off.
@@ -230,6 +231,26 @@ int main(int argc, char** argv) {
     rays::battle_scene = 1.f;
     CHECK(scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get()).first);
     CHECK(scene_draw(0x7DD754DA, nullptr, scene_dsv.Get(), writes.Get()).first);
+    {
+      // The battle's terrain flagged terrain (the helper's rt_scene_data: a dynamic capture without RT_TERRAIN is a part,
+      // its edges 200 m at most; with it MAX_EDGE), every draw its own capture; CONTROL: a prop and the PBR kind aren't.
+      const auto flagged = [&](uint32_t hash) {
+        context->OMSetRenderTargets(0, nullptr, scene_dsv.Get());
+        context->OMSetDepthStencilState(writes.Get(), 0);
+        twattila::rt_scene::SceneShader shader = {.hash = hash};
+        const bool in = rays::internal::SceneDraw(context.Get(), &shader);
+        const uint32_t flags = (shader.terrain ? twattila::dlaa_bridge::RT_TERRAIN : 0u) | (shader.dynamic ? twattila::dlaa_bridge::RT_DYNAMIC : 0u);
+        const bool part = (flags & (twattila::dlaa_bridge::RT_TERRAIN | twattila::dlaa_bridge::RT_DYNAMIC)) == twattila::dlaa_bridge::RT_DYNAMIC;
+        return std::tuple{in, part, shader.every_draw};
+      };
+      const auto [terrain_in, terrain_part, terrain_every] = flagged(0x7DD754DA);
+      const auto [prop_in, prop_part, prop_every] = flagged(0xC35BD3D6);
+      const auto [pbr_in, pbr_part, pbr_every] = flagged(0x9594545F);
+      std::printf("battle terrain: in %d, a part (200 m) %d, every draw %d; CONTROL prop / PBR: parts %d / %d\n", terrain_in ? 1 : 0,
+                  terrain_part ? 1 : 0, terrain_every ? 1 : 0, prop_part ? 1 : 0, pbr_part ? 1 : 0);
+      CHECK(terrain_in && !terrain_part && terrain_every);
+      CHECK(prop_in && prop_part && prop_every && pbr_in && pbr_part && pbr_every);
+    }
     {
       // An alpha-tested pixel shader (rt_core's classification, as the game's D2F340DB): out at Solid, in at All.
       ComPtr<ID3D11PixelShader> masked;
