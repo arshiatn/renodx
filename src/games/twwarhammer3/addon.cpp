@@ -102,9 +102,9 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to Warhammer III's SDR picture).
 constexpr float HUE_CLIP_DEFAULT = 100.f;
 
-// bool IsModdedAutoExposureEnabled() {
-//   return shader_injection.auto_exposure_highlight_protection == 1.f;
-// }
+bool IsModdedAutoExposureEnabled() {
+  return shader_injection.auto_exposure_highlight_protection == 1.f;
+}
 
 void ApplyResetPreset() {
   // Reset only controls that are currently active in this addon.
@@ -161,6 +161,10 @@ void ApplyResetPreset() {
       {"dof", 1.f},
       {"sky_deband", 0.f},
       {"fog_strength", 1.f},
+      {"some_indicators", 1.f},
+      {"ssr_quality", 1.f},
+      {"auto_exposure_highlight_protection", 0.f},
+      {"auto_exposure_highlight_headroom_stops", 2.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -878,6 +882,7 @@ namespace reflections {
 enum class Pass : uint8_t { GAME, OURS, RAYS };
 Pass pass = Pass::GAME;
 float all_surfaces_row = 0.f;  // The method slider's second place: the game's march, closed to water since WH2, on the flags' bit 0 too.
+float quality_row = 1.f;       // Reflection Quality: x the march's 100 steps (ours swapped in off 1; at 1 the game's bytes).
 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> main_depth;
 // During OnMarch: its G-buffer (the water drawn by then) and camera for the guides again; the trace's dispatches take those slots.
 std::array<ID3D11ShaderResourceView*, 3> march_gbuffer = {};
@@ -909,8 +914,9 @@ std::array<float, 2> hit_share = {};
 Microsoft::WRL::ComPtr<ID3D11Buffer> share_buffer;  // b12 of the mip copies
 std::array<float, 4> share_written = {};
 Microsoft::WRL::ComPtr<ID3D11ComputeShader> game_shader;
-Microsoft::WRL::ComPtr<ID3D11Buffer> flags_buffer;  // b10 of the resolve and b1 of the march: {0, this frame's sun, all surfaces, one to one}
-std::array<uint32_t, 4> flags_written = {};
+// b10 of the resolve and b1 of the march: {water rays, this frame's sun, all surfaces, one to one}, then the march's steps (0: 100).
+Microsoft::WRL::ComPtr<ID3D11Buffer> flags_buffer;
+std::array<uint32_t, 8> flags_written = {};
 Microsoft::WRL::ComPtr<ID3D11Buffer> game_b10;
 // This frame's sun light in the main view: the resolve takes the cubes back as it added them (SunDraw::diffuse_rule). Skin (0) writes flags
 // 0, the resolve leaves those pixels alone.
@@ -1162,13 +1168,15 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
       pass = water_rays ? Pass::RAYS : Pass::OURS;
     }
   }
-  if (pass == Pass::GAME) return true;
-  const bool sun_rule = sun_low_quality && !sun_standard;
+  // Reflection Quality alone swaps in the march, not the resolve.
+  const uint32_t steps = (quality_row == 1.f) ? 0u : static_cast<uint32_t>(std::max(1.f, std::round(100.f * quality_row)));
+  if (pass == Pass::GAME && steps == 0u) return true;
+  const bool sun_rule = pass != Pass::GAME && sun_low_quality && !sun_standard;
   if (sun_rule && !sun_low_quality_logged) {
     sun_low_quality_logged = true;
     renodx::utils::log::i("[Warhammer III] Reflections: the frame's sun is ps 76A707E5, its cubes taken back by its rule.");
   }
-  const std::array<uint32_t, 4> flags = {water_rays ? 1u : 0u, sun_rule ? 1u : 0u, all_surfaces ? 1u : 0u, one_to_one ? 1u : 0u};
+  const std::array<uint32_t, 8> flags = {water_rays ? 1u : 0u, sun_rule ? 1u : 0u, all_surfaces ? 1u : 0u, one_to_one ? 1u : 0u, steps};
   if (!flags_buffer) {
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     native->GetDevice(device.GetAddressOf());
@@ -1188,7 +1196,7 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
     all_surfaces_logged = true;
     renodx::utils::log::i("[Warhammer III] Reflections: the game's march on all surfaces.");
   }
-  if (all_surfaces || one_to_one) {
+  if (all_surfaces || one_to_one || steps != 0u) {
     if (Swap(native, &march)) native->CSSetConstantBuffers(1, 1, flags_buffer.GetAddressOf());
   }
   return true;
@@ -1709,6 +1717,18 @@ void BuildRuntimeData() {
     traced_lights::codes[index] = custom_shaders[hash].code;
     custom_shaders[hash] = {.crc32 = hash, .on_inject = not_injected};
   }
+  // Unit/Building Indicator Brightness: fx_indicator's colour passes (names.tsv; its VS 550C70F2), in no trace (no unit selected in
+  // them): level B. Ours only off 1 in an HDR mode, else the game's bytes. Not fx_indicator_mboit (E01EE900 writes moments, no colour;
+  // our copy of its resolve 492ED8DA wasn't the game's bits at 1 on WARP and lost its early depth test).
+  for (const uint32_t hash : {0xE441DBFFu, 0x709BE774u, 0xA7748703u, 0xDE0524D6u, 0x492ED8DAu}) {
+    custom_shaders[hash].on_replace = [](auto*) { return shader_injection.someindicators != 1.f && IsHDRMode(); };
+  }
+  // The game's auto exposure runs only where a scene's environment turns it on (in none of 95 traces): logged once.
+  custom_shaders[0x1E448816].on_replace = [](auto*) {
+    static bool logged = false;
+    if (!std::exchange(logged, true)) renodx::utils::log::i("[Warhammer III] The game's auto exposure runs (fx_autoexposurecs 1E448816).");
+    return IsModdedAutoExposureEnabled() && IsHDRMode();
+  };
   custom_shaders[0xE2EE82F8].on_draw = [](auto* cmd_list) {
     if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepPixelCamera(cmd_list, 1);
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
@@ -2439,48 +2459,47 @@ void BuildRuntimeData() {
     //     .is_enabled = IsHDRMode,
     //     .is_visible = IsAdvancedSettings,
     // },
-    // new renodx::utils::settings::Setting{
-    //     .key = "some_indicators",
-    //     .binding = &shader_injection.someindicators,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 0.4f,
-    //     .label = "Brightness of some Unit/Building Indicator ",
-    //     .section = "Extra",
-    //     .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
-    //     .min = 0.0f,
-    //     .max = 1.0f,
-    //     .format = "%.1f",
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    
+    new renodx::utils::settings::Setting{
+        .key = "some_indicators",
+        .binding = &shader_injection.someindicators,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 1.f,
+        .label = "Unit/Building Indicator Brightness",
+        .section = "Extra (Experimental)",
+        .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.1f",
+        .is_enabled = IsHDRMode,
+    },
 
 
     // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_protection",
-    //     .binding = &shader_injection.auto_exposure_highlight_protection,
-    //     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-    //     .default_value = 0.0f,
-    //     .label = "Modded Auto Exposure",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
-    //     .labels = {"Off (Stock)", "On (Protected)"},
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_headroom_stops",
-    //     .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 1.0f,
-    //     .label = "Modded Auto Exposure: Sensitivity",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
-    //     .min = 0.0f,
-    //     .max = 2.0f,
-    //     .format = "%.1f",
-    //     .is_enabled = IsModdedAutoExposureEnabled,
-    //     .is_visible = IsAdvancedSettings,
-    // },
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_protection",
+        .binding = &shader_injection.auto_exposure_highlight_protection,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Modded Auto Exposure",
+        .section = "Extra (Experimental)",
+        .tooltip = "Where a map uses the game's auto exposure: fire, sparks and the sun no longer darken the whole\n"
+                   "picture. Their own brightness stays. Off is the game's.",
+        .labels = {"Off (Game's)", "On (Protected)"},
+        .is_enabled = IsHDRMode,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_headroom_stops",
+        .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
+        .default_value = 2.f,
+        .label = "Modded Auto Exposure: Sensitivity",
+        .section = "Extra (Experimental)",
+        .tooltip = "How much brighter than the picture's average a highlight may count, in stops.\n"
+                   "Lower protects more, higher is closer to the game's.",
+        .min = 0.f,
+        .max = 4.f,
+        .format = "%.1f",
+        .is_enabled = [] { return IsModdedAutoExposureEnabled() && IsHDRMode(); },
+    },
     // VFX //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .key = "vfx_fire_brightness",
@@ -3078,7 +3097,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 2> GROUND_MESH_PASSES = {{
     {.pixel_shader = 0x90FBDD61},
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 46> SCENE_SHADERS = {{
     {.hash = 0xF0395CC4, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0xF0395CC4},  // fx_rigidanisotropic
     {.hash = 0x8EE34EC5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x8EE34EC5},  // fx_rigidambientmapfiremesh
     // Buildings, tents, shrubs, mountains, rocks: the same position math as F0395CC4, by their bytes. 4F35D09F also draws water, decals and effects: its listed pixel shaders only.
@@ -3092,6 +3111,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x31584506, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidbranch_v3
     {.hash = 0x9498C59D, .dynamic = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},  // fx_rigidleaf_v3
     {.hash = 0xC0ED2883, .dynamic = true, .thin_row = &rays_banner_light_row},   // fx_rigidtextureblend: unit parts, placed from a buffer out of a capture's key: kept once, stale copies through the banners
+    // fx_rigidtextureblend's rigid version on the campaign (17 of 95 traces, G-buffer colour and depth, 12 indices a draw): rows x vertex,
+    // then cb0[10-13] (its bytes), as drawn.
+    {.hash = 0x03298FD5, .dynamic = true},
+    // The vertex-push tentacles of sieges (3 traces, 34-38 k indices): moved by time and wind after the rows, so as drawn; cut out by
+    // 6A5EEE23's t0 alpha at TEXCOORD2 (cut_out_masks). Their shadow pass's 7852254A leaves out what is in the view, at rest.
+    {.hash = 0x1C3500F0, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},
     // The campaign's ground where the tessellated terrain's mask leaves it: tiles on the height map (a pass with no holes), every frame as they're culled by the view.
     {.hash = 0x15FE8427, .terrain = true, .dynamic = true},
     {.hash = 0xA40D7DDB, .terrain = true, .dynamic = true, .pixel_masks = GROUND_MESH_PASSES},
@@ -3699,6 +3724,19 @@ void ConfigureAddon() {
       .labels = {"4096 (Game's)", "2048", "1024"},
       .is_enabled = [] { return traced_lights::rays_replace_maps_row != 0.f; },
   });
+  // Reflection Quality: the water march's step cap (reflections::OnMarch).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "ssr_quality",
+      .binding = &reflections::quality_row,
+      .default_value = 1.f,
+      .label = "Reflection Quality (Experimental)",
+      .section = twattila::graphics_page::REFLECTIONS_SECTION,
+      .tooltip = "Water reflections: more steps, so they reach farther with fewer gaps. Heavier.\n"
+                 "Below 1x: faster, shorter. 1x: the game's. Needs in-game Screen Space Reflections on.",
+      .min = 0.25f,
+      .max = 4.f,
+      .format = "%.2fx",
+  });
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "GlobalIlluminationGameSky",
       .binding = &twwarhammer3::game_gi::sky_row,
@@ -4050,6 +4088,10 @@ void ConfigureAddon() {
                                              .has_foliage_light = true,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
+  // The page names Reflection Quality "Quality"; here it is untested in game.
+  for (auto* setting : settings) {
+    if (setting->key == "ssr_quality") setting->label = "Quality (Experimental)";
+  }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;

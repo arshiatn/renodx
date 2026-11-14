@@ -11,14 +11,17 @@
 
 #include "../twattila/engine_tests.hpp"
 
-// Graphics 2 of 2's tests: the game's numeric engine values (engine_values.txt lists every one, each by its constructor)
-// that have a use as a slider and aren't in Graphics (Experimental). Not here: its flags (Apply writes a flag's byte every
-// present, at the default too) and its preferences (read at start; their value is at + 0x60, where Find doesn't land).
+// Graphics 2 of 2's tests: the game's engine values (engine_values.txt lists every one, each by its constructor) that have a
+// use as a slider and aren't in Graphics (Experimental). Its flags as switches (Game's, Off, On): Apply writes one only away
+// from the game's value, so Game's writes nothing (Find lands on each flag's byte, the address its readers compare: find_emu.py
+// against the census's readers). Not here: its preferences (read at start; their value is at + 0x60, where Find doesn't land),
+// flags the game's own options set (gfx_cloth_simulation's enable_cloth_sim), and the tree tests whose effect is unknown.
 namespace more_tests {
 
 inline std::vector<twattila::engine_tests::EngineTest> MoreTests() {
   using twattila::engine_tests::GRASS;
   using twattila::engine_tests::SHADOWS;
+  using twattila::engine_tests::Switch;
   using twattila::engine_tests::UNITS;
   // A shadow map's reach: the game uses the value when it is above 0, else its own table for the shadow quality, so a
   // factor on it would do nothing while it is 0.
@@ -61,6 +64,9 @@ inline std::vector<twattila::engine_tests::EngineTest> MoreTests() {
        .min = 0.f,
        .max = 2.f,
        .option = {.tweaks = {{.name = "gbuffer_blend_edges_amount_battle"}, {.name = "gbuffer_blend_edges_amount_campaign"}}}},
+      // Attila's key for its far trees' shadow switch (enable_tree_display_billboard_shadow_capsules there).
+      Switch(GRASS, "GraphicsFarTreeShadowShapes", "Far Tree Block Shadows", "Flat far trees, drawn in blocks, cast shadows.",
+             "enable_billboard_block_shadows"),
 
       shadow_reach("GraphicsTest_battle_shadow_split_0", "Battle Shadow Map 1", "battle_shadow_split_0", 500.f),
       shadow_reach("GraphicsTest_battle_shadow_split_1", "Battle Shadow Map 2", "battle_shadow_split_1", 1000.f),
@@ -78,6 +84,10 @@ inline std::vector<twattila::engine_tests::EngineTest> MoreTests() {
        .min = 0.5f,
        .max = 2.f,
        .option = {.tweaks = {{.name = "MAX_NUM_SHADOW_CASTING_POINT_LIGHTS", .integer = true}}}},
+      Switch(SHADOWS, "GraphicsTest_ENABLE_POINT_LIGHT_SHADOWS", "Point Light Shadow Maps",
+             "Torches and fires cast the game's own shadows.", "ENABLE_POINT_LIGHT_SHADOWS"),
+      Switch(SHADOWS, "GraphicsTest_ENABLE_DYNAMIC_SHADOWS_FOR_INCIDENTAL_DESTRUCTION", "Debris Shadows",
+             "Pieces of destroyed buildings and walls cast moving shadows.", "ENABLE_DYNAMIC_SHADOWS_FOR_INCIDENTAL_DESTRUCTION"),
 
       {.section = UNITS,
        .key = "GraphicsTest_cloth_smoothing_power",
@@ -91,6 +101,8 @@ inline std::vector<twattila::engine_tests::EngineTest> MoreTests() {
        .tooltip = "How many falling bodies move as ragdolls at once. Next battle.",
        .max = 2.f,
        .option = {.tweaks = {{.name = "SIMPLE_RAG_DOLL_MAX_ACTIVE", .integer = true}}}},
+      Switch(UNITS, "GraphicsTest_ENABLE_SIMPLE_RAG_DOLL_UPDATE", "Ragdolls", "Falling bodies move as ragdolls.",
+             "ENABLE_SIMPLE_RAG_DOLL_UPDATE"),
       // gi_enabled has no row and is never written: back from 0 in a battle, the game's GI stage runs without its textures
       // and the game crashes (game_gi.hpp).
   };

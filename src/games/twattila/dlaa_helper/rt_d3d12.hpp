@@ -754,8 +754,10 @@ class RtScene12 {
     return true;
   }
 
-  // The addon's shared textures and fence (handles still open); false: not all could be opened.
-  bool Open(const dlaa_bridge::Shared& shared, uint32_t version) {
+  // The addon's shared textures and fence (handles still open); false: not all could be opened. `replayable`
+  // (main.cpp's RENODX_TW_REPLAYABLE): no shared fence, which Nsight Graphics' replayer cannot make; the caller waits for
+  // the addon's value and signals its next, and each request's work is done when it returns.
+  bool Open(const dlaa_bridge::Shared& shared, uint32_t version, bool replayable) {
     Close();
     if (!device_) return false;
     const auto open = [&](uint64_t handle, ComPtr<ID3D12Resource>* resource) {
@@ -763,7 +765,7 @@ class RtScene12 {
     };
     if (!open(shared.rt_vertices, &vertices_) || !open(shared.rt_positions, &positions_) || !open(shared.rt_sun, &sun_)
         || !open(shared.rt_visibility, &visibility_) || !open(shared.rt_ambient, &ambient_)
-        || FAILED(device_->OpenSharedHandle(reinterpret_cast<HANDLE>(shared.fence), IID_PPV_ARGS(fence_.GetAddressOf())))) {
+        || (!replayable && FAILED(device_->OpenSharedHandle(reinterpret_cast<HANDLE>(shared.fence), IID_PPV_ARGS(fence_.GetAddressOf()))))) {
       Close();
       return false;
     }
@@ -928,7 +930,6 @@ class RtScene12 {
     fence_.Reset();
   }
 
-  [[nodiscard]] bool Ready() const { return fence_ != nullptr; }
   // The signals asked for NRD that it did not run on (dlaa_bridge.h rt_nrd_off).
   [[nodiscard]] uint32_t NrdOff() const { return nrd_off_.load(); }
 
@@ -1039,7 +1040,7 @@ class RtScene12 {
   // fence value and signals the next (also when nothing ran). `cluster_data`: its new cluster sets' data (v16, the
   // second mapping's start). False: nothing traced.
   bool Trace(const dlaa_bridge::Shared& shared, uint32_t version, std::span<const uint8_t> cluster_data) {
-    if (!fence_) return false;
+    if (!visibility_) return false;
     // The GPU harness's RENODX_TW_TEST_REMOVAL: the device removed at the process's third trace, as a GPU hang removes it
     // (main.cpp starts a new one).
     static uint32_t test_traces = 0;
@@ -1172,13 +1173,21 @@ class RtScene12 {
     if (recorded && (shared.rt_flags & dlaa_bridge::RT_SUN_SHADOWS) != 0) sun_traced_frame_ = shared.rt_frame;
     LARGE_INTEGER submit_start;
     QueryPerformanceCounter(&submit_start);
-    queue_->Wait(fence_.Get(), shared.value);
+    if (fence_) {
+      queue_->Wait(fence_.Get(), shared.value);
+    }
     if (recorded) {
       ID3D12CommandList* lists[] = {slot.list.Get()};
       queue_->ExecuteCommandLists(1, lists);
     }
-    queue_->Signal(fence_.Get(), shared.value + 1);
+    if (fence_) {
+      queue_->Signal(fence_.Get(), shared.value + 1);
+    }
     queue_->Signal(own_fence_.Get(), ++own_value_);
+    // Replayable (no shared fence, Open): main.cpp signals the addon's next value once this returns.
+    if (!fence_) {
+      WaitFor(own_value_);
+    }
     slot.value = own_value_;
     trace_value_ = own_value_;
     LARGE_INTEGER submit_end;
@@ -1211,7 +1220,7 @@ class RtScene12 {
   // such request; last frame's positions are kept for the history. The queue waits for the addon's fence value and
   // signals the next (also when nothing ran). False: not traced.
   bool Paths(const dlaa_bridge::Shared& shared, uint32_t version, bool reflections) {
-    if (!fence_) return false;
+    if (!visibility_) return false;
     const size_t slot_index = next_slot_;
     Slot& slot = slots_[slot_index];
     next_slot_ = (next_slot_ + 1) % SLOTS;
@@ -1718,13 +1727,21 @@ class RtScene12 {
     }
     LARGE_INTEGER submit_start;
     QueryPerformanceCounter(&submit_start);
-    queue_->Wait(fence_.Get(), shared.value);
+    if (fence_) {
+      queue_->Wait(fence_.Get(), shared.value);
+    }
     if (recorded) {
       ID3D12CommandList* lists[] = {slot.list.Get()};
       queue_->ExecuteCommandLists(1, lists);
     }
-    queue_->Signal(fence_.Get(), shared.value + 1);
+    if (fence_) {
+      queue_->Signal(fence_.Get(), shared.value + 1);
+    }
     queue_->Signal(own_fence_.Get(), ++own_value_);
+    // Replayable (no shared fence, Open): main.cpp signals the addon's next value once this returns.
+    if (!fence_) {
+      WaitFor(own_value_);
+    }
     slot.value = own_value_;
     LARGE_INTEGER submit_end;
     QueryPerformanceCounter(&submit_end);

@@ -51,6 +51,7 @@
 #include "./light_bounce.hpp"
 #include "./lighting_settings.hpp"
 #include "./particle_layer.hpp"
+#include "./pass_timing.hpp"
 #include "./rt_scene.hpp"
 #include "./screen_space_shadows.hpp"
 #include "./test_hooks.hpp"
@@ -1044,6 +1045,7 @@ float small_soldiers_as_sprites = 0.f;
 float sprite_size = 20.f;  // pixels on screen
 float ssr_denoiser = 1.f;  // ssr_hiz.hpp: the resolve's history
 float shadow_map_size = 0.f;  // the game's sizes x 2^this (graphics_hooks.hpp shadow_map)
+float shadow_cascades_row = 0.f;  // Two Shadow Cascades Under Rays (graphics_hooks.hpp shadow_map)
 twattila::feature_settings::SssSliders sss_sliders;
 twattila::smoke_map::Sliders smoke_map_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
@@ -1385,15 +1387,18 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   // settings[3]->default_value = renodx::utils::swapchain::ComputeReferenceWhite(peak.value());
 }
 
-// The shadow map size, before the game builds its shadows.
+// The shadow map size and cascades, before the game builds its shadows.
 void OnInitDevice(reshade::api::device*) {
   if (shadow_size_locked) return;
-  twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size));
+  twattila::graphics_hooks::shadow_map::Install(
+      std::exp2(shadow_map_size),
+      shadow_cascades_row != 0.f && twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).shadows_only);
 }
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   talesofarise::pixel_trace::OnPresent(queue);
+  twattila::pass_timing::OnPresent(queue, "attila");
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
@@ -1438,7 +1443,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
-  if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size));
+  if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
       {
           .unit_detail = {unit_detail[0].scale, unit_detail[1].scale, unit_detail[2].scale, unit_detail[3].scale},
@@ -1756,6 +1761,18 @@ void ConfigureAddon() {
           .is_enabled = [] { return !shadow_size_locked; },
       },
       new renodx::utils::settings::Setting{
+          .key = "RayTracedShadowCascades",
+          .binding = &shadow_cascades_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Two Shadow Cascades Under Rays (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows: the game prepares 2 shadow cascades, as at Shadows Medium, instead of 4.\n"
+                     "The rays shadow instead; faster in forests. Applies after a restart. Locked by UI 4K Mod Compatibility.",
+          .labels = {"Off", "On"},
+          .is_enabled = [] { return !shadow_size_locked; },
+      },
+      new renodx::utils::settings::Setting{
           .key = "GraphicsBigBattleFix",
           .binding = &big_battle_fix,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
@@ -1853,6 +1870,13 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+      .label = "Time Each Pass (One Frame)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "The GPU's time of every pass of the next frame into attila_pass_timing.txt next to the game's exe.",
+      .on_change = [] { twattila::pass_timing::Request(); },
+  });
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
@@ -1981,6 +2005,7 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  twattila::pass_timing::Install();
 
   // Failed native-hook removal can retain this DLL across host unload/reload.
   graphics_found = false;
@@ -2094,6 +2119,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twattila::test_hooks::Uninstall();
+  twattila::pass_timing::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);

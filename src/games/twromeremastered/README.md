@@ -16,6 +16,12 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastere
   Samples, Edge Threshold, Ignore Edge Pixels, Precision Offset, Sample Along the Ray, Mirror Screen Edges. Defaults give
   the same shadows as before (`test/tw_romer_rays` case 6).
 - About: Bend Studio's and the helper's credits, a GitHub (Downloads) button.
+- New: **DLSS below 100% with ray tracing on**: v13 kept DLAA at the render size with a ray row on (the rays captured
+  only a depth at the bridge's size), Feral's upscaler after. Now DLSS takes the upscaler's place with the rays too:
+  they capture and trace the render-size depth (rt_core's new opt-in `Host::depth_at_render_size`; every other game
+  keeps today's rule), their results in the bridge's top-left corner. Below 100% the Ray Tracing Debug View is drawn
+  before DLSS (it upscales it as the picture). Log: `DLAA: on, DLSS 2572x1446 to 3840x2160 (Resolution Scale below 100%).`
+  with a ray row on too.
 - Parity table (every Attila feature: have / do now / needs a trace / won't get, with proof):
   `tools\tw\romeremastered\parity_1114.md` in the maintainer's tools.
 
@@ -27,6 +33,8 @@ Test (ATN; the v13 lines first):
    softer edges, no halos (decides the default).
 5. Battle, DLSS preset L vs K: dark tones the same, L steadier (decides the default).
 6. Page Reset mid-battle: the game's shadows and AO back, no reset in renodx-tw-dlaa64.log.
+7. Battle at Resolution Scale 67%, RT/PT (Battle Objects Tested): sharp at 4K, the rays' shadows on the right places
+   (Ray Tracing Debug View Sun Shadows lines up with the picture), ReShade.log's DLSS line.
 
 Not done:
 - Upscaling Debug View (motion vectors): the row sits in AppendAa's render-scale group this game doesn't use. Step: a

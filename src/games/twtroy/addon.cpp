@@ -40,12 +40,14 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/smoke_map.hpp"
 #include "../twattila/contact_shadows_off.hpp"
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
 #include "../twattila/water_reflections.hpp"
 #include "./more_tests.h"
+#include "./tweak_objects.hpp"
 #include "../twpharaohdynasties/trace_reads.hpp"
 // Pharaoh's outside-view geometry shaders (built bytes): Troy's shadow vertex shaders write the same outputs (SCENE_SHADERS).
 #include "../twpharaohdynasties/rt_outside_view_branch_gs.h"
@@ -145,6 +147,8 @@ void ApplyResetPreset() {
       {"lensflare", 1.f},
       {"godrays", 1.f},
       {"vignette", 1.f},
+      {"dof", 1.f},
+      {"fog_strength", 1.f},
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
       {"some_indicators", 1.0f},
@@ -187,6 +191,8 @@ void ApplyPsychoRecommended() {
       {"lensflare", 1.f},
       {"godrays", 1.f},
       {"vignette", 1.f},
+      {"dof", 1.f},
+      {"fog_strength", 1.f},
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
       {"some_indicators", 1.0f},
@@ -958,6 +964,28 @@ void BuildRuntimeData() {
         .format = "%.2f",
     },
     new renodx::utils::settings::Setting{
+        .key = "dof",
+        .binding = &shader_injection.dof,
+        .default_value = 1.f,
+        .label = "Depth of Field",
+        .section = "Extra",
+        .tooltip = "Multiplier on depth of field blur. Needs in-game Depth of Field on.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
+        .key = "fog_strength",
+        .binding = &shader_injection.fog_strength,
+        .default_value = 1.f,
+        .label = "Fog Strength",
+        .section = "Extra",
+        .tooltip = "How thick the battle's fog and haze are. 0 = none, 1 = the game's, 2 = double.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
         .key = "chromaticaberration",
         .binding = &shader_injection.chromaticaberration,
         .default_value = 1.f,
@@ -1373,6 +1401,8 @@ twattila::feature_settings::SssSliders sss_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
+// Smoke Shadows without rays (twattila/smoke_map.hpp, as Attila's and Thrones').
+twattila::smoke_map::Sliders smoke_map_sliders;
 // Texture LOD Bias on All Textures (Graphics 1 of 2, Experimental): the trilinear samplers too
 // (texture_lod_bias.hpp SetWrappingTrilinear).
 float lod_bias_trilinear_row = 0.f;
@@ -1650,6 +1680,13 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
   twattila::screen_space_shadows::Update(swapchain, sss_settings);
+  // Smoke Shadows without rays: off under the rays' sun shadows (their own Smoke Shadows); their particles streamed without the rays.
+  auto smoke_map_settings = smoke_map_sliders;
+  if (rt_settings.sun_shadows) {
+    smoke_map_settings.strength = 0.f;
+  }
+  twattila::smoke_map::Update(smoke_map_settings);
+  rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
@@ -1658,6 +1695,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::light_count::OnPresent(rt_sliders.debug_log != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
+  // Troy's tweaks by its own initializers' code before Update's Find, whose `lea rdx, [name]` finds none here (tweak_objects.hpp).
+  if (!graphics_found) {
+    twtroy::tweak_objects::Find(tw::engine_tweaks::ModuleSections(GetModuleHandleW(nullptr)), graphics_options);
+  }
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
 
@@ -1991,6 +2032,8 @@ void ConfigureAddon() {
   });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .smoke_strength = &smoke_map_sliders.strength,
+                                             .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
                                              .rays_replace_maps_tested = false,
@@ -2000,6 +2043,7 @@ void ConfigureAddon() {
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
+                                             .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
@@ -2041,6 +2085,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   // Water Clarity and Caustics: every row a material water (the patched copy swapped in at the draw), as Pharaoh's.
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
@@ -2168,6 +2213,8 @@ bool AttachAddon() {
   twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
+  // Smoke Shadows without rays: the smoke's dimming into the sun draws' t49 (their x(1 - t49) patch), after the rays' occlusion.
+  twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
 
   reshade::register_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
   twattila::device_loss::InstallLast();
@@ -2193,6 +2240,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   twattila::water_reflections::Uninstall();
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
@@ -2207,6 +2255,8 @@ void DetachAddon() {
   twattila::light_count::Uninstall();
   twattila::rt_scene::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
+  twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
+  twattila::smoke_map::Uninstall();
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();
 

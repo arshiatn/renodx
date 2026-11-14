@@ -846,3 +846,52 @@ SwapChainEncoding, hue_clip, peak_white_nits).
 Checks: both addons build (x64); test/tw_shogun2_shaders PASS (WARP, the game's csos: far cards, units, 7B067623 added to
 parts 10-11); test/tw_screen_space_shadows case 8 PASS (x86, the SSS rows at Game's 0 pixels apart); static_checks 0
 findings. No shared code changed.
+
+### Parity round 2 (2026-11-14; built only, not run in game)
+
+The first round's DO NOW items, on atn-mods f37059a2 (table: tools/shogun2/pkg_1114/parity_1114.md, now HAVE 43, DO NOW 21 of
+which 13 done, NEEDS A TRACE 6, WON'T GET 14). Experimental rows off, in Reset, not in RT/PT:
+
+- **Shadow casters out of view** also takes ships' sails and sail symbols (A42F9EDE / F7EDF855: world_matrix, the diffuse
+  mask) and ropes (4E3EE717) [0dbe2a0d].
+- **Water clarity** and **Water caustics** (DLSS addon Graphics, Attila's keys): rivers and lakes in battles (waterplane00);
+  Attila's caustics worked out per pixel [65225afd].
+- **Modded Auto Exposure** (+ Sensitivity, Extra (Experimental), Attila's keys): the sun or a fire on a metering cross darkens
+  the picture less; autoexposure00 caps each sample at the last exposure's luma x 2^stops [63ba3a89].
+- **Unit/Building Indicator Brightness** (Extra (Experimental), some_indicators): indicator00-02 replaced, x the row in HDR
+  [64bf817f].
+- **Torch and fire light in fog** (DLSS addon, under Ray-traced fog shadows, RayTracedLightGlow): fog01 adds the lights'
+  light along each ray at its sun colour's scale [1bab10a5].
+- The campaign map's terrain overlay below 100%: its map positions used an NDC over the whole target (33% trace), now over
+  the render part; at 100% the game's bits [54af5340]. The scale census's other 12 rows are settled by their bytes (OK or
+  already render-scaled; TAA never runs below 100%).
+
+Test lines:
+1. Naval battle, Shadow casters out of view on: sails' and ropes' shadows from behind the camera; none misplaced.
+2. Battle by a river, Water clarity 4 then Water caustics 1: clearer river, rippling light on the bed; no seams at the tiles.
+3. Modded Auto Exposure on: pan across the sun and a burning building; the picture darkens less, highlights as bright.
+4. Unit/Building Indicator Brightness 0.5 at night: rings and arcs dimmer; 1 as before.
+5. Night battle with torches, fog shadows, point light shadows and Torch and fire light in fog 1: glow around torches in the
+   fog, not too bright.
+6. Campaign at 50% render scale: the map's region overlay sits on the map as at 100%.
+
+Not done (what, why, smallest step):
+- SSS Softness, Softer away from the caster, Coloured, Light through banners, Debug view: Attila's own SSS pipeline; Shogun's
+  Bend runs inside the game's sss01 into its mask, so each is a new pass. Step: Debug view (keep sss01's u0, show it at
+  tonemap01), then Softness as a depth-aware blur after sss01.
+- Smoke shadows: no shared split needed (InstallSmokeShadows only fills rt_core's smoke statics); the work is a quad geometry
+  shader for Shogun's particle vertex shader BEA3F2D4 (six indices an instance) tested against its cso.
+- Particle edges and smoothing (WH2's particle_smoothing on vfxoverlay00), Sharpening (a CAS pass after the DLSS evaluate),
+  AO temporal and denoise (ao_pass's temporal on Shogun's AO): each a new pass of its own.
+- The 9 engine names: reached through a lea form the tweak reader doesn't parse; list their cross-references first.
+- Sky smoothing and debanding: needs a screenshot of banding first (Shogun's sky cube is 1024 x 1024, read once).
+- Gamma correction: won't get (the in-game Gamma already reaches every mode).
+
+Page dump (page_s2_after2.txt): against the first round only the six new rows (RayTracedLightGlow, WaterClarity,
+WaterCaustics, auto_exposure_highlight_protection, auto_exposure_highlight_headroom_stops, some_indicators). Against Attila
+after RT/PT the first round's per-game rows plus RayTracedLightGlow and WaterCaustics (1 in Attila's RT/PT, left out here
+untested).
+
+Checks: both addons build (x64); test/tw_shogun2_shaders PASS with new parts 14 (auto exposure against the game's cso), 15
+(the three indicators bit for bit), 16 (campaign overlay 33% against 100%), water rows in 8-9 and the naval casters in 11;
+static_checks 0 findings. No shared code changed.

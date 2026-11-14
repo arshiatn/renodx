@@ -3,6 +3,9 @@
 // Render scale (DLSS addon): it reads the 3D image (the DLSS input), drawn into the top-left render scale part of this
 // full-size texture (SI.render_scale_x / y, captured from the 3D passes' viewports), but placed its points and crosses
 // over the whole texture: they are placed in the rendered part (at full size the same as the game's).
+// Modded Auto Exposure (Experimental, Attila's rows): the game meters the mean luma along its crosses, so the sun, fires and
+// sparks on a cross darken the whole picture. With it on each sample counts at most the luma the last frame's exposure was
+// set for (2^target / brightness^2, the inverse of its target) x 2^stops; the picture itself is untouched. Off: the game's.
 #include "../shared.h"
 
 #define MAX_FOCAL_POINTS 32
@@ -50,16 +53,23 @@ void main(uint3 dispatch_thread_id : SV_DispatchThreadID)
     const int radius = int(round(g_focal_cross_radius * render_scale.x));
 
     const int2 focal_point = floor(g_focal_points[dispatch_thread_id.x] * image_size);
+    // Read before thread 0 writes this frame's (after the barrier below).
+    const float prev_brightness = g_auto_exposure_output_buffer[0].tone_mapper_brightness;
+    const bool capped = SI.auto_exposure_highlight_protection > 0.f && prev_brightness > 0.000001f;
+    const float luma_cap = exp2(g_target_exposure + clamp(SI.auto_exposure_highlight_headroom_stops, 1.f, 8.f))
+                           / (prev_brightness * prev_brightness);
     float average_luma = 0.0;
     float num_samples = 0;
     for (int i = max(0, focal_point.x - radius); i <= min(image_size.x - 1, focal_point.x + radius); ++i)
     {
-      average_luma += renodx::color::y::from::BT709(t_light_accumulation[uint2(i, focal_point.y)].rgb);
+      const float luma = renodx::color::y::from::BT709(t_light_accumulation[uint2(i, focal_point.y)].rgb);
+      average_luma += capped ? min(luma, luma_cap) : luma;
       num_samples += 1;
     }
     for (int j = max(0, focal_point.y - radius); j < min(image_size.y - 1, focal_point.y + radius); ++j)
     {
-      average_luma += renodx::color::y::from::BT709(t_light_accumulation[uint2(focal_point.x, j)].rgb);
+      const float luma = renodx::color::y::from::BT709(t_light_accumulation[uint2(focal_point.x, j)].rgb);
+      average_luma += capped ? min(luma, luma_cap) : luma;
       num_samples += 1;
     }
     focal_samples[dispatch_thread_id.x] = average_luma / max(num_samples, 1);

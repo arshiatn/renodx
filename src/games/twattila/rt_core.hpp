@@ -247,6 +247,9 @@ struct SmokeVertexShader {
   uint32_t hash = 0;
   std::span<const uint8_t> quad_shader;
   bool indirect = false;
+  // Its cb3 is cb_vfx_emitter_constants_common (smoke_map_list's weather test reads it); false: it binds no cb3 (Pharaoh's
+  // 109B79CE: cb0 / cb1 only), so the slot holds another draw's buffer and the test sees none.
+  bool behaviours_at_cb3 = true;
 };
 
 struct SceneShader {
@@ -381,6 +384,9 @@ struct Host {
   // A game whose shadow pass comes before its main pass (Shogun 2): its cascade draws test against the last frame's main
   // view (they wait for this frame's otherwise, which never comes first: none captured).
   bool cascade_last_view = false;
+  // The main view's depth (and the tone mapper's output the Debug View draws on) at render_size, its own texture below 100%
+  // (Rome Remastered, DLSS in its upscaler's place); false: at the bridge's (the display's) size, the render in its corner.
+  bool depth_at_render_size = false;
 };
 
 namespace internal {
@@ -1653,8 +1659,10 @@ void Capture(Context& command, const SceneShader& shader) {
     const bool cascades = (host.cascade_target != nullptr) ? host.cascade_target(depth_desc)
                                                            : (depth_desc.ArraySize == 4 && depth_desc.Width == depth_desc.Height);
     if (!cascades) return;
-  } else if (depth_desc.SampleDesc.Count != 1 || depth_desc.Width != dlaa_bridge::bridge.width || depth_desc.Height != dlaa_bridge::bridge.height) {
-    return;
+  } else {
+    const std::array<UINT, 2> main_size = host.depth_at_render_size ? host.render_size()
+                                                                     : std::array<UINT, 2>{dlaa_bridge::bridge.width, dlaa_bridge::bridge.height};
+    if (depth_desc.SampleDesc.Count != 1 || depth_desc.Width != main_size[0] || depth_desc.Height != main_size[1]) return;
   }
 
   const std::unique_lock lock(runtime.mutex);
@@ -2283,7 +2291,7 @@ void CaptureParticles(Context& command) {
   // The quad shader reads the vertex shader's constants with their ranges (D3D11.1).
   ComPtr<ID3D11DeviceContext1> native1;
   if (INDEXED && FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
-  if (first_draw && runtime.settings.stream_particles) {
+  if (first_draw && runtime.settings.stream_particles && vertex_shader->behaviours_at_cb3) {
     // cb_vfx_emitter_constants_common (the particle vertex shader's cb3): smoke_map_list tells the weather by it.
     ComPtr<ID3D11Buffer> behaviours;
     native->VSGetConstantBuffers(3, 1, behaviours.GetAddressOf());
@@ -3305,7 +3313,8 @@ inline ID3D11ShaderResourceView* Occlusion(ID3D11DeviceContext* native, ID3D11Sh
 }
 
 // The Debug View (Settings.debug_view; 9: all eight tiled) over `target`, the tone mapper's output (the bridge
-// textures' size, RGBA16F): that effect's result this frame as the picture (rt_debug; magenta where it made none).
+// textures' size, or the traced one with Host::depth_at_render_size; RGBA16F): that effect's result this frame as the
+// picture (rt_debug; magenta where it made none).
 inline void DrawDebugView(ID3D11DeviceContext* native, ID3D11Texture2D* target) {
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
@@ -3315,8 +3324,9 @@ inline void DrawDebugView(ID3D11DeviceContext* native, ID3D11Texture2D* target) 
   if (view == 0 || !objects.debug_shader || !bridge.ray_tracing) return;
   D3D11_TEXTURE2D_DESC desc = {};
   target->GetDesc(&desc);
-  if (desc.Width != bridge.width || desc.Height != bridge.height || desc.SampleDesc.Count != 1 || desc.ArraySize != 1 || desc.MipLevels != 1
-      || (desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT && desc.Format != DXGI_FORMAT_R16G16B16A16_TYPELESS)) {
+  const bool render_sized = internal::host.depth_at_render_size && desc.Width == runtime.traced_size[0] && desc.Height == runtime.traced_size[1];
+  if (((desc.Width != bridge.width || desc.Height != bridge.height) && !render_sized) || desc.SampleDesc.Count != 1 || desc.ArraySize != 1
+      || desc.MipLevels != 1 || (desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT && desc.Format != DXGI_FORMAT_R16G16B16A16_TYPELESS)) {
     return;
   }
   D3D11_TEXTURE2D_DESC current = {};

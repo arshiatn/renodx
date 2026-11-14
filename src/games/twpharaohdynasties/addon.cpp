@@ -45,6 +45,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/smoke_map.hpp"
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/view_share.hpp"
@@ -63,6 +64,7 @@
 #include "./rt_outside_view_leaf_gs.h"
 #include "./rt_outside_view_unit_gs.h"
 #include "./rt_outside_view_world_gs.h"
+#include "../twwarhammer2/rt_outside_view_world_uv_gs.h"
 #include "./rt_particle_quads_gs.h"
 #include "./shared.h"
 
@@ -135,6 +137,7 @@ void ApplyResetPreset() {
       {"lensflare", 1.f},
       {"godrays", 1.f},
       {"vignette", 1.f},
+      {"dof", 1.f},
       {"distortion", 1.f},
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
@@ -164,6 +167,12 @@ void ApplyResetPreset() {
       {"filmgrain", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+}
+
+// SDR: the game's own tonemapper and look, every other control at its default; video AutoHDR is already off in Reset.
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}});
 }
 
 void ApplyPsychoRecommendedNoVFXBoost() {
@@ -652,16 +661,20 @@ void BuildRuntimeData() {
           ApplyPsychoRecommendedVFXBoost2500();
         },
     },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .section = "Presets",
+        .group = "preset-line-3",
+        .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it\n"
+                   "was HDR), no video AutoHDR. The game's and the UI's white are your monitor's own white.",
+        .tint = 0xFFC107,
+        .on_change = []() {
+          ApplySdrPreset();
+          renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
+        },
+    },
     // Extra //////////////////////////////////////////////////////////////////////////////////////
-    // new renodx::utils::settings::Setting{
-    //     .key = "dof",
-    //     .binding = &shader_injection.dof,
-    //     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-    //     .default_value = 1.f,
-    //     .label = "Depth of Field",
-    //     .section = "Extra",
-    //     .tooltip = "Toggle depth of field effect.",
-    // },
     // new renodx::utils::settings::Setting{
     //     .key = "uvdistort",
     //     .binding = &shader_injection.uvdistort,
@@ -1041,6 +1054,17 @@ void BuildRuntimeData() {
         .label = "Vignette",
         .section = "Extra",
         .tooltip = "Multiplier on vignette mask. Needs in-game setting on.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
+        .key = "dof",
+        .binding = &shader_injection.dof,
+        .default_value = 1.f,
+        .label = "Depth of Field",
+        .section = "Extra",
+        .tooltip = "Multiplier on depth of field blur. Needs in-game Depth of Field on.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
@@ -1479,6 +1503,10 @@ float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
 // Fire Shadows from Particle Lights (Experimental, off, not in the RT/PT preset): PARTICLE_LIGHTS' draws left alone while 0.
 float particle_light_shadows_row = 0.f;
+// Texture LOD Bias on All Textures (Experimental, off, as Warhammer III's): the game's wrapping trilinear samplers biased too
+// (texture_lod_bias.hpp SetWrappingTrilinear). Which of Pharaoh's samplers filter without anisotropy is unread (their descs
+// come at run time; Log Details' Texture LOD Bias line counts them).
+float lod_bias_trilinear_row = 0.f;
 
 // Smoke Shadows' particles (Experimental, off): vfx vs50_main_instancing 109B79CE draws each particle as an instance of a
 // quad (6 indices), and of the pixel shaders it draws with only vfxextremeultra 3F1B86E1 (ps_main_high_quality) blends quads
@@ -1490,7 +1518,12 @@ float particle_light_shadows_row = 0.f;
 // the alpha crush), its diffuse array t3 / s1 and constants t5 three view and two sampler slots below 3F1B86E1's t6 / s3 / t8
 // (fxc -dumpbin of both; in no trace: ATN plays at 4). 3F1B86E1's MSAA twin ps_main_high_quality_ms 740B2536 stays out:
 // no rays under the game's MSAA.
-constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{{.hash = 0x109B79CE, .quad_shader = __rt_particle_quads}}};
+// 109B79CE binds cb0 (camera) and cb1 (cb_vfx) only (fxc -dumpbin): its cb3 slot holds another draw's buffer, no emitter
+// behaviours for smoke_map_list's weather test (the quad shader already drops unlit emitters and what stays around the camera).
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{{.hash = 0x109B79CE, .quad_shader = __rt_particle_quads, .behaviours_at_cb3 = false}}};
+// Smoke Shadows without rays (twattila/smoke_map.hpp; Experimental, off): last frame's lit particles from the same stream,
+// splatted into a map seen from the sun, dimming the sun draws' t49 (Bend's, the rays' or none).
+twattila::smoke_map::Sliders smoke_map_sliders;
 constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADERS = {{
     {.hash = 0x3F1B86E1},
     {.hash = 0xE8524BB1, .view_shift = 3, .sampler_shift = 2},
@@ -1713,7 +1746,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 8> CUT_OUT_MASKS = {{
 // The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do the far forest's
 // blocks (rigidtreebillboard vs40_main_block FE92BA2D): cards facing the camera with no shadow-pass draw, the forest's
 // shadow there the game's kept baked map.
-constexpr std::array<twattila::rt_scene::SceneShader, 27> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 29> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1732,6 +1765,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 27> SCENE_SHADERS = {{
     {.hash = 0xF704C8EC, .capture_shader = __rt_capture_leaf, .foliage = true},
     // Far trees' cards (rigidtreebillboard vs40_main): turned to the sun, their alpha at t3 (t0 dissolve, t1 dither).
     {.hash = 0x97C53219, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    // The campaign's far trees (campaigntreebillboards 0xCE5AA8D1, Troy's DF8EAF69 at 0.47 x: no shadow-pass draw, so only with Far
+    // Tree Shadows): turned to the sun, their alpha 7CB58C1B's t0 (below 0.5 discarded). Its vertex shader reads the shroud at t0.
+    {.hash = 0xCE5AA8D1, .capture_shader = __rt_capture_campaign_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .sun_slot = 1, .far_tree = true},
     // Cloth (phar_rigid_battle_cloth_wind) and flags (rigid_default_flag): sheets moved by the time and the wind, every frame.
     {.hash = 0x2F2A0E7E, .capture_shader = __rt_capture_cloth_wind, .dynamic = true, .thin = true},
     {.hash = 0x8DE94E2F, .capture_shader = __rt_capture_flag, .dynamic = true, .thin = true},
@@ -1752,6 +1788,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 27> SCENE_SHADERS = {{
     {.hash = 0x5AFB107C, .dynamic = true, .cascade_keep = __rt_outside_view_branch},
     {.hash = 0xA709F459, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_leaf},
     {.hash = 0xEB2A56A1, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 2, .cascade_keep = __rt_outside_view_card},
+    // The campaign's trees and plants in the shadow pass (rigidcampaignvegetation vs40_shadow; ATN's 2026-11-14 campaign trace
+    // ATN_UP_181940: 1 of 24): Warhammer II's 7D979F60 with its wind constants elsewhere (the same outputs and writes; shadow PS
+    // C7350ED5 = its 5906CF6E): TEXCOORD0 the world, TEXCOORD1 the UV of the t0 test (alpha below 0.5).
+    {.hash = 0x3368E9E7, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
 }};
 
 // The screen-space shadows' Light Through Banners: the siege's cloth (phar_rigid_battle_cloth_wind, PS 5277CF9F and 97850C83)
@@ -1925,6 +1965,13 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
   // Fog Shadows alone light no surface: no Ray Reconstruction for them (as Warhammer III's).
   rt_settings.cheap_fog_alone = true;
+  twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
+  // Smoke Shadows without rays (as Attila's): off under the rays' sun shadows (their own Smoke Shadows); the particles
+  // streamed for it without rays too.
+  auto smoke_map_settings = smoke_map_sliders;
+  if (rt_settings.sun_shadows) smoke_map_settings.strength = 0.f;
+  twattila::smoke_map::Update(smoke_map_settings);
+  rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
   // The game's reflections fall on the water alone (its apply DE4F92CD): twattila/water_reflections.hpp's gate.
   twattila::water_reflections::GateSettings(&rt_settings);
   // Ray-traced shadows replace the screen-space ones (the Shadows method, as Attila's).
@@ -1959,7 +2006,7 @@ namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
 // (the sun shaders' patched comparisons) or replace the per-frame ones (Rays Replace Shadow Maps), ray-traced AO multiplies
-// the game's SSAO; point lights, the fog and the water's reflections hooked, no smoke.
+// the game's SSAO; point lights, the fog, the smoke and the water's reflections hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -2450,6 +2497,9 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
+    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset.
+    float saved_mode = 0.f;
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
@@ -2459,6 +2509,7 @@ void ConfigureAddon() {
           const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
           return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
     });
     settings.push_back(setting);
   }
@@ -2520,7 +2571,7 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Warhammer III's), ATN's RT/PT preset as the defaults of what the methods leave, then
-  // Settings Mode's pages. Only what this game hooks: no smoke map.
+  // Settings Mode's pages. Only what this game hooks.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows and the torches' light in it start off too (Experimental: no game run has shown them here yet); RT/PT turns them
   // on, as ATN's list does. Bend's Light Through Banners and Coloured Shadows (v55: the cloth and flags, InstallThin) also start
@@ -2594,15 +2645,23 @@ void ConfigureAddon() {
   });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .smoke_strength = &smoke_map_sliders.strength,
+                                             .smoke_softness = &smoke_map_sliders.softness,
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
                                              .rays_replace_maps_tested = false,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
+                                             // Smooth Banner Shadows: the thin sheets (cloth 2F2A0E7E, flags 8DE94E2F) don't
+                                             // shade themselves (RT_SHEETS_UNSELFED). No Light Through All Banners: those
+                                             // sheets are always thin here, and the unit banners (76225B91) cast nothing.
+                                             .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = true,
                                              .foliage_light_tested = false,
+                                             .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
@@ -2763,6 +2822,8 @@ bool AttachAddon() {
       OnFogShadowsDraw, {.shader_hash = FOG_SHADERS[0], .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
+  twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   renodx::utils::command_action::Register(
       OnSkyDomeGuides, {.shader_hash = 0x9CF980D0, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
 
@@ -2810,6 +2871,9 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(OnSkyDomeGuides);
   twattila::water_reflections::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
+  twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
+  twattila::smoke_map::Uninstall();
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();
 

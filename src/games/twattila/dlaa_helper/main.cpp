@@ -161,6 +161,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                             (initialized == NGFX_Result_Success ? "on" : "off"), static_cast<int>(initialized))
                     .c_str());
   }
+  // RENODX_TW_REPLAYABLE (Nsight Graphics captures of the 4K harness, tools/tw/nsight): frames its replayer can make again.
+  // It makes no cross-process shared fence and no second device from ID3D12DeviceFactory, so the ray tracing device opens
+  // no shared fence (the addon's value is waited for and its next signalled here on D3D11, which Nsight does not capture;
+  // ray tracing requests then run one at a time) and Ray Reconstruction stays off.
+  const bool replayable = GetEnvironmentVariableW(L"RENODX_TW_REPLAYABLE", nullptr, 0) != 0;
+  HANDLE replay_wait = nullptr;
+  if (replayable) {
+    replay_wait = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  }
   // A live GPU did not finish work whose resources are about to be freed (a removed device never gets here: a new one is
   // made below). Freeing them under it is not safe and nothing else can go on: the reason logged, then the process ends
   // without unwinding the GPU objects (the addon sees the exit).
@@ -435,7 +444,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const auto open_scene = [&] {
     const bool details = (shared->rt_flags & twattila::dlaa_bridge::RT_DETAILS) != 0;
     scene_live = !scene_off();
-    scene_open = scene_live && !stalled_scene && scene->Initialize(adapter.Get(), folder, details, other_upscaler()) && scene->Open(*shared, version);
+    scene_open = scene_live && !stalled_scene && scene->Initialize(adapter.Get(), folder, details, other_upscaler()) && scene->Open(*shared, version, replayable);
     // From here on: a set's first request is an evaluation, and an open can take longer than the idle time by itself.
     rt_used = std::chrono::steady_clock::now();
   };
@@ -443,6 +452,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // new device when a GPU reset removed its own.
   std::string reconstruction_refusal;
   const auto open_reconstruction = [&] {
+    if (replayable) return;
     reconstruction_live = true;
     reconstruction_open = reconstruction->Initialize(adapter.Get(), folder)
                           && reconstruction->Open({shared->color, shared->depth, shared->motion, shared->output, shared->diffuse_albedo,
@@ -822,7 +832,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       bool queued = false;
       if (scene_open) {
         const std::unique_lock lock(rt_work.mutex);
-        if (rt_work.ran[kind(*shared)]) {
+        if (rt_work.ran[kind(*shared)] && !replayable) {
           auto copy = std::make_unique<twattila::dlaa_bridge::Shared>();
           std::memcpy(copy.get(), shared, twattila::dlaa_bridge::SharedBytes(version));
           const auto sets = new_sets(*shared);
@@ -838,12 +848,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         answered = true;
       } else {
         rt_drain();
+        // Replayable: the scene opened no shared fence, so the addon's value is waited for here, and its next signalled
+        // below once the scene's work is done (Trace and Paths wait for it then).
+        if (replayable && scene_open) {
+          twattila::dlaa_helper::WaitForGpu(fence.Get(), replay_wait, shared->value, 5000);
+        }
         evaluated = scene_open && run(*shared, new_sets(*shared));
         if (scene_open) {
           const std::unique_lock lock(rt_work.mutex);
           rt_work.ran[kind(*shared)] = evaluated;
         } else {
           context4->Wait(fence.Get(), shared->value);
+        }
+        if (!scene_open || replayable) {
           context4->Signal(fence.Get(), shared->value + 1);
           context->Flush();
         }

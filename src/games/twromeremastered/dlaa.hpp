@@ -41,8 +41,8 @@
 // mapper's output, the game's SMAA left with nothing to do (Evaluated: its edges not drawn). Below 100% Resolution Scale
 // (ATN's 67% / 50% traces: the scene, the tone mapper and SMAA at the render size, then Feral's upscaler, VS 9F3C9B3D,
 // into an FP16 target at the display's size, the UI on it): DLSS from the tone mapper's output to the upscaler's size,
-// copied into its target in its place (Upscale). With a ray row on the bridge stays at the depth's size (rt_core
-// captures the main view's depth at the bridge's): DLAA at the render size, Feral's upscaler after.
+// copied into its target in its place (Upscale). With a ray row on too: the rays capture and trace at the render size
+// (rt_core's Host::depth_at_render_size), their results in the bridge textures' top-left corner.
 namespace twromeremastered::dlaa {
 
 using Microsoft::WRL::ComPtr;
@@ -112,6 +112,7 @@ struct State {
   uint64_t upscaled_frame = 0;  // DLSS's result (objects.result) waits for the upscaler this frame
   Camera camera;                      // the main view's last upload
   ComPtr<ID3D11ShaderResourceView> depth;
+  std::array<UINT, 2> depth_size = {};
   uint64_t depth_frame = 0;
   std::array<float, 16> previous_view_projection = {};
   uint64_t evaluated_frame = 0;
@@ -123,6 +124,12 @@ static State state;
 // tone mapper's). state.mutex held.
 inline bool BelowFullScale(UINT width, UINT height) {
   return state.upscaler_frame + 1 >= state.frame && state.upscaler[0] > width && state.upscaler[1] > height;
+}
+
+// DLSS's output (the bridge's size) for a render of `width` x `height`: below 100% the upscaler's (DLSS in its place),
+// else the render's (DLAA). state.mutex held.
+inline std::array<UINT, 2> OutputSize(UINT width, UINT height) {
+  return BelowFullScale(width, height) ? state.upscaler : std::array<UINT, 2>{width, height};
 }
 
 // The device's objects: only on the game's render thread (the tone mapper's draw, destroy_device).
@@ -333,16 +340,34 @@ inline void KeepDepth(reshade::api::command_list* cmd_list, bool compute) {
   } else {
     context->PSGetShaderResources(1, 1, depth.GetAddressOf());
   }
+  // Its size: the render's (the rays' render_size).
+  D3D11_TEXTURE2D_DESC depth_desc = {};
+  if (ComPtr<ID3D11Resource> resource; depth) {
+    depth->GetResource(resource.GetAddressOf());
+    if (ComPtr<ID3D11Texture2D> texture; SUCCEEDED(resource.As(&texture))) texture->GetDesc(&depth_desc);
+  }
   const std::unique_lock lock(internal::state.mutex);
   internal::state.depth = depth;
+  internal::state.depth_size = {depth_desc.Width, depth_desc.Height};
   internal::state.depth_frame = internal::state.frame;
 }
 
-// The bridge at `width` x `height` as DLAA, the rays and frame generation want it (one set of arguments for all: any other
-// makes its textures again).
+// The bridge for a render of `width` x `height` (DLSS's output's size: OutputSize) as DLAA, the rays and frame generation
+// want it (one set of arguments for all: any other makes its textures again).
 inline bool PrepareBridge(ID3D11Device* device, UINT width, UINT height) {
-  return twattila::dlaa_bridge::Prepare(device, width, height, false, rays, twattila::frame_generation::Format(), false,
+  std::array<UINT, 2> output = {};
+  {
+    const std::shared_lock lock(internal::state.mutex);
+    output = internal::OutputSize(width, height);
+  }
+  return twattila::dlaa_bridge::Prepare(device, output[0], output[1], false, rays, twattila::frame_generation::Format(), false,
                                         twattila::dlaa_bridge::UPSCALER_DLSS, twattila::feature_settings::AaSettings(sliders).frame_backend);
+}
+
+// The kept scene depth's size (the render's; 0 before one was kept).
+inline std::array<UINT, 2> SceneSize() {
+  const std::shared_lock lock(internal::state.mutex);
+  return internal::state.depth_size;
 }
 
 // The scene's depth as last kept (one texture through the frames: before this frame's resolve, the last frame's view of
@@ -406,15 +431,13 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   std::array<float, 16> previous_view_projection = {};
   bool continued = false;
   bool camera_seen = false;
-  // Below 100% (the upscaler drew the frame before, its target larger), no rays: DLSS to the upscaler's size; else DLAA
-  // at the tone mapper's.
-  std::array<UINT, 2> output = {width, height};
-  bool below = false;
+  // Below 100% (the upscaler drew the frame before, its target larger): DLSS to the upscaler's size, with the rays too (their
+  // captures at the render size: rt_core's Host::depth_at_render_size); else DLAA at the tone mapper's.
+  std::array<UINT, 2> output = {};
   {
     const std::unique_lock lock(state.mutex);
     state.display = {width, height};
-    below = internal::BelowFullScale(width, height);
-    if (below && !rays) output = state.upscaler;
+    output = internal::OutputSize(width, height);
     camera = state.camera;
     camera_seen = camera.frame == state.frame;
     if (state.depth_frame == state.frame) depth = state.depth;
@@ -500,7 +523,7 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     }
   }
   auto& bridge = twattila::dlaa_bridge::bridge;
-  if (!PrepareBridge(device.Get(), output[0], output[1])) {
+  if (!PrepareBridge(device.Get(), width, height)) {
     report(std::format("off: {}", bridge.status));
     return;
   }
@@ -613,7 +636,7 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   if (upscaled) {
     report(std::format("on, DLSS {}x{} to {}x{} (Resolution Scale below 100%).", width, height, output[0], output[1]));
   } else {
-    report(std::format("on, {}x{}{}.", width, height, (below ? " (below 100% with ray tracing: Feral's upscaler after)" : "")));
+    report(std::format("on, {}x{}.", width, height));
   }
   twattila::frame_trace::Mark(std::format("DLAA {}x{} to {}x{} jitter {} {}{}", width, height, output[0], output[1], camera.jitter[0],
                                           camera.jitter[1], (continued ? "" : " reset")));

@@ -12,9 +12,13 @@
 // 7. rt_water_plane (TestWaterPlane). 8-9. ocean00 / 01 and waterplane00 against the game's csos (TestWaters).
 // 10. rt_capture / rt_rows_cascade_rigid and _variant against the game's 0xAC25DAB8 / 0x7B067623 / 0xB0E006EE (TestPlacedShadow).
 // 11. rt_capture_cascade_cloth / imposter / tree / far_tree / unit through Pharaoh's outside-view geometry shaders against the
-//     game's 0x8A00A1D4 / 0xE3DA20D4 / 0x5851CA62 / 0x6F20485E / 0x30C453EE / 0xA22FA941 (TestCascadeLeaves).
+//     game's 0x8A00A1D4 / 0xE3DA20D4 / 0x5851CA62 / 0x6F20485E / 0x30C453EE / 0xA22FA941, sail / rope against 0xA42F9EDE /
+//     0xF7EDF855 / 0x4E3EE717 (TestCascadeLeaves).
 // 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
 // 13. Coloured Shadows in shaders/sunlight00-03 (TestSunTint).
+// 14. autoexposure00's Modded Auto Exposure against the game's 0x8233E11F (TestAutoExposure).
+// 15. indicator00-02's Indicator Brightness against the game's 0xD12FA660 / 0xC454C1EA / 0xC57C222D (TestIndicators).
+// 16. campaignoverlay00 at 33% against 100% and the game's 0xD7E27B35 (TestCampaignOverlay).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -39,6 +43,8 @@
 #include "../../src/games/twpharaohdynasties/rt_outside_view_leaf_gs.h"
 // __rt_outside_view_world: the same for its soldiers and horses (their world alone).
 #include "../../src/games/twpharaohdynasties/rt_outside_view_world_gs.h"
+// ShaderInjectData: the HDR addon's b13 (parts 8-9's Water Clarity and Caustics).
+#include "../../src/games/twshogun2completeedition/shared.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -957,10 +963,39 @@ struct WaterShader {
   std::vector<float> ocean_scalars;  // b4 (ocean ultra's ocean_PS)
 };
 
+// #include from the folders of the files opened so far, the latest first, as fxc finds shared.h's ../../shaders/renodx.hlsl
+// (D3D_COMPILE_STANDARD_FILE_INCLUDE looked from the first file's folder; the compiler's parent pointers aren't the buffers given).
+class FolderInclude : public ID3DInclude {
+ public:
+  explicit FolderInclude(const std::filesystem::path& root) : folders_{root} {}
+  HRESULT __stdcall Open(D3D_INCLUDE_TYPE, LPCSTR name, LPCVOID, LPCVOID* data, UINT* bytes) noexcept override {
+    const auto folder = std::find_if(folders_.rbegin(), folders_.rend(),
+                                     [name](const std::filesystem::path& candidate) { return std::filesystem::exists(candidate / name); });
+    if (folder == folders_.rend()) return E_FAIL;
+    const std::filesystem::path path = std::filesystem::weakly_canonical(*folder / name);
+    if (std::ranges::find(folders_, path.parent_path()) == folders_.end()) folders_.push_back(path.parent_path());
+    std::ifstream file(path, std::ios::binary);
+    const std::vector<char> text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    auto* copy = new char[text.size() + 1];
+    std::memcpy(copy, text.data(), text.size());
+    *data = copy;
+    *bytes = static_cast<UINT>(text.size());
+    return S_OK;
+  }
+  HRESULT __stdcall Close(LPCVOID data) noexcept override {
+    delete[] static_cast<const char*>(data);
+    return S_OK;
+  }
+
+ private:
+  std::vector<std::filesystem::path> folders_;
+};
+
 // 8-9. shaders/ocean00, ocean01 and waterplane00 (the rays' reflection in the water's pixel shaders) against the game's
 //      (0x16ADFD60's, 0x6B8954A6's, 0x9B9EC116's csos) on a 32 x 32 target, same inputs, in the probe and the sky branch: the rays unbound, bound with no
 //      hits (share 0), or flagged off (b10 0: CONTROL): the five outputs the game's; the rays' light (share 1, flags 1): the
-//      colour changes where the mask is 1 and nowhere else.
+//      colour changes where the mask is 1 and nowhere else. waterplane00's Water Clarity and Caustics (b13): at clarity 1,
+//      caustics 0 the game's outputs; clarity 4 and caustics 1 each change the colour (CONTROL that they reach it).
 static void TestWater(const std::string& games, const std::string& folder, const WaterShader& water) {
   std::ifstream file(folder + "/0x" + water.hash + ".ps_5_0.cso", std::ios::binary);
   const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -968,11 +1003,12 @@ static void TestWater(const std::string& games, const std::string& folder, const
   ComPtr<ID3DBlob> vertex_code;
   ComPtr<ID3DBlob> ours_code;
   ComPtr<ID3DBlob> errors;
+  FolderInclude include(path + L"/twshogun2completeedition/shaders");
   if (game_code.empty()
       || FAILED(D3DCompile(water.vertex_source, std::strlen(water.vertex_source), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0,
                            vertex_code.GetAddressOf(), errors.GetAddressOf()))
       || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/" + water.ours + L".ps_5_0.hlsl").c_str(), nullptr,
-                                   D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(),
+                                   &include, "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(),
                                    errors.GetAddressOf()))) {
     std::printf("missing 0x%s, or %s\n", water.hash, errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
     std::exit(2);
@@ -1078,7 +1114,8 @@ static void TestWater(const std::string& games, const std::string& folder, const
   const std::array<uint32_t, 4> flags_off = {};
   const std::array<ComPtr<ID3D11Buffer>, 2> flags = {Constants(flags_off.data(), 16), Constants(flags_on.data(), 16)};
   // One pass: its five outputs (RGBA x 3, then two singles), as floats.
-  const auto run = [&](ID3D11PixelShader* pixel_shader, ID3D11Buffer* environment_buffer, ID3D11ShaderResourceView* rays_view, ID3D11Buffer* flag) {
+  const auto run = [&](ID3D11PixelShader* pixel_shader, ID3D11Buffer* environment_buffer, ID3D11ShaderResourceView* rays_view, ID3D11Buffer* flag,
+                       ID3D11Buffer* injection = nullptr) {
     std::array<ComPtr<ID3D11Texture2D>, 5> outputs;
     std::array<ComPtr<ID3D11RenderTargetView>, 5> targets;
     std::array<ID3D11RenderTargetView*, 5> bound = {};
@@ -1103,6 +1140,7 @@ static void TestWater(const std::string& games, const std::string& folder, const
       context->PSSetShaderResources(47, 1, &rays_view);
       context->PSSetConstantBuffers(10, 1, &flag);
     }
+    if (injection != nullptr) context->PSSetConstantBuffers(13, 1, &injection);
     context->RSSetViewports(1, &viewport);
     context->OMSetRenderTargets(5, bound.data(), nullptr);
     context->Draw(3, 0);
@@ -1117,6 +1155,18 @@ static void TestWater(const std::string& games, const std::string& folder, const
   };
   const auto same = [](float x, float y) { return (std::isnan(x) && std::isnan(y)) || std::fabs(x - y) <= (1e-4f * std::max(std::fabs(x), std::fabs(y))) + 1e-5f; };
   size_t differs_unbound = 0, differs_kept = 0, changed = 0, changed_outside = 0, control_changed = 0;
+  const bool water_rows = std::wcscmp(water.ours, L"waterplane00_0x9B9EC116") == 0;
+  size_t differs_neutral = 0, clearer = 0, caustics = 0;
+  const auto injection = [](float clarity, float strength) {
+    ShaderInjectData data = {};
+    data.water_clarity = clarity;
+    data.water_caustics = strength;
+    // A constant buffer's size in whole registers.
+    std::array<float, ((sizeof(ShaderInjectData) + 15) / 16) * 4> registers = {};
+    std::memcpy(registers.data(), &data, sizeof(data));
+    return Constants(registers.data(), sizeof(registers));
+  };
+  const std::array<ComPtr<ID3D11Buffer>, 3> water_settings = {injection(1.f, 0.f), injection(4.f, 0.f), injection(1.f, 1.f)};
   for (const float probes : {1.f, 0.f}) {
     environment[17] = probes;  // g_specular_probes_count
     const auto environment_buffer = Constants(environment.data(), sizeof(environment));
@@ -1125,6 +1175,18 @@ static void TestWater(const std::string& games, const std::string& folder, const
     const auto no_hits = run(ours.Get(), environment_buffer.Get(), rays[0].Get(), flags[1].Get());
     const auto control = run(ours.Get(), environment_buffer.Get(), rays[1].Get(), flags[0].Get());
     const auto hits = run(ours.Get(), environment_buffer.Get(), rays[1].Get(), flags[1].Get());
+    if (water_rows) {
+      const auto neutral = run(ours.Get(), environment_buffer.Get(), nullptr, nullptr, water_settings[0].Get());
+      const auto clear = run(ours.Get(), environment_buffer.Get(), nullptr, nullptr, water_settings[1].Get());
+      const auto rippled = run(ours.Get(), environment_buffer.Get(), nullptr, nullptr, water_settings[2].Get());
+      for (size_t output = 0; output < 5; ++output) {
+        for (size_t value = 0; value < reference[output].size(); ++value) {
+          differs_neutral += same(neutral[output][value], reference[output][value]) ? 0 : 1;
+          clearer += same(clear[output][value], reference[output][value]) ? 0 : 1;
+          caustics += same(rippled[output][value], reference[output][value]) ? 0 : 1;
+        }
+      }
+    }
     for (size_t output = 0; output < 5; ++output) {
       const size_t channels = (output < 3) ? 4 : 1;
       for (size_t value = 0; value < reference[output].size(); ++value) {
@@ -1142,6 +1204,11 @@ static void TestWater(const std::string& games, const std::string& folder, const
   CHECK(differs_unbound == 0 && differs_kept == 0, "%s: %zu values differ unbound, %zu with no hits", name.c_str(), differs_unbound, differs_kept);
   CHECK(changed > 0 && changed_outside == 0, "%s: %zu colour values changed under the mask, %zu elsewhere", name.c_str(), changed, changed_outside);
   CHECK(control_changed == 0, "CONTROL %s: %zu values changed with the flags off", name.c_str(), control_changed);
+  if (water_rows) {
+    CHECK(differs_neutral == 0, "%s: %zu values differ at clarity 1, caustics 0", name.c_str(), differs_neutral);
+    CHECK(clearer > 0 && caustics > 0, "CONTROL %s: clarity 4 changed %zu values, caustics 1 %zu", name.c_str(), clearer, caustics);
+    std::printf("%s: clarity 1, caustics 0 the game's; clarity 4 changes %zu values, caustics 1 %zu\n", name.c_str(), clearer, caustics);
+  }
   std::printf("%s 32x32, probe and sky branches: the game's outputs unbound / no hits / flags off; %zu colour values the rays' under the mask\n",
               name.c_str(), changed);
 }
@@ -1368,12 +1435,34 @@ static void TestPlacedShadow(const std::string& games, const std::string& folder
 //     (TEXCOORD1) the game's (a far card's: the atlas view its pixel shader 0x6190CA61 reads where the blend is over half, u - 0.25
 //     (view + 1), else u - 0.25 view); a card the game fades out wholly (TEXCOORD1.w 0) a NaN. rt_capture_cascade_unit (soldiers and
 //     horses) against 0xA22FA941 with a random animation map at t0 (two bones a corner, its instance's row): TEXCOORD0 the game's
-//     SV_Position, through the world-only geometry shader. Through Pharaoh's outside-view geometry shader with a main view at cb0[10-13] (as rt_core streams them out): the
+//     SV_Position, through the world-only geometry shader. rt_capture_cascade_sail (ships' sails and sail symbols) against
+//     0xA42F9EDE / 0xF7EDF855 with a random world_matrix at b1, rt_capture_cascade_rope against 0x4E3EE717 (ribbons turned to
+//     the camera at c0, world alone). Through Pharaoh's outside-view geometry shader with a main view at cb0[10-13] (as rt_core streams them out): the
 //     triangles wholly outside it (the CPU's test of the game's corners) kept, their world positions and UVs (two halves in w) the
 //     game's; the others collapsed onto their first corner. CONTROL: the view turned away keeps another set.
 struct ClothVertex {
   std::array<std::array<float, 4>, 4> inputs;  // v0-v3
 };
+
+// A ship's sail (0xA42F9EDE, 0xF7EDF855: POSITION0, TEXCOORD0-2, COLOR0-1) or rope (0x4E3EE717: POSITION0, NORMAL0, TEXCOORD0-2).
+struct NavalVertex {
+  std::array<std::array<float, 4>, 6> inputs;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC SAIL_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+static const D3D11_INPUT_ELEMENT_DESC ROPE_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32G32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0}};
 
 // The trees' vertex: POSITION0-6 (POSITION4 the UV), TEXCOORD0-6 (two instance row sets at 0-2 and 4-6).
 struct TreeVertex {
@@ -1446,7 +1535,8 @@ static void TestCascadeLeaf(const std::string& games, const std::string& folder,
   };
   const auto game_world = run(game_code.data(), game_code.size(), "SV_POSITION", 0, 4);
   // A far card's TEXCOORD1: the UV, the atlas view and the blend toward the next.
-  auto game_uv = run(game_code.data(), game_code.size(), "TEXCOORD", 1, atlas ? 4 : 2);
+  auto game_uv = with_uv ? run(game_code.data(), game_code.size(), "TEXCOORD", 1, atlas ? 4 : 2)
+                         : std::vector<std::array<float, 4>>(vertices.size());
   if (atlas) {
     // CONTROL: the cards look at all four views, each with its next under and over half.
     uint32_t seen = 0;
@@ -1508,8 +1598,8 @@ static void TestCascadeLeaf(const std::string& games, const std::string& folder,
   CHECK(bad_world == 0 && bad_uv == 0, "%s: %zu world components, %zu UV components differ from the game's", name, bad_world, bad_uv);
   CHECK(bad_kept == 0 && kept > 0 && collapsed > 0, "%s: %zu streamed corners wrong, %zu kept, %zu collapsed", name, bad_kept, kept, collapsed);
   CHECK(turned_differs > 0, "CONTROL: %s: the view turned away kept the same triangles", name);
-  std::printf("%ls (0x%s): %zu corners the game's world and UV; %zu of %zu triangles out of view kept, %zu differ turned away\n", capture_name,
-              name, vertices.size(), kept, vertices.size() / 3, turned_differs);
+  std::printf("%ls (0x%s): %zu corners the game's world%s; %zu of %zu triangles out of view kept, %zu differ turned away\n", capture_name,
+              name, vertices.size(), with_uv ? " and UV" : "", kept, vertices.size() / 3, turned_differs);
 }
 
 static void TestCascadeLeaves(const std::string& games, const std::string& folder) {
@@ -1613,6 +1703,34 @@ static void TestCascadeLeaves(const std::string& games, const std::string& folde
   }
   TestCascadeLeaf(games, folder, "A22FA941", L"rt_capture_cascade_unit", UNIT_LAYOUT, units, card_constants, CascadeCorners::world,
                   animation_view.Get());
+  // Sails: their mesh near the origin, a random turn and place in world_matrix (three registers, a column each); ropes: their
+  // ribbons around random points, the shadow camera at c0.
+  const float sail_turn = spread(random) * 3.14159f;
+  const std::array<float, 12> sail_world = {std::cos(sail_turn), 0.f, std::sin(sail_turn), 60.f * spread(random), 0.f, 1.f, 0.f, 60.f * spread(random),
+                -std::sin(sail_turn), 0.f, std::cos(sail_turn), 60.f * spread(random)};
+  const auto sail_buffer = Constants(sail_world.data(), sizeof(sail_world));
+  std::vector<NavalVertex> naval;
+  for (int triangle = 0; triangle < 64; ++triangle) {
+    const std::array<float, 3> centre = {100.f * spread(random), 100.f * spread(random), 100.f * spread(random)};
+    for (int corner = 0; corner < 3; ++corner) {
+      NavalVertex vertex = {};
+      for (auto& input : vertex.inputs) input = {spread(random), spread(random), spread(random), spread(random)};
+      vertex.inputs[0] = {centre[0] + (3.f * spread(random)), centre[1] + (3.f * spread(random)), centre[2] + (3.f * spread(random)), 1.f};
+      vertex.inputs[3][0] = 0.5f + (0.5f * spread(random));  // the rope's width (its TEXCOORD1.x), the sail's TEXCOORD2
+      naval.push_back(vertex);
+    }
+  }
+  const std::array<ID3D11Buffer*, 2> sail_constants = {camera_buffer.Get(), sail_buffer.Get()};
+  TestCascadeLeaf(games, folder, "A42F9EDE", L"rt_capture_cascade_sail", SAIL_LAYOUT, naval, sail_constants);
+  TestCascadeLeaf(games, folder, "F7EDF855", L"rt_capture_cascade_sail", SAIL_LAYOUT, naval, sail_constants);
+  std::array<float, 44 * 4> rope_camera = {};
+  for (int row = 0; row < 4; ++row) rope_camera[((10 + row) * 4) + row] = 1.f;
+  rope_camera[0] = 30.f;
+  rope_camera[1] = 400.f;
+  rope_camera[2] = -20.f;
+  const auto rope_camera_buffer = Constants(rope_camera.data(), sizeof(rope_camera));
+  const std::array<ID3D11Buffer*, 1> rope_constants = {rope_camera_buffer.Get()};
+  TestCascadeLeaf(games, folder, "4E3EE717", L"rt_capture_cascade_rope", ROPE_LAYOUT, naval, rope_constants, CascadeCorners::world);
 }
 
 // 12. rt_capture_cascade_tree_leaves (Shadow Casters Out of View's leaves): a dissolved tree's leaves left out (NaN) exactly where the
@@ -1728,34 +1846,6 @@ static void TestLeafFade(const std::string& games, const std::string& folder) {
 //     G-buffer, depth, shadow, AO, probes and lighting: the filter 1 everywhere (all of the sun's colour taken out) gives what
 //     the sun colour (lighting c1) 0 gives unbound, so every use of the sun's colour is filtered; unbound the sun lights the
 //     picture (it differs from c1 0). CONTROL: a filter of 0.5 differs from both.
-// #include from the folders of the files opened so far, the latest first, as fxc finds shared.h's ../../shaders/renodx.hlsl
-// (D3D_COMPILE_STANDARD_FILE_INCLUDE looked from the first file's folder; the compiler's parent pointers aren't the buffers given).
-class FolderInclude : public ID3DInclude {
- public:
-  explicit FolderInclude(const std::filesystem::path& root) : folders_{root} {}
-  HRESULT __stdcall Open(D3D_INCLUDE_TYPE, LPCSTR name, LPCVOID, LPCVOID* data, UINT* bytes) noexcept override {
-    const auto folder = std::find_if(folders_.rbegin(), folders_.rend(),
-                                     [name](const std::filesystem::path& candidate) { return std::filesystem::exists(candidate / name); });
-    if (folder == folders_.rend()) return E_FAIL;
-    const std::filesystem::path path = std::filesystem::weakly_canonical(*folder / name);
-    if (std::ranges::find(folders_, path.parent_path()) == folders_.end()) folders_.push_back(path.parent_path());
-    std::ifstream file(path, std::ios::binary);
-    const std::vector<char> text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    auto* copy = new char[text.size() + 1];
-    std::memcpy(copy, text.data(), text.size());
-    *data = copy;
-    *bytes = static_cast<UINT>(text.size());
-    return S_OK;
-  }
-  HRESULT __stdcall Close(LPCVOID data) noexcept override {
-    delete[] static_cast<const char*>(data);
-    return S_OK;
-  }
-
- private:
-  std::vector<std::filesystem::path> folders_;
-};
-
 struct SunShader {
   const wchar_t* file;
   UINT lighting_slot;
@@ -1918,6 +2008,310 @@ static void TestSunTint(const std::string& games) {
   }
 }
 
+// 14. shaders/autoexposure00 (the game's auto exposure, cs_compute_tone_mapper_brightness 0x8233E11F: the mean luma along four
+//     focal points' crosses) on a 64 x 64 picture of luma 0.2 with a fire (five texels of 400) on the first cross, the last
+//     frame's brightness 1 (a whole second's adaptation, so the result is the target): Modded Auto Exposure off (b13 all 0)
+//     the game's cso's brightness; on (4 stops) brighter than off (the fire weighs less). CONTROL: on without the fire the
+//     same as off.
+static void TestAutoExposure(const std::string& games, const std::string& folder) {
+  std::ifstream file(folder + "/0x8233E11F.cs_5_0.cso", std::ios::binary);
+  const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const std::wstring path(games.begin(), games.end());
+  FolderInclude include(path + L"/twshogun2completeedition/shaders");
+  ComPtr<ID3DBlob> ours_code;
+  ComPtr<ID3DBlob> errors;
+  if (game_code.empty()
+      || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/autoexposure00_0x8233E11F.cs_5_0.hlsl").c_str(), nullptr, &include,
+                                   "main", "cs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(), errors.GetAddressOf()))) {
+    std::printf("missing 0x8233E11F, or %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+    std::exit(2);
+  }
+  ComPtr<ID3D11ComputeShader> game;
+  ComPtr<ID3D11ComputeShader> ours;
+  device->CreateComputeShader(game_code.data(), game_code.size(), nullptr, game.GetAddressOf());
+  device->CreateComputeShader(ours_code->GetBufferPointer(), ours_code->GetBufferSize(), nullptr, ours.GetAddressOf());
+  const std::array<float, 4> tone_mapping = {1.f, 0.f, 0.f, 0.f};
+  const auto tone_mapping_buffer = Constants(tone_mapping.data(), sizeof(tone_mapping));
+  // Auto_exposure_cb: 4 points (c0.x), their places (c1-c4.xy), the cross radius 8 (c32.z), target exposure -2 (c32.w),
+  // adaptation speeds 10 (c33.xy), max correction 10 (c33.z), sensitivity 0 (c33.w), a second's delta time (c34.x).
+  std::array<float, 35 * 4> exposure = {};
+  exposure[0] = std::bit_cast<float>(4u);
+  const std::array<std::array<float, 2>, 4> points = {{{0.25f, 0.25f}, {0.75f, 0.25f}, {0.25f, 0.75f}, {0.75f, 0.75f}}};
+  for (size_t point = 0; point < points.size(); ++point) std::ranges::copy(points[point], exposure.begin() + ((1 + point) * 4));
+  exposure[(32 * 4) + 2] = std::bit_cast<float>(8u);
+  exposure[(32 * 4) + 3] = -2.f;
+  exposure[(33 * 4) + 0] = exposure[(33 * 4) + 1] = 10.f;
+  exposure[(33 * 4) + 2] = 10.f;
+  exposure[34 * 4] = 1.f;
+  const auto exposure_buffer = Constants(exposure.data(), sizeof(exposure));
+  const auto injection = [](float protection) {
+    ShaderInjectData data = {};
+    data.auto_exposure_highlight_protection = protection;
+    data.auto_exposure_highlight_headroom_stops = 4.f;
+    std::array<float, ((sizeof(ShaderInjectData) + 15) / 16) * 4> registers = {};
+    std::memcpy(registers.data(), &data, sizeof(data));
+    return Constants(registers.data(), sizeof(registers));
+  };
+  const std::array<ComPtr<ID3D11Buffer>, 2> protections = {injection(0.f), injection(1.f)};
+  // The brightness one dispatch leaves from the last frame's 1.
+  const auto run = [&](ID3D11ComputeShader* shader, bool fire, ID3D11Buffer* protection) {
+    std::vector<std::array<float, 4>> picture(64 * 64, {0.2f, 0.2f, 0.2f, 1.f});
+    if (fire) {
+      for (int x = 14; x <= 18; ++x) picture[(16 * 64) + x] = {400.f, 400.f, 400.f, 1.f};
+    }
+    const auto picture_view = Srv(Texture(64, 64, DXGI_FORMAT_R32G32B32A32_FLOAT, picture.data(), 64 * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+    const std::array<float, 4> last = {1.f, 0.f, 0.f, 0.f};
+    const D3D11_BUFFER_DESC output_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS,
+                                           .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, .StructureByteStride = 16};
+    const D3D11_SUBRESOURCE_DATA output_data = {.pSysMem = last.data()};
+    ComPtr<ID3D11Buffer> output;
+    device->CreateBuffer(&output_desc, &output_data, output.GetAddressOf());
+    const D3D11_UNORDERED_ACCESS_VIEW_DESC uav_desc = {.Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER,
+                                                       .Buffer = {.FirstElement = 0, .NumElements = 1}};
+    ComPtr<ID3D11UnorderedAccessView> output_view;
+    device->CreateUnorderedAccessView(output.Get(), &uav_desc, output_view.GetAddressOf());
+    const std::array<ID3D11Buffer*, 2> constants = {tone_mapping_buffer.Get(), exposure_buffer.Get()};
+    context->CSSetShader(shader, nullptr, 0);
+    context->CSSetConstantBuffers(0, 2, constants.data());
+    if (protection != nullptr) context->CSSetConstantBuffers(13, 1, &protection);
+    context->CSSetShaderResources(0, 1, picture_view.GetAddressOf());
+    context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
+    context->Dispatch(1, 1, 1);
+    context->ClearState();
+    const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    ComPtr<ID3D11Buffer> staging;
+    device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf());
+    context->CopyResource(staging.Get(), output.Get());
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    float brightness = 0.f;
+    std::memcpy(&brightness, mapped.pData, 4);
+    context->Unmap(staging.Get(), 0);
+    return brightness;
+  };
+  const float game_fire = run(game.Get(), true, nullptr);
+  const float off_fire = run(ours.Get(), true, protections[0].Get());
+  const float on_fire = run(ours.Get(), true, protections[1].Get());
+  const float off_plain = run(ours.Get(), false, protections[0].Get());
+  const float on_plain = run(ours.Get(), false, protections[1].Get());
+  CHECK(Near(off_fire, game_fire, 1e-5f), "autoexposure00 off: brightness %f, the game's %f", off_fire, game_fire);
+  CHECK(on_fire > off_fire * 1.5f, "autoexposure00 on: brightness %f, off %f", on_fire, off_fire);
+  CHECK(on_plain == off_plain, "CONTROL autoexposure00 without the fire: on %f, off %f", on_plain, off_plain);
+  std::printf("autoexposure00: with a fire on a cross off %.4f (the game's %.4f), Modded Auto Exposure on %.4f; without it %.4f both\n",
+              off_fire, game_fire, on_fire, on_plain);
+}
+
+// 15. shaders/indicator00-02 (indicator ps30_main, ps30_main_deferred, ps30_main_to_overlay) against the game's csos on a 32 x 32
+//     target cleared to -1 (discarded pixels keep it), random textures (indicator colour, G-buffer constants, depth) and
+//     interpolants, a view depth of 40 x the depth texture: in HDR at brightness 1 and in SDR at 2 the game's, bit for bit;
+//     in HDR at 2 the colour twice the game's where it drew, alpha and discards the game's.
+static void TestIndicators(const std::string& games, const std::string& folder) {
+  constexpr char VERTEX_SOURCE[] =
+      "struct Out { float4 position : SV_Position; float4 uv : TEXCOORD0; float3 world : TEXCOORD1; float4 colour : COLOR0;"
+      "  float4 depth : TEXCOORD2; };"
+      "Out main(uint id : SV_VertexID) {"
+      "  Out o; const float2 p = float2((id << 1) & 2, id & 2);"
+      "  o.position = float4(p * float2(2, -2) + float2(-1, 1), 0, 1);"
+      "  o.uv = float4(p * 3.7f, 0, 0); o.world = float3(p.x * 100, p.y * 80 - 20, 0);"
+      "  o.colour = float4(0.3f + p.x, 0.9f - p.y * 0.2f, 0.5f, 0.2f + p.y); o.depth = float4(0, 0, p.x * 60 + p.y * 30, 1);"
+      "  return o; }";
+  ComPtr<ID3DBlob> vertex_code;
+  D3DCompile(VERTEX_SOURCE, sizeof(VERTEX_SOURCE) - 1, nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_code.GetAddressOf(), nullptr);
+  ComPtr<ID3D11VertexShader> vertex;
+  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex.GetAddressOf());
+  std::mt19937 random(15);
+  std::uniform_real_distribution<float> unit(0.f, 1.f);
+  const auto texture = [&](UINT size, DXGI_FORMAT format, UINT channels) {
+    std::vector<float> texels(static_cast<size_t>(size) * size * channels);
+    for (auto& texel : texels) texel = unit(random);
+    return Srv(Texture(size, size, format, texels.data(), size * channels * 4, D3D11_BIND_SHADER_RESOURCE).Get());
+  };
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 3> views = {texture(8, DXGI_FORMAT_R32G32B32A32_FLOAT, 4),
+                                                                 texture(8, DXGI_FORMAT_R32G32B32A32_FLOAT, 4),
+                                                                 texture(32, DXGI_FORMAT_R32_FLOAT, 1)};
+  std::array<float, 44 * 4> camera = {};
+  camera[1] = 30.f;                    // camera_position.y
+  camera[(28 * 4) + 2] = 40.f;         // inv_projection's z column: view depth 40 x the depth
+  camera[(29 * 4) + 3] = 1.f;          // its w column
+  camera[(35 * 4) + 2] = 0.5f;         // g_texel_offset
+  camera[(37 * 4) + 0] = camera[(37 * 4) + 1] = 32.f;  // screen_size
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_WRAP, .AddressW = D3D11_TEXTURE_ADDRESS_WRAP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  const auto injection = [](float hdr, float brightness) {
+    ShaderInjectData data = {};
+    data.hdr = hdr;
+    data.indicator_brightness = brightness;
+    std::array<float, ((sizeof(ShaderInjectData) + 15) / 16) * 4> registers = {};
+    std::memcpy(registers.data(), &data, sizeof(data));
+    return Constants(registers.data(), sizeof(registers));
+  };
+  const std::array<ComPtr<ID3D11Buffer>, 3> settings = {injection(1.f, 1.f), injection(0.f, 2.f), injection(1.f, 2.f)};
+  const std::wstring path(games.begin(), games.end());
+  for (const auto& [hash, name] : std::array<std::pair<const char*, const wchar_t*>, 3>{
+           {{"D12FA660", L"indicator00_0xD12FA660"}, {"C454C1EA", L"indicator01_0xC454C1EA"}, {"C57C222D", L"indicator02_0xC57C222D"}}}) {
+    std::ifstream file(folder + "/0x" + hash + ".ps_5_0.cso", std::ios::binary);
+    const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    FolderInclude include(path + L"/twshogun2completeedition/shaders");
+    ComPtr<ID3DBlob> ours_code;
+    ComPtr<ID3DBlob> errors;
+    if (game_code.empty()
+        || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/" + name + L".ps_5_0.hlsl").c_str(), nullptr, &include, "main",
+                                     "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(), errors.GetAddressOf()))) {
+      std::printf("missing 0x%s, or %s\n", hash, errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+      std::exit(2);
+    }
+    ComPtr<ID3D11PixelShader> game;
+    ComPtr<ID3D11PixelShader> ours;
+    device->CreatePixelShader(game_code.data(), game_code.size(), nullptr, game.GetAddressOf());
+    device->CreatePixelShader(ours_code->GetBufferPointer(), ours_code->GetBufferSize(), nullptr, ours.GetAddressOf());
+    const auto run = [&](ID3D11PixelShader* pixel_shader, ID3D11Buffer* injected) {
+      const auto target = Texture(32, 32, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET);
+      ComPtr<ID3D11RenderTargetView> target_view;
+      device->CreateRenderTargetView(target.Get(), nullptr, target_view.GetAddressOf());
+      const std::array<float, 4> cleared = {-1.f, -1.f, -1.f, -1.f};
+      context->ClearRenderTargetView(target_view.Get(), cleared.data());
+      std::array<ID3D11ShaderResourceView*, 3> bound = {views[0].Get(), views[1].Get(), views[2].Get()};
+      const D3D11_VIEWPORT viewport = {.Width = 32.f, .Height = 32.f, .MaxDepth = 1.f};
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->VSSetShader(vertex.Get(), nullptr, 0);
+      context->PSSetShader(pixel_shader, nullptr, 0);
+      context->PSSetShaderResources(0, 3, bound.data());
+      context->PSSetSamplers(0, 1, sampler.GetAddressOf());
+      context->PSSetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
+      context->PSSetConstantBuffers(13, 1, &injected);
+      context->RSSetViewports(1, &viewport);
+      context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+      context->Draw(3, 0);
+      context->ClearState();
+      const auto bytes = Read(target.Get(), 16);
+      std::vector<float> values(bytes.size() / 4);
+      std::memcpy(values.data(), bytes.data(), bytes.size());
+      return values;
+    };
+    const auto reference = run(game.Get(), nullptr);
+    const auto neutral = run(ours.Get(), settings[0].Get());
+    const auto sdr = run(ours.Get(), settings[1].Get());
+    const auto brighter = run(ours.Get(), settings[2].Get());
+    size_t differs = 0, drawn = 0, discarded = 0, bad_brighter = 0;
+    for (size_t value = 0; value < reference.size(); ++value) {
+      differs += (neutral[value] == reference[value] && sdr[value] == reference[value]) ? 0 : 1;
+      const bool kept = reference[value - (value % 4) + 3] != -1.f;
+      const float expected = (kept && (value % 4) < 3) ? reference[value] * 2.f : reference[value];
+      bad_brighter += (brighter[value] == expected) ? 0 : 1;
+      if (value % 4 == 3) (kept ? drawn : discarded) += 1;
+    }
+    CHECK(differs == 0 && bad_brighter == 0, "%ls: %zu values differ at 1 / in SDR, %zu not twice the colour at 2", name, differs, bad_brighter);
+    CHECK(drawn > 0, "CONTROL %ls: nothing drawn", name);
+    std::printf("%ls: %zu of 1024 pixels drawn (%zu discarded) the game's at 1 and in SDR, twice its colour at 2 in HDR\n", name, drawn,
+                discarded);
+  }
+}
+
+// 16. shaders/campaignoverlay00 (the campaign map's terrain overlay, the game's 0xD7E27B35): at 100% (16 x 16) the game's bit for
+//     bit; at 33% (the same depth in the top-left 16 x 16 of a 48 x 48 target, the viewport 16 x 16, the camera's display size
+//     48) the same picture there within 1e-4 (its lookups blend bilinearly, so the map positions' rounding moves it little).
+//     CONTROL: the game's at 33% differs from its 100%.
+static void TestCampaignOverlay(const std::string& games, const std::string& folder) {
+  constexpr char VERTEX_SOURCE[] =
+      "float4 main(uint id : SV_VertexID) : SV_Position {"
+      "  const float2 p = float2((id << 1) & 2, id & 2); return float4(p * float2(2, -2) + float2(-1, 1), 0, 1); }";
+  ComPtr<ID3DBlob> vertex_code;
+  D3DCompile(VERTEX_SOURCE, sizeof(VERTEX_SOURCE) - 1, nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_code.GetAddressOf(), nullptr);
+  ComPtr<ID3D11VertexShader> vertex;
+  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex.GetAddressOf());
+  std::ifstream file(folder + "/0xD7E27B35.ps_5_0.cso", std::ios::binary);
+  const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const std::wstring path(games.begin(), games.end());
+  ComPtr<ID3DBlob> ours_code;
+  ComPtr<ID3DBlob> errors;
+  if (game_code.empty()
+      || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/campaignoverlay00_0xD7E27B35.ps_5_0.hlsl").c_str(), nullptr,
+                                   D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(),
+                                   errors.GetAddressOf()))) {
+    std::printf("missing 0xD7E27B35, or %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+    std::exit(2);
+  }
+  ComPtr<ID3D11PixelShader> game;
+  ComPtr<ID3D11PixelShader> ours;
+  device->CreatePixelShader(game_code.data(), game_code.size(), nullptr, game.GetAddressOf());
+  device->CreatePixelShader(ours_code->GetBufferPointer(), ours_code->GetBufferSize(), nullptr, ours.GetAddressOf());
+  constexpr UINT SIZE = 16;
+  std::mt19937 random(16);
+  std::uniform_real_distribution<float> unit(0.f, 1.f);
+  std::vector<float> depth(SIZE * SIZE);
+  for (auto& value : depth) value = unit(random);
+  std::vector<uint32_t> lookup(64);
+  for (auto& value : lookup) value = static_cast<uint32_t>(random() % 8u);
+  std::vector<float> palette(8 * 4);
+  for (auto& value : palette) value = unit(random);
+  const auto lookup_view = Srv(Texture(8, 8, DXGI_FORMAT_R32_UINT, lookup.data(), 32, D3D11_BIND_SHADER_RESOURCE).Get());
+  const auto palette_view = Srv(Texture(8, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, palette.data(), 128, D3D11_BIND_SHADER_RESOURCE).Get());
+  // The map: x 0.5 ndc.x + 0.5, y 0.5 ndc.y + 0.1 depth + 0.5, w 1 (cb0[30], [32], [33]); the area 0..1, blend 0.8.
+  const std::array<float, 12> shroud = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f, 1.f};
+  const auto shroud_buffer = Constants(shroud.data(), sizeof(shroud));
+  const std::array<float, 4> overlay = {0.8f, 0.f, 0.f, 0.f};
+  const auto overlay_buffer = Constants(overlay.data(), sizeof(overlay));
+  // One pass at `scale` (1 or 3): the target and textures scale x SIZE, the depth in their top-left, the viewport SIZE.
+  const auto run = [&](ID3D11PixelShader* pixel_shader, UINT scale) {
+    const UINT size = SIZE * scale;
+    std::vector<float> placed(static_cast<size_t>(size) * size);
+    for (auto& value : placed) value = unit(random);
+    for (UINT y = 0; y < SIZE; ++y) std::copy_n(depth.begin() + (y * SIZE), SIZE, placed.begin() + (y * size));
+    const auto depth_view = Srv(Texture(size, size, DXGI_FORMAT_R32_FLOAT, placed.data(), size * 4, D3D11_BIND_SHADER_RESOURCE).Get());
+    const auto colour_view = Srv(Texture(size, size, DXGI_FORMAT_R32_FLOAT, placed.data(), size * 4, D3D11_BIND_SHADER_RESOURCE).Get());
+    std::array<float, 43 * 4> camera = {};
+    camera[(30 * 4) + 0] = 0.5f;
+    camera[(30 * 4) + 3] = 0.5f;
+    camera[(32 * 4) + 1] = 0.5f;
+    camera[(32 * 4) + 2] = 0.1f;
+    camera[(32 * 4) + 3] = 0.5f;
+    camera[(33 * 4) + 3] = 1.f;
+    camera[(37 * 4) + 0] = camera[(37 * 4) + 1] = static_cast<float>(size);
+    camera[(38 * 4) + 0] = camera[(38 * 4) + 1] = static_cast<float>(SIZE);
+    camera[(42 * 4) + 0] = camera[(42 * 4) + 1] = 1.f / static_cast<float>(size - 1);
+    const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+    const auto target = Texture(size, size, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET);
+    ComPtr<ID3D11RenderTargetView> target_view;
+    device->CreateRenderTargetView(target.Get(), nullptr, target_view.GetAddressOf());
+    const std::array<ID3D11ShaderResourceView*, 4> views = {colour_view.Get(), depth_view.Get(), lookup_view.Get(), palette_view.Get()};
+    const std::array<ID3D11Buffer*, 3> constants = {camera_buffer.Get(), shroud_buffer.Get(), overlay_buffer.Get()};
+    const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(SIZE), .Height = static_cast<float>(SIZE), .MaxDepth = 1.f};
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(vertex.Get(), nullptr, 0);
+    context->PSSetShader(pixel_shader, nullptr, 0);
+    context->PSSetShaderResources(0, 4, views.data());
+    context->PSSetConstantBuffers(0, 3, constants.data());
+    context->RSSetViewports(1, &viewport);
+    context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+    context->Draw(3, 0);
+    context->ClearState();
+    const auto bytes = Read(target.Get(), 16);
+    std::vector<float> values(SIZE * SIZE * 4);
+    for (UINT y = 0; y < SIZE; ++y) std::memcpy(values.data() + (y * SIZE * 4), bytes.data() + (static_cast<size_t>(y) * size * 16), SIZE * 16);
+    return values;
+  };
+  const auto game_full = run(game.Get(), 1);
+  const auto ours_full = run(ours.Get(), 1);
+  const auto game_third = run(game.Get(), 3);
+  const auto ours_third = run(ours.Get(), 3);
+  size_t full_differs = 0, third_differs = 0, control_differs = 0;
+  float most_apart = 0.f;
+  for (size_t value = 0; value < game_full.size(); ++value) {
+    full_differs += (ours_full[value] == game_full[value]) ? 0 : 1;
+    most_apart = std::max(most_apart, std::fabs(ours_third[value] - ours_full[value]));
+    third_differs += (std::fabs(ours_third[value] - ours_full[value]) <= 1e-4f) ? 0 : 1;
+    control_differs += (std::fabs(game_third[value] - game_full[value]) <= 1e-4f) ? 0 : 1;
+  }
+  CHECK(full_differs == 0, "campaignoverlay00 at 100%%: %zu values differ from the game's", full_differs);
+  CHECK(third_differs == 0, "campaignoverlay00 at 33%%: %zu values apart from 100%% (at most %g)", third_differs, most_apart);
+  CHECK(control_differs > 0, "CONTROL campaignoverlay00: the game's 33%% the same as its 100%%");
+  std::printf("campaignoverlay00: 100%% the game's bit for bit; 33%% within %g of 100%%; the game's 33%% %zu of %zu values apart\n", most_apart,
+              control_differs, game_full.size());
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -1947,6 +2341,9 @@ int main(int argc, char** argv) {
                                           VARIANT_SHADOW_LAYOUT, 8, 6);
     TestCascadeLeaves(games, argv[3]);
     TestLeafFade(games, argv[3]);
+    TestAutoExposure(games, argv[3]);
+    TestIndicators(games, argv[3]);
+    TestCampaignOverlay(games, argv[3]);
   }
   TestSunTint(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);

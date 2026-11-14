@@ -64,11 +64,6 @@ struct ShaderInjectData {
   // float vfxdebugslice;
   // float vfxdebugmode;
 
-  // Auto-exposure controls are appended so every existing injection offset
-  // remains unchanged.
-  // float auto_exposure_highlight_protection;     // 0: stock, 1: protected
-  // float auto_exposure_highlight_headroom_stops; // 1 - 4 seems to work fine
-
   // Appended.
   float lensflare;
   float sharpening;
@@ -144,6 +139,11 @@ struct ShaderInjectData {
   float v35_highlight_saturation;
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
+
+  // Parity round (2026-11-14), appended.
+  float someindicators;  // fx_indicator: x the colour (1: the game's bytes run)
+  float auto_exposure_highlight_protection;      // fx_autoexposurecs: 0 the game's bytes run, 1 each sample capped
+  float auto_exposure_highlight_headroom_stops;  // the cap: stops over the average the last exposure was made for
 };
 
 #define SI shader_injection
@@ -167,10 +167,6 @@ struct ShaderInjectData {
       SI.saturation, 1.f, 100.f, 1.f, 1.f, 0, SI.cone_response_exponent,       \
       0.18f, 0.18f, 1.f, 1, 1.f, 0.f, SI.hue_shift)
 
-
-// // For the modded auto exposure
-// #define AutoExposureHighlightProtection     SI.auto_exposure_highlight_protection
-// #define AutoExposureHighlightHeadroomStops  SI.auto_exposure_highlight_headroom_stops
 
 // FOR VFX AND EXTRA STUFF
 #define HDR                       SI.hdr

@@ -11,12 +11,24 @@
 //    Map and UpdateSubresource; another buffer's uploads never stand for it; untraced, nothing is watched and what was kept
 //    is dropped (CONTROL: the first draw traced again reads nothing, not the last light). Cost a call (printed): the map /
 //    unmap events of another buffer untraced and traced, the light buffer's, the light draw's read.
+// 4. The instanced light draws' lights (Attila's POINT_LIGHTS: colour POSITION1, position and reach POSITION2, one
+//    buffer; read three frames on): the frame's lights in v160's order, each position once, to the bit (v160's float sort and
+//    unique copied below): ties of one position with other colours, -0 and +0, zero and -0 reach, a coordinate's few
+//    values; random frames of 16384 (two draws, repeats, the 8192 cap reached); a still camera (the places of the frame
+//    before: other colours, zeros as -0, then one light moved); a NaN coordinate. Cost (printed): v160's sort of a
+//    16384-light frame, the reading draw now (new places, the frame before's places), a draw that only copies.
 #include <windows.h>
 #include <d3d11_4.h>
+#include <d3dcompiler.h>
 #include <wrl/client.h>
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <limits>
+#include <random>
 #include <vector>
 #include "src/games/twattila/rt_scene.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
@@ -236,6 +248,218 @@ int main() {
   });
   immediate->PSSetConstantBuffers(2, 1, mapped_light.GetAddressOf());
   time_lights("light draw (b2 read, AddLocalLight, BindLocalLights none)", CALLS / 10, [&] { core::OnPointLightDraw(light_command); });
+
+  // 4.
+  core::internal::light_constants_slot = core::internal::NO_LIGHT_CONSTANTS;
+  constexpr char LIGHT_VS[] = "struct In { float3 mesh : POSITION0; float4 colour : POSITION1; float4 light : POSITION2; };"
+                              "float4 main(In input) : SV_Position { return float4(input.mesh, 1) + input.colour + input.light; }";
+  ComPtr<ID3DBlob> light_vs;
+  CHECK(SUCCEEDED(D3DCompile(LIGHT_VS, sizeof(LIGHT_VS) - 1, nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, &light_vs, nullptr)));
+  const std::array<D3D11_INPUT_ELEMENT_DESC, 3> elements = {{
+      {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"POSITION", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+      {"POSITION", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+  }};
+  ComPtr<ID3D11InputLayout> input_layout;
+  CHECK(SUCCEEDED(device->CreateInputLayout(elements.data(), static_cast<UINT>(elements.size()), light_vs->GetBufferPointer(),
+                                            light_vs->GetBufferSize(), &input_layout)));
+  core::internal::point_light_layouts[reinterpret_cast<uintptr_t>(input_layout.Get())] = {{.semantic_index = 1, .slot = 1, .offset = 0},
+                                                                                          {.semantic_index = 2, .slot = 1, .offset = 16}};
+  immediate->IASetInputLayout(input_layout.Get());
+  struct Instance {
+    std::array<float, 4> colour;
+    std::array<float, 4> light;
+  };
+  using Draws = std::vector<std::vector<Instance>>;
+  // v160's (rt_scene.hpp OnPointLightDraw at 703aae32), then AddLocalLights' cap and reach test.
+  const auto old_order = [](std::vector<core::LocalLight>* lights) {
+    std::ranges::sort(*lights, {}, &core::LocalLight::light);
+    const auto repeated = std::ranges::unique(*lights, {}, &core::LocalLight::light);
+    lights->erase(repeated.begin(), repeated.end());
+  };
+  const auto read_lights = [](const Draws& draws) {
+    std::vector<core::LocalLight> lights;
+    for (const auto& draw : draws) {
+      for (const Instance& instance : draw) {
+        core::LocalLight light = {.light = instance.light, .colour = instance.colour};
+        for (size_t channel = 0; channel < 3; ++channel) light.colour[channel] *= core::internal::host.local_light_scale;
+        lights.push_back(light);
+      }
+    }
+    return lights;
+  };
+  const auto expected_drawn = [&](const Draws& draws) {
+    auto lights = read_lights(draws);
+    old_order(&lights);
+    std::vector<core::LocalLight> drawn;
+    for (const core::LocalLight& light : lights) {
+      if (drawn.size() >= core::internal::MAX_LOCAL_LIGHTS) break;
+      if (light.light[3] > 0.f) drawn.push_back(light);
+    }
+    return drawn;
+  };
+  const auto same_bits = [](const std::vector<core::LocalLight>& a, const std::vector<core::LocalLight>& b) {
+    return std::ranges::equal(a, b, [](const core::LocalLight& x, const core::LocalLight& y) {
+      return std::memcmp(x.light.data(), y.light.data(), sizeof(x.light)) == 0 && std::memcmp(x.colour.data(), y.colour.data(), sizeof(x.colour)) == 0
+             && x.shadows_only == y.shadows_only;
+    });
+  };
+  // A frame: its draws (instances at slot 1), the lights read at its first (the frame's three before); ms of that first draw.
+  const auto instanced_frame = [&](const Draws& draws, std::vector<core::LocalLight>* drawn) {
+    std::vector<ComPtr<ID3D11Buffer>> buffers;
+    for (const auto& draw : draws) {
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = static_cast<UINT>(std::max<size_t>(draw.size(), 1) * sizeof(Instance)),
+                                      .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+      const D3D11_SUBRESOURCE_DATA data = {.pSysMem = draw.data()};
+      if (FAILED(device->CreateBuffer(&desc, draw.empty() ? nullptr : &data, buffers.emplace_back().GetAddressOf()))) return -1.;
+    }
+    {
+      const std::unique_lock lock(runtime.mutex);
+      ++runtime.frame;
+      runtime.settings.local_lights = true;
+      runtime.lights_drawn.clear();
+    }
+    double first_ms = 0.;
+    for (size_t index = 0; index <= draws.size(); ++index) {
+      // One draw without instances first: the frame's read on its own.
+      ID3D11Buffer* buffer = (index == 0) ? buffers.empty() ? nullptr : buffers[0].Get() : buffers[index - 1].Get();
+      const UINT stride = sizeof(Instance);
+      const UINT offset = 0;
+      immediate->IASetVertexBuffers(1, 1, &buffer, &stride, &offset);
+      light_command.arguments.instance_count = (index == 0) ? 0 : static_cast<UINT>(draws[index - 1].size());
+      const auto start = std::chrono::steady_clock::now();
+      core::OnPointLightDraw(light_command);
+      if (index == 0) first_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    }
+    const std::unique_lock lock(runtime.mutex);
+    *drawn = runtime.lights_drawn;
+    return first_ms;
+  };
+  // Frames whose lights tie: every combination of a few values (-0 and +0 in each coordinate, -0 and 0 reach), each three
+  // times with its own colour, shuffled.
+  std::mt19937 generator(1114);
+  std::vector<Draws> frames;
+  {
+    std::vector<Instance> ties;
+    const std::array<float, 4> xs = {-0.f, 0.f, 1.f, -1.f};
+    const std::array<float, 3> ys = {0.f, -0.f, 2.f};
+    const std::array<float, 2> zs = {-0.f, 0.f};
+    const std::array<float, 4> reaches = {0.f, 5.f, -0.f, 7.f};
+    for (int copy = 0; copy < 3; ++copy) {
+      for (float x : xs) {
+        for (float y : ys) {
+          for (float z : zs) {
+            for (float reach : reaches) {
+              ties.push_back({.colour = {static_cast<float>(ties.size()), 1.f, 2.f, static_cast<float>(copy)}, .light = {x, y, z, reach}});
+            }
+          }
+        }
+      }
+    }
+    for (int repeat = 0; repeat < 4; ++repeat) {
+      std::ranges::shuffle(ties, generator);
+      frames.push_back({ties});
+      frames.push_back({std::vector(ties.begin(), ties.begin() + 100), std::vector(ties.begin() + 100, ties.end())});
+    }
+  }
+  // Random frames of 16384 in two draws: positions on a coarse grid (x and y tie often), a third repeats of earlier lights
+  // (its colour or another), reach 0 for some; then all distinct (the cap: 8192 of 16384).
+  const auto random_frame = [&](bool distinct) {
+    std::vector<Instance> lights;
+    std::uniform_int_distribution<int> grid(-40, 40);
+    std::uniform_real_distribution<float> any(-2000.f, 2000.f);
+    std::uniform_int_distribution<int> reach(0, 30);
+    while (lights.size() < 16384) {
+      if (!distinct && lights.size() > 16 && generator() % 3 == 0) {
+        Instance repeat = lights[generator() % lights.size()];
+        if (generator() % 2 == 0) repeat.colour[0] += 1.f;
+        lights.push_back(repeat);
+        continue;
+      }
+      const float x = distinct ? any(generator) : 0.5f * static_cast<float>(grid(generator));
+      const float y = distinct ? any(generator) : static_cast<float>(grid(generator) % 4);
+      lights.push_back({.colour = {static_cast<float>(generator() % 256), static_cast<float>(generator() % 256), 0.25f, 0.f},
+                        .light = {x, y, any(generator), static_cast<float>(reach(generator))}});
+    }
+    return Draws{std::vector(lights.begin(), lights.begin() + 10000), std::vector(lights.begin() + 10000, lights.end())};
+  };
+  for (int repeat = 0; repeat < 6; ++repeat) frames.push_back(random_frame(false));
+  for (int repeat = 0; repeat < 3; ++repeat) frames.push_back(random_frame(true));
+  // A still camera: the places of the frame before with other colours (the order taken again), then the zero coordinates
+  // as -0 (the same keys, other bits: still the float sort's order, each light this frame's), then a moved light.
+  {
+    Draws still = random_frame(false);
+    frames.push_back(still);
+    for (auto& draw : still) {
+      for (Instance& instance : draw) instance.colour[1] += 2.f;
+    }
+    frames.push_back(still);
+    size_t zeros = 0;
+    for (auto& draw : still) {
+      for (Instance& instance : draw) {
+        for (float& coordinate : instance.light) {
+          if (coordinate == 0.f) {
+            coordinate = -0.f;
+            ++zeros;
+          }
+        }
+      }
+    }
+    CHECK(zeros > 100);
+    frames.push_back(still);
+    still[1][5].light[0] += 0.25f;
+    frames.push_back(still);
+  }
+  {
+    Draws nan_frame = random_frame(false);
+    nan_frame[0][77].light[1] = std::numeric_limits<float>::quiet_NaN();
+    frames.push_back(nan_frame);
+  }
+  frames.push_back({});
+  // Each frame read three frames on (then empty frames to read the last three).
+  size_t big_checked = 0;
+  for (size_t shown = 0; shown < frames.size() + 3; ++shown) {
+    std::vector<core::LocalLight> drawn;
+    CHECK(instanced_frame((shown < frames.size()) ? frames[shown] : Draws{}, &drawn) >= 0.);
+    if (shown < 3) {
+      CHECK(drawn.empty());
+      continue;
+    }
+    const auto expected = expected_drawn(frames[shown - 3]);
+    CHECK(same_bits(drawn, expected));
+    if (expected.size() == core::internal::MAX_LOCAL_LIGHTS) ++big_checked;
+  }
+  CHECK(big_checked >= 3);
+  std::printf("4 instanced lights: %zu frames (ties, -0 / +0, zero reach, 16384 a frame, the 8192 cap, a still camera, NaN): v160's order and lights, "
+              "to the bit\n", frames.size());
+  // Cost: a 16384-light frame (repeats), two of them in turn (new places each read), then one again and again (a still
+  // camera).
+  std::vector<double> old_ms;
+  std::vector<double> moved_ms;
+  std::vector<double> still_ms;
+  std::vector<double> copying_ms;
+  const std::array<Draws, 2> timed = {random_frame(false), random_frame(false)};
+  for (int run = 0; run < 18; ++run) {
+    const Draws& frame_draws = timed[(run < 9) ? (run % 2) : 0];
+    auto lights = read_lights(frame_draws);
+    const auto start = std::chrono::steady_clock::now();
+    old_order(&lights);
+    old_ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+    std::vector<core::LocalLight> drawn;
+    for (int repeat = 0; repeat < 3; ++repeat) copying_ms.push_back(instanced_frame(Draws{}, &drawn));
+    CHECK(instanced_frame(frame_draws, &drawn) >= 0.);
+    copying_ms.push_back(instanced_frame(Draws{}, &drawn));
+    copying_ms.push_back(instanced_frame(Draws{}, &drawn));
+    ((run < 9) ? moved_ms : still_ms).push_back(instanced_frame(Draws{}, &drawn));
+    CHECK(same_bits(drawn, expected_drawn(frame_draws)));
+  }
+  const auto median = [](std::vector<double> values) {
+    std::ranges::sort(values);
+    return values[values.size() / 2];
+  };
+  std::printf("4 a 16384-light frame: v160's sort + unique %.3f ms; the reading draw now (read, sort, add) %.3f ms, its places as the "
+              "frame before %.3f ms; a draw reading nothing %.3f ms (medians)\n",
+              median(old_ms), median(moved_ms), median(still_ms), median(copying_ms));
   std::printf("PASS\n");
   return 0;
 }

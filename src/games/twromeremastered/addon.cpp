@@ -726,9 +726,13 @@ void BuildRuntimeData() {
                             }};
   }
   for (const uint32_t hash : TONE_MAPPER_SHADERS) {
+    // The rays' Debug View on the tone mapper's output: after DLAA at 100%; below it before DLSS, which upscales it as the
+    // picture (its result replaces the upscaler's, not this output).
     custom_shaders[hash].on_drawn = [](reshade::api::command_list* cmd_list) {
+      const bool below = twromeremastered::dlaa::RenderScale() < 1.f;
+      if (below) twattila::rt_scene::OnTonemapDrawn(cmd_list);
       twromeremastered::dlaa::OnToneMapped(cmd_list);
-      twattila::rt_scene::OnTonemapDrawn(cmd_list);
+      if (!below) twattila::rt_scene::OnTonemapDrawn(cmd_list);
     };
   }
   for (const uint32_t hash : SMAA_EDGE_AND_WEIGHT_SHADERS) {

@@ -18,8 +18,8 @@
 //   RT_LEAF: A709F459 (rigidleaf_v3 vs40_shadow): TEXCOORD1 the UV of 6CA31B12's t0 test, TEXCOORD2's xyz the world.
 //   RT_CARD: EB2A56A1 (rigidtreebillboard vs40_shadow, turned to the shadow camera): TEXCOORD0 the card's UV and view (z; -1
 //     one face) of 31718466's t2 test, TEXCOORD1's xyz the world.
-//   RT_WORLD_UV: Warhammer II's 7D979F60 (rigidcampaignvegetation vs40_shadow): TEXCOORD0's xyz the world, TEXCOORD1 the UV of
-//     5906CF6E's t0 test.
+//   RT_WORLD_UV: Warhammer II's 7D979F60 and Pharaoh's 3368E9E7 (rigidcampaignvegetation vs40_shadow): TEXCOORD0's xyz the
+//     world, TEXCOORD1 the UV of 5906CF6E's (Pharaoh's C7350ED5) t0 test.
 //   RT_CARD_SPLIT: Warhammer II's 75914932 (rigidtreebillboard vs40_shadow): TEXCOORD0 the card's UV, its view's whole part (z)
 //     and the blend to the next (w) of B7ED5B72's t0 test, TEXCOORD1's xyz the world, TEXCOORD2's x 1 - the card's fade.
 // CMake's shader rule takes no gs_ target: after a change run from the repository's root, once a variant

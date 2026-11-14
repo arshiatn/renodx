@@ -200,6 +200,7 @@ void main(
   r0.z = -1.44269502 * r0.z;
   r0.z = exp2(r0.z);
   r0.z = 1 + -r0.z;
+  r0.z *= SI.dof;  // Depth of Field slider: the blur's circle of confusion, 0 = off
   r2.x = 0.00066666666 * g_viewport_dimensions.x;
   r0.z = r0.z + r0.z;
   r3.xyzw = r1.xyzw;
@@ -219,6 +220,7 @@ void main(
     r5.x = -1.44269502 * r5.x;
     r5.x = exp2(r5.x);
     r5.x = 1 + -r5.x;
+    r5.x *= SI.dof;
     r5.y = cmp(r1.w < r4.w);
     r5.z = min(r5.x, r0.z);
     r5.x = r5.y ? r5.z : r5.x;

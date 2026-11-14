@@ -1,5 +1,42 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
+### Parity round (2026-11-14; built only, not run in game)
+
+New (Experimental rows start off; RT/PT turns on what it turns on in Attila unless marked):
+- **SDR (monitors without HDR)** preset button, and on the first start without an HDR display the add-on starts in SDR.
+- **With vanilla unit sizes**: the graphics preset for the game's unit sizes (beside the 4x / 8x one).
+- Rays' scene: **Far Tree Shadows** and **Sprite Soldier Shadows** (Experimental, off; RT/PT leaves them off), the campaign's trees, cloth, sails and ropes. Cloth and sails let light through (**Coloured Shadows** shows) and **Smooth Banner Shadows** (Experimental) is there.
+- **Fog Strength** (Extra): the battle fog's thickness, 1 the game's.
+- **Texture LOD Bias on All Textures** (Experimental), as Warhammer III's.
+- **Smoke Shadows without rays** (Experimental, off), as Attila's.
+- Soldiers' shadow distance 0 while Skip the Shadow Maps leaves the sun's map without casters (as Attila's).
+- **Fog Shadows** and **Torch and Fire Light in Fog** (both Experimental, off; RT/PT turns them on).
+- **Small Soldiers as Sprites** and **Sprite Size** (Experimental, off).
+- Bend: **Light Through Banners**, **Coloured Shadows** and **Light Through Foliage** (Experimental, off), also with in-game MSAA.
+
+Proven offline: the captures (cloth, sails, ropes) against the game's bytes on WARP; fog with no rays bit-identical; Fog Strength 1 bit-identical; foliage draw order in all 56 of ATN's traces with foliage; highlight indicator, depth of field and the game's SSAO right below 100% (only the view depth from their NDC). Hue Clip measured on Rome II's own chain (test/tw_psychov35): 90 by Attila's rule; the default stays 80.
+
+Test (ATN):
+- First start with no ReShade.ini on an SDR monitor: SDR preset applied. SDR button on an HDR one: SDR picture.
+- A battle with RT shadows, Skip the Shadow Maps on: far trees, sprite soldiers (Far Tree / Sprite Soldier Shadows on), banners, tents, sails and ropes cast ray shadows; soldiers keep theirs.
+- A campaign: the campaign's trees cast ray shadows.
+- Fog Strength 0 / 2 in a foggy battle; Fog Shadows on: light shafts, no black fog; with Torch and Fire Shadows, torches light the fog at night.
+- Bend: Light Through Foliage 0.5: grass and leaf shadows lighter, walls and soldiers' not; also with in-game MSAA. Light Through Banners on a battle with tents.
+- Smoke Shadows without rays (Bend or the game's shadows): smoke darkens the ground below it.
+- Small Soldiers as Sprites on in a big battle: FPS against off, sprites at Sprite Size.
+- Texture LOD Bias on All Textures on, below 100%: sharper ground.
+- Everything above off: the picture as before.
+
+Not done:
+- Light Through All Banners: Rome II's banner material (rigidtextureblend) is drawn in 36 / 41 of 72 traces, also by other meshes. Smallest step: read data.pack's army_banner_flag models' material, or one trace with banners in view.
+- Particle Resolution, Smooth Half-Size Particles and the 26 soft-particle rows below 100%: the particles read the depth through cb_vfx's g_viewport_offset_scale, which no trace logged. Smallest step: one 50% battle trace with fire and smoke logging 97D98192's b3. The virtual texture's page_touch 28C847C0 waits on the same trace (its cb2).
+- Grass Height Distance: Rome II's grass has no height shrink or colour fade; its pixel shaders drop every blade past 200 m. Smallest step: read the grass cells' reach in empire.retail.dll before a 200 m slider.
+- Water reflection rows (Quality, Rays, Denoiser) and the scrub skip: not reached this round.
+- The game's MSAA sun shaders (24) are over-patched below 100% in the scale census; below 100% needs an upscaler, which in-game MSAA stops.
+- Tessellated rigid objects and terrain (in-game tessellation, in no run) and the sail symbol (on its sail) stay out of the rays' scene.
+
+Build: `cmake --build build32 --config Release --target renodx-twrome2.addon32`.
+
 ### Faster Game CPU Code (2026-11-14; installed as "rome2 r3" with Round 3, stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 New:

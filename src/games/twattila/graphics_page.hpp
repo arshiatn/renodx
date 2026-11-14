@@ -220,6 +220,9 @@ struct Bindings {
   float* rays_grass_counts_later = nullptr;  // rt_core.hpp Settings::indirect_counts_later; null: no such row
   float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
   float* scale_fix_gi_shadow = nullptr;  // Warhammer III: its GI grid and shadow blur below 100%
+  // Object motion written by the game's own draws and the units' records (object_motion.hpp: the addon reads it at start);
+  // null: no such row (Attila: always).
+  float* motion_in_draw = nullptr;
   // With path-traced Light Bounce (rt_core.hpp Settings::lights_in_bounce, light_ratio): torch and fire light, or their
   // shadows, from the paths' samples; null: no such rows.
   float* lights_in_bounce = nullptr;
@@ -709,6 +712,20 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .is_visible = more(&more_aa, upscaling),
       });
     }
+    if (b.motion_in_draw != nullptr) {
+      page.Add(new Setting{
+          .key = "AntiAliasingMotionInDraw",
+          .binding = b.motion_in_draw,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Object Motion in the Game's Draws (Experimental)",
+          .section = section,
+          .tooltip = "Soldiers, plants, props and cloth give their motion as the game draws them, not drawn a second time.\n"
+                     "Faster with many soldiers. Applies after a restart.",
+          .is_global = true,
+          .is_visible = more(&more_aa, upscaling),
+      });
+    }
     if (b.scale_fix_gi_shadow != nullptr) {
       page.Add(new Setting{
           .key = "ScaleFixGiShadowBlur",
@@ -963,6 +980,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     }
     page.Take({.match = "RayTracedTreeReach", .section = section, .shown = more_rays, .only_some_games = true});
     page.Take({.match = "RayTracedShadowMapSize", .section = section, .shown = more_rays, .only_some_games = true});
+    page.Take({.match = "RayTracedShadowCascades", .section = section, .shown = more_rays, .only_some_games = true});
     if (b.rays_one_at_a_place != nullptr) {
       page.Add(new Setting{
           .key = "RayTracedOneAtAPlace",

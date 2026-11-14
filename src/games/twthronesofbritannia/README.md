@@ -9,6 +9,7 @@ New:
 - **Unit/Building Indicator Brightness (Experimental, 1 = the game's)** and **VFX Brightness: Flame, Dust, Clouds & Smoke (Experimental, 1 = the game's)**, on Attila's shaders (this game's are the same).
 - **Modded Auto Exposure + Sensitivity (Experimental, off)**: the sun, fires and sparks pull the exposure down less. This game meters on the CPU; the row limits the brightest value it reads, as Attila's does on the GPU.
 - **Water Clarity now works on the battle sea and the campaign sea and lake** (they had their own fade the slider didn't reach). At 1 they look as before.
+- **Object Motion in the Game's Draws (Experimental, off; Anti-Aliasing's More Options, applies after a restart)**: as Attila's, soldiers, plants, props, cloth and the sea give their motion while the game draws them instead of being drawn a second time, and the soldiers' motion is recorded at the frame's end. Faster with many soldiers. Off: as before. Also as Attila: cloth, sails and ropes record their motion faster.
 
 Fixed:
 - Frame generation: the lens flares and the vignette are part of the picture the generated frames are made from (no flares stuck on the HUD), as Attila.
@@ -17,7 +18,8 @@ Fixed:
 
 Not done:
 - VFX Brightness: Snowflakes, Rain & Fire Sparks and Blood Splash & Storm Fog: Attila picks them by the particle texture's layers, unread here. Smallest step: a snow battle and a storm with ReShade's texture view of the particle array.
-- Object motion vectors in the game's own draws and the units' records (Attila only): 23 of 32 shaders are Attila's, the rest this game's. Smallest step: the 23 same shaders first.
+- Below 100% with the game's Shader Model set to 4 or 4.1 (gfx_shadermodel 1 / 2) and Screen Space Reflections on: the reflections' march can run past the right and bottom of the view (its 4 shaders for those models; Shader Model 5, the default, is fixed). Smallest step: the fix of the Shader Model 5 shaders in theirs, after a trace showing them drawn.
+- The terrain's virtual texture page pass below 100%: no trace has drawn it yet.
 - The campaign's far terrain and its sea bed stay out of the rays (on purpose: just under the near terrain). The 24 MSAA passes: with in-game MSAA no upscaler runs.
 - Torch and Fire Shadows / Light from Path Tracing: the shared torch step; this game can take them.
 
@@ -30,6 +32,8 @@ Test (ATN):
 6. Frame generation on, camera past the sun: lens flares move with the picture, none on the HUD.
 7. 50% render size: the flare hides behind a hill as the sun does; unit markers on the units.
 8. Campaign map: the two map sprites (borders, icons) as before, no bright rims.
+9. Object Motion in the Game's Draws on, restart, DLSS, a big battle: no "Object motion: could not create" or "refused" in ReShade.log; soldiers, grass, trees, sails and the sea without smears (Upscaling Debug View Object Motion); FPS against off.
+10. The same with the camera still and the battle paused: no motion on still soldiers (shields and spears steady).
 
 Build: `cmake --build build32 --config Release --target renodx-twthronesofbritannia.addon32`.
 

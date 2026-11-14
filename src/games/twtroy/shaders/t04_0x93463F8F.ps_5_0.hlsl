@@ -1,5 +1,5 @@
 // TROY t04 - hdr_to_screen. MSAA, DOF on, distortion off.
-// Multipliers: SI.filmgrain.
+// Multipliers: SI.filmgrain, SI.dof (the DOF spiral's radius).
 // DOF-on variants have no god rays, no glow and no disable_post_processing
 // branch - those live in dof00. The DOF spiral is stock and scale-safe.
 // HDR paths identical to t01. Needs in-game Brightness 10, Gamma 22.
@@ -175,7 +175,7 @@ void main(
   r0.z = -1.44269502 * r0.z;
   r0.z = exp2(r0.z);
   r0.z = 1 + -r0.z;
-  r2.x = 0.00066666666 * g_viewport_dimensions.x;
+  r2.x = 0.00066666666 * g_viewport_dimensions.x * SI.dof;  // Depth of Field: the spiral's radius, 0 = sharp, 1 = the game's
   r0.z = r0.z + r0.z;
   r3.xyzw = r1.xyzw;
   r2.yzw = float3(1,0.5,0);

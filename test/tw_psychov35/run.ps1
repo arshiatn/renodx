@@ -56,6 +56,8 @@ $toneMappers = [ordered]@{
   'a_t06' = 'twattila\shaders\t06_0xCC79C76F.ps_5_0.hlsl'; 'a_t07' = 'twattila\shaders\t07_0x836B7901.ps_5_0.hlsl'
   'a_t08' = 'twattila\shaders\t08_0xF42FDDC6.ps_5_0.hlsl'; 'a_t09' = 'twattila\shaders\t09_0x95398068.ps_4_0.hlsl'
   'a_t10' = 'twattila\shaders\t10_0x6E20B0EF.ps_4_0.hlsl'; 'w_t00' = 'twwarhammer3\shaders\t00_0xE2EE82F8.ps_5_0.hlsl'
+  # Rome II's chain: part 4's report only (no bit comparison).
+  'r_t00' = 'twrome2\shaders\t00_0xEE1DA45C.ps_4_0.hlsl'; 'r_t01' = 'twrome2\shaders\t01_0x850AEE44.ps_4_0.hlsl'
 }
 $beforeShaders = Join-Path $testBuild 'before_cso'
 $afterShaders = Join-Path $testBuild 'after_cso'

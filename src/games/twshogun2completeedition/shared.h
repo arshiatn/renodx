@@ -124,6 +124,15 @@ struct ShaderInjectData {
   float sss_ignore_edges;
   float sss_along_ray;
   float sss_mirror_edges;
+  // waterplane00 (rivers and lakes in battles): Attila's Water Clarity (the water's depth before its deep colour / this; 0 or
+  // 1 the game's) and Water Caustics (the bed's light x 1 + caustics x this; 0 off). The DLSS addon's WaterClarity / WaterCaustics.
+  float water_clarity;
+  float water_caustics;
+  // autoexposure00: Attila's Modded Auto Exposure (its keys): 1 each metered luma at most the last frame's exposure's luma x
+  // 2^stops (isolated highlights weigh less; the picture's brightness untouched), 0 the game's.
+  float auto_exposure_highlight_protection;
+  float auto_exposure_highlight_headroom_stops;
+  float indicator_brightness;  // indicator00-02 in HDR: Attila's Unit/Building Indicator Brightness (some_indicators), 1 the game's
 };
 
 #define SI  shader_injection

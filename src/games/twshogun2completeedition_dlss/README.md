@@ -544,3 +544,9 @@ Grass shadow range (RayTracedGrassShadowRange), AO under Ray Reconstruction (Ray
 rows SSS hard shadow samples, fade-out samples, ignore edge pixels, sample along the ray, mirror screen edges. Shadow casters
 out of view's tooltip names soldiers, horses and far trees (they cast from out of view now). RT/PT and Reset take the new
 ray-tracing keys as Attila's. Details, test lines and what's not done: the HDR addon's README, same heading.
+
+### Parity round 2 (2026-11-14; built only, not run in game)
+
+New Experimental rows, off: Water clarity and Water caustics (Graphics, Attila's WaterClarity / WaterCaustics), Torch and
+fire light in fog (RayTracedLightGlow, under Ray-traced fog shadows; in Reset, not in RT/PT). Shadow casters out of view also
+takes ships' sails and ropes. Details and test lines: the HDR addon's README, same heading.

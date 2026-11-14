@@ -892,6 +892,13 @@ struct PointLightCopy {
 };
 // A streamed light record (LightInstances::stream_shader): the light (position, reach), then its colour.
 constexpr UINT STREAMED_LIGHT_BYTES = 32;
+// A read light's position and reach as two keys (each float's bits ordered as the floats compare, -0 as +0) and its place
+// in the frame's read order (OnPointLightDraw's sort).
+struct LightKey {
+  uint64_t high;
+  uint64_t low;
+  uint32_t index;
+};
 struct PointLightReadback {
   ComPtr<ID3D11Device> device;
   std::array<ComPtr<ID3D11Buffer>, 3> staging;
@@ -903,6 +910,9 @@ struct PointLightReadback {
   ComPtr<ID3D11GeometryShader> stream_output;
   ComPtr<ID3D11Buffer> streamed;
   bool stream_failed = false;
+  // The last sorted frame's keys in read order, and the read places its sort and unique kept, in their order.
+  std::vector<LightKey> keys;
+  std::vector<uint32_t> order;
 };
 static PointLightReadback point_light_readback;
 
@@ -1122,9 +1132,43 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
         }
       }
       native->Unmap(buffer.Get(), 0);
-      std::ranges::sort(lights, {}, &LocalLight::light);
-      const auto repeated = std::ranges::unique(lights, {}, &LocalLight::light);
-      lights.erase(repeated.begin(), repeated.end());
+      // Each position once, in the order std::ranges::sort(lights, {}, &LocalLight::light) and std::ranges::unique leave
+      // them (AddLocalLights keeps that order up to its cap; the trace's partial sort follows it in ties). The same sort and
+      // unique run on LightKey: the same comparisons' outcomes, so the same order, without moving the lights or comparing
+      // four floats each time. That outcome is the keys' alone: a frame whose keys are the last sorted frame's (lights in
+      // the same places, a still camera) takes its order, whatever the colours (the float sort took 0.8 ms a frame of
+      // Attila's render thread at Constantinople). A NaN coordinate has no order: the float sort then.
+      if (std::ranges::any_of(lights, [](const LocalLight& light) { return std::ranges::any_of(light.light, [](float value) { return std::isnan(value); }); })) {
+        std::ranges::sort(lights, {}, &LocalLight::light);
+        const auto repeated = std::ranges::unique(lights, {}, &LocalLight::light);
+        lights.erase(repeated.begin(), repeated.end());
+      } else {
+        const auto ordered = [](float value) -> uint64_t {
+          const auto bits = std::bit_cast<uint32_t>(value);
+          if ((bits & 0x7FFFFFFFu) == 0u) return 0x80000000u;
+          return ((bits & 0x80000000u) != 0u) ? ~bits : (bits | 0x80000000u);
+        };
+        const auto same_place = [](const internal::LightKey& a, const internal::LightKey& b) { return a.high == b.high && a.low == b.low; };
+        std::vector<internal::LightKey> keys;
+        keys.reserve(lights.size());
+        for (const LocalLight& light : lights) {
+          keys.push_back({.high = (ordered(light.light[0]) << 32) | ordered(light.light[1]),
+                          .low = (ordered(light.light[2]) << 32) | ordered(light.light[3]),
+                          .index = static_cast<uint32_t>(keys.size())});
+        }
+        if (!std::ranges::equal(keys, readback.keys, same_place)) {
+          readback.keys = keys;
+          std::ranges::sort(keys, [](const internal::LightKey& a, const internal::LightKey& b) { return a.high < b.high || (a.high == b.high && a.low < b.low); });
+          const auto repeated = std::ranges::unique(keys, same_place);
+          keys.erase(repeated.begin(), repeated.end());
+          readback.order.clear();
+          for (const internal::LightKey& key : keys) readback.order.push_back(key.index);
+        }
+        std::vector<LocalLight> sorted;
+        sorted.reserve(readback.order.size());
+        for (const uint32_t index : readback.order) sorted.push_back(lights[index]);
+        lights = std::move(sorted);
+      }
       if (!lights.empty() && !std::exchange(internal::point_lights_read, true)) {
         renodx::utils::log::i(std::format("[Total War] Local lights: first {} read from the light draws.", lights.size()));
       }
