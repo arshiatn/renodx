@@ -681,7 +681,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     0x176ddb0 are push_backs of other vectors); list layout 32 B: +0 thread-index provider, +4 merged vector, +0x10 header
     vector {cap, count, data} of 12-byte entries, +0x1c "has items"; header readers so far: push 0x176ced0, merge 0x178fd90,
     release 0x1810d30, clear 0x1731160; allocation candidates 0x17bd700 / 0x16c8ec0 unconfirmed; the whole-DLL reader census
-    unfinished. Owner: ATN DECIDES whether a fresh agent continues (from these facts)
+    unfinished. ATN 00:1x YES: a fresh agent (cpu5b_) continues from these facts, items 1-3
   - [ ] Faster Render Lists for WH3 / Pharaoh / Shogun 2 (x64): not started (same stop). Owner: ATN DECIDES with the above
   - DROPPED with proof: the 8x pose hold (0x49aad0 is simulation, not pose); next only with a data run (the bone-matrix
     writer behind 0x17dab80), ATN DECIDES
