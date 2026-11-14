@@ -558,3 +558,11 @@ off by default). New Experimental rows: Ray-traced smoke shadows and Smoke shado
 values under Graphics (Plant Wind Sway, Rope Distance, Shadow Cascade Blend, Campaign Sun Camera Depth, Campaign Cloud
 Distance; Attila's keys, x the game's, back to 1 with Reset) through tweak_objects.hpp, Shogun's own tweak reader (tested by
 test/tw_shogun2_tweaks on the game's DLL). Details and test lines: the HDR addon's README, same heading.
+
+### Parity round 4 (2026-11-14; built only, not run in game)
+
+New Experimental rows, off: Temporal Smoothing, Temporal Edge Fix and Denoiser for GT-VBAO (Ambient Occlusion, Attila's
+keys, in no preset), Rarer objects in the rays (Ray Tracing, Attila's RayTracedUntracedCasters, 0 in Reset and RT/PT),
+SSS softness, SSS softer away from the caster and SSS debug view (screen-space shadows, Attila's
+ScreenSpaceShadowsSoftness / DistanceSoftness / DebugView, in no preset).
+Details and test lines: the HDR addon's README, same heading.

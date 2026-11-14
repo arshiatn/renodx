@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -82,6 +83,14 @@ constexpr uint32_t CLOTH_VERTEX_SHADER = 0xBDFF60D4;
 constexpr uint32_t GRASS_VERTEX_SHADER = 0xB7A0270E;
 constexpr uint32_t IMPOSTER_VERTEX_SHADER = 0x03FB2979;
 constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
+// Rarer Objects in the Rays (Experimental, Attila's RayTracedUntracedCasters; the HDR addon's, live): what the game tessellates
+// with its Tessellation on (3-control-point patches, drawn in none of the data run's traces, else left out: rt_core's topology
+// 35), its patches as the triangles they are (SceneShader::patch_triangles), without the domain shaders' displacement (rigid
+// objects, rigidcommon vs30_displacement: within 20 m of the camera) and rounding (the near terrain's rough patches, terraintile
+// vs30_infield_silouette_sm5). test/tw_shogun2_shaders part 18.
+constexpr uint32_t DISPLACEMENT_VERTEX_SHADER = 0x5074655A;
+constexpr uint32_t TERRAIN_PATCHES_VERTEX_SHADER = 0xC24D8705;
+inline std::atomic_bool untraced_casters = false;
 // Shadow Casters Out of View (Experimental): the shadow pass's rigid casters (rigidterrainblend vs30_shadow, AC25DAB8; 488 draws in
 // the 2026-11-14 battle trace, all instanced: 38M, 53M and 326M indices x instances in cascades 1-3, far too many to stream out) as
 // listed scene shaders besides SceneDraw's (twattila/rt_core.hpp, as Warhammer III's): placed by their instances' rows, those whose
@@ -325,6 +334,21 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   }
   shader->sun_facing = !shader->capture_shader.empty();
   shader->dynamic = shader->sun_facing || twattila::rt_scene::SkinnedVertexShader(shader->hash);
+  if (untraced_casters.load(std::memory_order_relaxed)) {
+    if (shader->hash == DISPLACEMENT_VERTEX_SHADER) {
+      shader->capture_shader = __rt_capture_displacement;
+      shader->patch_triangles = true;
+    } else if (shader->hash == TERRAIN_PATCHES_VERTEX_SHADER) {
+      // Its vertex shader reads no constants: its capture version only where the vertex stage's b0 is the domain shader's camera.
+      ComPtr<ID3D11Buffer> vertex_camera;
+      ComPtr<ID3D11Buffer> domain_camera;
+      native->VSGetConstantBuffers(0, 1, vertex_camera.GetAddressOf());
+      native->DSGetConstantBuffers(0, 1, domain_camera.GetAddressOf());
+      if (!vertex_camera || vertex_camera != domain_camera) return false;
+      shader->capture_shader = __rt_capture_terrain_patches;
+      shader->patch_triangles = true;
+    }
+  }
   return true;
 }
 

@@ -77,6 +77,28 @@ SamplerState hdr_output_sampler_s : register(s1);
 Texture2D<float4> g_hdr_rgb_texture : register(t0);
 Texture2D<float4> hdr_output_texture : register(t1);
 
+// Attila's SSS Debug View (screen_space_shadows.hpp binds these at the tone mappers while it is on): Bend's shadows (t60: the
+// game's mask before the cascades went back, the render part top-left) as the picture, white lit, black shadowed; 2 (Screen
+// Edge) red where the shadow's ray towards the sun leaves the screen before its length (t61.b, shaders/sss.hlsli). Unbound:
+// the tone mapper's picture.
+Texture2D<float> t_sss_debug_bend : register(t60);
+Texture2D<float4> t_sss_debug_split : register(t61);
+
+float4 SssDebugView(float2 position, float4 picture)
+{
+  uint2 size;
+  t_sss_debug_bend.GetDimensions(size.x, size.y);
+  if (SI.sss_debug_view <= 0.f || size.x == 0u) return picture;
+  float2 render_scale = float2(SI.render_scale_x, SI.render_scale_y);
+  render_scale = (render_scale.x > 0.f && render_scale.y > 0.f) ? min(render_scale, 1.f) : float2(1.f, 1.f);
+  const float2 rendered = render_scale * size;
+  const int2 pixel = min(int2(position * screen_size.zw * rendered), int2(rendered) - 1);
+  const float lit = 0.8f * t_sss_debug_bend.Load(int3(pixel, 0));
+  const float cut = (SI.sss_debug_view >= 2.f) ? t_sss_debug_split.Load(int3(pixel, 0)).b : 0.f;
+  const float3 colour = lerp(lit.xxx, float3(1.f, 0.f, 0.f) * max(lit, 0.35f), 0.6f * cut);
+  return float4(renodx::color::gamma::EncodeSafe(colour * SHOGUN_PAPER_WHITE), 1.f);
+}
+
 struct Auto_exposure_output
 {
   float tone_mapper_brightness;

@@ -216,6 +216,12 @@ int sss_hard_samples = 0;  // overlay
 int sss_fade_samples = 0;  // overlay
 int sss_ignore_edges = 0;  // overlay
 int sss_along_ray = 0;     // overlay
+// ReShade.ini ScreenSpaceShadowsSoftness / ScreenSpaceShadowsDebugView (Attila's keys; HDR addon screen_space_shadows.hpp).
+constexpr std::array<const char*, 4> SSS_SOFTNESS = {"Off", "1 px", "2 px", "3 px"};
+constexpr std::array<const char*, 3> SSS_DEBUG_VIEWS = {"Off", "Shadows", "Shadows + Screen Edge"};
+int sss_softness = 0;    // overlay
+int sss_debug_view = 0;  // overlay
+float sss_distance_softness = 0.f;  // overlay: ReShade.ini ScreenSpaceShadowsDistanceSoftness (Attila's), the sun's degrees
 int sss_mirror_edges = 0;  // overlay
 // ReShade.ini WaterClarity, WaterCaustics (HDR addon, waterplane00: Attila's rows, its keys and ranges; rivers and lakes in
 // battles). Experimental, in no preset.
@@ -238,6 +244,11 @@ struct AmbientOcclusion {
   int directions = 0;         // index into AO_DIRECTIONS
   int resolution = 0;         // index into AO_RESOLUTIONS
   int auto_thickness = 1;     // index into OFF_ON
+  // Attila's Temporal Smoothing, Temporal Edge Fix and Denoiser (its keys; the HDR addon's twattila/ao_filter.hpp):
+  // Experimental, off, in no preset.
+  int temporal = 0;  // index into OFF_ON
+  int edge_fix = 0;  // index into OFF_ON
+  int denoise = 0;   // index into OFF_ON
 };
 constexpr AmbientOcclusion AO_DEFAULT = {};
 AmbientOcclusion ao;  // overlay
@@ -800,6 +811,20 @@ void OnOverlay(reshade::api::effect_runtime*) {
                       "Off: no shadows there when they would come from off screen.")) {
       reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSMirrorEdges", sss_mirror_edges);
     }
+    if (choice_slider("SSS softness (Experimental)", &sss_softness, SSS_SOFTNESS.size(), SSS_SOFTNESS[sss_softness], 0,
+                      "Smooths the screen-space shadows' edges along surfaces, never across objects.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsSoftness", sss_softness);
+    }
+    if (float_slider("SSS softer away from the caster (Experimental)", &sss_distance_softness, 0.f, 2.f, "%.2f", 0.f,
+                     "Shadows sharp where things touch the ground, softer farther from them, as under the sun.\n"
+                     "The sun's size in degrees. 0: off.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsDistanceSoftness", sss_distance_softness);
+    }
+    if (choice_slider("SSS debug view (Experimental)", &sss_debug_view, SSS_DEBUG_VIEWS.size(), SSS_DEBUG_VIEWS[sss_debug_view], 0,
+                      "Shows only the screen-space shadows (black: shadowed).\n"
+                      "Screen Edge: red where a shadow would come from past the screen's edge (it cannot).")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsDebugView", sss_debug_view);
+    }
   }
   if (choice_slider("Shadow map resolution", &shadow_map_resolution, SHADOW_MAP_RESOLUTIONS.size(),
                     SHADOW_MAP_RESOLUTIONS[shadow_map_resolution], GRAPHICS_DEFAULT.shadow_map_resolution,
@@ -879,6 +904,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AmbientOcclusionDirections", ao.directions);
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AmbientOcclusionResolution", ao.resolution);
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AmbientOcclusionAutoThickness", ao.auto_thickness);
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ssao_temporal", ao.temporal);
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ssao_edge_fix", ao.edge_fix);
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ssao_denoise", ao.denoise);
   };
   const auto save_gi = [] {
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "LightBounceStrength", gi.strength);
@@ -943,6 +971,16 @@ void OnOverlay(reshade::api::effect_runtime*) {
                               OFF_ON[ao.auto_thickness], AO_DEFAULT.auto_thickness,
                               "Guesses each object's thickness from its width, Thickness as the least:\n"
                               "spears stay thin, walls and hills block fully.");
+  ao_changed |= choice_slider("Temporal Smoothing (Experimental)", &ao.temporal, OFF_ON.size(), OFF_ON[ao.temporal],
+                              AO_DEFAULT.temporal, "Averages the last frames: much less noise. Off: the noise stands still.");
+  ImGui::BeginDisabled(ao.temporal == 0);
+  ao_changed |= choice_slider("Temporal Edge Fix (Experimental)", &ao.edge_fix, OFF_ON.size(), OFF_ON[ao.edge_fix],
+                              AO_DEFAULT.edge_fix,
+                              "Keeps Temporal Smoothing's old shading off outlines (no thin halos).\n"
+                              "Outlines can shimmer a little more.");
+  ImGui::EndDisabled();
+  ao_changed |= choice_slider("Denoiser (Experimental)", &ao.denoise, OFF_ON.size(), OFF_ON[ao.denoise], AO_DEFAULT.denoise,
+                              "Smooths the noise along surfaces, never across edges. Cleaner, a bit softer.");
   ImGui::EndDisabled();
   if (ao_changed) save_ao();
   ImGui::NewLine();
@@ -1102,6 +1140,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedSpriteShadows", 0.f},
         {"RayTracedFarTreeShadows", 0.f},
         {"RayTracedUnitsOutOfView", 0.f},
+        {"RayTracedUntracedCasters", 0.f},
         {"RayTracedSheetsUnselfed", 0.f},
         {"RayTracedGrassShadowRange", 0.f},
         {"RayTracedAoReblur", 0.f},
@@ -1198,6 +1237,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
     choice("Shadow casters out of view (Experimental)", "RayTracedUnitsOutOfView", 0, OFF_ON_NAMES,
            "Buildings, rocks, trees, soldiers, horses, sails and banners behind the camera cast ray-traced shadows into view too; "
            "far soldiers and far trees with their shadow rows on (restart the game).");
+    choice("Rarer objects in the rays (Experimental)", "RayTracedUntracedCasters", 0, OFF_ON_NAMES,
+           "Objects and near ground the game tessellates (its Tessellation on) also cast ray-traced shadows.");
     choice("Smooth banner shadows (Experimental)", "RayTracedSheetsUnselfed", 0, OFF_ON_NAMES,
            "Banners, sails and other cloth don't shade themselves: no blocky triangles on them. Shadows of other things stay.");
     choice("Ray-traced smoke shadows (Experimental)", "RayTracedSmokeShadows", 0, OFF_ON_NAMES,
@@ -1548,6 +1589,15 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSIgnoreEdges", value)) sss_ignore_edges = std::clamp(value, 0, 1);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSAlongRay", value)) sss_along_ray = std::clamp(value, 0, 1);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSMirrorEdges", value)) sss_mirror_edges = std::clamp(value, 0, 1);
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsSoftness", value)) {
+    sss_softness = std::clamp(value, 0, static_cast<int>(SSS_SOFTNESS.size()) - 1);
+  }
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsDistanceSoftness", value)) {
+    sss_distance_softness = std::clamp(value, 0.f, 2.f);
+  }
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsDebugView", value)) {
+    sss_debug_view = std::clamp(value, 0, static_cast<int>(SSS_DEBUG_VIEWS.size()) - 1);
+  }
   if (float value = 1.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "WaterClarity", value)) water_clarity = std::clamp(value, 0.25f, 16.f);
   if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "WaterCaustics", value)) water_caustics = std::clamp(value, 0.f, 2.f);
   // Again when a new device attaches the addon in the same image (frame generation keeps it loaded).
@@ -1576,6 +1626,9 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   load_choice("AmbientOcclusionDirections", AO_DIRECTIONS.size(), &ao.directions);
   load_choice("AmbientOcclusionResolution", AO_RESOLUTIONS.size(), &ao.resolution);
   load_choice("AmbientOcclusionAutoThickness", OFF_ON.size(), &ao.auto_thickness);
+  load_choice("ssao_temporal", OFF_ON.size(), &ao.temporal);
+  load_choice("ssao_edge_fix", OFF_ON.size(), &ao.edge_fix);
+  load_choice("ssao_denoise", OFF_ON.size(), &ao.denoise);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "LightBounceStrength", gi.strength);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "LightBounceRadius", gi.radius);
   load_choice("LightBounceResolution", GI_RESOLUTIONS.size(), &gi.resolution);

@@ -956,3 +956,66 @@ RayTracedAmbientOcclusion, RayTracedLightBounce, SwapChainEncoding, hue_clip and
 Checks: both addons build (x64); test/tw_shogun2_shaders PASS with part 17 (the quad shader), parts 8-9 for all six water
 shaders, parts 10-11 for the five new casters; test/tw_shogun2_tweaks PASS (new: the reader on the game's DLL, read only,
 against capstone's list). No shared code changed.
+
+### Parity round 4 (2026-11-14; built only, not run in game)
+
+On atn-mods b435a0e6, the parity round 2 brief (ledger tools/tw/parity/shogun2.tsv). Every new row Experimental and off.
+
+- **GT-VBAO Temporal Smoothing, Temporal Edge Fix, Denoiser** (DLSS addon, Ambient Occlusion; Attila's keys ssao_temporal,
+  ssao_edge_fix, ssao_denoise): twattila/ao_filter.hpp on the AO the sun light draws read (their t_ssao two slots below the
+  G-buffer slot, the depth three above, camera_VS_PS copied into Attila's layout), as Warhammer II's; its noise moves each frame
+  only with Temporal Smoothing on (ssao_frame 0: the noise as before). No shared code changed.
+- **Rarer objects in the rays** (DLSS addon, Ray Tracing; Attila's RayTracedUntracedCasters, 0 in Reset and RT/PT as
+  Attila's): with the game's Tessellation on, rigid objects (rigidcommon vs30_displacement 5074655A) and the near terrain
+  (terraintile vs30_infield_silouette_sm5 C24D8705) were left out of the rays (3-control-point patches); now their patches go
+  in as the triangles they are (rt_core's patch_triangles, as Attila's 9AEE504E), without the rigid displacement (within
+  20 m of the camera) and the near terrain's rounding of rough patches. The terrain's only where the vertex stage's b0 is the domain shader's
+  camera (its vertex shader reads no constants). WARP part 18: 64 far patches each the game's VS + HS + DS corners bit for
+  bit (CONTROLS: near rigid patches tessellate and move, rough terrain tessellates).
+- **SSS softness, SSS debug view** (DLSS addon, screen-space shadows; Attila's ScreenSpaceShadowsSoftness Off / 1-3 px and
+  ScreenSpaceShadowsDebugView Off / Shadows / Shadows + Screen Edge): Shogun's own Bend pass (sss00 / sss01, Remastered CE's)
+  writes the sun's mask with the cascades in it. With either row on it gets screen_space_shadows.hpp's texture at u1:
+  shaders/sss.hlsli's ReadShadowMap keeps the cascades (and the Screen Edge share) there and gives Bend 1, so the mask holds
+  Bend's shadows alone; at the first sun light draw sss_soft_mask puts back the darker of the cascades and Bend's shadows,
+  averaged over Softness on the same surface (Attila's sss_soft disc). The tone mappers show the mask's copy with the Debug
+  View. Both off: nothing bound, the cascades as before. WARP part 19 (sss_soft_mask).
+- **SSS softer away from the caster** (DLSS addon, screen-space shadows; Attila's ScreenSpaceShadowsDistanceSoftness, the
+  sun's size in degrees): on the SSS split above, the pass's extended version (sss_distance / sss_distance_cascades: Bend's
+  extended march with FindHit, as Light Through Foliage's light-caster versions are swapped in) writes each shadowed pixel's
+  penumbra (Attila's sss_bend WriteExtended) and sss_soft_mask searches the penumbras that reach a pixel on its surface
+  (Attila's sss_soft). WARP part 19: no penumbras the min bit for bit, 16 px penumbras smooth, never across a depth step.
+
+Test lines:
+1. Control, any battle at 100%: Temporal Smoothing, Temporal Edge Fix, Denoiser, Rarer objects in the rays, SSS softness,
+   SSS softer away from the caster, SSS debug view all Off: as the last build. Send ReShade.log.
+2. Battle, in-game SSAO on, Ambient Occlusion GT-VBAO: Temporal Smoothing On (noise settles, no smearing while panning),
+   then Denoiser On (smoother), then Temporal Edge Fix On (no thin halos round units); ReShade.log has "[Shogun 2] AO
+   filter: applied". Decides their defaults.
+3. Same battle at Render Scale 50%, Temporal Smoothing and Denoiser On: the AO in place (not shifted or stretched).
+4. Battle with the in-game Tessellation on, RT/PT, Rarer objects in the rays On against Off (paused): tessellated rocks,
+   walls and the near ground cast ray-traced shadows, no stray triangles; Log details: no "left out ... topology 35" lines.
+   Decides whether RT/PT turns it on.
+5. Battle, in-game SSS on: SSS debug view Shadows (black shadows on white, the whole screen), then Shadows + Screen Edge
+   (red toward the screen's edge away from the sun); again at Render Scale 50%. Send a screenshot of each.
+6. Same battle paused: SSS softness 3 px against Off: contact shadows' edges softer along the ground, no shadow bleeding
+   onto units or walls in front, far shadow-map shadows unchanged; with Light through foliage 0.5 grass shadows stay lighter.
+   Decides keeping the row and its default.
+7. Same, SSS softer away from the caster 1.0 against 0: shadows sharp where soldiers' feet and walls meet the ground,
+   softer toward their ends; no flicker while the camera moves. Decides its default (Attila's 0).
+
+Not done (what, why, smallest step):
+- SSS Light Through Banners, Coloured Shadows: need the banners' own depth for the extended pass's ThinDepth / ThinCasters;
+  step: replay the cloth G-buffer draws (BDFF60D4) into a depth as Attila's InstallThin does (inside Attila's own SSS
+  module, twattila/screen_space_shadows.hpp: an opt-in there or a Shogun copy), then their colour as Attila's WriteExtended.
+- Full-Resolution Particle Edges, Smooth Half-Size Particles: need a trace of the reduced particle composite (a battle with
+  burning buildings, Particle Resolution Half: vfxoverlay00 3C9BC2F9 with input_view_scale under 1; all 20 traced composites
+  had 1).
+- Sharpening, Extra Sharpness: won't get (Attila's TAA / SMAA T2x / CMAA2 rows; Shogun's AA is the game's and the helper's).
+- Two Shadow Cascades Under Rays: won't get (Attila's needs the rays' shadows alone; Shogun's sun keeps the cascades in every
+  ray-traced pixel, rt_sun.hlsli RtDarker). Skip the Game's Shadow Map Work: the CPU round's (needs a WH3 data run).
+
+Checks: both addons build (x64); test/tw_shogun2_shaders PASS x86 and amd64 with parts 18 (tessellated patches against the
+game's VS + HS + DS) and 19 (sss_soft_mask); test/tw_shogun2_tweaks PASS; static_checks, scan_register clean. Page dump against
+r2_shogun2_0: only ssao_temporal, ssao_edge_fix, ssao_denoise, RayTracedUntracedCasters, ScreenSpaceShadowsSoftness,
+ScreenSpaceShadowsDistanceSoftness, ScreenSpaceShadowsDebugView. No shared file changed. The SSS split and Softer Away's
+extended pass (sss.hlsli's ReadShadowMap / WriteExtended) are built, not run: only sss_soft_mask is WARP-tested.

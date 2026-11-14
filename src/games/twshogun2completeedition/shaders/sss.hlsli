@@ -251,7 +251,7 @@ float DynamicShadowFiltered_3x3( float3 tc, float4 shadow_buffer_size, Texture2D
 // Shadow map stability (v31, DLSS addon): normal_offset (the surface normal x texels; 0: the game's) moves the receiver
 // off its surface by that many of this split's texels.
 // Sun shadow softness (v63, DLSS addon): contact-hardening shadows (pcss.hlsli) in place of the game's 3x3 filter, the
-// sun SI.sun_shadow_softness degrees across, its disks turned by `shadow_rotation` (ReadShadowMap's pixel and frame).
+// sun SI.sun_shadow_softness degrees across, its disks turned by `shadow_rotation` (ShadowCascades' pixel and frame).
 static const float PCSS_MAX_TEXELS = 24.f;
 static float shadow_rotation = 0.f;
 
@@ -318,7 +318,7 @@ float3 WorldPositionAt(int2 pixel)
 }
 
 // screen_space_shadows.hlsl ReadShadowMap: the cascades at a (rendered) pixel.
-float ReadShadowMap(float2 pixel_xy)
+float ShadowCascades(float2 pixel_xy)
 {
   uint2 size;
   gbuffer_colour_texture.GetDimensions(size.x, size.y);
@@ -353,10 +353,82 @@ float ReadShadowMap(float2 pixel_xy)
 }
 #else
 // No cascades (get_shadow_coverage without ENABLE_SHADOWS).
-float ReadShadowMap(float2 pixel_xy)
+float ShadowCascades(float2 pixel_xy)
 {
   return 1;
 }
+#endif
+
+#ifndef SSS_PASSTHROUGH
+// Attila's SSS Softness and Debug View (screen_space_shadows.hpp binds u1 only with either on): Bend's min with the cascades
+// (its ReadShadowMap at each pixel it writes) gets 1, so the game's mask holds Bend's shadows alone; the cascades go to u1 (r)
+// with the Screen Edge share (b: Attila's sss_debug, how much of the shadow's ray towards the sun leaves the screen before
+// its length), and sss_soft_mask puts their min back at the first sun light draw. Off or u1 unbound: the game's. Softer
+// Away from the Caster's extended versions (sss_distance*) write it in WriteExtended, the penumbra in g.
+RWTexture2D<unorm float4> t_rw_sss_split : register(u1);
+static float split_cascades = 1.f;
+static float split_cut = 0.f;
+
+float ReadShadowMap(float2 pixel_xy)
+{
+  const float cascades = ShadowCascades(pixel_xy);
+  uint2 split_size;
+  t_rw_sss_split.GetDimensions(split_size.x, split_size.y);
+  if ((SI.sss_softness <= 0.f && SI.sss_debug_view <= 0.f && SI.sss_distance_softness <= 0.f) || split_size.x == 0u) return cascades;
+  const float4 light = g_sss_light_coordinate;
+  const float2 render_size = min(g_viewport_dimensions.xy, screen_size.xy);
+  const float2 position = pixel_xy + 0.5f;
+  const float2 towards = (light.xy - position) * light.w;
+  const float samples = (float)(120 << clamp(int(SI.sss_samples), 0, 5));
+  float cut = 0.f;
+  if (dot(towards, towards) > 1e-6f)
+  {
+    const float2 direction = normalize(towards);
+    // The ray's length on screen before an edge, along each axis.
+    const float2 room = (direction > 0.f) ? (render_size - position) : position;
+    const float2 reach = (abs(direction) > 1e-6f) ? room / abs(direction) : 1e9f;
+    const float ray_length = (light.w > 0.f) ? min(samples, 0.5f * length(towards)) : samples;
+    cut = saturate(1.f - min(reach.x, reach.y) / max(ray_length, 1.f));
+  }
+  split_cascades = cascades;
+  split_cut = cut;
+#ifndef BEND_SSS_EXTENDED
+  t_rw_sss_split[int2(pixel_xy)] = float4(cascades, 0.f, cut, 1.f);
+#endif
+  return 1.f;
+}
+
+#ifdef BEND_SSS_EXTENDED
+// Softer Away from the Caster (sss_distance / sss_distance_cascades: Bend's extended march with FindHit, swapped in by
+// screen_space_shadows.hpp while its row is on), Attila's sss_bend WriteExtended: the sun's disk widens the shadow by the
+// receiver's distance from its first shadowing sample x tan(half the disk), in render pixels at the receiver's distance,
+// into the split texture's g as a share of SSS_MOST_PENUMBRA_2160 at this render height.
+float3 SssViewPosition(float2 pixel, float depth, float2 render_size)
+{
+  const float2 uv = (floor(pixel) + 0.5f) / render_size;
+  const float4 view = mul(float4(uv * float2(2.f, -2.f) + float2(-1.f, 1.f), depth, 1.f), inv_projection);
+  return view.xyz / view.w;
+}
+
+void WriteExtended(DispatchParameters dp, int2 xy, float result, ExtendedResult extended)
+{
+  dp.OutputTexture[xy] = result;
+  uint2 split_size;
+  t_rw_sss_split.GetDimensions(split_size.x, split_size.y);
+  if (split_size.x == 0u) return;
+  const float most = SSS_MOST_PENUMBRA_2160 * dp.RenderSize.y / 2160.f;
+  float radius = 0.f;
+  if (extended.hit && result < 1.f && SI.sss_distance_softness > 0.f)
+  {
+    const float3 receiver = SssViewPosition(float2(xy), extended.depth, dp.RenderSize);
+    const float caster_depth = abs(t_sss_depth.Load(int3(clamp(int2(extended.hit_xy), 0, int2(dp.RenderSize) - 1), 0)));
+    const float3 caster = SssViewPosition(extended.hit_xy, caster_depth, dp.RenderSize);
+    radius = distance(receiver, caster) * tan(radians(SI.sss_distance_softness) * 0.5f) * 0.5f * dp.RenderSize.y * projection._m11
+             / max(abs(receiver.z), 1e-3f);
+  }
+  t_rw_sss_split[xy] = float4(split_cascades, saturate(radius / max(most, 1.f)), split_cut, 1.f);
+}
+#endif
 #endif
 
 #ifdef SSS_PASSTHROUGH
@@ -367,7 +439,7 @@ float ReadShadowMap(float2 pixel_xy)
 [numthreads(32, 32, 1)]
 void main(uint3 coords : SV_DispatchThreadID)
 {
-  t_rw_shadow[coords.xy] = ReadShadowMap(coords.xy);
+  t_rw_shadow[coords.xy] = ShadowCascades(coords.xy);
 }
 #else
 [numthreads(WAVE_SIZE, 1, 1)]
@@ -385,6 +457,10 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
   // Light Through Foliage (foliage_light.hpp's versions of this pass): the depth's foliage pixels negative, this share
   // of the light through what they shadow.
   dp.CasterLight = SI.sss_foliage_light;
+#endif
+#ifdef BEND_SSS_EXTENDED
+  dp.FindHit = true;
+  dp.ThinDepth = t_sss_depth;  // no banners (ThinCasters off)
 #endif
   // Shadow stability (v27, DLSS addon): the game's contrast 4 turns a depth difference into shadow within a quarter of
   // Bend's window, so shadows switch fully on / off between frames; halved (Bend's other recommended value, 2) they

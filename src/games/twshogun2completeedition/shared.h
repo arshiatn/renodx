@@ -133,10 +133,21 @@ struct ShaderInjectData {
   float auto_exposure_highlight_protection;
   float auto_exposure_highlight_headroom_stops;
   float indicator_brightness;  // indicator00-02 in HDR: Attila's Unit/Building Indicator Brightness (some_indicators), 1 the game's
+  float ssao_frame;  // GT-VBAO's noise frame, 0-63, moving with the AO filter's Temporal Smoothing (0: still, the game's)
+  // Attila's SSS Softness (render pixels, 0 off; screen_space_shadows.hpp) and Debug View (0 off, 1 Bend's shadows as the
+  // picture, 2 with the screen edge's limit; tonemap.hlsli): with either, sss.hlsli keeps Bend's and the cascades apart.
+  float sss_softness;
+  float sss_debug_view;
+  // Attila's SSS Softer Away from the Caster: the sun's size in degrees, 0 off (screen_space_shadows.hpp's extended pass).
+  float sss_distance_softness;
 };
+
+// The penumbra's most for Softer Away from the Caster, render pixels at 2160 rendered lines (Attila's SOFT_RADIUS_2160).
+#define SSS_MOST_PENUMBRA_2160 32.f
 
 #define SI  shader_injection
 #define HDR SI.hdr
+#define AO_NOISE_FRAME SI.ssao_frame  // twwarhammer2/bitmask_ao.hlsli
 
 // SDR output (displays without HDR): the display's white is the game's and the UI's.
 #define SHOGUN_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
