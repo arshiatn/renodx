@@ -427,6 +427,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Pharaoh / Rome II (par_old_: tools/tw/round_notes/parity_<game>_1114.md). After the merges: one shared step moves the torch
   rows from Path Tracing (RayTracedLightsInBounce / RayTracedLightShadowRatio) into graphics_page for every game that can
   carry them. Merge one branch at a time, verify the merged tree once, stamp, install.
+- [x] Thrones parity round MERGED 348a383b (table tools/tw/thrones/parity_1114.md: 31 have / 9 done now / 1 left / 6 trace / 4
+  won't; flares + vignette into FG's HUD-less image, flare occlusion + markers below 100 %, Depth of Field, Indicator
+  Brightness, VFX Brightness (Experimental), UI sprite fixes, Water Clarity on sea / lake (shared water_effects
+  WaterOpacity.component_only opt-in, 133 / 133 other rows byte-identical, 18 consumers built), Modded Auto Exposure
+  (Experimental; CPU-metered at empire.retail.dll +0x18041bf); 758C250B = HAVE). FasterGameCpuCode default: ATN DECIDES
+  (off in Thrones, on in Attila). Agent resumed: object motion vectors, the 29 unclear passes below 100 %.
 - [x] Rome Remastered parity round MERGED c0a61b2d (table tools/tw/romeremastered/parity_1114.md: 47 features, 13 have / 3 do
   now left / 6 trace / 24 won't; credits, Bend rows + Softness, GitHub button; no PT GI -> no torch rows). Input bug (task B):
   study only: the wall clock is a seconds-since-2001 double; obfuscated code at 0xbbaa60 reads GetMessageTime; the
