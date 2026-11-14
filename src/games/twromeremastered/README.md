@@ -2,7 +2,7 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
-## v11 (2026-11-14, phase I part 4; built only, not run in game; installed: INSTALLED_PLACEHOLDER)
+## v11 (2026-11-14, phase I part 4; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - Graphics (Experimental, Advanced, off): **Frame Generation** (Off, 2x-6x, Dynamic: NVIDIA DLSS Frame Generation through
   the TW helper; needs DLAA, a windowed or borderless game, the game's VSync off). The HUD-less image is the tone mapper's

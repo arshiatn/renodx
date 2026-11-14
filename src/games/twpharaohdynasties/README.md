@@ -46,7 +46,10 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     stops at walls and units; the lit side as bright as before; no flicker as fires start and go out.
 27. v67: with it on, ReShade.log "the particle lights streamed from their vertex shader" once, at the first fire.
 
-### Round v67 (2026-11-14, built only, not run in game)
+### Round v67 (2026-11-14; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
+
+- Moved to shared code, unchanged (statement for statement): contact march off, Rays Replace Shadow Maps, water reflections,
+  Log Details light count; Lean ReSTIR Reuse (Experimental, off) as in Attila v160.
 
 - **New (Experimental, off, not in the RT/PT preset): Fire Shadows from Particle Lights**, under Torch and Fire Shadows
   (More Options, shown while Torch and Fire Shadows is on). Burning buildings and other fires light the scene through the

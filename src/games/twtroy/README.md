@@ -1,6 +1,6 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
-### Round v53 (2026-11-14, built only, not run in game)
+### Round v53 (2026-11-14, stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - **New (Experimental): Water Clarity and Water Caustics** (under Reflections and Water). Clarity 1 is the game's look; higher lets you see deeper into rivers, lakes and the sea. Caustics (off; battles only) adds rippling light on the bed. They use Pharaoh's rows on Troy's 68 water shaders (every sea, lake and river variant). WARP (`tools/tw/troy/water`, Pharaoh's water test on Troy's bytes): all 68 give the game's bits at the defaults; Clarity and the caustics match the game with its opacity or refraction scaled (worst 4.8e-7). Every control moves.
 - **New (Experimental, off; on in RT/PT): ray-traced Water Reflections.** Rivers and the sea reflect what the rays find, also off screen, in place of the game's screen-space reflections. Pharaoh's hooks are now shared code (`twattila/water_reflections.hpp`, Pharaoh unchanged), on Troy's twins of the same chain, and Troy's reflection shader got the rays in Pharaoh's form. WARP (`tools/tw/troy/water/ssr_rays`): with no rays bound it gives the game's bits at 100%, 50% and 67%. With the rays it matches the expected blend (worst 3.4e-6), including below 100%, where it reads the render pixel. Specular Occlusion halves the game's cube to the bit. Every control fails.

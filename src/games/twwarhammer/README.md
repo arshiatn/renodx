@@ -1,6 +1,6 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
-### Phase I, round 3 (2026-11-14 morning; built only, not run in game)
+### Phase I, round 3 (2026-11-14 morning; "wh1 r3", stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - **Ray Reconstruction's guides**: WH1's are Warhammer II's file and read the G-buffer as the sun shaders do (230F2241 asm
   212-370: normals from channel 1's two angles, roughness 1 - its z, diffuse albedo the albedo x (1 - channel 3's specular

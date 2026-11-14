@@ -1,6 +1,6 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
-### Round v49 (2026-11-14, ATN's session traces of 03:38-03:48; built only, not run in game)
+### Round v49 (2026-11-14, ATN's session traces of 03:38-03:48; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - **Fixed below 100%: the screen-space reflections came out twice their size.** The SSR's copy (environment_specular_light
   ps40_copy 7F23C472) sampled its resolve's whole output while the resolve wrote only the render share; it now reads that

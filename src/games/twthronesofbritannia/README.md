@@ -1,6 +1,6 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
-### Round 3 (2026-11-14, grass, banners, CPU code; built only, not run in game)
+### Round 3 (2026-11-14, grass, banners, CPU code; "thrones r3", stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 New:
 - **Grass Height Distance (Experimental, 1 = the game's)** in Grass & Trees, as Attila's: grass keeps its full height farther away (the game flattens it into the ground by 100 m). The rays' grass and the grass's motion vectors follow it.

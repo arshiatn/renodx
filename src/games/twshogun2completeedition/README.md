@@ -608,7 +608,7 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
-## v72 (2026-11-14): variantrigid out of view, dissolved leaves, reflection rows, coloured shadows (built only, not run in game)
+## v72 (2026-11-14): variantrigid out of view, dissolved leaves, reflection rows, coloured shadows (stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game; first install with the helper: NVIDIA DLLs 310.9.16, the game's 310.5.2 renamed aside)
 
 - **Shadow casters out of view** (the same Experimental row, off) also takes variantrigid's shadow draws (B0E006EE: 10 draws,
   4 to 256 instances in the battle trace), placed by their instances' rows (v8-v10) as the rigid ones

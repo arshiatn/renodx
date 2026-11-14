@@ -1,5 +1,11 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+## v59 (2026-11-14 night; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
+
+- New: **Lean ReSTIR Reuse (Experimental, off)** under Global Illumination's More Options with Path Tracing (helper112):
+  ReSTIR GI's reuse 2.72 -> 1.02 ms in Nsight at 4K, the same picture in the quality scorer.
+- Shared code moved / extended for the other TW games: page dump against v58: that row only.
+
 ## v58 (2026-11-13, night merges; stamped and installed 22:59 with renodx-tw-dlaa64.exe helper110, not run in game)
 
 - Faster (Attila v159's helper110): **Swaying Shadows Range / Off-Screen Sway**: the sway's counting pass runs on 64 GPU

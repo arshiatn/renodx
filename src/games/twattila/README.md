@@ -1,6 +1,9 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## Next (helper112, 2026-11-14 night: torch light from the Light Bounce, Lean ReSTIR Reuse; not run in game)
+## v160 (2026-11-14 night: torch light from the Light Bounce, Lean ReSTIR Reuse; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
+
+- Shared code moved / extended for the other TW games tonight (rt_core, rt_scene, graphics_page, engine_code, water,
+  sun maps): page dump against v159: the three rows below only; the other changes are opt-in parameters.
 
 - New: **Torch and Fire Shadows from Path Tracing (Experimental, off)**, under Shadows' More Options with ray-traced
   shadows and ReSTIR GI. The game's torch and fire light keeps its look. Its shadows come from the Light Bounce: one light
