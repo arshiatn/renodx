@@ -297,6 +297,8 @@ void BuildRuntimeData() {
       CustomShaderEntry(0x073A6CF3),  // ssrfilter01 (hit buffer blur y)
       CustomShaderEntry(0xF87ECE85),  // ssrresolve00 (reflection colour)
       CustomShaderEntry(0x16ADFD60),  // ocean00 (ocean high: Ray-Traced Water Reflections)
+      CustomShaderEntry(0x6B8954A6),  // ocean01 (ocean ultra: Ray-Traced Water Reflections)
+      CustomShaderEntry(0x9B9EC116),  // waterplane00 (battle waterplane high / medium / ultra: Ray-Traced Water Reflections)
       CustomShaderEntry(0xA00FE3A3),  // ssao00 (ambient occlusion line sweeps)
       CustomShaderEntry(0x98BB1159),  // ssao01 (ambient occlusion collect: the Visibility Bitmask AO)
       CustomShaderEntry(0x5CBF4FB6),  // pointlight00
@@ -372,13 +374,15 @@ void BuildRuntimeData() {
     twshogun2::ray_tracing::KeepColor(cmd_list);
   };
   // Ray-Traced Water Reflections (ray_tracing.hpp OnSeaDraw): the sea's plane, the rays' reflections for shaders/ocean00.
-  custom_shaders[0x16ADFD60].on_draw = [](auto* cmd_list) {
-    if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, true);
-    return true;
-  };
-  custom_shaders[0x16ADFD60].on_drawn = [](auto* cmd_list) {
-    if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, false);
-  };
+  for (const uint32_t hash : {0x16ADFD60u, 0x6B8954A6u}) {
+    custom_shaders[hash].on_draw = [](auto* cmd_list) {
+      if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, true);
+      return true;
+    };
+    custom_shaders[hash].on_drawn = [](auto* cmd_list) {
+      if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, false);
+    };
+  }
   for (const uint32_t hash : {0x5C0AF498u, 0x13C66077u, 0x073A6CF3u}) {
     custom_shaders[hash].on_draw = [](auto* cmd_list) { return !ray_tracing_installed || twattila::rt_scene::OnReflectionMarch(cmd_list); };
   }
