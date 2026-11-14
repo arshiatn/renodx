@@ -166,6 +166,12 @@ void ApplyResetPreset() {
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
+// SDR: the game's own tonemapper and look, every other control at its default; video AutoHDR is already off in Reset.
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}});
+}
+
 void ApplyPsychoRecommendedNoVFXBoost() {
   // ATN 2026-11-12: every recommended preset in PsychoV35 (its sliders at their defaults), Video AutoHDR 0.20.
   ApplyResetPreset();
@@ -650,6 +656,19 @@ void BuildRuntimeData() {
         .tooltip = "As Recommended, with brighter fire and effects for ~2500 nit displays.\nPeak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() {
           ApplyPsychoRecommendedVFXBoost2500();
+        },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .section = "Presets",
+        .group = "preset-line-3",
+        .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it\n"
+                   "was HDR), no video AutoHDR. The game's and the UI's white are your monitor's own white.",
+        .tint = 0xFFC107,
+        .on_change = []() {
+          ApplySdrPreset();
+          renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
         },
     },
     // Extra //////////////////////////////////////////////////////////////////////////////////////
@@ -2450,6 +2469,9 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
+    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset.
+    float saved_mode = 0.f;
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
@@ -2459,6 +2481,7 @@ void ConfigureAddon() {
           const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
           return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
     });
     settings.push_back(setting);
   }
