@@ -1060,6 +1060,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedSheetsUnselfed", 0.f},
         {"RayTracedGrassShadowRange", 0.f},
         {"RayTracedAoReblur", 0.f},
+        {"RayTracedLightGlow", 0.f},
         {"RayTracedAmbientRange", 2.f},
         {"RayTracedAORays", 2.f},
         {"RayTracedAOQuarter", 0.f},
@@ -1187,6 +1188,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::EndDisabled();
     const bool fog_shadows = checkbox("Ray-traced fog shadows (Experimental)", "RayTracedFogShadows",
                                       "The sun's light in the battle fog shaded where hills, trees and buildings stand in its way.");
+    ImGui::BeginDisabled(!local_lights || !fog_shadows);
+    slider("Torch and fire light in fog (Experimental)", "RayTracedLightGlow", 0.f, 0.f, 2.f, "%.2f",
+           "Torches and fires light the battle fog around them, their shafts and shadows in it. 0: off.");
+    ImGui::EndDisabled();
     const bool reflections = checkbox("Ray-traced reflections", "RayTracedReflections",
                                       "Reflections from rays in place of the screen-space ones: also what is off screen.\n"
                                       "Needs the game's screen-space reflections on.");

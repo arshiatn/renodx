@@ -1121,8 +1121,8 @@ void ReadDlssAddonOptions() {
   ray_tracing.water_soft = ray_tracing.water_reflections && read_on("RayTracedWaterSoft", false);
   ray_tracing.local_lights = read_on("RayTracedLocalLights", false);
   ray_tracing.fog_shadows = read_on("RayTracedFogShadows", false);
-  // No torch light in the fog (fog01 takes the sun's part alone): the helper traces none.
-  ray_tracing.light_glow = 0.f;
+  // Torch and Fire Light in Fog (Attila's key and range; fog01): 0 the helper traces none, as before.
+  read_float("RayTracedLightGlow", 0.f, 0.f, 2.f, &ray_tracing.light_glow);
   // Torch and Fire Shadow Lights: 32, 64, 128.
   ray_tracing.light_count = twattila::dlaa_bridge::RT_MAX_LIGHTS << read_count("RayTracedLightCount", 0, 0, 2);
   ray_tracing.light_importance = read_on("RayTracedLightImportance", false);
