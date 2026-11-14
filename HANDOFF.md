@@ -675,8 +675,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     the spread: take that site out of CPU_CODE_SITES
   - [ ] Author packages (tools/tw/testbin/cpu4_heapfix/: a_memfast_65_128, b_loopfetch_animation, c_x87_truncation
     question; plus for_author_pf): bench numbers into the NOTEs, then ATN sends
-  - [ ] Render-list headers 64 B apart (harness: 44-62 -> 16-18 ns a push at 4 threads): find the code that stores the
-    header-array pointer (thread count x 12 allocation); an ~8-site row if worth it. Owner: CPU ROUND 5
+  - [ ] Render-list headers 64 B apart (harness: 44-62 -> 16-18 ns a push at 4 threads). CPU ROUND 5 STOPPED ~00:10: a
+    safety classifier cut off one of its responses during the static analysis, so the agent stopped and nothing was
+    committed (not retried: ATN decides). Facts so far: the old reader list was WRONG (0x176d430 / 0x176da30 / 0x176dbf0 /
+    0x176ddb0 are push_backs of other vectors); list layout 32 B: +0 thread-index provider, +4 merged vector, +0x10 header
+    vector {cap, count, data} of 12-byte entries, +0x1c "has items"; header readers so far: push 0x176ced0, merge 0x178fd90,
+    release 0x1810d30, clear 0x1731160; allocation candidates 0x17bd700 / 0x16c8ec0 unconfirmed; the whole-DLL reader census
+    unfinished. Owner: ATN DECIDES whether a fresh agent continues (from these facts)
+  - [ ] Faster Render Lists for WH3 / Pharaoh / Shogun 2 (x64): not started (same stop). Owner: ATN DECIDES with the above
   - DROPPED with proof: the 8x pose hold (0x49aad0 is simulation, not pose); next only with a data run (the bone-matrix
     writer behind 0x17dab80), ATN DECIDES
 - [x] ATN 21:2x: Attila's number_of_threads set to 16 (ATN's preferences.script.txt 559f4696 -> 432ba846; fresh backup
