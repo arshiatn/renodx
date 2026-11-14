@@ -1450,8 +1450,17 @@ void ConfigureAddon() {
       {.name = "VERY_LARGE_IMPOSTER_SHADOW_DISTANCE"},
       {.name = "entity_display_shadow_max_shadow_distance"},
   };
-  // Graphics 2 of 2's tests: Attila's that this game has, then More Tests (more_tests.h).
+  // Graphics 2 of 2's tests: Attila's that this game has, as it has them (without the values it lacks, its own game values
+  // in the tooltips), then More Tests (more_tests.h).
   engine_tests = twattila::engine_tests::Only(twattila::engine_tests::Attila(), more_tests::ATTILA_TESTS);
+  for (auto& test : engine_tests) {
+    std::erase_if(test.option.tweaks, [](const tw::engine_tweaks::Tweak& tweak) {
+      return std::ranges::find(more_tests::MISSING_VALUES, tweak.name) != more_tests::MISSING_VALUES.end();
+    });
+    if (const auto tooltip = std::ranges::find(more_tests::TOOLTIPS, test.key, &std::pair<std::string, std::string>::first); tooltip != more_tests::TOOLTIPS.end()) {
+      test.tooltip = tooltip->second;
+    }
+  }
   {
     auto more = more_tests::MoreTests();
     engine_tests.insert(engine_tests.end(), more.begin(), more.end());
@@ -1463,12 +1472,12 @@ void ConfigureAddon() {
       .label = "Engine values: not searched yet",
       .section = "Graphics (Experimental)",
   };
-  // Graphics presets (ATN): MAX (every graphics setting at its maximum) and Reset (all
-  // graphics settings at their defaults; not the ambient occlusion or the Light Bounce).
+  // Graphics presets (ATN): MAX (every graphics setting at its maximum) and Reset (all graphics settings and tests at their
+  // defaults, as Attila's; not the ambient occlusion or the Light Bounce).
   shadow_map.tweaks = {
       {.name = "shadowmap_extreme_quality", .flag = true},
   };
-  const std::vector<std::pair<std::string, float>> graphics_defaults = {
+  std::vector<std::pair<std::string, float>> graphics_defaults = {
       {"GraphicsShadowMapSize", 0.f},
       {"GraphicsUnitDetailVerySmall", 1.f},
       {"GraphicsUnitDetailSmall", 1.f},
@@ -1488,6 +1497,10 @@ void ConfigureAddon() {
       {"GraphicsSmallShadows", 1.f},
       {"GraphicsUnitShadows", 1.f},
   };
+  for (const auto& test : engine_tests) {
+    // Its option's start: the game's (1x, Game's or -1).
+    graphics_defaults.emplace_back(test.key, test.option.scale);
+  }
   const std::vector<std::pair<std::string, float>> graphics_max = {
       {"GraphicsShadowMapSize", 1.f},
       {"GraphicsUnitDetailVerySmall", 8.f},
@@ -1515,7 +1528,7 @@ void ConfigureAddon() {
           .label = "Reset",
           .section = "Graphics (Experimental)",
           .group = "graphics-presets",
-          .tooltip = "Every graphics setting back to its default.",
+          .tooltip = "Every graphics setting and test back to its default.",
           .on_change = [graphics_defaults]() { renodx::utils::settings::UpdateSettings(graphics_defaults); },
       },
       new renodx::utils::settings::Setting{

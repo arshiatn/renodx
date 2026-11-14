@@ -12,6 +12,13 @@
   230F2241's own bytes measured on WARP: 0.0031831, 0.318310 with g_hdr_on 0). Float 44 is g_hdr_on here, not Attila's
   ambient switch: WH1's rt_sun wrapper turns that off. Path-Traced Ambient's rows now show (Experimental, off). The unlit
   (ulm) and default reflection sun PS stay unhooked: they write the G-buffer's colour or black.
+- **Graphics 2 of 2 as Attila's** (as Warhammer II's round): 31 more of Attila's tests whose values engine_tweaks::Find
+  finds in WH1 (emulated on the decrypted image; its misses hold all 10 of the 2026-11-14 log's "not found"): grass slopes,
+  projected tree LODs, vegetation blocks, billboards, object / building detail and culling, shadow biases, warped / new
+  shadows, sprite shadows, cutscene point shadows high, particle sorting, night lights, shared poses, fast soldier culling,
+  campaign clouds / trees / plants / sea, voice memory limit, sound file memory. Out: Far Buildings, Building Collapse
+  Effects / Animations and 7 More Tests rows (never found). Rope Distance without ROPE_DISTANCE(_FADEOUT); WH1's own values
+  in the tooltips that differ (blood 0.05, audio 62 / 10 / 164 / 4 / 2 MB). Reset puts the tests back too.
 
 ### Trace build (2026-11-14, for the data run; built only, not run in game)
 
