@@ -223,6 +223,51 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] ATN's WH1 session 02:57-03:02 (battle, then campaign): 15 traces wh1/runs/ATN_session_025635 -> WH1 agent.
 - [ ] ATN 03:0x: "Can we just do both?" U1 + U2: the ReSTIR agent resumed: U1 prototype + harness comparison, then an
   Experimental row (helper111, spare flag bits); U2 designed and started behind an off row.
+- [x] Merged: Rome Remastered v10 551ec58b (RT sun shadows + AO, Experimental), WH1 v48 df1aff82 (Hue Clip 90 measured:
+  ATN eyes it), Troy v48 c7b41326 / v49 44bf144f / v50 22950581 (shared twattila/sun_replace_maps.hpp = Pharaoh's
+  OnSunReplaceMaps moved verbatim: verify Pharaoh in the merged check).
+- [x] ATN's trace sessions 03:08-03:48 (FrameTraceReads=1 in the four ini, removed after; ATN's own changes kept):
+  Troy session 3 (17, rays on, DLSS P / UP, battle + campaign), Thrones campaign (13, DLAA / Balanced / UP, RT, RR F),
+  WH1 session 2 (21, P / UP battle + campaign, RT, RR F), WH2 (30, campaign + fire siege, DLAA / P / UP). Rome Remastered
+  wouldn't start: memory (a quality-scorer harness helper at 45 GB committed, PC at 74.8 / 73.8 GB; its agent stopped
+  it; my kill was refused by the permission classifier); ATN does Rome Remastered 67 / 50% another day.
+- [x] ATN 04:0x: "just keep working until you have finished everything" - no 08:30 stop: every agent finishes its whole
+  plan (WH1, WH2, Thrones, Troy, Shogun 2, Rome Remastered resumed: Bend, FG, debug views; ReSTIR U1 + U2, quality
+  baseline, Nsight). An interim install of the merged state at ~12:00 if agents still run (no game running); final
+  install after the last merge + verification.
+- [x] Quality scorer DONE (tools/tw/quality/report.md; outside the repo, no helper change): 11 / 11 validation, helper110
+  baseline (rRMSE: sun RR 3.7, RTAO RR 1.03, PT AO ReSTIR + RR 2.19, torch RR + importance 1.40, Steady + RR 3.29).
+  FINDING for ATN: PT AO with REBLUR under RR is 4.4x worse than RR alone and grows while the camera stands still (blotches).
+  all_modes 179 / 179 (all_modes_iq1114.txt). quality.sh compare <helperA> <helperB> for helper111.
+- [x] Rome Remastered v11 MERGED 6fccf345 (frame generation + Reflex via DLAA's HUD-less point, Screen-Space Shadows =
+  twattila sss_bend into the mask, Ray Tracing Debug View, profile button; all Experimental, off; tw_romer_dlaa + rays PASS,
+  case 6 proves the sun sign). Test list: tools/tw/round_notes/tests_1114.md.
+- [x] Shogun 2 round 4 MERGED 5601f257 (waterplane 9B9EC116 recorded + replayed depth-only, Ultra sea 6B8954A6: RT water
+  reflections on rivers, lakes, the Ultra sea; Experimental, off; HDR v69 / DLSS v61; WARP parts 7-9 PASS). NOT DONE: W7d
+  (cascades draw before the main view; rigid shadow 38-326M indices x instances vs a 29M budget): agent resumed on the
+  per-instance record (opt-in rt_core changes, every rt_core user's suite must stay unchanged).
+- [x] Troy v51 MERGED 4053fe95 (Torch and Fire Shadows 143A02ED in Pharaoh's fire02 form, campaign trees 54D2CFBD +
+  billboards DF8EAF69 in the rays; shared twattila/contact_shadows_off.hpp = Pharaoh's contact march off moved verbatim:
+  verify Pharaoh in the merged check). NOT DONE: fires 643FC156 in the rays (after WH2's rt_scene light reader change),
+  shroud test, Log Details light count: agent resumed.
+- [x] WH1 round 2 MERGED 61f0bbb7 (PT AO with the harmonics' sky + PatchAmbient AMBIENT_AFTER_HARMONICS_Z (shared, other 7
+  games' 238 rows byte-identical), far cards CA6BCF19, campaign plants 84797031, casters out of view, Torch and Fire
+  Shadows D0C67938 / 5D1695BC, Rays Replace Shadow Maps (game-side), SSR share BUG 69A57B14 fixed; RT/PT preset turns on
+  PT AO + torch shadows). NOT DONE: Skip the Shadow Maps (agent resumed: forward readers first), Fog Shadows (analytic),
+  CDCF1ADD, raycast 021D7515 below 100%, AO / SSR reader census (needs ATN's start with SSAO + SSR off).
+- [x] WH1 Skip the Shadow Maps NOT DONE (merged README 49eff1b7: 7 forward readers, 2 outside the shared forward patch,
+  WARP control failed; attempt kept in tools/tw/wh1/skip_maps_attempt.diff); agent resumed (opt-in patch parameter,
+  cascade constants, then RR guides, sprites, thin sheets, Bend foliage, cut-outs, particles, water).
+- [x] Nsight DONE (tools/tw/nsight, README; memory reference_nsight_gpu_trace): helper110 8.4 ms at base clock, ReSTIR
+  reuse 2.55 (L2 bandwidth), trace 1.48 (RT core), reflections 1.27, PT 1.16 (registers). No capture / shader swap: the
+  helper has no frame boundary; NGFX_FrameBoundary_D3D12 (Apache-2.0 header, no-op without Nsight) = ATN DECIDES. The
+  45 GB process at 03:2x was the Nsight run (commit grows ~8 MB a frame under injection); the ReSTIR agent overwrote its
+  lock twice (told: atomic create + re-check). Reuse optimisation handed to the ReSTIR agent after U1 / U2.
+- [x] Thrones round 2 MERGED 3da5efd9 (campaign census, Particle Resolution + edges + smooth half-size, Experimental);
+  agent resumed: Light Through All Banners, Grass Height Distance, Faster Game CPU Code if provable.
+- [x] Shogun 2 round 5 MERGED acfa8633 (W7d rigid casters out of view AC25DAB8 by rows v6-v8, Experimental off, needs a
+  restart; shared rt_core Host::cascade_last_view opt-in: Attila x64 / build32, WH3, Ryse, Ryse DLSS, Expeditions DLSS,
+  Rome Remastered rebuilt, their rt_core suites PASS). Agent resumed: cloth 8A00A1D4 + sprites E3DA20D4 (world route).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 

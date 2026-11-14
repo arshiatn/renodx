@@ -608,6 +608,28 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v70 (2026-11-14): rigid shadow casters out of view (built only, not run in game)
+
+- **Shadow casters out of view** (Experimental, off; with ray-traced sun shadows; restart the game): buildings and rocks
+  the main view culled but the shadow maps draw (rigidterrainblend vs30_shadow, AC25DAB8) join the ray-traced scene, as
+  Warhammer III's: each mesh captured once in world space (rt_capture_cascade_rigid), its instances placed by their rows
+  (rt_rows_cascade_rigid), those whose origin is in the main view left out (the main pass has them). Shogun 2 draws its
+  shadow maps before its main view: they test against the last frame's (rt_core Host::cascade_last_view, opt-in).
+- Not done: cloth and sprite soldiers' shadow draws (small, but not placed: streamed in the last frame's clip space they
+  would shift with the camera), units (140M indices x instances a frame, no rows).
+- test/tw_shogun2_shaders part 10: the capture and rows versions against the game's AC25DAB8.
+
+## v69 (2026-11-14): rivers, lakes and the Ultra sea in the water reflections (built only, not run in game)
+
+- **Ray-traced water reflections** (the row's new name; Experimental, off) also on the battles' rivers and lakes
+  (waterplane high / medium / ultra, waterplane00) and the sea at water quality Ultra (ocean01). The water planes' draws
+  are kept (their mesh, vertex shader and a copy of their g_world) and drawn again depth-only with the next frame's
+  camera before the reflections; rt_water_plane takes the nearer of the sea's plane and them.
+- test/tw_shogun2_shaders: rt_water_plane with a water mesh band (nearer: water; under the land: not), ocean01 and
+  waterplane00 against the game's csos.
+- Casters out of view (W7d) not made: the shadow pass comes before the main view, and its instanced draws are far too
+  many to stream out every frame (rigid: 38M, 53M, 326M indices x instances in cascades 1-3; units 140M).
+
 ## v68 (2026-11-14): sea reflections, sun-facing sprite soldiers and far trees (built only, not run in game)
 
 - **Ray-traced sea reflections** (Experimental, off; with ray-traced reflections): the sea (ocean, water quality High)

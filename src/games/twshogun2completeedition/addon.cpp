@@ -297,6 +297,8 @@ void BuildRuntimeData() {
       CustomShaderEntry(0x073A6CF3),  // ssrfilter01 (hit buffer blur y)
       CustomShaderEntry(0xF87ECE85),  // ssrresolve00 (reflection colour)
       CustomShaderEntry(0x16ADFD60),  // ocean00 (ocean high: Ray-Traced Water Reflections)
+      CustomShaderEntry(0x6B8954A6),  // ocean01 (ocean ultra: Ray-Traced Water Reflections)
+      CustomShaderEntry(0x9B9EC116),  // waterplane00 (battle waterplane high / medium / ultra: Ray-Traced Water Reflections)
       CustomShaderEntry(0xA00FE3A3),  // ssao00 (ambient occlusion line sweeps)
       CustomShaderEntry(0x98BB1159),  // ssao01 (ambient occlusion collect: the Visibility Bitmask AO)
       CustomShaderEntry(0x5CBF4FB6),  // pointlight00
@@ -372,13 +374,15 @@ void BuildRuntimeData() {
     twshogun2::ray_tracing::KeepColor(cmd_list);
   };
   // Ray-Traced Water Reflections (ray_tracing.hpp OnSeaDraw): the sea's plane, the rays' reflections for shaders/ocean00.
-  custom_shaders[0x16ADFD60].on_draw = [](auto* cmd_list) {
-    if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, true);
-    return true;
-  };
-  custom_shaders[0x16ADFD60].on_drawn = [](auto* cmd_list) {
-    if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, false);
-  };
+  for (const uint32_t hash : {0x16ADFD60u, 0x6B8954A6u}) {
+    custom_shaders[hash].on_draw = [](auto* cmd_list) {
+      if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, true);
+      return true;
+    };
+    custom_shaders[hash].on_drawn = [](auto* cmd_list) {
+      if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, false);
+    };
+  }
   for (const uint32_t hash : {0x5C0AF498u, 0x13C66077u, 0x073A6CF3u}) {
     custom_shaders[hash].on_draw = [](auto* cmd_list) { return !ray_tracing_installed || twattila::rt_scene::OnReflectionMarch(cmd_list); };
   }
@@ -1031,6 +1035,7 @@ void ReadDlssAddonOptions() {
   ray_tracing.leaf_light = read_on("RayTracedLeafLight", false);
   ray_tracing.sprite_shadows = read_on("RayTracedSpriteShadows", false);
   ray_tracing.far_tree_shadows = read_on("RayTracedFarTreeShadows", false);
+  ray_tracing.casters_out_of_view = ray_tracing.sun_shadows && read_on("RayTracedUnitsOutOfView", false);
   ray_tracing.ambient_occlusion = read_on("RayTracedAmbientOcclusion", false);
   read_float("RayTracedAmbientRange", 2.f, 0.25f, 5.f, &ray_tracing.ambient_range);
   ray_tracing.ambient_rays = read_count("RayTracedAORays", 2, 1, 8);
@@ -1344,7 +1349,7 @@ bool AttachAddon() {
                           || ray_tracing_settings.reflections || ray_tracing_settings.local_lights || ray_tracing_settings.fog_shadows
                           || ray_tracing_settings.specular_occlusion;
   if (ray_tracing_installed) {
-    twshogun2::ray_tracing::Install();
+    twshogun2::ray_tracing::Install(ray_tracing_settings.casters_out_of_view);
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);
   }
   // Frame generation (the helper presents; HUD-less images through the swap chain shader, its constants at b13) and

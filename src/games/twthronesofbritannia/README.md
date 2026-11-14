@@ -1,5 +1,31 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
+### Round 2 (2026-11-14, the campaign and Particle Resolution; built only, not run in game)
+
+New:
+- **Particle Resolution (Experimental, Full)** with Full-Resolution Particle Edges and Smooth Half-Size Particles, as Attila's: smoke, fire and dust drawn at half or a quarter of the render's size. The lit particles now draw with Attila's particle shaders (this game's are the same): at Full they look as before, at half size the rays' shadows in smoke stay in place, and torches and fires light the smoke near them (Torch and Fire Light in Fog and Smoke).
+- **The campaign map checked against ATN's campaign session** (DLAA, DLSS Balanced, Ultra Performance): every shadow caster there is in the ray-traced scene (terrain, settlements, plants and forests, armies), the campaign sea takes the rays' shadows, and the campaign's own passes read right below 100%.
+
+Not done:
+- The campaign's far terrain (drawn into depth only, never into the game's own shadow map) stays out of the rays: far hills cast no ray-traced shadows there. Smallest step: an Experimental row holding it.
+- Light Through All Banners, Grass Height Distance, the soldier draw rounding and fmod of Faster Game CPU Code: other code in this game.
+- Water Clarity on the sea and the campaign lake: their shaders don't read the scatter it raises.
+- The 24 MSAA (`_ms`) passes below 100%: they run only with in-game MSAA, where no upscaler runs.
+
+Test (ATN):
+1. Campaign, RT/PT + DLSS, Debug View Sun Shadows: settlements, plants, forests and armies cast; hills near the camera too.
+2. Campaign, RT shadows at the coast: the sea shadowed like the land; ReShade.log "forward shader ... DE739661 patched".
+3. Campaign at DLSS Ultra Performance: AO, shroud, borders and decals in place (no shifted halos).
+4. Particle Resolution Full in a battle with fires and smoke: smoke and fire look as before.
+5. Particle Resolution Half, then Quarter, in a big fire: softer smoke, FPS up.
+6. Half with RT shadows (Shadows Only): smoke shadowed where the ground is, not shifted.
+7. Full-Resolution Particle Edges off / on: smoke edges against soldiers and walls blurry / sharp.
+8. Smooth Half-Size Particles on: less flicker at smoke edges.
+9. Torch and Fire Light in Fog and Smoke 1, RT/PT at night: smoke near torches lit.
+10. Round 1's battle checks below (RT scene, readers, AO below 100%, water, graphics rows), still open.
+
+Build: `cmake --build build32 --config Release --target renodx-twthronesofbritannia.addon32`.
+
 ### Round 1 (2026-11-14, toward Attila's package; built only, not run in game)
 
 New:
@@ -17,12 +43,7 @@ New:
 Fixed:
 - The game's ambient occlusion below 100% render scale (DLSS, FSR, XeSS, Below 100%): it was read from the wrong part of the screen.
 
-Not done:
-- Particle Resolution: this game draws its own lit particle shaders; Attila's replacements carry the particle layer's constants. Smallest step: Thrones' vfx00 / vfx01 from Attila's, WARP against these bytes.
-- Light Through All Banners, Grass Height Distance, the soldier draw rounding and fmod of Faster Game CPU Code: other code in this game (not possible as Attila's).
-- The campaign: no campaign trace yet; its rows go by shader names (Attila's twins). Smallest step: one campaign frame trace.
-- Water Clarity on the sea and the campaign lake: their shaders don't read the scatter it raises.
-- The 24 MSAA (`_ms`) passes below 100%: they run only with in-game MSAA, where no upscaler runs.
+Not done: see Round 2 (Particle Resolution and the campaign done there).
 
 Test (ATN):
 1. First start without ReShade.ini on an SDR monitor: the SDR preset; on HDR the picture as before.

@@ -11,20 +11,44 @@
 //    hit at the pixel (the position from the view's uv), and the march's offset (a hit 2.1 texels away at 100%) the same
 //    direction (the projected uv in the targets' share; its length in uv as the game's patched bytes keep it).
 //    CONTROLS: the source without the position's share, without the projected uv's share, and cb12 unbound at 50% differ.
+// 3. The paths' sky: 230F2241's diffuse ambient per unit albedo at each of the six axis normals (its bytes, sun 0), with
+//    the spherical harmonics on (a 9 x 6 texture: 3 x 2 cells; inside the playable area between cells, at its far edge where
+//    the next cell wraps, outside it) and off (the cube), against WH1's rt_sun's texels 3-8 with the camera at that pixel's
+//    place; their w (texel 3: 0 with the harmonics and Path-Traced AO off; texel 6: 0 with the harmonics). CONTROL: rt_sun
+//    with the camera one cell over differs.
+// 4. The ambient patch (screen_space_shadows.hpp's Patch, then PatchAmbient with AMBIENT_AFTER_HARMONICS_Z, as the runtime;
+//    run.ps1 copies both out of the tree): found in all 31 of LIGHT_BOUNCE_DRAWS and their bytes create; the 11 single-
+//    sampled drawn with the harmonics on: t51 unbound the game's bits, t51 = 1 the game's with its ambient black (harmonics
+//    and cube 0), t51 = 0.5 halfway. CONTROL: t51 = 1 differs from unbound.
+// 5. The shared PatchAmbient against run.ps1's -Before copy: every other game's LIGHT_BOUNCE_DRAWS (their tables, their
+//    dumps beside this one) patch to the same bytes (Patch first, as the runtime). CONTROL: Warhammer's 31 differ.
+// 6. The rays' new casters (the build's embed/*.cso): the far trees' cards (CA6BCF19) streamed out (their world, TEXCOORD2)
+//    with the camera level-free along the way to the sun, against rt_capture_far_tree with rt_sun's texel 0 that way; the
+//    campaign plants (84797031, no wind, the camera below them: no lean) streamed out (TEXCOORD0), against
+//    rt_capture_campaign_vegetation (world and UV) and rt_rows_campaign_vegetation's rows x the vertex. CONTROLS: the camera
+//    turned 90 degrees, the camera above the plants: they differ.
+// 7. Torch and Fire Shadows' point light shaders (the build's embed/0x<hash>.cso, nothing at t42 / b9: the game's light)
+//    against the game's D0C67938 / 5D1695BC on a 4 x 4 G-buffer, 8 lights each. CONTROL: the other falloff differs.
 #include <windows.h>
 #include <d3d11.h>
+#include <d3d11shader.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <regex>
+#include <span>
 #include <string>
 #include <vector>
+
+#include "ambient_patch.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -150,19 +174,29 @@ static Lighting SunLighting(const Float4& sun_colour, const Float4& cube_x, floa
   return lighting;
 }
 
-// The game's sun shader at G-buffer pixel (1, 1) of 4 x 4: normal +x (t5 0.5, 0.5), the albedo in t6, depth 0.5 (t8.x),
-// AO 1 (t2); everything else unbound (0: no specular colour, no material flags, no cloud, no cascade, no environment).
-static Float4 RunGameSun(ID3D11PixelShader* shader, ID3D11VertexShader* vertex, const Lighting& lighting, float albedo) {
-  const auto target = Texture(4, 4, nullptr, D3D11_BIND_RENDER_TARGET);
-  ComPtr<ID3D11RenderTargetView> rtv;
-  device->CreateRenderTargetView(target.Get(), nullptr, rtv.GetAddressOf());
-  const auto ao = View(1, 1, {Float4{1.f, 1.f, 1.f, 1.f}});
-  const auto normal = View(4, 4, std::vector<Float4>(16, Float4{0.5f, 0.5f, 0.f, 0.f}));
-  const auto colour = View(4, 4, std::vector<Float4>(16, Float4{albedo, albedo, albedo, 0.f}));
-  const auto depth = View(4, 4, std::vector<Float4>(16, Float4{0.5f, 0.f, 0.f, 0.f}));
-  std::array<float, 4> colorimetry = {0.f, 1.f, 0.f, 0.f};
-  std::array<float, 64> environment = {};
-  std::array<float, 31 * 4> camera = {};
+// One G-buffer pixel for a game's sun shader: (1, 1) of 4 x 4, its world place (-0.25, 0.25, depth) (the camera's inverse
+// view-projection identity); normal from t5's two angles, the albedo, AO 1; the harmonics texture; t51 (-1: unbound).
+// Everything else unbound (0: no specular colour, no material flags, no cloud, no cascade, no environment).
+struct SunScene {
+  Lighting lighting;
+  float albedo = 0.5f;
+  std::array<float, 2> normal = {0.5f, 0.5f};
+  float depth = 0.5f;
+  UINT harmonics_width = 0;
+  UINT harmonics_height = 0;
+  std::vector<Float4> harmonics = {};
+  float ambient_off = -1.f;
+};
+
+static ComPtr<ID3D11VertexShader> full_screen;
+
+// The shader's bytes drawn over the scene, its resources bound by their names in its reflection.
+static Float4 DrawGame(std::span<const uint8_t> code, const SunScene& scene) {
+  ComPtr<ID3D11PixelShader> shader;
+  if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))) return {NAN, NAN, NAN, NAN};
+  ComPtr<ID3D11ShaderReflection> reflection;
+  D3DReflect(code.data(), code.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf()));
+  std::array<float, 40 * 4> camera = {};
   camera[12 * 4 + 2] = 1.f;  // the view depth: z
   for (size_t row = 0; row < 4; ++row) camera[(21 + row) * 4 + row] = 1.f;  // inverse view-projection: identity
   camera[0 * 4 + 2] = -10.f;                                               // the camera behind
@@ -172,39 +206,93 @@ static Float4 RunGameSun(ID3D11PixelShader* shader, ID3D11VertexShader* vertex, 
     camera[reg * 4 + 2] = 0.25f;
     camera[reg * 4 + 3] = 0.25f;
   }
-  std::array<float, 45 * 4> shadowmap = {};
-  std::array<float, 2 * 4> shroud = {};
-  std::array<float, 5 * 4> directional = {};
-  const std::array<ID3D11Buffer*, 7> buffers = {
-      Constants(colorimetry.data(), 16).Detach(), Constants(environment.data(), 256).Detach(), Constants(camera.data(), 31 * 16).Detach(),
-      Constants(shadowmap.data(), 45 * 16).Detach(), Constants(shroud.data(), 32).Detach(), Constants(lighting.c.data(), 18 * 16).Detach(),
-      Constants(directional.data(), 80).Detach()};
-  context->PSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
-  context->PSSetShaderResources(2, 1, ao.GetAddressOf());
-  const std::array<ID3D11ShaderResourceView*, 4> gbuffer = {normal.Get(), colour.Get(), nullptr, depth.Get()};
-  context->PSSetShaderResources(5, static_cast<UINT>(gbuffer.size()), gbuffer.data());
-  context->VSSetShader(vertex, nullptr, 0);
-  context->PSSetShader(shader, nullptr, 0);
+  const std::array<float, 4> colorimetry = {0.f, 1.f, 0.f, 0.f};
+  std::vector<ComPtr<ID3D11Buffer>> buffers;
+  std::vector<ComPtr<ID3D11ShaderResourceView>> views;
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  for (UINT index = 0; index < desc.BoundResources; ++index) {
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDesc(index, &bind);
+    const std::string name = bind.Name;
+    if (bind.Type == D3D_SIT_CBUFFER) {
+      D3D11_SHADER_BUFFER_DESC buffer_desc = {};
+      reflection->GetConstantBufferByName(bind.Name)->GetDesc(&buffer_desc);
+      std::vector<uint8_t> data((buffer_desc.Size + 15) & ~15u);
+      const auto fill = [&](const void* source, size_t bytes) { std::memcpy(data.data(), source, std::min(bytes, data.size())); };
+      if (name == "camera") fill(camera.data(), sizeof(camera));
+      if (name == "colorimetry_VS_PS") fill(colorimetry.data(), sizeof(colorimetry));
+      if (name == "lighting_VS_PS") fill(scene.lighting.c.data(), sizeof(scene.lighting.c));
+      buffers.push_back(Constants(data.data(), static_cast<UINT>(data.size())));
+      context->PSSetConstantBuffers(bind.BindPoint, 1, buffers.back().GetAddressOf());
+    } else if (bind.Type == D3D_SIT_TEXTURE) {
+      if (name == "t_ssao") views.push_back(View(1, 1, {Float4{1.f, 1.f, 1.f, 1.f}}));
+      else if (name == "gbuffer_channel_1_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.normal[0], scene.normal[1], 0.f, 0.f})));
+      else if (name == "gbuffer_channel_2_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.albedo, scene.albedo, scene.albedo, 0.f})));
+      else if (name == "gbuffer_channel_4_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.depth, 0.f, 0.f, 0.f})));
+      else if (name == "t_world_spherical_harmonics" && !scene.harmonics.empty()) views.push_back(View(scene.harmonics_width, scene.harmonics_height, scene.harmonics));
+      else continue;
+      context->PSSetShaderResources(bind.BindPoint, 1, views.back().GetAddressOf());
+    }
+  }
+  if (scene.ambient_off >= 0.f) {
+    views.push_back(View(1, 1, {Float4{scene.ambient_off, scene.ambient_off, scene.ambient_off, scene.ambient_off}}));
+    context->PSSetShaderResources(ambient_patch::AMBIENT_SLOT, 1, views.back().GetAddressOf());
+  }
+  const auto target = Texture(4, 4, nullptr, D3D11_BIND_RENDER_TARGET);
+  ComPtr<ID3D11RenderTargetView> rtv;
+  device->CreateRenderTargetView(target.Get(), nullptr, rtv.GetAddressOf());
+  context->VSSetShader(full_screen.Get(), nullptr, 0);
+  context->PSSetShader(shader.Get(), nullptr, 0);
   context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   const D3D11_VIEWPORT viewport = {.Width = 4.f, .Height = 4.f, .MaxDepth = 1.f};
   context->RSSetViewports(1, &viewport);
   context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
   context->Draw(3, 0);
   context->ClearState();
-  for (auto* buffer : buffers) buffer->Release();
   return Read(target.Get())[5];
 }
 
-static std::array<Float4, 9> RunSun(ID3D11ComputeShader* shader, const Lighting& lighting) {
+static std::vector<uint8_t> GameBytes(const std::string& dump, uint32_t hash) {
+  for (const char* profile : {"ps_4_0", "ps_4_1", "ps_5_0", "vs_4_0", "vs_4_1", "vs_5_0"}) {
+    char name[64];
+    std::snprintf(name, sizeof(name), "/0x%08X.%s.cso", hash, profile);
+    std::ifstream file(dump + name, std::ios::binary);
+    if (file) return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+  }
+  return {};
+}
+
+// The albedo's share of the output (two albedos' difference over it).
+static Float4 PerAlbedo(std::span<const uint8_t> code, SunScene scene) {
+  constexpr float ALBEDO_A = 0.2f;
+  constexpr float ALBEDO_B = 0.6f;
+  scene.albedo = ALBEDO_A;
+  const auto a = DrawGame(code, scene);
+  scene.albedo = ALBEDO_B;
+  const auto b = DrawGame(code, scene);
+  Float4 share = {};
+  for (size_t channel = 0; channel < 4; ++channel) share[channel] = (b[channel] - a[channel]) / (ALBEDO_B - ALBEDO_A);
+  return share;
+}
+
+// rt_sun's nine texels from a lighting buffer (rt_scene.hpp's binds: b1 the offsets, b2 the sun draw's camera, t0 its
+// harmonics; `camera` the camera's place, `path_ambient` rt_sun.z).
+static std::array<Float4, 9> RunSun(ID3D11ComputeShader* shader, const Lighting& lighting, const SunScene* harmonics = nullptr,
+                                    const Float4& camera = {}, bool path_ambient = true) {
   // rt_scene.hpp's offsets: sun_direction 1, the ambient cube 8, the sun colour 4 (InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4)).
-  constexpr std::array<uint32_t, 8> OFFSETS = {1, 8, 0, 0, 4, 0, 0, 0};
+  const std::array<uint32_t, 8> offsets = {1, 8, path_ambient ? 1u : 0u, 0, 4, 0, 0, 0};
   const std::vector<Float4> initial(9, Float4{7.f, 7.f, 7.f, 7.f});
   const auto texture = Texture(9, 1, initial.data(), D3D11_BIND_UNORDERED_ACCESS);
   ComPtr<ID3D11UnorderedAccessView> uav;
   device->CreateUnorderedAccessView(texture.Get(), nullptr, uav.GetAddressOf());
-  const std::array<ID3D11Buffer*, 2> buffers = {Constants(lighting.c.data(), 256).Detach(), Constants(OFFSETS.data(), 32).Detach()};
+  const std::array<ID3D11Buffer*, 3> buffers = {Constants(lighting.c.data(), sizeof(lighting.c)).Detach(), Constants(offsets.data(), 32).Detach(),
+                                                Constants(camera.data(), 16).Detach()};
+  ComPtr<ID3D11ShaderResourceView> view;
+  if (harmonics != nullptr && !harmonics->harmonics.empty()) view = View(harmonics->harmonics_width, harmonics->harmonics_height, harmonics->harmonics);
   context->CSSetShader(shader, nullptr, 0);
-  context->CSSetConstantBuffers(0, 2, buffers.data());
+  context->CSSetConstantBuffers(0, 3, buffers.data());
+  context->CSSetShaderResources(0, 1, view.GetAddressOf());
   context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
   context->Dispatch(1, 1, 1);
   context->ClearState();
@@ -215,34 +303,24 @@ static std::array<Float4, 9> RunSun(ID3D11ComputeShader* shader, const Lighting&
 }
 
 static void TestSun(const std::string& games, const std::string& dump) {
-  const std::string bytes = ReadText(dump + "/0x230F2241.ps_4_1.cso");
-  ComPtr<ID3D11PixelShader> game;
-  CHECK(SUCCEEDED(device->CreatePixelShader(bytes.data(), bytes.size(), nullptr, game.GetAddressOf())), "the game's 230F2241");
-  const auto vertex_code = CompileText("float4 main(uint id : SV_VertexID) : SV_Position { const float2 uv = float2((id << 1) & 2, id & 2);"
-                                       " return float4(uv * float2(2, -2) + float2(-1, 1), 0, 1); }",
-                                       "triangle", "main", "vs_5_0");
-  ComPtr<ID3D11VertexShader> vertex;
-  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex.GetAddressOf());
+  const auto bytes = GameBytes(dump, 0x230F2241);
+  CHECK(!bytes.empty(), "the game's 230F2241");
   const std::string wrapper = games + "/twwarhammer/rt_sun.cs_5_0.hlsl";
   const auto sun = ComputeShader(ReadText(wrapper), wrapper);
   const std::string shared = games + "/twattila/rt_sun.cs_5_0.hlsl";
   const auto shared_defaults = ComputeShader(ReadText(shared), shared);
   const Float4 sun_colour = {84112.55f, 71577.57f, 49356.4f, 0.f};
   const Float4 cube_x = {0.4870255f, 0.5041848f, 0.5121719f, 0.f};
-  constexpr float ALBEDO_A = 0.2f;
-  constexpr float ALBEDO_B = 0.6f;
   std::array<float, 2> diffuse = {};
   for (const float hdr_on : {1.f, 0.f}) {
-    const auto sun_a = RunGameSun(game.Get(), vertex.Get(), SunLighting(sun_colour, {}, hdr_on), ALBEDO_A);
-    const auto sun_b = RunGameSun(game.Get(), vertex.Get(), SunLighting(sun_colour, {}, hdr_on), ALBEDO_B);
-    const auto sky_a = RunGameSun(game.Get(), vertex.Get(), SunLighting({}, cube_x, hdr_on), ALBEDO_A);
-    const auto sky_b = RunGameSun(game.Get(), vertex.Get(), SunLighting({}, cube_x, hdr_on), ALBEDO_B);
+    const auto sun_share = PerAlbedo(bytes, {.lighting = SunLighting(sun_colour, {}, hdr_on)});
+    const auto sky_share = PerAlbedo(bytes, {.lighting = SunLighting({}, cube_x, hdr_on)});
     std::array<float, 3> sun_factor = {};
     std::array<float, 3> sky_factor = {};
     for (size_t channel = 0; channel < 3; ++channel) {
-      sun_factor[channel] = (sun_b[channel] - sun_a[channel]) / ((ALBEDO_B - ALBEDO_A) * sun_colour[channel]);
-      sky_factor[channel] = (sky_b[channel] - sky_a[channel]) / ((ALBEDO_B - ALBEDO_A) * cube_x[channel]);
-      CHECK(std::isfinite(sun_b[channel]) && std::isfinite(sky_b[channel]), "g_hdr_on %g: not finite", hdr_on);
+      sun_factor[channel] = sun_share[channel] / sun_colour[channel];
+      sky_factor[channel] = sky_share[channel] / cube_x[channel];
+      CHECK(std::isfinite(sun_factor[channel]) && std::isfinite(sky_factor[channel]), "g_hdr_on %g: not finite", hdr_on);
     }
     const float expected = (hdr_on > 0.f) ? 0.0031831f : 0.318310f;
     for (size_t channel = 0; channel < 3; ++channel) {
@@ -271,6 +349,227 @@ static void TestSun(const std::string& games, const std::string& dump) {
   CHECK(!Near(defaults[4][3], texels[4][3], 0.05f), "CONTROL the shared defaults' sky w %g matched", defaults[4][3]);
   std::printf("rt_sun: sun %.6g %.6g %.6g (x %.8g), sky w %g; the shared defaults: sun x %.6g, sky w %g\n", texels[2][0], texels[2][1], texels[2][2],
               texels[2][0] / sun_colour[0], texels[4][3], defaults[2][0] / sun_colour[0], defaults[4][3]);
+}
+
+// t5's angles for the six axis normals (+x, -x, +y, -y, +z, -z): theta = x pi - pi / 2, phi = y 2 pi - pi.
+constexpr std::array<std::array<float, 2>, 6> AXIS_NORMALS = {{{0.5f, 0.5f}, {0.5f, 1.f}, {1.f, 0.5f}, {0.f, 0.5f}, {0.5f, 0.75f}, {0.5f, 0.25f}}};
+
+// A harmonics texture of 3 x 2 cells: term 0 0.5 to 1.5, the others -0.15 to 0.15 (every side's sum above 0).
+static std::vector<Float4> Harmonics() {
+  std::vector<Float4> texels(9 * 6);
+  uint32_t state = 12345u;
+  const auto next = [&state] {
+    state = state * 1664525u + 1013904223u;
+    return static_cast<float>(state >> 8) / 16777216.f;
+  };
+  for (UINT y = 0; y < 6; ++y) {
+    for (UINT x = 0; x < 9; ++x) {
+      const bool constant_term = (x % 3) == 0 && (y % 3) == 0;
+      for (size_t channel = 0; channel < 3; ++channel) texels[(y * 9) + x][channel] = constant_term ? 0.5f + next() : (next() - 0.5f) * 0.3f;
+      texels[(y * 9) + x][3] = 0.f;
+    }
+  }
+  return texels;
+}
+
+static void TestSky(const std::string& games, const std::string& dump) {
+  const auto bytes = GameBytes(dump, 0x230F2241);
+  const std::string path = games + "/twwarhammer/rt_sun.cs_5_0.hlsl";
+  const auto sun = ComputeShader(ReadText(path), path);
+  struct Case {
+    const char* name;
+    bool harmonics;
+    std::array<float, 4> area;  // c17: the playable area (x, z, x, z)
+    float depth;                // the pixel's world z
+  };
+  // The pixel's world x is -0.25. Inside: (0.375, 0.3) of the area, cells (1, 0) to (2, 1); far edge: (0.99, 0.99), the
+  // next cells (0, 0); outside: z 1.7 clamped and wrapped to 0.
+  const std::array<Case, 4> cases = {{{"inside, between cells", true, {-1.f, 0.f, 1.f, 1.f}, 0.3f},
+                                      {"far edge (the next cell wraps)", true, {-1.24f, 0.f, -0.24f, 1.f}, 0.99f},
+                                      {"outside the area", true, {-1.f, 0.f, 1.f, 1.f}, 1.7f},
+                                      {"harmonics off (the cube)", false, {-1.f, 0.f, 1.f, 1.f}, 0.3f}}};
+  int misses = 0;
+  float largest = 0.f;
+  for (const auto& test : cases) {
+    SunScene scene = {.lighting = SunLighting({}, {0.7f, 0.6f, 0.5f, 0.f}, 1.f), .depth = test.depth, .harmonics_width = 9, .harmonics_height = 6,
+                      .harmonics = Harmonics()};
+    scene.lighting.c[46] = std::bit_cast<float>(test.harmonics ? 1u : 0u);  // c11.z: g_use_spherical_harmonics
+    std::copy(test.area.begin(), test.area.end(), scene.lighting.c.begin() + 68);
+    const Float4 camera = {-0.25f, 3.f, test.depth, 0.f};
+    const auto texels = RunSun(sun.Get(), scene.lighting, &scene, camera);
+    for (size_t side = 0; side < 6; ++side) {
+      scene.normal = AXIS_NORMALS[side];
+      const auto game = PerAlbedo(bytes, scene);
+      for (size_t channel = 0; channel < 3; ++channel) {
+        const float difference = std::fabs(game[channel] - texels[3 + side][channel]);
+        largest = std::max(largest, difference);
+        if (difference > 1e-4f * std::fabs(game[channel]) + 2e-5f) {
+          ++misses;
+          std::printf("  %s side %zu channel %zu: the game's %.7g, rt_sun %.7g\n", test.name, side, channel, game[channel], texels[3 + side][channel]);
+        }
+      }
+    }
+    CHECK(texels[3][3] == 1.f && texels[6][3] == (test.harmonics ? 0.f : 1.f) && texels[4][3] == 1.f, "%s: w %g %g %g", test.name, texels[3][3],
+          texels[6][3], texels[4][3]);
+    if (test.harmonics) {
+      const auto no_paths = RunSun(sun.Get(), scene.lighting, &scene, camera, false);
+      CHECK(no_paths[3][3] == 0.f, "%s: texel 3's w %g with Path-Traced AO off", test.name, no_paths[3][3]);
+    }
+    if (&test == &cases[0]) {
+      const auto moved = RunSun(sun.Get(), scene.lighting, &scene, {-0.25f + (2.f / 3.f), 3.f, test.depth, 0.f});
+      bool differs = false;
+      for (size_t side = 0; side < 6; ++side) differs = differs || !Near(moved[3 + side][0], texels[3 + side][0], 1e-3f);
+      CHECK(differs, "CONTROL the camera one cell over gave the same sky");
+    }
+  }
+  CHECK(misses == 0, "the paths' sky: %d misses", misses);
+  std::printf("the paths' sky: rt_sun against 230F2241's ambient, 4 cases x 6 sides x 3 channels: %d misses (largest %.3g); CONTROL ok\n", misses,
+              largest);
+}
+
+// A game's LIGHT_BOUNCE_DRAWS (its addon's table): each row's hash and ambient_final_sites (0 where unset).
+static std::vector<std::pair<uint32_t, uint32_t>> SunDraws(const std::string& games, const std::string& game) {
+  const std::string text = ReadText(games + "/" + game + "/addon.cpp");
+  const auto start = text.find("LIGHT_BOUNCE_DRAWS = {{");
+  const auto end = text.find("}};", start);
+  const std::string table = text.substr(start, end - start);
+  std::vector<std::pair<uint32_t, uint32_t>> draws;
+  const std::regex row(R"(\{\.shader_hash = 0x([0-9A-F]{8})([^}]*)\})");
+  const std::regex sites(R"(\.ambient_final_sites = (\w+))");
+  for (auto found = std::sregex_iterator(table.begin(), table.end(), row); found != std::sregex_iterator(); ++found) {
+    const std::string fields = (*found)[2].str();
+    std::smatch value;
+    uint32_t final_sites = 0;
+    if (std::regex_search(fields, value, sites)) {
+      const std::string name = value[1].str();
+      final_sites = (name == "AMBIENT_AFTER_HARMONICS")     ? twattila::light_bounce::AMBIENT_AFTER_HARMONICS
+                    : (name == "AMBIENT_AFTER_HARMONICS_Z") ? twattila::light_bounce::AMBIENT_AFTER_HARMONICS_Z
+                                                            : static_cast<uint32_t>(std::stoul(name));
+    }
+    draws.emplace_back(static_cast<uint32_t>(std::stoul((*found)[1].str(), nullptr, 16)), final_sites);
+  }
+  return draws;
+}
+
+static std::vector<uint32_t> SunHashes(const std::string& games) {
+  std::vector<uint32_t> hashes;
+  for (const auto& [hash, final_sites] : SunDraws(games, "twwarhammer")) hashes.push_back(hash);
+  return hashes;
+}
+
+static bool Multisampled(std::span<const uint8_t> code) {
+  ComPtr<ID3D11ShaderReflection> reflection;
+  D3DReflect(code.data(), code.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf()));
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  for (UINT index = 0; index < desc.BoundResources; ++index) {
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDesc(index, &bind);
+    if (bind.Dimension == D3D_SRV_DIMENSION_TEXTURE2DMS) return true;
+  }
+  return false;
+}
+
+static void TestAmbientPatch(const std::string& games, const std::string& dump) {
+  const auto hashes = SunHashes(games);
+  CHECK(hashes.size() == 31, "LIGHT_BOUNCE_DRAWS: %zu rows", hashes.size());
+  int found = 0;
+  int created = 0;
+  int drawn = 0;
+  int unbound_differs = 0;
+  int black_differs = 0;
+  int halfway_misses = 0;
+  int control_moved = 0;
+  for (const uint32_t hash : hashes) {
+    const auto code = GameBytes(dump, hash);
+    const auto shadow = ambient_patch::Patch(code, false, 1);
+    bool foliage = false;
+    const auto patched = ambient_patch::PatchAmbient(shadow.empty() ? std::span<const uint8_t>(code) : std::span<const uint8_t>(shadow), &foliage,
+                                                     twattila::light_bounce::AMBIENT_AFTER_HARMONICS_Z);
+    if (patched.empty()) {
+      std::printf("  %08X: no ambient site\n", hash);
+      continue;
+    }
+    ++found;
+    ComPtr<ID3D11PixelShader> shader;
+    if (FAILED(device->CreatePixelShader(patched.data(), patched.size(), nullptr, shader.GetAddressOf()))) continue;
+    ++created;
+    if (Multisampled(code)) continue;
+    ++drawn;
+    SunScene scene = {.lighting = SunLighting({1250.f, 1250.f, 1250.f, 0.f}, {0.7f, 0.6f, 0.5f, 0.f}, 1.f), .depth = 0.3f, .harmonics_width = 9,
+                      .harmonics_height = 6, .harmonics = Harmonics()};
+    scene.lighting.c[46] = std::bit_cast<float>(1u);
+    const std::array<float, 4> area = {-1.f, 0.f, 1.f, 1.f};
+    std::copy(area.begin(), area.end(), scene.lighting.c.begin() + 68);
+    const auto game = DrawGame(code, scene);
+    const auto unbound = DrawGame(patched, scene);
+    SunScene black = scene;
+    std::fill(black.harmonics.begin(), black.harmonics.end(), Float4{});
+    std::fill(black.lighting.c.begin() + 8, black.lighting.c.begin() + 32, 0.f);
+    const auto game_black = DrawGame(code, black);
+    scene.ambient_off = 1.f;
+    const auto off = DrawGame(patched, scene);
+    scene.ambient_off = 0.5f;
+    const auto half = DrawGame(patched, scene);
+    bool moved = false;
+    for (size_t channel = 0; channel < 3; ++channel) {
+      unbound_differs += (std::bit_cast<uint32_t>(unbound[channel]) != std::bit_cast<uint32_t>(game[channel])) ? 1 : 0;
+      black_differs += Near(off[channel], game_black[channel], 1e-5f) ? 0 : 1;
+      halfway_misses += Near(half[channel], 0.5f * (game[channel] + off[channel]), 1e-4f) ? 0 : 1;
+      moved = moved || !Near(off[channel], unbound[channel], 1e-3f);
+    }
+    control_moved += moved ? 1 : 0;
+  }
+  CHECK(found == 31 && created == 31, "the ambient patch: found %d, created %d of 31", found, created);
+  CHECK(drawn == 11 && unbound_differs == 0 && black_differs == 0 && halfway_misses == 0, "drawn %d: t51 unbound %d differ, t51 = 1 %d differ from black, halfway %d",
+        drawn, unbound_differs, black_differs, halfway_misses);
+  CHECK(control_moved == drawn, "CONTROL t51 = 1 moved %d of %d", control_moved, drawn);
+  std::printf("the ambient patch (AMBIENT_AFTER_HARMONICS_Z): found %d, created %d of 31; %d drawn: t51 unbound %d differ, t51 = 1 %d differ from the "
+              "black ambient, halfway %d misses; CONTROL %d of %d moved\n",
+              found, created, drawn, unbound_differs, black_differs, halfway_misses, control_moved, drawn);
+}
+
+static void TestSharedBytes(const std::string& games, const std::string& dump) {
+  const std::string pack = "dump_shader_twwarhammer_pack";
+  const auto at = dump.find(pack);
+  CHECK(at != std::string::npos, "the dump folder %s is not %s's", dump.c_str(), pack.c_str());
+  if (at == std::string::npos) return;
+  int other_rows = 0;
+  int other_patched = 0;
+  int other_differ = 0;
+  int ours_differ = 0;
+  for (const char* game : {"twattila", "twpharaohdynasties", "twrome2", "twthronesofbritannia", "twtroy", "twwarhammer2", "twwarhammer3", "twwarhammer"}) {
+    const std::string game_dump = std::string(dump).replace(at, pack.size(), std::string("dump_shader_") + game + "_pack");
+    int rows = 0;
+    int patched = 0;
+    int differ = 0;
+    for (const auto& [hash, final_sites] : SunDraws(games, game)) {
+      const auto code = GameBytes(game_dump, hash);
+      if (code.empty()) continue;
+      ++rows;
+      const auto now_shadow = ambient_patch::Patch(code, false, 1);
+      const auto before_shadow = ambient_patch_before::Patch(code, false, 1);
+      bool foliage = false;
+      const auto now = ambient_patch::PatchAmbient(now_shadow.empty() ? std::span<const uint8_t>(code) : std::span<const uint8_t>(now_shadow), &foliage,
+                                                   final_sites);
+      const auto before = ambient_patch_before::PatchAmbient(
+          before_shadow.empty() ? std::span<const uint8_t>(code) : std::span<const uint8_t>(before_shadow), &foliage, final_sites);
+      patched += now.empty() ? 0 : 1;
+      differ += (now != before || now_shadow != before_shadow) ? 1 : 0;
+    }
+    std::printf("  %s: %d rows in its dump, %d patched, %d differ from before\n", game, rows, patched, differ);
+    if (std::string(game) == "twwarhammer") {
+      ours_differ = differ;
+    } else {
+      other_rows += rows;
+      other_patched += patched;
+      other_differ += differ;
+    }
+  }
+  CHECK(other_rows > 100 && other_differ == 0, "the other games: %d rows, %d differ", other_rows, other_differ);
+  CHECK(ours_differ == 31, "CONTROL Warhammer's: %d of 31 differ", ours_differ);
+  std::printf("shared PatchAmbient: the other games' %d rows (%d patched) the same bytes as before; CONTROL Warhammer's %d of 31 differ\n", other_rows,
+              other_patched, ours_differ);
 }
 
 // The resolve's inputs at `size` x `size` (`view` x `view` of them the view's: the same texels; the rest 7s, the radiance's
@@ -436,6 +735,341 @@ static void TestResolve(const std::string& games) {
               same, PIXELS, directions, worst_cos, worst_ratio, unbound_differs, position_differs, projected_differs, directions);
 }
 
+// One output element to stream out: its semantic, index and component count.
+struct Streamed {
+  const char* semantic;
+  UINT index;
+  BYTE components;
+};
+
+// `code`'s outputs streamed out for `vertices` (floats, one point each) laid out by the game vertex shader's input signature,
+// as rt_core draws a capture with the game's layout; `constants` from b0, t0 bound.
+static std::vector<float> StreamOut(std::span<const uint8_t> game, std::span<const uint8_t> code, std::span<const Streamed> outputs,
+                                    const std::vector<float>& vertices, std::span<ID3D11Buffer* const> constants, ID3D11ShaderResourceView* t0 = nullptr) {
+  ComPtr<ID3D11ShaderReflection> reflection;
+  D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf()));
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  constexpr std::array<DXGI_FORMAT, 4> FORMATS = {DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_R32G32B32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT};
+  std::vector<D3D11_INPUT_ELEMENT_DESC> layout;
+  UINT vertex_bytes = 0;
+  for (UINT index = 0; index < desc.InputParameters; ++index) {
+    D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+    reflection->GetInputParameterDesc(index, &parameter);
+    const auto components = static_cast<UINT>(std::bit_width(static_cast<UINT>(parameter.Mask)));
+    layout.push_back({parameter.SemanticName, parameter.SemanticIndex, FORMATS[components - 1], 0, vertex_bytes, D3D11_INPUT_PER_VERTEX_DATA, 0});
+    vertex_bytes += components * 4;
+  }
+  std::vector<D3D11_SO_DECLARATION_ENTRY> entries;
+  UINT stride = 0;
+  for (const auto& output : outputs) {
+    entries.push_back({0, output.semantic, output.index, 0, output.components, 0});
+    stride += output.components * 4u;
+  }
+  const auto count = static_cast<UINT>(vertices.size() * 4 / vertex_bytes);
+  ComPtr<ID3D11InputLayout> input_layout;
+  ComPtr<ID3D11VertexShader> vertex_shader;
+  ComPtr<ID3D11GeometryShader> stream;
+  if (FAILED(device->CreateInputLayout(layout.data(), static_cast<UINT>(layout.size()), game.data(), game.size(), input_layout.GetAddressOf()))
+      || FAILED(device->CreateVertexShader(code.data(), code.size(), nullptr, vertex_shader.GetAddressOf()))
+      || FAILED(device->CreateGeometryShaderWithStreamOutput(code.data(), code.size(), entries.data(), static_cast<UINT>(entries.size()), &stride, 1,
+                                                             D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf()))) {
+    return {};
+  }
+  const D3D11_BUFFER_DESC vertex_desc = {.ByteWidth = static_cast<UINT>(vertices.size() * 4), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+  const D3D11_SUBRESOURCE_DATA vertex_data = {.pSysMem = vertices.data()};
+  ComPtr<ID3D11Buffer> vertex_buffer;
+  device->CreateBuffer(&vertex_desc, &vertex_data, vertex_buffer.GetAddressOf());
+  D3D11_BUFFER_DESC out_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+  ComPtr<ID3D11Buffer> out;
+  device->CreateBuffer(&out_desc, nullptr, out.GetAddressOf());
+  const UINT zero = 0;
+  context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &vertex_bytes, &zero);
+  context->IASetInputLayout(input_layout.Get());
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+  context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+  context->VSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
+  context->VSSetShaderResources(0, 1, &t0);
+  context->GSSetShader(stream.Get(), nullptr, 0);
+  context->SOSetTargets(1, out.GetAddressOf(), &zero);
+  context->Draw(count, 0);
+  context->ClearState();
+  out_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&out_desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), out.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  std::vector<float> values(count * stride / 4);
+  std::memcpy(values.data(), mapped.pData, values.size() * 4);
+  context->Unmap(staging.Get(), 0);
+  return values;
+}
+
+static std::vector<uint8_t> Bytes(const std::string& path) {
+  const std::string text = ReadText(path);
+  return {text.begin(), text.end()};
+}
+
+// rt_capture.hlsli's RtHalfBits back to a float (its tiny values are 0).
+static float HalfValue(uint32_t half) {
+  const int exponent = static_cast<int>((half >> 10) & 0x1F);
+  const float magnitude = (exponent == 0) ? 0.f : std::ldexp(1.f + (static_cast<float>(half & 0x3FF) / 1024.f), exponent - 15);
+  return ((half & 0x8000) != 0) ? -magnitude : magnitude;
+}
+
+static void TestCasters(const std::string& root, const std::string& dump) {
+  const std::string embed = root + "/build/twwarhammer.include/embed/";
+  uint32_t state = 4242u;
+  const auto unit = [&state](float low, float high) {
+    state = state * 1664525u + 1013904223u;
+    return low + ((high - low) * static_cast<float>(state >> 8) / 16777216.f);
+  };
+  // The far trees' cards (CA6BCF19: POSITION0 4, TEXCOORD0 2, TEXCOORD1 4, TEXCOORD2 4, TEXCOORD3 1).
+  const auto card = GameBytes(dump, 0xCA6BCF19);
+  const auto card_capture = Bytes(embed + "rt_capture_far_tree.cso");
+  int card_values = 0;
+  int card_misses = 0;
+  int card_control = 0;
+  for (int run = 0; run < 16; ++run) {
+    const std::array<float, 3> place = {unit(-500.f, 500.f), unit(0.f, 50.f), unit(-500.f, 500.f)};
+    const std::array<float, 2> facing = {unit(-1.f, 1.f), unit(-1.f, 1.f)};
+    const float scale = unit(5.f, 30.f);
+    const float sun_turn = unit(0.f, 6.2831853f);
+    const float sun_up = unit(0.1f, 0.9f);
+    const float across = std::sqrt(1.f - (sun_up * sun_up));
+    const Float4 toward_sun = {across * std::sin(sun_turn), sun_up, across * std::cos(sun_turn), 1.f};
+    std::vector<float> vertices;
+    for (int corner = 0; corner < 8; ++corner) {
+      vertices.insert(vertices.end(), {unit(-0.5f, 0.5f), unit(0.f, 1.f), 0.f, 1.f, unit(0.f, 0.25f), unit(0.f, 1.f), place[0], place[1], place[2], 1.f,
+                                       facing[0], 0.f, facing[1], scale, 0.f});
+    }
+    const auto sun = View(1, 1, {toward_sun});
+    for (const bool control : {false, true}) {
+      // The camera along the sun's way across (CONTROL: 90 degrees off), any height; view_projection identity.
+      std::array<float, 48 * 4> camera = {};
+      const std::array<float, 2> way = control ? std::array<float, 2>{-toward_sun[2] / across, toward_sun[0] / across}
+                                               : std::array<float, 2>{toward_sun[0] / across, toward_sun[2] / across};
+      camera[0] = place[0] + (way[0] * 200.f);
+      camera[1] = place[1] + unit(-50.f, 300.f);
+      camera[2] = place[2] + (way[1] * 200.f);
+      for (size_t row = 0; row < 4; ++row) camera[(9 + row) * 4 + row] = 1.f;
+      const auto buffer = Constants(camera.data(), sizeof(camera));
+      const std::array<ID3D11Buffer*, 1> constants = {buffer.Get()};
+      const std::array<Streamed, 1> game_world = {{{"TEXCOORD", 2, 3}}};
+      const std::array<Streamed, 1> capture_world = {{{"TEXCOORD", 0, 3}}};
+      const auto game = StreamOut(card, card, game_world, vertices, constants);
+      const auto ours = StreamOut(card, card_capture, capture_world, vertices, constants, sun.Get());
+      CHECK(!game.empty() && game.size() == ours.size(), "the far cards' stream out");
+      for (size_t at = 0; at < std::min(game.size(), ours.size()); ++at) {
+        const bool miss = std::fabs(game[at] - ours[at]) > 1e-3f;
+        if (control) {
+          card_control += miss ? 1 : 0;
+        } else {
+          ++card_values;
+          card_misses += miss ? 1 : 0;
+        }
+      }
+    }
+  }
+  CHECK(card_values == 16 * 8 * 3 && card_misses == 0 && card_control > 0, "far cards: %d values, %d misses, CONTROL %d differ", card_values, card_misses,
+        card_control);
+  std::printf("far cards: rt_capture_far_tree against CA6BCF19, %d values, %d misses; CONTROL camera 90 degrees off: %d differ\n", card_values,
+              card_misses, card_control);
+
+  // The campaign plants (84797031: POSITION0 4 with the UV's u, NORMAL0 4 with its v, COLOR0 4 (w the wind's weight), POSITION1
+  // 4 (the place, w the turn), POSITION2 1 (the size)); no wind (wind_VS 0).
+  const auto plant = GameBytes(dump, 0x84797031);
+  const auto plant_capture = Bytes(embed + "rt_capture_campaign_vegetation.cso");
+  const auto plant_rows = Bytes(embed + "rt_rows_campaign_vegetation.cso");
+  int plant_values = 0;
+  int plant_misses = 0;
+  int uv_misses = 0;
+  int row_misses = 0;
+  int plant_control = 0;
+  const std::array<float, 2 * 4> wind = {};
+  const auto wind_buffer = Constants(wind.data(), sizeof(wind));
+  for (int run = 0; run < 16; ++run) {
+    const std::array<float, 5> instance = {unit(-500.f, 500.f), unit(0.f, 50.f), unit(-500.f, 500.f), unit(-6.f, 6.f), unit(0.2f, 3.f)};
+    std::vector<float> vertices;
+    for (int vertex = 0; vertex < 8; ++vertex) {
+      vertices.insert(vertices.end(), {unit(-2.f, 2.f), unit(0.f, 6.f), unit(-2.f, 2.f), unit(0.f, 1.f), 0.f, 1.f, 0.f, unit(0.f, 1.f), 0.f, 0.f, 0.f,
+                                       unit(0.f, 1.f), instance[0], instance[1], instance[2], instance[3], instance[4]});
+    }
+    for (const bool control : {false, true}) {
+      // The camera 80 m across, below the plants (CONTROL: 100 m above: the game leans them); view_projection identity.
+      std::array<float, 27 * 4> camera = {};
+      camera[0] = instance[0] + 80.f;
+      camera[1] = instance[1] + (control ? 100.f : -5.f);
+      camera[2] = instance[2];
+      for (size_t row = 0; row < 4; ++row) camera[(9 + row) * 4 + row] = 1.f;
+      camera[26 * 4] = unit(0.f, 100.f);
+      const auto buffer = Constants(camera.data(), sizeof(camera));
+      const std::array<ID3D11Buffer*, 2> constants = {buffer.Get(), wind_buffer.Get()};
+      const std::array<Streamed, 1> world_uv = {{{"TEXCOORD", 0, 4}}};
+      const std::array<Streamed, 3> rows = {{{"TEXCOORD", 0, 4}, {"TEXCOORD", 1, 4}, {"TEXCOORD", 2, 4}}};
+      const auto game = StreamOut(plant, plant, world_uv, vertices, constants);
+      const auto ours = StreamOut(plant, plant_capture, world_uv, vertices, constants);
+      const auto placed = StreamOut(plant, plant_rows, rows, vertices, constants);
+      CHECK(game.size() == 8 * 4 && ours.size() == 8 * 4 && placed.size() == 8 * 12, "the campaign plants' stream out");
+      if (game.size() != 8 * 4 || ours.size() != 8 * 4 || placed.size() != 8 * 12) return;
+      for (size_t vertex = 0; vertex < 8; ++vertex) {
+        const float* local = vertices.data() + (vertex * 17);
+        for (size_t axis = 0; axis < 3; ++axis) {
+          const float expected = game[(vertex * 4) + axis];
+          const bool miss = std::fabs(expected - ours[(vertex * 4) + axis]) > 1e-3f;
+          if (control) {
+            plant_control += miss ? 1 : 0;
+            continue;
+          }
+          ++plant_values;
+          plant_misses += miss ? 1 : 0;
+          const float* row = placed.data() + (vertex * 12) + (axis * 4);
+          const float moved = (row[0] * local[0]) + (row[1] * local[1]) + (row[2] * local[2]) + row[3];
+          row_misses += (std::fabs(expected - moved) > 1e-3f) ? 1 : 0;
+        }
+        if (!control) {
+          const uint32_t halves = std::bit_cast<uint32_t>(ours[(vertex * 4) + 3]);
+          uv_misses += Near(HalfValue(halves & 0xFFFF), local[3], 2e-3f) ? 0 : 1;
+          uv_misses += Near(HalfValue(halves >> 16), local[7], 2e-3f) ? 0 : 1;
+        }
+      }
+    }
+  }
+  CHECK(plant_values == 16 * 8 * 3 && plant_misses == 0 && uv_misses == 0 && row_misses == 0 && plant_control > 0,
+        "campaign plants: %d values, %d misses, %d UV, %d rows, CONTROL %d differ", plant_values, plant_misses, uv_misses, row_misses, plant_control);
+  std::printf("campaign plants: rt_capture_campaign_vegetation against 84797031, %d values, %d misses, UV %d misses; rows %d misses; CONTROL "
+              "camera above: %d differ\n",
+              plant_values, plant_misses, uv_misses, row_misses, plant_control);
+}
+
+// The point light shaders' inputs (VS B5B5BFA4's outputs): a full-screen triangle with the light's colour (POSITION1) and
+// place and reach (POSITION2) from b0.
+static ComPtr<ID3D11VertexShader> light_vertex;
+
+// A point light shader's bytes drawn over a 4 x 4 G-buffer (each pixel its own normal, albedo, specular and depth; the
+// camera's inverse view-projection identity), its constants bound by name as the game's bytes (`game`: the build strips
+// ours of reflection) name them (g_hdr_on 1, gamma 1, the viewport offset 0 / scale 1); nothing at t42 / b9.
+static std::vector<Float4> DrawLight(std::span<const uint8_t> code, std::span<const uint8_t> game, const std::array<float, 8>& light, uint32_t seed) {
+  ComPtr<ID3D11PixelShader> shader;
+  if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))) return {};
+  ComPtr<ID3D11ShaderReflection> reflection;
+  if (FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) return {};
+  std::array<float, 40 * 4> camera = {};
+  for (size_t row = 0; row < 4; ++row) camera[(21 + row) * 4 + row] = 1.f;
+  camera[2] = -3.f;  // the camera behind
+  camera[27 * 4 + 0] = 4.f;
+  camera[27 * 4 + 1] = 4.f;
+  camera[27 * 4 + 2] = 0.25f;
+  camera[27 * 4 + 3] = 0.25f;
+  const std::array<float, 4> colorimetry = {0.f, 1.f, 1.f, 0.f};
+  std::array<float, 18 * 4> lighting = {};
+  lighting[44] = 1.f;  // g_hdr_on
+  const std::array<float, 4> viewport = {0.f, 0.f, 1.f, 1.f};
+  std::vector<Float4> gbuffer[4];
+  for (UINT pixel = 0; pixel < 16; ++pixel) {
+    seed = seed * 1664525u + 1013904223u;
+    const auto next = [&seed] {
+      seed = seed * 1664525u + 1013904223u;
+      return static_cast<float>(seed >> 8) / 16777216.f;
+    };
+    gbuffer[0].push_back({next(), next(), 0.f, 0.f});
+    gbuffer[1].push_back({next(), next(), next(), 0.f});
+    gbuffer[2].push_back({next() * 0.2f, next() * 0.2f, next() * 0.2f, static_cast<float>(pixel % 4) / 255.f});
+    gbuffer[3].push_back({0.2f + (next() * 0.6f), 0.f, 0.f, 0.f});
+  }
+  std::vector<ComPtr<ID3D11Buffer>> buffers;
+  std::vector<ComPtr<ID3D11ShaderResourceView>> views;
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  for (UINT index = 0; index < desc.BoundResources; ++index) {
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDesc(index, &bind);
+    const std::string name = bind.Name;
+    if (bind.Type == D3D_SIT_CBUFFER) {
+      D3D11_SHADER_BUFFER_DESC buffer_desc = {};
+      reflection->GetConstantBufferByName(bind.Name)->GetDesc(&buffer_desc);
+      std::vector<uint8_t> data((buffer_desc.Size + 15) & ~15u);
+      const auto fill = [&](const void* source, size_t bytes) { std::memcpy(data.data(), source, std::min(bytes, data.size())); };
+      if (name == "camera") fill(camera.data(), sizeof(camera));
+      if (name == "colorimetry_VS_PS") fill(colorimetry.data(), sizeof(colorimetry));
+      if (name == "lighting_VS_PS") fill(lighting.data(), sizeof(lighting));
+      if (name == "dynamic_light_PS") fill(viewport.data(), sizeof(viewport));
+      buffers.push_back(Constants(data.data(), static_cast<UINT>(data.size())));
+      context->PSSetConstantBuffers(bind.BindPoint, 1, buffers.back().GetAddressOf());
+    } else if (bind.Type == D3D_SIT_TEXTURE && name.starts_with("gbuffer_channel_")) {
+      views.push_back(View(4, 4, gbuffer[name[16] - '1']));
+      context->PSSetShaderResources(bind.BindPoint, 1, views.back().GetAddressOf());
+    }
+  }
+  const auto light_constants = Constants(light.data(), sizeof(light));
+  const auto target = Texture(4, 4, nullptr, D3D11_BIND_RENDER_TARGET);
+  ComPtr<ID3D11RenderTargetView> rtv;
+  device->CreateRenderTargetView(target.Get(), nullptr, rtv.GetAddressOf());
+  context->VSSetShader(light_vertex.Get(), nullptr, 0);
+  context->VSSetConstantBuffers(0, 1, light_constants.GetAddressOf());
+  context->PSSetShader(shader.Get(), nullptr, 0);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  const D3D11_VIEWPORT viewport_4 = {.Width = 4.f, .Height = 4.f, .MaxDepth = 1.f};
+  context->RSSetViewports(1, &viewport_4);
+  context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+  context->Draw(3, 0);
+  context->ClearState();
+  return Read(target.Get());
+}
+
+static void TestPointLights(const std::string& root, const std::string& dump) {
+  const auto vertex = CompileText("cbuffer light : register(b0) { float4 colour; float4 place; };"
+                                  "void main(uint id : SV_VertexID, out float4 position : SV_Position, out float4 uv : TEXCOORD0,"
+                                  " out float4 light_colour : POSITION1, out float4 light_place : POSITION2) {"
+                                  " const float2 corner = float2((id << 1) & 2, id & 2); position = float4(corner * float2(2, -2) + float2(-1, 1), 0, 1);"
+                                  " uv = 0; light_colour = colour; light_place = place; }",
+                                  "light", "main", "vs_5_0");
+  device->CreateVertexShader(vertex->GetBufferPointer(), vertex->GetBufferSize(), nullptr, light_vertex.GetAddressOf());
+  const std::string embed = root + "/build/twwarhammer.include/embed/";
+  int compared = 0;
+  int misses = 0;
+  int lit = 0;
+  int control = 0;
+  float largest = 0.f;
+  for (const uint32_t hash : {0xD0C67938u, 0x5D1695BCu}) {
+    const auto game = GameBytes(dump, hash);
+    char name[32];
+    std::snprintf(name, sizeof(name), "0x%08X.cso", hash);
+    const auto ours = Bytes(embed + name);
+    const auto other = GameBytes(dump, hash == 0xD0C67938u ? 0x5D1695BCu : 0xD0C67938u);
+    for (uint32_t run = 0; run < 8; ++run) {
+      // A light 1-3 m from the pixels (their world (-0.75..0.75, -0.75..0.75, 0.2..0.8)), reach 2-6 m, colour as ATN's torches.
+      const float turn = static_cast<float>(run) * 0.8f;
+      const std::array<float, 8> light = {15000.f, 5764.7f, 1529.4f, 1.f, std::sin(turn), std::cos(turn), -0.5f - (0.25f * static_cast<float>(run % 3)),
+                                          2.f + (0.5f * static_cast<float>(run))};
+      const auto expected = DrawLight(game, game, light, run);
+      const auto got = DrawLight(ours, game, light, run);
+      const auto falloff = DrawLight(other, other, light, run);
+      CHECK(expected.size() == 16 && got.size() == 16 && falloff.size() == 16, "%08X: the draws", hash);
+      if (expected.size() != 16 || got.size() != 16 || falloff.size() != 16) return;
+      for (size_t pixel = 0; pixel < 16; ++pixel) {
+        for (size_t channel = 0; channel < 4; ++channel) {
+          ++compared;
+          const float difference = std::fabs(expected[pixel][channel] - got[pixel][channel]);
+          largest = std::max(largest, difference);
+          if (!Near(expected[pixel][channel], got[pixel][channel], 1e-4f) && ++misses <= 4) {
+            std::printf("  %08X light %u pixel %zu channel %zu: the game's %.7g, ours %.7g\n", hash, run, pixel, channel, expected[pixel][channel],
+                        got[pixel][channel]);
+          }
+          lit += (channel < 3 && expected[pixel][channel] > 0.f) ? 1 : 0;
+          control += Near(expected[pixel][channel], falloff[pixel][channel], 1e-3f) ? 0 : 1;
+        }
+      }
+    }
+  }
+  CHECK(misses == 0 && lit > compared / 8 && control > 0, "point lights: %d values, %d misses, %d lit, CONTROL %d differ", compared, misses, lit,
+        control);
+  std::printf("point lights: pointlight00 / 01 (nothing at t42) against D0C67938 / 5D1695BC, %d values, %d misses (largest %.3g), %d lit; CONTROL the "
+              "other falloff: %d differ\n",
+              compared, misses, largest, lit, control);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -445,9 +1079,18 @@ int main(int argc, char** argv) {
                                context.GetAddressOf()))) {
     return 2;
   }
+  const auto vertex_code = CompileText("float4 main(uint id : SV_VertexID) : SV_Position { const float2 uv = float2((id << 1) & 2, id & 2);"
+                                       " return float4(uv * float2(2, -2) + float2(-1, 1), 0, 1); }",
+                                       "triangle", "main", "vs_5_0");
+  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, full_screen.GetAddressOf());
   const std::string games = std::string(argv[1]) + "/src/games";
   TestSun(games, argv[2]);
+  TestSky(games, argv[2]);
+  TestAmbientPatch(games, argv[2]);
+  TestSharedBytes(games, argv[2]);
   TestResolve(games);
+  TestCasters(argv[1], argv[2]);
+  TestPointLights(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

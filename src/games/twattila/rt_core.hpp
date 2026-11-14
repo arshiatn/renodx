@@ -363,6 +363,9 @@ struct Host {
   // the same shaders may draw a UI's small view). Also the map Ray-Traced Shadows Only skips the casters of (null: the sun draws'
   // last square depth texture).
   bool (*cascade_target)(const D3D11_TEXTURE2D_DESC& desc) = nullptr;
+  // A game whose shadow pass comes before its main pass (Shogun 2): its cascade draws test against the last frame's main
+  // view (they wait for this frame's otherwise, which never comes first: none captured).
+  bool cascade_last_view = false;
 };
 
 namespace internal {
@@ -1638,7 +1641,7 @@ void Capture(Context& command, const SceneShader& shader) {
 
   const std::unique_lock lock(runtime.mutex);
   if (cascade_draw) {
-    if (runtime.main_view_frame != runtime.frame) return;
+    if (runtime.main_view_frame != runtime.frame && !(host.cascade_last_view && runtime.main_view_frame + 1 == runtime.frame)) return;
   } else {
     runtime.main_view_projection = camera.view_projection;
     runtime.main_view_frame = runtime.frame;

@@ -1,8 +1,8 @@
 # Shogun 2's rt_sun and upscale_inputs compute shaders on WARP (tests.cpp): rt_sun with the 2026-11-14 data run's
 # lighting buffers, upscale_inputs with a DLSS input capture (the DLSS addon's "Capture DLSS inputs": its folder holds
 # shogun2_dlss_capture_0_*.bin; only read). Holds tools/tw's GPU job lock while it runs when -Lock names it.
-# -GameShaders: the folder of the game's dumped csos (0xFAAE535B, 0x03FB2979 .vs_5_0.cso, 0x16ADFD60.ps_5_0.cso: parts 5, 6,
-# 8), only read.
+# -GameShaders: the folder of the game's dumped csos (0xFAAE535B, 0x03FB2979, 0xAC25DAB8 .vs_5_0.cso, 0x16ADFD60, 0x6B8954A6,
+# 0x9B9EC116 .ps_5_0.cso: parts 5, 6, 8, 9, 10), only read.
 param([Parameter(Mandatory = $true)][string]$Capture, [ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64', [string]$Lock = '',
       [string]$GameShaders = '')
 $ErrorActionPreference = 'Stop'
