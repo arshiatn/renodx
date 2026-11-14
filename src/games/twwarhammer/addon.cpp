@@ -41,6 +41,7 @@
 #include "../twattila/water_effects.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
+#include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -302,6 +303,15 @@ constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
     {.pixel_shader = 0xF0BB1D3C, .slot = 4, .uv_semantic_index = 1},
     {.pixel_shader = 0xF4333A3C, .slot = 0, .uv_semantic_index = 1},
 }};
+// Smoke Shadows' particles (Experimental, off): of the particles' pixel shaders in ATN's 36 traces only ps_main_high_quality
+// 122F218C (34 traces) is lit and blended over the light buffer, drawn indexed indirect with vs50_main_instancing 9FD3EC63
+// (34; the others are decals, the particles' lights and distortion). 9FD3EC63's output signature and its camera constants
+// are Warhammer II's 1FC776EF's, 122F218C's emitter constants (t5, 80 bytes) F32116B4's: Warhammer II's quad shader at
+// 122F218C's slots (rt_particle_quads.gs_5_0.hlsl; its code is Warhammer II's but for the three slots, fxc -dumpbin).
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{
+    {.hash = 0x9FD3EC63, .quad_shader = __rt_particle_quads, .indirect = true},
+}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADERS = {{{.hash = 0x122F218C}}};
 // Skip the Game's Reflection Passes (Experimental, off): under the rays' reflections the resolve's replacement (ssr00) reads
 // neither the march's hits (t5) nor the scene's light mips (t6), and nothing else reads them or the hierarchical depth
 // (tools/tw/wh1/reader_census_wh1.txt, ATN's 34 frames): those passes go with the march (test part 14). Decided at the depth's
@@ -1629,7 +1639,7 @@ namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here (as Warhammer II's). The rays' sun shadows multiply the
 // game's shadow maps (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO (its line sweeps);
-// reflections on the game's SSR resolve; point lights, the battle fog and the battle water hooked, no smoke.
+// reflections on the game's SSR resolve; point lights, the battle fog, the battle water and the lit particles hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -2089,15 +2099,15 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Warhammer II's and Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave,
-  // then Settings Mode's pages. Only what this game hooks: no smoke (its rows stay hidden). Rays
+  // then Settings Mode's pages. Rays
   // Replace and Skip the Shadow Maps, Far Tree Shadows, Shadow Casters Out of View and Light Through Foliage Experimental,
   // off (the *_tested flags).
   // The paths' sky from the game's ambient (the spherical harmonics or the cube, rt_sun) and Path-Traced AO in the AO methods
   // (Experimental), as Warhammer II's: ATN's 2026-11-14 traces show g_hdr_on and g_use_spherical_harmonics on.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows and the torches' light in it start off (Experimental: no game run has shown them here), Smoke Shadows too
-  // (hidden: not hooked here yet), Specular Occlusion, Far Tree Shadows and Water Caustics too (Experimental); RT/PT turns
-  // them on, as Attila's (rays_preset_as_attila). Before Apply:
+  // (Experimental and left out of RT/PT: smoke_shadows_tested), Specular Occlusion, Far Tree Shadows and Water Caustics too
+  // (Experimental); RT/PT turns them on, as Attila's (rays_preset_as_attila). Before Apply:
   // No RT/PT and Reset read these defaults as the page is built.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
@@ -2206,6 +2216,7 @@ bool AttachAddon() {
   // Fog Shadows: the battle fog (shaders/battlefog00, E684D54E: 34 of ATN's 36 traces draw it at the render viewport) reads
   // this frame's fog shadows where they are bound (test/tw_warhammer_shaders part 16).
   twattila::rt_scene::InstallFogShadows(std::array<uint32_t, 1>{0xE684D54E});
+  twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads). No AO pass hook
   // keeps it here (the game's AO is compute line sweeps).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
