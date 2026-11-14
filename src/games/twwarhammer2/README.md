@@ -2,6 +2,9 @@
 
 ### Round v49 (2026-11-14, ATN's session traces of 03:38-03:48; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
+- **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Far Tree and Smoke Shadows and Water
+  Caustics on, Light Through Foliage 0.5 (rests under the rays); of this game's own rows Shadow Casters Out of View on (as
+  Warhammer III's), Rays Replace and Skip the Shadow Maps and Hills Out of View off. Defaults, labels and No RT/PT as before.
 - **Fixed below 100%: the screen-space reflections came out twice their size.** The SSR's copy (environment_specular_light
   ps40_copy 7F23C472) sampled its resolve's whole output while the resolve wrote only the render share; it now reads that
   share (a `view_share` region read, as Pharaoh's). The traces at DLSS Performance and Ultra Performance drew it at 1920 x 1080
