@@ -584,6 +584,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   per game): agents p2w3_ (WH3 + own ReSTIR reflections row + unit round D / E), p2ph_ (Pharaoh), p2r2_ (Rome II), p2rr_
   (Rome Remastered), p2s2_ (Shogun 2), p2sm_ (Thrones, WH1, Troy, WH2 in that order). Merge one at a time, then the final
   verification.
+  - [x] Rome Remastered DONE (1c4f8f36, fddd7ae6 cherry-picked; ledger + README only, no code): parity_check rr exits 0
+    (open 0 / waiting 49 / settled 235). 85 casters: 29 HAVE, 33 NEEDS A TRACE (one battle trace with FrameTraceReads=1,
+    already on ATN's list), 23 WON'T GET with proof; ShadowCascades / SkipShadowPass WON'T (game's own 1-4 cascades,
+    Feral exe), UntracedCasters HAVE (RayTracedBattleScene).
+    - [ ] ATN DECIDES: grass and banners into Rome Remastered's rays as Experimental rows? (the game gives them no shadow:
+      0 cascade draws in 50 traces, so it would be a new look)
+    - [ ] caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
+      so parity_check settles Rome Remastered's casters itself. Owner: coordinator, after parity round 2 (shared script)
 - Was: SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
   capture path in rt_core (WH1 / Pharaoh / Troy / WH2 imposters), tessellated meshes via patch_triangles (WH1 / Troy / WH2),
   per-game leaf cut-off through the bridge (Troy 0.01), Faster Smoke Build row to the other smoke games, smoke without rays
