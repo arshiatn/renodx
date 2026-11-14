@@ -621,9 +621,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     grass_replay.py; estimate -5 to -10 ms render thread, -20 to -37 ms workers at maxed grass when CPU-bound
   - [ ] Look-changing GPU savings (half-rate rays for grass / far soldiers, float16 animation pages; 0.2-0.6 ms each):
     Experimental rows, owner the GPU PERF ROUND after (a)-(m)
-  - [ ] ATN DECIDES: one cascade instead of two (after the Shadows Medium A/B); WH3 own ReSTIR reflections (~0.3 ms cheaper,
-    picture differs); dead keys in ATN's ini (GraphicsModelDetail, GraphicsUnitDetail, GraphicsUnitFade*); the grass
-    settings note text; HAGS (ATN's Windows setting, effect unmeasured)
+  - [ ] ATN DECIDES: one cascade instead of two (after ATN's Shadows Medium A/B; ATN 15:xx: not tested yet); the grass
+    settings note text
+  - [ ] ATN 15:xx YES: WH3 own ReSTIR reflections (~0.3 ms cheaper, picture differs) as an Experimental row, off. Owner:
+    PARITY ROUND 2 WH3
+  - [ ] ATN 15:xx YES: remove the dead keys GraphicsModelDetail / GraphicsUnitDetail / GraphicsUnitFade* from ATN's Attila
+    ReShade.ini (twattila reads none of them; other games' add-ons do, their inis stay). Owner: coordinator, AFTER the hfp_
+    batch (its runs restore their own ini backups); fresh backup, edit, hash noted
+  - [x] HAGS: stays on (ATN: FG and MFG need it); no measurement, never suggest it off
   - [ ] Unit round D (WH3 cross-pass unit capture key) and E (TBB grain rows), line 37: owner PARITY ROUND 2 WH3
 - [x] ATN 14:2x: the lessons of the last 16 h into the skill (tools/tw/round_notes/lessons_1114.md, 24 lines): SKILL.md
   "Nothing dropped" rule (every open line of a report = a checkbox with an owner; SHARED STEP; parity gate), Finishing a
