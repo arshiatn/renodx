@@ -41,6 +41,7 @@
 #include "../twattila/water_effects.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
+#include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -118,6 +119,8 @@ void ApplyHDRPreset(
       {"vignette", vignette},
       {"lensflare", 1.f},
       {"distortion", distortion},
+      {"dof", 1.f},
+      {"fog_strength", 1.f},
       {"filmgrain", filmgrain},
       {"some_indicators", some_indicators},
       {"auto_exposure_highlight_protection", auto_exposure_highlight_protection},
@@ -158,7 +161,7 @@ void ApplyResetPreset() {
       1.0f,  // vignette
       1.0f,  // distortion
       1.0f,  // filmgrain
-      0.4f,  // some_indicators
+      1.0f,  // some_indicators
       0.0f,  // auto_exposure_highlight_protection
       1.0f,  // auto_exposure_highlight_headroom_stops
       1.0f,  // vfx_fire_brightness
@@ -177,6 +180,13 @@ void ApplyResetPreset() {
 void ApplyRecommendedPreset() {
   ApplyResetPreset();
   renodx::utils::settings::UpdateSettings({{"tonemapper", 3.f}, {"video_autohdr", 0.2f}});
+}
+
+// SDR (monitors without HDR), as Attila's: Reset, Rendering Mode SDR, no video AutoHDR. Its button also sets Output SDR; a
+// first start on a display without Windows HDR takes it by itself (output_encoding's first_start_without_hdr).
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}, {"video_autohdr", 0.f}});
 }
 
 #define UpgradeRTVReplaceShader(value)                                                                \
@@ -293,6 +303,15 @@ constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
     {.pixel_shader = 0xF0BB1D3C, .slot = 4, .uv_semantic_index = 1},
     {.pixel_shader = 0xF4333A3C, .slot = 0, .uv_semantic_index = 1},
 }};
+// Smoke Shadows' particles (Experimental, off): of the particles' pixel shaders in ATN's 36 traces only ps_main_high_quality
+// 122F218C (34 traces) is lit and blended over the light buffer, drawn indexed indirect with vs50_main_instancing 9FD3EC63
+// (34; the others are decals, the particles' lights and distortion). 9FD3EC63's output signature and its camera constants
+// are Warhammer II's 1FC776EF's, 122F218C's emitter constants (t5, 80 bytes) F32116B4's: Warhammer II's quad shader at
+// 122F218C's slots (rt_particle_quads.gs_5_0.hlsl; its code is Warhammer II's but for the three slots, fxc -dumpbin).
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{
+    {.hash = 0x9FD3EC63, .quad_shader = __rt_particle_quads, .indirect = true},
+}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADERS = {{{.hash = 0x122F218C}}};
 // Skip the Game's Reflection Passes (Experimental, off): under the rays' reflections the resolve's replacement (ssr00) reads
 // neither the march's hits (t5) nor the scene's light mips (t6), and nothing else reads them or the hierarchical depth
 // (tools/tw/wh1/reader_census_wh1.txt, ATN's 34 frames): those passes go with the march (test part 14). Decided at the depth's
@@ -656,7 +675,7 @@ void BuildRuntimeData() {
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "HDR (PsychoV31) and Video AutoHDR 0.20, the rest at its default.",
+        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.",
         .on_change = []() { ApplyRecommendedPreset(); },
     },
     new renodx::utils::settings::Setting{
@@ -667,6 +686,19 @@ void BuildRuntimeData() {
         .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.",
         .on_change = []() {
           ApplyResetPreset();
+        },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .section = "Presets",
+        .group = "preset-line-2",
+        .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it was\n"
+                   "HDR), no video AutoHDR. The game's and the UI's white are your monitor's own white.",
+        .tint = 0xFFC107,
+        .on_change = []() {
+          ApplySdrPreset();
+          renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
         },
     },
     // Extra //////////////////////////////////////////////////////////////////////////////////////
@@ -948,6 +980,42 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
+        .key = "dof",
+        .binding = &shader_injection.dof,
+        .default_value = 1.f,
+        .label = "Depth of Field",
+        .section = "Extra",
+        .tooltip = "Multiplier on depth of field blur. Needs in-game Depth of Field on.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
+        .key = "fog_strength",
+        .binding = &shader_injection.fog_strength,
+        .default_value = 1.f,
+        .label = "Fog Strength",
+        .section = "Extra",
+        .tooltip = "How thick the game's fog and haze are. 0 = none, 1 = the game's, 2 = double.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    // Attila's row (Experimental): the game's markers are x 30 (units, buildings), x 12 (fire arcs) or x 20 (deployment
+    // zones) in HDR; shaders/markersbattle00-02, test/tw_warhammer_shaders part 17.
+    new renodx::utils::settings::Setting{
+        .key = "some_indicators",
+        .binding = &shader_injection.some_indicators,
+        .default_value = 1.f,
+        .label = "Unit/Building Indicator Brightness (Experimental)",
+        .section = "Extra",
+        .tooltip = "How bright unit and building markers, fire arcs and deployment zones are in HDR. 1 = the game's.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "video_autohdr",
@@ -1447,7 +1515,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 33> MOTION_SHADERS =
 // The floating unit banners (rigidtextureblend, 2 bones, E7F0D71A) stay out: the game gives them no shadow (no atlas draw in
 // any of ATN's 2026-11-14 traces). So does the campaign's far terrain (rigidterrain geometry_41_global, CDCF1ADD): no atlas
 // draw either, and no trace shows where it lies against the near terrain.
-constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x10401C91, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x06AB0766, .capture_shader = __rt_capture_terrain_geom_new_sm41, .terrain = true},
     {.hash = 0x5696080B, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1479,11 +1547,17 @@ constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
     {.hash = 0x1CF62070, .capture_shader = __rt_capture_grass_1cf6, .dynamic = true, .foliage = true, .grass = true},
     {.hash = 0x851C6D2A, .capture_shader = __rt_capture_grass_851c, .dynamic = true, .foliage = true, .grass = true},
     // The campaign's plants and forests (rigidcampaignvegetation vs40_main; ATN's trace 13: 116 draws), placed, standing and
-    // still as Attila's, cut out by their diffuse map's alpha (73C9A8D6 t1).
+    // still as Attila's, cut out by their diffuse map's alpha (73C9A8D6 t1). Its sm_4_1 twin 1A7891F6 (the MSAA G-buffer's,
+    // F2BEEA62: the diffuse map at t1 too; in no trace) is the same code, signatures and constants (fxc -dumpbin).
     {.hash = 0x84797031, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true, .mask_slot = 1},
+    {.hash = 0x1A7891F6, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true, .mask_slot = 1},
     // Far trees' cards (rigidtreebillboard vs40_main; ATN's battles: 18-20 draws a frame), turned to the sun (Far Tree Shadows),
-    // cut out by their tree map's alpha (C5875F67 t3).
+    // cut out by their tree map's alpha (C5875F67 t3). Its sm_5_0 and sm_4_1 twins B9C6AA36 (the MSAA G-buffer's, E6F4B7E7 /
+    // 5314925A) and C2A5FA81 (the debug views') are the same code, signatures and constants, their tree map at t3 too; in no
+    // trace.
     {.hash = 0xCA6BCF19, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    {.hash = 0xB9C6AA36, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    {.hash = 0xC2A5FA81, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
     // The shadow pass's casters into the atlas, what is out of the main view (Shadow Casters Out of View): fx__rigidcommon
     // vs40_shadow, fx__weighted vs40_shadow and its 4 bones, Warhammer II's E2C36310, 2EE37868, 2A54DBEE (the same code and
     // signatures), so Pharaoh's rt_outside_view as there. Every frame as drawn.
@@ -1561,6 +1635,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
   rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
+  // Fog Shadows alone light no surface: no Ray Reconstruction for them (as Warhammer III's and Pharaoh's).
+  rt_settings.cheap_fog_alone = true;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -1583,7 +1659,7 @@ namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here (as Warhammer II's). The rays' sun shadows multiply the
 // game's shadow maps (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO (its line sweeps);
-// reflections on the game's SSR resolve; no point lights, fog, water or smoke hooked.
+// reflections on the game's SSR resolve; point lights, the battle fog, the battle water and the lit particles hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -1606,6 +1682,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
     .water_caustics_label = "Water Caustics (Experimental)",
+    .fog_shadows_label = "Fog Shadows (Experimental)",
     .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Cloud shadows stay the game's;\n"
                             "what is outside the view casts none. Off: the rays' shadows on top of the game's shadow maps.",
     .reflections_tooltip = "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
@@ -1968,6 +2045,9 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
+    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset (as Attila's).
+    float saved_mode = 0.f;
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
@@ -1977,6 +2057,7 @@ void ConfigureAddon() {
           const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
           return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
     });
     settings.push_back(setting);
   }
@@ -2019,6 +2100,14 @@ void ConfigureAddon() {
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/totalwarwarhammer/mods/1"); },
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
+      },
   });
 
   // Section titles and Settings Mode's pages as Attila's (twattila/feature_settings.hpp).
@@ -2030,14 +2119,15 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Warhammer II's and Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave,
-  // then Settings Mode's pages. Only what this game hooks: no fog march, water or smoke (their rows stay hidden). Rays
+  // then Settings Mode's pages. Rays
   // Replace and Skip the Shadow Maps, Far Tree Shadows, Shadow Casters Out of View and Light Through Foliage Experimental,
   // off (the *_tested flags).
   // The paths' sky from the game's ambient (the spherical harmonics or the cube, rt_sun) and Path-Traced AO in the AO methods
   // (Experimental), as Warhammer II's: ATN's 2026-11-14 traces show g_hdr_on and g_use_spherical_harmonics on.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
-  // Fog Shadows, the torches' light in it and Smoke Shadows start off (hidden: not hooked here yet), Specular Occlusion, Far
-  // Tree Shadows and Water Caustics too (Experimental); RT/PT turns them on, as Attila's (rays_preset_as_attila). Before Apply:
+  // Fog Shadows and the torches' light in it start off (Experimental: no game run has shown them here), Smoke Shadows too
+  // (Experimental and left out of RT/PT: smoke_shadows_tested), Specular Occlusion, Far Tree Shadows and Water Caustics too
+  // (Experimental); RT/PT turns them on, as Attila's (rays_preset_as_attila). Before Apply:
   // No RT/PT and Reset read these defaults as the page is built.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
@@ -2068,6 +2158,7 @@ void ConfigureAddon() {
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_unseen_cut_outs = &rays_unit_cut_outs_row,
+                                             .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
                                              .smoke_shadows_tested = false,
@@ -2142,6 +2233,10 @@ bool AttachAddon() {
       LinearPointLightRays::OnDraw, {.shader_hash = LinearPointLightRays::SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   reshade::register_event<reshade::addon_event::destroy_device>(PointLightRays::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(LinearPointLightRays::OnDestroyDevice);
+  // Fog Shadows: the battle fog (shaders/battlefog00, E684D54E: 34 of ATN's 36 traces draw it at the render viewport) reads
+  // this frame's fog shadows where they are bound (test/tw_warhammer_shaders part 16).
+  twattila::rt_scene::InstallFogShadows(std::array<uint32_t, 1>{0xE684D54E});
+  twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads). No AO pass hook
   // keeps it here (the game's AO is compute line sweeps).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
