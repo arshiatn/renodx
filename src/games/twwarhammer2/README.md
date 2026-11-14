@@ -46,6 +46,14 @@
   depth's divisor) and `every_refraction`, off by default: every other game's patched water bytes the same (133 rows).
   WARP `tools/tw/warp_tests/water_wh2` passes on all 15: neutral bit-exact, Caustics as the refraction x (1 + k), Clarity as
   the game's literal scaled (its controls fail: a wrong literal, mul for div, the last refraction alone).
+- **New: Smooth Half-Size Particles (Experimental, off; Extra).** The game draws its lit smoke, fire and dust at half size
+  into a layer of its own and brings it up with its cross-bilateral upsample (deferred_alpha_composition 21DE8D05, once a
+  frame in every trace). With the row on, that layer is first smoothed over frames by the shared resolve Warhammer III and
+  Attila use (`particle_history`), on this game's camera rows, and the game's upsample reads the result. Below 100% only the
+  view's part is resolved and the rest is copied from the game's layer. No shared change. WARP
+  `tools/tw/warp_tests/particles_wh2` passes with the camera buffer laid out by the game's own RDEF (21DE8D05's) and a moving
+  camera, at 100% and below: every texel reads the history where the last camera saw its point (within 0.0074 texel). Its
+  controls fail: Warhammer III's rows, and no motion.
 - **Rays Replace Shadow Maps through the shared hook** (`twattila/sun_replace_maps.hpp` with its sampler slot, s1 here):
   the same as before.
 - Checked, nothing to change: the siege's walls, buildings, units, trees and terrain are all in the rays (the caster census
@@ -60,11 +68,11 @@ Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon6
 2. A siege at night with Torch and Fire Shadows: the city's spot lights shadow walls and soldiers; their cones as before.
 3. Smoke Shadows on, a burning siege: the smoke shades the ground and walls under it. Send ReShade.log (1FC776EF's line).
 4. The campaign: forests take ray-traced AO and shadows, no dark patches under trees; frame time as v48.
-5. Shadow Casters Out of View on, the campaign at a low camera: trees just off screen shadow into it as leaves, not cards;
-   in a battle with Far Tree Shadows on, distant forests behind the camera keep their shadows.
+5. Shadow Casters Out of View on: campaign trees just off screen shadow as leaves; far forests behind keep their shadows.
 6. Fences, palms and bushes in a battle: their ray-traced shadows show the gaps; campaign towns' shadows as v48.
 7. Bend's shadows, Light Through Foliage 0.5: lighter shadows under trees and grass, walls and soldiers as dark as before.
 8. Water Clarity 4, Caustics 1: clearer battle water with light rippling on its bed; the campaign's sea and lakes clearer.
+9. Smooth Half-Size Particles, a burning siege: smoke and fire flicker less; no dark line at the view's right or bottom edge.
 
 Not done:
 - The campaign's far terrain (above).
@@ -72,8 +80,9 @@ Not done:
 - Out of the rays: the depth-only EF11AD35 (no world to read) and the floating banners 7DF335FF (the game gives them none).
 - The rigid default shader 6B25B4D2 also draws the battle water, the campaign sea and overlays into the G-buffer; they stay
   casters (the water is opaque there, nothing under it shows; listing its 25 traced materials would drop untraced ones).
-- Particle Resolution (Attila's particle layer): this game's lit particles are one GPU-sorted indirect draw of their own
-  vertex shader, not Attila's; the layer needs an indirect path first (a shared change).
+- Particle Resolution (Attila's particle layer): the game already draws its lit particles at half size into its own layer
+  (above). Half would change nothing. Quarter would need an indirect path in the shared layer, a shared change for every
+  game, and a second upsample in place of the game's cross-bilateral one, for a small gain over half.
 - Water left out: the campaign rivers (campaign_river 4F6E96D0: a fixed half blend, no depth to stretch) and the battle rivers
   (battle_river 47339F81: in no trace; its fade divides by a material constant, which needs a patch before the divide).
 
