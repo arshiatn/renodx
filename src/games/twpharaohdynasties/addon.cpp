@@ -64,6 +64,7 @@
 #include "./rt_outside_view_leaf_gs.h"
 #include "./rt_outside_view_unit_gs.h"
 #include "./rt_outside_view_world_gs.h"
+#include "../twwarhammer2/rt_outside_view_world_uv_gs.h"
 #include "./rt_particle_quads_gs.h"
 #include "./shared.h"
 
@@ -1745,7 +1746,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 8> CUT_OUT_MASKS = {{
 // The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do the far forest's
 // blocks (rigidtreebillboard vs40_main_block FE92BA2D): cards facing the camera with no shadow-pass draw, the forest's
 // shadow there the game's kept baked map.
-constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 29> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1787,6 +1788,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0x5AFB107C, .dynamic = true, .cascade_keep = __rt_outside_view_branch},
     {.hash = 0xA709F459, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_leaf},
     {.hash = 0xEB2A56A1, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 2, .cascade_keep = __rt_outside_view_card},
+    // The campaign's trees and plants in the shadow pass (rigidcampaignvegetation vs40_shadow; ATN's 2026-11-14 campaign trace
+    // ATN_UP_181940: 1 of 24): Warhammer II's 7D979F60 with its wind constants elsewhere (the same outputs and writes; shadow PS
+    // C7350ED5 = its 5906CF6E): TEXCOORD0 the world, TEXCOORD1 the UV of the t0 test (alpha below 0.5).
+    {.hash = 0x3368E9E7, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
 }};
 
 // The screen-space shadows' Light Through Banners: the siege's cloth (phar_rigid_battle_cloth_wind, PS 5277CF9F and 97850C83)
