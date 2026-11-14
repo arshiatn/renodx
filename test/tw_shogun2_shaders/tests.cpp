@@ -15,6 +15,7 @@
 #include <wrl/client.h>
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -783,6 +784,323 @@ static void TestImposter(const std::string& games, const std::string& folder) {
               checked, turned_differs);
 }
 
+// 7. rt_water_plane (Ray-Traced Water Reflections' sea surface) for a camera 50 m over the sea (the plane y 0) looking
+//    down: the seabed half (y -3) and the sky's far depth get the plane's depth (the CPU's), the water's guides (normal up,
+//    specular 0.02, roughness 0.03) and mask 1; the land half (y +2) keeps its depth and guides, mask 0. CONTROL: a plane
+//    over the camera marks nothing.
+static std::array<std::array<double, 4>, 4> Inverse(std::array<std::array<double, 4>, 4> matrix) {
+  std::array<std::array<double, 4>, 4> inverse = {{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}};
+  for (int column = 0; column < 4; ++column) {
+    int pivot = column;
+    for (int row = column + 1; row < 4; ++row) pivot = (std::fabs(matrix[row][column]) > std::fabs(matrix[pivot][column])) ? row : pivot;
+    std::swap(matrix[column], matrix[pivot]);
+    std::swap(inverse[column], inverse[pivot]);
+    const double scale = 1.0 / matrix[column][column];
+    for (int index = 0; index < 4; ++index) {
+      matrix[column][index] *= scale;
+      inverse[column][index] *= scale;
+    }
+    for (int row = 0; row < 4; ++row) {
+      const double factor = (row == column) ? 0.0 : matrix[row][column];
+      for (int index = 0; index < 4; ++index) {
+        matrix[row][index] -= factor * matrix[column][index];
+        inverse[row][index] -= factor * inverse[column][index];
+      }
+    }
+  }
+  return inverse;
+}
+
+static ComPtr<ID3D11UnorderedAccessView> Uav(ID3D11Texture2D* texture) {
+  ComPtr<ID3D11UnorderedAccessView> view;
+  device->CreateUnorderedAccessView(texture, nullptr, view.GetAddressOf());
+  return view;
+}
+
+static ComPtr<ID3D11ShaderResourceView> Srv(ID3D11Resource* resource) {
+  ComPtr<ID3D11ShaderResourceView> view;
+  device->CreateShaderResourceView(resource, nullptr, view.GetAddressOf());
+  return view;
+}
+
+static void TestWaterPlane(const std::string& games) {
+  const auto shader = Compile(games + "/twshogun2completeedition/rt_water_plane.cs_5_0.hlsl");
+  constexpr UINT SIZE = 64;
+  constexpr double HEIGHT = 50.0;
+  constexpr double FOCAL = 1.5;
+  const double a = 1000.0 / 999.0;
+  const double b = -a;
+  // clip = (x, y, z, 1) M: looking down from (0, 50, 0), screen up along +z, depth a + b / (50 - y); its columns at c10-13.
+  const std::array<std::array<double, 4>, 4> matrix = {{{FOCAL, 0, 0, 0}, {0, 0, -a, -1}, {0, FOCAL, 0, 0}, {0, 0, (a * HEIGHT) + b, HEIGHT}}};
+  const auto inverse = Inverse(matrix);
+  std::array<float, 34 * 4> camera = {};
+  camera[1] = static_cast<float>(HEIGHT);
+  for (int row = 0; row < 4; ++row) {
+    for (int column = 0; column < 4; ++column) {
+      camera[((10 + column) * 4) + row] = static_cast<float>(matrix[row][column]);
+      camera[((30 + column) * 4) + row] = static_cast<float>(inverse[row][column]);
+    }
+  }
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  std::vector<float> depth(SIZE * SIZE);
+  std::vector<bool> water(SIZE * SIZE);
+  for (UINT y = 0; y < SIZE; ++y) {
+    for (UINT x = 0; x < SIZE; ++x) {
+      const double across = ((x + 0.5) / SIZE * 2.0) - 1.0;
+      const bool sky = 1.0 - ((y + 0.5) / SIZE * 2.0) > 0.75;
+      depth[(y * SIZE) + x] = sky ? 1.f : static_cast<float>(a + (b / (HEIGHT - ((across < 0.0) ? -3.0 : 2.0))));
+      water[(y * SIZE) + x] = sky || across < 0.0;
+    }
+  }
+  const auto depth_texture = Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, depth.data(), SIZE * 4, D3D11_BIND_SHADER_RESOURCE);
+  const auto depth_view = Srv(depth_texture.Get());
+  const float plane_depth = static_cast<float>(a + (b / HEIGHT));
+  size_t marked = 0, bad = 0, control_marked = 0;
+  for (const float plane_w : {0.f, -60.f}) {
+    const std::vector<uint8_t> grey(SIZE * SIZE * 4, 0x80);
+    const std::vector<float> nines(SIZE * SIZE * 4, 9.f);
+    const std::array<ComPtr<ID3D11Texture2D>, 6> targets = {
+        Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS),
+        Texture(SIZE, SIZE, DXGI_FORMAT_R8G8B8A8_UNORM, grey.data(), SIZE * 4, D3D11_BIND_UNORDERED_ACCESS),
+        Texture(SIZE, SIZE, DXGI_FORMAT_R8G8B8A8_UNORM, grey.data(), SIZE * 4, D3D11_BIND_UNORDERED_ACCESS),
+        Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, nines.data(), SIZE * 16, D3D11_BIND_UNORDERED_ACCESS),
+        Texture(SIZE, SIZE, DXGI_FORMAT_R8_UNORM, grey.data(), SIZE, D3D11_BIND_UNORDERED_ACCESS),
+        Texture(SIZE, SIZE, DXGI_FORMAT_R8_UNORM, grey.data(), SIZE, D3D11_BIND_UNORDERED_ACCESS)};
+    std::array<ComPtr<ID3D11UnorderedAccessView>, 6> views;
+    std::array<ID3D11UnorderedAccessView*, 6> bound = {};
+    for (size_t index = 0; index < views.size(); ++index) {
+      views[index] = Uav(targets[index].Get());
+      bound[index] = views[index].Get();
+    }
+    const std::array<uint32_t, 8> plane = {0u, Bits(1.f), 0u, Bits(plane_w), SIZE, SIZE, 0u, 0u};
+    const auto plane_buffer = Constants(plane.data(), sizeof(plane));
+    const std::array<ID3D11Buffer*, 2> buffers = {camera_buffer.Get(), plane_buffer.Get()};
+    context->CSSetShader(shader.Get(), nullptr, 0);
+    context->CSSetShaderResources(0, 1, depth_view.GetAddressOf());
+    context->CSSetConstantBuffers(0, 2, buffers.data());
+    context->CSSetUnorderedAccessViews(0, 6, bound.data(), nullptr);
+    context->Dispatch(SIZE / 8, SIZE / 8, 1);
+    context->ClearState();
+    const auto surface = Read(targets[0].Get(), 4);
+    const auto specular = Read(targets[2].Get(), 4);
+    const auto normals = Read(targets[3].Get(), 16);
+    const auto roughness = Read(targets[4].Get(), 1);
+    const auto mask = Read(targets[5].Get(), 1);
+    for (size_t pixel = 0; pixel < depth.size(); ++pixel) {
+      float surface_depth = 0.f;
+      std::array<float, 4> normal = {};
+      std::memcpy(&surface_depth, surface.data() + (pixel * 4), 4);
+      std::memcpy(normal.data(), normals.data() + (pixel * 16), 16);
+      if (plane_w != 0.f) {
+        control_marked += (mask[pixel] != 0 || surface_depth != depth[pixel]) ? 1 : 0;
+        continue;
+      }
+      marked += (mask[pixel] == 255) ? 1 : 0;
+      const bool water_ok = std::fabs(surface_depth - plane_depth) < 1e-5f && mask[pixel] == 255 && normal[0] == 0.f && normal[1] == 1.f
+                            && normal[2] == 0.f && roughness[pixel] == 8 && specular[pixel * 4] == 5;
+      const bool land_ok = surface_depth == depth[pixel] && mask[pixel] == 0 && normal[1] == 9.f && roughness[pixel] == 0x80 && specular[pixel * 4] == 0x80;
+      bad += (water[pixel] ? water_ok : land_ok) ? 0 : 1;
+    }
+  }
+  const auto expected = static_cast<size_t>(std::ranges::count(water, true));
+  CHECK(bad == 0 && marked == expected, "%zu pixels wrong, %zu marked of %zu", bad, marked, expected);
+  CHECK(control_marked == 0, "CONTROL: %zu pixels marked under a plane over the camera", control_marked);
+  std::printf("rt_water_plane %ux%u: %zu water pixels the plane's depth and guides, the rest kept; 0 with the plane over the camera\n", SIZE, SIZE,
+              marked);
+}
+
+// 8. shaders/ocean00 (the rays' reflection in the sea's pixel shader) against the game's ocean high (0x16ADFD60's cso) on a
+//    32 x 32 target, same inputs, in its probe and its sky branch: the rays unbound, bound with no hits (share 0), or
+//    flagged off (b10 0: CONTROL): its five outputs the game's; the rays' light (share 1, flags 1): the colour changes where
+//    the mask is 1 and nowhere else.
+static void TestOcean(const std::string& games, const std::string& folder) {
+  std::ifstream file(folder + "/0x16ADFD60.ps_5_0.cso", std::ios::binary);
+  const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const std::wstring path(games.begin(), games.end());
+  const char* vertex_source =
+      "void main(uint id : SV_VertexID, out float4 p : SV_Position0, out float3 c : COLOR0, out float4 t0 : TEXCOORD0, out float4 t1 : TEXCOORD1,\n"
+      "          out float4 t2 : TEXCOORD2, out float4 t3 : TEXCOORD3, out float4 t4 : TEXCOORD4, out float4 t5 : TEXCOORD5, out float4 t6 : TEXCOORD6) {\n"
+      "  const float2 uv = float2((id << 1) & 2, id & 2);\n"
+      "  p = float4(uv * float2(2, -2) + float2(-1, 1), 0.5, 1);\n"
+      "  c = float3(uv, 0.5);\n"
+      "  t0 = float4(uv.x * 40 - 20, 0.5, uv.y * 40 - 20, 1);\n"
+      "  t1 = p;\n"
+      "  t2 = float4(uv * 0.5, 0.5, 1);\n"
+      "  t3 = float4(0.8, uv, 0);\n"
+      "  t4 = float4(uv * 3, uv * 2);\n"
+      "  t5 = float4(normalize(float3(uv.x - 0.5, -0.4, uv.y - 0.5)), 30);\n"
+      "  t6 = float4(uv, 10, 1);\n"
+      "}\n";
+  ComPtr<ID3DBlob> vertex_code;
+  ComPtr<ID3DBlob> ours_code;
+  ComPtr<ID3DBlob> errors;
+  if (game_code.empty()
+      || FAILED(D3DCompile(vertex_source, std::strlen(vertex_source), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_code.GetAddressOf(),
+                           errors.GetAddressOf()))
+      || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/ocean00_0x16ADFD60.ps_5_0.hlsl").c_str(), nullptr,
+                                   D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(),
+                                   errors.GetAddressOf()))) {
+    std::printf("missing 0x16ADFD60, or %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+    std::exit(2);
+  }
+  ComPtr<ID3D11VertexShader> vertex;
+  ComPtr<ID3D11PixelShader> game;
+  ComPtr<ID3D11PixelShader> ours;
+  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex.GetAddressOf());
+  device->CreatePixelShader(game_code.data(), game_code.size(), nullptr, game.GetAddressOf());
+  device->CreatePixelShader(ours_code->GetBufferPointer(), ours_code->GetBufferSize(), nullptr, ours.GetAddressOf());
+  constexpr UINT SIZE = 32;
+  std::mt19937 random(7);
+  std::uniform_real_distribution<float> unit(0.05f, 0.95f);
+  const auto values = [&](size_t count) {
+    std::vector<float> filled(count);
+    for (auto& value : filled) value = unit(random);
+    return filled;
+  };
+  // t0-t3, t7 (the harmonics: 3 x 3 cells of 3 x 3), t8-t11 RGBA; t12 one channel; t4 a cube; t5 / t6 cube arrays of the probe grid's 4.
+  std::array<ComPtr<ID3D11ShaderResourceView>, 13> views;
+  for (const UINT slot : {0u, 1u, 2u, 3u, 7u, 8u, 9u, 10u, 11u}) {
+    const UINT width = (slot == 7) ? 9 : 8;
+    const auto texels = values(static_cast<size_t>(width) * width * 4);
+    views[slot] = Srv(Texture(width, width, DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), width * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+  }
+  const auto single = values(64);
+  views[12] = Srv(Texture(8, 8, DXGI_FORMAT_R32_FLOAT, single.data(), 32, D3D11_BIND_SHADER_RESOURCE).Get());
+  for (const UINT slot : {4u, 5u, 6u}) {
+    const UINT faces = (slot == 4) ? 6 : 24;
+    const D3D11_TEXTURE2D_DESC desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = faces, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                       .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE};
+    std::vector<std::vector<float>> face_texels(faces);
+    std::vector<D3D11_SUBRESOURCE_DATA> initial(faces);
+    for (UINT face = 0; face < faces; ++face) {
+      face_texels[face] = values(64);
+      initial[face] = {.pSysMem = face_texels[face].data(), .SysMemPitch = 64};
+    }
+    ComPtr<ID3D11Texture2D> cube;
+    device->CreateTexture2D(&desc, initial.data(), cube.GetAddressOf());
+    D3D11_SHADER_RESOURCE_VIEW_DESC view = {.Format = desc.Format,
+                                            .ViewDimension = (slot == 4) ? D3D11_SRV_DIMENSION_TEXTURECUBE : D3D11_SRV_DIMENSION_TEXTURECUBEARRAY};
+    if (slot == 4) {
+      view.TextureCube = {.MipLevels = 1};
+    } else {
+      view.TextureCubeArray = {.MipLevels = 1, .NumCubes = 4};
+    }
+    device->CreateShaderResourceView(cube.Get(), &view, views[slot].GetAddressOf());
+  }
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_WRAP, .AddressW = D3D11_TEXTURE_ADDRESS_WRAP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  const std::array<ID3D11SamplerState*, 9> samplers = {sampler.Get(), sampler.Get(), sampler.Get(), sampler.Get(), sampler.Get(),
+                                                       sampler.Get(), sampler.Get(), sampler.Get(), sampler.Get()};
+  std::array<float, 44 * 4> camera = {};
+  camera[1] = 30.f;
+  for (int row = 0; row < 4; ++row) camera[((2 + row) * 4) + row] = camera[((10 + row) * 4) + row] = 1.f;
+  camera[35 * 4] = 1.5f;  // time_in_sec
+  camera[(37 * 4) + 0] = camera[(37 * 4) + 1] = SIZE;
+  camera[(37 * 4) + 2] = camera[(37 * 4) + 3] = 1.f / SIZE;
+  std::array<float, 7 * 4> environment = {0.3f, -0.8f, 0.5f, 0.f, 1.f, 10.f, 0.8f, 0.5f, 1.f, 1.f, 1.f, 1.f, -20.f, -20.f, 20.f, 20.f};
+  environment[16] = std::bit_cast<float>(2u);  // g_probe_grid_size
+  environment[18] = 0.5f;                      // g_specular_probe_lerp
+  environment[23] = 9.f;                       // g_spherical_harmonic_terms
+  std::array<float, 18 * 4> lighting = {};
+  const auto lighting_values = values(lighting.size());
+  std::copy(lighting_values.begin(), lighting_values.end(), lighting.begin());
+  lighting[0] = 0.3f;
+  lighting[1] = -0.8f;
+  lighting[2] = 0.5f;
+  lighting[7] = 1.f;                              // sun_specular
+  lighting[43] = std::bit_cast<float>(1u);        // g_use_spherical_harmonics
+  lighting[47] = 0.f;                             // g_cloud_shadow_scale
+  const std::array<float, 4> wind = {0.3f, 0.7f, 0.f, 0.f};
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const auto lighting_buffer = Constants(lighting.data(), sizeof(lighting));
+  const auto wind_buffer = Constants(wind.data(), sizeof(wind));
+  std::vector<float> traced(SIZE * SIZE * 4);
+  std::vector<float> mask(SIZE * SIZE);
+  for (size_t pixel = 0; pixel < mask.size(); ++pixel) {
+    traced[(pixel * 4) + 0] = 3.f;
+    traced[(pixel * 4) + 1] = 0.5f;
+    traced[(pixel * 4) + 2] = 0.1f;
+    mask[pixel] = ((pixel % SIZE) < SIZE / 2) ? 1.f : 0.f;
+  }
+  const auto mask_view = Srv(Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, mask.data(), SIZE * 4, D3D11_BIND_SHADER_RESOURCE).Get());
+  const auto traced_with = [&](float share) {
+    for (size_t pixel = 0; pixel < mask.size(); ++pixel) traced[(pixel * 4) + 3] = share;
+    return Srv(Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, traced.data(), SIZE * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+  };
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 2> rays = {traced_with(0.f), traced_with(1.f)};
+  const std::array<uint32_t, 4> flags_on = {1u, 0u, 0u, 0u};
+  const std::array<uint32_t, 4> flags_off = {};
+  const std::array<ComPtr<ID3D11Buffer>, 2> flags = {Constants(flags_off.data(), 16), Constants(flags_on.data(), 16)};
+  // One pass: its five outputs (RGBA x 3, then two singles), as floats.
+  const auto run = [&](ID3D11PixelShader* pixel_shader, ID3D11Buffer* environment_buffer, ID3D11ShaderResourceView* rays_view, ID3D11Buffer* flag) {
+    std::array<ComPtr<ID3D11Texture2D>, 5> outputs;
+    std::array<ComPtr<ID3D11RenderTargetView>, 5> targets;
+    std::array<ID3D11RenderTargetView*, 5> bound = {};
+    for (size_t index = 0; index < outputs.size(); ++index) {
+      outputs[index] = Texture(SIZE, SIZE, (index < 3) ? DXGI_FORMAT_R32G32B32A32_FLOAT : DXGI_FORMAT_R32_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET);
+      device->CreateRenderTargetView(outputs[index].Get(), nullptr, targets[index].GetAddressOf());
+      bound[index] = targets[index].Get();
+    }
+    std::array<ID3D11ShaderResourceView*, 13> bound_views = {};
+    for (size_t index = 0; index < views.size(); ++index) bound_views[index] = views[index].Get();
+    const std::array<ID3D11Buffer*, 4> buffers = {camera_buffer.Get(), environment_buffer, lighting_buffer.Get(), wind_buffer.Get()};
+    const D3D11_VIEWPORT viewport = {.Width = SIZE, .Height = SIZE, .MaxDepth = 1.f};
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(vertex.Get(), nullptr, 0);
+    context->PSSetShader(pixel_shader, nullptr, 0);
+    context->PSSetShaderResources(0, 13, bound_views.data());
+    context->PSSetSamplers(0, 9, samplers.data());
+    context->PSSetConstantBuffers(0, 4, buffers.data());
+    if (rays_view != nullptr) {
+      context->PSSetShaderResources(45, 1, mask_view.GetAddressOf());
+      context->PSSetShaderResources(47, 1, &rays_view);
+      context->PSSetConstantBuffers(10, 1, &flag);
+    }
+    context->RSSetViewports(1, &viewport);
+    context->OMSetRenderTargets(5, bound.data(), nullptr);
+    context->Draw(3, 0);
+    context->ClearState();
+    std::array<std::vector<float>, 5> result;
+    for (size_t index = 0; index < outputs.size(); ++index) {
+      const auto bytes = Read(outputs[index].Get(), (index < 3) ? 16 : 4);
+      result[index].resize(bytes.size() / 4);
+      std::memcpy(result[index].data(), bytes.data(), bytes.size());
+    }
+    return result;
+  };
+  const auto same = [](float x, float y) { return (std::isnan(x) && std::isnan(y)) || std::fabs(x - y) <= (1e-4f * std::max(std::fabs(x), std::fabs(y))) + 1e-5f; };
+  size_t differs_unbound = 0, differs_kept = 0, changed = 0, changed_outside = 0, control_changed = 0;
+  for (const float probes : {1.f, 0.f}) {
+    environment[17] = probes;  // g_specular_probes_count
+    const auto environment_buffer = Constants(environment.data(), sizeof(environment));
+    const auto reference = run(game.Get(), environment_buffer.Get(), nullptr, nullptr);
+    const auto unbound = run(ours.Get(), environment_buffer.Get(), nullptr, nullptr);
+    const auto no_hits = run(ours.Get(), environment_buffer.Get(), rays[0].Get(), flags[1].Get());
+    const auto control = run(ours.Get(), environment_buffer.Get(), rays[1].Get(), flags[0].Get());
+    const auto hits = run(ours.Get(), environment_buffer.Get(), rays[1].Get(), flags[1].Get());
+    for (size_t output = 0; output < 5; ++output) {
+      const size_t channels = (output < 3) ? 4 : 1;
+      for (size_t value = 0; value < reference[output].size(); ++value) {
+        const float expected = reference[output][value];
+        const bool water = mask[value / channels] > 0.5f;
+        differs_unbound += same(unbound[output][value], expected) ? 0 : 1;
+        differs_kept += same(no_hits[output][value], expected) ? 0 : 1;
+        control_changed += same(control[output][value], expected) ? 0 : 1;
+        changed += (water && output == 0 && !same(hits[output][value], expected)) ? 1 : 0;
+        changed_outside += ((!water || output != 0) && !same(hits[output][value], expected)) ? 1 : 0;
+      }
+    }
+  }
+  CHECK(differs_unbound == 0 && differs_kept == 0, "%zu values differ unbound, %zu with no hits", differs_unbound, differs_kept);
+  CHECK(changed > 0 && changed_outside == 0, "%zu colour values changed under the mask, %zu elsewhere", changed, changed_outside);
+  CHECK(control_changed == 0, "CONTROL: %zu values changed with the flags off", control_changed);
+  std::printf("ocean00 32x32, probe and sky branches: the game's outputs unbound / no hits / flags off; %zu colour values the rays' under the mask\n",
+              changed);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -797,9 +1115,11 @@ int main(int argc, char** argv) {
   TestInputs(games, argv[2]);
   TestOutput(games);
   TestFoliage(games, argv[2]);
+  TestWaterPlane(games);
   if (argc > 3) {
     TestBillboard(games, argv[3]);
     TestImposter(games, argv[3]);
+    TestOcean(games, argv[3]);
   }
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;

@@ -296,6 +296,7 @@ void BuildRuntimeData() {
       CustomShaderEntry(0x13C66077),  // ssrfilter00 (hit buffer blur x)
       CustomShaderEntry(0x073A6CF3),  // ssrfilter01 (hit buffer blur y)
       CustomShaderEntry(0xF87ECE85),  // ssrresolve00 (reflection colour)
+      CustomShaderEntry(0x16ADFD60),  // ocean00 (ocean high: Ray-Traced Water Reflections)
       CustomShaderEntry(0xA00FE3A3),  // ssao00 (ambient occlusion line sweeps)
       CustomShaderEntry(0x98BB1159),  // ssao01 (ambient occlusion collect: the Visibility Bitmask AO)
       CustomShaderEntry(0x5CBF4FB6),  // pointlight00
@@ -353,17 +354,30 @@ void BuildRuntimeData() {
   // 0x80196ECA: generic, left out only between the HiZ and the resolve), the march (ssrray00) and its blurs.
   custom_shaders[0x97624E56].on_draw = [](auto* cmd_list) {
     reflection_passes = ray_tracing_installed;
+    if (ray_tracing_installed) twshogun2::ray_tracing::WaterSurface(cmd_list);
     return !ray_tracing_installed || twattila::rt_scene::OnReflectionMarch(cmd_list);
   };
   custom_shaders[0xF87ECE85].on_draw = [](auto* cmd_list) {
     reflection_passes = false;
-    if (ray_tracing_installed) twattila::rt_scene::BindReflections(cmd_list, true, true);
+    if (ray_tracing_installed) {
+      twattila::rt_scene::BindReflections(cmd_list, true, true);
+      twshogun2::ray_tracing::BindWaterMask(cmd_list, true, true);
+    }
     return true;
   };
   custom_shaders[0xF87ECE85].on_drawn = [](auto* cmd_list) {
     if (!ray_tracing_installed) return;
     twattila::rt_scene::BindReflections(cmd_list, true, false);
+    twshogun2::ray_tracing::BindWaterMask(cmd_list, true, false);
     twshogun2::ray_tracing::KeepColor(cmd_list);
+  };
+  // Ray-Traced Water Reflections (ray_tracing.hpp OnSeaDraw): the sea's plane, the rays' reflections for shaders/ocean00.
+  custom_shaders[0x16ADFD60].on_draw = [](auto* cmd_list) {
+    if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, true);
+    return true;
+  };
+  custom_shaders[0x16ADFD60].on_drawn = [](auto* cmd_list) {
+    if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, false);
   };
   for (const uint32_t hash : {0x5C0AF498u, 0x13C66077u, 0x073A6CF3u}) {
     custom_shaders[hash].on_draw = [](auto* cmd_list) { return !ray_tracing_installed || twattila::rt_scene::OnReflectionMarch(cmd_list); };
@@ -1023,6 +1037,7 @@ void ReadDlssAddonOptions() {
   ray_tracing.ambient_quarter = read_on("RayTracedAOQuarter", false);
   ray_tracing.reflections = read_on("RayTracedReflections", false);
   ray_tracing.specular_occlusion = read_on("RayTracedSpecularOcclusion", false);
+  ray_tracing.water_reflections = read_on("RayTracedWaterReflections", false);
   ray_tracing.reflection_samples = read_count("RayTracedReflectionSamples", 1, 1, 8);
   ray_tracing.local_lights = read_on("RayTracedLocalLights", false);
   ray_tracing.fog_shadows = read_on("RayTracedFogShadows", false);
