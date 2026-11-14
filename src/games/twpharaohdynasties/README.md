@@ -53,6 +53,12 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
   - **New: the campaign's trees cast in the rays** (rigidcampaigntrees 16D14106, and out of view through their shadow pass
     81696642; in no trace): Troy's capture and geometry shader, whose shaders are Pharaoh's line for line. WARP (`test/tw_pharaoh`
     1): the game's world positions to the bit, the UVs within half precision; the controls fail.
+  - **New (Experimental, off): Three Shadow Cascades Under Rays** (the rays' Shadows, More Options; Attila's Two Shadow
+    Cascades: Pharaoh's Medium has three). With ray-traced shadows the game prepares Medium's 3 sun cascades instead of 4 at
+    High and above; its shadow maps then end at the third split (a battle at the highest Shadows: 250 m instead of 600 m).
+    Less CPU time in the shadow pass; applies after a restart or a change of the game's Shadows. Its shadow table's cascade
+    counts are written, nothing else (`test/tw_pharaoh` 2 over Pharaoh.exe's bytes: off, Shadow Map Size's bytes alone; on,
+    3 bytes; back, the game's; the controls write nothing).
 
 - **New: Fog Strength** (Extra, 0 to 2, default 1), on every fog the game ships, also the ones the maintainer's settings
   don't draw. That covers the battle fog's upsample (also its own full-resolution fallback along edges), low spec, MSAA,

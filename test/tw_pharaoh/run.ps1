@@ -1,4 +1,5 @@
-# Pharaoh's ray-traced captures against the game's own bytes (tests.cpp): on WARP the campaign trees'
+# Pharaoh's shadow-map table and ray-traced captures against the game's own bytes (tests.cpp): Three Shadow Cascades Under Rays
+# over Pharaoh.exe's shadow setup (read from the Steam folder, or -Exe), and on WARP the campaign trees'
 # captures against the game's vertex shaders.
 # -GameShaders: the folder of the game's dumped csos (0x16D14106, 0x81696642; not in the repository), only read.
 # -Built: the add-on's compiled shaders (build\twpharaohdynasties.include\embed after a renodx-twpharaohdynasties.addon64
@@ -7,7 +8,7 @@
 # -Lock names it.
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64',
       [string]$GameShaders = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\dump_shader_twpharaohdynasties_pack\cso', [string]$Built = '',
-      [string]$OutDir = '',
+      [string]$Exe = 'C:\Program Files (x86)\Steam\steamapps\common\Total War PHARAOH DYNASTIES\Pharaoh.exe', [string]$OutDir = '',
       [string]$Lock = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
@@ -38,7 +39,7 @@ while ($Lock -ne '') {
 }
 try {
   # Also kept in last_run.txt (a failing run's lines survive a caller's pipeline).
-  & (Join-Path $testBuild 'pharaoh.exe') $GameShaders $Built | Tee-Object -FilePath (Join-Path $testBuild 'last_run.txt')
+  & (Join-Path $testBuild 'pharaoh.exe') $GameShaders $Built $Exe | Tee-Object -FilePath (Join-Path $testBuild 'last_run.txt')
   if ($LASTEXITCODE -ne 0) { throw 'Pharaoh test failed' }
 } finally {
   if ($Lock -ne '' -and (Get-Content -LiteralPath $Lock -Raw -ErrorAction SilentlyContinue) -eq $mine) { Remove-Item -LiteralPath $Lock -Force -Confirm:$false }

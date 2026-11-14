@@ -1,10 +1,16 @@
-// Pharaoh's (src/games/twpharaohdynasties) ray-traced captures against the game's own bytes.
-// tests.exe <the game's dumped csos> <the add-on's built csos (build\twpharaohdynasties.include\embed)>
+// Pharaoh's (src/games/twpharaohdynasties) shadow-map table and ray-traced captures against the game's own bytes.
+// tests.exe <the game's dumped csos> <the add-on's built csos (build\twpharaohdynasties.include\embed)> [Pharaoh.exe]
 // 1. The campaign's trees (rigidcampaigntrees vs40_main 16D14106, Troy's 07321725 line for line): the capture
 //    (rt_capture_campaign_trees, Troy's) from random instanced vertices: its world the game's TEXCOORD0, its UV TEXCOORD0's
 //    (o3.xy) as halves; CONTROL an instance row a metre off. Their shadow pass 81696642 through Troy's outside-view geometry
 //    shader (RT_WORLD_UV + RT_COLOUR) with every triangle outside the main view: each corner its TEXCOORD0 world and the UV;
 //    CONTROL Warhammer II's RT_WORLD_UV (no COLOR0 member) on the same vertex shader differs.
+// 2. Three Shadow Cascades Under Rays (shadow_map.hpp) over the shadow setup's table as Pharaoh.exe ships it (read from disk,
+//    its sections mapped by hand; no relocation in these bytes), in a page of ours as the found rows: the patterns once; the
+//    setup stores a row's first field at +0x168 and the cascade getter reads the same table's first field (the count); off,
+//    Set writes Shadow Map Size's bytes alone; on, the three rows above Medium (qualities 3-5, 4 cascades each) take Medium's
+//    count (3), nothing else; off again and the game's size: the game's bytes; CONTROL: a Medium of 4 or of 0, none written.
+//    Printed: the last split of the battle's and the campaign's highest quality (the shadow distance) with 4 and with 3.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -23,6 +29,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../../src/games/twpharaohdynasties/shadow_map.hpp"
 #include "../../src/games/twtroy/rt_outside_view_colour_world_uv_gs.h"
 #include "../../src/games/twwarhammer2/rt_outside_view_world_uv_gs.h"
 
@@ -187,6 +194,155 @@ static std::vector<float> StreamOutThrough(const std::vector<char>& vertex_code,
   return Run(vertex_code, geometry.Get(), D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, vertices, constants, main_view);
 }
 
+static void TestShadowCascades(const std::string& exe_path) {
+  namespace shadow = twpharaohdynasties::shadow_map::internal;
+  std::ifstream stream(exe_path, std::ios::binary);
+  CHECK(stream.good(), "shadow cascades: %s", exe_path.c_str());
+  const std::string file((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+  if (file.size() < 4096) return;
+  const auto* base = reinterpret_cast<const uint8_t*>(file.data());
+  const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+  const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
+  const auto* sections = reinterpret_cast<const IMAGE_SECTION_HEADER*>(
+      reinterpret_cast<const uint8_t*>(&nt->OptionalHeader) + nt->FileHeader.SizeOfOptionalHeader);
+  const std::span<const IMAGE_SECTION_HEADER> section_list(sections, nt->FileHeader.NumberOfSections);
+  // File offset <-> RVA through the section headers (0 / SIZE_MAX outside them).
+  const auto rva_of = [&](const uint8_t* at) -> uint32_t {
+    const auto offset = static_cast<uint32_t>(at - base);
+    for (const auto& section : section_list) {
+      if (offset >= section.PointerToRawData && offset < section.PointerToRawData + section.SizeOfRawData) {
+        return section.VirtualAddress + (offset - section.PointerToRawData);
+      }
+    }
+    return 0;
+  };
+  const auto at_rva = [&](uint32_t rva) -> const uint8_t* {
+    for (const auto& section : section_list) {
+      if (rva >= section.VirtualAddress && rva < section.VirtualAddress + section.SizeOfRawData) {
+        return base + section.PointerToRawData + (rva - section.VirtualAddress);
+      }
+    }
+    return nullptr;
+  };
+  // A pattern's one place in the file (nullptr: none or more than one); `table_at`: the rip-relative lea at `lea` bytes in.
+  const auto once = [&](std::string_view pattern) -> const uint8_t* {
+    const uint8_t* found = tw::engine_tweaks::FindPattern({file}, pattern);
+    if (found == nullptr) return nullptr;
+    const auto after = static_cast<size_t>(found - base) + 1;
+    return (tw::engine_tweaks::FindPattern({std::string_view(file).substr(after)}, pattern) == nullptr) ? found : nullptr;
+  };
+  const auto lea_target = [&](const uint8_t* lea) {
+    int32_t displacement;
+    std::memcpy(&displacement, lea + 3, sizeof(displacement));
+    return rva_of(lea) + 7 + displacement;
+  };
+  const uint8_t* read = once(shadow::TABLE_READ);
+  const uint8_t* extreme = once(shadow::EXTREME);
+  CHECK(read != nullptr && extreme != nullptr, "shadow cascades: the setup's patterns once each");
+  if (read == nullptr || extreme == nullptr) return;
+  const uint32_t table = lea_target(read);
+  // The setup: mov eax, [rdx] (the row's first field); mov [rbx + 0x168], eax, right after the size's and the tile's.
+  constexpr std::array<uint8_t, 8> COUNT_STORE = {0x8B, 0x02, 0x89, 0x83, 0x68, 0x01, 0x00, 0x00};
+  CHECK(std::memcmp(read + 0x2B, COUNT_STORE.data(), COUNT_STORE.size()) == 0, "shadow cascades: the count's store at +0x168");
+  // The cascade getter: movsxd rax, ecx; xorps; add rax, rax; lea rcx, [table]; mov eax, [rcx + rax * 8]; cvtsi2ss; ret.
+  const uint8_t* getter = once("48 63 C1 0F 57 C0 48 03 C0 48 8D 0D ?? ?? ?? ?? 8B 04 C1 F3 48 0F 2A C0 C3");
+  CHECK(getter != nullptr && lea_target(getter + 9) == table, "shadow cascades: the getter reads the same table's first field");
+  // The shadow distance: mov r8d, [rcx + 0x168]; mov rbx, rcx; mov edx, [rcx + 0x148]; dec r8d (the last cascade's split).
+  CHECK(once("44 8B 81 68 01 00 00 48 8B D9 8B 91 48 01 00 00 41 FF C8") != nullptr, "shadow cascades: the distance's read");
+  const uint8_t* rows = at_rva(table + static_cast<uint32_t>(shadow::MEDIUM_ROW * shadow::ROW_SIZE));
+  CHECK(rows != nullptr, "shadow cascades: the table in the file");
+  if (rows == nullptr) return;
+  const std::vector<uint8_t> game(rows, rows + shadow::ROWS_SIZE);
+  const auto count = [](const uint8_t* row_bytes, size_t row) {
+    int32_t value;
+    std::memcpy(&value, row_bytes + ((row - shadow::MEDIUM_ROW) * shadow::ROW_SIZE), sizeof(value));
+    return value;
+  };
+  CHECK(count(game.data(), 2) == 3 && count(game.data(), 3) == 4 && count(game.data(), 4) == 4 && count(game.data(), 5) == 4,
+        "shadow cascades: the game's counts (Medium 3, the rest 4): %d %d %d %d", count(game.data(), 2), count(game.data(), 3),
+        count(game.data(), 4), count(game.data(), 5));
+  // The splits after the table (6 qualities x 7 floats, battle then campaign; the split function's lea).
+  const auto split = [&](int map, int quality, int cascade) {
+    float value;
+    std::memcpy(&value, at_rva(table + 0x60) + (((map * 6 + quality) * 7 + cascade) * 4), sizeof(value));
+    return value;
+  };
+  auto* page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+  CHECK(page != nullptr, "shadow cascades: a page");
+  if (page == nullptr) return;
+  std::memcpy(page, game.data(), game.size());
+  std::memcpy(page + 128, extreme, shadow::EXTREME_SIZE);
+  const std::vector<uint8_t> game_extreme(extreme, extreme + shadow::EXTREME_SIZE);
+  shadow::rows = page;
+  shadow::extreme = page + 128;
+  std::memcpy(shadow::original_rows.data(), page, shadow::ROWS_SIZE);
+  std::memcpy(shadow::original_extreme.data(), page + 128, shadow::EXTREME_SIZE);
+  const auto differing = [&](const std::vector<uint8_t>& expected_rows) {
+    std::vector<size_t> at;
+    for (size_t index = 0; index < shadow::ROWS_SIZE; ++index) {
+      if (page[index] != expected_rows[index]) at.push_back(index);
+    }
+    return at;
+  };
+  const auto field = [](std::vector<uint8_t>* bytes, size_t row, size_t offset, uint32_t value) {
+    std::memcpy(bytes->data() + ((row - shadow::MEDIUM_ROW) * shadow::ROW_SIZE) + offset, &value, sizeof(value));
+  };
+  // Off: Shadow Map Size alone (16384: rows 4 and 5's size and tile; the immediates' floats and tile).
+  std::vector<uint8_t> sized = game;
+  for (const size_t row : shadow::SIZE_ROWS) {
+    field(&sized, row, shadow::SIZE_FIELD, 16384);
+    field(&sized, row, shadow::TILE_FIELD, 8192);
+  }
+  twpharaohdynasties::shadow_map::Set(0, false);
+  CHECK(differing(game).empty(), "shadow cascades: the game's size, off: the game's bytes");
+  twpharaohdynasties::shadow_map::Set(16384, false);
+  CHECK(differing(sized).empty(), "shadow cascades: 16384, off: Shadow Map Size's bytes alone");
+  float extreme_size;
+  std::memcpy(&extreme_size, page + 128 + shadow::EXTREME_FLOATS[0], sizeof(extreme_size));
+  CHECK(extreme_size == 16384.f, "shadow cascades: 16384 at the immediates (%g)", extreme_size);
+  // On: the three cascade counts above Medium become Medium's, nothing else.
+  twpharaohdynasties::shadow_map::Set(16384, true);
+  std::vector<uint8_t> three = sized;
+  for (const size_t row : shadow::CASCADE_ROWS) field(&three, row, shadow::CASCADES_FIELD, 3);
+  CHECK(differing(three).empty(), "shadow cascades: on: Medium's count in rows 3-5");
+  const auto changed = differing(sized);
+  CHECK(changed.size() == 3, "shadow cascades: on: %zu bytes differ from off (3 expected)", changed.size());
+  for (const size_t index : changed) {
+    CHECK(std::ranges::any_of(shadow::CASCADE_ROWS, [&](size_t row) { return index == (row - shadow::MEDIUM_ROW) * shadow::ROW_SIZE; }),
+          "shadow cascades: on: byte %zu outside the cascade counts", index);
+  }
+  twpharaohdynasties::shadow_map::Set(0, true);
+  std::vector<uint8_t> three_game = game;
+  for (const size_t row : shadow::CASCADE_ROWS) field(&three_game, row, shadow::CASCADES_FIELD, 3);
+  CHECK(differing(three_game).empty(), "shadow cascades: the game's size, on: the counts alone");
+  CHECK(std::memcmp(page + 128, game_extreme.data(), shadow::EXTREME_SIZE) == 0, "shadow cascades: the game's immediates");
+  // Off again, and Uninstall: the game's bytes.
+  twpharaohdynasties::shadow_map::Set(0, false);
+  CHECK(differing(game).empty(), "shadow cascades: off again: the game's bytes");
+  twpharaohdynasties::shadow_map::Set(8192, true);
+  twpharaohdynasties::shadow_map::Uninstall();
+  CHECK(differing(game).empty() && std::memcmp(page + 128, game_extreme.data(), shadow::EXTREME_SIZE) == 0,
+        "shadow cascades: Uninstall: the game's bytes");
+  // CONTROL: a Medium of 4 (as the rows above it) or of 0 (no cascades): on writes no count.
+  for (const uint32_t medium : {4u, 0u}) {
+    std::vector<uint8_t> other = game;
+    field(&other, 2, shadow::CASCADES_FIELD, medium);
+    std::memcpy(page, other.data(), other.size());
+    std::memcpy(shadow::original_rows.data(), other.data(), other.size());
+    twpharaohdynasties::shadow_map::Set(0, true);
+    CHECK(differing(other).empty(), "shadow cascades: CONTROL Medium %u: a count written", medium);
+    twpharaohdynasties::shadow_map::Set(0, false);
+  }
+  shadow::rows = nullptr;
+  shadow::extreme = nullptr;
+  VirtualFree(page, 0, MEM_RELEASE);
+  std::printf("2 shadow cascades: patterns once in Pharaoh.exe (table +%#x, the getter and the distance's read too); counts "
+              "Medium 3, High / Ultra / Extreme 4; off: Shadow Map Size's bytes alone; on: %zu bytes differ (rows 3-5's counts "
+              "to 3); back: the game's bytes; CONTROL Medium 4 / 0: none written. Shadow distance at the highest quality: battle "
+              "%g m -> %g m, campaign %g -> %g\n",
+              table, changed.size(), split(0, 5, 3), split(0, 5, 2), split(1, 5, 3), split(1, 5, 2));
+}
+
 // The campaign's trees: the capture against the game's 16D14106 from random instanced vertices, their shadow pass 81696642
 // through Troy's RT_WORLD_UV + RT_COLOUR geometry shader with every triangle outside the main view.
 static void TestCampaignTrees(const std::string& game_folder, const std::string& built_folder) {
@@ -270,9 +426,10 @@ static void TestCampaignTrees(const std::string& game_folder, const std::string&
 
 int main(int argc, char** argv) {
   if (argc < 3) {
-    std::printf("usage: pharaoh.exe <the game's csos> <the add-on's built csos>\n");
+    std::printf("usage: pharaoh.exe <the game's csos> <the add-on's built csos> [Pharaoh.exe]\n");
     return 2;
   }
+  TestShadowCascades((argc > 3) ? argv[3] : R"(C:\Program Files (x86)\Steam\steamapps\common\Total War PHARAOH DYNASTIES\Pharaoh.exe)");
   const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, &device, nullptr, &context))) {
     std::printf("no WARP device\n");

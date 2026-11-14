@@ -1532,6 +1532,7 @@ tw::engine_tweaks::Option contact_shadow_quality;
 // Shadow Map Size (shadow_map.hpp): the highest Shadows settings' shadow map, an index into SHADOW_MAP_SIZES.
 float shadow_map_size = 0.f;
 constexpr std::array<uint32_t, 4> SHADOW_MAP_SIZES = {0, 8192, 12288, 16384};  // 0: the game's (6144)
+float shadow_cascades_row = 0.f;  // Three Shadow Cascades Under Rays (shadow_map.hpp), with the rays' sun shadows
 // Every engine option above, then the tests' (Graphics 2 of 2: more_tests.h, twattila/engine_tests.hpp).
 std::vector<tw::engine_tweaks::Option*> graphics_options;
 std::vector<twattila::engine_tests::EngineTest> engine_tests;
@@ -2137,10 +2138,12 @@ constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {
     {.shader_hash = 0xF4E19A48, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .sun_direction = 4, .ao_slot = 12},  // skinlm_interior
 }};
 
-// The shadow map size, before the game builds its shadows.
+// The shadow map size and cascades, before the game builds its shadows.
 void OnInitDevice(reshade::api::device*) {
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
-  twpharaohdynasties::shadow_map::Install(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
+  twpharaohdynasties::shadow_map::Install(
+      SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)],
+      shadow_cascades_row != 0.f && twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).sun_shadows);
 }
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
@@ -2190,7 +2193,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
-  twpharaohdynasties::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
+  twpharaohdynasties::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)],
+                                      shadow_cascades_row != 0.f && rt_settings.sun_shadows);
   twattila::light_count::OnPresent(rt_sliders.debug_log != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
@@ -2646,6 +2650,19 @@ void ConfigureAddon() {
           .tooltip = "Sharper sun shadows that flicker less, at the highest Shadows settings. More video memory\n"
                      "(16384: 1 GB or more). Applies after a restart or after changing the game's Shadows option.",
           .labels = {"6144 (Game's)", "8192", "12288", "16384"},
+      },
+      // Taken into the rays' Shadows rows by graphics_page (as Attila's Two Shadow Cascades; Pharaoh's Medium has three).
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedShadowCascades",
+          .binding = &shadow_cascades_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Three Shadow Cascades Under Rays (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows: the game prepares 3 shadow cascades, as at Shadows Medium, instead of 4,\n"
+                     "and its shadows end nearer. The rays shadow instead; less CPU time with many objects.\n"
+                     "Applies after a restart or after changing the game's Shadows option.",
+          .labels = {"Off", "On"},
       },
       graphics_status,
       // Two empty lines between this section and the ambient occlusion (ATN).
