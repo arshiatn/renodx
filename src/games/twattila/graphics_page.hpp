@@ -226,7 +226,9 @@ struct Bindings {
   bool has_object_motion = false;  // Without the scale rows: Object Motion Vectors still has an effect.
   bool has_foliage_light = true;  // Screen-space shadows know grass and leaves.
   bool foliage_light_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
+  bool smoke_map_tested = true;  // false: the smoke's shadows without rays Experimental, off by default (as foliage_light_tested)
   bool smoke_shadows_tested = true;  // false: the rays' Smoke Shadows Experimental and left out of RT/PT (its default the game's to set)
+  bool far_cards_tested = true;  // false: Sprite Soldier and Far Tree Shadows the same (their defaults the game's to set)
   bool water_caustics_tested = true;  // false: Water Caustics left out of RT/PT (its default the game's to set)
   bool has_path_ambient = true;  // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   // Point light shadows have their own row (RT/PT turns it on); Fog Shadows, light in the fog and RIS stay off in that preset.
@@ -748,9 +750,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     // The paths' AO multiplying the game's (ChooseAo's Path-Traced): GT-VBAO goes off with it, else it ran hidden under the paths.
     if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
-    std::erase_if(rays_values, [smoke = b.smoke_shadows_tested, caustics = b.water_caustics_tested](const Values::value_type& preset) {
+    std::erase_if(rays_values, [smoke = b.smoke_shadows_tested, caustics = b.water_caustics_tested, cards = b.far_cards_tested](const Values::value_type& preset) {
       const auto& [key, value] = preset;
-      return (key == "RayTracedSmokeShadows" && !smoke) || (key == "WaterCaustics" && !caustics);
+      return (key == "RayTracedSmokeShadows" && !smoke) || (key == "WaterCaustics" && !caustics)
+             || ((key == "RayTracedSpriteShadows" || key == "RayTracedFarTreeShadows") && !cards);
     });
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
@@ -811,8 +814,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Add(new Setting{
           .key = "SmokeShadowMapStrength",
           .binding = b.smoke_strength,
-          .default_value = 1.f,
-          .label = "Smoke Shadows",
+          .default_value = b.smoke_map_tested ? 1.f : 0.f,
+          .label = b.smoke_map_tested ? "Smoke Shadows" : "Smoke Shadows (Experimental)",
           .section = section,
           .tooltip = "Smoke and dust dim the sun on what lies below them. No rays, any GPU. Needs in-game shadows on.\n0: off.",
           .min = 0.f,
@@ -842,8 +845,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedLightSteady", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedLightCount", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedLightRange", .section = section, .shown = more_lights});
-    page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays});
-    page.Take({.match = "RayTracedFarTreeShadows", .section = section, .shown = more_rays});
+    page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays,
+               .label = b.far_cards_tested ? "" : "Sprite Soldier Shadows (Experimental)"});
+    page.Take({.match = "RayTracedFarTreeShadows", .section = section, .shown = more_rays,
+               .label = b.far_cards_tested ? "" : "Far Tree Shadows (Experimental)"});
     if (b.rays_replace_maps != nullptr) {
       page.Add(new Setting{
           .key = "RayTracedReplaceShadowMaps",

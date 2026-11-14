@@ -135,6 +135,8 @@ struct ShaderInjectData {
   float v35_highlight_saturation;
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
+
+  float rt_ambient_alone;          // ssao00: 1 no ambient occlusion of its own (the ray-traced one replaces it), as Attila
 };
 
 #define SI shader_injection
