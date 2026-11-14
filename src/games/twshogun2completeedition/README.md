@@ -608,6 +608,17 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v69 (2026-11-14): rivers, lakes and the Ultra sea in the water reflections (built only, not run in game)
+
+- **Ray-traced water reflections** (the row's new name; Experimental, off) also on the battles' rivers and lakes
+  (waterplane high / medium / ultra, waterplane00) and the sea at water quality Ultra (ocean01). The water planes' draws
+  are kept (their mesh, vertex shader and a copy of their g_world) and drawn again depth-only with the next frame's
+  camera before the reflections; rt_water_plane takes the nearer of the sea's plane and them.
+- test/tw_shogun2_shaders: rt_water_plane with a water mesh band (nearer: water; under the land: not), ocean01 and
+  waterplane00 against the game's csos.
+- Casters out of view (W7d) not made: the shadow pass comes before the main view, and its instanced draws are far too
+  many to stream out every frame (rigid: 38M, 53M, 326M indices x instances in cascades 1-3; units 140M).
+
 ## v68 (2026-11-14): sea reflections, sun-facing sprite soldiers and far trees (built only, not run in game)
 
 - **Ray-traced sea reflections** (Experimental, off; with ray-traced reflections): the sea (ocean, water quality High)
