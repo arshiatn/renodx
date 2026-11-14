@@ -777,7 +777,25 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [ ] ATN: re-measure Hue Clip / V35 hue on Tales' own chain? Steam offline or Cloud off for agent runs; G1 + G2 in
       one session?
     - [x] addon-split.md fixed: Tales DLSS registers draw / dispatch only while a trace runs
-  - [ ] PLAN agents (running): tools/nontw/expeditions/plan.md, tools/nontw/ryse/plan.md (+
+  - [x] RYSE PLAN DONE: tools/nontw/ryse/plan.md + ryse.tsv (~75 rows; both add-ons build at HEAD; the tree is HDR fix53 +
+    DLSS v115, never run in game). Top gaps: shipped helper22 / bridge v11 vs HEAD bridge v31 / helper 113 (+ Agility);
+    no page-dump driver; no fast-dispatch opt-in (and the DevKit symlink in Bin64 keeps it off); no download notice /
+    SDR preset / first start; no RR (D3D11 RR bug: helper as upscaler or NGX D3D12); no FSR / XeSS (+ FG); no scripted
+    runs / pass timer / bench scene; Attila RT rows missing (Debug View, RT/PT preset, NRD, rays a pixel, SHaRC, SER,
+    Lean, specular occlusion, Log Details, profile); the game's other settings never traced; Hue Clip 80 from the
+    generic curve; device_loss not wired. Install: symlinks + DevKit, nvngx_dlss 310.9.1 only. Shaders: dump_shader_ryse
+    (540 + HLSL), ryse2 (354), DevKit dump (894), ryse_image.bin; paks' directories encrypted (not read). Nsight: no GPU
+    Trace (D3D11); a D3D11 frame capture untried. Runs: R0 data run, R1 split bench (one add-on or two), R2 features +
+    ATN's look list. Shared x64 step proposed: engine_memory.hpp near-exe memory + atomic code patch + FindPattern (third
+    copy in the repo) for the TW x64 CPU detours.
+    - [ ] ATN: bench scene (chapter 1 from Chapter Select, or a checkpoint you keep)?
+    - [ ] ATN: RR route: the helper as upscaler or in-process D3D12 RR only?
+    - [ ] ATN: may an agent decode the game's own run-time shader cache (USER\Shaders\Cache\D3D11\*.fxcb) for names?
+    - [ ] ATN: one try of Nsight's D3D11 frame capture during R0?
+    - [ ] ATN: R0 / R1 / R2 permission; may the agent switch the game's menu settings in R0 (fresh backups)?
+    - [ ] ATN: merge after R1's numbers? Hue settings for Ryse's V35? Stamps / watermarks for Ryse releases as for TW?
+    - [x] addon-split.md fixed: Ryse's HDR add-on registers draw / draw_indexed always, its DLSS add-on only while tracing
+  - [ ] PLAN agent (running): tools/nontw/expeditions/plan.md (+
     ledgers): state, gaps vs Attila's package, shader sources (ATN's ~12000-file dumps), Nsight feasibility, game-run
     list (Tales: ATN's two newest saves), 2 add-ons -> 1, HDR-only snapshot, UE4 SHARED STEP candidates. Owner: plan agents,
     then the coordinator assigns shared owners and ATN picks the order
