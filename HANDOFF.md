@@ -350,10 +350,18 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   (so no licence text in the zips); WH1 Hue Clip default 40 -> WH1 r4 7d21a0b0 installed 10:10 (page dump default=40;
   ATN's own WH1 ReShade.ini keeps hue_clip=50 until Reset / Recommended); ATN restarted the PC (zombies gone).
 - [ ] ATN ~10:1x: "I like my RT/PT preset of Attila ... put the new games to Attila's preset (sliders that don't exist in
-  Attila: a value as you fit)": agent aligning Thrones / WH2 / Troy / WH1 / Shogun 2 / Rome Remastered RT/PT to Attila's
-  (page dumps vs page_a_1114final); then build, stamp, install.
-- [ ] ATN's Rome Remastered trace (67 % / 50 %): FrameTrace=1 added to its ReShade.ini (backup
-  tools/tw/romeremastered/ini_backup_20261114_101134), multi_watch running ~75 min; remove the key after.
+  Attila: a value as you fit)": MERGED ba290b8c (graphics_page Bindings::rays_preset_as_attila opt-in; Thrones, WH2, Troy,
+  WH1, Shogun 2 DLSS; page dumps after RT/PT = Attila's but per-game tone mapping / AO keys; Attila / WH3 unchanged; Rome
+  Remastered has no RT/PT button = ATN decides) + WH1 0124b5dc (No RT/PT / Reset wrote Water Caustics 1: default zeroed
+  before Apply). Building 10:37 at 0124b5dc; then dumps, stamp thrones r4 / wh2 v50 / troy v54 / wh1 r5 / shogun2 v73, install.
+- [x] ATN's Rome Remastered runs (FrameTrace=1 in its ReShade.ini, backup ini_backup_20261114_101134; prefs
+  resolution_scale-1 100 -> 67 -> 50, backup prefs_backup_20261114_102403): in-game Resolution Scale change CRASHED
+  (exe +0x6ee594, null sRGB RTV); 67 % run 10:24 (17 traces runs/ATN_multi_romer_102433; battle start "hung multiple
+  times" = two GPU resets of the helper's ray-tracing device 10:27:42 / :50, rays off after; no RR in the log); 50 % run
+  10:31-10:35 rays off, clean (15 traces runs/ATN_multi_romer_103123). 10:36 FrameTrace=1 removed, scale back to 100 (ATN's
+  own ini changes kept; backup restore_backup_20261114_103625). Crash FIXED on the agent's branch f6a7cfc4 (Renderer::Resize
+  took the upgraded RGBA16 back buffer format; detour passes the game's 8-bit one; tw_romer_dlaa case 5), not merged yet:
+  agent on the resets, DLAA below 100 %, DLSS below 100 % from the traces.
 - [ ] ATN ~10:2x: "fix the nsight issue ... then improve the performance in Attila": Nsight agent resumed: phase A a
   replay-able helper mode (own fence / textures, no factory RR device, clusters off), capture + replay + shader swap;
   phase B Attila perf variants behind switches (GPU Trace + quality scorer; defaults bit-identical; no GPU job while a
