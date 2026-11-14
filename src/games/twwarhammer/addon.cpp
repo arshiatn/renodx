@@ -1931,9 +1931,9 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Warhammer II's and Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave,
-  // then Settings Mode's pages. Only what this game hooks: no foliage in the screen-space shadows, no fog march, water or
-  // smoke (their rows stay hidden). Rays Replace and Skip the Shadow Maps, Far Tree Shadows and Shadow Casters Out of View
-  // Experimental, off (the *_tested flags).
+  // then Settings Mode's pages. Only what this game hooks: no fog march, water or smoke (their rows stay hidden). Rays
+  // Replace and Skip the Shadow Maps, Far Tree Shadows, Shadow Casters Out of View and Light Through Foliage Experimental,
+  // off (the *_tested flags).
   // The paths' sky from the game's ambient (the spherical harmonics or the cube, rt_sun) and Path-Traced AO in the AO methods
   // (Experimental), as Warhammer II's: ATN's 2026-11-14 traces show g_hdr_on and g_use_spherical_harmonics on.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
@@ -1969,7 +1969,7 @@ void ConfigureAddon() {
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_banner_light = &rays_banner_light_row,
                                              .texts = &PAGE_TEXTS,
-                                             .has_foliage_light = false,
+                                             .foliage_light_tested = false,
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
@@ -2050,6 +2050,9 @@ bool AttachAddon() {
   twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS, true);
   twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowsOnly();
+  // Light Through Foliage: the G-buffer's channel 3 alpha byte, bit 128 (Warhammer III's: the leaves' 744FDFF0 writes 128,
+  // the sun shaders let the sun through from behind only there; test/tw_warhammer_shaders part 11).
+  twattila::screen_space_shadows::foliage_material_bit = 128;
   // Light Through Banners' Coloured Shadows: the G-buffer's colour is linear (the sun shaders' diffuse, part 10).
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 1.f);
   // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's.

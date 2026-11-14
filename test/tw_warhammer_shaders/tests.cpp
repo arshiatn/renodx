@@ -45,6 +45,10 @@
 //    SV_Position first (register 0), which sss_thin reads; Coloured Shadows' albedo_power 1: 230F2241's diffuse is linear in
 //    channel 2's colour (its slope from 0.1 to 0.3 the one from 0.3 to 0.9; a squared colour makes it 3 times). CONTROL:
 //    the imposter's vertex shader 381E079E (POSITION first) fails the first.
+// 11. Light Through Foliage's bit (foliage_material_bit 128): the leaves' G-buffer shader 744FDFF0 (its bytes, drawn as part
+//    8 draws, the camera far and its inputs' w 0: no fade) writes channel 3's alpha 128 / 255; 230F2241 lit from behind (sun
+//    1 along the normal, no ambient) lets light through only with that bit. CONTROLS: the branches' 4CF47121 writes 0;
+//    flags 64 (water) and 16 let none through.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -199,7 +203,8 @@ struct SunScene {
   float albedo = 0.5f;
   std::array<float, 2> normal = {0.5f, 0.5f};
   float gloss = 0.f;
-  float specular = 0.f;  // channel 3's specular colour (its flags 0)
+  float specular = 0.f;  // channel 3's specular colour
+  float flags = 0.f;     // channel 3's alpha byte (the material's flags)
   float depth = 0.5f;
   UINT harmonics_width = 0;
   UINT harmonics_height = 0;
@@ -248,7 +253,7 @@ static Float4 DrawGame(std::span<const uint8_t> code, const SunScene& scene) {
       if (name == "t_ssao") views.push_back(View(1, 1, {Float4{1.f, 1.f, 1.f, 1.f}}));
       else if (name == "gbuffer_channel_1_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.normal[0], scene.normal[1], scene.gloss, 0.f})));
       else if (name == "gbuffer_channel_2_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.albedo, scene.albedo, scene.albedo, 0.f})));
-      else if (name == "gbuffer_channel_3_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.specular, scene.specular, scene.specular, 0.f})));
+      else if (name == "gbuffer_channel_3_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.specular, scene.specular, scene.specular, scene.flags / 255.f})));
       else if (name == "gbuffer_channel_4_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.depth, 0.f, 0.f, 0.f})));
       else if (name == "t_world_spherical_harmonics" && !scene.harmonics.empty()) views.push_back(View(scene.harmonics_width, scene.harmonics_height, scene.harmonics));
       else continue;
@@ -1154,6 +1159,7 @@ struct ForwardScene {
   bool glint = false;      // the camera far along (1, 1, 0) and the sun along -(1, 1, 0): a +x normal reflects it (the battle
                            // water's sun glint, its only shadowed light)
   float height = 0.f;      // added to every float input's y (the battle water's world place above its ground)
+  float input_w = 1.f;     // every float input's w (the leaves' fade)
   float atlas = 1.f;       // the shadow map's depth
   float occlusion = -1.f;  // t49 (< 0: unbound)
 };
@@ -1184,7 +1190,8 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
     const bool integer = input.ComponentType != D3D_REGISTER_COMPONENT_FLOAT32;
     vertex += std::string(", out ") + (input.ComponentType == D3D_REGISTER_COMPONENT_SINT32 ? "int4 " : (integer ? "uint4 " : "float4 ")) + name + " : " + input.SemanticName + std::to_string(input.SemanticIndex);
     body += " " + name + (integer ? " = 0;" : " = float4(corner.x * 0.31 + " + std::to_string(0.13f * static_cast<float>(index)) + ", corner.y * 0.27 + 0.2, " +
-                                                    std::to_string(0.5f + (0.05f * static_cast<float>(index))) + ", 1) + float4(0, " +
+                                                    std::to_string(0.5f + (0.05f * static_cast<float>(index))) + ", " + std::to_string(scene.input_w) +
+                                                    ") + float4(0, " +
                                                     std::to_string(scene.height) + ", 0, 0);");
   }
   const auto vertex_code = CompileText(vertex + ") {" + body + " }", "forward vertex", "main", "vs_5_0");
@@ -1500,6 +1507,32 @@ static void TestThin(const std::string& dump) {
               banners ? "yes" : "NO", imposter ? "YES" : "no", low, high, high / low);
 }
 
+static void TestFoliage(const std::string& dump) {
+  // Channel 3's alpha (target 2) at pixel 5 of a G-buffer shader drawn as part 8 draws it.
+  const auto flags_written = [&dump](uint32_t hash) {
+    const auto code = GameBytes(dump, hash);
+    const auto texels = DrawForward(code, code, {.glint = true, .input_w = 0.f});
+    return (texels.size() >= 48) ? texels[32 + 5][3] * 255.f : -1.f;
+  };
+  const float leaves = flags_written(0x744FDFF0);
+  const float branches = flags_written(0x4CF47121);
+  const auto bytes = GameBytes(dump, 0x230F2241);
+  Lighting behind;
+  behind.c[1] = 1.f;  // the sun shines along +x onto a +x normal: from behind
+  std::fill_n(behind.c.begin() + 4, 3, 1.f);
+  behind.c[44] = 1.f;
+  behind.c[51] = 1.f;
+  std::array<float, 4> through = {};
+  constexpr std::array<float, 4> FLAGS = {128.f, 0.f, 64.f, 16.f};
+  for (size_t index = 0; index < FLAGS.size(); ++index) through[index] = DrawGame(bytes, {.lighting = behind, .flags = FLAGS[index]})[0];
+  CHECK(std::fabs(leaves - 128.f) < 1e-3f && std::fabs(branches) < 1e-3f, "foliage: leaves write %g, CONTROL branches %g", leaves, branches);
+  CHECK(through[0] > 1e-6f && through[1] == 0.f && through[2] == 0.f && through[3] == 0.f, "foliage: through with flags 128 %g, 0 %g, 64 %g, 16 %g",
+        through[0], through[1], through[2], through[3]);
+  std::printf("Light Through Foliage: 744FDFF0 writes flags %g (CONTROL 4CF47121 %g); 230F2241 from behind: flags 128 %g, "
+              "CONTROLS 0 %g, 64 %g, 16 %g\n",
+              leaves, branches, through[0], through[1], through[2], through[3]);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -1524,6 +1557,7 @@ int main(int argc, char** argv) {
   TestForwardShadows(argv[2]);
   TestGuides(games, argv[2]);
   TestThin(argv[2]);
+  TestFoliage(argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

@@ -12,10 +12,15 @@
   the screen-space shadows (InstallThin; their vertex shaders give SV_Position first, as sss_thin reads; Coloured Shadows
   with the G-buffer's colour linear: the sun shaders' diffuse is, part 10). E7F0D71A stays out of the rays (not a caster
   there yet).
+- **Light Through Foliage (Experimental, off)**: the leaves' G-buffer shader 744FDFF0 writes channel 3's flag 128 and the
+  sun shaders let the sun through from behind only there (part 11), Warhammer III's bit (`foliage_material_bit`): the
+  screen-space shadows that leaves cast let that share of the sun through.
 
 Test list (in game, ATN):
 1. Battle with banners, Light Through All Banners on: their shadows lighter and coloured (screen-space and RT); off: as
    before; nothing else (shields, cloaks) lighter.
+2. Battle in a forest, Light Through Foliage at 0.5: the leaves' screen-space shadows lighter, walls' and soldiers' as
+   dark as before.
 
 Not done: Sprite Shadows (WH1's far soldiers are points the game's geometry shader 12D3A4BC / D6954DFC turns into quads;
 the rays capture a vertex shader's vertices with the draw's own indices, so they need new shared capture work, and none of
