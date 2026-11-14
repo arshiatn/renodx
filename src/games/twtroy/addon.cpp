@@ -39,6 +39,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/contact_shadows_off.hpp"
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
@@ -1909,6 +1910,10 @@ bool AttachAddon() {
   // (6DA297BD) write 128, grass (EBC9553B) 160, the others 0-64 (units 1 / 33, the lake 64; terrain material 3C1C6172 its
   // vertex value; tools\tw\troy\troy_material_writes_1027.txt).
   twattila::screen_space_shadows::foliage_material_bit = 128;
+  // The game's contact shadows off where ours shadow (Pharaoh's): g_contact_shadows at byte 4 of every sun draw's lighting_VS_PS
+  // (troy_sun_rdef.py), its 8-step march under one if_nz cb[0].y (049C3CFB). After the screen-space shadows' (t49), before the
+  // Light Bounce's. WARP: tools\tw\troy\sun_test v51.
+  twattila::contact_shadows_off::Install(LIGHT_BOUNCE_DRAWS);
   // Rays Replace Shadow Maps: after the screen-space shadows' (t49) and before the Light Bounce's. Skip the Shadow Maps through
   // Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
   twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &rays_replace_maps_row);
@@ -2002,6 +2007,7 @@ void DetachAddon() {
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
   twattila::screen_space_shadows::Uninstall();
+  twattila::contact_shadows_off::Uninstall();
   twattila::sun_replace_maps::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::rt_scene::Uninstall();
