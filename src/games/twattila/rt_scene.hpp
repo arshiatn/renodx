@@ -892,11 +892,10 @@ struct PointLightCopy {
 };
 // A streamed light record (LightInstances::stream_shader): the light (position, reach), then its colour.
 constexpr UINT STREAMED_LIGHT_BYTES = 32;
-// A read light's position and reach as two keys (each float's bits ordered as the floats compare, -0 as +0) and its place
+// A read light's position and reach as four keys (each float's bits ordered as the floats compare, -0 as +0) and its place
 // in the frame's read order (OnPointLightDraw's sort).
 struct LightKey {
-  uint64_t high;
-  uint64_t low;
+  std::array<uint32_t, 4> key;
   uint32_t index;
 };
 struct PointLightReadback {
@@ -1143,22 +1142,26 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
         const auto repeated = std::ranges::unique(lights, {}, &LocalLight::light);
         lights.erase(repeated.begin(), repeated.end());
       } else {
-        const auto ordered = [](float value) -> uint64_t {
+        const auto ordered = [](float value) {
           const auto bits = std::bit_cast<uint32_t>(value);
           if ((bits & 0x7FFFFFFFu) == 0u) return 0x80000000u;
           return ((bits & 0x80000000u) != 0u) ? ~bits : (bits | 0x80000000u);
         };
-        const auto same_place = [](const internal::LightKey& a, const internal::LightKey& b) { return a.high == b.high && a.low == b.low; };
+        const auto same_place = [](const internal::LightKey& a, const internal::LightKey& b) { return a.key == b.key; };
         std::vector<internal::LightKey> keys;
         keys.reserve(lights.size());
         for (const LocalLight& light : lights) {
-          keys.push_back({.high = (ordered(light.light[0]) << 32) | ordered(light.light[1]),
-                          .low = (ordered(light.light[2]) << 32) | ordered(light.light[3]),
+          keys.push_back({.key = {ordered(light.light[0]), ordered(light.light[1]), ordered(light.light[2]), ordered(light.light[3])},
                           .index = static_cast<uint32_t>(keys.size())});
         }
         if (!std::ranges::equal(keys, readback.keys, same_place)) {
           readback.keys = keys;
-          std::ranges::sort(keys, [](const internal::LightKey& a, const internal::LightKey& b) { return a.high < b.high || (a.high == b.high && a.low < b.low); });
+          std::ranges::sort(keys, [](const internal::LightKey& a, const internal::LightKey& b) {
+            for (size_t coordinate = 0; coordinate < a.key.size(); ++coordinate) {
+              if (a.key[coordinate] != b.key[coordinate]) return a.key[coordinate] < b.key[coordinate];
+            }
+            return false;
+          });
           const auto repeated = std::ranges::unique(keys, same_place);
           keys.erase(repeated.begin(), repeated.end());
           readback.order.clear();
