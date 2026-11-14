@@ -608,6 +608,24 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     MERGED yet: its test/tw_rays_captures conflicts with Rome II's; the agent merges atn-mods, combines both, reruns the
     suite, and fixes tw_psychov35 (fails on atn-mods since Rome II's 5206dcbc put r_ shaders in part 1 with Attila's
     bindings). Then merge.
+  - [x] Pharaoh MERGED 08396134 (campaign trees 16D14106 / 81696642 + vegetation E7792B60 + fur units 621E86DD held;
+    Three Shadow Cascades Under Rays, Rarer Objects (ropes 655AB38D), the 3 Vfx particle rows; test/tw_pharaoh 1-5 PASS;
+    parity_check p 0 open / 35 waiting; built after the merge). 1C4B8681 cuts at 0.505: helper's 0.5 stays.
+    - [ ] F81881EB (8-bone units, in no trace) not held: its asm_to_hlsl translation misses TEXCOORD0 by 2.6 on WARP, so
+      motion_unit_weightedcommon_f818 (already in MOTION_SHADERS, level B) is probably wrong too. Owner: PARITY ROUND 3
+  - [x] Thrones / WH1 / Troy / WH2 MERGED aa3468a9 (conflict in Thrones' rows: both kept; Thrones / Attila x86 + WH1 / WH2
+    / Troy x64 built): Two Shadow Cascades Under Rays in all four (WH1 / WH2 via new twwarhammer2/shadow_cascades.hpp, test
+    tw_shadow_cascades; Troy's shadow_map.hpp rewritten), Rarer Objects in Thrones / Troy, ropes in Thrones / Troy / WH2,
+    Troy's Smooth Sail Shadows; parity_check th w1 t w2 exit 0. Suites built their exes in the worktree's build (not
+    testbin; nothing quarantined).
+    - [ ] Waiting lines the shared step settled but the ledgers still show (Troy C7FDC209 / 370A7440, Thrones' torch
+      lines): re-mark. Owner: PARITY ROUND 3
+  - [x] Shogun 2 MERGED ec83dc9c (GT-VBAO Temporal Smoothing / Edge Fix / Denoiser; Rarer objects in the rays 5074655A /
+    C24D8705; SSS softness, debug view, softer away from the caster; all Experimental; tw_shogun2_shaders 1-19 PASS;
+    both add-ons built after the merge). ShadowCascades / Sharpening / Extra Sharpness WON'T with proof.
+    - [ ] OPEN: ScreenSpaceShadowsColoured and ScreenSpaceShadowsBannerLight need the banners' own depth (Attila's
+      InstallThin, inside twattila/screen_space_shadows.hpp): an opt-in there or a Shogun copy. Owner: PARITY ROUND 3
+  - [ ] PARITY ROUND 3 (one agent): the three lines above, then parity_check over every game at HEAD
     - [ ] caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
       so parity_check settles Rome Remastered's casters itself. Owner: coordinator, after parity round 2 (shared script)
 - Was: SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
