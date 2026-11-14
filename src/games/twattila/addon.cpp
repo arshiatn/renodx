@@ -1241,6 +1241,12 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 // models' material) and the flags the CPU moves (rigidcommon from a dynamic vertex buffer, drawn from both sides or by the
 // capture-point flag's pixel shaders) as thin cloth.
 float rays_banner_light_row = 0.f;
+// The lit particles' other builds (particle_vfx_main ps_main_high_quality with the gather 4.1, software, pcf and fetch4 shadows
+// or none, ps_main at shader models 4 / 4.1), replaced with vfx00's / vfx01's edits (shaders/vfx00<method>_*, vfx01_*): their
+// draws take the rays' sun at t49 under Ray-Traced Shadows Only and the torch lights at b9, as vfx00's / vfx01's do
+// (rt_scene::SHADOW_READER_SHADERS).
+constexpr std::array<uint32_t, 11> PARTICLE_BUILD_READERS = {0xF5F73B79, 0x79A71E7B, 0x1F60E59D, 0x905429B6, 0x2F66954B, 0xDF0F041A,
+                                                             0x3A12A66D, 0xF9D9D3FB, 0xEA5AB372, 0x2CA01137, 0x6DCB7DA0};
 // The capture-point flag: rigidstandard's ps30_gbuffer_alpha_test with vs 347F3DD9 (a pixel trace and names.tsv: level A), its
 // ps41_gbuffer_alpha_test_ms twin with vs D830AD9B under MSAA (the shader dump only: level B). The game culls its back faces.
 constexpr std::array<uint32_t, 1> FLAG_PIXEL_SHADERS = {0xED1DF335};
@@ -2095,6 +2101,7 @@ bool AttachAddon() {
   twattila::rt_scene::InstallShadowsOnly();
   twattila::screen_space_shadows::PatchForwardShadows(twattila::rt_scene::SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(twattila::rt_scene::SHADOW_READER_SHADERS);
+  twattila::rt_scene::InstallShadowReaders(PARTICLE_BUILD_READERS);
   for (const auto& water : WATER_SHADERS) {
     renodx::utils::command_action::Register(
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
