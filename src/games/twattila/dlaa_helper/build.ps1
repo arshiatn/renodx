@@ -106,8 +106,10 @@ if (Test-Path "$nrd\_Bin\NRD.lib") {
     & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -I "$nrd\Shaders" -D "NRD_FINISH_$signal" -Fh "$out\rt_nrd_finish_$signal.h" -Vn "RT_NRD_FINISH_$signal" "$PSScriptRoot\rt_nrd_finish.hlsl"
   }
 }
+# NVIDIA's Nsight Graphics SDK headers (Apache 2.0, include\nsight_graphics_sdk): main.cpp's frame boundaries for Nsight
+# Graphics, nothing without it.
 & "C:\Program Files\LLVM\bin\clang-cl.exe" /nologo -std:c++20 /O2 /MT /EHsc /DWIN32 /D_WINDOWS -DNOMINMAX `
-  -D_ITERATOR_DEBUG_LEVEL=0 "-imsvc$root\external\reshade" "-imsvc$root\external\DLSS\include" `
+  -D_ITERATOR_DEBUG_LEVEL=0 "-imsvc$root\include" "-imsvc$root\external\reshade" "-imsvc$root\external\DLSS\include" `
   "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include @xess_include @nrd_include "/I$out" `
   "$PSScriptRoot\main.cpp" /Ferenodx-tw-dlaa64.exe /link /SUBSYSTEM:WINDOWS `
   "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library @nrd_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib dbghelp.lib `

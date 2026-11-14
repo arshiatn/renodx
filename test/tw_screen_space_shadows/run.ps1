@@ -38,7 +38,10 @@ foreach ($shader in $shaders) {
 }
 Write-Host "Shader bytes changed since fc24dbce: $($changed -join ', ')"
 # sss_depth (and its MSAA form): the G-buffer's foliage mark (Warhammer III); its output against fc24dbce's on WARP too.
-if (($changed | Where-Object { $_ -notin @('sss_setup', 'sss_depth', 'sss_depth_ms') }).Count -ne 0) { throw "Plain shader bytes changed: $($changed -join ', ')" }
+# Shogun 2's sss00-02: Bend's parameters as rows and Light Through Foliage (its shader_injection grew): case 8 compares their
+# output at the rows' defaults with fc24dbce's on WARP.
+$allowed = @('sss_setup', 'sss_depth', 'sss_depth_ms', 'sss00_0x34ECD06E', 'sss01_0x1B529672', 'sss02_0x78E88E1D')
+if (($changed | Where-Object { $_ -notin $allowed }).Count -ne 0) { throw "Plain shader bytes changed: $($changed -join ', ')" }
 
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation

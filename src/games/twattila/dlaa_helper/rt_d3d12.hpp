@@ -1032,6 +1032,9 @@ class RtScene12 {
   // Its alpha-tested dynamic corners a request (rt_dynamic_uvs).
   [[nodiscard]] uint32_t DynamicUvs() const { return dynamic_uvs_; }
 
+  // The queue its requests go to (main.cpp's frame boundaries for Nsight Graphics).
+  [[nodiscard]] ID3D12CommandQueue* Queue() const { return queue_.Get(); }
+
   // One request: the frame's captures into BLASes, the TLAS of what it drew, the trace; the queue waits for the addon's
   // fence value and signals the next (also when nothing ran). `cluster_data`: its new cluster sets' data (v16, the
   // second mapping's start). False: nothing traced.
