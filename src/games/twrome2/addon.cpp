@@ -2184,6 +2184,18 @@ void ConfigureAddon() {
     if (setting->key == "RayTracedLightGlow") {
       setting->is_visible = [] { return false; };
     }
+    // Bend's Light Through Banners and Coloured Shadows (the cloth and sails, InstallThin) off, Experimental, as Pharaoh's: no
+    // game run has drawn Rome II's cloth yet.
+    if (setting->key == "ScreenSpaceShadowsBannerLight") {
+      setting->default_value = 0.f;
+      setting->label = "Light Through Banners (Experimental)";
+      setting->tooltip = "How much sun comes through the shadows cloth and sails cast: they are thin. 0: off.";
+    }
+    if (setting->key == "ScreenSpaceShadowsColoured") {
+      setting->default_value = 0.f;
+      setting->label = "Coloured Shadows (Experimental)";
+      setting->tooltip = "The sun through cloth and sails takes their colour.";
+    }
     // Every reflection here is the water's: the method alone (Water Reflections kept on, unseen). Nothing reads the specular
     // occlusion: its row binds nothing.
     if (setting->key == "RayTracedWaterReflections") {
@@ -2262,7 +2274,7 @@ bool AttachAddon() {
 
   // Rows saved at an old default, cleared once per revision. 1: Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
   // here until what they act on is hooked: they show then at ATN's values. 2 (parity round): rows saved hidden at
-  // SetRaysPresetDefaults' value, shown now at a default of their own here (Experimental, off).
+  // SetRaysPresetDefaults' or the shared row's value, shown now at a default of their own here (Experimental, off).
   constexpr int SETTINGS_REVISION = 2;
   if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
     const auto clear = [](std::initializer_list<const char*> keys) {
@@ -2276,7 +2288,7 @@ bool AttachAddon() {
       clear({"RayTracedFarTreeShadows", "RayTracedLightImportance", "RayTracedPathKeptCube", "RayTracedSmokeQuality",
              "RayTracedSpriteShadows", "RayTracedSwayRange"});
     }
-    clear({"RayTracedFarTreeShadows", "RayTracedSpriteShadows"});
+    clear({"RayTracedFarTreeShadows", "RayTracedSpriteShadows", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
     reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
   }
 
