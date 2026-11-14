@@ -470,8 +470,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Shadows without rays (Experimental; off while the rays' sun shadows run), Smooth Banner Shadows (RT/PT on), Hue Clip measured:
   fire best at 70 (burn 0.2) / 80 (burn 0): default stays 80; campaign billboards CE5AA8D1 (Troy's capture, WARP 4.3e-5 m) +
   vegetation 3368E9E7 out of view; shared opt-ins rt_core SmokeVertexShader::behaviours_at_cb3, Troy billboard
-  RT_BILLBOARD_SCALE (Troy bytes unchanged), psychov35 curve 8; scale census BUG (B) rows settled). Agent resumed: Fog
-  Strength, Fog & Sky Smoothing, smoke_v57 / v61 tools to follow #include.
+  RT_BILLBOARD_SCALE (Troy bytes unchanged), psychov35 curve 8; scale census BUG (B) rows settled). Round 2 MERGED 887ee24c:
+  Fog Strength on all 24 last-stage fog shaders (patched as created; 1 = bit for bit), Fog & Sky Smoothing on the legacy fog
+  (Experimental), sails ED0BC391 + ropes DD5D5694 in the rays (level B), vegetation WARP on Pharaoh's bytes, smoke_v57 / v61
+  run again. Pharaoh agent DONE. Left: Sprite Soldier Shadows (GS imposter 27A16995: shared GS capture path, WH1 agent
+  building it opt-in), particle rows, grass height (trace), feather / fur and level-B casters (traces).
 - [x] Rome Remastered task C MERGED cb98cd5e (DLSS below 100 % with the ray rows on; shared rt_core Host::depth_at_render_size
   opt-in: other games' rt_core suites PASS x86 + amd64, page dumps unchanged; tw_romer_rays case 7). Rome Remastered agent DONE
   (3 DO NOW left: Upscaling Debug View (shared opt-in in AppendAa), Bend's Softer Away + Debug View). ATN runs: Battle Objects
