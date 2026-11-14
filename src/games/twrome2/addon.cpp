@@ -1512,7 +1512,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 39> MOTION_SHADERS =
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py): the main view's terrain (old and custom
 // geom, shader models 3 and 4.1), rigid objects, tree branches and leaves and units (Rome II's own:
 // data_rome2.pack's builds), and their capture versions (world positions; leaves also UVs).
-constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 43> SCENE_SHADERS = {{
     {.hash = 0x83AB3AFC, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true},
     {.hash = 0x2898B8F6, .capture_shader = __rt_capture_terrain_old_sm3_a, .terrain = true},
     {.hash = 0xD8475AB1, .capture_shader = __rt_capture_terrain_custom_material_sm3_b, .terrain = true},
@@ -1548,6 +1548,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0xD0587AC7, .capture_shader = __rt_capture_grass_d058, .dynamic = true, .foliage = true, .grass = true},
     {.hash = 0x2D15A993, .capture_shader = __rt_capture_grass_2d15, .dynamic = true, .foliage = true, .grass = true},
     {.hash = 0x5AB72F3F, .capture_shader = __rt_capture_grass_5ab7, .dynamic = true, .foliage = true, .grass = true},
+    // Cloth (banners, tents) and sails: thin, captured every frame (the CPU moves them), as Attila's 772B26FF / D11B5EC7 (the
+    // same shaders; in none of ATN's traces: level B). The sail symbol 2C98F649 (Attila's B2CCA764: no capture there either)
+    // lies on its sail. Ropes 4F90C2B5 stay out: Rome II's own (no Attila capture), 12 draws of 12 indices, lines.
+    {.hash = 0x997A7119, .capture_shader = __rt_capture_cloth_sm3, .dynamic = true, .thin = true},
+    {.hash = 0x438E2D53, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
     // Far Tree Shadows (Experimental): the far trees' cards (rigidtreebillboard D2EC24BD, drawn in 45 of ATN's 72 traces with
     // ps C5AED7B7; its MSAA twin 2C1F0C31 with B2B1A4F3 in A2; lq 60DAA886 in none) turned to the sun as Attila's, each
     // showing the tree from there; cut out by the diffuse's alpha at t1 (C5AED7B7: discard below 0.35).
@@ -1561,6 +1566,14 @@ constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     // The campaign's trees (rigidcampaigntrees AAFE8EAB, Attila's 4657DA8A code; 11 of ATN's 72 traces, C1, ps AD356CEB: its
     // diffuse's alpha at t0): placed, no wind.
     {.hash = 0xAAFE8EAB, .capture_shader = __rt_capture_campaign_tree, .rows_shader = __rt_rows_campaign_tree, .foliage = true, .still = true},
+}};
+
+// The screen-space shadows' Light Through Banners: cloth and sails (as the rays). Rome II's rigidtextureblend (54FB9355,
+// 95A90798: Attila's banner material) is drawn in 36 and 41 of ATN's 72 traces, so it stays solid: Light Through All
+// Banners has no row here.
+constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{
+    {.hash = 0x997A7119},
+    {.hash = 0x438E2D53},
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
@@ -2201,6 +2214,7 @@ void ConfigureAddon() {
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
+                                             .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
@@ -2281,6 +2295,8 @@ bool AttachAddon() {
   // with g_hdr_on c11.x: the paths' sun light).
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // The G-buffer's colour squared (gamma 2: the sun draws' albedo^2, tools/tw/rome2/sun_test).
+  twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's camera b0, shadowmap b1, lighting
   // b2, shroud b3, directional_light b4): the sun draws (standard 340CBE9D, skin 1A0532C0), the tone mapper EE1DA45C, the
