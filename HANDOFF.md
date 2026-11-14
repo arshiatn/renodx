@@ -280,6 +280,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   shared rt_scene LightInstances + InstallPointLights(instances), rt_core LocalLight.shadows_only + indirect smoke,
   rt_particle_quads_instancing.hlsli: Pharaoh / Troy / WH2 GS headers byte-identical). Agent on 75914932 out of view.
   Troy told: fires 643FC156 can go on top of the new rt_scene light reader.
+- [ ] ReSTIR U1 / U2 (branch worktree-agent-afd5e1bbbc7a65b04, NOT merged): off = helper110 proven (38 headers cmp, DUMP,
+  all_modes 178 / 179 + 1 memory flake); cost rt_lights 2.20 -> 0.81 (U1) / 0.90 (U2) ms at 29 lights. Quality FAILED as a
+  unified reservoir (U1 66 %, U2 20.5 % rRMSE vs RR + importance 1.98 %, Steady 5.15 %: the sun's bounce outweighs the torches).
+  Redesign 39a8e204 (one light per bounce texel apart from the reservoir) being measured; helper111 only if it holds.
+  All agents told: atomic gpu_job.lock (two overwrites tonight).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
