@@ -2,7 +2,7 @@
 
 The helper (`renodx-tw-dlaa64.exe`, `src/games/twattila/dlaa_helper/`) is a standalone D3D12 process for DLSS, RR, FG, FSR, XeSS and the ray tracing, reached through `twattila/dlaa_bridge.h` in shared memory (the addon's side: `dlaa_bridge.hpp`). It isn't a ReShade addon; it shares a few headers with the addons.
 
-**Take the newest helper and bridge.** Most freezes, crashes and limits of the Attila and WH3 rounds were fixed in the helper and the bridge. A new or older TW game, and any non-TW addon on the bridge, builds against today's `dlaa_bridge.h` and ships with the helper built from the same commit, never an older copy.
+**Take the newest helper and bridge** (`game-port-method`'s rule): most freezes, crashes and limits of the Attila and WH3 rounds were fixed in the helper and the bridge.
 
 - The helper answers addons of bridge `OLDEST_VERSION` to `VERSION` (20 to 31 as of 2026-11) and refuses others ("Shared memory unusable (another version?)" in its log). The addon's half of a fix (`Prepare`'s new fence set, owned fields only) reaches only a rebuilt addon: an addon built against an older bridge is rebuilt and shipped with the matching helper.
 - What newer helpers fixed: a held removed device, shared fences after a loss and the GPU reset classes ([section 2](#2-crashes-hangs-and-gpu-resets)); ReShade kept out of the helper, request overflow, requests answered off the game's thread on workers ([section 3](#3-helper-memory-and-lifetime)); TLAS room and the capture count ([rt-scene.md](rt-scene.md#2-families-where-drawn-budget-overflow-answer)).
