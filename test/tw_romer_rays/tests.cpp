@@ -21,7 +21,10 @@
 // 6. contact_shadows::Draw (Bend's march, twattila's sss_setup / sss_bend, into the mask): a pillar's shadow from a sun at
 //    the camera's left darkens the ground the CPU finds shadowed, the sunlit ground and the mask's green kept; CONTROL: the
 //    sun at the right (the setup's sign the other way) leaves it lit. Softness (sss_blur): more partial pixels, the same
-//    dark share.
+//    dark share. Softer Away from the Caster (sss_bend_extended_find, sss_soft): each shadowed pixel's penumbra is the CPU
+//    caster's distance x tan(half the disk) in pixels at its distance (median within 25%), growing away from the pillar;
+//    CONTROL: without the camera's inverse projection, not. The Debug View (sss_debug): 0.8 x the light the mask kept,
+//    Screen Edge red only with it, once a frame; CONTROL: a frame without the march leaves the tone mapper's output.
 // 7. DLSS below 100% with the rays (rt_core Host::depth_at_render_size): the kept depth's size is the render size; a
 //    prepass draw into the render-size depth is the main view's for Capture; CONTROL: without the field, another size;
 //    today's rule at the bridge's size kept. DrawMultiply reads the traced visibility's top-left corner texel for texel.
@@ -660,6 +663,7 @@ Output main(uint id : SV_VertexID) {
     battle.jittered_view_projection = battle.view_projection;
     const Matrix view_projection = Rows(battle.view_projection.data());
     const Matrix inverse = Inverse(view_projection);
+    battle.inverse_rows = inverse;
     const Matrix inverse_view = Inverse(Rows(BATTLE.data()));
     const std::array<double, 3> eye = {inverse_view[12], inverse_view[13], inverse_view[14]};
     const std::array<double, 3> forward = {BATTLE[2], BATTLE[6], BATTLE[10]};
@@ -688,6 +692,8 @@ Output main(uint id : SV_VertexID) {
     };
     std::vector<float> depth(SIZE_X * SIZE_Y, 1.f);
     std::vector<int> kind(SIZE_X * SIZE_Y, 0);  // 0 sky, 1 the pillar, 2 ground in the sun, 3 ground in the shadow
+    std::vector<double> caster(SIZE_X * SIZE_Y, -1.);  // the ground's: metres toward the sun to the pillar, -1 none
+    std::vector<double> view_depth(SIZE_X * SIZE_Y, 0.);
     const auto sun_from = [](double x, double z) { return std::array<double, 3>{x, 1., z}; };
     const auto normalized = [](std::array<double, 3> v) {
       const double length = std::sqrt((v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]));
@@ -718,7 +724,9 @@ Output main(uint id : SV_VertexID) {
         } else if (plane > 0. && plane < 400.) {
           along = plane;
           const std::array<double, 3> point = {origin[0] + (plane * direction[0]), ground, origin[2] + (plane * direction[2])};
-          kind[at] = (box_hit(point, toward_sun) > 0. ? 3 : 2);
+          caster[at] = box_hit(point, toward_sun);
+          view_depth[at] = (point[0] * BATTLE[2]) + (point[1] * BATTLE[6]) + (point[2] * BATTLE[10]) + BATTLE[14];
+          kind[at] = (caster[at] > 0. ? 3 : 2);
         }
         if (along < 0.) continue;
         const auto drawn = Transform({origin[0] + (along * direction[0]), origin[1] + (along * direction[1]), origin[2] + (along * direction[2]), 1.},
@@ -800,6 +808,93 @@ Output main(uint id : SV_VertexID) {
     CHECK(control_dark < 0.05);
     CHECK(partial(soft) > partial(hard));
     CHECK(std::abs(soft_dark - shadow_dark) < 0.15);
+
+    // Softer Away from the Caster at the row's most (2 degrees): the penumbra (R16F) of the shadow's pixels against the CPU's
+    // caster distance x tan(1 degree) x half the height x the projection's y scale / the view depth (the penumbra's cap
+    // left out), as their median ratio, and its mean within 3 m of the pillar and past 7 m.
+    namespace bend = twromeremastered::contact_shadows;
+    const double soft_cap = 32. * SIZE_Y / 2160.;
+    const auto penumbra = [&](double disk) {
+      ComPtr<ID3D11Resource> resource;
+      bend::internal::state.objects.penumbra_srv->GetResource(resource.GetAddressOf());
+      ComPtr<ID3D11Texture2D> texture;
+      REQUIRE(SUCCEEDED(resource.As(&texture)));
+      const auto radii = ReadBack<uint16_t>(texture.Get());
+      const double scale = std::tan(disk * 3.14159265358979 / 360.) * 0.5 * SIZE_Y * BATTLE[16 + 5];
+      std::vector<double> ratios;
+      std::array<double, 2> sums = {};
+      std::array<int, 2> counts = {};
+      for (size_t at = 0; at < radii.size(); ++at) {
+        const double expected = caster[at] * scale / view_depth[at];
+        const float radius = Half(radii[at]);
+        if (kind[at] != 3 || radius <= 0.f || expected >= soft_cap) continue;
+        ratios.push_back(radius / expected);
+        if (caster[at] < 3. || caster[at] > 7.) {
+          sums[caster[at] < 3. ? 0 : 1] += radius;
+          ++counts[caster[at] < 3. ? 0 : 1];
+        }
+      }
+      std::ranges::nth_element(ratios, ratios.begin() + static_cast<ptrdiff_t>(ratios.size() / 2));
+      return std::tuple{ratios.size(), ratios.empty() ? 0. : ratios[ratios.size() / 2], sums[0] / std::max(counts[0], 1), sums[1] / std::max(counts[1], 1)};
+    };
+    bend::rows = {.enabled = 1.f, .distance_softness = 2.f};
+    const auto softer = shadowed(toward_sun);
+    const auto [softer_count, softer_median, softer_near, softer_far] = penumbra(2.);
+    const auto [softer_pixels, softer_dark, softer_sun_dark, softer_green] = shares(softer);
+    // CONTROL: the camera without its inverse (Camera::inverse_rows zero): the view positions, so the penumbra, wrong.
+    battle.inverse_rows = {};
+    shadowed(toward_sun);
+    const auto [control_count, control_median, control_near, control_far] = penumbra(2.);
+    battle.inverse_rows = inverse;
+    // A 20 degree disk (past the row's 2: wide enough on this 480 x 270 picture): sss_soft widens the shadow.
+    bend::rows.distance_softness = 20.f;
+    const auto wide = shadowed(toward_sun);
+    const auto [wide_pixels, wide_dark, wide_sun_dark, wide_green] = shares(wide);
+    std::printf("Softer Away from the Caster 2 degrees: %zu shadow pixels with a penumbra, median %.3f of the reference, mean %.2f px within 3 m "
+                "of the pillar, %.2f px past 7 m; %.3f dark, %.3f of the sun's ground; CONTROL without the inverse projection: %zu, median "
+                "%.3f, %.2f / %.2f px. 20 degrees: partial pixels %td (hard %td), %.3f dark\n",
+                softer_count, softer_median, softer_near, softer_far, softer_dark, softer_sun_dark, control_count, control_median, control_near,
+                control_far, partial(wide), partial(hard), wide_dark);
+    CHECK(softer_count > 30 && softer_median > 0.75 && softer_median < 1.25);
+    CHECK(softer_far > 1.5 * softer_near);
+    CHECK(std::abs(softer_dark - shadow_dark) < 0.15 && softer_sun_dark < 0.02 && softer_green);
+    CHECK(!(control_median > 0.75 && control_median < 1.25 && control_far > 1.5 * control_near));
+    CHECK(partial(wide) > partial(hard) && std::abs(wide_dark - shadow_dark) < 0.2 && wide_sun_dark < 0.05 && wide_green);
+
+    // The Debug View over a tone mapper output of the mask's size, in the frame the march ran in (battle.frame).
+    const auto output = MakeTexture(SIZE_X, SIZE_Y, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE);
+    battle.frame = 41;
+    bend::rows = {.enabled = 1.f, .debug_view = 1.f};
+    const auto kept = shadowed(toward_sun);
+    const bool debug_drawn = bend::internal::DrawDebug(context1.Get(), output.Get(), 41);
+    const bool debug_again = bend::internal::DrawDebug(context1.Get(), output.Get(), 41);
+    const auto picture = ReadBack<std::array<uint16_t, 4>>(output.Get());
+    double debug_worst = 0.;
+    const auto red_count = [](const std::vector<std::array<uint16_t, 4>>& texels) {
+      return std::ranges::count_if(texels, [](const std::array<uint16_t, 4>& texel) { return Half(texel[0]) > Half(texel[1]) + 0.05f; });
+    };
+    for (size_t at = 0; at < picture.size(); ++at) {
+      for (int channel = 0; channel < 3; ++channel) {
+        debug_worst = std::max(debug_worst, std::abs(static_cast<double>(Half(picture[at][channel])) - (0.8 * kept[at][0] / 255.)));
+      }
+    }
+    battle.frame = 42;
+    bend::rows.debug_view = 2.f;
+    shadowed(toward_sun);
+    const bool edge_drawn = bend::internal::DrawDebug(context1.Get(), output.Get(), 42);
+    const auto edge_picture = ReadBack<std::array<uint16_t, 4>>(output.Get());
+    // CONTROL: frame 43, the march not run in it.
+    const bool control_drawn = bend::internal::DrawDebug(context1.Get(), output.Get(), 43);
+    const bool control_kept = ReadBack<std::array<uint16_t, 4>>(output.Get()) == edge_picture;
+    bend::rows = {};
+    battle.frame = 0;
+    std::printf("Debug View: drawn %d (again %d), worst %.4f off 0.8 x the mask's light, red pixels %td; Screen Edge: drawn %d, red pixels %td; "
+                "CONTROL a frame without the march: drawn %d, output kept %d\n",
+                debug_drawn ? 1 : 0, debug_again ? 1 : 0, debug_worst, red_count(picture), edge_drawn ? 1 : 0, red_count(edge_picture),
+                control_drawn ? 1 : 0, control_kept ? 1 : 0);
+    CHECK(debug_drawn && !debug_again && debug_worst < 2e-3 && red_count(picture) == 0);
+    CHECK(edge_drawn && red_count(edge_picture) > 1000);
+    CHECK(!control_drawn && control_kept);
   }
 
   // 7. DLSS below 100% with the rays (rt_core's Host::depth_at_render_size): the kept depth's size is the rays' render
