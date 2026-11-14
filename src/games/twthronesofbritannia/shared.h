@@ -139,6 +139,7 @@ struct ShaderInjectData {
   float rt_ambient_alone;          // ssao00: 1 no ambient occlusion of its own (the ray-traced one replaces it), as Attila
   float grass_height_distance;     // grass vertex shaders: flat at 100 m x this (1: the game's), as Attila
   float dof;                       // the depth of field's blur size x this (hdr_to_screen t05-t08, t13-t16; 1: the game's), as Attila
+  float someindicators;            // markersbattle00-02 (Attila's): the indicators x this in the HDR modes (1: the game's)
 };
 
 #define SI shader_injection
@@ -163,7 +164,7 @@ struct ShaderInjectData {
 
 // FOR VFX AND EXTRA STUFF
 #define HDR                       SI.hdr
-// #define SOMEINDICATORS            SI.someindicators
+#define SOMEINDICATORS            SI.someindicators
 // #define VfxBaseBrightness         SI.vfxbasebrightness
 // #define VfxWeatherBrightness      SI.vfxweather
 // #define VfxSnowBrightness         SI.vfxsnow

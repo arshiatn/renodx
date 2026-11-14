@@ -156,6 +156,7 @@ void ApplyResetPreset() {
       {"dof", 1.f},
       {"distortion", 1.f},
       {"filmgrain", 1.f},
+      {"some_indicators", 1.f},
       {"v31_exposure", 1.f},
       {"v31_highlights", 1.f},
       {"v31_shadows", 1.f},
@@ -946,20 +947,21 @@ void BuildRuntimeData() {
         .labels = {"Off", "On"},
         .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
     },
-    // new renodx::utils::settings::Setting{
-    //     .key = "some_indicators",
-    //     .binding = &shader_injection.someindicators,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 0.4f,
-    //     .label = "Brightness of some Unit/Building Indicator ",
-    //     .section = "Extra",
-    //     .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
-    //     .min = 0.0f,
-    //     .max = 1.0f,
-    //     .format = "%.1f",
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    
+    // Attila's Extra (Experimental) rows on Attila's shaders, the same bytes here (shaders/markersbattle00-02).
+    new renodx::utils::settings::Setting{
+        .key = "some_indicators",
+        .binding = &shader_injection.someindicators,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 1.0f,
+        .label = "Unit/Building Indicator Brightness",
+        .section = "Extra (Experimental)",
+        .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
+        .min = 0.0f,
+        .max = 2.0f,
+        .format = "%.1f",
+        .is_enabled = IsHDRMode,
+    },
+
 
 
     // // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
