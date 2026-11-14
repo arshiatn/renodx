@@ -130,6 +130,7 @@ void ApplyResetPreset() {
       {"video_dithering", 1.f},
       {"auto_exposure_highlight_protection", 0.f},
       {"auto_exposure_highlight_headroom_stops", 4.f},
+      {"some_indicators", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -323,6 +324,8 @@ void BuildRuntimeData() {
       CustomShaderEntry(0xB670BCA1),  // treevelocity01 (rigidleafwet_v3)
       CustomShaderEntry(0x29EB778A),  // treevelocity02 (rigidbranch_v3)
       CustomShaderEntry(0x3A9E203D),  // treevelocity03 (rigidbranchwet_v3)
+      CustomShaderEntry(0xD12FA660),  // indicator00 (indicator ps30_main: Indicator Brightness)
+      CustomShaderEntry(0xC454C1EA),  // indicator01 (indicator ps30_main_deferred)
       CustomShaderEntry(0x3C9BC2F9),  // vfxoverlay00 (effects_overlay: the particles onto the scene)
       CustomShaderEntry(0x40744308),  // vfxglow00 (volumetric particles, additive)
       CustomShaderEntry(0xF70E8B73),  // vfxglow01 (volumetric particle splats, additive)
@@ -445,7 +448,7 @@ void BuildRuntimeData() {
     return true;
   };
 
-  // The sea's colour overlay at full size (callbacks only, the game's shaders).
+  // The sea's colour overlay at full size (callbacks; the game's shaders but indicator02's, Indicator Brightness).
   for (const uint32_t hash : {0xC57C222Du, 0xC8375A74u, 0x06701006u}) {
     custom_shaders[hash] = {
         .crc32 = hash,
@@ -453,6 +456,7 @@ void BuildRuntimeData() {
         .on_drawn = sea_overlay::OnDrawn,
     };
   }
+  custom_shaders[0xC57C222D].code = __0xC57C222D;
 
   // VFX effect test: one effect's fire & glow draws skipped, or all the others.
   auto shown_in_test = [](uint32_t id) {
@@ -887,6 +891,21 @@ void BuildRuntimeData() {
           .max = 8.f,
           .format = "%.0f",
           .is_enabled = [] { return shader_injection.auto_exposure_highlight_protection != 0.f; },
+          .is_visible = IsAdvancedSettings,
+      },
+      // Attila's row and key (indicator00-02).
+      new renodx::utils::settings::Setting{
+          .key = "some_indicators",
+          .binding = &shader_injection.indicator_brightness,
+          .default_value = 1.f,
+          .label = "Unit/Building Indicator Brightness",
+          .section = "Extra (Experimental)",
+          .tooltip = "Brightness of the rings under units and buildings and of the firing arcs. Lower helps at night. "
+                     "1 = the game's.",
+          .min = 0.f,
+          .max = 2.f,
+          .format = "%.2f",
+          .is_enabled = IsHDRMode,
           .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{

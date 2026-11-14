@@ -17,6 +17,7 @@
 // 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
 // 13. Coloured Shadows in shaders/sunlight00-03 (TestSunTint).
 // 14. autoexposure00's Modded Auto Exposure against the game's 0x8233E11F (TestAutoExposure).
+// 15. indicator00-02's Indicator Brightness against the game's 0xD12FA660 / 0xC454C1EA / 0xC57C222D (TestIndicators).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -2099,6 +2100,115 @@ static void TestAutoExposure(const std::string& games, const std::string& folder
               off_fire, game_fire, on_fire, on_plain);
 }
 
+// 15. shaders/indicator00-02 (indicator ps30_main, ps30_main_deferred, ps30_main_to_overlay) against the game's csos on a 32 x 32
+//     target cleared to -1 (discarded pixels keep it), random textures (indicator colour, G-buffer constants, depth) and
+//     interpolants, a view depth of 40 x the depth texture: in HDR at brightness 1 and in SDR at 2 the game's, bit for bit;
+//     in HDR at 2 the colour twice the game's where it drew, alpha and discards the game's.
+static void TestIndicators(const std::string& games, const std::string& folder) {
+  constexpr char VERTEX_SOURCE[] =
+      "struct Out { float4 position : SV_Position; float4 uv : TEXCOORD0; float3 world : TEXCOORD1; float4 colour : COLOR0;"
+      "  float4 depth : TEXCOORD2; };"
+      "Out main(uint id : SV_VertexID) {"
+      "  Out o; const float2 p = float2((id << 1) & 2, id & 2);"
+      "  o.position = float4(p * float2(2, -2) + float2(-1, 1), 0, 1);"
+      "  o.uv = float4(p * 3.7f, 0, 0); o.world = float3(p.x * 100, p.y * 80 - 20, 0);"
+      "  o.colour = float4(0.3f + p.x, 0.9f - p.y * 0.2f, 0.5f, 0.2f + p.y); o.depth = float4(0, 0, p.x * 60 + p.y * 30, 1);"
+      "  return o; }";
+  ComPtr<ID3DBlob> vertex_code;
+  D3DCompile(VERTEX_SOURCE, sizeof(VERTEX_SOURCE) - 1, nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_code.GetAddressOf(), nullptr);
+  ComPtr<ID3D11VertexShader> vertex;
+  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex.GetAddressOf());
+  std::mt19937 random(15);
+  std::uniform_real_distribution<float> unit(0.f, 1.f);
+  const auto texture = [&](UINT size, DXGI_FORMAT format, UINT channels) {
+    std::vector<float> texels(static_cast<size_t>(size) * size * channels);
+    for (auto& texel : texels) texel = unit(random);
+    return Srv(Texture(size, size, format, texels.data(), size * channels * 4, D3D11_BIND_SHADER_RESOURCE).Get());
+  };
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 3> views = {texture(8, DXGI_FORMAT_R32G32B32A32_FLOAT, 4),
+                                                                 texture(8, DXGI_FORMAT_R32G32B32A32_FLOAT, 4),
+                                                                 texture(32, DXGI_FORMAT_R32_FLOAT, 1)};
+  std::array<float, 44 * 4> camera = {};
+  camera[1] = 30.f;                    // camera_position.y
+  camera[(28 * 4) + 2] = 40.f;         // inv_projection's z column: view depth 40 x the depth
+  camera[(29 * 4) + 3] = 1.f;          // its w column
+  camera[(35 * 4) + 2] = 0.5f;         // g_texel_offset
+  camera[(37 * 4) + 0] = camera[(37 * 4) + 1] = 32.f;  // screen_size
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_WRAP, .AddressW = D3D11_TEXTURE_ADDRESS_WRAP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  const auto injection = [](float hdr, float brightness) {
+    ShaderInjectData data = {};
+    data.hdr = hdr;
+    data.indicator_brightness = brightness;
+    std::array<float, ((sizeof(ShaderInjectData) + 15) / 16) * 4> registers = {};
+    std::memcpy(registers.data(), &data, sizeof(data));
+    return Constants(registers.data(), sizeof(registers));
+  };
+  const std::array<ComPtr<ID3D11Buffer>, 3> settings = {injection(1.f, 1.f), injection(0.f, 2.f), injection(1.f, 2.f)};
+  const std::wstring path(games.begin(), games.end());
+  for (const auto& [hash, name] : std::array<std::pair<const char*, const wchar_t*>, 3>{
+           {{"D12FA660", L"indicator00_0xD12FA660"}, {"C454C1EA", L"indicator01_0xC454C1EA"}, {"C57C222D", L"indicator02_0xC57C222D"}}}) {
+    std::ifstream file(folder + "/0x" + hash + ".ps_5_0.cso", std::ios::binary);
+    const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    FolderInclude include(path + L"/twshogun2completeedition/shaders");
+    ComPtr<ID3DBlob> ours_code;
+    ComPtr<ID3DBlob> errors;
+    if (game_code.empty()
+        || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/" + name + L".ps_5_0.hlsl").c_str(), nullptr, &include, "main",
+                                     "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(), errors.GetAddressOf()))) {
+      std::printf("missing 0x%s, or %s\n", hash, errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+      std::exit(2);
+    }
+    ComPtr<ID3D11PixelShader> game;
+    ComPtr<ID3D11PixelShader> ours;
+    device->CreatePixelShader(game_code.data(), game_code.size(), nullptr, game.GetAddressOf());
+    device->CreatePixelShader(ours_code->GetBufferPointer(), ours_code->GetBufferSize(), nullptr, ours.GetAddressOf());
+    const auto run = [&](ID3D11PixelShader* pixel_shader, ID3D11Buffer* injected) {
+      const auto target = Texture(32, 32, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET);
+      ComPtr<ID3D11RenderTargetView> target_view;
+      device->CreateRenderTargetView(target.Get(), nullptr, target_view.GetAddressOf());
+      const std::array<float, 4> cleared = {-1.f, -1.f, -1.f, -1.f};
+      context->ClearRenderTargetView(target_view.Get(), cleared.data());
+      std::array<ID3D11ShaderResourceView*, 3> bound = {views[0].Get(), views[1].Get(), views[2].Get()};
+      const D3D11_VIEWPORT viewport = {.Width = 32.f, .Height = 32.f, .MaxDepth = 1.f};
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->VSSetShader(vertex.Get(), nullptr, 0);
+      context->PSSetShader(pixel_shader, nullptr, 0);
+      context->PSSetShaderResources(0, 3, bound.data());
+      context->PSSetSamplers(0, 1, sampler.GetAddressOf());
+      context->PSSetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
+      context->PSSetConstantBuffers(13, 1, &injected);
+      context->RSSetViewports(1, &viewport);
+      context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+      context->Draw(3, 0);
+      context->ClearState();
+      const auto bytes = Read(target.Get(), 16);
+      std::vector<float> values(bytes.size() / 4);
+      std::memcpy(values.data(), bytes.data(), bytes.size());
+      return values;
+    };
+    const auto reference = run(game.Get(), nullptr);
+    const auto neutral = run(ours.Get(), settings[0].Get());
+    const auto sdr = run(ours.Get(), settings[1].Get());
+    const auto brighter = run(ours.Get(), settings[2].Get());
+    size_t differs = 0, drawn = 0, discarded = 0, bad_brighter = 0;
+    for (size_t value = 0; value < reference.size(); ++value) {
+      differs += (neutral[value] == reference[value] && sdr[value] == reference[value]) ? 0 : 1;
+      const bool kept = reference[value - (value % 4) + 3] != -1.f;
+      const float expected = (kept && (value % 4) < 3) ? reference[value] * 2.f : reference[value];
+      bad_brighter += (brighter[value] == expected) ? 0 : 1;
+      if (value % 4 == 3) (kept ? drawn : discarded) += 1;
+    }
+    CHECK(differs == 0 && bad_brighter == 0, "%ls: %zu values differ at 1 / in SDR, %zu not twice the colour at 2", name, differs, bad_brighter);
+    CHECK(drawn > 0, "CONTROL %ls: nothing drawn", name);
+    std::printf("%ls: %zu of 1024 pixels drawn (%zu discarded) the game's at 1 and in SDR, twice its colour at 2 in HDR\n", name, drawn,
+                discarded);
+  }
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -2129,6 +2239,7 @@ int main(int argc, char** argv) {
     TestCascadeLeaves(games, argv[3]);
     TestLeafFade(games, argv[3]);
     TestAutoExposure(games, argv[3]);
+    TestIndicators(games, argv[3]);
   }
   TestSunTint(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
