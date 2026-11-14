@@ -94,6 +94,7 @@ struct Sliders {
   float grass_range = 0.f;         // metres (0: everywhere; placed grass, Attila)
   float path_ser = 0.f;
   float sharc = 0.f;
+  float reuse_lean = 0.f;
   float light_importance = 0.f;
   float light_steady = 0.f;
   float light_count = 0.f;  // Torch and Fire Shadow Lights: 32, 64, 128
@@ -209,6 +210,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .grass_range = sliders.grass_range,
       .path_ser = sliders.path_ser != 0.f,
       .sharc = sliders.sharc != 0.f,
+      .reuse_lean = sliders.reuse_lean != 0.f,
       .light_importance = sliders.light_importance != 0.f,
       .light_steady = sliders.light_steady != 0.f,
       // A page's preset can set it where no fog is hooked: nothing would read the trace.
@@ -2093,6 +2095,17 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .section = section,
           .tooltip = "With Path Tracing: NVIDIA's SHaRC for the light of what the screen does not show\n"
                      "(more bounces off-screen, paths end sooner).",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedReuseLean",
+          .binding = &sliders->reuse_lean,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Lean ReSTIR Reuse (Experimental)",
+          .section = section,
+          .tooltip = "A faster ReSTIR GI for Path Tracing: the same look in tests.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
       },

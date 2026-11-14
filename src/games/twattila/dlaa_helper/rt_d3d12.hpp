@@ -82,6 +82,8 @@
 #include "rt_reuse_omm.h"         // dxc -Fh (build.ps1)
 #include "rt_reuse_lights.h"      // dxc -Fh (build.ps1)
 #include "rt_reuse_lights_omm.h"  // dxc -Fh (build.ps1)
+#include "rt_reuse_lean.h"        // dxc -Fh (build.ps1)
+#include "rt_reuse_lean_omm.h"    // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir.h"      // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir_omm.h"  // dxc -Fh (build.ps1)
 #include "rt_scene_data.h"        // dxc -Fh (build.ps1)
@@ -639,6 +641,11 @@ class RtScene12 {
                        && pipeline(RT_LIGHTS_BOUNCE, sizeof(RT_LIGHTS_BOUNCE), &lights_bounce_pipeline_))) {
       reuse_lights_pipeline_.Reset();
       lights_bounce_pipeline_.Reset();
+    }
+    // Lean Reuse's build (REUSE_LEAN; none: its switch does nothing).
+    if (!(dxr12_ ? pipeline(RT_REUSE_LEAN_OMM, sizeof(RT_REUSE_LEAN_OMM), &reuse_lean_pipeline_)
+                 : pipeline(RT_REUSE_LEAN, sizeof(RT_REUSE_LEAN), &reuse_lean_pipeline_))) {
+      reuse_lean_pipeline_.Reset();
     }
     clusters_ = clusters_ && pipeline(RT_COMPACT, sizeof(RT_COMPACT), &compact_pipeline_);
     // DXR 1.2: the paths and reflections as ray generation shaders for Path Tracing SER (none: their compute shaders).
@@ -1626,7 +1633,12 @@ class RtScene12 {
         if (reuse) {
           list->ResourceBarrier(1, &uav_barrier);
           Mark(list, L"reuse");
-          list->SetPipelineState((lights_mode != 0 ? reuse_lights_pipeline_ : reuse_pipeline_).Get());
+          // Lean ReSTIR Reuse (RT_PATH_REUSE_LEAN, or RENODX_TW_REUSE_LEAN for the harness): the neighbours with fewer
+          // fetches (rt_path.hlsli ReuseTexel).
+          const bool lean = reuse_lean_pipeline_
+                            && ((version >= 31 && (requested & dlaa_bridge::RT_PATH_REUSE_LEAN) != 0)
+                                || GetEnvironmentVariableW(L"RENODX_TW_REUSE_LEAN", nullptr, 0) != 0);
+          list->SetPipelineState((lights_mode != 0 ? reuse_lights_pipeline_ : (lean ? reuse_lean_pipeline_ : reuse_pipeline_)).Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
           reuse_frame_ = frame;
           reuse_lights_mode_ = lights_mode;
@@ -6047,6 +6059,7 @@ class RtScene12 {
   static constexpr std::array<uint64_t, 3> SHARC_STRIDES = {8, 16, 16};
   static constexpr uint32_t SHARC_BLOCK = 5;  // rt_sharc_update.hlsl's
   ComPtr<ID3D12PipelineState> reuse_pipeline_;  // ReSTIR GI's spatial reuse
+  ComPtr<ID3D12PipelineState> reuse_lean_pipeline_;  // its Lean Reuse build (REUSE_LEAN)
   std::array<ComPtr<ID3D12Resource>, 2> reuse_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
   uint32_t reuse_frame_ = UINT32_MAX;  // the frame the reservoirs were last made in

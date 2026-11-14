@@ -24,10 +24,12 @@ Set-Location $out
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REUSE -D OPACITY_MICROMAPS -Fh "$out\rt_reuse_omm.h" -Vn RT_REUSE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D REFLECT_RESERVOIR -Fh "$out\rt_reflect_reservoir.h" -Vn RT_REFLECT_RESERVOIR "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REFLECT_RESERVOIR -D OPACITY_MICROMAPS -Fh "$out\rt_reflect_reservoir_omm.h" -Vn RT_REFLECT_RESERVOIR_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-# Torch and Fire Light in the Light Bounce (TORCHES_IN_BOUNCE): the reuse with a local light's sample a bounce texel and the
-# local lights' trace that leaves them to it, used only with those rows (the builds above stay as without them).
-foreach ($variant in @(@('rt_path', 'REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'), @('rt_lights', '', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'))) {
-  $defines = @('-D', 'TORCHES_IN_BOUNCE') + $(if ($variant[1]) { @('-D', $variant[1]) } else { @() })
+# Builds used only with their switches (the builds above stay as without them): Torch and Fire Light in the Light Bounce
+# (TORCHES_IN_BOUNCE: the reuse with a local light's sample a bounce texel, the local lights' trace that leaves them to it)
+# and Lean Reuse (REUSE_LEAN: the reuse's neighbours with fewer fetches).
+foreach ($variant in @(@('rt_path', 'TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'), @('rt_lights', 'TORCHES_IN_BOUNCE', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'),
+                       @('rt_path', 'REUSE_LEAN REUSE', 'rt_reuse_lean', 'RT_REUSE_LEAN'))) {
+  $defines = $variant[1].Split(' ') | ForEach-Object { '-D', $_ }
   & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 @defines -Fh "$out\$($variant[2]).h" -Vn $variant[3] "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
   & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 @defines -D OPACITY_MICROMAPS -Fh "$out\$($variant[2])_omm.h" -Vn "$($variant[3])_OMM" "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
 }
