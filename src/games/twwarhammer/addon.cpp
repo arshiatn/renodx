@@ -1594,8 +1594,12 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   // settings[3]->default_value = renodx::utils::swapchain::ComputeReferenceWhite(peak.value());
 }
 
-// The shadow map size, before the game builds its shadows.
+// The shadow map size and cascades, before the game builds its shadows; Ray-Traced Shadows Only as OnPresent's.
 void OnInitDevice(reshade::api::device*) {
+  const bool sun_shadows = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).sun_shadows;
+  twwarhammer2::shadow_cascades::Set(&shadow_cascades,
+                                     shadow_cascades_row != 0.f && sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f,
+                                     1.f);
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
 
