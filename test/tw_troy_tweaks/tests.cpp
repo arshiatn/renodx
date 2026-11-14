@@ -9,15 +9,20 @@
 // 4. Shadow Map Size (src/games/twtroy/shadow_map.hpp): its pattern names the shadow table at RVA 0x2e81920, the top row
 //    (quality 4) 4 cascades, 6144, 3072 and the row below 4096; Set writes the size and half of it there (the row below
 //    unchanged), Uninstall the game's bytes back. CONTROL: Pharaoh's pattern (twpharaohdynasties/shadow_map.hpp) finds nothing.
+//    Two Shadow Cascades Under Rays: the split distances table (RVA 0x2e81970, both readers' pattern) and the lowest row (2,
+//    1024, 1024); on, the top row 2 cascades with the tile the size, its battle and campaign split rows quality 1's, nothing
+//    else; off and Uninstall the game's bytes; CONTROL the lowest row 3 cascades: the size alone.
 // tests.exe <troy.exe.memory.bin> <par_t_troy_tweaks.txt>
 #include <windows.h>
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <deque>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "src/games/twtroy/more_tests.h"
@@ -143,26 +148,92 @@ int main(int argc, char** argv) {
   }
   std::printf("3. Troy's %zu Graphics 2 of 2 rows: all %zu engine values found, none at start\n", tests.size(), values);
 
-  // 4. Shadow Map Size.
+  // 4. Shadow Map Size and Two Shadow Cascades Under Rays.
   const auto read_ints = [](const uint8_t* at, size_t count) {
     std::vector<uint32_t> ints(count);
     std::memcpy(ints.data(), at, count * sizeof(uint32_t));
     return ints;
   };
+  namespace shadow = twtroy::shadow_map::internal;
   CHECK(tw::engine_tweaks::FindPattern(sections.code, "48 8D 05 ?? ?? ?? ?? 48 03 D0 8B 42 04 F3 48 0F 2A C0 F3 0F 11 83 50 2A 00 00") == nullptr);
-  uint8_t* sizes = twtroy::shadow_map::FindSizes(sections);
-  CHECK(sizes == base + 0x2e81920 + (4 * 16) + 4);
-  CHECK(read_ints(sizes - 4, 3) == (std::vector<uint32_t>{4, 6144, 3072}));
-  CHECK(read_ints(sizes - 16, 3) == (std::vector<uint32_t>{4096, 2048, 0x3F800000}));
-  twtroy::shadow_map::internal::sizes = sizes;
-  std::memcpy(twtroy::shadow_map::internal::original.data(), sizes, twtroy::shadow_map::internal::original.size());
-  twtroy::shadow_map::Set(16384);
-  CHECK(read_ints(sizes, 2) == (std::vector<uint32_t>{16384, 8192}));
-  CHECK(read_ints(sizes - 16, 2) == (std::vector<uint32_t>{4096, 2048}));
+  uint8_t* rows = twtroy::shadow_map::FindRows(sections);
+  CHECK(rows == base + 0x2e81920);
+  uint8_t* top = rows + (4 * 16);
+  CHECK(read_ints(top, 3) == (std::vector<uint32_t>{4, 6144, 3072}));
+  CHECK(read_ints(top - 16, 4) == (std::vector<uint32_t>{4, 4096, 2048, 0x3F800000}));
+  CHECK(read_ints(rows + 16, 3) == (std::vector<uint32_t>{2, 1024, 1024}));  // the lowest: 2 cascades, the tile the size
+  // The split distances: every hit of the pattern (the two readers) names the table right after the sizes.
+  uint8_t* splits = twtroy::shadow_map::FindSplits(sections);
+  CHECK(splits == base + 0x2e81970);
+  {
+    std::vector<std::string_view> after;
+    for (const std::string_view memory : sections.code) {
+      const auto* begin = reinterpret_cast<const uint8_t*>(memory.data());
+      const uint8_t* first = tw::engine_tweaks::FindPattern({memory}, shadow::SPLITS_READ);
+      if (first != nullptr) after.push_back(memory.substr(first - begin + 1));
+    }
+    const auto second = twtroy::shadow_map::FindSplits({.code = after});
+    CHECK(second == splits);
+  }
+  const auto read_floats = [](const uint8_t* at) {
+    std::array<float, 4> floats;
+    std::memcpy(floats.data(), at, sizeof(floats));
+    return floats;
+  };
+  CHECK((read_floats(splits + (4 * 16)) == std::array<float, 4>{30.f, 60.f, 150.f, 300.f}));  // battle, quality 4
+  CHECK((read_floats(splits + (1 * 16)) == std::array<float, 4>{30.f, 120.f, 160.f, 160.f}));  // battle, quality 1
+  CHECK((read_floats(splits + (9 * 16)) == std::array<float, 4>{4.f, 9.f, 18.f, 35.f}));  // campaign, quality 4
+  CHECK((read_floats(splits + (6 * 16)) == std::array<float, 4>{6.f, 11.f, 11.f, 11.f}));  // campaign, quality 1
+  const std::vector<uint8_t> game_rows(rows, rows + (6 * 16));
+  const std::vector<uint8_t> game_splits(splits, splits + (10 * 16));
+  const auto changed = [](const uint8_t* now, const std::vector<uint8_t>& game) {
+    std::vector<size_t> at;
+    for (size_t index = 0; index < game.size(); ++index) {
+      if (now[index] != game[index]) at.push_back(index);
+    }
+    return at;
+  };
+  shadow::rows = rows;
+  shadow::splits = splits;
+  std::memcpy(shadow::original.data(), top, shadow::original.size());
+  std::memcpy(shadow::original_splits.data(), splits + (4 * 16), 16);
+  std::memcpy(shadow::original_splits.data() + 16, splits + (9 * 16), 16);
+  // Off: the size alone, as before the row.
+  twtroy::shadow_map::Set(16384, false);
+  CHECK(read_ints(top, 3) == (std::vector<uint32_t>{4, 16384, 8192}));
+  CHECK(read_ints(top - 16, 3) == (std::vector<uint32_t>{4, 4096, 2048}));
+  CHECK(changed(splits, game_splits).empty());
+  // On: the top row 2 cascades with the tile the size; its split rows quality 1's; nothing else.
+  twtroy::shadow_map::Set(16384, true);
+  CHECK(read_ints(top, 3) == (std::vector<uint32_t>{2, 16384, 16384}));
+  CHECK((read_floats(splits + (4 * 16)) == std::array<float, 4>{30.f, 120.f, 160.f, 160.f}));
+  CHECK((read_floats(splits + (9 * 16)) == std::array<float, 4>{6.f, 11.f, 11.f, 11.f}));
+  for (const size_t index : changed(rows, game_rows)) CHECK(index >= 4 * 16 && index < 4 * 16 + 12);
+  for (const size_t index : changed(splits, game_splits)) CHECK((index >= 4 * 16 && index < 5 * 16) || (index >= 9 * 16 && index < 10 * 16));
+  twtroy::shadow_map::Set(0, true);
+  CHECK(read_ints(top, 3) == (std::vector<uint32_t>{2, 6144, 6144}));
+  // Off again, and Uninstall: the game's bytes.
+  twtroy::shadow_map::Set(0, false);
+  CHECK(changed(rows, game_rows).empty() && changed(splits, game_splits).empty());
+  twtroy::shadow_map::Set(16384, true);
   twtroy::shadow_map::Uninstall();
-  CHECK(read_ints(sizes, 2) == (std::vector<uint32_t>{6144, 3072}));
-  std::printf("4. Shadow Map Size: the table's top row (4, 6144, 3072) at RVA 0x%zx; 16384 written as 16384 / 8192, the row below "
-              "unchanged; the game's back after Uninstall\n", static_cast<size_t>(sizes - 4 - base));
+  CHECK(changed(rows, game_rows).empty() && changed(splits, game_splits).empty());
+  // CONTROL: the lowest row not 2 cascades (another build or a mod): on writes the size alone.
+  std::array<uint8_t, 4> lowest_count;
+  std::memcpy(lowest_count.data(), rows + 16, 4);
+  const uint32_t three = 3;
+  std::memcpy(rows + 16, &three, 4);
+  twtroy::shadow_map::Set(16384, true);
+  CHECK(read_ints(top, 3) == (std::vector<uint32_t>{4, 16384, 8192}));
+  CHECK(changed(splits, game_splits).empty());
+  twtroy::shadow_map::Uninstall();
+  std::memcpy(rows + 16, lowest_count.data(), 4);
+  CHECK(changed(rows, game_rows).empty());
+  std::printf("4. Shadow Map Size: the sizes table at RVA 0x%zx (top row 4, 6144, 3072; the lowest 2, 1024, 1024); off: 16384 written "
+              "as 16384 / 8192, the row below and the split distances unchanged. Two cascades: the top row 2, 16384, 16384 (the game's "
+              "size: 2, 6144, 6144), its split rows (RVA 0x%zx, both readers) quality 1's (battle 30 / 120 m, campaign 6 / 11), nothing "
+              "else; back: the game's bytes; CONTROL the lowest row 3 cascades: the size alone\n",
+              static_cast<size_t>(rows - base), static_cast<size_t>(splits - base));
   std::printf("PASS\n");
   return 0;
 }

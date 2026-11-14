@@ -1465,6 +1465,9 @@ float lod_bias_trilinear_row = 0.f;
 // Shadow Map Size (shadow_map.hpp, Experimental): the highest Shadows setting's shadow map, an index into SHADOW_MAP_SIZES.
 float shadow_map_size = 0.f;
 constexpr std::array<uint32_t, 4> SHADOW_MAP_SIZES = {0, 8192, 12288, 16384};  // 0: the game's (6144)
+// Two Shadow Cascades Under Rays (shadow_map.hpp, Experimental): the highest Shadows setting's cascades as the lowest's while
+// the rays' sun shadows skip the shadow map's casters (Ray-Traced Shadows Only).
+float shadow_cascades_row = 0.f;
 // Particle Resolution (twattila/particle_layer.hpp): Troy's lit particles are one instanced draw a frame (VS F5CE48CC with
 // 563BA3E8 in all 26 of ATN's traced frames with particles; its other lit permutations by name, vfx_brightness::HASHES),
 // blended over (one / inverse source alpha) into the display-size light buffer at the render size against the read-only
@@ -1776,9 +1779,11 @@ constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {
     {.shader_hash = 0xE885C018, .gbuffer_slot = 6, .camera_slot = 1, .lighting_slot = 3, .sun_direction = 4, .ao_slot = 4},  // skinlm_interior
 }};
 
-// The shadow map size, before the game builds its shadows (Pharaoh's place).
+// The shadow map size and cascades, before the game builds its shadows (Pharaoh's place); Ray-Traced Shadows Only as OnPresent's.
 void OnInitDevice(reshade::api::device*) {
-  twtroy::shadow_map::Install(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
+  const bool sun_shadows = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).sun_shadows;
+  twtroy::shadow_map::Install(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)],
+                              shadow_cascades_row != 0.f && sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f);
 }
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
@@ -1827,7 +1832,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
-  twtroy::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
+  twtroy::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)], shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::light_count::OnPresent(rt_sliders.debug_log != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
@@ -2025,6 +2030,17 @@ void ConfigureAddon() {
       .tooltip = "Sharper sun shadows that flicker less, at the highest Shadows setting. More video memory\n"
                  "(16384: 1 GB or more). Applies after a restart or after changing the game's Shadows option.",
       .labels = {"6144 (Game's)", "8192", "12288", "16384"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedShadowCascades",
+      .binding = &shadow_cascades_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Two Shadow Cascades Under Rays (Experimental)",
+      .section = "Graphics (Experimental)",
+      .tooltip = "With ray-traced shadows and Skip the Shadow Maps: at the highest Shadows setting the game prepares\n"
+                 "2 shadow cascades, as at the lowest, instead of 4. Faster in forests. Applies after a restart.",
+      .labels = {"Off", "On"},
   });
   graphics_status = tw::engine_tweaks::StatusLine();
   settings.push_back(graphics_status);
