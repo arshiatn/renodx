@@ -646,15 +646,26 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   29.50, no RT/PT 29.35, RT shadows only 28.32, RT/PT 31.85, path methods from Reset 33.82. Row A/Bs: Particle Resolution
   Half -0.14 ms game GPU; Faster Smoke Build -0.20 helper; Lean -0.55 helper; Match Output +2.18 helper (sun worse 3.70 ->
   4.43 % rRMSE, bounce better 2.19 -> 1.59 %): stays out of presets. Owner of the findings: NEXT GPU ROUND:
-  - [ ] Units G-buffer 9.6 ms under every ray preset vs 5.8 without (+3.8 ms of game GPU: the capture at unit draws)
-  - [ ] The helper's scene build 3.96 ms a frame (clusters 2.44; 21 M dynamic triangles): with the units range row
+  - [ ] Units G-buffer 9.6 ms under every ray preset vs 5.8 without (+3.8 ms of game GPU: the capture at unit draws).
+    g2a_: it is rt_core's per-draw stream-output capture (~70 ps a game index vs 95 for the game's draw); a BATCHED form
+    (mesh once + a row point per instance through SO, one compute after) is bit-equal (102000 / 102000 floats) and cuts
+    ~2/3 (testbin/g2a_unit_capture: 2.92 -> 2.16 ms with the game draws). Owner: GPU ROUND 3 (Experimental row, one unit
+    family first; tw_rays_captures case; level B needs a game run)
+  - [x] The helper's scene build 3.96 ms a frame: g2b_ 883336aa (4 cluster BLASes in one NVAPI call, byte-identical:
+    sorted field 2.64 -> 2.415 ms). Units 2.10 = instantiate 1.60 + BLAS 0.43 + CLAS 0.06; 256-triangle clusters DROPPED
+    (rays through grass slower). Rest -> the GPU ROUND 3 lines below
   - [ ] Path-traced method sliders turned on from Reset default much heavier than RT/PT (4 bounce rays, 2 bounces, range
     10, resolution 1: paths 6.50 vs 2.82 ms): align their defaults with RT/PT's? ATN DECIDES (look)
-  - [ ] Sprites spike 1.8-2.0 ms in the first segment of every RT/PT-type start, 0.20 later: unexplained
-  - [ ] The game's shadow maps still redraw under rays on cascade-refresh frames (tree billboards 2.0-2.4, terrain
-    1.3-3.0 ms): the GPU side of Skip the Game's Shadow Map Work
-  - [ ] Bend torches' remaining +2.3 ms (march 1.4 of 3.2 in the synthetic battle; the pick + 127 small copies)
-  - [ ] GT-VBAO ~1.1, GT-VBGI ~1.0, SSSR ~0.3 ms (the SSSR pyramid as a single-pass downsample)
+  - [x] Sprites spike 1.8-2.0 ms: EXPLAINED (g2a_): the GPU waiting for the CPU on cascade-refresh frames, landing on
+    command 1633 (imposters' depth draw); nothing to cut on the GPU
+  - [x] Shadow maps under rays: EXPLAINED (g2a_): the sun-atlas draws are bypassed (0.0000 ms); the spikes are CPU waits
+    (~850 more static-caster + 150 soldier shadow commands, 3.9-4.6 ms waits on those frames): the CPU side = the Skip
+    rows, measured by bench variant g2a_shadow_skip.json
+  - [x] Bend torches' remaining +2.3 ms: g2a_ 7fd71432 (the pick in turns, bit-exact; 4K light draws 3.198 -> 1.050 ms at
+    8 lights, 3.847 -> 1.154 at 32; NaN score now left out); expected in game ~+0.2 ms (variant g2a_torch.json)
+  - [x] SSSR pyramid: 0.127 ms in all, a single-pass downsample saves <= 0.05 ms: NOT BUILT (the rest is march + resolve)
+  - [ ] GT-VBAO ~1.1, GT-VBGI ~1.0 ms: a --time mode timing each ao_pass / ao_filter dispatch at 4K first. Owner: GPU
+    ROUND 3
   - [x] ATN 23:5x YES: 128 torch lights in RT/PT taken (603ca343 = e606e8ef; the default also becomes 128 in the 8 games
     calling SetRaysPresetDefaults; all TW add-ons built)
   - [ ] 128 torch lights' cost at night / burning city / WH3 / Pharaoh: a variant in the end-of-batch bench
@@ -675,24 +686,75 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     the spread: take that site out of CPU_CODE_SITES
   - [ ] Author packages (tools/tw/testbin/cpu4_heapfix/: a_memfast_65_128, b_loopfetch_animation, c_x87_truncation
     question; plus for_author_pf): bench numbers into the NOTEs, then ATN sends
-  - [ ] Render-list headers 64 B apart (harness: 44-62 -> 16-18 ns a push at 4 threads). CPU ROUND 5 STOPPED ~00:10: a
+  - [x] Render-list headers 64 B apart: WON'T (cpu5b_, report tools/tw/round_notes/cpu5b_report.md): the header vector
+    is a generic std::vector<std::vector<Item>> whose grow / copy / destroy (0x175de30 / 0x18fc430 / 0x173c260) and x12
+    indexing are shared with unrelated vectors: not separable by a byte patch. cpu5b_ also stopped once on a safety
+    classifier cut-off while writing the x64 analysis (not retried). Was: CPU ROUND 5 STOPPED ~00:10: a
     safety classifier cut off one of its responses during the static analysis, so the agent stopped and nothing was
     committed (not retried: ATN decides). Facts so far: the old reader list was WRONG (0x176d430 / 0x176da30 / 0x176dbf0 /
     0x176ddb0 are push_backs of other vectors); list layout 32 B: +0 thread-index provider, +4 merged vector, +0x10 header
     vector {cap, count, data} of 12-byte entries, +0x1c "has items"; header readers so far: push 0x176ced0, merge 0x178fd90,
     release 0x1810d30, clear 0x1731160; allocation candidates 0x17bd700 / 0x16c8ec0 unconfirmed; the whole-DLL reader census
     unfinished. ATN 00:1x YES: a fresh agent (cpu5b_) continues from these facts, items 1-3
-  - [ ] Faster Render Lists for WH3 / Pharaoh / Shogun 2 (x64): not started (same stop). Owner: ATN DECIDES with the above
+  - [ ] Faster Render Lists for WH3 / Pharaoh / Shogun 2 (x64): equivalents FOUND (cpu5b_): WH3 push 0x19042d8 flag
+    0x1904320 [r14+0x28]; Pharaoh 0x3103eb0 flag 0x3103ef8; Shogun 2 0x1a7adb0 flag 0x1a7afe9 [r15+0x30]; covered bytes
+    movable, flags dead at the store. Two gaps: (a) which push is hot (no CPU profile: one WPR data run per game, ATN's
+    OK), (b) engine_code.hpp has no x64 path (reuse rysesonofrome_dlss/engine_memory.hpp AllocateNearExe; x64 stub,
+    safe 5-byte write, 3 Experimental rows, 64-bit tw_engine_code part). Owner: ATN DECIDES (data runs)
+  - [ ] Attila's Faster Render Lists row (Experimental, site 3) was never benched: variant cpu5_render_lists.json (P vs
+    P + FasterRenderLists) in the end-of-batch bench; check the runner's multi-key "set" syntax first. Owner: coordinator
   - DROPPED with proof: the 8x pose hold (0x49aad0 is simulation, not pose); next only with a data run (the bone-matrix
     writer behind 0x17dab80), ATN DECIDES
 - [x] ATN 21:2x: Attila's number_of_threads set to 16 (ATN's preferences.script.txt 559f4696 -> 432ba846; fresh backup
   tools/tw/attila_prefs_backup_20261114_211544); CPU Set rule 0-15 stays; the parallel sort is dropped
-- [ ] ROUNDS STARTED ~23:40 (base bf8be7e4): GPU 2A g2a_ (the add-on's D3D11 side: units capture +3.8 ms, shadow-map
+- [x] ROUNDS MERGED ~00:40 (7e668fe7 grass phase 0, 610d6654 GPU 2B, 9afd0c8d GPU 2A; CPU 5b research only). Attila
+  build32 built on the merged tree; tw_screen_space_shadows rerun on it (coordinator). Open items with owners:
+  - [ ] GRASS: one Grass Dump from a real battle = bench probe variants/grass_dump.json (scenes max, atn; it points at
+    the grass worktree's build: repoint it at the merged build), then grass_replay.py on its files (12 points, design.md
+    section 8). Owner: coordinator, end-of-batch bench
+  - [ ] GRASS after the probe: part-draw cull (vtable +0x10c), burn / grid writers (dump 1 vs 2), frustum entry +0x8c if
+    needed, AMD / Intel self-test (phase 1). Owner: next grass agent; phases 1-3: ATN DECIDES after the probe
+  - [ ] test/tw_scrub_lods Bias() uses 0x37810101, the game's is 0x37810183 (one line, no shipped effect). Owner: GPU
+    ROUND 3
+  - [ ] Thrones Grass Dump button: only when its grass port starts. Owner: that round
+  - [ ] g2b_ bench variants g2b_clusters.json (g2b-base / g2b-blas / g2b-trunc8, scene max): end-of-batch bench. g2b-trunc8
+    is a look change (8-bit truncation): fps only, ATN DECIDES. Owner: coordinator
+  - [ ] g2a_ bench variants g2a_torch.json + g2a_shadow_skip.json (copy attila_pass_timing.txt after each start, read with
+    tools/tw/preset_audit/g2a_tep_gaps.py); their add-ons in testbin/g2a_bench. Owner: coordinator
+  - [ ] GPU ROUND 3 (helper): cheaper cluster instantiate (split CLAS room, merge only opaque unit draws at intake); (e)
+    per-texel surface record for ReSTIR reuse (bit-identical to full reuse at ~Lean's cost; plan g2b_plans.md); torch U2
+    Half while moving (shorter history where the reprojection moved). Owner: GPU ROUND 3
+  - [ ] f16 reservoirs (look change, scored) only if (e) leaves the reuse pass above ~0.4 ms. Owner: after (e)
+  - [ ] Resource upgrade 0.196 ms a frame (GetResourceViewClone per pushed view): a module-local clone cache against a
+    shared epoch; skipped no-handler casters ~0.17 ms (skip before the event fires). Owner: GPU ROUND 3 (D3D11 side)
+  - [ ] Attila point lights with point shadows (32 non-MSAA enable_point_shadows builds): visibility multiply + ALWAYS
+    comparison sampler at s5 (Pharaoh pattern); skipping the game's point-shadow rendering needs a trace. Owner: GPU
+    ROUND 3 (D3D11 side)
+  - [ ] WH3 grass read-back without the wait: grass indirect-draw counts per frame from an existing WH3 trace first; then
+    (a) helper cluster boundaries per instance (SHARED STEP g2b side) or (b) compact capture with GPU argument copies.
+    Owner: GPU ROUND 3
+  - [ ] J3 in game (one grass pixel's G-buffer read): next data run. A32: one Nsight run without REPLAYABLE (coordinator's
+    OK, offline harness). Owner: coordinator
+  - [ ] Scorer: reflections / fog / water features, a faint-smoke reference; the smoke feature (tools/tw/quality/g2b)
+    into the shared scorer. Owner: next scorer round
+  - [ ] DLSS RR 310.9 made paths boil (paths 2.19 -> 5.01 % rRMSE, noise 0.54 -> 4.13): check its guide inputs before any
+    RR DLL update; 310.7 stays. Owner: next RR round / ATN
+  - [x] J2 (Validate drops a stored light) NOT TAKEN: paths through RR worse 2.19 -> 2.56
+  Was: ROUNDS STARTED ~23:40 (base bf8be7e4): GPU 2A g2a_ (the add-on's D3D11 side: units capture +3.8 ms, shadow-map
   redraw under rays, sprite spike, Bend torches' +2.3 ms, GT-VBAO / VBGI / SSSR, WH3 grass read-back, Attila point-light
   shadows research); GPU 2B g2b_ (helper scene build 3.96 ms, per-draw leftovers, J2 / J3 / A32, scorer scenes + scored
   look verdicts; Lean follow-ups as plans only); GPU GRASS phase 0 grass_ (Grass Dump button, grass_replay, design);
   CPU 5 cpu5_ (render-list headers 64 B apart, Faster Render Lists for WH3 / Pharaoh / Shogun 2). Each writes bench
   variants for the end-of-batch bench.
+- [ ] ATN 00:2x (2026-11-15): plan Expeditions: Rome, Tales of Arise, Ryse (medium effort, offline, concurrent):
+  - [ ] SKILL agent (skl_): shared engine-neutral skill .agents/skills/game-port-method + the HDR-only snapshot release
+    check + one add-on vs two section; tw-port-checklist points to it. Owner: skl_ (running)
+  - [ ] PLAN agents (running): tools/nontw/tales/plan.md, tools/nontw/expeditions/plan.md, tools/nontw/ryse/plan.md (+
+    ledgers): state, gaps vs Attila's package, shader sources (ATN's ~12000-file dumps), Nsight feasibility, game-run
+    list (Tales: ATN's two newest saves), 2 add-ons -> 1, HDR-only snapshot, UE4 SHARED STEP candidates. Owner: plan agents,
+    then the coordinator assigns shared owners and ATN picks the order
+  - [x] ATN 00:3x: Fable only when ATN asks, or with ATN's OK for an unsolvable problem / a really big change (memory
+    feedback_fable_review_end.md); the TW batch's end review stays (ATN asked for it)
 - [ ] ATN 21:2x: ONE Constantinople bench after ALL CPU and GPU rounds of this batch (not after each): every round's
   candidates as variants against heapfix P, then the CPU set vs affinity A/B. Owner: coordinator, before the install
     - [ ] caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
