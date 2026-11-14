@@ -58,6 +58,8 @@ constexpr std::array<twattila::light_bounce::SunDraw, 4> SUN_DRAWS = {{
 }};
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).
 constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0x5CBF4FB6, 0x57139F8D};
+// The battle fog's light (fog01, battlefog ps40_main_inscattering: the sun's part through rt_fog.hlsli's RtFogSun).
+constexpr uint32_t FOG_LIGHT_SHADER = 0x4355E897;
 
 namespace internal {
 
@@ -290,6 +292,18 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
   }};
 };
 
+// A fog light draw: this frame's fog shadows bound (put back after), as rt_scene.hpp's OnFogDraw.
+constexpr auto OnFogDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || !twattila::rt_scene::BindFogShadows(native)) return {};
+  return {.post_callback = [](Context& command, const void*) {
+    auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+    if (native != nullptr) twattila::rt_scene::UnbindFogShadows(native);
+  }};
+};
+
 }  // namespace internal
 
 // Whether this frame's G-buffer guides were written (the reflections, paths and Ray Reconstruction read them).
@@ -364,11 +378,14 @@ inline void Install() {
     renodx::utils::command_action::Register(
         internal::OnPointLightDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
+  renodx::utils::command_action::Register(
+      internal::OnFogDraw, {.shader_hash = FOG_LIGHT_SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
 }
 
 inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnSunDraw);
   renodx::utils::command_action::Unregister(internal::OnPointLightDraw);
+  renodx::utils::command_action::Unregister(internal::OnFogDraw);
   twattila::light_bounce::SetRayTracedTrace(nullptr);
   twattila::rt_scene::UninstallScene();
   expeditionsrome::dlss::constants::Use(DLL_PROCESS_DETACH);

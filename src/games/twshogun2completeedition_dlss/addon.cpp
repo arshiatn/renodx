@@ -960,6 +960,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedReflections", 0.f},
         {"RayTracedLightBounce", 0.f},
         {"PathTracing", 0.f},
+        {"RayTracedFogShadows", 0.f},
     };
     constexpr std::pair<const char*, float> RAYS_PRESET[] = {
         {"RayTracedSunShadows", 1.f},
@@ -978,6 +979,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"PathTracingBounces", 1.f},
         {"RayTracedReflections", 1.f},
         {"RayTracedReflectionSamples", 1.f},
+        {"RayTracedFogShadows", 1.f},
     };
     constexpr std::pair<const char*, float> RAYS_RESET[] = {
         {"RayTracedShadowSoftness", 0.5f},
@@ -1078,6 +1080,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
     slider("Torch and fire shadow range (Experimental)", "RayTracedLightRange", 0.f, 0.f, 500.f, "%.0f m",
            "Only torches and fires this close to the camera cast ray-traced shadows. 0 m: any distance.");
     ImGui::EndDisabled();
+    const bool fog_shadows = checkbox("Ray-traced fog shadows (Experimental)", "RayTracedFogShadows",
+                                      "The sun's light in the battle fog shaded where hills, trees and buildings stand in its way.");
     const bool reflections = checkbox("Ray-traced reflections", "RayTracedReflections",
                                       "Reflections from rays in place of the screen-space ones: also what is off screen.\n"
                                       "Needs the game's screen-space reflections on.");
@@ -1106,7 +1110,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
     choice("Path tracing SER (Experimental)", "RayTracedPathSer", 0, OFF_ON_NAMES,
            "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.");
     ImGui::EndDisabled();
-    if (sun_shadows || ambient || local_lights || reflections || bounce) {
+    if (sun_shadows || ambient || local_lights || fog_shadows || reflections || bounce) {
       if (upscaler_choice.load() != 0 && !(upscaler_choice.load() == 1 && ray_reconstruction_choice.load() != 0)) {
         constexpr std::array<const char*, 2> DENOISERS = {"Built-in", "NRD"};
         choice("Ray tracing denoiser (Experimental)", "RayTracingDenoiser", 0, DENOISERS,

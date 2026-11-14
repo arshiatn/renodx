@@ -1010,6 +1010,9 @@ void ReadDlssAddonOptions() {
   ray_tracing.reflections = read_on("RayTracedReflections", false);
   ray_tracing.reflection_samples = read_count("RayTracedReflectionSamples", 1, 1, 8);
   ray_tracing.local_lights = read_on("RayTracedLocalLights", false);
+  ray_tracing.fog_shadows = read_on("RayTracedFogShadows", false);
+  // No torch light in the fog (fog01 takes the sun's part alone): the helper traces none.
+  ray_tracing.light_glow = 0.f;
   // Torch and Fire Shadow Lights: 32, 64, 128.
   ray_tracing.light_count = twattila::dlaa_bridge::RT_MAX_LIGHTS << read_count("RayTracedLightCount", 0, 0, 2);
   ray_tracing.light_importance = read_on("RayTracedLightImportance", false);
@@ -1073,7 +1076,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::reflex::Update(swapchain, choices.reflex, choices.frame_limit);
   auto rays = ray_tracing_settings;
   const bool any_rays = ray_tracing_installed
-                        && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.local_lights);
+                        && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.local_lights
+                            || rays.fog_shadows);
   twshogun2::upscaling::SetUse({
       .ray_tracing = ray_tracing_installed,
       .guides = ray_tracing_installed && (rays.reflections || rays.path_tracing),
