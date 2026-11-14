@@ -31,7 +31,7 @@ cbuffer Dispatch : register(b1) {
   uint draw_count;
   uint cluster_count;
   uint first_record;  // the units' instance's InstanceID (a cluster's record: its geometry index past it)
-  uint dispatch_padding;
+  float own_cutoff;    // CAPTURE_OWN_CUTOFF's alpha cut-off (dlaa_bridge.h rt_leaf_cutoff)
   uint2 vertices_address;  // GPU addresses (low, high): the vertex buffer's, the pool's
   uint2 sets_address;
 };
@@ -108,7 +108,7 @@ void main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID) {
       cluster_args.Store4(arguments + 48u, uint4(0u, 0u, 0u, left_out ? 1u : 0u));
     }
     records_written[first_record + cluster] = uint4(masked ? block.w + first_triangle * 3u : NO_UVS, block.z + first_triangle, kind.x,
-                                                    masked ? asuint(LEAF_ALPHA_CUTOFF) : 0u);
+                                                    masked ? asuint(((kind.z & CAPTURE_OWN_CUTOFF) != 0u) ? own_cutoff : LEAF_ALPHA_CUTOFF) : 0u);
   }
   if ((left_out && instance != 0u) || thread.x >= desc.w) return;
   // Its three bytes, from the two words around them.

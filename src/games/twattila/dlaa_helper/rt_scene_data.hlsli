@@ -26,6 +26,7 @@ RWBuffer<uint> normal_pool_written : register(u5);
 static const float LEAF_ALPHA_CUTOFF = 0.5f;  // the leaves' prepass shader: diffuse alpha from 0.5
 static const uint CAPTURE_TERRAIN = 1u;  // dlaa_bridge.h RT_TERRAIN
 static const uint CAPTURE_DYNAMIC = 2u;  // RT_DYNAMIC
+static const uint CAPTURE_OWN_CUTOFF = 1024u;  // RT_OWN_CUTOFF: alpha-tested at the Dispatch's own_cutoff
 static const float MAX_COORDINATE = 2.0e5f;  // metres (battle maps: a few kilometres)
 static const float MAX_PART = 200.f;         // a unit's, grass's or cloth's triangle edge at most
 static const float MAX_EDGE = 5000.f;

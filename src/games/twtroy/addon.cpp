@@ -1561,9 +1561,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 40> SCENE_SHADERS = {{
      .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true},
     // The campaign's trees (rigidstandard vs40_main_campaign_trees, Pharaoh's 1C4B8681): B057851F's vertex shader and instance
     // rows, then an x / z sway of at most 0.12 m x g_wind_vegetation_multiplier (left out: still); C7FDC209 cuts out t0.w x the
-    // fade below 0.01 (the helper's cut-out 0.5).
+    // fade below 0.01: the rays at 0.01 too (alpha_cutoff; the helper's 0.5 before, and with helpers before 114).
     {.hash = 0x54D2CFBD, .capture_shader = __rt_capture_rigid_standard_cut_out, .rows_shader = __motion_record_rigid_rigidambientmapground_b057,
-     .foliage = true, .still = true},
+     .foliage = true, .still = true, .alpha_cutoff = 0.01f},
     {.hash = 0x283E18D7, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_283e},
     {.hash = 0xDD82D47A, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_dd82},
     {.hash = 0x86534458, .capture_shader = __rt_capture_rigid_vertexpush},

@@ -299,6 +299,9 @@ struct SceneShader {
   UINT sun_slot = 0;
   bool far_tree = false;  // a far tree's billboard (with sun_facing)
   bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
+  // Its alpha test's cut-off where its game's isn't the helper's 0.5 (Troy's campaign trees: 0.01): its captures RT_OWN_CUTOFF,
+  // the bridge's rt_leaf_cutoff this; one value a game (the bridge carries one). 0: the helper's.
+  float alpha_cutoff = 0.f;
   bool tessellated = false;
   // Its draws are 3-control-point patches its hull and domain shaders tessellate and displace (Attila's tessellated rigid objects):
   // captured as the triangles they are, without those two shaders (no displacement).
@@ -892,6 +895,7 @@ struct PixelCoverage {
 static std::unordered_map<uint64_t, PixelCoverage> pixel_coverage;
 static bool clip_captures = false;  // the scene shaders stream out their SV_Position
 static bool world_captures = false;  // and some are placed (or SceneShader::cascade_world): those in world space (WORLD_BASE)
+static float leaf_cutoff = 0.f;  // the scene shaders' SceneShader::alpha_cutoff (0: none has one)
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
 
@@ -1785,7 +1789,7 @@ void Capture(Context& command, const SceneShader& shader) {
                          | (shader.sun_facing ? dlaa_bridge::RT_SUN_ONLY : 0u) | (shader.far_tree ? dlaa_bridge::RT_SCATTERED : 0u)
                          // A rigid mesh the game's shadow pass alpha-tests too (a fence, a thatched house): as leaves a house let a
                          // quarter of the sun through under Light Through Leaves.
-                         | (cut_out ? dlaa_bridge::RT_SOLID_CUT_OUT : 0u);
+                         | (cut_out ? dlaa_bridge::RT_SOLID_CUT_OUT : 0u) | ((foliage && shader.alpha_cutoff != 0.f) ? dlaa_bridge::RT_OWN_CUTOFF : 0u);
   // Placed meshes, and SceneShader::cascade_world's world positions, in a clip-space game: the world part.
   const bool world_part = clip_captures && (placed || (cascade_draw && shader.cascade_world));
   uint32_t& next_vertex = (world_part ? runtime.world_vertices : runtime.captured_vertices);
@@ -2175,7 +2179,8 @@ void Capture(Context& command, const SceneShader& shader) {
   // after), more of its instances; its set sent with this frame's trace when the helper lacks it.
   const auto add_blocks = [&] {
     // A placed draw's swaying copy marked (its rows follow its blocks: never joined to another draw's).
-    const uint32_t compact_flags = (flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN | dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SOLID_CUT_OUT))
+    const uint32_t compact_flags = (flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN | dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SOLID_CUT_OUT
+                                             | dlaa_bridge::RT_OWN_CUTOFF))
                                    | (place ? dlaa_bridge::RT_INSTANCED : 0u);
     if (auto* last = (runtime.compact.empty() ? nullptr : &runtime.compact.back());
         last != nullptr && last->set == set_key && last->flags == compact_flags && last->slice == slice
@@ -2941,6 +2946,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .grass_shadow_range = runtime.settings.grass_shadow_range,
       .grass_range = runtime.settings.grass_range,
       .scene_flags = (runtime.settings.smoke_fast_build ? dlaa_bridge::RT_SCENE_SMOKE_FAST_BUILD : 0u),
+      .leaf_cutoff = leaf_cutoff,
   };
   if (stamped) native->End(timing.stamps[1].Get());
   const bool traced = dlaa_bridge::TraceScene(native, request);
@@ -3947,6 +3953,7 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   internal::world_captures = internal::clip_captures && std::ranges::any_of(shaders, [](const SceneShader& shader) {
                                return !shader.rows_shader.empty() || shader.cascade_world;
                              });
+  internal::leaf_cutoff = shaders.empty() ? 0.f : std::ranges::max(shaders, {}, &SceneShader::alpha_cutoff).alpha_cutoff;
   if (internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   if (host.scene_draw != nullptr) reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   for (const SceneShader& shader : shaders) {
