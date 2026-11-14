@@ -2190,6 +2190,7 @@ void ConfigureAddon() {
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_untraced_casters = &rays_untraced_casters_row,
+                                             .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
@@ -2202,6 +2203,13 @@ void ConfigureAddon() {
                                              .lights_own_row = true,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
+  // Smooth Banner Shadows (Experimental, off; RT/PT turns it on, as Attila's): the sails are this game's thin cloth in the
+  // rays (its unit banners are not in them), so the row names them.
+  for (auto* setting : settings) {
+    if (setting->key != "RayTracedSheetsUnselfed") continue;
+    setting->label = "Smooth Sail Shadows (Experimental)";
+    setting->tooltip = "Sails don't shade themselves: no blocky triangles on them. Shadows of other things stay.";
+  }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
