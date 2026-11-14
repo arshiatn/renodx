@@ -156,6 +156,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [ ] ATN 01:50 (awake briefly): start Rome Remastered now (the RUNASADMIN flag was gone at 01:51: its data run resumed),
   and plan + do Troy and WH1 too, at the same time. Two more worktree agents (tools/tw/troy, tools/tw/wh1; same brief,
   base 28a753f5); tw_install.py troy / wh1 entries (Epic folders under C:/Program Files/Epic Games; WH1 prefs EOS/scripts).
+- [x] Rome Remastered starts: 01:51 the replay form (-replay:play:...file="temp/battle.rpy") quit 4 s in, before any
+  window or device (add-on never loaded; its logs lost to the restore: script now keeps game_logs, skill ad644a65);
+  01:56 menu form (no arguments): 60 s up, add-on loaded, swap chain, no 3D frame (ATN's options window / menu need
+  clicks), 2 empty traces (romeremastered/runs/data_1114_015643/M). Rome Remastered traces need ATN's menu start with
+  rome2\atn_trace_watch.ps1 (plan_1114.md sections 7-8). No further agent start tonight.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
