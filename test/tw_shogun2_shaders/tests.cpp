@@ -8,6 +8,7 @@
 //    off must differ.
 // 3. upscale_output and its Upscaling Debug View (TestOutput).
 // 4. sss_foliage_depth, Light Through Foliage's depth (TestFoliage).
+// 5-6. rt_capture_tree_billboard and rt_capture_imposter against the game's csos (TestBillboard, TestImposter; their folder third).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -21,6 +22,7 @@
 #include <fstream>
 #include <iterator>
 #include <random>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -556,6 +558,231 @@ static void TestFoliage(const std::string& games, const std::string& capture) {
   std::printf("sss_foliage_depth %ux%u: %zu foliage pixels negative (half the bytes have 128)\n", width, height, negative);
 }
 
+// 5. rt_capture_tree_billboard (far trees as sun-facing captures, in clip space as the game's) against the game's own
+//    rigidtreebillboard vertex shader (0xFAAE535B's cso, streamed out: its SV_Position and o3.zw view and blend) with the
+//    camera put toward the sun, looking at the tree: for 8 sun ways x 8 tree facings the capture's card is the game's
+//    and at a right angle to the sun's way, its UV the game's nearer view (u - 0.25 x view), a faded card (v4.w 0) a
+//    NaN. CONTROL: the game's views with the camera on the far side differ.
+// 6. rt_capture_imposter (sprite soldiers turned to the sun) against the game's imposter vertex shader (0x03FB2979's cso)
+//    with the camera level with the soldier on the sun's way: standing and flat cards are the game's, so is the UV.
+//    CONTROL: with the camera a quarter turn away the game's cards differ.
+struct BillboardVertex {
+  std::array<float, 4> position, normal;
+  std::array<float, 2> uv;
+  std::array<float, 4> colour, place, facing;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC BILLBOARD_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 56, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 72, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+// The imposter's vertex: POSITION0-3 (POSITION1, the last frame's place, unused here) and TEXCOORD0.
+struct ImposterVertex {
+  std::array<float, 4> place;
+  std::array<float, 3> last_place;
+  std::array<float, 4> frame, corner, flat;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC IMPOSTER_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 1, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 44, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 60, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+// One output (`semantic`, `components` of it) of a vertex shader for each of `vertices` (points), streamed out; its
+// constants at b0.., rt_sun at t0.
+template <typename Vertex>
+static std::vector<std::array<float, 4>> StreamOut(const void* code, size_t size, const char* semantic, UINT index, BYTE components,
+                                                   std::span<const D3D11_INPUT_ELEMENT_DESC> layout, const std::vector<Vertex>& vertices,
+                                                   std::span<ID3D11Buffer* const> constants, ID3D11ShaderResourceView* sun) {
+  const D3D11_SO_DECLARATION_ENTRY entry = {.Stream = 0, .SemanticName = semantic, .SemanticIndex = index, .StartComponent = 0,
+                                            .ComponentCount = components, .OutputSlot = 0};
+  const UINT stride = 16;
+  ComPtr<ID3D11GeometryShader> stream;
+  device->CreateGeometryShaderWithStreamOutput(code, size, &entry, 1, &stride, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf());
+  ComPtr<ID3D11VertexShader> vertex;
+  device->CreateVertexShader(code, size, nullptr, vertex.GetAddressOf());
+  ComPtr<ID3D11InputLayout> input;
+  device->CreateInputLayout(layout.data(), static_cast<UINT>(layout.size()), code, size, input.GetAddressOf());
+  const auto count = static_cast<UINT>(vertices.size());
+  const D3D11_BUFFER_DESC vertex_desc = {.ByteWidth = count * static_cast<UINT>(sizeof(Vertex)), .Usage = D3D11_USAGE_DEFAULT,
+                                         .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+  const D3D11_SUBRESOURCE_DATA vertex_data = {.pSysMem = vertices.data()};
+  ComPtr<ID3D11Buffer> vertex_buffer;
+  device->CreateBuffer(&vertex_desc, &vertex_data, vertex_buffer.GetAddressOf());
+  const D3D11_BUFFER_DESC out_desc = {.ByteWidth = count * 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+  ComPtr<ID3D11Buffer> out;
+  device->CreateBuffer(&out_desc, nullptr, out.GetAddressOf());
+  const UINT vertex_stride = sizeof(Vertex);
+  const UINT offset = 0;
+  context->IASetInputLayout(input.Get());
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+  context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &vertex_stride, &offset);
+  context->VSSetShader(vertex.Get(), nullptr, 0);
+  context->VSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
+  context->VSSetShaderResources(0, 1, &sun);
+  context->GSSetShader(stream.Get(), nullptr, 0);
+  context->SOSetTargets(1, out.GetAddressOf(), &offset);
+  context->Draw(count, 0);
+  context->ClearState();
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = count * 16, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), out.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  std::vector<std::array<float, 4>> result(count);
+  std::memcpy(result.data(), mapped.pData, count * 16);
+  context->Unmap(staging.Get(), 0);
+  return result;
+}
+
+// A game shader's cso (`folder`/0x<name>.vs_5_0.cso) and our capture version (twshogun2completeedition/<capture>.vs_5_0.hlsl).
+static std::pair<std::vector<char>, ComPtr<ID3DBlob>> Shaders(const std::string& games, const std::string& folder, const char* name,
+                                                            const wchar_t* capture_name) {
+  std::ifstream file(folder + "/0x" + name + ".vs_5_0.cso", std::ios::binary);
+  std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const std::wstring path(games.begin(), games.end());
+  ComPtr<ID3DBlob> capture;
+  ComPtr<ID3DBlob> errors;
+  if (game_code.empty()
+      || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/" + capture_name + L".vs_5_0.hlsl").c_str(), nullptr,
+                                   D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "vs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
+                                   capture.GetAddressOf(), errors.GetAddressOf()))) {
+    std::printf("missing 0x%s, or %s\n", name, errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+    std::exit(2);
+  }
+  return {std::move(game_code), capture};
+}
+
+static ComPtr<ID3D11ShaderResourceView> SunView(const std::array<float, 4>& toward_sun) {
+  const std::vector<std::array<float, 4>> texels(9, toward_sun);
+  const auto texture = Texture(9, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), 9 * 16, D3D11_BIND_SHADER_RESOURCE);
+  ComPtr<ID3D11ShaderResourceView> view;
+  device->CreateShaderResourceView(texture.Get(), nullptr, view.GetAddressOf());
+  return view;
+}
+
+static void TestBillboard(const std::string& games, const std::string& folder) {
+  const auto [game_code, capture] = Shaders(games, folder, "FAAE535B", L"rt_capture_tree_billboard");
+  size_t checked = 0, bad_view = 0, bad_card = 0, far_side_differs = 0;
+  bool faded_nan = false;
+  for (int sun_way = 0; sun_way < 8; ++sun_way) {
+    const float sun_angle = (static_cast<float>(sun_way) * 0.785398f) + 0.1f;
+    const std::array<float, 4> toward_sun = {std::cos(sun_angle) * 0.8f, 0.6f, std::sin(sun_angle) * 0.8f, 1.f};
+    const auto sun_view = SunView(toward_sun);
+    for (int turn = 0; turn < 8; ++turn) {
+      const float facing_angle = (static_cast<float>(turn) * 0.785398f) + 0.3f;
+      const std::array<float, 4> place = {100.f, 5.f, -40.f, 1.f};
+      std::vector<BillboardVertex> vertices;
+      for (int corner = 0; corner < 4; ++corner) {
+        vertices.push_back({.position = {(corner & 1) ? 1.f : -1.f, (corner & 2) ? 1.f : 0.f, 0.f, 1.f}, .normal = {0.f, 0.f, 1.f, 0.f},
+                            .uv = {0.8f, 0.5f}, .colour = {1.f, 1.f, 1.f, 1.f}, .place = place,
+                            .facing = {std::cos(facing_angle), 0.f, std::sin(facing_angle), 10.f}});
+      }
+      vertices.push_back(vertices[0]);
+      vertices.back().place[3] = 0.f;  // faded out
+      // The view and view_projection the identity (clip space is the world), the view's forward (_m02, _m22: c4.xz) from
+      // the sun to the tree, as a camera at the sun looks.
+      std::array<float, 44 * 4> camera = {};
+      for (int row = 0; row < 4; ++row) camera[((2 + row) * 4) + row] = camera[((10 + row) * 4) + row] = 1.f;
+      const float across = std::hypot(toward_sun[0], toward_sun[2]);
+      camera[(4 * 4) + 0] = -toward_sun[0] / across;
+      camera[(4 * 4) + 2] = -toward_sun[2] / across;
+      for (const float away : {1000.f, -1000.f}) {
+        camera[0] = place[0] + (toward_sun[0] * away);
+        camera[1] = 50.f;
+        camera[2] = place[2] + (toward_sun[2] * away);
+        const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+        const std::array<ID3D11Buffer*, 1> constants = {camera_buffer.Get()};
+        const auto game = StreamOut(game_code.data(), game_code.size(), "TEXCOORD", 1, 4, BILLBOARD_LAYOUT, vertices, constants, sun_view.Get());
+        const auto game_card = StreamOut(game_code.data(), game_code.size(), "SV_POSITION", 0, 4, BILLBOARD_LAYOUT, vertices, constants, sun_view.Get());
+        const auto ours = StreamOut(capture->GetBufferPointer(), capture->GetBufferSize(), "SV_POSITION", 0, 4, BILLBOARD_LAYOUT, vertices,
+                                    constants, sun_view.Get());
+        const auto our_uv = StreamOut(capture->GetBufferPointer(), capture->GetBufferSize(), "TEXCOORD", 1, 2, BILLBOARD_LAYOUT, vertices,
+                                      constants, sun_view.Get());
+        for (int corner = 0; corner < 4; ++corner) {
+          const float game_view = game[corner][2] + ((game[corner][3] > 0.5f) ? 1.f : 0.f);
+          const float our_view = std::round((0.8f - our_uv[corner][0]) / 0.25f);
+          if (away < 0.f) {
+            far_side_differs += (game_view != our_view) ? 1 : 0;
+            continue;
+          }
+          ++checked;
+          bad_view += (game_view == our_view && our_uv[corner][1] == 0.5f) ? 0 : 1;
+          const float along_sun = ((ours[corner][0] - place[0]) * toward_sun[0]) + ((ours[corner][2] - place[2]) * toward_sun[2]);
+          const bool game_card_same = std::fabs(ours[corner][0] - game_card[corner][0]) < 1e-3f && std::fabs(ours[corner][1] - game_card[corner][1]) < 1e-3f
+                                      && std::fabs(ours[corner][2] - game_card[corner][2]) < 1e-3f && ours[corner][3] == game_card[corner][3];
+          bad_card += (std::fabs(along_sun) < 1e-3f && game_card_same) ? 0 : 1;
+        }
+        faded_nan = faded_nan || (away > 0.f && std::isnan(ours[4][0]));
+      }
+    }
+  }
+  CHECK(bad_view == 0 && bad_card == 0 && checked == 256, "views %zu, cards %zu of %zu", bad_view, bad_card, checked);
+  CHECK(faded_nan, "a faded card not a NaN");
+  CHECK(far_side_differs > 0, "CONTROL: the far side's views all matched");
+  std::printf("rt_capture_tree_billboard: %zu corners the game's view toward the sun, %zu of 256 differ from the far side\n", checked,
+              far_side_differs);
+}
+
+static void TestImposter(const std::string& games, const std::string& folder) {
+  const auto [game_code, capture] = Shaders(games, folder, "03FB2979", L"rt_capture_imposter");
+  const std::array<float, 4> size = {0.125f, 0.25f, 0.f, 0.f};
+  const auto size_buffer = Constants(size.data(), sizeof(size));
+  const std::array<float, 4> place = {30.f, 2.f, 70.f, 3.f};
+  std::vector<ImposterVertex> vertices;
+  for (int corner = 0; corner < 6; ++corner) {
+    const float side = (corner & 1) ? 0.6f : -0.6f;
+    vertices.push_back({.place = place, .last_place = {place[0], place[1], place[2]},
+                        .frame = {0.375f + (0.01f * static_cast<float>(corner)), 0.5f, 0.f, (corner < 4) ? 0.5f : -0.5f},
+                        .corner = {(corner & 1) ? 1.f : 0.f, (corner & 2) ? 1.f : 0.f, side, 0.f},
+                        .flat = {0.f, side, (corner & 2) ? 0.9f : 0.f, (corner & 2) ? 1.8f : 0.f}});
+  }
+  size_t checked = 0, bad_card = 0, bad_uv = 0, turned_differs = 0;
+  for (int sun_way = 0; sun_way < 8; ++sun_way) {
+    const float sun_angle = (static_cast<float>(sun_way) * 0.785398f) + 0.2f;
+    const std::array<float, 4> toward_sun = {std::cos(sun_angle) * 0.7f, 0.714f, std::sin(sun_angle) * 0.7f, 1.f};
+    const auto sun_view = SunView(toward_sun);
+    for (const float turn : {0.f, 1.5708f}) {
+      std::array<float, 44 * 4> camera = {};
+      for (int row = 0; row < 4; ++row) camera[((2 + row) * 4) + row] = camera[((10 + row) * 4) + row] = 1.f;
+      camera[0] = place[0] + (std::cos(sun_angle + turn) * 500.f);
+      camera[1] = place[1];
+      camera[2] = place[2] + (std::sin(sun_angle + turn) * 500.f);
+      const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+      const std::array<ID3D11Buffer*, 2> constants = {camera_buffer.Get(), size_buffer.Get()};
+      const auto run = [&](const void* code, size_t code_size, const char* semantic, UINT index, BYTE components) {
+        return StreamOut(code, code_size, semantic, index, components, IMPOSTER_LAYOUT, vertices, constants, sun_view.Get());
+      };
+      const auto game_card = run(game_code.data(), game_code.size(), "SV_POSITION", 0, 4);
+      const auto game_uv = run(game_code.data(), game_code.size(), "TEXCOORD", 1, 2);
+      const auto ours = run(capture->GetBufferPointer(), capture->GetBufferSize(), "SV_POSITION", 0, 4);
+      const auto our_uv = run(capture->GetBufferPointer(), capture->GetBufferSize(), "TEXCOORD", 1, 2);
+      for (size_t corner = 0; corner < vertices.size(); ++corner) {
+        bool same = true;
+        for (int axis = 0; axis < 4; ++axis) same = same && std::fabs(ours[corner][axis] - game_card[corner][axis]) < 1e-3f;
+        if (turn != 0.f) {
+          turned_differs += same ? 0 : 1;
+          continue;
+        }
+        ++checked;
+        bad_card += same ? 0 : 1;
+        bad_uv += (std::fabs(our_uv[corner][0] - game_uv[corner][0]) < 1e-6f && std::fabs(our_uv[corner][1] - game_uv[corner][1]) < 1e-6f) ? 0 : 1;
+      }
+    }
+  }
+  CHECK(bad_card == 0 && bad_uv == 0 && checked == 48, "cards %zu, UVs %zu of %zu", bad_card, bad_uv, checked);
+  CHECK(turned_differs > 0, "CONTROL: the turned camera's cards all matched");
+  std::printf("rt_capture_imposter: %zu corners (32 standing, 16 flat) the game's toward the sun, %zu of 48 differ a quarter turn away\n",
+              checked, turned_differs);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -570,6 +797,10 @@ int main(int argc, char** argv) {
   TestInputs(games, argv[2]);
   TestOutput(games);
   TestFoliage(games, argv[2]);
+  if (argc > 3) {
+    TestBillboard(games, argv[3]);
+    TestImposter(games, argv[3]);
+  }
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

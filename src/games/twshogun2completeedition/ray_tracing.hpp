@@ -64,10 +64,15 @@ constexpr std::array<twattila::light_bounce::SunDraw, 4> SUN_DRAWS = {{
 constexpr UINT CAMPAIGN_LIGHTING_SLOT = 3;
 // The scene's families by their G-buffer vertex shaders (shader_names.txt; the 2026-11-14 data run's battle drew 11
 // cloth and 90 grass G-buffer draws): cloth (sails, banners) thin sheets (RT_THIN), rigidgrass / rigidgrasswet the
-// grass (RT_GRASS, the grass's share of the alpha-tested corners). Imposters (03FB2979: 68 draws) and tree billboards
-// (FAAE535B, 4B0E8CE6: 98) stay as drawn: they face the camera, their sun-facing capture versions are not made.
+// grass (RT_GRASS, the grass's share of the alpha-tested corners). The sprite soldiers (imposter, 03FB2979: 68 draws)
+// face the camera as drawn; with Sprite Soldier Shadows on they face the sun (rt_capture_imposter). The far trees
+// (rigidtreebillboard, FAAE535B: 98; its pixel shader reads its mask by a UV it works out, so the scene left them out)
+// only with Far Tree Shadows on, facing the sun (rt_capture_tree_billboard: its mask the diffuse map's alpha at t1, the
+// UV at TEXCOORD1). rigidtreebillboard_3k (4B0E8CE6) drew in none of the traces.
 constexpr uint32_t CLOTH_VERTEX_SHADER = 0xBDFF60D4;
 constexpr uint32_t GRASS_VERTEX_SHADER = 0xB7A0270E;
+constexpr uint32_t IMPOSTER_VERTEX_SHADER = 0x03FB2979;
+constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).
 constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0x5CBF4FB6, 0x57139F8D};
 // The battle fog's light (fog01, battlefog ps40_main_inscattering: the sun's part through rt_fog.hlsli's RtFogSun).
@@ -164,19 +169,34 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   D3D11_TEXTURE2D_DESC depth_texture_desc = {};
   if (FAILED(depth_resource.As(&depth_texture))) return false;
   depth_texture->GetDesc(&depth_texture_desc);
+  bool sprite_shadows = false;
   {
     const std::unique_lock lock(state.mutex);
     if (state.depth_size != std::array<UINT, 2>{depth_texture_desc.Width, depth_texture_desc.Height}) return false;
+    sprite_shadows = state.settings.sprite_shadows;
   }
+  const bool far_tree = shader->hash == TREE_BILLBOARD_VERTEX_SHADER;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
   if (!upscaling::PrepareBridge(device.Get(), depth_texture_desc.Width, depth_texture_desc.Height)
-      || !twattila::rt_scene::SceneCoverage(native, shader)) {
+      || !(far_tree || twattila::rt_scene::SceneCoverage(native, shader))) {
     return false;
   }
-  shader->dynamic = twattila::rt_scene::SkinnedVertexShader(shader->hash);
   shader->thin = shader->hash == CLOTH_VERTEX_SHADER;
   shader->grass = shader->hash == GRASS_VERTEX_SHADER;
+  // Sun-facing cards (rt_core skips the far trees with Far Tree Shadows off): drawn from rebuilt buffers, captured every frame.
+  if (far_tree) {
+    shader->capture_shader = __rt_capture_tree_billboard;
+    shader->far_tree = true;
+    shader->foliage = true;
+    shader->uv_semantic = "TEXCOORD";
+    shader->uv_semantic_index = 1;
+    shader->mask_slot = 1;
+  } else if (shader->hash == IMPOSTER_VERTEX_SHADER && sprite_shadows) {
+    shader->capture_shader = __rt_capture_imposter;
+  }
+  shader->sun_facing = !shader->capture_shader.empty();
+  shader->dynamic = shader->sun_facing || twattila::rt_scene::SkinnedVertexShader(shader->hash);
   return true;
 }
 
