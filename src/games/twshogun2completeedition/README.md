@@ -608,6 +608,14 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v72 (2026-11-14): variantrigid out of view (built only, not run in game)
+
+- **Shadow casters out of view** (the same Experimental row, off) also takes variantrigid's shadow draws (B0E006EE: 10 draws,
+  4 to 256 instances in the battle trace), placed by their instances' rows (v8-v10) as the rigid ones
+  (rt_capture / rt_rows_cascade_variant), their rows every frame (they sway in the wind like banners: what carries them
+  isn't known). The sway itself (under 2 cm) is left out.
+- test/tw_shogun2_shaders part 10 for both: the capture and rows versions against the game's AC25DAB8 and B0E006EE.
+
 ## v71 (2026-11-14): cloth, sprite soldiers and trees out of view, Path-traced AO rows (built only, not run in game)
 
 - **Shadow casters out of view** (the same Experimental row, off; DLSS addon v63) also takes the shadow pass's cloth (sails,
