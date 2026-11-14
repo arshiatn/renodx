@@ -502,7 +502,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Indicator Brightness (Reset wrote 0.4 to a missing row before); WARP 1-17). Agent resumed: Grass Height Distance, 14
   cut-out masks, RT water reflections on 44B4A2F0.
   Continuation MERGED 9d945a18; round 3 MERGED 96aefe57 (campaign trees A8BB2DB2 + props' liquid 766D159E in the rays; AE
-  closed: compute atomics + CPU readback). Agent resumed: cloth casters, raycast 021D7515 at 50 %, AE via 96BCFCBB, 3888C71F.
+  closed: compute atomics + CPU readback). Round 4 MERGED e7ed33e7 (3888C71F out of view via a new RT_COLOR_WORLD variant of
+  Pharaoh's shared outside-view GS: the 7 existing variants byte-identical). That agent ran out of context; a FRESH WH1 agent
+  (par_w1b_) does the cloth casters, raycast 021D7515 at 50 %, AE via 96BCFCBB.
 - [ ] SHARED STEP (after the Attila gaps merge; one agent): (1) the torch rows from Path Tracing (RayTracedLightsInBounce /
   RayTracedLightShadowRatio) into graphics_page for every game with PT GI + Torch and Fire Shadows (Thrones, WH2, Troy, WH1,
   Shogun 2, WH3, Pharaoh incl. its particle lights, Rome II); (2) the GS capture path in rt_core (SceneShader::
