@@ -1753,6 +1753,9 @@ bool AttachAddon() {
   // Before the Light Bounce's (its callback draws the sun draw again).
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Coloured Shadows (Bend's and the rays' filter at t50) on the sun's colour: lighting_VS_PS c3 (sun_colour; c1 is
+  // sun_direction), in all 25 sun shaders' RDEF (b3, b2 without the shadow maps; tools\tw\troy\troy_sun_rdef.py).
+  twattila::screen_space_shadows::sun_colour_register = 3;
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's environment b0, camera b1 with
