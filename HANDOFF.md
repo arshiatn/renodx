@@ -185,6 +185,38 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   helper110 --first. Offline bugs B: Coloured Shadows reads c1 (sun direction) not c3; AA wrappers lack TW_AA_FRAME_LINEAR.
   Data run after WH1's with -MsaaOff (direct starts only, no launcher-click fallback).
 - [x] ATN 02:25: "You are allowed to change the game's settings for all of them" (memory feedback_game_aa_allowed.md).
+- [x] Shogun 2 round 2 MERGED 878fffea (PT AO with the game's SH sky, Light Through Foliage, cloth / grass families, RT
+  specular occlusion; HDR v67 / DLSS v59). Round 3 on the branch: water reflections, imposters / billboards, W7d.
+- [x] WH1 + Troy data runs 02:20-02:34: no 3D frame in either (Epic). WH1: warhammer.exe -epicapp... without an exchange
+  code loads the add-on, stays in the frontend (wh1/runs/A_022108); Troy.exe direct: "Please use the Epic launcher"
+  dialog (troy/runs/S1_022643, S2_023214). ATN's files the same. Their traces need ATN's Epic start with
+  atn_trace_watch.ps1; agents continue offline + the 10-27 traces (build/ingame/traces). Skill 8fad0a89.
+- [x] Thrones round 1 MERGED 47b3c21a (graphics_page, sun draws, RT scene to v159 + cut-outs, shadow readers, water,
+  graphics rows, Faster Game CPU Code half floats, Smoke Shadows; shared Bindings smoke_map_tested / far_cards_tested and
+  RT_GRASS_HEIGHT_DISTANCE, defaults unchanged, consumers built, page dumps the same). Not done: Particle Resolution,
+  campaign census (no campaign trace).
+- [ ] FORGE'S POINTS (ATN 03:0x: "do the points that you mentioned too"): (1) PT image-quality scorer in the harness
+  (agent; tools/tw/quality/report.md); (2) Nsight Graphics 2026.4 downloaded with ATN's OK (NVIDIA-signed msi, 694 MB,
+  tools/nsight/download) and extracted, no system install (tools/nsight/NsightGraphics_2026.4); GPU counters are admin-only
+  (RmProfilingAdminOnly unset): ATN may allow them in the NVIDIA Control Panel; GPU Trace agent on the harness
+  (tools/tw/nsight); (3) unified ReSTIR DI + GI reservoir (worktree agent; plan tools/tw/restir_unified/plan.md, helper111
+  if feasible, Experimental row off = helper110 bit-identical).
+- [x] Rome Remastered v9 MERGED 70696220 (DLAA through the helper, Experimental; jitter into b5, motion from depth;
+  test/tw_romer_dlaa WARP PASS); tw_install.py romer uses_helper True. Round on the branch: RT sun shadows / AO, Bend.
+- [x] GPU counters: ATN allowed them for all users (RmProfilingAdminOnly 0, 02:4x). An ngfx call opened a Qt error
+  dialog on ATN's screen: Nsight agent told to stay headless.
+- [x] Troy: ATN's own Epic start 02:49-02:55 (campaign, then a night siege, asked to set the game's AA off):
+  atn_trace_watch 14 traces (troy/runs/ATN_session2_024858); sent to the Troy agent. Troy's prefs still gfx_aa 2 on disk.
+- [x] WH2 round 2 MERGED 5a19a9d4 (Path-Traced AO with WH2's own rt_sun; shared PatchAmbient AMBIENT_AFTER_HARMONICS (the
+  old rule patched the fade-out cube in all 31 WH2 sun PS, harmless: t51 never bound); Far Tree Shadows, Shadow Casters /
+  Hills Out of View; other games' patched bytes unchanged). NOT DONE: spot lights (instance layout differs: shared reader
+  needs a layout parameter), Smoke (WH2's VS writes the atlas UV at TEXCOORD3: own record shader in rt_core, shared).
+- [x] Unified ReSTIR DI + GI: study only (tools/tw/restir_unified/plan.md; branch worktree-agent-afd5e1bbbc7a65b04 f9350977
+  not merged, HANDOFF-only). No DI reservoir exists (rt_lights = visibility bits, the game shades torches). U1 (torch light
+  through the bounce: saves rt_lights 0.4 / 1.5 / 5.6 ms at 3 / 32 / 32 Steady lights, but no torch specular, softer
+  moving shadows) or U2 (keep the game's torches, bounce supplies a shadow ratio: bridge + every game's point-light PS,
+  several nights): ATN DECIDES. Smallest step: helper-only U1 prototype behind RENODX_TW_LIGHTS_IN_BOUNCE + a harness
+  comparison against Steady.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 

@@ -409,8 +409,14 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
 // probes' Global Illumination over either), and that second mad is inside one of them. Instead where they all end,
 //   movc rA.xyzw, rB.s, rC.xyzw, rA.wxyz / mul rA.yzw, ...   (rA.yzw the irradiance; rA.x its AO is divided by, left alone)
 // the same three instructions on rA.yzw between those two. Another number of such places: empty.
+// `final_sites` light_bounce::AMBIENT_AFTER_HARMONICS (Warhammer II): the spherical harmonics' if on lighting_VS_PS c11.y (its
+// first) makes it on both ways (the harmonics faded to the cube outside the playable area, or the cube), and right after its
+// endif
+//   mul rA.xyz, rB.xyzx, rA.xyzx   (x the diffuse colour)
+// the same three instructions on rA.xyz before that mul. Not so: empty.
 inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* foliage, uint32_t final_sites = 0) {
   constexpr uint32_t OP_LD = 45, OP_MAD = 50, OP_MOVC = 55, OP_MUL = 56, OP_CUSTOMDATA = 53;
+  constexpr uint32_t OP_ENDIF = 21, OP_IF = 31;
   constexpr uint32_t OP_DCL_TEMPS = 104;
   constexpr uint32_t TYPE_TEMP = 0, TYPE_IMMEDIATE = 4, TYPE_RESOURCE = 7, TYPE_CONSTANT_BUFFER = 8;
   constexpr uint32_t EXTENDED = 1u << 31;
@@ -450,11 +456,36 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
   size_t mads = 0;       // after it
   // After the cube's last step, or `final_sites` places.
   std::vector<std::pair<size_t, uint32_t>> sites;
+  const bool after_harmonics = final_sites == light_bounce::AMBIENT_AFTER_HARMONICS;
+  size_t harmonics_depth = 0;  // inside the harmonics' if (its nesting)
+  bool harmonics_seen = false;
   for (size_t at = 2; at < tokens.size() && (final_sites != 0 || sites.empty());) {
     const uint32_t opcode = tokens[at] & 0x7FF;
     const size_t length = dxbc::Length(tokens, at);
     if (length == 0) return {};
     if (opcode == OP_DCL_TEMPS) temps_at = at;
+    if (after_harmonics) {
+      const size_t next = at + length;
+      if (harmonics_depth == 0 && !harmonics_seen && opcode == OP_IF) {
+        dxbc::Operand test;
+        if (dxbc::ParseOperand(tokens, at + 1, next, &test) != 0 && test.type == TYPE_CONSTANT_BUFFER && test.mode == 2 && test.select == 1
+            && !test.relative && test.index[0] == lighting_slot && test.index[1] == 11) {
+          harmonics_depth = 1;
+          harmonics_seen = true;
+        }
+      } else if (harmonics_depth != 0 && opcode == OP_IF) {
+        ++harmonics_depth;
+      } else if (harmonics_depth != 0 && opcode == OP_ENDIF && --harmonics_depth == 0 && next + 6 < tokens.size()
+                 && (tokens[next] & 0x7FF) == OP_MUL && dxbc::Length(tokens, next) == 7) {
+        const uint32_t ambient_temp = tokens[next + 2];
+        if (tokens[next + 1] == masked(ambient_temp, 0b0111)[0] && tokens[next + 5] == swizzled(TYPE_TEMP, 0, XYZX)[0]
+            && tokens[next + 6] == ambient_temp) {
+          sites.emplace_back(next, ambient_temp);
+        }
+      }
+      at = next;
+      continue;
+    }
     if (final_sites != 0) {
       const size_t next = at + length;
       if (opcode == OP_MOVC && length == 9 && next + 2 < tokens.size() && (tokens[next] & 0x7FF) == OP_MUL) {
@@ -498,7 +529,7 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
     }
     at += length;
   }
-  if (temps_at == 0 || sites.size() != std::max(final_sites, 1u)) return {};
+  if (temps_at == 0 || sites.size() != (after_harmonics ? 1u : std::max(final_sites, 1u))) return {};
   const uint32_t temp = tokens[temps_at + 1];
   constexpr uint32_t MINUS_ONE = 0xBF800000, ONE = 0x3F800000;
   const std::array<uint32_t, 2> taken = masked(temp, 0b0001);
@@ -507,8 +538,9 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
   // From the last one back (the earlier ones keep their place).
   for (auto site = sites.rbegin(); site != sites.rend(); ++site) {
     const auto [insert_at, ambient_temp] = *site;
-    const std::array<uint32_t, 2> ambient = masked(ambient_temp, (final_sites != 0) ? 0b1110 : 0b0111);
-    const std::array<uint32_t, 2> ambient_read = swizzled(TYPE_TEMP, ambient_temp, (final_sites != 0) ? XYZW : XYZX);
+    const bool irradiance = final_sites != 0 && !after_harmonics;  // Warhammer III's rA.yzw
+    const std::array<uint32_t, 2> ambient = masked(ambient_temp, irradiance ? 0b1110 : 0b0111);
+    const std::array<uint32_t, 2> ambient_read = swizzled(TYPE_TEMP, ambient_temp, irradiance ? XYZW : XYZX);
     const std::vector<uint32_t> scale = {
         OP_LD | (10u << 24), taken[0], taken[1], 2u | (TYPE_IMMEDIATE << 12), 0, 0, 0, 0, resource[0], resource[1],
         OP_MAD | (9u << 24), taken[0], taken[1], share[0], share[1], 1u | (TYPE_IMMEDIATE << 12), MINUS_ONE, 1u | (TYPE_IMMEDIATE << 12), ONE,

@@ -608,6 +608,19 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v67 (2026-11-14): Path-traced AO, Light Through Foliage, specular occlusion (built only, not run in game)
+
+- **Path-traced AO** (Experimental, off; with path tracing and ray-traced GI): the paths bring the sky's light, the
+  sun light draws get their lighting without the game's ambient (the cube and the harmonics' flag zero). Battles only:
+  the campaign map keeps the game's ambient. rt_sun is Shogun 2's own: the paths' sky is the sun shaders' ambient
+  (influence x cube + the rest x fudge x the world's harmonics at the camera's probe), texel 6 unstretched.
+- **Light Through Foliage** (Experimental, 0): Bend's screen-space shadows let that share of the sun through what grass
+  and leaves shadow (foliage_light.hpp: the depth copied with foliage negative, the passes' light-caster versions).
+- **Ray-traced specular occlusion** (Experimental, off): the sky's reflection off where something stands over a surface
+  (ssrresolve00).
+- The ray-traced scene: cloth thin (sails, banners), the grass as grass. Fog shadows alone install the ray tracing.
+- test/tw_shogun2_shaders: rt_sun against the three data run buffers with harmonics, sss_foliage_depth (WARP).
+
 ## v66 (2026-11-14): the helper's upscaler and frame generation, ray tracing rows (built only, not run in game)
 
 - **Upscaler** (the DLSS addon's row, Experimental): the game's DLSS evaluation through renodx-tw-dlaa64.exe
