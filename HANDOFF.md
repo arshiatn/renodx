@@ -231,6 +231,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   WH1 session 2 (21, P / UP battle + campaign, RT, RR F), WH2 (30, campaign + fire siege, DLAA / P / UP). Rome Remastered
   wouldn't start: memory (a quality-scorer harness helper at 45 GB committed, PC at 74.8 / 73.8 GB; its agent stopped
   it; my kill was refused by the permission classifier); ATN does Rome Remastered 67 / 50% another day.
+- [x] ATN 04:0x: "just keep working until you have finished everything" - no 08:30 stop: every agent finishes its whole
+  plan (WH1, WH2, Thrones, Troy, Shogun 2, Rome Remastered resumed: Bend, FG, debug views; ReSTIR U1 + U2, quality
+  baseline, Nsight). An interim install of the merged state at ~12:00 if agents still run (no game running); final
+  install after the last merge + verification.
+- [x] Quality scorer DONE (tools/tw/quality/report.md; outside the repo, no helper change): 11 / 11 validation, helper110
+  baseline (rRMSE: sun RR 3.7, RTAO RR 1.03, PT AO ReSTIR + RR 2.19, torch RR + importance 1.40, Steady + RR 3.29).
+  FINDING for ATN: PT AO with REBLUR under RR is 4.4x worse than RR alone and grows while the camera stands still (blotches).
+  all_modes 179 / 179 (all_modes_iq1114.txt). quality.sh compare <helperA> <helperB> for helper111.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
