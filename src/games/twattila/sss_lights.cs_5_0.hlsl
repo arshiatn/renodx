@@ -34,11 +34,23 @@ static const uint LIST_LIGHTS = 128u;  // rt_local_lights.hlsli's b9 arrays
 static const uint MAX_DRAWS = 256u;
 static const int MAX_GROUPS_X = 65535;
 
+static const uint NONE = 0xFFFFFFFFu;
+
 groupshared float scores[MAX_CANDIDATES];
 groupshared uint draw_starts[MAX_DRAWS + 1u];
 groupshared uint picked;
+groupshared uint taken[MAX_CANDIDATES / 32u];  // a bit a candidate: picked or left out as a repeat
+groupshared float turn_scores[THREADS];
+groupshared uint turn_candidates[THREADS];
+groupshared uint repeated;
 groupshared DispatchData light_dispatches[MAX_LIGHTS][8];
 groupshared int light_dispatch_counts[MAX_LIGHTS];
+
+// The order of the pick: the higher score first, of equal ones the earlier candidate.
+bool PickedBefore(float score, uint candidate, float other_score, uint other)
+{
+  return score > other_score || (score == other_score && candidate < other);
+}
 
 // Candidate `index`'s instance: its first byte and the draw it is of.
 uint InstanceByte(uint index, out uint4 draw)
@@ -93,47 +105,77 @@ void main(uint thread : SV_GroupThreadID)
     const bool within = (g_sss_light_range <= 0.f) || (dot(offset, offset) <= g_sss_light_range * g_sss_light_range);
     scores[scored] = (light.w > 0.f && within) ? max(colour.r, max(colour.g, colour.b)) * light.w * light.w / max(dot(offset, offset), 1.f) : -1.f;
   }
-  GroupMemoryBarrierWithGroupSync();
-  // The same light drawn again (another of its draws): only its first. The position is read only where the scores
-  // match: HLSL's && evaluates both sides, so reading it with the score's test loaded both lights of every pair (a
-  // battle's 5120 lights in 128 draws: 18.8 ms of the frame's light draws at 4K on an RTX 5090, 3.2 ms this way).
-  for (uint repeat = thread; repeat < candidates; repeat += THREADS)
-  {
-    const float score = scores[repeat];
-    if (score < 0.f) continue;
-    const float4 light = LightPosition(repeat);
-    for (uint other = 0u; other < repeat; ++other)
-    {
-      if (scores[other] != score) continue;
-      if (all(LightPosition(other) == light))
-      {
-        scores[repeat] = -1.f;
-        break;
-      }
-    }
-  }
+  for (uint slot = thread; slot < MAX_CANDIDATES / 32u; slot += THREADS) taken[slot] = 0u;
   GroupMemoryBarrierWithGroupSync();
 
+  // The g_sss_lights_wanted first in the pick's order, one a turn: each thread's first candidate not taken, then the
+  // group's first of those. The same light drawn again (another of its draws: an earlier candidate with its score and
+  // position) is taken without a place: only its first counts, and it comes first in the order. A rank for every
+  // candidate against every other took 2.2 ms (8 lights) to 2.9 ms (32) of a battle's 5120 lights in 128 draws at 4K on
+  // an RTX 5090; the lights, their order and the dispatches are the same. A position is read only where the scores
+  // match: HLSL's && evaluates both sides (with the score's test it loaded both lights of every pair: 18.8 ms).
   const uint wanted = min(g_sss_lights_wanted, MAX_LIGHTS);
-  for (uint ranked = thread; ranked < candidates; ranked += THREADS)
+  [loop]
+  for (uint turn = 0u; turn < candidates; ++turn)
   {
-    const float score = scores[ranked];
-    if (score < 0.f) continue;
-    uint rank = 0u;
-    for (uint other = 0u; other < candidates && rank < wanted; ++other)
+    float own_score = -1.f;
+    uint own = NONE;
+    for (uint candidate = thread; candidate < candidates; candidate += THREADS)
     {
-      const float other_score = scores[other];
-      if (other_score > score || (other_score == score && other < ranked)) ++rank;
+      const float score = scores[candidate];
+      // A NaN score (a NaN colour) is left out: the rank against every other gave it place 0 beside the first.
+      if (!(score >= 0.f) || (taken[candidate >> 5] & (1u << (candidate & 31u))) != 0u) continue;
+      if (own == NONE || PickedBefore(score, candidate, own_score, own))
+      {
+        own_score = score;
+        own = candidate;
+      }
     }
-    if (rank >= wanted) continue;
-    uint4 draw;
-    const uint at = InstanceByte(ranked, draw);
-    const float4 light = asfloat(t_instances.Load4(at + (draw.w & 0xFFFFu)));
-    t_rw_lights[rank] = light;
-    t_rw_lights[LIST_LIGHTS + 1u + rank] = float4(asfloat(t_instances.Load3(at + (draw.w >> 16))), 0.f);
-    InterlockedMax(picked, rank + 1u);
+    turn_scores[thread] = own_score;
+    turn_candidates[thread] = own;
+    if (thread == 0u) repeated = 0u;
+    GroupMemoryBarrierWithGroupSync();
+    [unroll]
+    for (uint half = THREADS / 2u; half > 0u; half >>= 1)
+    {
+      if (thread < half)
+      {
+        const uint other = turn_candidates[thread + half];
+        const uint first = turn_candidates[thread];
+        if (other != NONE && (first == NONE || PickedBefore(turn_scores[thread + half], other, turn_scores[thread], first)))
+        {
+          turn_scores[thread] = turn_scores[thread + half];
+          turn_candidates[thread] = other;
+        }
+      }
+      GroupMemoryBarrierWithGroupSync();
+    }
+    const uint best = turn_candidates[0];
+    const float best_score = turn_scores[0];
+    const uint done = picked;
+    GroupMemoryBarrierWithGroupSync();
+    if (best == NONE || done >= wanted) break;
+    const float4 light = LightPosition(best);
+    for (uint other = thread; other < best; other += THREADS)
+    {
+      if (scores[other] != best_score) continue;
+      if (all(LightPosition(other) == light)) InterlockedOr(repeated, 1u);
+    }
+    GroupMemoryBarrierWithGroupSync();
+    if (thread == 0u)
+    {
+      taken[best >> 5] |= 1u << (best & 31u);
+      if (repeated == 0u)
+      {
+        uint4 draw;
+        const uint at = InstanceByte(best, draw);
+        t_rw_lights[done] = asfloat(t_instances.Load4(at + (draw.w & 0xFFFFu)));
+        t_rw_lights[LIST_LIGHTS + 1u + done] = float4(asfloat(t_instances.Load3(at + (draw.w >> 16))), 0.f);
+        picked = done + 1u;
+      }
+    }
+    GroupMemoryBarrierWithGroupSync();
   }
-  GroupMemoryBarrierWithGroupSync();
 
   // Each light's dispatches over the rectangle its reach covers (the screen where any corner of its box is behind the
   // camera).

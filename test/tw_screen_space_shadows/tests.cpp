@@ -1837,6 +1837,39 @@ static void Time(const std::string& before) {
       });
       std::printf("   Torch and Fire Shadows %2u, %zu lights in %zu draws (%s sss_lights): %.3f ms a frame of light draws\n", wanted, battle.size(),
                   battle.size() / 40, old ? "f6408aa1's" : "today's", first_draw);
+      if (old) continue;
+      // Its parts: the draws' copies alone (no depth this frame: nothing picked or marched), the pick alone and the march
+      // alone (each with the bindings OnLightDraw gives it, over the frame's records just made).
+      const double copies = GpuMilliseconds([&] {
+        ++sss::internal::runtime.frame;
+        for (size_t first = 0; first < battle.size(); first += 40) {
+          lights::OnLightDraw(context.Get(), {.buffer = battle_buffer.Get(), .first = static_cast<UINT>(first * sizeof(LightInstance)), .count = 40,
+                                              .stride = sizeof(LightInstance), .position = offsetof(LightInstance, light),
+                                              .colour = offsetof(LightInstance, colour)});
+        }
+      });
+      REQUIRE(LightFrames(frame, std::span<const LightInstance>(battle), wanted, 0.f, 40));
+      auto& objects = sss::internal::runtime.objects;
+      auto& torch = objects.lights;
+      const size_t last = 1 - torch.current;
+      const double pick = GpuMilliseconds([&] {
+        const sss::internal::ComputeState kept(context.Get());
+        sss::internal::ComputeState::Bind(context.Get(), torch.shader.Get(), {torch.instances_srv[last].Get(), torch.draws_srv.Get()},
+                                          {torch.dispatches_uav.Get(), torch.coordinates_uav.Get(), torch.arguments_uav.Get(), torch.list_uav.Get()},
+                                          {torch.camera.Get(), nullptr, objects.settings.Get(), nullptr, torch.settings.Get()});
+        context->Dispatch(1, 1, 1);
+      });
+      const double march = GpuMilliseconds([&] {
+        const sss::internal::ComputeState kept(context.Get());
+        sss::internal::ComputeState::Bind(context.Get(), objects.bend_extended[sss::internal::ExtendedVariant(false, false)].Get(),
+                                          {objects.depth_srv.Get(), objects.parameters_srv.Get(), nullptr, nullptr, torch.dispatches_srv.Get(),
+                                           torch.coordinates_srv.Get()},
+                                          {nullptr, nullptr, nullptr, torch.mask_uav.Get()},
+                                          {torch.camera.Get(), nullptr, objects.settings.Get(), torch.mode.Get(), torch.settings.Get()});
+        context->CSSetSamplers(0, 1, objects.border.GetAddressOf());
+        context->DispatchIndirect(torch.arguments.Get(), 0);
+      });
+      std::printf("      its parts: %zu copies %.3f ms, the pick %.3f ms, the march %.3f ms\n", battle.size() / 40, copies, pick, march);
     }
   }
 }
