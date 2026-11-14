@@ -1501,7 +1501,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 33> MOTION_SHADERS =
 // The floating unit banners (rigidtextureblend, 2 bones, E7F0D71A) stay out: the game gives them no shadow (no atlas draw in
 // any of ATN's 2026-11-14 traces). So does the campaign's far terrain (rigidterrain geometry_41_global, CDCF1ADD): no atlas
 // draw either, and no trace shows where it lies against the near terrain.
-constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x10401C91, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x06AB0766, .capture_shader = __rt_capture_terrain_geom_new_sm41, .terrain = true},
     {.hash = 0x5696080B, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1533,11 +1533,17 @@ constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
     {.hash = 0x1CF62070, .capture_shader = __rt_capture_grass_1cf6, .dynamic = true, .foliage = true, .grass = true},
     {.hash = 0x851C6D2A, .capture_shader = __rt_capture_grass_851c, .dynamic = true, .foliage = true, .grass = true},
     // The campaign's plants and forests (rigidcampaignvegetation vs40_main; ATN's trace 13: 116 draws), placed, standing and
-    // still as Attila's, cut out by their diffuse map's alpha (73C9A8D6 t1).
+    // still as Attila's, cut out by their diffuse map's alpha (73C9A8D6 t1). Its sm_4_1 twin 1A7891F6 (the MSAA G-buffer's,
+    // F2BEEA62: the diffuse map at t1 too; in no trace) is the same code, signatures and constants (fxc -dumpbin).
     {.hash = 0x84797031, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true, .mask_slot = 1},
+    {.hash = 0x1A7891F6, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true, .mask_slot = 1},
     // Far trees' cards (rigidtreebillboard vs40_main; ATN's battles: 18-20 draws a frame), turned to the sun (Far Tree Shadows),
-    // cut out by their tree map's alpha (C5875F67 t3).
+    // cut out by their tree map's alpha (C5875F67 t3). Its sm_5_0 and sm_4_1 twins B9C6AA36 (the MSAA G-buffer's, E6F4B7E7 /
+    // 5314925A) and C2A5FA81 (the debug views') are the same code, signatures and constants, their tree map at t3 too; in no
+    // trace.
     {.hash = 0xCA6BCF19, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    {.hash = 0xB9C6AA36, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    {.hash = 0xC2A5FA81, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
     // The shadow pass's casters into the atlas, what is out of the main view (Shadow Casters Out of View): fx__rigidcommon
     // vs40_shadow, fx__weighted vs40_shadow and its 4 bones, Warhammer II's E2C36310, 2EE37868, 2A54DBEE (the same code and
     // signatures), so Pharaoh's rt_outside_view as there. Every frame as drawn.
