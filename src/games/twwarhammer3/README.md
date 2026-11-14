@@ -11,6 +11,10 @@
   the byte the game's code reads (checked offline against Warhammer3.exe).
 - Fixed: **ray-traced shadows of the siege tentacles in view** (vertex-push, 1C3500F0: only their out-of-view copy was in
   the rays) and of fx_rigidtextureblend's small campaign meshes (03298FD5). WARP: both captured where the game draws them.
+- New: **Reflection Quality (Experimental)** under Reflections and Water with the game's SSR: the water march's step cap,
+  x 100 (0.25x-4x). At 1x (default) the game's own march runs; off 1x only the march is swapped in (the resolve stays the
+  game's). WARP (test/tw_warhammer3_shaders): ours is the game's bits at 100 steps; on a water scene with posts 25 steps
+  lose 3.5% of the hits and 100 already finds all of them; on a scene made to need texel steps 400 finds 1.6% more.
 - Page dump against v59: only the rows above are new; after RT/PT only the per-game rows differ from Attila's, as before.
 - Test list (ReShade.log after each; Log Details on):
   1. Control, any battle, every row above at its default: as v59.
@@ -23,12 +27,12 @@
      Off may need the next battle: a crash goes in the report.
   7. Siege, a wall breaking: Debris Shadows On: falling pieces cast shadows.
   8. Big battle: Ragdolls Off: bodies fall without ragdolls, CPU time against Game's.
+  9. Battle by a lake or river, in-game SSR on, Reflections Game's SSR: Reflection Quality 0.25x, 4x, 1x: shorter
+     reflections and more fps, then far reflections with gaps filled (if any are missing at 1x), then the game's.
 - Not done:
   - Full-Resolution Particle Edges and Quarter: WH3's half-size particles are MBOIT (moments, then colour), so Attila's edge
     pass (one blended layer redrawn under stencil) does not carry. Smallest step: a stencil edge mask at the half layer's
     depth and both MBOIT passes redrawn into the sharp layer there, on WARP first.
-  - Reflection Quality: low value (Ray-Traced Water Reflections cover water). Smallest step: a step cap for the water
-    march's 100 iterations in its flags buffer, the march swapped in off 1.
   - Modded Auto Exposure: the game's auto exposure (1E448816) runs in none of 95 traces; its buffer reads 0 in all 39 that
     logged it: nothing to change. Fog & Sky Smoothing: the fog of 93 of 95 traces reads no sky cube; the rest read the
     game's own blurred mip, not Attila's 8-bit cube; the sky has Sky Debanding.

@@ -162,6 +162,7 @@ void ApplyResetPreset() {
       {"sky_deband", 0.f},
       {"fog_strength", 1.f},
       {"some_indicators", 1.f},
+      {"ssr_quality", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -879,6 +880,7 @@ namespace reflections {
 enum class Pass : uint8_t { GAME, OURS, RAYS };
 Pass pass = Pass::GAME;
 float all_surfaces_row = 0.f;  // The method slider's second place: the game's march, closed to water since WH2, on the flags' bit 0 too.
+float quality_row = 1.f;       // Reflection Quality: x the march's 100 steps (ours swapped in off 1; at 1 the game's bytes).
 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> main_depth;
 // During OnMarch: its G-buffer (the water drawn by then) and camera for the guides again; the trace's dispatches take those slots.
 std::array<ID3D11ShaderResourceView*, 3> march_gbuffer = {};
@@ -910,8 +912,9 @@ std::array<float, 2> hit_share = {};
 Microsoft::WRL::ComPtr<ID3D11Buffer> share_buffer;  // b12 of the mip copies
 std::array<float, 4> share_written = {};
 Microsoft::WRL::ComPtr<ID3D11ComputeShader> game_shader;
-Microsoft::WRL::ComPtr<ID3D11Buffer> flags_buffer;  // b10 of the resolve and b1 of the march: {0, this frame's sun, all surfaces, one to one}
-std::array<uint32_t, 4> flags_written = {};
+// b10 of the resolve and b1 of the march: {water rays, this frame's sun, all surfaces, one to one}, then the march's steps (0: 100).
+Microsoft::WRL::ComPtr<ID3D11Buffer> flags_buffer;
+std::array<uint32_t, 8> flags_written = {};
 Microsoft::WRL::ComPtr<ID3D11Buffer> game_b10;
 // This frame's sun light in the main view: the resolve takes the cubes back as it added them (SunDraw::diffuse_rule). Skin (0) writes flags
 // 0, the resolve leaves those pixels alone.
@@ -1163,13 +1166,15 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
       pass = water_rays ? Pass::RAYS : Pass::OURS;
     }
   }
-  if (pass == Pass::GAME) return true;
-  const bool sun_rule = sun_low_quality && !sun_standard;
+  // Reflection Quality alone swaps in the march, not the resolve.
+  const uint32_t steps = (quality_row == 1.f) ? 0u : static_cast<uint32_t>(std::max(1.f, std::round(100.f * quality_row)));
+  if (pass == Pass::GAME && steps == 0u) return true;
+  const bool sun_rule = pass != Pass::GAME && sun_low_quality && !sun_standard;
   if (sun_rule && !sun_low_quality_logged) {
     sun_low_quality_logged = true;
     renodx::utils::log::i("[Warhammer III] Reflections: the frame's sun is ps 76A707E5, its cubes taken back by its rule.");
   }
-  const std::array<uint32_t, 4> flags = {water_rays ? 1u : 0u, sun_rule ? 1u : 0u, all_surfaces ? 1u : 0u, one_to_one ? 1u : 0u};
+  const std::array<uint32_t, 8> flags = {water_rays ? 1u : 0u, sun_rule ? 1u : 0u, all_surfaces ? 1u : 0u, one_to_one ? 1u : 0u, steps};
   if (!flags_buffer) {
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     native->GetDevice(device.GetAddressOf());
@@ -1189,7 +1194,7 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
     all_surfaces_logged = true;
     renodx::utils::log::i("[Warhammer III] Reflections: the game's march on all surfaces.");
   }
-  if (all_surfaces || one_to_one) {
+  if (all_surfaces || one_to_one || steps != 0u) {
     if (Swap(native, &march)) native->CSSetConstantBuffers(1, 1, flags_buffer.GetAddressOf());
   }
   return true;
@@ -3711,6 +3716,19 @@ void ConfigureAddon() {
       .labels = {"4096 (Game's)", "2048", "1024"},
       .is_enabled = [] { return traced_lights::rays_replace_maps_row != 0.f; },
   });
+  // Reflection Quality: the water march's step cap (reflections::OnMarch).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "ssr_quality",
+      .binding = &reflections::quality_row,
+      .default_value = 1.f,
+      .label = "Reflection Quality (Experimental)",
+      .section = twattila::graphics_page::REFLECTIONS_SECTION,
+      .tooltip = "Water reflections: more steps, so they reach farther with fewer gaps. Heavier.\n"
+                 "Below 1x: faster, shorter. 1x: the game's. Needs in-game Screen Space Reflections on.",
+      .min = 0.25f,
+      .max = 4.f,
+      .format = "%.2fx",
+  });
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "GlobalIlluminationGameSky",
       .binding = &twwarhammer3::game_gi::sky_row,
@@ -4062,6 +4080,10 @@ void ConfigureAddon() {
                                              .has_foliage_light = true,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
+  // The page names Reflection Quality "Quality"; here it is untested in game.
+  for (auto* setting : settings) {
+    if (setting->key == "ssr_quality") setting->label = "Quality (Experimental)";
+  }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
