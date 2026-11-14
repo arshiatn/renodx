@@ -1634,7 +1634,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 10> CUT_OUT_MASKS = {{
 
 // The sprite soldiers' G-buffer pixel shader (imposter ps40_main_gbuffer): their scene draws (SCENE_SHADERS' imposter rows).
 constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixel_shader = 0x5B1345B7}}};
-constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 45> SCENE_SHADERS = {{
     {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
     {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
     {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
@@ -1642,6 +1642,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x6B25B4D2, .capture_shader = __rt_capture_rigid_default},
     {.hash = 0x16AFAF14, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_16af,
      .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true},
+    // Rigid objects with the game's Tessellation on (vs40_displacement 4CC2D68F, HS EB3218C8, DS C92A2D5F: 3-control-point patches; in no
+    // trace, level B): 16AFAF14's placement and world position (the same instructions and input signature), the patches without the
+    // domain shader's displacement, which fades out 5 to 20 m from the camera; Rarer Objects in the Rays (Experimental, off).
+    // WARP against the game's bytes: test/tw_rays_captures (T).
+    {.hash = 0x4CC2D68F, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_16af, .patch_triangles = true,
+     .held_row = &rays_untraced_casters_row},
     {.hash = 0xC5CD75C5, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_c5cd},
     {.hash = 0xB7CE3413, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_b7ce},
     {.hash = 0x8F4BAB8C, .capture_shader = __rt_capture_rigid_vertexpush},
@@ -2358,8 +2364,8 @@ void ConfigureAddon() {
       .default_value = 0.f,
       .label = "Rarer Units and Props in the Rays (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "Units with liquid or animated surfaces and liquid or wind-blown props also cast ray-traced shadows.\n"
-                 "Not yet seen in game.",
+      .tooltip = "Units with liquid or animated surfaces, liquid or wind-blown props and objects the game tessellates\n"
+                 "(its Tessellation on) also cast ray-traced shadows. Not yet seen in game.",
       .is_visible = [] { return twattila::dlaa_bridge::bridge.ray_tracing; },
   });
   settings.push_back(new renodx::utils::settings::Setting{

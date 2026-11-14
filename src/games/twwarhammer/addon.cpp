@@ -1555,6 +1555,8 @@ float lod_bias_trilinear_row = 0.f;
 // The shadow pass's casters in the rays' scene (SCENE_SHADERS' cascade_keep entries): Shadow Casters Out of View
 // (Experimental, off: no game run has shown them yet).
 float rays_units_out_of_view_row = 0.f;
+// The scene's families drawn in no trace (level B: SCENE_SHADERS' held_row): Rarer Objects in the Rays, Experimental, off.
+float rays_untraced_casters_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1641,7 +1643,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 33> MOTION_SHADERS =
 // draw either, and no trace shows where it lies against the near terrain.
 // The sprite soldiers' G-buffer pixel shader (imposter ps40_main_gbuffer): their scene draws (SCENE_SHADERS' imposter rows).
 constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixel_shader = 0x6D01619A}}};
-constexpr std::array<twattila::rt_scene::SceneShader, 50> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 51> SCENE_SHADERS = {{
     {.hash = 0x10401C91, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x06AB0766, .capture_shader = __rt_capture_terrain_geom_new_sm41, .terrain = true},
     {.hash = 0x5696080B, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1651,6 +1653,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 50> SCENE_SHADERS = {{
     {.hash = 0x51EDFD6E, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_51ed, .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true,
      .cut_out_row = &rays_unit_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
     {.hash = 0xF6DBA4F4, .capture_shader = __rt_capture_rigid_standard_sm41, .rows_shader = __motion_record_rigid_rigidambientmapfiremesh_f6db},
+    // Rigid objects with the game's Tessellation on (vs40_displacement E168387B, HS F04A8DF4, DS 7C266A97: 3-control-point patches; in no
+    // trace, level B): F6DBA4F4's placement and world position (the same instructions and input signature), the patches without the
+    // domain shader's displacement, which fades out 5 to 20 m from the camera; Rarer Objects in the Rays (Experimental, off).
+    // WARP against the game's bytes: test/tw_rays_captures (T).
+    {.hash = 0xE168387B, .capture_shader = __rt_capture_rigid_standard_sm41, .rows_shader = __motion_record_rigid_rigidambientmapfiremesh_f6db,
+     .patch_triangles = true, .held_row = &rays_untraced_casters_row},
     {.hash = 0x875BB987, .capture_shader = __rt_capture_rigid_default, .cut_out_shader = __rt_capture_rigid_default_cut_out, .clip_cut_outs = true,
      .cut_out_row = &rays_unit_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
     {.hash = 0xD1A96B76, .capture_shader = __rt_capture_rigid_vertexpush},
@@ -1849,6 +1857,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                             "what is outside the view casts none. Off: the rays' shadows on top of the game's shadow maps.",
     .reflections_tooltip = "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
+    .untraced_casters_tooltip = "Objects the game tessellates (its Tessellation on) also cast ray-traced shadows.",
 };
 
 void ConfigureAddon() {
@@ -2338,6 +2347,7 @@ void ConfigureAddon() {
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_unseen_cut_outs = &rays_unit_cut_outs_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,

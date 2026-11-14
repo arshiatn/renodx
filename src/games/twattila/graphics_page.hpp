@@ -161,6 +161,7 @@ struct Texts {
       "across the screen, usually faster. DXR: from rays, also what is off screen or hidden. Needs an upscaler.";
   const char* reflections_middle_label = "FidelityFX SSSR";
   const char* reflections_rays_label = "Ray-Traced (DXR)";
+  const char* untraced_casters_tooltip = "Ropes, and objects the game tessellates (its Tessellation on), also cast ray-traced shadows.";
 };
 
 inline constexpr Texts ATTILA_TEXTS = {
@@ -1086,7 +1087,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .default_value = 0.f,
           .label = "Rarer Objects in the Rays (Experimental)",
           .section = section,
-          .tooltip = "Ropes, and objects the game tessellates (its Tessellation on), also cast ray-traced shadows.",
+          .tooltip = b.texts->untraced_casters_tooltip,
           .is_visible = more_rays,
       });
     }
