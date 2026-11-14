@@ -294,6 +294,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   guides proof MERGED 1c9c3dc5 (shared Patch declare_position opt-in: 21300 PS of 8 dumps byte-identical by default).
 - [x] Thrones Grass Height Distance MERGED 8f6de4c7 (Experimental; shared grass_fade::Install(hashes), rt_grass.hlsli's
   RT_GRASS_HEIGHT_DISTANCE define removed: Thrones was its only user, now has SI.grass_height_distance; WARP 31 / 31).
+- [x] Pharaoh's RT water reflections moved to twattila/water_reflections.hpp MERGED 02249af9 (131 / 131 statements, page
+  dump unchanged); Troy v53 RT water reflections MERGED 12472535 (off; RT/PT turns them on as Pharaoh). Troy next: fires.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
