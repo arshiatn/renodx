@@ -113,4 +113,5 @@ Rules:
 | A finder that found 0 looked like "this game has none" (Troy's 167 tweaks) | A suite asserts each game's finder hit count (`test/tw_troy_tweaks`); 0 is a failure |
 | A restore deleted every replay outside a name list (the maintainer's WH3 `2.replay`) | Restores move aside only files the run created between its start and end marks (`wh3_common.ps1`); never delete the maintainer's replays or saves |
 | Agent worktrees link `bin`, `downloads` and `external` into the main checkout as junctions | Delete the links alone before any recursive delete of a worktree |
+| An agent's test exes ran inside a measurement window and invalidated two bench starts (2026-11-14) | While `tools/tw/quiet_run.lock` exists start nothing: no build, no test exe, no WARP, no long script; the bench refuses starts while a `tools/tw/testbin` process or a build tool runs |
 | Many agents building at once ran the machine short of commit | Start a build only under 45 GB Committed Bytes, `-j 3`; one GPU job at a time through `tools/tw/gpu_job.lock`, taken atomically, deleted only by its owner |

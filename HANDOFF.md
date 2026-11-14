@@ -631,8 +631,21 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   RT shadows, RT/PT, Path Tracing, RT/PT + chosen quality rows: Time Each Pass, PresentMon, screenshot each); per-preset
   costs; non-ray wins implemented; quality rows that cost little and score better into RT/PT (ATN delegated), the rest
   Experimental with numbers; ray findings handed to the GPU round
-- [ ] CPU ROUND 4 (cpu4_, started ~21:30): the five game-code items + author patches (memfast 65-127 B, loopfetch site,
-  x87 block question); writes bench variants + a run plan
+- [x] CPU ROUND 4 MERGED c2cd9e90 (clean; NOT yet built on the merged tree: the preset audit holds the quiet lock):
+  Faster Game CPU Code sites 5 (radix sort for the render list sort's plain 4-byte values +0x17b9217, Thrones +0x182cfa7:
+  545 -> 45 us at 16384 values; 8 MB address space) and 6 (instance gather prefetch 0x182c990: cold 0.661 -> 0.340 ms),
+  both proven identical (tw_engine_code parts 9-10), on by default inside the existing row; not run in game. The agent's
+  heapfix test exes ran inside the preset audit's quiet window: its starts 1_atn and 3_norays were INVALID (rerun asked).
+  - [ ] Build both lines + tw_engine_code on the merged tree when the quiet lock is free (coordinator)
+  - [ ] Bench variants ready: tools/tw/bench/variants/cpu4_round4.json + cpu4_round4_plan.txt (P, sort, gather, x87keep,
+    loopanim, memfast128; ~2.1 h for 3 scenes): in the single end-of-batch bench. If sort or gather is worse than P beyond
+    the spread: take that site out of CPU_CODE_SITES
+  - [ ] Author packages (tools/tw/testbin/cpu4_heapfix/: a_memfast_65_128, b_loopfetch_animation, c_x87_truncation
+    question; plus for_author_pf): bench numbers into the NOTEs, then ATN sends
+  - [ ] Render-list headers 64 B apart (harness: 44-62 -> 16-18 ns a push at 4 threads): find the code that stores the
+    header-array pointer (thread count x 12 allocation); an ~8-site row if worth it. Owner: CPU ROUND 5
+  - DROPPED with proof: the 8x pose hold (0x49aad0 is simulation, not pose); next only with a data run (the bone-matrix
+    writer behind 0x17dab80), ATN DECIDES
 - [x] ATN 21:2x: Attila's number_of_threads set to 16 (ATN's preferences.script.txt 559f4696 -> 432ba846; fresh backup
   tools/tw/attila_prefs_backup_20261114_211544); CPU Set rule 0-15 stays; the parallel sort is dropped
 - [ ] ATN 21:2x: ONE Constantinople bench after ALL CPU and GPU rounds of this batch (not after each): every round's
