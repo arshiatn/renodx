@@ -354,6 +354,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   (page dumps vs page_a_1114final); then build, stamp, install.
 - [ ] ATN's Rome Remastered trace (67 % / 50 %): FrameTrace=1 added to its ReShade.ini (backup
   tools/tw/romeremastered/ini_backup_20261114_101134), multi_watch running ~75 min; remove the key after.
+- [ ] ATN ~10:2x: "fix the nsight issue ... then improve the performance in Attila": Nsight agent resumed: phase A a
+  replay-able helper mode (own fence / textures, no factory RR device, clusters off), capture + replay + shader swap;
+  phase B Attila perf variants behind switches (GPU Trace + quality scorer; defaults bit-identical; no GPU job while a
+  game runs). WH1 agent resumed: AO / SSR reader census from the existing traces (else a trace with gfx_ssao /
+  gfx_screen_space_reflections false set by us, DLSS Performance).
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
 ## LATE NIGHT ROUNDS (2026-11-13 23:10, two worktree agents, offline; installed state = NIGHT MERGES 22:59)
