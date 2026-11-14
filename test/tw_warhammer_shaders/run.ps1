@@ -2,7 +2,8 @@
 # the ambient patch and the SSR resolve replacement on WARP (tests.cpp). screen_space_shadows.hpp's Patch and PatchAmbient
 # are copied out of this tree into the build folder's ambient_patch.h (the add-on's header needs ReShade's), and out of
 # -Before (the commit before Warhammer's AMBIENT_AFTER_HARMONICS_Z) for the other games' bytes. Holds tools/tw's GPU job
-# lock while it runs when -Lock names it.
+# lock while it runs when -Lock names it: created only when it doesn't exist (CreateNew), kept only if it still holds this
+# run's line 3 s later (else waits again, the file left alone), deleted only while it is this run's.
 param([Parameter(Mandatory = $true)][string]$Dump, [ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64', [string]$Lock = '',
       [string]$Before = 'df1aff82')
 $ErrorActionPreference = 'Stop'
@@ -32,13 +33,23 @@ Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
 & 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 "/I$testBuild" "$testRoot\tests.cpp" /Fe:warhammer_shaders.exe /link /OPT:REF /OPT:ICF d3d11.lib dxgi.lib d3dcompiler.lib dxguid.lib
 if ($LASTEXITCODE -ne 0) { throw 'WH1 shader test compile failed' }
-if ($Lock -ne '') {
-  while (Test-Path -LiteralPath $Lock) { Start-Sleep -Seconds 30 }
-  Set-Content -LiteralPath $Lock -Value "tw_warhammer_shaders (WARP) $(Get-Date -Format s)"
+$mine = "tw_warhammer_shaders (WARP) $PID $(Get-Date -Format s)"
+$held = { try { [IO.File]::ReadAllText($Lock) -eq $mine } catch { $false } }
+while ($Lock -ne '') {
+  try {
+    $stream = [IO.File]::Open($Lock, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+    $bytes = [Text.Encoding]::ASCII.GetBytes($mine)
+    $stream.Write($bytes, 0, $bytes.Length)
+    $stream.Close()
+    Start-Sleep -Seconds 3
+    if (& $held) { break }
+  } catch {
+  }
+  Start-Sleep -Seconds 30
 }
 try {
   & (Join-Path $testBuild 'warhammer_shaders.exe') $repairRoot $Dump
   if ($LASTEXITCODE -ne 0) { throw 'WH1 shader test failed' }
 } finally {
-  if ($Lock -ne '') { Remove-Item -LiteralPath $Lock -Force -Confirm:$false }
+  if ($Lock -ne '' -and (& $held)) { Remove-Item -LiteralPath $Lock -Force -Confirm:$false }
 }
