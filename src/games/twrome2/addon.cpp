@@ -1721,6 +1721,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
           .hand_animation = unit_animation.scale,
           .unit_variety = unit_variety.scale,
           .footstep_effects = footstep_effects.scale,
+          // While Skip the Shadow Maps leaves the sun's map without casters, the soldiers' shadow distance 0, as Attila's:
+          // Rome II's UnitDistances (+0x4497e0) builds index 16 from entity_display_shadow_max_shadow_distance (10000 with
+          // entity_display_enable_imposter_shadows off), Attila's source and switch (code read, B).
+          .unit_shadows = (twattila::rt_scene::CastersSkipped() ? 0.f : 1.f),
       },
       &graphics_hooks_installed, graphics_status, twattila::graphics_hooks::Game::ROME2);
 }
