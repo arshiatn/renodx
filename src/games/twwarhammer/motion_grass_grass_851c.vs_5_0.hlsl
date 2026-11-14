@@ -55,6 +55,7 @@ cbuffer grass_PS : register(b2)
 #define cmp -
 
 
+#include "./shared.h"
 #include "./motion.hlsli"
 
 static float motion_time;
@@ -90,7 +91,8 @@ void GameMain(
   r0.xyz = -camera_position.xyz + r0.xyz;
   r0.x = dot(r0.xyz, r0.xyz);
   r0.x = sqrt(r0.x);
-  r0.x = saturate(g_inv_lod_distance * r0.x);
+  // Grass Height Distance (grass_height.hpp): the game's draw reads this constant x 1 / the row.
+  r0.x = saturate(r0.x * (g_inv_lod_distance * (1.f / SI.grass_height_distance)));
   r0.y = saturate(v4.w);
   r0.x = r0.y * -r0.x + 1;
   r0.y = 0.600000024 + v0.y;

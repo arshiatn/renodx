@@ -134,6 +134,7 @@ struct ShaderInjectData {
   float fog_strength;  // the battle fog's opacity (shaders/battlefog00) x this, 1 the game's
   float dof;           // depth of field's blur size (shaders/t03, t04, t06, t07: hdr_to_screen with depth of field) x this
   float some_indicators;  // the battle markers' colour in HDR (shaders/markersbattle00-02) x this, 1 the game's
+  float grass_height_distance;  // the grass' distance (g_inv_lod_distance) / this: grass_height.hpp, the grass motion and captures
 };
 
 #define SI shader_injection

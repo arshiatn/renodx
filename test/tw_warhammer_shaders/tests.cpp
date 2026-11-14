@@ -77,6 +77,16 @@
 //    a varied indicator texture (some texels below the alpha test), depth and distance: Unit/Building Indicator Brightness
 //    1 equals the game's bytes; 0.5 in HDR halves the colour and keeps the opacity; 0.5 with Rendering Mode SDR equals the
 //    game's. CONTROL: 0.5 in HDR differs from the game's colour.
+// 18. Grass Height Distance (src/games/twwarhammer/grass_height.hpp's Patch, copied out of the tree by run.ps1 as grass_patch;
+//    none of ATN's traces drew grass: the game's bytes from the dump): the 8 grass shaders patched (each read of grass_PS's
+//    c0.x, g_inv_lod_distance, through a mul by cb8[0].x), every one created on WARP. The 3 vertex shaders streamed out for
+//    64 points (their instances 30 - 40 m from the camera; every output from x), the 5 pixel shaders over 8 x 8 pixels (their
+//    inputs from a vertex shader made to their input signature, world positions 30 - 117 m from the camera; every target
+//    cleared to 1 first; the two MSAA ones, alpha to coverage, into 4x targets and a 4x depth buffer read sample by sample):
+//    cb8 1 bit-identical to the game's with grass_PS c0.x 0.01; cb8 0.5 bit-identical to the game's with c0.x 0.005.
+//    CONTROL: cb8 0.5 against the game's at 0.01 differs in each. The rays' grass captures and Object Motion's grass (the
+//    build's embed/rt_capture_grass_*, motion_grass_grass_*): Grass Height Distance 2 equals 1 with c0.x 0.005; CONTROL 2
+//    against 1 differs.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -90,6 +100,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <regex>
@@ -859,10 +870,13 @@ static std::vector<float> StreamOut(std::span<const uint8_t> game, std::span<con
   ComPtr<ID3D11InputLayout> input_layout;
   ComPtr<ID3D11VertexShader> vertex_shader;
   ComPtr<ID3D11GeometryShader> stream;
-  if (FAILED(device->CreateInputLayout(layout.data(), static_cast<UINT>(layout.size()), game.data(), game.size(), input_layout.GetAddressOf()))
-      || FAILED(device->CreateVertexShader(code.data(), code.size(), nullptr, vertex_shader.GetAddressOf()))
-      || FAILED(device->CreateGeometryShaderWithStreamOutput(code.data(), code.size(), entries.data(), static_cast<UINT>(entries.size()), &stride, 1,
-                                                             D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf()))) {
+  const HRESULT layout_made = device->CreateInputLayout(layout.data(), static_cast<UINT>(layout.size()), game.data(), game.size(), input_layout.GetAddressOf());
+  const HRESULT vertex_made = device->CreateVertexShader(code.data(), code.size(), nullptr, vertex_shader.GetAddressOf());
+  const HRESULT stream_made = device->CreateGeometryShaderWithStreamOutput(code.data(), code.size(), entries.data(), static_cast<UINT>(entries.size()), &stride, 1,
+                                                                           D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf());
+  if (FAILED(layout_made) || FAILED(vertex_made) || FAILED(stream_made)) {
+    std::printf("  stream out: input layout %08lX, vertex shader %08lX, stream output %08lX\n", static_cast<unsigned long>(layout_made),
+                static_cast<unsigned long>(vertex_made), static_cast<unsigned long>(stream_made));
     return {};
   }
   const D3D11_BUFFER_DESC vertex_desc = {.ByteWidth = static_cast<UINT>(vertices.size() * 4), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_VERTEX_BUFFER};
@@ -2043,6 +2057,345 @@ static void TestFog(const std::string& root, const std::string& dump) {
               lit_same, shade_misses, light_misses, shade_control);
 }
 
+// Every constant of `game`'s buffers (by its reflection) at slots by name: 0.25 + 0.01 x (its float's index mod 50), then the
+// camera 30 m below the grass (the pixel shaders' facing term: their surface's normal points down), 4 samples, `grass_lod` for
+// g_inv_lod_distance. One buffer per slot (slot 8: `scale`).
+static std::vector<ComPtr<ID3D11Buffer>> GrassConstants(std::span<const uint8_t> game, float grass_lod, float scale) {
+  ComPtr<ID3D11ShaderReflection> reflection;
+  std::vector<ComPtr<ID3D11Buffer>> slots(9);
+  if (FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) return slots;
+  const std::vector<NamedConstant> named = {{"camera_position", 0, {0.f, -30.f, 0.f}},
+                                            {"g_inv_lod_distance", 0, {grass_lod}},
+                                            {"g_num_of_samples", 0, {std::bit_cast<float>(4)}}};
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  for (UINT index = 0; index < desc.ConstantBuffers; ++index) {
+    auto* buffer = reflection->GetConstantBufferByIndex(index);
+    D3D11_SHADER_BUFFER_DESC buffer_desc = {};
+    buffer->GetDesc(&buffer_desc);
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDescByName(buffer_desc.Name, &bind);
+    std::vector<float> data(((buffer_desc.Size + 15) & ~15u) / 4);
+    for (size_t value = 0; value < data.size(); ++value) data[value] = 0.25f + (0.01f * static_cast<float>(value % 50));
+    for (UINT variable = 0; variable < buffer_desc.Variables; ++variable) {
+      D3D11_SHADER_VARIABLE_DESC variable_desc = {};
+      buffer->GetVariableByIndex(variable)->GetDesc(&variable_desc);
+      for (const auto& constant : named) {
+        if (std::strcmp(constant.name, variable_desc.Name) == 0) {
+          std::ranges::copy(constant.values, data.begin() + static_cast<ptrdiff_t>(variable_desc.StartOffset / 4));
+        }
+      }
+    }
+    if (bind.BindPoint < 8) slots[bind.BindPoint] = Constants(data.data(), static_cast<UINT>(data.size() * 4));
+  }
+  const std::array<float, 4> cb8 = {scale, 0.f, 0.f, 0.f};
+  slots[8] = Constants(cb8.data(), 16);
+  return slots;
+}
+
+// An 8 x 8 4x multisampled texture's samples (its view as `format`: R32G32B32A32 float or uint, or R32 float for a depth
+// buffer), sample by sample: pixel (x, y)'s sample s at (4x + s, y) of a 32 x 8 copy, the bits kept.
+static std::vector<Float4> ReadSamples(ID3D11Texture2D* texture, DXGI_FORMAT format) {
+  const D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = format, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DMS};
+  ComPtr<ID3D11ShaderResourceView> view;
+  if (FAILED(device->CreateShaderResourceView(texture, &view_desc, view.GetAddressOf()))) return {};
+  const char* type = (format == DXGI_FORMAT_R32_FLOAT) ? "float" : (format == DXGI_FORMAT_R32G32B32A32_FLOAT) ? "float4" : "uint4";
+  const std::string source = std::format("Texture2DMS<{}> t : register(t0); float4 main(float4 p : SV_Position) : SV_Target {{"
+                                         " const uint2 q = uint2(p.xy); return asfloat(asuint(float4(0, 0, 0, 0)) | asuint(t.Load(int2(q.x / 4, q.y), q.x % 4))); }}",
+                                         type);
+  const auto code = CompileText(source, "samples", "main", "ps_5_0");
+  ComPtr<ID3D11PixelShader> shader;
+  if (!code || FAILED(device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, shader.GetAddressOf()))) return {};
+  const auto copy = Texture(32, 8, nullptr, D3D11_BIND_RENDER_TARGET);
+  ComPtr<ID3D11RenderTargetView> rtv;
+  device->CreateRenderTargetView(copy.Get(), nullptr, rtv.GetAddressOf());
+  context->VSSetShader(full_screen.Get(), nullptr, 0);
+  context->PSSetShader(shader.Get(), nullptr, 0);
+  context->PSSetShaderResources(0, 1, view.GetAddressOf());
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  const D3D11_VIEWPORT viewport = {.Width = 32.f, .Height = 8.f, .MaxDepth = 1.f};
+  context->RSSetViewports(1, &viewport);
+  context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+  context->Draw(3, 0);
+  context->ClearState();
+  return Read(copy.Get());
+}
+
+// A grass pixel shader's bytes (`code`) over 8 x 8 pixels: its inputs from a vertex shader made to `game`'s input signature
+// (in its order: SV_Position the pixel, the rest uv x 80 m, 0.5 + 0.1 x its index, uv x 80 m, 0.8: world positions 30 - 117 m
+// from the camera); every 2D texture slot an 8 x 8 texture (red 0: the clip variants' fire-map test keeps every pixel;
+// alpha 0.9 - 1), its samplers linear; each SV_Target a
+// 32-bit target cleared to 1. The targets in register order, each pixel's four values. Empty: the vertex shader's outputs
+// don't land on the pixel shader's input registers.
+static std::vector<Float4> DrawGrassPixel(std::span<const uint8_t> code, std::span<const uint8_t> game, std::span<const ComPtr<ID3D11Buffer>> constants) {
+  ComPtr<ID3D11ShaderReflection> reflection;
+  if (FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) return {};
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  std::string fields;
+  std::string body;
+  for (UINT index = 0; index < desc.InputParameters; ++index) {
+    D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+    reflection->GetInputParameterDesc(index, &parameter);
+    if (parameter.SystemValueType != D3D_NAME_UNDEFINED && parameter.SystemValueType != D3D_NAME_POSITION) continue;
+    const int width = std::popcount(static_cast<unsigned>(parameter.Mask));
+    const char* type = (parameter.ComponentType == D3D_REGISTER_COMPONENT_UINT32) ? "uint" : "float";
+    fields += std::format("{}{} f{} : {}{};", type, width == 1 ? std::string() : std::to_string(width), index, parameter.SemanticName, parameter.SemanticIndex);
+    const std::string value = (parameter.SystemValueType == D3D_NAME_POSITION)
+                                  ? std::string("float4(uv * float2(2, -2) + float2(-1, 1), 0.5, 1)")
+                                  : std::format("float4(uv.x * 80, 0.5 + 0.1 * {0}, uv.y * 80, 0.8)", index);
+    const char* swizzle = (width == 1) ? ".x" : (width == 2) ? ".xy" : (width == 3) ? ".xyz" : "";
+    body += std::format(" o.f{} = ({}){}{};", index, std::string(type) + (width == 1 ? std::string() : std::to_string(width)), value, swizzle);
+  }
+  const std::string source = "struct Out {" + fields + "}; Out main(uint id : SV_VertexID) { const float2 uv = float2((id << 1) & 2, id & 2); Out o;" + body +
+                             " return o; }";
+  const auto vertex_code = CompileText(source, "grass inputs", "main", "vs_5_0");
+  if (!vertex_code) return {};
+  // The made vertex shader's outputs at the pixel shader's registers and masks.
+  ComPtr<ID3D11ShaderReflection> vertex_reflection;
+  D3DReflect(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(vertex_reflection.GetAddressOf()));
+  for (UINT index = 0; index < desc.InputParameters; ++index) {
+    D3D11_SIGNATURE_PARAMETER_DESC wanted = {};
+    reflection->GetInputParameterDesc(index, &wanted);
+    if (wanted.SystemValueType != D3D_NAME_UNDEFINED && wanted.SystemValueType != D3D_NAME_POSITION) continue;
+    bool found = false;
+    D3D11_SHADER_DESC vertex_desc = {};
+    vertex_reflection->GetDesc(&vertex_desc);
+    for (UINT output = 0; output < vertex_desc.OutputParameters; ++output) {
+      D3D11_SIGNATURE_PARAMETER_DESC made = {};
+      vertex_reflection->GetOutputParameterDesc(output, &made);
+      found = found || (std::strcmp(made.SemanticName, wanted.SemanticName) == 0 && made.SemanticIndex == wanted.SemanticIndex && made.Register == wanted.Register &&
+                        made.Mask == wanted.Mask);
+    }
+    if (!found) {
+      std::printf("  grass inputs: the made vertex shader has no %s%u at v%u (mask %X)\n", wanted.SemanticName, wanted.SemanticIndex, wanted.Register,
+                  wanted.Mask);
+      return {};
+    }
+  }
+  ComPtr<ID3D11VertexShader> vertex;
+  ComPtr<ID3D11PixelShader> pixel;
+  if (FAILED(device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex.GetAddressOf()))
+      || FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, pixel.GetAddressOf()))) {
+    return {};
+  }
+  std::vector<Float4> texels;
+  for (UINT texel = 0; texel < 64; ++texel) {
+    const float step = static_cast<float>((texel * 37) % 64) / 63.f;
+    texels.push_back({0.f, 0.7f - (0.4f * step), 0.3f + (0.5f * step), 0.9f + (0.1f * step)});
+  }
+  const auto view = View(8, 8, texels);
+  ComPtr<ID3D11SamplerState> sampler;
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_WRAP, .AddressW = D3D11_TEXTURE_ADDRESS_WRAP, .MaxLOD = D3D11_FLOAT32_MAX};
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  for (UINT index = 0; index < desc.BoundResources; ++index) {
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDesc(index, &bind);
+    if (bind.Type == D3D_SIT_SAMPLER) context->PSSetSamplers(bind.BindPoint, 1, sampler.GetAddressOf());
+    if (bind.Type == D3D_SIT_TEXTURE && bind.Dimension == D3D_SRV_DIMENSION_TEXTURE2D) context->PSSetShaderResources(bind.BindPoint, 1, view.GetAddressOf());
+  }
+  std::vector<ID3D11Buffer*> buffers;
+  for (const auto& buffer : constants) buffers.push_back(buffer.Get());
+  context->PSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
+  // A shader that writes SV_Coverage (the MSAA variants: alpha to coverage by g_num_of_samples, 4 here) draws into 4x targets
+  // and a 4x depth buffer (its covered samples at 0.5), each read sample by sample.
+  bool coverage = false;
+  for (UINT index = 0; index < desc.OutputParameters; ++index) {
+    D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+    reflection->GetOutputParameterDesc(index, &parameter);
+    coverage = coverage || parameter.SystemValueType == D3D_NAME_COVERAGE;
+  }
+  const UINT samples = coverage ? 4 : 1;
+  std::vector<ComPtr<ID3D11Texture2D>> targets;
+  std::vector<ComPtr<ID3D11RenderTargetView>> views;
+  std::vector<DXGI_FORMAT> formats;
+  for (UINT index = 0; index < desc.OutputParameters; ++index) {
+    D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+    reflection->GetOutputParameterDesc(index, &parameter);
+    if (parameter.SystemValueType != D3D_NAME_TARGET) continue;
+    const DXGI_FORMAT format = (parameter.ComponentType == D3D_REGISTER_COMPONENT_UINT32)   ? DXGI_FORMAT_R32G32B32A32_UINT
+                               : (parameter.ComponentType == D3D_REGISTER_COMPONENT_SINT32) ? DXGI_FORMAT_R32G32B32A32_SINT
+                                                                                            : DXGI_FORMAT_R32G32B32A32_FLOAT;
+    const D3D11_TEXTURE2D_DESC target_desc = {.Width = 8, .Height = 8, .MipLevels = 1, .ArraySize = 1, .Format = format, .SampleDesc = {.Count = samples},
+                                              .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE};
+    if (targets.size() <= parameter.Register) {
+      targets.resize(parameter.Register + 1);
+      views.resize(parameter.Register + 1);
+      formats.resize(parameter.Register + 1);
+    }
+    formats[parameter.Register] = format;
+    device->CreateTexture2D(&target_desc, nullptr, targets[parameter.Register].GetAddressOf());
+    device->CreateRenderTargetView(targets[parameter.Register].Get(), nullptr, views[parameter.Register].GetAddressOf());
+    const std::array<float, 4> one = {1.f, 1.f, 1.f, 1.f};
+    if (views[parameter.Register]) context->ClearRenderTargetView(views[parameter.Register].Get(), one.data());
+  }
+  ComPtr<ID3D11Texture2D> depth;
+  ComPtr<ID3D11DepthStencilView> depth_view;
+  if (coverage) {
+    const D3D11_TEXTURE2D_DESC depth_desc = {.Width = 8, .Height = 8, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_TYPELESS,
+                                             .SampleDesc = {.Count = samples}, .Usage = D3D11_USAGE_DEFAULT,
+                                             .BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE};
+    device->CreateTexture2D(&depth_desc, nullptr, depth.GetAddressOf());
+    const D3D11_DEPTH_STENCIL_VIEW_DESC dsv_desc = {.Format = DXGI_FORMAT_D32_FLOAT, .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS};
+    if (depth) device->CreateDepthStencilView(depth.Get(), &dsv_desc, depth_view.GetAddressOf());
+    if (!depth_view) return {};
+    context->ClearDepthStencilView(depth_view.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+  }
+  std::vector<ID3D11RenderTargetView*> bound;
+  for (const auto& target_view : views) bound.push_back(target_view.Get());
+  context->VSSetShader(vertex.Get(), nullptr, 0);
+  context->PSSetShader(pixel.Get(), nullptr, 0);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  const D3D11_VIEWPORT viewport = {.Width = 8.f, .Height = 8.f, .MaxDepth = 1.f};
+  context->RSSetViewports(1, &viewport);
+  context->OMSetRenderTargets(static_cast<UINT>(bound.size()), bound.data(), depth_view.Get());
+  context->Draw(3, 0);
+  context->ClearState();
+  std::vector<Float4> values;
+  for (size_t index = 0; index < targets.size(); ++index) {
+    if (!targets[index]) continue;
+    const auto read = coverage ? ReadSamples(targets[index].Get(), formats[index]) : Read(targets[index].Get());
+    values.insert(values.end(), read.begin(), read.end());
+  }
+  if (coverage) {
+    const auto read = ReadSamples(depth.Get(), DXGI_FORMAT_R32_FLOAT);
+    values.insert(values.end(), read.begin(), read.end());
+  }
+  return values;
+}
+
+// How many of two runs' values differ bit for bit (all of them when their counts differ).
+static size_t Apart(const std::vector<float>& left, const std::vector<float>& right) {
+  if (left.size() != right.size()) return std::max(left.size(), right.size());
+  size_t apart = 0;
+  for (size_t index = 0; index < left.size(); ++index) apart += (std::memcmp(&left[index], &right[index], 4) == 0) ? 0 : 1;
+  return apart;
+}
+
+static std::vector<float> Flat(const std::vector<Float4>& texels) {
+  std::vector<float> values;
+  for (const auto& texel : texels) values.insert(values.end(), texel.begin(), texel.end());
+  return values;
+}
+
+static void TestGrassHeight(const std::string& root, const std::string& dump) {
+  int created = 0;
+  int vertex_same = 0;
+  int pixel_same = 0;
+  int controls = 0;
+  for (const auto& shader : grass_patch::SHADERS) {
+    const auto game = GameBytes(dump, shader.hash);
+    const auto patched = grass_patch::Patch(game, shader.slot);
+    const bool vertex = std::ranges::find(grass_patch::VERTEX_SHADERS, shader.hash) != grass_patch::VERTEX_SHADERS.end();
+    ComPtr<ID3D11VertexShader> made_vertex;
+    ComPtr<ID3D11PixelShader> made_pixel;
+    const bool creates = !patched.empty() && (vertex ? SUCCEEDED(device->CreateVertexShader(patched.data(), patched.size(), nullptr, made_vertex.GetAddressOf()))
+                                                      : SUCCEEDED(device->CreatePixelShader(patched.data(), patched.size(), nullptr, made_pixel.GetAddressOf())));
+    created += creates ? 1 : 0;
+    CHECK(creates, "grass %08X: patched and created", shader.hash);
+    if (!creates) continue;
+    std::array<std::vector<float>, 4> runs;  // the game's at 0.01, ours cb8 1, the game's at 0.005, ours cb8 0.5
+    const std::array<std::pair<float, float>, 4> settings = {{{0.01f, 1.f}, {0.01f, 1.f}, {0.005f, 1.f}, {0.01f, 0.5f}}};
+    for (size_t run = 0; run < 4; ++run) {
+      const auto constants = GrassConstants(game, settings[run].first, settings[run].second);
+      const std::span<const uint8_t> code = (run == 1 || run == 3) ? std::span<const uint8_t>(patched) : std::span<const uint8_t>(game);
+      if (vertex) {
+        ComPtr<ID3D11ShaderReflection> reflection;
+        D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf()));
+        D3D11_SHADER_DESC desc = {};
+        reflection->GetDesc(&desc);
+        std::vector<Streamed> outputs;
+        UINT input_floats = 0;
+        for (UINT index = 0; index < desc.OutputParameters; ++index) {
+          D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+          reflection->GetOutputParameterDesc(index, &parameter);
+          if ((parameter.Mask & 1) != 0) outputs.push_back({parameter.SemanticName, parameter.SemanticIndex, static_cast<BYTE>(std::bit_width(static_cast<UINT>(parameter.Mask)))});
+        }
+        for (UINT index = 0; index < desc.InputParameters; ++index) {
+          D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+          reflection->GetInputParameterDesc(index, &parameter);
+          input_floats += static_cast<UINT>(std::bit_width(static_cast<UINT>(parameter.Mask)));
+        }
+        std::vector<float> vertices;
+        for (UINT point = 0; point < 64; ++point) {
+          for (UINT value = 0; value < input_floats; ++value) vertices.push_back(0.1f + (0.37f * static_cast<float>((point * 7 + value * 3) % 25)));
+        }
+        std::vector<ID3D11Buffer*> buffers;
+        for (const auto& buffer : constants) buffers.push_back(buffer.Get());
+        runs[run] = StreamOut(game, code, outputs, vertices, buffers);
+      } else {
+        runs[run] = Flat(DrawGrassPixel(code, game, constants));
+      }
+    }
+    const size_t at_one = Apart(runs[0], runs[1]);
+    const size_t at_half = Apart(runs[2], runs[3]);
+    const size_t control = Apart(runs[0], runs[3]);
+    const bool same = !runs[0].empty() && at_one == 0 && at_half == 0;
+    (vertex ? vertex_same : pixel_same) += same ? 1 : 0;
+    controls += control > 0 ? 1 : 0;
+    CHECK(same && control > 0, "grass %08X: %zu values, cb8 1 %zu apart, cb8 0.5 vs c0.x 0.005 %zu apart, CONTROL %zu", shader.hash, runs[0].size(), at_one,
+          at_half, control);
+    std::printf("  grass %08X (%s): %zu values; cb8 1 vs the game's %zu apart; cb8 0.5 vs the game's at 0.005 %zu apart; CONTROL vs 0.01 %zu differ\n",
+                shader.hash, vertex ? "vs" : "ps", runs[0].size(), at_one, at_half, control);
+  }
+  // The rays' captures and Object Motion's grass: our shaders' own division (SI.grass_height_distance).
+  int ours_same = 0;
+  int ours_controls = 0;
+  const std::array<std::pair<const char*, uint32_t>, 4> ours = {
+      {{"rt_capture_grass_1cf6", 0x1CF62070}, {"rt_capture_grass_851c", 0x851C6D2A}, {"motion_grass_grass_1cf6", 0x1CF62070}, {"motion_grass_grass_851c", 0x851C6D2A}}};
+  for (const auto& [name, hash] : ours) {
+    const auto game = GameBytes(dump, hash);
+    const auto code = Bytes(root + "/build/twwarhammer.include/embed/" + name + ".cso");
+    ComPtr<ID3D11ShaderReflection> reflection;
+    D3DReflect(code.data(), code.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf()));
+    D3D11_SHADER_DESC desc = {};
+    reflection->GetDesc(&desc);
+    std::vector<Streamed> outputs;
+    for (UINT index = 0; index < desc.OutputParameters; ++index) {
+      D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+      reflection->GetOutputParameterDesc(index, &parameter);
+      if ((parameter.Mask & 1) != 0) outputs.push_back({parameter.SemanticName, parameter.SemanticIndex, static_cast<BYTE>(std::bit_width(static_cast<UINT>(parameter.Mask)))});
+    }
+    ComPtr<ID3D11ShaderReflection> game_reflection;
+    D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(game_reflection.GetAddressOf()));
+    D3D11_SHADER_DESC game_desc = {};
+    game_reflection->GetDesc(&game_desc);
+    UINT input_floats = 0;
+    for (UINT index = 0; index < game_desc.InputParameters; ++index) {
+      D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+      game_reflection->GetInputParameterDesc(index, &parameter);
+      input_floats += static_cast<UINT>(std::bit_width(static_cast<UINT>(parameter.Mask)));
+    }
+    std::vector<float> vertices;
+    for (UINT point = 0; point < 64; ++point) {
+      for (UINT value = 0; value < input_floats; ++value) vertices.push_back(0.1f + (0.37f * static_cast<float>((point * 7 + value * 3) % 25)));
+    }
+    std::array<std::vector<float>, 3> runs;  // row 1 at 0.01, row 2 at 0.01, row 1 at 0.005
+    const std::array<std::pair<float, float>, 3> settings = {{{1.f, 0.01f}, {2.f, 0.01f}, {1.f, 0.005f}}};
+    for (size_t run = 0; run < 3; ++run) {
+      auto constants = GrassConstants(game, settings[run].second, 1.f);
+      ShaderInjectData injection = {};
+      injection.grass_height_distance = settings[run].first;
+      std::vector<uint8_t> injection_bytes((sizeof(injection) + 15) & ~size_t{15});
+      std::memcpy(injection_bytes.data(), &injection, sizeof(injection));
+      constants.resize(14);
+      constants[13] = Constants(injection_bytes.data(), static_cast<UINT>(injection_bytes.size()));
+      std::vector<ID3D11Buffer*> buffers;
+      for (const auto& buffer : constants) buffers.push_back(buffer.Get());
+      runs[run] = StreamOut(game, code, outputs, vertices, buffers);
+    }
+    const size_t apart = Apart(runs[1], runs[2]);
+    const size_t control = Apart(runs[0], runs[1]);
+    ours_same += (!runs[0].empty() && apart == 0) ? 1 : 0;
+    ours_controls += control > 0 ? 1 : 0;
+    CHECK(!runs[0].empty() && apart == 0 && control > 0, "%s: row 2 vs c0.x 0.005 %zu apart, CONTROL %zu", name, apart, control);
+  }
+  std::printf("grass height: %d of 8 patched and created; the game's bits at cb8 1 and at 0.5 = c0.x halved: %d of 3 vertex shaders, %d of 5 pixel "
+              "shaders, CONTROL %d of 8 differ; captures and motion: row 2 = c0.x halved %d of 4, CONTROL %d of 4\n",
+              created, vertex_same, pixel_same, controls, ours_same, ours_controls);
+}
+
 // What a battle marker's draw binds besides the game's constants (part 17).
 struct MarkerScene {
   float brightness = 1.f;  // SI.some_indicators
@@ -2209,6 +2562,7 @@ int main(int argc, char** argv) {
   TestAoAlone(games, argv[2]);
   TestFog(argv[1], argv[2]);
   TestMarkers(argv[1], argv[2]);
+  TestGrassHeight(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

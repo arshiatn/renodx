@@ -40,6 +40,7 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/water_effects.hpp"
 #include "../twattila/test_hooks.hpp"
+#include "./grass_height.hpp"
 #include "./more_tests.h"
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
@@ -1855,6 +1856,7 @@ void ConfigureAddon() {
       {"GraphicsShadowDistance", 1.f},
       {"GraphicsSmallShadows", 1.f},
       {"GraphicsUnitShadows", 1.f},
+      {"GrassHeightDistance", 1.f},
   };
   for (const auto& test : engine_tests) {
     // Its option's start: the game's (1x, Game's or -1).
@@ -1979,6 +1981,20 @@ void ConfigureAddon() {
                "value the game reads (unsure ones).",
       .section = engine_tests.empty() ? std::string("More Tests") : engine_tests.front().section,
       .tint = 0xFFD23C,
+  });
+  // Attila's row: the grass shaders' own distance (g_inv_lod_distance, 100 m) / the row (grass_height.hpp). Experimental:
+  // none of ATN's 36 traces drew grass (level B: test/tw_warhammer_shaders part 18 on the game's bytes).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "GrassHeightDistance",
+      .binding = &shader_injection.grass_height_distance,
+      .default_value = 1.f,
+      .label = "Grass Height Distance (Experimental)",
+      .section = twattila::engine_tests::GRASS,
+      .tooltip = "Grass blades shrink and fade into the ground with distance, gone at 100 m (the game's).\n"
+                 "Higher: full grass farther away.",
+      .min = 0.25f,
+      .max = 10.f,
+      .format = "%.2fx",
   });
   twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
 
@@ -2302,6 +2318,9 @@ bool AttachAddon() {
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  // Grass Height Distance: the grass shaders' distance read x cb8, bound at their draws (after view_share's patches).
+  twwarhammer::grass_height::Install(&shader_injection.grass_height_distance);
+  reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer::grass_height::OnDestroyDevice);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
