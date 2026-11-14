@@ -669,7 +669,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   stays in our add-on (and he gets a note so nothing collides). Owner of the author-side patches: CPU ROUND 4 (memfast
   65-127 B, his disabled loopfetch prefetch site in the animation pack loop, the x87 block over his bytes), each with tests
   and a bench A/B against P.
-  - [ ] When the 16-thread batch ends: TELL ATN the verdict right away; if 16 threads is slower than today's 8-core
+  - [x] 16-CPU BATCH DONE 21:03 (bench tools/tw/bench/constantinople_bench.ps1, every start valid, files restored 0
+    mismatches): CPU set 0-15 + number_of_threads 16 WINS: CPU-bound t16 33.66-34.23 ms vs t8 34.65-34.99 (spread 0.34);
+    maxed CPU-bound 39.69-39.90 vs this morning's 8-core 42.0 (23.7 -> 24.8 fps); ATN's settings unchanged (GPU / helper
+    limited, ~31 fps). Parallel sort B2 / B4 / B8 slower than P everywhere (1.3-2.3 ms CPU-bound): P stays the only
+    author proposal (for_author_pf unchanged). The bench is finished and reusable (variant JSONs in tools/tw/bench/variants).
+  - [ ] ATN: keep the 16-CPU rule; set number_of_threads 16 in preferences.script.txt (ATN or coordinator with a fresh
+    backup, ATN's choice)
+  - Was: When the 16-thread batch ends: TELL ATN the verdict right away; if 16 threads is slower than today's 8-core
     numbers, ATN switches the rule back to the 8 V-cache cores (one thread a core)
   - [ ] After everything: one A/B of ATN's CPU set rule against an affinity rule of the same 16 CPUs (ATN switches the
     rule; we measure). Owner: the bench, ATN's OK at the time
