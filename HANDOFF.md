@@ -649,8 +649,13 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   other mods unchanged. Replay oracle 832 runs / 2.05 M commands 0 differences; tw_draw_dispatch x86 + amd64 0 differences
   (control fails); 14 TW suite runs PASS; both build lines + Ryse / Tales / Expeditions / R.U.S.E. build; page dumps date
   only. Saves 0.43 ms (cpl1) / 0.54 ms (cpl2) of dispatch a frame in the replay.
-  - [ ] FABLE 5.2 HIGH review of this change alone (ATN's request) started; findings -> tools/tw/draw_redesign/
-    fable_review.md; then one fix agent; then merge
+  - [x] FABLE 5.2 HIGH review DONE (tools/tw/draw_redesign/fable_review.md; read-only, nothing built: quiet lock): no
+    reachable crash / wrong picture / leak; callback set and order match RunCallbacks everywhere walked. Findings:
+    (1) latent crash: Unregister after a module's detach invisible to other modules' caches (not reachable with ReShade's
+    unload order); (2) theoretical race: a gate's pipeline answer cached before view_share saw the pipeline; (3) perf: the
+    epoch moves on every state-object init / destroy; (4) rt_scene::OnAnyDraw ungated, a log line when a module isn't
+    opted in; (5) style + a skill row. Suite gaps: null hook, two modules, threads, epoch inside a frame.
+  - [ ] drw_ agent resumed to fix 1-5 + the suite gaps (one commit each), merge atn-mods, rerun every proof; then merge
   - [ ] rt_scene::OnAnyDraw (Rome Remastered, Shogun 2 RT) left ungated: gate rt_scene::internal::active, with the fixes
   - [ ] render_pass_behavior / shader_injection_behavior suites need ReShade 6.7.3's DLL (a download): ATN DECIDES
   - [ ] The agent started 6 amd64 replay builds early while quiet_run.lock existed (the hfp_ A/B window): every hfp_ start
