@@ -1628,7 +1628,7 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
 
 // The shadow map size, before the game builds its shadows.
 void OnInitDevice(reshade::api::device*) {
-  twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size));
+  twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size), false);
 }
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
@@ -1673,7 +1673,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::THRONES);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
-  twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size));
+  twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), false);
   twattila::graphics_hooks::Update(
       {
           .unit_detail = {unit_detail[0].scale, unit_detail[1].scale, unit_detail[2].scale, unit_detail[3].scale},
