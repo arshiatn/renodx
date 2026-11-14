@@ -54,6 +54,7 @@
 #include "../twpharaohdynasties/rt_outside_view_card_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_world_gs.h"
+#include "../twwarhammer2/rt_outside_view_world_uv_gs.h"
 #include "./rt_outside_view_leaf_gs.h"
 #include "./rt_particle_lights_gs.h"
 #include "./rt_particle_quads_gs.h"
@@ -1471,7 +1472,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
     {.pixel_shader = 0x8A83B40C},  // rigidstandard gbuffer_alpha_test
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 31> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1509,6 +1510,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 31> SCENE_SHADERS = {{
     // troy_signatures.txt, troy_output_writes_casters.txt). Every frame as drawn; far cards cut out by 9004F948's t2, leaves by
     // 3372DE0B's t0 (t_diffuse_map). Troy's leaves write no TEXCOORD4: their variant without it (RT_NO_FADE, our own header).
     {.hash = 0xA295269F, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_leaf},
+    // The placed grass in the shadow pass (rigidgrass vs40_shadow_grass 62E0F935; its main pass 0AF83680 held; in no trace,
+    // level B): TEXCOORD0 the world its SV_Position is made from (o1 = r0), TEXCOORD1 the UV (o2 = v1.xy) of 6B93F8A7's t0
+    // test: Warhammer II's RT_WORLD_UV (its input a prefix of these outputs). That test also weighs the alpha by the blade's
+    // angle to the light and a dissolve map; the rays cut at the alpha alone, as the main pass's grass.
+    {.hash = 0x62E0F935, .dynamic = true, .foliage = true, .grass = true, .cascade_keep = __rt_outside_view_world_uv},
     {.hash = 0xAF7C4636, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0xC8DA195D, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     // The campaign's terrain tiles in the shadow pass (rigidterrain vs41_shadow_new 0D70D820: ATN's campaign traces, 10 of
