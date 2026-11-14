@@ -1014,15 +1014,17 @@ inline void OnDestroyInputLayout(reshade::api::device*, reshade::api::pipeline p
 // Where a light draw's instances keep each light: the POSITION semantic indices of its colour (16 bytes) and of its world
 // position with its reach after it (16 bytes). `shadows_only`: LocalLight's (Warhammer II's spot lights: POSITION4, then
 // POSITION1 with POSITION2.x its range). `stream_shader`: lights the vertex shader makes from a particle list, not from
-// instance buffers (Troy's fires, particle lights 643FC156): a geometry shader taking that vertex shader's outputs, one
-// point an instance, and streaming out each light's record (STREAMED_LIGHT_BYTES: position and reach, then colour; reach 0
-// where the instance is not drawn); for the rays alone (the screen-space torch shadows take instance buffers). Empty: the
-// instances' semantics.
+// instance buffers (Troy's and Pharaoh's fires, particle lights 643FC156 / 5AD46115): a geometry shader taking that vertex
+// shader's outputs, one point an instance, and streaming out each light's record (STREAMED_LIGHT_BYTES: position and
+// reach, then colour; reach 0 where the instance is not drawn); for the rays alone (the screen-space torch shadows take
+// instance buffers). Empty: the instances' semantics. `enabled`: a row of the family's own (its binding; Pharaoh's Fire
+// Shadows from Particle Lights): its draws left alone while it is 0. Null: Torch and Fire Shadows' rows alone.
 struct LightInstances {
   uint32_t colour = 1;
   uint32_t position = 2;
   bool shadows_only = false;
   std::span<const uint8_t> stream_shader = {};
+  const float* enabled = nullptr;
 };
 // Attila's and the other games' point lights.
 inline constexpr LightInstances POINT_LIGHTS = {};
@@ -1031,6 +1033,8 @@ inline constexpr LightInstances POINT_LIGHTS = {};
 // traces; this frame's traced lights' bits and positions bound (put back after). Without rays tracing them, the
 // screen-space shadows' Torch and Fire Shadows' (screen_space_lights.hpp) where on.
 constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  const auto& light_instances = command.template GetCallbackData<LightInstances>();
+  if (light_instances.enabled != nullptr && *light_instances.enabled == 0.f) return {};
   bool traced = internal::active.load(std::memory_order_relaxed);
   uint64_t frame = 0;
   if (traced) {
@@ -1127,7 +1131,6 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
     copies.clear();
     readback.used[readback.current] = 0;
   }
-  const auto& light_instances = command.template GetCallbackData<LightInstances>();
   // Lights a particle list makes (LightInstances::stream_shader): the draw again as points, one vertex an instance, its
   // vertex shader's outputs streamed out as light records into the ring, read as instances are; the game's geometry and pixel
   // stages, stream targets and topology put back.

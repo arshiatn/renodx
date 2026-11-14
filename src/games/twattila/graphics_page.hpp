@@ -217,6 +217,10 @@ struct Bindings {
   float* rays_grass_counts_later = nullptr;  // rt_core.hpp Settings::indirect_counts_later; null: no such row
   float* water_motion = nullptr;      // The fill's camera motion at the water's own depth; null: no such row
   float* scale_fix_gi_shadow = nullptr;  // Warhammer III: its GI grid and shadow blur below 100%
+  // With path-traced Light Bounce (rt_core.hpp Settings::lights_in_bounce, light_ratio): torch and fire light, or their
+  // shadows, from the paths' samples; null: no such rows.
+  float* lights_in_bounce = nullptr;
+  float* light_ratio = nullptr;
   const Texts* texts = &ATTILA_TEXTS;
   std::span<const int> aa_methods = ALL_AA_METHODS;  // ascending
   // The status line under the anti-aliasing with any upscaler; null: the helper's, FSR's and XeSS's only.
@@ -842,11 +846,39 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto more_lights = [b, more_rays] { return more_rays() && b.rt->local_lights != 0.f; };
     page.Take({.match = "RayTracedSmokeQuality", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedPointLightShadows", .section = section, .shown = more_rays, .only_some_games = true});
+    page.Take({.match = "RayTracedParticleLightShadows", .section = section, .shown = more_lights, .only_some_games = true});
     page.Take({.match = "RayTracedLightSoftness", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedLightImportance", .section = section, .shown = more_lights, .label = "Importance-Sampled Torch Shadows (RIS)"});
     page.Take({.match = "RayTracedLightSteady", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedLightCount", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedLightRange", .section = section, .shown = more_lights});
+    if (b.lights_in_bounce != nullptr && b.light_ratio != nullptr) {
+      const auto more_path_lights = [b, more_lights] { return more_lights() && GiMethodOf(b) == GI_PATHS; };
+      page.Add(new Setting{
+          .key = "RayTracedLightsInBounce",
+          .binding = b.lights_in_bounce,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Torch and Fire Light from Path Tracing (Experimental)",
+          .section = section,
+          .tooltip = "Torches and fires lit by the path-traced Light Bounce instead of their own shadow rays: faster with many fires.\n"
+                     "Noisier (most at Half resolution), without the torches' highlights; follows Light Bounce Strength.",
+          .labels = {"Off", "On"},
+          .is_visible = more_path_lights,
+      });
+      page.Add(new Setting{
+          .key = "RayTracedLightShadowRatio",
+          .binding = b.light_ratio,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Torch and Fire Shadows from Path Tracing (Experimental)",
+          .section = section,
+          .tooltip = "The torches' and fires' own light, their shadows from the path-traced Light Bounce instead of their own\n"
+                     "rays: faster with many fires. Softer shadows that follow moving units a little later; 32 fires at most.",
+          .labels = {"Off", "On"},
+          .is_visible = more_path_lights,
+      });
+    }
     page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays,
                .label = b.far_cards_tested ? "" : "Sprite Soldier Shadows (Experimental)"});
     page.Take({.match = "RayTracedFarTreeShadows", .section = section, .shown = more_rays,

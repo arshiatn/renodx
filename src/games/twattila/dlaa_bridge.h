@@ -208,6 +208,15 @@ constexpr uint32_t RT_ONE_AT_A_PLACE = 1u << 27;
 // turns, Importance-Sampled picks or kept bits: nothing changing frame to frame), hard from helper108 on (106 / 107: each soft ray
 // to the same point of the light's disk, a fixed dither: black dots).
 constexpr uint32_t RT_LIGHT_STEADY = 1u << 28;
+// Torch and Fire Light in the Light Bounce (Experimental; helpers before 111 ignore it, with RT_PATH_LIGHTS_IN_BOUNCE the same
+// frame): rt_lights writes the first 32 lights' bits dark untraced (the game's light shaders add none of their light) and the
+// paths' ReSTIR GI reservoir takes those lights as candidates, their shadowed light in the bounce (rt_path.hlsli).
+constexpr uint32_t RT_LIGHTS_IN_BOUNCE = 1u << 29;
+// With RT_LIGHTS_IN_BOUNCE, Torch and Fire Shadows from the Light Bounce (Experimental; helpers before 111 ignore it, with
+// RT_PATH_LIGHT_RATIO the frames before): the game keeps shading those lights; each pixel's mask word is a float, the last
+// bounce's shadow ratio (shadowed over unshadowed torch light, the reservoir's light samples), for the light shaders to
+// multiply when b9's w is 1 (rt_local_lights.hlsli). The addon sends at most 32 lights with it.
+constexpr uint32_t RT_LIGHT_RATIO = 1u << 22;
 // Path flags (v8).
 constexpr uint32_t RT_PATH_TRACING = 1;
 constexpr uint32_t RT_REFLECTIONS = 2;
@@ -265,6 +274,12 @@ constexpr uint32_t RT_REFLECTIONS_WATER_POSITIONS = 1048576;
 // and the paths' own sky, as an unseen one's (not the screen's light, with the game's specular toward the camera), and the
 // light learned from the screen stays as learned.
 constexpr uint32_t RT_PATH_SUN_LIGHT = 2097152;
+// A Light Bounce request's with path tracing and RT_PATH_REUSE (helpers before 111 ignore it): the trace's RT_LIGHTS_IN_BOUNCE
+// lights as ReSTIR GI candidates.
+constexpr uint32_t RT_PATH_LIGHTS_IN_BOUNCE = 1u << 22;
+// With RT_PATH_LIGHTS_IN_BOUNCE (the trace's RT_LIGHT_RATIO): the lights' samples left out of the bounce (the game shades
+// them), their shadow ratio kept for the next trace.
+constexpr uint32_t RT_PATH_LIGHT_RATIO = 1u << 23;
 constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
 constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
 constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;

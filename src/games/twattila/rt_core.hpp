@@ -152,6 +152,12 @@ struct Settings {
   bool light_importance = false;
   // Steady Torch Shadows (Experimental): every light a pixel reaches traced every frame, each soft ray to the same disk point.
   bool light_steady = false;
+  // With path-traced Light Bounce (helper111, bridge RT_LIGHTS_IN_BOUNCE): Torch and Fire Light in the Light Bounce (the
+  // first 32 lights' light and shadow from the paths' ReSTIR GI reservoir, the game's light shaders adding none of it), or
+  // with light_ratio Torch and Fire Shadows from the Light Bounce (the game's light shaders keep their light, its shadow the
+  // bounce's ratio; at most 32 lights). Both Experimental, off.
+  bool lights_in_bounce = false;
+  bool light_ratio = false;
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
@@ -764,6 +770,9 @@ struct Runtime {
   std::vector<std::array<float, 4>> lights;
   std::vector<std::array<float, 4>> light_colours;
   bool lights_traced = false;
+  // This frame's trace's Torch and Fire Light in the Light Bounce: 0 none, 1 the lights' light in the bounce, 3 the
+  // bounce's shadow ratio (the Light Bounce request asks the same).
+  uint32_t lights_in_bounce = 0;
   uint32_t helper_device = 0;             // the helper's ray tracing device (a new one: its scene empty)
   uint64_t wanted_tick = 0;               // when ray tracing was last on (GetTickCount64)
   // The garbage triangles the helper left out (far off or stretched) as last read, the captures' vertex shaders by key
@@ -2728,6 +2737,11 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                sizeof(runtime.positions), (render_size[0] + 7) / 8, (render_size[1] + 7) / 8);
     }
   }
+  // Torch and Fire Light in the Light Bounce: only while the path-traced Light Bounce ran the frame before (its request
+  // comes after the game's light draws, which read this trace's bits or ratio).
+  const bool lights_in_bounce = (runtime.settings.lights_in_bounce || runtime.settings.light_ratio) && runtime.settings.light_bounce
+                                && runtime.settings.path_tracing && runtime.bounced_frame + 1 == runtime.frame;
+  const bool light_ratio = lights_in_bounce && runtime.settings.light_ratio;
   // The local lights: last frame's nearest and brightest (their reach over their distance, squared, by their colour's
   // brightest channel) within Torch and Fire Shadow Range.
   runtime.lights.clear();
@@ -2747,11 +2761,12 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     if (const float range = runtime.settings.light_range; range > 0.f) {
       std::erase_if(candidates, [&](const LocalLight& light) { return distance_squared(light) > range * range; });
     }
-    const size_t count = std::min<size_t>({candidates.size(), runtime.settings.light_count, dlaa_bridge::RT_ALL_LIGHTS});
+    // The shadow ratio covers the lights the bounce samples: the first 32.
+    const size_t count = std::min<size_t>({candidates.size(), runtime.settings.light_count, light_ratio ? dlaa_bridge::RT_MAX_LIGHTS : dlaa_bridge::RT_ALL_LIGHTS});
     std::partial_sort(candidates.begin(), candidates.begin() + static_cast<ptrdiff_t>(count), candidates.end(),
                       [&](const LocalLight& a, const LocalLight& b) { return score(a) > score(b); });
-    // b9 (rt_local_lights.hlsli): positions and reach, the count, the glow (torch and fire light in fog and smoke) and the
-    // lit mask's first tile row (bridge v31), the colours.
+    // b9 (rt_local_lights.hlsli): positions and reach, the count, the glow (torch and fire light in fog and smoke), the
+    // lit mask's first tile row (bridge v31) and whether its words are shadow ratios, the colours.
     std::array<std::array<float, 4>, (dlaa_bridge::RT_ALL_LIGHTS * 2) + 1> constants = {};
     for (size_t index = 0; index < count; ++index) {
       const std::array<float, 4> colour = (candidates[index].shadows_only ? std::array<float, 4>{} : candidates[index].colour);
@@ -2761,7 +2776,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       constants[dlaa_bridge::RT_ALL_LIGHTS + 1 + index] = colour;
     }
     constants[dlaa_bridge::RT_ALL_LIGHTS] = {std::bit_cast<float>(static_cast<uint32_t>(count)), runtime.settings.light_glow,
-                                             std::bit_cast<float>(dlaa_bridge::bridge.rt_light_tile_row), 0.f};
+                                             std::bit_cast<float>(dlaa_bridge::bridge.rt_light_tile_row), std::bit_cast<float>(light_ratio ? 1u : 0u)};
     native->UpdateSubresource(objects.light_constants.Get(), 0, nullptr, constants.data(), 0, 0);
   }
   const bool lights = !runtime.lights.empty();
@@ -2802,6 +2817,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                | ((runtime.settings.micromaps && runtime.settings.fast_leaves) ? dlaa_bridge::RT_FAST_LEAVES : 0u)
                | (runtime.settings.light_importance ? dlaa_bridge::RT_LIGHT_IMPORTANCE : 0u)
                | (runtime.settings.light_steady ? dlaa_bridge::RT_LIGHT_STEADY : 0u)
+               | ((lights && lights_in_bounce) ? dlaa_bridge::RT_LIGHTS_IN_BOUNCE : 0u) | ((lights && light_ratio) ? dlaa_bridge::RT_LIGHT_RATIO : 0u)
                | (dlaa_bridge::bridge.reconstructing ? dlaa_bridge::RT_RECONSTRUCTED : 0u)
                | ((runtime.settings.nrd && !dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_NRD : 0u)
                | ((runtime.settings.ao_reblur && dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_AO_REBLUR : 0u)
@@ -2846,6 +2862,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   }
   if (!traced) NotTraced("the helper did not trace: " + dlaa_bridge::TraceStatus());
   runtime.lights_traced = traced && lights;
+  runtime.lights_in_bounce = (runtime.lights_traced && lights_in_bounce) ? (light_ratio ? 3u : 1u) : 0u;
   if (traced) {
     runtime.scene_gone = false;
     for (const auto& capture : runtime.captures) {
@@ -2926,6 +2943,8 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
                                                      | ((runtime.path_ambient_on && sun_colour != 0) ? dlaa_bridge::RT_PATH_SUN_LIGHT : 0u)
                                                      | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                                                      | (runtime.settings.sharc ? dlaa_bridge::RT_PATH_SHARC : 0u)
+                                                     | ((runtime.lights_in_bounce != 0) ? dlaa_bridge::RT_PATH_LIGHTS_IN_BOUNCE : 0u)
+                                                     | ((runtime.lights_in_bounce == 3) ? dlaa_bridge::RT_PATH_LIGHT_RATIO : 0u)
                                                      | (dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u))
                                                   : ((dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u)
                                                      | (runtime.settings.reflections ? dlaa_bridge::RT_PATH_CACHE_FILL : 0u)),

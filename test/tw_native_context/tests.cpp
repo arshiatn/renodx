@@ -151,7 +151,9 @@ int main() {
     core::internal::OnUpdateLightConstants(&game_device, rows.data(), handle(buffer), 0, UINT64_MAX);
     immediate->UpdateSubresource(buffer, 0, nullptr, rows.data(), 0, 0);
   };
-  action::CommandContext<action::DrawIndexedArguments> light_command = {.cmd_list = &cmd_list, .arguments = {.index_count = 792, .instance_count = 1}};
+  // The registration's data, as InstallPointLights registers the hook (OnPointLightDraw reads it first).
+  action::CommandContext<action::DrawIndexedArguments> light_command = {
+      .cmd_list = &cmd_list, .arguments = {.index_count = 792, .instance_count = 1}, .callback_data = &core::POINT_LIGHTS};
   // A light draw: its buffer at b2, rt_scene's hook; the lights added since the last trace_lights.
   const auto light_draw = [&](ID3D11Buffer* buffer) {
     immediate->PSSetConstantBuffers(2, 1, &buffer);

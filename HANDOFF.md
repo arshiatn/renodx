@@ -312,6 +312,21 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Troy agent DONE; follow-up: Pharaoh's fires 5AD46115 behind their own off row.
 - [x] WH2 Smooth Half-Size Particles MERGED 5d102904 (at the game's own upsample 21DE8D05; no shared change). WH2 agent DONE.
   Agents done: Thrones, WH1, WH2, Rome Remastered, quality. Running: Shogun 2, Troy (Pharaoh fires), ReSTIR, Nsight.
+- [x] Shogun 2 round 7 MERGED 1790ecd5 (Reflection reuse + Steadier water reflections rows, Coloured shadows; HDR v72 / DLSS
+  v64). Shogun 2 agent DONE. NOT DONE: far cards 30C453EE, units out of view, Softer water reflections.
+- [x] 06:08 page dumps at HEAD (c606eaf7+): Attila and WH3 = night1113 (v159 / v58) except Build Date. Final runner ready:
+  tools/tw/round_notes/run_tests.ps1 (every suite x86 + amd64, atomic lock, game / 55 GB guard), build_shared.ps1.
+- [x] Pharaoh v67 fires MERGED a6a4fed3 (Fire Shadows from Particle Lights, Experimental off, not in RT/PT; rt_scene
+  LightInstances::enabled opt-in; row off = v66: WARP bits + page dump 615 -> 616 keys). Troy agent DONE.
+  Running: ReSTIR (helper111), Nsight (frame boundary). Then: final suites, harness, builds, dumps, stamp, install.
+- [x] helper111 MERGED b7b858c5 (Torch and Fire Light / Shadows from Path Tracing, Attila rows Experimental off; cost at
+  29 lights rt_lights 2.06 -> 0.87 / 0.90 ms; quality U2 Full + RR 3.13 %, Half + RR 5.08 still / 11.48 moving vs Steady
+  5.15; U1 worse; off = helper110 proven). Lean Reuse (reuse 2.72 -> 1.02 ms in Nsight, helper 8.63 -> 6.96 ms, same
+  quality): shipping as an Experimental row (off) = ATN DECIDES the default. Final helper112 = helper111 + Lean flag +
+  Nsight frame boundary, built by the ReSTIR agent with the off proof.
+- [x] Nsight frame boundary MERGED d60c2993 (include/nsight_graphics_sdk 0.9.2 Apache-2.0 + NOTICE, main.cpp
+  NGFX_FrameBoundary_D3D12 only when Nsight is injected; all_modes 179 / 179); tools/tw/release_zip.py ships
+  NSIGHT_GRAPHICS_SDK_LICENSE.txt with the helper. ReSTIR agent builds helper112 (+ Lean flag) next.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
