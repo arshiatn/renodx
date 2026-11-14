@@ -44,6 +44,7 @@ using Microsoft::WRL::ComPtr;
 struct Rows {
   float sun_shadows = 0.f;
   float ambient_occlusion = 0.f;
+  float debug_view = 0.f;  // rt_core's Debug View: 0 off, 1 the sun's visibility, 2 the ambient's
 };
 static Rows rows;
 
@@ -110,7 +111,7 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
   const bool sun_shadows = rows.sun_shadows != 0.f;
   const bool ambient_occlusion = rows.ambient_occlusion != 0.f;
   dlaa::rays = sun_shadows || ambient_occlusion;
-  twattila::rt_scene::Update({.sun_shadows = sun_shadows, .ambient_occlusion = ambient_occlusion});
+  twattila::rt_scene::Update({.sun_shadows = sun_shadows, .ambient_occlusion = ambient_occlusion, .debug_view = static_cast<uint32_t>(rows.debug_view)});
 }
 
 inline void OnDestroyDevice(reshade::api::device* device) {
@@ -210,7 +211,7 @@ inline void Trace(reshade::api::command_list* cmd_list) {
     if (objects.failed) return;
   }
   auto& bridge = twattila::dlaa_bridge::bridge;
-  if (!twattila::dlaa_bridge::Prepare(device.Get(), depth_desc.Width, depth_desc.Height, false, true) || !bridge.rt_sun.uav) return;
+  if (!dlaa::PrepareBridge(device.Get(), depth_desc.Width, depth_desc.Height) || !bridge.rt_sun.uav) return;
   {
     const talesofarise::dlss::ContextStateScope scope(native1.Get(), objects.private_state.Get());
     native->CSSetShader(objects.sun.Get(), nullptr, 0);
@@ -237,6 +238,22 @@ inline void Multiply(reshade::api::command_list* cmd_list, bool ambient) {
   ComPtr<ID3D11DeviceContext1> native1;
   if (visibility == nullptr || !target || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
   internal::DrawMultiply(native1.Get(), target.Get(), visibility);
+}
+
+// After ResolveMainColor (and DLAA): the Debug View over its output (the bridge's size).
+inline void OnToneMapped(reshade::api::command_list* cmd_list) {
+  if (rows.debug_view == 0.f) return;
+  ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
+  if (native == nullptr) return;
+  ComPtr<ID3D11RenderTargetView> target;
+  native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+  if (!target) return;
+  ComPtr<ID3D11Resource> target_resource;
+  target->GetResource(target_resource.GetAddressOf());
+  ComPtr<ID3D11Texture2D> target_texture;
+  if (SUCCEEDED(target_resource.As(&target_texture))) {
+    twattila::rt_scene::DrawDebugView(native, target_texture.Get());
+  }
 }
 
 // At the addon's start, with a row on (the scene's shaders kept from the game's start).

@@ -26,7 +26,9 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../twattila/dlaa_bridge.hpp"
+#include "../twattila/frame_generation.hpp"
 #include "../twattila/frame_trace.hpp"
+#include "../twattila/reflex.hpp"
 
 // DLAA (Graphics (Experimental) > Anti-Aliasing, off by default; tools\tw\romeremastered\plan_1114.md item 3) through
 // the TW helper's bridge. The game has no TAA, jitter or motion vectors. ATN's 2026-11-14 traces (level A): every scene
@@ -78,6 +80,8 @@ struct TaaConstants {
 
 // The game's rows (v x rows).
 struct Camera {
+  std::array<float, 16> view = {};
+  std::array<float, 16> projection = {};                // without the jitter
   std::array<float, 16> view_projection = {};           // without the jitter
   std::array<float, 16> jittered_view_projection = {};  // as the depth was drawn
   std::array<float, 16> inverse_view_projection = {};   // of the jittered
@@ -166,6 +170,8 @@ inline void JitterCamera(float* c) {
     }
   }
   auto& camera = state.camera;
+  std::copy_n(c, 16, camera.view.begin());
+  std::copy_n(c + PROJECTION, 16, camera.projection.begin());
   std::copy_n(c + VIEW_PROJECTION, 16, camera.view_projection.begin());
   // The eye: the view's rows 0-2 a rotation, row 3 its translation (the eye x the view = 0).
   for (size_t axis = 0; axis < 3; ++axis) {
@@ -282,6 +288,8 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  twattila::frame_generation::OnDestroyDevice(native);
+  twattila::reflex::OnDestroyDevice(native);
   {
     const std::unique_lock lock(state.mutex);
     state.depth.Reset();
@@ -307,6 +315,12 @@ inline void KeepDepth(reshade::api::command_list* cmd_list, bool compute) {
   const std::unique_lock lock(internal::state.mutex);
   internal::state.depth = depth;
   internal::state.depth_frame = internal::state.frame;
+}
+
+// The bridge at `width` x `height` as DLAA, the rays and frame generation want it (one set of arguments for all: any other
+// makes its textures again).
+inline bool PrepareBridge(ID3D11Device* device, UINT width, UINT height) {
+  return twattila::dlaa_bridge::Prepare(device, width, height, false, rays, twattila::frame_generation::Format());
 }
 
 // The scene's depth as last kept (one texture through the frames: before this frame's resolve, the last frame's view of
@@ -451,7 +465,7 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     }
   }
   auto& bridge = twattila::dlaa_bridge::bridge;
-  if (!twattila::dlaa_bridge::Prepare(device.Get(), width, height, false, rays)) {
+  if (!PrepareBridge(device.Get(), width, height)) {
     report(std::format("off: {}", bridge.status));
     return;
   }
@@ -510,6 +524,26 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     native->Dispatch(groups_x, groups_y, 1);
     bind(nullptr, {}, {});
     native->CopyResource(target.Get(), objects.result.Get());
+  }
+  // Frame generation: the tone mapper's output after DLAA is the HUD-less frame (the traces: SMAA's passes, copying it
+  // under DLAA, then the UI on their target), with this frame's inputs (the camera as the registers would hold it: its
+  // rows transposed; near and far from the projection's z column).
+  if (resolved && twattila::frame_generation::Wanted()) {
+    twattila::frame_generation::Inputs inputs = {
+        .width = width,
+        .height = height,
+        .jitter_x = camera.jitter[0],
+        .jitter_y = -camera.jitter[1],
+        .reset = !continued,
+    };
+    const std::array<float, 16> projection = internal::Transposed(camera.projection);
+    twattila::frame_generation::SetCamera(&inputs, projection, internal::Transposed(camera.view), internal::Transposed(camera.view_projection),
+                                          internal::Transposed(continued ? previous_view_projection : camera.view_projection), camera.position);
+    const float depth_scale = projection[10];
+    const float depth_offset = projection[11];
+    inputs.near_plane = (depth_scale != 0.f ? -depth_offset / depth_scale : 1.f);
+    inputs.far_plane = (depth_scale != 1.f ? depth_scale * inputs.near_plane / (depth_scale - 1.f) : 25000.f);
+    twattila::frame_generation::KeepFrame(native, target.Get(), inputs);
   }
 
   native->CSSetShader(game_shader.Get(), nullptr, 0);
