@@ -1,5 +1,46 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Parity round (2026-11-14; built only, not run in game)
+
+Attila's features against this add-on, feature by feature: tools/tw/wh1/parity_1114.md (HAVE 27, done now 8, left 3,
+needs a trace 7, won't get 14, each with its proof).
+
+- **Fog Strength** (Extra): the battle fog's opacity x the row. Corrected: the battle fog E684D54E is drawn in 34 of ATN's
+  36 traces (at the render viewport), not "never".
+- **Fog Shadows (Experimental, off)**: the battle fog's sun-lit colour x the rays' sun visibility along the view, plus the
+  torches' and fires' light in it (Attila's rt_fog, test part 16). Off by default, on with RT/PT as Attila's.
+- **Depth of Field** (Extra): the blur size x the row in the four hdr_to_screen shaders with depth of field.
+- **Smooth Banner Shadows (Experimental, off)**: Attila's row (rays_sheets_unselfed).
+- **Smoke Shadows (Experimental, off, left out of RT/PT)**: the lit particles (ps_main_high_quality 122F218C with
+  vs50_main_instancing 9FD3EC63, drawn in 34 of 36 traces) streamed out for the rays: Warhammer II's quad shader at
+  122F218C's slots (its disassembly line for line Warhammer II's with the three slots renamed).
+- **Far cards and campaign plants with MSAA**: their shader-model twins (B9C6AA36, C2A5FA81, 1A7891F6: the same code)
+  are in the rays too.
+- **Unit/Building Indicator Brightness (Experimental, default 1)**: the ground markers (x 30 in HDR), fire arcs (x 12) and
+  deployment zones (x 20) x the row in HDR (part 17). Reset writes 1 (it wrote 0.4 to no row before).
+- **SDR (monitors without HDR)** preset, the SDR preset on a first start without Windows HDR, GitHub (Downloads) in
+  About, as Attila's. Recommended's tooltip says PsychoV35.
+
+Test list (in game, ATN):
+1. Battle in fog, Fog Strength 0 / 1 / 2: no fog, the game's, thicker; 1 equals the add-on without the row.
+2. Battle in fog with RT/PT, Fog Shadows on: shafts where trees and walls shade the fog, torches glow in it at night;
+   off: as before.
+3. Battle with smoke (burning buildings, artillery), Smoke Shadows on: soft moving shadows under the smoke on units
+   and ground; no black or flickering squares; off: as before.
+4. Depth of Field 0 / 1 / 2 in a cinematic or a close camera with the game's DOF on: sharp, the game's, blurrier.
+5. Battle at night, Unit/Building Indicator Brightness 0.3 / 1: dimmer markers, fire arcs and deployment zones; SDR: no
+   change.
+6. MSAA on with RT/PT: far tree cards and campaign plants cast ray shadows as without MSAA.
+7. Smooth Banner Shadows on with RT/PT: banners' shadows without self-shadow speckles.
+8. A display without Windows HDR, a fresh ReShade.ini: the SDR preset at first start; the SDR button on an HDR display:
+   Output SDR, Rendering Mode SDR.
+
+Not done: Grass Height Distance (the grass draws, their motion and their capture each read g_inv_lod_distance: divide
+it by the row in all three, a WARP part); the 14 other cut-out masks (per-draw alpha sources: read each discard);
+Ray-Traced Water Reflections (WH3's water pass at 44B4A2F0); sprite soldiers' shadows, the campaign's far terrain
+CDCF1ADD, the VFX brightness rows, the cloth and campaign-tree casters and the render-scale leftovers (021D7515 below
+100%, four tone mappers with bloom) need a trace of the scene that draws them (the table says which).
+
 ### AO / SSR reader census (2026-11-14 late morning; built only, not run in game)
 
 - **Reader census from ATN's traces (no new trace)**: tools/tw/wh1/wh1_reader_census.py follows the targets of the game's
