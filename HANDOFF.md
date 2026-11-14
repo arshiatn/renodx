@@ -217,6 +217,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   moving shadows) or U2 (keep the game's torches, bounce supplies a shadow ratio: bridge + every game's point-light PS,
   several nights): ATN DECIDES. Smallest step: helper-only U1 prototype behind RENODX_TW_LIGHTS_IN_BOUNCE + a harness
   comparison against Steady.
+- [x] Shogun 2 round 3 MERGED 22affa04 (sun-facing sprite / far tree captures, RT sea reflections, all Experimental;
+  shared rt_core Host::scene_draw capture_shader, unchanged without it; HDR v68 / DLSS v60). NOT DONE: waterplane
+  9B9EC116 (replay its 6 draws depth-only), other ocean qualities, W7d casters out of view.
+- [x] ATN's WH1 session 02:57-03:02 (battle, then campaign): 15 traces wh1/runs/ATN_session_025635 -> WH1 agent.
+- [ ] ATN 03:0x: "Can we just do both?" U1 + U2: the ReSTIR agent resumed: U1 prototype + harness comparison, then an
+  Experimental row (helper111, spare flag bits); U2 designed and started behind an off row.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
