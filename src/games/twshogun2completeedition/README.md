@@ -979,3 +979,8 @@ On atn-mods b435a0e6, the parity round 2 brief (ledger tools/tw/parity/shogun2.t
   Bend's shadows alone; at the first sun light draw sss_soft_mask puts back the darker of the cascades and Bend's shadows,
   averaged over Softness on the same surface (Attila's sss_soft disc). The tone mappers show the mask's copy with the Debug
   View. Both off: nothing bound, the cascades as before. WARP part 19 (sss_soft_mask).
+- **SSS softer away from the caster** (DLSS addon, screen-space shadows; Attila's ScreenSpaceShadowsDistanceSoftness, the
+  sun's size in degrees): on the SSS split above, the pass's extended version (sss_distance / sss_distance_cascades: Bend's
+  extended march with FindHit, as Light Through Foliage's light-caster versions are swapped in) writes each shadowed pixel's
+  penumbra (Attila's sss_bend WriteExtended) and sss_soft_mask searches the penumbras that reach a pixel on its surface
+  (Attila's sss_soft). WARP part 19: no penumbras the min bit for bit, 16 px penumbras smooth, never across a depth step.

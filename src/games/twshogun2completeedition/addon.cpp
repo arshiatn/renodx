@@ -461,12 +461,13 @@ void BuildRuntimeData() {
                                         std::pair{0x7FA1D600u, 0u}}) {
     custom_shaders[hash].on_draw = [depth_slot](reshade::api::command_list* cmd_list) {
       twshogun2::foliage_light::OnShadowPass(cmd_list, depth_slot, shader_injection.sss_foliage_light);
-      twshogun2::screen_space_shadows::OnShadowPass(cmd_list, depth_slot, shader_injection.sss_softness, shader_injection.sss_debug_view);
+      twshogun2::screen_space_shadows::OnShadowPass(cmd_list, depth_slot, shader_injection.sss_softness, shader_injection.sss_debug_view,
+                                                    shader_injection.sss_distance_softness);
       return true;
     };
     custom_shaders[hash].on_drawn = [](reshade::api::command_list* cmd_list) {
-      twshogun2::foliage_light::OnShadowPassDone(cmd_list);
       twshogun2::screen_space_shadows::OnShadowPassDone(cmd_list);
+      twshogun2::foliage_light::OnShadowPassDone(cmd_list);
     };
   }
   // Render scale: captured on the game's own reflections copy and battle fog (drawn every frame before the depth of
@@ -1095,9 +1096,11 @@ void ReadDlssAddonOptions() {
   read_bend("SSSEdgeThreshold", 0.1f, &shader_injection.sss_edge_threshold);
   read_bend("SSSPrecisionOffset", 1.f, &shader_injection.sss_precision_offset);
   read_bend("SSSFoliageLight", 1.f, &shader_injection.sss_foliage_light);
-  // Attila's SSS Softness (Off, 1-3 px) and Debug View (Off, Shadows, Shadows + Screen Edge), its keys.
+  // Attila's SSS Softness (Off, 1-3 px), Debug View (Off, Shadows, Shadows + Screen Edge) and Softer Away from the Caster
+  // (the sun's degrees), its keys.
   read_bend("ScreenSpaceShadowsSoftness", 3.f, &shader_injection.sss_softness);
   read_bend("ScreenSpaceShadowsDebugView", 2.f, &shader_injection.sss_debug_view);
+  read_bend("ScreenSpaceShadowsDistanceSoftness", 2.f, &shader_injection.sss_distance_softness);
   read_bend("SSSIgnoreEdges", 1.f, &shader_injection.sss_ignore_edges);
   read_bend("SSSAlongRay", 1.f, &shader_injection.sss_along_ray);
   read_bend("SSSMirrorEdges", 1.f, &shader_injection.sss_mirror_edges);

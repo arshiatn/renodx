@@ -221,6 +221,7 @@ constexpr std::array<const char*, 4> SSS_SOFTNESS = {"Off", "1 px", "2 px", "3 p
 constexpr std::array<const char*, 3> SSS_DEBUG_VIEWS = {"Off", "Shadows", "Shadows + Screen Edge"};
 int sss_softness = 0;    // overlay
 int sss_debug_view = 0;  // overlay
+float sss_distance_softness = 0.f;  // overlay: ReShade.ini ScreenSpaceShadowsDistanceSoftness (Attila's), the sun's degrees
 int sss_mirror_edges = 0;  // overlay
 // ReShade.ini WaterClarity, WaterCaustics (HDR addon, waterplane00: Attila's rows, its keys and ranges; rivers and lakes in
 // battles). Experimental, in no preset.
@@ -813,6 +814,11 @@ void OnOverlay(reshade::api::effect_runtime*) {
     if (choice_slider("SSS softness (Experimental)", &sss_softness, SSS_SOFTNESS.size(), SSS_SOFTNESS[sss_softness], 0,
                       "Smooths the screen-space shadows' edges along surfaces, never across objects.")) {
       reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsSoftness", sss_softness);
+    }
+    if (float_slider("SSS softer away from the caster (Experimental)", &sss_distance_softness, 0.f, 2.f, "%.2f", 0.f,
+                     "Shadows sharp where things touch the ground, softer farther from them, as under the sun.\n"
+                     "The sun's size in degrees. 0: off.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsDistanceSoftness", sss_distance_softness);
     }
     if (choice_slider("SSS debug view (Experimental)", &sss_debug_view, SSS_DEBUG_VIEWS.size(), SSS_DEBUG_VIEWS[sss_debug_view], 0,
                       "Shows only the screen-space shadows (black: shadowed).\n"
@@ -1585,6 +1591,9 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSMirrorEdges", value)) sss_mirror_edges = std::clamp(value, 0, 1);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsSoftness", value)) {
     sss_softness = std::clamp(value, 0, static_cast<int>(SSS_SOFTNESS.size()) - 1);
+  }
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsDistanceSoftness", value)) {
+    sss_distance_softness = std::clamp(value, 0.f, 2.f);
   }
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ScreenSpaceShadowsDebugView", value)) {
     sss_debug_view = std::clamp(value, 0, static_cast<int>(SSS_DEBUG_VIEWS.size()) - 1);

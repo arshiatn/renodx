@@ -138,7 +138,12 @@ struct ShaderInjectData {
   // picture, 2 with the screen edge's limit; tonemap.hlsli): with either, sss.hlsli keeps Bend's and the cascades apart.
   float sss_softness;
   float sss_debug_view;
+  // Attila's SSS Softer Away from the Caster: the sun's size in degrees, 0 off (screen_space_shadows.hpp's extended pass).
+  float sss_distance_softness;
 };
+
+// The penumbra's most for Softer Away from the Caster, render pixels at 2160 rendered lines (Attila's SOFT_RADIUS_2160).
+#define SSS_MOST_PENUMBRA_2160 32.f
 
 #define SI  shader_injection
 #define HDR SI.hdr

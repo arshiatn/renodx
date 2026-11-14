@@ -563,5 +563,6 @@ test/tw_shogun2_tweaks on the game's DLL). Details and test lines: the HDR addon
 
 New Experimental rows, off: Temporal Smoothing, Temporal Edge Fix and Denoiser for GT-VBAO (Ambient Occlusion, Attila's
 keys, in no preset), Rarer objects in the rays (Ray Tracing, Attila's RayTracedUntracedCasters, 0 in Reset and RT/PT),
-SSS softness and SSS debug view (screen-space shadows, Attila's ScreenSpaceShadowsSoftness / DebugView, in no preset).
+SSS softness, SSS softer away from the caster and SSS debug view (screen-space shadows, Attila's
+ScreenSpaceShadowsSoftness / DistanceSoftness / DebugView, in no preset).
 Details and test lines: the HDR addon's README, same heading.
