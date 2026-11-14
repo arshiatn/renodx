@@ -94,8 +94,10 @@ constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
 // corners in the four cascades of the battle trace; two bones each from the animation map the shadow pass binds at t0) through a
 // capture version writing their world alone and Pharaoh's world-only geometry shader. The whole-dump caster census (2026-11-14)
 // had these two families in view only, and rigidambientmapmesh_mtb's (7B067623: 4 of the naval traces; AC25DAB8 with a TEXCOORD1
-// it never reads) placed as AC25DAB8's.
-inline const std::array<twattila::rt_scene::SceneShader, 9> SCENE_SHADERS = {{
+// it never reads) placed as AC25DAB8's. Ships' sails and sail symbols (A42F9EDE / F7EDF855: their mesh by the draw's world_matrix
+// at b1; F7EDF855 20 draws, 34K corners in the naval trace) masked as their pixel shader's first test, ropes (4E3EE717: ribbons
+// turned to the shadow camera, solid) world alone.
+inline const std::array<twattila::rt_scene::SceneShader, 12> SCENE_SHADERS = {{
     {.hash = 0xAC25DAB8, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
     {.hash = 0x7B067623, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
     {.hash = 0xB0E006EE, .capture_shader = __rt_capture_cascade_variant, .rows_shader = __rt_rows_cascade_variant, .moving = true,
@@ -111,6 +113,12 @@ inline const std::array<twattila::rt_scene::SceneShader, 9> SCENE_SHADERS = {{
     {.hash = 0x30C453EE, .capture_shader = __rt_capture_cascade_far_tree, .dynamic = true, .foliage = true, .sun_facing = true,
      .far_tree = true, .mask_slot = 1, .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
     {.hash = 0xA22FA941, .capture_shader = __rt_capture_cascade_unit, .dynamic = true, .cascade_keep = __rt_outside_view_world,
+     .cascade_world = true},
+    {.hash = 0xA42F9EDE, .capture_shader = __rt_capture_cascade_sail, .dynamic = true, .foliage = true,
+     .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
+    {.hash = 0xF7EDF855, .capture_shader = __rt_capture_cascade_sail, .dynamic = true, .foliage = true,
+     .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
+    {.hash = 0x4E3EE717, .capture_shader = __rt_capture_cascade_rope, .dynamic = true, .cascade_keep = __rt_outside_view_world,
      .cascade_world = true},
 }};
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).

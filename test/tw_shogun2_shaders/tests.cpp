@@ -12,7 +12,8 @@
 // 7. rt_water_plane (TestWaterPlane). 8-9. ocean00 / 01 and waterplane00 against the game's csos (TestWaters).
 // 10. rt_capture / rt_rows_cascade_rigid and _variant against the game's 0xAC25DAB8 / 0x7B067623 / 0xB0E006EE (TestPlacedShadow).
 // 11. rt_capture_cascade_cloth / imposter / tree / far_tree / unit through Pharaoh's outside-view geometry shaders against the
-//     game's 0x8A00A1D4 / 0xE3DA20D4 / 0x5851CA62 / 0x6F20485E / 0x30C453EE / 0xA22FA941 (TestCascadeLeaves).
+//     game's 0x8A00A1D4 / 0xE3DA20D4 / 0x5851CA62 / 0x6F20485E / 0x30C453EE / 0xA22FA941, sail / rope against 0xA42F9EDE /
+//     0xF7EDF855 / 0x4E3EE717 (TestCascadeLeaves).
 // 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
 // 13. Coloured Shadows in shaders/sunlight00-03 (TestSunTint).
 #include <windows.h>
@@ -1368,12 +1369,34 @@ static void TestPlacedShadow(const std::string& games, const std::string& folder
 //     (TEXCOORD1) the game's (a far card's: the atlas view its pixel shader 0x6190CA61 reads where the blend is over half, u - 0.25
 //     (view + 1), else u - 0.25 view); a card the game fades out wholly (TEXCOORD1.w 0) a NaN. rt_capture_cascade_unit (soldiers and
 //     horses) against 0xA22FA941 with a random animation map at t0 (two bones a corner, its instance's row): TEXCOORD0 the game's
-//     SV_Position, through the world-only geometry shader. Through Pharaoh's outside-view geometry shader with a main view at cb0[10-13] (as rt_core streams them out): the
+//     SV_Position, through the world-only geometry shader. rt_capture_cascade_sail (ships' sails and sail symbols) against
+//     0xA42F9EDE / 0xF7EDF855 with a random world_matrix at b1, rt_capture_cascade_rope against 0x4E3EE717 (ribbons turned to
+//     the camera at c0, world alone). Through Pharaoh's outside-view geometry shader with a main view at cb0[10-13] (as rt_core streams them out): the
 //     triangles wholly outside it (the CPU's test of the game's corners) kept, their world positions and UVs (two halves in w) the
 //     game's; the others collapsed onto their first corner. CONTROL: the view turned away keeps another set.
 struct ClothVertex {
   std::array<std::array<float, 4>, 4> inputs;  // v0-v3
 };
+
+// A ship's sail (0xA42F9EDE, 0xF7EDF855: POSITION0, TEXCOORD0-2, COLOR0-1) or rope (0x4E3EE717: POSITION0, NORMAL0, TEXCOORD0-2).
+struct NavalVertex {
+  std::array<std::array<float, 4>, 6> inputs;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC SAIL_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+static const D3D11_INPUT_ELEMENT_DESC ROPE_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32G32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0}};
 
 // The trees' vertex: POSITION0-6 (POSITION4 the UV), TEXCOORD0-6 (two instance row sets at 0-2 and 4-6).
 struct TreeVertex {
@@ -1446,7 +1469,8 @@ static void TestCascadeLeaf(const std::string& games, const std::string& folder,
   };
   const auto game_world = run(game_code.data(), game_code.size(), "SV_POSITION", 0, 4);
   // A far card's TEXCOORD1: the UV, the atlas view and the blend toward the next.
-  auto game_uv = run(game_code.data(), game_code.size(), "TEXCOORD", 1, atlas ? 4 : 2);
+  auto game_uv = with_uv ? run(game_code.data(), game_code.size(), "TEXCOORD", 1, atlas ? 4 : 2)
+                         : std::vector<std::array<float, 4>>(vertices.size());
   if (atlas) {
     // CONTROL: the cards look at all four views, each with its next under and over half.
     uint32_t seen = 0;
@@ -1508,8 +1532,8 @@ static void TestCascadeLeaf(const std::string& games, const std::string& folder,
   CHECK(bad_world == 0 && bad_uv == 0, "%s: %zu world components, %zu UV components differ from the game's", name, bad_world, bad_uv);
   CHECK(bad_kept == 0 && kept > 0 && collapsed > 0, "%s: %zu streamed corners wrong, %zu kept, %zu collapsed", name, bad_kept, kept, collapsed);
   CHECK(turned_differs > 0, "CONTROL: %s: the view turned away kept the same triangles", name);
-  std::printf("%ls (0x%s): %zu corners the game's world and UV; %zu of %zu triangles out of view kept, %zu differ turned away\n", capture_name,
-              name, vertices.size(), kept, vertices.size() / 3, turned_differs);
+  std::printf("%ls (0x%s): %zu corners the game's world%s; %zu of %zu triangles out of view kept, %zu differ turned away\n", capture_name,
+              name, vertices.size(), with_uv ? " and UV" : "", kept, vertices.size() / 3, turned_differs);
 }
 
 static void TestCascadeLeaves(const std::string& games, const std::string& folder) {
@@ -1613,6 +1637,34 @@ static void TestCascadeLeaves(const std::string& games, const std::string& folde
   }
   TestCascadeLeaf(games, folder, "A22FA941", L"rt_capture_cascade_unit", UNIT_LAYOUT, units, card_constants, CascadeCorners::world,
                   animation_view.Get());
+  // Sails: their mesh near the origin, a random turn and place in world_matrix (three registers, a column each); ropes: their
+  // ribbons around random points, the shadow camera at c0.
+  const float sail_turn = spread(random) * 3.14159f;
+  const std::array<float, 12> sail_world = {std::cos(sail_turn), 0.f, std::sin(sail_turn), 60.f * spread(random), 0.f, 1.f, 0.f, 60.f * spread(random),
+                -std::sin(sail_turn), 0.f, std::cos(sail_turn), 60.f * spread(random)};
+  const auto sail_buffer = Constants(sail_world.data(), sizeof(sail_world));
+  std::vector<NavalVertex> naval;
+  for (int triangle = 0; triangle < 64; ++triangle) {
+    const std::array<float, 3> centre = {100.f * spread(random), 100.f * spread(random), 100.f * spread(random)};
+    for (int corner = 0; corner < 3; ++corner) {
+      NavalVertex vertex = {};
+      for (auto& input : vertex.inputs) input = {spread(random), spread(random), spread(random), spread(random)};
+      vertex.inputs[0] = {centre[0] + (3.f * spread(random)), centre[1] + (3.f * spread(random)), centre[2] + (3.f * spread(random)), 1.f};
+      vertex.inputs[3][0] = 0.5f + (0.5f * spread(random));  // the rope's width (its TEXCOORD1.x), the sail's TEXCOORD2
+      naval.push_back(vertex);
+    }
+  }
+  const std::array<ID3D11Buffer*, 2> sail_constants = {camera_buffer.Get(), sail_buffer.Get()};
+  TestCascadeLeaf(games, folder, "A42F9EDE", L"rt_capture_cascade_sail", SAIL_LAYOUT, naval, sail_constants);
+  TestCascadeLeaf(games, folder, "F7EDF855", L"rt_capture_cascade_sail", SAIL_LAYOUT, naval, sail_constants);
+  std::array<float, 44 * 4> rope_camera = {};
+  for (int row = 0; row < 4; ++row) rope_camera[((10 + row) * 4) + row] = 1.f;
+  rope_camera[0] = 30.f;
+  rope_camera[1] = 400.f;
+  rope_camera[2] = -20.f;
+  const auto rope_camera_buffer = Constants(rope_camera.data(), sizeof(rope_camera));
+  const std::array<ID3D11Buffer*, 1> rope_constants = {rope_camera_buffer.Get()};
+  TestCascadeLeaf(games, folder, "4E3EE717", L"rt_capture_cascade_rope", ROPE_LAYOUT, naval, rope_constants, CascadeCorners::world);
 }
 
 // 12. rt_capture_cascade_tree_leaves (Shadow Casters Out of View's leaves): a dissolved tree's leaves left out (NaN) exactly where the
