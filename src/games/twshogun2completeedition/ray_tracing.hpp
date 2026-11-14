@@ -48,14 +48,20 @@ namespace twshogun2::ray_tracing {
 
 using Microsoft::WRL::ComPtr;
 
-// The sun light draws (the addon's sunlight00-03): camera_VS_PS at b0, the G-buffer (normal, colour, constants, depth)
-// from gbuffer_slot, lighting_VS_PS (the sun from c0) at b2 or b3. Also the Light Bounce's.
+// The sun light draws (the addon's sunlight00-03): camera_VS_PS at b0, environment_PS at b1, the G-buffer (normal,
+// colour, constants, depth) from gbuffer_slot, lighting_VS_PS (the sun from c0) at b2 or b3, the world's harmonics (and
+// the previous ones after them) at t2 or t4 (rt_sun's sky). Also the Light Bounce's. The campaign map's: lighting at b3.
 constexpr std::array<twattila::light_bounce::SunDraw, 4> SUN_DRAWS = {{
-    {.shader_hash = 0xED1BED93, .standard = true, .gbuffer_slot = 7, .lighting_slot = 2, .sun_direction = 0},
-    {.shader_hash = 0x5496DE73, .standard = true, .gbuffer_slot = 7, .lighting_slot = 2, .sun_direction = 0},
-    {.shader_hash = 0xC3E0E939, .standard = true, .gbuffer_slot = 9, .lighting_slot = 3, .sun_direction = 0},
-    {.shader_hash = 0xD5FDDE8F, .standard = true, .gbuffer_slot = 9, .lighting_slot = 3, .sun_direction = 0},
+    {.shader_hash = 0xED1BED93, .standard = true, .gbuffer_slot = 7, .lighting_slot = 2, .sun_direction = 0, .sky_harmonics_slot = 2,
+     .environment_slot = 1},
+    {.shader_hash = 0x5496DE73, .standard = true, .gbuffer_slot = 7, .lighting_slot = 2, .sun_direction = 0, .sky_harmonics_slot = 2,
+     .environment_slot = 1},
+    {.shader_hash = 0xC3E0E939, .standard = true, .gbuffer_slot = 9, .lighting_slot = 3, .sun_direction = 0, .sky_harmonics_slot = 4,
+     .environment_slot = 1},
+    {.shader_hash = 0xD5FDDE8F, .standard = true, .gbuffer_slot = 9, .lighting_slot = 3, .sun_direction = 0, .sky_harmonics_slot = 4,
+     .environment_slot = 1},
 }};
+constexpr UINT CAMPAIGN_LIGHTING_SLOT = 3;
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).
 constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0x5CBF4FB6, 0x57139F8D};
 // The battle fog's light (fog01, battlefog ps40_main_inscattering: the sun's part through rt_fog.hlsli's RtFogSun).
@@ -69,9 +75,9 @@ constexpr uint32_t CAMERA_VIEW_PROJECTION = 10;
 constexpr uint32_t CAMERA_VIEWPORT = 38;
 // The traced visibilities' slots (shaders/rt_sun.hlsli).
 constexpr UINT VISIBILITY_SLOT = 40;
-// rt_sun's b1 (twattila/rt_sun.cs_5_0.hlsl): lighting_VS_PS's first floats of the sun's direction (c0), the ambient cube
-// (c3-c8: +x, -x, +y, -y, +z, -z, index 0 where the normal's axis is 0 or more; the paths' sky) and the sun colour (c1;
-// the paths' sun light with Path-Traced Ambient, not offered here).
+// rt_sun's b1 (rt_sun.cs_5_0.hlsl): lighting_VS_PS's first floats of the sun's direction (c0), the ambient cube (c3-c8:
+// +x, -x, +y, -y, +z, -z, index 0 where the normal's axis is 0 or more; with the harmonics the paths' sky) and the sun
+// colour (c1; the paths' sun light with Path-Traced AO). Its third: 0 (Shogun 2's rt_sun makes the same sky either way).
 constexpr std::array<uint32_t, 8> SUN_OFFSETS = {0, 12, 0, 0, 4, 0, 0, 0};
 
 struct State {
@@ -88,6 +94,16 @@ struct State {
   ComPtr<ID3D11ComputeShader> sun;
   ComPtr<ID3D11Buffer> sun_offsets;
   bool failed = false;
+  bool campaign = false;  // the last sun draw the campaign map's (no Path-Traced AO there: its overlay takes the ambient)
+  // Path-Traced AO: the sun draws' lighting_VS_PS copied without the game's ambient (the cube and the harmonics' flag
+  // zero: the shaders' own math gives none), once a frame for each buffer; the game's put back after the draw.
+  ComPtr<ID3D11Buffer> no_ambient;
+  ComPtr<ID3D11Buffer> ambient_lighting;
+  UINT ambient_lighting_bytes = 0;
+  uint64_t ambient_frame = UINT64_MAX;
+  ID3D11Buffer* ambient_source = nullptr;  // compared only
+  ComPtr<ID3D11Buffer> game_lighting;
+  UINT game_lighting_slot = 0;
 };
 static State state;
 
@@ -171,6 +187,9 @@ inline bool PrepareObjects(ID3D11DeviceContext* native) {
   state.guides.Reset();
   state.sun.Reset();
   state.sun_offsets.Reset();
+  state.no_ambient.Reset();
+  state.ambient_lighting.Reset();
+  state.ambient_lighting_bytes = 0;
   const D3D11_BUFFER_DESC offsets_desc = {.ByteWidth = sizeof(SUN_OFFSETS), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_SUBRESOURCE_DATA offsets_data = {.pSysMem = SUN_OFFSETS.data()};
   state.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
@@ -184,10 +203,16 @@ inline bool PrepareObjects(ID3D11DeviceContext* native) {
 
 // The sun for this frame's trace (toward it) and the paths' sun and sky from a sun draw's lighting_VS_PS, once a frame
 // (rt_sun), in the addon's own context state.
-inline void WriteSun(ID3D11DeviceContext* native, UINT lighting_slot) {
+inline void WriteSun(ID3D11DeviceContext* native, const twattila::light_bounce::SunDraw& draw) {
   auto& bridge = twattila::dlaa_bridge::bridge;
   ComPtr<ID3D11Buffer> lighting;
-  native->PSGetConstantBuffers(lighting_slot, 1, lighting.GetAddressOf());
+  native->PSGetConstantBuffers(draw.lighting_slot, 1, lighting.GetAddressOf());
+  std::array<ComPtr<ID3D11Buffer>, 2> camera_environment;
+  native->PSGetConstantBuffers(draw.camera_slot, 1, camera_environment[0].GetAddressOf());
+  native->PSGetConstantBuffers(draw.environment_slot, 1, camera_environment[1].GetAddressOf());
+  std::array<ComPtr<ID3D11ShaderResourceView>, 2> harmonics;
+  native->PSGetShaderResources(draw.sky_harmonics_slot, 1, harmonics[0].GetAddressOf());
+  native->PSGetShaderResources(draw.sky_harmonics_slot + 1, 1, harmonics[1].GetAddressOf());
   ComPtr<ID3D11DeviceContext1> native1;
   if (!bridge.rt_sun.uav || !lighting || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
   {
@@ -196,10 +221,12 @@ inline void WriteSun(ID3D11DeviceContext* native, UINT lighting_slot) {
     state.sun_frame = state.frame;
   }
   const talesofarise::dlss::ContextStateScope scope(native1.Get(), state.private_state.Get());
-  ID3D11Buffer* constants[] = {lighting.Get(), state.sun_offsets.Get()};
+  ID3D11Buffer* constants[] = {lighting.Get(), state.sun_offsets.Get(), camera_environment[0].Get(), camera_environment[1].Get()};
   ID3D11UnorderedAccessView* sun = bridge.rt_sun.uav.Get();
   native->CSSetShader(state.sun.Get(), nullptr, 0);
-  native->CSSetConstantBuffers(0, 2, constants);
+  native->CSSetConstantBuffers(0, 4, constants);
+  ID3D11ShaderResourceView* harmonic_views[] = {harmonics[0].Get(), harmonics[1].Get()};
+  native->CSSetShaderResources(0, 2, harmonic_views);
   native->CSSetUnorderedAccessViews(0, 1, &sun, nullptr);
   native->Dispatch(1, 1, 1);
 }
@@ -229,8 +256,57 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot) {
   native->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
 }
 
-// The frame's first sun light draw: the sun, the guides and the trace; every one: the traced visibilities bound (put back
-// after).
+// Path-Traced AO this frame (rt_core: on once the paths ran long enough, and they ran last frame).
+inline bool PathAmbientNow() {
+  auto& runtime = twattila::rt_scene::internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  return runtime.path_ambient_on && runtime.bounced_frame + 1 >= runtime.frame;
+}
+
+// The draw's lighting_VS_PS replaced by its copy without the game's ambient (the cube c3-c8 and the harmonics' flag c10.w
+// zero, as rt_scene.hpp's OnPathAmbientDraw does with Attila's cube); the game's kept to put back. False: the game's stays.
+inline bool LightingWithoutAmbient(ID3D11DeviceContext* native, UINT slot) {
+  ComPtr<ID3D11Buffer> game_lighting;
+  native->PSGetConstantBuffers(slot, 1, game_lighting.GetAddressOf());
+  if (!game_lighting) return false;
+  D3D11_BUFFER_DESC desc = {};
+  game_lighting->GetDesc(&desc);
+  constexpr UINT CUBE_OFFSET = 3 * 16;
+  constexpr UINT CUBE_BYTES = 6 * 16;
+  constexpr UINT HARMONICS_FLAG_OFFSET = (10 * 16) + 12;
+  if (desc.ByteWidth < HARMONICS_FLAG_OFFSET + 4) return false;
+  const std::unique_lock lock(state.mutex);
+  if (!state.device) return false;
+  if (state.ambient_lighting_bytes != desc.ByteWidth) {
+    state.ambient_lighting.Reset();
+    state.ambient_lighting_bytes = 0;
+    const D3D11_BUFFER_DESC copy = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    if (FAILED(state.device->CreateBuffer(&copy, nullptr, state.ambient_lighting.GetAddressOf()))) return false;
+    state.ambient_lighting_bytes = desc.ByteWidth;
+  }
+  if (!state.no_ambient) {
+    constexpr std::array<float, CUBE_BYTES / 4> ZEROS = {};
+    const D3D11_BUFFER_DESC zeros = {.ByteWidth = CUBE_BYTES, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = ZEROS.data()};
+    if (FAILED(state.device->CreateBuffer(&zeros, &data, state.no_ambient.GetAddressOf()))) return false;
+  }
+  if (state.ambient_frame != state.frame || state.ambient_source != game_lighting.Get()) {
+    native->CopyResource(state.ambient_lighting.Get(), game_lighting.Get());
+    const D3D11_BOX cube = {.left = 0, .top = 0, .front = 0, .right = CUBE_BYTES, .bottom = 1, .back = 1};
+    native->CopySubresourceRegion(state.ambient_lighting.Get(), 0, CUBE_OFFSET, 0, 0, state.no_ambient.Get(), 0, &cube);
+    const D3D11_BOX flag = {.left = 0, .top = 0, .front = 0, .right = 4, .bottom = 1, .back = 1};
+    native->CopySubresourceRegion(state.ambient_lighting.Get(), 0, HARMONICS_FLAG_OFFSET, 0, 0, state.no_ambient.Get(), 0, &flag);
+    state.ambient_frame = state.frame;
+    state.ambient_source = game_lighting.Get();
+  }
+  native->PSSetConstantBuffers(slot, 1, state.ambient_lighting.GetAddressOf());
+  state.game_lighting = std::move(game_lighting);
+  state.game_lighting_slot = slot;
+  return true;
+}
+
+// The frame's first sun light draw: the sun, the guides and the trace; every one: the traced visibilities bound and, with
+// Path-Traced AO, the lighting without the game's ambient (the paths bring the sky's light instead; put back after).
 constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& draw = command.template GetCallbackData<twattila::light_bounce::SunDraw>();
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
@@ -254,20 +330,27 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
     if (SUCCEEDED(depth_resource.As(&depth_texture))) depth_texture->GetDesc(&depth_desc);
     const std::unique_lock lock(state.mutex);
     state.depth_size = {depth_desc.Width, depth_desc.Height};
+    state.campaign = draw.lighting_slot == CAMPAIGN_LIGHTING_SLOT;
   }
-  WriteSun(native, draw.lighting_slot);
+  WriteSun(native, draw);
   if (settings.reflections || settings.path_tracing || upscaling::Reconstructing()) WriteGuides(native, draw.gbuffer_slot);
   if (twattila::rt_scene::Camera camera; Camera(camera_buffer.Get(), &camera)) twattila::rt_scene::Trace(native, depth.Get(), camera);
   const auto [sun, ambient] = twattila::rt_scene::Visibilities();
   const std::array<ID3D11ShaderResourceView*, 2> visibilities = {settings.sun_shadows ? sun : nullptr,
                                                                  settings.ambient_occlusion ? ambient : nullptr};
-  if (visibilities[0] == nullptr && visibilities[1] == nullptr) return {};
+  const bool no_ambient = draw.lighting_slot != CAMPAIGN_LIGHTING_SLOT && PathAmbientNow() && LightingWithoutAmbient(native, draw.lighting_slot);
+  if (visibilities[0] == nullptr && visibilities[1] == nullptr && !no_ambient) return {};
   native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(visibilities.size()), visibilities.data());
-  return {.post_callback = [](Context& command, const void*) {
+  // Put back in finalize callbacks: the Light Bounce draws the sun draw itself (bypass), which skips post callbacks.
+  return {.finalize_callback = [](Context& command, const void*) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
     renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+    if (native == nullptr) return;
     constexpr std::array<ID3D11ShaderResourceView*, 2> NONE = {};
-    if (native != nullptr) native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(NONE.size()), NONE.data());
+    native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(NONE.size()), NONE.data());
+    const std::unique_lock lock(state.mutex);
+    if (state.game_lighting) native->PSSetConstantBuffers(state.game_lighting_slot, 1, state.game_lighting.GetAddressOf());
+    state.game_lighting.Reset();
   }};
 };
 
@@ -324,9 +407,14 @@ inline const twattila::rt_scene::Host HOST = {
 };
 
 // Every present: the settings and a new frame.
-inline void Update(const twattila::rt_scene::Settings& settings) {
+inline void Update(twattila::rt_scene::Settings settings) {
   {
     const std::unique_lock lock(internal::state.mutex);
+    // The campaign map keeps the game's ambient (its overlay is lit by it in the sun shader): ray-traced AO there.
+    if (internal::state.campaign && settings.path_ambient) {
+      settings.path_ambient = false;
+      settings.ambient_occlusion = true;
+    }
     internal::state.settings = settings;
     ++internal::state.frame;
   }
@@ -369,6 +457,8 @@ inline void KeepColor(reshade::api::command_list* cmd_list) {
 inline void Install() {
   expeditionsrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
   twattila::rt_scene::InstallScene({}, HOST);
+  // The paths' sun light with Path-Traced AO (rt_core's RT_PATH_SUN_LIGHT, as rt_scene.hpp's InstallSunDraws sets it).
+  twattila::rt_scene::internal::sun_colour = internal::SUN_OFFSETS[4];
   twattila::light_bounce::SetRayTracedTrace(&twattila::rt_scene::internal::TraceLightBounce);
   for (const auto& draw : SUN_DRAWS) {
     renodx::utils::command_action::Register(
@@ -387,6 +477,7 @@ inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnPointLightDraw);
   renodx::utils::command_action::Unregister(internal::OnFogDraw);
   twattila::light_bounce::SetRayTracedTrace(nullptr);
+  twattila::rt_scene::internal::sun_colour = 0;
   twattila::rt_scene::UninstallScene();
   expeditionsrome::dlss::constants::Use(DLL_PROCESS_DETACH);
 }
@@ -413,6 +504,10 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     internal::state.guides.Reset();
     internal::state.sun.Reset();
     internal::state.sun_offsets.Reset();
+    internal::state.no_ambient.Reset();
+    internal::state.ambient_lighting.Reset();
+    internal::state.ambient_lighting_bytes = 0;
+    internal::state.game_lighting.Reset();
     internal::state.failed = false;
   }
   twattila::rt_scene::OnDestroyDevice(device);

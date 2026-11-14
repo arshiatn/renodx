@@ -1023,6 +1023,11 @@ void ReadDlssAddonOptions() {
   ray_tracing.light_bounce_rays = read_count("RayTracedLightBounceRays", 4, 1, 16);
   read_choice("RayTracedLightBounceResolution", 1, 3, &ray_tracing.light_bounce_resolution);
   ray_tracing.path_tracing = read_on("PathTracing", false);
+  // Path-Traced AO (twattila/rt_scene.hpp SettingsOf's): the paths bring the sky's light, the ray-traced AO off. Needs
+  // the ray-traced Global Illumination's paths and the Global Illumination (its apply adds them).
+  ray_tracing.path_ambient = ray_tracing.path_tracing && ray_tracing.light_bounce && shader_injection.light_bounce_strength > 0.f
+                             && read_on("RayTracedPathAmbient", false);
+  if (ray_tracing.path_ambient) ray_tracing.ambient_occlusion = false;
   // 3 and 4 measured as 2 in Attila (twattila/rt_scene.hpp SettingsOf): the key's older values taken as 2.
   ray_tracing.path_bounces = read_count("PathTracingBounces", 2, 1, 2);
   ray_tracing.sharc = ray_tracing.path_tracing && read_on("RayTracedSharc", false);
@@ -1306,7 +1311,7 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's callbacks on the same sun draws: this frame's trace first.
   ray_tracing_installed = ray_tracing_settings.sun_shadows || ray_tracing_settings.ambient_occlusion || ray_tracing_settings.light_bounce
-                          || ray_tracing_settings.reflections || ray_tracing_settings.local_lights;
+                          || ray_tracing_settings.reflections || ray_tracing_settings.local_lights || ray_tracing_settings.fog_shadows;
   if (ray_tracing_installed) {
     twshogun2::ray_tracing::Install();
     reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);

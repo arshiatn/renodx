@@ -961,6 +961,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightBounce", 0.f},
         {"PathTracing", 0.f},
         {"RayTracedFogShadows", 0.f},
+        {"RayTracedPathAmbient", 0.f},
     };
     constexpr std::pair<const char*, float> RAYS_PRESET[] = {
         {"RayTracedSunShadows", 1.f},
@@ -1106,6 +1107,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
     count("Path tracing bounces", "PathTracingBounces", 2, 2, "Bounces past the first where the camera sees nothing. 1: faster, a little darker.");
     choice("SHaRC radiance cache (Experimental)", "RayTracedSharc", 0, OFF_ON_NAMES,
            "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).");
+    choice("Path-traced AO (Experimental)", "RayTracedPathAmbient", 0, OFF_ON_NAMES,
+           "The paths bring the sky's light in place of the game's ambient: shade wherever the sky can't reach.\n"
+           "In battles, in place of ray-traced AO (the campaign map keeps it). Needs Ray-traced Global Illumination.");
     ImGui::EndDisabled();
     choice("Path tracing SER (Experimental)", "RayTracedPathSer", 0, OFF_ON_NAMES,
            "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.");
