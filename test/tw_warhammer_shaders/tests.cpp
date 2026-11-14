@@ -21,7 +21,9 @@
 //    sampled drawn with the harmonics on: t51 unbound the game's bits, t51 = 1 the game's with its ambient black (harmonics
 //    and cube 0), t51 = 0.5 halfway. CONTROL: t51 = 1 differs from unbound.
 // 5. The shared PatchAmbient against run.ps1's -Before copy: every other game's LIGHT_BOUNCE_DRAWS (their tables, their
-//    dumps beside this one) patch to the same bytes (Patch first, as the runtime). CONTROL: Warhammer's 31 differ.
+//    dumps beside this one) patch to the same bytes (Patch first, as the runtime). CONTROL: Warhammer's 31 differ. Patch
+//    with its defaults (forward and not: every game's sun and forward rows) on every PS in the 8 dumps the same bytes as
+//    before. CONTROL: with `declare_position` Warhammer's forward readers 0BF2DB7F / BCB9B1D6 patch (before: not).
 // 6. The rays' new casters (the build's embed/*.cso): the far trees' cards (CA6BCF19) streamed out (their world, TEXCOORD2)
 //    with the camera level-free along the way to the sun, against rt_capture_far_tree with rt_sun's texel 0 that way; the
 //    campaign plants (84797031, no wind, the camera below them: no lean) streamed out (TEXCOORD0), against
@@ -29,6 +31,11 @@
 //    turned 90 degrees, the camera above the plants: they differ.
 // 7. Torch and Fire Shadows' point light shaders (the build's embed/0x<hash>.cso, nothing at t42 / b9: the game's light)
 //    against the game's D0C67938 / 5D1695BC on a 4 x 4 G-buffer, 8 lights each. CONTROL: the other falloff differs.
+// 8. Skip the Shadow Maps' forward readers (screen_space_shadows.hpp Patch with `forward` and `declare_position`, as
+//    PatchForwardShadows(..., true)): the 7 PS that read the atlas in ATN's traces, each drawn with every resource filled
+//    and the shadow's constants by name (FORWARD_CONSTANTS): t49 unbound bit-identical to the game's bytes (atlas 0 and
+//    1), t49 = 1 over a lit atlas equal to the game's with every comparison failing (atlas 0). CONTROL: the atlas's value
+//    changes the game's output.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -41,6 +48,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <regex>
@@ -538,6 +546,8 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
   int other_patched = 0;
   int other_differ = 0;
   int ours_differ = 0;
+  int all_shaders = 0;
+  int defaults_differ = 0;
   for (const char* game : {"twattila", "twpharaohdynasties", "twrome2", "twthronesofbritannia", "twtroy", "twwarhammer2", "twwarhammer3", "twwarhammer"}) {
     const std::string game_dump = std::string(dump).replace(at, pack.size(), std::string("dump_shader_") + game + "_pack");
     int rows = 0;
@@ -557,7 +567,23 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
       patched += now.empty() ? 0 : 1;
       differ += (now != before || now_shadow != before_shadow) ? 1 : 0;
     }
-    std::printf("  %s: %d rows in its dump, %d patched, %d differ from before\n", game, rows, patched, differ);
+    // Patch with its defaults on every PS in its dump, forward and not.
+    int shaders = 0;
+    int defaults_patched = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(game_dump)) {
+      if (entry.path().filename().string().find(".ps_") == std::string::npos) continue;
+      std::ifstream file(entry.path(), std::ios::binary);
+      const std::vector<uint8_t> code{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+      ++shaders;
+      for (const bool forward : {false, true}) {
+        const auto now = ambient_patch::Patch(code, forward, 1);
+        defaults_patched += now.empty() ? 0 : 1;
+        defaults_differ += (now != ambient_patch_before::Patch(code, forward, 1)) ? 1 : 0;
+      }
+    }
+    all_shaders += shaders;
+    std::printf("  %s: %d rows in its dump, %d patched, %d differ from before; Patch's defaults on its %d PS: %d patched\n", game, rows, patched,
+                differ, shaders, defaults_patched);
     if (std::string(game) == "twwarhammer") {
       ours_differ = differ;
     } else {
@@ -568,6 +594,16 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
   }
   CHECK(other_rows > 100 && other_differ == 0, "the other games: %d rows, %d differ", other_rows, other_differ);
   CHECK(ours_differ == 31, "CONTROL Warhammer's: %d of 31 differ", ours_differ);
+  CHECK(all_shaders > 10000 && defaults_differ == 0, "Patch's defaults: %d of %d PS (x2) differ", defaults_differ, all_shaders);
+  int declared = 0;
+  for (const uint32_t hash : {0x0BF2DB7Fu, 0xBCB9B1D6u}) {
+    const auto code = GameBytes(dump, hash);
+    declared += (ambient_patch_before::Patch(code, true, 1).empty() && !ambient_patch::Patch(code, true, 1, true).empty()) ? 1 : 0;
+  }
+  CHECK(declared == 2, "CONTROL declare_position: %d of 2 patch only with it", declared);
+  std::printf("shared Patch: its defaults on all %d PS of the 8 dumps (forward and not) %d differ from before; CONTROL declare_position "
+              "patches %d of 0BF2DB7F / BCB9B1D6 (before: not)\n",
+              all_shaders, defaults_differ, declared);
   std::printf("shared PatchAmbient: the other games' %d rows (%d patched) the same bytes as before; CONTROL Warhammer's %d of 31 differ\n", other_rows,
               other_patched, ours_differ);
 }
@@ -1070,6 +1106,253 @@ static void TestPointLights(const std::string& root, const std::string& dump) {
               compared, misses, largest, lit, control);
 }
 
+// The forward readers' constants by name (the game's: shadowmap_PS, camera, lighting_VS_PS, shroud_PS), from `at`
+// floats into the variable: each cascade the whole 4 x 4 atlas at depth 0.5 / w (w = 1 + (x + y + z) / 2: a symmetric
+// matrix, the same in either layout), the first split up to 1e6 (the cascade at any depth 0), no bias or fade; no clip
+// rectangle, cloud shadow or shroud.
+struct NamedConstant {
+  const char* name;
+  UINT at;
+  std::vector<float> values;
+};
+static const std::vector<float> SPLIT_MATRIX = {0.f, 0.f, 0.f, 0.5f, 0.f, 0.f, 0.f, 0.5f, 0.f, 0.f, 0.f, 0.5f, 0.5f, 0.5f, 0.5f, 1.f};
+static const std::vector<NamedConstant> FORWARD_CONSTANTS = {
+    {"g_vHardShadowBufferSize", 0, {4.f, 4.f, 0.25f, 0.25f}},
+    {"g_amHardSplit", 0, SPLIT_MATRIX},
+    {"g_amHardSplit", 16, SPLIT_MATRIX},
+    {"g_amHardSplit", 32, SPLIT_MATRIX},
+    {"g_amHardSplit", 48, SPLIT_MATRIX},
+    {"g_fFadeRange", 0, {0.1f, 0.1f}},
+    {"g_sample_bias", 0, {0.f}},
+    {"g_iSplitCount", 0, {4.f}},
+    {"g_split_distances", 0, {0.f}},
+    {"g_split_distances", 4, {1e6f}},
+    {"g_split_distances", 8, {1e6f}},
+    {"g_split_distances", 12, {1e6f}},
+    {"g_split_distances", 16, {1e6f}},
+    {"g_split_uv_texture_bounds", 0, {0.f, 0.f, 1.f, 1.f, 0.f, 0.f, 1.f, 1.f, 0.f, 0.f, 1.f, 1.f, 0.f, 0.f, 1.f, 1.f}},
+    {"g_clip_rect", 0, {-1e30f, -1e30f, 1e30f, 1e30f}},
+    {"g_cloud_shadow_lerp", 0, {0.f}},
+    {"g_shroud_enabled", 0, {0.f}},
+};
+
+struct ForwardScene {
+  float fill = 0.5f;
+  float sun = 1.f;         // sun_direction (sun, sun, sun) / sqrt 3 (the readers differ in which way it points)
+  bool glint = false;      // the camera far along (1, 1, 0) and the sun along -(1, 1, 0): a +x normal reflects it (the battle
+                           // water's sun glint, its only shadowed light)
+  float height = 0.f;      // added to every float input's y (the battle water's world place above its ground)
+  float atlas = 1.f;       // the shadow map's depth
+  float occlusion = -1.f;  // t49 (< 0: unbound)
+};
+
+// A forward pixel shader's bytes drawn over 4 x 4 pixels: its inputs from a vertex shader made from its input signature
+// (floats pixel-varying values, integers 0), every resource it binds by reflection (`layout`: the game's bytes) filled
+// with `scene.fill` (2D textures 4 x 4, cubes, arrays; structured buffers 16 elements: the particles' first 4 uints
+// m_behaviour_mask receive shadows 0x40000 and lit 0x80000, the other flags 0) but FORWARD_CONSTANTS and sun_direction,
+// its comparison samplers LESS_EQUAL, the others
+// linear; its shadow map (a name with ShadowBuffer) all `scene.atlas`; t49 `scene.occlusion`. Every target it writes.
+static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<const uint8_t> layout, const ForwardScene& scene) {
+  const float fill = scene.fill;
+  ComPtr<ID3D11ShaderReflection> reflection;
+  if (FAILED(D3DReflect(layout.data(), layout.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) return {};
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  std::string vertex = "void main(uint id : SV_VertexID";
+  std::string body = " const float2 corner = float2((id << 1) & 2, id & 2); position = float4(corner * float2(2, -2) + float2(-1, 1), 0, 1);";
+  for (UINT index = 0; index < desc.InputParameters; ++index) {
+    D3D11_SIGNATURE_PARAMETER_DESC input = {};
+    reflection->GetInputParameterDesc(index, &input);
+    if (input.SystemValueType == D3D_NAME_POSITION) {
+      vertex += ", out float4 position : SV_Position";
+      continue;
+    }
+    if (input.SystemValueType != D3D_NAME_UNDEFINED) continue;
+    const std::string name = "v" + std::to_string(index);
+    const bool integer = input.ComponentType != D3D_REGISTER_COMPONENT_FLOAT32;
+    vertex += std::string(", out ") + (input.ComponentType == D3D_REGISTER_COMPONENT_SINT32 ? "int4 " : (integer ? "uint4 " : "float4 ")) + name + " : " + input.SemanticName + std::to_string(input.SemanticIndex);
+    body += " " + name + (integer ? " = 0;" : " = float4(corner.x * 0.31 + " + std::to_string(0.13f * static_cast<float>(index)) + ", corner.y * 0.27 + 0.2, " +
+                                                    std::to_string(0.5f + (0.05f * static_cast<float>(index))) + ", 1) + float4(0, " +
+                                                    std::to_string(scene.height) + ", 0, 0);");
+  }
+  const auto vertex_code = CompileText(vertex + ") {" + body + " }", "forward vertex", "main", "vs_5_0");
+  ComPtr<ID3D11VertexShader> vertex_shader;
+  ComPtr<ID3D11PixelShader> pixel_shader;
+  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex_shader.GetAddressOf());
+  if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, pixel_shader.GetAddressOf()))) return {};
+  std::vector<ComPtr<ID3D11Buffer>> buffers;
+  std::vector<ComPtr<ID3D11ShaderResourceView>> views;
+  std::vector<ComPtr<ID3D11SamplerState>> samplers;
+  for (UINT index = 0; index < desc.BoundResources; ++index) {
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDesc(index, &bind);
+    const std::string name = bind.Name;
+    if (bind.Type == D3D_SIT_CBUFFER) {
+      auto* constants = reflection->GetConstantBufferByName(bind.Name);
+      D3D11_SHADER_BUFFER_DESC buffer_desc = {};
+      constants->GetDesc(&buffer_desc);
+      std::vector<float> data(((buffer_desc.Size + 15) & ~15u) / 4, fill);
+      for (UINT variable = 0; variable < buffer_desc.Variables; ++variable) {
+        D3D11_SHADER_VARIABLE_DESC variable_desc = {};
+        constants->GetVariableByIndex(variable)->GetDesc(&variable_desc);
+        for (const auto& constant : FORWARD_CONSTANTS) {
+          const size_t at = (variable_desc.StartOffset / 4) + constant.at;
+          if (std::strcmp(constant.name, variable_desc.Name) == 0 && at + constant.values.size() <= data.size()) {
+            std::ranges::copy(constant.values, data.begin() + static_cast<ptrdiff_t>(at));
+          }
+        }
+        const auto at = data.begin() + static_cast<ptrdiff_t>(variable_desc.StartOffset / 4);
+        if (std::strcmp(variable_desc.Name, "sun_direction") == 0) {
+          std::fill_n(at, 3, scene.sun * 0.57735027f);
+          if (scene.glint) std::ranges::copy(std::array{-0.70710678f, -0.70710678f, 0.f}, at);
+        }
+        if (std::strcmp(variable_desc.Name, "camera_position") == 0 && scene.glint) std::ranges::copy(std::array{707.f, 707.f, 0.f}, at);
+      }
+      buffers.push_back(Constants(data.data(), static_cast<UINT>(data.size() * 4)));
+      context->PSSetConstantBuffers(bind.BindPoint, 1, buffers.back().GetAddressOf());
+    } else if (bind.Type == D3D_SIT_SAMPLER) {
+      const bool comparison = (bind.uFlags & D3D_SIF_COMPARISON_SAMPLER) != 0;
+      const D3D11_SAMPLER_DESC sampler = {.Filter = comparison ? D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT : D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+                                          .AddressU = D3D11_TEXTURE_ADDRESS_WRAP, .AddressV = D3D11_TEXTURE_ADDRESS_WRAP, .AddressW = D3D11_TEXTURE_ADDRESS_WRAP,
+                                          .ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL, .MaxLOD = D3D11_FLOAT32_MAX};
+      samplers.emplace_back();
+      device->CreateSamplerState(&sampler, samplers.back().GetAddressOf());
+      context->PSSetSamplers(bind.BindPoint, 1, samplers.back().GetAddressOf());
+    } else if (bind.Type == D3D_SIT_STRUCTURED) {
+      // bind.NumSamples: its stride.
+      std::vector<float> elements(16 * bind.NumSamples / 4, fill);
+      for (size_t element = 0; element < 16; ++element) {
+        const std::array<uint32_t, 4> flags = {0x40000 | 0x80000, 0, 0, 0};
+        std::memcpy(&elements[element * bind.NumSamples / 4], flags.data(), sizeof(flags));
+      }
+      const D3D11_BUFFER_DESC buffer_desc = {.ByteWidth = static_cast<UINT>(elements.size() * 4), .Usage = D3D11_USAGE_DEFAULT,
+                                             .BindFlags = D3D11_BIND_SHADER_RESOURCE, .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED,
+                                             .StructureByteStride = bind.NumSamples};
+      const D3D11_SUBRESOURCE_DATA buffer_data = {.pSysMem = elements.data()};
+      ComPtr<ID3D11Buffer> buffer;
+      device->CreateBuffer(&buffer_desc, &buffer_data, buffer.GetAddressOf());
+      views.emplace_back();
+      device->CreateShaderResourceView(buffer.Get(), nullptr, views.back().GetAddressOf());
+      context->PSSetShaderResources(bind.BindPoint, 1, views.back().GetAddressOf());
+    } else if (bind.Type == D3D_SIT_TEXTURE && name.find("ShadowBuffer") != std::string::npos) {
+      // The atlas as the game's: one R32 float (comparisons need it).
+      const std::vector<float> depths(16, scene.atlas);
+      const D3D11_TEXTURE2D_DESC atlas_desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
+                                               .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+      const D3D11_SUBRESOURCE_DATA atlas_data = {.pSysMem = depths.data(), .SysMemPitch = 16};
+      ComPtr<ID3D11Texture2D> texture;
+      device->CreateTexture2D(&atlas_desc, &atlas_data, texture.GetAddressOf());
+      views.emplace_back();
+      device->CreateShaderResourceView(texture.Get(), nullptr, views.back().GetAddressOf());
+      context->PSSetShaderResources(bind.BindPoint, 1, views.back().GetAddressOf());
+    } else if (bind.Type == D3D_SIT_TEXTURE) {
+      std::vector<Float4> texels(16 * 6);
+      for (size_t texel = 0; texel < texels.size(); ++texel) {
+        const float vary = 0.05f * static_cast<float>(texel % 7);
+        texels[texel] = {fill + vary, fill, fill - vary, 1.f};
+      }
+      const bool cube = bind.Dimension == D3D_SRV_DIMENSION_TEXTURECUBE || bind.Dimension == D3D_SRV_DIMENSION_TEXTURECUBEARRAY;
+      const bool array = bind.Dimension == D3D_SRV_DIMENSION_TEXTURE2DARRAY;
+      if (!cube && !array && bind.Dimension != D3D_SRV_DIMENSION_TEXTURE2D) continue;
+      const auto texture = Texture(4, 4, texels.data(), D3D11_BIND_SHADER_RESOURCE, (cube || array) ? 6 : 1, cube ? D3D11_RESOURCE_MISC_TEXTURECUBE : 0);
+      D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = bind.Dimension};
+      if (bind.Dimension == D3D_SRV_DIMENSION_TEXTURE2D) view_desc.Texture2D = {0, 1};
+      if (bind.Dimension == D3D_SRV_DIMENSION_TEXTURE2DARRAY) view_desc.Texture2DArray = {0, 1, 0, 6};
+      if (bind.Dimension == D3D_SRV_DIMENSION_TEXTURECUBE) view_desc.TextureCube = {0, 1};
+      if (bind.Dimension == D3D_SRV_DIMENSION_TEXTURECUBEARRAY) view_desc.TextureCubeArray = {0, 1, 0, 1};
+      views.emplace_back();
+      device->CreateShaderResourceView(texture.Get(), &view_desc, views.back().GetAddressOf());
+      context->PSSetShaderResources(bind.BindPoint, 1, views.back().GetAddressOf());
+    }
+  }
+  if (scene.occlusion >= 0.f) {
+    views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.occlusion, scene.occlusion, scene.occlusion, scene.occlusion})));
+    context->PSSetShaderResources(49, 1, views.back().GetAddressOf());
+  }
+  std::vector<ComPtr<ID3D11Texture2D>> targets;
+  std::vector<ID3D11RenderTargetView*> rtvs;
+  for (UINT index = 0; index < desc.OutputParameters; ++index) {
+    D3D11_SIGNATURE_PARAMETER_DESC output = {};
+    reflection->GetOutputParameterDesc(index, &output);
+    if (output.SystemValueType != D3D_NAME_TARGET) continue;
+    targets.push_back(Texture(4, 4, nullptr, D3D11_BIND_RENDER_TARGET));
+    rtvs.resize(std::max<size_t>(rtvs.size(), output.SemanticIndex + 1), nullptr);
+    device->CreateRenderTargetView(targets.back().Get(), nullptr, &rtvs[output.SemanticIndex]);
+  }
+  context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+  context->PSSetShader(pixel_shader.Get(), nullptr, 0);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  const D3D11_VIEWPORT viewport = {.Width = 4.f, .Height = 4.f, .MaxDepth = 1.f};
+  context->RSSetViewports(1, &viewport);
+  context->OMSetRenderTargets(static_cast<UINT>(rtvs.size()), rtvs.data(), nullptr);
+  context->Draw(3, 0);
+  context->ClearState();
+  for (auto* rtv : rtvs) {
+    if (rtv != nullptr) rtv->Release();
+  }
+  std::vector<Float4> texels;
+  for (const auto& target : targets) {
+    const auto read = Read(target.Get());
+    texels.insert(texels.end(), read.begin(), read.end());
+  }
+  return texels;
+}
+
+static void TestForwardShadows(const std::string& dump) {
+  const auto same_bits = [](const std::vector<Float4>& a, const std::vector<Float4>& b) {
+    return !a.empty() && a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(Float4)) == 0;
+  };
+  int patched = 0;
+  int identical = 0;
+  int failing_same = 0;
+  int controls = 0;
+  for (const uint32_t hash : {0x44B4A2F0u, 0x0BF2DB7Fu, 0xBCB9B1D6u, 0x7865CDC9u, 0x122F218Cu, 0x1A3FE75Fu, 0x0FDF70BFu}) {
+    const auto game = GameBytes(dump, hash);
+    const auto ours = ambient_patch::Patch(game, true, 1, true);
+    if (game.empty() || ours.empty()) {
+      std::printf("  %08X: %s\n", hash, game.empty() ? "no bytes" : "not patched");
+      continue;
+    }
+    ++patched;
+    // The scene that reaches its shadow (the atlas's value changes its output): the first of these fills, suns, glints,
+    // heights.
+    ForwardScene lit = {.fill = -1.f};
+    for (const float height : {0.f, 4.f}) {
+      for (const bool glint : {false, true}) {
+        for (const float fill : {0.5f, 0.25f, 1.f, 0.1f}) {
+          for (const float sun : {1.f, -1.f}) {
+            const ForwardScene scene = {.fill = fill, .sun = sun, .glint = glint, .height = height, .atlas = 0.f};
+            ForwardScene other = scene;
+            other.atlas = 1.f;
+            if (lit.fill < 0.f && !same_bits(DrawForward(game, game, scene), DrawForward(game, game, other))) lit = other;
+          }
+        }
+      }
+    }
+    if (lit.fill < 0.f) {
+      std::printf("  %08X: no fill reaches its shadow\n", hash);
+      continue;
+    }
+    ++controls;
+    ForwardScene shadowed = lit;
+    shadowed.atlas = 0.f;
+    ForwardScene blocked_by_rays = lit;
+    blocked_by_rays.occlusion = 1.f;
+    const bool same = same_bits(DrawForward(ours, game, lit), DrawForward(game, game, lit))
+                      && same_bits(DrawForward(ours, game, shadowed), DrawForward(game, game, shadowed));
+    const bool blocked = same_bits(DrawForward(ours, game, blocked_by_rays), DrawForward(game, game, shadowed));
+    identical += same ? 1 : 0;
+    failing_same += blocked ? 1 : 0;
+    std::printf("  %08X (fill %g, sun %g%s, height %g): t49 unbound %s; t49 = 1 over a lit map %s every comparison failing\n", hash, lit.fill,
+                lit.sun, lit.glint ? ", glint" : "", lit.height, same ? "bit-identical" : "DIFFERS", blocked ? "equals" : "DIFFERS from");
+  }
+  CHECK(patched == 7 && controls == 7 && identical == 7 && failing_same == 7, "forward shadows: %d patched, %d controls, %d identical, %d blocked",
+        patched, controls, identical, failing_same);
+  std::printf("forward shadows: %d of 7 patched; t49 unbound bit-identical %d, t49 = 1 equal to every comparison failing %d; CONTROL the map's value "
+              "changes the game's output in %d\n",
+              patched, identical, failing_same, controls);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -1091,6 +1374,7 @@ int main(int argc, char** argv) {
   TestResolve(games);
   TestCasters(argv[1], argv[2]);
   TestPointLights(argv[1], argv[2]);
+  TestForwardShadows(argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

@@ -266,6 +266,13 @@ constexpr std::array<uint32_t, 18> ATLAS_SUN_SHADERS = {0x230F2241, 0xC601C862, 
                                                         0x34FEF0FF, 0x7BA77953, 0x9AA0E558, 0xA1AF2AEC, 0xB1AFBCF1, 0xCAD9815A};
 constexpr UINT ATLAS_SLOT = 1;
 float rays_replace_maps_row = 0.f;
+// Skip the Shadow Maps (Experimental, off; under Rays Replace Shadow Maps): rt_scene's Ray-Traced Shadows Only skips the
+// atlas's casters. Its other readers in ATN's traces (tools/tw/wh1/atlas_readers_wh1.txt: battle and campaign water,
+// forward-lit units and props, particles, all gather4_c through their comparison sampler) take the rays' shadow instead
+// (screen_space_shadows::PatchForwardShadows with declare_position: 0BF2DB7F / BCB9B1D6 / 7865CDC9 leave SV_Position's xy
+// undeclared; rt_scene::InstallShadowReaders).
+float rays_skip_cascades_row = 0.f;
+constexpr std::array<uint32_t, 7> SHADOW_READER_SHADERS = {0x44B4A2F0, 0x0BF2DB7F, 0xBCB9B1D6, 0x7865CDC9, 0x122F218C, 0x1A3FE75F, 0x0FDF70BF};
 struct AtlasLit {
   std::shared_mutex mutex;
   ID3D11Device* device = nullptr;  // the stand-in's (compared only)
@@ -1486,6 +1493,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
+  // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
+  rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -1913,9 +1922,9 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Warhammer II's and Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave,
-  // then Settings Mode's pages. Only what this game hooks: no Skip the Shadow Maps (the atlas's forward readers would lose
-  // their shadows), no foliage in the screen-space shadows, no fog march, water or smoke (their rows stay hidden). Rays
-  // Replace Shadow Maps, Far Tree Shadows and Shadow Casters Out of View Experimental, off (the *_tested flags).
+  // then Settings Mode's pages. Only what this game hooks: no foliage in the screen-space shadows, no fog march, water or
+  // smoke (their rows stay hidden). Rays Replace and Skip the Shadow Maps, Far Tree Shadows and Shadow Casters Out of View
+  // Experimental, off (the *_tested flags).
   // The paths' sky from the game's ambient (the spherical harmonics or the cube, rt_sun) and Path-Traced AO in the AO methods
   // (Experimental), as Warhammer II's: ATN's 2026-11-14 traces show g_hdr_on and g_use_spherical_harmonics on.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
@@ -1948,6 +1957,7 @@ void ConfigureAddon() {
                                              .rays_replace_maps_tested = false,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
+                                             .rays_skip_cascades = &rays_skip_cascades_row,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
@@ -1955,6 +1965,13 @@ void ConfigureAddon() {
                                              .water_caustics_tested = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
+  // Skip the Shadow Maps here: the water and the forward-lit units take the rays' shadow (SHADOW_READER_SHADERS).
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedSkipCascades") {
+      setting->tooltip = "With Rays Replace Shadow Maps: nothing is drawn into the game's shadow maps. Faster with many units and\n"
+                         "buildings. Water and the other forward-lit surfaces take the rays' shadow too.";
+    }
+  }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
@@ -2018,6 +2035,11 @@ bool AttachAddon() {
   // default reflection sun PS (ED3BDD4C drawn in the 10-27 battle trace): they write the G-buffer's colour or black, no light.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // Skip the Shadow Maps: the atlas's casters skipped (Ray-Traced Shadows Only); its forward readers patched as they are
+  // created to take the rays' occlusion at t49, bound at their draws only then (test/tw_warhammer_shaders part 8).
+  twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS, true);
+  twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
+  twattila::rt_scene::InstallShadowsOnly();
   // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's.
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
   for (const uint32_t shader_hash : ATLAS_SUN_SHADERS) {
