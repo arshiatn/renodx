@@ -657,6 +657,28 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
       (heapfix's loopfetch has a prefetch site there, disabled by its author: a note for the author package)
     - [ ] ATN tests (README lines): Skip the Game's Shadow Map Work off / on in cpl1's view, Time Each Pass x3 + PresentMon
       30 s, cut-outs and unit shadows; G1 grass maxed against the previous build
+  - [x] CPU PERF ROUND 3 MERGED 438c060f (one conflict: Attila's torch row floats, moved to graphics_page by the shared
+    step, dropped; x86 three + 8 x64 TW add-ons rebuilt after the merge): the 15 x64 consumers built (5e1aa6ee), Thrones'
+    page +1 row; Faster Render Lists (Experimental, off, Attila + Thrones: the push writes its shared "has items" byte only
+    when not 1; tw_engine_code part 8 bit-exact over 1 M pushes + 720 M threaded; 94 / 84 -> 44 / 31 ns a push; E 2-3.5 ms
+    workers, ~0.4 render in cpl2); Rome II Skip the Game's Shadow Map Work (Experimental, off; its one-argument Render
+    +0x14b84a0); research doc tools/tw/perf_plan/render_thread_tail.md (the "memset" is memcpy 32-127 B; introsort sorts
+    plain 4-byte values; the 8x tail is the battle simulation). Measured and not kept: ScaleModelLods' cache check (no
+    gain). The x64 games: no Render / scrub hook found statically. The earlier leftovers above are settled by this round.
+    Its leftovers, owner CPU ROUND 4 (a fresh agent after parity round 2):
+    - [ ] render-list headers 64 bytes apart (~1-2 ms workers): find where the header array is allocated (readers
+      0x176ced0, 0x178fd90, 0x176d430, 0x176da30, 0x176dbf0, 0x176ddb0)
+    - [ ] radix sort at +0x17b9217 for 0xda6b0's plain 4-byte values (0.5-1 ms workers, ~2 ms at maxed grass): a harness
+      test against the game's own sort first
+    - [ ] prefetch in the 0x182c990 gather loop (<= 0.3 ms): harness timing first
+    - [ ] 8x pose hold / half rate: read what 0x49aad0 writes (pose or simulation) before any row
+    - [ ] the animation pack loop 0x182e080: read its loop
+    - [ ] ATN DECIDES (data runs): mesh LOD part counts; the x64 shadow-pass skip (WH3 first: one stack capture a frame
+      while the sun's map is bound)
+    - [ ] ATN, when sending the heapfix package: ask the author whether we may patch the x87 block over heapfix's bytes
+      (+0x17f6515) and about his disabled prefetch site in the animation pack loop
+    - [ ] ATN tests: Faster Render Lists off / on in cpl2's view (PresentMon 60 s, log "Faster Render Lists: on"); Rome II
+      Skip the Shadow Maps in a forest battle (log "pass kind N draws only into the sun's map", shadows unchanged)
   - [x] hfp_ agent: heapfix's whole test set + eqtest on every packaged variant; battle_draw_batching A/B (keep it on)
   - [ ] GPU PERF ROUND (one agent after the drw_ merge; helper / rt_core): (a) FIRST Rome Remastered reset suspect 3 (a
     cluster set kept after the game rewrites an index buffer under the same key: offline check); (b) units ray-tracing
