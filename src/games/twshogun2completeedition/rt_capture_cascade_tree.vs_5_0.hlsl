@@ -5,7 +5,8 @@
 
 // Shogun 2 ray tracing: a tree's leaves or branches as the shadow pass draws them (rigidleafwet_v3 5851CA62, rigidbranchwet_v3
 // 6F20485E: one vertex shader's math) for the outside-view geometry shader: the corner in world space, its instance's two row
-// sets blended and swayed by the wind as the game's, and the UV of the leaves' mask test (A97EF2E0's t1).
+// sets blended and swayed by the wind as the game's, and the UV of the leaves' mask test (A97EF2E0's t1). The leaves' own version
+// (RT_TREE_FADE) also reads their fade: rt_capture_cascade_tree_leaves.
 #include "./rt_cascade_leaf.hlsli"
 
 cbuffer camera_VS_PS : register(b0)
@@ -75,5 +76,11 @@ RtCascadeLeaf main(
   leaf.burn = 0.f;
   leaf.fade = 1.f;
   leaf.world = float4(r0.xyz / r0.w, 1.f);
+#if defined(RT_TREE_FADE)
+  // The leaves' pixel shader (A97EF2E0) discards a texel where its alpha - 0.196 < saturate(fade + dissolve) x fade (fade 1 - v10.y):
+  // past saturate(fade) x fade > 1 - 0.196 every texel at every dissolve, the tree's leaves gone (NaN: no triangle).
+  const float fade = 1.f - v10.y;
+  if (saturate(fade) * fade > 0.803921565f) leaf.world = asfloat(0x7FC00000u).xxxx;
+#endif
   return leaf;
 }

@@ -13,6 +13,7 @@
 // 10. rt_capture / rt_rows_cascade_rigid and _variant against the game's 0xAC25DAB8 / 0xB0E006EE (TestPlacedShadow).
 // 11. rt_capture_cascade_cloth / imposter / tree through Pharaoh's outside-view geometry shader against the game's 0x8A00A1D4 /
 //     0xE3DA20D4 / 0x5851CA62 / 0x6F20485E (TestCascadeLeaves).
+// 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -1504,6 +1505,115 @@ static void TestCascadeLeaves(const std::string& games, const std::string& folde
   TestCascadeLeaf(games, folder, "6F20485E", L"rt_capture_cascade_tree", TREE_LAYOUT, trees, tree_constants);
 }
 
+// 12. rt_capture_cascade_tree_leaves (Shadow Casters Out of View's leaves): a dissolved tree's leaves left out (NaN) exactly where the
+//     game's leaf shadow pass (0x5851CA62 + 0xA97EF2E0's csos: a quad over the whole view, the mask's alpha 1 and the dissolve map 0,
+//     the texels it keeps longest) draws no sample (an occlusion query), for 12 fades from 0 to 1.5. CONTROL: rt_capture_cascade_tree
+//     (the branches' version, no fade) keeps the dissolved ones.
+static void TestLeafFade(const std::string& games, const std::string& folder) {
+  const auto read = [&folder](const char* name) {
+    std::ifstream file(folder + "/" + name, std::ios::binary);
+    return std::vector<char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  };
+  const auto game_vertex = read("0x5851CA62.vs_5_0.cso");
+  const auto game_pixel = read("0xA97EF2E0.ps_5_0.cso");
+  if (game_vertex.empty() || game_pixel.empty()) {
+    std::printf("missing 0x5851CA62 or 0xA97EF2E0\n");
+    std::exit(2);
+  }
+  const auto leaves = CompileVertex(games, L"rt_capture_cascade_tree_leaves");
+  const auto tree = CompileVertex(games, L"rt_capture_cascade_tree");
+  ComPtr<ID3D11VertexShader> vertex_shader;
+  ComPtr<ID3D11PixelShader> pixel_shader;
+  ComPtr<ID3D11InputLayout> input;
+  device->CreateVertexShader(game_vertex.data(), game_vertex.size(), nullptr, vertex_shader.GetAddressOf());
+  device->CreatePixelShader(game_pixel.data(), game_pixel.size(), nullptr, pixel_shader.GetAddressOf());
+  device->CreateInputLayout(TREE_LAYOUT, static_cast<UINT>(std::size(TREE_LAYOUT)), game_vertex.data(), game_vertex.size(), input.GetAddressOf());
+  // t0 the dissolve map (0), t1 the diffuse map (alpha 1).
+  const std::vector<uint32_t> dissolve(16, 0x00000000u);
+  const std::vector<uint32_t> diffuse(16, 0xFFFFFFFFu);
+  const auto dissolve_texture = Texture(4, 4, DXGI_FORMAT_R8G8B8A8_UNORM, dissolve.data(), 16, D3D11_BIND_SHADER_RESOURCE);
+  const auto diffuse_texture = Texture(4, 4, DXGI_FORMAT_R8G8B8A8_UNORM, diffuse.data(), 16, D3D11_BIND_SHADER_RESOURCE);
+  const auto dissolve_view = Srv(dissolve_texture.Get());
+  const auto diffuse_view = Srv(diffuse_texture.Get());
+  const std::array<ID3D11ShaderResourceView*, 2> views = {dissolve_view.Get(), diffuse_view.Get()};
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_WRAP, .AddressW = D3D11_TEXTURE_ADDRESS_WRAP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  const std::array<ID3D11SamplerState*, 2> samplers = {sampler.Get(), sampler.Get()};
+  const auto target = Texture(16, 16, DXGI_FORMAT_R8G8B8A8_UNORM, nullptr, 0, D3D11_BIND_RENDER_TARGET);
+  ComPtr<ID3D11RenderTargetView> target_view;
+  device->CreateRenderTargetView(target.Get(), nullptr, target_view.GetAddressOf());
+  const D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE, .DepthClipEnable = TRUE};
+  ComPtr<ID3D11RasterizerState> rasterizer;
+  device->CreateRasterizerState(&rasterizer_desc, rasterizer.GetAddressOf());
+  const D3D11_QUERY_DESC query_desc = {.Query = D3D11_QUERY_OCCLUSION};
+  ComPtr<ID3D11Query> query;
+  device->CreateQuery(&query_desc, query.GetAddressOf());
+  // An identity view-projection, no wind: the game's corners where the quad's are.
+  std::array<float, 44 * 4> camera = {};
+  for (int row = 0; row < 4; ++row) camera[((10 + row) * 4) + row] = 1.f;
+  camera[35 * 4] = 38.696f;
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const std::array<float, 12> calm = {};
+  const auto wind_buffer = Constants(calm.data(), sizeof(calm));
+  const std::array<ID3D11Buffer*, 2> constants = {camera_buffer.Get(), wind_buffer.Get()};
+  size_t bad = 0, left_out = 0, control_differs = 0;
+  constexpr std::array<float, 12> FADES = {0.f, 0.3f, 0.5f, 0.7f, 0.8f, 0.85f, 0.89f, 0.9f, 0.92f, 1.f, 1.2f, 1.5f};
+  for (const float fade : FADES) {
+    std::vector<TreeVertex> quad;
+    for (const auto& corner : std::array<std::array<float, 2>, 6>{{{-1.f, -1.f}, {-1.f, 1.f}, {1.f, -1.f}, {1.f, -1.f}, {-1.f, 1.f}, {1.f, 1.f}}}) {
+      TreeVertex vertex = {};
+      auto& inputs = vertex.inputs;
+      inputs[0] = {corner[0], corner[1], 0.5f, 1.f};
+      inputs[4] = {0.5f, 0.5f, 0.f, 0.f};  // the UV
+      inputs[5] = {1.f, 0.f, 0.f, 0.f};    // all the first row set
+      inputs[7] = {1.f, 0.f, 0.f, 0.f};
+      inputs[8] = {0.f, 1.f, 0.f, 0.f};
+      inputs[9] = {0.f, 0.f, 1.f, 0.f};
+      inputs[10] = {0.f, 1.f - fade, 0.f, 0.f};
+      quad.push_back(vertex);
+    }
+    const D3D11_BUFFER_DESC vertex_desc = {.ByteWidth = static_cast<UINT>(quad.size() * sizeof(TreeVertex)), .Usage = D3D11_USAGE_DEFAULT,
+                                           .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+    const D3D11_SUBRESOURCE_DATA vertex_data = {.pSysMem = quad.data()};
+    ComPtr<ID3D11Buffer> vertex_buffer;
+    device->CreateBuffer(&vertex_desc, &vertex_data, vertex_buffer.GetAddressOf());
+    const UINT stride = sizeof(TreeVertex);
+    const UINT offset = 0;
+    const D3D11_VIEWPORT viewport = {.Width = 16.f, .Height = 16.f, .MaxDepth = 1.f};
+    context->IASetInputLayout(input.Get());
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &stride, &offset);
+    context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+    context->VSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
+    context->PSSetShader(pixel_shader.Get(), nullptr, 0);
+    context->PSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+    context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+    context->RSSetState(rasterizer.Get());
+    context->RSSetViewports(1, &viewport);
+    context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+    context->Begin(query.Get());
+    context->Draw(static_cast<UINT>(quad.size()), 0);
+    context->End(query.Get());
+    UINT64 samples = 0;
+    while (context->GetData(query.Get(), &samples, sizeof(samples), 0) != S_OK) {}
+    context->ClearState();
+    const auto ours = StreamOut(leaves->GetBufferPointer(), leaves->GetBufferSize(), "TEXCOORD", 2, 4, TREE_LAYOUT, quad, constants, nullptr);
+    const auto kept = StreamOut(tree->GetBufferPointer(), tree->GetBufferSize(), "TEXCOORD", 2, 4, TREE_LAYOUT, quad, constants, nullptr);
+    const bool gone = std::ranges::all_of(ours, [](const std::array<float, 4>& world) { return std::isnan(world[0]); });
+    const bool all_kept = std::ranges::none_of(ours, [](const std::array<float, 4>& world) { return std::isnan(world[0]); });
+    bad += ((samples == 0) == gone && (gone || all_kept)) ? 0 : 1;
+    left_out += gone ? 1 : 0;
+    control_differs += ((samples == 0) != std::isnan(kept[0][0])) ? 1 : 0;
+    std::printf("  fade %.2f: the game's %llu samples, ours %s\n", fade, samples, gone ? "left out" : "kept");
+  }
+  CHECK(bad == 0 && left_out > 0 && left_out < FADES.size(), "%zu fades wrong, %zu left out of %zu", bad, left_out, FADES.size());
+  CHECK(control_differs > 0, "CONTROL: the branches' version left out the dissolved leaves too");
+  std::printf("rt_capture_cascade_tree_leaves: %zu of %zu fades left out where the game's leaf shadow draws nothing; the branches' version "
+              "keeps %zu of them\n", left_out, FADES.size(), control_differs);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -1528,6 +1638,7 @@ int main(int argc, char** argv) {
     TestPlacedShadow<VariantShadowVertex>(games, argv[3], "B0E006EE", L"rt_capture_cascade_variant", L"rt_rows_cascade_variant",
                                           VARIANT_SHADOW_LAYOUT, 8, 6);
     TestCascadeLeaves(games, argv[3]);
+    TestLeafFade(games, argv[3]);
   }
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;

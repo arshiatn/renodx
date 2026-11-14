@@ -86,7 +86,7 @@ constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
 // frame's (Host::cascade_last_view). The same for variantrigid's (B0E006EE: 10 draws, 4-256 instances; their rows every frame, as
 // moving: they sway in the wind like banners, what carries them isn't known). Cloth (8A00A1D4: 44 draws), sprite soldiers (E3DA20D4: 272 draws, cards turned to the sun;
 // with Sprite Soldier Shadows on) and trees' leaves and branches (5851CA62, 6F20485E: 22 and 17 draws, 327K and 32K corners in
-// the four cascades; one capture version) streamed out every frame through their capture versions (world positions, the mask's
+// the four cascades; one capture version, the leaves' own reading their fade) streamed out every frame through their capture versions (world positions, the mask's
 // UV) and Pharaoh's outside-view geometry shader (SceneShader::cascade_world: the game's constants kept, the main view at its b0).
 inline const std::array<twattila::rt_scene::SceneShader, 6> SCENE_SHADERS = {{
     {.hash = 0xAC25DAB8, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
@@ -96,7 +96,7 @@ inline const std::array<twattila::rt_scene::SceneShader, 6> SCENE_SHADERS = {{
      .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
     {.hash = 0xE3DA20D4, .capture_shader = __rt_capture_cascade_imposter, .dynamic = true, .foliage = true, .sun_facing = true,
      .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
-    {.hash = 0x5851CA62, .capture_shader = __rt_capture_cascade_tree, .dynamic = true, .foliage = true, .mask_slot = 1,
+    {.hash = 0x5851CA62, .capture_shader = __rt_capture_cascade_tree_leaves, .dynamic = true, .foliage = true, .mask_slot = 1,
      .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
     {.hash = 0x6F20485E, .capture_shader = __rt_capture_cascade_tree, .dynamic = true, .cascade_keep = __rt_outside_view_leaf,
      .cascade_world = true},

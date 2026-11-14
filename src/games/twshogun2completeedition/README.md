@@ -615,6 +615,10 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   (rt_capture / rt_rows_cascade_variant), their rows every frame (they sway in the wind like banners: what carries them
   isn't known). The sway itself (under 2 cm) is left out.
 - test/tw_shogun2_shaders part 10 for both: the capture and rows versions against the game's AC25DAB8 and B0E006EE.
+- Out of view, a dissolved tree's leaves no longer cast (rt_capture_cascade_tree_leaves): left out where the leaves' pixel
+  shader (A97EF2E0) drops every texel at every dissolve value (saturate(fade) x fade > 1 - 0.196, fade = 1 - v10.y). Its
+  branches keep casting, as in the game (their shadow pixel shader reads no fade). Part 12: against the game's leaf shadow
+  pass (its vertex and pixel shaders, an occlusion query) at 12 fades; control: the branches' version keeps them.
 
 ## v71 (2026-11-14): cloth, sprite soldiers and trees out of view, Path-traced AO rows (built only, not run in game)
 
