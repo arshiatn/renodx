@@ -377,7 +377,7 @@ void main(
     r3.w = r4.w ? r3.w : 0;
     r0.w = r0.w * r2.w + r3.w;
     r2.w = cmp(r9.y < -r9.y);
-    r2.w = r2.w ? -3.141593 : 0;
+    r2.w = r2.w ? -3.14159274 : 0;
     r0.w = r2.w + r0.w;
     r2.w = min(r9.x, r9.y);
     r3.w = max(r9.x, r9.y);
