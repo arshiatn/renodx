@@ -97,6 +97,7 @@ struct Camera {
   std::array<float, 16> view_projection = {};           // without the jitter
   std::array<float, 16> jittered_view_projection = {};  // as the depth was drawn
   std::array<float, 16> inverse_view_projection = {};   // of the jittered
+  std::array<double, 16> inverse_rows = {};             // the same in doubles (the rays' precise unprojection)
   std::array<float, 3> position = {};
   std::array<float, 2> jitter = {};  // written into this upload: pixels, x right, y up
   uint64_t frame = 0;
@@ -242,6 +243,7 @@ inline void JitterCamera(float* c) {
   }
   for (size_t row = 0; row < 4; ++row) {
     for (size_t column = 0; column < 4; ++column) {
+      camera.inverse_rows[(row * 4) + column] = rows[row][4 + column];
       camera.inverse_view_projection[(row * 4) + column] = static_cast<float>(rows[row][4 + column]);
     }
   }

@@ -333,6 +333,9 @@ struct Camera {
   std::array<float, 16> view_projection = {};
   std::array<float, 16> inverse_view_projection = {};
   std::array<float, 3> position = {};
+  // Host::clip_relative's: rows 0-2 a clip position's world offset from the camera (made in doubles, no division), row 3
+  // the camera's position (w 1).
+  std::array<float, 16> relative_inverse = {};
 };
 
 // The game's main view as ray tracing needs it, from the addon's anti-aliasing (the TW games' anti_aliasing.hpp,
@@ -390,6 +393,10 @@ struct Host {
   // The main view's depth (and the tone mapper's output the Debug View draws on) at render_size, its own texture below 100%
   // (Rome Remastered, DLSS in its upscaler's place); false: at the bridge's (the display's) size, the render in its corner.
   bool depth_at_render_size = false;
+  // The game's rt_vertices built with RT_VERTICES_RELATIVE: clip-space captures go back to the world with the camera's
+  // relative_inverse, no division by w (Rome Remastered: near 1 m, far 25 km; the inverse's w row cancels to metres of noise
+  // at a kilometre in floats). False: the inverse view-projection.
+  bool clip_relative = false;
 };
 
 namespace internal {
@@ -2638,7 +2645,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       };
       const VertexConstants constants = {
           .counts = {runtime.captured_vertices, dlaa_bridge::RT_TRANSFER_WIDTH, clip_captures ? 1u : 0u, world_first},
-          .inverse_view_projection = camera.inverse_view_projection,
+          .inverse_view_projection = (host.clip_relative ? camera.relative_inverse : camera.inverse_view_projection),
           .world_part = {WORLD_BASE, 0, 0, 0},
       };
       const UINT vertex_groups = (runtime.captured_vertices + 255) / 256;

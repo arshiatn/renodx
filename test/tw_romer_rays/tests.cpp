@@ -27,6 +27,8 @@
 //    today's rule at the bridge's size kept. DrawMultiply reads the traced visibility's top-left corner texel for texel.
 // 8. (Inside 7.) One mesh drawn again with another object matrix (VS b7, outside rt_core's key): captured with every_draw;
 //    CONTROL without: dropped.
+// 9. Unprojection 1-5 km out: positions in doubles and captures as offsets from the eye within 1 cm; CONTROL the float
+//    forms (rt_positions, rt_vertices without RT_VERTICES_RELATIVE) off by more than 10 cm.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -36,6 +38,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <mutex>
@@ -925,6 +928,147 @@ Output main(uint id : SV_VertexID) {
     CHECK(today_full);    // today's rule unchanged at the bridge's size
     CHECK(corner_read);
     dlaa::rays = false;
+  }
+
+  // 9. Unprojection 1-5 km out with the jittered battle camera (near 1 m, far 25 km), each pixel's surface at 1 + 4 x its
+  //    index / the count km. Positions (rt_positions_double through WritePositions) against the depth as stored,
+  //    unprojected in doubles: within 1 cm; CONTROL rt_core's rt_positions (floats, the inverse's w row): metres. Captures
+  //    (the clip positions a vertex shader's floats give, rt_vertices with RT_VERTICES_RELATIVE and RelativeInverse)
+  //    against their world points: within 1 cm; CONTROL rt_vertices as the other games build it: metres.
+  {
+    const Matrix jittered = Rows(camera.jittered_view_projection.data());
+    const Matrix inverse_jittered = Inverse(jittered);
+    const size_t count = static_cast<size_t>(WIDTH) * HEIGHT;
+    std::vector<float> depth(count);
+    std::vector<std::array<double, 3>> stored(count);   // the stored depth unprojected in doubles
+    std::vector<std::array<float, 4>> points(count);    // the world points as a vertex shader gets them
+    std::vector<std::array<float, 4>> clips(count);     // and its clip positions (float multiply-adds)
+    for (size_t at = 0; at < count; ++at) {
+      const float ndc_x = ((static_cast<float>(at % WIDTH) + 0.5f) / static_cast<float>(WIDTH) * 2.f) - 1.f;
+      const float ndc_y = 1.f - ((static_cast<float>(at / WIDTH) + 0.5f) / static_cast<float>(HEIGHT) * 2.f);
+      auto near_point = Transform({ndc_x, ndc_y, 0., 1.}, inverse_jittered);
+      auto far_point = Transform({ndc_x, ndc_y, 0.5, 1.}, inverse_jittered);
+      std::array<double, 3> direction = {};
+      double length = 0.;
+      for (int k = 0; k < 3; ++k) {
+        near_point[k] /= near_point[3];
+        far_point[k] /= far_point[3];
+        direction[k] = far_point[k] - near_point[k];
+        length += direction[k] * direction[k];
+      }
+      const double distance = 1000. + (4000. * static_cast<double>(at) / static_cast<double>(count - 1));
+      for (int k = 0; k < 3; ++k) points[at][k] = static_cast<float>(camera.position[k] + (direction[k] / std::sqrt(length) * distance));
+      points[at][3] = 1.f;
+      const auto drawn = Transform({points[at][0], points[at][1], points[at][2], 1.}, jittered);
+      depth[at] = static_cast<float>(drawn[2] / drawn[3]);
+      const auto unprojected = Transform({ndc_x, ndc_y, depth[at], 1.}, inverse_jittered);
+      for (int k = 0; k < 3; ++k) stored[at][k] = unprojected[k] / unprojected[3];
+      for (int column = 0; column < 4; ++column) {
+        float sum = 0.f;
+        for (int k = 0; k < 4; ++k) sum += points[at][k] * camera.jittered_view_projection[(k * 4) + column];
+        clips[at][column] = sum;
+      }
+    }
+    const auto worst = [](const std::vector<std::array<float, 4>>& got, auto expected) {
+      double error = 0.;
+      for (size_t at = 0; at < got.size(); ++at) {
+        for (int k = 0; k < 3; ++k) error = std::max(error, std::abs(static_cast<double>(got[at][k]) - expected(at, k)));
+      }
+      return error;
+    };
+    // Positions.
+    const auto depth_texture = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32_FLOAT, D3D11_BIND_SHADER_RESOURCE, depth.data(), WIDTH * 4);
+    const auto positions = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_UNORDERED_ACCESS);
+    const auto sun = MakeTexture(2, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_UNORDERED_ACCESS);
+    ComPtr<ID3D11UnorderedAccessView> positions_uav;
+    ComPtr<ID3D11UnorderedAccessView> sun_uav;
+    REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(positions.Get(), nullptr, positions_uav.GetAddressOf())));
+    REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(sun.Get(), nullptr, sun_uav.GetAddressOf())));
+    const auto depth_srv = Srv(depth_texture.Get());
+    REQUIRE(rays::internal::MakeObjects(device.Get()));
+    const bool written = rays::internal::WritePositions(context1.Get(), depth_srv.Get(), camera, positions_uav.Get(), sun_uav.Get(), {WIDTH, HEIGHT});
+    context->ClearState();
+    const auto stored_at = [&](size_t at, int k) { return stored[at][k]; };
+    const double precise_positions = worst(ReadBack<std::array<float, 4>>(positions.Get()), stored_at);
+    const auto sun_texels = ReadBack<std::array<float, 4>>(sun.Get());
+    ComPtr<ID3D11ComputeShader> float_positions;
+    REQUIRE(SUCCEEDED(device->CreateComputeShader(__rt_positions.data(), __rt_positions.size(), nullptr, float_positions.GetAddressOf())));
+    struct FloatPositions {
+      std::array<float, 16> inverse_view_projection;
+      std::array<float, 4> camera;
+      std::array<uint32_t, 4> size;
+    };
+    const FloatPositions float_constants = {.inverse_view_projection = dlaa::internal::Transposed(camera.inverse_view_projection),
+                                            .camera = {camera.position[0], camera.position[1], camera.position[2], 1.f},
+                                            .size = {WIDTH, HEIGHT, 0, 0}};
+    const auto float_buffer = ConstantBuffer(&float_constants, sizeof(float_constants));
+    const std::array<ID3D11UnorderedAccessView*, 2> outputs = {positions_uav.Get(), sun_uav.Get()};
+    context->CSSetShader(float_positions.Get(), nullptr, 0);
+    context->CSSetConstantBuffers(0, 1, float_buffer.GetAddressOf());
+    context->CSSetShaderResources(0, 1, depth_srv.GetAddressOf());
+    context->CSSetUnorderedAccessViews(0, 2, outputs.data(), nullptr);
+    context->Dispatch((WIDTH + 7) / 8, (HEIGHT + 7) / 8, 1);
+    context->ClearState();
+    const double float_positions_error = worst(ReadBack<std::array<float, 4>>(positions.Get()), stored_at);
+    double quantised = 0.;  // the depth's own step: the stored depth's point against the surface's
+    for (size_t at = 0; at < count; ++at) {
+      for (int k = 0; k < 3; ++k) quantised = std::max(quantised, std::abs(stored[at][k] - static_cast<double>(points[at][k])));
+    }
+
+    // Captures.
+    const auto make_buffer = [&](const void* data, UINT bytes, DXGI_FORMAT format, UINT elements) {
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = bytes, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+      const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = data};
+      ComPtr<ID3D11Buffer> buffer;
+      REQUIRE(SUCCEEDED(device->CreateBuffer(&desc, &initial, buffer.GetAddressOf())));
+      D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = format, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
+      view_desc.Buffer.NumElements = elements;
+      ComPtr<ID3D11ShaderResourceView> view;
+      REQUIRE(SUCCEEDED(device->CreateShaderResourceView(buffer.Get(), &view_desc, view.GetAddressOf())));
+      return view;
+    };
+    const auto captured = make_buffer(clips.data(), static_cast<UINT>(count * 16), DXGI_FORMAT_R32G32B32A32_FLOAT, static_cast<UINT>(count));
+    const std::vector<std::array<float, 2>> uvs(count, {0.f, 0.f});
+    const auto captured_uv = make_buffer(uvs.data(), static_cast<UINT>(count * 8), DXGI_FORMAT_R32G32_FLOAT, static_cast<UINT>(count));
+    const auto vertices = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_UNORDERED_ACCESS);
+    ComPtr<ID3D11UnorderedAccessView> vertices_uav;
+    REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(vertices.Get(), nullptr, vertices_uav.GetAddressOf())));
+    struct VertexConstants {
+      std::array<uint32_t, 4> counts;
+      std::array<float, 16> inverse;
+    };
+    const auto unproject = [&](ID3D11ComputeShader* shader, const std::array<float, 16>& inverse) {
+      const VertexConstants constants = {.counts = {static_cast<uint32_t>(count), WIDTH, 1u, 0u}, .inverse = inverse};
+      const auto buffer = ConstantBuffer(&constants, sizeof(constants));
+      const std::array<ID3D11ShaderResourceView*, 2> inputs = {captured.Get(), captured_uv.Get()};
+      context->CSSetShader(shader, nullptr, 0);
+      context->CSSetConstantBuffers(0, 1, buffer.GetAddressOf());
+      context->CSSetShaderResources(0, 2, inputs.data());
+      context->CSSetUnorderedAccessViews(0, 1, vertices_uav.GetAddressOf(), nullptr);
+      context->Dispatch(static_cast<UINT>((count + 255) / 256), 1, 1);
+      context->ClearState();
+      return worst(ReadBack<std::array<float, 4>>(vertices.Get()), [&](size_t at, int k) { return static_cast<double>(points[at][k]); });
+    };
+    ComPtr<ID3D11ComputeShader> relative_vertices;
+    REQUIRE(SUCCEEDED(device->CreateComputeShader(__rt_vertices.data(), __rt_vertices.size(), nullptr, relative_vertices.GetAddressOf())));
+    const double relative_error = unproject(relative_vertices.Get(), rays::internal::RelativeInverse(camera));
+    // CONTROL: rt_vertices without RT_VERTICES_RELATIVE (the other games' build), from this tree's source.
+    const std::wstring source = (std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() / "src/games/twattila/rt_vertices.cs_5_0.hlsl").wstring();
+    ComPtr<ID3DBlob> plain_code;
+    REQUIRE(SUCCEEDED(D3DCompileFromFile(source.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", 0, 0, plain_code.GetAddressOf(), nullptr)));
+    ComPtr<ID3D11ComputeShader> plain_vertices;
+    REQUIRE(SUCCEEDED(device->CreateComputeShader(plain_code->GetBufferPointer(), plain_code->GetBufferSize(), nullptr, plain_vertices.GetAddressOf())));
+    const double plain_error = unproject(plain_vertices.Get(), dlaa::internal::Transposed(camera.inverse_view_projection));
+
+    std::printf("1-5 km: positions in doubles %.4f m off the stored depth's points (CONTROL floats %.3f m; the depth's own step %.3f m); "
+                "captures relative %.4f m off their points (CONTROL the inverse %.3f m); sun texel 1 %.2f %.2f %.2f\n",
+                precise_positions, float_positions_error, quantised, relative_error, plain_error, sun_texels[1][0], sun_texels[1][1], sun_texels[1][2]);
+    CHECK(written);
+    CHECK(precise_positions < 0.01);
+    CHECK(float_positions_error > 0.1);  // CONTROL
+    CHECK(relative_error < 0.01);
+    CHECK(plain_error > 0.1);  // CONTROL
+    CHECK(sun_texels[1][0] == camera.position[0] && sun_texels[1][1] == camera.position[1] && sun_texels[1][2] == camera.position[2]);
   }
 
   std::printf("%s (%d failures)\n", (failures == 0 ? "PASS" : "FAIL"), failures);
