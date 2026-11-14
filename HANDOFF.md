@@ -292,6 +292,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   the 04:51 lock overwrite was its suite run.ps1: fixed to CreateNew; tw_warhammer_shaders run.ps1 -> WH1 agent).
 - [x] Troy Water Clarity / Caustics MERGED 92d44484 (68 PS, Experimental, WARP 68 / 68). WH1 Skip the Shadow Maps + RR
   guides proof MERGED 1c9c3dc5 (shared Patch declare_position opt-in: 21300 PS of 8 dumps byte-identical by default).
+- [x] Thrones Grass Height Distance MERGED 8f6de4c7 (Experimental; shared grass_fade::Install(hashes), rt_grass.hlsli's
+  RT_GRASS_HEIGHT_DISTANCE define removed: Thrones was its only user, now has SI.grass_height_distance; WARP 31 / 31).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
