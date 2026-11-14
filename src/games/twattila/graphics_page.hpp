@@ -36,7 +36,9 @@ using renodx::utils::settings::SettingValueType;
 using Values = std::vector<std::pair<std::string, float>>;
 
 // ATN's 2026-11-12 settings (their screenshot of Attila's page): the RT/PT preset, and Warhammer III's defaults of what
-// the methods leave (its addon.cpp). A game without one of these rows skips it (UpdateSettings).
+// the methods leave (its addon.cpp). A game without one of these rows skips it (UpdateSettings). Torch and Fire Shadow
+// Lights at 128 since the every-preset audit (2026-11-14, ATN's quality rows: +0.10 to +0.19 ms of the helper's GPU in
+// Constantinople's bench, each screen tile still tracing its 32).
 inline const Values RAYS_PRESET = {
     {"RayTracedSunShadows", 1.f},
     {"RayTracedShadowSoftness", 0.8f},
@@ -46,6 +48,7 @@ inline const Values RAYS_PRESET = {
     {"RayTracedSmokeQuality", 3.f},
     {"RayTracedLightSoftness", 0.25f},
     {"RayTracedLightImportance", 1.f},
+    {"RayTracedLightCount", 2.f},
     {"RayTracedSpriteShadows", 1.f},
     {"RayTracedFarTreeShadows", 1.f},
     {"RayTracedBannerLight", 1.f},
