@@ -293,6 +293,22 @@ constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
     {.pixel_shader = 0xF0BB1D3C, .slot = 4, .uv_semantic_index = 1},
     {.pixel_shader = 0xF4333A3C, .slot = 0, .uv_semantic_index = 1},
 }};
+// Skip the Game's Reflection Passes (Experimental, off): under the rays' reflections the resolve's replacement (ssr00) reads
+// neither the march's hits (t5) nor the scene's light mips (t6), and nothing else reads them or the hierarchical depth
+// (tools/tw/wh1/reader_census_wh1.txt, ATN's 34 frames): those passes go with the march (test part 14). Decided at the depth's
+// copy, the first of them, for the frame.
+float rays_skip_reflection_passes_row = 0.f;
+bool reflection_passes_skipped = false;
+// Rays' AO Alone (Experimental, off; Warhammer III's way): the rays' AO in place of the game's SSAO, not on top of it. The SSAO's
+// one reader is the sun draws' t_ssao red (the census; rt_ambient_combine multiplies the rays' in): while the rays feed it (this
+// frame's trace or the last: these passes come before it), its four passes are left out and the collect's output, what the
+// sun reads, cleared to open (test part 15).
+float rays_ao_alone_row = 0.f;
+bool SkipGameSsao() {
+  const auto& runtime = twattila::rt_scene::internal::runtime;
+  return rays_ao_alone_row != 0.f && runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
+         && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
+}
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{
     {.hash = 0xDBCC30FD, .row = &rays_banner_light_row},
     {.hash = 0xE7F0D71A, .row = &rays_banner_light_row},
@@ -381,9 +397,24 @@ void BuildRuntimeData() {
   // code (Game's costs what it did). The collect always runs: where no blur runs (Warhammer II at some settings), the
   // game's AO stays, never an unwritten one.
   custom_shaders[0xE3DA9A8D].on_draw = [](auto* cmd_list) {
+    if (SkipGameSsao()) return false;
     if (shader_injection.ssao_mode < 1.f) return true;
     return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
                                                false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
+  };
+  // Rays' AO Alone: the sweep 0C83DB37 and blur 4C1918DA left out, the collect 38F6D9B6's output cleared to open in its place.
+  custom_shaders[0x0C83DB37].on_draw = [](auto*) { return !SkipGameSsao(); };
+  custom_shaders[0x4C1918DA].on_draw = [](auto*) { return !SkipGameSsao(); };
+  custom_shaders[0x38F6D9B6].on_draw = [](auto* cmd_list) {
+    if (!SkipGameSsao()) return true;
+    auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+    Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
+    native->CSGetUnorderedAccessViews(0, 1, output.GetAddressOf());
+    const std::array<float, 4> open = {1.f, 1.f, 1.f, 1.f};
+    if (output) {
+      native->ClearUnorderedAccessViewFloat(output.Get(), open.data());
+    }
+    return false;
   };
 
   // Reflections: the ray-traced ones in the resolve (ssr00, twattila/rt_scene.hpp, rt_reflection.hlsli); while they
@@ -395,6 +426,15 @@ void BuildRuntimeData() {
   custom_shaders[0x6B80E35B].on_drawn = [](auto* cmd_list) { twattila::rt_scene::BindReflections(cmd_list, true, false); };
   for (const uint32_t hash : {0x021D7515u, 0x4EBDA7FAu, 0x537CAD4Bu}) {
     custom_shaders[hash].on_draw = twattila::rt_scene::OnReflectionMarch;
+  }
+  // Skip the Game's Reflection Passes: the hierarchical depth (copy F2CCEF86, gathers 7AA39EE9) and both mip chains
+  // (preconvolve copy 4D96DAB5, downscale F9870DE2, blurs E7A82FC2 / 53E74A97); the frame's rays asked for at the copy.
+  custom_shaders[0xF2CCEF86].on_draw = [](auto* cmd_list) {
+    reflection_passes_skipped = rays_skip_reflection_passes_row != 0.f && !twattila::rt_scene::OnReflectionMarch(cmd_list);
+    return !reflection_passes_skipped;
+  };
+  for (const uint32_t hash : {0x7AA39EE9u, 0x4D96DAB5u, 0xF9870DE2u, 0xE7A82FC2u, 0x53E74A97u}) {
+    custom_shaders[hash].on_draw = [](auto*) { return !reflection_passes_skipped; };
   }
   // The point lights' shaders: ours only while the rays are bound (RaysShader above).
   PointLightRays::Take(&custom_shaders);
@@ -1508,6 +1548,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  reflection_passes_skipped = false;
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
   static uint32_t ao_frame = 0;
@@ -1889,6 +1930,26 @@ void ConfigureAddon() {
       .tooltip = "Rippling light on river and lake beds in battles. 0: off.",
       .max = 2.f,
       .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedAOAlone",
+      .binding = &rays_ao_alone_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Rays' AO Alone (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "The rays' ambient occlusion in place of the game's SSAO, not on top of it: lighter shade in corners.\n"
+                 "Leaves out the game's SSAO (a little faster).",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSkipGameReflections",
+      .binding = &rays_skip_reflection_passes_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Skip the Game's Reflection Passes (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Leaves out the game's screen-space reflection passes the rays' reflections replace: the same picture,\n"
+                 "a little faster.",
   });
 
   // Appended Settings (HDR10)
