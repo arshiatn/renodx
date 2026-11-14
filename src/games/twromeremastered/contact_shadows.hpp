@@ -12,13 +12,16 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <mutex>
+#include <utility>
 
 #include <embed/shaders.h>
 #include <include/reshade.hpp>
 
 #include "../../utils/directx.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
+#include "../twattila/feature_settings.hpp"
 #include "./dlaa.hpp"
 #include "./ray_tracing.hpp"
 
@@ -35,13 +38,8 @@ namespace twromeremastered::contact_shadows {
 
 using Microsoft::WRL::ComPtr;
 
-// The rows.
-struct Rows {
-  float enabled = 0.f;
-  float length = 2.f;  // the shadows' length: 60 << it screen pixels
-  float thickness = 0.005f;
-};
-static Rows rows;
+// The rows (the graphics page's Bend Screen-Space Shadows, feature_settings::AppendSss): Bend's march and Softness.
+static twattila::feature_settings::SssSliders rows;
 
 namespace internal {
 
@@ -88,6 +86,7 @@ struct Objects {
   ComPtr<ID3DDeviceContextState> private_state;
   ComPtr<ID3D11ComputeShader> setup;
   ComPtr<ID3D11ComputeShader> bend;
+  ComPtr<ID3D11ComputeShader> blur;  // Softness (sss_blur)
   ComPtr<ID3D11Buffer> settings;
   ComPtr<ID3D11Buffer> camera;
   std::array<ComPtr<ID3D11Buffer>, DISPATCH_COUNT> dispatch_indexes;  // sss_bend's b3: which of the list's dispatches it is
@@ -98,11 +97,13 @@ struct Objects {
   ComPtr<ID3D11ShaderResourceView> parameters_srv;
   ComPtr<ID3D11SamplerState> border;  // off screen: the far depth
   ShaderSettings uploaded = {};
-  // The occlusion (R8, the depth's size).
+  // The occlusion and the occlusion after Softness (R8, the depth's size).
   UINT width = 0;
   UINT height = 0;
   ComPtr<ID3D11UnorderedAccessView> occlusion_uav;
   ComPtr<ID3D11ShaderResourceView> occlusion_srv;
+  ComPtr<ID3D11UnorderedAccessView> soft_uav;
+  ComPtr<ID3D11ShaderResourceView> soft_srv;
   bool failed = false;
 };
 
@@ -154,6 +155,7 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
                                                                  objects.private_state.GetAddressOf()))
                      || FAILED(device->CreateComputeShader(__sss_setup.data(), __sss_setup.size(), nullptr, objects.setup.GetAddressOf()))
                      || FAILED(device->CreateComputeShader(__sss_bend.data(), __sss_bend.size(), nullptr, objects.bend.GetAddressOf()))
+                     || FAILED(device->CreateComputeShader(__sss_blur.data(), __sss_blur.size(), nullptr, objects.blur.GetAddressOf()))
                      || FAILED(device->CreateBuffer(&settings_desc, nullptr, objects.settings.GetAddressOf()))
                      || FAILED(device->CreateBuffer(&camera_desc, nullptr, objects.camera.GetAddressOf()))
                      || FAILED(device->CreateBuffer(&arguments_desc, nullptr, objects.arguments.GetAddressOf()))
@@ -174,6 +176,8 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
   objects.width = 0;
   objects.occlusion_uav.Reset();
   objects.occlusion_srv.Reset();
+  objects.soft_uav.Reset();
+  objects.soft_srv.Reset();
   const D3D11_TEXTURE2D_DESC desc = {
       .Width = width,
       .Height = height,
@@ -184,13 +188,19 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
       .Usage = D3D11_USAGE_DEFAULT,
       .BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE,
   };
-  ComPtr<ID3D11Texture2D> texture;
-  if (FAILED(device->CreateTexture2D(&desc, nullptr, texture.GetAddressOf()))
-      || FAILED(device->CreateUnorderedAccessView(texture.Get(), nullptr, objects.occlusion_uav.GetAddressOf()))
-      || FAILED(device->CreateShaderResourceView(texture.Get(), nullptr, objects.occlusion_srv.GetAddressOf()))) {
-    objects.occlusion_uav.Reset();
-    objects.occlusion_srv.Reset();
-    return false;
+  // (ComPtr's & is its ComPtrRef: std::addressof for the ComPtrs themselves.)
+  for (const auto& [uav, srv] : {std::pair{std::addressof(objects.occlusion_uav), std::addressof(objects.occlusion_srv)},
+                                 std::pair{std::addressof(objects.soft_uav), std::addressof(objects.soft_srv)}}) {
+    ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(device->CreateTexture2D(&desc, nullptr, texture.GetAddressOf()))
+        || FAILED(device->CreateUnorderedAccessView(texture.Get(), nullptr, uav->GetAddressOf()))
+        || FAILED(device->CreateShaderResourceView(texture.Get(), nullptr, srv->GetAddressOf()))) {
+      objects.occlusion_uav.Reset();
+      objects.occlusion_srv.Reset();
+      objects.soft_uav.Reset();
+      objects.soft_srv.Reset();
+      return false;
+    }
   }
   objects.width = width;
   objects.height = height;
@@ -228,13 +238,25 @@ inline void Draw(ID3D11DeviceContext1* native, ID3D11ShaderResourceView* depth, 
   const std::unique_lock lock(state.mutex);
   auto& objects = state.objects;
   if (!Prepare(device.Get(), depth_desc.Width, depth_desc.Height)) return;
+  // Bend's rows as Attila's (feature_settings::SssSettings); its Debug View and the extended march are not drawn here.
+  const twattila::screen_space_shadows::Settings rows_settings = twattila::feature_settings::SssSettings(rows);
   const ShaderSettings settings = {
       .width = static_cast<float>(depth_desc.Width),
       .height = static_cast<float>(depth_desc.Height),
       .inverse_width = 1.f / static_cast<float>(depth_desc.Width),
       .inverse_height = 1.f / static_cast<float>(depth_desc.Height),
-      .thickness = rows.thickness,
-      .samples = static_cast<float>(60 << std::clamp(static_cast<int>(rows.length), 0, 5)),
+      .thickness = rows_settings.thickness,
+      .samples = rows_settings.samples,
+      .contrast = rows_settings.contrast,
+      .edge_threshold = rows_settings.edge_threshold,
+      .hard_samples = rows_settings.hard_samples,
+      // Within the samples left after the hard ones (Bend reads past them otherwise), as Attila's.
+      .fade_samples = std::min(rows_settings.fade_samples, rows_settings.samples - rows_settings.hard_samples),
+      .ignore_edges = rows_settings.ignore_edges ? 1.f : 0.f,
+      .precision_offset = rows_settings.precision_offset ? 1.f : 0.f,
+      .sample_along_ray = rows_settings.sample_along_ray ? 1.f : 0.f,
+      .softness = rows_settings.softness,
+      .mirror_edges = rows_settings.mirror_edges ? 1.f : 0.f,
       .render_width = static_cast<float>(depth_desc.Width),
       .render_height = static_cast<float>(depth_desc.Height),
   };
@@ -270,6 +292,15 @@ inline void Draw(ID3D11DeviceContext1* native, ID3D11ShaderResourceView* depth, 
       native->CSSetConstantBuffers(3, 1, objects.dispatch_indexes[index].GetAddressOf());
       native->DispatchIndirect(objects.arguments.Get(), index * 12);
     }
+    // Softness: the occlusion smoothed along surfaces (sss_blur, its settings at b2 as above).
+    if (settings.softness > 0.f) {
+      const std::array<ID3D11UnorderedAccessView*, 2> blur_outputs = {objects.soft_uav.Get(), nullptr};
+      const std::array<ID3D11ShaderResourceView*, 2> blur_inputs = {depth, objects.occlusion_srv.Get()};
+      native->CSSetShader(objects.blur.Get(), nullptr, 0);
+      native->CSSetUnorderedAccessViews(0, 2, blur_outputs.data(), nullptr);
+      native->CSSetShaderResources(0, 2, blur_inputs.data());
+      native->Dispatch((depth_desc.Width + 7) / 8, (depth_desc.Height + 7) / 8, 1);
+    }
     // Nothing of the game's or of the occlusion kept bound in the addon's state.
     constexpr std::array<ID3D11UnorderedAccessView*, 2> NO_OUTPUTS = {};
     constexpr std::array<ID3D11ShaderResourceView*, 2> NO_INPUTS = {};
@@ -278,7 +309,7 @@ inline void Draw(ID3D11DeviceContext1* native, ID3D11ShaderResourceView* depth, 
     native->CSSetShaderResources(0, 2, NO_INPUTS.data());
     native->CSSetConstantBuffers(0, 4, NO_CONSTANTS.data());
   }
-  ray_tracing::internal::DrawMultiply(native, mask, objects.occlusion_srv.Get(), true);
+  ray_tracing::internal::DrawMultiply(native, mask, (settings.softness > 0.f ? objects.soft_srv : objects.occlusion_srv).Get(), true);
 }
 
 }  // namespace internal

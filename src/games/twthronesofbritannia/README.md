@@ -1,5 +1,42 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
+### Parity round (2026-11-14; built only, not run in game)
+
+The rest of Attila's page and shader fixes this game can take (table: tools/tw/thrones/parity_1114.md).
+
+New:
+- **Depth of Field (Extra, 1 = the game's)**: the blur's size; 0 turns it off.
+- **Unit/Building Indicator Brightness (Experimental, 1 = the game's)** and **VFX Brightness: Flame, Dust, Clouds & Smoke (Experimental, 1 = the game's)**, on Attila's shaders (this game's are the same).
+- **Modded Auto Exposure + Sensitivity (Experimental, off)**: the sun, fires and sparks pull the exposure down less. This game meters on the CPU; the row limits the brightest value it reads, as Attila's does on the GPU.
+- **Water Clarity now works on the battle sea and the campaign sea and lake** (they had their own fade the slider didn't reach). At 1 they look as before.
+
+Fixed:
+- Frame generation: the lens flares and the vignette are part of the picture the generated frames are made from (no flares stuck on the HUD), as Attila.
+- Below 100%: the lens flare hides behind hills and walls at the right place, and the unit markers sit on the units (as Attila).
+- UI: two map sprites as Attila's (no overbright edges, plain colours).
+
+Not done:
+- VFX Brightness: Snowflakes, Rain & Fire Sparks and Blood Splash & Storm Fog: Attila picks them by the particle texture's layers, unread here. Smallest step: a snow battle and a storm with ReShade's texture view of the particle array.
+- Object motion vectors in the game's own draws and the units' records (Attila only): 23 of 32 shaders are Attila's, the rest this game's. Smallest step: the 23 same shaders first.
+- The campaign's far terrain and its sea bed stay out of the rays (on purpose: just under the near terrain). The 24 MSAA passes: with in-game MSAA no upscaler runs.
+- Torch and Fire Shadows / Light from Path Tracing: the shared torch step; this game can take them.
+
+Test (ATN):
+1. Depth of Field 0 / 1 / 2 in a battle close-up: no blur / the game's / stronger.
+2. Indicator Brightness 0.5 / 2: unit and building markers dimmer / brighter; 1: as before.
+3. VFX Brightness 2 in a burning siege: fire and smoke brighter; 1: as before.
+4. Modded Auto Exposure on, camera into the sun and onto fires: the land stays brighter; off: as before.
+5. Water Clarity 2 at the battle coast and on the campaign sea / lake: deeper view into the water; 1: as before.
+6. Frame generation on, camera past the sun: lens flares move with the picture, none on the HUD.
+7. 50% render size: the flare hides behind a hill as the sun does; unit markers on the units.
+8. Campaign map: the two map sprites (borders, icons) as before, no bright rims.
+
+Build: `cmake --build build32 --config Release --target renodx-twthronesofbritannia.addon32`.
+
+### r4 (2026-11-14: RT/PT as Attila's; "thrones r4", stamped and installed 10:45 with renodx-tw-dlaa64.exe helper112, not run in game)
+
+- **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Light Through All Banners, Far Tree, Smoke and Sprite Soldier Shadows and Water Caustics on, Light Through Foliage 0.5 and the smoke's shadows without rays 1 (both rest under the rays). Their defaults, labels and No RT/PT stay as they were.
+
 ### Round 3 (2026-11-14, grass, banners, CPU code; "thrones r3", stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 New:

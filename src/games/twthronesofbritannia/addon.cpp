@@ -79,10 +79,6 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; Attila's chain, part 4).
 constexpr float HUE_CLIP_DEFAULT = 40.f;
 
-// bool IsModdedAutoExposureEnabled() {
-//   return shader_injection.auto_exposure_highlight_protection == 1.f;
-// }
-
 // void ApplyHDRPreset(
 //     float exposure,
 //     float highlights,
@@ -153,8 +149,13 @@ void ApplyResetPreset() {
       {"lensflare", 1.f},
       {"godrays", 1.f},
       {"vignette", 1.f},
+      {"dof", 1.f},
       {"distortion", 1.f},
       {"filmgrain", 1.f},
+      {"some_indicators", 1.f},
+      {"vfx_base_brightness", 1.f},
+      {"auto_exposure_highlight_protection", 0.f},
+      {"auto_exposure_highlight_headroom_stops", 2.f},
       {"v31_exposure", 1.f},
       {"v31_highlights", 1.f},
       {"v31_shadows", 1.f},
@@ -257,6 +258,11 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0x66006BEAu, 0x47D75349u}) {
     custom_shaders[hash].on_draw = twattila::rt_scene::OnReflectionDraw;
     custom_shaders[hash].on_drawn = twattila::rt_scene::OnReflectionDrawn;
+  }
+  // Lens flares 00-03 and the vignette (Attila's shaders, the same bytes), drawn on the output after hdr_to_screen and its
+  // anti-aliasing (S1 trace_100a l.4059-4072): part of frame generation's HUD-less image, as Attila's.
+  for (const uint32_t hash : {0x37FA1283u, 0x177AC333u, 0xF0153CB5u, 0x1125AA01u, 0x2C002375u}) {
+    custom_shaders[hash].on_drawn = twattila::anti_aliasing::OnOutputEffectDrawn;
   }
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -799,6 +805,17 @@ void BuildRuntimeData() {
         .format = "%.2f",
     },
     new renodx::utils::settings::Setting{
+        .key = "dof",
+        .binding = &shader_injection.dof,
+        .default_value = 1.f,
+        .label = "Depth of Field",
+        .section = "Extra",
+        .tooltip = "Multiplier on depth of field blur. Needs in-game Depth of Field on.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
         .key = "distortion",
         .binding = &shader_injection.uvdistort,
         .default_value = 1.f,
@@ -929,48 +946,60 @@ void BuildRuntimeData() {
         .labels = {"Off", "On"},
         .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
     },
-    // new renodx::utils::settings::Setting{
-    //     .key = "some_indicators",
-    //     .binding = &shader_injection.someindicators,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 0.4f,
-    //     .label = "Brightness of some Unit/Building Indicator ",
-    //     .section = "Extra",
-    //     .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
-    //     .min = 0.0f,
-    //     .max = 1.0f,
-    //     .format = "%.1f",
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    
+    // Attila's Extra (Experimental) rows on Attila's shaders, the same bytes here (shaders/vfx00 / vfx01, markersbattle00-02).
+    // Attila's snow and weather rows stay out: its shaders pick them by the particle array's slices 1 and 7, not read here.
+    new renodx::utils::settings::Setting{
+        .key = "vfx_base_brightness",
+        .binding = &shader_injection.vfxbasebrightness,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 1.0f,
+        .label = "VFX Brightness: Flame, Dust, Clouds & Smoke",
+        .section = "Extra (Experimental)",
+        .tooltip = "Brightness of smoke, clouds, dust, and flame. This does not boost the inner fire color.",
+        .min = 1.0f,
+        .max = 30.0f,
+        .format = "%.1f",
+    },
+    new renodx::utils::settings::Setting{
+        .key = "some_indicators",
+        .binding = &shader_injection.someindicators,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 1.0f,
+        .label = "Unit/Building Indicator Brightness",
+        .section = "Extra (Experimental)",
+        .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
+        .min = 0.0f,
+        .max = 2.0f,
+        .format = "%.1f",
+        .is_enabled = IsHDRMode,
+    },
 
 
-    // // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_protection",
-    //     .binding = &shader_injection.auto_exposure_highlight_protection,
-    //     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-    //     .default_value = 0.0f,
-    //     .label = "Modded Auto Exposure",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
-    //     .labels = {"Off (Stock)", "On (Protected)"},
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_headroom_stops",
-    //     .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 1.0f,
-    //     .label = "Modded Auto Exposure: Sensitivity",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
-    //     .min = 0.0f,
-    //     .max = 2.0f,
-    //     .format = "%.1f",
-    //     .is_enabled = IsModdedAutoExposureEnabled,
-    //     .is_visible = IsAdvancedSettings,
-    // },
+
+    // Auto Exposure (Attila's rows; this game meters on the CPU from shaders/autoexposure00's last texel).
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_protection",
+        .binding = &shader_injection.auto_exposure_highlight_protection,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.0f,
+        .label = "Modded Auto Exposure",
+        .section = "Extra (Experimental)",
+        .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
+        .labels = {"Off (Stock)", "On (Protected)"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_headroom_stops",
+        .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 4.0f,
+        .label = "Modded Auto Exposure: Sensitivity",
+        .section = "Extra (Experimental)",
+        .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
+        .min = 1.0f,
+        .max = 8.0f,
+        .format = "%.0f",
+        .is_enabled = [] { return shader_injection.auto_exposure_highlight_protection == 1.f; },
+    },
     // // VFX //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .key = "vfx_fire_brightness",
@@ -1431,24 +1460,31 @@ constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils:
 
 // Attila's water rows read again here (tools/tw/thrones/th_water_rows.py: the same bytes, else Thrones' twin by name, its
 // bindings from the reflection; WARP tools/tw/thrones/water_test). The seas' and the campaign lake's twins don't read
-// g_sea_bed_light_scatter: Water Clarity changes the rivers, the battle plane and the placed water meshes only.
+// g_sea_bed_light_scatter: their see-through is exp2(depth x a literal), -0.4 x log2(e) a metre in battles, -10 x log2(e)
+// on the campaign (each once, tools/tw/thrones/par_th_water_literals.py), a lane of a vector literal in the battle seas and
+// the campaign sea: Water Clarity scales that depth in a patched copy (material water, PatchWaterAbsorption).
+constexpr twattila::water_effects::WaterOpacity SEA_DEPTH_X = {.type = 4, .index = {0xBF13BB63, 0}, .component = 0, .component_only = true};
+constexpr twattila::water_effects::WaterOpacity SEA_DEPTH_Y = {.type = 4, .index = {0xBF13BB63, 0}, .component = 1, .component_only = true};
+constexpr uint32_t CAMPAIGN_DEPTH_LITERAL = 0xC166D4CA;
+constexpr twattila::water_effects::WaterOpacity CAMPAIGN_DEPTH = {.type = 4, .index = {CAMPAIGN_DEPTH_LITERAL, 0}};
 constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {{
     {.hash = 0x2E9F5935, .lighting_slot = 2, .world_input = 1, .refraction_slot = 2},  // battle river
     {.hash = 0xC9FBACCB, .lighting_slot = 2, .world_input = 3, .refraction_slot = 2},  // battle plane, Water Quality Ultra
     {.hash = 0x2E69BF8E, .lighting_slot = 1, .world_input = 3, .refraction_slot = 2},  // placed water meshes; the plane below Ultra
-    {.hash = 0xF7E011A4, .lighting_slot = 2, .world_input = 2, .refraction_slot = 6},  // battle sea, high / ultra
-    {.hash = 0xA9724510, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6},  // battle sea, medium
-    {.hash = 0x736DB670, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},  // battle sea, low
-    {.hash = 0xDE739661, .lighting_slot = 2, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign sea
-    {.hash = 0x08F47D8C, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign sea, low
-    {.hash = 0x4229959B, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign lake
+    {.hash = 0xF7E011A4, .lighting_slot = 2, .world_input = 2, .refraction_slot = 6, .material_water = true, .opacity = SEA_DEPTH_Y},  // battle sea, high / ultra
+    {.hash = 0xA9724510, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6, .material_water = true, .opacity = SEA_DEPTH_Y},  // battle sea, medium
+    {.hash = 0x736DB670, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5, .material_water = true, .opacity = SEA_DEPTH_X},  // battle sea, low
+    {.hash = 0xDE739661, .lighting_slot = 2, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true,
+     .opacity = {.type = 4, .index = {CAMPAIGN_DEPTH_LITERAL, 0}, .component = 2, .component_only = true}},  // campaign sea
+    {.hash = 0x08F47D8C, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true, .opacity = CAMPAIGN_DEPTH},  // campaign sea, low
+    {.hash = 0x4229959B, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true, .opacity = CAMPAIGN_DEPTH},  // campaign lake
     // Without shadows.
     {.hash = 0x52228234, .lighting_slot = 1, .world_input = 1, .refraction_slot = 2},
     {.hash = 0x5CB9A865, .lighting_slot = 1, .world_input = 1, .refraction_slot = 2},
-    {.hash = 0xBF93E312, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6},
-    {.hash = 0x761A07B1, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},
-    {.hash = 0xF6DFFEBC, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},
-    {.hash = 0xECB1E7B5, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},
+    {.hash = 0xBF93E312, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6, .material_water = true, .opacity = SEA_DEPTH_Y},
+    {.hash = 0x761A07B1, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5, .material_water = true, .opacity = SEA_DEPTH_X},
+    {.hash = 0xF6DFFEBC, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true, .opacity = CAMPAIGN_DEPTH},
+    {.hash = 0xECB1E7B5, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true, .opacity = CAMPAIGN_DEPTH},
 }};
 
 // The screen-space shadows' Light Through Foliage: grass and leaves, and the rigid objects drawn after them (Attila's
@@ -1486,6 +1522,14 @@ constexpr std::array<twattila::view_share::RegionRead, 6> RENDER_SCALE_READS = {
     {.shader_hash = 0x820D451B, .slots = 0b11, .whole = true},  // water refraction (3 channels)
     {.shader_hash = 0x25944B2D, .slots = 0b1, .whole = true},   // water refraction (4 channels)
 }};
+// The game's vertex shaders the addon replaces with ones that read the render share below 100% (cb12), as Attila's.
+constexpr std::array<uint32_t, 1> RENDER_SCALE_VERTEX_SHADERS = {
+    0x7C04E880,  // lens flare: the sun's occlusion counted at the render size (lensflare04)
+};
+// The game's 3D sprites (sprite.hlsl vertex_3d*: the unit markers) drawn against the scene's depth after the tone mapper
+// (S1 trace_50a l.3406: 2823783C on the 3840 x 2160 output, the depth 0x16009124 holding DLSS's render size): the depth
+// stretched to the display's size for them below 100%, as Attila's (the same four hashes; the other three in the dump).
+constexpr std::array<uint32_t, 4> FULL_DEPTH_SHADERS = {0x2823783C, 0xF1CA8DC6, 0x59A0821D, 0x23C7B5C0};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {{
     {.shader_hash = 0x1B10DDD8, .standard = true},
@@ -2099,7 +2143,7 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (twattila/graphics_page.hpp, as Attila's and Rome II's), ATN's RT/PT preset as the defaults of
   // what the methods leave, then Settings Mode's pages. Light Through Foliage, both Smoke Shadows, Water Caustics and the
   // sprite soldiers' and far trees' ray-traced shadows Experimental (no run has shown them here); Light Through All Banners
-  // off (no trace has drawn the unit banners).
+  // off (no trace has drawn the unit banners). RT/PT sets them all as Attila's does (ATN 2026-11-14).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     if (setting->key == "RayTracedSmokeShadows" || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows"
@@ -2119,7 +2163,8 @@ void ConfigureAddon() {
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
-                                             .banner_light_tested = false});
+                                             .banner_light_tested = false,
+                                             .rays_preset_as_attila = true});
   // Faster Game CPU Code (engine_code_row) and Water Caustics Experimental, off.
   for (auto* setting : settings) {
     if (setting->key != "FasterGameCpuCode" && setting->key != "WaterCaustics") continue;
@@ -2206,6 +2251,8 @@ bool AttachAddon() {
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  // The seas and the campaign lake as material waters (the patched copy swapped in at the draw): their bytes as created.
+  renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::grass_fade::Install(GRASS_FADE_SHADERS);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's camera b0, shadowmap b1,
@@ -2220,7 +2267,7 @@ bool AttachAddon() {
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS, {}, {}, twattila::view_share::WHOLE_TEXTURES,
+                                   RENDER_SCALE_READS, RENDER_SCALE_VERTEX_SHADERS, FULL_DEPTH_SHADERS, twattila::view_share::WHOLE_TEXTURES,
                                    {
                                        .value_hashes = {0x1B10DDD8, 0x21B916AF, 0x77586F30, 0x5E7DFFF2, 0x8BF6B657, 0x55D276C9, 0xBD389EF1,
                                                         0xA6A0F887, 0x6426B042, 0xC9FBACCB, 0xF7E011A4, 0xDE739661, 0xACE33D5D, 0x25839CC5,
@@ -2293,6 +2340,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::grass_fade::OnDestroyDevice);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::grass_fade::Uninstall();
   twattila::engine_tests::StopAtStart(&at_start_stop);
   twattila::anti_aliasing::Uninstall();

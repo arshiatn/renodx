@@ -30,6 +30,7 @@
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/rt_core.hpp"
 #include "../twpharaohdynasties/rt_outside_view_leaf_gs.h"
+#include "../twpharaohdynasties/rt_outside_view_world_gs.h"
 #include "../twwarhammer3/rt_outside_view_gs.h"
 #include "./upscaling.hpp"
 
@@ -88,8 +89,15 @@ constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
 // with Sprite Soldier Shadows on) and trees' leaves and branches (5851CA62, 6F20485E: 22 and 17 draws, 327K and 32K corners in
 // the four cascades; one capture version, the leaves' own reading their fade) streamed out every frame through their capture versions (world positions, the mask's
 // UV) and Pharaoh's outside-view geometry shader (SceneShader::cascade_world: the game's constants kept, the main view at its b0).
-inline const std::array<twattila::rt_scene::SceneShader, 6> SCENE_SHADERS = {{
+// The far tree cards' (30C453EE: 8 of the data run's 12 traces; turned to the shadow camera per corner, their atlas view picked from
+// its way to the tree; with Far Tree Shadows on) the same. Soldiers and horses (variantweightedvtf, A22FA941: 164 draws, 1.18M
+// corners in the four cascades of the battle trace; two bones each from the animation map the shadow pass binds at t0) through a
+// capture version writing their world alone and Pharaoh's world-only geometry shader. The whole-dump caster census (2026-11-14)
+// had these two families in view only, and rigidambientmapmesh_mtb's (7B067623: 4 of the naval traces; AC25DAB8 with a TEXCOORD1
+// it never reads) placed as AC25DAB8's.
+inline const std::array<twattila::rt_scene::SceneShader, 9> SCENE_SHADERS = {{
     {.hash = 0xAC25DAB8, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
+    {.hash = 0x7B067623, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
     {.hash = 0xB0E006EE, .capture_shader = __rt_capture_cascade_variant, .rows_shader = __rt_rows_cascade_variant, .moving = true,
      .cascade_keep = __rt_outside_view},
     {.hash = 0x8A00A1D4, .capture_shader = __rt_capture_cascade_cloth, .dynamic = true, .foliage = true, .thin = true,
@@ -99,6 +107,10 @@ inline const std::array<twattila::rt_scene::SceneShader, 6> SCENE_SHADERS = {{
     {.hash = 0x5851CA62, .capture_shader = __rt_capture_cascade_tree_leaves, .dynamic = true, .foliage = true, .mask_slot = 1,
      .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
     {.hash = 0x6F20485E, .capture_shader = __rt_capture_cascade_tree, .dynamic = true, .cascade_keep = __rt_outside_view_leaf,
+     .cascade_world = true},
+    {.hash = 0x30C453EE, .capture_shader = __rt_capture_cascade_far_tree, .dynamic = true, .foliage = true, .sun_facing = true,
+     .far_tree = true, .mask_slot = 1, .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
+    {.hash = 0xA22FA941, .capture_shader = __rt_capture_cascade_unit, .dynamic = true, .cascade_keep = __rt_outside_view_world,
      .cascade_world = true},
 }};
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).
@@ -121,6 +133,10 @@ constexpr UINT TINT_SLOT = 50;
 // +x, -x, +y, -y, +z, -z, index 0 where the normal's axis is 0 or more; with the harmonics the paths' sky) and the sun
 // colour (c1; the paths' sun light with Path-Traced AO). Its third: 0 (Shogun 2's rt_sun makes the same sky either way).
 constexpr std::array<uint32_t, 8> SUN_OFFSETS = {0, 12, 0, 0, 4, 0, 0, 0};
+// Softer Water Reflections' least roughness on the water's guide (rt_water_plane): Attila's WATER_SOFT_ROUGHNESS
+// (twattila/rt_scene.hpp, which this host can't include), past the helper's mirrors (under 0.05: one ray, no history), so
+// Samples, the history and its filter take the water.
+constexpr float WATER_SOFT_ROUGHNESS = 0.06f;
 
 // Ray-Traced Water Reflections' objects (WaterSurface): rt_water_plane, its constants, the water's depth (R32) and mask
 // (R8) at the depth's size, the replayed water meshes' depth (D32) and its states.
@@ -605,7 +621,7 @@ inline void WaterSurface(reshade::api::command_list* cmd_list) {
   auto& state = internal::state;
   internal::Water water;
   std::vector<internal::WaterDraw> draws;
-  std::array<uint32_t, 8> constants = {};
+  std::array<uint32_t, 12> constants = {};
   {
     const std::unique_lock lock(state.mutex);
     const auto& size = state.render_size;
@@ -657,7 +673,8 @@ inline void WaterSurface(reshade::api::command_list* cmd_list) {
     water = kept;
     const auto& plane = state.sea_plane;
     constants = {std::bit_cast<uint32_t>(plane[0]), std::bit_cast<uint32_t>(plane[1]), std::bit_cast<uint32_t>(plane[2]),
-                 std::bit_cast<uint32_t>(plane[3]), size[0], size[1], sea ? 1u : 0u, draws.empty() ? 0u : 1u};
+                 std::bit_cast<uint32_t>(plane[3]), size[0], size[1], sea ? 1u : 0u, draws.empty() ? 0u : 1u,
+                 std::bit_cast<uint32_t>(state.settings.water_soft ? internal::WATER_SOFT_ROUGHNESS : 0.f)};
   }
   {
     const talesofarise::dlss::ContextStateScope scope(native1.Get(), state.private_state.Get());

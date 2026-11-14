@@ -6,8 +6,10 @@
 #ifndef SRC_GAMES_TWTHRONESOFBRITANNIA_SHADERS_VFX_STOCK_HLSLI_
 #define SRC_GAMES_TWTHRONESOFBRITANNIA_SHADERS_VFX_STOCK_HLSLI_
 
-// Attila's vfx00 / vfx01 controls (twattila/shared.h) at the game's look: 1 is the stock shader's.
-#define VfxBaseBrightness       1.0f
+// Attila's vfx00 / vfx01 controls (twattila/shared.h): VFX Brightness (Flame, Dust, Clouds & Smoke) as Attila's row, the
+// rest at the game's look (1 is the stock shader's). Snow and weather stay stock: Attila picks them by the particle array's
+// slices 1 and 7, never read in this game.
+#define VfxBaseBrightness       SI.vfxbasebrightness
 #define VfxWeatherBrightness    1.0f
 #define VfxSnowBrightness       1.0f
 #define VfxOpacity              1.0f

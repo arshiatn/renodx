@@ -206,6 +206,15 @@ float sss_contrast = 0.f;        // overlay
 float sss_edge_threshold = 0.f;  // overlay
 int sss_precision_offset = 0;    // overlay
 float sss_foliage_light = 0.f;   // overlay: ReShade.ini SSSFoliageLight (HDR addon foliage_light.hpp), Light Through Foliage
+// ReShade.ini SSSHardSamples, SSSFadeSamples (choices; the HDR addon has their counts), SSSIgnoreEdges, SSSAlongRay,
+// SSSMirrorEdges (HDR addon, sss.hlsli: Attila's Bend rows; 0 the game's). Advanced settings only, in no preset.
+constexpr std::array<const char*, 4> SSS_HARD_SAMPLES = {"Game's (8)", "4", "16", "32"};
+constexpr std::array<const char*, 5> SSS_FADE_SAMPLES = {"Game's (16)", "4", "8", "32", "64"};
+int sss_hard_samples = 0;  // overlay
+int sss_fade_samples = 0;  // overlay
+int sss_ignore_edges = 0;  // overlay
+int sss_along_ray = 0;     // overlay
+int sss_mirror_edges = 0;  // overlay
 // Ambient Occlusion (GT-VBAO) and Global Illumination (GT-VBGI, the Light Bounce): the HDR addon's
 // (twattila/lighting_settings.hpp's settings; it reads these from ReShade.ini). Defaults: ATN's recommended presets
 // (Global Illumination off).
@@ -721,6 +730,30 @@ void OnOverlay(reshade::api::effect_runtime*) {
                      "soldiers keep their full shadows, on foliage too. 0: as dark as any other shadow.")) {
       reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSFoliageLight", sss_foliage_light);
     }
+    if (choice_slider("SSS hard shadow samples (Experimental)", &sss_hard_samples, SSS_HARD_SAMPLES.size(), SSS_HARD_SAMPLES[sss_hard_samples],
+                      0, "The samples next to each pixel that shadow it fully on their own: crisp contact shadows.\n"
+                         "Higher: darker, harder near contacts.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSHardSamples", sss_hard_samples);
+    }
+    if (choice_slider("SSS fade-out samples (Experimental)", &sss_fade_samples, SSS_FADE_SAMPLES.size(), SSS_FADE_SAMPLES[sss_fade_samples],
+                      0, "The last samples, which fade the shadow out. Higher: softer shadow ends.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSFadeSamples", sss_fade_samples);
+    }
+    if (choice_slider("SSS ignore edge pixels (Experimental)", &sss_ignore_edges, OFF_ON.size(), OFF_ON[sss_ignore_edges], 0,
+                      "Edge pixels cast no shadow: fewer stripes on flat ground under a low sun; thinner shadows from leaves.\n"
+                      "Shadow stability Steadiest does this too.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSIgnoreEdges", sss_ignore_edges);
+    }
+    if (choice_slider("SSS sample along the ray (Experimental)", &sss_along_ray, OFF_ON.size(), OFF_ON[sss_along_ray], 0,
+                      "Reads the depth along the shadow's ray instead of at pixel centres: better on grazing surfaces,\n"
+                      "can be more jagged elsewhere.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSAlongRay", sss_along_ray);
+    }
+    if (choice_slider("SSS mirror screen edges (Experimental)", &sss_mirror_edges, OFF_ON.size(), OFF_ON[sss_mirror_edges], 0,
+                      "Near the screen's edges, shadows from what lies past them are guessed from what is just inside.\n"
+                      "Off: no shadows there when they would come from off screen.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSMirrorEdges", sss_mirror_edges);
+    }
   }
   if (choice_slider("Shadow map resolution", &shadow_map_resolution, SHADOW_MAP_RESOLUTIONS.size(),
                     SHADOW_MAP_RESOLUTIONS[shadow_map_resolution], GRAPHICS_DEFAULT.shadow_map_resolution,
@@ -956,9 +989,11 @@ void OnOverlay(reshade::api::effect_runtime*) {
     };
     constexpr std::array<const char*, 2> OFF_ON_NAMES = {"Off", "On"};
     ImGui::TextWrapped("Needs an RTX GPU and renodx-tw-dlaa64.exe next to the addons.");
-    // The presets (twattila/graphics_page.hpp's): RT/PT is ATN's RAYS_PRESET in this section's keys (no Path-Traced AO
-    // here: ray-traced AO in its place), No RT/PT turns every ray-traced effect off and keeps their rows, Reset puts
-    // every row at its default. Whole values go in as integers (the checkboxes and choices read ints).
+    // The presets (twattila/graphics_page.hpp's): RT/PT is Attila's (ATN 2026-11-14): every row at its default, then
+    // RAYS_PRESET with Attila's values in this section's keys; Shadow casters out of view and point light shadows on (as
+    // Warhammer III's), ray-traced AO kept on (the HDR addon turns it off itself while Path-traced AO runs: the campaign
+    // keeps it). No RT/PT turns every ray-traced effect off and keeps their rows, Reset puts every row at its default.
+    // Whole values go in as integers (the checkboxes and choices read ints).
     constexpr std::pair<const char*, float> RAYS_OFF[] = {
         {"RayTracedSunShadows", 0.f},
         {"RayTracedAmbientOcclusion", 0.f},
@@ -974,6 +1009,11 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedSunShadows", 1.f},
         {"RayTracedShadowSoftness", 0.8f},
         {"RayTracedLeafLight", 1.f},
+        {"RayTracedColouredShadows", 1.f},
+        {"RayTracedSpriteShadows", 1.f},
+        {"RayTracedFarTreeShadows", 1.f},
+        {"RayTracedUnitsOutOfView", 1.f},
+        {"RayTracedSheetsUnselfed", 1.f},
         {"RayTracedAmbientOcclusion", 1.f},
         {"RayTracedLocalLights", 1.f},
         {"RayTracedLightSoftness", 0.25f},
@@ -985,9 +1025,18 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightBounceResolution", 0.f},
         {"RayTracedLightBounceRange", 50.f},
         {"PathTracingBounces", 1.f},
+        {"RayTracedPathAmbient", 1.f},
+        {"RayTracedPathSkyApart", 1.f},
+        {"RayTracedPathKeptCube", 1.f},
         {"RayTracedReflections", 1.f},
         {"RayTracedReflectionSamples", 1.f},
+        {"RayTracedReflectionReuse", 2.f},
+        {"RayTracedWaterReflections", 1.f},
+        {"RayTracedWaterSteady", 1.f},
+        {"RayTracedWaterSoft", 1.f},
+        {"RayTracedSpecularOcclusion", 1.f},
         {"RayTracedFogShadows", 1.f},
+        {"RayTracedLeafMicromaps", 1.f},
     };
     constexpr std::pair<const char*, float> RAYS_RESET[] = {
         {"RayTracedShadowSoftness", 0.5f},
@@ -996,6 +1045,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedSpriteShadows", 0.f},
         {"RayTracedFarTreeShadows", 0.f},
         {"RayTracedUnitsOutOfView", 0.f},
+        {"RayTracedSheetsUnselfed", 0.f},
+        {"RayTracedGrassShadowRange", 0.f},
+        {"RayTracedAoReblur", 0.f},
         {"RayTracedAmbientRange", 2.f},
         {"RayTracedAORays", 2.f},
         {"RayTracedAOQuarter", 0.f},
@@ -1008,6 +1060,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedReflectionReuse", 0.f},
         {"RayTracedWaterReflections", 0.f},
         {"RayTracedWaterSteady", 0.f},
+        {"RayTracedWaterSoft", 0.f},
         {"RayTracedLightBounceRays", 4.f},
         {"RayTracedLightBounceRange", 10.f},
         {"RayTracedLightBounceResolution", 1.f},
@@ -1040,10 +1093,11 @@ void OnOverlay(reshade::api::effect_runtime*) {
       }
     };
     if (preset_button("RT/PT##rays", RT_COLOR,
-                      "Every ray-traced effect and path tracing on, as ATN plays (restart the game).\n"
-                      "Turns the Global Illumination on, and Ray Reconstruction where DLSS runs without it.")) {
+                      "Every ray-traced effect and path tracing on, as ATN plays; the rest of this section at its default\n"
+                      "(restart the game). Turns the Global Illumination on, and Ray Reconstruction where DLSS runs without it.")) {
+      write_rays(RAYS_RESET);
       write_rays(RAYS_PRESET);
-      gi.strength = std::max(gi.strength, 1.f);
+      gi.strength = 1.f;
       save_gi();
       // Without Ray Reconstruction the rays have only the built-in denoisers (Attila's preset: F).
       if (upscaler_choice.load() == 1 && ray_reconstruction_choice.load() == 0) {
@@ -1076,8 +1130,12 @@ void OnOverlay(reshade::api::effect_runtime*) {
            "The flat far soldiers' ray-traced shadows keep their shape as the camera turns.");
     choice("Far tree shadows (Experimental)", "RayTracedFarTreeShadows", 0, OFF_ON_NAMES, "The flat far trees cast ray-traced shadows too.");
     choice("Shadow casters out of view (Experimental)", "RayTracedUnitsOutOfView", 0, OFF_ON_NAMES,
-           "Buildings, rocks, trees, sails and banners behind the camera cast ray-traced shadows into view too, far soldiers with Sprite "
-           "soldier shadows (restart the game).");
+           "Buildings, rocks, trees, soldiers, horses, sails and banners behind the camera cast ray-traced shadows into view too; "
+           "far soldiers and far trees with their shadow rows on (restart the game).");
+    choice("Smooth banner shadows (Experimental)", "RayTracedSheetsUnselfed", 0, OFF_ON_NAMES,
+           "Banners, sails and other cloth don't shade themselves: no blocky triangles on them. Shadows of other things stay.");
+    slider("Grass shadow range (Experimental)", "RayTracedGrassShadowRange", 0.f, 0.f, 200.f, "%.0f m",
+           "Past this distance grass casts no ray-traced shadows (on itself or the ground): faster over fields. 0 m: everywhere.");
     ImGui::EndDisabled();
     const bool ambient = checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion",
                                   "Shade in corners and under things from rays, with the game's (the darker).\n"
@@ -1087,6 +1145,12 @@ void OnOverlay(reshade::api::effect_runtime*) {
     count("Ray-traced AO rays", "RayTracedAORays", 2, 8, "More rays: less noise. Heavier.");
     checkbox("Ray-traced AO at a quarter rate", "RayTracedAOQuarter",
              "One pixel of each 2 x 2 traced a frame, in turn: a quarter of the rays (DLSS smooths it). Faster.");
+    if (upscaler_choice.load() == 1 && ray_reconstruction_choice.load() != 0) {
+      constexpr std::array<const char*, 2> AO_DENOISERS = {"Light History", "REBLUR"};
+      choice("AO under Ray Reconstruction (Experimental)", "RayTracedAoReblur", 0, AO_DENOISERS,
+             "Light History: the AO keeps a little of its last frames, Ray Reconstruction cleans the rest.\n"
+             "REBLUR: NVIDIA's denoiser cleans it first: steadier when moving, uses more memory, can darken corners.");
+    }
     ImGui::EndDisabled();
     const bool local_lights = checkbox("Ray-traced point light shadows", "RayTracedLocalLights",
                                        "Shadows from rays for the nearest, brightest point lights (fires, torches): what stands between them and the\n"
@@ -1127,6 +1191,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::BeginDisabled(!water_reflections);
     choice("Steadier water reflections (Experimental)", "RayTracedWaterSteady", 0, OFF_ON_NAMES,
            "Fewer flickering dots in calm water's reflections: each pixel stays within what the water around it shows.");
+    choice("Softer water reflections (Experimental)", "RayTracedWaterSoft", 0, OFF_ON_NAMES,
+           "Calmer water reflections, a little softer. Samples and reuse then work on water too. Heavier.");
     ImGui::EndDisabled();
     ImGui::EndDisabled();
     const bool specular_occlusion = checkbox("Ray-traced specular occlusion (Experimental)", "RayTracedSpecularOcclusion",
@@ -1385,6 +1451,15 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   }
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSPrecisionOffset", value)) sss_precision_offset = std::clamp(value, 0, 1);
   if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSFoliageLight", value)) sss_foliage_light = std::clamp(value, 0.f, 1.f);
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSHardSamples", value)) {
+    sss_hard_samples = std::clamp(value, 0, static_cast<int>(SSS_HARD_SAMPLES.size()) - 1);
+  }
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSFadeSamples", value)) {
+    sss_fade_samples = std::clamp(value, 0, static_cast<int>(SSS_FADE_SAMPLES.size()) - 1);
+  }
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSIgnoreEdges", value)) sss_ignore_edges = std::clamp(value, 0, 1);
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSAlongRay", value)) sss_along_ray = std::clamp(value, 0, 1);
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSMirrorEdges", value)) sss_mirror_edges = std::clamp(value, 0, 1);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", value) && value >= 0
                       && value < static_cast<int>(SSS_STABILITIES.size())) {
     sss_stability = value;

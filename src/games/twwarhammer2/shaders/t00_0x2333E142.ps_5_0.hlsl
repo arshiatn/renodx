@@ -78,7 +78,7 @@ void main(
     r0.yz = -g_viewport_origin.xy + v0.xy;
     r0.yz = g_vpos_texel_offset + r0.yz;
     r0.yz = g_viewport_dimensions.zw * r0.yz;
-    r0.yzw = SampleBloomSmooth(g_hdr_rgb_bloom_texture, r0.yz).xyz;
+    r0.yzw = SampleBloomSmooth(g_hdr_rgb_bloom_texture, r0.yz).xyz * SI.bloom;  // Bloom (1: the game's)
     r1.xy = g_vpos_texel_offset + v0.xy;
     r1.xy = g_screen_size.zw * r1.xy;
     r1.xyzw = g_hdr_rgb_texture.SampleLevel(g_hdr_rgb_texture_sampler_s, r1.xy, 0).xyzw;
@@ -110,7 +110,7 @@ void main(
   scene_texcoord = g_screen_size.zw * scene_texcoord;
   float4 bloom_sample = SampleBloomSmooth(g_hdr_rgb_bloom_texture, bloom_texcoord);
   float4 scene_sample = g_hdr_rgb_texture.SampleLevel(g_hdr_rgb_texture_sampler_s, scene_texcoord, 0);
-  float3 hdr_color = scene_sample.xyz + bloom_sample.xyz;  // stock (was * 1000)
+  float3 hdr_color = scene_sample.xyz + bloom_sample.xyz * SI.bloom;  // stock (was * 1000); Bloom (1: the game's)
 
   // Preserve Warhammer II's native tone-mapping brightness as pre-tonemap exposure.
   float game_exposure = g_tone_mapping_brightness * g_tone_mapping_brightness;

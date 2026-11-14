@@ -97,6 +97,9 @@ inline const std::string SHADOWS_SECTION = "Shadows";
 inline const std::string GI_SECTION = "Global Illumination";
 inline const std::string REFLECTIONS_SECTION = "Reflections and Water";
 inline const std::string RT_SECTION = "Ray Tracing Extra Options";
+// Light Through Foliage's and the smoke's shadows without rays' defaults where a game run has shown them (Attila's).
+constexpr float FOLIAGE_LIGHT_DEFAULT = 0.5f;
+constexpr float SMOKE_MAP_DEFAULT = 1.f;
 constexpr uint32_t TITLE_TINT = 0x7FBFFF;
 constexpr uint32_t MORE_TINT = 0xFFB86B;
 constexpr uint32_t WARNING_TINT = 0xFF5050;
@@ -235,6 +238,10 @@ struct Bindings {
   bool far_cards_tested = true;  // false: Sprite Soldier and Far Tree Shadows the same (their defaults the game's to set)
   bool water_caustics_tested = true;  // false: Water Caustics left out of RT/PT (its default the game's to set)
   bool banner_light_tested = true;  // false: Light Through All Banners left out of RT/PT (its default the game's to set)
+  // RT/PT as Attila's whatever the *_tested flags above say (ATN 2026-11-14): the rows they leave out in it, Light Through
+  // Foliage and the smoke's shadows without rays at Attila's defaults (both rest under the rays' sun shadows), Shadow
+  // Casters Out of View on (as Warhammer III's). Their defaults and labels stay the game's.
+  bool rays_preset_as_attila = false;
   bool has_path_ambient = true;  // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
   // Point light shadows have their own row (RT/PT turns it on); Fog Shadows, light in the fog and RIS stay off in that preset.
   bool lights_own_row = false;
@@ -244,6 +251,9 @@ struct Bindings {
   bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
   // The rays' sun shadows always multiply the game's shadow maps (no rays_replace_maps row): Shadow Map Size stays under them.
   bool rays_multiply_maps = false;
+  bool has_gtvbao = true;  // GT-VBAO (ssao_mode 1); false: the AO's methods are the game's and the rays' (Rome Remastered)
+  bool has_gi = true;      // Global Illumination's section; false: none, the rows it would hold kept hidden (Rome Remastered)
+  bool every_row = true;   // false: a row this page lists that the game lacks is no mistake, no log line (Rome Remastered)
 };
 
 enum AoMethod : int { AO_GAME, AO_GTVBAO, AO_RAYS, AO_PATHS };
@@ -371,7 +381,7 @@ struct Row {
 // Moves settings out of `settings`, into the page's order. Returns the place they took.
 class Page {
  public:
-  explicit Page(std::vector<Setting*>* settings) : settings_(settings) {}
+  explicit Page(std::vector<Setting*>* settings, bool every_row = true) : settings_(settings), every_row_(every_row) {}
 
   void Add(Setting* setting) { page_.push_back(setting); }
 
@@ -395,7 +405,7 @@ class Page {
       setting->is_visible = [shown = row.shown, own = setting->is_visible] { return shown() && (own == nullptr || own()); };
       page_.push_back(setting);
     }
-    if (!found && !row.only_some_games) renodx::utils::log::w("[Total War] Graphics page: no setting ", row.match.c_str());
+    if (!found && !row.only_some_games && every_row_) renodx::utils::log::w("[Total War] Graphics page: no setting ", row.match.c_str());
   }
 
   // A setting the method sliders hold: it stays among the saved ones, not drawn.
@@ -434,6 +444,7 @@ class Page {
 
  private:
   std::vector<Setting*>* settings_;
+  bool every_row_;
   std::vector<Setting*> page_;
   std::set<std::string> kept_;
   size_t place_ = SIZE_MAX;
@@ -477,7 +488,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     return [open, shown = std::move(shown)] { return *open && shown(); };
   };
 
-  Page page(settings);
+  Page page(settings, b.every_row);
   for (const auto& key : {"ssao_mode", "RayTracedAmbientOcclusion", "RayTracedPathAmbient", "ScreenSpaceShadows", "RayTracedSunShadows",
                           "RayTracedLightBounce", "ssr_hierarchical", "RayTracedReflections"}) {
     page.Keep(key);
@@ -755,12 +766,20 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     // The paths' AO multiplying the game's (ChooseAo's Path-Traced): GT-VBAO goes off with it, else it ran hidden under the paths.
     if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
-    std::erase_if(rays_values, [smoke = b.smoke_shadows_tested, caustics = b.water_caustics_tested, cards = b.far_cards_tested,
-                                banners = b.banner_light_tested](const Values::value_type& preset) {
-      const auto& [key, value] = preset;
-      return (key == "RayTracedSmokeShadows" && !smoke) || (key == "WaterCaustics" && !caustics)
-             || ((key == "RayTracedSpriteShadows" || key == "RayTracedFarTreeShadows") && !cards) || (key == "RayTracedBannerLight" && !banners);
-    });
+    // Without Global Illumination nothing of it to turn on.
+    if (!b.has_gi) std::erase_if(rays_values, [](const Values::value_type& preset) { return preset.first == "RayTracedLightBounce"; });
+    if (b.rays_preset_as_attila) {
+      rays_values.insert(rays_values.end(), {{"ScreenSpaceShadowsFoliage", FOLIAGE_LIGHT_DEFAULT},
+                                             {"SmokeShadowMapStrength", SMOKE_MAP_DEFAULT},
+                                             {"RayTracedUnitsOutOfView", 1.f}});
+    } else {
+      std::erase_if(rays_values, [smoke = b.smoke_shadows_tested, caustics = b.water_caustics_tested, cards = b.far_cards_tested,
+                                  banners = b.banner_light_tested](const Values::value_type& preset) {
+        const auto& [key, value] = preset;
+        return (key == "RayTracedSmokeShadows" && !smoke) || (key == "WaterCaustics" && !caustics)
+               || ((key == "RayTracedSpriteShadows" || key == "RayTracedFarTreeShadows") && !cards) || (key == "RayTracedBannerLight" && !banners);
+      });
+    }
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
     // Ray Reconstruction where it was off: the presets leave the rest of the upscaler alone, and without it the rays have
     // only the built-in denoisers (ATN 2026-11-01: grass shadows flickering when moving). 4: F, as ATN plays. It follows the
@@ -797,7 +816,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Add(new Setting{
           .key = "ScreenSpaceShadowsFoliage",
           .binding = &b.sss->foliage_light,
-          .default_value = b.foliage_light_tested ? 0.5f : 0.f,
+          .default_value = b.foliage_light_tested ? FOLIAGE_LIGHT_DEFAULT : 0.f,
           .label = b.foliage_light_tested ? "Light Through Foliage" : "Light Through Foliage (Experimental)",
           .section = section,
           .tooltip = "How much sun comes through the shadows grass and leaves cast: they are thin. Walls and soldiers\n"
@@ -820,7 +839,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Add(new Setting{
           .key = "SmokeShadowMapStrength",
           .binding = b.smoke_strength,
-          .default_value = b.smoke_map_tested ? 1.f : 0.f,
+          .default_value = b.smoke_map_tested ? SMOKE_MAP_DEFAULT : 0.f,
           .label = b.smoke_map_tested ? "Smoke Shadows" : "Smoke Shadows (Experimental)",
           .section = section,
           .tooltip = "Smoke and dust dim the sun on what lies below them. No rays, any GPU. Needs in-game shadows on.\n0: off.",
@@ -1111,10 +1130,17 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = AO_SECTION;
     const auto gtvbao = ao_is(AO_GTVBAO);
     const auto rays = ao_is(AO_RAYS);
-    std::vector<std::string> labels = {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)"};
-    if (b.has_path_ambient) labels.emplace_back(b.texts->ao_paths_label);
-    page.Add(MethodSlider(section, b.texts->ao_tooltip, std::move(labels), [b] { return AoMethodOf(b); },
-                          [b](int method) { ChooseAo(b, method); }));
+    // The slider's places: the methods this game has, in AoMethod's order.
+    std::vector<int> methods = {AO_GAME};
+    if (b.has_gtvbao) methods.push_back(AO_GTVBAO);
+    methods.push_back(AO_RAYS);
+    if (b.has_path_ambient) methods.push_back(AO_PATHS);
+    const std::array<std::string, 4> method_labels = {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)", b.texts->ao_paths_label};
+    std::vector<std::string> labels;
+    for (const int method : methods) labels.push_back(method_labels[method]);
+    page.Add(MethodSlider(section, b.texts->ao_tooltip, std::move(labels),
+                          [b, methods] { return static_cast<int>(std::ranges::find(methods, AoMethodOf(b)) - methods.begin()) % static_cast<int>(methods.size()); },
+                          [b, methods](int place) { ChooseAo(b, methods[place]); }));
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return AoMethodOf(b) >= AO_RAYS && !feature_settings::Upscaling(*b.aa); }));
     page.Take({.match = "Darker shading behind trees and objects: raise Thickness. Lighter around spears: lower it.", .section = section, .shown = gtvbao,
@@ -1126,6 +1152,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedAORange", .section = section, .shown = rays, .label = "Range"});
     page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
     page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
+    page.Take({.match = "RayTracedAOAlone", .section = section, .shown = rays, .only_some_games = true});
     page.Take({.match = "RayTracedPathSkyApart", .section = section, .shown = ao_is(AO_PATHS), .label = "Own Sky Rays"});
     page.Take({.match = "RayTracedPathKeptCube", .section = section, .shown = ao_is(AO_PATHS), .label = "Steady Bounce Light (Experimental)"});
     page.Take({.match = "RayTracedPathProbeSky", .section = section, .shown = ao_is(AO_PATHS), .only_some_games = true});
@@ -1144,8 +1171,13 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Add(EmptyLine(section));
   }
 
-  // Global Illumination.
-  {
+  // Global Illumination; without it the rays' rows for it kept hidden (their saved values stay).
+  if (!b.has_gi) {
+    for (const auto* key : {"RayTracedLightBounceRays", "RayTracedLightBounceResolution", "RayTracedLightBounceRange", "PathTracingBounces",
+                            "RayTracedPathSer", "RayTracedSharc", "RayTracedReuseLean"}) {
+      page.Keep(key);
+    }
+  } else {
     const std::string& section = GI_SECTION;
     const auto gtvbgi = gi_is(GI_GTVBGI);
     const auto on = [b] { return GiMethodOf(b) != GI_OFF; };
@@ -1217,6 +1249,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Take({.match = "RayTracedReflectionFog", .section = section, .shown = rays, .only_some_games = true});
       page.Take({.match = "RayTracedReflectionLobe", .section = section, .shown = rays, .only_some_games = true});
       page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = b.texts->specular_occlusion_label});
+      page.Take({.match = "RayTracedSkipGameReflections", .section = section, .shown = rays, .only_some_games = true});
     }
     page.Take({.match = "WaterClarity", .section = section, .shown = always, .only_some_games = true});
     page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = b.texts->water_caustics_label, .only_some_games = true});

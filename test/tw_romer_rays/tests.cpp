@@ -3,8 +3,9 @@
 // 52170167, the battle's most drawn: its DXBC from the dump, argv[1]) and the cameras and frame constants of ATN's
 // 2026-11-14 traces. tests.exe <0x52170167.ps_5_0.cso>
 // 1. SceneDraw: a prepass draw into the scene's depth (no target, depth written) is in the scene, captured every frame;
-//    out: a unit's, the grass's, a terrain overlay's vertex shader, a draw with a target, another depth (the cascades'),
-//    depth not written (the forward pass's EQUAL).
+//    out: a unit's, the grass's, a terrain overlay's, a banner's vertex shader, a draw with a target, another depth (the
+//    cascades'), depth not written (the forward pass's EQUAL); the battle's kinds only as Battle Objects lets them in
+//    (Tested: none, Solid: solid ones, All: an alpha-tested one too).
 // 2. The trace's camera: rt_positions (rt_core's bytes) with the jittered battle camera given transposed gives each
 //    pixel's world position on a ground plane (against the CPU), the sky 0, the eye where the view says; CONTROL: the
 //    camera untransposed is far off.
@@ -37,6 +38,9 @@
 #include "src/games/twromeremastered/contact_shadows.hpp"
 #include "src/games/twromeremastered/ray_tracing.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
+
+// utils/settings.hpp's (the graphics page's modules through dlaa.hpp)
+extern "C" __declspec(dllexport) const char* const NAME = "Rome Remastered test";
 
 using Microsoft::WRL::ComPtr;
 namespace rays = twromeremastered::ray_tracing;
@@ -210,9 +214,42 @@ int main(int argc, char** argv) {
       const bool in = rays::internal::SceneDraw(context.Get(), &shader);
       return std::pair{in, shader.dynamic};
     };
-    const auto [pbr, pbr_dynamic] = scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get());
+    // The campaign's tested kinds in; the battle's only as Battle Objects lets them in (Solid: no pixel shader here,
+    // solid; All: an alpha-tested one too); the banners never.
+    const auto [pbr, pbr_dynamic] = scene_draw(0x9594545F, nullptr, scene_dsv.Get(), writes.Get());
     CHECK(pbr && pbr_dynamic);
-    CHECK(scene_draw(0x7DD754DA, nullptr, scene_dsv.Get(), writes.Get()).first);  // the terrain
+    CHECK(scene_draw(0x8A00B527, nullptr, scene_dsv.Get(), writes.Get()).first);   // the campaign's terrain
+    CHECK(!scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get()).first);  // a battle prop, Tested
+    CHECK(!scene_draw(0x7DD754DA, nullptr, scene_dsv.Get(), writes.Get()).first);  // the battle's terrain, Tested
+    rays::battle_scene = 1.f;
+    CHECK(scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get()).first);
+    CHECK(scene_draw(0x7DD754DA, nullptr, scene_dsv.Get(), writes.Get()).first);
+    {
+      // An alpha-tested pixel shader (rt_core's classification, as the game's D2F340DB): out at Solid, in at All.
+      ComPtr<ID3D11PixelShader> masked;
+      ComPtr<ID3DBlob> masked_code;
+      constexpr char MASKED_SOURCE[] = "Texture2D t : register(t0); SamplerState s; void main(float4 p : SV_Position, float2 uv : TEXCOORD0) {"
+                                       " clip(t.Sample(s, uv).a - 0.5); }";
+      REQUIRE(SUCCEEDED(D3DCompile(MASKED_SOURCE, sizeof(MASKED_SOURCE) - 1, nullptr, nullptr, nullptr, "main", "ps_5_0", 0, 0,
+                                   masked_code.GetAddressOf(), nullptr)));
+      REQUIRE(SUCCEEDED(device->CreatePixelShader(masked_code->GetBufferPointer(), masked_code->GetBufferSize(), nullptr, masked.GetAddressOf())));
+      twattila::rt_scene::internal::pixel_coverage[reinterpret_cast<uint64_t>(masked.Get())] =
+          twattila::rt_scene::internal::ClassifyCoverage({static_cast<const uint8_t*>(masked_code->GetBufferPointer()), masked_code->GetBufferSize()});
+      context->PSSetShader(masked.Get(), nullptr, 0);
+      const auto alpha_tested = [&] {
+        twattila::rt_scene::SceneShader shader = {.hash = 0xC35BD3D6};
+        context->OMSetRenderTargets(0, nullptr, scene_dsv.Get());
+        context->OMSetDepthStencilState(writes.Get(), 0);
+        const bool in = rays::internal::SceneDraw(context.Get(), &shader);
+        return std::pair{in, shader.foliage};
+      };
+      CHECK(!alpha_tested().first);
+      rays::battle_scene = 2.f;
+      const auto [in, foliage] = alpha_tested();
+      CHECK(in && foliage);
+      context->PSSetShader(nullptr, nullptr, 0);
+    }
+    CHECK(!scene_draw(0xB6E1E42E, nullptr, scene_dsv.Get(), writes.Get()).first);  // a banner, All
     CHECK(!scene_draw(0xB31241CA, nullptr, scene_dsv.Get(), writes.Get()).first);  // a unit
     CHECK(!scene_draw(0x826801BF, nullptr, scene_dsv.Get(), writes.Get()).first);  // grass
     CHECK(!scene_draw(0x125EEF55, nullptr, scene_dsv.Get(), writes.Get()).first);  // a terrain overlay
@@ -684,20 +721,31 @@ Output main(uint id : SV_VertexID) {
     // Bend takes each pixel as thin (Thickness x its distance, ~0.3 m here at the default): where the CPU's shadow ray
     // passes deep behind the pillar's front face it stays lit, so the default covers part of the shadow, a thicker row more.
     twromeremastered::contact_shadows::rows = {.enabled = 1.f};
-    const auto [shadow_pixels, shadow_dark, sun_dark, green_kept] = shares(shadowed(toward_sun));
+    const auto hard = shadowed(toward_sun);
+    const auto [shadow_pixels, shadow_dark, sun_dark, green_kept] = shares(hard);
     const auto [control_pixels, control_dark, control_sun_dark, control_green] = shares(shadowed(normalized(sun_from(right[0], right[2]))));
     twromeremastered::contact_shadows::rows.thickness = 0.05f;
     const auto [thick_pixels, thick_dark, thick_sun_dark, thick_green] = shares(shadowed(toward_sun));
+    // Softness 2 px (sss_blur): more pixels between lit and shadowed, the shadow's dark share and the sun's ground kept.
+    twromeremastered::contact_shadows::rows = {.enabled = 1.f, .softness = 2.f};
+    const auto soft = shadowed(toward_sun);
+    const auto [soft_pixels, soft_dark, soft_sun_dark, soft_green] = shares(soft);
     twromeremastered::contact_shadows::rows = {};
-    std::printf("contact shadows: %zu shadow pixels, %.3f of them dark (Thickness 0.05: %.3f), %.3f of the sun's ground dark (%.3f), green kept "
-                "%d; CONTROL sun from the right: %.3f of them dark\n",
-                shadow_pixels, shadow_dark, thick_dark, sun_dark, thick_sun_dark, green_kept ? 1 : 0, control_dark);
+    const auto partial = [](const std::vector<std::array<uint8_t, 2>>& red) {
+      return std::ranges::count_if(red, [](const std::array<uint8_t, 2>& texel) { return texel[0] > 25 && texel[0] < 230; });
+    };
+    std::printf("contact shadows: %zu shadow pixels, %.3f of them dark (Thickness 0.05: %.3f; Softness 2: %.3f), %.3f of the sun's ground dark "
+                "(%.3f; %.3f), green kept %d; partial pixels %td, Softness 2: %td; CONTROL sun from the right: %.3f of them dark\n",
+                shadow_pixels, shadow_dark, thick_dark, soft_dark, sun_dark, thick_sun_dark, soft_sun_dark, green_kept ? 1 : 0, partial(hard),
+                partial(soft), control_dark);
     CHECK(shadow_pixels > 50);
     CHECK(shadow_dark > 0.3);
     CHECK(thick_dark > shadow_dark + 0.1);
-    CHECK(sun_dark < 0.02 && thick_sun_dark < 0.05);
-    CHECK(green_kept && control_green && thick_green);
+    CHECK(sun_dark < 0.02 && thick_sun_dark < 0.05 && soft_sun_dark < 0.02);
+    CHECK(green_kept && control_green && thick_green && soft_green);
     CHECK(control_dark < 0.05);
+    CHECK(partial(soft) > partial(hard));
+    CHECK(std::abs(soft_dark - shadow_dark) < 0.15);
   }
 
   std::printf("%s (%d failures)\n", (failures == 0 ? "PASS" : "FAIL"), failures);

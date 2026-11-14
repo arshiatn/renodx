@@ -2,6 +2,80 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+### Parity round (2026-11-14; built only, not run in game)
+
+- New: **Attila's graphics page** (ATN: "the same/similar page layouts as Attila and thus the buttons too"): Anti-Aliasing
+  and Upscaling, Shadows, Ambient Occlusion and Ray Tracing Extra Options in Advanced, with **Reset**, **No RT/PT
+  (Recommended)** and **RT/PT** (Attila's preset: ray-traced sun shadows + RTAO + DLSS; this game has no GI or
+  path-traced AO, so those stay out). Graphics (Experimental) is gone: its rows moved there with the same keys (Battle
+  Objects and the two Remove tests under Ray Tracing Extra Options). A saved DLAA comes back as DLSS (SettingsRevision 1).
+  New with it: DLSS's preset (default L, its dark tones kept as Attila's), frame generation's preset, HUD recomposition
+  and debug view, the ray tracing rows Attila shows (Softness, AO range, debug views). Shared: three opt-in page fields
+  (`has_gtvbao`, `has_gi`, `every_row`); every other game's page dump unchanged.
+- New: Bend's **More Options** as Attila's: Softness (1-3 px, along surfaces), Contrast, Hard Shadow Samples, Fade-Out
+  Samples, Edge Threshold, Ignore Edge Pixels, Precision Offset, Sample Along the Ray, Mirror Screen Edges. Defaults give
+  the same shadows as before (`test/tw_romer_rays` case 6).
+- About: Bend Studio's and the helper's credits, a GitHub (Downloads) button.
+- Parity table (every Attila feature: have / do now / needs a trace / won't get, with proof):
+  `tools\tw\romeremastered\parity_1114.md` in the maintainer's tools.
+
+Test (ATN; the v13 lines first):
+1. Control: page Reset, Anti-Aliasing Game's: the picture as v12 (the game's shadows, AO and SMAA).
+2. Settings Mode Advanced: the four sections show; a saved DLAA shows as DLSS.
+3. Campaign, RT/PT, restart once: ray-traced sun shadows + AO + DLSS on (ReShade.log `DLAA: on`, the helper's log).
+4. Battle, No RT/PT (Recommended): Bend's contact shadows under soldiers; Shadows > More Options > Softness Off / 2 px:
+   softer edges, no halos (decides the default).
+5. Battle, DLSS preset L vs K: dark tones the same, L steadier (decides the default).
+6. Page Reset mid-battle: the game's shadows and AO back, no reset in renodx-tw-dlaa64.log.
+
+Not done:
+- Upscaling Debug View (motion vectors): the row sits in AppendAa's render-scale group this game doesn't use. Step: a
+  shared opt-in for the row alone; the shaders are the same.
+- Bend's Softer Away from the Caster and Debug View (rows hidden): their passes not dispatched here. Step: sss_bend_extended
+  + sss_soft and sss_debug as Attila's, a WARP case each.
+- Texture LOD Bias below 100%, units' object motion, units / banners / grass in the rays, static captures, smoke shadows:
+  each needs a fact no trace shows yet. Step: one battle trace with `[renodx] FrameTraceReads=1` at 67%, and a siege
+  with fire.
+- GT-VBAO, Global Illumination, reflections, the Warscape engine pages: not in this game (proof in the table).
+
+## v13 (2026-11-14, ATN's 67% / 50% runs; built only, not run in game; installed: INSTALLED_PLACEHOLDER)
+
+- Fixed (safe side): ATN's 67% run reset the TW helper's ray tracing device twice within seconds of a battle's start
+  (0x887A0006, sun shadows + AO on; then off until a restart), none in 1.5 min of the campaign map before. Not Ray
+  Reconstruction: the add-on asks for none (no guides, no RR line in the helper's log) and DLAA kept running after.
+  The battle's scene holds draws the campaign's never had (its terrain, props, trees, alpha-tested plants); the cause
+  among them is not found (the harness with Rome-like dynamic leaves ran clean). The rays now see only the kinds traced
+  without a reset (`ray_tracing.hpp` TESTED_VERTEX_SHADERS: AerialMap, AerialMapTrees, PBR 9594545F, BasicLit); the
+  units' banners never (their own matrix at b0, not the main camera). Graphics (Experimental) **Ray Tracing Battle
+  Objects (Test)**: Tested (default) / Solid (+ the battle's solid draws) / All (as v11).
+- Test: `test/tw_romer_rays` case 1 (the battle's kinds out at Tested, solid ones in at Solid, an alpha-tested one only
+  at All, a banner never).
+- DLAA below 100% Resolution Scale: v9's text said off, but v9-v12 ran DLAA at the render size (the scene's depth and
+  the tone mapper both 2572x1446 at 67%), then Feral's upscaler. Now (plan item 4, ATN's 67% / 50% traces: the tone
+  mapper and SMAA at the render size, the exe's upscaler VS 9F3C9B3D / PS 3C19543E into a 3840x2160 FP16 target, the UI
+  on it) **DLSS** from the tone mapper's output to the upscaler's size, copied into its target in its place (`dlaa.hpp`
+  Upscale; the upscaler's four PS hashes). Frame generation keeps DLSS's result as the HUD-less frame. With a ray row on
+  it stays as before (DLAA at the render size, Feral's upscaler after): rt_core captures the main view's depth at the
+  bridge's size. Log: `DLAA: on, DLSS 2572x1446 to 3840x2160 (Resolution Scale below 100%).`
+- Test: `test/tw_romer_dlaa` case 6 (DLSS's result copied into the upscaler's target, its draw skipped; no result /
+  another size / DLAA off: the game's draw).
+
+Test (ATN): a battle with Ray-Traced Sun Shadows + AO at Battle Objects Tested: no reset (renodx-tw-dlaa64.log); then
+Solid, then All (one each, a restart after a reset): which one resets. DLAA (rays off) at 67% and 50%: sharp at 4K, no
+shake; the log's DLSS line; the helper's "Upscaling: DLSS ... to 3840 x 2160".
+
+## v12 (2026-11-14, crash fix; built only, not run in game; installed: INSTALLED_PLACEHOLDER)
+
+- Fixed: changing Resolution Scale in game crashed (ATN 10:22, crash_1022.dmp: exe + 0x6ee594, an AddRef on a null
+  view). The game rebuilds its swap chain in the format its back buffer's view reports, which the HDR upgrade made
+  16-bit; for that format the game's own code makes no sRGB view and later uses the missing one. `swap_chain_format.hpp`
+  hooks the game's rebuild (exe + 0xFB420, found by its bytes; another build is left alone) and gives it the game's own
+  8-bit format back, so the rebuild runs as at the start.
+- Test: `test/tw_romer_dlaa` case 5 (the installed exe's bytes found at + 0xFB420, not in another exe; the formats given).
+
+Test (ATN): Resolution Scale 100% to 67% and back, in the menu and in a battle: no crash; ReShade.log has "Swap chain
+rebuilt at ...: the game's format 87 for the upgraded 10." once.
+
 ## v11 (2026-11-14, phase I part 4; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - Graphics (Experimental, Advanced, off): **Frame Generation** (Off, 2x-6x, Dynamic: NVIDIA DLSS Frame Generation through

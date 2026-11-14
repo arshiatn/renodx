@@ -785,3 +785,64 @@ Checked against the game's own shaders (data\shaders.pack: bytecode and source):
 AddonUninit now shuts down the shared helper bridge after unregistering its users. The watcher exits before module unload; child process and IPC ownership are released. Shutdown drains outstanding GPU fence generations, with ordered CPU fence recovery only after confirmed helper exit. Failed launches clean up partial ownership and existing IPC sessions are not overwritten.
 
 Offline checks: x86/x64 production-header tests cover process/thread cleanup, failure injection, 20 reloads with stable handle counts, and three interleaved D3D11/D3D12 WARP fence generations under normal completion and forced shutdown. No game was launched. Manually check helper-enabled unload/reload and device recreation, then repeat the reported battle. The original battle freeze is not proven fixed; unexpected mid-run helper failures remain audit F7.
+
+### Parity round (2026-11-14; built only, not run in game)
+
+Shogun 2 against Attila's page row by row (parity table: tools/shogun2/pkg_1114/parity_1114.md: HAVE 43, DO NOW 23 of
+which 8 done, NEEDS A TRACE 5, WON'T GET 13; the Path Tracing torch rows belong to another round and can be carried: PT GI
+and torch shadows are here). What changed (all Experimental rows off; DLSS addon overlay, HDR addon reads ReShade.ini):
+
+- Frame generation's HDR output follows the DLSS addon's HelperFrameGeneration (it read FrameGeneration, a key the
+  overlay never writes) [1fabfb67].
+- **Softer water reflections** (RayTracedWaterSoft): rt_water_plane's roughness 0.06 on the water, as Attila's; in RT/PT
+  [3ffcf029].
+- **Smooth banner shadows** (RayTracedSheetsUnselfed, in RT/PT), **Grass shadow range** (RayTracedGrassShadowRange, 0 m
+  everywhere), **AO under Ray Reconstruction** (RayTracedAoReblur, shown with the helper upscaler and RR) [6a6ffdd2].
+- **SSS hard shadow samples, fade-out samples, ignore edge pixels, sample along the ray, mirror screen edges** (SSSHardSamples,
+  SSSFadeSamples, SSSIgnoreEdges, SSSAlongRay, SSSMirrorEdges): Bend's own parameters in sss.hlsli, Game's at 0 [b1121a30].
+- **Shadow casters out of view** now takes far tree cards (30C453EE, with Far tree shadows: turned to the shadow camera per
+  corner, their own atlas view), soldiers and horses (A22FA941: two bones from the animation map; 1.18M corners a battle
+  frame in the four cascades: last night's 38.8M / 140M counted the instances twice) and rigidambientmapmesh_mtb
+  (7B067623, naval) [6ba1b4e8]. The row is on in RT/PT, so RT/PT now carries them.
+
+Test lines:
+1. Battle, RT/PT: soldiers' and horses' shadows from behind the camera reach into view; turn the camera: no unit shadow
+   pops at the screen edge. Frame time with Shadow casters out of view on and off.
+2. Far tree shadows + Shadow casters out of view: far tree cards behind the camera cast; their shadows match the cards in
+   view.
+3. Naval battle, RT/PT: ship parts' shadows from out of view (7B067623); none misplaced.
+4. Softer water reflections: river and lake reflections a little softer, no shimmer.
+5. Smooth banner shadows: no blocky triangles on banners and sails; their shadows on the ground stay.
+6. Grass shadow range 50 m: no grass shadows past it, frame time over fields.
+7. AO under Ray Reconstruction REBLUR against Light History.
+8. SSS rows at Game's: contact shadows as before; Hard samples 32, Fade-out 64, Along the ray, Mirror edges: what changes.
+9. Frame generation on: HDR output right (paper white, UI) with the helper's frame generation.
+
+Not done (what, why, smallest step):
+- Smoke shadows and their rows: rt_scene's InstallSmokeShadows can't be included by Shogun's host; a game-side install of
+  rt_core's smoke capture for 3D0BC5F1 / 40744308 (drawn in every trace).
+- Naval sails, sail symbols and ropes out of view (4E3EE717, F7EDF855, A42F9EDE): world_matrix sails and camera-facing ropes
+  need their own capture versions; rt_capture_cascade_sail tested against the csos.
+- Other in-view-only casters (63E273F4, F6CBD06E, 124C85A5, EDCD8445, 1E0425DE, 18C15273): never drawn in the 12 traces
+  (level B); a trace with very high trees, grass shadows, a siege with burning buildings, low unit detail.
+- Torch and fire light in fog: fog01's replacement takes the sun alone; the local lights' term as Attila's fog.
+- SSS softness, softer away from the caster, coloured, light through banners, debug view; SSS torch shadows (needs a night
+  trace): Attila's SSS pipeline, one row at a time in sss.hlsli.
+- AO temporal smoothing, edge fix, denoiser; water clarity and caustics; sky / fog smoothing and debanding; modded auto
+  exposure (8233E11F is ours); indicator brightness; particle edges and smoothing; sharpening; gamma correction: each an
+  Experimental port into Shogun's own replacement, WARP 0 apart at off.
+- Engine rows: 9 of Attila's 45 names exist (rope distance, cloud cull, shadow split blend, shadow camera depth offset),
+  read through a lea form the tweak reader doesn't parse; that reader first.
+- Scale census: the 3 BUG (B) particles are fine below 100% (their uv takes the target's size, their NDC only feeds view
+  depth); 10 unclear left (sun00, volumetric particle, particle light, TAA, indicator): WARP 33% against 100%.
+- Settings matrix offline (GI, paths, RR, 50%, FG, Reset mid-battle): the harness's all_modes with Shogun's settings.
+
+Page dump (tools/tw/page_dump/dump_s2.cpp, dump_s2d.cpp, dump_build_s2.py: both addons): before -> after only the nine new
+rows (RayTracedWaterSoft, RayTracedSheetsUnselfed, RayTracedGrassShadowRange, RayTracedAoReblur, the five SSS rows), no
+default or preset value changed. Against Attila (games_compare.py, "RT/PT (page-presets)"): after RT/PT only the per-game
+rows differ, as before the round (AntiAliasingRayReconstruction, RayTracedAmbientOcclusion, RayTracedLightBounce,
+SwapChainEncoding, hue_clip, peak_white_nits).
+
+Checks: both addons build (x64); test/tw_shogun2_shaders PASS (WARP, the game's csos: far cards, units, 7B067623 added to
+parts 10-11); test/tw_screen_space_shadows case 8 PASS (x86, the SSS rows at Game's 0 pixels apart); static_checks 0
+findings. No shared code changed.

@@ -1942,8 +1942,8 @@ void ConfigureAddon() {
   // ray-traced reflections (Experimental, off); no fog (its rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it (hidden: not hooked here) and Smoke Shadows (no game run has shown the particles'
-  // records in this game) start off, Far Tree Shadows too (Experimental: the cards' capture is new here); RT/PT turns all but
-  // the smoke and far trees on, as ATN's list does.
+  // records in this game) start off, Far Tree Shadows too (Experimental: the cards' capture is new here); RT/PT turns them on,
+  // as Attila's (rays_preset_as_attila).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
         || setting->key == "RayTracedFarTreeShadows") {
@@ -1953,8 +1953,8 @@ void ConfigureAddon() {
   // Water Reflections (Experimental, off: no game run has shown the apply with the rays here; RT/PT turns it on, as ATN's list
   // does), Specular Occlusion and the reflections' Samples and Reuse where the water alone takes them, as Pharaoh's.
   twattila::water_reflections::SetRows(&settings, &rt_sliders);
-  // Water Clarity at the game's 1 and Water Caustics off (Experimental: no game run has shown them here yet; RT/PT leaves the
-  // caustics off, water_caustics_tested), Pharaoh's rows, under Reflections and Water.
+  // Water Clarity at the game's 1 and Water Caustics off (Experimental: no game run has shown them here yet; RT/PT turns the
+  // caustics on, as Attila's), Pharaoh's rows, under Reflections and Water.
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
@@ -2003,6 +2003,7 @@ void ConfigureAddon() {
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
+                                             .rays_preset_as_attila = true,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});

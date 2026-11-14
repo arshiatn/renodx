@@ -129,6 +129,11 @@ struct ShaderInjectData {
   float v35_highlight_saturation;
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
+
+  // Appended (parity round, 2026-11-14).
+  float fog_strength;  // the battle fog's opacity (shaders/battlefog00) x this, 1 the game's
+  float dof;           // depth of field's blur size (shaders/t03, t04, t06, t07: hdr_to_screen with depth of field) x this
+  float some_indicators;  // the battle markers' colour in HDR (shaders/markersbattle00-02) x this, 1 the game's
 };
 
 #define SI shader_injection
