@@ -63,6 +63,11 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     (rope vs40_main_rigid 655AB38D; in no trace) cast, captured as Attila's placed ropes. WARP (`test/tw_pharaoh` 3): the
     capture through the camera is the game's position within 5e-6 of w; the rope's middle (the control) misses. Attila's other
     family there, tessellated objects, has no Pharaoh counterpart in the dump (no hull or domain shader in it).
+  - **New (Experimental): Particle Resolution, Full-Resolution Particle Edges, Smooth Half-Size Particles** (Extra
+    (Experimental), Attila's rows through Troy's form of the shared particle layer): smoke, fire and dust drawn at half or a
+    quarter of the render's size. Particle Resolution Full (the default) leaves the game's particles as they are. The facts from
+    the 24 traces: one instanced draw of every lit particle a frame (3F1B86E1 in all 23 frames with particles), blended over the
+    light buffer at the render size, read next by the luma statistics or the tone mapper; the layer itself not run.
 
 - **New: Fog Strength** (Extra, 0 to 2, default 1), on every fog the game ships, also the ones the maintainer's settings
   don't draw. That covers the battle fog's upsample (also its own full-resolution fallback along edges), low spec, MSAA,
