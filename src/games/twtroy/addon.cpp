@@ -1774,6 +1774,12 @@ bool AttachAddon() {
   // decals 516488AB and terrain A34C0DDA (tools/tw/troy/plan_1114.md; names.tsv of the dump). The SSR apply's and the lit
   // particles' blend; the VS inputs of the particles F5CE48CC, the point lights 6CFF8F83, the grass 2C7FBC7D and the far
   // trees' blocks 1FD86210 and cards E25688ED (the 10-27 trace's casters the rays lack); instanced counts apart.
+  // The game maps many uvs to its viewport itself (uv x (c29.zw x c31.xy): the forward-lit shaders, the sun shaders' SSEO;
+  // the scale census's 807 unclear, Pharaoh's class): view_share leaves those chains.
+  twattila::view_share::SetViewportChains(true);
+  // The campaign's shroud decals (campaignshrouddecals 516488AB) build their NDC from SV_Position x inv_rt_size (their
+  // buffer's c13, as Pharaoh's): patched as the camera's target size below 100%.
+  twattila::view_share::SetTargetSizes(std::array<const char*, 1>{"inv_rt_size"});
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
