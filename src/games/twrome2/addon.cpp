@@ -11,10 +11,12 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <cstring>
 #include <initializer_list>
 #include <shared_mutex>
 #include <span>
 #include <string>
+#include <string_view>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -39,6 +41,7 @@
 #include "../twattila/engine_code.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/shadow_pass.hpp"
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/ssr_hiz.hpp"
 #include "../twattila/test_hooks.hpp"
@@ -1420,6 +1423,57 @@ float small_soldiers_as_sprites = 0.f;
 float sprite_size = 20.f;  // pixels on screen
 // Shadow Map Size: the game's shadowmap_extreme_quality (8192 at the highest Shadows setting).
 tw::engine_tweaks::Option shadow_map = {.scale = 0.f};
+// Two Shadow Cascades Under Rays (Experimental, off; Attila's row): Rome II's shadow quality switch (empire.retail.dll
+// +0x142fcdd, one match from `dec esi` to the shared count write; code read, level B: tools/tw/rome2/p2r2_cascades.txt) sets
+// the sun atlas's size (+0x924 / +0x928), cascade size (+0x84), cascade count (+0x88) and tier (+0x74) per
+// gfx_shadow_quality: 1-2 two cascades tier 0, 3 three tier 1, 4 and 5 four tier 2 / 3. With Skip the Shadow Maps, 3-5's
+// counts and tiers as 1-2's (their sizes kept), read when the game sets its shadows up: from the next start.
+constexpr std::string_view SHADOW_CASCADES_CODE =
+    "4E 83 FE 04 0F 87 ?? ?? ?? ?? FF 24 B5 ?? ?? ?? ?? C7 87 24 09 00 00 00 00 00 45 C7 87 28 09 00 00 00 00 80 44 "
+    "C7 87 84 00 00 00 00 04 00 00 C7 87 88 00 00 00 02 00 00 00 C7 47 74 00 00 00 00 E9 ?? ?? ?? ?? C7 87 24 09 00 00 "
+    "00 00 00 45 C7 87 28 09 00 00 00 00 00 45 C7 87 84 00 00 00 00 04 00 00 C7 87 88 00 00 00 03 00 00 00 C7 47 74 01 "
+    "00 00 00 E9 ?? ?? ?? ?? C7 87 24 09 00 00 00 00 80 45 C7 87 28 09 00 00 00 00 80 45 C7 87 84 00 00 00 00 08 00 00 "
+    "C7 47 74 02 00 00 00 EB ?? 80 3D ?? ?? ?? ?? 00 74 ?? 84 DB 75 ?? 81 F9 00 20 00 00 72 ?? 3D 00 20 00 00 72 ?? F3 "
+    "0F 10 05 ?? ?? ?? ?? B8 00 10 00 00 EB ?? F3 0F 10 05 ?? ?? ?? ?? B8 00 08 00 00 F3 0F 11 87 24 09 00 00 F3 0F 11 "
+    "87 28 09 00 00 89 87 84 00 00 00 C7 47 74 03 00 00 00 C7 87 88 00 00 00 04 00 00 00";
+constexpr size_t SHADOW_CASCADES_CODE_SIZE = 255;
+// 3's count and tier, 4's tier, 5's tier, the count 4 and 5 share.
+constexpr std::array<size_t, 5> SHADOW_CASCADES_OFFSETS = {105, 112, 154, 241, 251};
+constexpr std::array<uint32_t, 5> GAME_SHADOW_CASCADES = {3, 1, 2, 3, 4};
+constexpr std::array<uint32_t, 5> TWO_SHADOW_CASCADES = {2, 0, 0, 0, 2};
+float shadow_cascades_row = 0.f;
+uint8_t* shadow_cascades_code = nullptr;  // null: not found, or its values another mod's
+bool shadow_cascades_searched = false;
+bool two_shadow_cascades_written = false;
+
+// 3-5's cascade counts and tiers as 1-2's where `two`, else the game's; written only when that changes, the code found the
+// first time `two` is.
+void SetShadowCascades(bool two) {
+  if (two == two_shadow_cascades_written) return;
+  if (!shadow_cascades_searched) {
+    shadow_cascades_searched = true;
+    if (HMODULE module = GetModuleHandleW(L"empire.retail.dll"); module != nullptr) {
+      shadow_cascades_code = tw::engine_tweaks::FindPattern(tw::engine_tweaks::ModuleSections(module).code, SHADOW_CASCADES_CODE);
+    }
+    for (size_t index = 0; shadow_cascades_code != nullptr && index < SHADOW_CASCADES_OFFSETS.size(); ++index) {
+      uint32_t value;
+      std::memcpy(&value, shadow_cascades_code + SHADOW_CASCADES_OFFSETS[index], sizeof(value));
+      if (value != GAME_SHADOW_CASCADES[index]) shadow_cascades_code = nullptr;
+    }
+    renodx::utils::log::i("[Total War] Graphics: shadow cascades ",
+                          shadow_cascades_code != nullptr ? "found" : "not found, or changed by another mod");
+  }
+  if (shadow_cascades_code == nullptr) return;
+  DWORD protection;
+  if (VirtualProtect(shadow_cascades_code, SHADOW_CASCADES_CODE_SIZE, PAGE_EXECUTE_READWRITE, &protection) == FALSE) return;
+  const auto& values = (two ? TWO_SHADOW_CASCADES : GAME_SHADOW_CASCADES);
+  for (size_t index = 0; index < SHADOW_CASCADES_OFFSETS.size(); ++index) {
+    std::memcpy(shadow_cascades_code + SHADOW_CASCADES_OFFSETS[index], &values[index], sizeof(values[index]));
+  }
+  VirtualProtect(shadow_cascades_code, SHADOW_CASCADES_CODE_SIZE, protection, &protection);
+  FlushInstructionCache(GetCurrentProcess(), shadow_cascades_code, SHADOW_CASCADES_CODE_SIZE);
+  two_shadow_cascades_written = two;
+}
 // Every engine option above, then the tests' (Graphics 2 of 2: more_tests.h, twattila/engine_tests.hpp).
 std::vector<tw::engine_tweaks::Option*> graphics_options;
 std::vector<twattila::engine_tests::EngineTest> engine_tests;
@@ -1434,6 +1488,7 @@ twattila::feature_settings::AaSliders aa_sliders;
 twattila::rt_scene::Sliders rt_sliders;
 // Skip the Shadow Maps (Experimental, off): Ray-Traced Shadows Only with the rays' sun shadows (rt_scene InstallShadowsOnly).
 float rays_skip_cascades_row = 0.f;
+float shadow_pass_row = 0.f;  // Skip the Game's Shadow Map Work (twattila/shadow_pass.hpp: Rome II's one-argument Render)
 // Faster Game CPU Code (twattila/engine_code.hpp, Game::ROME2): Attila's three routines on this game's build (the soldier
 // draw's rounding at its own stack slots, float to half and fmod the same bytes; test/tw_engine_code with this game's DLL:
 // every register and the x87 state the game's). Experimental, off until a game run.
@@ -1522,8 +1577,15 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 39> MOTION_SHADERS =
 // 4212): tools/tw/rome2/par_r2_rmv2_census.txt. rigidtextureblend (54FB9355 / EBB7BFED, material 30) also draws ships'
 // damage parts: solid. The traces draw the banners only as 3D UI after the tone mapper (no capture): level B.
 float rays_banner_light_row = 0.f;
-constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
+// Rarer Objects in the Rays (Experimental, off): the scene's families drawn in no trace (level B: SCENE_SHADERS' held_row).
+float rays_untraced_casters_row = 0.f;
+constexpr std::array<twattila::rt_scene::SceneShader, 46> SCENE_SHADERS = {{
     {.hash = 0x83AB3AFC, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true},
+    // The terrain with the game's Tessellation on (rigidterrain vs50_geom B1C7E29F, HS BE9FC167, DS 93979D65: 3-control-point
+    // patches; in no trace, level B): 83AB3AFC's world position (the same instructions and input signature), the patches without
+    // the domain shader's Phong smoothing (the corners its own). WARP against the game's bytes: test/tw_rays_captures (T).
+    {.hash = 0xB1C7E29F, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true, .patch_triangles = true,
+     .held_row = &rays_untraced_casters_row},
     {.hash = 0x2898B8F6, .capture_shader = __rt_capture_terrain_old_sm3_a, .terrain = true},
     {.hash = 0xD8475AB1, .capture_shader = __rt_capture_terrain_custom_material_sm3_b, .terrain = true},
     {.hash = 0x5B7D7DF3, .capture_shader = __rt_capture_terrain_custom_material_sm41_b, .terrain = true},
@@ -1547,6 +1609,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x59431BB2, .capture_shader = __rt_capture_rigid_sm3_a, .rows_shader = __motion_record_rigid_sm3_a},
     {.hash = 0x658FEA51, .capture_shader = __rt_capture_rigid_sm3_b, .rows_shader = __motion_record_rigid_sm3_b},
     {.hash = 0xF343950E, .capture_shader = __rt_capture_rigid_sm41_b, .rows_shader = __motion_record_rigid_sm41_b},
+    // Rigid objects with the game's Tessellation on (rigidcommon vs30_displacement E51A2D2A, HS E2BF92FC, DS A13A267D: 3-control-point
+    // patches; in no trace, level B): F343950E's placement and world position (the same instructions and input signature), the
+    // patches without the domain shader's displacement, which fades out 5 to 20 m from the camera. WARP: test/tw_rays_captures (T).
+    {.hash = 0xE51A2D2A, .capture_shader = __rt_capture_rigid_sm41_b, .rows_shader = __motion_record_rigid_sm41_b, .patch_triangles = true,
+     .held_row = &rays_untraced_casters_row},
     {.hash = 0x3E086AFB, .capture_shader = __rt_capture_rigid_lq, .rows_shader = __motion_record_rigid_lq},
     {.hash = 0x54FB9355, .capture_shader = __rt_capture_rigid_blend_sm3_a, .rows_shader = __motion_record_rigid_blend_sm3_a},
     {.hash = 0xEBB7BFED, .capture_shader = __rt_capture_rigid_blend_sm3_b, .rows_shader = __motion_record_rigid_blend_sm3_b},
@@ -1702,9 +1769,11 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   // settings[3]->default_value = renodx::utils::swapchain::ComputeReferenceWhite(peak.value());
 }
 
-// The shadow map size, before the game builds its shadows.
+// The shadow map size and cascades, before the game builds its shadows.
 void OnInitDevice(reshade::api::device*) {
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &model_detail, &graphics_found, graphics_status);
+  SetShadowCascades(shadow_cascades_row != 0.f && rays_skip_cascades_row != 0.f
+                    && twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).shadows_only);
 }
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
@@ -1727,6 +1796,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, rays_aa, shader_injection.light_bounce_strength);
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   rt_settings.shadows_only = rt_settings.shadows_only && rays_skip_cascades_row != 0.f;
+  SetShadowCascades(shadow_cascades_row != 0.f && rt_settings.shadows_only);
   // The smoke's shadows without rays: the rays bring their own smoke.
   auto smoke_map_settings = smoke_map_sliders;
   if (rt_settings.sun_shadows) smoke_map_settings.strength = 0.f;
@@ -1766,6 +1836,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
           .focal_pixels = twattila::anti_aliasing::MainFocalPixels(),
       },
       &graphics_hooks_installed, graphics_status, twattila::graphics_hooks::Game::ROME2);
+  twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped());
 }
 
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
@@ -1809,6 +1880,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .light_glow_label = "Torch and Fire Light in Fog (Experimental)",
     .light_glow_tooltip = "Torches and fires light the fog around them, with their shafts and shadows in it. Needs Fog Shadows and\n"
                           "Torch and Fire Shadows. 0: off.",
+    .untraced_casters_tooltip = "With the game's Tessellation on: the ground and the objects it tessellates also cast ray-traced shadows.",
 };
 
 void ConfigureAddon() {
@@ -2077,6 +2149,18 @@ void ConfigureAddon() {
                      "Applies after a restart.",
           .labels = {"4096 (Game's)", "8192"},
       },
+      // Attila's rows (graphics_page takes them under the rays' shadows' More Options).
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedShadowCascades",
+          .binding = &shadow_cascades_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Two Shadow Cascades Under Rays (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With Skip the Shadow Maps: the game prepares 2 shadow cascades, as at its lower Shadows settings, instead\n"
+                     "of 3 or 4. The rays shadow instead; less CPU time. Applies after a restart.",
+          .labels = {"Off", "On"},
+      },
   });
   {
     const auto reflections = twattila::feature_settings::SsrSettings(&shader_injection);
@@ -2095,6 +2179,17 @@ void ConfigureAddon() {
           .min = 0.25f,
           .max = 16.f,
           .format = "%.2fx",
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSkipShadowPass",
+          .binding = &shadow_pass_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Skip the Game's Shadow Map Work (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows: the game stops preparing most of the shadow map draws the rays replace.\n"
+                     "Less CPU time in forests and big battles.",
+          .labels = {"Off", "On"},
       },
       graphics_status,
       // Two empty lines between this section and the ambient occlusion (ATN).
@@ -2297,8 +2392,10 @@ void ConfigureAddon() {
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_banner_light = &rays_banner_light_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
                                              .smoke_map_tested = false,
@@ -2446,6 +2543,7 @@ bool AttachAddon() {
   // water and river, the campaign's sea) take the rays' shadow (WARP tools/tw/rome2/water_r2: t49 unbound bit-identical,
   // t49 = 1 every comparison shadowed).
   twattila::rt_scene::InstallShadowsOnly();
+  twattila::shadow_pass::Install();
   twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
   // Last of the sun draws' hooks: it draws the sun draws itself (no callback after it runs).
@@ -2488,7 +2586,9 @@ void DetachAddon() {
   twattila::screen_space_shadows::Uninstall();
   tw::engine_tweaks::Uninstall(graphics_options);
   twattila::engine_code::Uninstall();
+  SetShadowCascades(false);
   twattila::graphics_hooks::Uninstall();
+  twattila::shadow_pass::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_pass::Uninstall();
   twattila::rt_scene::Uninstall();

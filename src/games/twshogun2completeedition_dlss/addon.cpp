@@ -1109,6 +1109,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightGlow", 0.f},
         {"RayTracedSmokeShadows", 0.f},
         {"RayTracedSmokeQuality", 1.f},
+        {"RayTracedSmokeFastBuild", 0.f},
         {"RayTracedAmbientRange", 2.f},
         {"RayTracedAORays", 2.f},
         {"RayTracedAOQuarter", 0.f},
@@ -1128,6 +1129,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"PathTracingBounces", 2.f},
         {"RayTracedSharc", 0.f},
         {"RayTracedReuseLean", 0.f},
+        {"RayTracedLightsInBounce", 0.f},
+        {"RayTracedLightShadowRatio", 0.f},
         {"RayTracedPathSkyApart", 0.f},
         {"RayTracedPathKeptCube", 0.f},
         {"RayTracedPathSer", 0.f},
@@ -1203,6 +1206,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
     constexpr std::array<const char*, 6> SMOKE_QUALITIES = {"Low", "Medium", "High", "Ultra", "Extreme", "Maximum"};
     choice("Smoke shadow quality", "RayTracedSmokeQuality", 1, SMOKE_QUALITIES,
            "Higher: fewer holes and less flicker in thick smoke, slower there.");
+    choice("Faster smoke shadow build (Experimental)", "RayTracedSmokeFastBuild", 0, OFF_ON_NAMES,
+           "Smoke shadows' particles are made ready for the rays faster each frame (about 0.6 ms in thick smoke). In thick smoke a "
+           "sun ray may count other particles: slightly different smoke shadows.");
     slider("Grass shadow range (Experimental)", "RayTracedGrassShadowRange", 0.f, 0.f, 200.f, "%.0f m",
            "Past this distance grass casts no ray-traced shadows (on itself or the ground): faster over fields. 0 m: everywhere.");
     ImGui::EndDisabled();
@@ -1291,6 +1297,15 @@ void OnOverlay(reshade::api::effect_runtime*) {
            "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).");
     choice("Lean ReSTIR reuse (Experimental)", "RayTracedReuseLean", 0, OFF_ON_NAMES,
            "A faster ReSTIR GI for path tracing: the same look in tests.");
+    // Attila's torch rows from Path Tracing (graphics_page.hpp's): with Ray-traced point light shadows on.
+    ImGui::BeginDisabled(!local_lights);
+    choice("Torch and fire light from path tracing (Experimental)", "RayTracedLightsInBounce", 0, OFF_ON_NAMES,
+           "Torches and fires lit by the path-traced Global Illumination instead of their own shadow rays: faster with many fires.\n"
+           "Noisier (most at Half resolution), without the torches' highlights; follows the Global Illumination's strength.");
+    choice("Torch and fire shadows from path tracing (Experimental)", "RayTracedLightShadowRatio", 0, OFF_ON_NAMES,
+           "The torches' and fires' own light, their shadows from the path-traced Global Illumination instead of their own\n"
+           "rays: faster with many fires. Softer shadows that follow moving units a little later; 32 fires at most.");
+    ImGui::EndDisabled();
     const bool path_ambient = choice("Path-traced AO (Experimental)", "RayTracedPathAmbient", 0, OFF_ON_NAMES,
                                      "The paths bring the sky's light in place of the game's ambient: shade wherever the sky can't reach.\n"
                                      "In battles, in place of ray-traced AO (the campaign map keeps it). Needs Ray-traced Global Illumination.")

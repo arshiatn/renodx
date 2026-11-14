@@ -34,6 +34,7 @@
 #include "../twattila/particle_layer.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
+#include "../twattila/rt_capture_imposter_gs.h"
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
@@ -1550,7 +1551,9 @@ constexpr std::array<twattila::rt_scene::PixelMask, 1> VEGETATION_MASKS = {{{.pi
 // helper's 0.5), as the campaign's plants. In no trace (level B: sessions 2 / 3 drew 54D2CFBD's forests).
 constexpr std::array<twattila::rt_scene::PixelMask, 1> CAMPAIGN_TREE_MASKS = {{{.pixel_shader = 0x07295514, .slot = 0}}};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 39> SCENE_SHADERS = {{
+// The sprite soldiers' G-buffer pixel shader (imposter ps40_main_gbuffer): their scene draws (SCENE_SHADERS' imposter rows).
+constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixel_shader = 0x264532AD}}};
+constexpr std::array<twattila::rt_scene::SceneShader, 40> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1559,9 +1562,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 39> SCENE_SHADERS = {{
      .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true},
     // The campaign's trees (rigidstandard vs40_main_campaign_trees, Pharaoh's 1C4B8681): B057851F's vertex shader and instance
     // rows, then an x / z sway of at most 0.12 m x g_wind_vegetation_multiplier (left out: still); C7FDC209 cuts out t0.w x the
-    // fade below 0.01 (the helper's cut-out 0.5).
+    // fade below 0.01: the rays at 0.01 too (alpha_cutoff; the helper's 0.5 before, and with helpers before 114).
     {.hash = 0x54D2CFBD, .capture_shader = __rt_capture_rigid_standard_cut_out, .rows_shader = __motion_record_rigid_rigidambientmapground_b057,
-     .foliage = true, .still = true},
+     .foliage = true, .still = true, .alpha_cutoff = 0.01f},
     {.hash = 0x283E18D7, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_283e},
     {.hash = 0xDD82D47A, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_dd82},
     {.hash = 0x86534458, .capture_shader = __rt_capture_rigid_vertexpush},
@@ -1628,6 +1631,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 39> SCENE_SHADERS = {{
     {.hash = 0xB6BC2496, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0x4215C70C, .dynamic = true, .cascade_keep = __rt_outside_view_branch},
     {.hash = 0xB320F789, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 2, .cascade_keep = __rt_outside_view_card},
+    // The sprite soldiers (imposter vs40_main_gs: points its gs_main turns into cards; in no trace, level B): streamed out through
+    // twattila/rt_capture_imposter_gs in place of gs_main (SceneShader::capture_geometry_shader), the card turned to the sun; only
+    // the G-buffer draw (ps40_main_gbuffer 264532AD: its t0's alpha the cut-out, from 0.376), as Sprite Soldier Shadows
+    // (Experimental, off). WARP against the game's bytes: test/tw_rays_captures (370A7440 + DC05F551).
+    {.hash = 0x370A7440, .dynamic = true, .foliage = true, .sun_facing = true, .capture_geometry_shader = __rt_capture_imposter_gs, .pixel_masks = IMPOSTER_MASKS},
 }};
 
 // Smoke Shadows' particles (Experimental, off; Pharaoh's): particle_vfx_main vs50_main_instancing F5CE48CC (Pharaoh's 109B79CE:
@@ -2113,11 +2121,11 @@ void ConfigureAddon() {
   // ray-traced reflections (Experimental, off); no fog (its rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it (hidden: not hooked here) and Smoke Shadows (no game run has shown the particles'
-  // records in this game) start off, Far Tree Shadows too (Experimental: the cards' capture is new here); RT/PT turns them on,
-  // as Attila's (rays_preset_as_attila).
+  // records in this game) start off, Sprite Soldier and Far Tree Shadows too (Experimental: the cards' capture is new here);
+  // RT/PT turns them on, as Attila's (rays_preset_as_attila).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
-        || setting->key == "RayTracedFarTreeShadows") {
+        || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
     }
   }
@@ -2171,6 +2179,7 @@ void ConfigureAddon() {
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
                                              .smoke_map_tested = false,
@@ -2226,6 +2235,9 @@ bool AttachAddon() {
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
 
+  // Rows saved at an old default, cleared once: Sprite Soldier Shadows was saved hidden at RT/PT's 1 (SetRaysPresetDefaults)
+  // until the sprite soldiers were in the rays; now Experimental, off.
+  twattila::graphics_page::ClearSavedRows(1, {"RayTracedSpriteShadows"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
   // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).

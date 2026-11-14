@@ -142,6 +142,9 @@ constexpr uint32_t RT_SCATTERED = 256;
 // A unit's or a rigid mesh's alpha-tested draw (with RT_FOLIAGE): where its test passes it blocks as a solid does (RECORD_GRASS), no
 // light through it; a static one's instances are a group of their own (helper100: among the leaves before, counted as leaves).
 constexpr uint32_t RT_SOLID_CUT_OUT = 512;
+// An alpha-tested draw (with RT_FOLIAGE) whose game cuts it at `rt_leaf_cutoff`, not at the helper's 0.5 (Troy's campaign
+// trees at 0.01): its records and opacity micromaps at that (helpers before 114: 0.5).
+constexpr uint32_t RT_OWN_CUTOFF = 1024;
 // Request flags.
 constexpr uint32_t RT_SUN_SHADOWS = 1;
 constexpr uint32_t RT_AMBIENT_OCCLUSION = 2;
@@ -435,7 +438,8 @@ struct Shared {
   uint32_t rt_path_samples = 0;
   float rt_reflection_range = 0.f;
   uint32_t rt_guides = 0;
-  uint32_t rt_v8_padding = 0;
+  // The addon's (in v8's padding; an older addon leaves it 0): RT_OWN_CUTOFF's alpha cut-off (0: the helper's 0.5).
+  float rt_leaf_cutoff = 0.f;
   // The addon's (v9): the local lights' shadows with RT_LOCAL_LIGHTS in a trace request's flags: `rt_light_count` lights
   // (world position, reach in metres), a ray from each render pixel within a light's reach toward it; out in
   // `rt_light_mask` (R32_UINT at the textures' size, opened with the others; bit i: light i reaches the pixel unblocked).

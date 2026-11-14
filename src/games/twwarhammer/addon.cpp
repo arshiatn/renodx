@@ -32,6 +32,7 @@
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
+#include "../twattila/rt_capture_imposter_gs.h"
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
@@ -1555,6 +1556,8 @@ float lod_bias_trilinear_row = 0.f;
 // The shadow pass's casters in the rays' scene (SCENE_SHADERS' cascade_keep entries): Shadow Casters Out of View
 // (Experimental, off: no game run has shown them yet).
 float rays_units_out_of_view_row = 0.f;
+// The scene's families drawn in no trace (level B: SCENE_SHADERS' held_row): Rarer Objects in the Rays, Experimental, off.
+float rays_untraced_casters_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1639,7 +1642,9 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 33> MOTION_SHADERS =
 // The floating unit banners (rigidtextureblend, 2 bones, E7F0D71A) stay out: the game gives them no shadow (no atlas draw in
 // any of ATN's 2026-11-14 traces). So does the campaign's far terrain (rigidterrain geometry_41_global, CDCF1ADD): no atlas
 // draw either, and no trace shows where it lies against the near terrain.
-constexpr std::array<twattila::rt_scene::SceneShader, 48> SCENE_SHADERS = {{
+// The sprite soldiers' G-buffer pixel shader (imposter ps40_main_gbuffer): their scene draws (SCENE_SHADERS' imposter rows).
+constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixel_shader = 0x6D01619A}}};
+constexpr std::array<twattila::rt_scene::SceneShader, 51> SCENE_SHADERS = {{
     {.hash = 0x10401C91, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x06AB0766, .capture_shader = __rt_capture_terrain_geom_new_sm41, .terrain = true},
     {.hash = 0x5696080B, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1649,6 +1654,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 48> SCENE_SHADERS = {{
     {.hash = 0x51EDFD6E, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_51ed, .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true,
      .cut_out_row = &rays_unit_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
     {.hash = 0xF6DBA4F4, .capture_shader = __rt_capture_rigid_standard_sm41, .rows_shader = __motion_record_rigid_rigidambientmapfiremesh_f6db},
+    // Rigid objects with the game's Tessellation on (vs40_displacement E168387B, HS F04A8DF4, DS 7C266A97: 3-control-point patches; in no
+    // trace, level B): F6DBA4F4's placement and world position (the same instructions and input signature), the patches without the
+    // domain shader's displacement, which fades out 5 to 20 m from the camera; Rarer Objects in the Rays (Experimental, off).
+    // WARP against the game's bytes: test/tw_rays_captures (T).
+    {.hash = 0xE168387B, .capture_shader = __rt_capture_rigid_standard_sm41, .rows_shader = __motion_record_rigid_rigidambientmapfiremesh_f6db,
+     .patch_triangles = true, .held_row = &rays_untraced_casters_row},
     {.hash = 0x875BB987, .capture_shader = __rt_capture_rigid_default, .cut_out_shader = __rt_capture_rigid_default_cut_out, .clip_cut_outs = true,
      .cut_out_row = &rays_unit_cut_outs_row, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
     {.hash = 0xD1A96B76, .capture_shader = __rt_capture_rigid_vertexpush},
@@ -1715,6 +1726,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 48> SCENE_SHADERS = {{
     {.hash = 0xF91E642E, .dynamic = true, .thin = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0xCF629296, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0x52D806A0, .capture_shader = __rt_capture_rope_rigid, .dynamic = true, .cascade_keep = __rt_outside_view_world, .cascade_world = true},
+    // The sprite soldiers (imposter vs40_main_gs: points its gs_main turns into cards; in no trace, level B): streamed out through
+    // twattila/rt_capture_imposter_gs in place of gs_main (SceneShader::capture_geometry_shader), the card turned to the sun; only
+    // the G-buffer draw (ps40_main_gbuffer 6D01619A: its t0's alpha the cut-out, from 0.376), as Sprite Soldier Shadows
+    // (Experimental, off). WARP against the game's bytes: test/tw_rays_captures (381E079E + 12D3A4BC, 883D12E7 + D6954DFC).
+    {.hash = 0x381E079E, .dynamic = true, .foliage = true, .sun_facing = true, .capture_geometry_shader = __rt_capture_imposter_gs, .pixel_masks = IMPOSTER_MASKS},
+    {.hash = 0x883D12E7, .dynamic = true, .foliage = true, .sun_facing = true, .capture_geometry_shader = __rt_capture_imposter_gs, .pixel_masks = IMPOSTER_MASKS},
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
@@ -1841,6 +1858,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                             "what is outside the view casts none. Off: the rays' shadows on top of the game's shadow maps.",
     .reflections_tooltip = "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
+    .untraced_casters_tooltip = "Objects the game tessellates (its Tessellation on) also cast ray-traced shadows.",
 };
 
 void ConfigureAddon() {
@@ -2297,13 +2315,13 @@ void ConfigureAddon() {
   // (Experimental), as Warhammer II's: ATN's 2026-11-14 traces show g_hdr_on and g_use_spherical_harmonics on.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows and the torches' light in it start off (Experimental: no game run has shown them here), Smoke Shadows too
-  // (Experimental and left out of RT/PT: smoke_shadows_tested), Specular Occlusion, Far Tree Shadows, Water Caustics and
-  // Ray-Traced Water Reflections too (Experimental); RT/PT turns them on, as Attila's (rays_preset_as_attila). Before Apply:
-  // No RT/PT and Reset read these defaults as the page is built.
+  // (Experimental and left out of RT/PT: smoke_shadows_tested), Specular Occlusion, Sprite Soldier and Far Tree Shadows, Water
+  // Caustics and Ray-Traced Water Reflections too (Experimental); RT/PT turns them on, as Attila's (rays_preset_as_attila).
+  // Before Apply: No RT/PT and Reset read these defaults as the page is built.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
-        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedFarTreeShadows" || setting->key == "WaterCaustics"
-        || setting->key == "RayTracedWaterReflections") {
+        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedSpriteShadows"
+        || setting->key == "RayTracedFarTreeShadows" || setting->key == "WaterCaustics" || setting->key == "RayTracedWaterReflections") {
       setting->default_value = 0.f;
     }
   }
@@ -2330,7 +2348,9 @@ void ConfigureAddon() {
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_unseen_cut_outs = &rays_unit_cut_outs_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
                                              .smoke_shadows_tested = false,
@@ -2371,16 +2391,10 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
 
   // Rows saved at an old default, cleared once: Ray-Traced Water Reflections was hidden at 1 (it did nothing) before the
-  // water pass; now Experimental, off.
-  constexpr int SETTINGS_REVISION = 1;
-  if (int revision = 0; !reshade::get_config_value(nullptr, renodx::utils::settings::global_name.c_str(), "SettingsRevision", revision)
-                        || revision < SETTINGS_REVISION) {
-    for (const char* preset : {"-preset1", "-preset2", "-preset3"}) {
-      reshade::set_config_value(nullptr, (renodx::utils::settings::global_name + preset).c_str(), "RayTracedWaterReflections",
-                                static_cast<const char*>(nullptr));
-    }
-    reshade::set_config_value(nullptr, renodx::utils::settings::global_name.c_str(), "SettingsRevision", SETTINGS_REVISION);
-  }
+  // water pass, Sprite Soldier Shadows at RT/PT's 1 (SetRaysPresetDefaults) before the sprite soldiers were in the rays; now
+  // both Experimental, off.
+  twattila::graphics_page::ClearSavedRows(1, {"RayTracedWaterReflections"});
+  twattila::graphics_page::ClearSavedRows(2, {"RayTracedSpriteShadows"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
   // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).

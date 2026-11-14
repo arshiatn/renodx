@@ -44,6 +44,7 @@
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/shadow_pass.hpp"
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/ssr_hiz.hpp"
 #include "../twattila/test_hooks.hpp"
@@ -1276,6 +1277,7 @@ float big_battle_fix = 0.f;
 float small_soldiers_as_sprites = 0.f;
 float sprite_size = 20.f;  // pixels on screen
 float shadow_map_size = 0.f;  // the game's sizes x 2^this (graphics_hooks.hpp shadow_map)
+float shadow_pass_row = 0.f;  // Skip the Game's Shadow Map Work (twattila/shadow_pass.hpp)
 tw::engine_tweaks::Option dead_units;
 tw::engine_tweaks::Option unit_animation;  // shared pose
 tw::engine_tweaks::Option facial_animation;
@@ -1306,6 +1308,8 @@ float lod_bias_trilinear_row = 0.f;  // twattila/texture_lod_bias.hpp SetWrappin
 // draw's rounding at its own stack slots, float to half and fmod the same bytes; test/tw_engine_code with this game's DLL:
 // every register and the x87 state the game's). Experimental, off until a game run.
 float engine_code_row = 0.f;
+// Faster Render Lists (Experimental, off; graphics_page.hpp): engine_code.hpp's render list push site.
+float render_lists_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1678,7 +1682,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                 shader_injection.ssao_temporal != 0.f, shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
-  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::THRONES);
+  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::THRONES, render_lists_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), false);
   twattila::graphics_hooks::Update(
@@ -1701,6 +1705,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
           .focal_pixels = twattila::anti_aliasing::MainFocalPixels(),
       },
       &graphics_hooks_installed, graphics_status, twattila::graphics_hooks::Game::THRONES);
+  twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped());
 }
 
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
@@ -1979,6 +1984,28 @@ void ConfigureAddon() {
                      "with it). More video memory. Applies after a restart.",
           .labels = {"2048 (Game's)", "4096", "8192"},
       },
+      new renodx::utils::settings::Setting{
+          .key = "FasterRenderLists",
+          .binding = &render_lists_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Faster Render Lists (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's draw lists stop rewriting a flag every CPU core reads for each item they take:\n"
+                     "less waiting between the cores in big battles. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSkipShadowPass",
+          .binding = &shadow_pass_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Skip the Game's Shadow Map Work (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows: the game stops preparing most of the shadow map draws the rays replace.\n"
+                     "Less CPU time in forests and big battles.",
+          .labels = {"Off", "On"},
+      },
       graphics_status,
       // Two empty lines between this section and the ambient occlusion (ATN).
       new renodx::utils::settings::Setting{
@@ -2171,6 +2198,7 @@ void ConfigureAddon() {
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row,
                                              .motion_in_draw = &motion_in_draw_row,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .foliage_light_tested = false,
                                              .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
@@ -2327,6 +2355,7 @@ bool AttachAddon() {
   // Ray-Traced Shadows Only: the sun's shadow map's casters skipped (the map the sun draws read); the forward passes that
   // read it take the rays' shadows instead.
   twattila::rt_scene::InstallShadowsOnly();
+  twattila::shadow_pass::Install();
   twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
   // The lit particles' other builds (shaders/vfx00<method>_*, vfx01_*: Attila's, the same bytes) read t49 and b9 themselves.
@@ -2379,6 +2408,7 @@ void DetachAddon() {
   tw::engine_tweaks::Uninstall(graphics_options);
   twattila::engine_code::Uninstall();
   twattila::graphics_hooks::Uninstall();
+  twattila::shadow_pass::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_pass::Uninstall();
   twattila::rt_scene::Uninstall();

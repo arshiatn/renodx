@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <format>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <set>
 #include <span>
@@ -91,6 +92,19 @@ inline void SetRaysPresetDefaults(std::vector<Setting*>* settings) {
   }
 }
 
+// Rows saved at an old default (a preset saves every row, hidden ones too), cleared once: `keys` out of the three presets
+// where the game's SettingsRevision is below `revision`, which it becomes. In order of revision, before settings::Use.
+inline void ClearSavedRows(int revision, std::initializer_list<const char*> keys) {
+  const std::string& global = renodx::utils::settings::global_name;
+  if (int saved = 0; reshade::get_config_value(nullptr, global.c_str(), "SettingsRevision", saved) && saved >= revision) return;
+  for (const char* preset : {"-preset1", "-preset2", "-preset3"}) {
+    for (const char* key : keys) {
+      reshade::set_config_value(nullptr, (global + preset).c_str(), key, static_cast<const char*>(nullptr));
+    }
+  }
+  reshade::set_config_value(nullptr, global.c_str(), "SettingsRevision", revision);
+}
+
 inline const std::string AA_SECTION = "Anti-Aliasing and Upscaling";
 inline const std::string AO_SECTION = "Ambient Occlusion";
 inline const std::string SHADOWS_SECTION = "Shadows";
@@ -147,6 +161,7 @@ struct Texts {
       "across the screen, usually faster. DXR: from rays, also what is off screen or hidden. Needs an upscaler.";
   const char* reflections_middle_label = "FidelityFX SSSR";
   const char* reflections_rays_label = "Ray-Traced (DXR)";
+  const char* untraced_casters_tooltip = "Ropes, and objects the game tessellates (its Tessellation on), also cast ray-traced shadows.";
 };
 
 inline constexpr Texts ATTILA_TEXTS = {
@@ -224,8 +239,9 @@ struct Bindings {
   // Object motion written by the game's own draws and the units' records (object_motion.hpp: the addon reads it at start);
   // null: no such row (Attila: always).
   float* motion_in_draw = nullptr;
-  // With path-traced Light Bounce (rt_core.hpp Settings::lights_in_bounce, light_ratio): torch and fire light, or their
-  // shadows, from the paths' samples; null: no such rows.
+  // With path-traced Light Bounce (rt_scene::Sliders::lights_in_bounce, light_ratio: rt_core.hpp Settings'): torch and fire
+  // light, or their shadows, from the paths' samples; null: no such rows. A game with Path-Traced GI and the rays' torch
+  // shadows binds both to its rt_scene::Sliders.
   float* lights_in_bounce = nullptr;
   float* light_ratio = nullptr;
   const Texts* texts = &ATTILA_TEXTS;
@@ -240,6 +256,7 @@ struct Bindings {
   bool smoke_map_tested = true;  // false: the smoke's shadows without rays Experimental, off by default (as foliage_light_tested)
   bool smoke_shadows_tested = true;  // false: the rays' Smoke Shadows Experimental and left out of RT/PT (its default the game's to set)
   bool far_cards_tested = true;  // false: Sprite Soldier and Far Tree Shadows the same (their defaults the game's to set)
+  bool sprites_tested = true;  // false: Sprite Soldier Shadows Experimental and left out of RT/PT (its default the game's to set)
   bool water_caustics_tested = true;  // false: Water Caustics left out of RT/PT (its default the game's to set)
   bool banner_light_tested = true;  // false: Light Through All Banners left out of RT/PT (its default the game's to set)
   // RT/PT as Attila's whatever the *_tested flags above say (ATN 2026-11-14): the rows they leave out in it, Light Through
@@ -467,6 +484,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   static bool more_rt = false;
   static Values page_defaults;
 
+  // Faster Smoke Shadow Build, every game's (shown where Smoke Shadows are installed): placed under Smoke Shadow Quality below.
+  settings->push_back(rt_scene::SmokeFastBuildRow(b.rt, b.aa));
   const auto always = [] { return true; };
   const auto upscaling = [b] { return feature_settings::Upscaling(*b.aa); };
   const auto scale_rows = [b] { return b.has_scale_rows && feature_settings::Upscaling(*b.aa); };
@@ -792,10 +811,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                                              {"RayTracedUnitsOutOfView", 1.f}});
     } else {
       std::erase_if(rays_values, [smoke = b.smoke_shadows_tested, caustics = b.water_caustics_tested, cards = b.far_cards_tested,
-                                  banners = b.banner_light_tested](const Values::value_type& preset) {
+                                  sprites = b.sprites_tested, banners = b.banner_light_tested](const Values::value_type& preset) {
         const auto& [key, value] = preset;
         return (key == "RayTracedSmokeShadows" && !smoke) || (key == "WaterCaustics" && !caustics)
-               || ((key == "RayTracedSpriteShadows" || key == "RayTracedFarTreeShadows") && !cards) || (key == "RayTracedBannerLight" && !banners);
+               || (key == "RayTracedSpriteShadows" && !(cards && sprites)) || (key == "RayTracedFarTreeShadows" && !cards)
+               || (key == "RayTracedBannerLight" && !banners);
       });
     }
     auto* rays_preset = preset_button("RT/PT", b.texts->rays_tooltip, rays_values);
@@ -882,7 +902,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto more_rays = more(&more_shadows, rays);
     const auto more_lights = [b, more_rays] { return more_rays() && b.rt->local_lights != 0.f; };
     page.Take({.match = "RayTracedSmokeQuality", .section = section, .shown = more_rays});
-    page.Take({.match = "RayTracedSmokeFastBuild", .section = section, .shown = more_rays, .only_some_games = true});
+    page.Take({.match = "RayTracedSmokeFastBuild", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedPointLightShadows", .section = section, .shown = more_rays, .only_some_games = true});
     page.Take({.match = "RayTracedParticleLightShadows", .section = section, .shown = more_lights, .only_some_games = true});
     page.Take({.match = "RayTracedLightSoftness", .section = section, .shown = more_lights});
@@ -918,7 +938,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       });
     }
     page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays,
-               .label = b.far_cards_tested ? "" : "Sprite Soldier Shadows (Experimental)"});
+               .label = (b.far_cards_tested && b.sprites_tested) ? "" : "Sprite Soldier Shadows (Experimental)"});
     page.Take({.match = "RayTracedFarTreeShadows", .section = section, .shown = more_rays,
                .label = b.far_cards_tested ? "" : "Far Tree Shadows (Experimental)"});
     if (b.rays_replace_maps != nullptr) {
@@ -983,6 +1003,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedTreeReach", .section = section, .shown = more_rays, .only_some_games = true});
     page.Take({.match = "RayTracedShadowMapSize", .section = section, .shown = more_rays, .only_some_games = true});
     page.Take({.match = "RayTracedShadowCascades", .section = section, .shown = more_rays, .only_some_games = true});
+    page.Take({.match = "RayTracedSkipShadowPass", .section = section, .shown = more_rays, .only_some_games = true});
     if (b.rays_one_at_a_place != nullptr) {
       page.Add(new Setting{
           .key = "RayTracedOneAtAPlace",
@@ -1068,7 +1089,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .default_value = 0.f,
           .label = "Rarer Objects in the Rays (Experimental)",
           .section = section,
-          .tooltip = "Ropes, and objects the game tessellates (its Tessellation on), also cast ray-traced shadows.",
+          .tooltip = b.texts->untraced_casters_tooltip,
           .is_visible = more_rays,
       });
     }
@@ -1280,6 +1301,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Take({.match = "RayTracedReflectionLight", .section = section, .shown = rays, .only_some_games = true});
       page.Take({.match = "RayTracedReflectionFog", .section = section, .shown = rays, .only_some_games = true});
       page.Take({.match = "RayTracedReflectionLobe", .section = section, .shown = rays, .only_some_games = true});
+      page.Take({.match = "RayTracedReflectionFaster", .section = section, .shown = rays, .only_some_games = true});
       page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = b.texts->specular_occlusion_label});
       page.Take({.match = "RayTracedSkipGameReflections", .section = section, .shown = rays, .only_some_games = true});
     }
@@ -1308,6 +1330,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .is_visible = more(&more_rt, always),
       });
     }
+    page.Take({.match = "FasterRenderLists", .section = section, .shown = more(&more_rt, always), .only_some_games = true});
     page.Add(new Setting{
         .key = "RayTracingDenoiser",
         .binding = &b.rt->denoiser,
@@ -1367,10 +1390,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
 
   page.Finish({lighting_settings::AO_SECTION, lighting_settings::GI_SECTION, feature_settings::SSS_SECTION, feature_settings::AA_SECTION}, RT_SECTION);
   page_defaults = page.Defaults(AA_SECTION);
-  // The presets leave Shadow Map Size alone (it needs a restart; Graphics 2 of 2's presets set it), Log Details and Faster
-  // Game CPU Code (not a look).
+  // The presets leave Shadow Map Size alone (it needs a restart; Graphics 2 of 2's presets set it), Log Details, Faster
+  // Game CPU Code and Faster Render Lists (not a look).
   std::erase_if(page_defaults, [](const auto& value) {
-    return value.first == "GraphicsShadowMapSize" || value.first == "RayTracedDebugLog" || value.first == "FasterGameCpuCode";
+    return value.first == "GraphicsShadowMapSize" || value.first == "RayTracedDebugLog" || value.first == "FasterGameCpuCode"
+           || value.first == "FasterRenderLists";
   });
   for (const std::string& section : Sections()) renodx::utils::settings::section_tints.emplace_back(section, TITLE_TINT);
 }

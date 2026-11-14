@@ -2819,6 +2819,10 @@ float upscaling_mode_row = 0.f;  // 0 the game's Resolution Scale, 1 to 6 featur
 float below_100_detail_row = 1.f;
 float lod_bias_trilinear_row = 0.f;
 float reflection_lobe_row = 0.f;
+// Faster Reflections: Own ReSTIR on Attila's narrower lobe, whatever Reuse and the lobe's row say. The 4K harness at ATN's
+// Warhammer III rows (helper113, reflections pass): his rows (squared lobe, no reuse) 1.35-1.42 ms, this 1.06; Own ReSTIR on the
+// squared lobe 2.27-2.32.
+float reflections_faster_row = 0.f;
 float water_motion_row = 0.f;
 float placed_objects_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
@@ -2841,6 +2845,7 @@ constexpr float TREE_REACH_METRES = 149.f;
 tw::engine_tweaks::Option* first_map_reach = nullptr;  // engine_tests' battle_shadow_split_0
 std::atomic_bool tree_reach_logged = false;
 float rays_one_at_a_place_row = 0.f;
+float rays_untraced_casters_row = 0.f;  // Rarer Objects in the Rays: the tessellated rigid objects (SCENE_SHADERS' held_row)
 float rays_banner_light_row = 0.f;
 float rays_branch_cut_outs_row = 0.f;
 float rays_faded_parts_row = 0.f;
@@ -3005,6 +3010,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                            "no rays needed; costs more, may shimmer. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
     .reflections_middle_label = "All Surfaces (Experimental)",
     .reflections_rays_label = "Ray-Traced (DXR, Experimental)",
+    .untraced_casters_tooltip = "Objects the game tessellates (its Tessellation on) also cast ray-traced shadows.",
 };
 
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -3098,9 +3104,16 @@ constexpr std::array<twattila::rt_scene::PixelMask, 2> GROUND_MESH_PASSES = {{
     {.pixel_shader = 0x90FBDD61},
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 46> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 48> SCENE_SHADERS = {{
     {.hash = 0xF0395CC4, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0xF0395CC4},  // fx_rigidanisotropic
     {.hash = 0x8EE34EC5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x8EE34EC5},  // fx_rigidambientmapfiremesh
+    // Rigid objects with the game's Tessellation on (gfx_tesselation; HS FE7929BE, DS 187E9195: 3-control-point patches; in no trace,
+    // level B): D5D2905E has F0395CC4's input signature, 958EC025 8EE34EC5's (with last rows), and both write the world position
+    // as rt_capture_rigid (rows x the position scaled by its w at least 1, TEXCOORD0). The patches without the domain shader's
+    // displacement, which fades out 5 to 20 m from the camera; Rarer Objects in the Rays (Experimental, off). WARP against the
+    // game's bytes: test/tw_rays_captures (T).
+    {.hash = 0xD5D2905E, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .patch_triangles = true, .key_family = 0xF0395CC4, .held_row = &rays_untraced_casters_row},
+    {.hash = 0x958EC025, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .moving = true, .patch_triangles = true, .key_family = 0x8EE34EC5, .held_row = &rays_untraced_casters_row},
     // Buildings, tents, shrubs, mountains, rocks: the same position math as F0395CC4, by their bytes. 4F35D09F also draws water, decals and effects: its listed pixel shaders only.
     {.hash = 0x4F35D09F, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = twwarhammer3::BUILDING_MASKS, .key_family = 0xF0395CC4},
     // Rocks. A rock's second draw into the terrain's targets (087C74E6, A5A266C3) only paints its blend: the same mesh again, not listed.
@@ -3381,6 +3394,11 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   shader_injection.shadow_map_scale = twwarhammer3::shadow_map_size::Scale();
   rt_settings.cheap_fog_alone = true;
   rt_settings.reflection_squared_lobe = reflection_lobe_row != 0.f;
+  if (reflections_faster_row != 0.f) {
+    rt_settings.reflection_reuse = false;
+    rt_settings.reflection_own = true;
+    rt_settings.reflection_squared_lobe = false;
+  }
   rt_settings.reflection_fog = reflections::fog_row != 0.f;
   rt_settings.water_reflections = true;  // Row off: the resolve leaves water to the march (reflections::OnMarch). The rays still leave from it.
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
@@ -3694,7 +3712,6 @@ void ConfigureAddon() {
   // Ray tracing (twattila/rt_scene.hpp) with an upscaler.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
-  settings.push_back(twattila::rt_scene::SmokeFastBuildRow(&rt_sliders, &aa_sliders));
   for (auto* setting : settings) {
     // Their shared rule reads dlss_mode, which no row sets here: the scale is the game's float (upscaling_mode_row).
     if (setting->key == "AntiAliasingTextureLodBias" || setting->key == "AntiAliasingEffectsAtOutput") {
@@ -3794,6 +3811,18 @@ void ConfigureAddon() {
       .tooltip = "Ray-traced reflections blur by the material as the game's own light does: less mirror-like on armour.\n"
                  "Can be noisier.",
       .labels = {"Off", "On"},
+      .is_enabled = [] { return reflections_faster_row == 0.f; },
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedReflectionFaster",
+      .binding = &reflections_faster_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Faster Reflections (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Ray-traced reflections with their own ReSTIR samples and a narrower lobe: about 0.3 ms faster at 4K.\n"
+                 "Armour and metal look more mirror-like. In place of Reuse and Reflections as Rough as the Game's.",
+      .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedReflectionLight",
@@ -3868,6 +3897,17 @@ void ConfigureAddon() {
       .section = "VFX",
       .tooltip = "All smoke, fire and dust sprites drawn at half the render's size, as the game already does for some.\n"
                  "Much faster in big fires and storms, softer particle edges.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "VfxFullResolutionEdges",
+      .binding = &twwarhammer3::vfx_particles::edges_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Particle Edges by Depth (Experimental)",
+      .section = "VFX",
+      .tooltip = "Half-size smoke, fire and dust keep clean edges against units, trees and walls, without smoothing them\n"
+                 "over frames. Part of Smooth Half-Size Particles already. Small cost.",
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
@@ -4035,6 +4075,7 @@ void ConfigureAddon() {
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_branch_cut_outs = &rays_branch_cut_outs_row,
                                              .rays_unseen_cut_outs = &twwarhammer3::unseen_cut_outs_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row,
                                              .rays_start_past = &rt_sliders.start_past,
                                              .rays_faded_parts = &rays_faded_parts_row,
                                              .rays_trunks_as_drawn = &rays_trunks_as_drawn_row,
@@ -4082,6 +4123,7 @@ void ConfigureAddon() {
                                              .rays_grass_counts_later = &rays_grass_counts_later_row,
                                              .water_motion = &water_motion_row,
                                              .scale_fix_gi_shadow = &reflections::scale_fix_row,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,
@@ -4093,6 +4135,9 @@ void ConfigureAddon() {
   // The page names Reflection Quality "Quality"; here it is untested in game.
   for (auto* setting : settings) {
     if (setting->key == "ssr_quality") setting->label = "Quality (Experimental)";
+    if (setting->key == "RayTracedReflectionReuse") {
+      setting->is_enabled = [enabled = setting->is_enabled] { return reflections_faster_row == 0.f && enabled(); };
+    }
   }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 

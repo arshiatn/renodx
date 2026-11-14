@@ -607,6 +607,9 @@ static void TestBits(const std::map<std::string, Pair>& shaders) {
   int draws = 0;
   int total_different = 0;
   for (const auto& [name, pair] : shaders) {
+    // Rome II's t00 / t01: part 4's chain alone (run.ps1: no bit comparison); Attila's bindings here leave its black and white
+    // points unbound.
+    if (name.starts_with("r_")) continue;
     const bool wh3_shader = name.starts_with("w_");
     const bool tone_mapper = (name == "a_t00" || name == "a_t09" || name == "a_t10");
     const std::vector<float> modes = (wh3_shader ? std::vector<float>{0.f, 1.f, 2.f, 3.f} : std::vector<float>{0.f, 1.f, 2.f});

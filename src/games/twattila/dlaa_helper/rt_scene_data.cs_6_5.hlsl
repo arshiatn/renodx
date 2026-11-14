@@ -17,7 +17,7 @@ StructuredBuffer<uint4> capture_table : register(t8);
 cbuffer Dispatch : register(b1) {
   uint capture_count;
   uint triangle_count;
-  uint dispatch_padding0;
+  float own_cutoff;  // CAPTURE_OWN_CUTOFF's alpha cut-off (dlaa_bridge.h rt_leaf_cutoff)
   uint dispatch_padding1;
 };
 
@@ -44,6 +44,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   WriteTriangle(capture.x + local * 3u + uint3(0u, 1u, 2u), (placement.w & (CAPTURE_DYNAMIC | CAPTURE_TERRAIN)) == CAPTURE_DYNAMIC, low,
                 capture.z + local, masked ? capture.w + local * 3u : NO_UVS);
   if (local == 0u) {
-    records_written[placement.x] = uint4(capture.w, capture.z, placement.y, masked ? asuint(LEAF_ALPHA_CUTOFF) : 0u);
+    const float cutoff = ((placement.w & CAPTURE_OWN_CUTOFF) != 0u) ? own_cutoff : LEAF_ALPHA_CUTOFF;
+    records_written[placement.x] = uint4(capture.w, capture.z, placement.y, masked ? asuint(cutoff) : 0u);
   }
 }

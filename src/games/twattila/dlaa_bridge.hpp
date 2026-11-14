@@ -89,6 +89,7 @@ struct TraceRequest {
   float grass_shadow_range = 0.f;  // v18: pixels farther (metres) trace without grass (0: every pixel with it)
   float grass_range = 0.f;  // Shared::rt_grass_range: placed grass farther (metres) out of the scene (0: all of it in)
   uint32_t scene_flags = 0;  // Shared::rt_scene_flags: RT_SCENE_*
+  float leaf_cutoff = 0.f;   // Shared::rt_leaf_cutoff: RT_OWN_CUTOFF's alpha cut-off (0: the helper's 0.5)
 };
 
 // A ray-traced Light Bounce request (light_bounce.hpp through rt_scene.hpp): the render size, the bounce's size and its
@@ -1039,6 +1040,7 @@ inline bool TraceScene(ID3D11DeviceContext* context, const TraceRequest& request
     shared->rt_grass_shadow_range = request.grass_shadow_range;
     shared->rt_grass_range = request.grass_range;
     shared->rt_scene_flags = request.scene_flags;
+    shared->rt_leaf_cutoff = request.leaf_cutoff;
     shared->rt_frame = request.frame;
     shared->rt_width = request.width;
     shared->rt_height = request.height;

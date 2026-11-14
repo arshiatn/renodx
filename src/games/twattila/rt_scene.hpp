@@ -97,6 +97,9 @@ struct Sliders {
   float reuse_lean = 0.f;
   float light_importance = 0.f;
   float light_steady = 0.f;
+  // Torch and Fire Light / Shadows from Path Tracing (graphics_page.hpp Bindings::lights_in_bounce, light_ratio).
+  float lights_in_bounce = 0.f;
+  float light_ratio = 0.f;
   float light_count = 0.f;  // Torch and Fire Shadow Lights: 32, 64, 128
   float light_range = 0.f;  // metres (0: any distance)
   float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
@@ -109,7 +112,7 @@ struct Sliders {
   float gpu_micromaps = 1.f;
   float smoke_shadows = 0.f;  // games whose particles InstallSmokeShadows hooks
   float smoke_quality = 1.f;
-  float smoke_fast_build = 0.f;  // SmokeFastBuildRow's (Attila, Warhammer III)
+  float smoke_fast_build = 0.f;  // SmokeFastBuildRow's (every game's graphics page)
   float denoiser = 0.f;  // Ray Tracing Denoiser (Attila's page): Built-in, NRD
   float ao_reblur = 1.f;  // AO under Ray Reconstruction: Light History, REBLUR (games without graphics_page's row keep v34's REBLUR)
   float start_past = 0.f;  // Rays Start Past Hidden Shapes (Bindings::rays_start_past)
@@ -215,6 +218,8 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .reuse_lean = sliders.reuse_lean != 0.f,
       .light_importance = sliders.light_importance != 0.f,
       .light_steady = sliders.light_steady != 0.f,
+      .lights_in_bounce = sliders.lights_in_bounce != 0.f,
+      .light_ratio = sliders.light_ratio != 0.f,
       // A page's preset can set it where no fog is hooked: nothing would read the trace.
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa && internal::fog_shadows_installed,
       .micromaps = sliders.micromaps != 0.f,
@@ -1477,6 +1482,11 @@ inline bool CastersSkipped() {
   return internal::runtime.settings.shadows_only && internal::runtime.occlusion_frame + 1 >= internal::runtime.frame;
 }
 
+// Whether the draws now go to the sun's shadow map and are skipped (OnBindTargets' last bind; the render thread's).
+inline bool SkippingCasters() {
+  return internal::skipping_casters.load(std::memory_order_relaxed);
+}
+
 // Ray-Traced Shadows Only: draws are skipped while the sun's shadow map is bound alone (depth only) for drawing.
 inline void OnBindTargets(reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view*,
                           reshade::api::resource_view dsv) {
@@ -1614,8 +1624,8 @@ inline void Uninstall() {
   UninstallScene();
 }
 
-// Smoke BLAS Fast Build (Experimental, off; helper113, Settings::smoke_fast_build): the row of the games that list it
-// (Attila, Warhammer III), next to Smoke Shadow Quality on the graphics page.
+// Smoke BLAS Fast Build (Experimental, off; helper113, Settings::smoke_fast_build): every game's graphics page makes the row
+// (graphics_page::Apply), next to Smoke Shadow Quality, shown where Smoke Shadows are installed.
 inline renodx::utils::settings::Setting* SmokeFastBuildRow(Sliders* sliders, const feature_settings::AaSliders* aa) {
   return new renodx::utils::settings::Setting{
       .key = "RayTracedSmokeFastBuild",

@@ -1378,6 +1378,37 @@ inline void Install() {
       .camera_viewport_register = internal::VIEWPORT / 4,
       .value_hashes = {0xD409F9B5, 0xA5FC3927, 0x379B000C, 0x1405BFB4, 0xE6BCBA8A, 0xC883E3FA, 0x800F7F7F, 0xD5DCC85F, 0xD75E6E2B, 0xBADA4FE3},
       .on_demand = true,
+      // With ReShade.ini [renodx] FrameTraceReads=1: each skinned unit draw's geometry, the main pass's (fx_weighted's ten) and the
+      // shadow pass's (BADA4FE3, 46E626D5), for the rays' cross-pass capture key (tools/tw/unit_cpu report.md, D): its index range,
+      // its two vertex buffers and their offsets, its instances, and a hash of its first instance's bytes as the draw reads them.
+      // A shadow draw with a main draw's geometry and hash in one frame is a batch the rays already captured.
+      .draw_reads = [](const twattila::frame_trace::Draw& draw) -> std::string {
+        constexpr std::array<uint32_t, 12> UNIT_SHADERS = {0xB8C567C3, 0x3193A71F, 0x2A64D0C8, 0xF8CB9DB6, 0x7B298C37, 0x22B5CCC7,
+                                                           0x033108E7, 0x3689A926, 0x63D8D532, 0xDB3589E3, 0xBADA4FE3, 0x46E626D5};
+        if (draw.next_frame || !draw.indexed || std::ranges::find(UNIT_SHADERS, draw.vertex_shader) == UNIT_SHADERS.end()) return {};
+        std::array<ID3D11Buffer*, 2> vertices = {};
+        std::array<UINT, 2> strides = {};
+        std::array<UINT, 2> offsets = {};
+        draw.context->IAGetVertexBuffers(0, 2, vertices.data(), strides.data(), offsets.data());
+        Microsoft::WRL::ComPtr<ID3D11Buffer> indices;
+        DXGI_FORMAT index_format = DXGI_FORMAT_UNKNOWN;
+        UINT index_offset = 0;
+        draw.context->IAGetIndexBuffer(indices.GetAddressOf(), &index_format, &index_offset);
+        uint64_t first_instance_hash = 14695981039346656037ull;
+        if (vertices[1] != nullptr && strides[1] != 0) {
+          const auto words = twattila::frame_trace::ReadBuffer<uint32_t>(draw.context, vertices[1], offsets[1] + (draw.first_instance * strides[1]), strides[1] / 4);
+          for (const uint32_t word : words) first_instance_hash = (first_instance_hash ^ word) * 1099511628211ull;
+        }
+        const std::string text = std::format(" | geometry ib {:x} f{} +{} first {} base {} vb0 {:x} +{} vb1 {:x} +{} stride {} instances {} from {} rows {:016x}",
+                                             reinterpret_cast<uintptr_t>(indices.Get()), static_cast<int>(index_format), index_offset, draw.first,
+                                             draw.base_vertex, reinterpret_cast<uintptr_t>(vertices[0]), offsets[0],
+                                             reinterpret_cast<uintptr_t>(vertices[1]), offsets[1], strides[1], draw.instances, draw.first_instance,
+                                             first_instance_hash);
+        for (auto* buffer : vertices) {
+          if (buffer != nullptr) buffer->Release();
+        }
+        return text;
+      },
   });
   twattila::reflex::Install();
   for (const uint32_t shader_hash : internal::TAA_SHADERS) {

@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <cwchar>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -2244,6 +2245,7 @@ class RtScene12 {
     uint32_t triangles = 0;
     bool set = false;  // a cluster set's (grass: its templates built with the micromaps), not a mesh's
     bool grass = false;  // GRASS_MICROMAP_LEVEL
+    float cutoff = LEAF_ALPHA_CUTOFF;  // its draw's alpha cut-off (RT_OWN_CUTOFF's own)
     // Its request's buffers (one of each for all its reads) and its places in them: its vertices (16 bytes each) for the
     // rebuild; read back: a packed half UV a corner, its atlas slice.
     ComPtr<ID3D12Resource> positions;
@@ -2407,6 +2409,7 @@ class RtScene12 {
     uint32_t slice = 0;
     bool set = false;
     bool grass = false;
+    float cutoff = LEAF_ALPHA_CUTOFF;
     bool gpu = false;  // baked on the GPU (BakeMicromapsOnGpu), else read back for the CPU
   };
 
@@ -3287,6 +3290,17 @@ class RtScene12 {
     // (their rows here: hidden, of a placed mesh, its rows copied). Grass Ray Tracing Range (in v31's padding: older addons
     // leave it 0, none): grass past it leaves both passes' scene, its swaying copies by the same cut.
     const float grass_range = (version >= 31) ? std::clamp(shared.rt_grass_range, 0.f, 1.0e4f) : 0.f;
+    // RT_OWN_CUTOFF's alpha cut-off (in v8's padding: older addons leave it 0, the 0.5 of every other alpha-tested draw); the
+    // harness's RENODX_TW_OWN_CUTOFF: every alpha-tested draw RT_OWN_CUTOFF at that.
+    static const float harness_cutoff = [] {
+      std::array<wchar_t, 32> value = {};
+      return (GetEnvironmentVariableW(L"RENODX_TW_OWN_CUTOFF", value.data(), static_cast<DWORD>(value.size())) != 0) ? std::wcstof(value.data(), nullptr) : 0.f;
+    }();
+    const uint32_t own_cutoff_flags = (harness_cutoff > 0.f) ? dlaa_bridge::RT_OWN_CUTOFF : 0u;
+    const float own_cutoff = std::clamp((harness_cutoff > 0.f) ? harness_cutoff : ((shared.rt_leaf_cutoff > 0.f) ? shared.rt_leaf_cutoff : LEAF_ALPHA_CUTOFF), 0.f, 2.f);
+    const auto cutoff_of = [own_cutoff, own_cutoff_flags](uint32_t flags) {
+      return (((flags | own_cutoff_flags) & dlaa_bridge::RT_OWN_CUTOFF) != 0) ? own_cutoff : LEAF_ALPHA_CUTOFF;
+    };
     uint32_t sway_flags = 0;
     std::unordered_set<uint32_t> sway_rows;
     if (sway_pipeline_ && version >= 18 && (shared.rt_sway_range > 0.f || (shared.rt_flags & dlaa_bridge::RT_SWAY_IN_VIEW) != 0 || grass_range > 0.f)
@@ -3398,7 +3412,8 @@ class RtScene12 {
             compact_clusters, draw.first_vertex, set.offset * 16, set.clusters,
             set.vertices, set.triangles, STATIC_TRIANGLES + (static_cast<uint32_t>(slot_index) * DYNAMIC_TRIANGLES) + dynamic_triangles_used,
             masked ? STATIC_UVS + (static_cast<uint32_t>(slot_index) * dynamic_uvs_) + dynamic_uvs_used : UINT32_MAX,
-            draw.slice | (RecordFlags({.flags = draw.flags | dlaa_bridge::RT_DYNAMIC}, masked, version) << 16), capture_count + compact_drawn, draw.flags,
+            draw.slice | (RecordFlags({.flags = draw.flags | dlaa_bridge::RT_DYNAMIC}, masked, version) << 16), capture_count + compact_drawn,
+            draw.flags | own_cutoff_flags,
             templated_run ? set.template_first : 0u,
             ((draw.flags & dlaa_bridge::RT_INSTANCED) != 0 && sway_rows.contains(static_cast<uint32_t>(block_end))) ? static_cast<uint32_t>(block_end)
                                                                                                                   : UINT32_MAX,
@@ -3410,7 +3425,7 @@ class RtScene12 {
           --set_micromap_room;
           set_micromap_reads.push_back({.key = draw.set, .build = set.generation, .triangles = set.triangles, .uv_offset = entry[7],
                                         .slice = draw.slice, .set = true, .grass = (draw.flags & dlaa_bridge::RT_GRASS) != 0,
-                                        .gpu = gpu_bakes});
+                                        .cutoff = cutoff_of(draw.flags), .gpu = gpu_bakes});
         }
         compact_keys.push_back(draw.set);
         compact_flags.push_back(draw.flags);
@@ -3552,7 +3567,7 @@ class RtScene12 {
         const uint32_t slice = (version >= 6) ? shared.rt_capture_slices[index] : 0u;
         const std::array<uint32_t, 8> entry = {capture.first_vertex, capture.vertex_count / 3 * 3, placement.normal_offset, placement.uv_offset,
                                                placement.record, slice | (RecordFlags(capture, placement.masked, version) << 16),
-                                               scene_triangles, capture.flags};
+                                               scene_triangles, capture.flags | own_cutoff_flags};
         std::memcpy(slot->table_data + index * 8, entry.data(), sizeof(entry));
         if (placement.record != UINT32_MAX) scene_triangles += capture.vertex_count / 3;
         if (details_) {
@@ -3565,7 +3580,7 @@ class RtScene12 {
         slot->capture_flags.insert(slot->capture_flags.end(), compact_flags.begin(), compact_flags.end());
       }
       // In rows of 65535 groups (D3D12's most along x: a frame of over 4.2 M triangles went past it).
-      const std::array<uint32_t, 4> scene_dispatch = {capture_count, scene_triangles, 0, 0};
+      const std::array<uint32_t, 4> scene_dispatch = {capture_count, scene_triangles, std::bit_cast<uint32_t>(own_cutoff), 0};
       const uint32_t scene_groups = (scene_triangles + 63) / 64;
       Mark(list, L"scene data");
       list->SetPipelineState(scene_data_pipeline_.Get());
@@ -3579,7 +3594,7 @@ class RtScene12 {
         const uint64_t vertices_address = vertex_buffer_->GetGPUVirtualAddress();
         const uint64_t sets_address = set_pool_->GetGPUVirtualAddress();
         const std::array<uint32_t, 8> compact_dispatch = {
-            compact_drawn, compact_clusters, first_cluster_record, 0u, static_cast<uint32_t>(vertices_address),
+            compact_drawn, compact_clusters, first_cluster_record, std::bit_cast<uint32_t>(own_cutoff), static_cast<uint32_t>(vertices_address),
             static_cast<uint32_t>(vertices_address >> 32), static_cast<uint32_t>(sets_address), static_cast<uint32_t>(sets_address >> 32),
         };
         const auto to_arguments = Transition(cluster_args_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -3844,7 +3859,7 @@ class RtScene12 {
         if (placement.masked && micromap_room != 0 && mesh.triangles <= MICROMAP_TRIANGLES) {
           micromap_reads.push_back({.key = capture.key, .build = mesh.build, .first_vertex = capture.first_vertex, .triangles = mesh.triangles,
                                     .uv_offset = placement.uv_offset, .slice = shared.rt_capture_slices[index], .grass = mesh.grass,
-                                    .gpu = gpu_bakes});
+                                    .cutoff = cutoff_of(capture.flags), .gpu = gpu_bakes});
           --micromap_room;
         }
         slot->compactions.emplace_back(capture.key, mesh.build);
@@ -4024,7 +4039,7 @@ class RtScene12 {
             arg.indexBuffer = cluster_indices_->GetGPUVirtualAddress();
             arg.vertexBuffer = vertex_buffer_->GetGPUVirtualAddress() + (uint64_t{first_vertex} + uint64_t{first} * 3) * 16;
             cluster_records[cluster_count] = {(masked ? uv_offset + first * 3 : UINT32_MAX), normal_offset + first, slice | (record_flags << 16),
-                                              (masked ? std::bit_cast<uint32_t>(LEAF_ALPHA_CUTOFF) : 0u)};
+                                              (masked ? std::bit_cast<uint32_t>(cutoff_of(capture_flags)) : 0u)};
             ++cluster_count;
           }
         }
@@ -4283,7 +4298,7 @@ class RtScene12 {
         for (const MicromapRead& read : micromap_reads) {
           auto bake = std::make_unique<MicromapBake>();
           *bake = {.key = read.key, .build = read.build, .value = read.gpu ? UINT64_MAX : own_value_ + 1, .triangles = read.triangles,
-                   .set = read.set, .grass = read.grass, .positions = (read.set ? nullptr : positions), .positions_offset = positions_at,
+                   .set = read.set, .grass = read.grass, .cutoff = read.cutoff, .positions = (read.set ? nullptr : positions), .positions_offset = positions_at,
                    .uvs = read.gpu ? gpu_uvs : uvs, .uvs_offset = read.gpu ? gpu_uvs_at : uvs_at, .mask = mask,
                    .mask_offset = read.gpu ? 0u : masks.at(read.slice), .gpu = read.gpu};
           if (!read.set) {
@@ -5383,7 +5398,7 @@ class RtScene12 {
       config.texCoordOffsetInBytes = static_cast<uint32_t>(totals[0]);
       config.indexFormat = ommIndexFormat_UINT_32;
       config.indexCount = bake->triangles * 3;
-      config.alphaCutoff = LEAF_ALPHA_CUTOFF;
+      config.alphaCutoff = bake->cutoff;
       config.maxSubdivisionLevel = static_cast<uint8_t>(bake->grass ? GRASS_MICROMAP_LEVEL : 6);
       config.maxOutOmmArraySize = MICROMAP_MESH_BYTES;
       config.maxScratchMemorySize = ommGpuScratchMemoryBudget_MB_64;
@@ -5751,7 +5766,7 @@ class RtScene12 {
     texture_desc.format = ommCpuTextureFormat_UNORM8;
     texture_desc.mips = &mip;
     texture_desc.mipCount = 1;
-    texture_desc.alphaCutoff = LEAF_ALPHA_CUTOFF;
+    texture_desc.alphaCutoff = bake->cutoff;
     ommCpuTexture texture = nullptr;
     if (omm_.create_texture(baker, &texture_desc, &texture) != ommResult_SUCCESS) return;
     std::vector<uint32_t> corners(uint64_t{bake->triangles} * 3);
@@ -5766,7 +5781,7 @@ class RtScene12 {
     input.indexFormat = ommIndexFormat_UINT_32;
     input.indexBuffer = corners.data();
     input.indexCount = static_cast<uint32_t>(corners.size());
-    input.alphaCutoff = LEAF_ALPHA_CUTOFF;
+    input.alphaCutoff = bake->cutoff;
     input.maxSubdivisionLevel = bake->grass ? GRASS_MICROMAP_LEVEL : 6;
     input.maxArrayDataSize = MICROMAP_MESH_BYTES;
     input.maxWorkloadSize = MICROMAP_WORKLOAD;

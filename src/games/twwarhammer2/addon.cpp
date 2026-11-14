@@ -38,6 +38,7 @@
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
+#include "../twattila/rt_capture_imposter_gs.h"
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
@@ -46,6 +47,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/smoke_map.hpp"
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
@@ -386,8 +388,13 @@ using FogRays = RaysShader<0x492B87C7, 43>;
 // 687378DB (in no trace: level B) bind its diffuse array, sampler and emitter constants one slot below (t4 / s3 / t7, the
 // same 80-byte constants; fxc -dumpbin) and take the alpha as it does (sRGB decode x the particle's, crush): shifted by 1.
 constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{
-    {.hash = 0x1FC776EF, .quad_shader = __rt_particle_quads, .indirect = true},
+    // It binds cb0-cb2 only (camera, cb_vfx_shared, cb_vfx; fxc -dumpbin): no emitter constants at cb3 for smoke_map's weather
+    // test (Pharaoh's 109B79CE's).
+    {.hash = 0x1FC776EF, .quad_shader = __rt_particle_quads, .indirect = true, .behaviours_at_cb3 = false},
 }};
+// Smoke Shadows without rays (twattila/smoke_map.hpp; Experimental, off): last frame's lit particles from the same stream,
+// splatted into a map seen from the sun, dimming the sun draws' t49 (Bend's, the rays' or none).
+twattila::smoke_map::Sliders smoke_map_sliders;
 constexpr std::array<twattila::rt_scene::SmokePixelShader, 3> SMOKE_PIXEL_SHADERS = {{
     {.hash = 0xF32116B4},
     {.hash = 0xDDABB799, .view_shift = 1, .sampler_shift = 1},
@@ -1632,7 +1639,9 @@ constexpr std::array<twattila::rt_scene::PixelMask, 10> CUT_OUT_MASKS = {{
     {.pixel_shader = 0xE5C2B901, .slot = 2},  // weighted4_animated_overlay_alpha ps_main_gbuffer
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 43> SCENE_SHADERS = {{
+// The sprite soldiers' G-buffer pixel shader (imposter ps40_main_gbuffer): their scene draws (SCENE_SHADERS' imposter rows).
+constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixel_shader = 0x5B1345B7}}};
+constexpr std::array<twattila::rt_scene::SceneShader, 45> SCENE_SHADERS = {{
     {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
     {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
     {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
@@ -1640,6 +1649,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 43> SCENE_SHADERS = {{
     {.hash = 0x6B25B4D2, .capture_shader = __rt_capture_rigid_default},
     {.hash = 0x16AFAF14, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_16af,
      .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true},
+    // Rigid objects with the game's Tessellation on (vs40_displacement 4CC2D68F, HS EB3218C8, DS C92A2D5F: 3-control-point patches; in no
+    // trace, level B): 16AFAF14's placement and world position (the same instructions and input signature), the patches without the
+    // domain shader's displacement, which fades out 5 to 20 m from the camera; Rarer Objects in the Rays (Experimental, off).
+    // WARP against the game's bytes: test/tw_rays_captures (T).
+    {.hash = 0x4CC2D68F, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_16af, .patch_triangles = true,
+     .held_row = &rays_untraced_casters_row},
     {.hash = 0xC5CD75C5, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_c5cd},
     {.hash = 0xB7CE3413, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_b7ce},
     {.hash = 0x8F4BAB8C, .capture_shader = __rt_capture_rigid_vertexpush},
@@ -1716,6 +1731,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 43> SCENE_SHADERS = {{
     // the shadow camera: TEXCOORD0 the UV with the view's whole part and blend, TEXCOORD1 the world; cut out by B7ED5B72's t0
     // test, a card faded below half left out as that shader leaves it.
     {.hash = 0x75914932, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .cascade_keep = __rt_outside_view_card_split},
+    // The sprite soldiers (imposter vs40_main_gs: points its gs_main turns into cards; in no trace, level B): streamed out through
+    // twattila/rt_capture_imposter_gs in place of gs_main (SceneShader::capture_geometry_shader), the card turned to the sun; only
+    // the G-buffer draw (ps40_main_gbuffer 5B1345B7: its t0's alpha the cut-out, from 0.376), as Sprite Soldier Shadows
+    // (Experimental, off). WARP against the game's bytes: test/tw_rays_captures (370A7440 + 29E8BDF7).
+    {.hash = 0x370A7440, .dynamic = true, .foliage = true, .sun_facing = true, .capture_geometry_shader = __rt_capture_imposter_gs, .pixel_masks = IMPOSTER_MASKS},
 }};
 
 // The SSR's copy (environment_specular_light ps40_copy) samples the resolve's output (7E1CDD0A, its content at the render
@@ -1794,6 +1814,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
   twattila::screen_space_shadows::Update(swapchain, sss_settings);
+  // Smoke Shadows without rays: off under the rays' sun shadows (their own Smoke Shadows); their particles streamed without the rays.
+  auto smoke_map_settings = smoke_map_sliders;
+  if (rt_settings.sun_shadows) {
+    smoke_map_settings.strength = 0.f;
+  }
+  twattila::smoke_map::Update(smoke_map_settings);
+  rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
@@ -2309,13 +2336,13 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (as Pharaoh's and Warhammer III's), ATN's RT/PT preset as the defaults of what the methods
   // leave, then Settings Mode's pages. Only what this game hooks: no water pass for the rays (its rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
-  // Fog Shadows, the torches' light in it, Far Tree Shadows and Smoke Shadows start off (Experimental: no game run has shown
-  // them here yet), Specular Occlusion too; RT/PT turns them on, as Attila's (rays_preset_as_attila).
+  // Fog Shadows, the torches' light in it, Sprite Soldier and Far Tree Shadows and Smoke Shadows start off (Experimental: no
+  // game run has shown them here yet), Specular Occlusion too; RT/PT turns them on, as Attila's (rays_preset_as_attila).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
         || setting->key == "RayTracedSpecularOcclusion") {
       setting->default_value = 0.f;
-    } else if (setting->key == "RayTracedFarTreeShadows") {
+    } else if (setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
     }
   }
@@ -2351,8 +2378,8 @@ void ConfigureAddon() {
       .default_value = 0.f,
       .label = "Rarer Units and Props in the Rays (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "Units with liquid or animated surfaces and liquid or wind-blown props also cast ray-traced shadows.\n"
-                 "Not yet seen in game.",
+      .tooltip = "Units with liquid or animated surfaces, liquid or wind-blown props and objects the game tessellates\n"
+                 "(its Tessellation on) also cast ray-traced shadows. Not yet seen in game.",
       .is_visible = [] { return twattila::dlaa_bridge::bridge.ray_tracing; },
   });
   settings.push_back(new renodx::utils::settings::Setting{
@@ -2367,6 +2394,8 @@ void ConfigureAddon() {
   });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .smoke_strength = &smoke_map_sliders.strength,
+                                             .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
                                              .rays_replace_maps_tested = false,
@@ -2375,8 +2404,10 @@ void ConfigureAddon() {
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
+                                             .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
@@ -2407,6 +2438,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
   twwarhammer2::particle_smoothing::Install();
@@ -2418,6 +2450,9 @@ bool AttachAddon() {
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
 
+  // Rows saved at an old default, cleared once: Sprite Soldier Shadows was saved hidden at RT/PT's 1 (SetRaysPresetDefaults)
+  // until the sprite soldiers were in the rays; now Experimental, off.
+  twattila::graphics_page::ClearSavedRows(1, {"RayTracedSpriteShadows"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
   // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).
@@ -2510,6 +2545,8 @@ bool AttachAddon() {
   twattila::ao_filter::Install(LIGHT_BOUNCE_DRAWS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
+  // Smoke Shadows without rays: the smoke's dimming into the sun draws' t49 (their x(1 - t49) patch), after the rays' occlusion.
+  twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
 
   reshade::register_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
   twattila::device_loss::InstallLast();
@@ -2533,6 +2570,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
   twwarhammer2::particle_smoothing::Uninstall();
@@ -2545,6 +2583,8 @@ void DetachAddon() {
   twattila::light_bounce::Uninstall();
   twattila::rt_scene::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
+  twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
+  twattila::smoke_map::Uninstall();
   twattila::ao_filter::Uninstall();
   talesofarise::pixel_trace::Stop();
   tw::engine_tweaks::Uninstall(graphics_options);

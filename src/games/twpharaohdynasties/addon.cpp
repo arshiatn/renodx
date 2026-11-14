@@ -38,6 +38,7 @@
 #include "../twattila/light_count.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
+#include "../twattila/rt_capture_imposter_gs.h"
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
@@ -1921,7 +1922,9 @@ constexpr std::array<twattila::rt_scene::PixelMask, 8> CUT_OUT_MASKS = {{
 // The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do the far forest's
 // blocks (rigidtreebillboard vs40_main_block FE92BA2D): cards facing the camera with no shadow-pass draw, the forest's
 // shadow there the game's kept baked map.
-constexpr std::array<twattila::rt_scene::SceneShader, 31> SCENE_SHADERS = {{
+// The sprite soldiers' G-buffer pixel shader (imposter ps40_main_gbuffer): their scene draws (SCENE_SHADERS' imposter rows).
+constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixel_shader = 0x03D4B559}}};
+constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1973,6 +1976,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 31> SCENE_SHADERS = {{
     // C7350ED5 = its 5906CF6E): TEXCOORD0 the world, TEXCOORD1 the UV of the t0 test (alpha below 0.5). WARP on its own bytes:
     // tools\tw\warp_tests\outside_view_pharaoh_veg.
     {.hash = 0x3368E9E7, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
+    // The sprite soldiers (imposter vs40_main_gs: points its gs_main turns into cards; in no trace, level B): streamed out through
+    // twattila/rt_capture_imposter_gs in place of gs_main (SceneShader::capture_geometry_shader), the card turned to the sun; only
+    // the G-buffer draw (ps40_main_gbuffer 03D4B559: its t0's alpha the cut-out, from 0.376), as Sprite Soldier Shadows
+    // (Experimental, off). WARP against the game's bytes: test/tw_rays_captures (370A7440 + 27A16995).
+    {.hash = 0x370A7440, .dynamic = true, .foliage = true, .sun_facing = true, .capture_geometry_shader = __rt_capture_imposter_gs, .pixel_masks = IMPOSTER_MASKS},
 }};
 
 // The screen-space shadows' Light Through Banners: the siege's cloth (phar_rigid_battle_cloth_wind, PS 5277CF9F and 97850C83)
@@ -2756,9 +2764,10 @@ void ConfigureAddon() {
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows and the torches' light in it start off too (Experimental: no game run has shown them here yet); RT/PT turns them
   // on, as ATN's list does. Bend's Light Through Banners and Coloured Shadows (v55: the cloth and flags, InstallThin) also start
-  // off, Experimental, before the page reads its defaults (the presets write them).
+  // off, Experimental, before the page reads its defaults (the presets write them). Sprite Soldier Shadows too (Experimental and
+  // left out of RT/PT: sprites_tested).
   for (auto* setting : settings) {
-    if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow") {
+    if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSpriteShadows") {
       setting->default_value = 0.f;
     } else if (setting->key == "ScreenSpaceShadowsBannerLight") {
       setting->default_value = 0.f;
@@ -2839,11 +2848,13 @@ void ConfigureAddon() {
                                              // sheets are always thin here, and the unit banners (76225B91) cast nothing.
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = true,
                                              .foliage_light_tested = false,
                                              .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
+                                             .sprites_tested = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -2877,15 +2888,10 @@ bool AttachAddon() {
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
 
-  // Rows saved at an old default, cleared once: Smoke Shadows was saved hidden at RT/PT's 1 (SetRaysPresetDefaults) until it
-  // showed, Experimental and off.
-  constexpr int SETTINGS_REVISION = 1;
-  if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
-    for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
-      reshade::set_config_value(nullptr, preset, "RayTracedSmokeShadows", static_cast<const char*>(nullptr));
-    }
-    reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
-  }
+  // Rows saved at an old default, cleared once: Smoke Shadows and Sprite Soldier Shadows were saved hidden at RT/PT's 1
+  // (SetRaysPresetDefaults) until they showed, Experimental and off.
+  twattila::graphics_page::ClearSavedRows(1, {"RayTracedSmokeShadows"});
+  twattila::graphics_page::ClearSavedRows(2, {"RayTracedSpriteShadows"});
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 

@@ -48,6 +48,8 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
 
 ### Parity round 2 (2026-11-14; built only, not run in game)
 
+- Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's) (its fires' particle lights too); Sprite Soldier Shadows (Experimental, off: the sprite soldiers in the rays through a geometry-shader capture, WARP test/tw_rays_captures), out of RT/PT; Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
+
 - **New: Fog Strength** (Extra, 0 to 2, default 1), on every fog the game ships, also the ones the maintainer's settings
   don't draw. That covers the battle fog's upsample (also its own full-resolution fallback along edges), low spec, MSAA,
   the campaign fog, new fog, the legacy fog, and the shader model 4.1 versions: 24 shaders. The game's shaders are patched

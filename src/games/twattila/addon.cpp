@@ -55,6 +55,7 @@
 #include "./pass_timing.hpp"
 #include "./rt_scene.hpp"
 #include "./screen_space_shadows.hpp"
+#include "./shadow_pass.hpp"
 #include "./test_hooks.hpp"
 #include "./water_effects.hpp"
 #include "./smoke_map.hpp"
@@ -1048,6 +1049,7 @@ float sprite_size = 20.f;  // pixels on screen
 float ssr_denoiser = 1.f;  // ssr_hiz.hpp: the resolve's history
 float shadow_map_size = 0.f;  // the game's sizes x 2^this (graphics_hooks.hpp shadow_map)
 float shadow_cascades_row = 0.f;  // Two Shadow Cascades Under Rays (graphics_hooks.hpp shadow_map)
+float shadow_pass_row = 0.f;  // Skip the Game's Shadow Map Work (shadow_pass.hpp)
 twattila::feature_settings::SssSliders sss_sliders;
 twattila::smoke_map::Sliders smoke_map_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
@@ -1255,11 +1257,8 @@ float lod_bias_trilinear_row = 0.f;
 // Faster Game CPU Code (graphics_page.hpp, twattila/engine_code.hpp): on by default, every routine proven to give the game's
 // results (test/tw_engine_code).
 float engine_code_row = 1.f;
-// Torch and Fire Light / Shadows from Path Tracing (Experimental, graphics_page.hpp; helper111): the path-traced Light
-// Bounce's unified reservoir lights the torches (rt_core.hpp Settings::lights_in_bounce) or gives their shadows' ratio
-// (light_ratio).
-float lights_in_bounce_row = 0.f;
-float light_ratio_row = 0.f;
+// Faster Render Lists (Experimental, off; graphics_page.hpp): engine_code.hpp's render list push site.
+float render_lists_row = 0.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1428,8 +1427,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
-  rt_settings.lights_in_bounce = lights_in_bounce_row != 0.f;
-  rt_settings.light_ratio = light_ratio_row != 0.f;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -1458,7 +1455,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                 shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
-  twattila::engine_code::Update(engine_code_row != 0.f);
+  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   if (!shadow_size_locked) twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), shadow_cascades_row != 0.f && rt_settings.shadows_only);
   twattila::graphics_hooks::Update(
@@ -1481,6 +1478,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           .focal_pixels = twattila::anti_aliasing::MainFocalPixels(),
       },
       &graphics_hooks_installed, graphics_status);
+  twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped());
 }
 
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
@@ -1790,6 +1788,28 @@ void ConfigureAddon() {
           .is_enabled = [] { return !shadow_size_locked; },
       },
       new renodx::utils::settings::Setting{
+          .key = "FasterRenderLists",
+          .binding = &render_lists_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Faster Render Lists (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's draw lists stop rewriting a flag every CPU core reads for each item they take:\n"
+                     "less waiting between the cores in big battles. Same results.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSkipShadowPass",
+          .binding = &shadow_pass_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Skip the Game's Shadow Map Work (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows: the game stops preparing most of the shadow map draws the rays replace.\n"
+                     "Less CPU time in forests and big battles.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
           .key = "GraphicsBigBattleFix",
           .binding = &big_battle_fix,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
@@ -1887,7 +1907,6 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
-  settings.push_back(twattila::rt_scene::SmokeFastBuildRow(&rt_sliders, &aa_sliders));
   settings.push_back(new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::BUTTON,
       .label = "Time Each Pass (One Frame)",
@@ -2015,8 +2034,8 @@ void ConfigureAddon() {
                                              .smoke_strength = &smoke_map_sliders.strength, .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row,
                                              .rays_untraced_casters = &rays_untraced_casters_row, .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
-                                             .engine_code = &engine_code_row, .lights_in_bounce = &lights_in_bounce_row,
-                                             .light_ratio = &light_ratio_row});
+                                             .engine_code = &engine_code_row, .lights_in_bounce = &rt_sliders.lights_in_bounce,
+                                             .light_ratio = &rt_sliders.light_ratio});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
@@ -2108,6 +2127,7 @@ bool AttachAddon() {
   // Ray-Traced Shadows Only: the sun's shadow map's casters skipped (the map the sun draws read); the forward passes that
   // read it (near grass, particles) take the rays' shadows instead.
   twattila::rt_scene::InstallShadowsOnly();
+  twattila::shadow_pass::Install();
   twattila::screen_space_shadows::PatchForwardShadows(twattila::rt_scene::SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(twattila::rt_scene::SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(twattila::rt_scene::PARTICLE_BUILD_READERS);
@@ -2153,6 +2173,7 @@ void DetachAddon() {
   tw::engine_tweaks::Uninstall(graphics_options);
   twattila::engine_code::Uninstall();
   twattila::graphics_hooks::Uninstall();
+  twattila::shadow_pass::Uninstall();
   twattila::graphics_hooks::shadow_map::Uninstall();
   renodx::utils::command_action::Unregister(OnCampaignDraw);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
