@@ -1,0 +1,119 @@
+// 0xA7748703 (fx_indicator): the same, its fade dithered (t_dither_map), opaque.
+// Unit/Building Indicator Brightness (SI.someindicators) scales the colour. The add-on draws this copy only with the
+// slider off 1 in an HDR mode; otherwise the game's own bytes run (addon.cpp, BuildRuntimeData).
+
+cbuffer camera : register(b0)
+{
+  float3 camera_position : packoffset(c0);
+  float3 prev_camera_position : packoffset(c1);
+  float4x4 view : packoffset(c2);
+  float4x4 projection : packoffset(c6);
+  float4x4 view_projection : packoffset(c10);
+  float4x4 prev_view_projection : packoffset(c14);
+  float4x4 inv_view : packoffset(c18);
+  float4x4 prev_inv_view : packoffset(c22);
+  float4x4 inv_projection : packoffset(c26);
+  float4x4 inv_view_projection : packoffset(c30);
+  float4 camera_near_far : packoffset(c34);
+  float time_in_sec : packoffset(c35);
+  float prev_time_in_sec : packoffset(c35.y);
+  float real_time_in_sec : packoffset(c35.z);
+  float update_time_in_sec : packoffset(c35.w);
+  float2 g_inverse_focal_length : packoffset(c36);
+  float g_vertical_fov : packoffset(c36.z);
+  float g_aspect_ratio : packoffset(c36.w);
+  float4 g_screen_size : packoffset(c37);
+  float g_vpos_texel_offset : packoffset(c38);
+  float4 g_viewport_dimensions : packoffset(c39);
+  float2 g_viewport_origin : packoffset(c40);
+  float4 g_render_target_dimensions : packoffset(c41);
+  float4 g_camera_temp0 : packoffset(c42);
+  float4 g_camera_temp1 : packoffset(c43);
+  float4 g_camera_temp2 : packoffset(c44);
+  float4 g_clip_rect : packoffset(c45);
+  float3 g_vr_head_rotation : packoffset(c46);
+  int g_num_of_samples : packoffset(c46.w);
+  float g_supersampling : packoffset(c47);
+  float4 g_mouse_position : packoffset(c48);
+  float3 g_frustum_points[8] : packoffset(c49);
+  float4 g_frustum_planes[6] : packoffset(c57);
+  float g_orthographic : packoffset(c63);
+  float g_overlay_lerp : packoffset(c63.y);
+  float g_overlay_parchment_lerp : packoffset(c63.z);
+  float g_overlay_show_details : packoffset(c63.w);
+  float g_amount_shadow_in_far_distance : packoffset(c64);
+  float2 g_camera_jitter : packoffset(c64.y);
+  float2 g_prev_camera_jitter : packoffset(c65);
+  uint g_debug_visualization_flags : packoffset(c65.z);
+  bool g_taa_is_enabled : packoffset(c65.w);
+}
+
+SamplerState indicator_texture_sampler_s : register(s0);
+Texture2D<float4> gbuffer_channel_4_texture : register(t0);
+Texture2D<float4> t_dither_map : register(t1);
+Texture2D<float4> g_indicator_texture : register(t2);
+
+
+// 3Dmigoto declarations
+#define cmp -
+#include "../shared.h"
+
+
+void main(
+  float4 v0 : SV_Position0,
+  float4 v1 : TEXCOORD0,
+  float3 v2 : TEXCOORD1,
+  float4 v3 : COLOR0,
+  float4 v4 : TEXCOORD2,
+  float3 v5 : TEXCOORD3,
+  out float4 o0 : SV_Target0,
+  out float o1 : SV_Target1)
+{
+  float4 r0,r1;
+  uint4 bitmask, uiDest;
+  float4 fDest;
+
+  gbuffer_channel_4_texture.GetDimensions(0, uiDest.x, uiDest.y, uiDest.z);
+  r0.xy = uiDest.xy;
+  r0.zw = (uint2)r0.xy;
+  r0.xy = (int2)r0.xy + int2(-1,-1);
+  r1.xy = g_screen_size.zw * v0.xy;
+  r0.zw = r1.xy * r0.zw;
+  r1.xy = r1.xy * float2(2,-2) + float2(-1,1);
+  r0.zw = floor(r0.zw);
+  r0.zw = (int2)r0.zw;
+  r0.zw = max(int2(0,0), (int2)r0.zw);
+  r0.xy = min((int2)r0.zw, (int2)r0.xy);
+  r0.zw = float2(0,0);
+  r1.z = gbuffer_channel_4_texture.Load(r0.xyz).x;
+  r1.w = 1;
+  r0.x = dot(r1.xyzw, inv_projection._m02_m12_m22_m32);
+  r0.y = dot(r1.xyzw, inv_projection._m03_m13_m23_m33);
+  r0.x = r0.x / r0.y;
+  r0.y = v4.z / v4.w;
+  r0.z = cmp(r0.x < r0.y);
+  r0.y = r0.y + -r0.x;
+  r0.x = saturate(20 + -r0.x);
+  r1.xy = cmp(r0.yy < float2(0.5,5));
+  r0.y = 0.0500000007 + r0.y;
+  r0.y = saturate(3.33333325 * r0.y);
+  r0.x = r0.x * -r0.y + 1;
+  r0.y = r1.y ? 1 : 0.0700000003;
+  r0.y = r1.x ? r0.y : 0;
+  r0.y = r0.z ? r0.y : 1;
+  r0.x = r0.y * r0.x;
+  r0.yz = (uint2)v0.xy;
+  r1.xy = (int2)r0.yz & int2(7,7);
+  r1.zw = float2(0,0);
+  r0.y = t_dither_map.Load(r1.xyz).x;
+  r1.xyzw = g_indicator_texture.Sample(indicator_texture_sampler_s, v1.xy).xyzw;
+  r1.xyzw = v3.xyzw * r1.xyzw;
+  r0.x = r1.w * r0.x + -r0.y;
+  o0.xyz = r1.xyz + r1.xyz;
+  r0.x = cmp(r0.x < 0);
+  if (r0.x != 0) discard;
+  o0.w = 1;
+  o1.x = 1000;
+  o0.xyz *= SI.someindicators;
+  return;
+}

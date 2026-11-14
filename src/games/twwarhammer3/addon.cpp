@@ -161,6 +161,7 @@ void ApplyResetPreset() {
       {"dof", 1.f},
       {"sky_deband", 0.f},
       {"fog_strength", 1.f},
+      {"some_indicators", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -1709,6 +1710,12 @@ void BuildRuntimeData() {
     traced_lights::codes[index] = custom_shaders[hash].code;
     custom_shaders[hash] = {.crc32 = hash, .on_inject = not_injected};
   }
+  // Unit/Building Indicator Brightness: fx_indicator's colour passes (names.tsv; its VS 550C70F2), in no trace (no unit selected in
+  // them): level B. Ours only off 1 in an HDR mode, else the game's bytes. Not fx_indicator_mboit (E01EE900 writes moments, no colour;
+  // our copy of its resolve 492ED8DA wasn't the game's bits at 1 on WARP and lost its early depth test).
+  for (const uint32_t hash : {0xE441DBFFu, 0x709BE774u, 0xA7748703u, 0xDE0524D6u}) {
+    custom_shaders[hash].on_replace = [](auto*) { return shader_injection.someindicators != 1.f && IsHDRMode(); };
+  }
   custom_shaders[0xE2EE82F8].on_draw = [](auto* cmd_list) {
     if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepPixelCamera(cmd_list, 1);
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
@@ -2439,20 +2446,19 @@ void BuildRuntimeData() {
     //     .is_enabled = IsHDRMode,
     //     .is_visible = IsAdvancedSettings,
     // },
-    // new renodx::utils::settings::Setting{
-    //     .key = "some_indicators",
-    //     .binding = &shader_injection.someindicators,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 0.4f,
-    //     .label = "Brightness of some Unit/Building Indicator ",
-    //     .section = "Extra",
-    //     .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
-    //     .min = 0.0f,
-    //     .max = 1.0f,
-    //     .format = "%.1f",
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    
+    new renodx::utils::settings::Setting{
+        .key = "some_indicators",
+        .binding = &shader_injection.someindicators,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 1.f,
+        .label = "Unit/Building Indicator Brightness",
+        .section = "Extra (Experimental)",
+        .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.1f",
+        .is_enabled = IsHDRMode,
+    },
 
 
     // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
@@ -3078,7 +3084,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 2> GROUND_MESH_PASSES = {{
     {.pixel_shader = 0x90FBDD61},
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 46> SCENE_SHADERS = {{
     {.hash = 0xF0395CC4, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0xF0395CC4},  // fx_rigidanisotropic
     {.hash = 0x8EE34EC5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x8EE34EC5},  // fx_rigidambientmapfiremesh
     // Buildings, tents, shrubs, mountains, rocks: the same position math as F0395CC4, by their bytes. 4F35D09F also draws water, decals and effects: its listed pixel shaders only.
@@ -3092,6 +3098,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x31584506, .clip_cut_outs = true, .cut_out_row = &rays_branch_cut_outs_row, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},  // fx_rigidbranch_v3
     {.hash = 0x9498C59D, .dynamic = true, .foliage = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .mask_slot = 1},  // fx_rigidleaf_v3
     {.hash = 0xC0ED2883, .dynamic = true, .thin_row = &rays_banner_light_row},   // fx_rigidtextureblend: unit parts, placed from a buffer out of a capture's key: kept once, stale copies through the banners
+    // fx_rigidtextureblend's rigid version on the campaign (17 of 95 traces, G-buffer colour and depth, 12 indices a draw): rows x vertex,
+    // then cb0[10-13] (its bytes), as drawn.
+    {.hash = 0x03298FD5, .dynamic = true},
+    // The vertex-push tentacles of sieges (3 traces, 34-38 k indices): moved by time and wind after the rows, so as drawn; cut out by
+    // 6A5EEE23's t0 alpha at TEXCOORD2 (cut_out_masks). Their shadow pass's 7852254A leaves out what is in the view, at rest.
+    {.hash = 0x1C3500F0, .clip_cut_outs = true, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2},
     // The campaign's ground where the tessellated terrain's mask leaves it: tiles on the height map (a pass with no holes), every frame as they're culled by the view.
     {.hash = 0x15FE8427, .terrain = true, .dynamic = true},
     {.hash = 0xA40D7DDB, .terrain = true, .dynamic = true, .pixel_masks = GROUND_MESH_PASSES},
