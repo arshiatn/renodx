@@ -573,6 +573,33 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   capture path in rt_core (WH1 / Pharaoh / Troy / WH2 imposters), tessellated meshes via patch_triangles (WH1 / Troy / WH2),
   per-game leaf cut-off through the bridge (Troy 0.01), Faster Smoke Build row to the other smoke games, smoke without rays
   for 64-bit games if small.
+- [x] ATTILA GAPS ROUND 2 MERGED 3a391fa4 (fast-forward): Smoke Shadows + Particle Resolution at Shader Model 4 / 4.1 (VS
+  A3966664; rt_scene's particle lists shared by Attila and Thrones), Reflection Quality + FidelityFX SSSR in ssr02-07 (sm4 /
+  4.1 and the game's MSAA builds), Thrones' 11 vfx builds as wrappers; tw_attila_builds 17 / 17 + 14 / 14, tw_thrones_ssr
+  PASS, page dumps a / th / t differ by the date only. Default change: sm4 / 4.1 players get FidelityFX SSSR. Agent DONE.
+  - [ ] D9123DE1 + its MSAA / stencil builds (constant tone mapper "with_bloom_and_gamma"): NEEDS A TRACE of that mode.
+    Owner: the next data run or ATN's trace.
+- [ ] ATN 14:3x: "improve the author's code / any other fmod / anything else on the game's side?" heapfix's own code stays
+  its author's (own use only); our own detours on the game's functions (tools/tw/cpu_profile/report.md sections 2 and 6)
+  were in no brief (the Nothing dropped miss). Owner: cpu_ agent, round 2 (sent 14:3x), each bit-exact offline, Experimental:
+  - [ ] G2a software float->half 0x169a220 (98 sites; 4.3 ms workers, ~0.7 render at grass): bit-exact over all 2^32 inputs
+  - [ ] G2b CRT fmod 0x1a05cc0 (x87 fprem, 81 sites; 1.6-1.9 ms workers, 0.3 render)
+  - [ ] U3 x87 truncation block +0x17f6515 (4.1 ms workers at 8x, 0.5 render; heapfix's live bytes checked first)
+  - [ ] U5 animation pack loop 0x182e080 (2.29 ms render thread at 8x)
+  - [ ] render-list append, lock xadd per item 0x17ae370 / 3d0 / 420 (6.2 ms workers, 0.9 render at 8x; research first)
+  - [ ] the game's introsort 0xda6b0 / 0xda4b0 (3.5 ms workers at maxed grass; only with an equal-key order proof)
+  - [ ] the same functions in Rome II / Thrones, found by bytes
+  - [ ] ATN DECIDES (game runs): U4 number_of_threads 8 -> 6 / 4 A/B; heapfix prefetch-only A/B (the one change that could
+    go to its author; the parallel sort was 3.6 % slower CPU-bound).
+- [x] ATN 14:2x: the lessons of the last 16 h into the skill (tools/tw/round_notes/lessons_1114.md, 24 lines): SKILL.md
+  "Nothing dropped" rule (every open line of a report = a checkbox with an owner; SHARED STEP; parity gate), Finishing a
+  round + release.md 5 / 7 / 8 (Fable at the end, parity, reports read to the end), rows in testing / helper-fg-stability /
+  rt-scene / shaders-ui / bringup.
+- [ ] parity_check agent (pck_) started: .agents/skills/tw-port-checklist/scripts/parity_check.py, tools/tw/page_dump/
+  dump_any.py, ledgers tools/tw/parity/<game>.tsv seeded from the 1114 tables, report tools/tw/parity/report_1114.md. Its
+  open lines become checkboxes here; the round closes only with none open.
+- [ ] Ryse / Tales of Arise / Expeditions: Rome: old builds; their own planning round with the whole current method. ATN
+  picks the time (tonight / tomorrow, or Monday after the Ultra reset). Not started.
 - [x] Rome Remastered parity round MERGED c0a61b2d (table tools/tw/romeremastered/parity_1114.md: 47 features, 13 have / 3 do
   now left / 6 trace / 24 won't; credits, Bend rows + Softness, GitHub button; no PT GI -> no torch rows). Input bug (task B):
   study only: the wall clock is a seconds-since-2001 double; obfuscated code at 0xbbaa60 reads GetMessageTime; the
