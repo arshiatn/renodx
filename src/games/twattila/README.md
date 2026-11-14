@@ -1,6 +1,6 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
-## Next (helper111, 2026-11-14 night: torch light from the Light Bounce; not run in game)
+## Next (helper112, 2026-11-14 night: torch light from the Light Bounce, Lean ReSTIR Reuse; not run in game)
 
 - New: **Torch and Fire Shadows from Path Tracing (Experimental, off)**, under Shadows' More Options with ray-traced
   shadows and ReSTIR GI. The game's torch and fire light keeps its look. Its shadows come from the Light Bounce: one light
@@ -12,8 +12,13 @@
 - New: **Torch and Fire Light from Path Tracing (Experimental, off)**, same place. Torches and fires are lit by that
   sample in the Light Bounce instead of the game's light shaders: faster, softer, no torch highlights, follows Light
   Bounce Strength. Noisier: 5.1 % at Full, 10 % at Half. With both rows on, Shadows wins.
-- Needs helper111. With the rows off, helper111 gives helper110's picture byte for byte. Its shaders for these rows
-  (`TORCHES_IN_BOUNCE`) are separate builds; the reservoirs, paths, SER, SHaRC and Reflection Reuse are untouched.
+- New: **Lean ReSTIR Reuse (Experimental, off)**, under Global Illumination's More Options with Path Tracing. ReSTIR
+  GI's reuse reads each neighbour's position and its reservoir's normal instead of the whole surface (bridge flag
+  `RT_PATH_REUSE_LEAN`). Nsight, ATN's RT/PT at 4K: reuse 2.72 -> 1.02 ms, the helper 8.63 -> 6.96 ms a frame; the
+  quality scorer gives the same picture (2.19 -> 2.18 % rRMSE). Not with the two torch rows above (their reuse wins).
+- Needs helper111 for the torch rows, helper112 for Lean ReSTIR Reuse (older helpers ignore it). With the rows off,
+  helper112 gives helper110's picture byte for byte. Its shaders for these rows (`TORCHES_IN_BOUNCE`, `REUSE_LEAN`) are
+  separate builds; the reservoirs, paths, SER, SHaRC and Reflection Reuse are untouched.
 
 ## v159 (2026-11-13, night merges: GPU options, engine CPU code, grass / unit hooks; stamped and installed 22:59 with renodx-tw-dlaa64.exe helper110, not run in game)
 
