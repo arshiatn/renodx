@@ -65,7 +65,8 @@ void main(
   r0.z = saturate(dot(r0.zz, g_fog_colour_blend));
   r0.y = min(1, distance_to_camera / max(0.00100000005, g_fog_clear_distance));
   r0.y = r0.y * r0.y * (3 - 2 * r0.y);
-  o0.w = saturate(r0.x * r0.y);
+  // Fog Strength (Attila's): x the opacity, 1 the game's.
+  o0.w = saturate(r0.x * r0.y * SI.fog_strength);
   r1.w = max(0, r1.y);
   float3 sky = s_sky.Sample(s_sky_s, r1.xwz).xyz;
   // No fog or no sky in it: not needed.
