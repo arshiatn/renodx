@@ -144,6 +144,9 @@ struct ShaderInjectData {
   float v35_highlight_saturation;
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
+
+  // Parity round (2026-11-14), appended.
+  float someindicators;  // fx_indicator: x the colour (1: the game's bytes run)
 };
 
 #define SI shader_injection

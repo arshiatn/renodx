@@ -161,6 +161,7 @@ void ApplyResetPreset() {
       {"dof", 1.f},
       {"sky_deband", 0.f},
       {"fog_strength", 1.f},
+      {"some_indicators", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -1709,6 +1710,12 @@ void BuildRuntimeData() {
     traced_lights::codes[index] = custom_shaders[hash].code;
     custom_shaders[hash] = {.crc32 = hash, .on_inject = not_injected};
   }
+  // Unit/Building Indicator Brightness: fx_indicator's colour passes (names.tsv; its VS 550C70F2), in no trace (no unit selected in
+  // them): level B. Ours only off 1 in an HDR mode, else the game's bytes. Not fx_indicator_mboit (E01EE900 writes moments, no colour;
+  // our copy of its resolve 492ED8DA wasn't the game's bits at 1 on WARP and lost its early depth test).
+  for (const uint32_t hash : {0xE441DBFFu, 0x709BE774u, 0xA7748703u, 0xDE0524D6u}) {
+    custom_shaders[hash].on_replace = [](auto*) { return shader_injection.someindicators != 1.f && IsHDRMode(); };
+  }
   custom_shaders[0xE2EE82F8].on_draw = [](auto* cmd_list) {
     if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepPixelCamera(cmd_list, 1);
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
@@ -2439,20 +2446,19 @@ void BuildRuntimeData() {
     //     .is_enabled = IsHDRMode,
     //     .is_visible = IsAdvancedSettings,
     // },
-    // new renodx::utils::settings::Setting{
-    //     .key = "some_indicators",
-    //     .binding = &shader_injection.someindicators,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 0.4f,
-    //     .label = "Brightness of some Unit/Building Indicator ",
-    //     .section = "Extra",
-    //     .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
-    //     .min = 0.0f,
-    //     .max = 1.0f,
-    //     .format = "%.1f",
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    
+    new renodx::utils::settings::Setting{
+        .key = "some_indicators",
+        .binding = &shader_injection.someindicators,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 1.f,
+        .label = "Unit/Building Indicator Brightness",
+        .section = "Extra (Experimental)",
+        .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.1f",
+        .is_enabled = IsHDRMode,
+    },
 
 
     // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
