@@ -39,6 +39,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
 #include "../twpharaohdynasties/trace_reads.hpp"
@@ -1369,6 +1370,12 @@ float lod_bias_trilinear_row = 0.f;
 // Shadow Casters Out of View and the hills' (Graphics 1 of 2, Experimental): SCENE_SHADERS' cascade_keep casters.
 float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
+// Rays Replace Shadow Maps and Skip the Shadow Maps under it (Graphics 1 of 2, Experimental): twattila/sun_replace_maps.hpp on the
+// sun draws reading the per-frame atlas through s2: the twins of Pharaoh's 12 (same names; tools\tw\troy\troy_atlas_twins.py).
+constexpr std::array<uint32_t, 12> ATLAS_SUN_SHADERS = {0x049C3CFB, 0x2599D799, 0xD38FA7E4, 0x66D6229E, 0x5B17424A, 0xEB98DED2,
+                                                        0x707B069C, 0x6D3D2B69, 0xE1707311, 0x089D1B5B, 0x5835F96C, 0xE885C018};
+float rays_replace_maps_row = 0.f;
+float rays_skip_cascades_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1501,6 +1508,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
+  // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
+  rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -1598,6 +1607,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "turns it on below. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+    .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Water, effects and the shadows the game\n"
+                            "baked for the map (past about 200 m) keep the game's. Use with Shadow Casters Out of View.\n"
+                            "Off: the rays' shadows on top of the game's shadow maps.",
 };
 
 void ConfigureAddon() {
@@ -1795,8 +1807,11 @@ void ConfigureAddon() {
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
+                                             .rays_replace_maps = &rays_replace_maps_row,
+                                             .rays_replace_maps_tested = false,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
+                                             .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
@@ -1871,6 +1886,10 @@ bool AttachAddon() {
   // (6DA297BD) write 128, grass (EBC9553B) 160, the others 0-64 (units 1 / 33, the lake 64; terrain material 3C1C6172 its
   // vertex value; tools\tw\troy\troy_material_writes_1027.txt).
   twattila::screen_space_shadows::foliage_material_bit = 128;
+  // Rays Replace Shadow Maps: after the screen-space shadows' (t49) and before the Light Bounce's. Skip the Shadow Maps through
+  // Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
+  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &rays_replace_maps_row);
+  twattila::rt_scene::InstallShadowsOnly();
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's environment b0, camera b1 with
   // g_screen_size c27 / g_viewport_dimensions c29 as the Options' defaults, shadowmap b2's splits, lighting_VS_PS b3's sun
@@ -1955,6 +1974,7 @@ void DetachAddon() {
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
   twattila::screen_space_shadows::Uninstall();
+  twattila::sun_replace_maps::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::rt_scene::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
