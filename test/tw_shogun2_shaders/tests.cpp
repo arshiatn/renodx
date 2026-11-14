@@ -11,6 +11,8 @@
 // 5-6. rt_capture_tree_billboard and rt_capture_imposter against the game's csos (TestBillboard, TestImposter; their folder third).
 // 7. rt_water_plane (TestWaterPlane). 8-9. ocean00 / 01 and waterplane00 against the game's csos (TestWaters).
 // 10. rt_capture / rt_rows_cascade_rigid against the game's 0xAC25DAB8 (TestRigidShadow).
+// 11. rt_capture_cascade_cloth / imposter through Pharaoh's outside-view geometry shader against the game's 0x8A00A1D4 / 0xE3DA20D4
+//     (TestCascadeLeaves).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -29,6 +31,9 @@
 #include <span>
 #include <string>
 #include <vector>
+
+// __rt_outside_view_leaf: the geometry shader rt_core streams Shogun 2's cloth and sprite soldiers out of view through.
+#include "../../src/games/twpharaohdynasties/rt_outside_view_leaf_gs.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -599,16 +604,19 @@ static const D3D11_INPUT_ELEMENT_DESC IMPOSTER_LAYOUT[] = {
     {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 60, D3D11_INPUT_PER_VERTEX_DATA, 0}};
 
 // One output (`semantic`, `components` of it) of a vertex shader for each of `vertices` (points), streamed out; its
-// constants at b0.., rt_sun at t0.
+// constants at b0.., rt_sun at t0. With `geometry`: that geometry shader's output instead (`vertices` a triangle list), its
+// constants at b0.
 template <typename Vertex>
 static std::vector<std::array<float, 4>> StreamOut(const void* code, size_t size, const char* semantic, UINT index, BYTE components,
                                                    std::span<const D3D11_INPUT_ELEMENT_DESC> layout, const std::vector<Vertex>& vertices,
-                                                   std::span<ID3D11Buffer* const> constants, ID3D11ShaderResourceView* sun) {
+                                                   std::span<ID3D11Buffer* const> constants, ID3D11ShaderResourceView* sun,
+                                                   std::span<const BYTE> geometry = {}, ID3D11Buffer* geometry_constants = nullptr) {
   const D3D11_SO_DECLARATION_ENTRY entry = {.Stream = 0, .SemanticName = semantic, .SemanticIndex = index, .StartComponent = 0,
                                             .ComponentCount = components, .OutputSlot = 0};
   const UINT stride = 16;
   ComPtr<ID3D11GeometryShader> stream;
-  device->CreateGeometryShaderWithStreamOutput(code, size, &entry, 1, &stride, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf());
+  device->CreateGeometryShaderWithStreamOutput(geometry.empty() ? code : geometry.data(), geometry.empty() ? size : geometry.size(), &entry, 1,
+                                               &stride, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf());
   ComPtr<ID3D11VertexShader> vertex;
   device->CreateVertexShader(code, size, nullptr, vertex.GetAddressOf());
   ComPtr<ID3D11InputLayout> input;
@@ -625,12 +633,13 @@ static std::vector<std::array<float, 4>> StreamOut(const void* code, size_t size
   const UINT vertex_stride = sizeof(Vertex);
   const UINT offset = 0;
   context->IASetInputLayout(input.Get());
-  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+  context->IASetPrimitiveTopology(geometry.empty() ? D3D11_PRIMITIVE_TOPOLOGY_POINTLIST : D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &vertex_stride, &offset);
   context->VSSetShader(vertex.Get(), nullptr, 0);
   context->VSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
   context->VSSetShaderResources(0, 1, &sun);
   context->GSSetShader(stream.Get(), nullptr, 0);
+  context->GSSetConstantBuffers(0, 1, &geometry_constants);
   context->SOSetTargets(1, out.GetAddressOf(), &offset);
   context->Draw(count, 0);
   context->ClearState();
@@ -1293,6 +1302,118 @@ static void TestRigidShadow(const std::string& games, const std::string& folder)
               left_out, turned_differs);
 }
 
+// 11. rt_capture_cascade_cloth and rt_capture_cascade_imposter (cloth and sprite soldiers casting from out of view) against the game's
+//     shadow vertex shaders (0x8A00A1D4, 0xE3DA20D4 csos) with an identity view-projection (the imposter's shadow camera's view
+//     random): 64 random triangles each, every corner's world position (TEXCOORD2) the game's SV_Position and its UV (TEXCOORD1) the
+//     game's. Through Pharaoh's outside-view geometry shader with a main view at cb0[10-13] (as rt_core streams them out): the
+//     triangles wholly outside it (the CPU's test of the game's corners) kept, their world positions and UVs (two halves in w) the
+//     game's; the others collapsed onto their first corner. CONTROL: the view turned away keeps another set.
+struct ClothVertex {
+  std::array<std::array<float, 4>, 4> inputs;  // v0-v3
+};
+
+static const D3D11_INPUT_ELEMENT_DESC CLOTH_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+template <typename Vertex>
+static void TestCascadeLeaf(const std::string& games, const std::string& folder, const char* name, const wchar_t* capture_name,
+                            std::span<const D3D11_INPUT_ELEMENT_DESC> layout, const std::vector<Vertex>& vertices,
+                            std::span<ID3D11Buffer* const> constants) {
+  const auto [game_code, capture] = Shaders(games, folder, name, capture_name);
+  const auto run = [&](const void* code, size_t size, const char* semantic, UINT index, BYTE components) {
+    return StreamOut(code, size, semantic, index, components, layout, vertices, constants, nullptr);
+  };
+  const auto game_world = run(game_code.data(), game_code.size(), "SV_POSITION", 0, 4);
+  const auto game_uv = run(game_code.data(), game_code.size(), "TEXCOORD", 1, 2);
+  const auto our_world = run(capture->GetBufferPointer(), capture->GetBufferSize(), "TEXCOORD", 2, 4);
+  const auto our_uv = run(capture->GetBufferPointer(), capture->GetBufferSize(), "TEXCOORD", 1, 2);
+  size_t bad_world = 0, bad_uv = 0;
+  for (size_t corner = 0; corner < vertices.size(); ++corner) {
+    for (int axis = 0; axis < 4; ++axis) bad_world += (std::fabs(our_world[corner][axis] - game_world[corner][axis]) < 1e-3f) ? 0 : 1;
+    for (int axis = 0; axis < 2; ++axis) bad_uv += (std::fabs(our_uv[corner][axis] - game_uv[corner][axis]) < 1e-5f) ? 0 : 1;
+  }
+  // Main views at c10-13 (rows acting on column vectors): along +z from (0, 0, -60), 0.8 wide; turned: along -z from (0, 0, 60).
+  size_t kept = 0, collapsed = 0, bad_kept = 0, turned_differs = 0;
+  std::vector<bool> kept_ahead;
+  for (const float facing : {1.f, -1.f}) {
+    const std::array<std::array<float, 4>, 4> main_view = {{{1.25f, 0.f, 0.f, 0.f}, {0.f, 1.25f, 0.f, 0.f}, {0.f, 0.f, facing, 0.f}, {0.f, 0.f, facing, 60.f}}};
+    std::array<float, 44 * 4> registers = {};
+    for (int row = 0; row < 4; ++row) std::ranges::copy(main_view[row], registers.begin() + ((10 + row) * 4));
+    const auto view_buffer = Constants(registers.data(), sizeof(registers));
+    const auto streamed = StreamOut(capture->GetBufferPointer(), capture->GetBufferSize(), "SV_POSITION", 0, 4, layout, vertices, constants, nullptr,
+                                    __rt_outside_view_leaf, view_buffer.Get());
+    for (size_t triangle = 0; triangle * 3 < vertices.size(); ++triangle) {
+      std::array<std::array<float, 4>, 3> clip = {};
+      for (size_t corner = 0; corner < 3; ++corner) {
+        const auto& world = game_world[(triangle * 3) + corner];
+        for (int row = 0; row < 4; ++row) {
+          clip[corner][row] = (main_view[row][0] * world[0]) + (main_view[row][1] * world[1]) + (main_view[row][2] * world[2]) + main_view[row][3];
+        }
+      }
+      const auto all = [&clip](auto test) { return std::ranges::all_of(clip, test); };
+      const bool outside = all([](const auto& p) { return p[3] <= 0.f; }) || all([](const auto& p) { return p[0] > p[3]; })
+                           || all([](const auto& p) { return p[0] < -p[3]; }) || all([](const auto& p) { return p[1] > p[3]; })
+                           || all([](const auto& p) { return p[1] < -p[3]; }) || all([](const auto& p) { return p[2] > p[3]; });
+      if (facing > 0.f) {
+        kept_ahead.push_back(outside);
+        kept += outside ? 1 : 0;
+        collapsed += outside ? 0 : 1;
+      } else {
+        turned_differs += (outside != kept_ahead[triangle]) ? 1 : 0;
+      }
+      for (size_t corner = 0; corner < 3; ++corner) {
+        const size_t source = (triangle * 3) + (outside ? corner : 0);
+        const auto& out = streamed[(triangle * 3) + corner];
+        const uint32_t halves = std::bit_cast<uint32_t>(out[3]);
+        bool same = std::fabs(Half(static_cast<uint16_t>(halves & 0xFFFFu)) - game_uv[source][0]) <= 1e-3f * std::max(1.f, std::fabs(game_uv[source][0]))
+                    && std::fabs(Half(static_cast<uint16_t>(halves >> 16)) - game_uv[source][1]) <= 1e-3f * std::max(1.f, std::fabs(game_uv[source][1]));
+        for (int axis = 0; axis < 3; ++axis) same = same && std::fabs(out[axis] - game_world[source][axis]) < 1e-3f;
+        bad_kept += same ? 0 : 1;
+      }
+    }
+  }
+  CHECK(bad_world == 0 && bad_uv == 0, "%s: %zu world components, %zu UV components differ from the game's", name, bad_world, bad_uv);
+  CHECK(bad_kept == 0 && kept > 0 && collapsed > 0, "%s: %zu streamed corners wrong, %zu kept, %zu collapsed", name, bad_kept, kept, collapsed);
+  CHECK(turned_differs > 0, "CONTROL: %s: the view turned away kept the same triangles", name);
+  std::printf("%ls: %zu corners the game's world and UV; %zu of %zu triangles out of view kept, %zu differ turned away\n", capture_name,
+              vertices.size(), kept, vertices.size() / 3, turned_differs);
+}
+
+static void TestCascadeLeaves(const std::string& games, const std::string& folder) {
+  std::mt19937 random(12);
+  std::uniform_real_distribution<float> spread(-1.f, 1.f);
+  std::array<float, 44 * 4> camera = {};
+  for (int row = 0; row < 4; ++row) camera[((10 + row) * 4) + row] = 1.f;
+  // The imposter's shadow camera's view (c2-c5): random.
+  for (int value = 2 * 4; value < 6 * 4; ++value) camera[value] = spread(random);
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const std::array<float, 4> size = {0.125f, 0.25f, 0.f, 0.f};
+  const auto size_buffer = Constants(size.data(), sizeof(size));
+  std::vector<ClothVertex> cloth;
+  std::vector<ImposterVertex> imposters;
+  for (int triangle = 0; triangle < 64; ++triangle) {
+    const std::array<float, 3> centre = {100.f * spread(random), 100.f * spread(random), 100.f * spread(random)};
+    const float frame = std::floor(2.f + (2.f * spread(random)));
+    for (int corner = 0; corner < 3; ++corner) {
+      cloth.push_back({.inputs = {{{centre[0] + (2.f * spread(random)), centre[1] + (2.f * spread(random)), centre[2] + (2.f * spread(random)), 1.f},
+                                   {spread(random), spread(random), spread(random), spread(random)},
+                                   {0.5f + (0.5f * spread(random)), 0.5f + (0.5f * spread(random)), spread(random), spread(random)},
+                                   {spread(random), spread(random), spread(random), spread(random)}}}});
+      imposters.push_back({.place = {centre[0], centre[1], centre[2], frame}, .last_place = centre,
+                           .frame = {0.5f + (0.5f * spread(random)), 0.5f + (0.5f * spread(random)), spread(random), 0.5f * spread(random)},
+                           .corner = {(corner & 1) ? 1.f : 0.f, (corner & 2) ? 1.f : 0.f, spread(random), 0.f},
+                           .flat = {0.6f * spread(random), 0.6f * spread(random), 1.8f * spread(random), spread(random)}});
+    }
+  }
+  const std::array<ID3D11Buffer*, 1> cloth_constants = {camera_buffer.Get()};
+  TestCascadeLeaf(games, folder, "8A00A1D4", L"rt_capture_cascade_cloth", CLOTH_LAYOUT, cloth, cloth_constants);
+  const std::array<ID3D11Buffer*, 2> imposter_constants = {camera_buffer.Get(), size_buffer.Get()};
+  TestCascadeLeaf(games, folder, "E3DA20D4", L"rt_capture_cascade_imposter", IMPOSTER_LAYOUT, imposters, imposter_constants);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -1313,6 +1434,7 @@ int main(int argc, char** argv) {
     TestImposter(games, argv[3]);
     TestWaters(games, argv[3]);
     TestRigidShadow(games, argv[3]);
+    TestCascadeLeaves(games, argv[3]);
   }
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;

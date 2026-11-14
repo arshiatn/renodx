@@ -608,6 +608,22 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v71 (2026-11-14): cloth and sprite soldiers out of view (built only, not run in game)
+
+- **Shadow casters out of view** (the same Experimental row, off; DLSS addon v63) also takes the shadow pass's cloth (sails,
+  banners: 8A00A1D4, 44 draws in the battle trace) and sprite soldiers (E3DA20D4, 272 draws; only with Sprite Soldier
+  Shadows on, cards turned to the sun as the game's shadow pass turns them). Streamed out every frame in world space by
+  their capture versions (rt_capture_cascade_cloth / imposter: the game's corners and the UV of its mask test) through
+  Pharaoh's outside-view geometry shader (twpharaohdynasties RT_LEAF): the triangles wholly outside the last frame's main
+  view kept, cut out by the game's masks; the rest collapse (the main pass has them).
+- Shared rt_core (opt-in, the other games unchanged): SceneShader::cascade_world, Host::cascade_world for one shader, its
+  capture version in place of the game's vertex shader and its world positions into the captured buffer's world part in a
+  clip-space game.
+- test/tw_shogun2_shaders part 11: both capture versions against the game's csos (world, UV), through the geometry shader
+  with a main view (kept, collapsed) and a control (the view turned away keeps another set). The test's GPU lock is taken
+  atomically now (made only where none exists, removed only while it is this run's).
+- Still not done: units (140M indices x instances a frame, no rows).
+
 ## v70 (2026-11-14): rigid shadow casters out of view (built only, not run in game)
 
 - **Shadow casters out of view** (Experimental, off; with ray-traced sun shadows; restart the game): buildings and rocks
