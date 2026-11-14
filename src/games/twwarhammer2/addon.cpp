@@ -22,6 +22,7 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/directx.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../talesofarise_dlss/pixel_trace.hpp"
@@ -267,6 +268,48 @@ void OnDestroyDevice(reshade::api::device* device) {
 
 }  // namespace frame_copy
 
+// Torch and Fire Shadows (twattila/rt_scene.hpp InstallPointLights): the point lights' pixel shader x each light's traced
+// visibility (shaders/pointlight00_0xD96A8DC3), ours only while the rays' mask is bound at t42 (rt_local_lights.hlsli);
+// otherwise the game's own bytes run. Every trace of the data run drew its point lights with this one shader (VS D2A0FF23).
+namespace traced_lights {
+
+constexpr uint32_t POINT_LIGHT_SHADER = 0xD96A8DC3;
+std::span<const uint8_t> code;
+Microsoft::WRL::ComPtr<ID3D11PixelShader> ours;
+Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;
+
+// Registered after rt_scene's point light hook, so after it: its mask is bound by now, or isn't this frame.
+constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr) return {};
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> mask;
+  native->PSGetShaderResources(42, 1, mask.GetAddressOf());
+  if (!mask) return {};
+  if (!ours) {
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    native->GetDevice(device.GetAddressOf());
+    if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, ours.GetAddressOf()))) return {};
+    renodx::utils::log::i("[Total War] Torch and Fire Shadows: the point lights' shader with the rays applied (D96A8DC3).");
+  }
+  native->PSGetShader(game_shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
+  native->PSSetShader(ours.Get(), nullptr, 0);
+  return {.post_callback = [](Context& post, const void*) {
+    auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
+    if (post_native == nullptr) return;
+    post_native->PSSetShader(game_shader.Get(), nullptr, 0);
+    game_shader.Reset();
+  }};
+};
+
+void OnDestroyDevice(reshade::api::device*) {
+  ours.Reset();
+  game_shader.Reset();
+}
+
+}  // namespace traced_lights
+
 #define FrameCopyShader(value)              \
   {                                         \
       value,                                \
@@ -348,6 +391,9 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0x143BD25Cu, 0x60AF6F79u, 0xBDBC783Bu}) {
     custom_shaders[hash].on_draw = twattila::rt_scene::OnReflectionMarch;
   }
+  // The point lights' shader: ours only while the rays are bound (traced_lights above).
+  traced_lights::code = custom_shaders[traced_lights::POINT_LIGHT_SHADER].code;
+  custom_shaders[traced_lights::POINT_LIGHT_SHADER] = {.crc32 = traced_lights::POINT_LIGHT_SHADER, .on_inject = [](auto*) { return false; }};
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.
@@ -1943,6 +1989,19 @@ void ConfigureAddon() {
       setting->default_value = 0.f;
     }
   }
+  // Torch and Fire Shadows from rays (Warhammer III's row): after the preset's defaults, so it starts off (Experimental: no game
+  // run has shown them here yet); RT/PT turns it on, as ATN's list does.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedPointLightShadows",
+      .binding = &rt_sliders.local_lights,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Torch and Fire Shadows (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Torches and fires cast their shadows from rays too.\n"
+                 "With Path-Traced Global Illumination they also light what the screen never saw.",
+      .labels = {"Off", "On"},
+  });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
@@ -1951,6 +2010,7 @@ void ConfigureAddon() {
                                              .smoke_shadows_tested = false,
                                              .water_caustics_tested = false,
                                              .has_path_ambient = false,
+                                             .lights_own_row = true,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -1989,7 +2049,17 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's (its callback draws the sun draw again).
   // Ray tracing's at the sun draws first: its trace for the screen-space shadows and the AO filter after it.
-  twattila::rt_scene::Install(SCENE_SHADERS, {});
+  // The point lights' diffuse scale: D96A8DC3's literal 0x389FB405 (7.615242e-05; Warhammer III's, Pharaoh's).
+  twattila::rt_scene::Host rt_host = twattila::rt_scene::TW_HOST;
+  rt_host.local_light_scale = 7.615242e-05f;
+  twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
+  // Torch and Fire Shadows: the point lights (one instanced draw a frame, VS D2A0FF23 with PS D96A8DC3; its instances
+  // POSITION1 the colour, POSITION2 the place and reach: FrameTraceReads in the data run's B, 131 lights at 25 m), then
+  // ours over the game's shader while their rays are bound (traced_lights).
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{traced_lights::POINT_LIGHT_SHADER});
+  renodx::utils::command_action::Register(
+      traced_lights::OnDraw, {.shader_hash = traced_lights::POINT_LIGHT_SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  reshade::register_event<reshade::addon_event::destroy_device>(traced_lights::OnDestroyDevice);
   // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads). No AO pass hook
   // keeps it here (the game's AO is compute line sweeps).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
@@ -2064,6 +2134,8 @@ void DetachAddon() {
   talesofarise::pixel_trace::Stop();
   tw::engine_tweaks::Uninstall(graphics_options);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
+  renodx::utils::command_action::Unregister(traced_lights::OnDraw);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(traced_lights::OnDestroyDevice);
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 
