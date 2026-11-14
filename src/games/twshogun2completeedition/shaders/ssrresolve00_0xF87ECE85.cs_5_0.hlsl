@@ -76,6 +76,9 @@ RWTexture2D<float3> t_out_radiance : register(u0);
 #define cmp -
 #include "./ssr.hlsli"
 #include "../../twattila/rt_reflection.hlsli"
+// Ray-Traced Water Reflections' mask (ray_tracing.hpp WaterSurface; unbound: 0): there the rays left from the sea above
+// this surface, so it keeps the environment alone (the sea drawn over it reflects them).
+Texture2D<float> t_rt_water : register(t45);
 
 
 [numthreads(32, 32, 1)]
@@ -186,7 +189,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     }
     r7.xyw = t_in_radiance.SampleLevel(s_trilinear_sampler_s, r0.xy, r3.w).xyz;
     const bool rt_reflected = RtReflectionsBound();
-    const float4 rt_traced = rt_reflected ? t_rt_reflection.Load(int3(rt_texel, 0)) : 0.f;
+    const float4 rt_traced = (rt_reflected && t_rt_water.Load(int3(rt_texel, 0)) < 0.5f) ? t_rt_reflection.Load(int3(rt_texel, 0)) : 0.f;
     if (rt_reflected) r7.xyw = rt_traced.rgb;
     r3.x = t_ssao.SampleLevel(s_ssao_s, r0.zw, 0).x;
     r0.y = (int)r3.y | 1;
