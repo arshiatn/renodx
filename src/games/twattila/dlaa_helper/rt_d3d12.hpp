@@ -1505,6 +1505,10 @@ class RtScene12 {
             .sky_range = std::clamp(shared.rt_ambient_range, 0.1f, 100.000854f),
             .previous_square_root = (version >= 28 && (requested & dlaa_bridge::RT_PATH_COLOR_SQUARE_ROOT) != 0) ? 1u : 0u,
             .previous_positions_slice = previous_positions_slice_,
+            // Torch and Fire Light in the Light Bounce: ReuseTexel shades the lights' samples (the paths with ReSTIR GI).
+            .lights_in_bounce = (path_traced && reuse && light_count != 0)
+                                    ? (((requested & dlaa_bridge::RT_PATH_LIGHTS_IN_BOUNCE) != 0) ? std::max(LightsInBounceTest(), 1u) : LightsInBounceTest())
+                                    : 0u,
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -1987,7 +1991,15 @@ class RtScene12 {
     float sky_range = 2.f;  // rt_camera.hlsli
     uint32_t previous_square_root = 0;  // RT_PATH_COLOR_SQUARE_ROOT
     uint32_t previous_positions_slice = 0;  // kept_positions_' slice with last frame's
+    uint32_t lights_in_bounce = 0;  // RT_PATH_LIGHTS_IN_BOUNCE: 1; LightsInBounceTest's 2: the lights' light alone (rt_camera.hlsli)
   };
+  // Torch and Fire Light in the Light Bounce for the harness without an addon asking (RENODX_TW_LIGHTS_IN_BOUNCE: 1 as asked,
+  // 2 the bounce holding only the lights' light: a measurement); 0 none.
+  static uint32_t LightsInBounceTest() {
+    std::array<wchar_t, 4> value = {};
+    if (GetEnvironmentVariableW(L"RENODX_TW_LIGHTS_IN_BOUNCE", value.data(), static_cast<DWORD>(value.size())) == 0) return 0;
+    return (value[0] == L'2') ? 2u : 1u;
+  }
 #if defined(RENODX_NRD)
   // NRD's texture of a signal (nrd_d3d12.hpp), with a place in the trace's descriptors when rt_nrd_front.hlsl writes it (0: none).
   struct NrdTexture {
@@ -4614,10 +4626,13 @@ class RtScene12 {
                                  {RT_NRD_FINISH_AMBIENT, sizeof(RT_NRD_FINISH_AMBIENT)}, nrd_width, nrd_height, AMBIENT_TEXTURES, frame);
     }
 #endif
+    // Torch and Fire Light in the Light Bounce (helper111): the paths take the first 32 lights; rt_lights leaves them dark.
+    const bool lights_in_bounce = local_lights && ((shared.rt_flags & dlaa_bridge::RT_LIGHTS_IN_BOUNCE) != 0 || LightsInBounceTest() != 0);
     // v18: rays a pixel toward the sun and each light, the lights' radius for soft shadows (rt_lights: under RR).
     const std::array<uint32_t, 12> settings = {
         frame,
-        (shared.rt_flags & ~(dlaa_bridge::RT_LOCAL_LIGHTS | dlaa_bridge::RT_NRD | dlaa_bridge::RT_AO_REBLUR | dlaa_bridge::RT_START_PAST)) | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u)
+        (shared.rt_flags & ~(dlaa_bridge::RT_LOCAL_LIGHTS | dlaa_bridge::RT_NRD | dlaa_bridge::RT_AO_REBLUR | dlaa_bridge::RT_START_PAST | dlaa_bridge::RT_LIGHTS_IN_BOUNCE))
+            | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u) | (lights_in_bounce ? dlaa_bridge::RT_LIGHTS_IN_BOUNCE : 0u)
             | (smoke_scene ? TRACE_SMOKE : 0u) | (nrd_sun ? dlaa_bridge::RT_NRD : 0u) | (nrd_ambient ? TRACE_NRD_AMBIENT : 0u),
         std::bit_cast<uint32_t>(std::clamp(shared.rt_ambient_range, 0.1f, 100.02711f)),
         std::clamp(shared.rt_ambient_rays, 1u, 16u),
@@ -4633,14 +4648,15 @@ class RtScene12 {
     list->SetComputeRoot32BitConstants(ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
     list->SetComputeRootConstantBufferView(ROOT_LIGHTS, slot->lights->GetGPUVirtualAddress());
     // The trace's history: the ambient visibility and the local lights' bits kept over frames, valid when the last trace
-    // was the frame before (its positions and camera kept for the projection). Its constants bound every trace.
+    // was the frame before (its positions and camera kept for the projection; the lights' bits also with the same Torch and
+    // Fire Light in the Light Bounce: its lights' kept bits were never traced). Its constants bound every trace.
     const bool lights_kept = local_lights && version >= 11 && EnsureHistory(HISTORY_LIGHTS, frame);
     const bool ambient_kept = version >= 11 && (((shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0 && !nrd_ambient) || lights_kept)
                               && EnsureHistory(HISTORY_AMBIENT, frame);
     {
       const bool last_frame = ambient_kept && ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame;
       PathConstants constants = {.flags = (last_frame ? PATH_AMBIENT_HISTORY : 0u) | (((shared.rt_flags & dlaa_bridge::RT_START_PAST) != 0) ? PATH_START_PAST : 0u)
-                                          | (lights_kept && last_frame && lights_frame_ + 1 == frame ? PATH_LIGHT_HISTORY : 0u)
+                                          | (lights_kept && last_frame && lights_frame_ + 1 == frame && lights_in_bounce == lights_in_bounce_traced_ ? PATH_LIGHT_HISTORY : 0u)
                                           | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u) | (tint ? PATH_TINT : 0u)
                                           | (tint_guides ? PATH_TINT_GUIDES : 0u)};
       std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
@@ -4699,6 +4715,7 @@ class RtScene12 {
       for (uint32_t light = 0; light < light_count; ++light) std::copy_n(SharedLight(shared, light, false), 4, previous_lights_[light].begin());
       previous_light_count_ = light_count;
       lights_frame_ = frame;
+      lights_in_bounce_traced_ = lights_in_bounce;
     }
     if (fog) {
       Mark(list, L"fog");
@@ -5887,6 +5904,7 @@ class RtScene12 {
   // The local lights' bits kept over frames (HISTORY_LIGHTS), the last trace that wrote them and its lights.
   std::array<ComPtr<ID3D12Resource>, 2> light_history_;
   uint32_t lights_frame_ = UINT32_MAX;
+  bool lights_in_bounce_traced_ = false;  // the last kept lights' bits' Torch and Fire Light in the Light Bounce
   std::array<std::array<float, 4>, dlaa_bridge::RT_ALL_LIGHTS> previous_lights_ = {};
   uint32_t previous_light_count_ = 0;
   ComPtr<ID3D12PipelineState> fog_pipeline_;

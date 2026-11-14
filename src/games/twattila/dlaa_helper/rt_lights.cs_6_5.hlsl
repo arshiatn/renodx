@@ -123,6 +123,16 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
   for (uint slot = 0u; slot < size; ++slot) {
     if (SetBit(reached, ListLight(slot)) != 0u) reached_slots |= 1u << slot;
   }
+  // Torch and Fire Light in the Light Bounce: the paths' lights dark for the game's light shaders, untraced (their light,
+  // shadowed, comes with the bounce); their kept bits stay lit (never read: the helper drops this history at a switch).
+  uint bounce_slots = 0u;
+  if ((flags & LIGHTS_IN_BOUNCE) != 0u) {
+    [loop]
+    for (uint slot = 0u; slot < size; ++slot) {
+      if (((reached_slots >> slot) & 1u) != 0u && ListLight(slot) < BOUNCE_LIGHTS) bounce_slots |= 1u << slot;
+    }
+    reached_slots &= ~bounce_slots;
+  }
   uint traced = reached_slots;
   uint lit = 0xFFFFFFFFu;
   uint2 seen_pixel;
@@ -225,6 +235,6 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     }
     if ((float)reached_rays <= threshold * (float)rays) lit &= ~(1u << slot);
   }
-  light_mask[id.xy] = lit;
+  light_mask[id.xy] = lit & ~bounce_slots;
   light_history[parity_written][id.xy] = lit;
 }
