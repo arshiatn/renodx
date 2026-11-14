@@ -415,6 +415,18 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   PREFER_FAST_BUILD -0.66 ms (not bit-identical). Hand-off design: merge requests 0.1-0.3 ms; 2.9 ms untimed helper work.
   BITDEFENDER: blocked a scratch x86 benchmark exe of the Nsight agent; path stopped, exe deleted; ATN TOLD. Agent resumed:
   smoke fast-build row (Experimental), the 2.9 ms helper work.
+  Round 2 MERGED 10a98983: Faster Smoke Shadow Build (Experimental, off; Attila + WH3; NEEDS helper113 at the next install:
+  smoke BLAS 1.69 -> 1.03 ms at the cap; off = helper112 by 44 headers / HARNESS_DUMP 6 modes / all_modes 179; on: 17.7 % of
+  sun-visibility pixels change by 2.5 / 255 at ATN's rows, fog-shadow probe 251 -> 218); light sort 4 x 32-bit keys (x86
+  2.02 -> 1.83, amd64 2.08 -> 1.51 ms at 16384 lights, identical). The "2.9 ms" is not helper work: ~1.0 ms hand-off idle
+  (0.32 a request, no identical merge possible) + ~1.3-1.7 ms the game's waiting pass + inputs. Nsight agent DONE; ns-replay
+  links removed. Follow-up (not started): a smoke / fog feature in the quality scorer's scene.
+- [ ] Draw redesign PHASE 1 DONE (tools/tw/draw_redesign/design.md; replay oracle over 9 games, 832 replays, 2.05 M commands):
+  dispatch layer 0.72-0.85 ms a frame in cpl2 (~138 ns a command; 0.48 ms in shared_mutex locks), 42.8 % of commands need
+  nothing. Design C (per-command-list cache of bound handles + prepared lists, registration epoch, gates for the 3
+  command-wide callbacks): saves ~0.52-0.56 ms (cpl2) / 0.37-0.39 (cpl1) of the 2.2 ms; Capture / DrawObjectMotion out of
+  scope. Touches src/utils/command_action.hpp (every mod in atn-mods, upstream-merge conflicts), resource_upgrade.hpp,
+  view_share / object_motion gates. Phase 2 waits for ATN (scope / opt-in question) and then a Fable 5.2 High review.
 - [ ] ATN ~11:4x: the skill checks the whole dump for render scale (scale_census.py) but casters only in traces: agent
   (cdc_, worktree) adds caster_census.py --whole-dump (every VS classified, held / NOT HELD / not a caster), validates on
   Attila + Pharaoh e34c6089 palms, runs it for nine games (tools/tw/round_notes/caster_dump_<game>.txt), skill lines; results
