@@ -11,6 +11,10 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastere
   keep the game's own shadow (they face the camera). The other 21 cast nothing: UI, 3D markers, campaign overlays, the
   banners' glow, fire layers, shore foam, the far-card generator. Found: the game's own shadows have no grass and no
   banners, so in the rays both would be new shadows. No code change.
+- Attila's Two Shadow Cascades Under Rays and Skip the Game's Shadow Map Work: not for this game. The game's own Shadow
+  Distance option sets 1 to 4 cascades, and here the rays add to the game's shadows instead of replacing them: units
+  and far trees still need every cascade. Rarer Objects in the Rays: Battle Objects already lets every untested object
+  in, and the game has no tessellated objects or ropes. No code change.
 - Evidence: `tools\tw\romeremastered\p2rr_*.txt` and the ledger `tools\tw\parity\romeremastered.tsv` in the maintainer's
   tools.
 
