@@ -636,6 +636,17 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     (A only, CPU-bound). The winner's patch + numbers go to tools/tw/heapfix/for_author_pf/ for ATN to send (never by us).
     Quiet machine during measurement: tools/tw/quiet_run.lock (all running agents told: no builds / WARP / GPU jobs while it
     exists) + gpu_job.lock + no compiler processes before each start.
+- [ ] DRAW REDESIGN phase 2 DONE on drw-draw-redesign (6f2d8dea utility + test/tw_draw_dispatch, 5a00df0a every TW add-on
+  opts in with gates, 1a4ed7c7 cost pass; not merged): command_action_fast.hpp per-command-list cache, TW-only opt-in,
+  other mods unchanged. Replay oracle 832 runs / 2.05 M commands 0 differences; tw_draw_dispatch x86 + amd64 0 differences
+  (control fails); 14 TW suite runs PASS; both build lines + Ryse / Tales / Expeditions / R.U.S.E. build; page dumps date
+  only. Saves 0.43 ms (cpl1) / 0.54 ms (cpl2) of dispatch a frame in the replay.
+  - [ ] FABLE 5.2 HIGH review of this change alone (ATN's request) started; findings -> tools/tw/draw_redesign/
+    fable_review.md; then one fix agent; then merge
+  - [ ] rt_scene::OnAnyDraw (Rome Remastered, Shogun 2 RT) left ungated: gate rt_scene::internal::active, with the fixes
+  - [ ] render_pass_behavior / shader_injection_behavior suites need ReShade 6.7.3's DLL (a download): ATN DECIDES
+  - [ ] The agent started 6 amd64 replay builds early while quiet_run.lock existed (the hfp_ A/B window): every hfp_ start
+    was checked for compilers and the A-to-A spreads stayed small; the 16-thread run re-measures P anyway
 - [ ] ATN 19:xx: (1) a 16-thread test: ATN sets CPU Set Setter's Attila rule to the V-cache CCD's 16 logical CPUs (now 8
   cores), then CPU-bound P with number_of_threads 8 / 12 / 16, and P vs B4 vs B8 (sort threads) at the best count in the
   three scenes. hfp_ agent preparing (variants, tests, runner); NOT started until ATN confirms the rule. (2) The same siege
