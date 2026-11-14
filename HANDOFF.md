@@ -459,6 +459,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   7DD754DA not flagged terrain (triangles over 200 m dropped), float32 unprojection noise at km range, BasicLit draws of one
   mesh with other b7 matrices share a key. ATN TEST: Tested, then Solid + restart, then All + restart; after a reset send
   renodx-tw-dlaa64.log + ReShade.log.
+- [x] Rome Remastered side fixes MERGED 8f050f90 (from the Fable hunt: BasicLit instances per b7 matrix (shared opt-in
+  SceneShader::every_draw), battle terrain 7DD754DA flagged terrain, double-precision unprojection 1-5 km within 1 mm (shared
+  opt-ins Host::clip_relative / Camera::relative_inverse, rt_vertices #if: the other 11 builds' cso byte-identical), Upscaling
+  Debug View (opt-in motion_view in AppendAa), Bend's Softer Away + Debug View; parity DO NOW 0, HAVE 16). Agent DONE. ATN
+  tests: README "Fable fixes" 1-4.
 - [x] tw_install.py (tools, 13:0x): every helper game gets D3D12\D3D12Core.dll (Agility SDK 1.619.6, as release_zip.py ships
   it) where missing; a different one only with --first (backup tw_install.py.bak_agility). Next install copies it into the
   8 helper games that lack it (all but Attila / WH3).

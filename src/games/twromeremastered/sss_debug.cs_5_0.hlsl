@@ -3,5 +3,5 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Attila's, for the graphics page's modules (twattila/graphics_page.hpp's includes; not drawn in this game).
+// Attila's: Bend's Debug View (contact_shadows.hpp).
 #include "../twattila/sss_debug.cs_5_0.hlsl"

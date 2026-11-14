@@ -2,6 +2,28 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+### Fable fixes and parity DO NOW (2026-11-14; built only, not run in game)
+
+- Fixed: the battle's terrain (prepass 7DD754DA) is flagged terrain in the rays. Its triangles longer than the helper's
+  200 m part limit were dropped. `test/tw_romer_rays` case 1.
+- Fixed: one mesh drawn again with another object matrix (VS b7) is captured each time. The later BasicLit draws of a
+  frame were skipped (rt_core's new opt-in `SceneShader::every_draw`). Case 8.
+- Fixed: the rays' positions 1-5 km out are within a millimetre of the depth (were 0.36 m off, captures 3.9 m). The
+  pixels are unprojected in doubles (rt_positions_double; a GPU without doubles keeps the old path), the captures as
+  offsets from the eye (rt_core's new opt-in `Host::clip_relative`). Case 9.
+- New: Upscaling Debug View, Motion Vectors (the motion DLSS gets). Shared: AppendAa's opt-in `motion_view`.
+  `test/tw_romer_dlaa` case 4.
+- New: Bend's Softer Away from the Caster (Experimental, off) and Debug View (Shadows, + Screen Edge) are drawn and their
+  rows shown. Case 6.
+
+Test (ATN):
+1. Battle, RT/PT: hills' shadows and AO reach the far terrain, with no holes in long ground triangles.
+2. Battle, RT/PT, Ray Tracing Debug View Sun Shadows: buildings and props repeated across the map (walls, houses) all
+   cast shadows. Far shadows sit on their casters, with no shimmer at 1-5 km.
+3. DLSS, Upscaling Debug View Motion Vectors: colours while panning, black when still.
+4. Bend on, Softer Away from the Caster 1-2: shadows sharp at the feet, softer far from the caster. Debug View
+   Shadows / + Screen Edge at 100% and at 67%.
+
 ### Reset hunt (2026-11-14; built only, not run in game)
 
 The battle's two helper resets (ATN's 10:24 run; nvlddmkm 153 at 10:27:39 - 10:27:47, 0x887A0006 on the helper's device
@@ -61,11 +83,7 @@ Test (ATN; the v13 lines first):
 7. Battle at Resolution Scale 67%, RT/PT (Battle Objects Tested): sharp at 4K, the rays' shadows on the right places
    (Ray Tracing Debug View Sun Shadows lines up with the picture), ReShade.log's DLSS line.
 
-Not done:
-- Upscaling Debug View (motion vectors): the row sits in AppendAa's render-scale group this game doesn't use. Step: a
-  shared opt-in for the row alone; the shaders are the same.
-- Bend's Softer Away from the Caster and Debug View (rows hidden): their passes not dispatched here. Step: sss_bend_extended
-  + sss_soft and sss_debug as Attila's, a WARP case each.
+Not done (the Upscaling Debug View, Softer Away from the Caster and Bend's Debug View: done above):
 - Texture LOD Bias below 100%, units' object motion, units / banners / grass in the rays, static captures, smoke shadows:
   each needs a fact no trace shows yet. Step: one battle trace with `[renodx] FrameTraceReads=1` at 67%, and a siege
   with fire.

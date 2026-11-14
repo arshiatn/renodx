@@ -67,6 +67,9 @@ constexpr std::array<uint32_t, 21> LEFT_OUT_VERTEX_SHADERS = {
 // buildings). The same run's battle reset the helper's device twice within seconds of its start (its own terrain, trees,
 // props and alpha-tested plants in the scene, none of them in the campaign's); the others stay out unless
 // battle_scene lets them in.
+// The battle's terrain in the prepass (Terrain.hlsl VSMain, depth only; ATN's battle traces).
+constexpr uint32_t BATTLE_TERRAIN_VERTEX_SHADER = 0x7DD754DA;
+
 constexpr std::array<uint32_t, 4> TESTED_VERTEX_SHADERS = {
     0x8A00B527,  // AerialMap
     0xCDDA64F8,  // AerialMapTrees
@@ -88,6 +91,9 @@ struct Objects {
   ComPtr<ID3D11BlendState> multiply_red;   // the target's red x the source
   ComPtr<ID3D11BlendState> unshadow_red;   // the target's red x (1 - the source): an occlusion (contact_shadows.hpp)
   ComPtr<ID3D11RasterizerState> no_cull;
+  // rt_positions_double and its constants (none on a GPU without doubles: rt_core's float positions).
+  ComPtr<ID3D11ComputeShader> positions;
+  ComPtr<ID3D11Buffer> positions_constants;
   bool failed = false;
 };
 
@@ -97,6 +103,13 @@ struct State {
 };
 static State state;
 static bool installed = false;
+
+// rt_positions_double's constants.
+struct PositionConstants {
+  std::array<double, 16> inverse;  // the jittered view-projection's (rows act on row vectors)
+  std::array<float, 4> camera;
+  std::array<uint32_t, 4> size;
+};
 
 // A prepass draw into the scene's depth (no target, depth written), its vertex shader not left out: its pixel shader's
 // coverage (rt_core's SceneCoverage), captured every frame; an untested one's only as battle_scene lets it in.
@@ -128,6 +141,10 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
     return false;
   }
   shader->dynamic = true;
+  // Each draw its own capture: one mesh drawn with other object matrices (VS b7, outside rt_core's key) is other triangles.
+  shader->every_draw = true;
+  // The battle's terrain: its triangles longer than a part's 200 m stay in (the helper's MAX_EDGE, as for terrain).
+  shader->terrain = shader->hash == BATTLE_TERRAIN_VERTEX_SHADER;
   return true;
 }
 
@@ -189,7 +206,52 @@ inline bool MakeObjects(ID3D11Device* device) {
                    || FAILED(device->CreateBlendState(&blend_desc, objects.multiply_red.GetAddressOf()))
                    || FAILED(device->CreateBlendState(&unshadow_desc, objects.unshadow_red.GetAddressOf()))
                    || FAILED(device->CreateRasterizerState(&raster_desc, objects.no_cull.GetAddressOf()));
+  const D3D11_BUFFER_DESC positions_desc = {.ByteWidth = sizeof(PositionConstants), .Usage = D3D11_USAGE_DEFAULT,
+                                            .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  if (!objects.failed
+      && (FAILED(device->CreateComputeShader(__rt_positions_double.data(), __rt_positions_double.size(), nullptr, objects.positions.GetAddressOf()))
+          || FAILED(device->CreateBuffer(&positions_desc, nullptr, objects.positions_constants.GetAddressOf())))) {
+    objects.positions.Reset();
+  }
   return !objects.failed;
+}
+
+// The camera's rows for rt_core's Host::clip_relative (rows act on column vectors there): row `axis` the inverse's column
+// less its w column x the eye, in doubles (a clip position's offset from the eye, no division), row 3 the eye.
+inline std::array<float, 16> RelativeInverse(const dlaa::internal::Camera& camera) {
+  std::array<float, 16> relative = {};
+  for (size_t axis = 0; axis < 3; ++axis) {
+    for (size_t row = 0; row < 4; ++row) {
+      relative[(axis * 4) + row] =
+          static_cast<float>(camera.inverse_rows[(row * 4) + axis] - (camera.inverse_rows[(row * 4) + 3] * static_cast<double>(camera.position[axis])));
+    }
+    relative[12 + axis] = camera.position[axis];
+  }
+  relative[15] = 1.f;
+  return relative;
+}
+
+// The scene's `depth` (`size`) into `positions` and the camera into `sun`'s texel 1 as rt_core's rt_positions writes them,
+// unprojected in doubles (rt_positions_double); false: no doubles on this GPU (Trace leaves them to rt_positions).
+inline bool WritePositions(ID3D11DeviceContext1* native, ID3D11ShaderResourceView* depth, const dlaa::internal::Camera& camera,
+                           ID3D11UnorderedAccessView* positions, ID3D11UnorderedAccessView* sun, const std::array<UINT, 2>& size) {
+  const std::shared_lock lock(state.mutex);
+  const auto& objects = state.objects;
+  if (objects.failed || !objects.positions) return false;
+  const PositionConstants constants = {
+      .inverse = camera.inverse_rows,
+      .camera = {camera.position[0], camera.position[1], camera.position[2], 1.f},
+      .size = {size[0], size[1], 0, 0},
+  };
+  native->UpdateSubresource(objects.positions_constants.Get(), 0, nullptr, &constants, 0, 0);
+  const talesofarise::dlss::ContextStateScope scope(native, objects.private_state.Get());
+  const std::array<ID3D11UnorderedAccessView*, 2> outputs = {positions, sun};
+  native->CSSetShader(objects.positions.Get(), nullptr, 0);
+  native->CSSetConstantBuffers(0, 1, objects.positions_constants.GetAddressOf());
+  native->CSSetShaderResources(0, 1, &depth);
+  native->CSSetUnorderedAccessViews(0, 2, outputs.data(), nullptr);
+  native->Dispatch((size[0] + 7) / 8, (size[1] + 7) / 8, 1);
+  return true;
 }
 
 // The multiply draw (Multiply, contact_shadows.hpp; test/tw_romer_rays): `target`'s red times `visibility` (`occlusion`:
@@ -234,6 +296,8 @@ inline const twattila::rt_scene::Host HOST = {
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
     .depth_at_render_size = true,
+    // The captures' clip positions as offsets from the eye (rt_vertices with RT_VERTICES_RELATIVE: RelativeInverse).
+    .clip_relative = true,
 };
 
 // Before ASSAO's apply or the shadow mask's resolve (PS b8 bound: the frame constants): the sun from them, then this
@@ -261,7 +325,7 @@ inline void Trace(reshade::api::command_list* cmd_list) {
   if (!internal::MakeObjects(device.Get())) return;
   const auto& objects = state.objects;
   auto& bridge = twattila::dlaa_bridge::bridge;
-  if (!dlaa::PrepareBridge(device.Get(), depth_desc.Width, depth_desc.Height) || !bridge.rt_sun.uav) return;
+  if (!dlaa::PrepareBridge(device.Get(), depth_desc.Width, depth_desc.Height) || !bridge.rt_sun.uav || !bridge.rt_positions.uav) return;
   {
     const talesofarise::dlss::ContextStateScope scope(native1.Get(), objects.private_state.Get());
     native->CSSetShader(objects.sun.Get(), nullptr, 0);
@@ -270,11 +334,16 @@ inline void Trace(reshade::api::command_list* cmd_list) {
     native->Dispatch(1, 1, 1);
   }
   internal::trace_tick = GetTickCount64();
-  twattila::rt_scene::Trace(native, depth.Get(),
+  // The pixels' positions in doubles here (rt_core's in floats from the depth without doubles on this GPU); the captures'
+  // through the relative inverse (Host::clip_relative).
+  const bool positions_written = internal::WritePositions(native1.Get(), depth.Get(), camera, bridge.rt_positions.uav.Get(), bridge.rt_sun.uav.Get(),
+                                                          {depth_desc.Width, depth_desc.Height});
+  twattila::rt_scene::Trace(native, (positions_written ? nullptr : depth.Get()),
                             {
                                 .view_projection = dlaa::internal::Transposed(camera.jittered_view_projection),
                                 .inverse_view_projection = dlaa::internal::Transposed(camera.inverse_view_projection),
                                 .position = camera.position,
+                                .relative_inverse = internal::RelativeInverse(camera),
                             });
 }
 
