@@ -1335,6 +1335,13 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 // the terrain, tree branches and leaves, grass, sprite soldiers and the campaign's plants and trees (Attila's shaders, the
 // same hashes; their rows shaders Attila's), the far trees' cards (Thrones' 79DFD18D: Attila's inputs and view choice) and
 // the units (Thrones' own, one rounding apart from Attila's; their cut-outs as Attila's).
+// Light Through All Banners (Experimental, off): the unit banners (rigidtextureblend and its wind version, Attila's bytes:
+// the 3D UI's army_banner_flag models' material, in data.pack; no trace has drawn them: level B) as thin cloth. Attila's
+// flags the CPU moves (rigidcommon 347F3DD9 / D830AD9B from a dynamic vertex buffer) are left out: here every 347F3DD9
+// draw is dynamic and culls back faces, and AAE52888 (the twin of Attila's flag pixel shader) draws 561-820 times a battle
+// frame, so the rule would make every alpha-tested rigid object thin (th_drawn_names.py over the data run's traces).
+float rays_banner_light_row = 0.f;
+
 constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x289AC6F1, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x958620C8, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
@@ -1346,8 +1353,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x7E9E7121, .capture_shader = __rt_capture_terrain_custom_sm3, .terrain = true},
     {.hash = 0x347F3DD9, .capture_shader = __rt_capture_rigid_sm3, .rows_shader = __motion_record_rigid_sm3, .cut_out_shader = __rt_capture_rigid_cut_out_sm3},
     {.hash = 0xD830AD9B, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41, .cut_out_shader = __rt_capture_rigid_cut_out_sm41},
-    {.hash = 0xB06CB969, .capture_shader = __rt_capture_rigid_blend_sm3, .rows_shader = __motion_record_rigid_blend_sm3},
-    {.hash = 0x10FE7EBC, .capture_shader = __rt_capture_rigid_blend_wind_sm3, .rows_shader = __motion_record_rigid_blend_wind_sm3},
+    {.hash = 0xB06CB969, .capture_shader = __rt_capture_rigid_blend_sm3, .rows_shader = __motion_record_rigid_blend_sm3, .thin_row = &rays_banner_light_row},
+    {.hash = 0x10FE7EBC, .capture_shader = __rt_capture_rigid_blend_wind_sm3, .rows_shader = __motion_record_rigid_blend_wind_sm3, .thin_row = &rays_banner_light_row},
     // Rocks and cliffs blended into the terrain (rigidterrainblend): its depth pass (its material pass has no camera).
     {.hash = 0xE03E161C, .capture_shader = __rt_capture_rigid_terrain_blend_sm3, .rows_shader = __motion_record_rigid_terrain_blend_sm3},
     {.hash = 0x77B993FD, .capture_shader = __rt_capture_branch_sm3, .rows_shader = __motion_record_tree},
@@ -1458,8 +1465,15 @@ constexpr std::array<uint32_t, 13> GRASS_FADE_SHADERS = {
 constexpr std::array<uint32_t, 5> FOLIAGE_VERTEX_SHADERS = {0x46C616F0, 0x5B880546, 0xCABCB9D1, 0xF3741248, 0x01FA9CDE};
 constexpr std::array<uint32_t, 4> AFTER_FOLIAGE_VERTEX_SHADERS = {0x347F3DD9, 0xD830AD9B, 0xB06CB969, 0x10FE7EBC};
 
-// The screen-space shadows' Light Through Banners: cloth and sails (as the rays).
-constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{{.hash = 0x772B26FF}, {.hash = 0x902253FD}, {.hash = 0xD11B5EC7}, {.hash = 0x202FA188}}};
+// The screen-space shadows' Light Through Banners: cloth and sails, the unit banners with Light Through All Banners (as the rays).
+constexpr std::array<twattila::screen_space_shadows::ThinShader, 6> THIN_SHADERS = {{
+    {.hash = 0x772B26FF},
+    {.hash = 0x902253FD},
+    {.hash = 0xD11B5EC7},
+    {.hash = 0x202FA188},
+    {.hash = 0xB06CB969, .row = &rays_banner_light_row},
+    {.hash = 0x10FE7EBC, .row = &rays_banner_light_row},
+}};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
 // half-size passes drawn whole (their readers: view_share::WHOLE_TEXTURES).
@@ -2083,11 +2097,12 @@ void ConfigureAddon() {
 
   // Graphics 1 of 2's layout (twattila/graphics_page.hpp, as Attila's and Rome II's), ATN's RT/PT preset as the defaults of
   // what the methods leave, then Settings Mode's pages. Light Through Foliage, both Smoke Shadows, Water Caustics and the
-  // sprite soldiers' and far trees' ray-traced shadows Experimental (no run has shown them here).
+  // sprite soldiers' and far trees' ray-traced shadows Experimental (no run has shown them here); Light Through All Banners
+  // off (no trace has drawn the unit banners).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     if (setting->key == "RayTracedSmokeShadows" || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows"
-        || setting->key == "WaterCaustics") {
+        || setting->key == "WaterCaustics" || setting->key == "RayTracedBannerLight") {
       setting->default_value = 0.f;
     }
   }
@@ -2095,14 +2110,15 @@ void ConfigureAddon() {
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
                                              .smoke_strength = &smoke_map_sliders.strength, .smoke_softness = &smoke_map_sliders.softness,
-                                             .lod_bias_trilinear = &lod_bias_trilinear_row,
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row,
                                              .foliage_light_tested = false,
                                              .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
-                                             .water_caustics_tested = false});
+                                             .water_caustics_tested = false,
+                                             .banner_light_tested = false});
   // Faster Game CPU Code (engine_code_row) and Water Caustics Experimental, off.
   for (auto* setting : settings) {
     if (setting->key != "FasterGameCpuCode" && setting->key != "WaterCaustics") continue;
@@ -2184,7 +2200,8 @@ bool AttachAddon() {
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::InstallFoliage(FOLIAGE_VERTEX_SHADERS, AFTER_FOLIAGE_VERTEX_SHADERS);
-  // Light Through Banners: cloth and sails (as the rays), the G-buffer's colour squared (gamma 2).
+  // Light Through Banners: cloth and sails, the unit banners with Light Through All Banners (as the rays), the G-buffer's
+  // colour squared (gamma 2).
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
