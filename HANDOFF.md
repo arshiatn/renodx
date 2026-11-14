@@ -327,6 +327,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] Nsight frame boundary MERGED d60c2993 (include/nsight_graphics_sdk 0.9.2 Apache-2.0 + NOTICE, main.cpp
   NGFX_FrameBoundary_D3D12 only when Nsight is injected; all_modes 179 / 179); tools/tw/release_zip.py ships
   NSIGHT_GRAPHICS_SDK_LICENSE.txt with the helper. ReSTIR agent builds helper112 (+ Lean flag) next.
+- [x] Merged verification at dd484080 (06:30-06:45): both build lines exit 0; suites x86 + amd64 all PASS except
+  tw_native_context (test only: its direct OnPointLightDraw call lacked the registration data Pharaoh v67's gate reads;
+  fixed 48f1a03d, PASS) and tw_screen_space_shadows (Shogun 2 W7a / W7b changed sss00-02 bytes on purpose: agent proves
+  defaults = fc24dbce on WARP and updates the allowed list); static_checks 0 findings, scan_register nothing. Zombie
+  game processes (Rome2 x6, shogun2, Rome Remastered: 0 threads) left from ATN's session: runner + installer skip them.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
