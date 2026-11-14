@@ -275,6 +275,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] Troy v52 MERGED (Smoke Shadows, Experimental; A96ACBCB masks + B057851F cut-outs; billboards' shroud (fixes v51 cards
   vanishing with Far Tree Shadows); shared rt_core SceneShader::sun_slot default 0, twattila/light_count.hpp (Pharaoh's moved),
   Pharaoh's rt_particle_quads slots as defines: build32 Attila not built by the agent -> merged check). Agent resumed: water.
+- [x] WH2 v49 MERGED (SSR copy 7F23C472 BUG below 100% fixed, spot lights F550D451 / 0764179D in Torch and Fire Shadows,
+  Smoke Shadows 1FC776EF indirect, campaign trees 41147CD3, 7D979F60 out of view, Rays Replace via sun_replace_maps s1;
+  shared rt_scene LightInstances + InstallPointLights(instances), rt_core LocalLight.shadows_only + indirect smoke,
+  rt_particle_quads_instancing.hlsli: Pharaoh / Troy / WH2 GS headers byte-identical). Agent on 75914932 out of view.
+  Troy told: fires 643FC156 can go on top of the new rt_scene light reader.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
