@@ -1318,41 +1318,46 @@ constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
 }};
 
 // DLAA / DLSS object motion (twattila/anti_aliasing.hpp, as Attila's): the game's shaders whose things move on
-// their own and their motion versions (tools\tw\attila_motion\port_motion.py, GPU-checked by test_motion.py).
+// their own and their motion versions (tools\tw\attila_motion\port_motion.py, GPU-checked by test_motion.py), their
+// in-draw versions (motion_draw_*: Attila's where the game's shader is Attila's bytes; the units' and the old ocean's made
+// by make_wind_motion_vs.py `+draw` from this game's, the units one rounding line apart from Attila's) and the units' record
+// points (Attila's: the same inputs here). Object Motion in the Game's Draws (Experimental, off; read at start) turns the
+// in-draw versions and the records on; off: every moving draw drawn again, the units recorded from their redraw's pixels.
 using twattila::anti_aliasing::MotionKind;
+float motion_in_draw_row = 0.f;
 constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS = {{
-    {.hash = 0xF3741248, .motion_shader = __motion_grass00},
-    {.hash = 0x01FA9CDE, .motion_shader = __motion_grass01},
-    {.hash = 0x46C616F0, .motion_shader = __motion_leaf_sm3},
-    {.hash = 0x5B880546, .motion_shader = __motion_leaf_sm41},
-    {.hash = 0xCABCB9D1, .motion_shader = __motion_leaf_sm5},
-    {.hash = 0x77B993FD, .motion_shader = __motion_branch_sm3},
-    {.hash = 0xB8C3E83D, .motion_shader = __motion_branch_sm41},
-    {.hash = 0x6EEF4062, .motion_shader = __motion_branch_sm5},
-    {.hash = 0xDC9FBA4A, .motion_shader = __motion_unit_sm3, .kind = MotionKind::UNIT},
-    {.hash = 0x76682C60, .motion_shader = __motion_unit_4_bones_sm3, .kind = MotionKind::UNIT},
-    {.hash = 0x0D8C2A96, .motion_shader = __motion_unit_dismember_sm3, .kind = MotionKind::UNIT},
-    {.hash = 0x61DED001, .motion_shader = __motion_unit_4_bones_dismember_sm3, .kind = MotionKind::UNIT},
-    {.hash = 0x25839CC5, .motion_shader = __motion_unit_sm41, .kind = MotionKind::UNIT},
-    {.hash = 0xFF473BE8, .motion_shader = __motion_unit_4_bones_sm41, .kind = MotionKind::UNIT},
-    {.hash = 0xC9F9DBA5, .motion_shader = __motion_unit_dismember_sm41, .kind = MotionKind::UNIT},
-    {.hash = 0x65C0AE28, .motion_shader = __motion_unit_4_bones_dismember_sm41, .kind = MotionKind::UNIT},
-    {.hash = 0x347F3DD9, .motion_shader = __motion_rigid_sm3, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_sm3},
-    {.hash = 0xD830AD9B, .motion_shader = __motion_rigid_sm41, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_sm41},
-    {.hash = 0xB06CB969, .motion_shader = __motion_rigid_blend_sm3, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_blend_sm3},
-    {.hash = 0x10FE7EBC, .motion_shader = __motion_rigid_blend_wind_sm3, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_blend_wind_sm3},
-    {.hash = 0xF80C6EEE, .motion_shader = __motion_oldocean},
-    {.hash = 0x772B26FF, .motion_shader = __motion_cloth_sm3, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_cloth_sm3},
-    {.hash = 0x902253FD, .motion_shader = __motion_cloth_sm41, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_cloth_sm41},
-    {.hash = 0xD11B5EC7, .motion_shader = __motion_sail_sm3, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sm3},
-    {.hash = 0x202FA188, .motion_shader = __motion_sail_sm41, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sm41},
-    {.hash = 0xB2CCA764, .motion_shader = __motion_sail_symbol_sm3, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_symbol_sm3},
-    {.hash = 0xE9C34FAB, .motion_shader = __motion_sail_symbol_sm41, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_symbol_sm41},
-    {.hash = 0x8D0D26B9, .motion_shader = __motion_rope_sm3, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_rope_sm3},
-    {.hash = 0x9EECBA5D, .motion_shader = __motion_ocean_deep, .kind = MotionKind::HISTORY, .history_textures = 0b10},
-    {.hash = 0x97101A59, .motion_shader = __motion_ocean_shallow_sm3, .kind = MotionKind::HISTORY, .history_textures = 0b1010},
-    {.hash = 0xE0671FA4, .motion_shader = __motion_ocean_shallow_sm4, .kind = MotionKind::HISTORY, .history_textures = 0b1010},
-    {.hash = 0xF64EE8CB, .motion_shader = __motion_ocean_coast, .kind = MotionKind::HISTORY, .history_textures = 0b101010},
+    {.hash = 0xF3741248, .motion_shader = __motion_grass00, .draw_shader = __motion_draw_grass00},
+    {.hash = 0x01FA9CDE, .motion_shader = __motion_grass01, .draw_shader = __motion_draw_grass01},
+    {.hash = 0x46C616F0, .motion_shader = __motion_leaf_sm3, .draw_shader = __motion_draw_leaf_sm3},
+    {.hash = 0x5B880546, .motion_shader = __motion_leaf_sm41, .draw_shader = __motion_draw_leaf_sm41},
+    {.hash = 0xCABCB9D1, .motion_shader = __motion_leaf_sm5, .draw_shader = __motion_draw_leaf_sm5},
+    {.hash = 0x77B993FD, .motion_shader = __motion_branch_sm3, .draw_shader = __motion_draw_branch_sm3},
+    {.hash = 0xB8C3E83D, .motion_shader = __motion_branch_sm41, .draw_shader = __motion_draw_branch_sm41},
+    {.hash = 0x6EEF4062, .motion_shader = __motion_branch_sm5, .draw_shader = __motion_draw_branch_sm5},
+    {.hash = 0xDC9FBA4A, .motion_shader = __motion_unit_sm3, .kind = MotionKind::UNIT, .record_shader = __motion_unit_point, .draw_shader = __motion_draw_unit_sm3},
+    {.hash = 0x76682C60, .motion_shader = __motion_unit_4_bones_sm3, .kind = MotionKind::UNIT, .record_shader = __motion_unit_point_4_bones, .draw_shader = __motion_draw_unit_4_bones_sm3},
+    {.hash = 0x0D8C2A96, .motion_shader = __motion_unit_dismember_sm3, .kind = MotionKind::UNIT, .record_shader = __motion_unit_point, .draw_shader = __motion_draw_unit_dismember_sm3},
+    {.hash = 0x61DED001, .motion_shader = __motion_unit_4_bones_dismember_sm3, .kind = MotionKind::UNIT, .record_shader = __motion_unit_point_4_bones, .draw_shader = __motion_draw_unit_4_bones_dismember_sm3},
+    {.hash = 0x25839CC5, .motion_shader = __motion_unit_sm41, .kind = MotionKind::UNIT, .record_shader = __motion_unit_point, .draw_shader = __motion_draw_unit_sm41},
+    {.hash = 0xFF473BE8, .motion_shader = __motion_unit_4_bones_sm41, .kind = MotionKind::UNIT, .record_shader = __motion_unit_point_4_bones, .draw_shader = __motion_draw_unit_4_bones_sm41},
+    {.hash = 0xC9F9DBA5, .motion_shader = __motion_unit_dismember_sm41, .kind = MotionKind::UNIT, .record_shader = __motion_unit_point, .draw_shader = __motion_draw_unit_dismember_sm41},
+    {.hash = 0x65C0AE28, .motion_shader = __motion_unit_4_bones_dismember_sm41, .kind = MotionKind::UNIT, .record_shader = __motion_unit_point_4_bones, .draw_shader = __motion_draw_unit_4_bones_dismember_sm41},
+    {.hash = 0x347F3DD9, .motion_shader = __motion_rigid_sm3, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_sm3, .draw_shader = __motion_draw_rigid_sm3},
+    {.hash = 0xD830AD9B, .motion_shader = __motion_rigid_sm41, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_sm41, .draw_shader = __motion_draw_rigid_sm41},
+    {.hash = 0xB06CB969, .motion_shader = __motion_rigid_blend_sm3, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_blend_sm3, .draw_shader = __motion_draw_rigid_blend_sm3},
+    {.hash = 0x10FE7EBC, .motion_shader = __motion_rigid_blend_wind_sm3, .kind = MotionKind::RIGID, .record_shader = __motion_record_rigid_blend_wind_sm3, .draw_shader = __motion_draw_rigid_blend_wind_sm3},
+    {.hash = 0xF80C6EEE, .motion_shader = __motion_oldocean, .draw_shader = __motion_draw_oldocean},
+    {.hash = 0x772B26FF, .motion_shader = __motion_cloth_sm3, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_cloth_sm3, .draw_shader = __motion_draw_cloth_sm3},
+    {.hash = 0x902253FD, .motion_shader = __motion_cloth_sm41, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_cloth_sm41, .draw_shader = __motion_draw_cloth_sm41},
+    {.hash = 0xD11B5EC7, .motion_shader = __motion_sail_sm3, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sm3, .draw_shader = __motion_draw_sail_sm3},
+    {.hash = 0x202FA188, .motion_shader = __motion_sail_sm41, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sm41, .draw_shader = __motion_draw_sail_sm41},
+    {.hash = 0xB2CCA764, .motion_shader = __motion_sail_symbol_sm3, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_symbol_sm3, .draw_shader = __motion_draw_sail_symbol_sm3},
+    {.hash = 0xE9C34FAB, .motion_shader = __motion_sail_symbol_sm41, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_symbol_sm41, .draw_shader = __motion_draw_sail_symbol_sm41},
+    {.hash = 0x8D0D26B9, .motion_shader = __motion_rope_sm3, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_rope_sm3, .draw_shader = __motion_draw_rope_sm3},
+    {.hash = 0x9EECBA5D, .motion_shader = __motion_ocean_deep, .kind = MotionKind::HISTORY, .history_textures = 0b10, .draw_shader = __motion_draw_ocean_deep},
+    {.hash = 0x97101A59, .motion_shader = __motion_ocean_shallow_sm3, .kind = MotionKind::HISTORY, .history_textures = 0b1010, .draw_shader = __motion_draw_ocean_shallow_sm3},
+    {.hash = 0xE0671FA4, .motion_shader = __motion_ocean_shallow_sm4, .kind = MotionKind::HISTORY, .history_textures = 0b1010, .draw_shader = __motion_draw_ocean_shallow_sm4},
+    {.hash = 0xF64EE8CB, .motion_shader = __motion_ocean_coast, .kind = MotionKind::HISTORY, .history_textures = 0b101010, .draw_shader = __motion_draw_ocean_coast},
 }};
 
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl ps30 slm / slm_reflection (standard) and
@@ -2158,6 +2163,7 @@ void ConfigureAddon() {
                                              .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row,
+                                             .motion_in_draw = &motion_in_draw_row,
                                              .foliage_light_tested = false,
                                              .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
@@ -2254,6 +2260,17 @@ bool AttachAddon() {
   // The seas and the campaign lake as material waters (the patched copy swapped in at the draw): their bytes as created.
   renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::grass_fade::Install(GRASS_FADE_SHADERS);
+  // Object Motion in the Game's Draws off: the table without the in-draw versions and the units' record points (object
+  // motion keeps the rows' addresses: static).
+  static std::array<twattila::anti_aliasing::MotionShader, MOTION_SHADERS.size()> motion_shaders;
+  motion_shaders = MOTION_SHADERS;
+  const bool motion_in_draw = (motion_in_draw_row != 0.f);
+  if (!motion_in_draw) {
+    for (auto& shader : motion_shaders) {
+      shader.draw_shader = {};
+      if (shader.kind == MotionKind::UNIT) shader.record_shader = {};
+    }
+  }
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's camera b0, shadowmap b1,
   // lighting_VS_PS b2, shroud b3, directional_light b4): the SM5 sun draws (slm 1B10DDD8 / 21B916AF, skinlm 77586F30 /
@@ -2262,9 +2279,12 @@ bool AttachAddon() {
   // DE739661), the lit particles ACE33D5D, the units' VS (sm_4_1 25839CC5, sm_3_0 DC9FBA4A) and the campaign's shroud
   // plane 2860172D (tools/tw/thrones/plan_1114.md; names.tsv of the dump, none seen drawn yet). The units' and particles'
   // VS inputs at each draw, the particles' blend, instanced draws' counts apart.
-  twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
+  twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = motion_shaders,
                                                         .wind_pixel_shader = __motion_wind,
-                                                        .unit_pixel_shader = __motion_unit,
+                                                        .unit_pixel_shader = (motion_in_draw ? std::span<const uint8_t>(__motion_unit_recorded)
+                                                                                             : std::span<const uint8_t>(__motion_unit)),
+                                                        .unit_records_compute_shader = (motion_in_draw ? std::span<const uint8_t>(__motion_unit_records)
+                                                                                                       : std::span<const uint8_t>()),
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
                                    RENDER_SCALE_READS, RENDER_SCALE_VERTEX_SHADERS, FULL_DEPTH_SHADERS, twattila::view_share::WHOLE_TEXTURES,
