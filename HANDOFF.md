@@ -191,6 +191,16 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   code loads the add-on, stays in the frontend (wh1/runs/A_022108); Troy.exe direct: "Please use the Epic launcher"
   dialog (troy/runs/S1_022643, S2_023214). ATN's files the same. Their traces need ATN's Epic start with
   atn_trace_watch.ps1; agents continue offline + the 10-27 traces (build/ingame/traces). Skill 8fad0a89.
+- [x] Thrones round 1 MERGED 47b3c21a (graphics_page, sun draws, RT scene to v159 + cut-outs, shadow readers, water,
+  graphics rows, Faster Game CPU Code half floats, Smoke Shadows; shared Bindings smoke_map_tested / far_cards_tested and
+  RT_GRASS_HEIGHT_DISTANCE, defaults unchanged, consumers built, page dumps the same). Not done: Particle Resolution,
+  campaign census (no campaign trace).
+- [ ] FORGE'S POINTS (ATN 03:0x: "do the points that you mentioned too"): (1) PT image-quality scorer in the harness
+  (agent; tools/tw/quality/report.md); (2) Nsight Graphics 2026.4 downloaded with ATN's OK (NVIDIA-signed msi, 694 MB,
+  tools/nsight/download) and extracted, no system install (tools/nsight/NsightGraphics_2026.4); GPU counters are admin-only
+  (RmProfilingAdminOnly unset): ATN may allow them in the NVIDIA Control Panel; GPU Trace agent on the harness
+  (tools/tw/nsight); (3) unified ReSTIR DI + GI reservoir (worktree agent; plan tools/tw/restir_unified/plan.md, helper111
+  if feasible, Experimental row off = helper110 bit-identical).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
