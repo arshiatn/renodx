@@ -1745,7 +1745,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 8> CUT_OUT_MASKS = {{
 // The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do the far forest's
 // blocks (rigidtreebillboard vs40_main_block FE92BA2D): cards facing the camera with no shadow-pass draw, the forest's
 // shadow there the game's kept baked map.
-constexpr std::array<twattila::rt_scene::SceneShader, 27> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1764,6 +1764,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 27> SCENE_SHADERS = {{
     {.hash = 0xF704C8EC, .capture_shader = __rt_capture_leaf, .foliage = true},
     // Far trees' cards (rigidtreebillboard vs40_main): turned to the sun, their alpha at t3 (t0 dissolve, t1 dither).
     {.hash = 0x97C53219, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    // The campaign's far trees (campaigntreebillboards 0xCE5AA8D1, Troy's DF8EAF69 at 0.47 x: no shadow-pass draw, so only with Far
+    // Tree Shadows): turned to the sun, their alpha 7CB58C1B's t0 (below 0.5 discarded). Its vertex shader reads the shroud at t0.
+    {.hash = 0xCE5AA8D1, .capture_shader = __rt_capture_campaign_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .sun_slot = 1, .far_tree = true},
     // Cloth (phar_rigid_battle_cloth_wind) and flags (rigid_default_flag): sheets moved by the time and the wind, every frame.
     {.hash = 0x2F2A0E7E, .capture_shader = __rt_capture_cloth_wind, .dynamic = true, .thin = true},
     {.hash = 0x8DE94E2F, .capture_shader = __rt_capture_flag, .dynamic = true, .thin = true},
