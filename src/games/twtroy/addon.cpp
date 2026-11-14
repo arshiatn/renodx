@@ -53,6 +53,7 @@
 #include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_world_gs.h"
 #include "./rt_outside_view_leaf_gs.h"
+#include "./rt_particle_lights_gs.h"
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
@@ -1500,6 +1501,11 @@ constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADER
     {.hash = 0x563BA3E8},
     {.hash = 0x9C8987DD, .view_shift = 3, .sampler_shift = 2},
 }};
+// The night siege's fires in Torch and Fire Shadows: the particle lights' draw (ps_main_deferred_dynamic_light 643FC156, one
+// light volume an instance of F5CE48CC's mesh branch, every draw over the frame's whole sorted list: ATN's session 2, 60
+// indices x 642-1335 instances) holds its lights in the particle list, not in instances: streamed from the vertex shader's
+// outputs (rt_particle_lights_gs.h: the position, reach and colour shaders/particlelight00 draws with).
+constexpr twattila::rt_scene::LightInstances PARTICLE_LIGHTS = {.stream_shader = __rt_particle_lights};
 
 // Water Clarity and Water Caustics (twattila/water_effects.hpp): every water pixel shader of the dump (water_troy's battle and
 // campaign sea and lake, battle_river_troy; ps_5_0 and ps_4_1; Pharaoh's twins by name, no water props or big river here),
@@ -2153,6 +2159,8 @@ bool AttachAddon() {
   // The point lights (ATN's session 3: two instanced draws a frame, VS 6CFF8F83 with PS 143A02ED after the sun draw; 64-byte
   // instances, the light's position at POSITION2.xyz): shaders/pointlight00 reads the rays' bits (Pharaoh's fire02 form).
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x143A02ED});
+  // The fires: their particle lights' draws, the lights streamed (PARTICLE_LIGHTS); shaders/particlelight00 reads the bits.
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x643FC156}, twattila::rt_scene::internal::NO_LIGHT_CONSTANTS, &PARTICLE_LIGHTS);
   // Log Details' light count: the point lights and the night siege's fires (particle lights 643FC156, VS F5CE48CC: one draw,
   // 192k indices in ATN's session 2; Pharaoh's 5AD46115).
   twattila::light_count::Install(0x143A02ED, 0x643FC156);
