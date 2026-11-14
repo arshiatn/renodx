@@ -138,6 +138,7 @@ void ApplyResetPreset() {
       {"saturation_tpm", 1.f},
 
       // Active extra controls
+      {"bloom", 1.f},
       {"vignette", 1.f},
       {"distortion", 1.f},
       {"sharpening", 1.f},
@@ -989,6 +990,17 @@ void BuildRuntimeData() {
                "0 = off (default), 1 = SDR's.",
                1.f, 0.f),
 
+    new renodx::utils::settings::Setting{
+        .key = "bloom",
+        .binding = &shader_injection.bloom,
+        .default_value = 1.f,
+        .label = "Bloom",
+        .section = "Extra",
+        .tooltip = "The glow around bright lights. 0 = off, 1 = the game's.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
     new renodx::utils::settings::Setting{
         .key = "lensflare",
         .binding = &shader_injection.lensflare,
