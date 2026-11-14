@@ -589,8 +589,17 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   - [ ] render-list append, lock xadd per item 0x17ae370 / 3d0 / 420 (6.2 ms workers, 0.9 render at 8x; research first)
   - [ ] the game's introsort 0xda6b0 / 0xda4b0 (3.5 ms workers at maxed grass; only with an equal-key order proof)
   - [ ] the same functions in Rome II / Thrones, found by bytes
-  - [ ] ATN DECIDES (game runs): U4 number_of_threads 8 -> 6 / 4 A/B; heapfix prefetch-only A/B (the one change that could
-    go to its author; the parallel sort was 3.6 % slower CPU-bound).
+  - [ ] APPROVED by ATN 14:5x, owner hfp_ agent (game runs, Constantinople auto_save.replay, camera moved left at the start
+    so artillery, units, walls and shots are on screen): heapfix A = 7.0, P = prefetch-only sort, B = last night's parallel
+    sort, interleaved A,P,B in three scenarios (ATN's settings GPU-bound; CPU-bound rays off + Ultra Performance; everything
+    maxed in view: 8x units + the game's max unit LOD / buildings / grass / model LOD); then U4 number_of_threads 8 / 6 / 4
+    (A only, CPU-bound). The winner's patch + numbers go to tools/tw/heapfix/for_author_pf/ for ATN to send (never by us).
+    Quiet machine during measurement: tools/tw/quiet_run.lock (all running agents told: no builds / WARP / GPU jobs while it
+    exists) + gpu_job.lock + no compiler processes before each start.
+- [ ] Audit agent (aud_, read-only, ATN 14:5x "did the same happen to Nsight?"): every actionable line of the 2026-11-13 / 14
+  analysis reports (Nsight, CPU / GPU recordings, heapfix, draw redesign cost map, Rome Remastered hunt, round notes) against
+  HANDOFF, commits and the running agents' scopes; report tools/tw/round_notes/audit_1114.md. Each MISSING line becomes a
+  checkbox here with an owner.
 - [x] ATN 14:2x: the lessons of the last 16 h into the skill (tools/tw/round_notes/lessons_1114.md, 24 lines): SKILL.md
   "Nothing dropped" rule (every open line of a report = a checkbox with an owner; SHARED STEP; parity gate), Finishing a
   round + release.md 5 / 7 / 8 (Fable at the end, parity, reports read to the end), rows in testing / helper-fg-stability /
