@@ -625,7 +625,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     both add-ons built after the merge). ShadowCascades / Sharpening / Extra Sharpness WON'T with proof.
     - [ ] OPEN: ScreenSpaceShadowsColoured and ScreenSpaceShadowsBannerLight need the banners' own depth (Attila's
       InstallThin, inside twattila/screen_space_shadows.hpp): an opt-in there or a Shogun copy. Owner: PARITY ROUND 3
-  - [ ] PARITY ROUND 3 (one agent): the three lines above, then parity_check over every game at HEAD
+  - [ ] PARITY ROUND 3 (one agent, p3_, started ~21:30): the three lines above, then parity_check over every game at HEAD
+- [ ] CPU ROUND 4 (cpu4_, started ~21:30): the five game-code items + author patches (memfast 65-127 B, loopfetch site,
+  x87 block question); writes bench variants + a run plan; the coordinator runs the Constantinople bench after it
     - [ ] caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
       so parity_check settles Rome Remastered's casters itself. Owner: coordinator, after parity round 2 (shared script)
 - Was: SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
