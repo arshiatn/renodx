@@ -175,7 +175,7 @@ void GameMain(
   r3.zw = float2(0,0);
   r3.xy = t_wind_mask.Load(r3.xyz).xy;
   r0.w = 3 * motion_time;
-  r3.xy = r3.xy * sp_major_wave_frequency + r0.ww;
+  r3.xy = r3.xy * float2(sp_major_wave_frequency, sp_minor_wave_frequency) + r0.ww;  // cb3[0].yz (the decompile read one)
   r3.xy = sin(r3.xy);
   r0.w = dot(g_wind_vector.xy, g_wind_vector.xy);
   r0.w = rsqrt(r0.w);
