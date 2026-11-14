@@ -138,6 +138,7 @@ struct ShaderInjectData {
 
   float rt_ambient_alone;          // ssao00: 1 no ambient occlusion of its own (the ray-traced one replaces it), as Attila
   float grass_height_distance;     // grass vertex shaders: flat at 100 m x this (1: the game's), as Attila
+  float dof;                       // the depth of field's blur size x this (hdr_to_screen t05-t08, t13-t16; 1: the game's), as Attila
 };
 
 #define SI shader_injection

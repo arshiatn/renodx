@@ -107,6 +107,7 @@ void main(
   r0.z = -1.44269502 * r0.z;
   r0.z = exp2(r0.z);
   r0.z = 1 + -r0.z;
+  r0.z *= SI.dof;  // DOF slider: scales the blur size, 0 = off
   r2.xyzw = float4(0,0,0,0);
   r0.w = 0;
   r1.z = 0;
