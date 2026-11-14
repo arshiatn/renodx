@@ -272,6 +272,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   resumed: Nsight Graphics SDK 0.9.2 headers (Apache-2.0) + NGFX_FrameBoundary_D3D12 in dlaa_helper (ships in helper111,
   all_modes proof), capture + replay shader swaps for the reuse pass, Aftermath licence read (NVIDIA SDK licence:
   binaries only, no headers in the repo; dev-only opt-in crash dumps if the licence allows).
+- [x] Troy v52 MERGED (Smoke Shadows, Experimental; A96ACBCB masks + B057851F cut-outs; billboards' shroud (fixes v51 cards
+  vanishing with Far Tree Shadows); shared rt_core SceneShader::sun_slot default 0, twattila/light_count.hpp (Pharaoh's moved),
+  Pharaoh's rt_particle_quads slots as defines: build32 Attila not built by the agent -> merged check). Agent resumed: water.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
