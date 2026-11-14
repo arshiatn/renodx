@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,7 +28,11 @@
 // the first one below among them) or another build is left alone. A jump into the addon's own code page replaces the
 // first instruction(s) of each; the page is never freed (a thread can still be in it after the game's bytes are back).
 // RVAs are the Steam build's (1.6.0): there they are tried first, then the code section is searched.
+// Thrones of Britannia (Game::THRONES): the same three routines, its build's (internal::THRONES_BUILD).
 namespace twattila::engine_code {
+
+// Whose build of the routines to look for.
+enum class Game : uint8_t { ATTILA, THRONES };
 
 #if !defined(_WIN64)
 namespace internal {
@@ -198,6 +203,41 @@ constexpr std::array<uint8_t, 155> FMOD_STUB = {
     0xE9, 0x00, 0x00, 0x00, 0x00,              // jmp the dispatcher
 };
 
+// Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half and fmod the
+// same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots (control word 0x20,
+// float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the same steps; the CRT's
+// _matherr check compiled otherwise (eax decoded, not edx: the stub only calls it and tests al, eax ecx edx saved).
+constexpr uint32_t THRONES_TRUNCATION_RVA = 0x186aa3a;
+constexpr std::string_view THRONES_TRUNCATION =
+    "8B 84 24 7C 01 00 00 89 84 24 84 00 00 00 50 D9 44 24 24 9B D9 7C 24 20 8B 44 24 20 0D 00 0C 00 00 89 44 24 28 "
+    "D9 6C 24 28 DB 5C 24 1C D9 6C 24 20 58 0F B7 44 24 18 66 0F 6E C0 0F 5B C0 F3 0F 11 84 24";
+constexpr std::array<uint8_t, 44> THRONES_TRUNCATION_STUB = {
+    0x50,                                      // push eax
+    0x0F, 0xB7, 0x44, 0x24, 0x22,              // movzx eax, word ptr [esp + 0x22]  the slot's high half (fstcw leaves it)
+    0x9B, 0xD9, 0x7C, 0x24, 0x20,              // fstcw word ptr [esp + 0x20]
+    0xC1, 0xE0, 0x10,                          // shl eax, 0x10
+    0x66, 0x8B, 0x44, 0x24, 0x20,              // mov ax, word ptr [esp + 0x20]
+    0x0D, 0x00, 0x0C, 0x00, 0x00,              // or eax, 0xc00
+    0x89, 0x44, 0x24, 0x28,                    // mov dword ptr [esp + 0x28], eax
+    0xF3, 0x0F, 0x2C, 0x44, 0x24, 0x24,        // cvttss2si eax, dword ptr [esp + 0x24]
+    0x89, 0x44, 0x24, 0x1C,                    // mov dword ptr [esp + 0x1c], eax
+    0x58,                                      // pop eax
+    0xE9, 0x00, 0x00, 0x00, 0x00,              // jmp back (after the game's pop eax)
+};
+constexpr std::string_view THRONES_FMOD_MATHERR = "A1 ?? ?? ?? ?? 8B C8 33 05 ?? ?? ?? ?? 83 E1 1F D3 C8 85 C0 0F 95 C0 C3";
+
+// What differs between the games' builds.
+struct Build {
+  uint32_t truncation_rva;
+  std::string_view truncation;
+  std::span<const uint8_t> truncation_stub;
+  uint32_t half_rva;
+  uint32_t fmod_rva;
+  std::string_view fmod_matherr;
+};
+constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR};
+constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR};
+
 // Where each stub sits in the page.
 constexpr size_t TRUNCATION_PAGE = 0x000;
 constexpr size_t HALF_PAGE = 0x040;
@@ -279,7 +319,7 @@ inline bool PausedWrite(bool patch) {
 
 // Once: the routines found and checked, the stubs built in the page, each site's jump made (nothing written to the
 // game yet). One log line: which are faster, which left alone.
-inline void Prepare(HMODULE module) {
+inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   prepared = true;
   auto* base = reinterpret_cast<uint8_t*>(module);
   const auto* headers = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
@@ -316,15 +356,15 @@ inline void Prepare(HMODULE module) {
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
   std::array<uint8_t*, 3> stubs = {};
   if (page != nullptr) {
-    if (uint8_t* match = find(TRUNCATION, TRUNCATION_RVA); match != nullptr) {
+    if (uint8_t* match = find(build.truncation, build.truncation_rva); match != nullptr) {
       uint8_t* stub = page + TRUNCATION_PAGE;
-      std::memcpy(stub, TRUNCATION_STUB.data(), TRUNCATION_STUB.size());
-      uint8_t* stub_end = stub + TRUNCATION_STUB.size();
+      std::memcpy(stub, build.truncation_stub.data(), build.truncation_stub.size());
+      uint8_t* stub_end = stub + build.truncation_stub.size();
       write32(stub_end - 4, relative(stub_end, match + TRUNCATION_RESUME));
       sites[0].at = match + TRUNCATION_SITE;
       stubs[0] = stub;
     }
-    if (uint8_t* match = find(HALF, HALF_RVA); match != nullptr) {
+    if (uint8_t* match = find(HALF, build.half_rva); match != nullptr) {
       uint8_t* stub = page + HALF_PAGE;
       std::memcpy(stub, HALF_STUB.data(), HALF_STUB.size());
       std::memcpy(stub + HALF_STUB.size(), match, HALF_SIZE);
@@ -332,7 +372,7 @@ inline void Prepare(HMODULE module) {
       stubs[1] = stub;
     }
     // fmod only with every piece of the CRT the stub stands in for as expected.
-    if (uint8_t* match = find(FMOD, FMOD_RVA); match != nullptr) {
+    if (uint8_t* match = find(FMOD, build.fmod_rva); match != nullptr) {
       const uint8_t* dispatch = target(match + 5);
       const uint8_t* classify = (holds(dispatch, FMOD_DISPATCH) ? target(dispatch + FMOD_DISPATCH_CLASSIFY) : nullptr);
       const uint8_t* finish = (classify != nullptr ? target(dispatch + FMOD_DISPATCH_FINISH) : nullptr);
@@ -340,7 +380,7 @@ inline void Prepare(HMODULE module) {
       const uint32_t table = read32(match + 1);
       const auto* table_bytes = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(table));
       bool expected = classify != nullptr && holds(classify, FMOD_CLASSIFY) && holds(finish, FMOD_FINISH)
-                      && holds(matherr_check, FMOD_MATHERR);
+                      && holds(matherr_check, build.fmod_matherr);
       if (expected) {
         // The table (in the module's data): its control word kind (+0xe) and its entry for two normal numbers (+0x10);
         // the fxam classes of a normal number of either sign: 0 (that entry).
@@ -382,13 +422,13 @@ inline void Prepare(HMODULE module) {
 
 }  // namespace internal
 
-// Every present: `enabled` (the row) once empire.retail.dll is loaded, the first time on prepared; then the jumps go
-// in or the game's bytes back, while no thread stands inside them.
-inline void Update(bool enabled) {
+// Every present: `enabled` (the row) once empire.retail.dll is loaded, the first time on prepared (`game`'s build); then
+// the jumps go in or the game's bytes back, while no thread stands inside them.
+inline void Update(bool enabled, Game game = Game::ATTILA) {
   if (enabled && !internal::prepared) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
-    internal::Prepare(module);
+    internal::Prepare(module, game == Game::THRONES ? internal::THRONES_BUILD : internal::ATTILA_BUILD);
   }
   if (enabled != internal::asked) {
     internal::asked = enabled;
@@ -419,7 +459,7 @@ inline void Uninstall() {
 
 #else
 
-inline void Update(bool) {}
+inline void Update(bool, Game = Game::ATTILA) {}
 inline void Uninstall() {}
 
 #endif
