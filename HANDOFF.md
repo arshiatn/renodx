@@ -239,6 +239,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   baseline (rRMSE: sun RR 3.7, RTAO RR 1.03, PT AO ReSTIR + RR 2.19, torch RR + importance 1.40, Steady + RR 3.29).
   FINDING for ATN: PT AO with REBLUR under RR is 4.4x worse than RR alone and grows while the camera stands still (blotches).
   all_modes 179 / 179 (all_modes_iq1114.txt). quality.sh compare <helperA> <helperB> for helper111.
+- [x] Rome Remastered v11 MERGED 6fccf345 (frame generation + Reflex via DLAA's HUD-less point, Screen-Space Shadows =
+  twattila sss_bend into the mask, Ray Tracing Debug View, profile button; all Experimental, off; tw_romer_dlaa + rays PASS,
+  case 6 proves the sun sign). Test list: tools/tw/round_notes/tests_1114.md.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
