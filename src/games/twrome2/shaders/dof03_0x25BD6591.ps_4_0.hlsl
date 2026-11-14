@@ -54,6 +54,8 @@ void main(
   r0.xy = g_vpos_texel_offset + v0.xy;
   r0.xy = g_screen_size.zw * r0.xy;
   r1.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, 0).yzxw;
+  // Below 100% this NDC needs no share (as highlightindicator00's): it only gives the view depth, through inv_projection's
+  // z / w columns, whose x / y terms are 0 for any (jittered) perspective (ATN's 50% trace A1_01: c19.xy, c20.xy 0).
   r1.xy = r0.xy * float2(2,-2) + float2(-1,1);
   r0.xyzw = input_sampler.SampleLevel(input_sampler_s, r0.xy, r0.y).xyzw;
   o0.xyz = r0.xyz;
