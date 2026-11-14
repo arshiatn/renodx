@@ -1257,7 +1257,7 @@ float engine_code_row = 1.f;
 float lights_in_bounce_row = 0.f;
 float light_ratio_row = 0.f;
 
-constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x2FF76986, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0x6ECB6C09, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1297,9 +1297,14 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0xD11B5EC7, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
     // Sprite soldiers: cards facing the sun, cut out by their diffuse map's alpha.
+    // Each with its Shader Model 4.1 / 5 builds (E42AE09F; 398BD3DF, B2585ABA): the same instructions, only the version
+    // token and dcl_globalFlags differ (tools/tw/attila_gaps/atg_cards_bytes.txt; no trace drew them: level B).
     {.hash = 0x1B9E7692, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
+    {.hash = 0xE42AE09F, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
     // Far trees' billboards: the same, each showing the tree from the sun.
     {.hash = 0x4D50E1C7, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    {.hash = 0x398BD3DF, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    {.hash = 0xB2585ABA, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
     // The campaign's plants and forests, and its trees: placed like the battle's, no wind.
     {.hash = 0x924D7813, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
     {.hash = 0x819A414C, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
