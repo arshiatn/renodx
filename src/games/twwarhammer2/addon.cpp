@@ -50,6 +50,7 @@
 #include "../twattila/water_effects.hpp"
 #include "./more_tests.h"
 #include "./rt_outside_view_card_split_gs.h"
+#include "./rt_outside_view_world_kept_gs.h"
 #include "./rt_outside_view_world_uv_gs.h"
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
@@ -405,6 +406,8 @@ float rays_skip_cascades_row = 0.f;
 // View for its terrain (Experimental, off: no game run has shown them yet).
 float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
+// The scene's families drawn in no trace (level B: SCENE_SHADERS' held_row), Experimental, off.
+float rays_untraced_casters_row = 0.f;
 
 #define FrameCopyShader(value)              \
   {                                         \
@@ -1578,9 +1581,9 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 24> MOTION_SHADERS =
 // the G-buffer's channels 1-4 from their first slot.
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_port.py): the main view's terrain, rigid objects, tree
 // branches and leaves and units, and their capture versions (world positions; leaves also UVs).
-// The floating unit banners (rigidtextureblend, 2 bones, 7DF335FF) stay out: in battle the game gives them no shadow (no atlas
-// draw in any battle trace). The campaign draws two of them into its atlas (ATN's traces 03-14): not held yet (its world is
-// its TEXCOORD0, but the outside-view shader drops what is in the view, which the main pass holds for the others).
+// The floating unit banners (rigidtextureblend, 2 bones, 7DF335FF) stay out of the main pass: in battle the game gives them no
+// shadow (no atlas draw in any battle trace). The campaign draws two of them into its atlas (ATN's traces 03-14): held from
+// there alone (a cascade_keep row below, every triangle kept).
 // 16AFAF14's alpha-tested materials (sorted): each discards where its diffuse map's alpha (x the instance's fade, v6.w) is
 // below 0.5 at TEXCOORD1.xy (the vertex's TEXCOORD0, the VS's o2), the helper's cut-out; captured with that UV
 // (rt_capture_rigid_standard_cut_out). Drawn in ATN's traces and the data run's (tools/tw/wh2/runs): fences, palms and props
@@ -1593,7 +1596,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 5> CUT_OUT_MASKS = {{
     {.pixel_shader = 0xD960DC10},             // rigidambientmapmesh ps40_gbuffer_alpha_test
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 29> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
     {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
     {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
@@ -1619,6 +1622,13 @@ constexpr std::array<twattila::rt_scene::SceneShader, 29> SCENE_SHADERS = {{
     // no scene before), every frame as drawn (their wind and their lean toward a high camera), cut out by their diffuse map's
     // alpha (F5C1006F: t1.w below 0.5).
     {.hash = 0x41147CD3, .capture_shader = __rt_capture_campaign_vegetation, .dynamic = true, .foliage = true, .mask_slot = 1},
+    // Opaque families drawn in no trace (the whole-dump caster census, level B), with Rarer Units and Props in the Rays on:
+    // weighted2_liquid and weighted4_animated_overlay units, rigid_character_prop_liquid and rigid_wind_worldspace props
+    // (capture versions by tools/tw/wh2/par_w2_rt_port.py; their world against the game's: rt_capture_test.py).
+    {.hash = 0x3FCE3B26, .capture_shader = __rt_capture_unit_liquid, .dynamic = true, .held_row = &rays_untraced_casters_row},
+    {.hash = 0x772F13E0, .capture_shader = __rt_capture_unit_animated_overlay, .dynamic = true, .held_row = &rays_untraced_casters_row},
+    {.hash = 0xA3631EC0, .capture_shader = __rt_capture_rigid_character_prop_liquid, .held_row = &rays_untraced_casters_row},
+    {.hash = 0xFF36EFA5, .capture_shader = __rt_capture_rigid_wind_worldspace, .held_row = &rays_untraced_casters_row},
     // The shadow pass's casters into the atlas (the data run's census: drawn there only), what is out of the main view (Pharaoh's
     // rt_outside_view: each shadow vertex shader keeps its view-projection at cb0[9-12] and writes the world it multiplies):
     // rigidterrain vs41_shadow_new and fx__rigidcommon vs40_shadow (TEXCOORD0 the world), fx__weighted vs40_shadow and its
@@ -1636,6 +1646,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 29> SCENE_SHADERS = {{
     {.hash = 0x3FDF97B2, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0x100F52AF, .dynamic = true, .cascade_keep = __rt_outside_view_branch},
     {.hash = 0x00326F05, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_leaf},
+    // The campaign's banners (7DF335FF: two draws into the atlas in ATN's campaign traces 03-14, none in battle; one vertex shader
+    // for its main and shadow passes, o0 = r1 . cb0[9-12], TEXCOORD0 = r1, fxc /dumpbin): from the shadow pass alone, every
+    // triangle kept (RT_KEEP_IN_VIEW: no main-pass row holds them), as the game shadows them there.
+    {.hash = 0x7DF335FF, .dynamic = true, .cascade_keep = __rt_outside_view_world_kept},
     // The campaign's trees and plants (rigidcampaignvegetation vs40_shadow; ATN's 2026-11-14 campaign traces: 49 draws a frame,
     // the shadow pass's only): TEXCOORD0 the world, TEXCOORD1 the UV of 5906CF6E's t0 test (its diffuse map's alpha below 0.5).
     {.hash = 0x7D979F60, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
@@ -2270,6 +2284,17 @@ void ConfigureAddon() {
       .min = 0.25f,
       .max = 16.f,
       .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedUntracedCasters",
+      .binding = &rays_untraced_casters_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Rarer Units and Props in the Rays (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Units with liquid or animated surfaces and liquid or wind-blown props also cast ray-traced shadows.\n"
+                 "Not yet seen in game.",
+      .is_visible = [] { return twattila::dlaa_bridge::bridge.ray_tracing; },
   });
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterCaustics",

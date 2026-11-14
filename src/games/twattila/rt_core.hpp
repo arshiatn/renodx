@@ -319,6 +319,8 @@ struct SceneShader {
   // A mesh's identity in place of `hash`: shaders that draw one mesh (the main pass's and the shadow pass's) share its BLAS and its
   // instances (0: its hash).
   uint32_t key_family = 0;
+  // In the scene only while this row is on (null: always): a family drawn in no trace (level B) behind an Experimental row.
+  const float* held_row = nullptr;
 };
 
 // The main view's camera as ray tracing needs it: its view-projection and inverse (rows acting on column vectors; with
@@ -1256,6 +1258,7 @@ void Capture(Context& command, const SceneShader& shader) {
   // and shown by the other raced in rt_place's dedupe (ATN's LotR grass: shadows flickering near the camera). Cloth and sails
   // too, should the game prefill them: their texels paid twice for one sheet.
   if (shader.grass && !GrassMet()) return;
+  if (shader.held_row != nullptr && *shader.held_row == 0.f) return;
   bool thin = shader.thin || (shader.thin_row != nullptr && *shader.thin_row != 0.f);
   const bool cascade_draw = !shader.cascade_keep.empty();
   if (cascade_draw && !(shader.terrain ? runtime.settings.terrain_outside_view : runtime.settings.casters_out_of_view)) return;
