@@ -511,6 +511,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Round 3 MERGED e73b72c5: the 4 sm4 / 4.1 SSR builds fixed below 100 % (suite test/tw_thrones_ssr), far card builds
   98AA2F91 / A86B4247 + sprite build E42AE09F held; 43 unreplaced builds listed (Attila's bytes too: particles in other shader
   models / shadow methods, point lights with point shadows, MSAA builds, bloom tone mappers). Thrones agent DONE.
+- [ ] ATN ~13:3x: the per-draw handling REDESIGN (OnDrawIndexed 2.2 ms a frame in cpl2), then a FABLE 5.2 HIGH review of that
+  change alone (two perspectives; the end-of-batch whole-tree review stays). Agent drw_ phase 1 (design + draw-stream replay
+  oracle + cost map, no src code) started; phase 2 (code) only after the Attila gaps + Nsight smoke work is merged; proof =
+  identical decisions per draw over every recorded trace, x86 + amd64, + the suites.
 - [ ] ATTILA GAPS agent started (atg_, worktree): share Thrones' ssr02-05 with Attila, E42AE09F / far card builds held, the 11
   other vfx builds, MSAA battlefog + point lights, tessellated rigid 9AEE504E (opt-in rt_core), ropes / sail symbols.
 - [x] Rome Remastered parity round MERGED c0a61b2d (table tools/tw/romeremastered/parity_1114.md: 47 features, 13 have / 3 do
