@@ -978,6 +978,17 @@ void BuildRuntimeData() {
                1.f, 0.f),
 
     new renodx::utils::settings::Setting{
+        .key = "bloom",
+        .binding = &shader_injection.bloom,
+        .default_value = 1.f,
+        .label = "Bloom",
+        .section = "Extra",
+        .tooltip = "Bloom multiplier.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
         .key = "lensflare",
         .binding = &shader_injection.lensflare,
         .default_value = 1.f,

@@ -96,6 +96,12 @@
 //    the rays: the whole reflection the rays' (their light x their share + the cubes' x the rest, over flags 1's rays minus
 //    the cubes: the same factor at every pixel), the march's hits and light mips unread. CONTROLS: the bed's G-buffer
 //    (part 9's gloss 0.3) gives other guides; without the rays the march's inputs change the water's reflection.
+// 20. Bloom (shader_injection.bloom x the tone mappers' bloom add): our t00 (D275C403) and t09 (7759B956) (the build's
+//    embed/*.cso) drawn as part 8 draws, the bloom texture uniform (B-spline and bilinear taps the same there), the black
+//    and white points 0 / 4: in the game's path (hdr 0) Bloom 1 with bloom 0.3 equals the game's bytes with 0.3, Bloom 0.5
+//    the game's bytes with 0.15 (within the S-curve LUT's 8-bit filter step, 1e-3); in HDR Bloom 0.5 with 0.3 bit-identical
+//    to Bloom 1 with 0.15. CONTROLS: the game's bytes with 0.15 differ from 0.3 past that step; HDR Bloom 1 with 0.3
+//    differs from 0.15.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -1226,6 +1232,9 @@ struct ForwardScene {
   float atlas = 1.f;       // the shadow map's depth
   float occlusion = -1.f;  // t49 (< 0: unbound)
   float caustics = -1.f;   // t51 (< 0: unbound)
+  std::vector<NamedConstant> constants = {};                // after FORWARD_CONSTANTS, by name
+  std::vector<std::pair<std::string, Float4>> textures = {};  // 2D textures by name: uniform
+  const ShaderInjectData* injection = nullptr;               // cb13 (nullptr: unbound)
 };
 
 // A forward pixel shader's bytes drawn over 4 x 4 pixels: its inputs from a vertex shader made from its input signature
@@ -1279,10 +1288,12 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
       for (UINT variable = 0; variable < buffer_desc.Variables; ++variable) {
         D3D11_SHADER_VARIABLE_DESC variable_desc = {};
         constants->GetVariableByIndex(variable)->GetDesc(&variable_desc);
-        for (const auto& constant : FORWARD_CONSTANTS) {
-          const size_t at = (variable_desc.StartOffset / 4) + constant.at;
-          if (std::strcmp(constant.name, variable_desc.Name) == 0 && at + constant.values.size() <= data.size()) {
-            std::ranges::copy(constant.values, data.begin() + static_cast<ptrdiff_t>(at));
+        for (const auto& constants : {std::cref(FORWARD_CONSTANTS), std::cref(scene.constants)}) {
+          for (const auto& constant : constants.get()) {
+            const size_t at = (variable_desc.StartOffset / 4) + constant.at;
+            if (std::strcmp(constant.name, variable_desc.Name) == 0 && at + constant.values.size() <= data.size()) {
+              std::ranges::copy(constant.values, data.begin() + static_cast<ptrdiff_t>(at));
+            }
           }
         }
         const auto at = data.begin() + static_cast<ptrdiff_t>(variable_desc.StartOffset / 4);
@@ -1333,6 +1344,10 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
       views.emplace_back();
       device->CreateShaderResourceView(texture.Get(), nullptr, views.back().GetAddressOf());
       context->PSSetShaderResources(bind.BindPoint, 1, views.back().GetAddressOf());
+    } else if (const auto uniform = std::ranges::find(scene.textures, name, &std::pair<std::string, Float4>::first);
+               bind.Type == D3D_SIT_TEXTURE && bind.Dimension == D3D_SRV_DIMENSION_TEXTURE2D && uniform != scene.textures.end()) {
+      views.push_back(View(4, 4, std::vector<Float4>(16, uniform->second)));
+      context->PSSetShaderResources(bind.BindPoint, 1, views.back().GetAddressOf());
     } else if (bind.Type == D3D_SIT_TEXTURE) {
       std::vector<Float4> texels(16 * 6);
       for (size_t texel = 0; texel < texels.size(); ++texel) {
@@ -1360,6 +1375,12 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
   if (scene.caustics >= 0.f) {
     views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.caustics, scene.caustics, scene.caustics, scene.caustics})));
     context->PSSetShaderResources(water_patch::WATER_CAUSTICS_SLOT, 1, views.back().GetAddressOf());
+  }
+  if (scene.injection != nullptr) {
+    std::vector<uint8_t> injection_bytes((sizeof(ShaderInjectData) + 15) & ~size_t{15});
+    std::memcpy(injection_bytes.data(), scene.injection, sizeof(ShaderInjectData));
+    buffers.push_back(Constants(injection_bytes.data(), static_cast<UINT>(injection_bytes.size())));
+    context->PSSetConstantBuffers(13, 1, buffers.back().GetAddressOf());
   }
   std::vector<ComPtr<ID3D11Texture2D>> targets;
   std::vector<ID3D11RenderTargetView*> rtvs;
@@ -1859,6 +1880,62 @@ static void TestWaterPass(const std::string& games, const std::string& dump) {
               "unit normal: %d misses (CONTROL the bed's %d differ); resolve on water under the rays the whole reflection: %d misses of %zu, the march "
               "read in %d (CONTROL without the rays: %d differ)\n",
               PIXELS - static_cast<size_t>(gbuffer_misses), PIXELS, guide_misses, bed_differ, whole_misses, texels, march_read, march_control);
+}
+
+static void TestBloom(const std::string& root, const std::string& dump) {
+  for (const uint32_t hash : {0xD275C403u, 0x7759B956u}) {
+    char name[16];
+    std::snprintf(name, sizeof(name), "%08X", hash);
+    const auto game = GameBytes(dump, hash);
+    const auto ours = Bytes(root + "/build/twwarhammer.include/embed/0x" + name + ".cso");
+    ShaderInjectData sdr = {};
+    sdr.bloom = 1.f;
+    ShaderInjectData sdr_half = sdr;
+    sdr_half.bloom = 0.5f;
+    ShaderInjectData hdr = {};
+    hdr.hdr = 1.f;
+    hdr.peak_white_nits = 1000.f;
+    hdr.diffuse_white_nits = 203.f;
+    hdr.graphics_white_nits = 203.f;
+    hdr.bloom = 1.f;
+    ShaderInjectData hdr_half = hdr;
+    hdr_half.bloom = 0.5f;
+    // The black and white points 0 / 4 (t00's texture, t09's constants), the whiteout past the white point.
+    const auto scene = [](float bloom, const ShaderInjectData* injection) {
+      return ForwardScene{.constants = {{"g_luma_black_point", 0, {0.f}}, {"g_luma_white_point", 0, {4.f}}, {"g_whiteout_start", 0, {1.f}},
+                                        {"g_whiteout_end", 0, {2.f}}},
+                          .textures = {{"g_hdr_rgb_bloom_texture", Float4{bloom, bloom, bloom, 1.f}},
+                                       {"g_black_and_white_points", Float4{0.f, 4.f, 0.f, 0.f}}},
+                          .injection = injection};
+    };
+    const auto game_full = DrawForward(game, game, scene(0.3f, nullptr));
+    const auto game_half = DrawForward(game, game, scene(0.15f, nullptr));
+    const auto ours_full = DrawForward(ours, game, scene(0.3f, &sdr));
+    const auto ours_half = DrawForward(ours, game, scene(0.3f, &sdr_half));
+    const auto hdr_row = DrawForward(ours, game, scene(0.3f, &hdr_half));
+    const auto hdr_texture = DrawForward(ours, game, scene(0.15f, &hdr));
+    const auto hdr_full = DrawForward(ours, game, scene(0.3f, &hdr));
+    const bool drawn = !game_full.empty() && game_full.size() == ours_full.size() && game_full.size() == hdr_full.size();
+    int misses = 0;
+    int control = 0;
+    int hdr_control = 0;
+    for (size_t at = 0; drawn && at < game_full.size(); ++at) {
+      for (size_t channel = 0; channel < 4; ++channel) {
+        // Within the S-curve's filter step: WARP's linear taps weigh with 8-bit fractions (this LUT's texels 0.05 apart: 2e-4),
+        // and our B-spline bloom tap differs from the game's bilinear one by rounding.
+        misses += (Near(ours_full[at][channel], game_full[at][channel], 1e-3f) && Near(ours_half[at][channel], game_half[at][channel], 1e-3f)) ? 0 : 1;
+      }
+      control += Near(game_full[at][0], game_half[at][0], 1e-3f) ? 0 : 1;
+      hdr_control += std::memcmp(hdr_full[at].data(), hdr_texture[at].data(), sizeof(Float4)) != 0 ? 1 : 0;
+    }
+    const bool hdr_same = drawn && std::memcmp(hdr_row.data(), hdr_texture.data(), hdr_row.size() * sizeof(Float4)) == 0
+                          && std::ranges::all_of(hdr_row, [](const Float4& texel) { return std::isfinite(texel[0]); });
+    CHECK(drawn && misses == 0 && hdr_same, "bloom %s: %d misses against the game's bytes, HDR row = texture %d", name, misses, hdr_same);
+    CHECK(control >= 8 && hdr_control >= 8, "bloom %s CONTROLS: the game's %d, HDR %d differ", name, control, hdr_control);
+    std::printf("bloom: %s Bloom 1 / 0.5 against the game's bytes with the bloom 0.3 / 0.15: %d misses of %zu; HDR Bloom 0.5 = bloom 0.15 bit for bit "
+                "%s; CONTROLS the game's 0.15 vs 0.3 %d, HDR %d of %zu differ\n",
+                name, misses, game_full.size() * 4, hdr_same ? "yes" : "NO", control, hdr_control, game_full.size());
+  }
 }
 
 static void TestAoAlone(const std::string& games, const std::string& dump) {
@@ -2630,6 +2707,7 @@ int main(int argc, char** argv) {
   TestMarkers(argv[1], argv[2]);
   TestGrassHeight(argv[1], argv[2]);
   TestWaterPass(games, argv[2]);
+  TestBloom(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

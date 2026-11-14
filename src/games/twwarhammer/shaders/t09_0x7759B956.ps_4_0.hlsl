@@ -86,7 +86,7 @@ void main(
   r1.xy = g_vpos_texel_offset + v0.xy;
   r1.xy = g_screen_size.zw * r1.xy;
   r1.xyzw = g_hdr_rgb_texture.SampleLevel(g_hdr_rgb_texture_sampler_s, r1.xy, 0).xyzw;
-  r0.xyz = r1.xyz + r0.xyz;
+  r0.xyz = r1.xyz + r0.xyz * SI.bloom;  // RenoDX: Bloom (1: the game's)
   o0.w = r1.w;
   r0.w = max(r0.x, r0.y);
   r0.w = max(r0.w, r0.z);
