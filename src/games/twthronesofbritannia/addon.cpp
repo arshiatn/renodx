@@ -1491,6 +1491,14 @@ constexpr std::array<twattila::view_share::RegionRead, 6> RENDER_SCALE_READS = {
     {.shader_hash = 0x820D451B, .slots = 0b11, .whole = true},  // water refraction (3 channels)
     {.shader_hash = 0x25944B2D, .slots = 0b1, .whole = true},   // water refraction (4 channels)
 }};
+// The game's vertex shaders the addon replaces with ones that read the render share below 100% (cb12), as Attila's.
+constexpr std::array<uint32_t, 1> RENDER_SCALE_VERTEX_SHADERS = {
+    0x7C04E880,  // lens flare: the sun's occlusion counted at the render size (lensflare04)
+};
+// The game's 3D sprites (sprite.hlsl vertex_3d*: the unit markers) drawn against the scene's depth after the tone mapper
+// (S1 trace_50a l.3406: 2823783C on the 3840 x 2160 output, the depth 0x16009124 holding DLSS's render size): the depth
+// stretched to the display's size for them below 100%, as Attila's (the same four hashes; the other three in the dump).
+constexpr std::array<uint32_t, 4> FULL_DEPTH_SHADERS = {0x2823783C, 0xF1CA8DC6, 0x59A0821D, 0x23C7B5C0};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {{
     {.shader_hash = 0x1B10DDD8, .standard = true},
@@ -2226,7 +2234,7 @@ bool AttachAddon() {
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   RENDER_SCALE_READS, {}, {}, twattila::view_share::WHOLE_TEXTURES,
+                                   RENDER_SCALE_READS, RENDER_SCALE_VERTEX_SHADERS, FULL_DEPTH_SHADERS, twattila::view_share::WHOLE_TEXTURES,
                                    {
                                        .value_hashes = {0x1B10DDD8, 0x21B916AF, 0x77586F30, 0x5E7DFFF2, 0x8BF6B657, 0x55D276C9, 0xBD389EF1,
                                                         0xA6A0F887, 0x6426B042, 0xC9FBACCB, 0xF7E011A4, 0xDE739661, 0xACE33D5D, 0x25839CC5,
