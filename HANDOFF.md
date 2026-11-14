@@ -399,7 +399,15 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   smoke on screen): Time Each Pass x3, profile 30 s, PresentMon 30 s, Log Details, WPR CPU+GPU ETL 20 s (3.0 GB); game closed
   through its window; ReShade.ini restored to its pre-run hash F0C01BD0.., preset / prefs / auto_save.replay / add-on unchanged.
   No in-game Nsight capture (REPLAYABLE turns RR off for the helper's life; the harness capture rp_a2 is used). Cluster build
-  preference FAST_BUILD / FAST_TRACE: no gain (not committed). Analysis running.
+  preference FAST_BUILD / FAST_TRACE: no gain (not committed). ANALYSIS DONE (tools/tw/nsight/attila_frame_results.md):
+  cpl1 outside the walls render-thread bound 37.4 ms; cpl2 maxed inside the city GPU bound 36.5 ms (game 20.8 + helper 12.0 +
+  RR / copies 3.7; game and helper strictly serial). Soldiers 8x 14-20 M tris, 6.8-10 ms GPU, ~17 ms CPU; grass max 4.8 ms GPU
+  + ~5 ms CPU; buildings 8x 3.0 ms; hand-offs 18.7 ms of the game's GPU timeline; forests 4.4-4.8 ms submitting casters we
+  skip; add-on 5.4 ms on the render thread; Smoke Shadows hit the 262,144 cap. Ranked: Small Soldiers as Sprites A/B (ATN),
+  fewer cascades under Rays Replace (A/B Shadows Medium, then a row), Lean Reuse (-0.7 ms), PAUSE WALLPAPER ENGINE (3.0 ms GPU a
+  frame while playing: ATN's app setting), trim per-draw callbacks, grass numbers, Light Bounce Half (-1.2 ms, ATN), fewer
+  hand-offs (design), smoke cap (needs a stress mode). No gain: SER, cluster build flags. WH3 harness 8.4-8.5 ms. Agent next:
+  callbacks trim, cascade row, smoke stress mode, hand-off design. ns-replay-mode 25125baa + 8357ef5c: merge after all_modes.
 - [ ] ATN ~11:4x: the skill checks the whole dump for render scale (scale_census.py) but casters only in traces: agent
   (cdc_, worktree) adds caster_census.py --whole-dump (every VS classified, held / NOT HELD / not a caster), validates on
   Attila + Pharaoh e34c6089 palms, runs it for nine games (tools/tw/round_notes/caster_dump_<game>.txt), skill lines; results
