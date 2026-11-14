@@ -128,6 +128,10 @@ struct ShaderInjectData {
   // 1 the game's) and Water Caustics (the bed's light x 1 + caustics x this; 0 off). The DLSS addon's WaterClarity / WaterCaustics.
   float water_clarity;
   float water_caustics;
+  // autoexposure00: Attila's Modded Auto Exposure (its keys): 1 each metered luma at most the last frame's exposure's luma x
+  // 2^stops (isolated highlights weigh less; the picture's brightness untouched), 0 the game's.
+  float auto_exposure_highlight_protection;
+  float auto_exposure_highlight_headroom_stops;
 };
 
 #define SI  shader_injection

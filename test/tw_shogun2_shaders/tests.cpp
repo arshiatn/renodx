@@ -16,6 +16,7 @@
 //     0xF7EDF855 / 0x4E3EE717 (TestCascadeLeaves).
 // 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
 // 13. Coloured Shadows in shaders/sunlight00-03 (TestSunTint).
+// 14. autoexposure00's Modded Auto Exposure against the game's 0x8233E11F (TestAutoExposure).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -2005,6 +2006,99 @@ static void TestSunTint(const std::string& games) {
   }
 }
 
+// 14. shaders/autoexposure00 (the game's auto exposure, cs_compute_tone_mapper_brightness 0x8233E11F: the mean luma along four
+//     focal points' crosses) on a 64 x 64 picture of luma 0.2 with a fire (five texels of 400) on the first cross, the last
+//     frame's brightness 1 (a whole second's adaptation, so the result is the target): Modded Auto Exposure off (b13 all 0)
+//     the game's cso's brightness; on (4 stops) brighter than off (the fire weighs less). CONTROL: on without the fire the
+//     same as off.
+static void TestAutoExposure(const std::string& games, const std::string& folder) {
+  std::ifstream file(folder + "/0x8233E11F.cs_5_0.cso", std::ios::binary);
+  const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const std::wstring path(games.begin(), games.end());
+  FolderInclude include(path + L"/twshogun2completeedition/shaders");
+  ComPtr<ID3DBlob> ours_code;
+  ComPtr<ID3DBlob> errors;
+  if (game_code.empty()
+      || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/autoexposure00_0x8233E11F.cs_5_0.hlsl").c_str(), nullptr, &include,
+                                   "main", "cs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(), errors.GetAddressOf()))) {
+    std::printf("missing 0x8233E11F, or %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+    std::exit(2);
+  }
+  ComPtr<ID3D11ComputeShader> game;
+  ComPtr<ID3D11ComputeShader> ours;
+  device->CreateComputeShader(game_code.data(), game_code.size(), nullptr, game.GetAddressOf());
+  device->CreateComputeShader(ours_code->GetBufferPointer(), ours_code->GetBufferSize(), nullptr, ours.GetAddressOf());
+  const std::array<float, 4> tone_mapping = {1.f, 0.f, 0.f, 0.f};
+  const auto tone_mapping_buffer = Constants(tone_mapping.data(), sizeof(tone_mapping));
+  // Auto_exposure_cb: 4 points (c0.x), their places (c1-c4.xy), the cross radius 8 (c32.z), target exposure -2 (c32.w),
+  // adaptation speeds 10 (c33.xy), max correction 10 (c33.z), sensitivity 0 (c33.w), a second's delta time (c34.x).
+  std::array<float, 35 * 4> exposure = {};
+  exposure[0] = std::bit_cast<float>(4u);
+  const std::array<std::array<float, 2>, 4> points = {{{0.25f, 0.25f}, {0.75f, 0.25f}, {0.25f, 0.75f}, {0.75f, 0.75f}}};
+  for (size_t point = 0; point < points.size(); ++point) std::ranges::copy(points[point], exposure.begin() + ((1 + point) * 4));
+  exposure[(32 * 4) + 2] = std::bit_cast<float>(8u);
+  exposure[(32 * 4) + 3] = -2.f;
+  exposure[(33 * 4) + 0] = exposure[(33 * 4) + 1] = 10.f;
+  exposure[(33 * 4) + 2] = 10.f;
+  exposure[34 * 4] = 1.f;
+  const auto exposure_buffer = Constants(exposure.data(), sizeof(exposure));
+  const auto injection = [](float protection) {
+    ShaderInjectData data = {};
+    data.auto_exposure_highlight_protection = protection;
+    data.auto_exposure_highlight_headroom_stops = 4.f;
+    std::array<float, ((sizeof(ShaderInjectData) + 15) / 16) * 4> registers = {};
+    std::memcpy(registers.data(), &data, sizeof(data));
+    return Constants(registers.data(), sizeof(registers));
+  };
+  const std::array<ComPtr<ID3D11Buffer>, 2> protections = {injection(0.f), injection(1.f)};
+  // The brightness one dispatch leaves from the last frame's 1.
+  const auto run = [&](ID3D11ComputeShader* shader, bool fire, ID3D11Buffer* protection) {
+    std::vector<std::array<float, 4>> picture(64 * 64, {0.2f, 0.2f, 0.2f, 1.f});
+    if (fire) {
+      for (int x = 14; x <= 18; ++x) picture[(16 * 64) + x] = {400.f, 400.f, 400.f, 1.f};
+    }
+    const auto picture_view = Srv(Texture(64, 64, DXGI_FORMAT_R32G32B32A32_FLOAT, picture.data(), 64 * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+    const std::array<float, 4> last = {1.f, 0.f, 0.f, 0.f};
+    const D3D11_BUFFER_DESC output_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS,
+                                           .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, .StructureByteStride = 16};
+    const D3D11_SUBRESOURCE_DATA output_data = {.pSysMem = last.data()};
+    ComPtr<ID3D11Buffer> output;
+    device->CreateBuffer(&output_desc, &output_data, output.GetAddressOf());
+    const D3D11_UNORDERED_ACCESS_VIEW_DESC uav_desc = {.Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER,
+                                                       .Buffer = {.FirstElement = 0, .NumElements = 1}};
+    ComPtr<ID3D11UnorderedAccessView> output_view;
+    device->CreateUnorderedAccessView(output.Get(), &uav_desc, output_view.GetAddressOf());
+    const std::array<ID3D11Buffer*, 2> constants = {tone_mapping_buffer.Get(), exposure_buffer.Get()};
+    context->CSSetShader(shader, nullptr, 0);
+    context->CSSetConstantBuffers(0, 2, constants.data());
+    if (protection != nullptr) context->CSSetConstantBuffers(13, 1, &protection);
+    context->CSSetShaderResources(0, 1, picture_view.GetAddressOf());
+    context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
+    context->Dispatch(1, 1, 1);
+    context->ClearState();
+    const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    ComPtr<ID3D11Buffer> staging;
+    device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf());
+    context->CopyResource(staging.Get(), output.Get());
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    float brightness = 0.f;
+    std::memcpy(&brightness, mapped.pData, 4);
+    context->Unmap(staging.Get(), 0);
+    return brightness;
+  };
+  const float game_fire = run(game.Get(), true, nullptr);
+  const float off_fire = run(ours.Get(), true, protections[0].Get());
+  const float on_fire = run(ours.Get(), true, protections[1].Get());
+  const float off_plain = run(ours.Get(), false, protections[0].Get());
+  const float on_plain = run(ours.Get(), false, protections[1].Get());
+  CHECK(Near(off_fire, game_fire, 1e-5f), "autoexposure00 off: brightness %f, the game's %f", off_fire, game_fire);
+  CHECK(on_fire > off_fire * 1.5f, "autoexposure00 on: brightness %f, off %f", on_fire, off_fire);
+  CHECK(on_plain == off_plain, "CONTROL autoexposure00 without the fire: on %f, off %f", on_plain, off_plain);
+  std::printf("autoexposure00: with a fire on a cross off %.4f (the game's %.4f), Modded Auto Exposure on %.4f; without it %.4f both\n",
+              off_fire, game_fire, on_fire, on_plain);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -2034,6 +2128,7 @@ int main(int argc, char** argv) {
                                           VARIANT_SHADOW_LAYOUT, 8, 6);
     TestCascadeLeaves(games, argv[3]);
     TestLeafFade(games, argv[3]);
+    TestAutoExposure(games, argv[3]);
   }
   TestSunTint(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);

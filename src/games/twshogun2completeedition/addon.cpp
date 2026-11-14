@@ -128,6 +128,8 @@ void ApplyResetPreset() {
       {"vfx_smoke_opacity", 1.f},
       {"video_autohdr", 0.f},
       {"video_dithering", 1.f},
+      {"auto_exposure_highlight_protection", 0.f},
+      {"auto_exposure_highlight_headroom_stops", 4.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -860,6 +862,33 @@ void BuildRuntimeData() {
           "Lit smoke and dust. Black smoke stays black (see VFX Opacity).", 10.f),
       vfx("vfx_smoke_opacity", &shader_injection.vfx_smoke_opacity, "VFX Opacity: Smoke & Dust",
           "Thickness of smoke and dust, black smoke too.", 3.f),
+      // Attila's two rows and keys (autoexposure00).
+      new renodx::utils::settings::Setting{
+          .key = "auto_exposure_highlight_protection",
+          .binding = &shader_injection.auto_exposure_highlight_protection,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Modded Auto Exposure",
+          .section = "Extra (Experimental)",
+          .tooltip = "The sun, fires and sparks darken the whole picture less when the camera looks at them. Their own "
+                     "brightness stays. Off is the game's.",
+          .labels = {"Off (Game's)", "On"},
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "auto_exposure_highlight_headroom_stops",
+          .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
+          .default_value = 4.f,
+          .label = "Modded Auto Exposure: Sensitivity",
+          .section = "Extra (Experimental)",
+          .tooltip = "How much brighter than the picture a highlight may count, in stops. Lower: steadier exposure; higher: "
+                     "closer to the game's.",
+          .min = 1.f,
+          .max = 8.f,
+          .format = "%.0f",
+          .is_enabled = [] { return shader_injection.auto_exposure_highlight_protection != 0.f; },
+          .is_visible = IsAdvancedSettings,
+      },
       new renodx::utils::settings::Setting{
           .key = "video_autohdr",
           .binding = &shader_injection.video_autohdr,
