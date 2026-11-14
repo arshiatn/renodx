@@ -760,7 +760,24 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     later stays on SDR. Intended? ATN DECIDES
   - [ ] SNAPSHOT GAPS (non-TW): Ryse / Tales / Expeditions: no SDR first-start path, no full-download notice, no page-dump
     driver. Owner: their plans
-  - [ ] PLAN agents (running): tools/nontw/tales/plan.md, tools/nontw/expeditions/plan.md, tools/nontw/ryse/plan.md (+
+  - [x] TALES PLAN DONE: tools/nontw/tales/plan.md + tales.tsv (both add-ons build at HEAD). Top gaps: the install is
+    DevKit + symlinks into build\Release with only nvngx_dlss 310.9.1 (no dlssd / dlssg / sl.* / D3D12: RR, FG, DXR 1.2
+    can't run there); no fast-dispatch opt-in; no SDR preset / first start / download notice; no page-dump driver; no
+    scripted-run hooks (SET / SHOT / PROFILE); own in-process D3D12 device with no device-removed handling (not on the
+    helper / rt_core like Expeditions and Ryse); the game's 25 menu settings never audited; untested since 2026-10-27.
+    Shaders: ATN's dumps in bin\cmd_Decompiler-1.3.16\dump_shaders_tales_of_arise (13,525 CSOs) and
+    dump_shaders_Expeditions_rome (16,983); paks untouched; code offsets only from tales_image.bin (SteamStub). Nsight:
+    no GPU Trace (the game is D3D11); rt_tests exe yes. Game runs: G1 data run (outside-city save), G2 data run (camp
+    save + 30 s WPR), G3 feature run, G4 ATN's look list. UE4 SHARED STEP candidates S1-S11 in the plan.
+    - [ ] ATN: which save is outside the city / the camp (SaveData_005 or _000, both 2026-10-17)?
+    - [ ] ATN: OK to install plain stamped copies (DevKit + symlinks out, NVIDIA 310.9.16 set + D3D12 / Streamline in)?
+    - [ ] ATN: RT route: keep Tales' in-process D3D12 RT or move it to the helper + rt_core as Expeditions?
+    - [ ] ATN: HDR add-on alone: AO halo default "Reduced" or the game's?
+    - [ ] ATN: one add-on now or after the replay numbers (plan: fast-dispatch opt-in first, keep two until numbers)?
+    - [ ] ATN: re-measure Hue Clip / V35 hue on Tales' own chain? Steam offline or Cloud off for agent runs; G1 + G2 in
+      one session?
+    - [x] addon-split.md fixed: Tales DLSS registers draw / dispatch only while a trace runs
+  - [ ] PLAN agents (running): tools/nontw/expeditions/plan.md, tools/nontw/ryse/plan.md (+
     ledgers): state, gaps vs Attila's package, shader sources (ATN's ~12000-file dumps), Nsight feasibility, game-run
     list (Tales: ATN's two newest saves), 2 add-ons -> 1, HDR-only snapshot, UE4 SHARED STEP candidates. Owner: plan agents,
     then the coordinator assigns shared owners and ATN picks the order
