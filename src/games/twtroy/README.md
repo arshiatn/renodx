@@ -4,6 +4,7 @@
 
 - **New (Experimental): Water Clarity and Water Caustics** (under Reflections and Water). Clarity 1 is the game's look; higher lets you see deeper into rivers, lakes and the sea. Caustics (off; battles only) adds rippling light on the bed. They use Pharaoh's rows on Troy's 68 water shaders (every sea, lake and river variant). WARP (`tools/tw/troy/water`, Pharaoh's water test on Troy's bytes): all 68 give the game's bits at the defaults; Clarity and the caustics match the game with its opacity or refraction scaled (worst 4.8e-7). Every control moves.
 - **New (Experimental, off; on in RT/PT): ray-traced Water Reflections.** Rivers and the sea reflect what the rays find, also off screen, in place of the game's screen-space reflections. Pharaoh's hooks are now shared code (`twattila/water_reflections.hpp`, Pharaoh unchanged), on Troy's twins of the same chain, and Troy's reflection shader got the rays in Pharaoh's form. WARP (`tools/tw/troy/water/ssr_rays`): with no rays bound it gives the game's bits at 100%, 50% and 67%. With the rays it matches the expected blend (worst 3.4e-6), including below 100%, where it reads the render pixel. Specular Occlusion halves the game's cube to the bit. Every control fails.
+- **New (Experimental, in Torch and Fire Shadows): the fires cast ray-traced shadows.** A burning siege's fires light the scene through the game's particle lights, which keep their lights in the particle list, not in the instances the torches use. The add-on now reads each fire's place, reach and colour from that list each frame (shared code: `twattila/rt_scene.hpp`, only Troy uses it), so their light stops at walls and units as the torches' does. WARP (`tools/tw/troy/fires`): with nothing bound the fires' shader gives the game's bits; with the rays it gives the game's light where the ray reaches and none where blocked, bit for bit, also at 50%; each fire's place, reach and colour read from 1,024 particles to the bit. Every control fails.
 
 Test list (in-game AA off, in-game Screen Space Reflections on, DLSS, RT/PT preset):
 1. A river or coastal battle, Reflections Ray-Traced and Water Reflections on: the water mirrors hills, walls and units, also those off screen.
@@ -15,8 +16,11 @@ Test list (in-game AA off, in-game Screen Space Reflections on, DLSS, RT/PT pres
 7. Water Caustics 1 in a battle by shallow water: light ripples on the bed; none on the campaign map.
 8. Campaign map with Water Clarity above 1: the sea and lakes clearer, the coast unchanged.
 9. The game's MSAA on: the game's own reflections stay (no black water).
+10. A night siege with Torch and Fire Shadows on: walls and units block the burning buildings' light, the lit side stays as bright as before; no flicker while fires start and go out.
+11. The same with Torch and Fire Shadows off: the fires light the scene as before.
+12. Log: one "particle lights streamed" line at the first fire.
 
-Not done: the fires' particle lights in the rays (now on top of the WH2 agent's point light reader); Light Through Banners on sails (no trace draws a ship); the leaves' cut-out at 0.5 (the game's 0.01, and its fade).
+Not done: Light Through Banners on sails (no trace draws a ship); the leaves' cut-out at 0.5 (the game's 0.01, and its fade).
 
 ### Round v52 (2026-11-14, built only, not run in game)
 
