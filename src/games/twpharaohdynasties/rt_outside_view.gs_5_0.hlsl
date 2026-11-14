@@ -30,7 +30,8 @@
 // /Fh src\games\twtroy\rt_outside_view_leaf_gs.h; Warhammer II's campaign trees: /D RT_WORLD_UV /Vn __rt_outside_view_world_uv
 // /Fh src\games\twwarhammer2\rt_outside_view_world_uv_gs.h, its far cards: /D RT_CARD_SPLIT /Vn __rt_outside_view_card_split
 // /Fh src\games\twwarhammer2\rt_outside_view_card_split_gs.h; Warhammer's campaign trees: /D RT_COLOR_WORLD
-// /Vn __rt_outside_view_colour_world /Fh src\games\twwarhammer\rt_outside_view_colour_world_gs.h.
+// /Vn __rt_outside_view_colour_world /Fh src\games\twwarhammer\rt_outside_view_colour_world_gs.h; Troy's campaign trees:
+// /D RT_WORLD_UV /D RT_COLOUR /Vn __rt_outside_view_colour_world_uv /Fh src\games\twtroy\rt_outside_view_colour_world_uv_gs.h.
 #include "../twattila/rt_capture.hlsli"
 
 cbuffer MainView : register(b0) {
@@ -74,6 +75,9 @@ struct Corner {
 #elif defined(RT_WORLD_UV)
 struct Corner {
   float4 position : SV_Position;
+#ifdef RT_COLOUR
+  float4 colour : COLOR0;  // Troy's campaign trees' 5192C0BA writes its vertex colour first (twtroy/rt_outside_view_colour_world_uv_gs.h)
+#endif
   float4 world : TEXCOORD0;
   float2 uv : TEXCOORD1;
 };
