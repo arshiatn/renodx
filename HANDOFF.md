@@ -420,9 +420,17 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [ ] Forge's points (01:35 screenshots): scorer covers RMSE / SMAPE / boiling / swimming / covariance (done); Nsight GPU Trace
   done, replay + shader swap = Nsight agent phase A; SER per pass in GPU Trace added to the Nsight agent; unified DI + GI
   reservoir failed as one reservoir (U1 66 % / U2 20.5 % rRMSE), shipped as the light-per-bounce-texel rows (helper111).
-- [ ] ATN ~11:0x: heapfix in WH3: the author is fine; first prove it doable + a gain in our RT/PT preset in a jungle battle,
-  then ATN sends him the whole code. Feasibility agent (hfw3_, private under tools/tw/heapfix_wh3; no game run: a WH3 A/B
-  needs ATN's OK).
+- [x] ATN ~11:0x: heapfix in WH3: the author is fine; first prove it doable + a gain in our RT/PT preset in a jungle battle,
+  then ATN sends him the whole code. Study DONE (tools/tw/heapfix_wh3, nothing built): PARTLY. Only the allocator has a WH3
+  twin (one global dlmalloc 2.8 + spin lock: malloc 0x4f3990, free 0x53eca0, realloc 0x17bcb28, lock 0x17bc510, in readable
+  .xpdata; dinput8 imported directly, no dinput8 in the folder); the render-list sorts / pools / x87 / memcpy have none or
+  aren't needed. WH3 RT/PT is GPU-bound in every measurement (CPU 7.3 ms of a 19.8 ms frame; frame follows resolution):
+  ~0 fps expected. Nothing to send. Optional: ATN records a Lustria jungle replay -> ab_run_wh3.ps1 (not run) with WPR; build
+  the x64 heap only if CPU-bound with the heap >= 5 % of the frame thread.
+- [x] HAZARD FIXED (tools, 11:25): wh3_common.ps1's Wh3-Restore deleted every replay / save outside a name list (ATN's
+  2.replay of 11-10 at the next WH3 run). Now: only files created inside a run's window (run_started.txt at the end of
+  Wh3-Before-Run, run_ended.txt) move aside to atn_backup\moved_aside, never deleted; no start mark = nothing moves.
+  Backups: wh3_atn_files_backup_20261114_112043 (replays + saves, hashes), wh3_common.ps1.bak_20261114_112043. Parses clean.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
 ## LATE NIGHT ROUNDS (2026-11-13 23:10, two worktree agents, offline; installed state = NIGHT MERGES 22:59)
