@@ -496,6 +496,13 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   384 dead rows removed, 21 rows live; Depth of Field, Smoke Shadows without rays (Experimental), Fog Strength; suites
   tw_troy_tweaks / tw_troy_shaders). Agent resumed on 7 open items. SHARED STEP LATER: per-game leaf cut-out (Troy 0.01 vs
   the helper's LEAF_ALPHA_CUTOFF 0.5), with the torch rows step.
+  Round 2 MERGED c28d1591 (campaign terrain 0D70D820 / grass 62E0F935 / vegetation 04C7C807 out of view, Shadow Map Size
+  (Experimental; Troy's own table +0x2e81920, quality 4 only: quality 3 = ATN DECIDES), VFX Brightness (10 lit particle PS,
+  Experimental), Fog Strength on sm4.1 twins, Particle Resolution / Edges / Smooth Half-Size (Experimental; shared
+  particle_layer Install(shaders, readers, Options): Attila / Thrones same behaviour, not byte-identical), fur EE95696C +
+  campaign trees 07321725 / 5192C0BA + sails 18CE6F5A / F4B04EF3 in the rays; held 35 -> 40). Conflict in the outside-view GS
+  comment resolved; all 10 variants recompile to their headers. Troy agent DONE. Left: GS sprites 370A7440 + tessellated
+  D6DEB200 (shared step), leaf cut-out (shared step), 3 traces.
 - [x] WH1 parity round MERGED a5787d66 (table tools/tw/wh1/parity_1114.md: 27 have / 8 done now / 3 left / 7 trace / 14 won't;
   Fog Strength, Fog Shadows + torch light in fog (Experimental, RT/PT on), Depth of Field, Smooth Banner Shadows, SDR preset +
   first start + GitHub button, Smoke Shadows (Experimental, not in RT/PT), far card / plant twins held (NOT HELD 22 -> 19),
