@@ -143,7 +143,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   upscaler beside the game's DLSS, W5 helper FG + Reflex, W6, W7a, W8 part; HDR v66 / DLSS v58); rt_scene.hpp can't be
   included (it pulls anti_aliasing.hpp's shaders): NOT DONE smoke via rt_scene; smallest step: split the light / smoke
   installers out of rt_scene.hpp's AA include (shared, after the game branches are merged). Rome Remastered: see above.
-- [ ] Data runs from 01:01, one medium-effort agent (tools/tw/round_notes/data_run_brief.md), one game at a time; trace builds merged, stamped "<game> t1", installed with
+- [x] DATA RUNS 01:01-01:29 (one medium-effort agent; no script changed; ATN's files the same by hash on every start; no
+  GPU reset, Committed 21-22.5 GB, no markers or processes left): Thrones S1 siege / S2 replay / S3 night (9 traces,
+  tools/tw/thrones/runs), WH2 A-F (11 traces, tools/tw/wh2/runs; A's 4 scales the same size: check the scale reached them),
+  Shogun 2 battle / naval / campaign (12 traces, tools/shogun2/pkg_1114/runs/data_1114_012352; the campaign CRASHED 84 s in,
+  1 s after RenderScale back to 0: Shogun agent reads the dump first), Rome Remastered NOT RUN (the exe has RUNASADMIN in
+  AppCompatFlags\Layers: UAC prompt; ATN must clear it or start from the menu; script $start bug). Phase I part 2 resumed
+  in all four worktrees. Skill a5c6d897: RUNASADMIN row, tools/tw/ps_param_shadow.ps1.
+- [ ] (old line) Data runs from 01:01, one medium-effort agent (tools/tw/round_notes/data_run_brief.md), one game at a time; trace builds merged, stamped "<game> t1", installed with
   --first; fresh backups; Shogun 2's DevKit aside; its nvngx_dlss 310.5.2 -> 310.9.16 renamed aside).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
