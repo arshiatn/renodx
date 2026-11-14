@@ -1897,6 +1897,7 @@ void ConfigureAddon() {
       {"GraphicsCampaignDetail", 1.f},
       {"GraphicsSmallSoldiersAsSprites", 0.f},
       {"GraphicsSpriteSize", 20.f},
+      {"ssr_quality", 1.f},
   };
   const std::vector<std::pair<std::string, float>> graphics_max = {
       {"GraphicsShadowMapSize", 1.f},
@@ -2074,6 +2075,19 @@ void ConfigureAddon() {
     settings.insert(settings.end(), reflections.begin(), reflections.end());
   }
   settings.insert(settings.end(), {
+      // Attila's Reflection Quality on Rome II's only screen-space reflections, the water's (waterreflection00).
+      new renodx::utils::settings::Setting{
+          .key = "ssr_quality",
+          .binding = &shader_injection.ssr_quality,
+          .default_value = 1.f,
+          .label = "Reflection Quality",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Water reflections: finer steps (Game's), or more of them, reaching farther (Hierarchical), so fewer\n"
+                     "gaps. Heavier. Below 1x: faster, coarser. Needs in-game Screen Space Reflections on.",
+          .min = 0.25f,
+          .max = 16.f,
+          .format = "%.2fx",
+      },
       graphics_status,
       // Two empty lines between this section and the ambient occlusion (ATN).
       new renodx::utils::settings::Setting{
