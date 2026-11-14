@@ -1431,6 +1431,9 @@ float rays_skip_cascades_row = 0.f;
 // draw's rounding at its own stack slots, float to half and fmod the same bytes; test/tw_engine_code with this game's DLL:
 // every register and the x87 state the game's). Experimental, off until a game run.
 float engine_code_row = 0.f;
+// Texture LOD Bias on All Textures (Experimental, graphics_page.hpp; Warhammer III's and Attila's row): the game's wrapping
+// trilinear samplers biased too (twattila/texture_lod_bias.hpp SetWrappingTrilinear).
+float lod_bias_trilinear_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1682,6 +1685,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     rays_aa.method = 0.f;
   }
   auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, rays_aa, shader_injection.light_bounce_strength);
+  twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   rt_settings.shadows_only = rt_settings.shadows_only && rays_skip_cascades_row != 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
@@ -2181,6 +2185,7 @@ void ConfigureAddon() {
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .engine_code = &engine_code_row,
                                              .texts = &PAGE_TEXTS,
