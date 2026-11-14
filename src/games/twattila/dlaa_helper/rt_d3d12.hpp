@@ -72,8 +72,6 @@
 #include "rt_fog_omm.h"           // dxc -Fh (build.ps1)
 #include "rt_path.h"              // dxc -Fh (build.ps1)
 #include "rt_path_omm.h"          // dxc -Fh (build.ps1)
-#include "rt_path_lights.h"       // dxc -Fh (build.ps1)
-#include "rt_path_lights_omm.h"   // dxc -Fh (build.ps1)
 #include "rt_path_ser.h"          // dxc -Fh (build.ps1)
 #include "rt_place.h"             // dxc -Fh (build.ps1)
 #include "rt_omm_uvs.h"           // dxc -Fh (build.ps1)
@@ -635,13 +633,10 @@ class RtScene12 {
       return Fail("Ray tracing: the trace shaders failed (needs shader model 6.5)");
     }
     // Torch and Fire Light in the Light Bounce's builds (TORCHES_IN_BOUNCE; none: its rows do nothing).
-    if (!(dxr12_ ? pipeline(RT_PATH_LIGHTS_OMM, sizeof(RT_PATH_LIGHTS_OMM), &path_lights_pipeline_)
-                       && pipeline(RT_REUSE_LIGHTS_OMM, sizeof(RT_REUSE_LIGHTS_OMM), &reuse_lights_pipeline_)
+    if (!(dxr12_ ? pipeline(RT_REUSE_LIGHTS_OMM, sizeof(RT_REUSE_LIGHTS_OMM), &reuse_lights_pipeline_)
                        && pipeline(RT_LIGHTS_BOUNCE_OMM, sizeof(RT_LIGHTS_BOUNCE_OMM), &lights_bounce_pipeline_)
-                 : pipeline(RT_PATH_LIGHTS, sizeof(RT_PATH_LIGHTS), &path_lights_pipeline_)
-                       && pipeline(RT_REUSE_LIGHTS, sizeof(RT_REUSE_LIGHTS), &reuse_lights_pipeline_)
+                 : pipeline(RT_REUSE_LIGHTS, sizeof(RT_REUSE_LIGHTS), &reuse_lights_pipeline_)
                        && pipeline(RT_LIGHTS_BOUNCE, sizeof(RT_LIGHTS_BOUNCE), &lights_bounce_pipeline_))) {
-      path_lights_pipeline_.Reset();
       reuse_lights_pipeline_.Reset();
       lights_bounce_pipeline_.Reset();
     }
@@ -1427,8 +1422,7 @@ class RtScene12 {
         if (reflections && specular_history_valid_ && specular_frame_ + 1 == frame) flags |= PATH_SPECULAR_HISTORY;
         // Reflection Reuse from ReSTIR GI (v19): this frame's reservoirs (the Light Bounce's request before this one used set
         // reuse_parity_ then and turned it).
-        // Not from Torch and Fire Light in the Light Bounce's reservoirs (their local lights' samples).
-        if (reflections && version >= 19 && (requested & dlaa_bridge::RT_REFLECTIONS_REUSE) != 0 && reuse_frame_ == frame && reuse_lights_mode_ == 0) {
+        if (reflections && version >= 19 && (requested & dlaa_bridge::RT_REFLECTIONS_REUSE) != 0 && reuse_frame_ == frame) {
           flags |= PATH_REFLECT_REUSE | (reuse_parity_ == 0 ? PATH_REUSE_PARITY : 0u);
         }
         // Own ReSTIR (v19, helpers 55 on): the reflections' own reservoirs, made once a frame (set reflect_parity_, then
@@ -1516,11 +1510,13 @@ class RtScene12 {
         const uint32_t lights_asked = ((requested & dlaa_bridge::RT_PATH_LIGHTS_IN_BOUNCE) != 0)
                                           ? (((requested & dlaa_bridge::RT_PATH_LIGHT_RATIO) != 0) ? 3u : std::max(lights_test, 1u))
                                           : lights_test;
-        const bool lights_possible = path_lights_pipeline_ && path_traced && reuse && light_count != 0;
+        const bool lights_possible = reuse_lights_pipeline_ && path_traced && reuse && light_count != 0;
         const bool ratio_written = lights_possible && lights_asked == 3u && EnsureHistory(HISTORY_RATIO, frame);
         const uint32_t lights_mode = (lights_possible && (lights_asked != 3u || ratio_written)) ? lights_asked : 0u;
-        // Last frame's reservoirs from another mode hold other samples: a new history.
-        if (reuse_lights_mode_ != lights_mode) flags &= ~PATH_REUSE_HISTORY;
+        // Their soft shadows under Ray Reconstruction: the lights' radius (rt_path.hlsli ReuseTexel's rays to their disk).
+        if (lights_mode != 0 && (requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) {
+          list->SetComputeRoot32BitConstant(ROOT_SETTINGS, std::bit_cast<uint32_t>(std::clamp(shared.rt_light_size, 0.f, 2.f)), 8);
+        }
         PathConstants constants = {
             .bounce_width = render_pixels ? width : shared.rt_bounce_width,
             .bounce_height = render_pixels ? height : shared.rt_bounce_height,
@@ -1569,8 +1565,7 @@ class RtScene12 {
         // SHaRC Radiance Cache (bridge v18, with Path Tracing): its buffers at u6-u8, its update (a bounce texel of each
         // SHARC_BLOCK x SHARC_BLOCK) and resolve, then the paths read it (their SHaRC variant). Not the reflections: their
         // SHaRC variant hung the GPU at 4K in the harness (the 5090).
-        // (Not with Torch and Fire Light in the Light Bounce: its paths' build has no SHaRC.)
-        bool sharc = sharc_path_pipeline_ && path_traced && lights_mode == 0 && version >= 18 && (requested & dlaa_bridge::RT_PATH_SHARC) != 0;
+        bool sharc = sharc_path_pipeline_ && path_traced && version >= 18 && (requested & dlaa_bridge::RT_PATH_SHARC) != 0;
         for (size_t index = 0; index < sharc_buffers_.size() && sharc; ++index) {
           sharc = GrowBuffer(&sharc_buffers_[index], uint64_t{SHARC_ENTRIES} * SHARC_STRIDES[index], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         }
@@ -1609,10 +1604,10 @@ class RtScene12 {
         if (path_traced && sharc) {
           list->SetPipelineState(sharc_path_pipeline_.Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
-        } else if (path_traced && ser && lights_mode == 0) {
+        } else if (path_traced && ser) {
           dispatch_rays(0, shared.rt_bounce_width, shared.rt_bounce_height);
         } else if (path_traced) {
-          list->SetPipelineState((lights_mode != 0 ? path_lights_pipeline_ : path_pipeline_).Get());
+          list->SetPipelineState(path_pipeline_.Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
         } else if (fills_cache) {
           Mark(list, L"bounce");
@@ -5992,9 +5987,8 @@ class RtScene12 {
   uint32_t previous_light_count_ = 0;
   ComPtr<ID3D12PipelineState> fog_pipeline_;
   ComPtr<ID3D12PipelineState> lights_pipeline_;
-  // Torch and Fire Light in the Light Bounce (TORCHES_IN_BOUNCE builds): the local lights' trace, the paths, their reuse.
+  // Torch and Fire Light in the Light Bounce (TORCHES_IN_BOUNCE builds): the local lights' trace, the reuse.
   ComPtr<ID3D12PipelineState> lights_bounce_pipeline_;
-  ComPtr<ID3D12PipelineState> path_lights_pipeline_;
   ComPtr<ID3D12PipelineState> reuse_lights_pipeline_;
   ComPtr<ID3D12PipelineState> bounce_pipeline_;
   // Paths (v8): last frame's colour (the DLAA input), the G-buffer guides, the reflections' outputs; the history and the
@@ -6053,7 +6047,7 @@ class RtScene12 {
   std::array<ComPtr<ID3D12Resource>, 2> reuse_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
   uint32_t reuse_frame_ = UINT32_MAX;  // the frame the reservoirs were last made in
-  uint32_t reuse_lights_mode_ = 0;     // their Torch and Fire Light in the Light Bounce mode (rt_camera.hlsli LIGHTS_MODE; 0: none)
+  uint32_t reuse_lights_mode_ = 0;     // its Torch and Fire Light in the Light Bounce mode (rt_camera.hlsli LIGHTS_MODE; 0: none)
   uint32_t reuse_parity_ = 0;          // this frame's set
   std::array<uint32_t, 3> reuse_size_ = {};  // the bounce's size and scale they are at
   std::array<ComPtr<ID3D12Resource>, 2> own_sky_;  // Path-Traced Ambient's own sky at the bounce texels (rt_path.hlsli ScreenSky)

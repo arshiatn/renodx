@@ -29,7 +29,7 @@ cbuffer Paths : register(b3) {
 };
 #if defined(TORCHES_IN_BOUNCE)
 // lights_in_bounce (only in the TORCHES_IN_BOUNCE builds: every other is helper110's to the byte): its mode (bits 0-1: 1
-// the local lights a ReSTIR GI candidate, their light in the bounce; 2 the bounce only theirs, a measurement; 3 Torch and
+// a local light's sample a bounce texel, its light in the bounce; 2 the bounce only theirs, a measurement; 3 Torch and
 // Fire Shadows from the Light Bounce: their shadow ratio into light_ratio, the bounce without them), the light_ratio set
 // written (a bounce request's) or read (a trace's), last frame's set valid.
 static const uint LIGHTS_MODE = 3u;

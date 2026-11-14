@@ -114,7 +114,12 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
   }
   if (!inside) return;
   if (!surface) {
+#if defined(TORCHES_IN_BOUNCE)
+    // (Torch and Fire Shadows from the Light Bounce: the words are ratios, 1 here.)
+    light_mask[id.xy] = ((flags & (LIGHTS_IN_BOUNCE | LIGHT_RATIO)) == (LIGHTS_IN_BOUNCE | LIGHT_RATIO)) ? asuint(1.f) : 0xFFFFFFFFu;
+#else
     light_mask[id.xy] = 0xFFFFFFFFu;
+#endif
     return;
   }
   const uint size = tile_size;

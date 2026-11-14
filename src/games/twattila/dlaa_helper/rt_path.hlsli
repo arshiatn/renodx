@@ -594,40 +594,13 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
 struct Reservoir {
   float3 hit;
   float3 hit_normal;
-  float3 light;   // leaving the surface toward the texel (a local light's sample: its colour)
+  float3 light;   // leaving the surface toward the texel
   float weight;   // the resampling weights' sum while merging; W once finished
   float count;    // M: the samples it stands for
-#if defined(TORCHES_IN_BOUNCE)
-  float reach;    // Torch and Fire Light in the Light Bounce: a local light's sample at `hit` (metres; 0: a surface or the sky)
-#endif
 };
 
-// Torch and Fire Light in the Light Bounce (helper111): only in the TORCHES_IN_BOUNCE builds of the paths and the reuse
-// (rt_path_lights, rt_reuse_lights), so every other build is helper110's to the byte.
-#if defined(TORCHES_IN_BOUNCE)
-// The hit-normal word's low half of a local light's sample (no octahedral normal has it: they stop at -32767), its reach
-// (f16) in the high half.
-static const uint LIGHT_SAMPLE_MARK = 0x8000u;
-
-// A local light's sample's light arriving at a receiver: its colour x the games' falloff (1 - distance / reach)^2 x N.L
-// (as rt_scene.hlsli's LightArriving; the bounce's apply multiplies the base colour, as the game's diffuse).
-float3 LightSampleArriving(float3 receiver, float3 receiver_normal, Reservoir sample) {
-  const float3 to_light = sample.hit - receiver;
-  const float light_distance = length(to_light);
-  if (light_distance >= sample.reach || light_distance <= 1e-3f) return 0.f;
-  const float n_dot_l = dot(receiver_normal, to_light / light_distance);
-  if (n_dot_l <= 0.f) return 0.f;
-  const float falloff = 1.f - light_distance / sample.reach;
-  return sample.light * (falloff * falloff * n_dot_l);
-}
-#endif
-
-// The target function at a receiver: the sample's light (luminance) by the cosine toward it (the integrand without 1/pi);
-// a local light's: pi x its arriving light's luminance (the same units: the bounce is the integrand over pi).
+// The target function at a receiver: the sample's light (luminance) by the cosine toward it (the integrand without 1/pi).
 float ReuseTarget(float3 receiver, float3 receiver_normal, Reservoir reservoir) {
-#if defined(TORCHES_IN_BOUNCE)
-  if (reservoir.reach > 0.f) return 3.14159265f * Luminance(LightSampleArriving(receiver, receiver_normal, reservoir));
-#endif
   return Luminance(reservoir.light) * max(dot(receiver_normal, normalize(reservoir.hit - receiver)), 0.f);
 }
 
@@ -639,9 +612,6 @@ void Merge(inout Reservoir reservoir, Reservoir other, float weight, float rando
     reservoir.hit = other.hit;
     reservoir.hit_normal = other.hit_normal;
     reservoir.light = other.light;
-#if defined(TORCHES_IN_BOUNCE)
-    reservoir.reach = other.reach;
-#endif
   }
 }
 
@@ -664,30 +634,16 @@ Reservoir LoadReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, ui
   reservoir.weight = sample_point.w;
   reservoir.light = float3(f16tof32(packed.x), f16tof32(packed.x >> 16), f16tof32(packed.y));
   reservoir.count = (float)(packed.y >> 16);
-#if defined(TORCHES_IN_BOUNCE)
-  const bool light_sample = (packed.z & 0xFFFFu) == LIGHT_SAMPLE_MARK;
-  reservoir.hit_normal = (packed.z != 0u && !light_sample) ? OctahedralDecode(packed.z) : 0.f;
-  reservoir.reach = light_sample ? f16tof32(packed.z >> 16) : 0.f;
-#else
   reservoir.hit_normal = (packed.z != 0u) ? OctahedralDecode(packed.z) : 0.f;
-#endif
   return reservoir;
 }
 
 void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 texel, Reservoir reservoir, float3 receiver_normal) {
   samples[texel] = float4(reservoir.hit, reservoir.weight);
-#if defined(TORCHES_IN_BOUNCE)
-  uint hit_word = (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? OctahedralEncode(reservoir.hit_normal) : 0u;
-  if (reservoir.reach > 0.f) hit_word = LIGHT_SAMPLE_MARK | (f32tof16(reservoir.reach) << 16);
-  data[texel] = uint4(f32tof16(reservoir.light.r) | (f32tof16(reservoir.light.g) << 16),
-                      f32tof16(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16), hit_word,
-                      (dot(receiver_normal, receiver_normal) > 0.f) ? OctahedralEncode(receiver_normal) : 0u);
-#else
   data[texel] = uint4(f32tof16(reservoir.light.r) | (f32tof16(reservoir.light.g) << 16),
                       f32tof16(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
                       (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? OctahedralEncode(reservoir.hit_normal) : 0u,
                       (dot(receiver_normal, receiver_normal) > 0.f) ? OctahedralEncode(receiver_normal) : 0u);
-#endif
 }
 
 // What a camera ray meets right beside its start lies in that start's own shade, which the light it brings back does not
@@ -703,16 +659,6 @@ float ContactShade(float hit_distance) {
 float Validate(inout Reservoir previous, float3 origin, bool contact) {
   const float3 to_hit = previous.hit - origin;
   const float hit_distance = length(to_hit);
-#if defined(TORCHES_IN_BOUNCE)
-  if (previous.reach > 0.f) {
-    // A local light's sample (its light refreshed each frame): dropped where blocked now (the rays stop short of its lamp,
-    // as rt_lights').
-    if (hit_distance <= 1e-3f || Occluded(origin, to_hit / hit_distance, hit_distance - min(LIGHT_CLEARANCE, 0.5f * hit_distance), NO_GRASS_SMOKE)) {
-      previous.count = 0.f;
-    }
-    return 0.f;
-  }
-#endif
   if (hit_distance <= 1e-3f || Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
     previous.count = 0.f;
     return 0.f;
@@ -810,47 +756,9 @@ void PathTraceTexel(uint2 id) {
     candidate.light = sample_light;
     candidate.count = 1.f;
     candidate.weight = 0.f;
-#if defined(TORCHES_IN_BOUNCE)
-    candidate.reach = 0.f;
-#endif
     Merge(reservoir, candidate, (first_distance < 1e29f || sky_samples) ? 3.14159265f * Luminance(sample_light) : 0.f,
           Random(uint3(id, frame * 16u + path * 2u + 5120u)));
   }
-#if defined(TORCHES_IN_BOUNCE)
-  // Torch and Fire Light in the Light Bounce: one local light a candidate too (ReSTIR DI's: picked by the light it would
-  // give, no ray; ReuseTexel's visibility ray shades it). Its domain (the lights) is its own, so its MIS weight is 1
-  // against the paths' 1 / samples each: its weight is samples x pi x the lights' sum (its target over its odds), and it
-  // adds no M.
-  const bool light_candidates = reuse && (lights_in_bounce & LIGHTS_MODE) != 0u && (path_flags & PATH_LOCAL_LIGHTS) != 0u;
-  if (light_candidates) {
-    const uint light_total = min(light_count, BOUNCE_LIGHTS);
-    float total = 0.f;
-    [loop]
-    for (uint index = 0u; index < light_total; ++index) {
-      float3 direction;
-      float light_distance;
-      total += Luminance(LightArriving(index, origin, normal, direction, light_distance));
-    }
-    if (total > 0.f) {
-      const float next = Random(uint3(id, frame * 16u + 5376u)) * total;
-      float running = 0.f;
-      uint picked = 0u;
-      [loop]
-      for (uint index = 0u; index < light_total; ++index) {
-        float3 direction;
-        float light_distance;
-        running += Luminance(LightArriving(index, origin, normal, direction, light_distance));
-        picked = index;
-        if (running > next) break;
-      }
-      Reservoir candidate = (Reservoir)0;
-      candidate.hit = lights[picked].xyz;
-      candidate.light = max(light_colours[picked].rgb, 0.f);
-      candidate.reach = lights[picked].w;
-      Merge(reservoir, candidate, (float)samples * 3.14159265f * total, Random(uint3(id, frame * 16u + 5377u)));
-    }
-  }
-#endif
   if (sky_kept) own_sky[sky_set][id] = float4(sky / samples, 1.f);
   if (!reuse) {
     bounce[id] = float4(arriving / samples, distance(position.xyz, Camera()));
@@ -867,21 +775,6 @@ void PathTraceTexel(uint2 id) {
     Reservoir previous = LoadReservoir(reuse_samples[1u - set], reuse_data[1u - set], previous_texel);
     // Last frame's reservoir was made for a surface facing about the same way (else a new history starts).
     if (dot(LoadReceiverNormal(reuse_data[1u - set], previous_texel), normal) < 0.8f) previous.count = 0.f;
-#if defined(TORCHES_IN_BOUNCE)
-    if (previous.reach > 0.f) {
-      // A local light's sample: kept while that light is still sent at that place (its colour and reach now), else dropped.
-      bool sent = false;
-      [loop]
-      for (uint index = 0u; index < min(light_count, BOUNCE_LIGHTS) && light_candidates && !sent; ++index) {
-        if (all(lights[index].xyz == previous.hit)) {
-          previous.light = max(light_colours[index].rgb, 0.f);
-          previous.reach = lights[index].w;
-          sent = true;
-        }
-      }
-      if (!sent) previous.count = 0.f;
-    }
-#endif
     float invalidity = 0.f;
     if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin, true);
     previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)) * samples);
@@ -889,12 +782,7 @@ void PathTraceTexel(uint2 id) {
           Random(uint3(id, frame * 16u + 6144u)));
   }
   Finish(reservoir, ReuseTarget(origin, normal, reservoir));
-#if defined(TORCHES_IN_BOUNCE)
-  // A local light's W is the lights' sum over the one picked (32 alike: 32): the clamp would darken it.
-  if (reservoir.reach <= 0.f) reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP);
-#else
   reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP);
-#endif
   StoreReservoir(reuse_samples[set], reuse_data[set], id, reservoir, normal);
   if (sky_apart) bounce[id] = float4(sky / samples, 0.f);
 }
@@ -940,27 +828,51 @@ void ReuseTexel(uint2 id) {
   const float3 to_hit = combined.hit - origin;
   const float hit_distance = length(to_hit);
 #if defined(TORCHES_IN_BOUNCE)
-  // Torch and Fire Light in the Light Bounce 2 (a measurement): the local lights' samples alone; 3 (Torch and Fire Shadows
-  // from the Light Bounce): theirs only into the shadow ratio (shadowed, unshadowed: the same sample, its noise shared).
-  const bool lights_only = (lights_in_bounce & LIGHTS_MODE) == 2u;
-  const bool ratio = (lights_in_bounce & LIGHTS_MODE) == LIGHTS_RATIO_MODE;
-  float2 shadowed_unshadowed = 0.f;
-  float3 arriving = ((path_flags & PATH_SKY_APART) != 0u && !lights_only) ? bounce[id].rgb : 0.f;
-  if (combined.reach > 0.f) {
-    // A local light's sample: its shadow ray stops short of its lamp (as rt_lights'), its light at this receiver.
-    const float3 light_here = LightSampleArriving(origin, normal, combined) * combined.weight;
-    const bool lit = combined.weight > 0.f && hit_distance > 1e-3f
-                     && !Occluded(origin, to_hit / hit_distance, hit_distance - min(LIGHT_CLEARANCE, 0.5f * hit_distance), NO_GRASS_SMOKE);
-    if (ratio) {
-      shadowed_unshadowed = float2(lit ? Luminance(light_here) : 0.f, Luminance(light_here));
-    } else if (lit) {
-      arriving += light_here;
-    }
-  } else if (!lights_only && combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
+  // Torch and Fire Light in the Light Bounce (helper111; 2: the local lights' light alone, a measurement) and Torch and
+  // Fire Shadows from the Light Bounce (3), only in this build (rt_reuse_lights: every other is helper110's to the byte):
+  // one of the first BOUNCE_LIGHTS local lights a texel each frame, picked by the light it would give unshadowed, apart
+  // from the reservoir (in it the sun's bounce outweighed the torches: their samples seldom chosen); its shadow ray to a
+  // point of its disk under Ray Reconstruction (light_size: the helper sets it then, as rt_lights' rays), stopping short
+  // of its lamp.
+  const uint lights_mode = lights_in_bounce & LIGHTS_MODE;
+  float3 arriving = ((path_flags & PATH_SKY_APART) != 0u && lights_mode != 2u) ? bounce[id].rgb : 0.f;
+  if (lights_mode != 2u && combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
     arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
   }
-  if (ratio) {
-    // Kept over frames at the surface last frame's texel showed (a texel nothing chose a light for adds zeros to both).
+  float total = 0.f;  // the lights' unshadowed light here (luminance)
+  bool lit = false;
+  if (lights_mode != 0u && (path_flags & PATH_LOCAL_LIGHTS) != 0u) {
+    const uint light_total = min(light_count, BOUNCE_LIGHTS);
+    float3 direction;
+    float light_distance;
+    [loop]
+    for (uint index = 0u; index < light_total; ++index) total += Luminance(LightArriving(index, origin, normal, direction, light_distance));
+    if (total > 0.f) {
+      const float next = Random(uint3(id, frame * 16u + 7400u)) * total;
+      float running = 0.f;
+      uint picked = 0u;
+      float3 picked_light = 0.f;
+      [loop]
+      for (uint index = 0u; index < light_total && running <= next; ++index) {
+        const float3 here = LightArriving(index, origin, normal, direction, light_distance);
+        if (Luminance(here) <= 0.f) continue;
+        running += Luminance(here);
+        picked = index;
+        picked_light = here;
+      }
+      float3 to_lamp = lights[picked].xyz - origin;
+      if (light_size > 0.f) {
+        to_lamp += DiskPoint(normalize(to_lamp), light_size, float2(Random(uint3(id, frame * 16u + 7401u)), Random(uint3(id, frame * 16u + 7402u))));
+      }
+      const float lamp_distance = length(to_lamp);
+      lit = lamp_distance > 1e-3f && !Occluded(origin, to_lamp / lamp_distance, lamp_distance - min(LIGHT_CLEARANCE, 0.5f * lamp_distance), NO_GRASS_SMOKE);
+      // Its light over its odds (its luminance over the sum).
+      if (lit && lights_mode != LIGHTS_RATIO_MODE) arriving += picked_light * (total / Luminance(picked_light));
+    }
+  }
+  if (lights_mode == LIGHTS_RATIO_MODE) {
+    // The shadow ratio's sums (the lights' light here, shadowed by the picked one's ray, and unshadowed) kept over frames at
+    // the surface last frame's texel showed.
     const uint written = ((lights_in_bounce & LIGHTS_RATIO_SET) != 0u) ? 1u : 0u;
     float4 kept = 0.f;
     uint2 previous_pixel;
@@ -968,7 +880,7 @@ void ReuseTexel(uint2 id) {
       kept = light_ratio[1u - written][min(previous_pixel / bounce_scale, uint2(bounce_width, bounce_height) - 1u)];
     }
     const float frames = min(kept.z + 1.f, RATIO_FRAMES);
-    light_ratio[written][id] = float4(lerp(kept.xy, shadowed_unshadowed, 1.f / frames), frames, position.w);
+    light_ratio[written][id] = float4(lerp(kept.xy, float2(lit ? total : 0.f, total), 1.f / frames), frames, position.w);
   }
 #else
   float3 arriving = ((path_flags & PATH_SKY_APART) != 0u) ? bounce[id].rgb : 0.f;
@@ -1092,9 +1004,6 @@ void ReflectReservoirTexel(uint2 id) {
       candidate.light = sample_light;
       candidate.count = 1.f;
       candidate.weight = 0.f;
-#if defined(TORCHES_IN_BOUNCE)
-      candidate.reach = 0.f;
-#endif
       Merge(reservoir, candidate, Luminance(sample_light), Random(uint3(pixel, frame * 16u + 9218u)));
     }
   }
@@ -1180,7 +1089,6 @@ void ReflectPixel(uint2 id) {
     const float hit_distance = length(to_hit);
     const float3 own = (weights > 0.f) ? gathered / weights : 0.f;
     const float3 bounce_light = ThroughFog(bounce.light, origin, bounce.hit);
-    // (Never with Torch and Fire Light in the Light Bounce's reservoirs: the helper leaves Reflection Reuse out then.)
     const float bounce_weight = (bounce.weight > 0.f && hit_distance > 1e-3f)
                                     ? Luminance(bounce_light) * LobeDensity(origin, normal, view, alpha, bounce.hit) * bounce.weight
                                     : 0.f;

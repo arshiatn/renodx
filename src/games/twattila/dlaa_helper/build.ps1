@@ -24,10 +24,9 @@ Set-Location $out
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REUSE -D OPACITY_MICROMAPS -Fh "$out\rt_reuse_omm.h" -Vn RT_REUSE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D REFLECT_RESERVOIR -Fh "$out\rt_reflect_reservoir.h" -Vn RT_REFLECT_RESERVOIR "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REFLECT_RESERVOIR -D OPACITY_MICROMAPS -Fh "$out\rt_reflect_reservoir_omm.h" -Vn RT_REFLECT_RESERVOIR_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-# Torch and Fire Light in the Light Bounce (TORCHES_IN_BOUNCE): the paths, their reuse and the local lights' trace with the
-# lights in ReSTIR GI's reservoirs, used only with that row (the builds above stay as without it).
-foreach ($variant in @(@('rt_path', '', 'rt_path_lights', 'RT_PATH_LIGHTS'), @('rt_path', 'REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'),
-                       @('rt_lights', '', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'))) {
+# Torch and Fire Light in the Light Bounce (TORCHES_IN_BOUNCE): the reuse with a local light's sample a bounce texel and the
+# local lights' trace that leaves them to it, used only with those rows (the builds above stay as without them).
+foreach ($variant in @(@('rt_path', 'REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'), @('rt_lights', '', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'))) {
   $defines = @('-D', 'TORCHES_IN_BOUNCE') + $(if ($variant[1]) { @('-D', $variant[1]) } else { @() })
   & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 @defines -Fh "$out\$($variant[2]).h" -Vn $variant[3] "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
   & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 @defines -D OPACITY_MICROMAPS -Fh "$out\$($variant[2])_omm.h" -Vn "$($variant[3])_OMM" "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
