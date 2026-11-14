@@ -112,7 +112,7 @@ struct Sliders {
   float gpu_micromaps = 1.f;
   float smoke_shadows = 0.f;  // games whose particles InstallSmokeShadows hooks
   float smoke_quality = 1.f;
-  float smoke_fast_build = 0.f;  // SmokeFastBuildRow's (Attila, Warhammer III)
+  float smoke_fast_build = 0.f;  // SmokeFastBuildRow's (every game's graphics page)
   float denoiser = 0.f;  // Ray Tracing Denoiser (Attila's page): Built-in, NRD
   float ao_reblur = 1.f;  // AO under Ray Reconstruction: Light History, REBLUR (games without graphics_page's row keep v34's REBLUR)
   float start_past = 0.f;  // Rays Start Past Hidden Shapes (Bindings::rays_start_past)
@@ -1624,8 +1624,8 @@ inline void Uninstall() {
   UninstallScene();
 }
 
-// Smoke BLAS Fast Build (Experimental, off; helper113, Settings::smoke_fast_build): the row of the games that list it
-// (Attila, Warhammer III), next to Smoke Shadow Quality on the graphics page.
+// Smoke BLAS Fast Build (Experimental, off; helper113, Settings::smoke_fast_build): every game's graphics page makes the row
+// (graphics_page::Apply), next to Smoke Shadow Quality, shown where Smoke Shadows are installed.
 inline renodx::utils::settings::Setting* SmokeFastBuildRow(Sliders* sliders, const feature_settings::AaSliders* aa) {
   return new renodx::utils::settings::Setting{
       .key = "RayTracedSmokeFastBuild",

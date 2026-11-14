@@ -3693,7 +3693,6 @@ void ConfigureAddon() {
   // Ray tracing (twattila/rt_scene.hpp) with an upscaler.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
-  settings.push_back(twattila::rt_scene::SmokeFastBuildRow(&rt_sliders, &aa_sliders));
   for (auto* setting : settings) {
     // Their shared rule reads dlss_mode, which no row sets here: the scale is the game's float (upscaling_mode_row).
     if (setting->key == "AntiAliasingTextureLodBias" || setting->key == "AntiAliasingEffectsAtOutput") {

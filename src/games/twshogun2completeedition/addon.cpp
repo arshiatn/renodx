@@ -1128,6 +1128,8 @@ void ReadDlssAddonOptions() {
   // Smoke Shadows (Attila's keys; ray_tracing.hpp SMOKE_VERTEX_SHADERS): Low to Maximum, 1 Medium.
   ray_tracing.smoke_shadows = ray_tracing.sun_shadows && read_on("RayTracedSmokeShadows", false);
   ray_tracing.smoke_quality = read_count("RayTracedSmokeQuality", 1, 0, 5);
+  // Faster Smoke Shadow Build (Attila's key; helper113's RT_SCENE_SMOKE_FAST_BUILD).
+  ray_tracing.smoke_fast_build = ray_tracing.smoke_shadows && read_on("RayTracedSmokeFastBuild", false);
   // Torch and Fire Light in Fog (Attila's key and range; fog01): 0 the helper traces none, as before.
   read_float("RayTracedLightGlow", 0.f, 0.f, 2.f, &ray_tracing.light_glow);
   // Torch and Fire Shadow Lights: 32, 64, 128.

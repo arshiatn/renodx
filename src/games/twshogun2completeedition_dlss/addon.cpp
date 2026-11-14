@@ -1108,6 +1108,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightGlow", 0.f},
         {"RayTracedSmokeShadows", 0.f},
         {"RayTracedSmokeQuality", 1.f},
+        {"RayTracedSmokeFastBuild", 0.f},
         {"RayTracedAmbientRange", 2.f},
         {"RayTracedAORays", 2.f},
         {"RayTracedAOQuarter", 0.f},
@@ -1204,6 +1205,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
     constexpr std::array<const char*, 6> SMOKE_QUALITIES = {"Low", "Medium", "High", "Ultra", "Extreme", "Maximum"};
     choice("Smoke shadow quality", "RayTracedSmokeQuality", 1, SMOKE_QUALITIES,
            "Higher: fewer holes and less flicker in thick smoke, slower there.");
+    choice("Faster smoke shadow build (Experimental)", "RayTracedSmokeFastBuild", 0, OFF_ON_NAMES,
+           "Smoke shadows' particles are made ready for the rays faster each frame (about 0.6 ms in thick smoke). In thick smoke a "
+           "sun ray may count other particles: slightly different smoke shadows.");
     slider("Grass shadow range (Experimental)", "RayTracedGrassShadowRange", 0.f, 0.f, 200.f, "%.0f m",
            "Past this distance grass casts no ray-traced shadows (on itself or the ground): faster over fields. 0 m: everywhere.");
     ImGui::EndDisabled();
