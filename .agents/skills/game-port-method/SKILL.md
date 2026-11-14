@@ -1,6 +1,6 @@
 ---
 name: game-port-method
-description: "Engine-neutral RenoDX method for porting or bringing up any game add-on (Total War, Unreal Engine 4, CryEngine and others: Expeditions: Rome, Tales of Arise, Ryse: Son of Rome): proof levels for a game fact, the stop rule, the maintainer's rules (game runs only when allowed, fresh backups, Experimental rows, keep the developers' look, no temporal dither, no flicker fix that dims, every setting players run, Nothing dropped, HANDOFF checkboxes with owners, SHARED STEP, stale reports, parity ledger), measurement over manual testing (fixed scene, scripted bench, quiet lock, look verdicts, Nsight, WPR), the maintainer's test list, agents and tools (testbin, Bitdefender, GPU lock, build limits, worktree base, junctions, patch scripts, reviews, Fable only on request), the helper and bridge, Ray Reconstruction through NGX D3D12 in D3D11 games, the fast draw dispatch opt-in for command_action, UE4 live cvars, Expand Gamut, CryEngine ShaderCache.pak, shader sources."
+description: "Engine-neutral RenoDX method for porting or bringing up any game add-on (Total War, Unreal Engine 4, CryEngine and others: Expeditions: Rome, Tales of Arise, Ryse: Son of Rome): proof levels for a game fact, the stop rule, the maintainer's rules (game runs only when allowed, fresh backups, Experimental rows, keep the developers' look, no temporal dither, no flicker fix that dims, every setting players run, Nothing dropped, HANDOFF checkboxes with owners, SHARED STEP, stale reports, parity ledger), measurement over manual testing (fixed scene, scripted bench, quiet lock, look verdicts, Nsight, WPR), the maintainer's test list, agents and tools (testbin, Bitdefender, GPU lock, build limits, worktree base, junctions, patch scripts, reviews, Fable only on request), the helper and bridge, Ray Reconstruction through NGX D3D12 in D3D11 games, the fast draw dispatch opt-in for command_action, UE4 live cvars, Expand Gamut, CryEngine ShaderCache.pak, shader sources, the HDR-only snapshot release check (HDR add-on alone, helper absent, red notice, GitHub and Nexus buttons, SDR preset, first start, page dump)."
 argument-hint: "game, engine and what is being planned, ported or released"
 ---
 
@@ -20,6 +20,7 @@ How the maintainer's ports are planned and checked, whatever the engine. The Tot
 | File | Read when |
 |---|---|
 | [references/engines.md](references/engines.md) | Unreal Engine 4 (Expeditions: Rome, Tales of Arise), CryEngine (Ryse), where shader sources come from |
+| [references/hdr-only-snapshot.md](references/hdr-only-snapshot.md) | Releasing any HDR add-on: the snapshot on the renodx GitHub that upstream builds alone |
 
 Before editing C++, read `AGENTS.md`, `src/games/AGENTS.md` and `docs/CXX_STYLE.md`.
 
@@ -109,4 +110,4 @@ The TW helper (`renodx-tw-dlaa64.exe`, `src/games/twattila/dlaa_helper/`) also s
 
 ## Releasing
 
-The engine's own release steps (TW: `tw-port-checklist`'s `release.md`), then the report per game: done, not done, what the maintainer tests, what wasn't run, built or installed. Each bug the maintainer finds in game becomes a row in the right skill file, with the offline check that would have caught it.
+Every HDR add-on passes the HDR-only snapshot check before its release: [references/hdr-only-snapshot.md](references/hdr-only-snapshot.md). Then the engine's own release steps (TW: `tw-port-checklist`'s `release.md`), then the report per game: done, not done, what the maintainer tests, what wasn't run, built or installed. Each bug the maintainer finds in game becomes a row in the right skill file, with the offline check that would have caught it.
