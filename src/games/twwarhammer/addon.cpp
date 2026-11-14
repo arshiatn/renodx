@@ -284,6 +284,16 @@ float rays_banner_light_row = 0.f;
 constexpr std::array<twattila::water_effects::WaterShader, 1> WATER_SHADERS = {{
     {.hash = 0x44B4A2F0, .lighting_slot = 3, .world_input = 3, .refraction_slot = 4, .normal_slot = 3},
 }};
+// Cut-outs on More Models (Experimental, off): the units' pixel shaders that clip at their base map's alpha 0.5 at TEXCOORD1
+// (tools/tw/wh1/cut_out_census_wh1.txt, by their asm: fx__weighted's G-buffer 1ACA3E8C / F4333A3C, alpha overlay F0BB1D3C,
+// forward 0BF2DB7F), cut out in the rays through the units' captures with that UV (rt_capture_unit*_cut_out, part 13).
+float rays_unit_cut_outs_row = 0.f;
+constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
+    {.pixel_shader = 0x0BF2DB7F, .slot = 5, .uv_semantic_index = 1},
+    {.pixel_shader = 0x1ACA3E8C, .slot = 0, .uv_semantic_index = 1},
+    {.pixel_shader = 0xF0BB1D3C, .slot = 4, .uv_semantic_index = 1},
+    {.pixel_shader = 0xF4333A3C, .slot = 0, .uv_semantic_index = 1},
+}};
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{
     {.hash = 0xDBCC30FD, .row = &rays_banner_light_row},
     {.hash = 0xE7F0D71A, .row = &rays_banner_light_row},
@@ -1417,8 +1427,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
     {.hash = 0xF336AA76, .capture_shader = __rt_capture_leaf, .foliage = true},
     {.hash = 0x308BB4D5, .capture_shader = __rt_capture_leaf_sm40, .foliage = true},
     {.hash = 0xEDAC68AD, .capture_shader = __rt_capture_leaf_sm41, .foliage = true},
-    {.hash = 0x20A9E5FD, .capture_shader = __rt_capture_unit, .dynamic = true},
-    {.hash = 0x3FC5424C, .capture_shader = __rt_capture_unit_4_bones, .dynamic = true},
+    {.hash = 0x20A9E5FD, .capture_shader = __rt_capture_unit, .cut_out_shader = __rt_capture_unit_cut_out, .clip_cut_outs = true, .cut_out_row = &rays_unit_cut_outs_row, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
+    {.hash = 0x3FC5424C, .capture_shader = __rt_capture_unit_4_bones, .cut_out_shader = __rt_capture_unit_4_bones_cut_out, .clip_cut_outs = true, .cut_out_row = &rays_unit_cut_outs_row, .dynamic = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 1},
     {.hash = 0x0EA8B7F1, .capture_shader = __rt_capture_unit_sm41, .dynamic = true},
     {.hash = 0x2F6FFDA0, .capture_shader = __rt_capture_unit_4_bones_sm41, .dynamic = true},
     {.hash = 0x3F139F3D, .capture_shader = __rt_capture_unit_4_bones_dismember, .dynamic = true},
@@ -1997,6 +2007,7 @@ void ConfigureAddon() {
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_banner_light = &rays_banner_light_row,
+                                             .rays_unseen_cut_outs = &rays_unit_cut_outs_row,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
                                              .smoke_shadows_tested = false,
@@ -2004,7 +2015,8 @@ void ConfigureAddon() {
                                              .water_caustics_tested = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
-  // Skip the Shadow Maps here: the water and the forward-lit units take the rays' shadow (SHADOW_READER_SHADERS).
+  // Skip the Shadow Maps here: the water and the forward-lit units take the rays' shadow (SHADOW_READER_SHADERS). Cut-outs on
+  // More Models: the units' alone here (CUT_OUT_MASKS).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedSkipCascades") {
       setting->tooltip = "With Rays Replace Shadow Maps: nothing is drawn into the game's shadow maps. Faster with many units and\n"
@@ -2013,6 +2025,9 @@ void ConfigureAddon() {
     // Water Caustics (Experimental) stays off: SetRaysPresetDefaults gave it the RT/PT preset's 1.
     if (setting->key == "WaterCaustics") {
       setting->default_value = 0.f;
+    }
+    if (setting->key == "RayTracedUnseenCutOuts") {
+      setting->tooltip = "Rays see the soldiers' fur, feathers and frayed cloth with the holes the game cuts in them.";
     }
   }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -2083,6 +2098,7 @@ bool AttachAddon() {
   twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS, true);
   twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowsOnly();
+  twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // Light Through Foliage: the G-buffer's channel 3 alpha byte, bit 128 (Warhammer III's: the leaves' 744FDFF0 writes 128,
   // the sun shaders let the sun through from behind only there; test/tw_warhammer_shaders part 11).
   twattila::screen_space_shadows::foliage_material_bit = 128;

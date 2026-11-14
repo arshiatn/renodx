@@ -54,6 +54,10 @@
 //    clarity; the game's bytes with that c10 a metre deep equal its own half a metre deep (clarity 2; a flat surface, the
 //    depth buffer's ground by name). PatchWaterCaustics (on the game's bytes and on part 8's forward patch, as the runtime
 //    chains them): t51 unbound bit-identical. CONTROLS: the game's c10 a metre deep differs; t51 = 1 differs.
+// 13. Cut-outs on More Models: the units' capture versions with the UV (the build's embed/rt_capture_unit_cut_out.cso and
+//    its 4 bones', RT_CAPTURE_UV) stream out in TEXCOORD0's w the UV the game's 20A9E5FD / 3FC5424C give at TEXCOORD1 (what
+//    their pixel shaders' alpha test reads, tools/tw/wh1/cut_out_census_wh1.txt), as two halves. CONTROL: the captures
+//    without the UV.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -1646,6 +1650,68 @@ static void TestWater(const std::string& games, const std::string& dump) {
               unbound ? "yes" : "NO", tiled ? "differs" : "SAME");
 }
 
+static void TestCutOuts(const std::string& root, const std::string& dump) {
+  const std::string embed = root + "/build/twwarhammer.include/embed/";
+  uint32_t state = 777u;
+  const auto unit = [&state](float low, float high) {
+    state = state * 1664525u + 1013904223u;
+    return low + ((high - low) * static_cast<float>(state >> 8) / 16777216.f);
+  };
+  int values = 0;
+  int misses = 0;
+  int control = 0;
+  for (const auto& [hash, name] : {std::pair{0x20A9E5FDu, "rt_capture_unit"}, std::pair{0x3FC5424Cu, "rt_capture_unit_4_bones"}}) {
+    const auto game = GameBytes(dump, hash);
+    const auto cut_out = Bytes(embed + name + "_cut_out.cso");
+    const auto plain = Bytes(embed + name + ".cso");
+    ComPtr<ID3D11ShaderReflection> reflection;
+    if (game.empty() || FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) {
+      CHECK(false, "cut-outs: %08X's bytes", hash);
+      continue;
+    }
+    D3D11_SHADER_DESC desc = {};
+    reflection->GetDesc(&desc);
+    UINT floats = 0;
+    for (UINT index = 0; index < desc.InputParameters; ++index) {
+      D3D11_SIGNATURE_PARAMETER_DESC input = {};
+      reflection->GetInputParameterDesc(index, &input);
+      floats += static_cast<UINT>(std::bit_width(static_cast<UINT>(input.Mask)));
+    }
+    std::vector<float> vertices;
+    for (int vertex = 0; vertex < 16; ++vertex) {
+      for (UINT component = 0; component < floats; ++component) vertices.push_back(unit(0.f, 1.f));
+    }
+    std::array<float, 64 * 4> zeros = {};
+    const auto buffer = Constants(zeros.data(), sizeof(zeros));
+    const std::array<ID3D11Buffer*, 3> constants = {buffer.Get(), buffer.Get(), buffer.Get()};
+    const std::array<Streamed, 1> game_uv = {{{"TEXCOORD", 1, 2}}};
+    const std::array<Streamed, 1> capture_world = {{{"TEXCOORD", 0, 4}}};
+    const auto expected = StreamOut(game, game, game_uv, vertices, constants);
+    const auto ours = StreamOut(game, cut_out, capture_world, vertices, constants);
+    const auto without = StreamOut(game, plain, capture_world, vertices, constants);
+    CHECK(!expected.empty() && ours.size() == expected.size() * 2 && without.size() == ours.size(), "cut-outs: %08X's stream out", hash);
+    if (expected.empty() || ours.size() != expected.size() * 2 || without.size() != ours.size()) continue;
+    for (size_t vertex = 0; vertex < expected.size() / 2; ++vertex) {
+      const auto halves = [](float packed) {
+        uint32_t bits = 0;
+        std::memcpy(&bits, &packed, 4);
+        return std::array<float, 2>{HalfValue(bits & 0xFFFFu), HalfValue(bits >> 16)};
+      };
+      const auto uv = halves(ours[(vertex * 4) + 3]);
+      const auto other = halves(without[(vertex * 4) + 3]);
+      for (size_t axis = 0; axis < 2; ++axis) {
+        ++values;
+        misses += (std::fabs(uv[axis] - expected[(vertex * 2) + axis]) > 1e-3f) ? 1 : 0;
+        control += (std::fabs(other[axis] - expected[(vertex * 2) + axis]) > 1e-3f) ? 1 : 0;
+      }
+    }
+  }
+  CHECK(values == 64 && misses == 0 && control > 0, "cut-outs: %d values, %d misses, CONTROL %d differ", values, misses, control);
+  std::printf("cut-outs: rt_capture_unit(_4_bones)_cut_out against 20A9E5FD / 3FC5424C's TEXCOORD1, %d values, %d misses; CONTROL without the UV: %d "
+              "differ\n",
+              values, misses, control);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -1672,6 +1738,7 @@ int main(int argc, char** argv) {
   TestThin(argv[2]);
   TestFoliage(argv[2]);
   TestWater(games, argv[2]);
+  TestCutOuts(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
