@@ -11,7 +11,9 @@ void main(
   float4 v1 : TEXCOORD0,
   float4 v2 : TEXCOORD1,
   float4 v3 : TEXCOORD2,
+#ifndef RT_BILLBOARD_WITHOUT_TEXCOORD3  // Rome II's cards have no TEXCOORD3 in their input layout (unread here)
   float v4 : TEXCOORD3,
+#endif
   out float4 position : SV_Position0,
   out float4 world_uv : TEXCOORD0)
 {

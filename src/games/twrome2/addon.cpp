@@ -11,6 +11,7 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <initializer_list>
 #include <shared_mutex>
 #include <span>
 #include <string>
@@ -1493,7 +1494,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 39> MOTION_SHADERS =
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py): the main view's terrain (old and custom
 // geom, shader models 3 and 4.1), rigid objects, tree branches and leaves and units (Rome II's own:
 // data_rome2.pack's builds), and their capture versions (world positions; leaves also UVs).
-constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 39> SCENE_SHADERS = {{
     {.hash = 0x83AB3AFC, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true},
     {.hash = 0x2898B8F6, .capture_shader = __rt_capture_terrain_old_sm3_a, .terrain = true},
     {.hash = 0xD8475AB1, .capture_shader = __rt_capture_terrain_custom_material_sm3_b, .terrain = true},
@@ -1529,6 +1530,15 @@ constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
     {.hash = 0xD0587AC7, .capture_shader = __rt_capture_grass_d058, .dynamic = true, .foliage = true, .grass = true},
     {.hash = 0x2D15A993, .capture_shader = __rt_capture_grass_2d15, .dynamic = true, .foliage = true, .grass = true},
     {.hash = 0x5AB72F3F, .capture_shader = __rt_capture_grass_5ab7, .dynamic = true, .foliage = true, .grass = true},
+    // Far Tree Shadows (Experimental): the far trees' cards (rigidtreebillboard D2EC24BD, drawn in 45 of ATN's 72 traces with
+    // ps C5AED7B7; its MSAA twin 2C1F0C31 with B2B1A4F3 in A2; lq 60DAA886 in none) turned to the sun as Attila's, each
+    // showing the tree from there; cut out by the diffuse's alpha at t1 (C5AED7B7: discard below 0.35).
+    {.hash = 0xD2EC24BD, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    {.hash = 0x2C1F0C31, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    {.hash = 0x60DAA886, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    // The campaign's trees (rigidcampaigntrees AAFE8EAB, Attila's 4657DA8A code; 11 of ATN's 72 traces, C1, ps AD356CEB: its
+    // diffuse's alpha at t0): placed, no wind.
+    {.hash = 0xAAFE8EAB, .capture_shader = __rt_capture_campaign_tree, .rows_shader = __rt_rows_campaign_tree, .foliage = true, .still = true},
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
@@ -2117,10 +2127,12 @@ void ConfigureAddon() {
 
   // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
   // Mode's pages. Fog Shadows keep their 0 (nothing here hooks the fog yet), Smoke Shadows (Experimental) theirs (no game run
-  // has shown them yet), Water Caustics its 0 (untested here).
+  // has shown them yet), Water Caustics its 0 (untested here), Sprite Soldier and Far Tree Shadows theirs (Experimental: no
+  // game run has shown Rome II's cards in the rays yet).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
-    if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedSmokeShadows" || setting->key == "WaterCaustics") {
+    if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedSmokeShadows" || setting->key == "WaterCaustics"
+        || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
     }
     // Torch and fire light in fog and smoke: no fog hooked here and no particle shader reads it.
@@ -2158,6 +2170,7 @@ void ConfigureAddon() {
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
+                                             .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false,
@@ -2196,16 +2209,23 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
 
-  // Rows saved at an old default, cleared once. Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden here until
-  // what they act on is hooked: they show then at ATN's values.
-  constexpr int SETTINGS_REVISION = 1;
+  // Rows saved at an old default, cleared once per revision. 1: Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
+  // here until what they act on is hooked: they show then at ATN's values. 2 (parity round): rows saved hidden at
+  // SetRaysPresetDefaults' value, shown now at a default of their own here (Experimental, off).
+  constexpr int SETTINGS_REVISION = 2;
   if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
-    for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
-      for (const char* key : {"RayTracedFarTreeShadows", "RayTracedLightImportance", "RayTracedPathKeptCube", "RayTracedSmokeQuality",
-                              "RayTracedSpriteShadows", "RayTracedSwayRange"}) {
-        reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
+    const auto clear = [](std::initializer_list<const char*> keys) {
+      for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
+        for (const char* key : keys) {
+          reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
+        }
       }
+    };
+    if (revision < 1) {
+      clear({"RayTracedFarTreeShadows", "RayTracedLightImportance", "RayTracedPathKeptCube", "RayTracedSmokeQuality",
+             "RayTracedSpriteShadows", "RayTracedSwayRange"});
     }
+    clear({"RayTracedFarTreeShadows", "RayTracedSpriteShadows"});
     reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
   }
 
