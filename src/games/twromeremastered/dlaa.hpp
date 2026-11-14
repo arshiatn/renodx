@@ -37,8 +37,11 @@
 // mask's resolve reads that depth at t1; ResolveMainColor (the tone mapper) writes the FP16 frame at the display's size,
 // SMAA and the UI after it. Here: a Halton jitter written into every upload of the main camera (the prepass and the
 // forward pass get the same), the camera's motion from the depth (aa_dlaa_prepare), NVIDIA's DLAA into the tone
-// mapper's output, the game's SMAA left with nothing to do (Evaluated: its edges not drawn). 100% Resolution Scale only:
-// below it (Feral's upscaler) the depth isn't the display's size and it stays off.
+// mapper's output, the game's SMAA left with nothing to do (Evaluated: its edges not drawn). Below 100% Resolution Scale
+// (ATN's 67% / 50% traces: the scene, the tone mapper and SMAA at the render size, then Feral's upscaler, VS 9F3C9B3D,
+// into an FP16 target at the display's size, the UI on it): DLSS from the tone mapper's output to the upscaler's size,
+// copied into its target in its place (Upscale). With a ray row on the bridge stays at the depth's size (rt_core
+// captures the main view's depth at the bridge's): DLAA at the render size, Feral's upscaler after.
 namespace twromeremastered::dlaa {
 
 using Microsoft::WRL::ComPtr;
@@ -100,9 +103,12 @@ struct Camera {
 struct State {
   std::shared_mutex mutex;
   uint64_t frame = 1;
-  std::array<float, 2> jitter = {};  // this frame's (0 unless DLAA ran the frame before)
-  std::array<UINT, 2> display = {};  // the tone mapper's target
-  Camera camera;                     // the main view's last upload
+  std::array<float, 2> jitter = {};   // this frame's (0 unless DLAA ran the frame before)
+  std::array<UINT, 2> display = {};   // the tone mapper's target
+  std::array<UINT, 2> upscaler = {};  // Feral's upscaler's target, drawn in upscaler_frame
+  uint64_t upscaler_frame = 0;
+  uint64_t upscaled_frame = 0;  // DLSS's result (objects.result) waits for the upscaler this frame
+  Camera camera;                      // the main view's last upload
   ComPtr<ID3D11ShaderResourceView> depth;
   uint64_t depth_frame = 0;
   std::array<float, 16> previous_view_projection = {};
@@ -384,9 +390,15 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   std::array<float, 16> previous_view_projection = {};
   bool continued = false;
   bool camera_seen = false;
+  // Below 100% (the upscaler drew the frame before, its target larger), no rays: DLSS to the upscaler's size; else DLAA
+  // at the tone mapper's.
+  std::array<UINT, 2> output = {width, height};
+  bool below = false;
   {
     const std::unique_lock lock(state.mutex);
     state.display = {width, height};
+    below = state.upscaler_frame + 1 >= state.frame && state.upscaler[0] > width && state.upscaler[1] > height;
+    if (below && !rays) output = state.upscaler;
     camera = state.camera;
     camera_seen = camera.frame == state.frame;
     if (state.depth_frame == state.frame) depth = state.depth;
@@ -409,7 +421,7 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     D3D11_TEXTURE2D_DESC depth_desc = {};
     if (SUCCEEDED(depth_resource.As(&depth_texture))) depth_texture->GetDesc(&depth_desc);
     if (depth_desc.Width != width || depth_desc.Height != height || depth_desc.SampleDesc.Count != 1) {
-      report("off: the scene isn't drawn at the display's size (Resolution Scale below 100%) or uses MSAA.");
+      report("off: the scene's depth isn't the tone mapper's size or uses MSAA.");
       return;
     }
   }
@@ -439,12 +451,12 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   }
   D3D11_TEXTURE2D_DESC result_desc = {};
   if (objects.result) objects.result->GetDesc(&result_desc);
-  if (result_desc.Width != width || result_desc.Height != height) {
+  if (result_desc.Width != output[0] || result_desc.Height != output[1]) {
     objects.result.Reset();
     objects.result_uav.Reset();
     const D3D11_TEXTURE2D_DESC desc = {
-        .Width = width,
-        .Height = height,
+        .Width = output[0],
+        .Height = output[1],
         .MipLevels = 1,
         .ArraySize = 1,
         .Format = DXGI_FORMAT_R16G16B16A16_FLOAT,
@@ -472,18 +484,22 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     }
   }
   auto& bridge = twattila::dlaa_bridge::bridge;
-  if (!PrepareBridge(device.Get(), width, height)) {
+  if (!PrepareBridge(device.Get(), output[0], output[1])) {
     report(std::format("off: {}", bridge.status));
     return;
   }
 
-  const float width_f = static_cast<float>(width);
-  const float height_f = static_cast<float>(height);
-  const internal::ShaderSettings shader_settings = {
-      .metrics = {1.f / width_f, 1.f / height_f, width_f, height_f},
-      .dlaa_debug = {0.f, width_f, height_f, 0.f},
+  // aa_dlaa_prepare at the tone mapper's size, aa_dlaa_finish at the output's (the input size its Debug View's).
+  const auto update_settings = [&](UINT pass_width, UINT pass_height) {
+    const float pass_width_f = static_cast<float>(pass_width);
+    const float pass_height_f = static_cast<float>(pass_height);
+    const internal::ShaderSettings shader_settings = {
+        .metrics = {1.f / pass_width_f, 1.f / pass_height_f, pass_width_f, pass_height_f},
+        .dlaa_debug = {0.f, static_cast<float>(width), static_cast<float>(height), 0.f},
+    };
+    native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &shader_settings, 0, 0);
   };
-  native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &shader_settings, 0, 0);
+  update_settings(width, height);
   const internal::TaaConstants taa = internal::MakeTaaConstants(camera, previous_view_projection, continued);
   native->UpdateSubresource(objects.taa.Get(), 0, nullptr, &taa, 0, 0);
 
@@ -516,25 +532,26 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   };
   const std::array<ID3D11Buffer*, 2> constants = {objects.settings.Get(), objects.taa.Get()};
   native->CSSetConstantBuffers(0, 2, constants.data());
-  const UINT groups_x = (width + 7) / 8;
-  const UINT groups_y = (height + 7) / 8;
   bridge.color_square_root = false;
   twattila::dlaa_bridge::BeforeSharedWrites(native);
   bind(objects.prepare.Get(), {objects.frame_srv.Get(), depth.Get()},
        {bridge.color.uav.Get(), bridge.depth.uav.Get(), bridge.motion.uav.Get()});
-  native->Dispatch(groups_x, groups_y, 1);
+  native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
   bind(nullptr, {}, {});
   const bool resolved = twattila::dlaa_bridge::Evaluate(native, width, height, camera.jitter[0], -camera.jitter[1], !continued, 0u);
+  const bool upscaled = output[0] != width;
   if (resolved) {
+    update_settings(output[0], output[1]);
     bind(objects.finish.Get(), {bridge.output.srv.Get(), objects.frame_srv.Get(), bridge.motion.srv.Get()},
          {objects.result_uav.Get()});
-    native->Dispatch(groups_x, groups_y, 1);
+    native->Dispatch((output[0] + 7) / 8, (output[1] + 7) / 8, 1);
     bind(nullptr, {}, {});
-    native->CopyResource(target.Get(), objects.result.Get());
+    // DLSS's result waits for the upscaler (Upscale); DLAA's goes back into the tone mapper's output.
+    if (!upscaled) native->CopyResource(target.Get(), objects.result.Get());
   }
-  // Frame generation: the tone mapper's output after DLAA is the HUD-less frame (the traces: SMAA's passes, copying it
-  // under DLAA, then the UI on their target), with this frame's inputs (the camera as the registers would hold it: its
-  // rows transposed; near and far from the projection's z column).
+  // Frame generation: the tone mapper's output after DLAA (or DLSS's result) is the HUD-less frame (the traces: SMAA's
+  // passes, copying it under DLAA, the upscaler, then the UI on their target), with this frame's inputs (the camera as the
+  // registers would hold it: its rows transposed; near and far from the projection's z column).
   if (resolved && twattila::frame_generation::Wanted()) {
     twattila::frame_generation::Inputs inputs = {
         .width = width,
@@ -550,7 +567,7 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     const float depth_offset = projection[11];
     inputs.near_plane = (depth_scale != 0.f ? -depth_offset / depth_scale : 1.f);
     inputs.far_plane = (depth_scale != 1.f ? depth_scale * inputs.near_plane / (depth_scale - 1.f) : 25000.f);
-    twattila::frame_generation::KeepFrame(native, target.Get(), inputs);
+    twattila::frame_generation::KeepFrame(native, (upscaled ? objects.result : target).Get(), inputs);
   }
 
   native->CSSetShader(game_shader.Get(), nullptr, 0);
@@ -571,11 +588,49 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   {
     const std::unique_lock lock(state.mutex);
     state.evaluated_frame = state.frame;
+    state.upscaled_frame = (upscaled ? state.frame : 0u);
     state.previous_view_projection = camera.view_projection;
   }
-  report(std::format("on, {}x{}.", width, height));
-  twattila::frame_trace::Mark(std::format("DLAA {}x{} jitter {} {}{}", width, height, camera.jitter[0], camera.jitter[1],
-                                          (continued ? "" : " reset")));
+  if (upscaled) {
+    report(std::format("on, DLSS {}x{} to {}x{} (Resolution Scale below 100%).", width, height, output[0], output[1]));
+  } else {
+    report(std::format("on, {}x{}{}.", width, height, (below ? " (below 100% with ray tracing: Feral's upscaler after)" : "")));
+  }
+  twattila::frame_trace::Mark(std::format("DLAA {}x{} to {}x{} jitter {} {}{}", width, height, output[0], output[1], camera.jitter[0],
+                                          camera.jitter[1], (continued ? "" : " reset")));
+}
+
+// Feral's upscaler (below 100%; its pixel shaders): DLSS's result this frame copied into its target in its place (true:
+// the game's draw skipped). Its target's size noted for the next frame's DLSS.
+inline bool Upscale(reshade::api::command_list* cmd_list) {
+  using internal::objects;
+  using internal::state;
+  if (setting == 0.f || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return false;
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  ComPtr<ID3D11RenderTargetView> target_view;
+  native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+  if (!target_view) return false;
+  ComPtr<ID3D11Resource> target_resource;
+  target_view->GetResource(target_resource.GetAddressOf());
+  ComPtr<ID3D11Texture2D> target;
+  if (FAILED(target_resource.As(&target))) return false;
+  D3D11_TEXTURE2D_DESC target_desc = {};
+  target->GetDesc(&target_desc);
+  {
+    const std::unique_lock lock(state.mutex);
+    state.upscaler = {target_desc.Width, target_desc.Height};
+    state.upscaler_frame = state.frame;
+    if (state.upscaled_frame != state.frame) return false;
+  }
+  D3D11_TEXTURE2D_DESC result_desc = {};
+  if (objects.result) objects.result->GetDesc(&result_desc);
+  const bool fp16_target = target_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT || target_desc.Format == DXGI_FORMAT_R16G16B16A16_TYPELESS;
+  if (!fp16_target || result_desc.Width != target_desc.Width || result_desc.Height != target_desc.Height || target_desc.SampleDesc.Count != 1) {
+    return false;
+  }
+  native->CopySubresourceRegion(target.Get(), 0, 0, 0, 0, objects.result.Get(), 0, nullptr);
+  return true;
 }
 
 inline void Install() {

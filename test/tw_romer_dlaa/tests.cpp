@@ -15,6 +15,8 @@
 //    image; skipped when it is not there), not in this test's exe (CONTROL); the hook on a function of its kind gives it the
 //    game's 8-bit format for the upgraded R16G16B16A16 / R10G10B10A2 (ATN's crash 2026-11-14), the rest as asked, its
 //    return value back; unhooked, the format as asked again.
+// 6. Upscale (below 100%): DLSS's result copied into the upscaler's display-size target in its place, the target's size
+//    noted; CONTROL: no result this frame, another size, DLAA off: the game's draw.
 #include <windows.h>
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -485,6 +487,56 @@ int main(int argc, char** argv) {
     CHECK((hooked_formats == std::vector<uint32_t>{87u, 87u, 28u, 28u, 0u, 41u}));
     CHECK(std::ranges::all_of(returned, [](uint64_t value) { return value == 7; }));
     CHECK(resized_formats.size() == 7 && resized_formats.back() == 10u);
+  }
+
+  // 6. Upscale (below 100%, ATN's 67% / 50% traces: the upscaler's FP16 target at the display's size): DLSS's result this
+  // frame copied into the target in the upscaler's place (true: its draw skipped), the target's size noted; CONTROL: no
+  // result this frame, another size, DLAA off: the game's draw.
+  {
+    mock::CommandList upscaler_list;
+    upscaler_list.owner = &mock_device;
+    upscaler_list.native = context;
+    constexpr UINT DISPLAY_WIDTH = WIDTH * 3 / 2;
+    constexpr UINT DISPLAY_HEIGHT = HEIGHT * 3 / 2;
+    std::vector<std::array<uint16_t, 4>> upscaled(DISPLAY_WIDTH * DISPLAY_HEIGHT);
+    for (size_t at = 0; at < upscaled.size(); ++at) upscaled[at] = {ToHalf(0.001f * static_cast<float>(at % 997)), ToHalf(0.5f), ToHalf(0.25f), ToHalf(1.f)};
+    dlaa::internal::objects.result = MakeTexture(DISPLAY_WIDTH, DISPLAY_HEIGHT, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                                 D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS, upscaled.data(), DISPLAY_WIDTH * 8);
+    const auto make_target = [&](UINT width, UINT height) {
+      auto texture = MakeTexture(width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE);
+      ComPtr<ID3D11RenderTargetView> view;
+      REQUIRE(SUCCEEDED(device->CreateRenderTargetView(texture.Get(), nullptr, view.GetAddressOf())));
+      constexpr std::array<float, 4> GREY = {0.125f, 0.125f, 0.125f, 1.f};
+      context->ClearRenderTargetView(view.Get(), GREY.data());
+      return std::pair{texture, view};
+    };
+    const auto upscale = [&](ID3D11RenderTargetView* view) {
+      context->OMSetRenderTargets(1, &view, nullptr);
+      const bool skipped = dlaa::Upscale(&upscaler_list);
+      context->OMSetRenderTargets(0, nullptr, nullptr);
+      return skipped;
+    };
+    const uint16_t grey = ToHalf(0.125f);
+    dlaa::setting = 1.f;
+    state.upscaled_frame = 0;
+    const auto [unused_target, unused_view] = make_target(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    CHECK(!upscale(unused_view.Get()));  // CONTROL: no result this frame
+    CHECK((ReadBack<std::array<uint16_t, 4>>(unused_target.Get(), DISPLAY_WIDTH, DISPLAY_HEIGHT)[5][0] == grey));
+    CHECK(state.upscaler[0] == DISPLAY_WIDTH && state.upscaler[1] == DISPLAY_HEIGHT && state.upscaler_frame == state.frame);
+    state.upscaled_frame = state.frame;
+    const auto [target, view] = make_target(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    CHECK(upscale(view.Get()));
+    CHECK((ReadBack<std::array<uint16_t, 4>>(target.Get(), DISPLAY_WIDTH, DISPLAY_HEIGHT) == upscaled));
+    const auto [small_target, small_view] = make_target(WIDTH, HEIGHT);
+    CHECK(!upscale(small_view.Get()));  // CONTROL: another size
+    CHECK((ReadBack<std::array<uint16_t, 4>>(small_target.Get(), WIDTH, HEIGHT)[5][0] == grey));
+    dlaa::setting = 0.f;
+    const auto [off_target, off_view] = make_target(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    CHECK(!upscale(off_view.Get()));  // CONTROL: DLAA off
+    CHECK((ReadBack<std::array<uint16_t, 4>>(off_target.Get(), DISPLAY_WIDTH, DISPLAY_HEIGHT)[5][0] == grey));
+    std::printf("upscale: DLSS's result in the upscaler's %ux%u target, the game's draw skipped; no result / another size / off: its draw\n",
+                DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    dlaa::internal::objects = {};
   }
 
   std::printf("%s (%d failures)\n", (failures == 0 ? "PASS" : "FAIL"), failures);

@@ -14,9 +14,19 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastere
   Objects (Test)**: Tested (default) / Solid (+ the battle's solid draws) / All (as v11).
 - Test: `test/tw_romer_rays` case 1 (the battle's kinds out at Tested, solid ones in at Solid, an alpha-tested one only
   at All, a banner never).
+- DLAA below 100% Resolution Scale: v9's text said off, but v9-v12 ran DLAA at the render size (the scene's depth and
+  the tone mapper both 2572x1446 at 67%), then Feral's upscaler. Now (plan item 4, ATN's 67% / 50% traces: the tone
+  mapper and SMAA at the render size, the exe's upscaler VS 9F3C9B3D / PS 3C19543E into a 3840x2160 FP16 target, the UI
+  on it) **DLSS** from the tone mapper's output to the upscaler's size, copied into its target in its place (`dlaa.hpp`
+  Upscale; the upscaler's four PS hashes). Frame generation keeps DLSS's result as the HUD-less frame. With a ray row on
+  it stays as before (DLAA at the render size, Feral's upscaler after): rt_core captures the main view's depth at the
+  bridge's size. Log: `DLAA: on, DLSS 2572x1446 to 3840x2160 (Resolution Scale below 100%).`
+- Test: `test/tw_romer_dlaa` case 6 (DLSS's result copied into the upscaler's target, its draw skipped; no result /
+  another size / DLAA off: the game's draw).
 
 Test (ATN): a battle with Ray-Traced Sun Shadows + AO at Battle Objects Tested: no reset (renodx-tw-dlaa64.log); then
-Solid, then All (one each, a restart after a reset): which one resets.
+Solid, then All (one each, a restart after a reset): which one resets. DLAA (rays off) at 67% and 50%: sharp at 4K, no
+shake; the log's DLSS line; the helper's "Upscaling: DLSS ... to 3840 x 2160".
 
 ## v12 (2026-11-14, crash fix; built only, not run in game; installed: INSTALLED_PLACEHOLDER)
 

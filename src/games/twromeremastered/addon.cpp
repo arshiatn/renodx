@@ -611,6 +611,8 @@ constexpr std::array<uint32_t, 12> TONE_MAPPER_SHADERS = {0xB72063D6, 0xEC84B8D1
                                                          0xB1E8D323, 0xFDCB3015, 0xF951F1D4, 0xEBA25E29, 0x93290942, 0x62890EAF};
 // SMAA's edge detection and blending weights (one permutation each; its blend 3FCAE7F4 copies the frame without edges).
 constexpr std::array<uint32_t, 2> SMAA_EDGE_AND_WEIGHT_SHADERS = {0x4167F389, 0x15857D78};
+// The exe's upscaler below 100% Resolution Scale (VS 9F3C9B3D): DLSS's result in its place (dlaa.hpp Upscale).
+constexpr std::array<uint32_t, 4> UPSCALER_PIXEL_SHADERS = {0xF27A8C95, 0x3C19543E, 0x4770CC47, 0xC0AFE726};
 
 float test_sun_shadows_off = 0.f;
 float test_ao_off = 0.f;
@@ -719,6 +721,9 @@ void BuildRuntimeData() {
   }
   for (const uint32_t hash : SMAA_EDGE_AND_WEIGHT_SHADERS) {
     custom_shaders[hash] = {.crc32 = hash, .on_draw = [](reshade::api::command_list*) { return !twromeremastered::dlaa::Evaluated(); }};
+  }
+  for (const uint32_t hash : UPSCALER_PIXEL_SHADERS) {
+    custom_shaders[hash] = {.crc32 = hash, .on_draw = [](reshade::api::command_list* cmd_list) { return !twromeremastered::dlaa::Upscale(cmd_list); }};
   }
   custom_shaders[AO_APPLY_PIXEL_SHADER] = {.crc32 = AO_APPLY_PIXEL_SHADER,
                                            .on_draw = [](reshade::api::command_list* cmd_list) {
@@ -1841,8 +1846,8 @@ void ConfigureAddon() {
           .label = "Anti-Aliasing",
           .section = "Graphics (Experimental)",
           .tooltip = "Game's: the game's own (SMAA, FXAA or off).\n"
-                     "DLAA: NVIDIA's, on NVIDIA GPUs at 100% Resolution Scale. It replaces the game's SMAA; set the game's "
-                     "FXAA off. Experimental, off by default.",
+                     "DLAA: NVIDIA's, on NVIDIA GPUs. Below 100% Resolution Scale it upscales (DLSS) in place of the game's\n"
+                     "upscaler. It replaces the game's SMAA; set the game's FXAA off. Experimental, off by default.",
           .labels = {"Game's", "DLAA"},
           .is_visible = IsAdvancedSettings,
       },
@@ -2109,8 +2114,8 @@ bool AttachAddon() {
   // inputs (t9-t11).
   std::vector<uint32_t> value_hashes(TONE_MAPPER_SHADERS.begin(), TONE_MAPPER_SHADERS.end());
   value_hashes.insert(value_hashes.end(), SHADOW_MASK_PIXEL_SHADERS.begin(), SHADOW_MASK_PIXEL_SHADERS.end());
-  value_hashes.insert(value_hashes.end(), {AO_APPLY_PIXEL_SHADER, TREE_AO_PIXEL_SHADER, 0x76A75628, 0x9F3C9B3D, 0xF27A8C95, 0x3C19543E,
-                                           0x4770CC47, 0xC0AFE726});
+  value_hashes.insert(value_hashes.end(), UPSCALER_PIXEL_SHADERS.begin(), UPSCALER_PIXEL_SHADERS.end());
+  value_hashes.insert(value_hashes.end(), {AO_APPLY_PIXEL_SHADER, TREE_AO_PIXEL_SHADER, 0x76A75628, 0x9F3C9B3D});
   twattila::frame_trace::Install({
       .value_hashes = value_hashes,
       .value_slots = 9,
