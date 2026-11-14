@@ -37,6 +37,7 @@
 #include <vector>
 #include "src/games/twattila/graphics_hooks.hpp"
 #include "src/games/twattila/rt_scene.hpp"
+#include "src/games/twattila/shadow_pass.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
 
 namespace hooks = twattila::graphics_hooks;
@@ -70,6 +71,39 @@ static float __fastcall GameImposterDistance(void*, void*, uint32_t size, float 
 struct ViewDevice : mock::Device {
   reshade::api::resource get_resource_from_view(reshade::api::resource_view view) const override { return {view.handle}; }
 };
+
+// Part 7's stand-ins: a pass (its vtable +0x3c gives its kind) and the model manager's Render, which notes each call and
+// binds its targets as the passes do (kind 0 another target; kind 5 with `other_bind_in_cascade` another, then the map).
+struct StandInPass {
+  const void* const* vtable;
+  uint32_t kind;
+};
+
+struct StandIn {
+  std::vector<std::pair<uint32_t, uint32_t>> calls;  // (kind, the call's number in its kind this frame)
+  std::array<uint32_t, 16> numbers = {};
+  bool other_bind_in_cascade = false;
+};
+static StandIn stand_in;
+
+static uint32_t __fastcall StandInKind(StandInPass* self, void*) {
+  return self->kind;
+}
+
+static void __fastcall StandInRender(uint8_t*, void*, void*, uint8_t* pass_bytes) {
+  const auto* pass = reinterpret_cast<const StandInPass*>(pass_bytes);
+  // The call's number among its kind's this frame, skipped ones too (the hook's count, where it counts).
+  const uint32_t counted = twattila::shadow_pass::internal::kinds[pass->kind].calls;
+  stand_in.calls.emplace_back(pass->kind, (counted != 0) ? counted - 1 : stand_in.numbers[pass->kind]++);
+  if (pass->kind == 0 || (pass->kind == 5 && stand_in.other_bind_in_cascade)) {
+    twattila::rt_scene::internal::skipping_casters.store(false);
+    twattila::shadow_pass::internal::OnBindTargets(nullptr, 0, nullptr, {});
+    if (pass->kind == 5) {
+      twattila::rt_scene::internal::skipping_casters.store(true);
+      twattila::shadow_pass::internal::OnBindTargets(nullptr, 0, nullptr, {});
+    }
+  }
+}
 
 int main(int argc, char** argv) {
   hooks::internal::original_unit_distances = &GameUnitDistances;
@@ -292,6 +326,64 @@ int main(int argc, char** argv) {
     std::printf("6 shadow cascades: pattern once in the shipped empire.retail.dll; off: Shadow Map Size's bytes alone; on: %zu bytes "
                 "differ, all in Max's and High's cascade immediates (Medium's %u / %u); back: the game's bytes; CONTROL: "
                 "another Medium, none written\n", changed.size(), medium_count, medium_84);
+
+    // 7. Skip the Game's Shadow Map Work (shadow_pass.hpp): its Render pattern once in the shipped DLL; then frames of a
+    //    stand-in for the model manager's Render (4 cascade calls of kind 5 into the sun's map, 1 main call of kind 0 that
+    //    binds its targets, 1 call of kind 9 into the sun's map alone, the frame's only one of its kind).
+    namespace pass = twattila::shadow_pass::internal;
+    const uint8_t* render = tw::engine_tweaks::FindPattern({file}, pass::RENDER);
+    CHECK(render != nullptr);
+    const auto past = static_cast<size_t>(render - reinterpret_cast<const uint8_t*>(file.data())) + 1;
+    CHECK(tw::engine_tweaks::FindPattern({std::string_view(file).substr(past)}, pass::RENDER) == nullptr);
+    std::array<uint8_t, 8> self = {0, 0, 0, 0, 1, 0, 0, 0};  // +4: enabled
+    std::array<const void*, 16> pass_vtable = {};
+    pass_vtable[twattila::shadow_pass::internal::PASS_KIND_SLOT] = reinterpret_cast<const void*>(&StandInKind);
+    std::array<StandInPass, 3> passes = {StandInPass{pass_vtable.data(), 5}, StandInPass{pass_vtable.data(), 0},
+                                         StandInPass{pass_vtable.data(), 9}};
+    pass::original_render = &StandInRender;
+    pass::searched = true;           // no search for empire.retail.dll in the test
+    pass::binds_counted = true;
+    pass::hooks.emplace_back();      // as installed (never installed here)
+    const auto frame = [&](bool row, bool casters_skipped) {
+      twattila::shadow_pass::Update(row, casters_skipped);
+      stand_in.calls.clear();
+      stand_in.numbers = {};
+      scene::internal::skipping_casters.store(true);  // the stage bound the sun's map
+      for (int cascade = 0; cascade < 4; ++cascade) pass::OnRender(self.data(), nullptr, nullptr, reinterpret_cast<uint8_t*>(&passes[0]));
+      pass::OnRender(self.data(), nullptr, nullptr, reinterpret_cast<uint8_t*>(&passes[2]));
+      pass::OnRender(self.data(), nullptr, nullptr, reinterpret_cast<uint8_t*>(&passes[1]));
+      return stand_in.calls;
+    };
+    const std::vector<std::pair<uint32_t, uint32_t>> every = {{5, 0}, {5, 1}, {5, 2}, {5, 3}, {9, 0}, {0, 0}};
+    // Off, and on without the casters skipped: every call, nothing learned.
+    for (int index = 0; index < 20; ++index) CHECK(frame(false, true) == every && frame(true, false) == every);
+    CHECK(pass::kinds[5].sun_only == 0 && !pass::kinds[0].mixed);
+    // On under the rays: 4 frames learn (16 cascade calls), then one cascade call a frame in turn, the others every call.
+    for (int index = 0; index < 4; ++index) CHECK(frame(true, true) == every);
+    CHECK(pass::kinds[5].sun_only == 16 && pass::kinds[0].mixed && !pass::kinds[9].mixed);
+    std::array<uint32_t, 4> drawn_cascades = {};
+    for (int index = 0; index < 40; ++index) {
+      const auto calls = frame(true, true);
+      CHECK(calls.size() == 3 && calls[0].first == 5 && calls[1] == (std::pair<uint32_t, uint32_t>{9, 0})
+            && calls[2] == (std::pair<uint32_t, uint32_t>{0, 0}));
+      CHECK(calls[0].second == static_cast<uint32_t>(pass::frame % 4));
+      ++drawn_cascades[calls[0].second];
+    }
+    CHECK(std::ranges::all_of(drawn_cascades, [](uint32_t count) { return count == 10; }));
+    // The casters back (rays off): every call at the next frame.
+    CHECK(frame(true, false) == every);
+    // CONTROL: a cascade call that binds another target ends the skip for good.
+    stand_in.other_bind_in_cascade = true;
+    frame(true, true);
+    stand_in.other_bind_in_cascade = false;
+    CHECK(pass::kinds[5].mixed);
+    for (int index = 0; index < 8; ++index) CHECK(frame(true, true) == every);
+    pass::hooks.clear();
+    pass::active.store(false);
+    std::printf("7 shadow map work: Render's pattern once in the shipped empire.retail.dll; off / casters drawn: every call; "
+                "on: cascade kind learned after 16 calls, then 1 of 4 a frame in turn (each cascade 10 of 40 frames), the "
+                "main pass and a lone sun-only kind every call; CONTROL: a cascade call binding another target, every call "
+                "after it\n");
   }
   std::printf("PASS\n");
   return 0;

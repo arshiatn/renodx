@@ -605,6 +605,25 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   - [ ] cpu_ agent, round 3 (sent): the workers' unnamed 36.8 ms, memcpy / memset 4.44 + 1.08, frame allocator 2.40 + 0.39,
     soldier update 2.87 + 0.45, render-list execution 1.35 render, battle draw loop 0.67 (cpl2 pickles); off-screen soldiers
     keep their last pose / far soldiers half-rate animation (Experimental); unit-only mesh LOD (count parts per LOD first)
+  - [x] CPU PERF ROUND MERGED 05522f9b (agent stopped at 17:00, quiet lock held since 15:07): Skip the Game's Shadow Map
+    Work (RayTracedSkipShadowPass, Experimental, off, Attila + Thrones: the model manager's sun-map pass kinds learned in
+    game, one call a frame kept in turn; E 1.5-3.5 ms render thread when CPU-bound; tw_unit_shadows part 7) and the grass
+    scrub per-cell radius (on, bit-exact; G1 visits -71 %; tw_scrub_lods section 5). Report:
+    tools/tw/perf_plan/render_thread_tail.md. Its leftovers, each owned by the cpu_ agent resumed AFTER the hfp_ window:
+    - [ ] the 15 x64 consumer builds after the shared rt_scene accessor (scratchpad cpu_work\cpu_build64.ps1) + Thrones'
+      page dump (coordinator, if the agent isn't resumed first)
+    - [ ] the tail script (cpu_tail.py cpl2 / units): memset callers (4.0 ms workers), the introsort's callers and
+      comparator, frame allocator, the 8x pose evaluator, per-LOD part counts
+    - [ ] 0x176ced0 per-thread vector push (6.2 ms workers + 1.0 render): false sharing of 8 threads' 12-byte headers;
+      next: the readers of list +0x18, then a layout patch
+    - [ ] ScaleModelLods' cache check merged into the key loop (~2 ns a call)
+    - [ ] Rome II: the shadow-pass skip (its Render pattern differs: find its pass-kind switch near the soldier draw)
+    - [ ] 64-bit games: the learned shadow-pass skip on their model manager's Render (pe_func.py), and a ScrubUpdate
+      equivalent by its tweak string (WH3: GPU grass, nothing)
+    - DROPPED with numbers: U3 heapfix-aware (heapfix's form already drops both fldcw; <= 0.1 ms on heapfix's bytes); U5
+      (heapfix's loopfetch has a prefetch site there, disabled by its author: a note for the author package)
+    - [ ] ATN tests (README lines): Skip the Game's Shadow Map Work off / on in cpl1's view, Time Each Pass x3 + PresentMon
+      30 s, cut-outs and unit shadows; G1 grass maxed against the previous build
   - [ ] hfp_ agent (sent): heapfix's whole test set + eqtest on every packaged variant; battle_draw_batching A/B (2.16 ms)
   - [ ] GPU PERF ROUND (one agent after the drw_ merge; helper / rt_core): (a) FIRST Rome Remastered reset suspect 3 (a
     cluster set kept after the game rewrites an index buffer under the same key: offline check); (b) units ray-tracing
@@ -621,9 +640,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     grass_replay.py; estimate -5 to -10 ms render thread, -20 to -37 ms workers at maxed grass when CPU-bound
   - [ ] Look-changing GPU savings (half-rate rays for grass / far soldiers, float16 animation pages; 0.2-0.6 ms each):
     Experimental rows, owner the GPU PERF ROUND after (a)-(m)
-  - [ ] ATN DECIDES: one cascade instead of two (after the Shadows Medium A/B); WH3 own ReSTIR reflections (~0.3 ms cheaper,
-    picture differs); dead keys in ATN's ini (GraphicsModelDetail, GraphicsUnitDetail, GraphicsUnitFade*); the grass
-    settings note text; HAGS (ATN's Windows setting, effect unmeasured)
+  - [ ] ATN DECIDES: one cascade instead of two (after ATN's Shadows Medium A/B; ATN 15:xx: not tested yet); the grass
+    settings note text
+  - [ ] ATN 15:xx YES: WH3 own ReSTIR reflections (~0.3 ms cheaper, picture differs) as an Experimental row, off. Owner:
+    PARITY ROUND 2 WH3
+  - [ ] ATN 15:xx YES: remove the dead keys GraphicsModelDetail / GraphicsUnitDetail / GraphicsUnitFade* from ATN's Attila
+    ReShade.ini (twattila reads none of them; other games' add-ons do, their inis stay). Owner: coordinator, AFTER the hfp_
+    batch (its runs restore their own ini backups); fresh backup, edit, hash noted
+  - [x] HAGS: stays on (ATN: FG and MFG need it); no measurement, never suggest it off
   - [ ] Unit round D (WH3 cross-pass unit capture key) and E (TBB grain rows), line 37: owner PARITY ROUND 2 WH3
 - [x] ATN 14:2x: the lessons of the last 16 h into the skill (tools/tw/round_notes/lessons_1114.md, 24 lines): SKILL.md
   "Nothing dropped" rule (every open line of a report = a checkbox with an owner; SHARED STEP; parity gate), Finishing a
