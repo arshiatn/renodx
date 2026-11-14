@@ -279,8 +279,11 @@ struct SceneShader {
   // have (its capture-point flag culled, by its alpha-tested G-buffer pixel shader).
   const float* thin_sheets_row = nullptr;
   std::span<const uint32_t> thin_sheets_pixel_shaders;
-  bool sun_facing = false;  // sprite soldiers, far trees: never compact (a quad each), their capture version reads rt_sun at t0
-  bool far_tree = false;    // a far tree's billboard (with sun_facing)
+  bool sun_facing = false;  // sprite soldiers, far trees: never compact (a quad each), their capture version reads rt_sun at sun_slot
+  // The capture version's rt_sun slot: past the game vertex shader's own textures, which its capture version reads as bound (Troy's
+  // campaign billboards: their shroud at t0).
+  UINT sun_slot = 0;
+  bool far_tree = false;  // a far tree's billboard (with sun_facing)
   bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
   bool tessellated = false;
   bool indirect = false;  // its indirect draws too (the game's GPU-culled grass): CaptureIndirect
@@ -1860,7 +1863,7 @@ void Capture(Context& command, const SceneShader& shader) {
     native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
     // A capture version turned to the sun reads rt_sun; the game's shadow vertex shader (a cascade draw) turns its cards to the sun itself,
     // and its t0 stays as the game set it for the next draw.
-    if (shader.sun_facing && !cascade_draw) native->VSSetShaderResources(0, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
+    if (shader.sun_facing && !cascade_draw) native->VSSetShaderResources(shader.sun_slot, 1, dlaa_bridge::bridge.rt_sun.srv.GetAddressOf());
     ComPtr<ID3D11ShaderResourceView> game_keep_view;
     ComPtr<ID3D11Buffer> game_keep_constants;
     if (!shader.tessellated_keep.empty()) {
@@ -1958,7 +1961,7 @@ void Capture(Context& command, const SceneShader& shader) {
     }
     if (shader.sun_facing && !cascade_draw) {
       ID3D11ShaderResourceView* no_view = nullptr;
-      native->VSSetShaderResources(0, 1, &no_view);
+      native->VSSetShaderResources(shader.sun_slot, 1, &no_view);
     }
   }
   const UINT rows_vertex = next_vertex + (sway ? block_texels : (place ? 0u : vertex_count));

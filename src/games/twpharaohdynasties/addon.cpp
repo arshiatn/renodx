@@ -34,6 +34,7 @@
 #include "../twattila/ao_pass.hpp"
 #include "../twattila/contact_shadows_off.hpp"
 #include "../twattila/light_bounce.hpp"
+#include "../twattila/light_count.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
@@ -1490,36 +1491,6 @@ constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADER
     {.hash = 0xE8524BB1, .view_shift = 3, .sampler_shift = 2},
 }};
 
-// Log Details' light count, once (a frame trace gives a light draw's indices times its instances, not its lights): one whole
-// frame's draws, instances and indices (or vertices) of the point lights (E318CE77: a light an instance, POSITION1-4) and of
-// the particle lights (5AD46115: their layout unknown). Logged the first frame either draws, again the first frame point
-// lights draw; with Log Details off a draw reads one flag.
-struct LightCount {
-  std::shared_mutex mutex;
-  std::array<uint32_t, 2> draws = {};  // point lights, particle lights
-  std::array<uint64_t, 2> instances = {};
-  std::array<uint64_t, 2> indices = {};
-  bool logged = false;
-  bool points_logged = false;
-};
-LightCount light_count;
-std::atomic<bool> light_counting = false;  // from a present on: the whole frame to the next
-constexpr auto OnLightCountDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (!light_counting.load(std::memory_order_relaxed)) return {};
-  if constexpr (requires { command.arguments.instance_count; }) {
-    const size_t family = (command.matched_shader_hash == 0xE318CE77) ? 0 : 1;
-    const std::unique_lock lock(light_count.mutex);
-    ++light_count.draws[family];
-    light_count.instances[family] += command.arguments.instance_count;
-    if constexpr (requires { command.arguments.index_count; }) {
-      light_count.indices[family] += command.arguments.index_count;
-    } else {
-      light_count.indices[family] += command.arguments.vertex_count;
-    }
-  }
-  return {};
-};
-
 // Ray Reconstruction's guides again after the water (water_troy 833E7963 writes the G-buffer after the sun draws, and the
 // sky dome 9CF980D0 draws after it, once a frame in every data-run trace): from the first sun draw's channels.
 constexpr auto OnSkyDomeGuides = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
@@ -2129,22 +2100,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   twpharaohdynasties::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
-  {
-    const std::unique_lock lock(light_count.mutex);
-    const bool points = light_count.draws[0] != 0 && !light_count.points_logged;
-    if (light_counting.load() && (points || (light_count.draws[1] != 0 && !light_count.logged))) {
-      renodx::utils::log::i(std::format("[Total War] Light draws in a frame: point lights (E318CE77) {} draws, {} instances, {} indices; "
-                                        "particle lights (5AD46115) {} draws, {} instances, {} indices.",
-                                        light_count.draws[0], light_count.instances[0], light_count.indices[0], light_count.draws[1],
-                                        light_count.instances[1], light_count.indices[1]));
-      light_count.logged = true;
-      light_count.points_logged = light_count.points_logged || points;
-    }
-    light_count.draws = {};
-    light_count.instances = {};
-    light_count.indices = {};
-    light_counting.store(rt_sliders.debug_log != 0.f && !light_count.points_logged);
-  }
+  twattila::light_count::OnPresent(rt_sliders.debug_log != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
@@ -2955,10 +2911,7 @@ bool AttachAddon() {
   // the rays' bits). Log Details' light count also counts the particle lights (5AD46115).
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0xE318CE77});
   twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
-  for (const uint32_t shader_hash : {0xE318CE77u, 0x5AD46115u}) {
-    renodx::utils::command_action::Register(
-        OnLightCountDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
-  }
+  twattila::light_count::Install(0xE318CE77, 0x5AD46115);
   // Fog Shadows: rt_scene's fog hook binds the rays, then ours swaps the fog's shader where they are bound (registration order).
   twattila::rt_scene::InstallFogShadows(FOG_SHADERS);
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyFogShadowsDevice);
@@ -3009,7 +2962,7 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(OnFogShadowsDraw);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyFogShadowsDevice);
   OnDestroyFogShadowsDevice(nullptr);
-  renodx::utils::command_action::Unregister(OnLightCountDraw);
+  twattila::light_count::Uninstall();
   renodx::utils::command_action::Unregister(OnSkyDomeGuides);
   renodx::utils::command_action::Unregister(OnWaterApplyDraw);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyWaterReflectionsDevice);

@@ -26,7 +26,7 @@
 //   without 0x200000, its draw flags' quad bit).
 // The input is the vertex shader's whole output signature (fxc /dumpbin of the game's bytes).
 // The lit pixel shader's diffuse array, its sampler and its emitters' constants (EMITTER_CONSTANTS_PS) as they reach this
-// shader (SmokePixelShader's shifts applied): RT_PARTICLE_DIFFUSE, RT_PARTICLE_DIFFUSE_SAMPLER, RT_PARTICLE_EMITTERS,
+// shader (SmokePixelShader's shifts applied): RT_PARTICLE_DIFFUSE, RT_PARTICLE_SAMPLER, RT_PARTICLE_EMITTERS,
 // defined before the include, else Pharaoh's 3F1B86E1's t6, s3, t8. RT_PARTICLE_MIP_VIEWPORT: the viewport its sample's mip
 // level is a pixel of, else the camera's g_viewport_dimensions (camera[29]).
 
@@ -38,8 +38,8 @@
 #ifndef RT_PARTICLE_DIFFUSE
 #define RT_PARTICLE_DIFFUSE t6
 #endif
-#ifndef RT_PARTICLE_DIFFUSE_SAMPLER
-#define RT_PARTICLE_DIFFUSE_SAMPLER s3
+#ifndef RT_PARTICLE_SAMPLER
+#define RT_PARTICLE_SAMPLER s3
 #endif
 #ifndef RT_PARTICLE_EMITTERS
 #define RT_PARTICLE_EMITTERS t8
@@ -85,7 +85,7 @@ cbuffer camera : register(b0) {
 
 Texture2DArray<float4> diffuse : register(RT_PARTICLE_DIFFUSE);
 StructuredBuffer<EmitterConstants> emitters : register(RT_PARTICLE_EMITTERS);
-SamplerState diffuse_sampler : register(RT_PARTICLE_DIFFUSE_SAMPLER);
+SamplerState diffuse_sampler : register(RT_PARTICLE_SAMPLER);
 
 [maxvertexcount(1)]
 void main(triangle Corner corners[3], uint primitive : SV_PrimitiveID, inout PointStream<Record> records) {

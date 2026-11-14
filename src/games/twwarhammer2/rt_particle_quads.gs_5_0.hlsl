@@ -12,7 +12,7 @@
 // bin\fxc.exe src\games\twwarhammer2\rt_particle_quads.gs_5_0.hlsl -T gs_5_0 -E main /O3 /Qstrip_reflect /nologo /Vn __rt_particle_quads /Fh src\games\twwarhammer2\rt_particle_quads_gs.h
 
 #define RT_PARTICLE_DIFFUSE t5
-#define RT_PARTICLE_DIFFUSE_SAMPLER s4
+#define RT_PARTICLE_SAMPLER s4
 #define RT_PARTICLE_EMITTERS t8
 #define RT_PARTICLE_MIP_VIEWPORT (camera[29].xy / (camera[27].zw * camera[31].xy))
 #include "../twattila/rt_particle_quads_instancing.hlsli"
