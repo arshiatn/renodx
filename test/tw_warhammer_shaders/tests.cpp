@@ -125,6 +125,12 @@
 //    (cb12 0.5, the rest 7): at every half-size pixel of the view the same march (its hit, and its length in the half-size
 //    texture's uv half as long). CONTROLS: the game's bytes, the patch with cb12 unbound differ. Printed: with the rest of the
 //    depth near (0.2), how many differ (the march's bounds are the texture's half size, not the view's).
+// 25. Modded Auto Exposure: our compute_luma_stats (shaders/autoexposure00, the build's embed/0x96BCFCBB.cso) against the
+//    game's 96BCFCBB over a 512 x 288 scene (a gradient, fire specks, a sun past the white limit), each after the game's clear
+//    166E783A, last frame's sum copied out of the statistics before the clear as the add-on does: off (t1 unbound or bound),
+//    or on without a sum at t1, the game's minimum / maximum / sum and bloom source bit for bit; on with Sensitivity 1 the
+//    maximum last frame's average x 2 (the minimum, sum and source the game's); Sensitivity 16 the game's. CONTROL: the capped
+//    maximum lower than the game's.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -2517,6 +2523,153 @@ static void TestRaycast(const std::string& dump) {
               patched.ndc, patched.projected, equal, PIXELS, hits, marched - hits, PIXELS - marched, game_differs, unbound_differs, near_differs);
 }
 
+// The luma statistics (96BCFCBB's u1: minimum, maximum, sum) and its bloom source (u0) of `code` over `scene` (512 x 288),
+// after the game's clear 166E783A on `stats` (16 bytes, raw), Modded Auto Exposure's rows in b13 and `last_sum` at t1 (null:
+// unbound).
+struct LumaRun {
+  std::array<uint32_t, 3> stats = {};
+  std::vector<Float4> source;
+};
+
+static LumaRun RunLuma(std::span<const uint8_t> code, std::span<const uint8_t> clear, ID3D11ShaderResourceView* scene, ID3D11Buffer* stats,
+                       ID3D11ShaderResourceView* last_sum, float protection, float stops) {
+  ComPtr<ID3D11ComputeShader> shader;
+  ComPtr<ID3D11ComputeShader> clear_shader;
+  if (FAILED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))
+      || FAILED(device->CreateComputeShader(clear.data(), clear.size(), nullptr, clear_shader.GetAddressOf()))) {
+    return {};
+  }
+  const D3D11_UNORDERED_ACCESS_VIEW_DESC raw = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER,
+                                                .Buffer = {.FirstElement = 0, .NumElements = 4, .Flags = D3D11_BUFFER_UAV_FLAG_RAW}};
+  ComPtr<ID3D11UnorderedAccessView> stats_view;
+  device->CreateUnorderedAccessView(stats, &raw, stats_view.GetAddressOf());
+  context->CSSetShader(clear_shader.Get(), nullptr, 0);
+  context->CSSetUnorderedAccessViews(0, 1, stats_view.GetAddressOf(), nullptr);
+  context->Dispatch(1, 1, 1);
+  context->ClearState();
+  std::array<float, 32 * 4> camera = {};
+  for (const size_t reg : {29u, 31u}) {
+    camera[(reg * 4) + 0] = 512.f;
+    camera[(reg * 4) + 1] = 288.f;
+    camera[(reg * 4) + 2] = 1.f / 512.f;
+    camera[(reg * 4) + 3] = 1.f / 288.f;
+  }
+  const std::array<float, 4> limits = {0.001f, 0.5f, 0.05f, 64.f};  // luma_stats_buffer: black, -, -, white
+  ShaderInjectData injected = {};
+  injected.auto_exposure_highlight_protection = protection;
+  injected.auto_exposure_highlight_headroom_stops = stops;
+  std::vector<uint8_t> injected_bytes((sizeof(injected) + 15) & ~size_t{15});
+  std::memcpy(injected_bytes.data(), &injected, sizeof(injected));
+  const std::array<ID3D11Buffer*, 2> buffers = {Constants(camera.data(), sizeof(camera)).Detach(), Constants(limits.data(), sizeof(limits)).Detach()};
+  const auto settings_buffer = Constants(injected_bytes.data(), static_cast<UINT>(injected_bytes.size()));
+  const auto source = Texture(512, 512, nullptr, D3D11_BIND_UNORDERED_ACCESS);
+  ComPtr<ID3D11UnorderedAccessView> source_view;
+  device->CreateUnorderedAccessView(source.Get(), nullptr, source_view.GetAddressOf());
+  const D3D11_SAMPLER_DESC bilinear = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                       .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&bilinear, sampler.GetAddressOf());
+  const std::array<ID3D11UnorderedAccessView*, 2> outputs = {source_view.Get(), stats_view.Get()};
+  context->CSSetShader(shader.Get(), nullptr, 0);
+  context->CSSetConstantBuffers(0, 2, buffers.data());
+  context->CSSetConstantBuffers(13, 1, settings_buffer.GetAddressOf());
+  context->CSSetShaderResources(0, 1, &scene);
+  if (last_sum != nullptr) context->CSSetShaderResources(1, 1, &last_sum);
+  context->CSSetSamplers(0, 1, sampler.GetAddressOf());
+  context->CSSetUnorderedAccessViews(0, 2, outputs.data(), nullptr);
+  context->Dispatch(64, 64, 1);
+  context->ClearState();
+  for (auto* buffer : buffers) buffer->Release();
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), stats);
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  LumaRun run;
+  if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+    std::memcpy(run.stats.data(), mapped.pData, 12);
+    context->Unmap(staging.Get(), 0);
+  }
+  run.source = Read(source.Get());
+  return run;
+}
+
+static void TestLuma(const std::string& root, const std::string& dump) {
+  const auto game = GameBytes(dump, 0x96BCFCBB);
+  const auto clear = GameBytes(dump, 0x166E783A);
+  const auto ours = Bytes(root + "/build/twwarhammer.include/embed/0x96BCFCBB.cso");
+  if (game.empty() || clear.empty()) {
+    CHECK(false, "luma: 96BCFCBB / 166E783A's bytes");
+    return;
+  }
+  // A scene of 512 x 288: a lit gradient (0.05 - 2.5), fire specks (30) and a sun (400, past the white limit 64).
+  std::vector<Float4> texels(512 * 288);
+  for (UINT y = 0; y < 288; ++y) {
+    for (UINT x = 0; x < 512; ++x) {
+      const float lit = 0.05f + (2.45f * static_cast<float>(x + y) / 798.f);
+      Float4 texel = {lit, lit * 0.8f, lit * 0.6f, 1.f};
+      if ((x * 7 + y * 13) % 97 == 0) texel = {30.f, 12.f, 3.f, 1.f};
+      if (x >= 400 && x < 424 && y >= 20 && y < 44) texel = {400.f, 380.f, 300.f, 1.f};
+      texels[(y * 512) + x] = texel;
+    }
+  }
+  const D3D11_TEXTURE2D_DESC scene_desc = {.Width = 512, .Height = 288, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                           .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  const D3D11_SUBRESOURCE_DATA scene_data = {.pSysMem = texels.data(), .SysMemPitch = 512 * 16};
+  ComPtr<ID3D11Texture2D> scene_texture;
+  device->CreateTexture2D(&scene_desc, &scene_data, scene_texture.GetAddressOf());
+  ComPtr<ID3D11ShaderResourceView> scene;
+  device->CreateShaderResourceView(scene_texture.Get(), nullptr, scene.GetAddressOf());
+  const D3D11_BUFFER_DESC stats_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS,
+                                        .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
+  const D3D11_BUFFER_DESC kept_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                       .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
+  ComPtr<ID3D11Buffer> stats;
+  ComPtr<ID3D11Buffer> kept;
+  device->CreateBuffer(&stats_desc, nullptr, stats.GetAddressOf());
+  device->CreateBuffer(&kept_desc, nullptr, kept.GetAddressOf());
+  const D3D11_SHADER_RESOURCE_VIEW_DESC kept_view_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX,
+                                                          .BufferEx = {.FirstElement = 0, .NumElements = 4, .Flags = D3D11_BUFFEREX_SRV_FLAG_RAW}};
+  ComPtr<ID3D11ShaderResourceView> kept_view;
+  device->CreateShaderResourceView(kept.Get(), &kept_view_desc, kept_view.GetAddressOf());
+  // As the add-on at the clear: last frame's sum (bytes 8 - 11 of the game's statistics) into ours.
+  const auto keep_sum = [&] {
+    const D3D11_BOX sum_bytes = {.left = 8, .top = 0, .front = 0, .right = 12, .bottom = 1, .back = 1};
+    context->CopySubresourceRegion(kept.Get(), 0, 0, 0, 0, stats.Get(), 0, &sum_bytes);
+  };
+  const auto expected = RunLuma(game, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
+  const auto off = RunLuma(ours, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
+  keep_sum();
+  const auto off_bound = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 0.f, 1.f);
+  keep_sum();
+  const auto capped = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 1.f);
+  keep_sum();
+  const auto wide = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 16.f);
+  const auto unbound = RunLuma(ours, clear, scene.Get(), stats.Get(), nullptr, 1.f, 1.f);
+  CHECK(expected.source.size() == 512 * 512 && off.source.size() == 512 * 512 && capped.source.size() == 512 * 512, "luma: outputs");
+  if (expected.source.size() != 512 * 512 || off.source.size() != 512 * 512 || capped.source.size() != 512 * 512) return;
+  const auto same_source = [&](const LumaRun& run) { return std::memcmp(run.source.data(), expected.source.data(), expected.source.size() * 16) == 0; };
+  // The cap as the shader makes it (last frame's sum: this scene's), within a float's rounding of the quantised value.
+  const float black = 0.001f;
+  const float span = 64.f - black;
+  const double average = black + (static_cast<double>(span) * (static_cast<double>(expected.stats[2]) / 4294967296.0));
+  const double ceiling = std::min(4294967295.0, 4294967296.0 * std::max(average * 2.0 - black, 0.0) / span);
+  const double expected_max = std::min(static_cast<double>(expected.stats[1]), ceiling);
+  const bool off_same = off.stats == expected.stats && off_bound.stats == expected.stats && unbound.stats == expected.stats && same_source(off) &&
+                        same_source(off_bound) && same_source(unbound);
+  const bool capped_right = capped.stats[0] == expected.stats[0] && capped.stats[2] == expected.stats[2] && same_source(capped) &&
+                            std::fabs(static_cast<double>(capped.stats[1]) - expected_max) <= 4294967296.0 * 2e-6;
+  const bool wide_same = wide.stats == expected.stats && same_source(wide);
+  CHECK(off_same && capped_right && wide_same && capped.stats[1] < expected.stats[1],
+        "luma: off %d, capped %d (max %u, expected %.0f, the game's %u), Sensitivity 16 the game's %d", off_same, capped_right, capped.stats[1], expected_max,
+        expected.stats[1], wide_same);
+  std::printf("Modded Auto Exposure: our 96BCFCBB off (t1 unbound, bound, or on without last frame's sum) the game's bits (min %08X max %08X sum %08X, "
+              "the bloom's 512 x 512 source) %s; on, Sensitivity 1: max %08X = last frame's average x 2 (expected %.0f; the game's %08X: CONTROL "
+              "lower), min and sum and source the game's %s; Sensitivity 16 the game's %s\n",
+              expected.stats[0], expected.stats[1], expected.stats[2], off_same ? "yes" : "NO", capped.stats[1], expected_max, expected.stats[1],
+              capped_right ? "yes" : "NO", wide_same ? "yes" : "NO");
+}
+
 static void TestAoAlone(const std::string& games, const std::string& dump) {
   constexpr UINT SIZE = 16;
   const std::string path = games + "/twattila/rt_ambient_combine.cs_5_0.hlsl";
@@ -3291,6 +3444,7 @@ int main(int argc, char** argv) {
   TestTreeShadows(argv[2]);
   TestCloth(argv[1], argv[2]);
   TestRaycast(argv[2]);
+  TestLuma(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
