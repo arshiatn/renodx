@@ -141,6 +141,8 @@ struct ShaderInjectData {
   float dof;                       // the depth of field's blur size x this (hdr_to_screen t05-t08, t13-t16; 1: the game's), as Attila
   float someindicators;            // markersbattle00-02 (Attila's): the indicators x this in the HDR modes (1: the game's)
   float vfxbasebrightness;         // vfx00 / vfx01 (Attila's): the lit particles x this, but the snow / weather slices (1: the game's)
+  float auto_exposure_highlight_protection;     // autoexposure00 (5E597EBC): 0 stock, 1 the metered maximum limited (Attila's)
+  float auto_exposure_highlight_headroom_stops; // that limit, stops above the frame's average
 };
 
 #define SI shader_injection

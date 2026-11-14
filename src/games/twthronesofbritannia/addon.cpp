@@ -79,10 +79,6 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; Attila's chain, part 4).
 constexpr float HUE_CLIP_DEFAULT = 40.f;
 
-// bool IsModdedAutoExposureEnabled() {
-//   return shader_injection.auto_exposure_highlight_protection == 1.f;
-// }
-
 // void ApplyHDRPreset(
 //     float exposure,
 //     float highlights,
@@ -158,6 +154,8 @@ void ApplyResetPreset() {
       {"filmgrain", 1.f},
       {"some_indicators", 1.f},
       {"vfx_base_brightness", 1.f},
+      {"auto_exposure_highlight_protection", 0.f},
+      {"auto_exposure_highlight_headroom_stops", 2.f},
       {"v31_exposure", 1.f},
       {"v31_highlights", 1.f},
       {"v31_shadows", 1.f},
@@ -978,32 +976,30 @@ void BuildRuntimeData() {
 
 
 
-    // // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_protection",
-    //     .binding = &shader_injection.auto_exposure_highlight_protection,
-    //     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-    //     .default_value = 0.0f,
-    //     .label = "Modded Auto Exposure",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
-    //     .labels = {"Off (Stock)", "On (Protected)"},
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_headroom_stops",
-    //     .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 1.0f,
-    //     .label = "Modded Auto Exposure: Sensitivity",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
-    //     .min = 0.0f,
-    //     .max = 2.0f,
-    //     .format = "%.1f",
-    //     .is_enabled = IsModdedAutoExposureEnabled,
-    //     .is_visible = IsAdvancedSettings,
-    // },
+    // Auto Exposure (Attila's rows; this game meters on the CPU from shaders/autoexposure00's last texel).
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_protection",
+        .binding = &shader_injection.auto_exposure_highlight_protection,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.0f,
+        .label = "Modded Auto Exposure",
+        .section = "Extra (Experimental)",
+        .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
+        .labels = {"Off (Stock)", "On (Protected)"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_headroom_stops",
+        .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 4.0f,
+        .label = "Modded Auto Exposure: Sensitivity",
+        .section = "Extra (Experimental)",
+        .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
+        .min = 1.0f,
+        .max = 8.0f,
+        .format = "%.0f",
+        .is_enabled = [] { return shader_injection.auto_exposure_highlight_protection == 1.f; },
+    },
     // // VFX //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .key = "vfx_fire_brightness",
