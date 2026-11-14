@@ -11,7 +11,9 @@ Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastere
   screen-space shadow mask written to 1 after CSMResolve) and **Remove the Game's Ambient Occlusion (Test)** (ASSAO's
   output written to 1, the trees' AO left out). They mark where the ray-traced shadows and AO will go.
 - Tools: **Trace One Frame** (`tw_frame_trace.txt` next to the exe about a second later).
-- No helper yet: DLSS and the rays wait for the data run's traces.
+- No helper yet: DLSS and the rays wait for the first traces. The 2026-11-14 data run reached no frame: the exe is set
+  to "Run this program as an administrator" (Compatibility tab), so every start asked for UAC. A trace needs ATN: that
+  box cleared, or his own start from the menu with the trace watcher (tools\tw\romeremastered\plan_1114.md section 7).
 
 Test (ATN, a battle): both Test rows off looks like v7; Sun Shadows on: only the sun's shadows gone (ambient and AO
 stay); AO on: the soft contact darkening gone, shadows stay; ReShade.log has one "Test: ... written to 1" line each.
