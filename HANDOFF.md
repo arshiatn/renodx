@@ -201,6 +201,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   (RmProfilingAdminOnly unset): ATN may allow them in the NVIDIA Control Panel; GPU Trace agent on the harness
   (tools/tw/nsight); (3) unified ReSTIR DI + GI reservoir (worktree agent; plan tools/tw/restir_unified/plan.md, helper111
   if feasible, Experimental row off = helper110 bit-identical).
+- [x] Rome Remastered v9 MERGED 70696220 (DLAA through the helper, Experimental; jitter into b5, motion from depth;
+  test/tw_romer_dlaa WARP PASS); tw_install.py romer uses_helper True. Round on the branch: RT sun shadows / AO, Bend.
+- [x] GPU counters: ATN allowed them for all users (RmProfilingAdminOnly 0, 02:4x). An ngfx call opened a Qt error
+  dialog on ATN's screen: Nsight agent told to stay headless.
+- [x] Troy: ATN's own Epic start 02:49-02:55 (campaign, then a night siege, asked to set the game's AA off):
+  atn_trace_watch 14 traces (troy/runs/ATN_session2_024858); sent to the Troy agent. Troy's prefs still gfx_aa 2 on disk.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
