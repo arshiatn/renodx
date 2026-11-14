@@ -133,10 +133,12 @@ struct ShaderInjectData {
   float auto_exposure_highlight_protection;
   float auto_exposure_highlight_headroom_stops;
   float indicator_brightness;  // indicator00-02 in HDR: Attila's Unit/Building Indicator Brightness (some_indicators), 1 the game's
+  float ssao_frame;  // GT-VBAO's noise frame, 0-63, moving with the AO filter's Temporal Smoothing (0: still, the game's)
 };
 
 #define SI  shader_injection
 #define HDR SI.hdr
+#define AO_NOISE_FRAME SI.ssao_frame  // twwarhammer2/bitmask_ao.hlsli
 
 // SDR output (displays without HDR): the display's white is the game's and the UI's.
 #define SHOGUN_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)

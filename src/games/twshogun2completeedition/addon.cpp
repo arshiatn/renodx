@@ -27,10 +27,13 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/command_action.hpp"
+#include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../../utils/swapchain.hpp"
+#include "../twattila/ao_filter.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/credits.hpp"
@@ -174,6 +177,32 @@ struct RaysAPixel {
 bool ray_tracing_installed = false;
 // Between the reflections' HiZ and their resolve (the generic mip passes there are theirs; render thread).
 bool reflection_passes = false;
+// GT-VBAO's Temporal Smoothing, Temporal Edge Fix and Denoiser (Experimental; the DLSS addon's AO rows, Attila's keys
+// ssao_temporal / ssao_edge_fix / ssao_denoise): twattila/ao_filter.hpp on the AO the sun light draws read, as Warhammer II's.
+twattila::ao_filter::Settings ao_filter_rows;
+std::atomic_bool ao_filter_on = false;  // a row on with GT-VBAO (present thread; the sun draws read it)
+
+// The AO filter at the sun light draws: their AO at gbuffer_slot - 2 (t_ssao: t5, the campaign map's t7), the G-buffer depth at
+// gbuffer_slot + 3 (t10, t12) and camera_VS_PS at b0, read from the game's bytes (camera_position at 0, view_projection at 160,
+// inv_view_projection at 480; shaders/sss.hlsli's layout), copied into Attila's layout for the filter's shaders.
+constexpr std::array<twattila::frame_history::CameraRun, 8> CAMERA_LAYOUT = {{
+    {.destination = 0, .source = 0, .bytes = 12},       // camera_position
+    {.destination = 16, .source = 32, .bytes = 192},    // view, projection, view_projection (c2-c13)
+    {.destination = 208, .source = 288, .bytes = 64},   // inv_view (c18)
+    {.destination = 272, .source = 416, .bytes = 148},  // inv_projection, inv_view_projection, camera_near_far, time (c26-c35.x)
+    {.destination = 420, .source = 576, .bytes = 12},   // g_inverse_focal_length, g_vertical_fov (c36)
+    {.destination = 432, .source = 592, .bytes = 16},   // screen_size (c37)
+    {.destination = 448, .source = 568, .bytes = 4},    // g_texel_offset (c35.z)
+    {.destination = 464, .source = 608, .bytes = 16},   // g_viewport_dimensions (c38)
+}};
+constexpr auto AO_FILTER_DRAWS = [] {
+  auto draws = twshogun2::ray_tracing::SUN_DRAWS;
+  for (auto& draw : draws) {
+    draw.ao_slot = draw.gbuffer_slot - 2;
+    draw.camera_layout = CAMERA_LAYOUT;
+  }
+  return draws;
+}();
 
 // Render scale (the DLSS addon draws the 3D passes into the top-left part of the full-size targets) ////////////////
 // The rendered fraction for the depth of field, the auto exposure and the tonemap's distortion lookup: a 3D pass's
@@ -217,6 +246,26 @@ bool OnDrawCapture(reshade::api::command_list* cmd_list) {
 }
 
 }  // namespace render_scale
+
+// The AO filter's 3D size (twattila::frame_history::RenderSize; below 100% the DLSS addon draws the 3D image into the top-left
+// of the display-size targets): the sun light draw's viewport, 0 at the display's size. Before the filter's callback.
+constexpr auto OnAoFilterSunDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (!ao_filter_on.load(std::memory_order_relaxed)) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr) return {};
+  D3D11_VIEWPORT viewport = {};
+  UINT viewport_count = 1;
+  native->RSGetViewports(&viewport_count, &viewport);
+  const bool scaled = viewport_count != 0 && viewport.Width < static_cast<float>(render_scale::back_buffer_width.load());
+  twattila::frame_history::render_width.store(scaled ? static_cast<uint32_t>(viewport.Width) : 0u, std::memory_order_relaxed);
+  twattila::frame_history::render_height.store(scaled ? static_cast<uint32_t>(viewport.Height) : 0u, std::memory_order_relaxed);
+  static std::atomic_bool applied_logged = false;
+  if (!applied_logged.exchange(true, std::memory_order_relaxed)) {
+    renodx::utils::log::i(std::format("[Shogun 2] AO filter: applied at a sun light draw ({} x {})", viewport.Width, viewport.Height));
+  }
+  return {};
+};
 
 // The sea's colour overlay (selection rings, firing arcs, wakes, bow waves: indicator ps30_main_to_overlay, wake,
 // seainteraction; drawn only there): the ocean reads it at the full-screen position (its decal projection), but with the
@@ -1072,6 +1121,12 @@ void ReadDlssAddonOptions() {
   read_choice("AmbientOcclusionDirections", 0, 4, &shader_injection.ssao_directions);
   read_choice("AmbientOcclusionResolution", 0, 2, &shader_injection.ssao_resolution);
   read_choice("AmbientOcclusionAutoThickness", 1, 2, &shader_injection.ssao_auto_thickness);
+  const auto read_off_on = [](const char* key) {
+    int value = 0;
+    reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
+    return value != 0;
+  };
+  ao_filter_rows = {.temporal = read_off_on("ssao_temporal"), .edge_fix = read_off_on("ssao_edge_fix"), .denoise = read_off_on("ssao_denoise")};
   read_float("LightBounceStrength", 0.f, 0.f, 4.f, &shader_injection.light_bounce_strength);
   read_float("LightBounceRadius", 20.f, 0.5f, 20.f, &shader_injection.light_bounce_radius);
   read_choice("LightBounceResolution", 2, 4, &shader_injection.light_bounce_resolution);
@@ -1196,6 +1251,19 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     ReadDlssAddonOptions();
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp), as Warhammer II's.
+  const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
+  static uint32_t ao_frame = 0;
+  shader_injection.ssao_frame = (bitmask_ao && ao_filter_rows.temporal) ? static_cast<float>(++ao_frame % 64) : 0.f;
+  const bool ao_filter = bitmask_ao && (ao_filter_rows.temporal || ao_filter_rows.denoise);
+  ao_filter_on.store(ao_filter, std::memory_order_relaxed);
+  if (!ao_filter) {
+    twattila::frame_history::render_width.store(0u, std::memory_order_relaxed);
+    twattila::frame_history::render_height.store(0u, std::memory_order_relaxed);
+  }
+  twattila::ao_filter::Update(swapchain, {.temporal = bitmask_ao && ao_filter_rows.temporal,
+                                          .edge_fix = ao_filter_rows.edge_fix,
+                                          .denoise = bitmask_ao && ao_filter_rows.denoise});
   // The helper's frame generation and Reflex (the DLSS addon's rows), the bridge: what it serves this frame
   // (upscaling.hpp); Ray Reconstruction with a ray-traced effect only.
   const auto choices = twshogun2::hdr_link::ChoicesNow();
@@ -1458,10 +1526,11 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::upscaling::OnDestroyDevice);
   // One line for a run's log (2026-11-14 data run): the DLSS addon's options this addon reads.
   renodx::utils::log::i(std::format(
-      "[Shogun 2] Options: AO mode {}, Light Bounce strength {}, SSR resolution {}, SSS samples {} stability {}, shadow "
-      "map stability {}, sun shadow softness {}; ray tracing {} (sun {}, AO {}, GI {}, reflections {}, point lights {}, "
-      "paths {})",
-      shader_injection.ssao_mode, shader_injection.light_bounce_strength, shader_injection.ssr_resolution,
+      "[Shogun 2] Options: AO mode {} (temporal {}, edge fix {}, denoiser {}), Light Bounce strength {}, SSR resolution {}, SSS "
+      "samples {} stability {}, shadow map stability {}, sun shadow softness {}; ray tracing {} (sun {}, AO {}, GI {}, reflections "
+      "{}, point lights {}, paths {})",
+      shader_injection.ssao_mode, ao_filter_rows.temporal, ao_filter_rows.edge_fix, ao_filter_rows.denoise,
+      shader_injection.light_bounce_strength, shader_injection.ssr_resolution,
       shader_injection.sss_samples, shader_injection.sss_stability, shader_injection.shadow_map_stability,
       shader_injection.sun_shadow_softness, (ray_tracing_installed ? "installed" : "not installed"),
       ray_tracing_settings.sun_shadows, ray_tracing_settings.ambient_occlusion, ray_tracing_settings.light_bounce,
@@ -1470,6 +1539,13 @@ bool AttachAddon() {
   // the later callbacks).
   twshogun2::foliage_light::Install(twshogun2::ray_tracing::SUN_DRAWS);
   reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::foliage_light::OnDestroyDevice);
+  // The AO filter (its 3D size first, then the filter): before the Light Bounce, which draws the sun draws itself.
+  for (const auto& draw : AO_FILTER_DRAWS) {
+    renodx::utils::command_action::Register(
+        OnAoFilterSunDraw, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
+  twattila::ao_filter::Install(AO_FILTER_DRAWS);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   // Light Bounce (twattila/light_bounce.hpp): the sun light draws (ray_tracing.hpp's, replaced here).
   twattila::light_bounce::Install(twshogun2::ray_tracing::SUN_DRAWS);
 
@@ -1496,6 +1572,9 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);
   twattila::light_bounce::Uninstall();
+  renodx::utils::command_action::Unregister(OnAoFilterSunDraw);
+  twattila::ao_filter::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   twshogun2::foliage_light::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::foliage_light::OnDestroyDevice);
   if (ray_tracing_installed) {

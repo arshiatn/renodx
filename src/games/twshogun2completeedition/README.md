@@ -956,3 +956,12 @@ RayTracedAmbientOcclusion, RayTracedLightBounce, SwapChainEncoding, hue_clip and
 Checks: both addons build (x64); test/tw_shogun2_shaders PASS with part 17 (the quad shader), parts 8-9 for all six water
 shaders, parts 10-11 for the five new casters; test/tw_shogun2_tweaks PASS (new: the reader on the game's DLL, read only,
 against capstone's list). No shared code changed.
+
+### Parity round 4 (2026-11-14; built only, not run in game)
+
+On atn-mods b435a0e6, the parity round 2 brief (ledger tools/tw/parity/shogun2.tsv). Every new row Experimental and off.
+
+- **GT-VBAO Temporal Smoothing, Temporal Edge Fix, Denoiser** (DLSS addon, Ambient Occlusion; Attila's keys ssao_temporal,
+  ssao_edge_fix, ssao_denoise): twattila/ao_filter.hpp on the AO the sun light draws read (their t_ssao two slots below the
+  G-buffer slot, the depth three above, camera_VS_PS copied into Attila's layout), as Warhammer II's; its noise moves each frame
+  only with Temporal Smoothing on (ssao_frame 0: the noise as before). No shared code changed.

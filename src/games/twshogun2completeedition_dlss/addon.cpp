@@ -238,6 +238,11 @@ struct AmbientOcclusion {
   int directions = 0;         // index into AO_DIRECTIONS
   int resolution = 0;         // index into AO_RESOLUTIONS
   int auto_thickness = 1;     // index into OFF_ON
+  // Attila's Temporal Smoothing, Temporal Edge Fix and Denoiser (its keys; the HDR addon's twattila/ao_filter.hpp):
+  // Experimental, off, in no preset.
+  int temporal = 0;  // index into OFF_ON
+  int edge_fix = 0;  // index into OFF_ON
+  int denoise = 0;   // index into OFF_ON
 };
 constexpr AmbientOcclusion AO_DEFAULT = {};
 AmbientOcclusion ao;  // overlay
@@ -879,6 +884,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AmbientOcclusionDirections", ao.directions);
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AmbientOcclusionResolution", ao.resolution);
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AmbientOcclusionAutoThickness", ao.auto_thickness);
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ssao_temporal", ao.temporal);
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ssao_edge_fix", ao.edge_fix);
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "ssao_denoise", ao.denoise);
   };
   const auto save_gi = [] {
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "LightBounceStrength", gi.strength);
@@ -943,6 +951,16 @@ void OnOverlay(reshade::api::effect_runtime*) {
                               OFF_ON[ao.auto_thickness], AO_DEFAULT.auto_thickness,
                               "Guesses each object's thickness from its width, Thickness as the least:\n"
                               "spears stay thin, walls and hills block fully.");
+  ao_changed |= choice_slider("Temporal Smoothing (Experimental)", &ao.temporal, OFF_ON.size(), OFF_ON[ao.temporal],
+                              AO_DEFAULT.temporal, "Averages the last frames: much less noise. Off: the noise stands still.");
+  ImGui::BeginDisabled(ao.temporal == 0);
+  ao_changed |= choice_slider("Temporal Edge Fix (Experimental)", &ao.edge_fix, OFF_ON.size(), OFF_ON[ao.edge_fix],
+                              AO_DEFAULT.edge_fix,
+                              "Keeps Temporal Smoothing's old shading off outlines (no thin halos).\n"
+                              "Outlines can shimmer a little more.");
+  ImGui::EndDisabled();
+  ao_changed |= choice_slider("Denoiser (Experimental)", &ao.denoise, OFF_ON.size(), OFF_ON[ao.denoise], AO_DEFAULT.denoise,
+                              "Smooths the noise along surfaces, never across edges. Cleaner, a bit softer.");
   ImGui::EndDisabled();
   if (ao_changed) save_ao();
   ImGui::NewLine();
@@ -1576,6 +1594,9 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   load_choice("AmbientOcclusionDirections", AO_DIRECTIONS.size(), &ao.directions);
   load_choice("AmbientOcclusionResolution", AO_RESOLUTIONS.size(), &ao.resolution);
   load_choice("AmbientOcclusionAutoThickness", OFF_ON.size(), &ao.auto_thickness);
+  load_choice("ssao_temporal", OFF_ON.size(), &ao.temporal);
+  load_choice("ssao_edge_fix", OFF_ON.size(), &ao.edge_fix);
+  load_choice("ssao_denoise", OFF_ON.size(), &ao.denoise);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "LightBounceStrength", gi.strength);
   reshade::get_config_value(nullptr, "Shogun 2 DLSS", "LightBounceRadius", gi.radius);
   load_choice("LightBounceResolution", GI_RESOLUTIONS.size(), &gi.resolution);
