@@ -35,6 +35,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/credits.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/frame_generation.hpp"
@@ -1852,42 +1853,14 @@ void ConfigureAddon() {
   // rays' rows (rt_scene::AppendSettings); this game's own rows go under Ray Tracing Extra Options (graphics_page's
   // Finish). Keys as before: AntiAliasing's DLAA 1 is DLSS 5 since SETTINGS_REVISION 1 (AttachAddon).
   twattila::feature_settings::AppendAa(&settings, &twromeremastered::dlaa::sliders);
-  settings.insert(settings.end(), {
-      new renodx::utils::settings::Setting{
-          .key = "ScreenSpaceShadows",
-          .binding = &twromeremastered::contact_shadows::rows.enabled,
-          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Screen-Space Shadows",
-          .section = twattila::feature_settings::SSS_SECTION,
-          .tooltip = "Fine sun shadows from what is on screen (Bend Studio's): soldiers, weapons and small details get\n"
-                     "contact shadows the shadow map is too coarse for. Needs in-game shadows.",
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ScreenSpaceShadowsLength",
-          .binding = &twromeremastered::contact_shadows::rows.length,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 2.f,
-          .label = "Length",
-          .section = twattila::feature_settings::SSS_SECTION,
-          .tooltip = "How far the shadows reach, in screen pixels. Longer: heavier.",
-          .labels = {"60", "120", "240", "480", "960", "1920"},
-          .is_enabled = [] { return twromeremastered::contact_shadows::rows.enabled != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ScreenSpaceShadowsThickness",
-          .binding = &twromeremastered::contact_shadows::rows.thickness,
-          .default_value = 0.005f,
-          .label = "Thickness",
-          .section = twattila::feature_settings::SSS_SECTION,
-          .tooltip = "How thick objects are taken to be. Lower: thinner shadows, light gets behind things;\n"
-                     "higher: fuller shadows, more halo-like shading behind objects.",
-          .min = 0.001f,
-          .max = 0.05f,
-          .format = "%.3f",
-          .is_enabled = [] { return twromeremastered::contact_shadows::rows.enabled != 0.f; },
-      },
-  });
+  // Bend's rows as Attila's; the extended march (Softer Away from the Caster) and the Debug View are not drawn here:
+  // hidden (banners' and torches' rows hide themselves: not installed).
+  twattila::feature_settings::AppendSss(&settings, &twromeremastered::contact_shadows::rows);
+  for (auto* setting : settings) {
+    if (setting->key == "ScreenSpaceShadowsDistanceSoftness" || setting->key == "ScreenSpaceShadowsDebugView") {
+      setting->is_visible = [] { return false; };
+    }
+  }
   twattila::rt_scene::AppendSettings(&settings, &twromeremastered::ray_tracing::sliders, &twromeremastered::dlaa::sliders);
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
@@ -1969,7 +1942,13 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                   "PsychoV31 and PsychoV35. Uncharted 2 extended: Musa and DabVeed.",
+                   "PsychoV31 and PsychoV35. Uncharted 2 extended: Musa and DabVeed.\n"
+                   "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0.",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::HELPER,
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -1993,6 +1972,14 @@ void ConfigureAddon() {
           .group = "line_1",
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/rometotalwar/mods/22"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
       },
   });
 
