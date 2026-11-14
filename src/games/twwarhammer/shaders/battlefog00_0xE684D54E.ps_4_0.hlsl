@@ -1,5 +1,5 @@
 // 0xE684D54E (battlefog ps40_main): the battle's height and distance fog, its colour the sun-lit fog colour blended
-// toward the sky's. Fog & Sky Smoothing (twattila/sky_smooth.hlsli).
+// toward the sky's. Fog & Sky Smoothing (twattila/sky_smooth.hlsli), Fog Strength (SI.fog_strength).
 #include "../shared.h"
 #include "../../twattila/sky_smooth.hlsli"
 
@@ -65,7 +65,8 @@ void main(
   r0.z = saturate(r0.x * (r0.z * r0.z * (3 - 2 * r0.z)));
   const float sky_blend = saturate(dot(r0.xx, g_fog_colour_blend));
   r0.y = saturate((distance_to_camera - g_force_fog.x) / (g_force_fog.y - g_force_fog.x));
-  o0.w = (r0.y * r0.y * (3 - 2 * r0.y)) * (1 - r0.z) + r0.z;
+  // Fog Strength: the opacity x the row (1: the game's, already within 0-1).
+  o0.w = saturate(((r0.y * r0.y * (3 - 2 * r0.y)) * (1 - r0.z) + r0.z) * SI.fog_strength);
   r1.w = max(0, r1.y);
   float3 sky = t_sky.Sample(s_sky_s, r1.xwz).xyz;
   // No fog or no sky in it: not needed.

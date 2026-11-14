@@ -66,6 +66,10 @@
 //    rt_ambient_combine (twattila, without RT_COMBINE_SUN_MAPPING as here) the traced visibility alone; the sun shaders
 //    (CF0C5118 drawn in ATN's battles, 230F2241: their bytes, ambient cube light) read t_ssao's red only. CONTROLS: the
 //    game's AO at 0.5 changes the combine; the sun's light follows t_ssao's red.
+// 16. The battle fog (shaders/battlefog00, the build's embed/0xE684D54E.cso; the game's E684D54E drawn in 34 of ATN's 36
+//    traces) over 8 x 8 pixels of varied depth, its constants by name in the game's ranges (height, distance, clear-distance
+//    and forced fog all partial): Fog Strength 1 equals the game's bytes (colour and opacity); 0.5 halves the opacity and
+//    keeps the colour. CONTROL: Fog Strength 0.5 differs from the game's opacity.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -87,6 +91,8 @@
 #include <vector>
 
 #include "ambient_patch.h"
+// The add-on's settings buffer (b13) as the shaders read it.
+#include "../../src/games/twwarhammer/shared.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -1846,6 +1852,139 @@ static void TestAoAlone(const std::string& games, const std::string& dump) {
               alone, texels, control, red_only, follows);
 }
 
+// What the battle fog's draw binds besides the game's constants (part 16).
+struct FogScene {
+  float strength = 1.f;  // SI.fog_strength
+};
+
+// A battle fog pixel shader's bytes (`code`) drawn over 8 x 8 pixels, its constants by name as the game's bytes (`game`)
+// name them: world = (4 x ndc x, 2 x ndc y, 16 x depth) (inv_view_projection's registers), depth 0.1 - 0.9 by pixel, the
+// camera at (0, 1, -12); the fog 0 - 3 m high, its distance, clear distance (40 m) and forced fog (20 - 200 m) partial there;
+// sun (0.3, -0.8, 0.5), colour (300, 280, 250), g_hdr_on 1; the sky cube's faces each their own colour.
+static std::vector<Float4> DrawFog(std::span<const uint8_t> code, std::span<const uint8_t> game, const FogScene& scene) {
+  ComPtr<ID3D11PixelShader> shader;
+  if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))) return {};
+  ComPtr<ID3D11ShaderReflection> reflection;
+  if (FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) return {};
+  const std::vector<NamedConstant> constants = {
+      {"camera_position", 0, {0.f, 1.f, -12.f}},
+      {"inv_view_projection", 0, {4.f, 0.f, 0.f, 0.f, 0.f, 2.f, 0.f, 0.f, 0.f, 0.f, 16.f, 0.f, 0.f, 0.f, 0.f, 1.f}},
+      {"g_screen_size", 0, {8.f, 8.f, 0.125f, 0.125f}},
+      {"g_vpos_texel_offset", 0, {0.f}},
+      {"g_viewport_dimensions", 0, {8.f, 8.f, 0.125f, 0.125f}},
+      {"g_viewport_origin", 0, {0.f, 0.f}},
+      {"sun_direction", 0, {0.3f, -0.8f, 0.5f}},
+      {"sun_colour", 0, {300.f, 280.f, 250.f}},
+      {"g_hdr_on", 0, {1.f}},
+      {"g_volume_fog_colour", 0, {0.5f, 0.6f, 0.7f}},
+      {"g_fog_distance_start", 0, {0.4f}},
+      {"g_fog_distance_strength", 0, {0.98f}},
+      {"g_fog_distance_scale", 0, {0.5f}},
+      {"g_fog_height_bottom", 0, {0.f}},
+      {"g_fog_height_top", 0, {3.f}},
+      {"g_fog_height_strength", 0, {0.25f}},
+      {"g_fog_colour_blend", 0, {0.7f}},
+      {"g_fog_clear_distance", 0, {40.f}},
+      {"g_force_fog", 0, {20.f, 200.f}},
+  };
+  std::vector<ComPtr<ID3D11Buffer>> buffers;
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  for (UINT index = 0; index < desc.ConstantBuffers; ++index) {
+    auto* buffer = reflection->GetConstantBufferByIndex(index);
+    D3D11_SHADER_BUFFER_DESC buffer_desc = {};
+    buffer->GetDesc(&buffer_desc);
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDescByName(buffer_desc.Name, &bind);
+    std::vector<float> data(((buffer_desc.Size + 15) & ~15u) / 4, 0.f);
+    for (UINT variable = 0; variable < buffer_desc.Variables; ++variable) {
+      D3D11_SHADER_VARIABLE_DESC variable_desc = {};
+      buffer->GetVariableByIndex(variable)->GetDesc(&variable_desc);
+      for (const auto& constant : constants) {
+        if (std::strcmp(constant.name, variable_desc.Name) == 0) {
+          std::ranges::copy(constant.values, data.begin() + static_cast<ptrdiff_t>(variable_desc.StartOffset / 4));
+        }
+      }
+    }
+    buffers.push_back(Constants(data.data(), static_cast<UINT>(data.size() * 4)));
+    context->PSSetConstantBuffers(bind.BindPoint, 1, buffers.back().GetAddressOf());
+  }
+  ShaderInjectData injection = {};
+  injection.fog_strength = scene.strength;
+  std::vector<uint8_t> injection_bytes((sizeof(injection) + 15) & ~size_t{15});
+  std::memcpy(injection_bytes.data(), &injection, sizeof(injection));
+  buffers.push_back(Constants(injection_bytes.data(), static_cast<UINT>(injection_bytes.size())));
+  context->PSSetConstantBuffers(13, 1, buffers.back().GetAddressOf());
+  std::vector<Float4> faces;
+  for (UINT face = 0; face < 6; ++face) {
+    faces.push_back({0.1f + (0.15f * static_cast<float>(face)), 0.9f - (0.1f * static_cast<float>(face)), 0.3f + (0.05f * static_cast<float>(face)), 1.f});
+  }
+  const auto cube = Texture(1, 1, faces.data(), D3D11_BIND_SHADER_RESOURCE, 6, D3D11_RESOURCE_MISC_TEXTURECUBE);
+  std::vector<Float4> depths;
+  for (UINT pixel = 0; pixel < 64; ++pixel) depths.push_back({0.1f + (0.8f * static_cast<float>((pixel * 37) % 64) / 63.f), 0.f, 0.f, 0.f});
+  std::array<ComPtr<ID3D11ShaderResourceView>, 2> views;
+  device->CreateShaderResourceView(cube.Get(), nullptr, views[0].GetAddressOf());
+  views[1] = View(8, 8, depths);
+  ComPtr<ID3D11SamplerState> sampler;
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  for (UINT index = 0; index < desc.BoundResources; ++index) {
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDesc(index, &bind);
+    if (bind.Type == D3D_SIT_SAMPLER) context->PSSetSamplers(bind.BindPoint, 1, sampler.GetAddressOf());
+    if (bind.Type == D3D_SIT_TEXTURE) {
+      context->PSSetShaderResources(bind.BindPoint, 1, views[(bind.Dimension == D3D_SRV_DIMENSION_TEXTURECUBE) ? 0 : 1].GetAddressOf());
+    }
+  }
+  const auto target = Texture(8, 8, nullptr, D3D11_BIND_RENDER_TARGET);
+  ComPtr<ID3D11RenderTargetView> rtv;
+  device->CreateRenderTargetView(target.Get(), nullptr, rtv.GetAddressOf());
+  context->VSSetShader(full_screen.Get(), nullptr, 0);
+  context->PSSetShader(shader.Get(), nullptr, 0);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  const D3D11_VIEWPORT viewport = {.Width = 8.f, .Height = 8.f, .MaxDepth = 1.f};
+  context->RSSetViewports(1, &viewport);
+  context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+  context->Draw(3, 0);
+  context->ClearState();
+  return Read(target.Get());
+}
+
+static void TestFog(const std::string& root, const std::string& dump) {
+  const auto game = GameBytes(dump, 0xE684D54E);
+  const auto ours = Bytes(root + "/build/twwarhammer.include/embed/0xE684D54E.cso");
+  const auto expected = DrawFog(game, game, {});
+  const auto got = DrawFog(ours, game, {});
+  const auto half = DrawFog(ours, game, {.strength = 0.5f});
+  CHECK(expected.size() == 64 && got.size() == 64 && half.size() == 64, "fog: the draws");
+  if (expected.size() != 64 || got.size() != 64 || half.size() != 64) return;
+  int misses = 0;
+  int partial = 0;
+  int halved = 0;
+  int control = 0;
+  float largest = 0.f;
+  for (size_t pixel = 0; pixel < 64; ++pixel) {
+    for (size_t channel = 0; channel < 4; ++channel) {
+      largest = std::max(largest, std::fabs(expected[pixel][channel] - got[pixel][channel]));
+      if (!Near(expected[pixel][channel], got[pixel][channel], 2e-6f) && ++misses <= 4) {
+        std::printf("  fog pixel %zu channel %zu: the game's %.9g, ours %.9g\n", pixel, channel, expected[pixel][channel], got[pixel][channel]);
+      }
+    }
+    partial += (expected[pixel][3] > 0.05f && expected[pixel][3] < 0.95f) ? 1 : 0;
+    halved += (Near(half[pixel][3], got[pixel][3] * 0.5f, 1e-6f) && half[pixel][0] == got[pixel][0] && half[pixel][1] == got[pixel][1] &&
+               half[pixel][2] == got[pixel][2])
+                  ? 1
+                  : 0;
+    control += Near(half[pixel][3], expected[pixel][3], 1e-3f) ? 0 : 1;
+  }
+  CHECK(misses == 0 && partial >= 32 && halved == 64 && control > 0, "fog: %d misses, %d partial, %d halved, CONTROL %d", misses, partial, halved,
+        control);
+  std::printf("fog: battlefog00 against E684D54E, 256 values, %d misses (largest %.3g), %d of 64 pixels partly fogged; Fog Strength 0.5: %d of 64 "
+              "opacities halved, colour kept; CONTROL %d differ from the game's\n",
+              misses, largest, partial, halved, control);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -1875,6 +2014,7 @@ int main(int argc, char** argv) {
   TestCutOuts(argv[1], argv[2]);
   TestReflectionInputs(games, argv[2]);
   TestAoAlone(games, argv[2]);
+  TestFog(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
