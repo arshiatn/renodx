@@ -1471,7 +1471,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
     {.pixel_shader = 0x8A83B40C},  // rigidstandard gbuffer_alpha_test
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 31> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1511,6 +1511,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
     {.hash = 0xA295269F, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_leaf},
     {.hash = 0xAF7C4636, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0xC8DA195D, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    // The campaign's terrain tiles in the shadow pass (rigidterrain vs41_shadow_new 0D70D820: ATN's campaign traces, 10 of
+    // 33, depth only; its main pass 981F929B held): AF7C4636's output signature (fxc /dumpbin), TEXCOORD0 the world its
+    // SV_Position is made from (o1 = r2, o0 = r2 x cb0[9-12]). Its siblings vs41_custom_geom_shadow 38232691 and
+    // geometry_41_global_shadow 86308DEA write SV_Position alone: no world for these geometry shaders (left out).
+    {.hash = 0x0D70D820, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0x83A7A039, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0xCB8BA7B6, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0xAEE2A80A, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
