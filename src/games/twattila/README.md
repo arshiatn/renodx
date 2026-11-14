@@ -1,5 +1,14 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+### Grass on the GPU, phase 0 (2026-11-15; built only, not run in game)
+
+- New: **Grass Dump** (a test button beside Grass Trace, Graphics 2 of 2 > Grass & Trees (Tests)): one frame of the
+  grass's placement (the scrub's fields, the code and values its cell loop and DrawScrub run with, the angle table, the
+  byte grid, the scrub models' LODs and parts, every quadtree node's records, each cell loop and DrawScrub call, the
+  grass draws' buffers and instance rows over the next two frames) into `tw_grass_dump_<n>.bin` next to the exe, for
+  `tools/tw/grass_replay`. A press stalls one frame; nothing else changes. `tw_grass_dump` (x86): the game's own cell
+  loop and DrawScrub from `empire.retail.dll`, three synthetic battles through the hooks, replayed bit-exact.
+
 ### GPU perf round (2026-11-14; built only, not run in game)
 
 - Fixed: a game that writes other indices into an index buffer's range after its cluster set was made (bridge v16's
