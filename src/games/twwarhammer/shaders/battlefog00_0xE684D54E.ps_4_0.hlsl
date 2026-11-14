@@ -1,6 +1,9 @@
 // 0xE684D54E (battlefog ps40_main): the battle's height and distance fog, its colour the sun-lit fog colour blended
-// toward the sky's. Fog & Sky Smoothing (twattila/sky_smooth.hlsli), Fog Strength (SI.fog_strength).
+// toward the sky's. Fog & Sky Smoothing (twattila/sky_smooth.hlsli), Fog Strength (SI.fog_strength). Fog Shadows: the
+// sun-lit colour x the sun's visibility along the camera's ray, plus the torches' and fires' light along it (already in
+// the game's light: rt_host.local_light_scale) (twattila/rt_scene.hpp InstallFogShadows, rt_fog.hlsli; unbound: the game's).
 #include "../shared.h"
+#include "../../twattila/rt_fog.hlsli"
 #include "../../twattila/sky_smooth.hlsli"
 
 cbuffer camera : register(b0)
@@ -74,7 +77,7 @@ void main(
   if (SI.sky_smooth != 0.f && o0.w > 0.f && sky_blend > 0.f) {
     sky = SkySmooth(t_sky, s_sky_s, r1.xwz);
   }
-  const float3 sun_lit = sun_colour.xyz * g_volume_fog_colour.xyz * 1.5 * abs(sun_direction.y);
+  const float3 sun_lit = sun_colour.xyz * g_volume_fog_colour.xyz * 1.5 * abs(sun_direction.y) * RtFogSun(v0.xy);
   const float sun_lit_scale = (0 < g_hdr_on) ? 0.00999999978 : 1;
-  o0.xyz = sky_blend * (sky - sun_lit * sun_lit_scale) + sun_lit * sun_lit_scale;
+  o0.xyz = sky_blend * (sky - sun_lit * sun_lit_scale) + sun_lit * sun_lit_scale + RtFogLights(v0.xy);
 }

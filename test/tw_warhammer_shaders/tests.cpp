@@ -69,7 +69,9 @@
 // 16. The battle fog (shaders/battlefog00, the build's embed/0xE684D54E.cso; the game's E684D54E drawn in 34 of ATN's 36
 //    traces) over 8 x 8 pixels of varied depth, its constants by name in the game's ranges (height, distance, clear-distance
 //    and forced fog all partial): Fog Strength 1 equals the game's bytes (colour and opacity); 0.5 halves the opacity and
-//    keeps the colour. CONTROL: Fog Strength 0.5 differs from the game's opacity.
+//    keeps the colour. CONTROL: Fog Strength 0.5 differs from the game's opacity. Fog Shadows (rt_fog.hlsli): t43 1 the
+//    unbound picture bit for bit; t43 0 the game's bytes with the sun colour x 0.35 (the shade the fog keeps); t44 adds the
+//    torches' light to the colour alone. CONTROL: t43 0 differs from unbound.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -1854,7 +1856,10 @@ static void TestAoAlone(const std::string& games, const std::string& dump) {
 
 // What the battle fog's draw binds besides the game's constants (part 16).
 struct FogScene {
-  float strength = 1.f;  // SI.fog_strength
+  float strength = 1.f;     // SI.fog_strength
+  float sun_scale = 1.f;    // sun_colour x this
+  float sun_shadow = -1.f;  // t43, the sun's visibility in the fog (< 0: unbound)
+  float lights = -1.f;      // t44, the torches' light in the fog, every channel (< 0: unbound); b9's glow 1 with it
 };
 
 // A battle fog pixel shader's bytes (`code`) drawn over 8 x 8 pixels, its constants by name as the game's bytes (`game`)
@@ -1874,7 +1879,7 @@ static std::vector<Float4> DrawFog(std::span<const uint8_t> code, std::span<cons
       {"g_viewport_dimensions", 0, {8.f, 8.f, 0.125f, 0.125f}},
       {"g_viewport_origin", 0, {0.f, 0.f}},
       {"sun_direction", 0, {0.3f, -0.8f, 0.5f}},
-      {"sun_colour", 0, {300.f, 280.f, 250.f}},
+      {"sun_colour", 0, {300.f * scene.sun_scale, 280.f * scene.sun_scale, 250.f * scene.sun_scale}},
       {"g_hdr_on", 0, {1.f}},
       {"g_volume_fog_colour", 0, {0.5f, 0.6f, 0.7f}},
       {"g_fog_distance_start", 0, {0.4f}},
@@ -1915,6 +1920,28 @@ static std::vector<Float4> DrawFog(std::span<const uint8_t> code, std::span<cons
   std::memcpy(injection_bytes.data(), &injection, sizeof(injection));
   buffers.push_back(Constants(injection_bytes.data(), static_cast<UINT>(injection_bytes.size())));
   context->PSSetConstantBuffers(13, 1, buffers.back().GetAddressOf());
+  // Fog Shadows (rt_fog.hlsli): t43 and t44 at a quarter of the 8 x 8 pixels each way, b9 (rt_local_lights.hlsli: 128
+  // positions, the counts, 128 colours) with the glow (y) 1.
+  std::vector<ComPtr<ID3D11ShaderResourceView>> fog_views;
+  if (scene.sun_shadow >= 0.f) {
+    const std::vector<float> visibility(4, scene.sun_shadow);
+    const D3D11_TEXTURE2D_DESC fog_desc = {.Width = 2, .Height = 2, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
+                                           .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    const D3D11_SUBRESOURCE_DATA fog_data = {.pSysMem = visibility.data(), .SysMemPitch = 8};
+    ComPtr<ID3D11Texture2D> texture;
+    device->CreateTexture2D(&fog_desc, &fog_data, texture.GetAddressOf());
+    fog_views.emplace_back();
+    device->CreateShaderResourceView(texture.Get(), nullptr, fog_views.back().GetAddressOf());
+    context->PSSetShaderResources(43, 1, fog_views.back().GetAddressOf());
+  }
+  if (scene.lights >= 0.f) {
+    fog_views.push_back(View(2, 2, std::vector<Float4>(4, {scene.lights, scene.lights, scene.lights, 0.f})));
+    context->PSSetShaderResources(44, 1, fog_views.back().GetAddressOf());
+    std::vector<uint32_t> local_lights((128 * 4) + 4 + (128 * 4), 0u);
+    local_lights[(128 * 4) + 1] = std::bit_cast<uint32_t>(1.f);
+    buffers.push_back(Constants(local_lights.data(), static_cast<UINT>(local_lights.size() * 4)));
+    context->PSSetConstantBuffers(9, 1, buffers.back().GetAddressOf());
+  }
   std::vector<Float4> faces;
   for (UINT face = 0; face < 6; ++face) {
     faces.push_back({0.1f + (0.15f * static_cast<float>(face)), 0.9f - (0.1f * static_cast<float>(face)), 0.3f + (0.05f * static_cast<float>(face)), 1.f});
@@ -1983,6 +2010,32 @@ static void TestFog(const std::string& root, const std::string& dump) {
   std::printf("fog: battlefog00 against E684D54E, 256 values, %d misses (largest %.3g), %d of 64 pixels partly fogged; Fog Strength 0.5: %d of 64 "
               "opacities halved, colour kept; CONTROL %d differ from the game's\n",
               misses, largest, partial, halved, control);
+  // Fog Shadows: t43 1 (lit all along the ray) the unbound picture bit for bit; t43 0 (in shadow all along) the game's bytes
+  // with its sun colour x 0.35 (rt_fog.hlsli's RT_FOG_SHADE); t44 0.25 (glow 1) adds 0.25 to the colour, the opacity kept.
+  const auto lit = DrawFog(ours, game, {.sun_shadow = 1.f});
+  const auto shaded = DrawFog(ours, game, {.sun_shadow = 0.f});
+  const auto game_shaded = DrawFog(game, game, {.sun_scale = 0.35f});
+  const auto lights = DrawFog(ours, game, {.lights = 0.25f});
+  CHECK(lit.size() == 64 && shaded.size() == 64 && game_shaded.size() == 64 && lights.size() == 64, "fog shadows: the draws");
+  if (lit.size() != 64 || shaded.size() != 64 || game_shaded.size() != 64 || lights.size() != 64) return;
+  int lit_same = 0;
+  int shade_misses = 0;
+  int light_misses = 0;
+  int shade_control = 0;
+  for (size_t pixel = 0; pixel < 64; ++pixel) {
+    lit_same += (std::memcmp(lit[pixel].data(), got[pixel].data(), sizeof(Float4)) == 0) ? 1 : 0;
+    for (size_t channel = 0; channel < 4; ++channel) {
+      shade_misses += Near(shaded[pixel][channel], game_shaded[pixel][channel], 2e-6f) ? 0 : 1;
+      const float added = (channel < 3) ? 0.25f : 0.f;
+      light_misses += (std::fabs(lights[pixel][channel] - (got[pixel][channel] + added)) <= 1e-6f) ? 0 : 1;
+    }
+    shade_control += Near(shaded[pixel][0], got[pixel][0], 1e-4f) ? 0 : 1;
+  }
+  CHECK(lit_same == 64 && shade_misses == 0 && light_misses == 0 && shade_control > 32, "fog shadows: %d lit same, %d shade misses, %d light misses, CONTROL %d",
+        lit_same, shade_misses, light_misses, shade_control);
+  std::printf("fog shadows: t43 1 bit-identical to unbound %d of 64; t43 0 against the game's with sun x 0.35: %d misses of 256; t44 0.25: %d misses "
+              "of 256 (colour + 0.25, opacity kept); CONTROL t43 0 against unbound: %d of 64 differ\n",
+              lit_same, shade_misses, light_misses, shade_control);
 }
 
 int main(int argc, char** argv) {
