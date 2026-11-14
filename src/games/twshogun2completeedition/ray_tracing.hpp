@@ -30,6 +30,7 @@
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/rt_core.hpp"
 #include "../twpharaohdynasties/rt_outside_view_leaf_gs.h"
+#include "../twpharaohdynasties/rt_outside_view_world_gs.h"
 #include "../twwarhammer3/rt_outside_view_gs.h"
 #include "./upscaling.hpp"
 
@@ -88,8 +89,15 @@ constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
 // with Sprite Soldier Shadows on) and trees' leaves and branches (5851CA62, 6F20485E: 22 and 17 draws, 327K and 32K corners in
 // the four cascades; one capture version, the leaves' own reading their fade) streamed out every frame through their capture versions (world positions, the mask's
 // UV) and Pharaoh's outside-view geometry shader (SceneShader::cascade_world: the game's constants kept, the main view at its b0).
-inline const std::array<twattila::rt_scene::SceneShader, 6> SCENE_SHADERS = {{
+// The far tree cards' (30C453EE: 8 of the data run's 12 traces; turned to the shadow camera per corner, their atlas view picked from
+// its way to the tree; with Far Tree Shadows on) the same. Soldiers and horses (variantweightedvtf, A22FA941: 164 draws, 1.18M
+// corners in the four cascades of the battle trace; two bones each from the animation map the shadow pass binds at t0) through a
+// capture version writing their world alone and Pharaoh's world-only geometry shader. The whole-dump caster census (2026-11-14)
+// had these two families in view only, and rigidambientmapmesh_mtb's (7B067623: 4 of the naval traces; AC25DAB8 with a TEXCOORD1
+// it never reads) placed as AC25DAB8's.
+inline const std::array<twattila::rt_scene::SceneShader, 9> SCENE_SHADERS = {{
     {.hash = 0xAC25DAB8, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
+    {.hash = 0x7B067623, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
     {.hash = 0xB0E006EE, .capture_shader = __rt_capture_cascade_variant, .rows_shader = __rt_rows_cascade_variant, .moving = true,
      .cascade_keep = __rt_outside_view},
     {.hash = 0x8A00A1D4, .capture_shader = __rt_capture_cascade_cloth, .dynamic = true, .foliage = true, .thin = true,
@@ -99,6 +107,10 @@ inline const std::array<twattila::rt_scene::SceneShader, 6> SCENE_SHADERS = {{
     {.hash = 0x5851CA62, .capture_shader = __rt_capture_cascade_tree_leaves, .dynamic = true, .foliage = true, .mask_slot = 1,
      .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
     {.hash = 0x6F20485E, .capture_shader = __rt_capture_cascade_tree, .dynamic = true, .cascade_keep = __rt_outside_view_leaf,
+     .cascade_world = true},
+    {.hash = 0x30C453EE, .capture_shader = __rt_capture_cascade_far_tree, .dynamic = true, .foliage = true, .sun_facing = true,
+     .far_tree = true, .mask_slot = 1, .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
+    {.hash = 0xA22FA941, .capture_shader = __rt_capture_cascade_unit, .dynamic = true, .cascade_keep = __rt_outside_view_world,
      .cascade_world = true},
 }};
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).

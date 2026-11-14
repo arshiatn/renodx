@@ -1130,8 +1130,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
            "The flat far soldiers' ray-traced shadows keep their shape as the camera turns.");
     choice("Far tree shadows (Experimental)", "RayTracedFarTreeShadows", 0, OFF_ON_NAMES, "The flat far trees cast ray-traced shadows too.");
     choice("Shadow casters out of view (Experimental)", "RayTracedUnitsOutOfView", 0, OFF_ON_NAMES,
-           "Buildings, rocks, trees, sails and banners behind the camera cast ray-traced shadows into view too, far soldiers with Sprite "
-           "soldier shadows (restart the game).");
+           "Buildings, rocks, trees, soldiers, horses, sails and banners behind the camera cast ray-traced shadows into view too; "
+           "far soldiers and far trees with their shadow rows on (restart the game).");
     choice("Smooth banner shadows (Experimental)", "RayTracedSheetsUnselfed", 0, OFF_ON_NAMES,
            "Banners, sails and other cloth don't shade themselves: no blocky triangles on them. Shadows of other things stay.");
     slider("Grass shadow range (Experimental)", "RayTracedGrassShadowRange", 0.f, 0.f, 200.f, "%.0f m",
