@@ -324,6 +324,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   5.15; U1 worse; off = helper110 proven). Lean Reuse (reuse 2.72 -> 1.02 ms in Nsight, helper 8.63 -> 6.96 ms, same
   quality): shipping as an Experimental row (off) = ATN DECIDES the default. Final helper112 = helper111 + Lean flag +
   Nsight frame boundary, built by the ReSTIR agent with the off proof.
+- [x] Nsight frame boundary MERGED d60c2993 (include/nsight_graphics_sdk 0.9.2 Apache-2.0 + NOTICE, main.cpp
+  NGFX_FrameBoundary_D3D12 only when Nsight is injected; all_modes 179 / 179); tools/tw/release_zip.py ships
+  NSIGHT_GRAPHICS_SDK_LICENSE.txt with the helper. ReSTIR agent builds helper112 (+ Lean flag) next.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
