@@ -1,5 +1,41 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### Parity round (2026-11-14; built only, not run in game)
+
+- New: **Unit/Building Indicator Brightness (Extra, Experimental)**, as Attila's: the selection markers' colour x the slider
+  in HDR modes. At 1 (default) and in SDR the game's own shaders run; WARP: our copies of fx_indicator's four colour passes
+  are the game's bits at 1. Indicators drawn through the game's transparency (MBOIT) path keep the game's brightness.
+- New, Graphics 2 of 2 (Tests), each Game's / Off / On, Game's (default) writes nothing: **Far Tree Block Shadows**
+  (enable_billboard_block_shadows), **Point Light Shadow Maps** (ENABLE_POINT_LIGHT_SHADOWS), **Debris Shadows**
+  (ENABLE_DYNAMIC_SHADOWS_FOR_INCIDENTAL_DESTRUCTION), **Ragdolls** (ENABLE_SIMPLE_RAG_DOLL_UPDATE). The addon finds each at
+  the byte the game's code reads (checked offline against Warhammer3.exe).
+- Fixed: **ray-traced shadows of the siege tentacles in view** (vertex-push, 1C3500F0: only their out-of-view copy was in
+  the rays) and of fx_rigidtextureblend's small campaign meshes (03298FD5). WARP: both captured where the game draws them.
+- Page dump against v59: only the rows above are new; after RT/PT only the per-game rows differ from Attila's, as before.
+- Test list (ReShade.log after each; Log Details on):
+  1. Control, any battle, every row above at its default: as v59.
+  2. Battle at night, HDR: select units, Unit/Building Indicator Brightness 0.5, 2, 1: markers dimmer, brighter, the game's.
+  3. A siege with Chaos tentacles (the replays' siege), RT/PT: the tentacles in view cast ray-traced shadows (v59: none).
+  4. Campaign map, RT/PT: no stray shadows near settlements and ships (the small meshes now cast).
+  5. Battle by a far forest, low sun: Far Tree Block Shadows Off, then On: far tree shadows go, then come back (else after
+     the next battle load); keep the row or hide it.
+  6. Night siege, game's shadows: Point Light Shadow Maps Off: torch shadows from the game go, fps against Game's; On after
+     Off may need the next battle: a crash goes in the report.
+  7. Siege, a wall breaking: Debris Shadows On: falling pieces cast shadows.
+  8. Big battle: Ragdolls Off: bodies fall without ragdolls, CPU time against Game's.
+- Not done:
+  - Full-Resolution Particle Edges and Quarter: WH3's half-size particles are MBOIT (moments, then colour), so Attila's edge
+    pass (one blended layer redrawn under stencil) does not carry. Smallest step: a stencil edge mask at the half layer's
+    depth and both MBOIT passes redrawn into the sharp layer there, on WARP first.
+  - Reflection Quality: low value (Ray-Traced Water Reflections cover water). Smallest step: a step cap for the water
+    march's 100 iterations in its flags buffer, the march swapped in off 1.
+  - Modded Auto Exposure: the game's auto exposure (1E448816) runs in none of 95 traces; its buffer reads 0 in all 39 that
+    logged it: nothing to change. Fog & Sky Smoothing: the fog of 93 of 95 traces reads no sky cube; the rest read the
+    game's own blurred mip, not Attila's 8-bit cube; the sky has Sky Debanding.
+  - The indicators' MBOIT resolve (492ED8DA): our copy was not the game's bits at 1. Smallest step: its moment math put
+    back in the game's order against fxc's listing.
+  - Snow / rain / storm VFX rows: need a trace of a snow or storm battle.
+
 ## v59 (2026-11-14 night; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - New: **Lean ReSTIR Reuse (Experimental, off)** under Global Illumination's More Options with Path Tracing (helper112):
