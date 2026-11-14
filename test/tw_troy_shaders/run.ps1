@@ -1,6 +1,6 @@
 # Troy's replaced and patched shaders against the game's on WARP (tests.cpp): the battle fog's Fog Strength (battlefog00..03:
-# 018FED0C, its MSAA twin, their shader model 4.1 twins), the campaign vegetation's and the fur's captures, VFX Brightness's patch.
-# -GameShaders: the folder of the game's dumped csos (0x018FED0C, 0xD9A3B04F, 0x4ED4200E, 0x78E00DBB, 0x04C7C807, 0xEE95696C, the particle shaders), only read. -Built: the add-on's
+# 018FED0C, its MSAA twin, their shader model 4.1 twins), the campaign vegetation's, the fur's and the campaign trees' captures, VFX Brightness's patch.
+# -GameShaders: the folder of the game's dumped csos (0x018FED0C, 0xD9A3B04F, 0x4ED4200E, 0x78E00DBB, 0x04C7C807, 0xEE95696C, 0x07321725, 0x5192C0BA, the particle shaders), only read. -Built: the add-on's
 # compiled shaders (build\twtroy.include\embed after a renodx-twtroy.addon64 build). Holds tools/tw's GPU job lock while it
 # runs when -Lock names it. amd64 only (Troy is 64-bit).
 param([string]$GameShaders = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\dump_shader_twtroy_pack\cso', [string]$Built = '', [string]$Lock = '')

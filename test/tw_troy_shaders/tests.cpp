@@ -12,6 +12,8 @@
 //    CONTROL: the capture a second later differs (the wind is in play).
 // 2b. The fur-clad units' capture (rt_capture_unit_4_bones_fur) against the game's EE95696C: the same world position as
 //    its TEXCOORD0 from random skinned vertices; CONTROL 26A41B7D's capture (no fur sway) differs.
+// 2c. The campaign's trees: the capture (rt_capture_campaign_trees) against 07321725 (world, UV), and their shadow pass
+//    5192C0BA through the outside-view geometry shader with RT_COLOUR (each kept corner its world and UV); CONTROLs.
 // 3. VFX Brightness (src/games/twtroy/vfx_brightness.hpp's Patch) on the game's particle pixel shaders 563BA3E8 and 9C8987DD:
 //    the patched program is the game's plus dcl_constantbuffer cb7 and one mad (disassembly), WARP takes it, and drawn over a
 //    grid of random interpolants, emitters, textures and constants it gives the game's bits with cb7 unbound and with cb7.x 0
@@ -29,11 +31,14 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "../../src/games/twtroy/shared.h"
 #include "../../src/games/twtroy/vfx_brightness.hpp"
+#include "../../src/games/twtroy/rt_outside_view_colour_world_uv_gs.h"
+#include "../../src/games/twwarhammer2/rt_outside_view_world_uv_gs.h"
 
 extern "C" __declspec(dllexport) const char* const NAME = "Troy shader test";
 extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) { std::printf("  log: %s\n", message); }
@@ -539,6 +544,154 @@ static void TestFur(const std::string& game_folder, const std::string& built_fol
               error, moved, VERTICES, control_error);
 }
 
+// A geometry shader's SV_Position for each triangle corner of `vertices` drawn with the vertex shader `vertex_code`, streamed
+// out (the geometry shader made from `geometry_code` with stream output); `main_view` at the geometry stage's b0.
+static std::vector<float> StreamOutThrough(const std::vector<char>& vertex_code, std::span<const uint8_t> geometry_code,
+                                           const std::vector<float>& vertices, std::span<const ComPtr<ID3D11Buffer>> constants,
+                                           ID3D11Buffer* main_view) {
+  ComPtr<ID3D11VertexShader> shader;
+  device->CreateVertexShader(vertex_code.data(), vertex_code.size(), nullptr, &shader);
+  const D3D11_SO_DECLARATION_ENTRY entry = {.SemanticName = "SV_Position", .ComponentCount = 4};
+  const UINT stride = 16;
+  ComPtr<ID3D11GeometryShader> geometry;
+  device->CreateGeometryShaderWithStreamOutput(geometry_code.data(), geometry_code.size(), &entry, 1, &stride, 1,
+                                               D3D11_SO_NO_RASTERIZED_STREAM, nullptr, &geometry);
+  ComPtr<ID3D11ShaderReflection> reflection;
+  D3DReflect(vertex_code.data(), vertex_code.size(), IID_PPV_ARGS(&reflection));
+  CHECK(shader != nullptr && geometry != nullptr && reflection != nullptr, "geometry stream output: the shaders");
+  if (shader == nullptr || geometry == nullptr || reflection == nullptr) return {};
+  D3D11_SHADER_DESC shader_desc = {};
+  reflection->GetDesc(&shader_desc);
+  std::vector<D3D11_INPUT_ELEMENT_DESC> elements;
+  for (UINT parameter = 0; parameter < shader_desc.InputParameters; ++parameter) {
+    D3D11_SIGNATURE_PARAMETER_DESC input = {};
+    reflection->GetInputParameterDesc(parameter, &input);
+    if (input.SystemValueType != D3D_NAME_UNDEFINED) continue;
+    elements.push_back({input.SemanticName, input.SemanticIndex, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(16 * elements.size()),
+                        D3D11_INPUT_PER_VERTEX_DATA, 0});
+  }
+  ComPtr<ID3D11InputLayout> layout;
+  device->CreateInputLayout(elements.data(), static_cast<UINT>(elements.size()), vertex_code.data(), vertex_code.size(), &layout);
+  const UINT input_stride = static_cast<UINT>(16 * elements.size());
+  const UINT count = static_cast<UINT>(vertices.size() * 4 / input_stride);
+  const D3D11_BUFFER_DESC input_desc = {.ByteWidth = static_cast<UINT>(vertices.size() * 4), .Usage = D3D11_USAGE_DEFAULT,
+                                        .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+  const D3D11_SUBRESOURCE_DATA input_data = {.pSysMem = vertices.data()};
+  ComPtr<ID3D11Buffer> input;
+  device->CreateBuffer(&input_desc, &input_data, &input);
+  const D3D11_BUFFER_DESC out_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+  ComPtr<ID3D11Buffer> out;
+  device->CreateBuffer(&out_desc, nullptr, &out);
+  context->ClearState();
+  context->IASetInputLayout(layout.Get());
+  const UINT offset = 0;
+  context->IASetVertexBuffers(0, 1, input.GetAddressOf(), &input_stride, &offset);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  for (UINT slot = 0; slot < constants.size(); ++slot) context->VSSetConstantBuffers(slot, 1, constants[slot].GetAddressOf());
+  context->GSSetConstantBuffers(0, 1, &main_view);
+  context->VSSetShader(shader.Get(), nullptr, 0);
+  context->GSSetShader(geometry.Get(), nullptr, 0);
+  context->SOSetTargets(1, out.GetAddressOf(), &offset);
+  context->Draw(count, 0);
+  ID3D11Buffer* no_target = nullptr;
+  context->SOSetTargets(1, &no_target, &offset);
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, &staging);
+  context->CopyResource(staging.Get(), out.Get());
+  std::vector<float> values(count * 4, 0.f);
+  D3D11_MAPPED_SUBRESOURCE mapped;
+  if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+    std::memcpy(values.data(), mapped.pData, values.size() * 4);
+    context->Unmap(staging.Get(), 0);
+  }
+  return values;
+}
+
+// The campaign's trees: the capture (rt_capture_campaign_trees) against the game's 07321725 from random instanced vertices
+// (its world the game's TEXCOORD0, its UV TEXCOORD0's (o3.xy) as halves; CONTROL: an instance row a metre off), and their
+// shadow pass 5192C0BA through the outside-view geometry shader RT_WORLD_UV + RT_COLOUR with every triangle outside the
+// main view: each corner the game's TEXCOORD0.xyz with the UV (CONTROL: Warhammer II's RT_WORLD_UV without the COLOR0 member
+// on the same vertex shader differs).
+static void TestCampaignTrees(const std::string& game_folder, const std::string& built_folder) {
+  const auto game = ReadFile(game_folder + "\\0x07321725.vs_5_0.cso");
+  const auto shadow = ReadFile(game_folder + "\\0x5192C0BA.vs_5_0.cso");
+  const auto capture = ReadFile(built_folder + "\\rt_capture_campaign_trees.cso");
+  CHECK(!game.empty() && !shadow.empty() && !capture.empty(), "campaign trees: the csos");
+  if (game.empty() || shadow.empty() || capture.empty()) return;
+  uint32_t seed = 777;
+  const auto random = [&seed](float low, float high) {
+    seed = seed * 1664525u + 1013904223u;
+    return low + (high - low) * static_cast<float>(seed >> 8) / 16777216.f;
+  };
+  // 13 inputs x 4 floats: POSITION0 the model's point (w 1), TEXCOORD0 its UV, the normals, colour, the instance's rows in
+  // POSITION1-3 (a turn and scale, the place near the trace's camera in w), the rest random. 85 triangles.
+  constexpr int VERTICES = 255;
+  std::vector<float> vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    const float turn = random(0.f, 6.28f);
+    const float scale = random(0.6f, 1.4f);
+    for (int input = 0; input < 13; ++input) {
+      std::array<float, 4> value = {random(-1.f, 1.f), random(-1.f, 1.f), random(-1.f, 1.f), random(0.f, 1.f)};
+      if (input == 0) value = {random(-4.f, 4.f), random(0.f, 12.f), random(-4.f, 4.f), 1.f};
+      if (input == 1) value = {random(0.f, 1.f), random(0.f, 1.f), 0.f, 0.f};
+      if (input == 7) value = {scale * std::cos(turn), 0.f, scale * std::sin(turn), CAMERA[0] + random(-300.f, 300.f)};
+      if (input == 8) value = {0.f, scale, 0.f, CAMERA[1] - random(20.f, 200.f)};
+      if (input == 9) value = {-scale * std::sin(turn), 0.f, scale * std::cos(turn), CAMERA[2] + random(-300.f, 300.f)};
+      vertices.insert(vertices.end(), value.begin(), value.end());
+    }
+  }
+  const std::array<ComPtr<ID3D11Buffer>, 1> constants = {ConstantBuffer(CAMERA.data(), sizeof(CAMERA))};
+  const auto reference = StreamOut(game, "TEXCOORD", vertices, constants);
+  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, constants);
+  auto moved = vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) moved[vertex * 52 + 7 * 4 + 3] += 1.f;
+  const auto moved_worlds = StreamOut(capture, "TEXCOORD", moved, constants);
+  const auto shadow_worlds = StreamOut(shadow, "TEXCOORD", vertices, constants);
+  // Every triangle outside the main view (w -1 everywhere).
+  std::array<float, 56> main_view = {};
+  main_view[13 * 4 + 3] = -1.f;
+  const auto view = ConstantBuffer(main_view.data(), sizeof(main_view));
+  const auto kept = StreamOutThrough(shadow, std::span<const uint8_t>(__rt_outside_view_colour_world_uv, sizeof(__rt_outside_view_colour_world_uv)),
+                                     vertices, constants, view.Get());
+  const auto kept_control = StreamOutThrough(shadow, std::span<const uint8_t>(__rt_outside_view_world_uv, sizeof(__rt_outside_view_world_uv)),
+                                             vertices, constants, view.Get());
+  if (reference.size() != VERTICES * 4 || worlds.size() != VERTICES * 4 || moved_worlds.size() != VERTICES * 4
+      || shadow_worlds.size() != VERTICES * 4 || kept.size() != VERTICES * 4 || kept_control.size() != VERTICES * 4) {
+    CHECK(false, "campaign trees: stream output sizes");
+    return;
+  }
+  // The world against `expected` (x / w), relative to the size; the UV halves in w against TEXCOORD0.
+  const auto errors = [&vertices](const std::vector<float>& world, const std::vector<float>& expected) {
+    double place = 0.0;
+    double uv = 0.0;
+    for (int vertex = 0; vertex < VERTICES; ++vertex) {
+      for (int axis = 0; axis < 3; ++axis) {
+        const double want = static_cast<double>(expected[vertex * 4 + axis]) / expected[vertex * 4 + 3];
+        place = std::max(place, std::abs(world[vertex * 4 + axis] - want) / std::max(1.0, std::abs(want)));
+      }
+      uint32_t bits;
+      std::memcpy(&bits, &world[vertex * 4 + 3], 4);
+      uv = std::max(uv, static_cast<double>(std::abs(HalfToFloat(bits & 0xFFFFu) - vertices[vertex * 52 + 4])));
+      uv = std::max(uv, static_cast<double>(std::abs(HalfToFloat(bits >> 16) - vertices[vertex * 52 + 5])));
+    }
+    return std::array<double, 2>{place, uv};
+  };
+  const auto capture_errors = errors(worlds, reference);
+  const auto moved_errors = errors(moved_worlds, reference);
+  const auto kept_errors = errors(kept, shadow_worlds);
+  const auto control_errors = errors(kept_control, shadow_worlds);
+  CHECK(capture_errors[0] < 1e-6 && capture_errors[1] < 1e-3, "campaign trees: the capture %g off the game's world, its UV %g",
+        capture_errors[0], capture_errors[1]);
+  CHECK(moved_errors[0] > 1e-3, "campaign trees: CONTROL an instance row a metre off = the game's (%g)", moved_errors[0]);
+  CHECK(kept_errors[0] < 1e-6 && kept_errors[1] < 1e-3, "campaign trees' shadow pass: kept corners %g off its world, the UV %g",
+        kept_errors[0], kept_errors[1]);
+  CHECK(control_errors[0] > 1e-3, "campaign trees' shadow pass: CONTROL without COLOR0 = its world (%g)", control_errors[0]);
+  std::printf("07321725: the capture's world within %.2g of the game's, its UV within %.2g; CONTROL a row a metre off %.2g. "
+              "5192C0BA kept outside the view: its world within %.2g, the UV within %.2g; CONTROL without COLOR0 %.2g\n",
+              capture_errors[0], capture_errors[1], moved_errors[0], kept_errors[0], kept_errors[1], control_errors[0]);
+}
+
 // A shader's instructions and declarations (D3DDisassemble), comments and its version line left out.
 static std::array<std::vector<std::string>, 2> Disassembly(std::span<const uint8_t> code) {
   ComPtr<ID3DBlob> text;
@@ -790,6 +943,7 @@ int main(int argc, char** argv) {
   TestFog(argv[1], argv[2], "78E00DBB", true);
   TestVegetation(argv[1], argv[2]);
   TestFur(argv[1], argv[2]);
+  TestCampaignTrees(argv[1], argv[2]);
   TestVfxBrightness(argv[1]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
   return failures == 0 ? 0 : 1;
