@@ -29,6 +29,7 @@
 #include "../../utils/settings.hpp"
 #include "../twattila/ao_pass.hpp"
 #include "../twattila/light_bounce.hpp"
+#include "../twattila/light_count.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
@@ -1413,12 +1414,33 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 20> MOTION_SHADERS =
 // cards also UVs). The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do
 // the far forest's blocks (rigidtreebillboard vs40_main_block 1FD86210): cards facing the camera with no shadow-pass draw,
 // as Pharaoh's FE92BA2D.
+// A96ACBCB (rigid_default.xml and its building materials) also draws the sea and lakes (water_troy), the roads' spline
+// overlays, vfx borders and random-colour meshes, and the emissive buildings' second pass (deferred_alpha AC1DC303): only
+// its G-buffer pixel shaders are in the scene, the three ATN's traces drew (sessions 2 / 3, 2026-10-27; tools\tw\troy\runs),
+// as Pharaoh's BUILDING_MASKS. None alpha-tests (a dither, t2 / t0, or nothing).
+constexpr std::array<twattila::rt_scene::PixelMask, 3> BUILDING_MASKS = {{
+    {.pixel_shader = 0x42AE1C31},  // rigid_default
+    {.pixel_shader = 0xB6F037CC},  // rigid_building_default
+    {.pixel_shader = 0xD64BE263},  // rigid_building_emissive (all discarded where g_dynamic_light_scale <= 0.2)
+}};
+
+// B057851F's alpha-tested materials (sorted): each discards where t0.w x the fade (v6.w) is below 0.5 at TEXCOORD1.xy (the
+// vertex's TEXCOORD0.xy, the VS's o2), the helper's cut-out (LEAF_ALPHA_CUTOFF 0.5); captured with that UV
+// (rt_capture_rigid_standard_cut_out). Pharaoh's CUT_OUT_MASKS' twins; 8A83B40C 472 of session 3's captures.
+constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
+    {.pixel_shader = 0x18A8AF9B},  // rigidstandard gbuffer_alpha_test_shroud_fizzle_oblique_tris
+    {.pixel_shader = 0x1C0705F6},  // rigidambientmapground gbuffer_shroud, rigidambientmapmesh gbuffer_alpha_test
+    {.pixel_shader = 0x36A9A33D},  // rigidwithdirtmesh gbuffer_alpha_test
+    {.pixel_shader = 0x8A83B40C},  // rigidstandard gbuffer_alpha_test
+}};
+
 constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
-    {.hash = 0xA96ACBCB, .capture_shader = __rt_capture_rigid_default},
-    {.hash = 0xB057851F, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidambientmapground_b057},
+    {.hash = 0xA96ACBCB, .capture_shader = __rt_capture_rigid_default, .pixel_masks = BUILDING_MASKS},
+    {.hash = 0xB057851F, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidambientmapground_b057,
+     .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true},
     // The campaign's trees (rigidstandard vs40_main_campaign_trees, Pharaoh's 1C4B8681): B057851F's vertex shader and instance
     // rows, then an x / z sway of at most 0.12 m x g_wind_vegetation_multiplier (left out: still); C7FDC209 cuts out t0.w x the
     // fade below 0.01 (the helper's cut-out 0.5).
@@ -1441,9 +1463,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
     // Far trees' cards (rigidtreebillboard vs40_main): turned to the sun, their alpha at t3 (FCE1EAEC's t_diffuse_map_tree).
     {.hash = 0xE25688ED, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
     // The campaign's far trees (campaigntreebillboards 0xDF8EAF69: instanced cards turned to the camera, none closer than the
-    // game's start distance; no shadow-pass draw, so only with Far Tree Shadows): turned to the sun, their alpha DAEF2EEF's t0
-    // (below 0.5 discarded, as the helper's cut-out).
-    {.hash = 0xDF8EAF69, .capture_shader = __rt_capture_campaign_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true},
+    // game's start distance or under the shroud; no shadow-pass draw, so only with Far Tree Shadows): turned to the sun, their
+    // alpha DAEF2EEF's t0 (below 0.5 discarded, as the helper's cut-out). Its vertex shader reads the shroud at t0: rt_sun at t1.
+    {.hash = 0xDF8EAF69, .capture_shader = __rt_capture_campaign_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .sun_slot = 1, .far_tree = true},
     // The shadow pass's casters (the 6144 x 6144 R32 atlas, 2 x 2 cascades; its vertex shaders' view-projection at cb0[9-12]):
     // what is out of the main view still casts there (Pharaoh's rt_outside_view geometry shaders: each variant's input is a
     // prefix of these vertex shaders' outputs, fxc /dumpbin, and their world position is that output: tools\tw\troy\
@@ -1530,6 +1552,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
+  twattila::light_count::OnPresent(rt_sliders.debug_log != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
@@ -1593,7 +1616,7 @@ namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
 // (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO, the paths take the sky from the sun
-// shaders' ambient cube; no ray-traced reflections, point lights, fog, water or smoke hooked.
+// shaders' ambient cube; point lights hooked (143A02ED), no ray-traced reflections, fog, water or smoke.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -1802,8 +1825,8 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
   // Mode's pages. Only what this game hooks: the paths' sky from the sun shaders' ambient cube (InstallSunDraws' 24),
   // foliage in the screen-space shadows (bit 128) and casters out of view (the shadow pass's; both Experimental, off: no
-  // game run has shown them here); no Rays Replace Shadow Maps, ray-traced reflections, point lights, fog, water or smoke
-  // (their rows stay hidden).
+  // game run has shown them here), Rays Replace Shadow Maps and point lights (Experimental, off); no ray-traced reflections,
+  // fog, water or smoke (their rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it and Smoke Shadows start off (hidden: not hooked here yet; once they are, no game
   // run has shown them in this game), Far Tree Shadows (Experimental: the cards' capture is new here) and Specular Occlusion
@@ -1973,9 +1996,13 @@ bool AttachAddon() {
   // The point light PS's diffuse scale (143A02ED's literal 0x389FB405, Pharaoh's).
   rt_host.local_light_scale = 7.615242e-05f;
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
+  twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // The point lights (ATN's session 3: two instanced draws a frame, VS 6CFF8F83 with PS 143A02ED after the sun draw; 64-byte
   // instances, the light's position at POSITION2.xyz): shaders/pointlight00 reads the rays' bits (Pharaoh's fire02 form).
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x143A02ED});
+  // Log Details' light count: the point lights and the night siege's fires (particle lights 643FC156, VS F5CE48CC: one draw,
+  // 192k indices in ATN's session 2; Pharaoh's 5AD46115).
+  twattila::light_count::Install(0x143A02ED, 0x643FC156);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 
@@ -2010,6 +2037,7 @@ void DetachAddon() {
   twattila::contact_shadows_off::Uninstall();
   twattila::sun_replace_maps::Uninstall();
   twattila::light_bounce::Uninstall();
+  twattila::light_count::Uninstall();
   twattila::rt_scene::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::ao_filter::Uninstall();
