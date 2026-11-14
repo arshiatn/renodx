@@ -1,5 +1,6 @@
-# Troy's replaced shaders against the game's on WARP (tests.cpp): the battle fog's Fog Strength (battlefog00 / 01).
-# -GameShaders: the folder of the game's dumped csos (0x018FED0C, 0xD9A3B04F .ps_5_0.cso), only read. -Built: the add-on's
+# Troy's replaced and patched shaders against the game's on WARP (tests.cpp): the battle fog's Fog Strength (battlefog00 / 01),
+# the campaign vegetation's capture, VFX Brightness's patch of the particle pixel shaders.
+# -GameShaders: the folder of the game's dumped csos (0x018FED0C, 0xD9A3B04F, 0x04C7C807, the particle shaders), only read. -Built: the add-on's
 # compiled shaders (build\twtroy.include\embed after a renodx-twtroy.addon64 build). Holds tools/tw's GPU job lock while it
 # runs when -Lock names it. amd64 only (Troy is 64-bit).
 param([string]$GameShaders = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\dump_shader_twtroy_pack\cso', [string]$Built = '', [string]$Lock = '')
@@ -12,7 +13,7 @@ New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
 Set-Location -LiteralPath $testBuild
-& 'C:\Program Files\LLVM\bin\clang-cl.exe' --target=x86_64-pc-windows-msvc /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 "$testRoot\tests.cpp" /Fe:troy_shaders.exe /link /OPT:REF /OPT:ICF d3d11.lib dxgi.lib d3dcompiler.lib
+& 'C:\Program Files\LLVM\bin\clang-cl.exe' --target=x86_64-pc-windows-msvc /nologo /std:c++20 /EHsc /O2 /MT /bigobj /DNOMINMAX /DWIN32=1 -Wno-deprecated-declarations /I $repairRoot /I "$repairRoot\external\reshade" /I "$repairRoot\external\frozen\include" /I "$repairRoot\external\Detours\include" /I "$repairRoot\external\gtl\include" "$testRoot\tests.cpp" /Fe:troy_shaders.exe /link /OPT:REF /OPT:ICF d3d11.lib dxgi.lib d3dcompiler.lib "$repairRoot\external\Detours\lib.X64\detours.lib" user32.lib advapi32.lib
 if ($LASTEXITCODE -ne 0) { throw 'Troy shader test compile failed' }
 # The lock: made only where none exists (CreateNew), kept only if it still holds this run's line 3 s later (else waited for
 # again, left alone), removed only while it is this run's.

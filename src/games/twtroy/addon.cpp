@@ -49,6 +49,7 @@
 #include "./more_tests.h"
 #include "./shadow_map.hpp"
 #include "./tweak_objects.hpp"
+#include "./vfx_brightness.hpp"
 #include "../twpharaohdynasties/trace_reads.hpp"
 // Pharaoh's outside-view geometry shaders (built bytes): Troy's shadow vertex shaders write the same outputs (SCENE_SHADERS).
 #include "../twpharaohdynasties/rt_outside_view_branch_gs.h"
@@ -71,6 +72,8 @@ namespace {
 
 ShaderInjectData shader_injection;
 float current_settings_mode = 0.f;
+// VFX Brightness (vfx_brightness.hpp, Experimental): the lit particles' colour x this.
+float vfx_brightness_row = 1.f;
 
 
 bool IsExtendedMode() {
@@ -151,6 +154,7 @@ void ApplyResetPreset() {
       {"vignette", 1.f},
       {"dof", 1.f},
       {"fog_strength", 1.f},
+      {"vfx_base_brightness", 1.f},
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
       {"some_indicators", 1.0f},
@@ -195,6 +199,7 @@ void ApplyPsychoRecommended() {
       {"vignette", 1.f},
       {"dof", 1.f},
       {"fog_strength", 1.f},
+      {"vfx_base_brightness", 1.f},
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
       {"some_indicators", 1.0f},
@@ -988,6 +993,17 @@ void BuildRuntimeData() {
         .format = "%.2f",
     },
     new renodx::utils::settings::Setting{
+        .key = "vfx_base_brightness",
+        .binding = &vfx_brightness_row,
+        .default_value = 1.f,
+        .label = "VFX Brightness (Experimental)",
+        .section = "Extra (Experimental)",
+        .tooltip = "Brightness of smoke, dust, fire and other particle effects, before the fog. 1 = the game's.",
+        .min = 0.f,
+        .max = 10.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
         .key = "chromaticaberration",
         .binding = &shader_injection.chromaticaberration,
         .default_value = 1.f,
@@ -1718,6 +1734,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     smoke_map_settings.strength = 0.f;
   }
   twattila::smoke_map::Update(smoke_map_settings);
+  twtroy::vfx_brightness::Update(vfx_brightness_row);
   rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
@@ -2132,6 +2149,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twtroy::vfx_brightness::OnDestroyDevice);
   // Water Clarity and Caustics: every row a material water (the patched copy swapped in at the draw), as Pharaoh's.
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
@@ -2256,6 +2274,8 @@ bool AttachAddon() {
   // Log Details' light count: the point lights and the night siege's fires (particle lights 643FC156, VS F5CE48CC: one draw,
   // 192k indices in ATN's session 2; Pharaoh's 5AD46115).
   twattila::light_count::Install(0x143A02ED, 0x643FC156);
+  // After view_share's (anti_aliasing::Install): the particle shaders it patched first keep their game hash.
+  twtroy::vfx_brightness::Install();
   twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
@@ -2288,6 +2308,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twtroy::vfx_brightness::OnDestroyDevice);
   twattila::water_reflections::Uninstall();
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
@@ -2304,6 +2325,7 @@ void DetachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
   twattila::smoke_map::Uninstall();
+  twtroy::vfx_brightness::Uninstall();
   twtroy::shadow_map::Uninstall();
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();

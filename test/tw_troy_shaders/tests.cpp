@@ -9,6 +9,10 @@
 //    256 random vertices with that trace's camera and a blowing wind: the capture's world position x the view-projection is
 //    the game's SV_Position (to the float rounding of its terms), its w the UV (POSITION0.w, NORMAL0.w) as two halves.
 //    CONTROL: the capture a second later differs (the wind is in play).
+// 3. VFX Brightness (src/games/twtroy/vfx_brightness.hpp's Patch) on the game's particle pixel shaders 563BA3E8 and 9C8987DD:
+//    the patched program is the game's plus dcl_constantbuffer cb8 and one mad (disassembly), WARP takes it, and drawn over a
+//    grid of random interpolants, emitters, textures and constants it gives the game's bits with cb8 unbound and with cb8.x 0
+//    (the slider at 1); CONTROL cb8.x 1 (the slider at 2) differs.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -26,6 +30,10 @@
 #include <vector>
 
 #include "../../src/games/twtroy/shared.h"
+#include "../../src/games/twtroy/vfx_brightness.hpp"
+
+extern "C" __declspec(dllexport) const char* const NAME = "Troy shader test";
+extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) { std::printf("  log: %s\n", message); }
 
 using Microsoft::WRL::ComPtr;
 
@@ -435,6 +443,224 @@ static void TestVegetation(const std::string& game_folder, const std::string& bu
               now_error, uv_error, later_error);
 }
 
+// A shader's instructions and declarations (D3DDisassemble), comments and its version line left out.
+static std::array<std::vector<std::string>, 2> Disassembly(std::span<const uint8_t> code) {
+  ComPtr<ID3DBlob> text;
+  std::array<std::vector<std::string>, 2> lines;  // declarations, instructions
+  if (FAILED(D3DDisassemble(code.data(), code.size(), 0, nullptr, &text))) return lines;
+  std::string line;
+  for (const char* at = static_cast<const char*>(text->GetBufferPointer()); *at != '\0'; ++at) {
+    if (*at != '\n') {
+      line += *at;
+      continue;
+    }
+    const size_t start = line.find_first_not_of(" \r");
+    const std::string trimmed = (start == std::string::npos) ? "" : line.substr(start, line.find_last_not_of(" \r") - start + 1);
+    if (!trimmed.empty() && !trimmed.starts_with("//") && !trimmed.starts_with("ps_")) {
+      lines[trimmed.starts_with("dcl_") ? 0 : 1].push_back(trimmed);
+    }
+    line.clear();
+  }
+  return lines;
+}
+
+static void TestVfxBrightness(const std::string& game_folder) {
+  for (const uint32_t hash : twtroy::vfx_brightness::HASHES) {
+    char name[32];
+    std::snprintf(name, sizeof(name), "%08X", hash);
+    std::vector<char> file;
+    for (const char* model : {".ps_5_0.cso", ".ps_4_1.cso"}) {
+      if (file.empty()) file = ReadFile(game_folder + "\\0x" + name + model);
+    }
+    CHECK(!file.empty(), "%s: the cso", name);
+    if (file.empty()) continue;
+    const std::span<const uint8_t> game(reinterpret_cast<const uint8_t*>(file.data()), file.size());
+    const auto patched = twtroy::vfx_brightness::Patch(game);
+    CHECK(!patched.empty(), "%s: not patched", name);
+    if (patched.empty()) continue;
+
+    // The program: the game's, one declaration and one instruction more: mad rC.xyz on the colour the movc before it wrote,
+    // right before the fog test.
+    const auto before = Disassembly(game);
+    const auto after = Disassembly(patched);
+    auto declarations = after[0];
+    std::erase(declarations, std::string("dcl_constantbuffer CB8[1], immediateIndexed"));
+    auto instructions = after[1];
+    const auto inserted = std::ranges::find_if(instructions, [](const std::string& line) { return line.starts_with("mad ") && line.find("cb8[0]") != std::string::npos; });
+    std::string mad;
+    bool placed = false;
+    if (inserted != instructions.end()) {
+      mad = *inserted;
+      const std::string colour = mad.substr(4, mad.find('.') - 4);
+      auto movc = inserted;
+      while (movc != instructions.begin() && (*(movc - 1) == "endif" || *(movc - 1) == "else")) --movc;
+      placed = mad == "mad " + colour + ".xyz, " + colour + ".xyzx, cb8[0].xxxx, " + colour + ".xyzx" && movc != instructions.begin()
+               && (movc - 1)->starts_with("movc " + colour + ".xyz,") && (inserted + 1) != instructions.end()
+               && (inserted + 1)->starts_with("and r0.x, r0.w, cb");
+      instructions.erase(inserted);
+    }
+    CHECK(declarations == before[0] && after[0].size() == before[0].size() + 1, "%s: declarations", name);
+    CHECK(placed && instructions == before[1], "%s: instructions: the game's and '%s' after the colour's movc, before the fog test",
+          name, mad.c_str());
+
+    // On WARP: a grid of quads over random interpolants (each quad its own emitter), every resource the shader binds random.
+    ComPtr<ID3D11ShaderReflection> reflection;
+    CHECK(SUCCEEDED(D3DReflect(game.data(), game.size(), IID_PPV_ARGS(&reflection))), "%s: reflection", name);
+    if (reflection == nullptr) continue;
+    D3D11_SHADER_DESC desc = {};
+    reflection->GetDesc(&desc);
+    std::string source = "void main(uint id : SV_VertexID, out float4 position : SV_Position";
+    std::string body;
+    for (UINT index = 0; index < desc.InputParameters; ++index) {
+      D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+      reflection->GetInputParameterDesc(index, &parameter);
+      if (parameter.SystemValueType != D3D_NAME_UNDEFINED) continue;
+      const std::string out = "o" + std::to_string(index);
+      const bool integer = parameter.ComponentType == D3D_REGISTER_COMPONENT_UINT32;
+      source += std::string(integer ? ", nointerpolation out uint4 " : ", out float4 ") + out + " : " + parameter.SemanticName
+                + std::to_string(parameter.SemanticIndex);
+      body += integer ? "  " + out + " = uint4(quad % 4u, quad, 3u, 7u);\n"
+                      : "  " + out + " = frac(sin(float4(id, id + 1, id + 2, id + 3) * 12.9898 + " + std::to_string(index)
+                            + " * 78.233) * 43758.5453) * 3.0 - 1.0;\n";
+    }
+    source += ") {\n  const uint quad = id / 6u;\n  const uint corner = id % 6u;\n"
+              "  const float2 offset = float2((corner == 1u || corner == 4u || corner == 5u) ? 1.0 : 0.0, (corner == 2u || corner == 3u || corner == 5u) ? 1.0 : 0.0);\n"
+              "  const float2 cell = (float2(quad % 8u, quad / 8u) + offset) / 8.0;\n"
+              "  position = float4(cell * float2(2, -2) + float2(-1, 1), 0.5, 1);\n" + body + "}\n";
+    const auto vs = CompileSource(source.c_str(), "vs_5_0");
+    ComPtr<ID3D11VertexShader> vertex_shader;
+    device->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &vertex_shader);
+    ComPtr<ID3D11PixelShader> game_shader;
+    ComPtr<ID3D11PixelShader> patched_shader;
+    CHECK(SUCCEEDED(device->CreatePixelShader(game.data(), game.size(), nullptr, &game_shader)), "%s: the game's on WARP", name);
+    CHECK(SUCCEEDED(device->CreatePixelShader(patched.data(), patched.size(), nullptr, &patched_shader)), "%s: patched on WARP", name);
+    if (game_shader == nullptr || patched_shader == nullptr) continue;
+
+    uint32_t seed = hash;
+    const auto random = [&seed]() {
+      seed = seed * 1664525u + 1013904223u;
+      return static_cast<float>(seed >> 8) / 16777216.f;
+    };
+    std::vector<ComPtr<ID3D11ShaderResourceView>> views(16);
+    std::vector<ComPtr<ID3D11SamplerState>> samplers(16);
+    std::vector<ComPtr<ID3D11Buffer>> buffers(14);
+    for (UINT index = 0; index < desc.BoundResources; ++index) {
+      D3D11_SHADER_INPUT_BIND_DESC bind = {};
+      reflection->GetResourceBindingDesc(index, &bind);
+      if (bind.Type == D3D_SIT_CBUFFER || bind.Type == D3D_SIT_STRUCTURED) {
+        D3D11_SHADER_BUFFER_DESC buffer_desc = {};
+        reflection->GetConstantBufferByName(bind.Name)->GetDesc(&buffer_desc);
+        // Constants in 0..4 (floats from 2 up set bit 30, the flags' fog bit, so the paths vary); 8 emitters.
+        const UINT count = (bind.Type == D3D_SIT_STRUCTURED) ? 8 : 1;
+        std::vector<float> values(buffer_desc.Size * count / 4);
+        for (float& value : values) value = random() * 4.f;
+        if (bind.Type == D3D_SIT_CBUFFER) {
+          buffers[bind.BindPoint] = ConstantBuffer(values.data(), static_cast<UINT>(values.size() * 4));
+          continue;
+        }
+        const D3D11_BUFFER_DESC structured = {.ByteWidth = static_cast<UINT>(values.size() * 4), .Usage = D3D11_USAGE_DEFAULT,
+                                              .BindFlags = D3D11_BIND_SHADER_RESOURCE, .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED,
+                                              .StructureByteStride = buffer_desc.Size};
+        const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = values.data()};
+        ComPtr<ID3D11Buffer> buffer;
+        device->CreateBuffer(&structured, &initial, &buffer);
+        device->CreateShaderResourceView(buffer.Get(), nullptr, &views[bind.BindPoint]);
+      } else if (bind.Type == D3D_SIT_SAMPLER) {
+        const bool comparison = (bind.uFlags & D3D_SIF_COMPARISON_SAMPLER) != 0;
+        const D3D11_SAMPLER_DESC sampler = {.Filter = comparison ? D3D11_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR : D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+                                            .AddressU = D3D11_TEXTURE_ADDRESS_WRAP, .AddressV = D3D11_TEXTURE_ADDRESS_WRAP,
+                                            .AddressW = D3D11_TEXTURE_ADDRESS_WRAP, .ComparisonFunc = D3D11_COMPARISON_LESS, .MaxLOD = D3D11_FLOAT32_MAX};
+        device->CreateSamplerState(&sampler, &samplers[bind.BindPoint]);
+      } else if (bind.Type == D3D_SIT_TEXTURE) {
+        // 2D textures single-channel R32 (comparison samplers take it), the others RGBA; 16 texels a side, 4 layers or slices.
+        const bool flat = bind.Dimension == D3D_SRV_DIMENSION_TEXTURE2D;
+        const DXGI_FORMAT format = flat ? DXGI_FORMAT_R32_FLOAT : DXGI_FORMAT_R32G32B32A32_FLOAT;
+        const UINT channels = flat ? 1 : 4;
+        const bool cube = bind.Dimension == D3D_SRV_DIMENSION_TEXTURECUBE;
+        const UINT layers = cube ? 6 : ((bind.Dimension == D3D_SRV_DIMENSION_TEXTURE2DARRAY) ? 4 : 1);
+        std::vector<float> texels(16 * 16 * channels * layers * ((bind.Dimension == D3D_SRV_DIMENSION_TEXTURE3D) ? 16 : 1));
+        for (float& texel : texels) texel = random();
+        if (bind.Dimension == D3D_SRV_DIMENSION_TEXTURE3D) {
+          const D3D11_TEXTURE3D_DESC volume = {.Width = 16, .Height = 16, .Depth = 16, .MipLevels = 1, .Format = format,
+                                               .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+          const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = texels.data(), .SysMemPitch = 16 * channels * 4, .SysMemSlicePitch = 256 * channels * 4};
+          ComPtr<ID3D11Texture3D> texture;
+          device->CreateTexture3D(&volume, &initial, &texture);
+          device->CreateShaderResourceView(texture.Get(), nullptr, &views[bind.BindPoint]);
+          continue;
+        }
+        std::vector<D3D11_SUBRESOURCE_DATA> initial(layers);
+        for (UINT layer = 0; layer < layers; ++layer) {
+          initial[layer] = {.pSysMem = texels.data() + (layer * 256 * channels), .SysMemPitch = 16 * channels * 4};
+        }
+        const D3D11_TEXTURE2D_DESC surface = {.Width = 16, .Height = 16, .MipLevels = 1, .ArraySize = layers, .Format = format,
+                                              .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                              .MiscFlags = cube ? static_cast<UINT>(D3D11_RESOURCE_MISC_TEXTURECUBE) : 0u};
+        ComPtr<ID3D11Texture2D> texture;
+        device->CreateTexture2D(&surface, initial.data(), &texture);
+        device->CreateShaderResourceView(texture.Get(), nullptr, &views[bind.BindPoint]);
+      }
+    }
+
+    constexpr UINT SIZE = 64;
+    const auto target = Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, D3D11_BIND_RENDER_TARGET);
+    ComPtr<ID3D11RenderTargetView> target_view;
+    device->CreateRenderTargetView(target.Get(), nullptr, &target_view);
+    const D3D11_TEXTURE2D_DESC staging_desc = {.Width = SIZE, .Height = SIZE, .MipLevels = 1, .ArraySize = 1,
+                                               .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1},
+                                               .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    ComPtr<ID3D11Texture2D> staging;
+    device->CreateTexture2D(&staging_desc, nullptr, &staging);
+    const auto draw = [&](ID3D11PixelShader* pixel_shader, const float* slot8) {
+      context->ClearState();
+      const float clear[4] = {SENTINEL, SENTINEL, SENTINEL, SENTINEL};
+      context->ClearRenderTargetView(target_view.Get(), clear);
+      context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+      const D3D11_VIEWPORT viewport = {.Width = SIZE, .Height = SIZE, .MaxDepth = 1.f};
+      context->RSSetViewports(1, &viewport);
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+      context->PSSetShader(pixel_shader, nullptr, 0);
+      std::vector<ID3D11ShaderResourceView*> bound_views;
+      for (const auto& view : views) bound_views.push_back(view.Get());
+      context->PSSetShaderResources(0, static_cast<UINT>(bound_views.size()), bound_views.data());
+      std::vector<ID3D11SamplerState*> bound_samplers;
+      for (const auto& sampler : samplers) bound_samplers.push_back(sampler.Get());
+      context->PSSetSamplers(0, static_cast<UINT>(bound_samplers.size()), bound_samplers.data());
+      auto bound_buffers = buffers;
+      if (slot8 != nullptr) bound_buffers[twtroy::vfx_brightness::SLOT] = ConstantBuffer(slot8, 16);
+      std::vector<ID3D11Buffer*> raw;
+      for (const auto& buffer : bound_buffers) raw.push_back(buffer.Get());
+      context->PSSetConstantBuffers(0, static_cast<UINT>(raw.size()), raw.data());
+      context->Draw(64 * 6, 0);
+      context->CopyResource(staging.Get(), target.Get());
+      std::vector<float> values(SIZE * SIZE * 4);
+      D3D11_MAPPED_SUBRESOURCE mapped;
+      if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        for (UINT row = 0; row < SIZE; ++row) {
+          std::memcpy(&values[row * SIZE * 4], static_cast<const uint8_t*>(mapped.pData) + (row * mapped.RowPitch), SIZE * 16);
+        }
+        context->Unmap(staging.Get(), 0);
+      }
+      return values;
+    };
+    const float at_one[4] = {0.f, 0.f, 0.f, 0.f};
+    const float at_two[4] = {1.f, 0.f, 0.f, 0.f};
+    const auto reference = draw(game_shader.Get(), nullptr);
+    size_t drawn = 0;
+    for (size_t i = 0; i < reference.size(); i += 4) drawn += (reference[i + 3] != SENTINEL) ? 1 : 0;
+    size_t differing = 0;
+    const bool unbound = SameBits(draw(patched_shader.Get(), nullptr), reference, &differing);
+    CHECK(unbound, "%s: cb8 unbound: %zu of %zu floats off the game's", name, differing, reference.size());
+    const bool one = SameBits(draw(patched_shader.Get(), at_one), reference, &differing);
+    CHECK(one, "%s: at 1: %zu of %zu floats off the game's", name, differing, reference.size());
+    SameBits(draw(patched_shader.Get(), at_two), reference, &differing);
+    CHECK(drawn > 0 && differing > 0, "%s: CONTROL at 2 the game's (%zu of %zu pixels drawn)", name, drawn, reference.size() / 4);
+    std::printf("%s: patched = the game's + cb8 and '%s'; the game's bits at 1 and unbound over %zu drawn pixels; CONTROL at 2: %zu "
+                "floats differ\n", name, mad.c_str(), drawn, differing);
+  }
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("usage: troy_shaders.exe <the game's csos> <the add-on's built csos>\n");
@@ -463,6 +689,7 @@ int main(int argc, char** argv) {
   TestFog(argv[1], argv[2], "018FED0C", false);
   TestFog(argv[1], argv[2], "D9A3B04F", true);
   TestVegetation(argv[1], argv[2]);
+  TestVfxBrightness(argv[1]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
   return failures == 0 ? 0 : 1;
 }
