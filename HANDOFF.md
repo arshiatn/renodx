@@ -395,6 +395,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   prefs with backup), camera left to the map border (all units + artillery smoke on screen); Time Each Pass, helper capture,
   PresentMon, Log Details; CPU ETL only through ATN's own elevated tasks RenoDX_WPR_Start / _Stop if ATN creates them; then
   a ranked units / buildings / grass / smoke / rays speed-up analysis.
+  DONE 11:35-11:39 (run cpl2, battle 44 s after launch; camera inside the walls by the Golden Horn, most units + artillery
+  smoke on screen): Time Each Pass x3, profile 30 s, PresentMon 30 s, Log Details, WPR CPU+GPU ETL 20 s (3.0 GB); game closed
+  through its window; ReShade.ini restored to its pre-run hash F0C01BD0.., preset / prefs / auto_save.replay / add-on unchanged.
+  No in-game Nsight capture (REPLAYABLE turns RR off for the helper's life; the harness capture rp_a2 is used). Cluster build
+  preference FAST_BUILD / FAST_TRACE: no gain (not committed). Analysis running.
 - [ ] ATN ~11:4x: the skill checks the whole dump for render scale (scale_census.py) but casters only in traces: agent
   (cdc_, worktree) adds caster_census.py --whole-dump (every VS classified, held / NOT HELD / not a caster), validates on
   Attila + Pharaoh e34c6089 palms, runs it for nine games (tools/tw/round_notes/caster_dump_<game>.txt), skill lines; results
