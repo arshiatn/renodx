@@ -29,8 +29,9 @@ Test list (in game, ATN):
 9. Water, forward-lit units and banners keep their shadows with every new row on.
 10. ReShade.log: "drawn with the rays" lines for D0C67938 / 5D1695BC, no device loss, the frame time as before.
 
-Not done: Skip the Shadow Maps (the shadow map's forward readers, water 44B4A2F0 and four unit / prop shaders, would lose
-their shadows: patch them first, as Rome II); Fog Shadows (WH1's battle fog is analytic, no shadowed march to give the
+Not done: Skip the Shadow Maps (the shadow map's 7 other readers, battle and campaign water and forward-lit units / props,
+would lose their shadows; Rome II's forward patch takes 5 of them, not 0BF2DB7F / BCB9B1D6, and the WARP check needs each
+one's cascade constants to reach its shadow: tools/tw/wh1/skip_maps_attempt.diff); Fog Shadows (WH1's battle fog is analytic, no shadowed march to give the
 rays); the campaign's far terrain CDCF1ADD (where it lies against the near terrain); the SSR march's patch below 100%
 (021D7515, needs a picture); the reader census without SSAO / SSR (needs ATN's start with both off).
 
