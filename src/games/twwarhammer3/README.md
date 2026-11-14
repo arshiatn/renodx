@@ -15,6 +15,11 @@
   x 100 (0.25x-4x). At 1x (default) the game's own march runs; off 1x only the march is swapped in (the resolve stays the
   game's). WARP (test/tw_warhammer3_shaders): ours is the game's bits at 100 steps; on a water scene with posts 25 steps
   lose 3.5% of the hits and 100 already finds all of them; on a scene made to need texel steps 400 finds 1.6% more.
+- New: **Modded Auto Exposure** and its **Sensitivity (Extra, Experimental, off)**, as Pharaoh's: where a scene's
+  environment turns the game's auto exposure on (fx_autoexposurecs; in none of the 95 traces, so ReShade.log says once when
+  it runs), each metered sample counts at most 2 stops (Sensitivity) over the average the last exposure was aimed at, so
+  fire and the sun stop darkening the picture. Off: the game's own shader runs. WARP: our copy off is the game's bits; a
+  fire on one of 16 focal points takes the game's brightness 0.837 -> 0.575, ours on to 0.809.
 - Page dump against v59: only the rows above are new; after RT/PT only the per-game rows differ from Attila's, as before.
 - Test list (ReShade.log after each; Log Details on):
   1. Control, any battle, every row above at its default: as v59.
@@ -29,13 +34,23 @@
   8. Big battle: Ragdolls Off: bodies fall without ragdolls, CPU time against Game's.
   9. Battle by a lake or river, in-game SSR on, Reflections Game's SSR: Reflection Quality 0.25x, 4x, 1x: shorter
      reflections and more fps, then far reflections with gaps filled (if any are missing at 1x), then the game's.
+  10. Any battle or campaign map, HDR, Modded Auto Exposure On: if ReShade.log says "the game's auto exposure runs",
+      look at a fire or the sun there: the picture no longer darkens around it (Off: the game's). No line: the scene
+      doesn't use it, nothing changes.
 - Not done:
-  - Full-Resolution Particle Edges and Quarter: WH3's half-size particles are MBOIT (moments, then colour), so Attila's edge
-    pass (one blended layer redrawn under stencil) does not carry. Smallest step: a stencil edge mask at the half layer's
-    depth and both MBOIT passes redrawn into the sharp layer there, on WARP first.
-  - Modded Auto Exposure: the game's auto exposure (1E448816) runs in none of 95 traces; its buffer reads 0 in all 39 that
-    logged it: nothing to change. Fog & Sky Smoothing: the fog of 93 of 95 traces reads no sky cube; the rest read the
-    game's own blurred mip, not Attila's 8-bit cube; the sky has Sky Debanding.
+  - Full-Resolution Particle Edges and Quarter: stopped. WH3's half layer is MBOIT (moments, then colour) and holds more
+    than the sprites: in all 95 traces its draws include effect meshes (870818A7 / 6BFD17D8, 207 draws, 19 frames with a
+    count above 0) whose depth sits at t0, the sprites' at t4 / t5. Redrawing it at the edges means every material's draw
+    replayed in the sharp layer's state, the moments combine (A759AD5D) split by a stencil and the composite (43606BB8)
+    drawn twice, beside the two hooks it already has (Smooth Half-Size Particles' copy, Ray Reconstruction's particle
+    layer). The error it removes: one half texel (2 px at 4K) along silhouettes behind half-size particles. A WARP of the
+    sprites alone would not decide it. Quarter needs targets of the add-on's in place of the game's half ones.
+  - Fog & Sky Smoothing: nothing to smooth. Attila's fixes an 8-bit sky cube made at run time (its code steps and its
+    horizon row); WH3's fog (438D86B8, drawn at fog quality 0 in b11_fog0 / c9_fog0, and its two siblings) reads a 256 x
+    256 BC6H (16-bit float) cube array at its own blurred mip (g_fog_far_skybox_mip), and the sky has Sky Debanding.
+  - Scale census rows at 100% only: CC3AC345 reads its reflections at the pixel it writes (both targets the display's
+    size, below 100% too: wh3_batch6 run1 trace_22), so nothing stretches (the census took the radiance's mip writes for a
+    render share). 82AB9635 (fx_sprite, the bloom at the view's uv) is in no trace: needs one that draws it below 100%.
   - The indicators' MBOIT resolve (492ED8DA): our copy was not the game's bits at 1. Smallest step: its moment math put
     back in the game's order against fxc's listing.
   - Snow / rain / storm VFX rows: need a trace of a snow or storm battle.

@@ -102,9 +102,9 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to Warhammer III's SDR picture).
 constexpr float HUE_CLIP_DEFAULT = 100.f;
 
-// bool IsModdedAutoExposureEnabled() {
-//   return shader_injection.auto_exposure_highlight_protection == 1.f;
-// }
+bool IsModdedAutoExposureEnabled() {
+  return shader_injection.auto_exposure_highlight_protection == 1.f;
+}
 
 void ApplyResetPreset() {
   // Reset only controls that are currently active in this addon.
@@ -163,6 +163,8 @@ void ApplyResetPreset() {
       {"fog_strength", 1.f},
       {"some_indicators", 1.f},
       {"ssr_quality", 1.f},
+      {"auto_exposure_highlight_protection", 0.f},
+      {"auto_exposure_highlight_headroom_stops", 2.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -1721,6 +1723,12 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0xE441DBFFu, 0x709BE774u, 0xA7748703u, 0xDE0524D6u}) {
     custom_shaders[hash].on_replace = [](auto*) { return shader_injection.someindicators != 1.f && IsHDRMode(); };
   }
+  // The game's auto exposure runs only where a scene's environment turns it on (in none of 95 traces): logged once.
+  custom_shaders[0x1E448816].on_replace = [](auto*) {
+    static bool logged = false;
+    if (!std::exchange(logged, true)) renodx::utils::log::i("[Warhammer III] The game's auto exposure runs (fx_autoexposurecs 1E448816).");
+    return IsModdedAutoExposureEnabled() && IsHDRMode();
+  };
   custom_shaders[0xE2EE82F8].on_draw = [](auto* cmd_list) {
     if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepPixelCamera(cmd_list, 1);
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
@@ -2467,31 +2475,31 @@ void BuildRuntimeData() {
 
 
     // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_protection",
-    //     .binding = &shader_injection.auto_exposure_highlight_protection,
-    //     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-    //     .default_value = 0.0f,
-    //     .label = "Modded Auto Exposure",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
-    //     .labels = {"Off (Stock)", "On (Protected)"},
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_headroom_stops",
-    //     .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 1.0f,
-    //     .label = "Modded Auto Exposure: Sensitivity",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
-    //     .min = 0.0f,
-    //     .max = 2.0f,
-    //     .format = "%.1f",
-    //     .is_enabled = IsModdedAutoExposureEnabled,
-    //     .is_visible = IsAdvancedSettings,
-    // },
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_protection",
+        .binding = &shader_injection.auto_exposure_highlight_protection,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Modded Auto Exposure",
+        .section = "Extra (Experimental)",
+        .tooltip = "Where a map uses the game's auto exposure: fire, sparks and the sun no longer darken the whole\n"
+                   "picture. Their own brightness stays. Off is the game's.",
+        .labels = {"Off (Game's)", "On (Protected)"},
+        .is_enabled = IsHDRMode,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_headroom_stops",
+        .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
+        .default_value = 2.f,
+        .label = "Modded Auto Exposure: Sensitivity",
+        .section = "Extra (Experimental)",
+        .tooltip = "How much brighter than the picture's average a highlight may count, in stops.\n"
+                   "Lower protects more, higher is closer to the game's.",
+        .min = 0.f,
+        .max = 4.f,
+        .format = "%.1f",
+        .is_enabled = [] { return IsModdedAutoExposureEnabled() && IsHDRMode(); },
+    },
     // VFX //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .key = "vfx_fire_brightness",

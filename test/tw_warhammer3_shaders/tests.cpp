@@ -12,6 +12,10 @@
 //    8 levels of hierarchical depth. With b1 unbound, steps 0 and steps 100 ours gives the game's bits; 25 steps fewer hits,
 //    400 at least as many. Again with every other texel of the hierarchical depth above the water near the camera (the march
 //    steps texel by texel there): 100 steps end rays, 400 more hits. CONTROL: 25 steps differ from the game's.
+// 3. Modded Auto Exposure: the game's auto exposure 1E448816 against ours (shaders/autoexposure00) on a 256 x 128 light of
+//    random luma with 16 focal points, from a last brightness of 0.8 and of 0 (its first frame: 1): with the row off ours gives
+//    the game's bits; with a fire (luma 500) on one focal point's cross the game's brightness falls, ours with the row on
+//    (2 stops) stays within 5% of the frame without the fire. CONTROL: ours with the row on differs from the game's.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -20,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -30,6 +35,8 @@
 #include <random>
 #include <string>
 #include <vector>
+
+#include "../../src/games/twwarhammer3/shared.h"
 
 using Microsoft::WRL::ComPtr;
 using Matrix = std::array<double, 16>;  // rows acting on column vectors (the camera buffer's registers, row by row)
@@ -578,6 +585,109 @@ static void TestMarch(const std::string& pack, const std::string& built) {
   }
 }
 
+// ----------------------------------------------------------------------------------------------------- auto exposure
+constexpr UINT LIGHT_WIDTH = 256;
+constexpr UINT LIGHT_HEIGHT = 128;
+
+// The brightness the auto exposure writes, from `previous`, over `light` (rgba), with the add-on's settings at b10.
+static float RunExposure(const std::vector<uint8_t>& code, const std::vector<float>& light, float previous, float protection) {
+  ComPtr<ID3D11ComputeShader> shader;
+  CHECK(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, &shader)), "auto exposure shader");
+  if (shader == nullptr) return -1.f;
+  const D3D11_TEXTURE2D_DESC desc = {.Width = LIGHT_WIDTH, .Height = LIGHT_HEIGHT, .MipLevels = 1, .ArraySize = 1,
+                                     .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                     .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  const D3D11_SUBRESOURCE_DATA data = {.pSysMem = light.data(), .SysMemPitch = LIGHT_WIDTH * 16};
+  ComPtr<ID3D11Texture2D> texture;
+  device->CreateTexture2D(&desc, &data, &texture);
+  ComPtr<ID3D11ShaderResourceView> view;
+  device->CreateShaderResourceView(texture.Get(), nullptr, &view);
+  const D3D11_BUFFER_DESC output_desc = {.ByteWidth = 4, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS,
+                                         .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, .StructureByteStride = 4};
+  const D3D11_SUBRESOURCE_DATA output_data = {.pSysMem = &previous};
+  ComPtr<ID3D11Buffer> output;
+  device->CreateBuffer(&output_desc, &output_data, &output);
+  ComPtr<ID3D11UnorderedAccessView> output_view;
+  device->CreateUnorderedAccessView(output.Get(), nullptr, &output_view);
+  // tone_mapping: brightness 1, auto exposure on. Auto_exposure_cb: 16 focal points (a 4 x 4 grid), radius 8, target 2^-2,
+  // adaptation 0.5 a second each way, correction +- 0.5, sensitivity 0.5, a second (the speed limit not reached).
+  const std::array<float, 4> tone_mapping = {1.f, 0.f, std::bit_cast<float>(1), 0.f};
+  std::array<float, 35 * 4> exposure = {};
+  exposure[0] = std::bit_cast<float>(16u);
+  for (int i = 0; i < 16; ++i) {
+    exposure[(1 + i) * 4] = 0.125f + 0.25f * static_cast<float>(i % 4);
+    exposure[(1 + i) * 4 + 1] = 0.125f + 0.25f * static_cast<float>(i / 4);
+  }
+  exposure[32 * 4 + 2] = std::bit_cast<float>(8u);
+  exposure[32 * 4 + 3] = -2.f;
+  exposure[33 * 4] = 0.5f;
+  exposure[33 * 4 + 1] = 0.5f;
+  exposure[33 * 4 + 2] = 0.5f;
+  exposure[33 * 4 + 3] = 0.5f;
+  exposure[34 * 4] = 1.f;
+  ShaderInjectData injection = {};
+  injection.auto_exposure_highlight_protection = protection;
+  injection.auto_exposure_highlight_headroom_stops = 2.f;
+  const std::array<ComPtr<ID3D11Buffer>, 3> buffers = {ConstantBuffer(tone_mapping.data(), sizeof(tone_mapping)),
+                                                       ConstantBuffer(exposure.data(), sizeof(exposure)),
+                                                       ConstantBuffer(&injection, sizeof(injection))};
+  context->CSSetShader(shader.Get(), nullptr, 0);
+  context->CSSetShaderResources(0, 1, view.GetAddressOf());
+  context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
+  context->CSSetConstantBuffers(0, 2, buffers[0].GetAddressOf());
+  context->CSSetConstantBuffers(10, 1, buffers[2].GetAddressOf());
+  context->Dispatch(1, 1, 1);
+  ID3D11ShaderResourceView* no_view = nullptr;
+  ID3D11UnorderedAccessView* no_output = nullptr;
+  context->CSSetShaderResources(0, 1, &no_view);
+  context->CSSetUnorderedAccessViews(0, 1, &no_output, nullptr);
+  D3D11_BUFFER_DESC staging_desc = {.ByteWidth = 4, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, &staging);
+  context->CopyResource(staging.Get(), output.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  float brightness = 0.f;
+  std::memcpy(&brightness, mapped.pData, 4);
+  context->Unmap(staging.Get(), 0);
+  return brightness;
+}
+
+static void TestAutoExposure(const std::string& pack, const std::string& built) {
+  const std::vector<uint8_t> game = ReadFile(pack + "\\0x1E448816.cs_5_0.cso");
+  const std::vector<uint8_t> ours = ReadFile(built + "\\0x1E448816.cso");
+  CHECK(!game.empty() && !ours.empty(), "auto exposure: no code (%zu, %zu bytes)", game.size(), ours.size());
+  if (game.empty() || ours.empty()) return;
+  std::mt19937 random(4242);
+  std::uniform_real_distribution<float> luma(0.f, 0.6f);
+  std::vector<float> light(static_cast<size_t>(LIGHT_WIDTH) * LIGHT_HEIGHT * 4);
+  for (float& value : light) value = luma(random);
+  int same = 0;
+  int runs = 0;
+  for (const float previous : {0.8f, 0.f, 1.3f}) {
+    ++runs;
+    const float game_brightness = RunExposure(game, light, previous, 0.f);
+    const float ours_brightness = RunExposure(ours, light, previous, 0.f);
+    same += std::memcmp(&game_brightness, &ours_brightness, 4) == 0 ? 1 : 0;
+    std::printf("auto exposure from %.2f: the game's %.8f, ours off %.8f\n", previous, game_brightness, ours_brightness);
+  }
+  CHECK(same == runs, "auto exposure off: %d of %d not the game's bits", runs - same, runs);
+  // A fire on the second focal point's cross (its row: x 88..104 at y 16).
+  const float calm_game = RunExposure(game, light, 0.8f, 0.f);
+  std::vector<float> fire = light;
+  for (UINT x = 88; x <= 104; ++x) {
+    for (int c = 0; c < 3; ++c) fire[(static_cast<size_t>(16) * LIGHT_WIDTH + x) * 4 + c] = 500.f;
+  }
+  const float fire_game = RunExposure(game, fire, 0.8f, 0.f);
+  const float fire_ours = RunExposure(ours, fire, 0.8f, 1.f);
+  const float calm_ours = RunExposure(ours, light, 0.8f, 1.f);
+  std::printf("auto exposure from 0.80, without / with a fire: the game's %.5f / %.5f; ours on %.5f / %.5f\n", calm_game, fire_game,
+              calm_ours, fire_ours);
+  CHECK(fire_game < 0.95f * calm_game, "the fire doesn't darken the game's (%.5f against %.5f)", fire_game, calm_game);
+  CHECK(std::fabs(fire_ours - calm_game) < 0.05f * calm_game, "ours on with the fire %.5f, the game's without %.5f", fire_ours, calm_game);
+  CHECK(fire_ours != fire_game, "CONTROL: ours on with the fire is the game's");
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("usage: tests <the game's csos> <the add-on's built csos>\n");
@@ -589,6 +699,7 @@ int main(int argc, char** argv) {
   }
   for (const char* spec : {"03298FD5", "1C3500F0:TEXCOORD:1", "70F4C9F9"}) TestCaster(argv[1], spec);
   TestMarch(argv[1], argv[2]);
+  TestAutoExposure(argv[1], argv[2]);
   std::printf("%s (%d failures)\n", failures == 0 ? "PASS" : "FAIL", failures);
   return failures == 0 ? 0 : 1;
 }
