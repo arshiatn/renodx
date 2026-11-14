@@ -184,6 +184,22 @@ struct CallbackRegistration {
 
 static thread_local uint64_t command_sequence = 0u;
 
+// Opt-in fast dispatch for this module (command_action_fast.hpp; only the Total War add-ons set it). Null: every
+// command takes RunCallbacks' path below. Set: RunCallbacks offers it each command first; it returns false to leave the
+// command to RunCallbacks, or true once it has done exactly what RunCallbacks would (callbacks, replay) with the
+// command's skip in `skip`.
+template <typename Arguments>
+static bool (*fast_run_callbacks)(CommandContext<Arguments>* context, bool* skip) = nullptr;
+// Told whenever this module changes registrations_by_pipeline_handle: the fast dispatch borrows its entries across
+// commands and must resolve them again.
+static void (*on_pipeline_registrations_changed)() = nullptr;
+
+inline void NotifyPipelineRegistrationsChanged() {
+  if (on_pipeline_registrations_changed != nullptr) {
+    on_pipeline_registrations_changed();
+  }
+}
+
 struct PipelineRegistration {
   CallbackRegistration callback;
   renodx::utils::shader::PipelineShaderDetails* pipeline_details = nullptr;
@@ -243,6 +259,7 @@ inline void OnInitPipeline(
   } else {
     shared.data->registrations_by_pipeline_handle.erase(info->pipeline.handle);
   }
+  NotifyPipelineRegistrationsChanged();
 }
 
 inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info) {
@@ -251,6 +268,7 @@ inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info)
       const auto& [pipeline_handle, matches] = entry;
       return matches.generation == info.generation;
     });
+    NotifyPipelineRegistrationsChanged();
   }
 }
 
@@ -299,6 +317,7 @@ inline bool RunCallbacks(CommandContext<Arguments> context) {
   if (data == nullptr) return false;
 
   context.command_id = ++command_sequence;
+  if (bool skip = false; fast_run_callbacks<Arguments> != nullptr && fast_run_callbacks<Arguments>(&context, &skip)) return skip;
 
   struct PendingPostResult {
     CallbackResult<CommandContext<Arguments>> result = {};
@@ -911,6 +930,7 @@ inline void UnregisterCallback(Callback&& callback) {
   for (const auto pipeline_handle : empty_pipelines) {
     data->registrations_by_pipeline_handle.erase(pipeline_handle);
   }
+  internal::NotifyPipelineRegistrationsChanged();
 }
 
 template <typename Callback>
