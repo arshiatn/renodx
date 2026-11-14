@@ -1,5 +1,18 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+### GPU perf round (2026-11-14; built only, not run in game)
+
+- Fixed: a game that writes other indices into an index buffer's range after its cluster set was made (bridge v16's
+  compact draws, keyed by the buffer and the range) kept the old set: its triangles over the new vertices, stretched
+  across the scene (Rome Remastered's battle resets, suspect 3; every TW game with Mega Geometry has the path). The
+  write is heard (UpdateSubresource, copies, deferred updates), the draw's triangles are captured until its set is
+  made again from the new indices. `tw_cluster_rewrite` (x86 + amd64).
+- New: **Units Ray Tracing Range (Experimental, off)**, after Grass Ray Tracing Range: soldiers and horses farther
+  than this leave the ray tracing (their clusters are not built). Harness at 4K, 240k unit clusters over 0-470 m:
+  scene + trace 4.55 ms off, 3.04 at 100 m, 2.81 at 50 m. Needs the new helper (an older one ignores the row).
+- Record Ray Tracing Profile and Log Details split the add-on's GPU passes before the trace (vertices, smoke,
+  positions, lights) and log whether the game's light draws repeated (`light_order`: the sort skipped or not).
+
 ### Attila gaps (2026-11-14; built only, not run in game)
 
 The game's other builds of what Attila already does (other shader models, shadow methods, MSAA, Tessellation): players

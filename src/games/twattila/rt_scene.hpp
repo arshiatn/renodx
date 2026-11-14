@@ -92,6 +92,7 @@ struct Sliders {
   float fast_leaves = 0.f;
   float grass_shadow_range = 0.f;  // metres (0: everywhere)
   float grass_range = 0.f;         // metres (0: everywhere; placed grass, Attila)
+  float units_range = 0.f;         // metres (0: everywhere; compact unit draws)
   float path_ser = 0.f;
   float sharc = 0.f;
   float reuse_lean = 0.f;
@@ -212,6 +213,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
                                 ? sliders.grass_range
                                 : sliders.grass_shadow_range,
       .grass_range = sliders.grass_range,
+      .units_range = sliders.units_range,
       .smoke_fast_build = sliders.smoke_fast_build != 0.f,
       .path_ser = sliders.path_ser != 0.f,
       .sharc = sliders.sharc != 0.f,
@@ -1144,6 +1146,7 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
       // four floats each time. That outcome is the keys' alone: a frame whose keys are the last sorted frame's (lights in
       // the same places, a still camera) takes its order, whatever the colours (the float sort took 0.8 ms a frame of
       // Attila's render thread at Constantinople). A NaN coordinate has no order: the float sort then.
+      uint32_t light_order = 2u;
       if (std::ranges::any_of(lights, [](const LocalLight& light) { return std::ranges::any_of(light.light, [](float value) { return std::isnan(value); }); })) {
         std::ranges::sort(lights, {}, &LocalLight::light);
         const auto repeated = std::ranges::unique(lights, {}, &LocalLight::light);
@@ -1161,7 +1164,14 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
           keys.push_back({.key = {ordered(light.light[0]), ordered(light.light[1]), ordered(light.light[2]), ordered(light.light[3])},
                           .index = static_cast<uint32_t>(keys.size())});
         }
-        if (!std::ranges::equal(keys, readback.keys, same_place)) {
+        const bool same_places = std::ranges::equal(keys, readback.keys, same_place);
+        // Whether the game's light draws repeat (the order taken without a sort): the profile's light_order, a frame trace's
+        // mark (no live count).
+        light_order = (same_places ? 1u : 2u);
+        if (frame_trace::Tracing()) {
+          frame_trace::Mark(std::format("local lights read back: {}, {}", lights.size(), (same_places ? "the last sorted frame's order" : "sorted again")));
+        }
+        if (!same_places) {
           readback.keys = keys;
           std::ranges::sort(keys, [](const internal::LightKey& a, const internal::LightKey& b) {
             for (size_t coordinate = 0; coordinate < a.key.size(); ++coordinate) {
@@ -1182,7 +1192,7 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
       if (!lights.empty() && !std::exchange(internal::point_lights_read, true)) {
         renodx::utils::log::i(std::format("[Total War] Local lights: first {} read from the light draws.", lights.size()));
       }
-      AddLocalLights(lights);
+      AddLocalLights(lights, light_order);
     }
     copies.clear();
     readback.used[readback.current] = 0;
@@ -1973,6 +1983,26 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_enabled = dlaa_on,
           // The helper leaves out placed grass's instances past the range (other games' grass has no instance rows).
           .is_visible = grass_placed,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedUnitsRange",
+          .binding = &sliders->units_range,
+          .default_value = 0.f,
+          .label = "Units Ray Tracing Range (Experimental)",
+          .section = section,
+          .tooltip = "Soldiers and horses farther than this are left out of the ray tracing (their shadows there are a few pixels):\n"
+                     "faster in big battles. 0 m: all units.",
+          .min = 0.f,
+          .max = 500.f,
+          .format = "%.0f m",
+          .is_enabled = dlaa_on,
+          // The helper leaves out the instances of units' compact draws (a scene table's skinned soldiers and horses;
+          // a host without a table, Rome Remastered's, marks every scene draw dynamic).
+          .is_visible = [] {
+            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) {
+              return shader.dynamic && !shader.grass && !shader.thin && !shader.tessellated && !shader.sun_facing && !shader.foliage;
+            });
+          },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedAmbientOcclusion",

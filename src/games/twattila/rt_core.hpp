@@ -145,6 +145,9 @@ struct Settings {
   bool fast_leaves = false;
   float grass_shadow_range = 0.f;
   float grass_range = 0.f;
+  // Units Ray Tracing Range (Experimental; older helpers ignore it): units farther than these metres are out of the scene
+  // (0: all in).
+  float units_range = 0.f;
   // Smoke BLAS Fast Build (Experimental, with Smoke Shadows; helper113, bridge RT_SCENE_SMOKE_FAST_BUILD): the smoke's BLAS
   // built faster each frame, its particles met in another order.
   bool smoke_fast_build = false;
@@ -493,6 +496,11 @@ struct ParticleStream {
   ComPtr<ID3D11Buffer> empty;  // INDIRECT_PARTICLES empty records (where a vertex shader is indirect)
 };
 
+// The trace's passes on the game's context before its request, each stamped after it while the cost is timed (Log Details,
+// Record Ray Tracing Profile): the captures' world positions (rt_vertices, rt_skies), Smoke Shadows' quads, the pixels'
+// positions (rt_positions), the lights' constants.
+constexpr std::array<const char*, 4> TRACE_PARTS = {"vertices", "smoke", "positions", "lights"};
+
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
   std::vector<ComPtr<ID3D11VertexShader>> capture_shaders;  // as the scene shaders
@@ -575,11 +583,11 @@ struct DeviceObjects {
   ComPtr<ID3D11Texture2D> combined;
   ComPtr<ID3D11ShaderResourceView> combined_srv;
   ComPtr<ID3D11UnorderedAccessView> combined_uav;
-  // The cost report's GPU timestamps: a disjoint query and three stamps a frame (the trace's start, its request, the
-  // helper's answer), four frames in turn, read back when done.
+  // The cost report's GPU timestamps: a disjoint query and stamps a frame (the trace's start, after each of TRACE_PARTS, the
+  // last at its request, then the helper's answer), four frames in turn, read back when done.
   struct Timing {
     ComPtr<ID3D11Query> disjoint;
-    std::array<ComPtr<ID3D11Query>, 3> stamps;
+    std::array<ComPtr<ID3D11Query>, 6> stamps;
     bool pending = false;
     uint64_t frame = 0;  // its (the profile)
   };
@@ -597,6 +605,7 @@ struct Costs {
   uint32_t frames = 0;
   double passes_ms = 0.0;
   double waiting_ms = 0.0;
+  std::array<double, TRACE_PARTS.size()> part_ms = {};  // of passes_ms
   uint32_t timed = 0;  // frames whose timestamps came back
   uint64_t dynamic_vertices = 0;
   uint64_t left_out = 0;  // their share full
@@ -630,8 +639,12 @@ struct Profile {
   uint64_t gpu_frame = 0;
   double passes_ms = 0.0;
   double waiting_ms = 0.0;
+  std::array<double, TRACE_PARTS.size()> part_ms = {};
   // The frame's trace's (Trace empties its lists): captures, compact draws, placements, new sets, texels captured, lights.
   std::array<uint64_t, 6> counts = {};
+  // The frame's light read-back (rt_scene.hpp OnPointLightDraw): 0 none, 1 the last sorted frame's order taken (the same
+  // places), 2 sorted again.
+  uint32_t light_order = 0;
 };
 // The shares a dynamic draw needs room in (Capture): all dynamic draws' texels, the helper's triangles and clusters, the
 // grass's corners, the units' three quarters of those.
@@ -739,8 +752,15 @@ struct Runtime {
     std::future<dlaa_bridge::ClusterSetData> making;  // its set on a worker (PrepareClusterSet)
     ComPtr<ID3D11Buffer> corners;  // its first instance's captured corners, copied at a full capture (the set's order)
     bool unsorted = false;         // its set made without them
+    // Its range of `indices` in bytes, and the frame the game wrote into that range after it was copied (OnIndexWrite; 0:
+    // never): its triangles captured until its set is made again from the new indices.
+    uint64_t first_byte = 0;
+    uint64_t end_byte = 0;
+    uint64_t rewritten_frame = 0;
   };
   std::unordered_map<uint64_t, ClusterMesh> cluster_meshes;
+  // The cluster meshes' keys by the game's index buffer they hold (its pointer): OnIndexWrite's lookup.
+  std::unordered_map<uint64_t, std::vector<uint64_t>> index_buffer_sets;
   // This frame's compact draws (consecutive ones of a mesh joined), the sets its trace sends and their bytes, its
   // dynamic triangles and clusters (captures' and compact draws': the helper's RT_DYNAMIC_*), the sets made.
   std::vector<dlaa_bridge::RtCompactDraw> compact;
@@ -899,6 +919,8 @@ static bool world_captures = false;  // and some are placed (or SceneShader::cas
 static float leaf_cutoff = 0.f;  // the scene shaders' SceneShader::alpha_cutoff (0: none has one)
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
+// A cluster mesh holds one of the game's index buffers (runtime.index_buffer_sets not empty): else OnIndexWrite returns.
+static std::atomic_bool index_buffers_held = false;
 
 inline float RangeScale() {
   return (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? host.campaign_metre : 1.f);
@@ -1187,6 +1209,16 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
                               UINT first_index, UINT index_count) {
   auto& mesh = runtime.cluster_meshes[set_key];
   mesh.used_frame = runtime.frame;
+  if (mesh.rewritten_frame != 0) {
+    // The game wrote into its range after its indices were copied: a new set from the new indices, a frame after the write
+    // (a deferred context's write lands when its list runs; this frame's trace still sends the old set its earlier draws
+    // used) and once the last making is done. Sent again under its key, the helper's old set gives way.
+    if (runtime.frame < mesh.rewritten_frame + 2
+        || (mesh.making.valid() && mesh.making.wait_for(std::chrono::seconds(0)) != std::future_status::ready)) {
+      return;
+    }
+    mesh = {.used_frame = runtime.frame};
+  }
   if (mesh.failed || mesh.remap) return;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
@@ -1212,11 +1244,19 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
     const uint64_t first = uint64_t{offset} + (uint64_t{first_index} * index_bytes);
     const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = index_count * index_bytes, .Usage = D3D11_USAGE_STAGING,
                                             .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    // An index buffer the GPU may write (stream output, UAVs) can change with no write seen: no set.
     mesh.failed = (format != DXGI_FORMAT_R16_UINT && format != DXGI_FORMAT_R32_UINT) || desc.Usage == D3D11_USAGE_DYNAMIC
+                  || (desc.BindFlags & (D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_UNORDERED_ACCESS)) != 0
                   || first + staging_desc.ByteWidth > desc.ByteWidth
                   || FAILED(device->CreateBuffer(&staging_desc, nullptr, mesh.staging.GetAddressOf()));
     if (mesh.failed) return;
     mesh.indices = index_buffer;
+    mesh.first_byte = first;
+    mesh.end_byte = first + staging_desc.ByteWidth;
+    if (auto& keys = runtime.index_buffer_sets[reinterpret_cast<uint64_t>(index_buffer)]; std::ranges::find(keys, set_key) == keys.end()) {
+      keys.push_back(set_key);
+    }
+    index_buffers_held.store(true, std::memory_order_relaxed);
     const D3D11_BOX range = {.left = static_cast<UINT>(first), .top = 0, .front = 0, .right = static_cast<UINT>(first) + staging_desc.ByteWidth,
                              .bottom = 1, .back = 1};
     native->CopySubresourceRegion(mesh.staging.Get(), 0, 0, 0, 0, index_buffer, 0, &range);
@@ -1598,7 +1638,7 @@ void Capture(Context& command, const SceneShader& shader) {
       if (!added && entry->second.key != key) entry->second.ambiguous = true;
     }
     if (const auto mesh = (compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end());
-        mesh != runtime.cluster_meshes.end() && mesh->second.remap) {
+        mesh != runtime.cluster_meshes.end() && mesh->second.remap && mesh->second.rewritten_frame == 0) {
       mesh->second.used_frame = runtime.frame;
       blocks = mesh->second.sent || std::ranges::find(runtime.new_sets, set_key) != runtime.new_sets.end()
                || (runtime.new_sets.size() < dlaa_bridge::RT_NEW_SETS
@@ -2182,7 +2222,7 @@ void Capture(Context& command, const SceneShader& shader) {
     // A placed draw's swaying copy marked (its rows follow its blocks: never joined to another draw's).
     const uint32_t compact_flags = (flags & (dlaa_bridge::RT_TERRAIN | dlaa_bridge::RT_FOLIAGE | dlaa_bridge::RT_THIN | dlaa_bridge::RT_GRASS | dlaa_bridge::RT_SOLID_CUT_OUT
                                              | dlaa_bridge::RT_OWN_CUTOFF))
-                                   | (place ? dlaa_bridge::RT_INSTANCED : 0u);
+                                   | (place ? dlaa_bridge::RT_INSTANCED : 0u) | (unit ? dlaa_bridge::RT_UNIT : 0u);
     if (auto* last = (runtime.compact.empty() ? nullptr : &runtime.compact.back());
         last != nullptr && last->set == set_key && last->flags == compact_flags && last->slice == slice
         && last->first_vertex + (last->instances * (block_texels / draw_instances)) == next_vertex) {
@@ -2701,11 +2741,15 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   }
   // The cost report's timestamps (a set still pending: this frame without).
   auto& timing = objects.timings[objects.timing_next % objects.timings.size()];
-  const bool stamped = runtime.timed && timing.disjoint && timing.stamps[2] && !timing.pending;
+  const bool stamped = runtime.timed && timing.disjoint && timing.stamps.back() && !timing.pending;
   if (stamped) {
     native->Begin(timing.disjoint.Get());
     native->End(timing.stamps[0].Get());
   }
+  // After TRACE_PARTS' part (the stamp after it: the next).
+  const auto part_done = [&](size_t part) {
+    if (stamped) native->End(timing.stamps[part + 1].Get());
+  };
   {
     const ComputeState kept(native);
     if (runtime.captured_vertices != 0) {
@@ -2757,6 +2801,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                  &sky, sizeof(sky), 1, 1);
       }
     }
+    part_done(0);
     // Sprite soldiers' and far trees' captures (RT_SUN_ONLY) last, only the smoke's after them: the helper takes the dynamic captures' tail
     // for the instance that the sun's rays alone meet. One followed by a unit's draw or the terrain's capture (Warhammer III: both, every
     // frame) stayed among the units': its card stood in the ambient's, the lights' and the paths' rays too (a dark wedge at each tree's
@@ -2818,6 +2863,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       runtime.dynamic_vertices += smoke_quads * 6;
       runtime.particles = 0;
     }
+    part_done(1);
     runtime.positions = {
         .inverse_view_projection = camera.inverse_view_projection,
         .camera = {camera.position[0], camera.position[1], camera.position[2], 1.f},
@@ -2829,6 +2875,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
                sizeof(runtime.positions), (render_size[0] + 7) / 8, (render_size[1] + 7) / 8);
     }
   }
+  part_done(2);
   // Torch and Fire Light in the Light Bounce: only while the path-traced Light Bounce ran the frame before (its request
   // comes after the game's light draws, which read this trace's bits or ratio).
   const bool lights_in_bounce = (runtime.settings.lights_in_bounce || runtime.settings.light_ratio) && runtime.settings.light_bounce
@@ -2946,13 +2993,14 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .sway_range = runtime.settings.sway_range,
       .grass_shadow_range = runtime.settings.grass_shadow_range,
       .grass_range = runtime.settings.grass_range,
+      .units_range = runtime.settings.units_range,
       .scene_flags = (runtime.settings.smoke_fast_build ? dlaa_bridge::RT_SCENE_SMOKE_FAST_BUILD : 0u),
       .leaf_cutoff = leaf_cutoff,
   };
-  if (stamped) native->End(timing.stamps[1].Get());
+  part_done(3);
   const bool traced = dlaa_bridge::TraceScene(native, request);
   if (stamped) {
-    native->End(timing.stamps[2].Get());
+    native->End(timing.stamps.back().Get());
     native->End(timing.disjoint.Get());
     timing.pending = true;
     timing.frame = runtime.frame;
@@ -3160,6 +3208,52 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
     game_code[hash].assign(code, code + desc->code_size);
     skinned_code[hash] = skinned;
   }
+}
+
+// The game wrote bytes `offset` to `offset + size` of `dest` (UpdateSubresource or a copy, on any context). A cluster set is
+// keyed by its index buffer and range, which stay when the game writes other indices into them: kept, the set laid the old
+// triangles over the new vertices, stretched triangles across the scene (traces of 100 ms and more, as suspect 2's wrong
+// vertices; Rome Remastered's battle resets, suspect 3). Each set whose range the write touches is made again
+// (PrepareClusterSet), its triangles captured meanwhile.
+inline void OnIndexWrite(reshade::api::resource dest, uint64_t offset, uint64_t size) {
+  if (!index_buffers_held.load(std::memory_order_relaxed) || dest.handle == 0) return;
+  auto* resource = reinterpret_cast<ID3D11Resource*>(dest.handle);
+  D3D11_RESOURCE_DIMENSION dimension = D3D11_RESOURCE_DIMENSION_UNKNOWN;
+  resource->GetType(&dimension);
+  if (dimension != D3D11_RESOURCE_DIMENSION_BUFFER) return;
+  D3D11_BUFFER_DESC desc = {};
+  static_cast<ID3D11Buffer*>(resource)->GetDesc(&desc);
+  if ((desc.BindFlags & D3D11_BIND_INDEX_BUFFER) == 0) return;
+  const uint64_t end_byte = (size > UINT64_MAX - offset) ? UINT64_MAX : offset + size;
+  const std::unique_lock lock(runtime.mutex);
+  const auto keys = runtime.index_buffer_sets.find(dest.handle);
+  if (keys == runtime.index_buffer_sets.end()) return;
+  for (const uint64_t set_key : keys->second) {
+    if (const auto mesh = runtime.cluster_meshes.find(set_key);
+        mesh != runtime.cluster_meshes.end() && mesh->second.indices.Get() == resource && mesh->second.first_byte < end_byte && offset < mesh->second.end_byte) {
+      mesh->second.rewritten_frame = std::max<uint64_t>(runtime.frame, 1);
+    }
+  }
+}
+
+inline bool OnUpdateIndices(reshade::api::device*, const void*, reshade::api::resource dest, uint64_t offset, uint64_t size) {
+  OnIndexWrite(dest, offset, size);
+  return false;
+}
+
+inline bool OnUpdateIndicesCommand(reshade::api::command_list*, const void*, reshade::api::resource dest, uint64_t offset, uint64_t size) {
+  OnIndexWrite(dest, offset, size);
+  return false;
+}
+
+inline bool OnCopyIndices(reshade::api::command_list*, reshade::api::resource, uint64_t, reshade::api::resource dest, uint64_t offset, uint64_t size) {
+  OnIndexWrite(dest, offset, size);
+  return false;
+}
+
+inline bool OnCopyIndexBuffer(reshade::api::command_list*, reshade::api::resource, reshade::api::resource dest) {
+  OnIndexWrite(dest, 0, UINT64_MAX);
+  return false;
 }
 
 }  // namespace internal
@@ -3543,7 +3637,7 @@ inline void Update(const Settings& settings) {
     objects.device->GetImmediateContext(context.GetAddressOf());
     for (auto& timing : objects.timings) {
       D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint = {};
-      std::array<UINT64, 3> stamps = {};
+      std::array<UINT64, std::tuple_size_v<decltype(timing.stamps)>> stamps = {};
       if (!timing.pending || context->GetData(timing.disjoint.Get(), &disjoint, sizeof(disjoint), D3D11_ASYNC_GETDATA_DONOTFLUSH) != S_OK) {
         continue;
       }
@@ -3553,11 +3647,19 @@ inline void Update(const Settings& settings) {
       }
       if (!ready) continue;
       timing.pending = false;
-      if (disjoint.Disjoint || disjoint.Frequency == 0 || stamps[1] < stamps[0] || stamps[2] < stamps[1]) continue;
-      const double passes_ms = static_cast<double>(stamps[1] - stamps[0]) * 1000.0 / static_cast<double>(disjoint.Frequency);
-      const double waiting_ms = static_cast<double>(stamps[2] - stamps[1]) * 1000.0 / static_cast<double>(disjoint.Frequency);
+      if (disjoint.Disjoint || disjoint.Frequency == 0 || !std::ranges::is_sorted(stamps)) continue;
+      const auto ms_between = [&](size_t first) {
+        return static_cast<double>(stamps[first + 1] - stamps[first]) * 1000.0 / static_cast<double>(disjoint.Frequency);
+      };
+      const size_t request = internal::TRACE_PARTS.size();
+      const double passes_ms = static_cast<double>(stamps[request] - stamps[0]) * 1000.0 / static_cast<double>(disjoint.Frequency);
+      const double waiting_ms = ms_between(request);
       costs.passes_ms += passes_ms;
       costs.waiting_ms += waiting_ms;
+      for (size_t part = 0; part < internal::TRACE_PARTS.size(); ++part) {
+        runtime.profile.part_ms[part] = ms_between(part);
+        costs.part_ms[part] += runtime.profile.part_ms[part];
+      }
       ++costs.timed;
       runtime.profile.gpu_frame = timing.frame;
       runtime.profile.passes_ms = passes_ms;
@@ -3572,7 +3674,7 @@ inline void Update(const Settings& settings) {
     QueryPerformanceFrequency(&frequency);
     const auto ms = [&](int64_t ticks) { return static_cast<double>(ticks) * 1000.0 / static_cast<double>(frequency.QuadPart); };
     const int64_t set_ticks = runtime.set_ticks.load();
-    profile.file << std::format("{},{:.2f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{},{},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{:.3f},{:.3f},{:.3f}\n",
+    profile.file << std::format("{},{:.2f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{},{},{:.3f},{:.3f},{:.3f},{:.3f},{},{},{},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{}\n",
                                 runtime.frame - 1, ms(now.QuadPart - profile.started.QuadPart), ms(now.QuadPart - profile.presented.QuadPart),
                                 ms(costs.capture_ticks - profile.capture_ticks), ms(costs.trace_ticks - profile.trace_ticks),
                                 ms(dlaa_bridge::bridge.answer_ticks - profile.answer_ticks), ms(set_ticks - profile.set_ticks), runtime.set_builds,
@@ -3580,8 +3682,10 @@ inline void Update(const Settings& settings) {
                                 runtime.dynamic_vertices / 1.0e6, static_cast<double>(costs.left_out - profile.left_out) / 1.0e6,
                                 static_cast<double>(costs.no_room - profile.no_room) / 1.0e6, profile.counts[5],
                                 (runtime.traced_frame + 1 == runtime.frame) ? 1 : 0, profile.gpu_frame, profile.passes_ms, profile.waiting_ms,
-                                ms(dlaa_bridge::bridge.present_answer_ticks - profile.present_answer_ticks));
+                                ms(dlaa_bridge::bridge.present_answer_ticks - profile.present_answer_ticks), profile.part_ms[0],
+                                profile.part_ms[1], profile.part_ms[2], profile.part_ms[3], profile.light_order);
     profile.counts = {};
+    profile.light_order = 0;
     profile.presented = now;
     profile.capture_ticks = costs.capture_ticks;
     profile.trace_ticks = costs.trace_ticks;
@@ -3663,12 +3767,16 @@ inline void Update(const Settings& settings) {
       LARGE_INTEGER frequency;
       QueryPerformanceFrequency(&frequency);
       const double frame_ms = 1000.0 / static_cast<double>(frequency.QuadPart) / costs.frames;
+      std::string parts;
+      for (size_t part = 0; part < internal::TRACE_PARTS.size(); ++part) {
+        parts += std::format("{}{} {:.2f}", (part == 0 ? "" : ", "), internal::TRACE_PARTS[part], (costs.timed != 0 ? costs.part_ms[part] / costs.timed : 0.0));
+      }
       renodx::utils::log::i(std::format("[Total War] Ray tracing's own cost a frame: CPU {:.2f} ms capturing, {:.2f} ms tracing ({:.2f} of it the terrain's count); GPU "
-                                        "{:.2f} ms its passes, {:.2f} ms waiting for the helper; every frame {:.2f} M vertices captured "
+                                        "{:.2f} ms its passes ({}), {:.2f} ms waiting for the helper; every frame {:.2f} M vertices captured "
                                         "({:.0f} compact draws; {} cluster sets, {} unsorted), {:.2f} M left out (their share full), {:.2f} M "
                                         "without room (captures or vertex texture full).",
                                         costs.capture_ticks * frame_ms, costs.trace_ticks * frame_ms, costs.terrain_wait_ticks * frame_ms,
-                                        (costs.timed != 0 ? costs.passes_ms / costs.timed : 0.0),
+                                        (costs.timed != 0 ? costs.passes_ms / costs.timed : 0.0), parts,
                                         (costs.timed != 0 ? costs.waiting_ms / costs.timed : 0.0),
                                         static_cast<double>(costs.dynamic_vertices) / 1.0e6 / costs.frames,
                                         static_cast<double>(costs.compact_draws) / costs.frames,
@@ -3703,6 +3811,11 @@ inline void Update(const Settings& settings) {
     runtime.new_static_time = now;
     // Meshes not drawn for RELEASE_FRAMES give their sets (and the game's index buffers) back.
     std::erase_if(runtime.cluster_meshes, [&](const auto& entry) { return entry.second.used_frame + internal::RELEASE_FRAMES < runtime.frame; });
+    runtime.index_buffer_sets.clear();
+    for (const auto& [set_key, mesh] : runtime.cluster_meshes) {
+      if (mesh.indices) runtime.index_buffer_sets[reinterpret_cast<uint64_t>(mesh.indices.Get())].push_back(set_key);
+    }
+    internal::index_buffers_held.store(!runtime.index_buffer_sets.empty(), std::memory_order_relaxed);
     // Mask textures not used for as long give their atlas slices (and the textures themselves) back.
     std::erase_if(runtime.atlas_slices, [&](const auto& entry) {
       const uint32_t slice = entry.second.second;
@@ -3781,7 +3894,7 @@ inline void StartProfile() {
   }
   profile.file << "frame,time_ms,frame_ms,capture_ms,trace_ms,answer_wait_ms,set_worker_ms,sets_started,captures,compact_draws,placements,"
                   "new_sets,captured_mtexels,dynamic_mtexels,left_out_mtexels,no_room_mtexels,lights,traced,gpu_frame,gpu_passes_ms,"
-                  "gpu_helper_wait_ms,present_pacing_ms\n";
+                  "gpu_helper_wait_ms,present_pacing_ms,gpu_vertices_ms,gpu_smoke_ms,gpu_positions_ms,gpu_lights_ms,light_order\n";
   profile.end_time = GetTickCount64() + internal::PROFILE_MS;
   QueryPerformanceCounter(&profile.started);
   profile.presented = profile.started;
@@ -3843,10 +3956,12 @@ inline void AddLocalLight(const LocalLight& light) {
   runtime.lights_drawn.push_back(light);
 }
 
-// Many at once (an instanced light draw's: each once).
-inline void AddLocalLights(std::span<const LocalLight> lights) {
+// Many at once (an instanced light draw's: each once); light_order: the profile's (1 the last sorted frame's order taken,
+// 2 sorted again).
+inline void AddLocalLights(std::span<const LocalLight> lights, uint32_t light_order) {
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
+  runtime.profile.light_order = light_order;
   if (!runtime.settings.local_lights) return;
   for (const LocalLight& light : lights) {
     if (runtime.lights_drawn.size() >= internal::MAX_LOCAL_LIGHTS) break;
@@ -3957,6 +4072,10 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   internal::leaf_cutoff = shaders.empty() ? 0.f : std::ranges::max(shaders, {}, &SceneShader::alpha_cutoff).alpha_cutoff;
   if (internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   if (host.scene_draw != nullptr) reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
+  reshade::register_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateIndices);
+  reshade::register_event<reshade::addon_event::update_buffer_region_command>(internal::OnUpdateIndicesCommand);
+  reshade::register_event<reshade::addon_event::copy_buffer_region>(internal::OnCopyIndices);
+  reshade::register_event<reshade::addon_event::copy_resource>(internal::OnCopyIndexBuffer);
   for (const SceneShader& shader : shaders) {
     renodx::utils::command_action::Register(
         OnSceneDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW | (shader.indirect ? renodx::utils::command_action::COMMAND_TYPE_INDIRECT : 0u)}, &shader);
@@ -3973,6 +4092,10 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
 inline void UninstallScene() {
   if (internal::clip_captures) reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   if (internal::host.scene_draw != nullptr) reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
+  reshade::unregister_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateIndices);
+  reshade::unregister_event<reshade::addon_event::update_buffer_region_command>(internal::OnUpdateIndicesCommand);
+  reshade::unregister_event<reshade::addon_event::copy_buffer_region>(internal::OnCopyIndices);
+  reshade::unregister_event<reshade::addon_event::copy_resource>(internal::OnCopyIndexBuffer);
   renodx::utils::command_action::Unregister(OnSceneDraw);
   renodx::utils::command_action::fast::ClearGate(OnAnyDraw);
   renodx::utils::command_action::Unregister(OnAnyDraw);
@@ -3996,6 +4119,8 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   internal::runtime.known.clear();
   internal::runtime.short_keys.clear();
   internal::runtime.cluster_meshes.clear();
+  internal::runtime.index_buffer_sets.clear();
+  internal::index_buffers_held.store(false, std::memory_order_relaxed);
 }
 
 }  // namespace twattila::rt_scene
