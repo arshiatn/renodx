@@ -105,7 +105,7 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
   (Skill: LESSONS + CHECKS ROUND; Rome II rounds 1 + 2 (ROME II BRING-UP, NIGHT MERGES); installed 22:59 (NIGHT
   MERGES); round report tools/tw/round_notes/night_1113_report.md.)
 
-## FOUR GAMES TO THE ATTILA PACKAGE (2026-11-14 night; ATN asleep, weekly budget: use it)
+## SIX GAMES TO THE ATTILA PACKAGE (2026-11-14 night; ATN asleep, weekly budget: use it; Troy + WH1 added 01:50)
 ATN (2026-11-13 ~23:40): after the skill update, plan and do the whole Attila package for Thrones, WH2, Shogun 2 Complete
 Edition and Rome Remastered, in parallel; in-game runs only for traces, few, agents at medium effort. Troy / WH1 next
 time. ATN tests Attila / WH3 / Pharaoh / Rome II and the rest after waking: nothing may run in a game then.
@@ -152,6 +152,15 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   in all four worktrees. Skill a5c6d897: RUNASADMIN row, tools/tw/ps_param_shadow.ps1.
 - [ ] (old line) Data runs from 01:01, one medium-effort agent (tools/tw/round_notes/data_run_brief.md), one game at a time; trace builds merged, stamped "<game> t1", installed with
   --first; fresh backups; Shogun 2's DevKit aside; its nvngx_dlss 310.5.2 -> 310.9.16 renamed aside).
+- [x] Rome Remastered v8 MERGED 28a753f5 (stability wiring, two Test rows, Trace One Frame; script -Form + RUNASADMIN refuse).
+- [ ] ATN 01:50 (awake briefly): start Rome Remastered now (the RUNASADMIN flag was gone at 01:51: its data run resumed),
+  and plan + do Troy and WH1 too, at the same time. Two more worktree agents (tools/tw/troy, tools/tw/wh1; same brief,
+  base 28a753f5); tw_install.py troy / wh1 entries (Epic folders under C:/Program Files/Epic Games; WH1 prefs EOS/scripts).
+- [x] Rome Remastered starts: 01:51 the replay form (-replay:play:...file="temp/battle.rpy") quit 4 s in, before any
+  window or device (add-on never loaded; its logs lost to the restore: script now keeps game_logs, skill ad644a65);
+  01:56 menu form (no arguments): 60 s up, add-on loaded, swap chain, no 3D frame (ATN's options window / menu need
+  clicks), 2 empty traces (romeremastered/runs/data_1114_015643/M). Rome Remastered traces need ATN's menu start with
+  rome2\atn_trace_watch.ps1 (plan_1114.md sections 7-8). No further agent start tonight.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
