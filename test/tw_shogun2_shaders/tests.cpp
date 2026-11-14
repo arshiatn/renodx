@@ -14,6 +14,7 @@
 // 11. rt_capture_cascade_cloth / imposter / tree through Pharaoh's outside-view geometry shader against the game's 0x8A00A1D4 /
 //     0xE3DA20D4 / 0x5851CA62 / 0x6F20485E (TestCascadeLeaves).
 // 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
+// 13. Coloured Shadows in shaders/sunlight00-03 (TestSunTint).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -26,6 +27,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cwchar>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <random>
@@ -1614,6 +1616,200 @@ static void TestLeafFade(const std::string& games, const std::string& folder) {
               "keeps %zu of them\n", left_out, FADES.size(), control_differs);
 }
 
+// 13. Coloured Shadows in shaders/sunlight00-03 (RtSunColour: the sun's colour x (1 - t50)) on a 16 x 16 target with random
+//     G-buffer, depth, shadow, AO, probes and lighting: the filter 1 everywhere (all of the sun's colour taken out) gives what
+//     the sun colour (lighting c1) 0 gives unbound, so every use of the sun's colour is filtered; unbound the sun lights the
+//     picture (it differs from c1 0). CONTROL: a filter of 0.5 differs from both.
+// #include from the folders of the files opened so far, the latest first, as fxc finds shared.h's ../../shaders/renodx.hlsl
+// (D3D_COMPILE_STANDARD_FILE_INCLUDE looked from the first file's folder; the compiler's parent pointers aren't the buffers given).
+class FolderInclude : public ID3DInclude {
+ public:
+  explicit FolderInclude(const std::filesystem::path& root) : folders_{root} {}
+  HRESULT __stdcall Open(D3D_INCLUDE_TYPE, LPCSTR name, LPCVOID, LPCVOID* data, UINT* bytes) noexcept override {
+    const auto folder = std::find_if(folders_.rbegin(), folders_.rend(),
+                                     [name](const std::filesystem::path& candidate) { return std::filesystem::exists(candidate / name); });
+    if (folder == folders_.rend()) return E_FAIL;
+    const std::filesystem::path path = std::filesystem::weakly_canonical(*folder / name);
+    if (std::ranges::find(folders_, path.parent_path()) == folders_.end()) folders_.push_back(path.parent_path());
+    std::ifstream file(path, std::ios::binary);
+    const std::vector<char> text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    auto* copy = new char[text.size() + 1];
+    std::memcpy(copy, text.data(), text.size());
+    *data = copy;
+    *bytes = static_cast<UINT>(text.size());
+    return S_OK;
+  }
+  HRESULT __stdcall Close(LPCVOID data) noexcept override {
+    delete[] static_cast<const char*>(data);
+    return S_OK;
+  }
+
+ private:
+  std::vector<std::filesystem::path> folders_;
+};
+
+struct SunShader {
+  const wchar_t* file;
+  UINT lighting_slot;
+  UINT constant_buffers;  // b0.. bound
+  std::vector<UINT> cube_array_slots;
+  std::vector<UINT> harmonics_slots;  // 9 x 9
+  UINT textures;  // t0.. bound (the rest 16 x 16 RGBA)
+  UINT samplers;
+};
+
+static void TestSunTint(const std::string& games) {
+  constexpr char VERTEX[] = "float4 main(uint id : SV_VertexID) : SV_Position { const float2 uv = float2((id << 1) & 2, id & 2); "
+                            "return float4(uv * float2(2, -2) + float2(-1, 1), 0.5, 1); }";
+  ComPtr<ID3DBlob> vertex_code;
+  ComPtr<ID3DBlob> errors;
+  D3DCompile(VERTEX, std::strlen(VERTEX), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_code.GetAddressOf(), errors.GetAddressOf());
+  ComPtr<ID3D11VertexShader> vertex;
+  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex.GetAddressOf());
+  constexpr UINT SIZE = 16;
+  std::mt19937 random(13);
+  std::uniform_real_distribution<float> unit(0.05f, 0.95f);
+  const auto values = [&](size_t count) {
+    std::vector<float> filled(count);
+    for (auto& value : filled) value = unit(random);
+    return filled;
+  };
+  const auto plain = [&](UINT width, const std::vector<float>& texels) {
+    return Srv(Texture(width, width, DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), width * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+  };
+  // The camera: every matrix the identity, near 0.1 and far 1000, the render size 16.
+  std::array<float, 44 * 4> camera = {};
+  for (int matrix = 0; matrix < 8; ++matrix) {
+    for (int row = 0; row < 4; ++row) camera[((2 + (matrix * 4) + row) * 4) + row] = 1.f;
+  }
+  camera[34 * 4] = 0.1f;
+  camera[(34 * 4) + 1] = 1000.f;
+  camera[35 * 4] = 1.5f;
+  for (const int at : {37, 38, 40}) {
+    camera[(at * 4) + 0] = camera[(at * 4) + 1] = SIZE;
+    camera[(at * 4) + 2] = camera[(at * 4) + 3] = 1.f / SIZE;
+  }
+  std::array<float, 7 * 4> environment = {0.3f, -0.8f, 0.5f, 0.f, 1.f, 10.f, 0.8f, 0.5f, 1.f, 1.f, 1.f, 1.f, -20.f, -20.f, 20.f, 20.f};
+  environment[16] = std::bit_cast<float>(2u);  // g_probe_grid_size
+  environment[17] = 1.f;                       // g_specular_probes_count
+  environment[18] = 0.5f;                      // g_specular_probe_lerp
+  environment[23] = 9.f;                       // g_spherical_harmonic_terms
+  std::array<float, 18 * 4> lighting = {};
+  const auto lighting_values = values(lighting.size());
+  std::copy(lighting_values.begin(), lighting_values.end(), lighting.begin());
+  lighting[0] = 0.3f;
+  lighting[1] = -0.8f;
+  lighting[2] = 0.5f;
+  lighting[43] = std::bit_cast<float>(1u);  // g_use_spherical_harmonics
+  lighting[47] = 0.f;                       // g_cloud_shadow_scale
+  // sun_colour in the game's units (its shaders scale it by 1.90384671e-005: about 1 here).
+  lighting[4] = 52525.f;
+  lighting[5] = 47000.f;
+  lighting[6] = 41000.f;
+  auto dark = lighting;
+  dark[4] = dark[5] = dark[6] = 0.f;
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const auto environment_buffer = Constants(environment.data(), sizeof(environment));
+  const auto lit_buffer = Constants(lighting.data(), sizeof(lighting));
+  const auto dark_buffer = Constants(dark.data(), sizeof(dark));
+  const auto other_values = values(16 * 4);
+  const auto other_buffer = Constants(other_values.data(), static_cast<UINT>(other_values.size() * sizeof(float)));
+  const auto filter = [&](float value) { return plain(SIZE, std::vector<float>(SIZE * SIZE * 4, value)); };
+  const auto all_filtered = filter(1.f);
+  const auto half_filtered = filter(0.5f);
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  const std::wstring path(games.begin(), games.end());
+  const std::array<SunShader, 4> shaders = {{
+      {.file = L"sunlight00_0xED1BED93", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4},
+      {.file = L"sunlight01_0x5496DE73", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4},
+      {.file = L"sunlight02_0xC3E0E939", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6},
+      {.file = L"sunlight03_0xD5FDDE8F", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6},
+  }};
+  for (const auto& shader : shaders) {
+    ComPtr<ID3DBlob> code;
+    FolderInclude include(path + L"/twshogun2completeedition/shaders");
+    if (FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/" + shader.file + L".ps_5_0.hlsl").c_str(), nullptr, &include,
+                                  "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, code.GetAddressOf(), errors.ReleaseAndGetAddressOf()))) {
+      std::printf("compile failed: %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
+      std::exit(2);
+    }
+    ComPtr<ID3D11PixelShader> pixel;
+    device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, pixel.GetAddressOf());
+    std::vector<ComPtr<ID3D11ShaderResourceView>> views(shader.textures);
+    for (UINT slot = 0; slot < shader.textures; ++slot) {
+      if (std::ranges::find(shader.cube_array_slots, slot) != shader.cube_array_slots.end()) {
+        const D3D11_TEXTURE2D_DESC desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = 24, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                           .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                           .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE};
+        std::vector<std::vector<float>> face_texels(24);
+        std::vector<D3D11_SUBRESOURCE_DATA> initial(24);
+        for (UINT face = 0; face < 24; ++face) {
+          face_texels[face] = values(64);
+          initial[face] = {.pSysMem = face_texels[face].data(), .SysMemPitch = 64};
+        }
+        ComPtr<ID3D11Texture2D> cubes;
+        device->CreateTexture2D(&desc, initial.data(), cubes.GetAddressOf());
+        const D3D11_SHADER_RESOURCE_VIEW_DESC view = {.Format = desc.Format, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY,
+                                                      .TextureCubeArray = {.MipLevels = 1, .NumCubes = 4}};
+        device->CreateShaderResourceView(cubes.Get(), &view, views[slot].GetAddressOf());
+      } else {
+        const UINT width = (std::ranges::find(shader.harmonics_slots, slot) != shader.harmonics_slots.end()) ? 9 : SIZE;
+        views[slot] = plain(width, values(static_cast<size_t>(width) * width * 4));
+      }
+    }
+    const std::vector<ID3D11SamplerState*> samplers(shader.samplers, sampler.Get());
+    const auto run = [&](ID3D11Buffer* lighting_buffer, ID3D11ShaderResourceView* tint) {
+      const auto output = Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET);
+      ComPtr<ID3D11RenderTargetView> target;
+      device->CreateRenderTargetView(output.Get(), nullptr, target.GetAddressOf());
+      std::vector<ID3D11Buffer*> buffers(shader.constant_buffers, other_buffer.Get());
+      buffers[0] = camera_buffer.Get();
+      buffers[1] = environment_buffer.Get();
+      buffers[shader.lighting_slot] = lighting_buffer;
+      std::vector<ID3D11ShaderResourceView*> bound(views.size());
+      for (size_t slot = 0; slot < views.size(); ++slot) bound[slot] = views[slot].Get();
+      const D3D11_VIEWPORT viewport = {.Width = SIZE, .Height = SIZE, .MaxDepth = 1.f};
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->VSSetShader(vertex.Get(), nullptr, 0);
+      context->PSSetShader(pixel.Get(), nullptr, 0);
+      context->PSSetShaderResources(0, static_cast<UINT>(bound.size()), bound.data());
+      context->PSSetShaderResources(50, 1, &tint);
+      context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+      context->PSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
+      context->RSSetViewports(1, &viewport);
+      context->OMSetRenderTargets(1, target.GetAddressOf(), nullptr);
+      context->Draw(3, 0);
+      context->ClearState();
+      const auto bytes = Read(output.Get(), 16);
+      std::vector<float> result(bytes.size() / 4);
+      std::memcpy(result.data(), bytes.data(), bytes.size());
+      return result;
+    };
+    const auto unbound = run(lit_buffer.Get(), nullptr);
+    const auto filtered = run(lit_buffer.Get(), all_filtered.Get());
+    const auto no_sun = run(dark_buffer.Get(), nullptr);
+    const auto half = run(lit_buffer.Get(), half_filtered.Get());
+    const auto same = [](float x, float y) { return std::fabs(x - y) <= (1e-5f * std::max(std::fabs(x), std::fabs(y))) + 1e-6f; };
+    size_t bad = 0, not_finite = 0, sunlit = 0, between = 0;
+    for (size_t value = 0; value < unbound.size(); ++value) {
+      not_finite += std::isfinite(unbound[value]) ? 0 : 1;
+      bad += same(filtered[value], no_sun[value]) ? 0 : 1;
+      sunlit += same(unbound[value], no_sun[value]) ? 0 : 1;
+      between += (!same(half[value], unbound[value]) && !same(half[value], no_sun[value])) ? 1 : 0;
+    }
+    const std::string name(shader.file, shader.file + std::wcslen(shader.file));
+    CHECK(bad == 0 && not_finite == 0 && sunlit > 0, "%s: %zu values differ filtered from no sun, %zu not finite, %zu sunlit (unbound: %zu zero, "
+          "at most %f; no sun at most %f)", name.c_str(), bad, not_finite, sunlit,
+          static_cast<size_t>(std::ranges::count(unbound, 0.f)), *std::ranges::max_element(unbound), *std::ranges::max_element(no_sun));
+    CHECK(between > 0, "CONTROL %s: half the filter gave the unfiltered or the sunless picture", name.c_str());
+    std::printf("%s Coloured Shadows: the filter 1 gives the sun colour 0's picture; %zu of %zu values sunlit unbound, %zu between at half\n",
+                name.c_str(), sunlit, unbound.size(), between);
+  }
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -1640,6 +1836,7 @@ int main(int argc, char** argv) {
     TestCascadeLeaves(games, argv[3]);
     TestLeafFade(games, argv[3]);
   }
+  TestSunTint(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

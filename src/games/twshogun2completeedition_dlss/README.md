@@ -518,11 +518,12 @@ that pass (waterplane, ocean: debug18's trace) keeps the motion of what is under
 - Under Path-traced AO: **own sky rays** (RayTracedPathSkyApart) and **steady bounce light** (RayTracedPathKeptCube), both
   Experimental, off, in Reset, not in RT/PT.
 
-## v64 (2026-11-14): reflection rows for the HDR addon v72 (built only, not run in game)
+## v64 (2026-11-14): reflection rows and coloured shadows for the HDR addon v72 (built only, not run in game)
 
 - Under the reflections: **Reflection reuse (Experimental)** (RayTracedReflectionReuse: Off, From ReSTIR GI, Own ReSTIR) and,
   under the water reflections, **Steadier water reflections (Experimental)** (RayTracedWaterSteady). Both off, in Reset,
   not in RT/PT.
+- Under Light through leaves: **Coloured shadows (Experimental)** (RayTracedColouredShadows), off, in Reset, not in RT/PT.
 
 
 ### F4/F8 sampler ownership (2026-11-09, GPT-6 Astra)

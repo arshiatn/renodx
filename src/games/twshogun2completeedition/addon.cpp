@@ -1033,6 +1033,7 @@ void ReadDlssAddonOptions() {
   ray_tracing.sun_shadows = read_on("RayTracedSunShadows", false);
   read_float("RayTracedShadowSoftness", 0.5f, 0.f, 3.f, &ray_tracing.sun_softness);
   ray_tracing.leaf_light = read_on("RayTracedLeafLight", false);
+  ray_tracing.coloured_shadows = ray_tracing.leaf_light && read_on("RayTracedColouredShadows", false);
   ray_tracing.sprite_shadows = read_on("RayTracedSpriteShadows", false);
   ray_tracing.far_tree_shadows = read_on("RayTracedFarTreeShadows", false);
   ray_tracing.casters_out_of_view = ray_tracing.sun_shadows && read_on("RayTracedUnitsOutOfView", false);
