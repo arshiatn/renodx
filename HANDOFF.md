@@ -626,7 +626,29 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [ ] OPEN: ScreenSpaceShadowsColoured and ScreenSpaceShadowsBannerLight need the banners' own depth (Attila's
       InstallThin, inside twattila/screen_space_shadows.hpp): an opt-in there or a Shogun copy. Owner: PARITY ROUND 3
   - [ ] PARITY ROUND 3 (one agent, p3_, started ~21:30): the three lines above, then parity_check over every game at HEAD
-- [ ] EVERY-PRESET GPU AUDIT (pre_, started ~22:15, ATN "go for it"): Attila's inventory of presets + Experimental rows
+- [x] EVERY-PRESET GPU AUDIT DONE (tools/tw/preset_audit/; bench runs pre_presets_atn_220233 + pre_rerun_atn_225427, all
+  used starts VALID, ATN's files 0 mismatches). TAKEN (cherry-pick of 10e6c41e): Bend Torch and Fire Shadows fix in
+  sss_lights.cs (shared, 9 consumers): HLSL's && loaded both lights of every pair; bit-exact (tw_screen_space_shadows
+  case 9); RTX 5090 4K light draws 18.86 -> 3.18 ms (8 lights); in game the row's GPU cost +8.12 -> +2.29 ms.
+  NOT TAKEN: e606e8ef (RT/PT preset RayTracedLightCount 128): not scored better (no reference, not visible in the view),
+  cost in heavy scenes unmeasured, and through SetRaysPresetDefaults it changes the DEFAULT in 8 games (WH3 / Pharaoh
+  0 -> 2, Reset leaves 2). ATN DECIDES; it stays on its branch.
+  Per-preset (stopped view, all CPU-bound ~28-29 ms CPU busy): ATN 31.97 ms frame (game GPU 17.9 + helper 10.4), Reset
+  29.50, no RT/PT 29.35, RT shadows only 28.32, RT/PT 31.85, path methods from Reset 33.82. Row A/Bs: Particle Resolution
+  Half -0.14 ms game GPU; Faster Smoke Build -0.20 helper; Lean -0.55 helper; Match Output +2.18 helper (sun worse 3.70 ->
+  4.43 % rRMSE, bounce better 2.19 -> 1.59 %): stays out of presets. Owner of the findings: NEXT GPU ROUND:
+  - [ ] Units G-buffer 9.6 ms under every ray preset vs 5.8 without (+3.8 ms of game GPU: the capture at unit draws)
+  - [ ] The helper's scene build 3.96 ms a frame (clusters 2.44; 21 M dynamic triangles): with the units range row
+  - [ ] Path-traced method sliders turned on from Reset default much heavier than RT/PT (4 bounce rays, 2 bounces, range
+    10, resolution 1: paths 6.50 vs 2.82 ms): align their defaults with RT/PT's? ATN DECIDES (look)
+  - [ ] Sprites spike 1.8-2.0 ms in the first segment of every RT/PT-type start, 0.20 later: unexplained
+  - [ ] The game's shadow maps still redraw under rays on cascade-refresh frames (tree billboards 2.0-2.4, terrain
+    1.3-3.0 ms): the GPU side of Skip the Game's Shadow Map Work
+  - [ ] Bend torches' remaining +2.3 ms (march 1.4 of 3.2 in the synthetic battle; the pick + 127 small copies)
+  - [ ] GT-VBAO ~1.1, GT-VBGI ~1.0, SSSR ~0.3 ms (the SSSR pyramid as a single-pass downsample)
+  - [ ] 128 torch lights' cost at night / burning city / WH3 / Pharaoh (if ATN wants e606e8ef)
+  - [ ] Rarer Objects needs a view with siege towers or ships (bench scene choice)
+  Was: EVERY-PRESET GPU AUDIT (pre_, started ~22:15, ATN "go for it"): Attila's inventory of presets + Experimental rows
   (RT shadows, SSS, AO, reflections, particles, fog, bounce); one measurement session at the bench view (Reset, non-RT,
   RT shadows, RT/PT, Path Tracing, RT/PT + chosen quality rows: Time Each Pass, PresentMon, screenshot each); per-preset
   costs; non-ray wins implemented; quality rows that cost little and score better into RT/PT (ATN delegated), the rest
@@ -788,7 +810,24 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [ ] ATN tests: Faster Render Lists off / on in cpl2's view (PresentMon 60 s, log "Faster Render Lists: on"); Rome II
       Skip the Shadow Maps in a forest battle (log "pass kind N draws only into the sun's map", shadows unchanged)
   - [x] hfp_ agent: heapfix's whole test set + eqtest on every packaged variant; battle_draw_batching A/B (keep it on)
-  - [ ] GPU PERF ROUND STARTED ~22:00 (gpu_ agent, base cdfae24e; no game runs: its bench variants go into the single
+  - [x] GPU PERF ROUND MERGED 75773bfb (clean; every consumer rebuilt after the merge): b6ec6be6 (a) Rome Remastered
+    reset suspect 3 was REAL: an index rewrite under the same capture key kept the old cluster set (control: set A used 60
+    frames after B); index writes now drop it until rebuilt (tw_cluster_rewrite PASS x86 / amd64; whether Rome Remastered
+    rewrites IBs needs a trace); ec1b443a (b) Units Ray Tracing Range (RayTracedUnitsRange, Experimental, 0-500 m; bridge
+    flag RT_UNIT 2048 + Shared::rt_units_range in v7's padding, VERSION 31; 4K harness clusters / scene+trace ms: off
+    2.10 / 4.55, 200 m 1.07 / 3.49, 100 m 0.66 / 3.04, 50 m 0.47 / 2.81; row 0 byte-identical; all_modes 179 / 179,
+    fg_bridge_test OK); fb93c061 pass split + light_order in tw_rt_profile.csv. Helper built only (gpu1 1710ACC85B2B).
+    - [ ] (f) Lean = 3 neighbours + radius 6: 0.96 -> 0.85 ms, rRMSE 2.18 -> 1.95 % (better): after ATN's Lean verdict
+      (A3). Owner: ATN, then the ReSTIR follow-up
+    - [ ] Bench variants: gpu_units_range.json, gpu_probe.json (answers c, k, h, j, b in game), gpu_reuse.json; plan
+      tools/tw/bench/gpu_bench_plan.md. The bench must copy tw_rt_profile.csv, tw_rt_profile_helper.csv and
+      attila_pass_timing.txt out after each start (it doesn't yet). Owner: coordinator before the end-of-batch bench
+    - [ ] Not done, owner NEXT GPU ROUND: (d) WH3 grass read-back without the wait (terrain_count_later pattern);
+      (e) per-texel surface record and (g) f16 reservoirs / torch U2 history (after the Lean verdict); (i) per-draw
+      leftovers after 63d17575; (l) J2 / J3 / A32, the helper's commit under Nsight (J9 answered: no change); (m) the
+      scorer's smoke / fog / reflections / water scenes, history off, RR 310.9; Rome Remastered IB-rewrite trace;
+      the look-changing savings (ATN decides)
+    Was: GPU PERF ROUND STARTED ~22:00 (gpu_ agent, base cdfae24e; no game runs: its bench variants go into the single
     end-of-batch session). Plan: (one agent after the drw_ merge; helper / rt_core; ATN 21:xx: measure at the bench's stopped view,
     Constantinople after the camera move: Time Each Pass (One Frame) + a frame trace there in game, the helper's D3D12
     work from that view replayed in the 4K harness for Nsight (Attila's own D3D11 can't be captured: 32-bit)): (a) FIRST Rome Remastered reset suspect 3 (a
