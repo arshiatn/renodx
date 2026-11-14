@@ -310,6 +310,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   unit cut-outs + census; Experimental off). NOT DONE: sprites (GS-made quads), particle rows, Fog Strength, 14 cut-outs.
 - [x] Troy fires 643FC156 MERGED 61d0b84b (shared rt_scene LightInstances::stream_shader opt-in; WARP ALL PASSED).
   Troy agent DONE; follow-up: Pharaoh's fires 5AD46115 behind their own off row.
+- [x] WH2 Smooth Half-Size Particles MERGED 5d102904 (at the game's own upsample 21DE8D05; no shared change). WH2 agent DONE.
+  Agents done: Thrones, WH1, WH2, Rome Remastered, quality. Running: Shogun 2, Troy (Pharaoh fires), ReSTIR, Nsight.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
