@@ -4,6 +4,10 @@
 
 - **Hue Clip default 40** (Attila's), was 90 (WH1's own tone mappers measured closest to SDR at 80-90). Test: Recommended
   (PsychoV35), fires and sky against SDR.
+- **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Far Tree Shadows on, Smoke Shadows on
+  (hidden: not hooked here), Light Through Foliage 0.5 (rests under the rays); of this game's own rows Shadow Casters Out of
+  View on (as Warhammer III's), Rays Replace and Skip the Shadow Maps and Cut-outs on More Models off. Defaults, labels and
+  No RT/PT as before.
 
 ### Phase I, round 3 (2026-11-14 morning; "wh1 r3", stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 

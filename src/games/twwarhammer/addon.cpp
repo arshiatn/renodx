@@ -1976,8 +1976,7 @@ void ConfigureAddon() {
   // (Experimental), as Warhammer II's: ATN's 2026-11-14 traces show g_hdr_on and g_use_spherical_harmonics on.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it and Smoke Shadows start off (hidden: not hooked here yet), Specular Occlusion and
-  // Far Tree Shadows too (Experimental); RT/PT turns all but the smoke and the far trees on (far_cards_tested), as ATN's list
-  // does.
+  // Far Tree Shadows too (Experimental); RT/PT turns them on, as Attila's (rays_preset_as_attila).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
         || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedFarTreeShadows") {
@@ -2012,6 +2011,7 @@ void ConfigureAddon() {
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
+                                             .rays_preset_as_attila = true,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
   // Skip the Shadow Maps here: the water and the forward-lit units take the rays' shadow (SHADOW_READER_SHADERS). Cut-outs on
