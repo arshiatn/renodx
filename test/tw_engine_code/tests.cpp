@@ -2,7 +2,7 @@
 // from disk and mapped twice (relocated, never loaded as a DLL: no DllMain, no imports), copy A as the game ships it,
 // copy B patched by engine_code (Prepare and Update, as the addon does it). Then each routine runs in both with the
 // same inputs and every register, the stack and the x87 state are compared:
-// 1. Each pattern exactly once in A; B differs from A in the three 5-byte sites only; back to A's bytes after off.
+// 1. Each pattern exactly once in A; B differs from A in the 5-byte sites only; back to A's bytes after off.
 // 2. float to half (+0x169a220): all 2^32 floats (random other registers), eax ecx edx ebx esi edi ebp esp equal; then
 //    10 M random floats at 16 addresses (the pointer's high half shows in eax for the smallest values).
 // 3. The soldier draw's truncation (+0x17f6515, a block inside a function: entered with a fake frame, its end jumps back
@@ -22,6 +22,11 @@
 //    byte, the list's other bytes, the item, every register): the registers, esp and every byte of the list, its
 //    vectors and their items equal; on and off 200 times while 4 threads push to one list: every item in its place,
 //    every return the game's; timing with 4 threads pushing to 16 lists (the byte cleared each round, as the merge does).
+// 9. The render lists' sort (the call to std::sort<uint32_t> at +0x17b9217, Faster Game CPU Code): the stub against the
+//    game's sort on arrays of 0 to 300000 values of 9 kinds (around 128 and 262144, where the stub hands over) and 20000
+//    random ones, then with every scratch slot taken: the array, ebx esi edi ebp and esp equal; 20000 random lists
+//    through the merge-then-sort function (+0x17b91f0) in both copies: every byte, eax ebx esi edi ebp esp equal; 12
+//    threads through the stub at once; on and off 200 times while 4 threads merge and sort; timing.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots.
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -41,6 +46,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <string>
 #include <thread>
 #include <vector>
@@ -90,13 +96,15 @@ struct TestBuild {
   uint32_t float_slot;
   uint32_t integer_slot;
   uint32_t list_push_function_rva;  // 0: none in this build
+  uint32_t sort_rva;                // std::sort<uint32_t>; 0: its render list caller isn't in this build
+  uint32_t sort_caller_rva;
 };
 constexpr TestBuild ATTILA = {"Attila", &twattila::engine_code::internal::ATTILA_BUILD, 0x169a220, 0x17f6515, 0x17f6539, 0x1a05cc0,
-                              0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28, 0x176ced0};
+                              0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28, 0x176ced0, 0xda6b0, 0x17b91f0};
 constexpr TestBuild THRONES = {"Thrones of Britannia", &twattila::engine_code::internal::THRONES_BUILD, 0x1707eb0, 0x186aa48, 0x186aa6c,
-                               0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18, 0x17defc0};
+                               0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18, 0x17defc0, 0x220850, 0x182cf80};
 constexpr TestBuild ROME2 = {"Rome II", &twattila::engine_code::internal::ROME2_BUILD, 0x1368030, 0x14b434a, 0x14b436e, 0x169ca30,
-                             0x19ebd74, 0x21263cc, 0x2126394, 0x1c, 0x20, 0};
+                             0x19ebd74, 0x21263cc, 0x2126394, 0x1c, 0x20, 0, 0, 0};
 
 uint32_t Read32(const uint8_t* at) {
   uint32_t value;
@@ -209,6 +217,55 @@ __declspec(naked) void __cdecl CallWithRegisters(RegisterCall*) {
     mov esi, [ebp + 16]
     mov edi, [ebp + 20]
     mov ebp, [ebp + 24]
+    ret
+  }
+}
+
+// std::sort<uint32_t>'s cdecl call (first, last, ideal, pred): ebx esi edi ebp set, every register out after; esp as
+// the callee left it (cdecl: at the arguments).
+struct SortCall {
+  uint32_t in[4];       // 0: ebx esi edi ebp
+  uint32_t function;    // 16
+  uint32_t args[4];     // 20: first last ideal pred
+  uint32_t out[7];      // 36: eax ecx edx ebx esi edi ebp
+  uint32_t esp_before;  // 64: the arguments' slot
+  uint32_t esp_after;   // 68
+};
+
+__declspec(naked) void __cdecl CallSort(SortCall*) {
+  __asm {
+    pushad
+    mov ebp, [esp + 36]
+    push ebp
+    push dword ptr [ebp + 32]
+    push dword ptr [ebp + 28]
+    push dword ptr [ebp + 24]
+    push dword ptr [ebp + 20]
+    call set_up
+    push eax
+    mov eax, [esp + 20]
+    mov [eax + 40], ecx
+    mov [eax + 44], edx
+    mov [eax + 48], ebx
+    mov [eax + 52], esi
+    mov [eax + 56], edi
+    mov [eax + 60], ebp
+    lea ecx, [esp + 4]
+    mov [eax + 68], ecx
+    pop ecx
+    mov [eax + 36], ecx
+    mov esp, [eax + 64]
+    add esp, 20
+    popad
+    ret
+  set_up:
+    lea eax, [esp + 4]
+    mov [ebp + 64], eax
+    push dword ptr [ebp + 16]
+    mov ebx, [ebp + 0]
+    mov esi, [ebp + 4]
+    mov edi, [ebp + 8]
+    mov ebp, [ebp + 12]
     ret
   }
 }
@@ -378,6 +435,61 @@ struct PushWorld {
 
 uint32_t Address(const void* pointer) { return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(pointer)); }
 
+// One render list for the merge-then-sort function (+0x17b91f0), as the game lays it out: the merged vector {capacity,
+// size, data} at +4, the threads' vectors' {capacity, count, data} at +0x10, the "has items" byte at +0x1c. The merged
+// vector has room for everything (the merge then never allocates: the game's allocator isn't started in a mapped copy).
+struct SortList {
+  std::array<uint32_t, 8> list = {};
+  std::vector<uint32_t> headers;
+  std::vector<std::vector<uint32_t>> threads;
+  std::vector<uint32_t> merged;
+};
+
+// Values sorted by the game: 0 random, 1 pointers to 16-byte heap slots, 2 few values, 3 sorted, 4 reversed, 5 all equal,
+// 6 the sign bit with small values, 7 the second byte only, 8 the top byte only.
+uint32_t SortValue(int kind, uint32_t index, uint32_t count, Random* random) {
+  switch (kind) {
+    case 0:  return random->Next() ^ (random->Next() << 16);
+    case 1:  return 0x0A000000u + (random->Next() % (1u << 22)) * 16u;
+    case 2:  return random->Next() % 16;
+    case 3:  return index * 7;
+    case 4:  return (count - index) * 7;
+    case 5:  return 0x12345678u;
+    case 6:  return ((random->Next() & 1) != 0 ? 0x80000000u : 0u) | (random->Next() % 1000);
+    case 7:  return 0x11220033u | ((random->Next() & 0xFF) << 8);
+    default: return (random->Next() & 0xFF) << 24;
+  }
+}
+
+SortList MakeSortList(uint64_t seed, uint32_t max_per_thread) {
+  Random random = {.state = seed};
+  SortList list;
+  const uint32_t threads = 1 + random.Next() % 16;
+  const int kind = static_cast<int>(random.Next() % 9);
+  list.headers.resize(threads * 3);
+  list.threads.resize(threads);
+  uint32_t total = random.Next() % 64;  // already merged
+  std::vector<uint32_t> counts(threads);
+  for (uint32_t& count : counts) {
+    count = ((random.Next() & 3) == 0 ? 0 : random.Next() % (max_per_thread + 1));
+    total += count;
+  }
+  list.merged.resize(total + 16);
+  const uint32_t merged = total - std::accumulate(counts.begin(), counts.end(), 0u);
+  for (uint32_t index = 0; index < list.merged.size(); ++index) list.merged[index] = (index < merged ? SortValue(kind, index, total, &random) : 0xCDCDCDCDu);
+  uint32_t index = merged;
+  for (uint32_t thread = 0; thread < threads; ++thread) {
+    list.threads[thread].resize(counts[thread] + random.Next() % 8);
+    for (uint32_t item = 0; item < counts[thread]; ++item) list.threads[thread][item] = SortValue(kind, index++, total, &random);
+    list.headers[thread * 3] = static_cast<uint32_t>(list.threads[thread].size());
+    list.headers[thread * 3 + 1] = counts[thread];
+    list.headers[thread * 3 + 2] = (list.threads[thread].empty() ? 0u : Address(list.threads[thread].data()));
+  }
+  list.list = {random.Next(), static_cast<uint32_t>(list.merged.size()), merged, Address(list.merged.data()), threads, threads,
+               Address(list.headers.data()), (random.Next() % 8 == 0 ? 0u : 1u) | (random.Next() & 0xFFFFFF00u)};
+  return list;
+}
+
 // An 80-bit value from sign, exponent (15 bits) and 64-bit mantissa.
 void Extended(uint8_t* out, bool sign, uint32_t exponent, uint64_t mantissa) {
   std::memcpy(out, &mantissa, 8);
@@ -432,6 +544,10 @@ int main(int argc, char** argv) {
   }
   CHECK(Matches(game + text_rva, text_size, build.code->fmod_matherr) >= 1);
   CHECK(Matches(game + text_rva, text_size, ec::LIST_PUSH) == (build.list_push_function_rva != 0 ? 1u : 0u));
+  if (build.sort_rva != 0) {
+    CHECK(Matches(game + text_rva, text_size, ec::SORT) == 1);
+    CHECK(Matches(game + text_rva, text_size, ec::SORT_CALLER) == 7);  // seven kinds of list, each its own sort
+  }
   // B's own code as mapped (A's differs in every relocated address).
   const std::vector<uint8_t> unpatched(patched + text_rva, patched + text_rva + text_size);
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
@@ -439,9 +555,12 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[1].at == patched + build.half_rva);
   CHECK(ec::sites[2].at == patched + build.fmod_rva);
   CHECK(ec::sites[3].at == (build.list_push_function_rva != 0 ? patched + build.code->list_push_rva + ec::LIST_PUSH_SITE : nullptr));
+  CHECK(ec::sites[4].at == (build.sort_rva != 0 ? patched + build.sort_caller_rva + ec::SORT_CALLER_SITE : nullptr));
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
-  CHECK(ec::written == ec::found && ec::found == (build.list_push_function_rva != 0 ? 0b1111u : 0b0111u));
+  const uint32_t expected_sites = 0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.sort_rva != 0 ? 0b10000u : 0u);
+  CHECK(ec::written == ec::found && ec::found == expected_sites);
+  if (build.sort_rva != 0) CHECK(patched[build.sort_caller_rva + ec::SORT_CALLER_SITE] == 0xE8);  // still a call
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
     if (unpatched[at - text_rva] == patched[at]) continue;
@@ -741,7 +860,7 @@ int main(int argc, char** argv) {
   // 6. Timing (one thread, warm).
   {
     if (ec::written == 0) twattila::engine_code::Update(true);
-    CHECK(ec::written == ec::CPU_CODE_SITES);
+    CHECK(ec::written == (ec::CPU_CODE_SITES & ec::found));
     using Half = uint16_t(__cdecl*)(const float*);
     std::vector<float> rows(20 * 4096);
     Random random = {.state = 5};
@@ -978,6 +1097,197 @@ int main(int argc, char** argv) {
     std::printf("8. render list push: none in this build\n");
   }
 
+  // 9. The render lists' sort.
+  if (build.sort_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
+    CHECK((ec::written & 0b10000u) != 0);
+    const uint32_t game_sort = Address(game + build.sort_rva);
+    const uint32_t stub = Address(ec::page + ec::SORT_PAGE);
+    const auto start = std::chrono::steady_clock::now();
+    // The stub against the game's sort: the array, ebx esi edi ebp and esp equal (eax ecx edx: the caller reads none).
+    uint64_t sorts = 0;
+    const auto compare = [&](std::vector<uint32_t> values, Random* random) {
+      std::vector<uint32_t> ours = values;
+      SortCall a = {.function = game_sort, .args = {Address(values.data()), Address(values.data() + values.size()),
+                                                    static_cast<uint32_t>(values.size()), random->Next()}};
+      for (uint32_t& in : a.in) in = random->Next();
+      SortCall b = a;
+      b.function = stub;
+      b.args[0] = Address(ours.data());
+      b.args[1] = Address(ours.data() + ours.size());
+      CallSort(&a);
+      CallSort(&b);
+      ++sorts;
+      return values == ours && std::memcmp(a.out + 3, b.out + 3, 16) == 0 && a.esp_after == a.esp_before && b.esp_after == b.esp_before;
+    };
+    Random random = {.state = 0x50F7};
+    for (const uint32_t count : {0u, 1u, 2u, 31u, 32u, 33u, 127u, 128u, 129u, 255u, 256u, 1000u, 4096u, 65536u, 262143u, 262144u, 262145u, 300000u}) {
+      for (int kind = 0; kind < 9; ++kind) {
+        std::vector<uint32_t> values(count);
+        for (uint32_t index = 0; index < count; ++index) values[index] = SortValue(kind, index, count, &random);
+        if (!compare(values, &random)) {
+          std::printf("  sort: %u values of kind %d differ\n", count, kind);
+          CHECK(false);
+        }
+      }
+    }
+    for (int run = 0; run < 20000; ++run) {
+      const uint32_t count = ((run & 7) == 0 ? random.Next() % 70000 : random.Next() % 5000);
+      const int kind = static_cast<int>(random.Next() % 9);
+      std::vector<uint32_t> values(count);
+      for (uint32_t index = 0; index < count; ++index) values[index] = SortValue(kind, index, count, &random);
+      CHECK(compare(values, &random));
+    }
+    // Every slot in use: the game's sort.
+    auto* slots_in_use = reinterpret_cast<volatile uint32_t*>(ec::sort_scratch);
+    CHECK(*slots_in_use == 0);
+    *slots_in_use = 0xFF;
+    for (int run = 0; run < 1000; ++run) {
+      std::vector<uint32_t> values(128 + random.Next() % 5000);
+      for (uint32_t& value : values) value = random.Next() ^ (random.Next() << 16);
+      CHECK(compare(values, &random));
+    }
+    *slots_in_use = 0;
+    std::printf("9. render list sort: %llu arrays (0 to 300000 values, 9 kinds; 1000 with every slot taken) sorted as the "
+                "game's, ebx esi edi ebp esp equal (%.1f s)\n",
+                sorts, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+
+    // The merge-then-sort function in both copies (its call to the sort is the site): every byte of the list, its
+    // vectors, eax ebx esi edi ebp and esp equal.
+    const uint32_t game_caller = Address(game + build.sort_caller_rva);
+    const uint32_t patched_caller = Address(patched + build.sort_caller_rva);
+    for (int run = 0; run < 20000; ++run) {
+      const uint64_t seed = 0xC0FFEEull + static_cast<uint64_t>(run);
+      const uint32_t per_thread = ((run & 15) == 0 ? 20000u : 600u);
+      SortList a_list = MakeSortList(seed, per_thread);
+      SortList b_list = MakeSortList(seed, per_thread);
+      RegisterCall a = {.function = game_caller, .argument = Address(a_list.list.data())};
+      for (uint32_t& in : a.in) in = random.Next();
+      RegisterCall b = a;
+      b.function = patched_caller;
+      b.argument = Address(b_list.list.data());
+      CallWithRegisters(&a);
+      CallWithRegisters(&b);
+      bool same = a.out[0] == b.out[0] && std::memcmp(a.out + 3, b.out + 3, 16) == 0 && a.esp_after == a.esp_before + 4
+                  && b.esp_after == b.esp_before + 4 && a_list.merged == b_list.merged && a_list.threads == b_list.threads;
+      for (size_t at = 0; at < a_list.headers.size(); ++at) {
+        const bool pointer = (at % 3 == 2);
+        same &= (pointer ? (a_list.headers[at] != 0) == (b_list.headers[at] != 0) : a_list.headers[at] == b_list.headers[at]);
+      }
+      for (size_t at = 0; at < a_list.list.size(); ++at) {
+        const bool pointer = (at == 3 || at == 6);
+        same &= (pointer || a_list.list[at] == b_list.list[at]);
+      }
+      if (!same) {
+        std::printf("  merge and sort, seed %llu: %u / %u values\n", seed, a_list.list[2], b_list.list[2]);
+        CHECK(false);
+      }
+    }
+    std::printf("   20000 lists through the merge-then-sort function (1 to 16 threads' vectors, up to 320000 values): "
+                "every byte, eax ebx esi edi ebp esp equal\n");
+
+    // 12 threads through the stub at once (more than its 8 slots): every array the game's.
+    {
+      using Sort = void(__cdecl*)(uint32_t*, uint32_t*, int, int);
+      const auto game_function = reinterpret_cast<Sort>(game_sort);
+      const auto stub_function = reinterpret_cast<Sort>(stub);
+      std::atomic<uint64_t> wrong = 0;
+      std::atomic<uint64_t> done = 0;
+      std::vector<std::thread> threads;
+      for (int worker = 0; worker < 12; ++worker) {
+        threads.emplace_back([&, worker] {
+          Random local = {.state = 0xABCull + static_cast<uint64_t>(worker)};
+          for (int run = 0; run < 400; ++run) {
+            std::vector<uint32_t> values(128 + local.Next() % 40000);
+            for (uint32_t& value : values) value = SortValue(static_cast<int>(local.Next() % 9), 0, 1, &local);
+            std::vector<uint32_t> ours = values;
+            game_function(values.data(), values.data() + values.size(), static_cast<int>(values.size()), 0);
+            stub_function(ours.data(), ours.data() + ours.size(), static_cast<int>(ours.size()), 0);
+            if (values != ours) wrong.fetch_add(1);
+            done.fetch_add(1);
+          }
+        });
+      }
+      for (auto& thread : threads) thread.join();
+      CHECK(wrong == 0);
+      CHECK(*slots_in_use == 0);
+      std::printf("   12 threads, %llu arrays at once: all the game's, every slot free after\n", done.load());
+    }
+
+    // On and off 200 times while 4 threads run the patched merge-then-sort function.
+    {
+      using Caller = uint32_t(__stdcall*)(void*);
+      const auto caller = reinterpret_cast<Caller>(patched_caller);
+      std::atomic<bool> stop = false;
+      std::atomic<uint64_t> wrong = 0;
+      std::atomic<uint64_t> lists = 0;
+      std::vector<std::thread> threads;
+      for (int worker = 0; worker < 4; ++worker) {
+        threads.emplace_back([&, worker] {
+          uint64_t seed = 0x7000000ull * static_cast<uint64_t>(worker + 1);
+          while (!stop.load(std::memory_order_relaxed)) {
+            SortList list = MakeSortList(++seed, 2000);
+            std::vector<uint32_t> expected(list.merged.begin(), list.merged.begin() + list.list[2]);
+            if ((list.list[7] & 0xFF) == 1) {
+              for (uint32_t thread = 0; thread < list.threads.size(); ++thread) {
+                expected.insert(expected.end(), list.threads[thread].begin(), list.threads[thread].begin() + list.headers[thread * 3 + 1]);
+              }
+            }
+            std::sort(expected.begin(), expected.end());
+            const uint32_t count = caller(list.list.data());
+            if (count != expected.size() || !std::equal(expected.begin(), expected.end(), list.merged.begin())) wrong.fetch_add(1);
+            lists.fetch_add(1);
+          }
+        });
+      }
+      constexpr int SWITCHES = 200;
+      int toggles = 0;
+      for (int round = 0; round < SWITCHES; ++round) {
+        const bool on = (round % 2) != 0;  // on at the start: off first
+        int tries = 0;
+        do {
+          twattila::engine_code::Update(on);
+          ++tries;
+        } while (((ec::written & 0b10000u) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
+        toggles += (((ec::written & 0b10000u) != 0) == on) ? 1 : 0;
+      }
+      stop = true;
+      for (auto& thread : threads) thread.join();
+      CHECK(wrong == 0);
+      CHECK(toggles == SWITCHES);
+      std::printf("   %d switches while 4 threads merged and sorted %llu lists: every list sorted, every count the game's\n",
+                  SWITCHES, lists.load());
+    }
+
+    // Timing (one thread, warm): the game's sort against the stub.
+    {
+      twattila::engine_code::Update(true);
+      std::printf("   us a sort, game / ours:");
+      for (const uint32_t count : {256u, 1024u, 16384u, 65536u, 262144u}) {
+        for (const int kind : {0, 1}) {
+          std::vector<uint32_t> source(count);
+          for (uint32_t index = 0; index < count; ++index) source[index] = SortValue(kind, index, count, &random);
+          const auto time = [&](uint32_t function) {
+            using Sort = void(__cdecl*)(uint32_t*, uint32_t*, int, int);
+            std::vector<double> runs;
+            for (int run = 0; run < 9; ++run) {
+              std::vector<uint32_t> values = source;
+              const auto begin = std::chrono::steady_clock::now();
+              reinterpret_cast<Sort>(function)(values.data(), values.data() + count, static_cast<int>(count), 0);
+              runs.push_back(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - begin).count());
+            }
+            std::sort(runs.begin(), runs.end());
+            return runs[4];
+          };
+          std::printf(" %u %s %.1f / %.1f;", count, (kind == 0 ? "random" : "pointers"), time(game_sort), time(stub));
+        }
+      }
+      std::printf("\n");
+    }
+  } else {
+    std::printf("9. render list sort: none in this build\n");
+  }
+
   // Off: the game's bytes back (the harness's jumps removed first).
   std::memcpy(game + build.truncation_resume_rva, file.data() + (build.truncation_resume_rva - text_rva + text_header->PointerToRawData), 5);
   std::memcpy(patched + build.truncation_resume_rva, unpatched.data() + (build.truncation_resume_rva - text_rva), 5);
@@ -998,6 +1308,7 @@ int main(int argc, char** argv) {
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
   CHECK(ec::sites[0].at == nullptr && ec::sites[1].at != nullptr && ec::sites[2].at != nullptr);
   CHECK((ec::sites[3].at != nullptr) == (build.list_push_function_rva != 0));
+  CHECK((ec::sites[4].at != nullptr) == (build.sort_rva != 0));
   CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("soldier draw rounding") != std::string::npos);
   std::printf("7. a block another mod changed: left alone, the other two found\nPASS\n");
   return 0;
