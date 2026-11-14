@@ -6,7 +6,7 @@
   one method slider each for Shadows, Ambient Occlusion, Global Illumination and Reflections, the rest under More Options.
   FSR and XeSS beside DLSS (with their Frame Generation); a saved DLSS becomes FSR on AMD, XeSS on Intel. New: Texture LOD
   Bias on All Textures (Experimental, off). Every saved setting kept. RT/PT here: the rays' sun shadows on top of the game's
-  shadow maps, path-traced AO and Global Illumination, ray-traced reflections, torch, fog and far tree shadows. Bend's
+  shadow maps, path-traced AO and Global Illumination, ray-traced reflections, torch and fog shadows. Bend's
   screen-space shadows now stay off while the rays' sun shadows run (before, both could).
 - **New, Experimental, off** (the data run's traces: one shader each, in every battle):
   - Torch and Fire Shadows from rays (the point lights' draw, VS D2A0FF23 / PS D96A8DC3: 131 lights in run B, 25 m reach)
@@ -35,7 +35,7 @@
 Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon64`. Test list (a battle benchmark, DLSS Quality):
 1. Your saved settings: the picture as v47. Send ReShade.log.
 2. Reset, then No RT/PT: Bend's contact shadows, GT-VBAO, GT-VBGI on. Graphics 2 of 2: "Engine values found", no misses.
-3. RT/PT (Path-Traced AO, torch, fog, far tree shadows on): open ground as bright and as coloured as with No RT/PT.
+3. RT/PT (Path-Traced AO, torch and fog shadows on): open ground as bright and as coloured as with No RT/PT.
 4. Torch and Fire Shadows (rays) on, a siege at night: walls and soldiers shadow the torch light. Then Bend's at 8, rays off.
 5. Rays Replace Shadow Maps, then Skip the Shadow Maps: soft sun shadows alone; distant forests keep theirs with Far Tree
    Shadows on, and with Shadow Casters Out of View on nothing behind the camera loses its shadow.

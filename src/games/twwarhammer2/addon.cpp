@@ -2101,14 +2101,14 @@ void ConfigureAddon() {
   // smoke (their rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it and Far Tree Shadows start off (Experimental: no game run has shown them here yet),
-  // Smoke Shadows (hidden: not hooked here) and Specular Occlusion too; RT/PT turns all but the smoke on, as ATN's list does.
+  // Smoke Shadows (hidden: not hooked here) and Specular Occlusion too; RT/PT turns all but the smoke and the far trees on
+  // (far_cards_tested), as ATN's list does.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
         || setting->key == "RayTracedSpecularOcclusion") {
       setting->default_value = 0.f;
     } else if (setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
-      setting->label = "Far Tree Shadows (Experimental)";
     }
   }
   // Torch and Fire Shadows from rays (Warhammer III's row): after the preset's defaults, so it starts off (Experimental: no game
@@ -2136,6 +2136,7 @@ void ConfigureAddon() {
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
+                                             .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false});
