@@ -994,6 +994,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLeafLight", 0.f},
         {"RayTracedSpriteShadows", 0.f},
         {"RayTracedFarTreeShadows", 0.f},
+        {"RayTracedUnitsOutOfView", 0.f},
         {"RayTracedAmbientRange", 2.f},
         {"RayTracedAORays", 2.f},
         {"RayTracedAOQuarter", 0.f},
@@ -1063,6 +1064,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
     choice("Sprite soldier shadows (Experimental)", "RayTracedSpriteShadows", 0, OFF_ON_NAMES,
            "The flat far soldiers' ray-traced shadows keep their shape as the camera turns.");
     choice("Far tree shadows (Experimental)", "RayTracedFarTreeShadows", 0, OFF_ON_NAMES, "The flat far trees cast ray-traced shadows too.");
+    choice("Shadow casters out of view (Experimental)", "RayTracedUnitsOutOfView", 0, OFF_ON_NAMES,
+           "Buildings and rocks behind the camera cast ray-traced shadows into view too (restart the game).");
     ImGui::EndDisabled();
     const bool ambient = checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion",
                                   "Shade in corners and under things from rays, with the game's (the darker).\n"

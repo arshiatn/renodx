@@ -29,6 +29,7 @@
 #include "../talesofarise_dlss/native_state.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/rt_core.hpp"
+#include "../twwarhammer3/rt_outside_view_gs.h"
 #include "./upscaling.hpp"
 
 // Ray tracing (Experimental): Shogun 2's scene through the Total War helper (twattila/rt_core.hpp; renodx-tw-dlaa64.exe
@@ -77,6 +78,14 @@ constexpr uint32_t CLOTH_VERTEX_SHADER = 0xBDFF60D4;
 constexpr uint32_t GRASS_VERTEX_SHADER = 0xB7A0270E;
 constexpr uint32_t IMPOSTER_VERTEX_SHADER = 0x03FB2979;
 constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
+// Shadow Casters Out of View (Experimental): the shadow pass's rigid casters (rigidterrainblend vs30_shadow, AC25DAB8; 488 draws in
+// the 2026-11-14 battle trace, all instanced: 38M, 53M and 326M indices x instances in cascades 1-3, far too many to stream out) as
+// listed scene shaders besides SceneDraw's (twattila/rt_core.hpp, as Warhammer III's): placed by their instances' rows, those whose
+// origin is in the main view left out (the main pass has them). Shogun 2 draws its shadow maps before its main view: the last
+// frame's (Host::cascade_last_view).
+inline const std::array<twattila::rt_scene::SceneShader, 1> SCENE_SHADERS = {{
+    {.hash = 0xAC25DAB8, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
+}};
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).
 constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0x5CBF4FB6, 0x57139F8D};
 // The battle fog's light (fog01, battlefog ps40_main_inscattering: the sun's part through rt_fog.hlsli's RtFogSun).
@@ -488,10 +497,18 @@ inline const twattila::rt_scene::Host HOST = {
       return internal::state.render_size;
     },
     .guides_written = GuidesWritten,
-    .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
+    // The main view's camera for the cascades' main-view test (its draws' b0; none read: the cascades keep every instance).
+    .capture_camera =
+        [](ID3D11DeviceContext* native, twattila::rt_scene::Camera* camera) {
+          ComPtr<ID3D11Buffer> buffer;
+          native->VSGetConstantBuffers(0, 1, buffer.GetAddressOf());
+          if (buffer) internal::Camera(buffer.Get(), camera);
+          return true;
+        },
     .scene_draw = internal::SceneDraw,
     // The water's guides are rt_water_plane's (WaterSurface), written with its depth.
     .rewrite_guides = [](ID3D11DeviceContext*) {},
+    .cascade_last_view = true,
 };
 
 // Every present: the settings and a new frame.
@@ -803,10 +820,13 @@ constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::u
   }
 };
 
-// Before the Light Bounce's sun draw hooks (registration order: this frame's trace first).
-inline void Install() {
+// Before the Light Bounce's sun draw hooks (registration order: this frame's trace first). `casters_out_of_view`: SCENE_SHADERS
+// listed (off: none, the scene as before: no listed draws, the captured buffer's clip-space room whole).
+inline void Install(bool casters_out_of_view) {
   expeditionsrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
-  twattila::rt_scene::InstallScene({}, HOST);
+  twattila::rt_scene::InstallScene(casters_out_of_view ? std::span<const twattila::rt_scene::SceneShader>(SCENE_SHADERS)
+                                                       : std::span<const twattila::rt_scene::SceneShader>(),
+                                   HOST);
   // The paths' sun light with Path-Traced AO (rt_core's RT_PATH_SUN_LIGHT, as rt_scene.hpp's InstallSunDraws sets it).
   twattila::rt_scene::internal::sun_colour = internal::SUN_OFFSETS[4];
   twattila::light_bounce::SetRayTracedTrace(&twattila::rt_scene::internal::TraceLightBounce);

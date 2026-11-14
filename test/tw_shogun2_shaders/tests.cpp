@@ -10,6 +10,7 @@
 // 4. sss_foliage_depth, Light Through Foliage's depth (TestFoliage).
 // 5-6. rt_capture_tree_billboard and rt_capture_imposter against the game's csos (TestBillboard, TestImposter; their folder third).
 // 7. rt_water_plane (TestWaterPlane). 8-9. ocean00 / 01 and waterplane00 against the game's csos (TestWaters).
+// 10. rt_capture / rt_rows_cascade_rigid against the game's 0xAC25DAB8 (TestRigidShadow).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -1165,6 +1166,133 @@ static void TestWaters(const std::string& games, const std::string& folder) {
              .scalars = {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.f, 1.f, -1000.f, 1000.f, -1000.f, 1000.f, 0.f}});
 }
 
+// 10. rt_capture_cascade_rigid and rt_rows_cascade_rigid (Shadow Casters Out of View: the shadow pass's rigid casters placed by their
+//     instances' rows) against the game's rigidterrainblend vs30_shadow (0xAC25DAB8's cso): 256 random instances and corners, the
+//     capture's world position the game's TEXCOORD0 (its SV_Position too with an identity view-projection); with a main view at
+//     cb0[10-13] an instance's rows left out (translation 1e30) exactly where the game's own projection of its origin is in that view
+//     (|x|, |y| <= w), kept as v6-v8 elsewhere; with cb0 all 0 (a new mesh's first rows) all kept. CONTROL: the view turned away
+//     leaves out another set.
+struct RigidShadowVertex {
+  std::array<std::array<float, 4>, 10> inputs;  // v0-v9
+};
+
+static const D3D11_INPUT_ELEMENT_DESC RIGID_SHADOW_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 96, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 112, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 128, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 144, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+static ComPtr<ID3DBlob> CompileVertex(const std::string& games, const wchar_t* name) {
+  const std::wstring path(games.begin(), games.end());
+  ComPtr<ID3DBlob> code;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/" + name + L".vs_5_0.hlsl").c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
+                                "main", "vs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, code.GetAddressOf(), errors.GetAddressOf()))) {
+    std::printf("compile failed: %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
+    std::exit(2);
+  }
+  return code;
+}
+
+static void TestRigidShadow(const std::string& games, const std::string& folder) {
+  std::ifstream file(folder + "/0xAC25DAB8.vs_5_0.cso", std::ios::binary);
+  const std::vector<char> game((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  if (game.empty()) {
+    std::printf("missing 0xAC25DAB8\n");
+    std::exit(2);
+  }
+  const auto capture = CompileVertex(games, L"rt_capture_cascade_rigid");
+  const auto rows = CompileVertex(games, L"rt_rows_cascade_rigid");
+  std::mt19937 random(11);
+  std::uniform_real_distribution<float> spread(-1.f, 1.f);
+  std::vector<RigidShadowVertex> vertices(256);
+  std::vector<RigidShadowVertex> origins(256);
+  for (size_t index = 0; index < vertices.size(); ++index) {
+    auto& inputs = vertices[index].inputs;
+    for (auto& input : inputs) input = {spread(random), spread(random), spread(random), spread(random)};
+    inputs[0][3] = 1.f;
+    // Rows: a turn and a scale about y, the translation in w.
+    const float turn = spread(random) * 3.14159f;
+    const float scale = 1.f + (0.5f * spread(random));
+    inputs[6] = {std::cos(turn) * scale, 0.f, std::sin(turn) * scale, 100.f * spread(random)};
+    inputs[7] = {0.f, scale, 0.f, 5.f * spread(random)};
+    inputs[8] = {-std::sin(turn) * scale, 0.f, std::cos(turn) * scale, 100.f * spread(random)};
+    origins[index] = vertices[index];
+    origins[index].inputs[0] = {0.f, 0.f, 0.f, 1.f};
+  }
+  std::array<float, 44 * 4> identity = {};
+  for (int row = 0; row < 4; ++row) identity[((10 + row) * 4) + row] = 1.f;
+  // A main view at c10-13 (each register a row acting on column vectors, as the game's view_projection's columns): looking along +z
+  // from (0, 0, -60), 0.8 wide.
+  std::array<float, 44 * 4> view = {};
+  const std::array<std::array<float, 4>, 4> main_view = {{{1.25f, 0.f, 0.f, 0.f}, {0.f, 1.25f, 0.f, 0.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 0.f, 1.f, 60.f}}};
+  std::array<float, 44 * 4> turned = {};
+  for (int row = 0; row < 4; ++row) {
+    for (int column = 0; column < 4; ++column) {
+      view[((10 + row) * 4) + column] = main_view[row][column];
+      turned[((10 + row) * 4) + column] = (column == 2) ? -main_view[row][column] : main_view[row][column];
+    }
+  }
+  std::array<float, 44 * 4> zero = {};
+  const auto identity_buffer = Constants(identity.data(), sizeof(identity));
+  const auto view_buffer = Constants(view.data(), sizeof(view));
+  const auto turned_buffer = Constants(turned.data(), sizeof(turned));
+  const auto zero_buffer = Constants(zero.data(), sizeof(zero));
+  const auto run = [&](const void* code, size_t size, const char* semantic, UINT index, const std::vector<RigidShadowVertex>& points, ID3D11Buffer* camera) {
+    const std::array<ID3D11Buffer*, 1> constants = {camera};
+    return StreamOut(code, size, semantic, index, 4, RIGID_SHADOW_LAYOUT, points, constants, nullptr);
+  };
+  const auto game_world = run(game.data(), game.size(), "TEXCOORD", 0, vertices, identity_buffer.Get());
+  const auto game_clip = run(game.data(), game.size(), "SV_POSITION", 0, vertices, identity_buffer.Get());
+  const auto ours_world = run(capture->GetBufferPointer(), capture->GetBufferSize(), "TEXCOORD", 0, vertices, identity_buffer.Get());
+  size_t bad_world = 0;
+  for (size_t index = 0; index < vertices.size(); ++index) {
+    for (int axis = 0; axis < 4; ++axis) {
+      bad_world += (std::fabs(ours_world[index][axis] - game_world[index][axis]) < 1e-4f && std::fabs(ours_world[index][axis] - game_clip[index][axis]) < 1e-4f) ? 0 : 1;
+    }
+  }
+  // Left out where the game's projection of the origin is in the view; the rows are the instance's otherwise.
+  size_t left_out = 0, bad_rows = 0, new_left_out = 0, turned_differs = 0;
+  for (ID3D11Buffer* camera : {view_buffer.Get(), zero_buffer.Get(), turned_buffer.Get()}) {
+    const auto origin_clip = run(game.data(), game.size(), "SV_POSITION", 0, origins, camera);
+    const auto row0 = run(rows->GetBufferPointer(), rows->GetBufferSize(), "TEXCOORD", 0, origins, camera);
+    const auto row2 = run(rows->GetBufferPointer(), rows->GetBufferSize(), "TEXCOORD", 2, origins, camera);
+    for (size_t index = 0; index < origins.size(); ++index) {
+      const auto& clip = origin_clip[index];
+      const bool in_view = camera != zero_buffer.Get() && clip[3] + clip[0] >= 0.f && clip[3] - clip[0] >= 0.f && clip[3] + clip[1] >= 0.f
+                           && clip[3] - clip[1] >= 0.f;
+      const bool out = row0[index][3] == 1e30f && row2[index][3] == 1e30f;
+      const bool kept = row0[index] == origins[index].inputs[6] && row2[index] == origins[index].inputs[8];
+      if (camera == view_buffer.Get()) {
+        left_out += out ? 1 : 0;
+        bad_rows += (in_view ? out : kept) ? 0 : 1;
+      } else if (camera == zero_buffer.Get()) {
+        new_left_out += out ? 1 : 0;
+        bad_rows += kept ? 0 : 1;
+      } else {
+        bad_rows += (in_view ? out : kept) ? 0 : 1;
+      }
+    }
+    if (camera == turned_buffer.Get()) {
+      const auto view_rows = run(rows->GetBufferPointer(), rows->GetBufferSize(), "TEXCOORD", 0, origins, view_buffer.Get());
+      for (size_t index = 0; index < origins.size(); ++index) turned_differs += ((row0[index][3] == 1e30f) != (view_rows[index][3] == 1e30f)) ? 1 : 0;
+    }
+  }
+  CHECK(bad_world == 0, "%zu world components differ from the game's", bad_world);
+  CHECK(bad_rows == 0 && left_out > 0 && left_out < origins.size() && new_left_out == 0, "%zu rows wrong, %zu of %zu left out, %zu with no view",
+        bad_rows, left_out, origins.size(), new_left_out);
+  CHECK(turned_differs > 0, "CONTROL: the view turned away left out the same instances");
+  std::printf("rt_capture / rt_rows_cascade_rigid: 256 corners the game's world; %zu of 256 instances left out as the game's view has them, "
+              "0 with no view; %zu differ turned away\n",
+              left_out, turned_differs);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -1184,6 +1312,7 @@ int main(int argc, char** argv) {
     TestBillboard(games, argv[3]);
     TestImposter(games, argv[3]);
     TestWaters(games, argv[3]);
+    TestRigidShadow(games, argv[3]);
   }
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;

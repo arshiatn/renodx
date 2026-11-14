@@ -37,6 +37,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/light_bounce.hpp"
+#include "../twattila/particle_layer.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
@@ -890,6 +891,43 @@ void BuildRuntimeData() {
                    "Higher: removes wider bands, softens sky details more.",
         .labels = {"Off", "Low", "Medium", "High"},
     },
+    // Particle Resolution as Attila's (twattila/particle_layer.hpp; shaders/vfx00 and vfx01, Attila's: WARP
+    // tools/tw/thrones/vfx_test).
+    new renodx::utils::settings::Setting{
+        .key = "VfxHalfResolution",
+        .binding = &twattila::particle_layer::half_resolution_row,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Particle Resolution (Experimental)",
+        .section = "Extra",
+        .tooltip = "Smoke, fire and dust drawn at half or a quarter of the render's size.\n"
+                   "Much faster in big fires and smoke, softer particles.",
+        .labels = {"Full", "Half", "Quarter"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxFullResolutionEdges",
+        .binding = &twattila::particle_layer::edges_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 1.f,
+        .label = "Full-Resolution Particle Edges",
+        .section = "Extra",
+        .tooltip = "Smoke, fire and dust stay sharp against the outlines of units, trees and walls:\n"
+                   "drawn at full size there. Small cost.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxParticleSmoothing",
+        .binding = &twattila::particle_layer::smoothing_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Half-Size Particles",
+        .section = "Extra",
+        .tooltip = "Half-size smoke, fire and dust keep clean edges against units and flicker less.\n"
+                   "Small cost.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
+    },
     // new renodx::utils::settings::Setting{
     //     .key = "some_indicators",
     //     .binding = &shader_injection.someindicators,
@@ -1289,7 +1327,9 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl ps30 slm / slm_reflection (standard) and
 // skinlm, every shadow method, with the camera at b0 and the G-buffer at t0-t3.
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py), as Attila's (tools/tw/thrones/th_caster_census.txt
-// over the data run's three battle traces: every G-buffer caster held): the main view's terrain (rigidterrain geom / custom
+// over the data run's three battle traces, th_caster_census_campaign.txt over ATN's campaign traces: every G-buffer and
+// shadow-map caster held; the campaign's far terrain BE94F17D, drawn into depth only and never into the shadow map, and its
+// sea bed left out): the main view's terrain (rigidterrain geom / custom
 // geom, shader models 3 and 4.1, old and new; Thrones' own), rigid objects and their alpha-tested cut-outs, rocks blended into
 // the terrain, tree branches and leaves, grass, sprite soldiers and the campaign's plants and trees (Attila's shaders, the
 // same hashes; their rows shaders Attila's), the far trees' cards (Thrones' 79DFD18D: Attila's inputs and view choice) and
@@ -1335,7 +1375,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x1B9E7692, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
     // Far trees' cards: the same, each showing the tree from the sun (their alpha at t1, as Attila's).
     {.hash = 0x79DFD18D, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
-    // The campaign's plants and forests, and its trees: placed like the battle's, no wind (no campaign trace yet).
+    // The campaign's plants and forests, and its trees: placed like the battle's, no wind (924D7813 instanced in ATN's
+    // campaign traces, its alpha-tested G-buffer PS DB830D45: the foliage's texture alpha at the hit).
     {.hash = 0x924D7813, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
     {.hash = 0x819A414C, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
     {.hash = 0x4657DA8A, .capture_shader = __rt_capture_campaign_tree, .rows_shader = __rt_rows_campaign_tree, .foliage = true, .still = true},
@@ -1359,11 +1400,20 @@ constexpr std::array<uint32_t, 92> UNIT_CUT_OUT_PIXEL_SHADERS = {
 
 // The forward passes that read the sun's shadow map (the data run's traces, by the map's handle): the battle water and
 // rivers, the lit particles and their other path (Attila's, the same bytes; Thrones draws the game's own, patched), the
-// ocean (Thrones' F7E011A4: gather4_c at t9, S2's trace) and the campaign's sea (Thrones' twins by name: no campaign trace).
+// ocean (Thrones' F7E011A4: gather4_c at t9, S2's trace) and the campaign's sea (DE739661 with 960AB011 in ATN's campaign
+// traces, its low twin 08F47D8C by name).
 constexpr std::array<uint32_t, 7> SHADOW_READER_SHADERS = {0xC9FBACCB, 0x2E9F5935, 0xACE33D5D, 0xF5379F78, 0xF7E011A4, 0xDE739661, 0x08F47D8C};
 
-// What only the campaign map draws: its borders (Attila's shader), the shroud's plane (Thrones' twin by name), its sea
-// (waterplane ps30_campaign, Thrones' twins by name).
+// Particle Resolution (twattila/particle_layer.hpp): the light buffer's readers after the particles, where their layer goes
+// in: the luma downsample (781681E4, next after the particles in every trace of the data run and ATN's campaign), else the
+// tone mappers (Attila's twins by name and this game's replaced hdr_to_screen ones).
+constexpr std::array<uint32_t, 20> PARTICLE_LAYER_READERS = {
+    0x781681E4, 0x8BF6B657, 0x95398068, 0x6E20B0EF, 0xD0FAF089, 0x0D18E0E9, 0x40462368, 0x1A8B4861, 0x0872321D, 0x55D276C9,
+    0x7E15EB30, 0x572661FA, 0x10D135FB, 0xD3F8514D, 0xBA669496, 0x9A80FD94, 0x01A26750, 0x76428D7D, 0x7B522144, 0xBF43914D,
+};
+
+// What only the campaign map draws (ATN's campaign traces against the battle traces): its borders' VS (Attila's, in every
+// campaign frame), the shroud plane's VS, its sea (waterplane ps30_campaign, the low twin by name).
 constexpr std::array<uint32_t, 4> CAMPAIGN_SHADERS = {0x0CC96E53, 0x2860172D, 0xDE739661, 0x08F47D8C};
 constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
   twattila::frame_history::campaign_frames.store(2, std::memory_order_relaxed);
@@ -1512,6 +1562,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  twattila::particle_layer::Update(swapchain);
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
   // preset's is XeSS on Intel's, else FSR.
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -2166,6 +2217,9 @@ bool AttachAddon() {
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
+  // After the smoke's capture on the same draws (it sees the game's targets and camera).
+  twattila::particle_layer::Install(twattila::rt_scene::PARTICLE_VERTEX_SHADER, PARTICLE_LAYER_READERS);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
 
   twattila::device_loss::InstallLast();
 
@@ -2206,6 +2260,8 @@ void DetachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
   twattila::smoke_map::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
+  twattila::particle_layer::Uninstall();
   twattila::graphics_hooks::shadow_map::Uninstall();
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);

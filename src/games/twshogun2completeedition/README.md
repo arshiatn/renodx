@@ -608,6 +608,17 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v70 (2026-11-14): rigid shadow casters out of view (built only, not run in game)
+
+- **Shadow casters out of view** (Experimental, off; with ray-traced sun shadows; restart the game): buildings and rocks
+  the main view culled but the shadow maps draw (rigidterrainblend vs30_shadow, AC25DAB8) join the ray-traced scene, as
+  Warhammer III's: each mesh captured once in world space (rt_capture_cascade_rigid), its instances placed by their rows
+  (rt_rows_cascade_rigid), those whose origin is in the main view left out (the main pass has them). Shogun 2 draws its
+  shadow maps before its main view: they test against the last frame's (rt_core Host::cascade_last_view, opt-in).
+- Not done: cloth and sprite soldiers' shadow draws (small, but not placed: streamed in the last frame's clip space they
+  would shift with the camera), units (140M indices x instances a frame, no rows).
+- test/tw_shogun2_shaders part 10: the capture and rows versions against the game's AC25DAB8.
+
 ## v69 (2026-11-14): rivers, lakes and the Ultra sea in the water reflections (built only, not run in game)
 
 - **Ray-traced water reflections** (the row's new name; Experimental, off) also on the battles' rivers and lakes
