@@ -2,6 +2,20 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+### Parity round 2 (2026-11-14 evening; built only, not run in game)
+
+- Shadow casters checked against ATN's 91 traces and the whole shader dump (85 vertex shaders the census could not
+  place): none is missing. 29 are held: 10 by the rays' capture of the depth prepass, 8 as the forward pass's copies of
+  those (the same meshes: equal index counts in every trace), 11 never traced but in a form the capture takes. 33 wait
+  for one battle trace with `[renodx] FrameTraceReads=1`: the 24 unit, 8 grass and 1 banner shaders. Far trees' cards
+  keep the game's own shadow (they face the camera). The other 21 cast nothing: UI, 3D markers, campaign overlays, the
+  banners' glow, fire layers, shore foam, the far-card generator. Found: the game's own shadows have no grass and no
+  banners, so in the rays both would be new shadows. No code change.
+- Evidence: `tools\tw\romeremastered\p2rr_*.txt` and the ledger `tools\tw\parity\romeremastered.tsv` in the maintainer's
+  tools.
+
+Test (ATN): nothing new. The battle trace above (Not done in the Parity round) settles the 33 lines.
+
 ### Fable fixes and parity DO NOW (2026-11-14; built only, not run in game)
 
 - Fixed: the battle's terrain (prepass 7DD754DA) is flagged terrain in the rays. Its triangles longer than the helper's
