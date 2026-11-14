@@ -62,10 +62,10 @@ float RtLocalLightVisibility(int2 render_pixel, float3 light_position) {
     }
   }
   if (nearest >= 32u) return 1.f;
-  const uint word = t_rt_light_mask.Load(int3(render_pixel, 0));
+  const uint pixel_word = t_rt_light_mask.Load(int3(render_pixel, 0));
   // b9's w 1 (Torch and Fire Shadows from the Light Bounce, bridge RT_LIGHT_RATIO): the word is the pixel's shadow ratio
   // (a float, the same for all its lights), else its bits.
-  return (rt_light_count.w != 0u) ? saturate(asfloat(word)) : (float)((word >> nearest) & 1u);
+  return (rt_light_count.w != 0u) ? saturate(asfloat(pixel_word)) : (float)((pixel_word >> nearest) & 1u);
 }
 
 #endif  // SRC_GAMES_TWATTILA_RT_LOCAL_LIGHTS_HLSLI_
