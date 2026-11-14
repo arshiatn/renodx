@@ -145,6 +145,7 @@ void ApplyResetPreset() {
       {"RayTracedSunShadows", 0.f},
       {"RayTracedAmbientOcclusion", 0.f},
       {"RayTracedDebugView", 0.f},
+      {"RayTracedBattleScene", 0.f},
       {"ScreenSpaceShadows", 0.f},
       {"ScreenSpaceShadowsLength", 2.f},
       {"ScreenSpaceShadowsThickness", 0.005f},
@@ -1917,6 +1918,21 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "A ray-traced effect's raw result as the picture, to check it works. Magenta: it made nothing.",
           .labels = {"Off", "Sun Shadows", "Ambient Occlusion"},
+          .is_visible = [] {
+            return IsAdvancedSettings()
+                   && (twromeremastered::ray_tracing::rows.sun_shadows != 0.f || twromeremastered::ray_tracing::rows.ambient_occlusion != 0.f);
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedBattleScene",
+          .binding = &twromeremastered::ray_tracing::rows.battle_scene,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Ray Tracing Battle Objects (Test)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Which battle objects the rays see. Tested: the campaign map's kinds only. Solid: also the battle's\n"
+                     "terrain, buildings and props. All: also its trees and plants. Solid and All are untested.",
+          .labels = {"Tested", "Solid", "All"},
           .is_visible = [] {
             return IsAdvancedSettings()
                    && (twromeremastered::ray_tracing::rows.sun_shadows != 0.f || twromeremastered::ray_tracing::rows.ambient_occlusion != 0.f);

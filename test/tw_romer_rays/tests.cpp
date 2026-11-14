@@ -3,8 +3,9 @@
 // 52170167, the battle's most drawn: its DXBC from the dump, argv[1]) and the cameras and frame constants of ATN's
 // 2026-11-14 traces. tests.exe <0x52170167.ps_5_0.cso>
 // 1. SceneDraw: a prepass draw into the scene's depth (no target, depth written) is in the scene, captured every frame;
-//    out: a unit's, the grass's, a terrain overlay's vertex shader, a draw with a target, another depth (the cascades'),
-//    depth not written (the forward pass's EQUAL).
+//    out: a unit's, the grass's, a terrain overlay's, a banner's vertex shader, a draw with a target, another depth (the
+//    cascades'), depth not written (the forward pass's EQUAL); the battle's kinds only as Battle Objects lets them in
+//    (Tested: none, Solid: solid ones, All: an alpha-tested one too).
 // 2. The trace's camera: rt_positions (rt_core's bytes) with the jittered battle camera given transposed gives each
 //    pixel's world position on a ground plane (against the CPU), the sky 0, the eye where the view says; CONTROL: the
 //    camera untransposed is far off.
@@ -210,9 +211,42 @@ int main(int argc, char** argv) {
       const bool in = rays::internal::SceneDraw(context.Get(), &shader);
       return std::pair{in, shader.dynamic};
     };
-    const auto [pbr, pbr_dynamic] = scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get());
+    // The campaign's tested kinds in; the battle's only as Battle Objects lets them in (Solid: no pixel shader here,
+    // solid; All: an alpha-tested one too); the banners never.
+    const auto [pbr, pbr_dynamic] = scene_draw(0x9594545F, nullptr, scene_dsv.Get(), writes.Get());
     CHECK(pbr && pbr_dynamic);
-    CHECK(scene_draw(0x7DD754DA, nullptr, scene_dsv.Get(), writes.Get()).first);  // the terrain
+    CHECK(scene_draw(0x8A00B527, nullptr, scene_dsv.Get(), writes.Get()).first);   // the campaign's terrain
+    CHECK(!scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get()).first);  // a battle prop, Tested
+    CHECK(!scene_draw(0x7DD754DA, nullptr, scene_dsv.Get(), writes.Get()).first);  // the battle's terrain, Tested
+    rays::rows.battle_scene = 1.f;
+    CHECK(scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get()).first);
+    CHECK(scene_draw(0x7DD754DA, nullptr, scene_dsv.Get(), writes.Get()).first);
+    {
+      // An alpha-tested pixel shader (rt_core's classification, as the game's D2F340DB): out at Solid, in at All.
+      ComPtr<ID3D11PixelShader> masked;
+      ComPtr<ID3DBlob> masked_code;
+      constexpr char MASKED_SOURCE[] = "Texture2D t : register(t0); SamplerState s; void main(float4 p : SV_Position, float2 uv : TEXCOORD0) {"
+                                       " clip(t.Sample(s, uv).a - 0.5); }";
+      REQUIRE(SUCCEEDED(D3DCompile(MASKED_SOURCE, sizeof(MASKED_SOURCE) - 1, nullptr, nullptr, nullptr, "main", "ps_5_0", 0, 0,
+                                   masked_code.GetAddressOf(), nullptr)));
+      REQUIRE(SUCCEEDED(device->CreatePixelShader(masked_code->GetBufferPointer(), masked_code->GetBufferSize(), nullptr, masked.GetAddressOf())));
+      twattila::rt_scene::internal::pixel_coverage[reinterpret_cast<uint64_t>(masked.Get())] =
+          twattila::rt_scene::internal::ClassifyCoverage({static_cast<const uint8_t*>(masked_code->GetBufferPointer()), masked_code->GetBufferSize()});
+      context->PSSetShader(masked.Get(), nullptr, 0);
+      const auto alpha_tested = [&] {
+        twattila::rt_scene::SceneShader shader = {.hash = 0xC35BD3D6};
+        context->OMSetRenderTargets(0, nullptr, scene_dsv.Get());
+        context->OMSetDepthStencilState(writes.Get(), 0);
+        const bool in = rays::internal::SceneDraw(context.Get(), &shader);
+        return std::pair{in, shader.foliage};
+      };
+      CHECK(!alpha_tested().first);
+      rays::rows.battle_scene = 2.f;
+      const auto [in, foliage] = alpha_tested();
+      CHECK(in && foliage);
+      context->PSSetShader(nullptr, nullptr, 0);
+    }
+    CHECK(!scene_draw(0xB6E1E42E, nullptr, scene_dsv.Get(), writes.Get()).first);  // a banner, All
     CHECK(!scene_draw(0xB31241CA, nullptr, scene_dsv.Get(), writes.Get()).first);  // a unit
     CHECK(!scene_draw(0x826801BF, nullptr, scene_dsv.Get(), writes.Get()).first);  // grass
     CHECK(!scene_draw(0x125EEF55, nullptr, scene_dsv.Get(), writes.Get()).first);  // a terrain overlay

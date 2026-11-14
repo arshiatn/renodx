@@ -2,6 +2,22 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+## v13 (2026-11-14, ATN's 67% / 50% runs; built only, not run in game; installed: INSTALLED_PLACEHOLDER)
+
+- Fixed (safe side): ATN's 67% run reset the TW helper's ray tracing device twice within seconds of a battle's start
+  (0x887A0006, sun shadows + AO on; then off until a restart), none in 1.5 min of the campaign map before. Not Ray
+  Reconstruction: the add-on asks for none (no guides, no RR line in the helper's log) and DLAA kept running after.
+  The battle's scene holds draws the campaign's never had (its terrain, props, trees, alpha-tested plants); the cause
+  among them is not found (the harness with Rome-like dynamic leaves ran clean). The rays now see only the kinds traced
+  without a reset (`ray_tracing.hpp` TESTED_VERTEX_SHADERS: AerialMap, AerialMapTrees, PBR 9594545F, BasicLit); the
+  units' banners never (their own matrix at b0, not the main camera). Graphics (Experimental) **Ray Tracing Battle
+  Objects (Test)**: Tested (default) / Solid (+ the battle's solid draws) / All (as v11).
+- Test: `test/tw_romer_rays` case 1 (the battle's kinds out at Tested, solid ones in at Solid, an alpha-tested one only
+  at All, a banner never).
+
+Test (ATN): a battle with Ray-Traced Sun Shadows + AO at Battle Objects Tested: no reset (renodx-tw-dlaa64.log); then
+Solid, then All (one each, a restart after a reset): which one resets.
+
 ## v12 (2026-11-14, crash fix; built only, not run in game; installed: INSTALLED_PLACEHOLDER)
 
 - Fixed: changing Resolution Scale in game crashed (ATN 10:22, crash_1022.dmp: exe + 0x6ee594, an AddRef on a null

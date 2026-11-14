@@ -44,19 +44,33 @@ using Microsoft::WRL::ComPtr;
 struct Rows {
   float sun_shadows = 0.f;
   float ambient_occlusion = 0.f;
-  float debug_view = 0.f;  // rt_core's Debug View: 0 off, 1 the sun's visibility, 2 the ambient's
+  float debug_view = 0.f;    // rt_core's Debug View: 0 off, 1 the sun's visibility, 2 the ambient's
+  float battle_scene = 0.f;  // the untested draws let in (SceneDraw): 0 none, 1 solid ones, 2 all (v11)
 };
 static Rows rows;
 
 namespace internal {
 
 // Left out of the scene: the terrain's overlays (decals on it, coplanar), the far trees' cards (VegetationBillboard), the
-// grass (dx11_*.hlsl names in the dump).
-constexpr std::array<uint32_t, 20> LEFT_OUT_VERTEX_SHADERS = {
+// grass (dx11_*.hlsl names in the dump), the units' banners (UnitBanner: their own matrix at b0, not the main camera the
+// captures' clip positions go back to the world with).
+constexpr std::array<uint32_t, 21> LEFT_OUT_VERTEX_SHADERS = {
     0x125EEF55, 0x7B3C7C53,                                                                          // Terrain VSMain_Overlay
     0x06B8B162, 0x877C08D1,                                                                          // VegetationBillboard
     0x042BA9A4, 0x04E771DF, 0x1839A2B1, 0x4924C5B3, 0x52F0A4C0, 0x5BEFF427, 0x5ED0AC07, 0x5FCD386C,  // Grass
     0x66EEA96B, 0x671B29EC, 0x826801BF, 0x94FB8B52, 0xA89883E8, 0xCC8EBFC5, 0xDAE92850, 0xEB0971B3,
+    0xB6E1E42E,                                                                                      // UnitBanner
+};
+
+// Traced without a GPU reset (ATN's 2026-11-14 run at 67%: 1.5 min of the campaign map, its terrain, trees and
+// buildings). The same run's battle reset the helper's device twice within seconds of its start (its own terrain, trees,
+// props and alpha-tested plants in the scene, none of them in the campaign's); the others stay out unless
+// rows.battle_scene lets them in.
+constexpr std::array<uint32_t, 4> TESTED_VERTEX_SHADERS = {
+    0x8A00B527,  // AerialMap
+    0xCDDA64F8,  // AerialMapTrees
+    0x9594545F,  // PBR
+    0x77472F17,  // BasicLit
 };
 
 struct Objects {
@@ -79,7 +93,7 @@ static State state;
 static bool installed = false;
 
 // A prepass draw into the scene's depth (no target, depth written), its vertex shader not left out: its pixel shader's
-// coverage (rt_core's SceneCoverage), captured every frame.
+// coverage (rt_core's SceneCoverage), captured every frame; an untested one's only as rows.battle_scene lets it in.
 inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShader* shader) {
   if (std::ranges::find(trace_reads::UNIT_VERTEX_SHADERS, shader->hash) != trace_reads::UNIT_VERTEX_SHADERS.end()
       || std::ranges::find(LEFT_OUT_VERTEX_SHADERS, shader->hash) != LEFT_OUT_VERTEX_SHADERS.end()) {
@@ -103,6 +117,9 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   if (depth_state) depth_state->GetDesc(&depth_desc);
   if (!depth_desc.DepthEnable || depth_desc.DepthWriteMask != D3D11_DEPTH_WRITE_MASK_ALL) return false;
   if (!twattila::rt_scene::SceneCoverage(native, shader)) return false;
+  if (std::ranges::find(TESTED_VERTEX_SHADERS, shader->hash) == TESTED_VERTEX_SHADERS.end() && rows.battle_scene < (shader->foliage ? 2.f : 1.f)) {
+    return false;
+  }
   shader->dynamic = true;
   return true;
 }
