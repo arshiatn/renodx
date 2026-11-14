@@ -1004,7 +1004,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightSteady", 0.f},
         {"RayTracedLightRange", 0.f},
         {"RayTracedReflectionSamples", 1.f},
+        {"RayTracedReflectionReuse", 0.f},
         {"RayTracedWaterReflections", 0.f},
+        {"RayTracedWaterSteady", 0.f},
         {"RayTracedLightBounceRays", 4.f},
         {"RayTracedLightBounceRange", 10.f},
         {"RayTracedLightBounceResolution", 1.f},
@@ -1107,8 +1109,18 @@ void OnOverlay(reshade::api::effect_runtime*) {
                                       "Needs the game's screen-space reflections on.");
     ImGui::BeginDisabled(!reflections);
     count("Ray-traced reflection samples", "RayTracedReflectionSamples", 1, 8, "Rays per pixel on rough surfaces: less noise, heavier.");
-    choice("Ray-traced water reflections (Experimental)", "RayTracedWaterReflections", 0, OFF_ON_NAMES,
-           "The sea, rivers and lakes reflect ships, shores and units with rays (water quality High or Ultra).");
+    constexpr std::array<const char*, 3> REUSE_NAMES = {"Off", "From ReSTIR GI", "Own ReSTIR"};
+    choice("Reflection reuse (Experimental)", "RayTracedReflectionReuse", 0, REUSE_NAMES,
+           "Less noise on rough reflections.\n"
+           "From ReSTIR GI: also the ray-traced Global Illumination's samples (needs it on).\n"
+           "Own ReSTIR: their own samples, reused over frames and between neighbours.");
+    const bool water_reflections = choice("Ray-traced water reflections (Experimental)", "RayTracedWaterReflections", 0, OFF_ON_NAMES,
+                                          "The sea, rivers and lakes reflect ships, shores and units with rays (water quality High or Ultra).")
+                                   != 0;
+    ImGui::BeginDisabled(!water_reflections);
+    choice("Steadier water reflections (Experimental)", "RayTracedWaterSteady", 0, OFF_ON_NAMES,
+           "Fewer flickering dots in calm water's reflections: each pixel stays within what the water around it shows.");
+    ImGui::EndDisabled();
     ImGui::EndDisabled();
     const bool specular_occlusion = checkbox("Ray-traced specular occlusion (Experimental)", "RayTracedSpecularOcclusion",
                                              "The sky's reflection taken off shiny surfaces where something stands over them (inside\n"

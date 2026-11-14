@@ -1044,6 +1044,7 @@ void ReadDlssAddonOptions() {
   ray_tracing.specular_occlusion = read_on("RayTracedSpecularOcclusion", false);
   ray_tracing.water_reflections = read_on("RayTracedWaterReflections", false);
   ray_tracing.reflection_samples = read_count("RayTracedReflectionSamples", 1, 1, 8);
+  ray_tracing.water_steady = read_on("RayTracedWaterSteady", false);
   ray_tracing.local_lights = read_on("RayTracedLocalLights", false);
   ray_tracing.fog_shadows = read_on("RayTracedFogShadows", false);
   // No torch light in the fog (fog01 takes the sun's part alone): the helper traces none.
@@ -1054,6 +1055,10 @@ void ReadDlssAddonOptions() {
   ray_tracing.light_steady = read_on("RayTracedLightSteady", false);
   read_float("RayTracedLightRange", 0.f, 0.f, 500.f, &ray_tracing.light_range);
   ray_tracing.light_bounce = read_on("RayTracedLightBounce", false);
+  // Reflection Reuse (Attila's): 1 from ReSTIR GI (the ray-traced Global Illumination's), 2 Own ReSTIR.
+  const uint32_t reflection_reuse = read_count("RayTracedReflectionReuse", 0, 0, 2);
+  ray_tracing.reflection_reuse = reflection_reuse == 1 && ray_tracing.light_bounce;
+  ray_tracing.reflection_own = reflection_reuse == 2;
   read_float("RayTracedLightBounceRange", 10.f, 1.f, 50.f, &ray_tracing.light_bounce_range);
   ray_tracing.light_bounce_rays = read_count("RayTracedLightBounceRays", 4, 1, 16);
   read_choice("RayTracedLightBounceResolution", 1, 3, &ray_tracing.light_bounce_resolution);
