@@ -10,6 +10,7 @@
 
 #include <d3d11.h>
 #include <mutex>
+#include <shared_mutex>
 #include <cmath>
 #include <algorithm>
 #include <array>
@@ -309,6 +310,78 @@ void OnDestroyDevice(reshade::api::device*) {
 }
 
 }  // namespace traced_lights
+
+// Rays Replace Shadow Maps (Experimental, off; Pharaoh's way): the six sun shaders whose shadow the screen-space shadows
+// patched (the data run's log: hardware gather 5.0, standard and skin, single-sampled and MSAA) read the sun's atlas
+// (g_tShadowBuffer_SM50 t1, 12288 x 12288 R32) only through s1, 28 gather4_c each, s1's only reads; there is no baked map.
+// Where the rays' shadow is bound at t49 an ALWAYS sampler at s1 makes every comparison lit, so their patched comparisons
+// (each x the rays' visibility) give the rays' shadow alone; the cloud shadows stay the game's. The game's sampler is bound
+// again after the draw (finalize: the Light Bounce draws the sun draw itself and bypasses). Skip the Shadow Maps (under it):
+// rt_scene's Ray-Traced Shadows Only skips the atlas's draws (the atlas is the sun draw's square R32 map).
+constexpr std::array<uint32_t, 6> ATLAS_SUN_SHADERS = {0x1AB80044, 0x37237EC7, 0x060623DD, 0xD7990748, 0xCEEE8017, 0xDF071F9D};
+constexpr UINT ATLAS_SAMPLER_SLOT = 1;
+float rays_replace_maps_row = 0.f;
+float rays_skip_cascades_row = 0.f;
+struct AtlasLit {
+  std::shared_mutex mutex;
+  ID3D11Device* device = nullptr;  // the sampler's (compared only)
+  Microsoft::WRL::ComPtr<ID3D11SamplerState> always;
+  Microsoft::WRL::ComPtr<ID3D11SamplerState> game_sampler;  // bound again after the draw
+  bool logged = false;
+};
+AtlasLit atlas_lit;
+constexpr auto OnSunReplaceMaps = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (rays_replace_maps_row == 0.f || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> rays;
+  native->PSGetShaderResources(twattila::screen_space_shadows::internal::MASK_SLOT, 1, rays.GetAddressOf());
+  // With the rays' sun shadows on, t49 holds theirs alone (Bend's are off under them: OnPresent).
+  if (!rays || !twattila::rt_scene::SunShadowsTraced()) return {};
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& state = atlas_lit;
+  const std::unique_lock lock(state.mutex);
+  if (state.device != device.Get()) {
+    state.always.Reset();
+    state.device = nullptr;
+    // Point: each comparison exactly 1.
+    const D3D11_SAMPLER_DESC desc = {.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT,
+                                     .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                     .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                     .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                     .ComparisonFunc = D3D11_COMPARISON_ALWAYS,
+                                     .MaxLOD = D3D11_FLOAT32_MAX};
+    if (FAILED(device->CreateSamplerState(&desc, state.always.GetAddressOf()))) return {};
+    state.device = device.Get();
+  }
+  native->PSGetSamplers(ATLAS_SAMPLER_SLOT, 1, state.game_sampler.ReleaseAndGetAddressOf());
+  native->PSSetSamplers(ATLAS_SAMPLER_SLOT, 1, state.always.GetAddressOf());
+  if (!std::exchange(state.logged, true)) {
+    renodx::utils::log::i("[Total War] First run: Rays Replace Shadow Maps: the sun draws' shadow atlas read as lit (the rays shadow).");
+  }
+  return {.finalize_callback = [](Context& drawn, const void*) {
+    auto* drawn_native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&drawn_native);
+    auto& drawn_state = atlas_lit;
+    const std::unique_lock drawn_lock(drawn_state.mutex);
+    if (drawn_native != nullptr) {
+      drawn_native->PSSetSamplers(ATLAS_SAMPLER_SLOT, 1, drawn_state.game_sampler.GetAddressOf());
+    }
+    drawn_state.game_sampler.Reset();
+  }};
+};
+
+// Only our sampler's device (nullptr: the addon's end, DetachAddon).
+void OnDestroyAtlasLitDevice(reshade::api::device* device) {
+  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
+  auto& state = atlas_lit;
+  const std::unique_lock lock(state.mutex);
+  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
+  state.always.Reset();
+  state.device = nullptr;
+}
 
 #define FrameCopyShader(value)              \
   {                                         \
@@ -1507,7 +1580,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twattila::ao_filter::Update(swapchain, {.temporal = bitmask_ao && shader_injection.ssao_temporal != 0.f,
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
+  rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -1551,6 +1626,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "thin ones.\n"
                   "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+    .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Cloud shadows stay the game's;\n"
+                            "what is outside the view casts none. Off: the rays' shadows on top of the game's shadow maps.",
     .reflections_tooltip = "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
 };
@@ -2005,14 +2082,16 @@ void ConfigureAddon() {
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
+                                             .rays_replace_maps = &rays_replace_maps_row,
+                                             .rays_replace_maps_tested = false,
+                                             .rays_skip_cascades = &rays_skip_cascades_row,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
                                              .water_caustics_tested = false,
                                              .has_path_ambient = false,
                                              .lights_own_row = true,
-                                             .rays_replace_ao = false,
-                                             .rays_multiply_maps = true});
+                                             .rays_replace_ao = false});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
@@ -2066,6 +2145,14 @@ bool AttachAddon() {
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's. Skip the Shadow Maps through
+  // Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
+  for (const uint32_t shader_hash : ATLAS_SUN_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnSunReplaceMaps, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
+  twattila::rt_scene::InstallShadowsOnly();
   // The data run's frame traces (tools\tw\wh2\plan_1114.md; twattila/frame_trace.hpp): on demand (renodx_trace_now next to the
   // exe) and at 100% too. The camera's g_screen_size / g_viewport_dimensions at c27 / c29 as Attila's (the sun PS's camera RDEF).
   // Constants once each: the 11 single-sampled sun PS (directionallight slm / skinlm), the tone mapper (reinhard 2333E142), the
@@ -2135,6 +2222,9 @@ void DetachAddon() {
   tw::engine_tweaks::Uninstall(graphics_options);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   renodx::utils::command_action::Unregister(traced_lights::OnDraw);
+  renodx::utils::command_action::Unregister(OnSunReplaceMaps);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
+  OnDestroyAtlasLitDevice(nullptr);
   reshade::unregister_event<reshade::addon_event::destroy_device>(traced_lights::OnDestroyDevice);
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
