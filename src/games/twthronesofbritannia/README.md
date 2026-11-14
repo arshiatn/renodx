@@ -1,5 +1,16 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
+### Attila gaps (2026-11-14; built only, not run in game)
+
+Attila's fixes for the game's other builds, the same bytes here (Thrones' files include Attila's). Offline only (WARP).
+- Fixed: VFX Brightness, Ray-Traced Shadows Only and torch light on smoke in the lit particles' 11 other builds (other
+  shadow methods, Shader Model 4 / 4.1 / 5). `tw_attila_builds -Game twthronesofbritannia`.
+- Fixed: at Shader Model 4 / 4.1, Smoke Shadows and Particle Resolution take the particles (vertex shader A3966664).
+- Fixed: Reflection Quality and FidelityFX SSSR at Shader Model 4 / 4.1, Reflection Quality with the game's MSAA.
+  `tw_thrones_ssr`.
+- Test (ATN): in-game Shader Model below the top, a battle with smoke near water: VFX Brightness 2 brightens the smoke,
+  Smoke Shadows on the ground, Reflection Quality 2 changes the reflections.
+
 ### Parity round (2026-11-14; built only, not run in game)
 
 The rest of Attila's page and shader fixes this game can take (table: tools/tw/thrones/parity_1114.md).
@@ -22,7 +33,7 @@ Not done:
 - VFX Brightness: Snowflakes, Rain & Fire Sparks and Blood Splash & Storm Fog: Attila picks them by the particle texture's layers, unread here. Smallest step: a snow battle and a storm with ReShade's texture view of the particle array.
 - The terrain's virtual texture page pass below 100%: no trace has drawn it yet.
 - Tessellation on (gfx_tesselation): its rigid objects (vs 9AEE504E, Attila's too) stay out of the rays. Smallest step, in Attila first: their control points captured as triangles (without the displacement), then a trace with tessellation on.
-- Settings other than ATN's draw other builds of shaders this mod replaces, which Attila doesn't replace either: the particles with other shadow methods or shader models (11: no VFX Brightness, no ray-traced sun on smoke), the point lights with point shadows (32: no torch shadows from the rays; the shared torch step), the tone mappers "with_bloom_and_gamma" and the MSAA fog and lights (tools/tw/thrones/par_th_models/models.txt).
+- Settings other than ATN's draw other builds of shaders this mod replaces, which Attila doesn't replace either: the point lights with point shadows (32: no torch shadows from the rays; the shared torch step), the tone mappers "with_bloom_and_gamma" and the MSAA fog and lights (tools/tw/thrones/par_th_models/models.txt).
 - The campaign's far terrain and its sea bed stay out of the rays (on purpose: just under the near terrain). The 24 MSAA passes: with in-game MSAA no upscaler runs.
 - Torch and Fire Shadows / Light from Path Tracing: the shared torch step; this game can take them.
 

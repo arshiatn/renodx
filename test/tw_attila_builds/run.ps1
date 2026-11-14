@@ -2,8 +2,10 @@
 # (particle_vfx_main: vfx00 / vfx01 and every other build twattila/shaders replaces: rows off bit for bit with fog off and on,
 # VFX Brightness affine, the rays' sun on smoke (t49) as every shadow test failing, Particle Resolution's half-size layer) and
 # the battle fog (battlefog00 and its MSAA build battlefog01: rows at the game's bit for bit, Fog Strength, Fog & Sky
-# Smoothing), with CONTROLS.
-# -Game: twattila (default: every build must be there) or twthronesofbritannia (its vfx00 / vfx01; the same game bytes).
+# Smoothing), the rays' captures of draws no trace has shown, and the particles' Shader Model 4 vertex shader against its 5's,
+# with CONTROLS.
+# -Game: twattila (default: every build and the captures must be there) or twthronesofbritannia (its wrappers of every vfx
+# build; the same game bytes).
 # -GameShaders: the game's dumped csos (default the game's pack), only read. -Built: the add-on's compiled shaders (default
 # build32\<game>.include\embed after a renodx-<game>.addon32 build). -VfxBrightness / -FogStrength: their floats in b13
 # (default the game's shared.h: Attila 14 / 88, Thrones 89 / none). Holds tools/tw's GPU job lock while it runs when -Lock
@@ -17,7 +19,8 @@ if ($GameShaders -eq '') { $GameShaders = "D:\Dev\renodx\bin\cmd_Decompiler-1.3.
 if ($Built -eq '') { $Built = Join-Path $repairRoot "build32\$Game.include\embed" }
 if ($VfxBrightness -lt 0) { $VfxBrightness = if ($attila) { 14 } else { 89 } }
 if ($FogStrength -eq -2) { $FogStrength = if ($attila) { 88 } else { -1 } }
-$all = if ($attila) { 'all' } else { '' }
+# Attila: every build and the captures; Thrones (its wrappers of Attila's builds): every build.
+$all = if ($attila) { 'all' } else { 'builds' }
 $testRoot = Join-Path $repairRoot 'test\tw_attila_builds'
 $testBuild = Join-Path $repairRoot 'build\tw_attila_builds_test_x86'
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null

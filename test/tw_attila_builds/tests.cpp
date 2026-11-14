@@ -23,7 +23,7 @@
 // The rays' captures of draws no trace has shown (Rarer Objects in the Rays), through stream output with the game's input layout
 // (CheckCaptures): the tessellated rigid 9AEE504E as triangles (T1-T4), the ropes 8D0D26B9 (R) and 3926A823 (Q).
 // tests.exe <the game's dumped csos> <the add-on's built csos (build32\<game>.include\embed)> <VFX Brightness's float in b13>
-//           <Fog Strength's float in b13 (-1: no fog builds)> [all: every build's replacement must be there]
+//           <Fog Strength's float in b13 (-1: no fog builds)> [builds: every build's replacement must be there; all: and the captures]
 #include <d3d11.h>
 #include <d3d11shader.h>
 #include <d3dcompiler.h>
@@ -529,9 +529,12 @@ struct Stages {
   const std::vector<uint8_t>* vs;
   const std::vector<uint8_t>* hs = nullptr;
   const std::vector<uint8_t>* ds = nullptr;
-  std::array<ID3D11Buffer*, 3> constants = {};  // b0-b2 of every stage
+  std::array<ID3D11Buffer*, 5> constants = {};  // b0-b4 of every stage
   ID3D11ShaderResourceView* ds_texture = nullptr;
   ID3D11SamplerState* ds_sampler = nullptr;
+  std::array<ID3D11ShaderResourceView*, 4> vs_views = {};  // t0-t3 of the vertex shader
+  ID3D11SamplerState* vs_sampler = nullptr;
+  UINT vertex_count = 0;  // a vertex shader without inputs (SV_VertexID alone): this many vertices, no layout
 };
 
 static UINT InputCount(const std::vector<uint8_t>& code) {
@@ -565,7 +568,8 @@ static std::vector<float> StreamOut(const Stages& stages, const std::vector<floa
                         D3D11_INPUT_PER_VERTEX_DATA, 0});
   }
   const UINT stride = UINT(elements.size() * 16);
-  const UINT count = UINT(vertices.size() * 4 / stride);
+  const bool laid_out = !elements.empty();
+  const UINT count = laid_out ? UINT(vertices.size() * 4 / stride) : stages.vertex_count;
   const auto& last = stages.ds != nullptr ? *stages.ds : *stages.vs;
   const D3D11_SO_DECLARATION_ENTRY entry = {0, semantic, index, 0, components, 0};
   const UINT out_stride = components * 4;
@@ -584,8 +588,9 @@ static std::vector<float> StreamOut(const Stages& stages, const std::vector<floa
   ID3D11Buffer* output = nullptr;
   ID3D11Buffer* read = nullptr;
   ID3D11Query* query = nullptr;
-  const bool made = SUCCEEDED(device->CreateInputLayout(elements.data(), UINT(elements.size()), stages.layout_code->data(), stages.layout_code->size(), &layout))
-                    && SUCCEEDED(device->CreateBuffer(&vertex_desc, &vertex_data, &vertex_buffer))
+  const bool made = (!laid_out
+                     || (SUCCEEDED(device->CreateInputLayout(elements.data(), UINT(elements.size()), stages.layout_code->data(), stages.layout_code->size(), &layout))
+                         && SUCCEEDED(device->CreateBuffer(&vertex_desc, &vertex_data, &vertex_buffer))))
                     && SUCCEEDED(device->CreateVertexShader(stages.vs->data(), stages.vs->size(), nullptr, &vs))
                     && (stages.hs == nullptr || SUCCEEDED(device->CreateHullShader(stages.hs->data(), stages.hs->size(), nullptr, &hs)))
                     && (stages.ds == nullptr || SUCCEEDED(device->CreateDomainShader(stages.ds->data(), stages.ds->size(), nullptr, &ds)))
@@ -603,9 +608,11 @@ static std::vector<float> StreamOut(const Stages& stages, const std::vector<floa
     context->DSSetShader(ds, nullptr, 0);
     context->GSSetShader(gs, nullptr, 0);
     context->PSSetShader(nullptr, nullptr, 0);
-    context->VSSetConstantBuffers(0, 3, stages.constants.data());
-    context->HSSetConstantBuffers(0, 3, stages.constants.data());
-    context->DSSetConstantBuffers(0, 3, stages.constants.data());
+    context->VSSetConstantBuffers(0, 5, stages.constants.data());
+    context->HSSetConstantBuffers(0, 5, stages.constants.data());
+    context->DSSetConstantBuffers(0, 5, stages.constants.data());
+    context->VSSetShaderResources(0, 4, stages.vs_views.data());
+    context->VSSetSamplers(0, 1, &stages.vs_sampler);
     context->DSSetShaderResources(0, 1, &stages.ds_texture);
     context->DSSetSamplers(0, 1, &stages.ds_sampler);
     context->SOSetTargets(1, &output, &offset);
@@ -613,6 +620,8 @@ static std::vector<float> StreamOut(const Stages& stages, const std::vector<floa
     context->Draw(count, 0);
     context->End(query);
     context->SOSetTargets(0, nullptr, nullptr);
+    const std::array<ID3D11ShaderResourceView*, 4> no_views = {};
+    context->VSSetShaderResources(0, 4, no_views.data());
     context->HSSetShader(nullptr, nullptr, 0);
     context->DSSetShader(nullptr, nullptr, 0);
     context->GSSetShader(nullptr, nullptr, 0);
@@ -913,16 +922,175 @@ static bool CheckCaptures(const std::string& dump, const std::string& built) {
   return ok;
 }
 
+// S. The particles' vertex shaders (Smoke Shadows' and Particle Resolution's draws, rt_scene.hpp PARTICLE_VERTEX_SHADERS):
+// A3966664 (vs40_main, Shader Model 4 / 4.1: its sorted list a 2D texture, g_sorted_data_tex_width wide) streams out what
+// A7F257B5 (vs50_main, Shader Model 5: the list a structured buffer) does for the same particles, every output (the
+// records rt_core's CaptureParticles keeps: SV_POSITION, COLOR0, TEXCOORD3, TEXCOORD0), within 1e-4 x the value (another
+// shader model's code); CONTROL: the list laid at another width differs.
+static bool CheckParticles(const std::string& dump) {
+  const auto shader_5 = Load(dump + "/0xA7F257B5.vs_5_0.cso");
+  const auto shader_4 = Load(dump + "/0xA3966664.vs_4_0.cso");
+  if (shader_5.empty() || shader_4.empty()) {
+    std::printf("S particles: a shader is missing\n  FAILED\n");
+    return false;
+  }
+  constexpr UINT EMITTER_WIDTH = 8, PARTICLE_WIDTH = 16, SORTED_WIDTH = 16, SLICES = 8, PARTICLES = 256, ALIVE = 200;
+  const auto array_texture = [](UINT width, const std::vector<float>& texels) {
+    const D3D11_TEXTURE2D_DESC desc = {width, width, 1, SLICES, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_IMMUTABLE, D3D11_BIND_SHADER_RESOURCE, 0, 0};
+    std::vector<D3D11_SUBRESOURCE_DATA> init(SLICES);
+    for (UINT slice = 0; slice < SLICES; ++slice) init[slice] = {texels.data() + size_t(slice) * width * width * 4, width * 16, 0};
+    ID3D11Texture2D* texture = nullptr;
+    ID3D11ShaderResourceView* view = nullptr;
+    if (SUCCEEDED(device->CreateTexture2D(&desc, init.data(), &texture))) {
+      device->CreateShaderResourceView(texture, nullptr, &view);
+      texture->Release();
+    }
+    return view;
+  };
+  const auto random_texels = [](UINT width) {
+    std::vector<float> texels(size_t(width) * width * SLICES * 4);
+    for (float& texel : texels) texel = Range(0.f, 1.f);
+    return texels;
+  };
+  const auto whole = [](UINT limit) { return float(std::uniform_int_distribution<UINT>(0, limit - 1)(rng)); };
+  // g_emitter_instances: slice 2 w its visibility (above 0.01), slice 3 x its constants' index, y its scale.
+  auto emitters = random_texels(EMITTER_WIDTH);
+  for (UINT texel = 0; texel < EMITTER_WIDTH * EMITTER_WIDTH; ++texel) {
+    emitters[(2 * EMITTER_WIDTH * EMITTER_WIDTH + texel) * 4 + 3] = Range(0.1f, 1.f);
+    emitters[(3 * EMITTER_WIDTH * EMITTER_WIDTH + texel) * 4 + 0] = whole(64);
+    emitters[(3 * EMITTER_WIDTH * EMITTER_WIDTH + texel) * 4 + 1] = Range(0.5f, 2.f);
+  }
+  // g_particle_instances: slice 0 x its emitter, slice 1 its position.
+  auto particles = random_texels(PARTICLE_WIDTH);
+  for (UINT texel = 0; texel < PARTICLE_WIDTH * PARTICLE_WIDTH; ++texel) {
+    particles[texel * 4 + 0] = whole(EMITTER_WIDTH * EMITTER_WIDTH);
+    for (int axis = 0; axis < 3; ++axis) particles[(PARTICLE_WIDTH * PARTICLE_WIDTH + texel) * 4 + axis] = Range(-50.f, 50.f);
+  }
+  ID3D11ShaderResourceView* emitter_view = array_texture(EMITTER_WIDTH, emitters);
+  ID3D11ShaderResourceView* particle_view = array_texture(PARTICLE_WIDTH, particles);
+  ID3D11ShaderResourceView* constants_view = array_texture(16, random_texels(16));
+  // The sorted list (distance, particle), as Shader Model 5's structured buffer and 4's texture (texel i % width, i / width).
+  std::vector<float> sorted(size_t(PARTICLES) * 2);
+  std::vector<float> sorted_texels(size_t(SORTED_WIDTH) * SORTED_WIDTH * 4, 0.f);
+  for (UINT entry = 0; entry < PARTICLES; ++entry) {
+    sorted[entry * 2] = Range(0.f, 100.f);
+    sorted[entry * 2 + 1] = whole(PARTICLES);
+    sorted_texels[entry * 4] = sorted[entry * 2];
+    sorted_texels[entry * 4 + 1] = sorted[entry * 2 + 1];
+  }
+  const D3D11_BUFFER_DESC structured_desc = {PARTICLES * 8, D3D11_USAGE_IMMUTABLE, D3D11_BIND_SHADER_RESOURCE, 0, D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, 8};
+  const D3D11_SUBRESOURCE_DATA structured_data = {sorted.data(), 0, 0};
+  ID3D11Buffer* structured = nullptr;
+  ID3D11ShaderResourceView* structured_view = nullptr;
+  D3D11_SHADER_RESOURCE_VIEW_DESC structured_view_desc = {};
+  structured_view_desc.Format = DXGI_FORMAT_UNKNOWN;
+  structured_view_desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+  structured_view_desc.Buffer.NumElements = PARTICLES;
+  if (SUCCEEDED(device->CreateBuffer(&structured_desc, &structured_data, &structured))) {
+    device->CreateShaderResourceView(structured, &structured_view_desc, &structured_view);
+  }
+  const D3D11_TEXTURE2D_DESC sorted_desc = {SORTED_WIDTH, SORTED_WIDTH, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_IMMUTABLE, D3D11_BIND_SHADER_RESOURCE, 0, 0};
+  const D3D11_SUBRESOURCE_DATA sorted_data = {sorted_texels.data(), SORTED_WIDTH * 16, 0};
+  ID3D11Texture2D* sorted_texture = nullptr;
+  ID3D11ShaderResourceView* sorted_view = nullptr;
+  if (SUCCEEDED(device->CreateTexture2D(&sorted_desc, &sorted_data, &sorted_texture))) device->CreateShaderResourceView(sorted_texture, nullptr, &sorted_view);
+  // b0 the camera's position; b1 cb_vfx_shared (the widths, the particles alive); b2 cb_vfx (the camera's axes, view 0);
+  // b3 behaviour_mask (w the view: 0); b4 the emitters' culling distances, rotation, scroll, atlas (floats), cells and
+  // animation (small integers and flags), animation (floats).
+  std::vector<float> camera(36 * 4, 0.f);
+  camera[1] = 2.f;
+  const auto shared_for = [](UINT sorted_width) {
+    return MakeConstants({float(EMITTER_WIDTH), float(PARTICLE_WIDTH), float(sorted_width), float(ALIVE)});
+  };
+  const std::vector<float> axes = {1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f};
+  std::vector<float> behaviours(512 * 4, 0.f);
+  for (UINT emitter = 0; emitter < 512; ++emitter) {
+    const uint32_t mask[4] = {std::uniform_int_distribution<uint32_t>(0, 31)(rng), std::uniform_int_distribution<uint32_t>(0, 3)(rng),
+                              std::uniform_int_distribution<uint32_t>(0, 3)(rng), 0u};
+    std::memcpy(&behaviours[emitter * 4], mask, 16);
+  }
+  std::vector<float> emitter_constants(3584 * 4, 0.f);
+  for (UINT emitter = 0; emitter < 512; ++emitter) {
+    const float culling[4] = {Range(0.f, 2.f), Range(2.f, 5.f), Range(200.f, 300.f), Range(300.f, 400.f)};
+    std::memcpy(&emitter_constants[emitter * 4], culling, 16);
+    for (UINT block : {512u, 1024u, 3072u}) {
+      for (int k = 0; k < 4; ++k) emitter_constants[(block + emitter) * 4 + k] = Range(-1.f, 1.f);
+    }
+    const float atlas[4] = {Range(0.25f, 1.f), Range(0.25f, 1.f), Range(0.f, 1.f), Range(0.f, 1.f)};
+    std::memcpy(&emitter_constants[(1536 + emitter) * 4], atlas, 16);
+    const uint32_t cells[4] = {std::uniform_int_distribution<uint32_t>(1, 4)(rng), std::uniform_int_distribution<uint32_t>(1, 4)(rng),
+                               std::uniform_int_distribution<uint32_t>(1, 16)(rng), std::uniform_int_distribution<uint32_t>(0, 1)(rng)};
+    std::memcpy(&emitter_constants[(2048 + emitter) * 4], cells, 16);
+    uint32_t animation[4];
+    for (uint32_t& flag : animation) flag = std::uniform_int_distribution<uint32_t>(0, 1)(rng);
+    std::memcpy(&emitter_constants[(2560 + emitter) * 4], animation, 16);
+  }
+  ID3D11Buffer* camera_buffer = MakeConstants(camera);
+  ID3D11Buffer* shared_buffer = shared_for(SORTED_WIDTH);
+  ID3D11Buffer* shared_other = shared_for(SORTED_WIDTH / 2);
+  ID3D11Buffer* axes_buffer = MakeConstants(axes);
+  ID3D11Buffer* behaviours_buffer = MakeConstants(behaviours);
+  ID3D11Buffer* emitter_buffer = MakeConstants(emitter_constants);
+  const D3D11_SAMPLER_DESC sampler_desc = {D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           0.f, 1, D3D11_COMPARISON_NEVER, {0.f, 0.f, 0.f, 0.f}, 0.f, D3D11_FLOAT32_MAX};
+  ID3D11SamplerState* sampler = nullptr;
+  device->CreateSamplerState(&sampler_desc, &sampler);
+  const Stages stages_5 = {.layout_code = &shader_5, .vs = &shader_5,
+                           .constants = {camera_buffer, shared_buffer, axes_buffer, behaviours_buffer, emitter_buffer},
+                           .vs_views = {emitter_view, particle_view, structured_view, constants_view}, .vs_sampler = sampler, .vertex_count = ALIVE};
+  Stages stages_4 = stages_5;
+  stages_4.layout_code = &shader_4;
+  stages_4.vs = &shader_4;
+  stages_4.vs_views[2] = sorted_view;
+  Stages control = stages_4;
+  control.constants[1] = shared_other;
+  struct Output {
+    const char* semantic;
+    UINT index;
+    BYTE components;
+  };
+  constexpr std::array<Output, 9> OUTPUTS = {{{"SV_POSITION", 0, 4}, {"COLOR", 0, 4}, {"TEXCOORD", 0, 4}, {"TEXCOORD", 1, 4}, {"TEXCOORD", 2, 4},
+                                              {"TEXCOORD", 3, 4}, {"TEXCOORD", 4, 4}, {"TEXCOORD", 5, 3}, {"TEXCOORD", 6, 3}}};
+  Tally s;
+  Tally c;
+  uint64_t counted = 0, drawn = 0;
+  for (const Output& output : OUTPUTS) {
+    const auto ours = StreamOut(stages_4, {}, D3D11_PRIMITIVE_TOPOLOGY_POINTLIST, output.semantic, output.index, output.components);
+    const auto theirs = StreamOut(stages_5, {}, D3D11_PRIMITIVE_TOPOLOGY_POINTLIST, output.semantic, output.index, output.components);
+    const auto other = StreamOut(control, {}, D3D11_PRIMITIVE_TOPOLOGY_POINTLIST, output.semantic, output.index, output.components);
+    counted += (ours.size() == size_t(ALIVE) * output.components && theirs.size() == ours.size() && other.size() == ours.size()) ? 1 : 0;
+    for (size_t i = 0; i < ours.size() && i < theirs.size() && i < other.size(); ++i) {
+      s.Add(ours[i], theirs[i]);
+      c.Add(other[i], theirs[i]);
+    }
+    if (std::string(output.semantic) == "COLOR") {
+      for (size_t i = 3; i < theirs.size(); i += 4) drawn += theirs[i] != 0.f ? 1 : 0;
+    }
+  }
+  std::printf("S particles A3966664 (sm_4_0) vs A7F257B5 (sm_5_0): %u particles, 9 outputs streamed %llu of 9, %llu with colour alpha\n", ALIVE,
+              (unsigned long long)counted, (unsigned long long)drawn);
+  s.Print("every output vs Shader Model 5's");
+  c.Print("CONTROL the list at another width");
+  const bool ok = counted == OUTPUTS.size() && drawn > ALIVE / 4 && s.Same() && c.misses > 0;
+  std::printf("  %s\n", ok ? "PASSED" : "FAILED");
+  for (IUnknown* object : std::initializer_list<IUnknown*>{emitter_view, particle_view, constants_view, structured, structured_view, sorted_texture, sorted_view,
+                                                           camera_buffer, shared_buffer, shared_other, axes_buffer, behaviours_buffer, emitter_buffer, sampler}) {
+    if (object != nullptr) object->Release();
+  }
+  return ok;
+}
+
 int main(int argc, char** argv) {
   if (argc < 5) {
-    std::printf("usage: tests.exe <the game's dumped csos> <the add-on's built csos> <VFX Brightness's float in b13> <Fog Strength's (-1 none)> [all]\n");
+    std::printf("usage: tests.exe <the game's dumped csos> <the add-on's built csos> <VFX Brightness's float in b13> <Fog Strength's (-1 none)> [builds | all]\n");
     return 2;
   }
   const std::string dump = argv[1];
   const std::string built = argv[2];
   const int brightness = std::atoi(argv[3]);
   const int fog_strength = std::atoi(argv[4]);
-  const bool all = argc > 5 && std::string(argv[5]) == "all";
+  const std::string mode = argc > 5 ? argv[5] : "";
+  const bool all = mode == "builds" || mode == "all";
   D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, &device, nullptr, &context))) return 1;
   // VFX Brightness and (Attila's two after it: weather, snow) at 1, Fog Strength 1 and Fog & Sky Smoothing off (the float
@@ -982,12 +1150,14 @@ int main(int argc, char** argv) {
     ++checked;
     passed += CheckFog(build, dump, built) ? 1 : 0;
   }
-  if (all || std::ifstream(built + "/rt_capture_rope_sm3.cso").good()) {
+  if (mode == "all" || std::ifstream(built + "/rt_capture_rope_sm3.cso").good()) {
     ++checked;
     passed += CheckCaptures(dump, built) ? 1 : 0;
   } else {
     std::printf("captures: not in this add-on (skipped)\n");
   }
+  ++checked;
+  passed += CheckParticles(dump) ? 1 : 0;
   std::printf("%s: %d of %d\n", passed == checked && checked > 0 ? "PASS" : "FAIL", passed, checked);
   return passed == checked && checked > 0 ? 0 : 1;
 }

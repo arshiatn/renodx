@@ -641,11 +641,6 @@ inline void Install(std::span<const uint32_t> shaders, std::span<const uint32_t>
   }
 }
 
-// Attila's and Thrones': their particles' vertex shader.
-inline void Install(uint32_t vertex_shader, std::span<const uint32_t> readers) {
-  Install(std::span<const uint32_t>(&vertex_shader, 1), readers);
-}
-
 inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnLayerReader);
   renodx::utils::command_action::Unregister(internal::OnParticleDraw);
