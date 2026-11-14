@@ -19,6 +19,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <deps/imgui/imgui.h>
@@ -943,6 +944,96 @@ void OnOverlay(reshade::api::effect_runtime*) {
     };
     constexpr std::array<const char*, 2> OFF_ON_NAMES = {"Off", "On"};
     ImGui::TextWrapped("Needs an RTX GPU and renodx-tw-dlaa64.exe next to the addons.");
+    // The presets (twattila/graphics_page.hpp's): RT/PT is ATN's RAYS_PRESET in this section's keys (no Path-Traced AO
+    // here: ray-traced AO in its place), No RT/PT turns every ray-traced effect off and keeps their rows, Reset puts
+    // every row at its default. Whole values go in as integers (the checkboxes and choices read ints).
+    constexpr std::pair<const char*, float> RAYS_OFF[] = {
+        {"RayTracedSunShadows", 0.f},
+        {"RayTracedAmbientOcclusion", 0.f},
+        {"RayTracedLocalLights", 0.f},
+        {"RayTracedReflections", 0.f},
+        {"RayTracedLightBounce", 0.f},
+        {"PathTracing", 0.f},
+    };
+    constexpr std::pair<const char*, float> RAYS_PRESET[] = {
+        {"RayTracedSunShadows", 1.f},
+        {"RayTracedShadowSoftness", 0.8f},
+        {"RayTracedLeafLight", 1.f},
+        {"RayTracedAmbientOcclusion", 1.f},
+        {"RayTracedLocalLights", 1.f},
+        {"RayTracedLightSoftness", 0.25f},
+        {"RayTracedLightImportance", 1.f},
+        {"RayTracingDenoiser", 1.f},
+        {"RayTracedLightBounce", 1.f},
+        {"PathTracing", 1.f},
+        {"RayTracedLightBounceRays", 1.f},
+        {"RayTracedLightBounceResolution", 0.f},
+        {"RayTracedLightBounceRange", 50.f},
+        {"PathTracingBounces", 1.f},
+        {"RayTracedReflections", 1.f},
+        {"RayTracedReflectionSamples", 1.f},
+    };
+    constexpr std::pair<const char*, float> RAYS_RESET[] = {
+        {"RayTracedShadowSoftness", 0.5f},
+        {"RayTracedLeafLight", 0.f},
+        {"RayTracedAmbientRange", 2.f},
+        {"RayTracedAORays", 2.f},
+        {"RayTracedAOQuarter", 0.f},
+        {"RayTracedLightSoftness", 0.25f},
+        {"RayTracedLightCount", 0.f},
+        {"RayTracedLightImportance", 0.f},
+        {"RayTracedLightSteady", 0.f},
+        {"RayTracedLightRange", 0.f},
+        {"RayTracedReflectionSamples", 1.f},
+        {"RayTracedLightBounceRays", 4.f},
+        {"RayTracedLightBounceRange", 10.f},
+        {"RayTracedLightBounceResolution", 1.f},
+        {"PathTracingBounces", 2.f},
+        {"RayTracedSharc", 0.f},
+        {"RayTracedPathSer", 0.f},
+        {"RayTracingDenoiser", 0.f},
+        {"RayTracedLeafMicromaps", 0.f},
+        {"RayTracedGpuMicromaps", 1.f},
+        {"RayTracedFastLeafShadows", 0.f},
+        {"RayTracingOutputResolution", 0.f},
+        {"RayTracingRaysShadows", 1.f},
+        {"RayTracingRaysAmbient", 1.f},
+        {"RayTracingRaysReflections", 1.f},
+        {"RayTracingRaysPaths", 1.f},
+        {"RayTracedDebugLog", 0.f},
+        {"RayTracedDebugView", 0.f},
+        {"RayTracedSceneTest", 0.f},
+    };
+    const auto write_rays = [](std::span<const std::pair<const char*, float>> values) {
+      for (const auto& [key, value] : values) {
+        if (value == std::floor(value)) {
+          reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, static_cast<int>(value));
+        } else {
+          reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
+        }
+      }
+    };
+    if (preset_button("RT/PT##rays", RT_COLOR,
+                      "Every ray-traced effect and path tracing on, as ATN plays (restart the game).\n"
+                      "Turns the Global Illumination on, and Ray Reconstruction where DLSS runs without it.")) {
+      write_rays(RAYS_PRESET);
+      gi.strength = std::max(gi.strength, 1.f);
+      save_gi();
+      // Without Ray Reconstruction the rays have only the built-in denoisers (Attila's preset: F).
+      if (upscaler_choice.load() == 1 && ray_reconstruction_choice.load() == 0) {
+        ray_reconstruction_choice.store(4);
+        reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingRayReconstruction", 4);
+      }
+    }
+    ImGui::SameLine();
+    if (preset_button("No RT/PT (Recommended)##rays", RT_COLOR, "Every ray-traced effect off, their sliders kept (restart the game).")) {
+      write_rays(RAYS_OFF);
+    }
+    ImGui::SameLine();
+    if (preset_button("Reset##rays", RT_COLOR, "Every ray-traced effect off, this section's sliders at their defaults (restart the game).")) {
+      write_rays(RAYS_OFF);
+      write_rays(RAYS_RESET);
+    }
     const bool sun_shadows = checkbox("Ray-traced sun shadows", "RayTracedSunShadows",
                                       "Sun shadows from rays, with the game's: also where its shadow maps miss things or end.\n"
                                       "Faster: the game's Screen Space Shadows off, the rays then alone (grass casts no contact shadows).");
