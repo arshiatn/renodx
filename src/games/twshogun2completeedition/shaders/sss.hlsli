@@ -375,13 +375,16 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
 {
   DispatchParameters dp;
   dp.SetDefaults();
-  dp.SurfaceThickness = g_sss_surface_thickness;
-  dp.BilinearThreshold = g_sss_bilinear_threshold;
-  dp.ShadowContrast = g_sss_shadow_contrast;
+  // Bend's parameters: the game's, or the DLSS addon's rows (above 0).
+  dp.SurfaceThickness = (SI.sss_thickness > 0.f) ? SI.sss_thickness : g_sss_surface_thickness;
+  dp.BilinearThreshold = (SI.sss_edge_threshold > 0.f) ? SI.sss_edge_threshold : g_sss_bilinear_threshold;
+  const float contrast = (SI.sss_contrast > 0.f) ? SI.sss_contrast : g_sss_shadow_contrast;
+  dp.ShadowContrast = contrast;
+  dp.UsePrecisionOffset = (SI.sss_precision_offset != 0.f);
   // Shadow stability (v27, DLSS addon): the game's contrast 4 turns a depth difference into shadow within a quarter of
   // Bend's window, so shadows switch fully on / off between frames; halved (Bend's other recommended value, 2) they
   // fade in. Then Bend's IgnoreEdgePixels: depth edges (thin geometry, grazing surfaces) cast no shadow.
-  if (SI.sss_stability >= 1.f) dp.ShadowContrast = max(g_sss_shadow_contrast * 0.5f, 1.f);
+  if (SI.sss_stability >= 1.f) dp.ShadowContrast = max(contrast * 0.5f, 1.f);
   dp.IgnoreEdgePixels = (SI.sss_stability >= 2.f);
   dp.LightCoordinate = g_sss_light_coordinate;
   dp.WaveOffset = g_sss_wave_offset;
