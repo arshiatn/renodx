@@ -1973,6 +1973,14 @@ void ConfigureAddon() {
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/rometotalwar/mods/22"); },
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
+      },
   });
 
   // The rows the methods leave at Attila's RT/PT values (before Apply: its Reset reads the defaults as it is built), then
