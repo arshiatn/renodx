@@ -27,7 +27,6 @@
 | An HLSL array in a cbuffer pads each element to 16 bytes | The reflected size equals `sizeof` | Reflection check |
 | fxc rounds a decimal literal its own way: 0.947867298 became 0x3F72A76E, 3F1B86E1's 1 / 1.055 is 0x3F72A76F, a 1-ulp miss on WARP [df95f06e] | Copy a game's literal as `asfloat(bits)` | Search both `.cso` files for the literal's bits |
 | A `gs_` header made by hand with `fxc /Fh` keeps the disassembly's trailing spaces: `git diff --check` failed after the commit [ff5d2e10] | Strip trailing spaces after each fxc run | `git diff --cached --check` before the commit |
-| In-place format upgrades lost clamps (Ryse) | View cloning for new mods (`use_resource_cloning`, `src/mods/swapchain_v1.hpp`); don't retrofit | Grep the addon's swapchain setup |
 | Debug edits put back with `Copy-Item` keep the old file time: the build skips the shader | Set the time after restoring; check the `.cso`'s time; look at the picture before the numbers | - |
 
 ## 2. HDR output
@@ -71,8 +70,8 @@ Tone-map and LUT math belongs to `handle-sdr-tonemap-lut`; these are the TW-spec
 | Gamma Correction, SDR preset on an SDR monitor at first start [e06a18da, 3dbf1ce6] | Gamma in all presets; a first-start check (`first_start_without_hdr` in `twattila/addon.cpp`) | Read each addon's presets and that check |
 | Add-on running alone [9a909c13, 6875b28f] | Red notice, GitHub button; a missing helper must not crash | The path taken with the helper absent |
 | Tooltips with dev notes, trace names, other games; DLSS-only wording once FSR and XeSS exist [43141539] | Short, player-facing | Grep tooltip lines, multi-line text too |
-| Recommended and Reset presets | Recommended and hue defaults as in `SKILL.md`'s Look rule (never Attila's Highlight values); Reset keeps its default where Extended exists, Recommended's mode where it doesn't | Page dump |
-| Live counters, temporary timers | One-frame traces only; debug work behind Log Details; remove timers before a zip | Read per-frame paths |
+| Recommended and Reset presets | Recommended and hue defaults as in `game-port-method`'s Look rule (never Attila's Highlight values); Reset keeps its default where Extended exists, Recommended's mode where it doesn't | Page dump |
+| Live counters, temporary timers (the Cost rule in `game-port-method`) | Debug work behind Log Details; remove timers before a zip | Read per-frame paths |
 | Status lines lag 3 s | Read the log's "Test: x set to" line instead (`twattila/test_hooks.hpp`): it is exact | `ReShade.log` |
 | Credits and licence texts for everything shipped (NRD, SHaRC, OMM, FSR, XeSS, SSSR, CMAA2, DLSS, ACES, PsychoV35) | About rows from `twattila/credits.hpp` in every addon that ships the code; the licence text next to vendored code; the repack adds the licence set to every zip; no code from a mod without a licence | Read the zip |
 | Graphics 2 of 2 copied once and left: Pharaoh lacked 23 of Attila's tests, kept 15 rows whose names never resolved, and 4 at-start tests with missing names held every slider back about 60 s at each start | A TW game's tests page matches Attila's: every test whose value exists in that exe, no row whose name doesn't resolve, no at-start test that can't find its name | `tools/tw/pharaoh/tests_check.py` against the exe; the log's "Engine values found: N of M" |

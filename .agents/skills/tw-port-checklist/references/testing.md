@@ -22,7 +22,7 @@
 Rules:
 
 - Compare `all_modes.sh` runs by mode name against the last log, not by count. Run it in the background beside compiling, not beside another GPU job, and don't copy a helper into its folder until it ends.
-- A pass counts only with a "ready" or "applied" line: a build that failed PSO creation once "passed". A run without a new log is invalid (an old log was once copied, a second game failed silently).
+- `game-port-method`'s run-counts rule; a second game once failed silently.
 - Give WARP tests the game's real ranges, and a control that must fail.
 - Scale a WARP formula check's tolerance with the largest summed term, not a fixed epsilon [f306ff2d].
 - A texture read checked against a game PS's pixel: bilinear weights have 8 bits an axis and the PS's inputs come interpolated (a constant 1-2 ulps off), so a smooth texture may differ by 2/256 of its largest texel step times the decode's slope. For a 4-ulp check give the texture plateaus where it is read [df95f06e].
@@ -34,8 +34,8 @@ Rules:
 
 ## 2. Game runs
 
-- Permission and backups: the Game runs rule in [SKILL.md](../SKILL.md). It covers the scripts that start a game too (`run_game`, `soak`, `fg_run`, `fg_mem_test`, `shot_run3`, `install`, `overlay_test`, `profile_run2`).
-- Run on the maintainer's current ini and preset (the proof levels in [SKILL.md](../SKILL.md)); a "0 of 8" once held only for one ini.
+- Permission and backups: `game-port-method`'s Game runs rule. It covers the scripts that start a game too (`run_game`, `soak`, `fg_run`, `fg_mem_test`, `shot_run3`, `install`, `overlay_test`, `profile_run2`).
+- Run on the maintainer's current ini and preset (the proof levels in `game-port-method`); a "0 of 8" once held only for one ini.
 - Never two GPU jobs at once. Before each start, Committed Bytes below about 60 GB (dead processes from resets hold theirs until a reboot, [helper-fg-stability.md](helper-fg-stability.md)).
 - The game folder holds plain stamped copies before a run: Pharaoh's addon and a DevKit were symlinks into `build/Release` (as of 2026-11), so any build would have swapped the addon mid-run and the DevKit broke the no-DevKit rule. `ls -l` the folder first.
 - **Driving a run**: `test_scripts/run_game.ps1` (`-Game`, `-Shot s`, `-Profile s`, `-Set "s:key=value;..."`, `-Env`, `-Keys "W:6.4"`, `-Campaign`) sets `RENODX_TW_SHOT`, `RENODX_TW_PROFILE`, `RENODX_TW_SET` (`twattila/test_hooks.hpp`) and closes the game through its window; `wh3_batch3/check_run.py` proves the run ran.
@@ -52,7 +52,7 @@ Rules:
 - A game exe with the "Run as administrator" compatibility flag (`RUNASADMIN` under `AppCompatFlags\Layers`, HKCU or HKLM) raises a UAC prompt no agent can answer: Rome Remastered's start failed "canceled by the user" (2026-11-14). Read both keys for the exe while planning a run; only the maintainer may clear the flag or start the game.
 - A run script copies every log the game writes (its own log folder, crash reports, mod and message logs) into the run folder before it restores the maintainer's files from that start's backup: Rome Remastered quit 4 s after its start and the restore put the old message_log.txt back, with the game's reason in it (2026-11-14).
 - Crashed starts leave `Get-Process` entries with 0 threads until a reboot (six Rome2.exe after the command-line crashes): count only processes with threads, as `tw_install.py` and `atn_trace_watch.ps1` do.
-- An agent's data run (start, traces, logs, quit) runs at medium effort: it collects; the reading stays offline.
+- The data run of a new TW game (start, traces, logs, quit) is the one agent run the maintainer allows per new game ([bringup.md](bringup.md) Phase 1); effort as in `game-port-method`.
 - The games read the mouse through DirectInput: synthetic clicks never land. Keys by SendInput scan codes after `SetForegroundWindow`; settings through `ReShade.ini` or `RENODX_TW_SET`.
 - Delete `ReShade.log` before waiting on a line (the old log holds it); in WH3 wait for a new "First run: sun light draw", not for the helper.
 - Replays end at their own length, then a still results scene: a 20-minute soak held 6 minutes of live battle.
@@ -60,17 +60,12 @@ Rules:
 
 ## 3. The maintainer's test list
 
-- 10 lines or fewer, the most important first.
-- Grouped by scene, so one start per scene.
-- Each line: scene; exact row name and value; what to look for; which file to send.
-- First line a control: rows off looks like the last version.
-- On and off inside one run: pause freezes the picture, and settings changed while paused show no change; each paused run freezes a random wind phase.
-- Every Experimental row gets one A/B line naming the decision it drives.
+The format is `game-port-method`'s. TW additions:
+
+- Each paused run freezes a random wind phase.
 - A unit or grass row's cost shows only with the units or the grass on screen: Unit Detail A/Bs in a replay whose camera held few soldiers changed nothing. Name the scene the maintainer measured (their heavy 8x battle), the camera on the units.
-- Prefer what the build reports itself: "applied" lines, Record Ray Tracing Profile (30 s), Frame Trace, Time Each Pass, a pixel trace. Then the maintainer only sends `ReShade.log`, the helper log and the ini.
-- Dry-run each line, and every agent run's plan, against a page dump of the maintainer's current preset: the row shows, the debug view is made (an AO view without the AO row is magenta), the key exists in this game, and every log line the plan relies on exists in the build (a helper once didn't log placed instances).
-- Never ask what an offline check or an allowed agent run can show; never repeat an unchanged item.
-- A longer scripted list belongs to agent runs only.
+- What the build reports itself: "applied" lines, Record Ray Tracing Profile (30 s), Frame Trace, Time Each Pass, a pixel trace; the maintainer sends `ReShade.log`, the helper log and the ini.
+- The page-dump dry-run also checks that the debug view is made (an AO view without the AO row is magenta); a helper once didn't log placed instances the plan relied on.
 
 ## 4. Reading the maintainer's evidence
 
@@ -88,10 +83,10 @@ Rules:
 - The helper's GPU time from per-process GPU Engine counters.
 - Record Ray Tracing Profile for 30 s with ReShade's menu closed (FG is off under the menu); read `answer_wait_ms`, `present_pacing_ms`, `cpu_record_parts`.
 - Time Each Pass for one frame; A/B inside one run (`RENODX_TW_SET`).
-- Nsight Graphics doesn't attach to 32-bit D3D11 (Attila): the game's side by Time Each Pass, the helper in the 4K harness with `RENODX_TW_REPLAYABLE` and `RENODX_TW_NO_CLUSTERS` (`tools/tw/nsight`). Its ranked list goes into `HANDOFF.md` line by line (the Nothing dropped rule): the first Attila check's code items were lost at a compaction.
+- Nsight Graphics doesn't attach to 32-bit D3D11 (Attila, Rome II, Thrones): the game's side by Time Each Pass, the helper in the 4K harness with `RENODX_TW_REPLAYABLE` and `RENODX_TW_NO_CLUSTERS` (`tools/tw/nsight`). Its ranked list goes into `HANDOFF.md` line by line (the Nothing dropped rule): the first Attila check's code items were lost at a compaction.
 - The game's own CPU hot spots (the CRT's x87 `fmod`, software float to half, x87 truncation blocks, its sort, per-item locks) are fair game: our own detour, bit-exact against the game's function offline (all 2^32 inputs where it takes one float), an Experimental row, never on bytes a third-party fix patches (read the live bytes first). A third-party fix's own code stays its author's: a patch goes to the author, with the maintainer's OK.
-- A CPU question needs a sampled profile, a GPU question one with GPU events: `wpr -start CPU -filemode` (GPU: `-start GPU -start CPU`), then `wpr -stop <file>.etl`, only through the maintainer's own elevated scheduled tasks `RenoDX_WPR_Start` / `RenoDX_WPR_Stop` (never elevate another way); read it with xperf or WPA (`Windows Kits\10\Windows Performance Toolkit`) by module offsets. PresentMon alone guesses.
-- An A/B measures a change only where its code is on the critical path: heapfix's sort, 6-7x faster, changed nothing in a GPU-bound replay (54.45 against 54.35 fps) and was 3.6% slower with 4 threads in a CPU-bound one, where the render thread never waited on it. Find the waiting thread in a profile before building the A/B.
+- A CPU question needs a sampled profile, a GPU question one with GPU events: `wpr -start CPU -filemode` (GPU: `-start GPU -start CPU`), then `wpr -stop <file>.etl`, through the maintainer's tasks (`game-port-method`); read it with xperf or WPA (`Windows Kits\10\Windows Performance Toolkit`) by module offsets. PresentMon alone guesses.
+- The critical-path rule (`game-port-method`), TW's case: heapfix's sort, 6-7x faster, changed nothing in a GPU-bound replay (54.45 against 54.35 fps) and was 3.6% slower with 4 threads in a CPU-bound one, where the render thread never waited on it. Find the waiting thread in a profile before building the A/B.
 
 ## 6. Other traps
 
@@ -107,11 +102,7 @@ Rules:
 | A plan built on one start form or one trace | Two forms or two traces before planning |
 | A WARP sun test's comparison sampler on an RGBA32F shadow map returned 0 everywhere | Shadow maps as R32_FLOAT (the game's D32 view), `sun_scale_v61` |
 | PowerShell `-Filter "*.addon32.*"` matches plain `.addon32` files too | Never delete by it; old files are renamed aside ([release.md](release.md)) |
-| Bitdefender quarantined freshly built unsigned test exes (mingw builds, Gen:Variant.Draftor) | Standalone test exes are built only in `tools/tw/testbin`, which the maintainer excluded (nothing downloaded goes there); a flagged exe elsewhere: stop that path, never evade or add exclusions, tell the maintainer |
 | `ps_compare` with random constants hung loop-heavy shaders (Pharaoh t05) and broke fog upsamples; WARP world checks with inputs x1024 read outside 64x64 textures and passed on nothing (WH2) | Constants from a trace (`cbf:`) or range-limited inputs, a control that must fail, `cb_audit` for what the check reads |
-| The quality scorer's scene has no smoke or fog | Smoke and fog changes need their own WARP or harness check; no score |
 | A finder that found 0 looked like "this game has none" (Troy's 167 tweaks) | A suite asserts each game's finder hit count (`test/tw_troy_tweaks`); 0 is a failure |
-| A restore deleted every replay outside a name list (the maintainer's WH3 `2.replay`) | Restores move aside only files the run created between its start and end marks (`wh3_common.ps1`); never delete the maintainer's replays or saves |
-| Agent worktrees link `bin`, `downloads` and `external` into the main checkout as junctions | Delete the links alone before any recursive delete of a worktree |
-| An agent's test exes ran inside a measurement window and invalidated two bench starts (2026-11-14) | While `tools/tw/quiet_run.lock` exists start nothing: no build, no test exe, no WARP, no long script; the bench refuses starts while a `tools/tw/testbin` process or a build tool runs |
-| Many agents building at once ran the machine short of commit | Start a build only under 45 GB Committed Bytes, `-j 3`; one GPU job at a time through `tools/tw/gpu_job.lock`, taken atomically, deleted only by its owner |
+| A restore deleted every replay outside a name list (the maintainer's WH3 `2.replay`) | `game-port-method`'s backup rule; `wh3_common.ps1` marks the run's start and end; never delete the maintainer's replays or saves |
+| The quiet lock (`game-port-method`) | The bench refuses starts while a `tools/tw/testbin` process or a build tool runs |

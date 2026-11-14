@@ -1,6 +1,6 @@
 # Facts that differ per TW game
 
-Answer every row for a new game before planning, with a proof level (A, B, C as in `SKILL.md`). Each one looked portable once and wasn't. "Known answers" are what Attila and WH3 (and others where read) do; they are examples, not defaults.
+Answer every row for a new game before planning, with a proof level (A, B, C as in `game-port-method`). Each one looked portable once and wasn't. "Known answers" are what Attila and WH3 (and others where read) do; they are examples, not defaults.
 
 ## Fact sheet
 
