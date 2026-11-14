@@ -19,17 +19,23 @@ Proven offline: test/tw_rome2_shaders (WARP, the build before against this one):
 Settled, no change: the 12 sun shaders the scale census left unclear are right below 100% (their one camera-projected uv is read only by the ambient occlusion's whole-texture read, so the two patches cancel); 7F44346E is never drawn (data_rome2.pack's 28C847C0 replaces it).
 
 Won't:
-- Reflection Rays and the SSR Denoiser: Attila's rows drive its own SSR's resolve, which needs hit targets and camera constants Rome II's water reflections have not.
+- Reflection Rays and the SSR Denoiser: Attila's rows drive its own SSR's resolve, which needs hit targets and camera constants Rome II's water reflections have not (its waterreflection00 writes one target, binds no camera and reads its depth at t1).
 - Grass Height Distance: none of the 6 grass vertex shaders shrinks blades with distance (the position comes before any camera term); the pixel shaders drop blades past 200 m.
+- The sail symbol in the rays: as Attila's, a decal on its sail (the same positions as the sail's), which is in the rays already.
 
-Not done:
-- Grass past every LOD skips DrawScrub (Attila v159): Rome II's DrawScrub is another function (6 arguments, its own key, a shared LOD picker with a quality override). It needs a hook of its own, then a grassy battle with the hook's counts (tools/tw/rome2/par_r2_scrub_read.txt).
+Not done (each waits on a game run):
+- Grass past every LOD skips DrawScrub (Attila v159) and the Grass Trace button: Rome II's DrawScrub is another function (6 arguments, its own key, a shared LOD picker with a quality override read only at run time). It needs a hook of its own, then a grassy battle with the hook's counts (tools/tw/rome2/par_r2_scrub_read.txt).
+- Particle Resolution, Smooth Half-Size Particles and Full-Resolution Particle Edges: the 50% battle trace with fire and smoke of Parity round's Not done.
+- RT/PT as Attila's (Smoke Shadows and Water Caustics on in RT/PT): ATN decides.
 
 Test (ATN):
 - A river or coastal battle at 50% (DLSS): water reflections in place as at 100%, with each Reflection Method. Reflection Quality 4: fewer gaps; 0.25: coarser.
 - Light Through All Banners on with RT shadows: where a unit banner casts a ray shadow, it is lighter. Off: as before.
+- The game's Tessellation on, a battle on hills with RT shadows, Rarer Objects in the Rays on: hills and tessellated walls / rocks cast ray-traced shadows (off: the ground casts none), no dark speckles on the ground; ReShade.log without "left out: vs B1C7E29F" / "E51A2D2A".
+- A big siege or forest battle, RT shadows with Skip the Shadow Maps on, then Skip the Game's Shadow Map Work on: ReShade.log "Shadow map work: the model manager's pass draw hooked" and "pass kind ... draws only into the sun's map"; FPS (CPU-bound) against off; shadows as before. Decides: default on under Skip the Shadow Maps.
+- The same with Two Shadow Cascades Under Rays on and a restart: ReShade.log "Graphics: shadow cascades found"; FPS against off; no change in the near shadows, mid-distance shadows as before (the far baked ones nearer is the risk). Decides: keep or drop.
 
-Build: `cmake --build build32 --config Release --target renodx-twrome2.addon32`; test: `test/tw_rome2_shaders/run.ps1`.
+Build: `cmake --build build32 --config Release --target renodx-twrome2.addon32`; tests: `test/tw_rome2_shaders/run.ps1`, `test/tw_rays_captures/run.ps1` (T, G), `test/tw_unit_shadows/run.ps1` (8).
 
 ### Parity round (2026-11-14; built only, not run in game)
 
@@ -63,7 +69,7 @@ Not done:
 - Particle Resolution, Smooth Half-Size Particles and the 26 soft-particle rows below 100%: the particles read the depth through cb_vfx's g_viewport_offset_scale, which no trace logged. Smallest step: one 50% battle trace with fire and smoke logging 97D98192's b3. The virtual texture's page_touch 28C847C0 waits on the same trace (its cb2).
 - Grass Height Distance, the water reflection rows and the scrub skip: settled in Parity round 2.
 - The game's MSAA sun shaders (24) are over-patched below 100% in the scale census; below 100% needs an upscaler, which in-game MSAA stops.
-- Tessellated rigid objects and terrain (in-game tessellation, in no run) and the sail symbol (on its sail) stay out of the rays' scene.
+- Tessellated rigid objects and terrain (in-game tessellation, in no run): done in Parity round 2 (Rarer Objects in the Rays); the sail symbol (on its sail) stays out of the rays' scene.
 
 Build: `cmake --build build32 --config Release --target renodx-twrome2.addon32`.
 
