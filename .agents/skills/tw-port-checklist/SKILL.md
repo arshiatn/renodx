@@ -146,6 +146,7 @@ Inventory and traps in [testing.md](references/testing.md). In short:
 - The harness covers the bridge, the helper and part of the D3D11 capture. It doesn't run a game's passes or its CPU cost at game scale: say so in the report.
 - A pass counts only with a "ready" or "applied" line; a run that left no new log is invalid. `tools/tw/check_logs.py <folder>` flags both and the known-bad lines (the data-run scripts print it at their end).
 - What only the game can prove goes on the test list.
+- Costs and frame times come from measurements, not from the maintainer's play: the harness and Nsight for the helper, Time Each Pass and frame traces for the game's passes, PresentMon and WPR for the CPU, all in one fixed scene (Attila: `tools/tw/bench/constantinople_bench.ps1`, the Constantinople siege after its scripted camera move, the CPU fix's prefetch build as the baseline, run after every optimization round with the maintainer's standing OK). The maintainer's own tests are for look verdicts (screenshots off and on) and what only a long session shows.
 
 ## Asking the maintainer for a test
 
