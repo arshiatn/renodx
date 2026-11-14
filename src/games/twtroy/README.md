@@ -1,5 +1,29 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### Round v48 (2026-11-14, Pharaoh's engine twin ported; built only, not run in game)
+
+Proof: Troy's shaders are Pharaoh's sources in another build (same-name twins; a few the same bytes), checked on Troy's own bytes (RDEF, signatures, instructions), WARP where code runs, and ATN's 2026-11-14 traces (campaign + night siege, 100%, in-game AA off). Tools: `tools/tw/troy` (plan_1114.md).
+- **Fixed: DLSS / DLAA / FSR / XeSS got the frame squared.** Troy's tone mapper 0C12E608 leaves a linear frame (WARP ramp on its bytes); the DLAA prepare / finish wrappers now take it linear (`TW_AA_FRAME_LINEAR`, Pharaoh's). Darks no longer crushed to 0 below 2.4e-4.
+- **Fixed: Coloured Shadows tinted by the sun's direction.** All 25 sun shaders hold `sun_colour` at c3 (c1 is the direction): `sun_colour_register = 3` (WARP: 18 shaders with the filter, 0 values apart; the old register's control differs).
+- **New: the paths' sky and sun light from the game.** `InstallSunDraws(..., 24, 12)` and Troy's `rt_sun` (no scale switch, the sun light x 0x389FB405): Path-Traced AO (ReSTIR GI) in the AO methods (WARP: the cube at float 24 in all 25).
+- **Fixed: below 100% the game's AO and its blurs read the whole depth into the share** (Pharaoh v53 / v58 on the same bytes); view_share's viewport chains and the shroud decals' `inv_rt_size` as Pharaoh's (WARP 33% = 100% beyond the edges; census unclear 807 -> 1).
+- **New: Graphics 1 of 2 as Pharaoh's** (Reset / No RT/PT / RT/PT, FSR, XeSS, FG Method, TAA Motion, LOD Bias on All Textures, NRD); every key kept.
+- **New (Experimental, off): Light Through Foliage** (the G-buffer's bit 128: leaves, cards, blocks 128, grass 160), **Shadow Casters / Hills Out of View** (the shadow pass's casters: Pharaoh's geometry shaders on Troy's 9 shadow VS), **Far Tree Shadows** (the far cards turned to the sun).
+- **New: the rays capture the drawn grass 2C7FBC7D** (its own capture) **and the far tree cards E25688ED** (Pharaoh's).
+
+Build: `cmake --build build --config Release --target renodx-twtroy.addon64`. Test list (in-game AA off, DLSS):
+1. DLAA, then DLSS Performance: dark scenes (night siege) keep their shadow detail; no banding near black.
+2. RT/PT preset: battle and campaign render; the sky light (Path-Traced AO) looks like the game's ambient, not brighter or tinted.
+3. Coloured Shadows on: shadows of banners / sails take their colour, not a blue-grey tint everywhere.
+4. DLSS Ultra Performance: GT-VBAO and the game's SSAO fill the whole view (no top-left rectangle, no smear).
+5. Campaign map at Ultra Performance: the shroud's edge lines up with the map.
+6. Rays on: grass and far trees cast ray-traced shadows (Far Tree Shadows on).
+7. Shadow Casters Out of View on: shadows of trees / buildings just outside the view stay when panning.
+8. Light Through Foliage 0.5: leaves' and grass shadows let some sun through; walls stay dark.
+9. Upscaling Mode / FSR / XeSS on another GPU: no DLSS start; the page's three presets switch cleanly.
+
+Not done (what, why, smallest step): Rays Replace Shadow Maps + Shadows Only (12 twins; WARP P-tests first); point lights 143A02ED (one campaign draw; the night siege's fires are particle lights 643FC156, Pharaoh 5AD46115); the SSR apply 00645DA1 below 100% (Pharaoh's 926-line apply re-decompiled on Troy's bytes, then its WARP); leaves out of view (a TEXCOORD4-less RT_LEAF variant); campaign trees 54D2CFBD / billboards DF8EAF69 (Troy's rigid-standard cut-out capture); the game's contact march off under ours (byte 4, Pharaoh v51); water (68 twins), smoke, fog, InstallThin; SDR preset, SETTINGS_REVISION, Hue Clip measured on 0C12E608.
+
 ### Round v47 (2026-11-14, shared code from Attila / Pharaoh; built only, not run in game)
 
 - **Fixed: the Ray Tracing Debug View's Screen-Space AO was magenta.** No AO pass hook keeps it here (ssao01 binds no camera), so it is now what each sun draw reads at its `t_ssao` (the game's SSAO or GT-VBAO, blurred), copied before the rays' AO and the AO filter take its place: `rt_scene::InstallSunDebugAmbient` (`twattila/rt_scene.hpp`, Pharaoh's hook moved there). Its mapping from the shaders' bytes: all 24 sun draws with an AO slot read it at `(SV_Position + g_vpos_texel_offset) x g_screen_size.zw`, as their G-buffer, which is the Debug View's own mapping (`tools/tw/debug_ao_v47/ao_mapping.py`; the same bytes in Pharaoh's 24, where a trace proved it; Warhammer III's read it through their overscans and fail the check). Page dump: the same but the Build Date.

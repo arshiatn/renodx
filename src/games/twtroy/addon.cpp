@@ -36,11 +36,17 @@
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
 #include "../twpharaohdynasties/trace_reads.hpp"
+// Pharaoh's outside-view geometry shaders (built bytes): Troy's shadow vertex shaders write the same outputs (SCENE_SHADERS).
+#include "../twpharaohdynasties/rt_outside_view_branch_gs.h"
+#include "../twpharaohdynasties/rt_outside_view_card_gs.h"
+#include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
+#include "../twpharaohdynasties/rt_outside_view_world_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -393,6 +399,8 @@ void BuildRuntimeData() {
         .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
     },
+    twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
+                                  [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
     // Gamma Correction //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .value_type = renodx::utils::settings::SettingValueType::BULLET,
@@ -1354,6 +1362,12 @@ twattila::feature_settings::SssSliders sss_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
+// Texture LOD Bias on All Textures (Graphics 1 of 2, Experimental): the trilinear samplers too
+// (texture_lod_bias.hpp SetWrappingTrilinear).
+float lod_bias_trilinear_row = 0.f;
+// Shadow Casters Out of View and the hills' (Graphics 1 of 2, Experimental): SCENE_SHADERS' cascade_keep casters.
+float rays_units_out_of_view_row = 0.f;
+float rays_hills_out_of_view_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1386,9 +1400,11 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 20> MOTION_SHADERS =
 }};
 
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_port.py): the main view's terrain, rigid objects, tree
-// branches and leaves and units, and their capture versions (world positions; leaves also UVs).
-// The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow.
-constexpr std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
+// branches and leaves, units, grass and far tree cards, and their capture versions (world positions; leaves, grass and
+// cards also UVs). The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do
+// the far forest's blocks (rigidtreebillboard vs40_main_block 1FD86210): cards facing the camera with no shadow-pass draw,
+// as Pharaoh's FE92BA2D.
+constexpr std::array<twattila::rt_scene::SceneShader, 27> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1405,6 +1421,25 @@ constexpr std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
     {.hash = 0xB9B62F83, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
     {.hash = 0x3CEE34E8, .capture_shader = __rt_capture_unit_4_bones_dismember, .dynamic = true},
     {.hash = 0x0AF83680, .capture_shader = __rt_capture_grass_0af8, .dynamic = true, .foliage = true, .grass = true},
+    // The drawn grass (grass.hlsl vs40_main: 2026-10-27's battle, 7 draws, 9.7 M indices; ATN's 2026-11-14 traces), its UV
+    // at o2.xy (TEXCOORD0; Pharaoh's twin E710D4E7 has it at o3).
+    {.hash = 0x2C7FBC7D, .capture_shader = __rt_capture_grass_2c7f, .dynamic = true, .foliage = true, .grass = true},
+    // Far trees' cards (rigidtreebillboard vs40_main): turned to the sun, their alpha at t3 (FCE1EAEC's t_diffuse_map_tree).
+    {.hash = 0xE25688ED, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    // The shadow pass's casters (the 6144 x 6144 R32 atlas, 2 x 2 cascades; its vertex shaders' view-projection at cb0[9-12]):
+    // what is out of the main view still casts there (Pharaoh's rt_outside_view geometry shaders: each variant's input is a
+    // prefix of these vertex shaders' outputs, fxc /dumpbin, and their world position is that output: tools\tw\troy\
+    // troy_signatures.txt, troy_output_writes_casters.txt). Every frame as drawn; far cards cut out by 9004F948's t2. The leaves
+    // (A295269F) stay out: Troy's write no TEXCOORD4, which Pharaoh's RT_LEAF variant reads.
+    {.hash = 0xAF7C4636, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0xC8DA195D, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0x83A7A039, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0xCB8BA7B6, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0xAEE2A80A, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0x8624BF7C, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0xB6BC2496, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0x4215C70C, .dynamic = true, .cascade_keep = __rt_outside_view_branch},
+    {.hash = 0xB320F789, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 2, .cascade_keep = __rt_outside_view_card},
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
@@ -1443,11 +1478,16 @@ constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
+  // preset's is XeSS on Intel's, else FSR.
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
   // The HBAO setting's Visibility Bitmask (ssao01): its Depth Levels (twattila/ao_pass.hpp; no Temporal Smoothing).
   twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f, false, (shader_injection.ssao_resolution != 0.f) ? 2.f : 1.f,
                             false);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
   static uint32_t ao_frame = 0;
@@ -1456,7 +1496,14 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::ao_filter::Update(swapchain, {.temporal = bitmask_ao && shader_injection.ssao_temporal != 0.f,
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
+  rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
+  twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
+  // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
+  auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
+  sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
+  twattila::screen_space_shadows::Update(swapchain, sss_settings);
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
@@ -1522,6 +1569,34 @@ extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Total War Saga: Troy by ATN";  // TODO: change me!
 
 namespace {
+
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
+// (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO, the paths take the sky from the sun
+// shaders' ambient cube; no ray-traced reflections, point lights, fog, water or smoke hooked.
+constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
+    .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
+    .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
+    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its ambient occlusion\n"
+                     "and shadows. The rest at its default.",
+    .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"
+                       "The rest of this page at its default.",
+    .rays_tooltip = "Ray-traced shadows, path-traced ambient occlusion and Global Illumination at my settings.\n"
+                    "The rest of this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
+                    "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
+    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
+                      "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "Needs an upscaler.",
+    .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
+                  "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
+                  "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
+                  "thin ones.\n"
+                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.\n"
+                  "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
+                  "turns it on below. Needs an upscaler.",
+    .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
+    .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+};
 
 void ConfigureAddon() {
   if (configured) return;
@@ -1699,7 +1774,37 @@ void ConfigureAddon() {
     if (std::ranges::find(engine_sections, test.section) == engine_sections.end()) engine_sections.push_back(test.section);
   }
   twattila::feature_settings::SetTints({}, engine_sections);
-  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections);
+
+  // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
+  // Mode's pages. Only what this game hooks: the paths' sky from the sun shaders' ambient cube (InstallSunDraws' 24),
+  // foliage in the screen-space shadows (bit 128) and casters out of view (the shadow pass's; both Experimental, off: no
+  // game run has shown them here); no Rays Replace Shadow Maps, ray-traced reflections, point lights, fog, water or smoke
+  // (their rows stay hidden).
+  twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  // Fog Shadows, the torches' light in it and Smoke Shadows start off (hidden: not hooked here yet; once they are, no game
+  // run has shown them in this game), Far Tree Shadows (Experimental: the cards' capture is new here) and Specular Occlusion
+  // too (Experimental before the page); RT/PT turns all but the smoke and far trees on, as ATN's list does.
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
+        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedFarTreeShadows") {
+      setting->default_value = 0.f;
+    }
+  }
+  twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
+                                             .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row,
+                                             .rays_units_out_of_view = &rays_units_out_of_view_row,
+                                             .units_out_of_view_tested = false,
+                                             .rays_hills_out_of_view = &rays_hills_out_of_view_row,
+                                             .texts = &PAGE_TEXTS,
+                                             .foliage_light_tested = false,
+                                             .smoke_shadows_tested = false,
+                                             .far_cards_tested = false,
+                                             .water_caustics_tested = false,
+                                             .has_reflections = false,
+                                             .rays_replace_ao = false,
+                                             .rays_multiply_maps = true});
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
 }
@@ -1751,9 +1856,19 @@ bool AttachAddon() {
   // keeps it here (ssao01 binds no camera, below).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
   // Before the Light Bounce's (its callback draws the sun draw again).
-  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. The ambient cube starts at
+  // lighting_VS_PS float 24 (c6-c11: +x, -x, +y, -y, +z, -z), the sun colour at float 12 (c3; x 0x389FB405 in rt_sun:
+  // twtroy/rt_sun.cs_5_0.hlsl), the paths' sky and sun light: all 25 sun shaders' RDEF, WARP tools\tw\troy\sun_test.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 24, 12);
+  // Coloured Shadows (Bend's and the rays' filter at t50) on the sun's colour: lighting_VS_PS c3 (sun_colour; c1 is
+  // sun_direction), in all 25 sun shaders' RDEF (b3, b2 without the shadow maps; tools\tw\troy\troy_sun_rdef.py).
+  twattila::screen_space_shadows::sun_colour_register = 3;
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // Light Through Foliage: the G-buffer's channel 3 alpha byte, bit 128, which the sun shaders' own code tests (049C3CFB:
+  // and with 128). Of the 2026-10-27 battle's 21 G-buffer shaders, leaves (A6D82BAF), far tree cards (FCE1EAEC) and blocks
+  // (6DA297BD) write 128, grass (EBC9553B) 160, the others 0-64 (units 1 / 33, the lake 64; terrain material 3C1C6172 its
+  // vertex value; tools\tw\troy\troy_material_writes_1027.txt).
+  twattila::screen_space_shadows::foliage_material_bit = 128;
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's environment b0, camera b1 with
   // g_screen_size c27 / g_viewport_dimensions c29 as the Options' defaults, shadowmap b2's splits, lighting_VS_PS b3's sun
@@ -1764,6 +1879,12 @@ bool AttachAddon() {
   // decals 516488AB and terrain A34C0DDA (tools/tw/troy/plan_1114.md; names.tsv of the dump). The SSR apply's and the lit
   // particles' blend; the VS inputs of the particles F5CE48CC, the point lights 6CFF8F83, the grass 2C7FBC7D and the far
   // trees' blocks 1FD86210 and cards E25688ED (the 10-27 trace's casters the rays lack); instanced counts apart.
+  // The game maps many uvs to its viewport itself (uv x (c29.zw x c31.xy): the forward-lit shaders, the sun shaders' SSEO;
+  // the scale census's 807 unclear, Pharaoh's class): view_share leaves those chains.
+  twattila::view_share::SetViewportChains(true);
+  // The campaign's shroud decals (campaignshrouddecals 516488AB) build their NDC from SV_Position x inv_rt_size (their
+  // buffer's c13, as Pharaoh's): patched as the camera's target size below 100%.
+  twattila::view_share::SetTargetSizes(std::array<const char*, 1>{"inv_rt_size"});
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
@@ -1792,7 +1913,15 @@ bool AttachAddon() {
   // D42C3523 binds only its own constants (ssao2_PS at b0, the linear depth at t0), no camera, so the trace and the rays'
   // AO stay at the sun draws (their t_ssao at ao_slot), as Pharaoh's.
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
-  twattila::rt_scene::Install(SCENE_SHADERS, {});
+  // The TW games' view; the shadow pass's casters through world positions (its vertex shaders' view-projection at cb0[9-12]),
+  // from the sun's per-frame atlas only (R32_TYPELESS 6144 x 6144, 2 x 2 cascades of 3072: ATN's 2026-11-14 traces; not the
+  // kept baked map, R16 4096 x 4096), as Pharaoh's.
+  twattila::rt_scene::Host rt_host = twattila::rt_scene::TW_HOST;
+  rt_host.cascade_world = true;
+  rt_host.cascade_target = [](const D3D11_TEXTURE2D_DESC& desc) {
+    return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
+  };
+  twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 
