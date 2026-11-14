@@ -68,6 +68,10 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     quarter of the render's size. Particle Resolution Full (the default) leaves the game's particles as they are. The facts from
     the 24 traces: one instanced draw of every lit particle a frame (3F1B86E1 in all 23 frames with particles), blended over the
     light buffer at the render size, read next by the luma statistics or the tone mapper; the layer itself not run.
+  - **New: the campaign's trees and plants in view cast in the rays** (rigidcampaignvegetation E7792B60; in no trace; out of
+    view they cast since round 1): Troy's capture made again from Pharaoh's bytes (the same code, the wind's constants
+    elsewhere), cut where the G-buffer EB0089B4 cuts (its diffuse map's alpha below 0.5). WARP (`test/tw_pharaoh` 4): the
+    game's position within 6e-8, the UV within half precision; a second later (the wind) differs.
 
 - **New: Fog Strength** (Extra, 0 to 2, default 1), on every fog the game ships, also the ones the maintainer's settings
   don't draw. That covers the battle fog's upsample (also its own full-resolution fallback along edges), low spec, MSAA,

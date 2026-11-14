@@ -1984,7 +1984,11 @@ constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixe
 // map falls below the distance fade, and again against the angle to the camera (Troy's 07295514 instruction for instruction,
 // the fade at cb1 there cb0); the rays cut at t0.w alone (the helper's 0.5), as Troy's.
 constexpr std::array<twattila::rt_scene::PixelMask, 1> CAMPAIGN_TREE_MASKS = {{{.pixel_shader = 0xE924C902, .slot = 0}}};
-constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
+// The campaign's trees and plants (rigidcampaignvegetation vs40_main E7792B60): its one G-buffer, EB0089B4, discards below 0.5
+// of its diffuse map's alpha (t2.w at (TEXCOORD0.w, TEXCOORD1.w)), Troy's 74B2E609's test; its MSAA G-buffer 191C5CCD stays
+// out (no rays under the game's MSAA), and so does its z-prefill B39D02A5 (the same draw again).
+constexpr std::array<twattila::rt_scene::PixelMask, 1> VEGETATION_MASKS = {{{.pixel_shader = 0xEB0089B4, .slot = 2}}};
+constexpr std::array<twattila::rt_scene::SceneShader, 36> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -2009,6 +2013,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
     // The campaign's trees (rigidcampaigntrees vs40_main 16D14106; in no trace, level B): Troy's 07321725 line for line, its
     // capture (rigid, instanced, rows in POSITION1-3, no wind; the UV o3.xy of E924C902's t0 test). WARP: test\tw_pharaoh.
     {.hash = 0x16D14106, .capture_shader = __rt_capture_campaign_trees, .foliage = true, .pixel_masks = CAMPAIGN_TREE_MASKS},
+    // The campaign's trees and plants in view (rigidcampaignvegetation vs40_main E7792B60; in no trace, level B), every frame as
+    // drawn (their wind and their lean toward a high camera): Troy's 04C7C807 capture made again from Pharaoh's bytes (the same
+    // code, the wind constants at other offsets). Out of view: their shadow pass 3368E9E7 below. WARP: test\tw_pharaoh.
+    {.hash = 0xE7792B60, .capture_shader = __rt_capture_campaign_vegetation, .dynamic = true, .foliage = true, .pixel_masks = VEGETATION_MASKS},
     // Cloth (phar_rigid_battle_cloth_wind) and flags (rigid_default_flag): sheets moved by the time and the wind, every frame.
     {.hash = 0x2F2A0E7E, .capture_shader = __rt_capture_cloth_wind, .dynamic = true, .thin = true},
     {.hash = 0x8DE94E2F, .capture_shader = __rt_capture_flag, .dynamic = true, .thin = true},

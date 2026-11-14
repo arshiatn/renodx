@@ -14,6 +14,10 @@
 // 3. The placed ropes (rope vs40_main_rigid 655AB38D): the capture (rt_capture_rope_rigid, make_wind_motion_vs.py :world_view)
 //    from random ropes near the camera: its world through the camera's view_projection is the game's SV_Position within 1e-4
 //    of w; CONTROL: the rope's middle (the game's TEXCOORD5, before its camera-facing offset) misses that tolerance, every one.
+// 4. The campaign's vegetation (rigidcampaignvegetation vs40_main E7792B60, Troy's 04C7C807 with its wind constants at other
+//    offsets): the capture (rt_capture_campaign_vegetation) from 256 random vertices with the camera and a blowing wind: its
+//    world x the view-projection is the game's SV_Position (to the float rounding of its terms), its w the UV (POSITION0.w,
+//    NORMAL0.w) as two halves; CONTROL the capture a second later differs (the wind is in play).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -491,6 +495,79 @@ static void TestPlacedRopes(const std::string& game_folder, const std::string& b
               capture_worst, VERTICES, middles_missing, VERTICES);
 }
 
+// The campaign's vegetation: the capture against the game's E7792B60 from random trees and plants around the camera.
+static void TestCampaignVegetation(const std::string& game_folder, const std::string& built_folder) {
+  const auto game = ReadFile(game_folder + "\\0xE7792B60.vs_5_0.cso");
+  const auto capture = ReadFile(built_folder + "\\rt_capture_campaign_vegetation.cso");
+  CHECK(!game.empty() && !capture.empty(), "vegetation: the csos");
+  if (game.empty() || capture.empty()) return;
+  uint32_t seed = 12345;
+  const auto random = [&seed](float low, float high) {
+    seed = seed * 1664525u + 1013904223u;
+    return low + (high - low) * static_cast<float>(seed >> 8) / 16777216.f;
+  };
+  // Each vertex 20 floats: POSITION0 the local offset with the UV's u in w, NORMAL0 with v in w, COLOR0 with the wind weight
+  // in w, POSITION1 the place's x / z, POSITION2 its height, turn, scale, fade.
+  constexpr int VERTICES = 256;
+  std::vector<float> vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    const float values[20] = {random(-3.f, 3.f), random(0.f, 8.f), random(-3.f, 3.f), random(0.f, 1.f),
+                              random(-1.f, 1.f), random(-1.f, 1.f), random(-1.f, 1.f), random(0.f, 1.f),
+                              random(0.f, 1.f), random(0.f, 1.f), random(0.f, 1.f), random(0.7f, 1.f),
+                              CAMERA[0] + random(-150.f, 150.f), CAMERA[2] + random(-150.f, 150.f), 0.f, 0.f,
+                              CAMERA[1] - random(20.f, 120.f), random(0.f, 6.28f), random(0.6f, 1.4f), random(0.f, 1.f)};
+    vertices.insert(vertices.end(), std::begin(values), std::end(values));
+  }
+  // Pharaoh's cb_environment: the wind's direction (c0.xy), vector (c0.zw), main vector (c1.xy), gust start (c1.z),
+  // multiplier (c1.w), horizontal and vertical strength (c2.xy); the cube map's sun scale (c5.w), the tint scale (c6.x).
+  std::array<float, 28> wind = {0.8f, 0.6f, 1.f, 0.5f, 1.f, 0.5f, 0.f, 1.f, 1.3f, 0.9f};
+  wind[23] = 1.f;
+  wind[24] = 1.f;
+  auto camera = CAMERA;
+  const std::array<ComPtr<ID3D11Buffer>, 2> now = {ConstantBuffer(camera.data(), sizeof(camera)), ConstantBuffer(wind.data(), sizeof(wind))};
+  const auto positions = StreamOut(game, "SV_Position", vertices, now);
+  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, now);
+  camera[104] += 1.f;  // time_in_sec (c26.x)
+  const std::array<ComPtr<ID3D11Buffer>, 2> later = {ConstantBuffer(camera.data(), sizeof(camera)), ConstantBuffer(wind.data(), sizeof(wind))};
+  const auto worlds_later = StreamOut(capture, "TEXCOORD", vertices, later);
+  if (positions.size() != VERTICES * 4 || worlds.size() != VERTICES * 4 || worlds_later.size() != VERTICES * 4) {
+    CHECK(false, "vegetation: stream output sizes");
+    return;
+  }
+  // SV_Position = dot(world, c9 .. c12) in double from the capture's world; the error over the sum of the dot's terms' sizes.
+  const auto place_error = [&positions](const std::vector<float>& world) {
+    double worst = 0.0;
+    for (int vertex = 0; vertex < VERTICES; ++vertex) {
+      for (int row = 0; row < 4; ++row) {
+        double clip = 0.0;
+        double size = 0.0;
+        for (int column = 0; column < 4; ++column) {
+          const double term = ((column == 3) ? 1.0 : static_cast<double>(world[vertex * 4 + column])) * CAMERA[36 + row * 4 + column];
+          clip += term;
+          size += std::abs(term);
+        }
+        worst = std::max(worst, std::abs(clip - positions[vertex * 4 + row]) / std::max(size, 1e-6));
+      }
+    }
+    return worst;
+  };
+  const double now_error = place_error(worlds);
+  const double later_error = place_error(worlds_later);
+  double uv_error = 0.0;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    uint32_t bits;
+    std::memcpy(&bits, &worlds[vertex * 4 + 3], 4);
+    uv_error = std::max(uv_error, static_cast<double>(std::abs(HalfToFloat(bits & 0xFFFFu) - vertices[vertex * 20 + 3])));
+    uv_error = std::max(uv_error, static_cast<double>(std::abs(HalfToFloat(bits >> 16) - vertices[vertex * 20 + 7])));
+  }
+  CHECK(now_error < 1e-6, "vegetation: the capture's world x the camera %g off the game's SV_Position (over its terms' size)", now_error);
+  CHECK(uv_error < 1e-3, "vegetation: the UV off by %g", uv_error);
+  CHECK(later_error > 1e-4, "vegetation: CONTROL a second later = now (%g): the wind not in play", later_error);
+  std::printf("4 E7792B60: the capture's world x the camera within %.2g of the game's SV_Position (over its terms' size), its UV "
+              "within %.2g; CONTROL a second later %.2g\n",
+              now_error, uv_error, later_error);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("usage: pharaoh.exe <the game's csos> <the add-on's built csos> [Pharaoh.exe]\n");
@@ -504,6 +581,7 @@ int main(int argc, char** argv) {
   }
   TestCampaignTrees(argv[1], argv[2]);
   TestPlacedRopes(argv[1], argv[2]);
+  TestCampaignVegetation(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
   return failures == 0 ? 0 : 1;
 }
