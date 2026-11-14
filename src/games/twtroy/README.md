@@ -1,5 +1,26 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### Round v51 (2026-11-14, built only, not run in game)
+
+- **New (Experimental, off; on in RT/PT): Torch and Fire Shadows.** The point lights (143A02ED, two instanced draws a frame in ATN's third session) cast their shadows from rays: the light shader replaced in Pharaoh's form (`shaders/pointlight00`), the light's place read from its 64-byte instances. WARP (`tools/tw/troy/point_light`): the built shader against the game's bytes at 100%, 0 of 393,216 values apart (7,773 lit; control 8,958 apart). The night siege's fires (particle lights 643FC156) keep the game's light: already patched for the render share (as Pharaoh's 5AD46115), no shadows from rays in Pharaoh either.
+- **New: the campaign's trees cast ray-traced shadows** (54D2CFBD: the rigid standard capture with the UV, cut out by the leaves' alpha, the sway left out; Pharaoh's palms). WARP (`tools/tw/troy/trees`): 1.4e-08 apart from the game's place; with the sway on, 8.3e-04 (the control).
+- **New (with Far Tree Shadows): the campaign's far tree billboards cast too** (DF8EAF69, turned to the sun as the battle's far trees; the game draws them no shadow). WARP: a level camera with the sun behind gives the game's own card, 8.4e-06 m apart; 30 degrees off, 1.68 m (the control).
+- **New: one method for contact shadows.** Where Bend or the rays shadow a sun draw, the game's own 8-step contact march is off (Pharaoh's hook, now shared: `twattila/contact_shadows_off.hpp`, Pharaoh's behaviour unchanged). WARP (`tools/tw/troy/sun_test` v51 on the game's bytes and ATN's traces): all 25 sun shaders (the 12 skin ones have no march: nothing changes there).
+
+Test list (in-game AA off, DLSS, RT/PT preset):
+1. A battle with torches (by night or day): torch and fire light stops at walls and units (Torch and Fire Shadows on).
+2. The same with it off: the game's torch light; no flicker either way.
+3. The night siege's fires keep their light at every Upscaling Mode (Ultra Performance too).
+4. Campaign map: trees cast shadows that match the trees, also while the camera moves.
+5. Far Tree Shadows on, campaign map zoomed out: far forests cast shadows; zooming in, no doubled tree shadows.
+6. Bend or ray-traced shadows on: contact shadows look as before at a distance, no dark halo near walls and units.
+7. Rays Replace Shadow Maps on: the sun's shadows come from the rays alone; far terrain keeps the game's baked shadow.
+8. Rivers and the sea at Ultra Performance: reflections line up with the scene.
+9. Shadow Casters Out of View on: tree and leaf shadows at the screen's edge stay while panning.
+10. DLAA, then DLSS Performance: dark scenes keep their shadow detail.
+
+Not done: the fires' particle lights (643FC156) in the rays (their positions are in the particle list, not instances; rt_scene's point lights belong to another agent's change; Pharaoh has none); the billboards' shroud test (cards under the campaign shroud cast too); the leaves' cut-out at 0.5 (the game's 0.01, and its fade).
+
 ### Round v50 (2026-11-14, built only, not run in game)
 
 - **New (Experimental, off): Rays Replace Shadow Maps and Skip the Shadow Maps.** The 12 sun shaders that read the per-frame shadow maps (the twins of Pharaoh's 12) take them as lit where the rays' shadow is bound, so the sun's shadow comes from the rays alone; the baked far map stays the game's. The hook moved from Pharaoh into shared code (`twattila/sun_replace_maps.hpp`, Pharaoh's behaviour unchanged). WARP (`tools/tw/troy/sun_test` v54 on the game's bytes, synthetic and ATN's trace constants): the 12 listed are exactly the sun shaders reading the atlas through s2; rays only = the game's with the atlas lit, 0 of 2,752,512 values apart; off again = today's; controls 1.26 M apart.
