@@ -1412,12 +1412,17 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 20> MOTION_SHADERS =
 // cards also UVs). The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do
 // the far forest's blocks (rigidtreebillboard vs40_main_block 1FD86210): cards facing the camera with no shadow-pass draw,
 // as Pharaoh's FE92BA2D.
-constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
     {.hash = 0xA96ACBCB, .capture_shader = __rt_capture_rigid_default},
     {.hash = 0xB057851F, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidambientmapground_b057},
+    // The campaign's trees (rigidstandard vs40_main_campaign_trees, Pharaoh's 1C4B8681): B057851F's vertex shader and instance
+    // rows, then an x / z sway of at most 0.12 m x g_wind_vegetation_multiplier (left out: still); C7FDC209 cuts out t0.w x the
+    // fade below 0.01 (the helper's cut-out 0.5).
+    {.hash = 0x54D2CFBD, .capture_shader = __rt_capture_rigid_standard_cut_out, .rows_shader = __motion_record_rigid_rigidambientmapground_b057,
+     .foliage = true, .still = true},
     {.hash = 0x283E18D7, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_283e},
     {.hash = 0xDD82D47A, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_dd82},
     {.hash = 0x86534458, .capture_shader = __rt_capture_rigid_vertexpush},
@@ -1434,6 +1439,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 28> SCENE_SHADERS = {{
     {.hash = 0x2C7FBC7D, .capture_shader = __rt_capture_grass_2c7f, .dynamic = true, .foliage = true, .grass = true},
     // Far trees' cards (rigidtreebillboard vs40_main): turned to the sun, their alpha at t3 (FCE1EAEC's t_diffuse_map_tree).
     {.hash = 0xE25688ED, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    // The campaign's far trees (campaigntreebillboards 0xDF8EAF69: instanced cards turned to the camera, none closer than the
+    // game's start distance; no shadow-pass draw, so only with Far Tree Shadows): turned to the sun, their alpha DAEF2EEF's t0
+    // (below 0.5 discarded, as the helper's cut-out).
+    {.hash = 0xDF8EAF69, .capture_shader = __rt_capture_campaign_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true},
     // The shadow pass's casters (the 6144 x 6144 R32 atlas, 2 x 2 cascades; its vertex shaders' view-projection at cb0[9-12]):
     // what is out of the main view still casts there (Pharaoh's rt_outside_view geometry shaders: each variant's input is a
     // prefix of these vertex shaders' outputs, fxc /dumpbin, and their world position is that output: tools\tw\troy\
@@ -1804,6 +1813,19 @@ void ConfigureAddon() {
       setting->default_value = 0.f;
     }
   }
+  // Torch and Fire Shadows from rays (Pharaoh's row): after the preset's defaults, so it starts off (Experimental: no game run
+  // has shown them here yet); RT/PT turns it on, as ATN's list does.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedPointLightShadows",
+      .binding = &rt_sliders.local_lights,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Torch and Fire Shadows (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Torches and fires cast their shadows from rays too.\n"
+                 "With Path-Traced Global Illumination they also light what the screen never saw.",
+      .labels = {"Off", "On"},
+  });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
@@ -1818,6 +1840,7 @@ void ConfigureAddon() {
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
+                                             .lights_own_row = true,
                                              .has_reflections = false,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
@@ -1942,7 +1965,12 @@ bool AttachAddon() {
   rt_host.cascade_target = [](const D3D11_TEXTURE2D_DESC& desc) {
     return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
   };
+  // The point light PS's diffuse scale (143A02ED's literal 0x389FB405, Pharaoh's).
+  rt_host.local_light_scale = 7.615242e-05f;
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
+  // The point lights (ATN's session 3: two instanced draws a frame, VS 6CFF8F83 with PS 143A02ED after the sun draw; 64-byte
+  // instances, the light's position at POSITION2.xyz): shaders/pointlight00 reads the rays' bits (Pharaoh's fire02 form).
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x143A02ED});
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 
