@@ -1959,6 +1959,7 @@ void ConfigureAddon() {
       {"GraphicsCampaignDraw", 1.f},
       {"GraphicsShadowDetail", 1.f},
       {"GraphicsSmallShadows", 1.f},
+      {"GrassHeightDistance", 1.f},
   };
   for (const auto& test : engine_tests) {
     // Its option's start: the game's (1x, Game's or -1).
@@ -2132,6 +2133,20 @@ void ConfigureAddon() {
                "value the game reads (unsure ones).",
       .section = engine_tests.empty() ? std::string("More Tests") : engine_tests.front().section,
       .tint = 0xFFD23C,
+  });
+  // Attila's Grass Height Distance: the grass's 1 / 100 m in its VS, G-buffer and pre-pass PS and their copies
+  // (shared.h GRASS_INV_DISTANCE; tools/tw/wh2/par_w2_make_grass.py).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "GrassHeightDistance",
+      .binding = &shader_injection.grass_height_distance,
+      .default_value = 1.f,
+      .label = "Grass Height Distance",
+      .section = twattila::engine_tests::GRASS,
+      .tooltip = "Grass blades shrink and fade into the ground with distance, gone at 100 m (the game's).\n"
+                 "Higher: full grass farther away.",
+      .min = 0.25f,
+      .max = 10.f,
+      .format = "%.2fx",
   });
   twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
 
