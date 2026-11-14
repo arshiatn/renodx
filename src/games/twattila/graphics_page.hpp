@@ -859,7 +859,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .label = "Torch and Fire Light from Path Tracing (Experimental)",
           .section = section,
           .tooltip = "Torches and fires lit by the path-traced Light Bounce instead of their own shadow rays: faster with many fires.\n"
-                     "Softer torch light and shadows, without the torches' highlights; follows Light Bounce Strength.",
+                     "Noisier (most at Half resolution), without the torches' highlights; follows Light Bounce Strength.",
           .labels = {"Off", "On"},
           .is_visible = more_path_lights,
       });
