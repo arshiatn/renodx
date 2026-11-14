@@ -346,12 +346,17 @@ using FogRays = RaysShader<0x492B87C7, 43>;
 // buffer (ONE / INV_SRC_ALPHA, at half size); the others are decals (61AFC16D, DE44A861), the particles' lights (51B21D74),
 // overlay (73514DBC) and distortion (F0998601). The one-vertex C3300B96 drew in none. 1FC776EF's output signature and its
 // writes to it are Pharaoh's 109B79CE's (fxc -dumpbin): Pharaoh's quad shader at F32116B4's slots
-// (rt_particle_quads.gs_5_0.hlsl). Its lower-effects twins DDABB799 / 687378DB (t4, s3, t7: one slot below) drew in no
-// trace: left out.
+// (rt_particle_quads.gs_5_0.hlsl). Its lower-effects twins ps_main DDABB799 and ps_main_high_quality without shadows
+// 687378DB (in no trace: level B) bind its diffuse array, sampler and emitter constants one slot below (t4 / s3 / t7, the
+// same 80-byte constants; fxc -dumpbin) and take the alpha as it does (sRGB decode x the particle's, crush): shifted by 1.
 constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{
     {.hash = 0x1FC776EF, .quad_shader = __rt_particle_quads, .indirect = true},
 }};
-constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADERS = {{{.hash = 0xF32116B4}}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 3> SMOKE_PIXEL_SHADERS = {{
+    {.hash = 0xF32116B4},
+    {.hash = 0xDDABB799, .view_shift = 1, .sampler_shift = 1},
+    {.hash = 0x687378DB, .view_shift = 1, .sampler_shift = 1},
+}};
 
 // Rays Replace Shadow Maps (Experimental, off; Pharaoh's way): the six sun shaders whose shadow the screen-space shadows
 // patched (the data run's log: hardware gather 5.0, standard and skin, single-sampled and MSAA) read the sun's atlas
