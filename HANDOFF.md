@@ -671,7 +671,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     (A only, CPU-bound). The winner's patch + numbers go to tools/tw/heapfix/for_author_pf/ for ATN to send (never by us).
     Quiet machine during measurement: tools/tw/quiet_run.lock (all running agents told: no builds / WARP / GPU jobs while it
     exists) + gpu_job.lock + no compiler processes before each start.
-- [ ] DRAW REDESIGN phase 2 DONE on drw-draw-redesign (6f2d8dea utility + test/tw_draw_dispatch, 5a00df0a every TW add-on
+- [x] DRAW REDESIGN MERGED 63d17575 (one include conflict in Shogun 2: both kept; after the merge both SKILL.md build
+  lines + tw_draw_dispatch x86 / amd64 rerun). Fixes of the Fable review: 3166f59f (1: late Unregisters move the epoch;
+  suite case 8 with a partner DLL), ef1af8e5 (2: fast::Invalidate from view_share; case 9), f68e514b (3: only shader
+  pipelines move the epoch; state objects in-frame +0.035 ms -> noise), 0122d5c7 (4: rt_scene::OnAnyDraw gated, a log
+  line when an un-opted module turns the fast path off), ac649f09 (5: style + the SKILL.md row). Oracle 832 runs / 2.05 M
+  commands 0 differences; dispatch 0.575 -> 0.146 ms (cpl1), 0.700 -> 0.211 ms (cpl2) in the replay; page dumps date
+  only. Left: the rt_scene gate isn't in the oracle (no RT replay registers OnAnyDraw); no in-game run (the final bench).
+  Was: DRAW REDESIGN phase 2 DONE on drw-draw-redesign (6f2d8dea utility + test/tw_draw_dispatch, 5a00df0a every TW add-on
   opts in with gates, 1a4ed7c7 cost pass; not merged): command_action_fast.hpp per-command-list cache, TW-only opt-in,
   other mods unchanged. Replay oracle 832 runs / 2.05 M commands 0 differences; tw_draw_dispatch x86 + amd64 0 differences
   (control fails); 14 TW suite runs PASS; both build lines + Ryse / Tales / Expeditions / R.U.S.E. build; page dumps date
@@ -682,8 +689,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     unload order); (2) theoretical race: a gate's pipeline answer cached before view_share saw the pipeline; (3) perf: the
     epoch moves on every state-object init / destroy; (4) rt_scene::OnAnyDraw ungated, a log line when a module isn't
     opted in; (5) style + a skill row. Suite gaps: null hook, two modules, threads, epoch inside a frame.
-  - [ ] drw_ agent resumed to fix 1-5 + the suite gaps (one commit each), merge atn-mods, rerun every proof; then merge
-  - [ ] rt_scene::OnAnyDraw (Rome Remastered, Shogun 2 RT) left ungated: gate rt_scene::internal::active, with the fixes
+  - [x] drw_ agent fixed 1-5 + the suite gaps; merged
+  - [x] rt_scene::OnAnyDraw gated (0122d5c7)
   - [ ] render_pass_behavior / shader_injection_behavior suites need ReShade 6.7.3's DLL (a download): ATN DECIDES
   - [ ] The agent started 6 amd64 replay builds early while quiet_run.lock existed (the hfp_ A/B window): every hfp_ start
     was checked for compilers and the A-to-A spreads stayed small; the 16-thread run re-measures P anyway
