@@ -1,5 +1,37 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### Parity round (2026-11-14; built only, not run in game)
+
+Parity table against Attila's page: `tools/tw/troy/parity_1114.md` (have 20, done now 4, needs a trace 6, won't get 12 with
+proofs, open 7).
+- **Fixed: Graphics 2 of 2 never changed anything.** Troy copies each engine value's name into a heap string, so the
+  shared finder found none of them, and four audio tests that never resolved held every row back. Troy's own finder
+  (`tweak_objects.hpp`) reads its 167 values: Terrain Shadows, Campaign Sun Camera Depth, Grass Cell Distance, Grass Height
+  Distance and 17 More Tests work; the 384 rows whose values Troy doesn't have are gone. `test/tw_troy_tweaks`: 167 of 167.
+- **New: Depth of Field** (Extra, 0-2): the blur's radius in the game's four DOF tone mappers; 1 the game's.
+- **New (Experimental, off): Smoke Shadows without rays** (Attila's): smoke dims the sun in the game's shadow maps.
+- **New: Fog Strength** (Extra, 0-2): the battle fog's thickness; 1 the game's bits (`test/tw_troy_shaders`, WARP, also with
+  the game's MSAA and below 100%).
+
+Test list (in-game AA off, DLSS):
+1. Log: a "Graphics:" line at the first battle frame.
+2. Grass Height Distance 2, next battle: full grass farther away.
+3. Terrain Shadows Off, then On: hills stop and start casting.
+4. Depth of Field 0 and 2 with the in-game DOF on: sharp, then a wider blur; 1 as before.
+5. Fog Strength 0 and 2 in a hazy battle: no fog, then thicker; 1 as before, also with the game's MSAA.
+6. Fog Strength 2 at DLSS Performance: the fog lines up with the scene, no band at the screen's edge.
+7. Smoke Shadows (game's shadow maps, rays off) in a burning siege: smoke dims the sun under it, no flicker.
+8. Any More Tests row that crashes or does nothing: name it.
+
+Not done: VFX Brightness (Pharaoh's 2,775-line rebuild of its particle shader, again on Troy's twin 563BA3E8);
+Shadow Map Size (Pharaoh's code patterns are not in Troy: find Troy's shadow atlas size in the decrypted exe first);
+Particle Resolution (Attila's layer expects one vertex a particle: check it on Troy's instanced quads); campaign
+vegetation 04C7C807 in the rays (a new capture) and the campaign's terrain shadows out of view (cascade_keep rows); the
+leaves' cut-out at the game's 0.01 (a per-row cut-off in the helper, shared); banners and sails, campaign trees 07321725,
+fur, displacement meshes and sprite soldiers in the rays (need a trace: a naval battle, a campaign region with those trees,
+a battle with fur and with sprites). Won't get (proofs in the table): Audio Memory, Faster Game CPU Code, the unit / building
+/ campaign detail hooks and values, 50 test rows, Fog & Sky Smoothing, Modded Auto Exposure, Attila's SSR rows.
+
 ### v54 (2026-11-14: RT/PT as Attila's; stamped and installed 10:45 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Far Tree and Smoke Shadows and Water Caustics on, Light Through Foliage 0.5 (rests under the rays); of this game's own rows Shadow Casters Out of View on (as Warhammer III's), Rays Replace and Skip the Shadow Maps and Hills Out of View off. Defaults, labels and No RT/PT as before.
