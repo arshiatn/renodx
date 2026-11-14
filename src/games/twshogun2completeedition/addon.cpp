@@ -1031,6 +1031,9 @@ void ReadDlssAddonOptions() {
   read_choice("LightBounceCheckerboard", 1, 2, &shader_injection.light_bounce_checkerboard);
   read_choice("LightBounceBackFace", 0, 2, &shader_injection.light_bounce_backface);
   read_choice("LightBounceAutoThickness", 1, 2, &shader_injection.light_bounce_auto_thickness);
+  // Water (Attila's keys and ranges; waterplane00).
+  read_float("WaterClarity", 1.f, 0.25f, 16.f, &shader_injection.water_clarity);
+  read_float("WaterCaustics", 0.f, 0.f, 2.f, &shader_injection.water_caustics);
   // Ray tracing (the DLSS addon's Ray Tracing section; Attila's keys and ranges where it has the row).
   auto& ray_tracing = ray_tracing_settings;
   const auto read_on = [](const char* key, bool default_value) {

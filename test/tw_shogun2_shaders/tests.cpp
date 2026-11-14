@@ -40,6 +40,8 @@
 #include "../../src/games/twpharaohdynasties/rt_outside_view_leaf_gs.h"
 // __rt_outside_view_world: the same for its soldiers and horses (their world alone).
 #include "../../src/games/twpharaohdynasties/rt_outside_view_world_gs.h"
+// ShaderInjectData: the HDR addon's b13 (parts 8-9's Water Clarity and Caustics).
+#include "../../src/games/twshogun2completeedition/shared.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -958,10 +960,39 @@ struct WaterShader {
   std::vector<float> ocean_scalars;  // b4 (ocean ultra's ocean_PS)
 };
 
+// #include from the folders of the files opened so far, the latest first, as fxc finds shared.h's ../../shaders/renodx.hlsl
+// (D3D_COMPILE_STANDARD_FILE_INCLUDE looked from the first file's folder; the compiler's parent pointers aren't the buffers given).
+class FolderInclude : public ID3DInclude {
+ public:
+  explicit FolderInclude(const std::filesystem::path& root) : folders_{root} {}
+  HRESULT __stdcall Open(D3D_INCLUDE_TYPE, LPCSTR name, LPCVOID, LPCVOID* data, UINT* bytes) noexcept override {
+    const auto folder = std::find_if(folders_.rbegin(), folders_.rend(),
+                                     [name](const std::filesystem::path& candidate) { return std::filesystem::exists(candidate / name); });
+    if (folder == folders_.rend()) return E_FAIL;
+    const std::filesystem::path path = std::filesystem::weakly_canonical(*folder / name);
+    if (std::ranges::find(folders_, path.parent_path()) == folders_.end()) folders_.push_back(path.parent_path());
+    std::ifstream file(path, std::ios::binary);
+    const std::vector<char> text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    auto* copy = new char[text.size() + 1];
+    std::memcpy(copy, text.data(), text.size());
+    *data = copy;
+    *bytes = static_cast<UINT>(text.size());
+    return S_OK;
+  }
+  HRESULT __stdcall Close(LPCVOID data) noexcept override {
+    delete[] static_cast<const char*>(data);
+    return S_OK;
+  }
+
+ private:
+  std::vector<std::filesystem::path> folders_;
+};
+
 // 8-9. shaders/ocean00, ocean01 and waterplane00 (the rays' reflection in the water's pixel shaders) against the game's
 //      (0x16ADFD60's, 0x6B8954A6's, 0x9B9EC116's csos) on a 32 x 32 target, same inputs, in the probe and the sky branch: the rays unbound, bound with no
 //      hits (share 0), or flagged off (b10 0: CONTROL): the five outputs the game's; the rays' light (share 1, flags 1): the
-//      colour changes where the mask is 1 and nowhere else.
+//      colour changes where the mask is 1 and nowhere else. waterplane00's Water Clarity and Caustics (b13): at clarity 1,
+//      caustics 0 the game's outputs; clarity 4 and caustics 1 each change the colour (CONTROL that they reach it).
 static void TestWater(const std::string& games, const std::string& folder, const WaterShader& water) {
   std::ifstream file(folder + "/0x" + water.hash + ".ps_5_0.cso", std::ios::binary);
   const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -969,11 +1000,12 @@ static void TestWater(const std::string& games, const std::string& folder, const
   ComPtr<ID3DBlob> vertex_code;
   ComPtr<ID3DBlob> ours_code;
   ComPtr<ID3DBlob> errors;
+  FolderInclude include(path + L"/twshogun2completeedition/shaders");
   if (game_code.empty()
       || FAILED(D3DCompile(water.vertex_source, std::strlen(water.vertex_source), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0,
                            vertex_code.GetAddressOf(), errors.GetAddressOf()))
       || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/" + water.ours + L".ps_5_0.hlsl").c_str(), nullptr,
-                                   D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(),
+                                   &include, "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(),
                                    errors.GetAddressOf()))) {
     std::printf("missing 0x%s, or %s\n", water.hash, errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
     std::exit(2);
@@ -1079,7 +1111,8 @@ static void TestWater(const std::string& games, const std::string& folder, const
   const std::array<uint32_t, 4> flags_off = {};
   const std::array<ComPtr<ID3D11Buffer>, 2> flags = {Constants(flags_off.data(), 16), Constants(flags_on.data(), 16)};
   // One pass: its five outputs (RGBA x 3, then two singles), as floats.
-  const auto run = [&](ID3D11PixelShader* pixel_shader, ID3D11Buffer* environment_buffer, ID3D11ShaderResourceView* rays_view, ID3D11Buffer* flag) {
+  const auto run = [&](ID3D11PixelShader* pixel_shader, ID3D11Buffer* environment_buffer, ID3D11ShaderResourceView* rays_view, ID3D11Buffer* flag,
+                       ID3D11Buffer* injection = nullptr) {
     std::array<ComPtr<ID3D11Texture2D>, 5> outputs;
     std::array<ComPtr<ID3D11RenderTargetView>, 5> targets;
     std::array<ID3D11RenderTargetView*, 5> bound = {};
@@ -1104,6 +1137,7 @@ static void TestWater(const std::string& games, const std::string& folder, const
       context->PSSetShaderResources(47, 1, &rays_view);
       context->PSSetConstantBuffers(10, 1, &flag);
     }
+    if (injection != nullptr) context->PSSetConstantBuffers(13, 1, &injection);
     context->RSSetViewports(1, &viewport);
     context->OMSetRenderTargets(5, bound.data(), nullptr);
     context->Draw(3, 0);
@@ -1118,6 +1152,18 @@ static void TestWater(const std::string& games, const std::string& folder, const
   };
   const auto same = [](float x, float y) { return (std::isnan(x) && std::isnan(y)) || std::fabs(x - y) <= (1e-4f * std::max(std::fabs(x), std::fabs(y))) + 1e-5f; };
   size_t differs_unbound = 0, differs_kept = 0, changed = 0, changed_outside = 0, control_changed = 0;
+  const bool water_rows = std::wcscmp(water.ours, L"waterplane00_0x9B9EC116") == 0;
+  size_t differs_neutral = 0, clearer = 0, caustics = 0;
+  const auto injection = [](float clarity, float strength) {
+    ShaderInjectData data = {};
+    data.water_clarity = clarity;
+    data.water_caustics = strength;
+    // A constant buffer's size in whole registers.
+    std::array<float, ((sizeof(ShaderInjectData) + 15) / 16) * 4> registers = {};
+    std::memcpy(registers.data(), &data, sizeof(data));
+    return Constants(registers.data(), sizeof(registers));
+  };
+  const std::array<ComPtr<ID3D11Buffer>, 3> water_settings = {injection(1.f, 0.f), injection(4.f, 0.f), injection(1.f, 1.f)};
   for (const float probes : {1.f, 0.f}) {
     environment[17] = probes;  // g_specular_probes_count
     const auto environment_buffer = Constants(environment.data(), sizeof(environment));
@@ -1126,6 +1172,18 @@ static void TestWater(const std::string& games, const std::string& folder, const
     const auto no_hits = run(ours.Get(), environment_buffer.Get(), rays[0].Get(), flags[1].Get());
     const auto control = run(ours.Get(), environment_buffer.Get(), rays[1].Get(), flags[0].Get());
     const auto hits = run(ours.Get(), environment_buffer.Get(), rays[1].Get(), flags[1].Get());
+    if (water_rows) {
+      const auto neutral = run(ours.Get(), environment_buffer.Get(), nullptr, nullptr, water_settings[0].Get());
+      const auto clear = run(ours.Get(), environment_buffer.Get(), nullptr, nullptr, water_settings[1].Get());
+      const auto rippled = run(ours.Get(), environment_buffer.Get(), nullptr, nullptr, water_settings[2].Get());
+      for (size_t output = 0; output < 5; ++output) {
+        for (size_t value = 0; value < reference[output].size(); ++value) {
+          differs_neutral += same(neutral[output][value], reference[output][value]) ? 0 : 1;
+          clearer += same(clear[output][value], reference[output][value]) ? 0 : 1;
+          caustics += same(rippled[output][value], reference[output][value]) ? 0 : 1;
+        }
+      }
+    }
     for (size_t output = 0; output < 5; ++output) {
       const size_t channels = (output < 3) ? 4 : 1;
       for (size_t value = 0; value < reference[output].size(); ++value) {
@@ -1143,6 +1201,11 @@ static void TestWater(const std::string& games, const std::string& folder, const
   CHECK(differs_unbound == 0 && differs_kept == 0, "%s: %zu values differ unbound, %zu with no hits", name.c_str(), differs_unbound, differs_kept);
   CHECK(changed > 0 && changed_outside == 0, "%s: %zu colour values changed under the mask, %zu elsewhere", name.c_str(), changed, changed_outside);
   CHECK(control_changed == 0, "CONTROL %s: %zu values changed with the flags off", name.c_str(), control_changed);
+  if (water_rows) {
+    CHECK(differs_neutral == 0, "%s: %zu values differ at clarity 1, caustics 0", name.c_str(), differs_neutral);
+    CHECK(clearer > 0 && caustics > 0, "CONTROL %s: clarity 4 changed %zu values, caustics 1 %zu", name.c_str(), clearer, caustics);
+    std::printf("%s: clarity 1, caustics 0 the game's; clarity 4 changes %zu values, caustics 1 %zu\n", name.c_str(), clearer, caustics);
+  }
   std::printf("%s 32x32, probe and sky branches: the game's outputs unbound / no hits / flags off; %zu colour values the rays' under the mask\n",
               name.c_str(), changed);
 }
@@ -1780,34 +1843,6 @@ static void TestLeafFade(const std::string& games, const std::string& folder) {
 //     G-buffer, depth, shadow, AO, probes and lighting: the filter 1 everywhere (all of the sun's colour taken out) gives what
 //     the sun colour (lighting c1) 0 gives unbound, so every use of the sun's colour is filtered; unbound the sun lights the
 //     picture (it differs from c1 0). CONTROL: a filter of 0.5 differs from both.
-// #include from the folders of the files opened so far, the latest first, as fxc finds shared.h's ../../shaders/renodx.hlsl
-// (D3D_COMPILE_STANDARD_FILE_INCLUDE looked from the first file's folder; the compiler's parent pointers aren't the buffers given).
-class FolderInclude : public ID3DInclude {
- public:
-  explicit FolderInclude(const std::filesystem::path& root) : folders_{root} {}
-  HRESULT __stdcall Open(D3D_INCLUDE_TYPE, LPCSTR name, LPCVOID, LPCVOID* data, UINT* bytes) noexcept override {
-    const auto folder = std::find_if(folders_.rbegin(), folders_.rend(),
-                                     [name](const std::filesystem::path& candidate) { return std::filesystem::exists(candidate / name); });
-    if (folder == folders_.rend()) return E_FAIL;
-    const std::filesystem::path path = std::filesystem::weakly_canonical(*folder / name);
-    if (std::ranges::find(folders_, path.parent_path()) == folders_.end()) folders_.push_back(path.parent_path());
-    std::ifstream file(path, std::ios::binary);
-    const std::vector<char> text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    auto* copy = new char[text.size() + 1];
-    std::memcpy(copy, text.data(), text.size());
-    *data = copy;
-    *bytes = static_cast<UINT>(text.size());
-    return S_OK;
-  }
-  HRESULT __stdcall Close(LPCVOID data) noexcept override {
-    delete[] static_cast<const char*>(data);
-    return S_OK;
-  }
-
- private:
-  std::vector<std::filesystem::path> folders_;
-};
-
 struct SunShader {
   const wchar_t* file;
   UINT lighting_slot;
