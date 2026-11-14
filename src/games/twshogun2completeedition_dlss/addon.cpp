@@ -1010,6 +1010,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightBounceResolution", 1.f},
         {"PathTracingBounces", 2.f},
         {"RayTracedSharc", 0.f},
+        {"RayTracedPathSkyApart", 0.f},
+        {"RayTracedPathKeptCube", 0.f},
         {"RayTracedPathSer", 0.f},
         {"RayTracingDenoiser", 0.f},
         {"RayTracedLeafMicromaps", 0.f},
@@ -1065,7 +1067,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
            "The flat far soldiers' ray-traced shadows keep their shape as the camera turns.");
     choice("Far tree shadows (Experimental)", "RayTracedFarTreeShadows", 0, OFF_ON_NAMES, "The flat far trees cast ray-traced shadows too.");
     choice("Shadow casters out of view (Experimental)", "RayTracedUnitsOutOfView", 0, OFF_ON_NAMES,
-           "Buildings and rocks behind the camera cast ray-traced shadows into view too (restart the game).");
+           "Buildings, rocks, trees, sails and banners behind the camera cast ray-traced shadows into view too, far soldiers with Sprite "
+           "soldier shadows (restart the game).");
     ImGui::EndDisabled();
     const bool ambient = checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion",
                                   "Shade in corners and under things from rays, with the game's (the darker).\n"
@@ -1128,9 +1131,16 @@ void OnOverlay(reshade::api::effect_runtime*) {
     count("Path tracing bounces", "PathTracingBounces", 2, 2, "Bounces past the first where the camera sees nothing. 1: faster, a little darker.");
     choice("SHaRC radiance cache (Experimental)", "RayTracedSharc", 0, OFF_ON_NAMES,
            "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).");
-    choice("Path-traced AO (Experimental)", "RayTracedPathAmbient", 0, OFF_ON_NAMES,
-           "The paths bring the sky's light in place of the game's ambient: shade wherever the sky can't reach.\n"
-           "In battles, in place of ray-traced AO (the campaign map keeps it). Needs Ray-traced Global Illumination.");
+    const bool path_ambient = choice("Path-traced AO (Experimental)", "RayTracedPathAmbient", 0, OFF_ON_NAMES,
+                                     "The paths bring the sky's light in place of the game's ambient: shade wherever the sky can't reach.\n"
+                                     "In battles, in place of ray-traced AO (the campaign map keeps it). Needs Ray-traced Global Illumination.")
+                              != 0;
+    ImGui::BeginDisabled(!path_ambient);
+    choice("Path-traced AO: own sky rays (Experimental)", "RayTracedPathSkyApart", 0, OFF_ON_NAMES,
+           "The sky's light averaged from each pixel's own rays: less noise, and more rays help. Off: through ReSTIR GI.");
+    choice("Path-traced AO: steady bounce light (Experimental)", "RayTracedPathKeptCube", 0, OFF_ON_NAMES,
+           "Light bouncing off walls and ground follows the game's sky, not the view Path-traced AO started in.");
+    ImGui::EndDisabled();
     ImGui::EndDisabled();
     choice("Path tracing SER (Experimental)", "RayTracedPathSer", 0, OFF_ON_NAMES,
            "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.");

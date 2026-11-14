@@ -304,6 +304,10 @@ struct SceneShader {
   std::span<const uint8_t> cascade_keep;
   // The same with the draw's UV passed on (uv_semantic), for a cascade draw cut out by its pixel shader's mask (cut_out_masks).
   std::span<const uint8_t> cascade_keep_uv;
+  // Host::cascade_world for this shader alone (its draws' constants stay, cascade_keep takes the main view at its b0), with its
+  // capture version (if any) in place of the game's vertex shader; in a clip-space game what it streams out (world positions)
+  // goes to the captured buffer's world part, as placed meshes do (Shogun 2's cloth and sprite soldiers out of view).
+  bool cascade_world = false;
   // A mesh's identity in place of `hash`: shaders that draw one mesh (the main pass's and the shadow pass's) share its BLAS and its
   // instances (0: its hash).
   uint32_t key_family = 0;
@@ -846,7 +850,7 @@ struct PixelCoverage {
 };
 static std::unordered_map<uint64_t, PixelCoverage> pixel_coverage;
 static bool clip_captures = false;  // the scene shaders stream out their SV_Position
-static bool world_captures = false;  // and some are placed: those in world space (WORLD_BASE)
+static bool world_captures = false;  // and some are placed (or SceneShader::cascade_world): those in world space (WORLD_BASE)
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
 
@@ -1721,8 +1725,10 @@ void Capture(Context& command, const SceneShader& shader) {
                          // A rigid mesh the game's shadow pass alpha-tests too (a fence, a thatched house): as leaves a house let a
                          // quarter of the sun through under Light Through Leaves.
                          | (cut_out ? dlaa_bridge::RT_SOLID_CUT_OUT : 0u);
-  uint32_t& next_vertex = ((clip_captures && placed) ? runtime.world_vertices : runtime.captured_vertices);
-  const UINT end_vertex = ((world_captures && !placed) ? WORLD_BASE : MAX_VERTICES);
+  // Placed meshes, and SceneShader::cascade_world's world positions, in a clip-space game: the world part.
+  const bool world_part = clip_captures && (placed || (cascade_draw && shader.cascade_world));
+  uint32_t& next_vertex = (world_part ? runtime.world_vertices : runtime.captured_vertices);
+  const UINT end_vertex = ((world_captures && !world_part) ? WORLD_BASE : MAX_VERTICES);
   dlaa_bridge::RtCapture* joined = (runtime.captures.empty() ? nullptr : &runtime.captures.back());
   if (!dynamic || joined == nullptr || joined->flags != flags || joined->first_vertex + joined->vertex_count != next_vertex
       || joined->vertex_count % 3 != 0) {
@@ -1733,7 +1739,7 @@ void Capture(Context& command, const SceneShader& shader) {
   if (place ? (runtime.placements.size() >= dlaa_bridge::RT_PLACEMENTS || next_vertex + row_texels > end_vertex)
             : (((compact ? runtime.compact.size() >= dlaa_bridge::RT_COMPACT_DRAWS
                          : ((joined == nullptr || foliage) && runtime.captures.size() >= dlaa_bridge::RT_CAPTURES)))
-               || next_vertex + texels + row_texels + ((clip_captures && placed) ? 0u : runtime.tessellated_reserved) > end_vertex)) {
+               || next_vertex + texels + row_texels + (world_part ? 0u : runtime.tessellated_reserved) > end_vertex)) {
     if (dynamic) runtime.costs.no_room += texels;
     return;
   }
@@ -1761,8 +1767,10 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   ID3D11VertexShader* capture_vertex_shader = nullptr;
   ID3D11GeometryShader* stream_output = nullptr;
-  // Host::scene_draw's capture version, in clip space as the game's.
-  const bool own_capture = host.scene_draw != nullptr && !shader.capture_shader.empty() && !cascade_draw && !shader.tessellated;
+  // Host::scene_draw's capture version, in clip space as the game's; a SceneShader::cascade_world cascade draw's, into its
+  // cascade_keep.
+  const bool own_capture = !shader.capture_shader.empty() && !shader.tessellated && (cascade_draw ? shader.cascade_world : host.scene_draw != nullptr);
+  const bool cascade_world = cascade_draw && (host.cascade_world || shader.cascade_world);
   if (!place && clip_space) {
     const uint32_t streamed_shader =
         shader.tessellated ? renodx::utils::state::GetCurrentShaderHash(command.cmd_list, reshade::api::pipeline_stage::domain_shader, &command.bound_state_cache)
@@ -1781,8 +1789,8 @@ void Capture(Context& command, const SceneShader& shader) {
         streamed_code = (clip_uv ? shader.cascade_keep_uv : shader.cascade_keep);
       }
       if (own_capture) {
-        streamed_code = shader.capture_shader;
-        if (FAILED(device->CreateVertexShader(streamed_code.data(), streamed_code.size(), nullptr,
+        if (!cascade_draw) streamed_code = shader.capture_shader;
+        if (FAILED(device->CreateVertexShader(shader.capture_shader.data(), shader.capture_shader.size(), nullptr,
                                               objects.game_capture_shaders[streamed_shader].ReleaseAndGetAddressOf()))) {
           streamed_code = {};
         }
@@ -1845,7 +1853,7 @@ void Capture(Context& command, const SceneShader& shader) {
     }
     // Host::cascade_world: the game's shadow vertex shader as bound, the main view's matrix for the geometry shader (the game's b0 there
     // put back too, though its shadow pass draws without one).
-    if (host.cascade_world) {
+    if (cascade_world) {
       native1->GSGetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
       native->GSSetConstantBuffers(0, 1, objects.cascade_camera.GetAddressOf());
     } else {
@@ -2031,7 +2039,7 @@ void Capture(Context& command, const SceneShader& shader) {
                                         (faded ? "with an instance left out" : "with second rows apart from the first")));
     }
   }
-  if (cascade_draw && host.cascade_world) {
+  if (cascade_world) {
     if (game_camera_first == 0) {
       native->GSSetConstantBuffers(0, 1, game_camera.GetAddressOf());
     } else {
@@ -3817,11 +3825,13 @@ constexpr auto OnAnyDraw = []<typename Context>(Context&) -> renodx::utils::comm
 inline void InstallScene(std::span<const SceneShader> shaders, const Host& host) {
   internal::scene_shaders = shaders;
   internal::host = host;
-  // A cascade draw streaming out world positions (Host::cascade_world) is no clip-space capture.
+  // A cascade draw streaming out world positions (Host::cascade_world, SceneShader::cascade_world) is no clip-space capture.
   internal::clip_captures = host.scene_draw != nullptr || std::ranges::any_of(shaders, [&host](const SceneShader& shader) {
-                              return shader.capture_shader.empty() && !(host.cascade_world && !shader.cascade_keep.empty());
+                              return shader.capture_shader.empty() && !((host.cascade_world || shader.cascade_world) && !shader.cascade_keep.empty());
                             });
-  internal::world_captures = internal::clip_captures && std::ranges::any_of(shaders, [](const SceneShader& shader) { return !shader.rows_shader.empty(); });
+  internal::world_captures = internal::clip_captures && std::ranges::any_of(shaders, [](const SceneShader& shader) {
+                               return !shader.rows_shader.empty() || shader.cascade_world;
+                             });
   if (internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   if (host.scene_draw != nullptr) reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   for (const SceneShader& shader : shaders) {
