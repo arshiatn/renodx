@@ -18,6 +18,8 @@
 // 5. Toggling on and off 200 times while 4 threads run B's float to half: their results stay A's, no fault.
 // 6. Timing, A against B: float to half on sprite-like rows, the truncation, fmod(x, 1).
 // 7. The truncation block as the Attila CPU Performance Fix leaves it: left alone, the other two still found.
+// Thrones of Britannia's DLL the same way (engine_code's THRONES_BUILD, picked by its truncation's pattern): its RVAs,
+// its CRT's state, its truncation's stack slots.
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
 #include <windows.h>
 #include <xmmintrin.h>
@@ -65,15 +67,27 @@ int main() {
 namespace {
 
 constexpr uint32_t PREFERRED_BASE = 0x10000000;
-constexpr uint32_t HALF_RVA = 0x169a220;
-constexpr uint32_t TRUNCATION_BLOCK_RVA = 0x17f6515;
-constexpr uint32_t TRUNCATION_RESUME_RVA = 0x17f6539;
-constexpr uint32_t FMOD_RVA = 0x1a05cc0;
-// The CRT's state its start-up would have set (the test never runs it): the encoded user _matherr (nullptr: the
-// cookie itself, as its decode rotates the xor), the flag its finish tests.
-constexpr uint32_t COOKIE_RVA = 0x1dae4f4;
-constexpr uint32_t MATHERR_RVA = 0x2a8b504;
-constexpr uint32_t CRT_FLAG_RVA = 0x2a8b4cc;
+
+// A game's DLL: where the routines are, the CRT's state its start-up would have set (the test never runs it: the encoded
+// user _matherr, nullptr being the cookie itself as its decode rotates the xor; the flag its finish tests), and the
+// truncation's float and integer above the block's esp at entry.
+struct TestBuild {
+  const char* game;
+  const twattila::engine_code::internal::Build* code;
+  uint32_t half_rva;
+  uint32_t truncation_block_rva;
+  uint32_t truncation_resume_rva;
+  uint32_t fmod_rva;
+  uint32_t cookie_rva;
+  uint32_t matherr_rva;
+  uint32_t crt_flag_rva;
+  uint32_t float_slot;
+  uint32_t integer_slot;
+};
+constexpr TestBuild ATTILA = {"Attila", &twattila::engine_code::internal::ATTILA_BUILD, 0x169a220, 0x17f6515, 0x17f6539, 0x1a05cc0,
+                              0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28};
+constexpr TestBuild THRONES = {"Thrones of Britannia", &twattila::engine_code::internal::THRONES_BUILD, 0x1707eb0, 0x186aa48, 0x186aa6c,
+                               0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18};
 
 uint32_t Read32(const uint8_t* at) {
   uint32_t value;
@@ -116,8 +130,6 @@ uint8_t* Map(const std::vector<uint8_t>& file, uint32_t* image_size) {
     }
     at += block->SizeOfBlock;
   }
-  Write32(base + MATHERR_RVA, Read32(base + COOKIE_RVA));
-  Write32(base + CRT_FLAG_RVA, 0);
   return base;
 }
 
@@ -367,28 +379,33 @@ int main(int argc, char** argv) {
   const std::vector<uint8_t> file((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
   const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS32*>(file.data() + reinterpret_cast<const IMAGE_DOS_HEADER*>(file.data())->e_lfanew);
   CHECK(nt->OptionalHeader.ImageBase == PREFERRED_BASE);
-  std::printf("empire.retail.dll build %08lX, %zu bytes\n", nt->FileHeader.TimeDateStamp, file.size());
+  const auto* text_header = IMAGE_FIRST_SECTION(nt);
+  const uint32_t text_rva = text_header->VirtualAddress;
+  const uint32_t text_size = text_header->Misc.VirtualSize;
+  namespace ec = twattila::engine_code::internal;
   uint32_t image_size = 0;
   uint8_t* game = Map(file, &image_size);
   uint8_t* patched = Map(file, &image_size);
   CHECK(game != nullptr && patched != nullptr);
-  const auto* text_header = IMAGE_FIRST_SECTION(nt);
-  const uint32_t text_rva = text_header->VirtualAddress;
-  const uint32_t text_size = text_header->Misc.VirtualSize;
+  const TestBuild& build = (Matches(game + text_rva, text_size, ec::THRONES_TRUNCATION) == 1 ? THRONES : ATTILA);
+  std::printf("empire.retail.dll build %08lX, %zu bytes: %s's\n", nt->FileHeader.TimeDateStamp, file.size(), build.game);
+  for (uint8_t* image : {game, patched}) {
+    Write32(image + build.matherr_rva, Read32(image + build.cookie_rva));
+    Write32(image + build.crt_flag_rva, 0);
+  }
 
   // 1. Patterns, sites.
-  namespace ec = twattila::engine_code::internal;
-  for (const std::string_view pattern : {ec::TRUNCATION, ec::HALF, ec::FMOD, ec::FMOD_DISPATCH, ec::FMOD_CLASSIFY, ec::FMOD_FINISH}) {
+  for (const std::string_view pattern : {build.code->truncation, ec::HALF, ec::FMOD, ec::FMOD_DISPATCH, ec::FMOD_CLASSIFY, ec::FMOD_FINISH}) {
     CHECK(Matches(game + text_rva, text_size, pattern) == 1);
   }
-  CHECK(Matches(game + text_rva, text_size, ec::FMOD_MATHERR) >= 1);
+  CHECK(Matches(game + text_rva, text_size, build.code->fmod_matherr) >= 1);
   // B's own code as mapped (A's differs in every relocated address).
   const std::vector<uint8_t> unpatched(patched + text_rva, patched + text_rva + text_size);
-  ec::Prepare(reinterpret_cast<HMODULE>(patched));
+  ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
   for (const ec::Site& site : ec::sites) CHECK(site.at != nullptr);
-  CHECK(ec::sites[0].at == patched + TRUNCATION_BLOCK_RVA);
-  CHECK(ec::sites[1].at == patched + HALF_RVA);
-  CHECK(ec::sites[2].at == patched + FMOD_RVA);
+  CHECK(ec::sites[0].at == patched + build.truncation_block_rva);
+  CHECK(ec::sites[1].at == patched + build.half_rva);
+  CHECK(ec::sites[2].at == patched + build.fmod_rva);
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true);
   CHECK(ec::written);
@@ -403,8 +420,8 @@ int main(int argc, char** argv) {
   std::printf("1. patterns once each; %zu bytes differ, all in the three sites\n", differing);
 
   // The truncation's end jumps back to the harness in both copies (after Prepare: its pattern reads these bytes).
-  JumpTo(game + TRUNCATION_RESUME_RVA, reinterpret_cast<const void*>(&BlockReturn));
-  JumpTo(patched + TRUNCATION_RESUME_RVA, reinterpret_cast<const void*>(&BlockReturn));
+  JumpTo(game + build.truncation_resume_rva, reinterpret_cast<const void*>(&BlockReturn));
+  JumpTo(patched + build.truncation_resume_rva, reinterpret_cast<const void*>(&BlockReturn));
 
   // 2. float to half.
   {
@@ -420,10 +437,10 @@ int main(int argc, char** argv) {
         const auto u = static_cast<uint32_t>(bits);
         std::memcpy(&value, &u, 4);
         for (uint32_t& in : a.in) in = random.Next();
-        a.function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(game + HALF_RVA));
+        a.function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(game + build.half_rva));
         a.argument = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&value));
         std::memcpy(b.in, a.in, sizeof(a.in));
-        b.function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(patched + HALF_RVA));
+        b.function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(patched + build.half_rva));
         b.argument = a.argument;
         CallWithRegisters(&a);
         CallWithRegisters(&b);
@@ -446,11 +463,11 @@ int main(int argc, char** argv) {
       auto* value = reinterpret_cast<uint32_t*>(places[run % 16] + 4 * (random.Next() % 1024));
       *value = random.Next() ^ (random.Next() << 16);
       if ((run & 3) == 0) *value &= 0x80FFFFFF;  // the smallest exponents often
-      RegisterCall a = {.function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(game + HALF_RVA)),
+      RegisterCall a = {.function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(game + build.half_rva)),
                         .argument = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(value))};
       for (uint32_t& in : a.in) in = random.Next();
       RegisterCall b = a;
-      b.function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(patched + HALF_RVA));
+      b.function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(patched + build.half_rva));
       CallWithRegisters(&a);
       CallWithRegisters(&b);
       CHECK(std::memcmp(a.out, b.out, sizeof(a.out)) == 0);
@@ -475,13 +492,13 @@ int main(int argc, char** argv) {
         for (uint64_t index = first; index < last; ++index) {
           for (size_t at = 0; at < sizeof(a.frame); at += 4) Write32(a.frame + at, random.Next());
           const uint32_t input = float_of(index, &random);
-          Write32(a.frame + 128 + 0x1c, input);
+          Write32(a.frame + 128 + build.float_slot, input);
           a.eax_in = random.Next();
           a.control = control_of(&random);
-          a.block = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(game + TRUNCATION_BLOCK_RVA));
+          a.block = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(game + build.truncation_block_rva));
           b.eax_in = a.eax_in;
           b.control = a.control;
-          b.block = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(patched + TRUNCATION_BLOCK_RVA));
+          b.block = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(patched + build.truncation_block_rva));
           std::memcpy(b.frame, a.frame, sizeof(a.frame));
           EnterBlock(&a);
           EnterBlock(&b);
@@ -491,7 +508,8 @@ int main(int argc, char** argv) {
                             && (a.status & 0x3800) == (b.status & 0x3800);
           if (!same) {
             ++bad;
-            Report("  truncation %08X cw %04X: game %08X, ours %08X\n", input, a.control, Read32(a.frame + 128 + 0x28), Read32(b.frame + 128 + 0x28));
+            Report("  truncation %08X cw %04X: game %08X, ours %08X\n", input, a.control, Read32(a.frame + 128 + build.integer_slot),
+                   Read32(b.frame + 128 + build.integer_slot));
           }
           flag_count += ((a.status ^ b.status) & 0x023F) != 0 ? 1 : 0;
         }
@@ -539,9 +557,9 @@ int main(int argc, char** argv) {
     };
     const auto call_both = [&](FmodCall* a, FmodCall* b, Random* random) {
       for (uint32_t& in : a->in) in = random->Next();
-      a->function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(game + FMOD_RVA));
+      a->function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(game + build.fmod_rva));
       *b = *a;
-      b->function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(patched + FMOD_RVA));
+      b->function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(patched + build.fmod_rva));
       CallFmod(a);
       CallFmod(b);
       return compare(*a, *b);
@@ -621,8 +639,8 @@ int main(int argc, char** argv) {
       }
     }
     for (const int setting : {0, 1}) {
-      uint8_t* address_a = game + (setting == 0 ? MATHERR_RVA : CRT_FLAG_RVA);
-      uint8_t* address_b = patched + (setting == 0 ? MATHERR_RVA : CRT_FLAG_RVA);
+      uint8_t* address_a = game + (setting == 0 ? build.matherr_rva : build.crt_flag_rva);
+      uint8_t* address_b = patched + (setting == 0 ? build.matherr_rva : build.crt_flag_rva);
       const uint32_t saved = Read32(address_a);
       Write32(address_a, (setting == 0 ? ~saved : 1u));
       Write32(address_b, Read32(address_a));
@@ -646,8 +664,8 @@ int main(int argc, char** argv) {
     std::atomic<uint64_t> wrong = 0;
     std::atomic<uint64_t> calls = 0;
     using Half = uint16_t(__cdecl*)(const float*);
-    const auto game_half = reinterpret_cast<Half>(game + HALF_RVA);
-    const auto patched_half = reinterpret_cast<Half>(patched + HALF_RVA);
+    const auto game_half = reinterpret_cast<Half>(game + build.half_rva);
+    const auto patched_half = reinterpret_cast<Half>(patched + build.half_rva);
     std::vector<std::thread> threads;
     for (int worker = 0; worker < 4; ++worker) {
       threads.emplace_back([&, worker] {
@@ -711,14 +729,14 @@ int main(int argc, char** argv) {
       }
       return std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / (200.0 * rows.size());
     };
-    const double half_game = time_half(reinterpret_cast<Half>(game + HALF_RVA));
-    const double half_ours = time_half(reinterpret_cast<Half>(patched + HALF_RVA));
+    const double half_game = time_half(reinterpret_cast<Half>(game + build.half_rva));
+    const double half_ours = time_half(reinterpret_cast<Half>(patched + build.half_rva));
     const auto time_block = [&](uint8_t* image) {
-      BlockCall call = {.block = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(image + TRUNCATION_BLOCK_RVA)), .control = 0x27F};
+      BlockCall call = {.block = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(image + build.truncation_block_rva)), .control = 0x27F};
       const auto start = std::chrono::steady_clock::now();
       for (int index = 0; index < 2'000'000; ++index) {
         const float value = static_cast<float>(index & 1023) * 0.37f;
-        std::memcpy(call.frame + 128 + 0x1c, &value, 4);
+        std::memcpy(call.frame + 128 + build.float_slot, &value, 4);
         EnterBlock(&call);
       }
       return std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / 2'000'000.0;
@@ -726,7 +744,7 @@ int main(int argc, char** argv) {
     const double block_game = time_block(game);
     const double block_ours = time_block(patched);
     const auto time_fmod = [&](uint8_t* image) {
-      FmodCall call = {.function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(image + FMOD_RVA)), .control = 0x27F};
+      FmodCall call = {.function = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(image + build.fmod_rva)), .control = 0x27F};
       FromFloat(call.y, 0x3F800000u);
       const auto start = std::chrono::steady_clock::now();
       for (int index = 0; index < 2'000'000; ++index) {
@@ -746,8 +764,8 @@ int main(int argc, char** argv) {
   }
 
   // Off: the game's bytes back (the harness's jumps removed first).
-  std::memcpy(game + TRUNCATION_RESUME_RVA, file.data() + (TRUNCATION_RESUME_RVA - text_rva + text_header->PointerToRawData), 5);
-  std::memcpy(patched + TRUNCATION_RESUME_RVA, unpatched.data() + (TRUNCATION_RESUME_RVA - text_rva), 5);
+  std::memcpy(game + build.truncation_resume_rva, file.data() + (build.truncation_resume_rva - text_rva + text_header->PointerToRawData), 5);
+  std::memcpy(patched + build.truncation_resume_rva, unpatched.data() + (build.truncation_resume_rva - text_rva), 5);
   twattila::engine_code::Update(false);
   CHECK(!ec::written);
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
@@ -757,12 +775,12 @@ int main(int argc, char** argv) {
   // 7. With the Attila CPU Performance Fix's x87 fix the truncation block holds fisttp and nops for both fldcw (bytes
   // 23..26, 28 and 31..34 of the block, ATN's heapfix.log: 1277 of 1277 blocks, 165 by fisttp): that site is left
   // alone, the others still found.
-  uint8_t* block = patched + TRUNCATION_BLOCK_RVA;
+  uint8_t* block = patched + build.truncation_block_rva;
   for (const size_t at : {23, 31}) std::memcpy(block + at, "\x0F\x1F\x40\x00", 4);
   block[28] = 0x4C;
   for (ec::Site& site : ec::sites) site.at = nullptr;
   ec::prepared = false;
-  ec::Prepare(reinterpret_cast<HMODULE>(patched));
+  ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
   CHECK(ec::sites[0].at == nullptr && ec::sites[1].at != nullptr && ec::sites[2].at != nullptr);
   CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("soldier draw rounding") != std::string::npos);
   std::printf("7. a block another mod changed: left alone, the other two found\nPASS\n");
