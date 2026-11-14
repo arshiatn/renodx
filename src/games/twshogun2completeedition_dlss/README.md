@@ -550,3 +550,11 @@ ray-tracing keys as Attila's. Details, test lines and what's not done: the HDR a
 New Experimental rows, off: Water clarity and Water caustics (Graphics, Attila's WaterClarity / WaterCaustics), Torch and
 fire light in fog (RayTracedLightGlow, under Ray-traced fog shadows; in Reset, not in RT/PT). Shadow casters out of view also
 takes ships' sails and ropes. Details and test lines: the HDR addon's README, same heading.
+
+### Parity round 3 (2026-11-14; built only, not run in game)
+
+RT/PT as Attila's (Torch and fire light in fog 1, Water caustics 1, Smoke shadows on at Ultra; the rows stay Experimental and
+off by default). New Experimental rows: Ray-traced smoke shadows and Smoke shadow quality (Ray Tracing), and five engine
+values under Graphics (Plant Wind Sway, Rope Distance, Shadow Cascade Blend, Campaign Sun Camera Depth, Campaign Cloud
+Distance; Attila's keys, x the game's, back to 1 with Reset) through tweak_objects.hpp, Shogun's own tweak reader (tested by
+test/tw_shogun2_tweaks on the game's DLL). Details and test lines: the HDR addon's README, same heading.
