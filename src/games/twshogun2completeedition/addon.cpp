@@ -302,7 +302,10 @@ void BuildRuntimeData() {
       CustomShaderEntry(0xF87ECE85),  // ssrresolve00 (reflection colour)
       CustomShaderEntry(0x16ADFD60),  // ocean00 (ocean high: Ray-Traced Water Reflections)
       CustomShaderEntry(0x6B8954A6),  // ocean01 (ocean ultra: Ray-Traced Water Reflections)
+      CustomShaderEntry(0x5487502A),  // ocean02 (ocean low: Ray-Traced Water Reflections)
+      CustomShaderEntry(0xE73D4A5E),  // ocean03 (ocean medium: Ray-Traced Water Reflections)
       CustomShaderEntry(0x9B9EC116),  // waterplane00 (battle waterplane high / medium / ultra: Ray-Traced Water Reflections)
+      CustomShaderEntry(0x892D56F9),  // waterplane01 (battle waterplane low: Ray-Traced Water Reflections)
       CustomShaderEntry(0xA00FE3A3),  // ssao00 (ambient occlusion line sweeps)
       CustomShaderEntry(0x98BB1159),  // ssao01 (ambient occlusion collect: the Visibility Bitmask AO)
       CustomShaderEntry(0x5CBF4FB6),  // pointlight00
@@ -380,8 +383,8 @@ void BuildRuntimeData() {
     twshogun2::ray_tracing::BindWaterMask(cmd_list, true, false);
     twshogun2::ray_tracing::KeepColor(cmd_list);
   };
-  // Ray-Traced Water Reflections (ray_tracing.hpp OnSeaDraw): the sea's plane, the rays' reflections for shaders/ocean00.
-  for (const uint32_t hash : {0x16ADFD60u, 0x6B8954A6u}) {
+  // Ray-Traced Water Reflections (ray_tracing.hpp OnSeaDraw): the sea's plane, the rays' reflections for shaders/ocean00-03.
+  for (const uint32_t hash : {0x16ADFD60u, 0x6B8954A6u, 0x5487502Au, 0xE73D4A5Eu}) {
     custom_shaders[hash].on_draw = [](auto* cmd_list) {
       if (ray_tracing_installed) twshogun2::ray_tracing::OnSeaDraw(cmd_list, true);
       return true;

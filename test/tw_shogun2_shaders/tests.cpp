@@ -9,7 +9,7 @@
 // 3. upscale_output and its Upscaling Debug View (TestOutput).
 // 4. sss_foliage_depth, Light Through Foliage's depth (TestFoliage).
 // 5-6. rt_capture_tree_billboard and rt_capture_imposter against the game's csos (TestBillboard, TestImposter; their folder third).
-// 7. rt_water_plane (TestWaterPlane). 8-9. ocean00 / 01 and waterplane00 against the game's csos (TestWaters).
+// 7. rt_water_plane (TestWaterPlane). 8-9. ocean00-03 and waterplane00-01 against the game's csos (TestWaters).
 // 10. rt_capture / rt_rows_cascade_rigid and _variant against the game's 0xAC25DAB8 / 0x7B067623 / 0xB0E006EE (TestPlacedShadow).
 // 11. rt_capture_cascade_cloth / imposter / tree / far_tree / unit through Pharaoh's outside-view geometry shaders against the
 //     game's 0x8A00A1D4 / 0xE3DA20D4 / 0x5851CA62 / 0x6F20485E / 0x30C453EE / 0xA22FA941, sail / rope against 0xA42F9EDE /
@@ -992,10 +992,10 @@ class FolderInclude : public ID3DInclude {
   std::vector<std::filesystem::path> folders_;
 };
 
-// 8-9. shaders/ocean00, ocean01 and waterplane00 (the rays' reflection in the water's pixel shaders) against the game's
-//      (0x16ADFD60's, 0x6B8954A6's, 0x9B9EC116's csos) on a 32 x 32 target, same inputs, in the probe and the sky branch: the rays unbound, bound with no
+// 8-9. shaders/ocean00-03 and waterplane00-01 (the rays' reflection in the water's pixel shaders: every water quality) against
+//      the game's (0x16ADFD60's, 0x6B8954A6's, 0x5487502A's, 0xE73D4A5E's, 0x9B9EC116's, 0x892D56F9's csos) on a 32 x 32 target, same inputs, in the probe and the sky branch: the rays unbound, bound with no
 //      hits (share 0), or flagged off (b10 0: CONTROL): the five outputs the game's; the rays' light (share 1, flags 1): the
-//      colour changes where the mask is 1 and nowhere else. waterplane00's Water Clarity and Caustics (b13): at clarity 1,
+//      colour changes where the mask is 1 and nowhere else. waterplane00 / 01's Water Clarity and Caustics (b13): at clarity 1,
 //      caustics 0 the game's outputs; clarity 4 and caustics 1 each change the colour (CONTROL that they reach it).
 static void TestWater(const std::string& games, const std::string& folder, const WaterShader& water) {
   std::ifstream file(folder + "/0x" + water.hash + ".ps_5_0.cso", std::ios::binary);
@@ -1156,7 +1156,7 @@ static void TestWater(const std::string& games, const std::string& folder, const
   };
   const auto same = [](float x, float y) { return (std::isnan(x) && std::isnan(y)) || std::fabs(x - y) <= (1e-4f * std::max(std::fabs(x), std::fabs(y))) + 1e-5f; };
   size_t differs_unbound = 0, differs_kept = 0, changed = 0, changed_outside = 0, control_changed = 0;
-  const bool water_rows = std::wcscmp(water.ours, L"waterplane00_0x9B9EC116") == 0;
+  const bool water_rows = std::wcsncmp(water.ours, L"waterplane", 10) == 0;
   size_t differs_neutral = 0, clearer = 0, caustics = 0;
   const auto injection = [](float clarity, float strength) {
     ShaderInjectData data = {};
@@ -1251,10 +1251,21 @@ static void TestWaters(const std::string& games, const std::string& folder) {
             {.hash = "6B8954A6", .ours = L"ocean01_0x6B8954A6", .vertex_source = ocean_vertex, .plain_slots = {0, 1, 2, 3, 7, 8, 9, 10, 11},
              .harmonics_slot = 7, .single_slots = {12}, .cube_slot = 4, .cube_array_slots = {5, 6}, .samplers = 9, .scalars = {0.3f, 0.7f, 0.f, 0.f},
              .ocean_scalars = {0.02f, 50.f, 0.5f, 0.3f, 0.1f, 2.f, 0.f, 0.f}});
+  // Low (no harmonics: its slot past the textures) and medium water quality.
+  TestWater(games, folder,
+            {.hash = "5487502A", .ours = L"ocean02_0x5487502A", .vertex_source = ocean_vertex, .plain_slots = {0, 1, 2, 6, 7, 8},
+             .harmonics_slot = 16, .single_slots = {}, .cube_slot = 3, .cube_array_slots = {4, 5}, .samplers = 8, .scalars = {0.3f, 0.7f, 0.f, 0.f}});
+  TestWater(games, folder,
+            {.hash = "E73D4A5E", .ours = L"ocean03_0xE73D4A5E", .vertex_source = ocean_vertex, .plain_slots = {0, 1, 2, 3, 7, 8, 9, 10, 11},
+             .harmonics_slot = 7, .single_slots = {12}, .cube_slot = 4, .cube_array_slots = {5, 6}, .samplers = 9, .scalars = {0.3f, 0.7f, 0.f, 0.f}});
+  const std::vector<float> plane_scalars = {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.f, 1.f, -1000.f, 1000.f, -1000.f, 1000.f, 0.f};
   TestWater(games, folder,
             {.hash = "9B9EC116", .ours = L"waterplane00_0x9B9EC116", .vertex_source = plane_vertex, .plain_slots = {3, 4, 5, 6, 7, 8},
-             .harmonics_slot = 3, .single_slots = {}, .cube_slot = 0, .cube_array_slots = {1, 2}, .samplers = 7,
-             .scalars = {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.f, 1.f, -1000.f, 1000.f, -1000.f, 1000.f, 0.f}});
+             .harmonics_slot = 3, .single_slots = {}, .cube_slot = 0, .cube_array_slots = {1, 2}, .samplers = 7, .scalars = plane_scalars});
+  // Low water quality: no t_diffuse (the rest one slot down).
+  TestWater(games, folder,
+            {.hash = "892D56F9", .ours = L"waterplane01_0x892D56F9", .vertex_source = plane_vertex, .plain_slots = {3, 4, 5, 6, 7},
+             .harmonics_slot = 3, .single_slots = {}, .cube_slot = 0, .cube_array_slots = {1, 2}, .samplers = 6, .scalars = plane_scalars});
 }
 
 // 10. rt_capture_cascade_rigid and rt_rows_cascade_rigid (Shadow Casters Out of View: the shadow pass's rigid casters placed by their

@@ -134,8 +134,9 @@ constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADER
 constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0x5CBF4FB6, 0x57139F8D};
 // The battle fog's light (fog01, battlefog ps40_main_inscattering: the sun's part through rt_fog.hlsli's RtFogSun).
 constexpr uint32_t FOG_LIGHT_SHADER = 0x4355E897;
-// The battles' rivers and lakes (waterplane ps30_battle_high / medium / ultra_water_quality): Ray-Traced Water Reflections.
-constexpr uint32_t WATER_PLANE_SHADER = 0x9B9EC116;
+// The battles' rivers and lakes (waterplane ps30_battle_high / medium / ultra_water_quality, ps30_battle_low_water_quality):
+// Ray-Traced Water Reflections.
+constexpr std::array<uint32_t, 2> WATER_PLANE_SHADERS = {0x9B9EC116, 0x892D56F9};
 
 namespace internal {
 
@@ -611,13 +612,13 @@ inline void KeepColor(reshade::api::command_list* cmd_list) {
   bridge.color_square_root = false;
 }
 
-// Ray-Traced Water Reflections (Experimental): the sea (ocean high 16ADFD60, ultra 6B8954A6) and the battles' rivers and
-// lakes (waterplane, 9B9EC116) are drawn forward after the reflections with no G-buffer of their own. Before the reflections' first pass
-// (ssrhiz00: its t0 the depth, b0 the camera), with water drawn in the last frame, the water planes' meshes are drawn
+// Ray-Traced Water Reflections (Experimental): the sea (ocean low 5487502A, medium E73D4A5E, high 16ADFD60, ultra 6B8954A6) and
+// the battles' rivers and lakes (waterplane, 9B9EC116 and low 892D56F9) are drawn forward after the reflections with no
+// G-buffer of their own. Before the reflections' first pass (ssrhiz00: its t0 the depth, b0 the camera), with water drawn in the last frame, the water planes' meshes are drawn
 // again depth-only with this frame's camera (OnWaterDraw's records) and rt_water_plane puts the sea's plane and them into a
 // copy of the depth with the water's guides and a mask; the reflections are traced from it (rt_core Reflections: the
 // positions again). The resolve leaves the mask's pixels to the environment (shaders/ssrresolve00), the water takes the
-// rays' reflection there (shaders/ocean00, waterplane00).
+// rays' reflection there (shaders/ocean00-03, waterplane00-01).
 inline void WaterSurface(reshade::api::command_list* cmd_list) {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
@@ -775,9 +776,9 @@ inline void BindWaterMask(reshade::api::command_list* cmd_list, bool compute, bo
   }
 }
 
-// The sea's draw (ocean high 16ADFD60, ultra 6B8954A6): its plane for the next frame's WaterSurface (ocean_VS at VS b1:
+// The sea's draw (ocean low 5487502A, medium E73D4A5E, high 16ADFD60, ultra 6B8954A6): its plane for the next frame's WaterSurface (ocean_VS at VS b1:
 // c1, g_decal_ocean_projection_plane, taken with its normal up), the rays' reflections (b10, t46 / t47) and the water mask
-// for its pixel shader (shaders/ocean00, 01); `bind` false after it: unbound.
+// for its pixel shader (shaders/ocean00-03); `bind` false after it: unbound.
 inline void OnSeaDraw(reshade::api::command_list* cmd_list, bool bind) {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
@@ -798,9 +799,9 @@ inline void OnSeaDraw(reshade::api::command_list* cmd_list, bool bind) {
   BindWaterMask(cmd_list, false, bind);
 }
 
-// A battle water plane's draw (waterplane high / medium / ultra, 9B9EC116; the main view's, with the reflections and the
+// A battle water plane's draw (waterplane high / medium / ultra 9B9EC116, low 892D56F9; the main view's, with the reflections and the
 // water's on): kept for the next frame's WaterSurface (internal::WaterDraw), the rays' reflections and the water mask bound
-// for its pixel shader (shaders/waterplane00), unbound after.
+// for its pixel shader (shaders/waterplane00, 01), unbound after.
 constexpr auto OnWaterDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
   constexpr bool INDEXED = std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>;
@@ -905,8 +906,10 @@ inline void Install(bool casters_out_of_view, bool smoke_shadows) {
   }
   renodx::utils::command_action::Register(
       internal::OnFogDraw, {.shader_hash = FOG_LIGHT_SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
-  renodx::utils::command_action::Register(
-      OnWaterDraw, {.shader_hash = WATER_PLANE_SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  for (const uint32_t shader_hash : WATER_PLANE_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnWaterDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   if (smoke_shadows) {
     smoke_shadows_installed = true;
     twattila::rt_scene::internal::smoke_vertex_shaders = SMOKE_VERTEX_SHADERS;
