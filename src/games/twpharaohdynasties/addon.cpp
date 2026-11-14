@@ -57,6 +57,7 @@
 #include "./shadow_map.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "../twtroy/rt_particle_lights_gs.h"
 #include "./rt_outside_view_branch_gs.h"
 #include "./rt_outside_view_card_gs.h"
 #include "./rt_outside_view_leaf_gs.h"
@@ -1476,6 +1477,8 @@ twattila::rt_scene::Sliders rt_sliders;
 // View for its terrain (Experimental, off: no game run has shown them yet).
 float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
+// Fire Shadows from Particle Lights (Experimental, off, not in the RT/PT preset): PARTICLE_LIGHTS' draws left alone while 0.
+float particle_light_shadows_row = 0.f;
 
 // Smoke Shadows' particles (Experimental, off): vfx vs50_main_instancing 109B79CE draws each particle as an instance of a
 // quad (6 indices), and of the pixel shaders it draws with only vfxextremeultra 3F1B86E1 (ps_main_high_quality) blends quads
@@ -1492,6 +1495,11 @@ constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADER
     {.hash = 0x3F1B86E1},
     {.hash = 0xE8524BB1, .view_shift = 3, .sampler_shift = 2},
 }};
+// The fires (burning buildings) in the rays, behind their own row: the particle lights' draw (ps_main_deferred_dynamic_light
+// 5AD46115 with 109B79CE: 60 indices an instance, 13-85 instances in the phase 2 captures) holds its lights in the particle
+// list, not in instances: streamed from the vertex shader's outputs (Troy's rt_particle_lights: 109B79CE's output signature
+// is F5CE48CC's), read by shaders/particlelight00.
+constexpr twattila::rt_scene::LightInstances PARTICLE_LIGHTS = {.stream_shader = __rt_particle_lights, .enabled = &particle_light_shadows_row};
 
 // Ray Reconstruction's guides again after the water (water_troy 833E7963 writes the G-buffer after the sun draws, and the
 // sky dome 9CF980D0 draws after it, once a frame in every data-run trace): from the first sun draw's channels.
@@ -2572,6 +2580,18 @@ void ConfigureAddon() {
                  "With Path-Traced Global Illumination they also light what the screen never saw.",
       .labels = {"Off", "On"},
   });
+  // The fires' particle lights in those rays (PARTICLE_LIGHTS): a row of their own, off and not in the RT/PT preset, so Torch
+  // and Fire Shadows stays as it was while it is off.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedParticleLightShadows",
+      .binding = &particle_light_shadows_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Fire Shadows from Particle Lights (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Burning buildings and other fires cast their shadows from rays too.",
+      .labels = {"Off", "On"},
+  });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .rays_replace_maps = &rays_replace_maps_row,
@@ -2731,6 +2751,9 @@ bool AttachAddon() {
   // The point lights (siege trace: one instanced draw, VS E19549A1 with PS E318CE77, after the sun draw F883F5B2; fire02 reads
   // the rays' bits). Log Details' light count also counts the particle lights (5AD46115).
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0xE318CE77});
+  // The fires: their particle lights' draws, the lights streamed (PARTICLE_LIGHTS, behind its own row); particlelight00 reads
+  // the bits.
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x5AD46115}, twattila::rt_scene::internal::NO_LIGHT_CONSTANTS, &PARTICLE_LIGHTS);
   twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   twattila::light_count::Install(0xE318CE77, 0x5AD46115);
   // Fog Shadows: rt_scene's fog hook binds the rays, then ours swaps the fog's shader where they are bound (registration order).

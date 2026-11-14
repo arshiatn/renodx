@@ -40,6 +40,26 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     shadows soft and calm.
 23. v65 (helper109), the RT/PT preset, a battle: the same picture as v64, the helper's frame time no higher.
 24. v66 (helper110), the RT/PT preset, a battle: the same picture as v65.
+25. v67: the RT/PT preset (Torch and Fire Shadows on), Fire Shadows from Particle Lights off, a burning night siege: the same
+    picture as v66.
+26. v67: Fire Shadows from Particle Lights on (More Options, under Torch and Fire Shadows): the burning buildings' light
+    stops at walls and units; the lit side as bright as before; no flicker as fires start and go out.
+27. v67: with it on, ReShade.log "the particle lights streamed from their vertex shader" once, at the first fire.
+
+### Round v67 (2026-11-14, built only, not run in game)
+
+- **New (Experimental, off, not in the RT/PT preset): Fire Shadows from Particle Lights**, under Torch and Fire Shadows
+  (More Options, shown while Torch and Fire Shadows is on). Burning buildings and other fires light the scene through the
+  game's particle lights, which keep their lights in the particle list, not in the instances the torches use. With the row
+  on, the add-on reads each fire's place, reach and colour from that list every frame (Troy's code, shared in
+  `twattila/rt_scene.hpp`), so their light stops at walls and units as the torches' does.
+- Off, Torch and Fire Shadows is as in v66: the fires' draws are left alone, and their shader gives the game's picture to the
+  bit. WARP (`tools/tw/pharaoh/fires`, Troy's fires test on Pharaoh's bytes):
+  - With nothing bound: the game's bits at 100%, and the bits of the game's shader as the add-on patches it today at 50%.
+  - With the rays: the game's light where the ray reaches, none where it is blocked, bit for bit.
+  - Each fire's place, reach and colour from 1,024 particles, to the bit.
+  - Every control fails.
+- Page dump against v66: the one new row; no other row or page state changes.
 
 ### Round v66 (2026-11-13, night merges; stamped and installed 22:59 with helper110, not run in game)
 
