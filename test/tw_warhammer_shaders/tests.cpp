@@ -22,6 +22,11 @@
 //    and cube 0), t51 = 0.5 halfway. CONTROL: t51 = 1 differs from unbound.
 // 5. The shared PatchAmbient against run.ps1's -Before copy: every other game's LIGHT_BOUNCE_DRAWS (their tables, their
 //    dumps beside this one) patch to the same bytes (Patch first, as the runtime). CONTROL: Warhammer's 31 differ.
+// 6. The rays' new casters (the build's embed/*.cso): the far trees' cards (CA6BCF19) streamed out (their world, TEXCOORD2)
+//    with the camera level-free along the way to the sun, against rt_capture_far_tree with rt_sun's texel 0 that way; the
+//    campaign plants (84797031, no wind, the camera below them: no lean) streamed out (TEXCOORD0), against
+//    rt_capture_campaign_vegetation (world and UV) and rt_rows_campaign_vegetation's rows x the vertex. CONTROLS: the camera
+//    turned 90 degrees, the camera above the plants: they differ.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -247,7 +252,7 @@ static Float4 DrawGame(std::span<const uint8_t> code, const SunScene& scene) {
 }
 
 static std::vector<uint8_t> GameBytes(const std::string& dump, uint32_t hash) {
-  for (const char* profile : {"ps_4_0", "ps_4_1", "ps_5_0"}) {
+  for (const char* profile : {"ps_4_0", "ps_4_1", "ps_5_0", "vs_4_0", "vs_4_1", "vs_5_0"}) {
     char name[64];
     std::snprintf(name, sizeof(name), "/0x%08X.%s.cso", hash, profile);
     std::ifstream file(dump + name, std::ios::binary);
@@ -728,6 +733,214 @@ static void TestResolve(const std::string& games) {
               same, PIXELS, directions, worst_cos, worst_ratio, unbound_differs, position_differs, projected_differs, directions);
 }
 
+// One output element to stream out: its semantic, index and component count.
+struct Streamed {
+  const char* semantic;
+  UINT index;
+  BYTE components;
+};
+
+// `code`'s outputs streamed out for `vertices` (floats, one point each) laid out by the game vertex shader's input signature,
+// as rt_core draws a capture with the game's layout; `constants` from b0, t0 bound.
+static std::vector<float> StreamOut(std::span<const uint8_t> game, std::span<const uint8_t> code, std::span<const Streamed> outputs,
+                                    const std::vector<float>& vertices, std::span<ID3D11Buffer* const> constants, ID3D11ShaderResourceView* t0 = nullptr) {
+  ComPtr<ID3D11ShaderReflection> reflection;
+  D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf()));
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  constexpr std::array<DXGI_FORMAT, 4> FORMATS = {DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_R32G32B32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT};
+  std::vector<D3D11_INPUT_ELEMENT_DESC> layout;
+  UINT vertex_bytes = 0;
+  for (UINT index = 0; index < desc.InputParameters; ++index) {
+    D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+    reflection->GetInputParameterDesc(index, &parameter);
+    const auto components = static_cast<UINT>(std::bit_width(static_cast<UINT>(parameter.Mask)));
+    layout.push_back({parameter.SemanticName, parameter.SemanticIndex, FORMATS[components - 1], 0, vertex_bytes, D3D11_INPUT_PER_VERTEX_DATA, 0});
+    vertex_bytes += components * 4;
+  }
+  std::vector<D3D11_SO_DECLARATION_ENTRY> entries;
+  UINT stride = 0;
+  for (const auto& output : outputs) {
+    entries.push_back({0, output.semantic, output.index, 0, output.components, 0});
+    stride += output.components * 4u;
+  }
+  const auto count = static_cast<UINT>(vertices.size() * 4 / vertex_bytes);
+  ComPtr<ID3D11InputLayout> input_layout;
+  ComPtr<ID3D11VertexShader> vertex_shader;
+  ComPtr<ID3D11GeometryShader> stream;
+  if (FAILED(device->CreateInputLayout(layout.data(), static_cast<UINT>(layout.size()), game.data(), game.size(), input_layout.GetAddressOf()))
+      || FAILED(device->CreateVertexShader(code.data(), code.size(), nullptr, vertex_shader.GetAddressOf()))
+      || FAILED(device->CreateGeometryShaderWithStreamOutput(code.data(), code.size(), entries.data(), static_cast<UINT>(entries.size()), &stride, 1,
+                                                             D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf()))) {
+    return {};
+  }
+  const D3D11_BUFFER_DESC vertex_desc = {.ByteWidth = static_cast<UINT>(vertices.size() * 4), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+  const D3D11_SUBRESOURCE_DATA vertex_data = {.pSysMem = vertices.data()};
+  ComPtr<ID3D11Buffer> vertex_buffer;
+  device->CreateBuffer(&vertex_desc, &vertex_data, vertex_buffer.GetAddressOf());
+  D3D11_BUFFER_DESC out_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+  ComPtr<ID3D11Buffer> out;
+  device->CreateBuffer(&out_desc, nullptr, out.GetAddressOf());
+  const UINT zero = 0;
+  context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &vertex_bytes, &zero);
+  context->IASetInputLayout(input_layout.Get());
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+  context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+  context->VSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
+  context->VSSetShaderResources(0, 1, &t0);
+  context->GSSetShader(stream.Get(), nullptr, 0);
+  context->SOSetTargets(1, out.GetAddressOf(), &zero);
+  context->Draw(count, 0);
+  context->ClearState();
+  out_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&out_desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), out.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  std::vector<float> values(count * stride / 4);
+  std::memcpy(values.data(), mapped.pData, values.size() * 4);
+  context->Unmap(staging.Get(), 0);
+  return values;
+}
+
+static std::vector<uint8_t> Bytes(const std::string& path) {
+  const std::string text = ReadText(path);
+  return {text.begin(), text.end()};
+}
+
+// rt_capture.hlsli's RtHalfBits back to a float (its tiny values are 0).
+static float HalfValue(uint32_t half) {
+  const int exponent = static_cast<int>((half >> 10) & 0x1F);
+  const float magnitude = (exponent == 0) ? 0.f : std::ldexp(1.f + (static_cast<float>(half & 0x3FF) / 1024.f), exponent - 15);
+  return ((half & 0x8000) != 0) ? -magnitude : magnitude;
+}
+
+static void TestCasters(const std::string& root, const std::string& dump) {
+  const std::string embed = root + "/build/twwarhammer.include/embed/";
+  uint32_t state = 4242u;
+  const auto unit = [&state](float low, float high) {
+    state = state * 1664525u + 1013904223u;
+    return low + ((high - low) * static_cast<float>(state >> 8) / 16777216.f);
+  };
+  // The far trees' cards (CA6BCF19: POSITION0 4, TEXCOORD0 2, TEXCOORD1 4, TEXCOORD2 4, TEXCOORD3 1).
+  const auto card = GameBytes(dump, 0xCA6BCF19);
+  const auto card_capture = Bytes(embed + "rt_capture_far_tree.cso");
+  int card_values = 0;
+  int card_misses = 0;
+  int card_control = 0;
+  for (int run = 0; run < 16; ++run) {
+    const std::array<float, 3> place = {unit(-500.f, 500.f), unit(0.f, 50.f), unit(-500.f, 500.f)};
+    const std::array<float, 2> facing = {unit(-1.f, 1.f), unit(-1.f, 1.f)};
+    const float scale = unit(5.f, 30.f);
+    const float sun_turn = unit(0.f, 6.2831853f);
+    const float sun_up = unit(0.1f, 0.9f);
+    const float across = std::sqrt(1.f - (sun_up * sun_up));
+    const Float4 toward_sun = {across * std::sin(sun_turn), sun_up, across * std::cos(sun_turn), 1.f};
+    std::vector<float> vertices;
+    for (int corner = 0; corner < 8; ++corner) {
+      vertices.insert(vertices.end(), {unit(-0.5f, 0.5f), unit(0.f, 1.f), 0.f, 1.f, unit(0.f, 0.25f), unit(0.f, 1.f), place[0], place[1], place[2], 1.f,
+                                       facing[0], 0.f, facing[1], scale, 0.f});
+    }
+    const auto sun = View(1, 1, {toward_sun});
+    for (const bool control : {false, true}) {
+      // The camera along the sun's way across (CONTROL: 90 degrees off), any height; view_projection identity.
+      std::array<float, 48 * 4> camera = {};
+      const std::array<float, 2> way = control ? std::array<float, 2>{-toward_sun[2] / across, toward_sun[0] / across}
+                                               : std::array<float, 2>{toward_sun[0] / across, toward_sun[2] / across};
+      camera[0] = place[0] + (way[0] * 200.f);
+      camera[1] = place[1] + unit(-50.f, 300.f);
+      camera[2] = place[2] + (way[1] * 200.f);
+      for (size_t row = 0; row < 4; ++row) camera[(9 + row) * 4 + row] = 1.f;
+      const auto buffer = Constants(camera.data(), sizeof(camera));
+      const std::array<ID3D11Buffer*, 1> constants = {buffer.Get()};
+      const std::array<Streamed, 1> game_world = {{{"TEXCOORD", 2, 3}}};
+      const std::array<Streamed, 1> capture_world = {{{"TEXCOORD", 0, 3}}};
+      const auto game = StreamOut(card, card, game_world, vertices, constants);
+      const auto ours = StreamOut(card, card_capture, capture_world, vertices, constants, sun.Get());
+      CHECK(!game.empty() && game.size() == ours.size(), "the far cards' stream out");
+      for (size_t at = 0; at < std::min(game.size(), ours.size()); ++at) {
+        const bool miss = std::fabs(game[at] - ours[at]) > 1e-3f;
+        if (control) {
+          card_control += miss ? 1 : 0;
+        } else {
+          ++card_values;
+          card_misses += miss ? 1 : 0;
+        }
+      }
+    }
+  }
+  CHECK(card_values == 16 * 8 * 3 && card_misses == 0 && card_control > 0, "far cards: %d values, %d misses, CONTROL %d differ", card_values, card_misses,
+        card_control);
+  std::printf("far cards: rt_capture_far_tree against CA6BCF19, %d values, %d misses; CONTROL camera 90 degrees off: %d differ\n", card_values,
+              card_misses, card_control);
+
+  // The campaign plants (84797031: POSITION0 4 with the UV's u, NORMAL0 4 with its v, COLOR0 4 (w the wind's weight), POSITION1
+  // 4 (the place, w the turn), POSITION2 1 (the size)); no wind (wind_VS 0).
+  const auto plant = GameBytes(dump, 0x84797031);
+  const auto plant_capture = Bytes(embed + "rt_capture_campaign_vegetation.cso");
+  const auto plant_rows = Bytes(embed + "rt_rows_campaign_vegetation.cso");
+  int plant_values = 0;
+  int plant_misses = 0;
+  int uv_misses = 0;
+  int row_misses = 0;
+  int plant_control = 0;
+  const std::array<float, 2 * 4> wind = {};
+  const auto wind_buffer = Constants(wind.data(), sizeof(wind));
+  for (int run = 0; run < 16; ++run) {
+    const std::array<float, 5> instance = {unit(-500.f, 500.f), unit(0.f, 50.f), unit(-500.f, 500.f), unit(-6.f, 6.f), unit(0.2f, 3.f)};
+    std::vector<float> vertices;
+    for (int vertex = 0; vertex < 8; ++vertex) {
+      vertices.insert(vertices.end(), {unit(-2.f, 2.f), unit(0.f, 6.f), unit(-2.f, 2.f), unit(0.f, 1.f), 0.f, 1.f, 0.f, unit(0.f, 1.f), 0.f, 0.f, 0.f,
+                                       unit(0.f, 1.f), instance[0], instance[1], instance[2], instance[3], instance[4]});
+    }
+    for (const bool control : {false, true}) {
+      // The camera 80 m across, below the plants (CONTROL: 100 m above: the game leans them); view_projection identity.
+      std::array<float, 27 * 4> camera = {};
+      camera[0] = instance[0] + 80.f;
+      camera[1] = instance[1] + (control ? 100.f : -5.f);
+      camera[2] = instance[2];
+      for (size_t row = 0; row < 4; ++row) camera[(9 + row) * 4 + row] = 1.f;
+      camera[26 * 4] = unit(0.f, 100.f);
+      const auto buffer = Constants(camera.data(), sizeof(camera));
+      const std::array<ID3D11Buffer*, 2> constants = {buffer.Get(), wind_buffer.Get()};
+      const std::array<Streamed, 1> world_uv = {{{"TEXCOORD", 0, 4}}};
+      const std::array<Streamed, 3> rows = {{{"TEXCOORD", 0, 4}, {"TEXCOORD", 1, 4}, {"TEXCOORD", 2, 4}}};
+      const auto game = StreamOut(plant, plant, world_uv, vertices, constants);
+      const auto ours = StreamOut(plant, plant_capture, world_uv, vertices, constants);
+      const auto placed = StreamOut(plant, plant_rows, rows, vertices, constants);
+      CHECK(game.size() == 8 * 4 && ours.size() == 8 * 4 && placed.size() == 8 * 12, "the campaign plants' stream out");
+      if (game.size() != 8 * 4 || ours.size() != 8 * 4 || placed.size() != 8 * 12) return;
+      for (size_t vertex = 0; vertex < 8; ++vertex) {
+        const float* local = vertices.data() + (vertex * 17);
+        for (size_t axis = 0; axis < 3; ++axis) {
+          const float expected = game[(vertex * 4) + axis];
+          const bool miss = std::fabs(expected - ours[(vertex * 4) + axis]) > 1e-3f;
+          if (control) {
+            plant_control += miss ? 1 : 0;
+            continue;
+          }
+          ++plant_values;
+          plant_misses += miss ? 1 : 0;
+          const float* row = placed.data() + (vertex * 12) + (axis * 4);
+          const float moved = (row[0] * local[0]) + (row[1] * local[1]) + (row[2] * local[2]) + row[3];
+          row_misses += (std::fabs(expected - moved) > 1e-3f) ? 1 : 0;
+        }
+        if (!control) {
+          const uint32_t halves = std::bit_cast<uint32_t>(ours[(vertex * 4) + 3]);
+          uv_misses += Near(HalfValue(halves & 0xFFFF), local[3], 2e-3f) ? 0 : 1;
+          uv_misses += Near(HalfValue(halves >> 16), local[7], 2e-3f) ? 0 : 1;
+        }
+      }
+    }
+  }
+  CHECK(plant_values == 16 * 8 * 3 && plant_misses == 0 && uv_misses == 0 && row_misses == 0 && plant_control > 0,
+        "campaign plants: %d values, %d misses, %d UV, %d rows, CONTROL %d differ", plant_values, plant_misses, uv_misses, row_misses, plant_control);
+  std::printf("campaign plants: rt_capture_campaign_vegetation against 84797031, %d values, %d misses, UV %d misses; rows %d misses; CONTROL "
+              "camera above: %d differ\n",
+              plant_values, plant_misses, uv_misses, row_misses, plant_control);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -747,6 +960,7 @@ int main(int argc, char** argv) {
   TestAmbientPatch(games, argv[2]);
   TestSharedBytes(games, argv[2]);
   TestResolve(games);
+  TestCasters(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

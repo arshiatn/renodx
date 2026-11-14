@@ -15,6 +15,9 @@
 #include <include/reshade.hpp>
 
 #include <embed/shaders.h>
+// Shadow Casters Out of View: Pharaoh's geometry shaders (Warhammer II's shadow vertex shaders', the same as these).
+#include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
+#include "../twpharaohdynasties/rt_outside_view_world_gs.h"
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
@@ -1155,6 +1158,9 @@ twattila::rt_scene::Sliders rt_sliders;
 // Texture LOD Bias on All Textures (Graphics 1 of 2, Experimental): the trilinear samplers too
 // (texture_lod_bias.hpp SetWrappingTrilinear).
 float lod_bias_trilinear_row = 0.f;
+// The shadow pass's casters in the rays' scene (SCENE_SHADERS' cascade_keep entries): Shadow Casters Out of View
+// (Experimental, off: no game run has shown them yet).
+float rays_units_out_of_view_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1236,8 +1242,10 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 33> MOTION_SHADERS =
 // the G-buffer's channels 1-4 from their first slot.
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_port.py): the main view's terrain, rigid objects, tree
 // branches and leaves and units, and their capture versions (world positions; leaves also UVs).
-// The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow.
-constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
+// The floating unit banners (rigidtextureblend, 2 bones, E7F0D71A) stay out: the game gives them no shadow (no atlas draw in
+// any of ATN's 2026-11-14 traces). So does the campaign's far terrain (rigidterrain geometry_41_global, CDCF1ADD): no atlas
+// draw either, and no trace shows where it lies against the near terrain.
+constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
     {.hash = 0x10401C91, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x06AB0766, .capture_shader = __rt_capture_terrain_geom_new_sm41, .terrain = true},
     {.hash = 0x5696080B, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1268,6 +1276,18 @@ constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
     {.hash = 0x2335CB90, .capture_shader = __rt_capture_unit_4_bones_wind, .dynamic = true},
     {.hash = 0x1CF62070, .capture_shader = __rt_capture_grass_1cf6, .dynamic = true, .foliage = true, .grass = true},
     {.hash = 0x851C6D2A, .capture_shader = __rt_capture_grass_851c, .dynamic = true, .foliage = true, .grass = true},
+    // The campaign's plants and forests (rigidcampaignvegetation vs40_main; ATN's trace 13: 116 draws), placed, standing and
+    // still as Attila's, cut out by their diffuse map's alpha (73C9A8D6 t1).
+    {.hash = 0x84797031, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true, .mask_slot = 1},
+    // Far trees' cards (rigidtreebillboard vs40_main; ATN's battles: 18-20 draws a frame), turned to the sun (Far Tree Shadows),
+    // cut out by their tree map's alpha (C5875F67 t3).
+    {.hash = 0xCA6BCF19, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    // The shadow pass's casters into the atlas, what is out of the main view (Shadow Casters Out of View): fx__rigidcommon
+    // vs40_shadow, fx__weighted vs40_shadow and its 4 bones, Warhammer II's E2C36310, 2EE37868, 2A54DBEE (the same code and
+    // signatures), so Pharaoh's rt_outside_view as there. Every frame as drawn.
+    {.hash = 0x0E0E36F6, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0x2E5BBBA1, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0x63BA47F1, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
@@ -1331,7 +1351,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::ao_filter::Update(swapchain, {.temporal = bitmask_ao && shader_injection.ssao_temporal != 0.f,
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -1757,25 +1778,30 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Warhammer II's and Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave,
-  // then Settings Mode's pages. Only what this game hooks: no Rays Replace Shadow Maps or casters out of view (the shadow pass
-  // is not read yet), no foliage in the screen-space shadows, no point lights, fog, water or smoke (their rows stay hidden).
+  // then Settings Mode's pages. Only what this game hooks: no Rays Replace Shadow Maps (the sun shaders compare the atlas
+  // themselves), no foliage in the screen-space shadows, no point lights, fog, water or smoke (their rows stay hidden).
+  // Far Tree Shadows and Shadow Casters Out of View Experimental, off (far_cards_tested, units_out_of_view_tested).
   // The paths' sky from the game's ambient (the spherical harmonics or the cube, rt_sun) and Path-Traced AO in the AO methods
   // (Experimental), as Warhammer II's: ATN's 2026-11-14 traces show g_hdr_on and g_use_spherical_harmonics on.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
-  // Fog Shadows, the torches' light in it and Smoke Shadows start off (hidden: not hooked here yet), Specular Occlusion too
-  // (Experimental before the page); RT/PT turns all but the smoke on, as ATN's list does.
+  // Fog Shadows, the torches' light in it and Smoke Shadows start off (hidden: not hooked here yet), Specular Occlusion and
+  // Far Tree Shadows too (Experimental); RT/PT turns all but the smoke and the far trees on (far_cards_tested), as ATN's list
+  // does.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
-        || setting->key == "RayTracedSpecularOcclusion") {
+        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
     }
   }
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
+                                             .rays_units_out_of_view = &rays_units_out_of_view_row,
+                                             .units_out_of_view_tested = false,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
+                                             .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
@@ -1814,7 +1840,14 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // Before the Light Bounce's (its callback draws the sun draw again).
   // Ray tracing's at the sun draws first: its trace for the screen-space shadows and the AO filter after it.
-  twattila::rt_scene::Install(SCENE_SHADERS, {});
+  // The shadow pass's casters (cascade_keep) as Warhammer II's: their constants kept, world positions; the atlas the sun's
+  // one 8192 R32 map (the sun draws' t1 in ATN's traces).
+  twattila::rt_scene::Host rt_host = twattila::rt_scene::TW_HOST;
+  rt_host.cascade_world = true;
+  rt_host.cascade_target = [](const D3D11_TEXTURE2D_DESC& desc) {
+    return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
+  };
+  twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
   // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads). No AO pass hook
   // keeps it here (the game's AO is compute line sweeps).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
