@@ -298,6 +298,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   dump unchanged); Troy v53 RT water reflections MERGED 12472535 (off; RT/PT turns them on as Pharaoh). Troy next: fires.
 - [x] Shogun 2 variantrigid B0E006EE out of view MERGED fab4ce3e (HDR v72). Thrones Light Through All Banners MERGED
   eca50543 (unit banners only; shared graphics_page Bindings::banner_light_tested default true).
+- [x] Thrones Faster Game CPU Code MERGED 2c89ced4 (shared engine_code.hpp Game / Build parameters, Attila's constants
+  unchanged; tw_engine_code PASS on both DLLs; truncation 66.8 -> 41.7 ns, fmod 140 -> 62 ns; Experimental off).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
