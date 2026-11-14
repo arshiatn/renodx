@@ -569,7 +569,22 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   detours 1.2 ms, (4) the render thread's 12 ms unnamed tail (research), (5) Capture 0.9 + DrawObjectMotion 0.63 (after the
   redesign). CPU perf agent (cpu_) started on 1-4, Attila first, then Rome II / Thrones. ATN's A/B list: Small Soldiers as
   Sprites, game Shadows Medium + Two Shadow Cascades, Lean Reuse, Light Bounce Half, pause Wallpaper Engine (3.0 ms GPU).
-- [ ] SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
+- [x] SHARED STEP MERGED b435a0e6 (fast-forward; built only): torch rows from PT in Thrones / Rome II / WH1 / WH2 / Troy /
+  Pharaoh (its particle lights too) / WH3 / Shogun 2 (overlay); sprite soldiers through a GS capture (WH1, Troy, WH2,
+  Pharaoh; rt_core SceneShader::capture_geometry_shader; tw_rays_captures WARP 5 pairs PASS); tessellated rigid WH1
+  E168387B / WH2 4CC2D68F (Troy D6DEB200 WON'T: no hull / domain shaders in its dump); a scene shader's own alpha cut-off
+  through the bridge (Shared::rt_leaf_cutoff in v8's padding, RT_OWN_CUTOFF 1024; Troy's campaign trees 0.01); Faster
+  Smoke Shadow Build in every smoke game (graphics_page makes the row); WH2 Smoke Shadows without rays. Every new row
+  Experimental, off; 18 consumers built; page dumps: only the intended rows. Leftovers:
+  - [ ] helper114 = helper113 + the own cut-off (05b79c7b): build, harness, stamp and install with the next release
+    (Troy's trees stay at 0.5 until then). Owner: final verification
+  - [ ] Pharaoh's campaign-tree twin 1C4B8681 at 0.01? Owner: PARITY ROUND 2 Pharaoh
+  - [ ] ATN's in-game tests of the new Experimental rows (README lines, level B)
+- [ ] PARITY ROUND 2 started ~18:20 (brief tools/tw/round_notes/parity_round2_brief_1114.md; goal parity_check exits 0
+  per game): agents p2w3_ (WH3 + own ReSTIR reflections row + unit round D / E), p2ph_ (Pharaoh), p2r2_ (Rome II), p2rr_
+  (Rome Remastered), p2s2_ (Shogun 2), p2sm_ (Thrones, WH1, Troy, WH2 in that order). Merge one at a time, then the final
+  verification.
+- Was: SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
   capture path in rt_core (WH1 / Pharaoh / Troy / WH2 imposters), tessellated meshes via patch_triangles (WH1 / Troy / WH2),
   per-game leaf cut-off through the bridge (Troy 0.01), Faster Smoke Build row to the other smoke games, smoke without rays
   for 64-bit games if small.
