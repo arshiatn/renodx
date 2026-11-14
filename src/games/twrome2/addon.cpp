@@ -1579,6 +1579,15 @@ constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS
     {.hash = 0x438E2D53},
 }};
 
+// Light Through Foliage (Experimental): leaves and grass (SCENE_SHADERS), and the rigid objects drawn after them. In 46 of
+// ATN's traces with foliage the leaves' and grass's depth pass (zprefill) comes after the terrain and its blended rocks and
+// before the first rigid object, nothing else between (tools/tw/rome2/par_r2_foliage_order.py); under MSAA it doesn't
+// (OnPresent).
+constexpr std::array<uint32_t, 10> FOLIAGE_VERTEX_SHADERS = {0x41FE62A8, 0x0DEC7CAB, 0xC36E2C1C, 0x929D693E, 0xD4D9A7CE,
+                                                             0x239E12B0, 0x69FCD0B3, 0xD0587AC7, 0x2D15A993, 0x5AB72F3F};
+constexpr std::array<uint32_t, 8> AFTER_FOLIAGE_VERTEX_SHADERS = {0x59431BB2, 0x658FEA51, 0xF343950E, 0x3E086AFB,
+                                                                  0x54FB9355, 0xEBB7BFED, 0x95A90798, 0xB08CD963};
+
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%, and the
 // half-size passes drawn whole (their readers: view_share::WHOLE_TEXTURES).
 constexpr std::array<twattila::view_share::RegionRead, 5> RENDER_SCALE_READS = {{
@@ -1695,10 +1704,13 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
   // The game's MSAA keeps DLAA / DLSS from running (A2_185833: its 2-sample sun draws 006F587A / FCD6C263 keep no camera):
-  // the rays and frame generation, which need them, off with it (the rays' scene captures nothing multisampled).
+  // the rays and frame generation, which need them, off with it (the rays' scene captures nothing multisampled). Light
+  // Through Foliage too: there the rigid objects come before the foliage (A2_185833's traces 27-36), no depth pass between.
   const bool game_msaa = twattila::anti_aliasing::GameMsaa();
+  auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
+  if (game_msaa) sss_settings.foliage_light = 0.f;
+  twattila::screen_space_shadows::Update(swapchain, sss_settings);
   auto rays_aa = aa_sliders;
   if (game_msaa) {
     rays_aa.method = 0.f;
@@ -2264,7 +2276,7 @@ void ConfigureAddon() {
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row,
                                              .texts = &PAGE_TEXTS,
-                                             .has_foliage_light = false,
+                                             .foliage_light_tested = false,
                                              .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
@@ -2342,6 +2354,7 @@ bool AttachAddon() {
   // with g_hdr_on c11.x: the paths' sun light).
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  twattila::screen_space_shadows::InstallFoliage(FOLIAGE_VERTEX_SHADERS, AFTER_FOLIAGE_VERTEX_SHADERS);
   // The G-buffer's colour squared (gamma 2: the sun draws' albedo^2, tools/tw/rome2/sun_test).
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
