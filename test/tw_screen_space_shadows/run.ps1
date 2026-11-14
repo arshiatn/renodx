@@ -42,6 +42,17 @@ Write-Host "Shader bytes changed since fc24dbce: $($changed -join ', ')"
 # output at the rows' defaults with fc24dbce's on WARP.
 $allowed = @('sss_setup', 'sss_depth', 'sss_depth_ms', 'sss00_0x34ECD06E', 'sss01_0x1B529672', 'sss02_0x78E88E1D')
 if (($changed | Where-Object { $_ -notin $allowed }).Count -ne 0) { throw "Plain shader bytes changed: $($changed -join ', ')" }
+# sss_lights as f6408aa1 had it (before its repeat test read a light's position only where the scores match): case 9
+# compares its output with today's on WARP, --time both on the hardware GPU.
+$lightsBefore = Join-Path $testBuild 'before_f6408aa1'
+if (Test-Path -LiteralPath $lightsBefore) { Remove-Item -LiteralPath $lightsBefore -Recurse -Force -Confirm:$false }
+New-Item -ItemType Directory -Force -Path $lightsBefore | Out-Null
+& git -C $repairRoot archive --output=$archive f6408aa1 src/games/twattila src/shaders
+if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
+& (Join-Path $env:SystemRoot 'System32\tar.exe') -xf $archive -C $lightsBefore
+if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
+& $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect -Fo (Join-Path $beforeShaders 'sss_lights_f6408aa1.cso') (Join-Path $lightsBefore 'src\games\twattila\sss_lights.cs_5_0.hlsl') | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'fxc failed: f6408aa1 sss_lights' }
 
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation

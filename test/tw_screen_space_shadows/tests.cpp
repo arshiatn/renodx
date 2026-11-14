@@ -33,8 +33,11 @@
 //    0: the game's parameters, foliage off) to the bit as fc24dbce's (run.ps1's csos) on the box scene: its depth, the sun's
 //    Bend dispatches as sss_setup lists them, 4 cascades of random depths; 8 runs each in turns, as case 1. CONTROLS (must
 //    differ): Bend's contrast row at 2 (sss00, sss01), the shadow map stability row at 2 (sss02).
-// --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), torches near and far, and the CPU
-// time of a later light draw. --time-only: that alone.
+// 9. Torch and Fire Shadows at a battle's light count (5120 instances in 128 draws, repeats and mirrored lights): every
+//    output as f6408aa1's sss_lights gives it (run.ps1's sss_lights_f6408aa1.cso), the pick the CPU's. CONTROL: the CPU's
+//    pick without the repeat test must differ.
+// --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), torches near and far, the CPU
+// time of a later light draw, and a battle's light draws with today's sss_lights and f6408aa1's. --time-only: that alone.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -897,22 +900,27 @@ struct PharaohLightInstance {
   std::array<float, 4> cone;
 };
 
-// Two frames of light draws (`instances` each), the second marching the first's: true if the second bound the lit bits.
+// Two frames of light draws (`instances` each, in draws of `per_draw`, 0 one draw), the second marching the first's: true
+// if the second's first draw bound the lit bits.
 template <typename Instance>
-static bool LightFrames(const Frame& frame, std::span<const Instance> instances, uint32_t wanted, float range = 0.f) {
+static bool LightFrames(const Frame& frame, std::span<const Instance> instances, uint32_t wanted, float range = 0.f, size_t per_draw = 0) {
   const auto buffer = MakeBuffer(static_cast<UINT>(instances.size_bytes()), D3D11_BIND_VERTEX_BUFFER, instances.data());
   sss::Settings settings = Defaults();
   settings.lights = wanted;
   settings.light_range = range;
+  const size_t step = (per_draw == 0) ? instances.size() : per_draw;
   bool bound = false;
   for (int repeat = 0; repeat < 2; ++repeat) {
     RunFrame(frame, settings);
-    bound = lights::OnLightDraw(context.Get(), {.buffer = buffer.Get(),
-                                                .first = 0,
-                                                .count = static_cast<UINT>(instances.size()),
-                                                .stride = sizeof(Instance),
-                                                .position = offsetof(Instance, light),
-                                                .colour = offsetof(Instance, colour)});
+    for (size_t first = 0; first < instances.size(); first += step) {
+      const bool drawn = lights::OnLightDraw(context.Get(), {.buffer = buffer.Get(),
+                                                             .first = static_cast<UINT>(first * sizeof(Instance)),
+                                                             .count = static_cast<UINT>(std::min(step, instances.size() - first)),
+                                                             .stride = sizeof(Instance),
+                                                             .position = offsetof(Instance, light),
+                                                             .colour = offsetof(Instance, colour)});
+      if (first == 0) bound = drawn;
+    }
   }
   return bound;
 }
@@ -1040,6 +1048,121 @@ static void TestTorches() {
   std::printf("   range %.0f m: %u of %zu within it picked (of 100; some of the best 32 farther: %s), in order: %s\n", RANGE, count,
               within.size(), dropped ? "yes" : "no", in_range ? "yes" : "NO");
   CHECK(in_range);
+}
+
+// A battle's light draws: 128 draws of 40 instances (5120, the pick's first 4096 its candidates) at 9 to 60 m, every
+// eighth draw again lights of the draw before it (the same light in two draws), and mirrored lights (x to -x: the same
+// score at another place, kept apart). The draw before the repeats has a bright torch at 9 m (and its mirror): among the
+// best, so the repeats reach the pick.
+static std::vector<LightInstance> BattleLights() {
+  std::mt19937 random(11);
+  std::uniform_real_distribution<float> unit(0.f, 1.f);
+  std::vector<LightInstance> lights;
+  for (int draw = 0; draw < 128; ++draw) {
+    for (int index = 0; index < 40; ++index) {
+      if (draw % 8 == 7 && index < 20) {
+        lights.push_back(lights[lights.size() - 40]);
+        continue;
+      }
+      if (index % 10 == 9) {
+        LightInstance mirrored = lights.back();
+        mirrored.light[0] = -mirrored.light[0];
+        lights.push_back(mirrored);
+        continue;
+      }
+      const float distance = 9.f + (51.f * unit(random));
+      lights.push_back({.colour = {0.5f + (4.f * unit(random)), 0.5f + unit(random), 0.2f, 0.f},
+                        .light = {(unit(random) - 0.5f) * distance, -1.2f, distance, 2.f + (6.f * unit(random))}});
+      if (draw % 8 == 6 && index == 8) {
+        auto& torch = lights.back();
+        torch = {.colour = {4.5f, 1.f, 0.2f, 0.f}, .light = {torch.light[0] * 9.f / distance, -1.2f, 9.f, 8.f}};
+      }
+    }
+  }
+  return lights;
+}
+
+// 9. The pick at a battle's light count: sss_lights since its repeat test reads a light's position only where the scores
+// match against f6408aa1's (run.ps1's csos), on the same draws: the list, the dispatches, their coordinates and arguments to
+// the bit, the lit bits within case 1's WARP variance (0.2%), and the pick the CPU's (repeats once, mirrored lights both).
+// CONTROL: the CPU's pick without the repeat test must differ.
+static void TestBattleLights(const std::string& before) {
+  std::printf("9. Torch and Fire Shadows at a battle's light count\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  const std::array<Box, 1> boxes = {{{.low = {-0.5f, -2.f, 9.5f}, .high = {0.5f, -1.f, 10.5f}}}};
+  const Frame frame = MakeFrame(480, 270, boxes, BOX_SUN);
+  const auto battle = BattleLights();
+  constexpr uint32_t WANTED = 32;
+  auto& objects = sss::internal::runtime.objects;
+  struct Outputs {
+    std::vector<std::array<float, 4>> list;
+    std::vector<std::array<int32_t, 4>> dispatches;
+    std::vector<std::array<float, 4>> coordinates;
+    std::vector<uint32_t> arguments;
+    std::vector<uint32_t> mask;
+  };
+  const auto run = [&] {
+    REQUIRE(LightFrames(frame, std::span<const LightInstance>(battle), WANTED, 0.f, 40));
+    return Outputs{.list = ReadBuffer<std::array<float, 4>>(objects.lights.list.Get()),
+                   .dispatches = ReadBuffer<std::array<int32_t, 4>>(objects.lights.dispatches.Get()),
+                   .coordinates = ReadBuffer<std::array<float, 4>>(objects.lights.coordinates.Get()),
+                   .arguments = ReadBuffer<uint32_t>(objects.lights.arguments.Get()),
+                   .mask = ReadView<uint32_t>(objects.lights.mask_uav.Get())};
+  };
+  const Outputs now = run();
+  const auto old_bytes = ReadFile(before + "\\sss_lights_f6408aa1.cso");
+  REQUIRE(!old_bytes.empty());
+  REQUIRE(SUCCEEDED(device->CreateComputeShader(old_bytes.data(), old_bytes.size(), nullptr, objects.lights.shader.ReleaseAndGetAddressOf())));
+  const Outputs then = run();
+  // Pixels Bend's waves write twice in one dispatch vary between runs on WARP (case 1): the bits at most 0.2% apart.
+  size_t mask_apart = 0;
+  for (size_t pixel = 0; pixel < now.mask.size(); ++pixel) mask_apart += (now.mask[pixel] != then.mask[pixel]) ? 1 : 0;
+  const auto bytes_equal = [](const auto& a, const auto& b) {
+    return a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(a[0])) == 0;
+  };
+  const bool same = bytes_equal(now.list, then.list) && bytes_equal(now.dispatches, then.dispatches) && bytes_equal(now.coordinates, then.coordinates)
+                    && bytes_equal(now.arguments, then.arguments);
+  std::printf("   %zu instances in %zu draws: list, dispatches, coordinates, arguments %s f6408aa1's; lit bits %zu of %zu pixels apart\n",
+              battle.size(), battle.size() / 40, same ? "the same as" : "NOT AS", mask_apart, now.mask.size());
+  CHECK(same);
+  CHECK(mask_apart * 500 < now.mask.size());
+  // The CPU's pick of the first 4096: a light once (its first), the best WANTED by score, ties in order.
+  const auto score = [](const LightInstance& instance) {
+    const auto& l = instance.light;
+    return std::max({instance.colour[0], instance.colour[1], instance.colour[2]}) * l[3] * l[3] / std::max((l[0] * l[0]) + (l[1] * l[1]) + (l[2] * l[2]), 1.f);
+  };
+  const auto pick = [&](bool once) {
+    std::vector<LightInstance> candidates;
+    for (size_t index = 0; index < 4096; ++index) {
+      const auto& instance = battle[index];
+      const bool repeat = once && std::any_of(battle.begin(), battle.begin() + static_cast<std::ptrdiff_t>(index), [&](const LightInstance& other) {
+                            return score(other) == score(instance) && other.light == instance.light;
+                          });
+      if (!repeat) candidates.push_back(instance);
+    }
+    std::ranges::stable_sort(candidates, [&](const LightInstance& a, const LightInstance& b) { return score(a) > score(b); });
+    candidates.resize(WANTED);
+    return candidates;
+  };
+  const auto matches = [&](const std::vector<LightInstance>& expected) {
+    uint32_t count = 0;
+    std::memcpy(&count, &now.list[lights::internal::LIST_LIGHTS][0], sizeof(count));
+    bool equal = count == WANTED;
+    for (uint32_t rank = 0; equal && rank < WANTED; ++rank) {
+      equal = now.list[rank] == expected[rank].light && now.list[lights::internal::LIST_LIGHTS + 1 + rank][0] == expected[rank].colour[0];
+    }
+    return equal;
+  };
+  const auto expected = pick(true);
+  const auto mirrored = std::ranges::count_if(expected, [&](const LightInstance& a) {
+    return std::ranges::any_of(expected, [&](const LightInstance& b) { return b.light[0] == -a.light[0] && b.light[0] != 0.f && b.light[2] == a.light[2]; });
+  });
+  const bool cpu = matches(expected);
+  const bool control = matches(pick(false));
+  std::printf("   the %u picked are the CPU's, in order: %s (%td of them mirrored pairs); CONTROL without the repeat test: %s\n", WANTED,
+              cpu ? "yes" : "NO", mirrored, control ? "THE SAME (no repeat in the pick)" : "differs");
+  CHECK(cpu && mirrored > 0);
+  CHECK(!control);
 }
 
 static void TestReplay() {
@@ -1472,7 +1595,7 @@ static double GpuMilliseconds(Work work) {
   return times.empty() ? -1.0 : times[times.size() / 2];
 }
 
-static void Time() {
+static void Time(const std::string& before) {
   std::printf("--time: the hardware GPU at 3840 x 2160\n");
   MakeDevice(D3D_DRIVER_TYPE_HARDWARE);
   const std::array<Box, 4> boxes = {{
@@ -1542,6 +1665,29 @@ static void Time() {
       std::printf("   a later light draw: %.2f us CPU\n", light_draw);
     }
   }
+  // A battle's light count (BattleLights: 4096 candidates in 128 draws): the first light draw with today's sss_lights and
+  // with f6408aa1's.
+  const auto battle = BattleLights();
+  const auto battle_buffer = MakeBuffer(static_cast<UINT>(battle.size() * sizeof(LightInstance)), D3D11_BIND_VERTEX_BUFFER, battle.data());
+  const auto old_bytes = ReadFile(before + "\\sss_lights_f6408aa1.cso");
+  REQUIRE(!old_bytes.empty());
+  for (const bool old : {false, true}) {
+    if (old) REQUIRE(SUCCEEDED(device->CreateComputeShader(old_bytes.data(), old_bytes.size(), nullptr, sss::internal::runtime.objects.lights.shader.ReleaseAndGetAddressOf())));
+    for (const uint32_t wanted : {8u, 32u}) {
+      REQUIRE(LightFrames(frame, std::span<const LightInstance>(battle), wanted, 0.f, 40));
+      const double first_draw = GpuMilliseconds([&] {
+        ++sss::internal::runtime.frame;
+        sss::internal::runtime.computed_frame = sss::internal::runtime.frame;
+        for (size_t first = 0; first < battle.size(); first += 40) {
+          lights::OnLightDraw(context.Get(), {.buffer = battle_buffer.Get(), .first = static_cast<UINT>(first * sizeof(LightInstance)), .count = 40,
+                                              .stride = sizeof(LightInstance), .position = offsetof(LightInstance, light),
+                                              .colour = offsetof(LightInstance, colour)});
+        }
+      });
+      std::printf("   Torch and Fire Shadows %2u, %zu lights in %zu draws (%s sss_lights): %.3f ms a frame of light draws\n", wanted, battle.size(),
+                  battle.size() / 40, old ? "f6408aa1's" : "today's", first_draw);
+    }
+  }
 }
 
 int main(int argc, char** argv) {
@@ -1556,11 +1702,12 @@ int main(int argc, char** argv) {
     TestBanner();
     TestSofter();
     TestTorches();
+    TestBattleLights(argv[1]);
     TestReplay();
     TestRowsTurnedOff();
     TestShogun2(argv[1]);
   }
-  if (mode == "--time" || mode == "--time-only") Time();
+  if (mode == "--time" || mode == "--time-only") Time(argv[1]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
   return failures == 0 ? 0 : 1;
 }
