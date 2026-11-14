@@ -14,6 +14,7 @@
 //    its TEXCOORD0 from random skinned vertices; CONTROL 26A41B7D's capture (no fur sway) differs.
 // 2c. The campaign's trees: the capture (rt_capture_campaign_trees) against 07321725 (world, UV), and their shadow pass
 //    5192C0BA through the outside-view geometry shader with RT_COLOUR (each kept corner its world and UV); CONTROLs.
+// 2d. The sails: the capture (rt_capture_sail) against 18CE6F5A, their shadow pass F4B04EF3 through RT_WORLD; CONTROLs.
 // 3. VFX Brightness (src/games/twtroy/vfx_brightness.hpp's Patch) on the game's particle pixel shaders 563BA3E8 and 9C8987DD:
 //    the patched program is the game's plus dcl_constantbuffer cb7 and one mad (disassembly), WARP takes it, and drawn over a
 //    grid of random interpolants, emitters, textures and constants it gives the game's bits with cb7 unbound and with cb7.x 0
@@ -39,6 +40,7 @@
 #include "../../src/games/twtroy/vfx_brightness.hpp"
 #include "../../src/games/twtroy/rt_outside_view_colour_world_uv_gs.h"
 #include "../../src/games/twwarhammer2/rt_outside_view_world_uv_gs.h"
+#include "../../src/games/twpharaohdynasties/rt_outside_view_world_gs.h"
 
 extern "C" __declspec(dllexport) const char* const NAME = "Troy shader test";
 extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) { std::printf("  log: %s\n", message); }
@@ -317,15 +319,15 @@ static void TestFog(const std::string& game_folder, const std::string& built_fol
   std::printf("%s: 50%%: the game's bits at that size (CONTROL without b12: %zu samples differ)\n", hash, control);
 }
 
-// A vertex shader's output `semantic` (index 0, 4 floats) for each of `vertices` points, streamed out through a geometry shader
+// A vertex shader's output `semantic` (`semantic_index`, 4 floats) for each of `vertices` points, streamed out through a geometry shader
 // made from the vertex shader's own bytes: its inputs (its signature's, system values aside) each 4 floats of `vertices` in
 // order, from one buffer; `constants` at b0.., `textures` at t0...
 static std::vector<float> StreamOut(const std::vector<char>& code, const char* semantic, const std::vector<float>& vertices,
                                     std::span<const ComPtr<ID3D11Buffer>> constants,
-                                    std::span<const ComPtr<ID3D11ShaderResourceView>> textures = {}) {
+                                    std::span<const ComPtr<ID3D11ShaderResourceView>> textures = {}, UINT semantic_index = 0) {
   ComPtr<ID3D11VertexShader> shader;
   CHECK(SUCCEEDED(device->CreateVertexShader(code.data(), code.size(), nullptr, &shader)), "%s: vertex shader", semantic);
-  const D3D11_SO_DECLARATION_ENTRY entry = {.SemanticName = semantic, .ComponentCount = 4};
+  const D3D11_SO_DECLARATION_ENTRY entry = {.SemanticName = semantic, .SemanticIndex = semantic_index, .ComponentCount = 4};
   const UINT stride = 16;
   ComPtr<ID3D11GeometryShader> stream;
   CHECK(SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(code.data(), code.size(), &entry, 1, &stride, 1,
@@ -692,6 +694,77 @@ static void TestCampaignTrees(const std::string& game_folder, const std::string&
               capture_errors[0], capture_errors[1], moved_errors[0], kept_errors[0], kept_errors[1], control_errors[0]);
 }
 
+// The sails: the capture (rt_capture_sail) against the game's 18CE6F5A from random cloth vertices and a placed sail (its world
+// the game's TEXCOORD1; CONTROL: the sail placed a metre off), and their shadow pass F4B04EF3 through Pharaoh's RT_WORLD
+// geometry shader with every triangle outside the main view (each kept corner its TEXCOORD0 world; CONTROL: every triangle in
+// view, nothing kept).
+static void TestSails(const std::string& game_folder, const std::string& built_folder) {
+  const auto game = ReadFile(game_folder + "\\0x18CE6F5A.vs_5_0.cso");
+  const auto shadow = ReadFile(game_folder + "\\0xF4B04EF3.vs_5_0.cso");
+  const auto capture = ReadFile(built_folder + "\\rt_capture_sail.cso");
+  CHECK(!game.empty() && !shadow.empty() && !capture.empty(), "sails: the csos");
+  if (game.empty() || shadow.empty() || capture.empty()) return;
+  uint32_t seed = 99;
+  const auto random = [&seed](float low, float high) {
+    seed = seed * 1664525u + 1013904223u;
+    return low + (high - low) * static_cast<float>(seed >> 8) / 16777216.f;
+  };
+  // 5 inputs x 4 floats: POSITION0 the cloth's point (w 1), the rest random. 85 triangles.
+  constexpr int VERTICES = 255;
+  std::vector<float> vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    const std::array<float, 20> values = {random(-6.f, 6.f), random(0.f, 15.f), random(-2.f, 2.f), 1.f};
+    vertices.insert(vertices.end(), values.begin(), values.end());
+    for (int index = 4; index < 20; ++index) vertices[vertices.size() - 20 + index] = random(0.f, 1.f);
+  }
+  // sail_VS: world_matrix (float4x3, columns: a turn about y and the ship's place near the camera).
+  const float turn = 0.7f;
+  std::array<float, 16> sail = {std::cos(turn), 0.f, std::sin(turn), CAMERA[0] + 40.f, 0.f, 1.f, 0.f, CAMERA[1] - 80.f,
+                                -std::sin(turn), 0.f, std::cos(turn), CAMERA[2] + 25.f};
+  const std::array<ComPtr<ID3D11Buffer>, 2> constants = {ConstantBuffer(CAMERA.data(), sizeof(CAMERA)), ConstantBuffer(sail.data(), sizeof(sail))};
+  sail[3] += 1.f;
+  const std::array<ComPtr<ID3D11Buffer>, 2> moved = {ConstantBuffer(CAMERA.data(), sizeof(CAMERA)), ConstantBuffer(sail.data(), sizeof(sail))};
+  std::array<float, 56> main_view = {};
+  main_view[13 * 4 + 3] = -1.f;  // w -1: every triangle outside
+  const auto outside = ConstantBuffer(main_view.data(), sizeof(main_view));
+  main_view[13 * 4 + 3] = 1.f;  // x, y, z 0, w 1: every triangle inside
+  const auto inside = ConstantBuffer(main_view.data(), sizeof(main_view));
+  // The game's TEXCOORD1: o2, its world.
+  const auto reference = StreamOut(game, "TEXCOORD", vertices, constants, {}, 1);
+  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, constants);
+  const auto moved_worlds = StreamOut(capture, "TEXCOORD", vertices, moved);
+  const auto shadow_worlds = StreamOut(shadow, "TEXCOORD", vertices, constants);
+  const std::span<const uint8_t> keep(__rt_outside_view_world, sizeof(__rt_outside_view_world));
+  const auto kept = StreamOutThrough(shadow, keep, vertices, constants, outside.Get());
+  const auto in_view = StreamOutThrough(shadow, keep, vertices, constants, inside.Get());
+  if (reference.size() != VERTICES * 4 || worlds.size() != VERTICES * 4 || moved_worlds.size() != VERTICES * 4
+      || shadow_worlds.size() != VERTICES * 4 || kept.size() != VERTICES * 4 || in_view.size() != VERTICES * 4) {
+    CHECK(false, "sails: stream output sizes");
+    return;
+  }
+  const auto worst = [](const std::vector<float>& world, const std::vector<float>& expected) {
+    double error = 0.0;
+    for (int vertex = 0; vertex < VERTICES; ++vertex) {
+      for (int axis = 0; axis < 3; ++axis) {
+        const double want = expected[vertex * 4 + axis];
+        error = std::max(error, std::abs(world[vertex * 4 + axis] - want) / std::max(1.0, std::abs(want)));
+      }
+    }
+    return error;
+  };
+  const double capture_error = worst(worlds, reference);
+  const double moved_error = worst(moved_worlds, reference);
+  const double kept_error = worst(kept, shadow_worlds);
+  const double in_view_error = worst(in_view, shadow_worlds);
+  CHECK(capture_error < 1e-6, "sails: the capture %g off the game's world", capture_error);
+  CHECK(moved_error > 1e-3, "sails: CONTROL a metre off = the game's (%g)", moved_error);
+  CHECK(kept_error < 1e-6, "sails' shadow pass: kept corners %g off its world", kept_error);
+  CHECK(in_view_error > 1e-3, "sails' shadow pass: CONTROL in view kept every corner (%g)", in_view_error);
+  std::printf("18CE6F5A: the capture's world within %.2g of the game's; CONTROL a metre off %.2g. F4B04EF3 kept outside the view: "
+              "its world within %.2g; CONTROL in view %.2g\n",
+              capture_error, moved_error, kept_error, in_view_error);
+}
+
 // A shader's instructions and declarations (D3DDisassemble), comments and its version line left out.
 static std::array<std::vector<std::string>, 2> Disassembly(std::span<const uint8_t> code) {
   ComPtr<ID3DBlob> text;
@@ -944,6 +1017,7 @@ int main(int argc, char** argv) {
   TestVegetation(argv[1], argv[2]);
   TestFur(argv[1], argv[2]);
   TestCampaignTrees(argv[1], argv[2]);
+  TestSails(argv[1], argv[2]);
   TestVfxBrightness(argv[1]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
   return failures == 0 ? 0 : 1;

@@ -1549,7 +1549,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 1> VEGETATION_MASKS = {{{.pi
 // helper's 0.5), as the campaign's plants. In no trace (level B: sessions 2 / 3 drew 54D2CFBD's forests).
 constexpr std::array<twattila::rt_scene::PixelMask, 1> CAMPAIGN_TREE_MASKS = {{{.pixel_shader = 0x07295514, .slot = 0}}};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 37> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 39> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1574,6 +1574,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 37> SCENE_SHADERS = {{
     // The fur-clad units (weighted4_fur_alpha EE95696C: 26A41B7D's skinning plus the fur's sway; the census's NOT HELD,
     // in no trace): level B, WARP test\tw_troy_shaders.
     {.hash = 0xEE95696C, .capture_shader = __rt_capture_unit_4_bones_fur, .dynamic = true},
+    // The sails (sail.hlsl vs40_main 18CE6F5A; in no trace, level B): thin, captured every frame (the CPU moves them), as
+    // Attila's. Their emblems (sailsymbol 592E666F) lie on them: left out (a second capture of the same cloth). The ropes
+    // (rope 5F79A748 / 88D8E9E9) are ribbons turned to the camera: edge-on to the sun, no shadow from the main pass's
+    // (Attila leaves its 8D0D26B9 out too).
+    {.hash = 0x18CE6F5A, .capture_shader = __rt_capture_sail, .dynamic = true, .thin = true},
     {.hash = 0x0AF83680, .capture_shader = __rt_capture_grass_0af8, .dynamic = true, .foliage = true, .grass = true},
     // The drawn grass (grass.hlsl vs40_main: 2026-10-27's battle, 7 draws, 9.7 M indices; ATN's 2026-11-14 traces), its UV
     // at o2.xy (TEXCOORD0; Pharaoh's twin E710D4E7 has it at o3).
@@ -1603,6 +1608,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 37> SCENE_SHADERS = {{
     // The campaign's trees and plants in the shadow pass (rigidcampaignvegetation vs40_shadow 42093D29: 6 of 33 traces): Warhammer
     // II's 7D979F60 signature, TEXCOORD0 the world (w the fade 9F6D9081 dithers by: left out), TEXCOORD1 the UV of its t0 test.
     {.hash = 0x42093D29, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
+    // The sails in the shadow pass (sail.hlsl vs40_depth F4B04EF3; level B): SV_Position, then TEXCOORD0 the world (o1 = r0).
+    {.hash = 0xF4B04EF3, .dynamic = true, .thin = true, .cascade_keep = __rt_outside_view_world},
     // The campaign's trees in the shadow pass (rigidcampaigntrees vs40_shadow 5192C0BA; in no trace, level B): COLOR0 first,
     // then TEXCOORD0 the world (w POSITION0.w), TEXCOORD1 the UV of 07295514's t0 test: RT_WORLD_UV with RT_COLOUR.
     {.hash = 0x5192C0BA, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_colour_world_uv},
