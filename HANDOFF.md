@@ -450,6 +450,22 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   DECIDES). Agent resumed: SSR rows, 14 unclear sun rows, DrawScrub skip, banner material read, grass reach.
 - [x] ATN ~15:30: "include everything, not everyone plays at highest settings": rule in the skill (d5b92cdb), memory
   feedback_every_setting, sent to every running agent; Thrones resumed for the 4 sm4 / 4.1 SSR shaders below 100 %.
+- [x] Fable 5.2 reset hunt DONE, MERGED b53fbfa4 (8a075306): NOT reproduced (0 of 3 resets used; harness fed the battle's own
+  draw lists of traces 12 / 15, NaN / origin / collinear meshes, 144 alpha layers, idle release: all clean). Ranked suspects:
+  (1) Windows' own D3D12 / DXR 1.1: Rome Remastered had NO D3D12\D3D12Core.dll (only Attila and WH3 have it), (2) wrong
+  geometry of a whole family (stretched triangles: 0.2 / 0.5 / 2 % wrong vertices -> 15 / 39 / 118 ms traces), (3) stale
+  cluster set on a rewritten index buffer, (4) origin-collapsed markers. Hardening: Battle Objects Solid / All turn on DRED
+  (Log Details); a new helper device within 5 s of a trace drops the untested kinds until restart. Side findings for later:
+  7DD754DA not flagged terrain (triangles over 200 m dropped), float32 unprojection noise at km range, BasicLit draws of one
+  mesh with other b7 matrices share a key. ATN TEST: Tested, then Solid + restart, then All + restart; after a reset send
+  renodx-tw-dlaa64.log + ReShade.log.
+- [x] tw_install.py (tools, 13:0x): every helper game gets D3D12\D3D12Core.dll (Agility SDK 1.619.6, as release_zip.py ships
+  it) where missing; a different one only with --first (backup tw_install.py.bak_agility). Next install copies it into the
+  8 helper games that lack it (all but Attila / WH3).
+- [x] ATN ~13:00: standalone test exes allowed; ATN excluded tools	w	estbin in Bitdefender; probes (x86 / x64 mingw, x64
+  clang-cl) ran and stayed; all agents told.
+- [x] WH1 continuation MERGED 9d945a18 (Grass Height Distance, prop cut-out masks, RT Water Reflections (Experimental; RT/PT on),
+  Bloom). Agent resumed on the 6 DO NOW left.
 - [x] Pharaoh parity round MERGED 74568884 (SDR preset + first start, Depth of Field, Texture LOD Bias (Experimental), Smoke
   Shadows without rays (Experimental; off while the rays' sun shadows run), Smooth Banner Shadows (RT/PT on), Hue Clip measured:
   fire best at 70 (burn 0.2) / 80 (burn 0): default stays 80; campaign billboards CE5AA8D1 (Troy's capture, WARP 4.3e-5 m) +
