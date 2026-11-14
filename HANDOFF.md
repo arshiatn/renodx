@@ -636,6 +636,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     (A only, CPU-bound). The winner's patch + numbers go to tools/tw/heapfix/for_author_pf/ for ATN to send (never by us).
     Quiet machine during measurement: tools/tw/quiet_run.lock (all running agents told: no builds / WARP / GPU jobs while it
     exists) + gpu_job.lock + no compiler processes before each start.
+- [ ] ATN 19:xx: (1) a 16-thread test: ATN sets CPU Set Setter's Attila rule to the V-cache CCD's 16 logical CPUs (now 8
+  cores), then CPU-bound P with number_of_threads 8 / 12 / 16, and P vs B4 vs B8 (sort threads) at the best count in the
+  three scenes. hfp_ agent preparing (variants, tests, runner); NOT started until ATN confirms the rule. (2) The same siege
+  benchmark after every CPU / GPU optimization round, heapfix P as the baseline: tools/tw/bench/constantinople_bench.ps1
+  (hfp_ preparing); first use = the end-of-round build (new Experimental CPU rows off / each on / all on). (3) Ideas that
+  belong in the author's fix (ATN decides what to send): a radix sort for the game's plain 4-byte introsort 0xda6b0,
+  memfast extended to 65-127 B copies, and a note that our Faster Render Lists patches +0x176ced0 (so his fix doesn't
+  collide). Owner: coordinator collects with the package.
 - [ ] Audit agent (aud_, read-only, ATN 14:5x "did the same happen to Nsight?"): every actionable line of the 2026-11-13 / 14
   analysis reports (Nsight, CPU / GPU recordings, heapfix, draw redesign cost map, Rome Remastered hunt, round notes) against
   HANDOFF, commits and the running agents' scopes; report tools/tw/round_notes/audit_1114.md. Each MISSING line becomes a
