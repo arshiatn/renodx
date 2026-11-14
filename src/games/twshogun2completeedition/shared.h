@@ -64,6 +64,11 @@ struct ShaderInjectData {
   float sss_samples;      // sss.hlsli: 120 x 2^this samples, 0 the game's (DLSS addon SSSSamples: 0-5)
   float sss_stability;    // sss.hlsli: 0 the game's, 1 contrast halved, 2 and edge pixels cast none (SSSStability)
   float shadow_map_stability;  // sss.hlsli: the cascades' normal offset, 0 none, 1 / 2 0.75 / 1.5 texels
+  // sss.hlsli: Bend's parameters (DLSS addon SSSThickness, SSSContrast, SSSEdgeThreshold, SSSPrecisionOffset; 0 the game's).
+  float sss_thickness;
+  float sss_contrast;
+  float sss_edge_threshold;
+  float sss_precision_offset;
   // tonemap01: DLSS's jitter this frame (render pixels; the DLSS addon's, dlss_jitter.hpp), set before the draw
   float render_jitter_x;
   float render_jitter_y;

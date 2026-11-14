@@ -608,6 +608,27 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v66 (2026-11-14): the helper's upscaler and frame generation, ray tracing rows (built only, not run in game)
+
+- **Upscaler** (the DLSS addon's row, Experimental): the game's DLSS evaluation through renodx-tw-dlaa64.exe
+  (upscaling.hpp): newer DLSS, **Ray Reconstruction** with the ray tracing, FSR or XeSS. The game's colour, depth and
+  motion into the helper (upscale_inputs: L, M and RR get the colour's square root), its result into the game's DLSS
+  output (upscale_output). Any frame the helper can't, the game's DLSS runs.
+- **Frame generation** and **Reflex** (twattila/frame_generation.hpp, reflex.hpp; the helper presents, its HUD-less
+  image after tonemap00 / 01), with either upscaler. Tales' in-process frame generation is gone from the DLSS addon.
+- Ray tracing: rt_sun from lighting_VS_PS (the sun, its colour, the ambient cube: path tracing's sky), the Debug View
+  after the tone mapper, a profile button; rows for AO rays, 32 / 64 / 128 torch lights, importance, steady, range,
+  softness (RR), GI resolution (no Checkerboard), path bounces up to 2, leaf micromaps, GPU baking, fast leaves, NRD
+  (with the helper's upscaler), SER, SHaRC, Rays a Pixel, log details, scene test.
+- Bend's thickness, contrast, edge threshold and precision offset as rows (sss.hlsli; 0 the game's).
+- **Ray-traced fog shadows** (Experimental, off): the battle fog's sun light (fog01) shaded along each ray by the
+  helper's fog trace (twattila/rt_fog.hlsli, as Warhammer III); the sky's part of the fog as it was.
+- **Upscaling Debug View**: the motion the helper's upscaler gets, over the picture (upscale_output).
+- rt_sun: the paths' sun light in the game's units (sunlight00-03's x 1.90384671e-005; read with Path-Traced AO only).
+  test/tw_shogun2_shaders checks rt_sun with the data run's lighting buffers, upscale_inputs with a DLSS capture and
+  the Debug View on WARP.
+- The helper starts only with a ray tracing row on at launch, Upscaler not the game's DLSS, or frame generation on.
+
 ## v65: wrong constants from the decompiler (built only, not run in game)
 
 Checked against the game's own shaders (data\shaders.pack: bytecode and source):
