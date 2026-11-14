@@ -1101,8 +1101,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
                                       "Needs the game's screen-space reflections on.");
     ImGui::BeginDisabled(!reflections);
     count("Ray-traced reflection samples", "RayTracedReflectionSamples", 1, 8, "Rays per pixel on rough surfaces: less noise, heavier.");
-    choice("Ray-traced sea reflections (Experimental)", "RayTracedWaterReflections", 0, OFF_ON_NAMES,
-           "The sea reflects ships, coasts and units with rays (water quality High).");
+    choice("Ray-traced water reflections (Experimental)", "RayTracedWaterReflections", 0, OFF_ON_NAMES,
+           "The sea, rivers and lakes reflect ships, shores and units with rays (water quality High or Ultra).");
     ImGui::EndDisabled();
     const bool specular_occlusion = checkbox("Ray-traced specular occlusion (Experimental)", "RayTracedSpecularOcclusion",
                                              "The sky's reflection taken off shiny surfaces where something stands over them (inside\n"
