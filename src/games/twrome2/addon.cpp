@@ -1494,7 +1494,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 39> MOTION_SHADERS =
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py): the main view's terrain (old and custom
 // geom, shader models 3 and 4.1), rigid objects, tree branches and leaves and units (Rome II's own:
 // data_rome2.pack's builds), and their capture versions (world positions; leaves also UVs).
-constexpr std::array<twattila::rt_scene::SceneShader, 39> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0x83AB3AFC, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true},
     {.hash = 0x2898B8F6, .capture_shader = __rt_capture_terrain_old_sm3_a, .terrain = true},
     {.hash = 0xD8475AB1, .capture_shader = __rt_capture_terrain_custom_material_sm3_b, .terrain = true},
@@ -1536,6 +1536,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 39> SCENE_SHADERS = {{
     {.hash = 0xD2EC24BD, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
     {.hash = 0x2C1F0C31, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
     {.hash = 0x60DAA886, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    // Sprite Soldier Shadows (Experimental): the far soldiers' cards (imposter A5EA617C, 36 of ATN's 72 traces with ps DC7A9187;
+    // its MSAA twin 40551D07 with 7CA69EC3 in A2) turned to the sun as Attila's 1B9E7692's, cut out by the diffuse's alpha at t0.
+    {.hash = 0xA5EA617C, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
+    {.hash = 0x40551D07, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
     // The campaign's trees (rigidcampaigntrees AAFE8EAB, Attila's 4657DA8A code; 11 of ATN's 72 traces, C1, ps AD356CEB: its
     // diffuse's alpha at t0): placed, no wind.
     {.hash = 0xAAFE8EAB, .capture_shader = __rt_capture_campaign_tree, .rows_shader = __rt_rows_campaign_tree, .foliage = true, .still = true},
