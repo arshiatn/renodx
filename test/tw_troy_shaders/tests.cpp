@@ -1,6 +1,7 @@
 // Troy's replaced shaders (src/games/twtroy/shaders) against the game's on WARP.
 // tests.exe <the game's dumped csos> <the add-on's built csos (build\twtroy.include\embed)>
-// 1. Fog Strength: battlefog00 / 01 (the battle fog 018FED0C and its MSAA twin D9A3B04F, 4 samples) with the camera and
+// 1. Fog Strength: battlefog00 / 01 (the battle fog 018FED0C and its MSAA twin D9A3B04F, 4 samples) and their shader
+//    model 4.1 twins battlefog02 / 03 (4ED4200E, 78E00DBB: feature level 10.1 devices) with the camera and
 //    fog constants of the fog draw in ATN's session 3 trace_04 over a synthetic depth ramp (each sample its own depth):
 //    at Fog Strength 1 with nothing at b12 the game's bits; 0 no fog (rgb 0, alpha 1); 2 alpha T^2 and rgb x (1 + T) (the
 //    optical depth doubled); CONTROL 0.5 differs. Below 100% (b12 xy 0.5, the draw's viewport the target's top-left
@@ -237,7 +238,10 @@ static bool SameBits(const std::vector<float>& a, const std::vector<float>& b, s
 }
 
 static void TestFog(const std::string& game_folder, const std::string& built_folder, const char* hash, bool msaa) {
-  const auto game = ReadFile(game_folder + "\\0x" + hash + ".ps_5_0.cso");
+  std::vector<char> game;
+  for (const char* model : {".ps_5_0.cso", ".ps_4_1.cso"}) {
+    if (game.empty()) game = ReadFile(game_folder + "\\0x" + hash + model);
+  }
   const auto built = ReadFile(built_folder + "\\0x" + hash + ".cso");
   CHECK(!game.empty() && !built.empty(), "%s: the csos", hash);
   if (game.empty() || built.empty()) return;
@@ -688,6 +692,8 @@ int main(int argc, char** argv) {
 
   TestFog(argv[1], argv[2], "018FED0C", false);
   TestFog(argv[1], argv[2], "D9A3B04F", true);
+  TestFog(argv[1], argv[2], "4ED4200E", false);
+  TestFog(argv[1], argv[2], "78E00DBB", true);
   TestVegetation(argv[1], argv[2]);
   TestVfxBrightness(argv[1]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
