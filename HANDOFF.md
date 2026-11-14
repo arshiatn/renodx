@@ -231,6 +231,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   WH1 session 2 (21, P / UP battle + campaign, RT, RR F), WH2 (30, campaign + fire siege, DLAA / P / UP). Rome Remastered
   wouldn't start: memory (a quality-scorer harness helper at 45 GB committed, PC at 74.8 / 73.8 GB; its agent stopped
   it; my kill was refused by the permission classifier); ATN does Rome Remastered 67 / 50% another day.
+- [x] ATN 04:0x: "just keep working until you have finished everything" - no 08:30 stop: every agent finishes its whole
+  plan (WH1, WH2, Thrones, Troy, Shogun 2, Rome Remastered resumed: Bend, FG, debug views; ReSTIR U1 + U2, quality
+  baseline, Nsight). An interim install of the merged state at ~12:00 if agents still run (no game running); final
+  install after the last merge + verification.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
