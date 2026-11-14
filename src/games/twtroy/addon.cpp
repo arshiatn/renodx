@@ -1759,6 +1759,11 @@ bool AttachAddon() {
   // sun_direction), in all 25 sun shaders' RDEF (b3, b2 without the shadow maps; tools\tw\troy\troy_sun_rdef.py).
   twattila::screen_space_shadows::sun_colour_register = 3;
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // Light Through Foliage: the G-buffer's channel 3 alpha byte, bit 128, which the sun shaders' own code tests (049C3CFB:
+  // and with 128). Of the 2026-10-27 battle's 21 G-buffer shaders, leaves (A6D82BAF), far tree cards (FCE1EAEC) and blocks
+  // (6DA297BD) write 128, grass (EBC9553B) 160, the others 0-64 (units 1 / 33, the lake 64; terrain material 3C1C6172 its
+  // vertex value; tools\tw\troy\troy_material_writes_1027.txt).
+  twattila::screen_space_shadows::foliage_material_bit = 128;
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's environment b0, camera b1 with
   // g_screen_size c27 / g_viewport_dimensions c29 as the Options' defaults, shadowmap b2's splits, lighting_VS_PS b3's sun
