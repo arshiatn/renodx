@@ -22,6 +22,8 @@
 // 15. indicator00-02's Indicator Brightness against the game's 0xD12FA660 / 0xC454C1EA / 0xC57C222D (TestIndicators).
 // 16. campaignoverlay00 at 33% against 100% and the game's 0xD7E27B35 (TestCampaignOverlay).
 // 17. rt_particle_quads (Smoke Shadows' quad shader for 0xBEA3F2D4's outputs) on synthetic quads (TestParticleQuads).
+// 18. rt_capture_displacement / rt_capture_terrain_patches (Rarer Objects in the Rays) against the game's tessellated draws
+//     0x5074655A / 0xC24D8705 with their hull and domain shaders (TestPatches; the csos' folder third).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -2599,6 +2601,244 @@ static void TestParticleQuads(const std::string& games) {
               expected.size(), written.NumPrimitivesWritten, count / 3);
 }
 
+// 18. rt_capture_displacement and rt_capture_terrain_patches (Rarer Objects in the Rays: the patches the game tessellates as the
+//     triangles they are) against the game's tessellated draws streamed out of their domain shaders: rigidcommon vs30_displacement
+//     (0x5074655A, hull 0x91442562, domain 0x94CEC8A9) and terraintile vs30_infield_silouette_sm5 (0xC24D8705, 0x54F0069F,
+//     0x4FE62BBA). 64 random patches 40-80 m in front of the camera (rigid: g_tesselation_factor 4, its fade there whole: one
+//     triangle a patch, no displacement; terrain: its roughness under the threshold): each triangle's corners the game's bit for
+//     bit (SV_Position, the rigid UV), whichever corner the tessellator starts with. CONTROLS: the rigid patches 3 m away
+//     tessellate and move (displaced), rough terrain tessellates (more triangles).
+struct PatchVertex {
+  std::array<float, 4> position, uv, normal, tangent, bitangent, colour, row0, row1, row2, row3;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC DISPLACEMENT_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 96, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 112, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 128, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 144, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+// terraintile's: POSITION0 (the world) and NORMAL0 (w: the roughness).
+static const D3D11_INPUT_ELEMENT_DESC TERRAIN_PATCH_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+static std::vector<char> GameCode(const std::string& folder, const char* name) {
+  std::ifstream file(folder + "/0x" + name, std::ios::binary);
+  std::vector<char> code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  if (code.empty()) {
+    std::printf("missing 0x%s\n", name);
+    std::exit(2);
+  }
+  return code;
+}
+
+static void TestPatches(const std::string& games, const std::string& folder) {
+  const auto rigid_shaders = Shaders(games, folder, "5074655A", L"rt_capture_displacement");
+  const auto terrain_shaders = Shaders(games, folder, "C24D8705", L"rt_capture_terrain_patches");
+  const auto rigid_hull = GameCode(folder, "91442562.hs_5_0.cso");
+  const auto rigid_domain = GameCode(folder, "94CEC8A9.ds_5_0.cso");
+  const auto terrain_hull = GameCode(folder, "54F0069F.hs_5_0.cso");
+  const auto terrain_domain = GameCode(folder, "4FE62BBA.ds_5_0.cso");
+  constexpr UINT PATCHES = 64;
+  constexpr UINT MOST_TRIANGLES = PATCHES * 128;
+  // A projection in camera_VS_PS c10-13 (columns; w the depth; the view the identity: the camera at 0 looking along +z, view's c4 (0, 0, 1) for the hull's back-face test).
+  std::array<float, 44 * 4> camera = {};
+  for (int row = 0; row < 4; ++row) camera[((2 + row) * 4) + row] = 1.f;
+  const std::array<float, 16> projection = {1.2f, 0.03f, 0.f, 0.f, -0.02f, 1.7f, 0.f, 0.f, 0.01f, -0.04f, 1.0001f, -0.10001f, 0.f, 0.f, 1.f, 0.f};
+  std::ranges::copy(projection, camera.begin() + (10 * 4));
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const std::array<float, 12> wind = {};
+  const auto wind_buffer = Constants(wind.data(), sizeof(wind));
+  // rigid_config_PS: g_tesselation_factor 4 (c1.y), g_tesselation_displacement_scale 0.1 (c1.z).
+  const std::array<float, 12> rigid_config = {0.f, 0.f, 0.f, 0.f, 0.f, 4.f, 0.1f, 0.f, 0.f, 0.f, 0.f, 0.f};
+  const auto rigid_config_buffer = Constants(rigid_config.data(), sizeof(rigid_config));
+  // terrain_VS_PS: near_terrain_size_meters 512 (c0.x), g_terrain_silouette_roughness_threshold 0.5 (c8.y); terrain_tile_VS_DS 256.
+  std::array<float, 12 * 4> terrain = {};
+  terrain[0] = 512.f;
+  terrain[(8 * 4) + 1] = 0.5f;
+  const auto terrain_buffer = Constants(terrain.data(), sizeof(terrain));
+  const std::array<float, 4> tile = {256.f, 0.f, 0.f, 0.f};
+  const auto tile_buffer = Constants(tile.data(), sizeof(tile));
+  const std::vector<std::array<float, 4>> heights(16, {0.5f, 0.5f, 0.5f, 0.5f});
+  const auto height_texture = Texture(4, 4, DXGI_FORMAT_R32G32B32A32_FLOAT, heights.data(), 4 * 16, D3D11_BIND_SHADER_RESOURCE);
+  ComPtr<ID3D11ShaderResourceView> height_view;
+  device->CreateShaderResourceView(height_texture.Get(), nullptr, height_view.GetAddressOf());
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_WRAP, .AddressW = D3D11_TEXTURE_ADDRESS_WRAP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+
+  // Random patches `distance` m ahead, facing the camera (the hull shader drops those facing away), placed by rows turned about z.
+  std::mt19937 random(18);
+  const auto patches = [&random](float distance, float roughness) {
+    std::uniform_real_distribution<float> unit(-1.f, 1.f);
+    std::vector<PatchVertex> vertices;
+    for (UINT patch = 0; patch < PATCHES; ++patch) {
+      const float turn = unit(random) * 3.14159f;
+      const std::array<float, 3> place = {unit(random) * 20.f, unit(random) * 10.f, distance + (unit(random) * 0.1f * distance)};
+      std::array<std::array<float, 3>, 3> corners = {};
+      for (auto& corner : corners) corner = {unit(random) * 2.f, unit(random) * 2.f, unit(random) * 0.3f};
+      const std::array<float, 3> a = {corners[2][0] - corners[0][0], corners[2][1] - corners[0][1], corners[2][2] - corners[0][2]};
+      const std::array<float, 3> b = {corners[1][0] - corners[0][0], corners[1][1] - corners[0][1], corners[1][2] - corners[0][2]};
+      if ((a[0] * b[1]) - (a[1] * b[0]) < 0.f) std::swap(corners[1], corners[2]);
+      for (const auto& corner : corners) {
+        PatchVertex vertex = {.uv = {unit(random), unit(random), unit(random), unit(random)}, .normal = {0.5f, 0.5f, 1.f, roughness},
+                              .tangent = {1.f, 0.5f, 0.5f, 0.f}, .bitangent = {0.5f, 1.f, 0.5f, 0.f}, .colour = {1.f, 1.f, 1.f, 1.f},
+                              .row0 = {std::cos(turn), -std::sin(turn), 0.f, place[0]}, .row1 = {std::sin(turn), std::cos(turn), 0.f, place[1]},
+                              .row2 = {0.f, 0.f, 1.f, place[2]}};
+        if (roughness < 0.f) {
+          vertex.position = {corner[0], corner[1], corner[2], 1.f};  // rigid: the mesh's, placed by the rows
+        } else {
+          // terrain: the world, as the rigid ones' rows would put it
+          vertex.position = {(vertex.row0[0] * corner[0]) + (vertex.row0[1] * corner[1]) + place[0],
+                             (vertex.row1[0] * corner[0]) + (vertex.row1[1] * corner[1]) + place[1], corner[2] + place[2], 1.f};
+          vertex.normal = {unit(random) * 0.3f, unit(random) * 0.3f, 1.f, roughness};
+        }
+        vertices.push_back(vertex);
+      }
+    }
+    return vertices;
+  };
+  // Each streamed vertex's SV_Position and (with `uv`) TEXCOORD1, out of the game's domain shader (`hull` given: patches) or our
+  // capture version (a triangle list); the triangles written.
+  struct Streamed {
+    std::vector<std::array<float, 8>> vertices;
+    UINT64 triangles = 0;
+  };
+  const auto stream = [&](std::span<const char> vertex_code, std::span<const char> hull, std::span<const char> domain,
+                          std::span<const D3D11_INPUT_ELEMENT_DESC> layout, const std::vector<PatchVertex>& vertices,
+                          std::span<ID3D11Buffer* const> vertex_constants, std::span<ID3D11Buffer* const> hull_constants,
+                          std::span<ID3D11Buffer* const> domain_constants, bool uv) {
+    const std::array<D3D11_SO_DECLARATION_ENTRY, 2> entries = {{
+        {.SemanticName = "SV_POSITION", .ComponentCount = 4},
+        {.SemanticName = "TEXCOORD", .SemanticIndex = 1, .ComponentCount = 4},
+    }};
+    const UINT stride = 32;
+    const auto& streamed_code = hull.empty() ? vertex_code : domain;
+    ComPtr<ID3D11GeometryShader> output;
+    device->CreateGeometryShaderWithStreamOutput(streamed_code.data(), streamed_code.size(), entries.data(), uv ? 2 : 1, &stride, 1,
+                                                 D3D11_SO_NO_RASTERIZED_STREAM, nullptr, output.GetAddressOf());
+    ComPtr<ID3D11VertexShader> vertex_shader;
+    device->CreateVertexShader(vertex_code.data(), vertex_code.size(), nullptr, vertex_shader.GetAddressOf());
+    ComPtr<ID3D11HullShader> hull_shader;
+    ComPtr<ID3D11DomainShader> domain_shader;
+    if (!hull.empty()) {
+      device->CreateHullShader(hull.data(), hull.size(), nullptr, hull_shader.GetAddressOf());
+      device->CreateDomainShader(domain.data(), domain.size(), nullptr, domain_shader.GetAddressOf());
+    }
+    ComPtr<ID3D11InputLayout> input;
+    device->CreateInputLayout(layout.data(), static_cast<UINT>(layout.size()), vertex_code.data(), vertex_code.size(), input.GetAddressOf());
+    const auto count = static_cast<UINT>(vertices.size());
+    const D3D11_BUFFER_DESC vertex_desc = {.ByteWidth = count * static_cast<UINT>(sizeof(PatchVertex)), .Usage = D3D11_USAGE_DEFAULT,
+                                           .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+    const D3D11_SUBRESOURCE_DATA vertex_data = {.pSysMem = vertices.data()};
+    ComPtr<ID3D11Buffer> vertex_buffer;
+    device->CreateBuffer(&vertex_desc, &vertex_data, vertex_buffer.GetAddressOf());
+    const D3D11_BUFFER_DESC out_desc = {.ByteWidth = MOST_TRIANGLES * 3 * stride, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+    ComPtr<ID3D11Buffer> out;
+    device->CreateBuffer(&out_desc, nullptr, out.GetAddressOf());
+    ComPtr<ID3D11Query> statistics;
+    const D3D11_QUERY_DESC query_desc = {.Query = D3D11_QUERY_SO_STATISTICS};
+    device->CreateQuery(&query_desc, statistics.GetAddressOf());
+    const UINT vertex_stride = sizeof(PatchVertex);
+    const UINT offset = 0;
+    context->IASetInputLayout(input.Get());
+    context->IASetPrimitiveTopology(hull.empty() ? D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST : D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
+    context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &vertex_stride, &offset);
+    context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+    context->VSSetConstantBuffers(0, static_cast<UINT>(vertex_constants.size()), vertex_constants.data());
+    context->HSSetShader(hull_shader.Get(), nullptr, 0);
+    context->HSSetConstantBuffers(0, static_cast<UINT>(hull_constants.size()), hull_constants.data());
+    context->DSSetShader(domain_shader.Get(), nullptr, 0);
+    context->DSSetConstantBuffers(0, static_cast<UINT>(domain_constants.size()), domain_constants.data());
+    context->DSSetShaderResources(0, 1, height_view.GetAddressOf());
+    context->DSSetSamplers(0, 1, sampler.GetAddressOf());
+    context->GSSetShader(output.Get(), nullptr, 0);
+    context->SOSetTargets(1, out.GetAddressOf(), &offset);
+    context->Begin(statistics.Get());
+    context->Draw(count, 0);
+    context->End(statistics.Get());
+    context->ClearState();
+    D3D11_QUERY_DATA_SO_STATISTICS written = {};
+    while (context->GetData(statistics.Get(), &written, sizeof(written), 0) != S_OK) {}
+    const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = out_desc.ByteWidth, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    ComPtr<ID3D11Buffer> staging;
+    device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf());
+    context->CopyResource(staging.Get(), out.Get());
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    Streamed result = {.vertices = std::vector<std::array<float, 8>>(std::min<UINT64>(written.NumPrimitivesWritten, MOST_TRIANGLES) * 3),
+                       .triangles = written.NumPrimitivesWritten};
+    std::memcpy(result.vertices.data(), mapped.pData, result.vertices.size() * stride);
+    context->Unmap(staging.Get(), 0);
+    return result;
+  };
+  // Triangles whose corners (the first `floats` of each) are not the game's, in any order.
+  const auto unlike = [](const Streamed& game, const Streamed& ours, int floats) {
+    size_t bad = 0;
+    for (size_t triangle = 0; triangle < ours.vertices.size() / 3; ++triangle) {
+      for (size_t corner = 0; corner < 3; ++corner) {
+        const auto& our = ours.vertices[(triangle * 3) + corner];
+        bool found = false;
+        for (size_t other = 0; other < 3 && (triangle * 3) + other < game.vertices.size(); ++other) {
+          found = found || std::equal(our.begin(), our.begin() + floats, game.vertices[(triangle * 3) + other].begin(),
+                                      [](float a, float b) { return std::bit_cast<uint32_t>(a) == std::bit_cast<uint32_t>(b); });
+        }
+        if (!found) {
+          ++bad;
+          break;
+        }
+      }
+    }
+    return bad;
+  };
+
+  const std::array<ID3D11Buffer*, 3> rigid_vertex_constants = {camera_buffer.Get(), wind_buffer.Get(), rigid_config_buffer.Get()};
+  const std::array<ID3D11Buffer*, 2> rigid_constants = {camera_buffer.Get(), rigid_config_buffer.Get()};
+  const std::span<const char> rigid_ours(static_cast<const char*>(rigid_shaders.second->GetBufferPointer()), rigid_shaders.second->GetBufferSize());
+  const auto rigid = [&](float distance) {
+    const auto vertices = patches(distance, -1.f);
+    return std::pair{stream(rigid_shaders.first, rigid_hull, rigid_domain, DISPLACEMENT_LAYOUT, vertices, rigid_vertex_constants, rigid_constants,
+                            rigid_constants, true),
+                     stream(rigid_ours, {}, {}, DISPLACEMENT_LAYOUT, vertices, rigid_vertex_constants, {}, {}, true)};
+  };
+  const auto [rigid_game, rigid_ours_far] = rigid(60.f);
+  const size_t rigid_bad = unlike(rigid_game, rigid_ours_far, 8);
+  CHECK(rigid_game.triangles == PATCHES && rigid_ours_far.triangles == PATCHES && rigid_bad == 0,
+        "rt_capture_displacement: %llu game triangles, %llu ours, %zu unlike", rigid_game.triangles, rigid_ours_far.triangles, rigid_bad);
+  const auto [rigid_near_game, rigid_near_ours] = rigid(3.f);
+  const size_t rigid_near_bad = unlike(rigid_near_game, rigid_near_ours, 4);
+  CHECK(rigid_near_game.triangles > PATCHES && rigid_near_bad > 0, "CONTROL: near rigid patches: %llu game triangles, %zu unlike",
+        rigid_near_game.triangles, rigid_near_bad);
+
+  const std::array<ID3D11Buffer*, 1> terrain_hull_constants = {terrain_buffer.Get()};
+  const std::array<ID3D11Buffer*, 3> terrain_domain_constants = {camera_buffer.Get(), terrain_buffer.Get(), tile_buffer.Get()};
+  const std::array<ID3D11Buffer*, 1> terrain_vertex_constants = {camera_buffer.Get()};
+  const std::span<const char> terrain_ours(static_cast<const char*>(terrain_shaders.second->GetBufferPointer()), terrain_shaders.second->GetBufferSize());
+  const auto terrain_run = [&](float roughness) {
+    const auto vertices = patches(60.f, roughness);
+    return std::pair{stream(terrain_shaders.first, terrain_hull, terrain_domain, TERRAIN_PATCH_LAYOUT, vertices, {}, terrain_hull_constants,
+                            terrain_domain_constants, false),
+                     stream(terrain_ours, {}, {}, TERRAIN_PATCH_LAYOUT, vertices, terrain_vertex_constants, {}, {}, false)};
+  };
+  const auto [terrain_game, terrain_ours_smooth] = terrain_run(0.f);
+  const size_t terrain_bad = unlike(terrain_game, terrain_ours_smooth, 4);
+  CHECK(terrain_game.triangles == PATCHES && terrain_ours_smooth.triangles == PATCHES && terrain_bad == 0,
+        "rt_capture_terrain_patches: %llu game triangles, %llu ours, %zu unlike", terrain_game.triangles, terrain_ours_smooth.triangles,
+        terrain_bad);
+  const auto [terrain_rough_game, terrain_rough_ours] = terrain_run(1.f);
+  CHECK(terrain_rough_game.triangles > PATCHES, "CONTROL: rough terrain: %llu game triangles", terrain_rough_game.triangles);
+  std::printf("rt_capture_displacement / terrain_patches: %u far patches each the game's corners bit for bit (rigid with its UV); near rigid "
+              "%llu triangles (%zu of %u unlike), rough terrain %llu triangles\n",
+              PATCHES, rigid_near_game.triangles, rigid_near_bad, PATCHES, terrain_rough_game.triangles);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -2635,6 +2875,7 @@ int main(int argc, char** argv) {
     TestAutoExposure(games, argv[3]);
     TestIndicators(games, argv[3]);
     TestCampaignOverlay(games, argv[3]);
+    TestPatches(games, argv[3]);
   }
   TestSunTint(games);
   TestParticleQuads(games);

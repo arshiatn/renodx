@@ -562,4 +562,5 @@ test/tw_shogun2_tweaks on the game's DLL). Details and test lines: the HDR addon
 ### Parity round 4 (2026-11-14; built only, not run in game)
 
 New Experimental rows, off: Temporal Smoothing, Temporal Edge Fix and Denoiser for GT-VBAO (Ambient Occlusion, Attila's
-keys, in no preset). Details and test lines: the HDR addon's README, same heading.
+keys, in no preset), and Rarer objects in the rays (Ray Tracing, Attila's RayTracedUntracedCasters, 0 in Reset and RT/PT).
+Details and test lines: the HDR addon's README, same heading.

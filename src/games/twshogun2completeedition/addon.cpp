@@ -1163,6 +1163,7 @@ void ReadDlssAddonOptions() {
   // Attila's Smooth Banner Shadows (RT_SHEETS_UNSELFED: the cloth the pixel shows doesn't shade itself) and Grass Shadow Range
   // (rays from pixels farther than it pass the grass), both the helper's.
   ray_tracing.sheets_unselfed = read_on("RayTracedSheetsUnselfed", false);
+  twshogun2::ray_tracing::untraced_casters.store(read_on("RayTracedUntracedCasters", false), std::memory_order_relaxed);
   read_float("RayTracedGrassShadowRange", 0.f, 0.f, 200.f, &ray_tracing.grass_shadow_range);
   ray_tracing.ambient_occlusion = read_on("RayTracedAmbientOcclusion", false);
   read_float("RayTracedAmbientRange", 2.f, 0.25f, 5.f, &ray_tracing.ambient_range);

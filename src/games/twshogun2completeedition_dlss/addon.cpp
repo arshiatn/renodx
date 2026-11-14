@@ -1120,6 +1120,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedSpriteShadows", 0.f},
         {"RayTracedFarTreeShadows", 0.f},
         {"RayTracedUnitsOutOfView", 0.f},
+        {"RayTracedUntracedCasters", 0.f},
         {"RayTracedSheetsUnselfed", 0.f},
         {"RayTracedGrassShadowRange", 0.f},
         {"RayTracedAoReblur", 0.f},
@@ -1216,6 +1217,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
     choice("Shadow casters out of view (Experimental)", "RayTracedUnitsOutOfView", 0, OFF_ON_NAMES,
            "Buildings, rocks, trees, soldiers, horses, sails and banners behind the camera cast ray-traced shadows into view too; "
            "far soldiers and far trees with their shadow rows on (restart the game).");
+    choice("Rarer objects in the rays (Experimental)", "RayTracedUntracedCasters", 0, OFF_ON_NAMES,
+           "Objects and near ground the game tessellates (its Tessellation on) also cast ray-traced shadows.");
     choice("Smooth banner shadows (Experimental)", "RayTracedSheetsUnselfed", 0, OFF_ON_NAMES,
            "Banners, sails and other cloth don't shade themselves: no blocky triangles on them. Shadows of other things stay.");
     choice("Ray-traced smoke shadows (Experimental)", "RayTracedSmokeShadows", 0, OFF_ON_NAMES,

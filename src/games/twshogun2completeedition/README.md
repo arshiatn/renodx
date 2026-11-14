@@ -965,3 +965,10 @@ On atn-mods b435a0e6, the parity round 2 brief (ledger tools/tw/parity/shogun2.t
   ssao_edge_fix, ssao_denoise): twattila/ao_filter.hpp on the AO the sun light draws read (their t_ssao two slots below the
   G-buffer slot, the depth three above, camera_VS_PS copied into Attila's layout), as Warhammer II's; its noise moves each frame
   only with Temporal Smoothing on (ssao_frame 0: the noise as before). No shared code changed.
+- **Rarer objects in the rays** (DLSS addon, Ray Tracing; Attila's RayTracedUntracedCasters, 0 in Reset and RT/PT as
+  Attila's): with the game's Tessellation on, rigid objects (rigidcommon vs30_displacement 5074655A) and the near terrain
+  (terraintile vs30_infield_silouette_sm5 C24D8705) were left out of the rays (3-control-point patches); now their patches go
+  in as the triangles they are (rt_core's patch_triangles, as Attila's 9AEE504E), without the rigid displacement (within
+  20 m of the camera) and the near terrain's rounding of rough patches. The terrain's only where the vertex stage's b0 is the domain shader's
+  camera (its vertex shader reads no constants). WARP part 18: 64 far patches each the game's VS + HS + DS corners bit for
+  bit (CONTROLS: near rigid patches tessellate and move, rough terrain tessellates).
