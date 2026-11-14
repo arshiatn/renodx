@@ -40,6 +40,7 @@
 #include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./dlaa.hpp"
+#include "./ray_tracing.hpp"
 #include "./shared.h"
 #include "./trace_reads.hpp"
 
@@ -137,6 +138,8 @@ void ApplyResetPreset() {
 
       // Active experimental controls
       {"AntiAliasing", 0.f},
+      {"RayTracedSunShadows", 0.f},
+      {"RayTracedAmbientOcclusion", 0.f},
       {"TestSunShadowsOff", 0.f},
       {"TestAmbientOcclusionOff", 0.f},
       // {"auto_exposure_highlight_protection", 0.f},
@@ -669,10 +672,17 @@ void BuildRuntimeData() {
                               if (test_sun_shadows_off != 0.f) { ClearOutputToOne(cmd_list, true, &logged_test_shadows, "the sun's shadow mask"); }
                             }};
   }
+  // The rays (ray_tracing.hpp): traced before ASSAO's apply (or this resolve), multiplied into their targets after.
   for (const uint32_t hash : SHADOW_MASK_PIXEL_SHADERS) {
-    custom_shaders[hash] = {.crc32 = hash, .on_drawn = [](reshade::api::command_list* cmd_list) {
+    custom_shaders[hash] = {.crc32 = hash,
+                            .on_draw = [](reshade::api::command_list* cmd_list) {
+                              twromeremastered::ray_tracing::Trace(cmd_list);
+                              return true;
+                            },
+                            .on_drawn = [](reshade::api::command_list* cmd_list) {
                               twromeremastered::dlaa::KeepDepth(cmd_list, false);
                               if (test_sun_shadows_off != 0.f) { ClearOutputToOne(cmd_list, false, &logged_test_shadows, "the sun's shadow mask"); }
+                              twromeremastered::ray_tracing::Multiply(cmd_list, false);
                             }};
   }
   for (const uint32_t hash : TONE_MAPPER_SHADERS) {
@@ -681,8 +691,14 @@ void BuildRuntimeData() {
   for (const uint32_t hash : SMAA_EDGE_AND_WEIGHT_SHADERS) {
     custom_shaders[hash] = {.crc32 = hash, .on_draw = [](reshade::api::command_list*) { return !twromeremastered::dlaa::Evaluated(); }};
   }
-  custom_shaders[AO_APPLY_PIXEL_SHADER] = {.crc32 = AO_APPLY_PIXEL_SHADER, .on_drawn = [](reshade::api::command_list* cmd_list) {
+  custom_shaders[AO_APPLY_PIXEL_SHADER] = {.crc32 = AO_APPLY_PIXEL_SHADER,
+                                           .on_draw = [](reshade::api::command_list* cmd_list) {
+                                             twromeremastered::ray_tracing::Trace(cmd_list);
+                                             return true;
+                                           },
+                                           .on_drawn = [](reshade::api::command_list* cmd_list) {
                                              if (test_ao_off != 0.f) { ClearOutputToOne(cmd_list, false, &logged_test_ao, "the ambient occlusion"); }
+                                             twromeremastered::ray_tracing::Multiply(cmd_list, true);
                                            }};
   // The trees' AO drawn into ASSAO's target: left out while the Test row is on.
   custom_shaders[TREE_AO_PIXEL_SHADER] = {.crc32 = TREE_AO_PIXEL_SHADER, .on_draw = [](reshade::api::command_list*) { return test_ao_off == 0.f; }};
@@ -1802,12 +1818,36 @@ void ConfigureAddon() {
           .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
+          .key = "RayTracedSunShadows",
+          .binding = &twromeremastered::ray_tracing::rows.sun_shadows,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Sun Shadows",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Adds ray-traced sun shadows to the game's (buildings, terrain, trees; soldiers keep the game's). Restart the "
+                     "game after turning it on. Experimental, off by default.",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedAmbientOcclusion",
+          .binding = &twromeremastered::ray_tracing::rows.ambient_occlusion,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Ambient Occlusion",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Adds ray-traced ambient occlusion to the game's. Restart the game after turning it on. Experimental, off by "
+                     "default.",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "DLAA needs the full download from GitHub: github.com/arshiatn/renodx/releases",
+          .label = "DLAA and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases",
           .section = "Graphics (Experimental)",
           .tint = 0xFF5050,
           .is_visible = []() {
-            return IsAdvancedSettings() && twromeremastered::dlaa::setting != 0.f && !twattila::dlaa_bridge::HelperInstalled();
+            const bool wanted = twromeremastered::dlaa::setting != 0.f || twromeremastered::ray_tracing::rows.sun_shadows != 0.f
+                                || twromeremastered::ray_tracing::rows.ambient_occlusion != 0.f;
+            return IsAdvancedSettings() && wanted && !twattila::dlaa_bridge::HelperInstalled();
           },
       },
       new renodx::utils::settings::Setting{
@@ -1940,6 +1980,10 @@ bool AttachAddon() {
   twromeremastered::dlaa::Install();
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  // A ray tracing row on at launch: its scene's shaders kept from the start.
+  if (twromeremastered::ray_tracing::rows.sun_shadows != 0.f || twromeremastered::ray_tracing::rows.ambient_occlusion != 0.f) {
+    twromeremastered::ray_tracing::Install();
+  }
 
   // Before the swapchain mod: a new chain's output is decided first (output_encoding), a removed device's chain goes.
   twattila::device_loss::Install();
@@ -1967,6 +2011,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twromeremastered::dlaa::Uninstall();
+  twromeremastered::ray_tracing::Uninstall();
 
   reshade::unregister_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
