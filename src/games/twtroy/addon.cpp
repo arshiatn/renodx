@@ -1751,8 +1751,10 @@ bool AttachAddon() {
   // keeps it here (ssao01 binds no camera, below).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
   // Before the Light Bounce's (its callback draws the sun draw again).
-  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. The ambient cube starts at
+  // lighting_VS_PS float 24 (c6-c11: +x, -x, +y, -y, +z, -z), the sun colour at float 12 (c3; x 0x389FB405 in rt_sun:
+  // twtroy/rt_sun.cs_5_0.hlsl), the paths' sky and sun light: all 25 sun shaders' RDEF, WARP tools\tw\troy\sun_test.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 24, 12);
   // Coloured Shadows (Bend's and the rays' filter at t50) on the sun's colour: lighting_VS_PS c3 (sun_colour; c1 is
   // sun_direction), in all 25 sun shaders' RDEF (b3, b2 without the shadow maps; tools\tw\troy\troy_sun_rdef.py).
   twattila::screen_space_shadows::sun_colour_register = 3;
