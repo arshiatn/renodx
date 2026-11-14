@@ -25,21 +25,26 @@
 #include "../../mods/swapchain.hpp"
 #include "../../utils/command_action.hpp"
 #include "../../utils/log.hpp"
+#include "../../utils/pipeline.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../twattila/graphics_hooks.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_pass.hpp"
+#include "../twattila/engine_code.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/smoke_map.hpp"
 #include "../twattila/ssr_hiz.hpp"
 #include "../twattila/test_hooks.hpp"
+#include "../twattila/water_effects.hpp"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
@@ -174,6 +179,15 @@ void ApplyRecommendedPreset() {
   renodx::utils::settings::UpdateSettings({
       {"tonemapper", 3.f},
       {"video_autohdr", 0.2f},
+  });
+}
+
+// SDR monitors (as Attila's): Reset's controls in Rendering Mode SDR, no video AutoHDR (the button also sets Output SDR).
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({
+      {"tonemapper", 0.f},
+      {"video_autohdr", 0.f},
   });
 }
 
@@ -313,6 +327,8 @@ void BuildRuntimeData() {
         .section = "General",
         .tint = 0xFFD23C,
     },
+    twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
+                                  [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
@@ -395,7 +411,7 @@ void BuildRuntimeData() {
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "HDR (PsychoV31) and Video AutoHDR 0.20. Peak, Paper White, UI brightness, Settings Mode and output\n"
+        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20. Peak, Paper White, UI brightness, Settings Mode and output\n"
                    "encoding are kept.",
         .on_change = []() { ApplyRecommendedPreset(); },
     },
@@ -407,6 +423,19 @@ void BuildRuntimeData() {
         .tooltip = "Resets active HDR image controls to defaults. Peak, Paper White, UI brightness, Settings Mode, and output encoding are preserved.",
         .on_change = []() {
           ApplyResetPreset();
+        },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .section = "Presets",
+        .group = "preset-line-2",
+        .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it was\n"
+                   "HDR), no video AutoHDR. The game's and the UI's white are your monitor's own white.",
+        .tint = 0xFFC107,
+        .on_change = []() {
+          ApplySdrPreset();
+          renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
         },
     },
     //   new renodx::utils::settings::Setting{
@@ -1174,14 +1203,22 @@ void BuildRuntimeData() {
 // (twattila/graphics_hooks.hpp) and engine tweaks (filled in ConfigureAddon).
 std::array<tw::engine_tweaks::Option, 4> unit_detail;  // foot soldiers, cavalry, elephants, artillery
 float big_battle_fix = 0.f;
+float small_soldiers_as_sprites = 0.f;
+float sprite_size = 20.f;  // pixels on screen
 float shadow_map_size = 0.f;  // the game's sizes x 2^this (graphics_hooks.hpp shadow_map)
 tw::engine_tweaks::Option dead_units;
-tw::engine_tweaks::Option unit_animation;
+tw::engine_tweaks::Option unit_animation;  // shared pose
+tw::engine_tweaks::Option facial_animation;
+tw::engine_tweaks::Option hand_animation;
 tw::engine_tweaks::Option unit_variety;
 tw::engine_tweaks::Option footstep_effects;
 tw::engine_tweaks::Option object_detail;
 tw::engine_tweaks::Option building_detail;
-tw::engine_tweaks::Option campaign_detail;
+tw::engine_tweaks::Option campaign_trees;
+tw::engine_tweaks::Option campaign_plants;
+tw::engine_tweaks::Option campaign_props;
+tw::engine_tweaks::Option grass_distance;  // graphics_hooks' scrub hooks
+tw::engine_tweaks::Option grass_density;
 // Every engine option above, then the tests' (Graphics 2 of 2: Attila's, twattila/engine_tests.hpp).
 std::vector<tw::engine_tweaks::Option*> graphics_options;
 std::vector<twattila::engine_tests::EngineTest> engine_tests;
@@ -1189,10 +1226,15 @@ std::atomic<bool> at_start_done = false;
 std::atomic<bool> at_start_stop = false;
 HMODULE addon_module_handle = nullptr;
 twattila::feature_settings::SssSliders sss_sliders;
+twattila::smoke_map::Sliders smoke_map_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
 float ssr_denoiser = 1.f;  // twattila/ssr_hiz.hpp: the resolve's history
+float lod_bias_trilinear_row = 0.f;  // twattila/texture_lod_bias.hpp SetWrappingTrilinear (graphics_page's row)
+// Faster Game CPU Code (twattila/engine_code.hpp): Attila's float to half only (its 190 bytes the same here; the soldier
+// draw's truncation and fmod's _matherr check differ, left alone). Experimental, off until a game run.
+float engine_code_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1246,10 +1288,13 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl ps30 slm / slm_reflection (standard) and
 // skinlm, every shadow method, with the camera at b0 and the G-buffer at t0-t3.
-// Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py): the main view's terrain (rigidterrain geom /
-// custom geom, shader models 3 and 4.1, old and new; Thrones' own), rigid objects, tree branches and leaves (Attila's
-// shaders, the same hashes) and units (Thrones' own), and their capture versions (world positions; leaves also UVs).
-constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
+// Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py), as Attila's (tools/tw/thrones/th_caster_census.txt
+// over the data run's three battle traces: every G-buffer caster held): the main view's terrain (rigidterrain geom / custom
+// geom, shader models 3 and 4.1, old and new; Thrones' own), rigid objects and their alpha-tested cut-outs, rocks blended into
+// the terrain, tree branches and leaves, grass, sprite soldiers and the campaign's plants and trees (Attila's shaders, the
+// same hashes; their rows shaders Attila's), the far trees' cards (Thrones' 79DFD18D: Attila's inputs and view choice) and
+// the units (Thrones' own, one rounding apart from Attila's; their cut-outs as Attila's).
+constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x289AC6F1, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x958620C8, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0xBFD9331A, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1258,32 +1303,99 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     {.hash = 0xBC15D489, .capture_shader = __rt_capture_terrain_custom_material_sm41, .terrain = true},
     {.hash = 0x0BF40414, .capture_shader = __rt_capture_terrain_custom_sm41, .terrain = true},
     {.hash = 0x7E9E7121, .capture_shader = __rt_capture_terrain_custom_sm3, .terrain = true},
-    {.hash = 0x347F3DD9, .capture_shader = __rt_capture_rigid_sm3, .rows_shader = __motion_record_rigid_sm3},
-    {.hash = 0xD830AD9B, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41},
+    {.hash = 0x347F3DD9, .capture_shader = __rt_capture_rigid_sm3, .rows_shader = __motion_record_rigid_sm3, .cut_out_shader = __rt_capture_rigid_cut_out_sm3},
+    {.hash = 0xD830AD9B, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41, .cut_out_shader = __rt_capture_rigid_cut_out_sm41},
     {.hash = 0xB06CB969, .capture_shader = __rt_capture_rigid_blend_sm3, .rows_shader = __motion_record_rigid_blend_sm3},
     {.hash = 0x10FE7EBC, .capture_shader = __rt_capture_rigid_blend_wind_sm3, .rows_shader = __motion_record_rigid_blend_wind_sm3},
-    {.hash = 0x77B993FD, .capture_shader = __rt_capture_branch_sm3},
-    {.hash = 0xB8C3E83D, .capture_shader = __rt_capture_branch_sm41},
-    {.hash = 0x6EEF4062, .capture_shader = __rt_capture_branch_sm5},
-    {.hash = 0x46C616F0, .capture_shader = __rt_capture_leaf_sm3, .foliage = true},
-    {.hash = 0x5B880546, .capture_shader = __rt_capture_leaf_sm41, .foliage = true},
-    {.hash = 0xCABCB9D1, .capture_shader = __rt_capture_leaf_sm5, .foliage = true},
-    {.hash = 0xDC9FBA4A, .capture_shader = __rt_capture_unit_sm3, .dynamic = true},
-    {.hash = 0x76682C60, .capture_shader = __rt_capture_unit_4_bones_sm3, .dynamic = true},
-    {.hash = 0x0D8C2A96, .capture_shader = __rt_capture_unit_dismember_sm3, .dynamic = true},
-    {.hash = 0x61DED001, .capture_shader = __rt_capture_unit_4_bones_dismember_sm3, .dynamic = true},
-    {.hash = 0x25839CC5, .capture_shader = __rt_capture_unit_sm41, .dynamic = true},
-    {.hash = 0xFF473BE8, .capture_shader = __rt_capture_unit_4_bones_sm41, .dynamic = true},
-    {.hash = 0xC9F9DBA5, .capture_shader = __rt_capture_unit_dismember_sm41, .dynamic = true},
-    {.hash = 0x65C0AE28, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .dynamic = true},
-    {.hash = 0xF3741248, .capture_shader = __rt_capture_grass_sm5, .dynamic = true, .foliage = true, .grass = true},
-    {.hash = 0x01FA9CDE, .capture_shader = __rt_capture_grass_sm4, .dynamic = true, .foliage = true, .grass = true},
+    // Rocks and cliffs blended into the terrain (rigidterrainblend): its depth pass (its material pass has no camera).
+    {.hash = 0xE03E161C, .capture_shader = __rt_capture_rigid_terrain_blend_sm3, .rows_shader = __motion_record_rigid_terrain_blend_sm3},
+    {.hash = 0x77B993FD, .capture_shader = __rt_capture_branch_sm3, .rows_shader = __motion_record_tree},
+    {.hash = 0xB8C3E83D, .capture_shader = __rt_capture_branch_sm41, .rows_shader = __motion_record_tree},
+    {.hash = 0x6EEF4062, .capture_shader = __rt_capture_branch_sm5, .rows_shader = __motion_record_tree},
+    {.hash = 0x46C616F0, .capture_shader = __rt_capture_leaf_sm3, .rows_shader = __motion_record_tree, .foliage = true},
+    {.hash = 0x5B880546, .capture_shader = __rt_capture_leaf_sm41, .rows_shader = __motion_record_tree, .foliage = true},
+    {.hash = 0xCABCB9D1, .capture_shader = __rt_capture_leaf_sm5, .rows_shader = __motion_record_tree, .foliage = true},
+    {.hash = 0xDC9FBA4A, .capture_shader = __rt_capture_unit_sm3, .cut_out_shader = __rt_capture_unit_cut_out_sm3, .dynamic = true},
+    {.hash = 0x76682C60, .capture_shader = __rt_capture_unit_4_bones_sm3, .cut_out_shader = __rt_capture_unit_4_bones_cut_out_sm3, .dynamic = true},
+    {.hash = 0x0D8C2A96, .capture_shader = __rt_capture_unit_dismember_sm3, .cut_out_shader = __rt_capture_unit_dismember_cut_out_sm3, .dynamic = true},
+    {.hash = 0x61DED001, .capture_shader = __rt_capture_unit_4_bones_dismember_sm3, .cut_out_shader = __rt_capture_unit_4_bones_dismember_cut_out_sm3, .dynamic = true},
+    {.hash = 0x25839CC5, .capture_shader = __rt_capture_unit_sm41, .cut_out_shader = __rt_capture_unit_cut_out_sm41, .dynamic = true},
+    {.hash = 0xFF473BE8, .capture_shader = __rt_capture_unit_4_bones_sm41, .cut_out_shader = __rt_capture_unit_4_bones_cut_out_sm41, .dynamic = true},
+    {.hash = 0xC9F9DBA5, .capture_shader = __rt_capture_unit_dismember_sm41, .cut_out_shader = __rt_capture_unit_dismember_cut_out_sm41, .dynamic = true},
+    {.hash = 0x65C0AE28, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .cut_out_shader = __rt_capture_unit_4_bones_dismember_cut_out_sm41, .dynamic = true},
+    // Grass placed (its instance rows), swaying within its share, past it still (rt_rows_grass).
+    {.hash = 0xF3741248, .capture_shader = __rt_capture_grass_sm5, .rows_shader = __rt_rows_grass, .foliage = true, .grass = true},
+    {.hash = 0x01FA9CDE, .capture_shader = __rt_capture_grass_sm4, .rows_shader = __rt_rows_grass, .foliage = true, .grass = true},
     // Cloth (banners, tents) and sails: thin, captured every frame (the CPU moves them).
     {.hash = 0x772B26FF, .capture_shader = __rt_capture_cloth_sm3, .dynamic = true, .thin = true},
     {.hash = 0x902253FD, .capture_shader = __rt_capture_cloth_sm41, .dynamic = true, .thin = true},
     {.hash = 0xD11B5EC7, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
+    // Sprite soldiers: cards facing the sun, cut out by their diffuse map's alpha.
+    {.hash = 0x1B9E7692, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
+    // Far trees' cards: the same, each showing the tree from the sun (their alpha at t1, as Attila's).
+    {.hash = 0x79DFD18D, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    // The campaign's plants and forests, and its trees: placed like the battle's, no wind (no campaign trace yet).
+    {.hash = 0x924D7813, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
+    {.hash = 0x819A414C, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
+    {.hash = 0x4657DA8A, .capture_shader = __rt_capture_campaign_tree, .rows_shader = __rt_rows_campaign_tree, .foliage = true, .still = true},
 }};
+
+// The units' G-buffer pixel shaders that clip at t0's alpha (weighted ps30_gbuffer without noclip), sorted: Attila's 92
+// (56 the same hash, 36 Thrones twins; each clip to its discard Attila's, tools/tw/thrones/th_cut_outs.py over the dump
+// and blood.pack).
+constexpr std::array<uint32_t, 92> UNIT_CUT_OUT_PIXEL_SHADERS = {
+    0x04451F97, 0x078FE2F8, 0x092FAE7D, 0x0C6FF9DE, 0x0CA5AA79, 0x11CD57DD, 0x16468155, 0x165E8EE7, 0x1B064C40, 0x20C7AB1F,
+    0x21A8210A, 0x239963D1, 0x24576145, 0x24C09B83, 0x28C3EAD4, 0x29482F73, 0x2B7D2720, 0x2B92395E, 0x2C3EA513, 0x2D4B1E78,
+    0x2DBF5C78, 0x2EA00B20, 0x32463113, 0x3BCC202B, 0x3CE0CAD3, 0x3DE5867F, 0x3DF777E5, 0x3EA3AE02, 0x3EA5229E, 0x4918D429,
+    0x4DB87C72, 0x58BCF4AE, 0x61CD6092, 0x680FB8BE, 0x6D764062, 0x6E058CEB, 0x6EC2D95F, 0x7AC17F0A, 0x7B01A295, 0x7B85D2C8,
+    0x7C44CB62, 0x7D6AFE41, 0x82FF1DB5, 0x8524F338, 0x879A8AFD, 0x8A031046, 0x8C501D38, 0x8D8F67DE, 0x940D83F4, 0x950C02A3,
+    0x95BD2B3D, 0x9C38C3D8, 0xA01EEF45, 0xA223822E, 0xA482BA91, 0xA4C87797, 0xAF38BF92, 0xB6E881F4, 0xB866973E, 0xBA2A6179,
+    0xBB381C44, 0xBCC9321F, 0xBE51C839, 0xBE7CF084, 0xC1822803, 0xC3057069, 0xC3144AD4, 0xC3728871, 0xC5DF37DF, 0xC5E213AC,
+    0xC64A7A31, 0xC8CB357B, 0xCA398999, 0xCACD9B8E, 0xCEDA829D, 0xD5668711, 0xD764AEC8, 0xDCC30AB7, 0xDD85EE06, 0xE39EBF7B,
+    0xE5A5F801, 0xE7AE71FE, 0xE91382B4, 0xEBD63231, 0xEDCD6CC3, 0xEE62565B, 0xEF7C0A67, 0xF0CF5FF7, 0xF504924C, 0xF6A9B5E2,
+    0xFBD501F7, 0xFF1C02CC,
+};
+
+// The forward passes that read the sun's shadow map (the data run's traces, by the map's handle): the battle water and
+// rivers, the lit particles and their other path (Attila's, the same bytes; Thrones draws the game's own, patched), the
+// ocean (Thrones' F7E011A4: gather4_c at t9, S2's trace) and the campaign's sea (Thrones' twins by name: no campaign trace).
+constexpr std::array<uint32_t, 7> SHADOW_READER_SHADERS = {0xC9FBACCB, 0x2E9F5935, 0xACE33D5D, 0xF5379F78, 0xF7E011A4, 0xDE739661, 0x08F47D8C};
+
+// What only the campaign map draws: its borders (Attila's shader), the shroud's plane (Thrones' twin by name), its sea
+// (waterplane ps30_campaign, Thrones' twins by name).
+constexpr std::array<uint32_t, 4> CAMPAIGN_SHADERS = {0x0CC96E53, 0x2860172D, 0xDE739661, 0x08F47D8C};
+constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+  twattila::frame_history::campaign_frames.store(2, std::memory_order_relaxed);
+  return {};
+};
+
+// Attila's water rows read again here (tools/tw/thrones/th_water_rows.py: the same bytes, else Thrones' twin by name, its
+// bindings from the reflection; WARP tools/tw/thrones/water_test). The seas' and the campaign lake's twins don't read
+// g_sea_bed_light_scatter: Water Clarity changes the rivers, the battle plane and the placed water meshes only.
+constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {{
+    {.hash = 0x2E9F5935, .lighting_slot = 2, .world_input = 1, .refraction_slot = 2},  // battle river
+    {.hash = 0xC9FBACCB, .lighting_slot = 2, .world_input = 3, .refraction_slot = 2},  // battle plane, Water Quality Ultra
+    {.hash = 0x2E69BF8E, .lighting_slot = 1, .world_input = 3, .refraction_slot = 2},  // placed water meshes; the plane below Ultra
+    {.hash = 0xF7E011A4, .lighting_slot = 2, .world_input = 2, .refraction_slot = 6},  // battle sea, high / ultra
+    {.hash = 0xA9724510, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6},  // battle sea, medium
+    {.hash = 0x736DB670, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},  // battle sea, low
+    {.hash = 0xDE739661, .lighting_slot = 2, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign sea
+    {.hash = 0x08F47D8C, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign sea, low
+    {.hash = 0x4229959B, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign lake
+    // Without shadows.
+    {.hash = 0x52228234, .lighting_slot = 1, .world_input = 1, .refraction_slot = 2},
+    {.hash = 0x5CB9A865, .lighting_slot = 1, .world_input = 1, .refraction_slot = 2},
+    {.hash = 0xBF93E312, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6},
+    {.hash = 0x761A07B1, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},
+    {.hash = 0xF6DFFEBC, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},
+    {.hash = 0xECB1E7B5, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},
+}};
+
+// The screen-space shadows' Light Through Foliage: grass and leaves, and the rigid objects drawn after them (Attila's
+// shaders, the same bytes in this dump: depth copies around the foliage, as Attila's; its draw order not yet seen here).
+constexpr std::array<uint32_t, 5> FOLIAGE_VERTEX_SHADERS = {0x46C616F0, 0x5B880546, 0xCABCB9D1, 0xF3741248, 0x01FA9CDE};
+constexpr std::array<uint32_t, 4> AFTER_FOLIAGE_VERTEX_SHADERS = {0x347F3DD9, 0xD830AD9B, 0xB06CB969, 0x10FE7EBC};
 
 // The screen-space shadows' Light Through Banners: cloth and sails (as the rays).
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{{.hash = 0x772B26FF}, {.hash = 0x902253FD}, {.hash = 0xD11B5EC7}, {.hash = 0x202FA188}}};
@@ -1396,21 +1508,43 @@ void OnInitDevice(reshade::api::device*) {
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
+    campaign_frames.fetch_sub(1, std::memory_order_relaxed);
+  }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
-  twattila::feature_settings::UpdateSsr(&shader_injection, ssr_denoiser);
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
+  // preset's is XeSS on Intel's, else FSR.
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
+  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
+  // Ray-traced shadows replace the screen-space ones too.
+  auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
+  sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
+  twattila::screen_space_shadows::Update(swapchain, sss_settings);
+  // The rays bring their own smoke.
+  auto smoke_map_settings = smoke_map_sliders;
+  if (rt_settings.sun_shadows) smoke_map_settings.strength = 0.f;
+  twattila::smoke_map::Update(smoke_map_settings);
+  rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
+  // Ray Reconstruction is the only denoiser: the reflections' denoiser (and its history) off under it.
+  twattila::feature_settings::UpdateSsr(&shader_injection, (twattila::dlaa_bridge::bridge.reconstructing || twattila::dlaa_bridge::bridge.nrd_reflections) ? 0.f : ssr_denoiser);
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   shader_injection.ssao_scale = twattila::ao_pass::ResolutionScale(shader_injection.ssao_resolution);
+  // The rays' AO or the paths' in place of the game's (ssao00) and GT-VBAO's (not drawn), as Attila's.
+  shader_injection.rt_ambient_alone = (rt_settings.ambient_occlusion || rt_settings.path_ambient) ? 1.f : 0.f;
   shader_injection.ssao_frame =
-      twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f, shader_injection.ssao_temporal != 0.f,
-                                shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
+      twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f && shader_injection.rt_ambient_alone == 0.f,
+                                shader_injection.ssao_temporal != 0.f, shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
+  twattila::engine_code::Update(engine_code_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size));
   twattila::graphics_hooks::Update(
@@ -1418,12 +1552,19 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
           .unit_detail = {unit_detail[0].scale, unit_detail[1].scale, unit_detail[2].scale, unit_detail[3].scale},
           .dead_units = dead_units.scale,
           .unit_animation = unit_animation.scale,
-          .facial_animation = unit_animation.scale,
-          .hand_animation = unit_animation.scale,
+          .facial_animation = facial_animation.scale,
+          .hand_animation = hand_animation.scale,
           .unit_variety = unit_variety.scale,
           .footstep_effects = footstep_effects.scale,
-          .campaign_trees = campaign_detail.scale,
+          .campaign_trees = campaign_trees.scale,
+          .grass_distance = grass_distance.scale,
+          .grass_density = grass_density.scale,
+          // As Attila's (the shadow record's code the same here): the 3D shadows its rule lets go dropped while the rays'
+          // shadows skip the sun's shadow map casters.
+          .unit_shadows = (twattila::rt_scene::CastersSkipped() ? 0.f : 1.f),
           .big_battle_fix = big_battle_fix != 0.f,
+          .sprite_pixels = (small_soldiers_as_sprites != 0.f ? sprite_size : 0.f),
+          .focal_pixels = twattila::anti_aliasing::MainFocalPixels(),
       },
       &graphics_hooks_installed, graphics_status, twattila::graphics_hooks::Game::THRONES);
 }
@@ -1486,19 +1627,19 @@ void ConfigureAddon() {
       {.name = "battle_building_lod2_distance"},
       {.name = "battle_building_lod3_distance"},
   };
-  campaign_detail.tweaks = {
-      // As Attila: plants when their models load, the rigid tree LOD and props live (the trees: the tree LOD hook).
+  // As Attila: the rigid tree LOD live (the trees: the tree LOD hook), plants when their models load, props live.
+  campaign_trees.tweaks = {{.name = "rigid_campaign_tree_lod"}};
+  campaign_plants.tweaks = {
       {.name = "campaign_grass_lod0_distance"},
       {.name = "campaign_grass_lod1_distance"},
       {.name = "campaign_grass_lod2_distance"},
       {.name = "campaign_grass_lod3_distance"},
       {.name = "campaign_grass_lod4_distance"},
-      {.name = "rigid_campaign_tree_lod"},
-      {.name = "campaign_props_max_distance"},
   };
+  campaign_props.tweaks = {{.name = "campaign_props_max_distance"}};
   // Graphics 2 of 2's tests: Attila's (the same engine values).
   engine_tests = twattila::engine_tests::Attila();
-  graphics_options = {&object_detail, &building_detail, &campaign_detail};
+  graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
   for (auto& test : engine_tests) graphics_options.push_back(&test.option);
   graphics_status = tw::engine_tweaks::StatusLine();
   // Graphics presets (ATN): Reset (all graphics settings at their defaults), MAX (every
@@ -1515,12 +1656,20 @@ void ConfigureAddon() {
       {"GraphicsUnitDetailHuge", 1.f},
       {"GraphicsDeadUnits", 1.f},
       {"GraphicsUnitAnimation", 1.f},
+      {"GraphicsFacialAnimation", 1.f},
+      {"GraphicsHandAnimation", 1.f},
       {"GraphicsUnitVariety", 1.f},
       {"GraphicsFootstepEffects", 1.f},
       {"GraphicsObjectDetail", 1.f},
       {"GraphicsBuildingDetail", 1.f},
       {"GraphicsCampaignDetail", 1.f},
+      {"GraphicsCampaignPlants", 1.f},
+      {"GraphicsCampaignProps", 1.f},
+      {"GraphicsGrassDistance", 1.f},
+      {"GraphicsGrassDensity", 1.f},
       {"GraphicsBigBattleFix", 0.f},
+      {"GraphicsSmallSoldiersAsSprites", 0.f},
+      {"GraphicsSpriteSize", 20.f},
   };
   const std::vector<std::pair<std::string, float>> graphics_max = {
       {"GraphicsShadowMapSize", 2.f},
@@ -1531,11 +1680,15 @@ void ConfigureAddon() {
       {"GraphicsUnitDetailHuge", 8.f},
       {"GraphicsDeadUnits", 1.f},
       {"GraphicsUnitAnimation", 4.f},
+      {"GraphicsFacialAnimation", 8.f},
+      {"GraphicsHandAnimation", 8.f},
       {"GraphicsUnitVariety", 4.f},
       {"GraphicsFootstepEffects", 4.f},
       {"GraphicsObjectDetail", 8.f},
       {"GraphicsBuildingDetail", 8.f},
       {"GraphicsCampaignDetail", 4.f},
+      {"GraphicsCampaignPlants", 4.f},
+      {"GraphicsCampaignProps", 4.f},
   };
   // ATN's own settings: every graphics setting at its default but these.
   auto graphics_atn = graphics_defaults;
@@ -1546,11 +1699,15 @@ void ConfigureAddon() {
       {"GraphicsUnitDetailHuge", 1.75f},
       {"GraphicsDeadUnits", 0.6f},
       {"GraphicsUnitAnimation", 2.5f},
+      {"GraphicsFacialAnimation", 2.5f},
+      {"GraphicsHandAnimation", 2.5f},
       {"GraphicsUnitVariety", 2.5f},
       {"GraphicsFootstepEffects", 2.5f},
       {"GraphicsObjectDetail", 1.5f},
       {"GraphicsBuildingDetail", 3.f},
       {"GraphicsCampaignDetail", 4.f},
+      {"GraphicsCampaignPlants", 4.f},
+      {"GraphicsCampaignProps", 4.f},
       {"GraphicsShadowMapSize", 2.f},
        }) {
     std::ranges::find(graphics_atn, key, &std::pair<std::string, float>::first)->second = value;
@@ -1585,9 +1742,9 @@ void ConfigureAddon() {
           .label = "What I would use:",
           .section = "Graphics (Experimental)",
           .group = "graphics-presets",
-          .tooltip = "Unit Detail 1.75x, Dead Unit Detail 0.60x, Unit Animation, Unit Variety and Footstep Effects\n"
-                     "2.50x, Model Detail 1.50x, Building Detail 3x, Campaign Detail 4x, Shadow Map Size 8192. The rest\n"
-                     "at its default.",
+          .tooltip = "Unit Detail 1.75x, Dead Unit Detail 0.60x, Unit, Facial and Hand Animation, Unit Variety and\n"
+                     "Footstep Effects 2.50x, Model Detail 1.50x, Building Detail 3x, Campaign Tree, Plant and Prop\n"
+                     "4x, Shadow Map Size 8192. The rest at its default.",
           .on_change = [graphics_atn]() { renodx::utils::settings::UpdateSettings(graphics_atn); },
       },
   });
@@ -1617,9 +1774,14 @@ void ConfigureAddon() {
                                 "Lower: cheaper battles with many dead.",
                                 1.f, 0.05f),
       tw::engine_tweaks::Slider(&unit_animation, "GraphicsUnitAnimation", "Unit Animation Distance",
-                                "How far soldiers move on their own, with faces and hands (beyond it they copy their\n"
-                                "neighbours' moves). Higher: heavier for the CPU.",
+                                "How far soldiers move on their own (beyond it they copy their neighbours' moves).\n"
+                                "Higher: heavier for the CPU.",
                                 4.f, 0.1f),
+      tw::engine_tweaks::Slider(&facial_animation, "GraphicsFacialAnimation", "Facial Animation Distance",
+                                "How far soldiers' faces move. Higher: heavier for the CPU. Game: 10 m.", 8.f, 0.1f),
+      tw::engine_tweaks::Slider(&hand_animation, "GraphicsHandAnimation", "Hand Animation Distance",
+                                "How far soldiers' hands and fingers move. Higher: heavier for the CPU. Game: 10 m.", 8.f,
+                                0.1f),
       tw::engine_tweaks::Slider(&unit_variety, "GraphicsUnitVariety", "Unit Variety Distance",
                                 "How far soldiers keep their own heads and gear (beyond it they look alike).\n"
                                 "Higher: heavier.",
@@ -1631,10 +1793,12 @@ void ConfigureAddon() {
       tw::engine_tweaks::Slider(&building_detail, "GraphicsBuildingDetail", "Building Detail Distance",
                                 "Battle: buildings keep their detailed versions farther away. From the next battle.",
                                 8.f),
-      tw::engine_tweaks::Slider(&campaign_detail, "GraphicsCampaignDetail", "Campaign Detail Distance",
-                                "Campaign map: trees, plants and props keep their detail and are drawn farther away.\n"
-                                "Plants: from the next campaign load.",
-                                4.f),
+      tw::engine_tweaks::Slider(&campaign_trees, "GraphicsCampaignDetail", "Campaign Tree Detail Distance",
+                                "Campaign map: trees keep their detail farther away.", 4.f),
+      tw::engine_tweaks::Slider(&campaign_plants, "GraphicsCampaignPlants", "Campaign Plant Detail Distance",
+                                "Campaign map: plants keep their detail farther away. From the next campaign load.", 4.f),
+      tw::engine_tweaks::Slider(&campaign_props, "GraphicsCampaignProps", "Campaign Prop Distance",
+                                "Campaign map: props are drawn farther away.", 4.f),
       new renodx::utils::settings::Setting{
           .key = "GraphicsBigBattleFix",
           .binding = &big_battle_fix,
@@ -1645,6 +1809,29 @@ void ConfigureAddon() {
           .tooltip = "In huge fights the game runs out of room to animate every soldier: some shadows stretch and\n"
                      "jump around. On: while that happens, the farthest soldiers turn into sprites a bit sooner.",
           .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "GraphicsSmallSoldiersAsSprites",
+          .binding = &small_soldiers_as_sprites,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Small Soldiers as Sprites (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Soldiers turn into flat sprites once they are smaller on screen than Sprite Size, even within\n"
+                     "Unit Detail's distance. Lighter for the CPU in big battles. Needs TAA, SMAA T2x, DLSS, FSR or XeSS.",
+          .labels = {"Off", "On"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "GraphicsSpriteSize",
+          .binding = &sprite_size,
+          .default_value = 20.f,
+          .label = "Sprite Size",
+          .section = "Graphics (Experimental)",
+          .tooltip = "How tall soldiers are on screen when they turn into sprites. Higher: sprites nearer, lighter.",
+          .min = 4.f,
+          .max = 80.f,
+          .format = "%.0f px",
+          .is_visible = [] { return small_soldiers_as_sprites != 0.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "GraphicsShadowMapSize",
@@ -1679,13 +1866,55 @@ void ConfigureAddon() {
       .section = twattila::engine_tests::GRASS,
       .tint = 0xFFD23C,
   });
+  // Attila's grass hooks (ScrubUpdate, its cell loop and quadtree query, DrawScrub to its no-LOD return: the same code here).
+  for (auto* setting : {tw::engine_tweaks::Slider(&grass_distance, "GraphicsGrassDistance", "Grass Detail Distance",
+                                                  "Battle: grass and plants keep their fuller versions farther away, and their cells reach\n"
+                                                  "farther (the game: 200 m). Heavier for the CPU.",
+                                                  4.f),
+                        tw::engine_tweaks::Slider(&grass_density, "GraphicsGrassDensity", "Grass Density",
+                                                  "Battle: more grass and plants (the game leaves some out, more of them farther away;\n"
+                                                  "2x: all of them near the camera).",
+                                                  8.f)}) {
+    setting->section = twattila::engine_tests::GRASS;
+    settings.push_back(setting);
+  }
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+      .label = "Grass Trace",
+      .section = twattila::engine_tests::GRASS,
+      .tooltip = "One frame of the grass into ReShade.log (in a battle, looking at where the grass ends).",
+      .on_change = &twattila::graphics_hooks::TraceGrass,
+  });
   twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
 
   // Appended Settings (Ambient Occlusion, Global Illumination, Screen-Space Shadows, Anti-Aliasing)
-  twattila::lighting_settings::Append(&settings, &shader_injection);
+  twattila::lighting_settings::Append(&settings, &shader_injection, [] { return rt_sliders.light_bounce != 0.f && twattila::feature_settings::Upscaling(aa_sliders); });
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  // The rays' AO in place of the game's and GT-VBAO (ssao00's rt_ambient_alone, as Attila's), the reflections' pass hooked.
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true, twattila::feature_settings::AA_SECTION,
+                                     &shader_injection.light_bounce_strength);
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterClarity",
+      .binding = &twattila::water_effects::water_clarity,
+      .default_value = 1.f,
+      .label = "Water Clarity",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "How far you see into rivers and lakes in battles. 1: the game's; higher: clearer water.",
+      .min = 0.25f,
+      .max = 16.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterCaustics",
+      .binding = &twattila::water_effects::water_caustics,
+      .default_value = 0.f,
+      .label = "Water Caustics (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Rippling light on river, lake and shallow sea beds in battles. 0: off.",
+      .max = 2.f,
+      .format = "%.2f",
+  });
 
   // Appended Settings (HDR10)
   {
@@ -1703,6 +1932,9 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
+    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset (as Attila's).
+    float saved_mode = 0.f;
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
@@ -1712,6 +1944,7 @@ void ConfigureAddon() {
           const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
           return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
     });
     settings.push_back(setting);
   }
@@ -1754,6 +1987,14 @@ void ConfigureAddon() {
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/atotalwarsagathronesofbritannia/mods/1"); },
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
+      },
   });
 
   // Section titles and Settings Mode's pages as Attila's (twattila/feature_settings.hpp).
@@ -1763,7 +2004,36 @@ void ConfigureAddon() {
     if (std::ranges::find(engine_sections, test.section) == engine_sections.end()) engine_sections.push_back(test.section);
   }
   twattila::feature_settings::SetTints({}, engine_sections);
-  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections);
+
+  // Graphics 1 of 2's layout (twattila/graphics_page.hpp, as Attila's and Rome II's), ATN's RT/PT preset as the defaults of
+  // what the methods leave, then Settings Mode's pages. Light Through Foliage, both Smoke Shadows, Water Caustics and the
+  // sprite soldiers' and far trees' ray-traced shadows Experimental (no run has shown them here).
+  twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedSmokeShadows" || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows"
+        || setting->key == "WaterCaustics") {
+      setting->default_value = 0.f;
+    }
+  }
+  twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
+                                             .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .ssr_hierarchical = &shader_injection.ssr_hierarchical,
+                                             .smoke_strength = &smoke_map_sliders.strength, .smoke_softness = &smoke_map_sliders.softness,
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row,
+                                             .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
+                                             .engine_code = &engine_code_row,
+                                             .foliage_light_tested = false,
+                                             .smoke_map_tested = false,
+                                             .smoke_shadows_tested = false,
+                                             .far_cards_tested = false,
+                                             .water_caustics_tested = false});
+  // Faster Game CPU Code (engine_code_row) and Water Caustics Experimental, off.
+  for (auto* setting : settings) {
+    if (setting->key != "FasterGameCpuCode" && setting->key != "WaterCaustics") continue;
+    setting->default_value = 0.f;
+    setting->label += " (Experimental)";
+  }
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
 }
@@ -1786,9 +2056,35 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ssr_hiz::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+
+  // Rows saved at an old default, cleared once (as Rome II's): Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
+  // until what they act on is hooked: they show then at ATN's values. 2: the sliders split from Unit Animation and Campaign
+  // Detail start at the saved value of the one they come from.
+  constexpr int SETTINGS_REVISION = 2;
+  if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
+    for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
+      if (revision < 1) {
+        for (const char* key : {"RayTracedFarTreeShadows", "RayTracedLightImportance", "RayTracedPathKeptCube", "RayTracedSmokeQuality",
+                                "RayTracedSpriteShadows", "RayTracedSwayRange"}) {
+          reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
+        }
+      }
+      for (const auto& [from, to] : std::initializer_list<std::pair<const char*, const char*>>{
+               {"GraphicsUnitAnimation", "GraphicsFacialAnimation"}, {"GraphicsUnitAnimation", "GraphicsHandAnimation"},
+               {"GraphicsCampaignDetail", "GraphicsCampaignPlants"}, {"GraphicsCampaignDetail", "GraphicsCampaignProps"}}) {
+        if (float value = 0.f, kept = 0.f; reshade::get_config_value(nullptr, preset, from, value)
+                                           && !reshade::get_config_value(nullptr, preset, to, kept)) {
+          reshade::set_config_value(nullptr, preset, to, value);
+        }
+      }
+    }
+    reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -1805,11 +2101,16 @@ bool AttachAddon() {
         OnSunDrawClock, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
   // Before the Light Bounce's (its callback draws the sun draw again).
-  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. lighting_VS_PS as Attila's (1B10DDD8's
+  // RDEF; WARP sun test tools/tw/thrones/sun_test): the ambient cube at float 8 (c2-c7, the paths' sky), the sun colour at
+  // float 4 (c1, x 0.004 with g_hdr_on c11.x: the paths' sun light).
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  twattila::screen_space_shadows::InstallFoliage(FOLIAGE_VERTEX_SHADERS, AFTER_FOLIAGE_VERTEX_SHADERS);
   // Light Through Banners: cloth and sails (as the rays), the G-buffer's colour squared (gamma 2).
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
+  twattila::water_effects::water_shaders = WATER_SHADERS;
+  renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's camera b0, shadowmap b1,
   // lighting_VS_PS b2, shroud b3, directional_light b4): the SM5 sun draws (slm 1B10DDD8 / 21B916AF, skinlm 77586F30 /
@@ -1841,15 +2142,30 @@ bool AttachAddon() {
   // The ambient occlusion pass before ray tracing's (its result multiplied after), as Attila.
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS);
+  twattila::rt_scene::InstallCutOuts(0xF79BFB14, UNIT_CUT_OUT_PIXEL_SHADERS);  // rigidcommon ps30_shadow_alpha_test
+  for (const uint32_t shader_hash : CAMPAIGN_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnCampaignDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   // The point lights' ray-traced shadows (their light shaders replaced: shaders/pointlight*).
   twattila::rt_scene::InstallPointLights(twattila::rt_scene::POINT_LIGHT_SHADERS);
   // The battle fog's ray-traced shadows (its shader replaced: shaders/battlefog00).
   twattila::rt_scene::InstallFogShadows(twattila::rt_scene::FOG_SHADERS);
-  // Ray-Traced Shadows Only: the sun's shadow map's casters skipped (the map the sun draws read).
+  // Smoke's ray-traced shadows and the smoke map (Attila's particle vertex shader and lit pixel shaders, the same bytes here).
+  twattila::rt_scene::InstallSmokeShadows(twattila::rt_scene::PARTICLE_VERTEX_SHADERS, twattila::rt_scene::LIT_PARTICLE_PIXEL_SHADERS);
+  // Ray-Traced Shadows Only: the sun's shadow map's casters skipped (the map the sun draws read); the forward passes that
+  // read it take the rays' shadows instead.
   twattila::rt_scene::InstallShadowsOnly();
+  twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS);
+  twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
+  for (const auto& water : WATER_SHADERS) {
+    renodx::utils::command_action::Register(
+        twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   // Last of the sun draws' hooks: it draws the sun draws itself (no callback after it runs).
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
+  twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
 
   twattila::device_loss::InstallLast();
 
@@ -1865,23 +2181,31 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twattila::test_hooks::Uninstall();
+  renodx::utils::command_action::Unregister(OnCampaignDraw);
   renodx::utils::command_action::Unregister(OnSunDrawClock);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ssr_hiz::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
+  renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   twattila::engine_tests::StopAtStart(&at_start_stop);
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
   twattila::screen_space_shadows::Uninstall();
   tw::engine_tweaks::Uninstall(graphics_options);
+  twattila::engine_code::Uninstall();
   twattila::graphics_hooks::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_pass::Uninstall();
   twattila::rt_scene::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
+  twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
+  twattila::smoke_map::Uninstall();
   twattila::graphics_hooks::shadow_map::Uninstall();
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
