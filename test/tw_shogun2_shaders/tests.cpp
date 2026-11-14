@@ -14,7 +14,8 @@
 //     (TestPlacedShadow).
 // 11. rt_capture_cascade_cloth / imposter / tree / far_tree / unit through Pharaoh's outside-view geometry shaders against the
 //     game's 0x8A00A1D4 / 0xE3DA20D4 / 0x5851CA62 / 0x6F20485E / 0x30C453EE / 0xA22FA941, sail / rope against 0xA42F9EDE /
-//     0xF7EDF855 / 0x4E3EE717, wind / weighted / grass against 0xEDCD8445 / 0x1E0425DE / 0xF6CBD06E (TestCascadeLeaves).
+//     0xF7EDF855 / 0x4E3EE717, wind / weighted / grass / far_tree_3k against 0xEDCD8445 / 0x1E0425DE / 0xF6CBD06E / 0x63E273F4
+//     (TestCascadeLeaves).
 // 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
 // 13. Coloured Shadows in shaders/sunlight00-03 (TestSunTint).
 // 14. autoexposure00's Modded Auto Exposure against the game's 0x8233E11F (TestAutoExposure).
@@ -1454,7 +1455,9 @@ static void TestPlacedShadow(const std::string& games, const std::string& folder
 //     the camera at c0, world alone). rt_capture_cascade_wind against 0xEDCD8445 (rigid rows swayed by COLOR0.w and the wind at
 //     b1), rt_capture_cascade_weighted against 0x1E0425DE (the units' bones from a random matrix stack at b1), world alone;
 //     rt_capture_cascade_grass against 0xF6CBD06E (blades shrunk and swayed from a camera at c0 with a random inv_view, clumps
-//     up to 375 m away: some past the wind's reach). Through Pharaoh's outside-view geometry shader with a main view at
+//     up to 375 m away: some past the wind's reach). rt_capture_cascade_far_tree_3k against 0x63E273F4 (the other far cards: 8
+//     views in a row, the UV its pixel shader 0x9D7E2040 reads, (u + view) / 8, the nearer view; a faded card a NaN). Through
+//     Pharaoh's outside-view geometry shader with a main view at
 //     cb0[10-13] (as rt_core streams them out): the
 //     triangles wholly outside it (the CPU's test of the game's corners) kept, their world positions and UVs (two halves in w) the
 //     game's; the others collapsed onto their first corner. CONTROL: the view turned away keeps another set.
@@ -1510,8 +1513,8 @@ static const D3D11_INPUT_ELEMENT_DESC CLOTH_LAYOUT[] = {
     {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0}};
 
 // What a capture version writes: a leaf's world (TEXCOORD2) and UV (TEXCOORD1) for RT_LEAF, a far card's the same with the UV in
-// its atlas view, a unit's world alone (TEXCOORD0) for RT_WORLD.
-enum class CascadeCorners { leaf, far_card, world };
+// its atlas view (30C453EE's four views, or 63E273F4's `face_count` in a row), a unit's world alone (TEXCOORD0) for RT_WORLD.
+enum class CascadeCorners { leaf, far_card, card_faces, world };
 
 // The soldiers' and horses' shadow vertex (0xA22FA941): POSITION0-8, TEXCOORD0-5 (the instance's world rows at 0-2), its row in
 // the animation map (TEXCOORD6) and TEXCOORD7.
@@ -1544,8 +1547,9 @@ template <typename Vertex>
 static void TestCascadeLeaf(const std::string& games, const std::string& folder, const char* name, const wchar_t* capture_name,
                             std::span<const D3D11_INPUT_ELEMENT_DESC> layout, const std::vector<Vertex>& vertices,
                             std::span<ID3D11Buffer* const> constants, CascadeCorners corners = CascadeCorners::leaf,
-                            ID3D11ShaderResourceView* vertex_view = nullptr) {
+                            ID3D11ShaderResourceView* vertex_view = nullptr, float face_count = 0.f) {
   const bool atlas = corners == CascadeCorners::far_card;
+  const bool faces = corners == CascadeCorners::card_faces;
   const bool with_uv = corners != CascadeCorners::world;
   const auto [game_code, capture] = Shaders(games, folder, name, capture_name);
   const auto run = [&](const void* code, size_t size, const char* semantic, UINT index, BYTE components) {
@@ -1553,8 +1557,20 @@ static void TestCascadeLeaf(const std::string& games, const std::string& folder,
   };
   const auto game_world = run(game_code.data(), game_code.size(), "SV_POSITION", 0, 4);
   // A far card's TEXCOORD1: the UV, the atlas view and the blend toward the next.
-  auto game_uv = with_uv ? run(game_code.data(), game_code.size(), "TEXCOORD", 1, atlas ? 4 : 2)
+  auto game_uv = with_uv ? run(game_code.data(), game_code.size(), "TEXCOORD", 1, (atlas || faces) ? 4 : 2)
                          : std::vector<std::array<float, 4>>(vertices.size());
+  if (faces) {
+    // CONTROL: the cards look at every view, each with its next under and over half.
+    uint64_t seen = 0;
+    for (auto& uv : game_uv) {
+      const float next = (uv[3] > 0.5f) ? 1.f : 0.f;
+      seen |= uint64_t{1} << ((static_cast<int>(uv[2]) * 2) + static_cast<int>(next));
+      uv[0] = (uv[0] + std::fmod(uv[2] + next, face_count)) / face_count;
+    }
+    const uint64_t all = (uint64_t{1} << (2 * static_cast<int>(face_count))) - 1;
+    CHECK(seen == all, "CONTROL: %s: the cards' views and blends 0x%llX, not all %d", name, static_cast<unsigned long long>(seen),
+          2 * static_cast<int>(face_count));
+  }
   if (atlas) {
     // CONTROL: the cards look at all four views, each with its next under and over half.
     uint32_t seen = 0;
@@ -1708,6 +1724,33 @@ static void TestCascadeLeaves(const std::string& games, const std::string& folde
   const auto faded_world = StreamOut(card_capture->GetBufferPointer(), card_capture->GetBufferSize(), "TEXCOORD", 2, 4, BILLBOARD_LAYOUT, faded,
                                      card_constants, nullptr);
   CHECK(std::isnan(faded_world[0][0]), "rt_capture_cascade_far_tree: a faded card not a NaN");
+  // The other card set (0x63E273F4): POSITION0 the corner, TEXCOORD0 the UV, TEXCOORD1 the place (w the fade), TEXCOORD2 the
+  // facing (w the size); 8 views (tree_billboard_constants at b1: c1.w). 128 cards: every view and half seen.
+  std::vector<std::array<std::array<float, 4>, 4>> cards_3k;
+  for (int triangle = 0; triangle < 128; ++triangle) {
+    const std::array<float, 4> place = {100.f * spread(random), 100.f * spread(random), 100.f * spread(random), 0.55f + (0.45f * spread(random))};
+    const std::array<float, 4> facing = {spread(random), spread(random), spread(random), 5.f + (4.f * spread(random))};
+    for (int corner = 0; corner < 3; ++corner) {
+      cards_3k.push_back({{{spread(random), 0.5f + (0.5f * spread(random)), 0.f, 1.f},
+                           {0.5f + (0.5f * spread(random)), 0.5f + (0.5f * spread(random)), 0.f, 0.f}, place, facing}});
+    }
+  }
+  static const D3D11_INPUT_ELEMENT_DESC CARD_3K_LAYOUT[] = {
+      {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+  const std::array<float, 8> billboard = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 8.f};
+  const auto billboard_buffer = Constants(billboard.data(), sizeof(billboard));
+  const std::array<ID3D11Buffer*, 2> card_3k_constants = {camera_buffer.Get(), billboard_buffer.Get()};
+  TestCascadeLeaf(games, folder, "63E273F4", L"rt_capture_cascade_far_tree_3k", CARD_3K_LAYOUT, cards_3k, card_3k_constants,
+                  CascadeCorners::card_faces, nullptr, 8.f);
+  const auto [card_3k_code, card_3k_capture] = Shaders(games, folder, "63E273F4", L"rt_capture_cascade_far_tree_3k");
+  std::vector<std::array<std::array<float, 4>, 4>> faded_3k(1, cards_3k[0]);
+  faded_3k[0][2][3] = 0.f;
+  const auto faded_3k_world = StreamOut(card_3k_capture->GetBufferPointer(), card_3k_capture->GetBufferSize(), "TEXCOORD", 2, 4, CARD_3K_LAYOUT,
+                                        faded_3k, card_3k_constants, nullptr);
+  CHECK(std::isnan(faded_3k_world[0][0]), "rt_capture_cascade_far_tree_3k: a faded card not a NaN");
   // Soldiers and horses: 22 bones (their bytes k / 255: three texels each from 3k) in 8 instances' rows of a random animation map;
   // a corner's two bones, its blend (v5.w) and both positions (v0, v1) random, its instance's world rows at TEXCOORD0-2.
   std::vector<std::array<float, 4>> bones(64 * 8);

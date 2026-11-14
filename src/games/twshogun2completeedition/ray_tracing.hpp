@@ -102,8 +102,9 @@ constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
 // capture versions tested against the game's csos): burning buildings (rigidburning / rigidburningpanel 124C85A5: AC25DAB8's
 // inputs and rows, placed as it), wind-swayed rigid meshes (rigidvertexwind EDCD8445) and soldiers drawn without the animation
 // map (variantweighted 1E0425DE: bones from its matrix stack at b1) world alone, and grass with the in-game grass shadows on
-// (rigidgrass F6CBD06E: its shrink and sway from the pass's camera) masked as its pixel shader's test.
-inline const std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
+// (rigidgrass F6CBD06E: its shrink and sway from the pass's camera) masked as its pixel shader's test, and the other far tree
+// cards (rigidtreebillboard_3k 63E273F4: g_num_billboard_faces views in its atlas) as 30C453EE's.
+inline const std::array<twattila::rt_scene::SceneShader, 17> SCENE_SHADERS = {{
     {.hash = 0xAC25DAB8, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
     {.hash = 0x7B067623, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
     {.hash = 0xB0E006EE, .capture_shader = __rt_capture_cascade_variant, .rows_shader = __rt_rows_cascade_variant, .moving = true,
@@ -133,6 +134,8 @@ inline const std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
      .cascade_world = true},
     {.hash = 0xF6CBD06E, .capture_shader = __rt_capture_cascade_grass, .dynamic = true, .foliage = true, .grass = true,
      .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
+    {.hash = 0x63E273F4, .capture_shader = __rt_capture_cascade_far_tree_3k, .dynamic = true, .foliage = true, .sun_facing = true,
+     .far_tree = true, .mask_slot = 1, .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
 }};
 // Smoke Shadows (Experimental): the particles' vertex shader (particle.hlsl particle_vertex_30, BEA3F2D4: a quad an instance)
 // through rt_particle_quads (one record an instance), the lit draws those with volumetric_particle_alpha 3D0BC5F1 (texture
