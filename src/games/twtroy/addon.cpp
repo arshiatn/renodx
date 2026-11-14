@@ -51,6 +51,7 @@
 #include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_world_gs.h"
 #include "./rt_outside_view_leaf_gs.h"
+#include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -1483,6 +1484,18 @@ constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
     {.hash = 0xB320F789, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 2, .cascade_keep = __rt_outside_view_card},
 }};
 
+// Smoke Shadows' particles (Experimental, off; Pharaoh's): particle_vfx_main vs50_main_instancing F5CE48CC (Pharaoh's 109B79CE:
+// the same signatures, 14 of 594 instructions apart) draws each particle as an instance of a quad, and ps_main_high_quality
+// 563BA3E8 blends the lit ones (its alpha Pharaoh's 3F1B86E1's: the diffuse array's alpha at both cells, sRGB-decoded with
+// 0.947867334, x COLOR.w, the alpha crush; EMITTER_CONSTANTS_PS the same to byte 72). Its diffuse array, emitters and sampler
+// at t7 / t9 / s5: Pharaoh's rt_particle_quads with those slots (rt_particle_quads_gs.h). Effects quality 0-2's ps_main
+// 9C8987DD binds them at t4 / t6 / s3: three views and two samplers up.
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{{.hash = 0xF5CE48CC, .quad_shader = __rt_particle_quads}}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADERS = {{
+    {.hash = 0x563BA3E8},
+    {.hash = 0x9C8987DD, .view_shift = 3, .sampler_shift = 2},
+}};
+
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
 constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
     {.shader_hash = 0x075C096D, .slots = 0b11},  // glow bright pass (after DLSS)
@@ -1616,7 +1629,7 @@ namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
 // (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO, the paths take the sky from the sun
-// shaders' ambient cube; point lights hooked (143A02ED), no ray-traced reflections, fog, water or smoke.
+// shaders' ambient cube; point lights (143A02ED) and smoke (F5CE48CC) hooked, no ray-traced reflections, fog or water.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -1825,11 +1838,11 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
   // Mode's pages. Only what this game hooks: the paths' sky from the sun shaders' ambient cube (InstallSunDraws' 24),
   // foliage in the screen-space shadows (bit 128) and casters out of view (the shadow pass's; both Experimental, off: no
-  // game run has shown them here), Rays Replace Shadow Maps and point lights (Experimental, off); no ray-traced reflections,
-  // fog, water or smoke (their rows stay hidden).
+  // game run has shown them here), Rays Replace Shadow Maps, point lights and smoke (Experimental, off); no ray-traced
+  // reflections, fog or water (their rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
-  // Fog Shadows, the torches' light in it and Smoke Shadows start off (hidden: not hooked here yet; once they are, no game
-  // run has shown them in this game), Far Tree Shadows (Experimental: the cards' capture is new here) and Specular Occlusion
+  // Fog Shadows, the torches' light in it (hidden: not hooked here) and Smoke Shadows (no game run has shown the particles'
+  // records in this game) start off, Far Tree Shadows (Experimental: the cards' capture is new here) and Specular Occlusion
   // too (Experimental before the page); RT/PT turns all but the smoke and far trees on, as ATN's list does.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
@@ -2003,6 +2016,7 @@ bool AttachAddon() {
   // Log Details' light count: the point lights and the night siege's fires (particle lights 643FC156, VS F5CE48CC: one draw,
   // 192k indices in ATN's session 2; Pharaoh's 5AD46115).
   twattila::light_count::Install(0x143A02ED, 0x643FC156);
+  twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 
