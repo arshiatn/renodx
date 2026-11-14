@@ -1,5 +1,32 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Parity round, continuation (2026-11-14; built only, not run in game)
+
+The table now: tools/tw/wh1/parity_1114.md (HAVE 28, done now 12, left 6, needs a trace 3, won't get 12).
+
+- **Grass Height Distance (Experimental, default 1)**: Attila's row. The grass shaders' own distance (grass_PS
+  g_inv_lod_distance, 100 m) / the row in the 8 grass shaders as the game creates them, the rays' grass and its motion
+  (test part 18).
+- **Cut-outs on More Models** now covers props: 6 more pixel shaders that clip at their diffuse map's alpha (alpha test,
+  shroud, the buildings' emissive alpha, alpha overlay), through the rigid props' captures with the UV (part 13). Two-layer,
+  burning and dissolving masks stay solid.
+- **Ray-Traced Water Reflections (Experimental, off; on with RT/PT as Attila's)**: Warhammer III's water pass. The battle
+  water is drawn after the sun, so the rays left from the bed under it; now they leave from the water's own surface (test
+  part 19). Saved values of the row (hidden at 1 before) are cleared once.
+- **Bloom** (Extra, default 1): Attila's row; the bloom added by the tone mapper x the row (part 20). ATN's settings draw
+  no bloom (its texture is black in all 36 traces), so 1 and 2 look the same there.
+
+Test list (in game, ATN):
+1. Battle with grass, Grass Height Distance 0.5 / 1 / 2: grass shrinks into the ground nearer, as now, farther.
+2. RT/PT, Cut-outs on More Models on: alpha-tested props cast ray shadows with their holes; off: solid.
+3. RT/PT by a river or lake, Water Reflections on: the far bank and the sky in the water, also off screen; no dark patches
+   from the bed; off: as before.
+4. Bloom 0 / 1 / 2 in a scene with glow (fire, sun on water, if any bloom shows): less, the game's, more.
+
+Not done (offline possible, the table's smallest steps): sprite soldiers' shadows, cloth and campaign-tree casters, the
+tessellated mesh, the raycast at 50%, Modded Auto Exposure (re-opened). Need a trace: the campaign's far terrain, the VFX
+brightness rows, the gamma tone mapper 50DEBCD2's bloom at render scale.
+
 ### Parity round (2026-11-14; built only, not run in game)
 
 Attila's features against this add-on, feature by feature: tools/tw/wh1/parity_1114.md (HAVE 27, done now 8, left 3,

@@ -262,6 +262,30 @@ int main(int argc, char** argv) {
     CHECK(!scene_draw(0xC35BD3D6, nullptr, atlas_dsv.Get(), writes.Get()).first);  // the cascades
     CHECK(!scene_draw(0xC35BD3D6, colour_rtv.Get(), scene_dsv.Get(), equal.Get()).first);  // the forward pass
     CHECK(!scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), equal.Get()).first);
+    {
+      // The helper's ray tracing device starts again within 5 s of a trace at All (a reset or a stall): the untested
+      // kinds out until the game starts again, the tested ones kept. CONTROL: no trace for 6 s (the helper's idle
+      // release): kept in.
+      static twattila::dlaa_bridge::Shared shared;
+      twattila::dlaa_bridge::bridge.shared = &shared;
+      const auto present = [&](uint32_t helper_device) {
+        shared.rt_device = helper_device;
+        rays::internal::OnPresent(nullptr, nullptr, nullptr, nullptr, 0, nullptr);
+      };
+      rays::internal::trace_tick = GetTickCount64() - 6000;
+      present(1);
+      CHECK(!rays::battle_scene_held);
+      CHECK(scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get()).first);
+      rays::internal::trace_tick = GetTickCount64();
+      present(2);
+      CHECK(rays::battle_scene_held);
+      CHECK(!scene_draw(0xC35BD3D6, nullptr, scene_dsv.Get(), writes.Get()).first);
+      CHECK(scene_draw(0x9594545F, nullptr, scene_dsv.Get(), writes.Get()).first);
+      rays::battle_scene_held = false;
+      rays::internal::trace_tick = 0;
+      present(0);
+      twattila::dlaa_bridge::bridge.shared = nullptr;
+    }
     context->ClearState();
   }
 

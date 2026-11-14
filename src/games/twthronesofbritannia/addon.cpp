@@ -1377,7 +1377,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 // frame, so the rule would make every alpha-tested rigid object thin (th_drawn_names.py over the data run's traces).
 float rays_banner_light_row = 0.f;
 
-constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0x289AC6F1, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x958620C8, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0xBFD9331A, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1415,9 +1415,14 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0xD11B5EC7, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
     // Sprite soldiers: cards facing the sun, cut out by their diffuse map's alpha.
+    // Each with its Shader Model 4.1 / 5 builds (E42AE09F; 98AA2F91, A86B4247): the same instructions, only the version
+    // token and dcl_globalFlags differ (tools/tw/thrones/par_th_cards; no trace drew them: level B).
     {.hash = 0x1B9E7692, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
+    {.hash = 0xE42AE09F, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
     // Far trees' cards: the same, each showing the tree from the sun (their alpha at t1, as Attila's).
     {.hash = 0x79DFD18D, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    {.hash = 0x98AA2F91, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    {.hash = 0xA86B4247, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
     // The campaign's plants and forests, and its trees: placed like the battle's, no wind (924D7813 instanced in ATN's
     // campaign traces, its alpha-tested G-buffer PS DB830D45: the foliage's texture alpha at the hit).
     {.hash = 0x924D7813, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
@@ -1628,7 +1633,7 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
 
 // The shadow map size, before the game builds its shadows.
 void OnInitDevice(reshade::api::device*) {
-  twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size));
+  twattila::graphics_hooks::shadow_map::Install(std::exp2(shadow_map_size), false);
 }
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
@@ -1673,7 +1678,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::THRONES);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
-  twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size));
+  twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), false);
   twattila::graphics_hooks::Update(
       {
           .unit_detail = {unit_detail[0].scale, unit_detail[1].scale, unit_detail[2].scale, unit_detail[3].scale},

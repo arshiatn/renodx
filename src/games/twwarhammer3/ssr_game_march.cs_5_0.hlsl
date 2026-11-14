@@ -1,4 +1,4 @@
-// fx_environment_specular_light cs50_raycast (EF6B7767): the game's, swapped in only for the row (addon.cpp reflections).
+// fx_environment_specular_light cs50_raycast (EF6B7767): the game's, swapped in only for its rows (addon.cpp reflections).
 cbuffer camera : register(b0)
 {
   float3 camera_position : packoffset(c0);
@@ -57,9 +57,11 @@ RWTexture2D<float2> t_rw_hit : register(u0);
 #define cmp -
 
 // addon.cpp reflections: z 1 also where the G-buffer flags' bit 0 is set (WH2's gate, 143BD25C; this one was closed to water),
-// w 1 one march pixel to a render pixel (render at most half the display: the targets hold it). Unbound: the game's.
+// w 1 one march pixel to a render pixel (render at most half the display: the targets hold it); ssr_march_steps the march's
+// step cap (Reflection Quality x 100; 0 the game's 100). Unbound: the game's.
 cbuffer ssr_march_flags : register(b1) {
   uint4 ssr_march_flags;
+  uint ssr_march_steps;
 };
 
 
@@ -277,7 +279,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
       r1.y = 0;
       if (r3.y != 0) break;
       r3.y = 1 + r1.x;
-      r5.w = cmp(100 < r1.x);
+      r5.w = cmp((ssr_march_steps != 0u ? (float)ssr_march_steps : 100.f) < r1.x);
       r7.xy = cmp(r5.xy < float2(0,0));
       r6.w = (int)r7.y | (int)r7.x;
       r5.w = (int)r5.w | (int)r6.w;

@@ -14,6 +14,10 @@ usage:
   the replaced shaders (0xHASH in the shaders folder's file names, minus custom_shaders.erase), shaders the addon names.
   With traces: which trace draws each shader, at a scaled viewport or not, and the bound textures' sizes, so full-screen
   uv reads of render-scale textures are told apart from reads of the pass's own whole inputs.
+  view_share runs only where the addon installs it (view_share::Install or anti_aliasing::Install in its folder's
+  sources); a game that owns its render scale (Warhammer III: gfx_resolution_scale) gets no replay, no patch sites, no
+  RENDER_SCALE_READS slots and no viewport chains, so the over-patched / NDC / projected verdicts that need view_share's
+  patch are notes there, and the read verdicts name a replacement instead of a RENDER_SCALE_READS slot.
 
 Classes of a coordinate (roots):
   pixel  SV_Position / thread id only (ld at the pixel)            -> right at any render scale
@@ -295,12 +299,21 @@ class Shader:
 # ------------------------------------------------------------------------------------------------------- addon tables
 def parse_addon(addon_path, shaders_dir, view_share_path):
     text = open(addon_path, encoding="utf-8", errors="replace").read()
+    folder = os.path.dirname(os.path.abspath(addon_path))
+    view_share = any(re.search(r"\b(view_share|anti_aliasing)::Install\(", open(os.path.join(folder, f), encoding="utf-8", errors="replace").read())
+                     for f in os.listdir(folder) if f.endswith((".cpp", ".hpp", ".h")))
     region = {}
     block = re.search(r"RENDER_SCALE_READS\s*=\s*\{\{(.*?)\}\};", text, re.S)
     if block:
-        for m in re.finditer(r"\.shader_hash\s*=\s*0x([0-9A-Fa-f]{8})\s*,\s*\.slots\s*=\s*(0b[01]+|0x[0-9A-Fa-f]+|\d+)(\s*,\s*\.whole\s*=\s*true)?",
-                             block.group(1)):
-            region[m.group(1).upper()] = (int(m.group(2), 0), bool(m.group(3)))
+        # Slots as a literal or as uint64_t{1} << n (Pharaoh's building water), or of those.
+        term = r"(?:(?:uint64_t\{1\}|1ull|1)\s*<<\s*\d+|0b[01]+|0x[0-9A-Fa-f]+|\d+)"
+        for m in re.finditer(r"\.shader_hash\s*=\s*0x([0-9A-Fa-f]{8})\s*,\s*\.slots\s*=\s*(" + term + r"(?:\s*\|\s*" + term + r")*)"
+                             r"(\s*,\s*\.whole\s*=\s*true)?", block.group(1)):
+            slots = 0
+            for t in re.findall(term, m.group(2)):
+                shift = re.search(r"<<\s*(\d+)", t)
+                slots |= 1 << int(shift.group(1)) if shift else int(t, 0)
+            region[m.group(1).upper()] = (slots, bool(m.group(3)))
     full_depth = set()
     block = re.search(r"FULL_DEPTH_SHADERS\s*=\s*\{([^;]*)\};", text, re.S)
     if block:
@@ -347,8 +360,8 @@ def parse_addon(addon_path, shaders_dir, view_share_path):
             m = re.search(r"0x([0-9A-Fa-f]{8})", f)
             if m and f.endswith(".hlsl"):
                 replaced[m.group(1).upper()] = {"file": f, "share": uses_share(os.path.join(shaders_dir, f))}
-    return {"region": region, "full_depth": full_depth, "whole": whole, "named": named, "erased": erased, "replaced": replaced,
-            "chains": "SetViewportChains(true)" in text}
+    return {"region": region if view_share else {}, "full_depth": full_depth, "whole": whole, "named": named, "erased": erased,
+            "replaced": replaced, "chains": view_share and "SetViewportChains(true)" in text, "view_share": view_share}
 
 
 # ------------------------------------------------------------------------------------------------------------ traces
@@ -460,9 +473,14 @@ def verdict(shader, replay, tables, traces, name=""):
             bugs.append(("A", f"over-patched {where}: its uv is the engine's view uv (c29 x c31) already, the patch divides it again",
                          "skip the site: Classify must return VIEW when any root is the viewport (c29)"))
 
+    view_share = tables["view_share"]
     if replaced:
-        # The replacement's own code decides; the game's is only a hint.
-        risky = [r for r in screen_reads if r["cls"] in ("input", "vonly")] + [n for n in screen_ndc if n["cls"] in ("tex", "cbpos")]
+        # The replacement's own code decides; the game's is only a hint. Without view_share the game's NDC from a screen size is
+        # the game's own at its own scale: no patch to keep or lose.
+        risky_ndc = [n for n in screen_ndc if n["cls"] in ("tex", "cbpos")]
+        risky = [r for r in screen_reads if r["cls"] in ("input", "vonly")] + (risky_ndc if view_share else [])
+        if risky_ndc and not view_share:
+            notes.append("its NDC from a screen size is the game's own (no view_share)")
         game_sites = [s for s in sites if s["kind"] in ("NDC", "PROJECTED", "SPLIT")]
         if replaced["share"]:
             # Built with /Qstrip_reflect: Reflect takes a code without RDEF that declares cb12 as render_scale (Pharaoh v58).
@@ -481,7 +499,9 @@ def verdict(shader, replay, tables, traces, name=""):
         for n in screen_ndc:
             site = site_at.get(n["index"])
             if n["cls"] in ("tex", "cbpos") and site is None:
-                if "T" in n["tags"]:
+                if not view_share:
+                    notes.append(f"NDC L{n['line']} from a screen size: the game's own (no view_share)")
+                elif "T" in n["tags"]:
                     bugs.append(("B", f"NDC L{n['line']} from the texture uv (c27 / c31) not patched", "view_share NDC patch (form not matched)"))
                 elif "S" in n["tags"]:
                     bugs.append(("B", f"NDC L{n['line']} from SV_Position x a non-camera screen size", "replacement with FrameRenderShare (view_share sees only the camera's)"))
@@ -492,7 +512,7 @@ def verdict(shader, replay, tables, traces, name=""):
         # Projected uvs (clip -> uv) of the camera not patched.
         for p in screen_proj:
             site = site_at.get(p["index"])
-            if p["cls"] == "proj" and site is None:
+            if p["cls"] == "proj" and site is None and view_share:
                 unclear.append(f"projected uv L{p['line']} (camera projection) not patched: right only if it is not a read of a render-scale texture")
         # Reads.
         draws = traces.get(h, {}).get("traces", {}) if traces else {}
@@ -504,7 +524,8 @@ def verdict(shader, replay, tables, traces, name=""):
                 if not RENDER_TARGET.search(r["name"]):
                     continue  # a tiled / dithered texture at the view's pixels
                 bugs.append(("B", f"{r['slot']} {r['name']} L{r['line']} sampled at the view's uv (SV_Position x 1 / c29 alone): the whole "
-                             "texture over the view below 100%", f"RENDER_SCALE_READS slot {r['slot']} (x the frame's share)"))
+                             "texture over the view below 100%", f"RENDER_SCALE_READS slot {r['slot']} (x the frame's share)" if view_share else
+                             f"a replacement reading {r['slot']} x the share (no view_share: no RENDER_SCALE_READS)"))
             elif r["cls"] == "input":
                 if STATIC_TEXTURE.search(r["name"]) and not RENDER_TARGET.search(r["name"]):
                     continue
@@ -523,7 +544,8 @@ def verdict(shader, replay, tables, traces, name=""):
                             evidence.append(("ok", f"{label}: {'scaled' if d['scaled'] else 'whole'} draw, {r['slot']} {size[0]}x{size[1]}"))
                 if any(e[0] == "bug" for e in evidence):
                     bugs.append(("B", f"{r['slot']} {r['name']} L{r['line']} read at the full-screen uv: " +
-                                 next(e[1] for e in evidence if e[0] == "bug"), f"RENDER_SCALE_READS slot {r['slot']}"))
+                                 next(e[1] for e in evidence if e[0] == "bug"), f"RENDER_SCALE_READS slot {r['slot']}" if view_share else
+                                 f"a replacement reading {r['slot']} x the share (no view_share: no RENDER_SCALE_READS)"))
                 elif not evidence and RENDER_TARGET.search(r["name"]):
                     unclear.append(f"{r['slot']} {r['name']} L{r['line']}: full-screen uv read (no trace draws it: render-scale texture or not?)")
     if bugs:
@@ -571,10 +593,10 @@ def main():
     with open(region_file, "w") as f:
         for h, (slots, whole) in tables["region"].items():
             f.write(f"{h} {slots}\n")
-    run = subprocess.run([args.replay, args.cso, region_file, ",".join(tables["whole"]), "1" if tables["chains"] else "0"], capture_output=True,
-                         text=True)
     replay = {}
-    for line in run.stdout.splitlines():
+    run = subprocess.run([args.replay, args.cso, region_file, ",".join(tables["whole"]), "1" if tables["chains"] else "0"], capture_output=True,
+                         text=True) if tables["view_share"] else None
+    for line in run.stdout.splitlines() if run else []:
         p = line.split("\t")
         if len(p) >= 13:
             replay[p[0]] = {"stage": p[1], "camera": p[2], "render_scale": p[6] == "1", "ndc": int(p[8]), "projected": int(p[9]),
@@ -643,7 +665,8 @@ def main():
     out = []
     out.append(f"Census of {counts['shaders']} pixel / compute shaders ({os.path.basename(os.path.dirname(os.path.abspath(args.cso)))}): "
                f"{counts['candidates']} read screen space or build positions from it; " +
-               ", ".join(f"{k} {v}" for k, v in counts.items() if k not in ("shaders", "candidates")) + ".")
+               ", ".join(f"{k} {v}" for k, v in counts.items() if k not in ("shaders", "candidates")) + "." +
+               ("" if tables["view_share"] else " The addon installs no view_share (the game owns its render scale): no replay, no patch sites."))
     out.append("")
     out.append("Traces: run/scale (f: the run's tw_frame_trace), s drawn at a scaled viewport (or a compute pass before the tone mapper), "
                "p only after the tone mapper. Rows with the same finding are one row (the first hash's name and lines).")

@@ -36,6 +36,15 @@ if ($typesStart -lt 0 -or $typesEnd -lt 0 -or $patchStart -lt 0 -or $patchEnd -l
 $causticsConstants = ($water -split "`r?`n" | Where-Object { $_ -match '^constexpr (UINT|float) WATER_CAUSTICS_(SLOT|TILE)' }) -join "`n"
 $header += "namespace water_patch {`nusing namespace twattila;`n$causticsConstants`n$($water.Substring($typesStart, $typesEnd - $typesStart))`n" +
            "$($water.Substring($patchStart, $patchEnd + 2 - $patchStart))`n}  // namespace water_patch`n"
+# grass_height.hpp's shader table and Patch (Grass Height Distance, part 18), as grass_patch.
+$grass = [IO.File]::ReadAllText((Join-Path $repairRoot 'src\games\twwarhammer\grass_height.hpp'))
+$grassTableStart = $grass.IndexOf('struct GrassShader {')
+$grassTableEnd = $grass.IndexOf('namespace internal {', $grassTableStart)
+$grassPatchStart = $grass.IndexOf('inline std::vector<uint8_t> Patch(')
+$grassPatchEnd = $grass.IndexOf('inline bool OnCreatePipeline(', $grassPatchStart)
+if ($grassTableStart -lt 0 -or $grassTableEnd -lt 0 -or $grassPatchStart -lt 0 -or $grassPatchEnd -lt 0) { throw 'grass_height.hpp changed: update run.ps1' }
+$header += "namespace grass_patch {`n$($grass.Substring($grassTableStart, $grassTableEnd - $grassTableStart))`n" +
+           "$($grass.Substring($grassPatchStart, $grassPatchEnd - $grassPatchStart))`n}  // namespace grass_patch`n"
 [IO.File]::WriteAllText((Join-Path $testBuild 'ambient_patch.h'), $header)
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation

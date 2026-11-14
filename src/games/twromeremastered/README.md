@@ -2,6 +2,31 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+### Reset hunt (2026-11-14; built only, not run in game)
+
+The battle's two helper resets (ATN's 10:24 run; nvlddmkm 153 at 10:27:39 - 10:27:47, 0x887A0006 on the helper's device
+only) are **not reproduced offline and their cause is not proven**: Battle Objects stays at Tested. No DRED exists for
+the run (Log Details was off). The harness (4K helper, the run's own draw lists from traces 12 and 15 at 2572x1446,
+Windows' D3D12 / DXR 1.1 as ATN's install without `D3D12\D3D12Core.dll`) ran clean, 0 resets, with: partly NaN
+triangles, whole meshes at the origin, 144 piled alpha-tested layers, all cluster sets at once, a 12.5 s pause (the
+helper's idle release) then everything at once. Ranked suspects:
+1. The driver on real battle content on Windows' own D3D12 (DXR 1.1): only Attila and WH3 ship the Agility SDK, and no
+   other game on this path has run a battle with every prepass draw captured each frame.
+2. Wrong geometry for a whole family: stretched triangles under the helper's 200 m part limit make a trace slow (proven:
+   0.75 ms -> 118 ms with 2% of the vertices wrong at 2572x1446), but a 2 s hang needs far more, and no source was found.
+3. A cluster set kept for an index buffer the game writes again under the same key.
+- New: with Battle Objects at Solid or All, the helper's device runs with DRED and the log's details as Log Details
+  gives them (set the row, then restart the game), and if its device starts again within 5 s of a trace the untested
+  objects go out until the game starts again (one log line; ATN's second reset came 0.2 s after the scene was back).
+  `test/tw_romer_rays` case 1.
+- Evidence, lists and the harness's battle mode (a patch script, the shared harness unchanged):
+  `tools\tw\romeremastered\reset_hunt_1114` in the maintainer's tools.
+
+Test (ATN): Battle Objects Solid, restart, one battle with sun shadows + AO: a reset or not; then All the same way.
+After a reset send `renodx-tw-dlaa64.log` (DRED's last GPU work, the left-out triangles by vertex shader) and
+ReShade.log. If All resets: copy Attila's `D3D12` folder next to this game's `renodx-tw-dlaa64.exe` (the log then says
+DXR 1.2) and run All once more: suspect 1 against 2.
+
 ### Parity round (2026-11-14; built only, not run in game)
 
 - New: **Attila's graphics page** (ATN: "the same/similar page layouts as Attila and thus the buttons too"): Anti-Aliasing

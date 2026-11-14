@@ -408,7 +408,13 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   frame while playing: ATN's app setting), trim per-draw callbacks, grass numbers, Light Bounce Half (-1.2 ms, ATN), fewer
   hand-offs (design), smoke cap (needs a stress mode). No gain: SER, cluster build flags. WH3 harness 8.4-8.5 ms. Agent next:
   callbacks trim, cascade row, smoke stress mode, hand-off design. ns-replay-mode 25125baa + 8357ef5c MERGED 29b54d18
-  (all_modes 179 / 179).
+  (all_modes 179 / 179). Code items MERGED 77958ae7: light readback key sort + order reuse (identical; -0.5 ms amd64, up to
+  -0.84 ms when the lights repeat), Attila Two Shadow Cascades Under Rays (Experimental; tw_unit_shadows part 6 over the
+  shipped dll bytes). Hot callbacks (cpl2): OnDrawIndexed 2.22 ms (no identical cut: redesign), Capture 0.90, light sort 0.84,
+  DrawObjectMotion 0.63; workers OnDrawScrub 1.79, ScaleModelLods 1.16. Smoke stress: cap 262,144 = build 1.80 ms;
+  PREFER_FAST_BUILD -0.66 ms (not bit-identical). Hand-off design: merge requests 0.1-0.3 ms; 2.9 ms untimed helper work.
+  BITDEFENDER: blocked a scratch x86 benchmark exe of the Nsight agent; path stopped, exe deleted; ATN TOLD. Agent resumed:
+  smoke fast-build row (Experimental), the 2.9 ms helper work.
 - [ ] ATN ~11:4x: the skill checks the whole dump for render scale (scale_census.py) but casters only in traces: agent
   (cdc_, worktree) adds caster_census.py --whole-dump (every VS classified, held / NOT HELD / not a caster), validates on
   Attila + Pharaoh e34c6089 palms, runs it for nine games (tools/tw/round_notes/caster_dump_<game>.txt), skill lines; results
@@ -444,12 +450,31 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   DECIDES). Agent resumed: SSR rows, 14 unclear sun rows, DrawScrub skip, banner material read, grass reach.
 - [x] ATN ~15:30: "include everything, not everyone plays at highest settings": rule in the skill (d5b92cdb), memory
   feedback_every_setting, sent to every running agent; Thrones resumed for the 4 sm4 / 4.1 SSR shaders below 100 %.
+- [x] Fable 5.2 reset hunt DONE, MERGED b53fbfa4 (8a075306): NOT reproduced (0 of 3 resets used; harness fed the battle's own
+  draw lists of traces 12 / 15, NaN / origin / collinear meshes, 144 alpha layers, idle release: all clean). Ranked suspects:
+  (1) Windows' own D3D12 / DXR 1.1: Rome Remastered had NO D3D12\D3D12Core.dll (only Attila and WH3 have it), (2) wrong
+  geometry of a whole family (stretched triangles: 0.2 / 0.5 / 2 % wrong vertices -> 15 / 39 / 118 ms traces), (3) stale
+  cluster set on a rewritten index buffer, (4) origin-collapsed markers. Hardening: Battle Objects Solid / All turn on DRED
+  (Log Details); a new helper device within 5 s of a trace drops the untested kinds until restart. Side findings for later:
+  7DD754DA not flagged terrain (triangles over 200 m dropped), float32 unprojection noise at km range, BasicLit draws of one
+  mesh with other b7 matrices share a key. ATN TEST: Tested, then Solid + restart, then All + restart; after a reset send
+  renodx-tw-dlaa64.log + ReShade.log.
+- [x] tw_install.py (tools, 13:0x): every helper game gets D3D12\D3D12Core.dll (Agility SDK 1.619.6, as release_zip.py ships
+  it) where missing; a different one only with --first (backup tw_install.py.bak_agility). Next install copies it into the
+  8 helper games that lack it (all but Attila / WH3).
+- [x] ATN ~13:00: standalone test exes allowed; ATN excluded tools	w	estbin in Bitdefender; probes (x86 / x64 mingw, x64
+  clang-cl) ran and stayed; all agents told.
+- [x] WH1 continuation MERGED 9d945a18 (Grass Height Distance, prop cut-out masks, RT Water Reflections (Experimental; RT/PT on),
+  Bloom). Agent resumed on the 6 DO NOW left.
 - [x] Pharaoh parity round MERGED 74568884 (SDR preset + first start, Depth of Field, Texture LOD Bias (Experimental), Smoke
   Shadows without rays (Experimental; off while the rays' sun shadows run), Smooth Banner Shadows (RT/PT on), Hue Clip measured:
   fire best at 70 (burn 0.2) / 80 (burn 0): default stays 80; campaign billboards CE5AA8D1 (Troy's capture, WARP 4.3e-5 m) +
   vegetation 3368E9E7 out of view; shared opt-ins rt_core SmokeVertexShader::behaviours_at_cb3, Troy billboard
-  RT_BILLBOARD_SCALE (Troy bytes unchanged), psychov35 curve 8; scale census BUG (B) rows settled). Agent resumed: Fog
-  Strength, Fog & Sky Smoothing, smoke_v57 / v61 tools to follow #include.
+  RT_BILLBOARD_SCALE (Troy bytes unchanged), psychov35 curve 8; scale census BUG (B) rows settled). Round 2 MERGED 887ee24c:
+  Fog Strength on all 24 last-stage fog shaders (patched as created; 1 = bit for bit), Fog & Sky Smoothing on the legacy fog
+  (Experimental), sails ED0BC391 + ropes DD5D5694 in the rays (level B), vegetation WARP on Pharaoh's bytes, smoke_v57 / v61
+  run again. Pharaoh agent DONE. Left: Sprite Soldier Shadows (GS imposter 27A16995: shared GS capture path, WH1 agent
+  building it opt-in), particle rows, grass height (trace), feather / fur and level-B casters (traces).
 - [x] Rome Remastered task C MERGED cb98cd5e (DLSS below 100 % with the ray rows on; shared rt_core Host::depth_at_render_size
   opt-in: other games' rt_core suites PASS x86 + amd64, page dumps unchanged; tw_romer_rays case 7). Rome Remastered agent DONE
   (3 DO NOW left: Upscaling Debug View (shared opt-in in AppendAa), Bend's Softer Away + Debug View). ATN runs: Battle Objects
@@ -460,8 +485,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Indicator Brightness (Experimental; MBOIT resolve 492ED8DA left out), four own-flag tests (Far Tree Block Shadows, Point Light
   Shadow Maps, Debris Shadows, Ragdolls), traced casters 03298FD5 + 1C3500F0 held (census 44 -> 46), 54 engine rows level A
   (name scan); Modded Auto Exposure WON'T (the game's AE is off: buffer 0 in 39 traces); Fog & Sky Smoothing WON'T (fog reads
-  no cube); scale census at HEAD mostly N/A (WH3 owns its scale, no view_share)). Agent resumed: scale_census view_share
-  check, MBOIT particle edges on WARP, water march step cap.
+  no cube); scale census at HEAD mostly N/A (WH3 owns its scale, no view_share)). Round 2 MERGED 10b3c753: scale_census.py
+  checks view_share before patch verdicts + parses uint64_t slots (skill script; WH3 BUG 10 -> 2, Pharaoh only its 4
+  building-water rows to OK), Reflection Quality (Experimental, march step cap), Modded Auto Exposure (Experimental; the exe
+  can turn its AE on), Indicator Brightness on the MBOIT resolve, suite test/tw_warhammer3_shaders (casters, march, AE).
+  Particle edges STOPPED (effect meshes in the half layer: every material replayed; gain half a texel). WH3 agent DONE.
 - [x] Troy parity round MERGED 9095731c (table tools/tw/troy/parity_1114.md: 20 have / 4 done now / 6 trace / 12 won't / 7 open;
   BUG: all 400 Graphics 2 of 2 rows did nothing (the shared lea-name finder matched 0 of 167 heap-copied names + 4 unresolved
   audio at-start tests blocked every slider): twtroy/tweak_objects.hpp finds them by Troy's initializers (memory image),
@@ -483,6 +511,15 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   tw_unit_pack_rounds PASS; shared graphics_page motion_in_draw opt-in, Attila's page identical); 29 unclear scale rows
   settled (24 sun OK; 4 SSR sm4 / 4.1 bugs only at gfx_shadermodel 1-2: not fixed, trace listed; 0FB73442 in no trace).
   Thrones agent DONE. Note: its WARP checks use small tool exes under tools/tw/thrones (as earlier rounds), not quarantined.
+  Round 3 MERGED e73b72c5: the 4 sm4 / 4.1 SSR builds fixed below 100 % (suite test/tw_thrones_ssr), far card builds
+  98AA2F91 / A86B4247 + sprite build E42AE09F held; 43 unreplaced builds listed (Attila's bytes too: particles in other shader
+  models / shadow methods, point lights with point shadows, MSAA builds, bloom tone mappers). Thrones agent DONE.
+- [ ] ATN ~13:3x: the per-draw handling REDESIGN (OnDrawIndexed 2.2 ms a frame in cpl2), then a FABLE 5.2 HIGH review of that
+  change alone (two perspectives; the end-of-batch whole-tree review stays). Agent drw_ phase 1 (design + draw-stream replay
+  oracle + cost map, no src code) started; phase 2 (code) only after the Attila gaps + Nsight smoke work is merged; proof =
+  identical decisions per draw over every recorded trace, x86 + amd64, + the suites.
+- [ ] ATTILA GAPS agent started (atg_, worktree): share Thrones' ssr02-05 with Attila, E42AE09F / far card builds held, the 11
+  other vfx builds, MSAA battlefog + point lights, tessellated rigid 9AEE504E (opt-in rt_core), ropes / sail symbols.
 - [x] Rome Remastered parity round MERGED c0a61b2d (table tools/tw/romeremastered/parity_1114.md: 47 features, 13 have / 3 do
   now left / 6 trace / 24 won't; credits, Bend rows + Softness, GitHub button; no PT GI -> no torch rows). Input bug (task B):
   study only: the wall clock is a seconds-since-2001 double; obfuscated code at 0xbbaa60 reads GetMessageTime; the

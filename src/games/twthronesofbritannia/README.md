@@ -15,11 +15,14 @@ Fixed:
 - Frame generation: the lens flares and the vignette are part of the picture the generated frames are made from (no flares stuck on the HUD), as Attila.
 - Below 100%: the lens flare hides behind hills and walls at the right place, and the unit markers sit on the units (as Attila).
 - UI: two map sprites as Attila's (no overbright edges, plain colours).
+- Below 100% with the game's Shader Model set to 4 or 4.1 (gfx_shadermodel 1 / 2): screen space reflections stop and fade at the view's edges (their 4 shaders now carry Shader Model 5's fix; they ran on past the view's right and bottom). Tested offline only: no trace has drawn them.
+- Ray-traced shadows: the Shader Model 4.1 / 5 versions of the far trees' cards and the sprite soldiers cast as the ones drawn with ATN's settings (the same code). Offline only, as above.
 
 Not done:
 - VFX Brightness: Snowflakes, Rain & Fire Sparks and Blood Splash & Storm Fog: Attila picks them by the particle texture's layers, unread here. Smallest step: a snow battle and a storm with ReShade's texture view of the particle array.
-- Below 100% with the game's Shader Model set to 4 or 4.1 (gfx_shadermodel 1 / 2) and Screen Space Reflections on: the reflections' march can run past the right and bottom of the view (its 4 shaders for those models; Shader Model 5, the default, is fixed). Smallest step: the fix of the Shader Model 5 shaders in theirs, after a trace showing them drawn.
 - The terrain's virtual texture page pass below 100%: no trace has drawn it yet.
+- Tessellation on (gfx_tesselation): its rigid objects (vs 9AEE504E, Attila's too) stay out of the rays. Smallest step, in Attila first: their control points captured as triangles (without the displacement), then a trace with tessellation on.
+- Settings other than ATN's draw other builds of shaders this mod replaces, which Attila doesn't replace either: the particles with other shadow methods or shader models (11: no VFX Brightness, no ray-traced sun on smoke), the point lights with point shadows (32: no torch shadows from the rays; the shared torch step), the tone mappers "with_bloom_and_gamma" and the MSAA fog and lights (tools/tw/thrones/par_th_models/models.txt).
 - The campaign's far terrain and its sea bed stay out of the rays (on purpose: just under the near terrain). The 24 MSAA passes: with in-game MSAA no upscaler runs.
 - Torch and Fire Shadows / Light from Path Tracing: the shared torch step; this game can take them.
 
@@ -32,8 +35,8 @@ Test (ATN):
 6. Frame generation on, camera past the sun: lens flares move with the picture, none on the HUD.
 7. 50% render size: the flare hides behind a hill as the sun does; unit markers on the units.
 8. Campaign map: the two map sprites (borders, icons) as before, no bright rims.
-9. Object Motion in the Game's Draws on, restart, DLSS, a big battle: no "Object motion: could not create" or "refused" in ReShade.log; soldiers, grass, trees, sails and the sea without smears (Upscaling Debug View Object Motion); FPS against off.
-10. The same with the camera still and the battle paused: no motion on still soldiers (shields and spears steady).
+9. Object Motion in the Game's Draws on, restart, DLSS, a big battle: no "Object motion: could not create" or "refused" in ReShade.log; soldiers, grass, trees, sails and the sea without smears (Upscaling Debug View Object Motion), still soldiers steady with the battle paused; FPS against off.
+10. gfx_shadermodel 2 in preferences.script.txt, Screen Space Reflections on, 50% render size, a coast battle: reflections stop and fade at the view's right and bottom edges as with Shader Model 5; far trees and sprite soldiers still cast ray-traced shadows.
 
 Build: `cmake --build build32 --config Release --target renodx-twthronesofbritannia.addon32`.
 

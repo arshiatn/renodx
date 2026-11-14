@@ -1,5 +1,22 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, whole-frame check's code items (2026-11-14 afternoon; built only, not stamped, not installed, not run in game)
+
+- New: **Two Shadow Cascades Under Rays (Experimental, off)**, under Shadows' More Options with ray-traced shadows. The
+  game prepares its sun shadow maps in 2 cascades, as at Shadows Medium, instead of Max's 4 or High's 3 (Medium's own
+  values written into the shadow setup's code). Under the rays every caster is skipped at the draw already; in the
+  forest view of the 2026-11-14 run the skipped casters still cost the render thread 4.4-4.8 ms. Applies after a restart;
+  locked by UI 4K Mod Compatibility. Off: the game's code as before (test `tw_unit_shadows` part 6); page dump: this row
+  only.
+  - ATN's test: his RT/PT preset, a forest view outside the walls: FPS at the game's Shadows Max, then Shadows Medium
+    in the game's options, same view (no add-on change needed). If Medium is faster, this row gives it at Max.
+- Faster: the torch and fire lights read back each frame are sorted by keys, and a frame with the same lights in the
+  same places as the frame before reuses that order: the same lights in the same order as before, to the bit
+  (`tw_native_context` part 4). With a still camera the sort (0.8 ms a frame of the render thread in the 2026-11-14 run)
+  is skipped; otherwise the same cost in Attila and ~25% less in the 64-bit games. Shared with the other TW games.
+- Not changed, measured (`tools/tw/nsight/attila_frame_results.md`): Smoke Shadows at its cap (the smoke's BLAS 1.7 ms a
+  frame at 262,144 particles; PREFER_FAST_BUILD would take 0.66 ms off it), fewer hand-offs to the helper (a design note).
+
 ## v160 (2026-11-14 night: torch light from the Light Bounce, Lean ReSTIR Reuse; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - Shared code moved / extended for the other TW games tonight (rt_core, rt_scene, graphics_page, engine_code, water,
