@@ -388,6 +388,15 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   reset: read-only review of the capture -> bridge -> helper path for the battle kinds, a harness repro from the battle
   traces, DRED breadcrumbs in the harness, then fixes proven offline (the Tested / Solid / All row stays until then).
   Proposed, ATN to confirm: after ALL merges, a Fable 5.2 review (high) of the shared code before the next install.
+- [x] Rome Remastered DLSS below 100 % on the agent's branch 867187d4 (v9-v12 ran DLAA at render size; now DLSS from the
+  tone mapper's render-size output into Feral's upscaler target 9F3C9B3D / 3C19543E, its draw skipped; FG keeps it as the
+  HUD-less frame; tw_romer_dlaa case 6 WARP PASS; README v13). With a ray row on: still DLAA at render size + Feral's
+  upscaler (rt_core captures depth at bridge size) -> task C after A / B: opt-in rt_core Host field, all consumers built.
+- [ ] Nsight phase A on ns-replay-mode 25125baa (RENODX_TW_REPLAYABLE=1 + RENODX_TW_NO_CLUSTERS=1: capture + ngfx-replay +
+  shader swaps; replayed frame reuse 3.05 -> 0.96 ms Lean, frame 8.32 -> 6.40 ms; off = 44 headers byte-identical) and
+  8357ef5c (Attila: Time Each Pass (One Frame), WH3's pass_timing.hpp; Nsight can't time 32-bit D3D11). Plan
+  tools/tw/nsight/attila_frame_plan.md. In-game Constantinople run BLOCKED: Steam runs elevated (SteamAdminStart): ATN asked.
+  Not merged (final all_modes count pending). Junctions in ns-replay: remove link-only before cleanup.
 - [ ] ATN ~11:0x: "Other games didn't miss any of the skills, right? If they did, we have to do them too." Page dumps at
   0c28a0ea: Thrones / WH2 / Troy / WH1 / WH3 lack many Attila rows (Graphics* engine rows, SSR rows, fog / sky / bloom,
   particle resolution, smoke-map rows, grass height, torch-from-paths rows ...). PARITY ROUND, brief
