@@ -710,16 +710,21 @@ inline void OnInitPipeline(renodx::utils::pipeline::PipelineInfo* info, uint32_t
     }
     const auto* desc = static_cast<const reshade::api::shader_desc*>(subobjects[index].data);
     if (desc == nullptr) continue;
-    const std::unique_lock lock(runtime.mutex);
+    std::unique_lock lock(runtime.mutex);
     if (const auto wanted = runtime.wanted_code.find(desc->code); wanted != runtime.wanted_code.end()) {
       runtime.pipelines[info->pipeline.handle] = wanted->second;
+      lock.unlock();
+      // OnCommand's gate answers from runtime.pipelines; command_action's init callback already ran.
+      renodx::utils::command_action::fast::Invalidate();
     }
   }
 }
 
 inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info) {
-  const std::unique_lock lock(runtime.mutex);
-  runtime.pipelines.erase(info.pipeline.handle);
+  std::unique_lock lock(runtime.mutex);
+  if (runtime.pipelines.erase(info.pipeline.handle) == 0u) return;
+  lock.unlock();
+  renodx::utils::command_action::fast::Invalidate();
 }
 
 // cb12 for a patched (or render_scale) shader's draw / dispatch: `values` (xy the draw's share, zw the frame's), for

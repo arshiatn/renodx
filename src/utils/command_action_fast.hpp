@@ -65,8 +65,9 @@ struct Gate {
   // Per command; null: always.
   bool (*active)(reshade::api::command_list* cmd_list) = nullptr;
   // Per pipeline and stage, at its first bind after the epoch moved: whether the callback can act with `pipeline` bound
-  // at `stage`. Its answer must hold until the pipeline is destroyed (or SetGate / a registration moves the epoch). The
-  // command calls the callback only when one of its bound pipelines said so. Null: with any pipeline.
+  // at `stage`. The answer is kept until the epoch moves; the gate's module calls Invalidate() whenever it changes an
+  // answer (for example in its own init_pipeline callback, which runs after command_action's). The command calls the
+  // callback only when one of its bound pipelines said so. Null: with any pipeline.
   bool (*pipeline_active)(reshade::api::pipeline pipeline, reshade::api::pipeline_stage stage) = nullptr;
 };
 
@@ -551,6 +552,12 @@ inline void ClearGate(const Callback& callback) {
     *existing = gates.back();
     --data->gate_count;
   }
+  internal::BumpEpoch();
+}
+
+// Every command list resolves its pipelines and gates again at its next command: for a gate whose pipeline_active
+// answer changed.
+inline void Invalidate() {
   internal::BumpEpoch();
 }
 

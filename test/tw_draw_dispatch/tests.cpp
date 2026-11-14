@@ -17,6 +17,8 @@
 // 8. Two modules (partner.cpp, a DLL with its own command_action and opt-in): the partner registers a command-wide
 //    callback, detaches, and only then unregisters it (as resource_upgrade does after command_action's detach) while
 //    this module goes on drawing; that late Unregister must move the epoch.
+// 9. A gate's module learns of a pipeline after command_action's init callback (view_share's order): stale until it
+//    calls fast::Invalidate(), then the same callbacks again.
 // CONTROL: a gate that says "inactive" while its callback acts must show a difference.
 // The fast dispatch must have taken the commands it should (counted), else the comparison proves nothing.
 #include <windows.h>
@@ -489,6 +491,26 @@ int main() {
   std::printf("8. two modules: taken %zu of 18, the late Unregister moved the epoch: %s, differences %zu\n",
               fast_taken - taken_partner, late_unregister_moved_epoch ? "yes" : "no", differences);
   CHECK(differences == 0u && late_unregister_moved_epoch && fast_taken - taken_partner == 18u);
+
+  // 9. A gate's module learns of a pipeline after command_action's init callback moved the epoch (view_share fills its
+  //    set in its own init callback): a command in between samples the old answer, which the cache keeps (one
+  //    difference, expected here and not counted) until the module calls fast::Invalidate(). The order two threads can
+  //    give, played on one.
+  constexpr uint64_t PS_E = 0x2200;
+  frame_scaled = true;
+  CreatePipeline(new_device.get(), PS_E, {&ps3});
+  Bind(list, pipeline_stage::pixel_shader, PS_E);
+  Command(list, Kind::INDEXED);
+  patched_pipelines.insert(PS_E);
+  const size_t differences_before_late = differences;
+  Command(list, Kind::INDEXED);
+  const size_t stale_differences = differences - differences_before_late;
+  differences = differences_before_late;
+  fast::Invalidate();
+  for (int i = 0; i < 6; ++i) Command(list, static_cast<Kind>(i % 2));
+  std::printf("9. late gate answer: %zu difference before Invalidate (expected), differences after %zu\n", stale_differences,
+              differences);
+  CHECK(stale_differences == 1u && differences == 0u);
 
   std::printf("all: %zu commands, %zu callback lines, fast taken %zu (basic %zu), declined %zu, differences %zu\n", commands, callbacks_seen,
               fast_taken, taken_basic, fast_declined, differences);
