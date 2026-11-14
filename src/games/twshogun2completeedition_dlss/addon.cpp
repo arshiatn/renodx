@@ -30,6 +30,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/state.hpp"
+#include "../twattila/engine_tests.hpp"
 #include "./dlss_jitter.hpp"
 #include "./hdr_link.hpp"
 #include "./frame_trace.hpp"
@@ -41,6 +42,7 @@
 #include "./render_scale.hpp"
 #include "./shadow_resolution.hpp"
 #include "./terrain_detail.hpp"
+#include "./tweak_objects.hpp"
 #include "../twattila/dlaa_bridge.h"
 #include "../twattila/texture_lod_bias.hpp"
 #include "./unit_detail.hpp"
@@ -333,6 +335,25 @@ struct GraphicsPreset {
   int unit_variety = 0;
 };
 constexpr GraphicsPreset GRAPHICS_DEFAULT = {};
+// Engine values (Experimental): Attila's Graphics 2 of 2 rows whose values Shogun 2's engine has (tweak_objects.hpp), each
+// x the game's (ReShade.ini under Attila's keys); the campaign rows' tooltips with Shogun's own values. Built at the first
+// use: Attila's rows and the key list are inline globals, whose initializers clang-cl's MSVC ABI may run after this file's
+// (a global built from them came out empty in the page dump).
+std::vector<twattila::engine_tests::EngineTest>& EngineTests() {
+  static std::vector<twattila::engine_tests::EngineTest> tests = [] {
+    auto rows = twattila::engine_tests::Only(twattila::engine_tests::Attila(), twshogun2::tweak_objects::ATTILA_TESTS);
+    for (auto& row : rows) {
+      row.label += " (Experimental)";
+      if (row.key == "GraphicsCampaignSunCameraDepth") row.tooltip = "How far towards the sun campaign shadows take in objects. Game: 20.";
+      if (row.key == "GraphicsCampaignClouds") row.tooltip = "The campaign clouds' cull factor. Game: 1.";
+    }
+    return rows;
+  }();
+  return tests;
+}
+std::vector<tw::engine_tweaks::Option*> engine_options;
+bool engine_values_found = false;
+renodx::utils::settings::Setting engine_values_status;
 constexpr GraphicsPreset GRAPHICS_ATN = {
     .ssr_resolution = 1,
     .sss_samples = 2,
@@ -367,6 +388,11 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, con
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twshogun2::frame_trace::OnPresent();
   twshogun2::terrain_detail::Apply(terrain_detail.load() == 1);
+  // Engine values: Shogun's initializer form first (the shared Find reads none of it), once the engine module is there.
+  if (HMODULE module = twshogun2::engine::Module(); !engine_values_found && module != nullptr) {
+    twshogun2::tweak_objects::Find(tw::engine_tweaks::ModuleSections(module), engine_options);
+  }
+  tw::engine_tweaks::Update(twshogun2::engine::ModuleName(), engine_options, nullptr, &engine_values_found, &engine_values_status);
   // The game's DLSS ran since the last present: jitter for the next frames (off with any other anti-aliasing).
   const uint64_t evaluations = twshogun2::game_dlss::Evaluations();
   const bool dlss_running = (evaluations != last_evaluations);
@@ -686,6 +712,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
     water_caustics = 0.f;
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "WaterClarity", water_clarity);
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "WaterCaustics", water_caustics);
+    for (auto& test : EngineTests()) {
+      test.option.scale = 1.f;
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", test.key.c_str(), test.option.scale);
+    }
   }
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("Graphics options back to their defaults.");
@@ -829,6 +859,11 @@ void OnOverlay(reshade::api::effect_runtime*) {
                     "Battle terrain detail. Finest everywhere: full detail at any distance; heavier.")) {
     terrain_detail.store(choice);
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "TerrainDetail", choice);
+  }
+  for (auto& test : EngineTests()) {
+    if (float_slider(test.label.c_str(), &test.option.scale, test.min, test.max, test.format.c_str(), 1.f, test.tooltip.c_str())) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", test.key.c_str(), test.option.scale);
+    }
   }
   // Two empty lines between the graphics and the ambient occlusion (ATN).
   ImGui::NewLine();
@@ -1389,6 +1424,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
   ImGui::TextWrapped("Unit detail: %s", twshogun2::unit_detail::Status().c_str());
   ImGui::TextWrapped("Terrain detail: %s", twshogun2::terrain_detail::Status().c_str());
   ImGui::TextWrapped("Shadow map resolution: %s", twshogun2::shadow_resolution::Status().c_str());
+  ImGui::TextWrapped("%s", engine_values_status.label.c_str());
   ImGui::TextWrapped("Particle resolution: %s, minimum now %.2f of the render size",
                      twshogun2::particle_resolution::Status().c_str(), twshogun2::particle_resolution::Minimum());
   if (ImGui::Button("Trace one frame (shogun2_frame_trace.txt next to the exe)")) {
@@ -1499,6 +1535,14 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSMirrorEdges", value)) sss_mirror_edges = std::clamp(value, 0, 1);
   if (float value = 1.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "WaterClarity", value)) water_clarity = std::clamp(value, 0.25f, 16.f);
   if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "WaterCaustics", value)) water_caustics = std::clamp(value, 0.f, 2.f);
+  // Again when a new device attaches the addon in the same image (frame generation keeps it loaded).
+  engine_options.clear();
+  for (auto& test : EngineTests()) {
+    if (float value = 1.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", test.key.c_str(), value)) {
+      test.option.scale = std::clamp(value, test.min, test.max);
+    }
+    engine_options.push_back(&test.option);
+  }
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", value) && value >= 0
                       && value < static_cast<int>(SSS_STABILITIES.size())) {
     sss_stability = value;
@@ -1673,6 +1717,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     twshogun2::unit_detail::Uninstall();
     twshogun2::shadow_resolution::Uninstall();
     twshogun2::particle_resolution::Apply(1.f);
+    tw::engine_tweaks::Uninstall(engine_options);
     attached = false;
   }
   if (registered) {
