@@ -7,6 +7,14 @@
   trace) cast ray-traced shadows, as their triangles without the displacement, which fades out 5 to 20 m from the camera.
   WARP (`test/tw_rays_captures` T): the capture is the game's world position bit for bit, the rows its POSITION1-3, the
   game's chain seen from far its triangles exactly; up close its displacement stays within the game's 0.1.
+- New: **Particle Edges by Depth (VFX, Experimental, off)**, in the place of Attila's Full-Resolution Particle Edges (its
+  key): the game's half-size particle layer brought up by depth, as Smooth Half-Size Particles does, without its smoothing
+  over frames (bilinear unless one of the 2 x 2 texels lies more than 10% off the pixel's distance, then by nearness: the
+  rule of the game's own unused filtered composite). Smoke behind a unit no longer covers his outline. WARP
+  (`test/tw_particle_history` 5, 6): on flat depth the game's composite to 2.75e-6; at a box's edge the box takes 0.18% of
+  the smoke behind it, where the game's composite gives the pixels next to the edge about half. Attila's way, the edge
+  pixels drawn again at full size, would replay every effect mesh's material in the half layer (all 95 traces have them)
+  for half a texel more.
 
 ### Whole-frame check's code items (2026-11-14, shared with Attila; built only, not run in game)
 

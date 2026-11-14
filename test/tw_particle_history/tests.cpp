@@ -10,9 +10,11 @@
 // 4. A 100 m camera jump, a 20 m move that takes all of it off screen, a frame left out, a restart: this frame's layer to the
 //    bit (and a control without any of them: the history used).
 // Warhammer III (the game's composite 43606BB8 from the dump against ours, both through vfx_particles.hpp's callbacks):
-// 5. Flat depth, a first frame, a uniform half zeroth moment: ours gives the game's to 1e-5.
+// 5. Flat depth, a first frame, a uniform half zeroth moment: ours gives the game's to 1e-5; so does Particle Edges by Depth
+//    (the composite alone, the half layer as drawn).
 // 6. A near box in front of smoke the game drew into the half layer behind it (its depth the farthest of each 2 x 2): the box's
 //    pixels get under 1% of it, where the game's gives the pixels next to the edge half of it; away from the edge the game's.
+//    Both with Smooth Half-Size Particles and with Particle Edges by Depth alone.
 // 7. Rows off: the game's shader stays bound, nothing captured. The composite with a writable depth target on the depth the
 //    upsample reads: the game's composite (one log line); read-only: ours.
 // Attila (particle_layer.hpp's callbacks with mock ReShade objects):
@@ -605,7 +607,7 @@ static CompositeOutputs RunComposite(CompositeRig* rig, bool smoothing, const Co
     const auto result = vfx::internal::OnParticleDraw(moments);
     CHECK(result.finalize_callback == nullptr && result.post_callback == nullptr && !result.bypass);
   }
-  CHECK(vfx::internal::smoothing.layer_count == (smoothing ? 2u : 0u));
+  CHECK(vfx::internal::smoothing.layer_count == ((smoothing || vfx::edges_row != 0.f) ? 2u : 0u));
   DrawContext combine;
   combine.cmd_list = &rig->commands;
   combine.matched_shader_hash = 0xA759AD5D;
@@ -708,19 +710,29 @@ static void TestComposite(const char* dump) {
     const auto in = UploadComposite(RandomInputs(WIDTH, HEIGHT, 30.f, 5));
     const auto game = RunComposite(&rig, false, in);
     const auto ours = RunComposite(&rig, true, in);
-    CHECK(!game.replaced && ours.replaced);
-    float worst = 0.f;
-    for (size_t index = 0; index < game.o0.size(); ++index) {
-      for (int channel = 0; channel < 4; ++channel) {
-        for (const auto* pair : {&game.o0, &game.o1}) {
-          const auto& mine = (pair == &game.o0) ? ours.o0 : ours.o1;
-          const float expected = (*pair)[index][channel];
-          worst = std::max(worst, std::abs(mine[index][channel] - expected) / std::max(std::abs(expected), 1e-3f));
+    // Particle Edges by Depth alone: the same composite over the half layer as drawn.
+    vfx::edges_row = 1.f;
+    const auto edges = RunComposite(&rig, false, in);
+    vfx::edges_row = 0.f;
+    CHECK(!game.replaced && ours.replaced && edges.replaced);
+    const auto worst_of = [&game](const CompositeOutputs& outputs) {
+      float worst = 0.f;
+      for (size_t index = 0; index < game.o0.size(); ++index) {
+        for (int channel = 0; channel < 4; ++channel) {
+          for (const auto* pair : {&game.o0, &game.o1}) {
+            const auto& mine = (pair == &game.o0) ? outputs.o0 : outputs.o1;
+            const float expected = (*pair)[index][channel];
+            worst = std::max(worst, std::abs(mine[index][channel] - expected) / std::max(std::abs(expected), 1e-3f));
+          }
         }
       }
-    }
-    std::printf("5. composite, flat depth, first frame: ours from the game's at most %.2e (relative)\n", worst);
-    CHECK(worst <= 1e-5f);
+      return worst;
+    };
+    const float worst = worst_of(ours);
+    const float worst_edges = worst_of(edges);
+    std::printf("5. composite, flat depth, first frame: ours from the game's at most %.2e (relative); Particle Edges by Depth %.2e\n",
+                worst, worst_edges);
+    CHECK(worst <= 1e-5f && worst_edges <= 1e-5f);
   }
   // 6. A near box (10 m, pixels x >= 33, rows 8-39) in front of smoke (30 m) the game drew into the half layer behind it.
   {
@@ -750,39 +762,58 @@ static void TestComposite(const char* dump) {
     const auto textures = UploadComposite(in);
     const auto game = RunComposite(&rig, false, textures);
     const auto ours = RunComposite(&rig, true, textures);
-    float box_light = 0.f;
-    float box_transmittance = 1.f;
+    vfx::edges_row = 1.f;
+    const auto edges = RunComposite(&rig, false, textures);
+    vfx::edges_row = 0.f;
+    // Of a composite of ours: on the box its most light and least transmittance, away from the edge its largest difference from
+    // the game's; the game's own next to the edge, and the smoke's light.
+    struct BoxEdge {
+      float box_light = 0.f;
+      float box_transmittance = 1.f;
+      float smoke_difference = 0.f;
+    };
     float game_box_light = 1e9f;
     float game_box_transmittance = 0.f;
-    float smoke_difference = 0.f;
     float smoke_light = 0.f;
-    for (UINT y = 14; y < 38; ++y) {
-      for (UINT x = 18; x < 44; ++x) {
-        const size_t index = y * WIDTH + x;
-        if (x >= 33) {
-          box_light = std::max({box_light, ours.o0[index][0], ours.o0[index][1], ours.o0[index][2]});
-          box_transmittance = std::min(box_transmittance, ours.o0[index][3]);
-          if (x <= 34) {
-            game_box_light = std::min(game_box_light, game.o0[index][0]);
-            game_box_transmittance = std::max(game_box_transmittance, game.o0[index][3]);
-          }
-        } else {
-          smoke_light = std::max(smoke_light, game.o0[index][0]);
-          for (int channel = 0; channel < 4; ++channel) {
-            smoke_difference = std::max(smoke_difference, std::abs(ours.o0[index][channel] - game.o0[index][channel]));
+    const auto box_edge = [&](const CompositeOutputs& mine) {
+      BoxEdge edge;
+      for (UINT y = 14; y < 38; ++y) {
+        for (UINT x = 18; x < 44; ++x) {
+          const size_t index = y * WIDTH + x;
+          if (x >= 33) {
+            edge.box_light = std::max({edge.box_light, mine.o0[index][0], mine.o0[index][1], mine.o0[index][2]});
+            edge.box_transmittance = std::min(edge.box_transmittance, mine.o0[index][3]);
+            if (x <= 34) {
+              game_box_light = std::min(game_box_light, game.o0[index][0]);
+              game_box_transmittance = std::max(game_box_transmittance, game.o0[index][3]);
+            }
+          } else {
+            smoke_light = std::max(smoke_light, game.o0[index][0]);
+            for (int channel = 0; channel < 4; ++channel) {
+              edge.smoke_difference = std::max(edge.smoke_difference, std::abs(mine.o0[index][channel] - game.o0[index][channel]));
+            }
           }
         }
       }
-    }
+      return edge;
+    };
+    const BoxEdge smoothed = box_edge(ours);
+    const BoxEdge by_depth = box_edge(edges);
     // The smoke's share on the box: of its optical depth (0.6) and of its light.
-    const float optical_share = -std::log(box_transmittance) / 0.6f;
-    const float light_share = box_light / smoke_light;
+    const float optical_share = -std::log(smoothed.box_transmittance) / 0.6f;
+    const float light_share = smoothed.box_light / smoke_light;
+    const float edges_optical_share = -std::log(by_depth.box_transmittance) / 0.6f;
+    const float edges_light_share = by_depth.box_light / smoke_light;
     std::printf("6. box edge: on the box ours %.2f%% of the smoke's optical depth and %.2f%% of its light; the game's next to the edge "
                 "lets through %.3f and lights %.3f; smoke away from the edge ours from the game's %.2e\n",
-                100.f * optical_share, 100.f * light_share, game_box_transmittance, game_box_light, smoke_difference);
+                100.f * optical_share, 100.f * light_share, game_box_transmittance, game_box_light, smoothed.smoke_difference);
+    std::printf("6. Particle Edges by Depth: on the box %.2f%% of the smoke's optical depth and %.2f%% of its light; away from the edge "
+                "from the game's %.2e\n",
+                100.f * edges_optical_share, 100.f * edges_light_share, by_depth.smoke_difference);
     CHECK(optical_share <= 0.01f && light_share <= 0.01f);
+    CHECK(edges_optical_share <= 0.01f && edges_light_share <= 0.01f);
     CHECK(game_box_transmittance <= 0.8f && game_box_light >= 0.2f);
-    CHECK(smoke_difference <= 1e-4f);
+    CHECK(smoothed.smoke_difference <= 1e-4f && by_depth.smoke_difference <= 1e-4f);
   }
   // 7. Rows off (checked in RunComposite): the game's shader stays; nothing captured.
   {
@@ -804,6 +835,7 @@ static void TestComposite(const char* dump) {
     CHECK(!clash.replaced && !again.replaced && shared.replaced && clash_lines == 1);
   }
   CHECK(LogCount("Smooth Half-Size Particles: the first composite smoothed") == 1);
+  CHECK(LogCount("Particle Edges by Depth: the first composite by depth") == 1);
 }
 #else
 // ---- Attila: particle_layer.hpp's callbacks.

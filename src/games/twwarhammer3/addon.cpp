@@ -3878,6 +3878,17 @@ void ConfigureAddon() {
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
+      .key = "VfxFullResolutionEdges",
+      .binding = &twwarhammer3::vfx_particles::edges_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Particle Edges by Depth (Experimental)",
+      .section = "VFX",
+      .tooltip = "Half-size smoke, fire and dust keep clean edges against units, trees and walls, without smoothing them\n"
+                 "over frames. Part of Smooth Half-Size Particles already. Small cost.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
       .key = "VfxParticleSmoothing",
       .binding = &twwarhammer3::vfx_particles::smoothing_row,
       .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
