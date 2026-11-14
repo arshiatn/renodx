@@ -177,6 +177,13 @@ void ApplyPsychoRecommended() {
   });
 }
 
+// SDR (monitors without HDR), as Attila's: Reset, Rendering Mode SDR (Reset has no video AutoHDR). Its button also sets
+// Output SDR; a first start on a display without Windows HDR takes it by itself (output_encoding's first_start_without_hdr).
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}});
+}
+
 // Frame capture //////////////////////////////////////////////////////////////////////////
 // The loading screen picture is the back buffer copied into an 8-bit texture (read back on
 // the CPU). The back buffer is RenoDX's 16-bit copy and RenoDX only copies identical formats,
@@ -913,6 +920,19 @@ void BuildRuntimeData() {
                    "Peak, Paper White, UI brightness, Settings Mode, and output settings are preserved.",
         .on_change = []() {
           ApplyResetPreset();
+        },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .section = "Presets",
+        .group = "preset-line-3",
+        .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it was\n"
+                   "HDR), no video AutoHDR. The game's and the UI's white are your monitor's own white.",
+        .tint = 0xFFC107,
+        .on_change = []() {
+          ApplySdrPreset();
+          renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
         },
     },
     // Extra //////////////////////////////////////////////////////////////////////////////////////
@@ -1934,9 +1954,13 @@ void ConfigureAddon() {
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     // Decided again for each new swap chain (device_loss's create_swapchain, before the swapchain mod's): Auto follows
     // Windows HDR as before (scRGB, else SDR).
+    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset (as Attila's).
+    float saved_mode = 0.f;
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = static_cast<int>(setting->GetValue()),
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
     });
     settings.push_back(setting);
   }
