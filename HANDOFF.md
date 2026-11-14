@@ -747,8 +747,19 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   CPU 5 cpu5_ (render-list headers 64 B apart, Faster Render Lists for WH3 / Pharaoh / Shogun 2). Each writes bench
   variants for the end-of-batch bench.
 - [ ] ATN 00:2x (2026-11-15): plan Expeditions: Rome, Tales of Arise, Ryse (medium effort, offline, concurrent):
-  - [ ] SKILL agent (skl_): shared engine-neutral skill .agents/skills/game-port-method + the HDR-only snapshot release
-    check + one add-on vs two section; tw-port-checklist points to it. Owner: skl_ (running)
+  - [x] SKILL MERGED 2759a2ce: .agents/skills/game-port-method (SKILL.md + references engines.md, hdr-only-snapshot.md,
+    addon-split.md); tw-port-checklist keeps TW facts and points to it; release.md step 9 = the snapshot check; page
+    dump (tools/tw/page_dump) now writes "== helper absent" and "== first start without hdr". Facts: command_action is
+    ONE process-wide registry (a second add-on adds its own directly registered events + present work, no frame of
+    latency); fast dispatch runs only while every module opted in (Shogun 2's two do; Ryse / Tales / Expeditions don't:
+    opting in = the cheap first step). Upstream has external/DLSS + Streamline (merged add-ons can build there).
+  - [ ] SNAPSHOT GAPS (TW): no SDR first-start path in Troy, WH2, Rome Remastered, Shogun 2; no full-download notice
+    (red + GitHub / Nexus buttons) in Shogun 2's HDR add-on; Shogun 2's page-dump body lacks the two new sections; every
+    TW game's helper-absent dump + preset dry runs not yet checked against the snapshot list. Owner: SNAPSHOT agent snp_
+  - [ ] Attila's first start without HDR writes SwapChainEncoding Auto (3) -> SDR (2): a player who turns Windows HDR on
+    later stays on SDR. Intended? ATN DECIDES
+  - [ ] SNAPSHOT GAPS (non-TW): Ryse / Tales / Expeditions: no SDR first-start path, no full-download notice, no page-dump
+    driver. Owner: their plans
   - [ ] PLAN agents (running): tools/nontw/tales/plan.md, tools/nontw/expeditions/plan.md, tools/nontw/ryse/plan.md (+
     ledgers): state, gaps vs Attila's package, shader sources (ATN's ~12000-file dumps), Nsight feasibility, game-run
     list (Tales: ATN's two newest saves), 2 add-ons -> 1, HDR-only snapshot, UE4 SHARED STEP candidates. Owner: plan agents,
