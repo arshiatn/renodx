@@ -154,7 +154,41 @@ void ApplyHDRPreset(
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
-#define UpgradeRTVReplaceShader(value)                                                                \
+// Reset's values in a rendering mode: PsychoV35 for the Reset button, SDR for the SDR preset.
+void ApplyResetPreset(float rendering_mode) {
+  ApplyHDRPreset(
+      rendering_mode, 0.f,  // rendering mode, video AutoHDR
+      1.0f,  // exposure
+      1.0f,  // highlights
+      1.0f,  // shadows
+      1.0f,  // contrast
+      1.0f,  // purity_scale
+      1.0f,  // cone_response_exponent
+      1.0f,  // bloom
+      1.0f,  // lensflare
+      1.0f,  // godrays
+      1.0f,  // vignette
+      1.0f,  // distortion
+      1.0f,  // filmgrain
+      1.0f,  // some_indicators
+      0.0f,  // auto_exposure_highlight_protection
+      1.0f,  // auto_exposure_highlight_headroom_stops
+      1.0f,  // vfx_fire_brightness
+      1.0f,  // vfx_blood_splash_brightness
+      1.0f,  // vfx_fog_brightness
+      1.0f,  // vfxsnow
+      1.0f,  // vfxrain
+      1.0f   // hue_shift
+  );
+}
+
+// SDR monitors (as Attila's): Reset's controls in Rendering Mode SDR (the game's own picture), no video AutoHDR (the button
+// also sets Output SDR). Also a player's first start on a display without HDR (output_encoding's first_start_without_hdr).
+void ApplySdrPreset() {
+  ApplyResetPreset(0.f);
+}
+
+#define UpgradeRTVReplaceShader(value)                                                              \
   {                                                                                                   \
       value,                                                                                          \
       {                                                                                               \
@@ -679,31 +713,20 @@ void BuildRuntimeData() {
         .section = "Presets",
         .group = "preset-line-1",
         .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.",
+        // No Extended mode here: PsychoV35 (ATN).
+        .on_change = []() { ApplyResetPreset(3.f); },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .section = "Presets",
+        .group = "preset-line-2",
+        .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it was\n"
+                   "HDR), no video AutoHDR. The game's and the UI's white are your monitor's own white.",
+        .tint = 0xFFC107,
         .on_change = []() {
-          ApplyHDRPreset(
-              3.f, 0.f,  // rendering mode (no Extended mode here: PsychoV35, ATN), video AutoHDR
-              1.0f,  // exposure
-              1.0f,  // highlights
-              1.0f,  // shadows
-              1.0f,  // contrast
-              1.0f,  // purity_scale
-              1.0f,  // cone_response_exponent
-              1.0f,  // bloom
-              1.0f, //lensflare
-              1.0f,  // godrays
-              1.0f,  // vignette
-              1.0f,  // distortion
-              1.0f,  // filmgrain
-              1.0f,  // some_indicators
-              0.0f,  // auto_exposure_highlight_protection
-              1.0f,  // auto_exposure_highlight_headroom_stops
-              1.0f,  // vfx_fire_brightness
-              1.0f,  // vfx_blood_splash_brightness
-              1.0f,  // vfx_fog_brightness
-              1.0f,  // vfxsnow
-              1.0f,  // vfxrain
-              1.0f   // hue_shift
-          );
+          ApplySdrPreset();
+          renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
         },
     },
     // Extra //////////////////////////////////////////////////////////////////////////////////////
@@ -1846,6 +1869,20 @@ void ConfigureAddon() {
       {"GraphicsCampaignDetail", 4.f},
       {"GraphicsShadowMapSize", 1.f},
   });
+  // Attila's "With vanilla unit sizes": the game's own unit sizes, unit distances a little up.
+  const auto graphics_atn_vanilla_units = atn_preset({
+      {"GraphicsUnitDetailSmall", 1.2f},
+      {"GraphicsUnitDetailMedium", 1.2f},
+      {"GraphicsUnitDetailLarge", 1.2f},
+      {"GraphicsUnitDetailHuge", 1.2f},
+      {"GraphicsDeadUnits", 0.85f},
+      {"GraphicsUnitAnimation", 3.f},
+      {"GraphicsUnitVariety", 3.f},
+      {"GraphicsFootstepEffects", 3.f},
+      {"GraphicsBuildingDetail", 4.f},
+      {"GraphicsCampaignDetail", 4.f},
+      {"GraphicsShadowMapSize", 1.f},
+  });
   settings.insert(settings.end(), {
       tw::engine_tweaks::Note(),
       new renodx::utils::settings::Setting{
@@ -1881,6 +1918,15 @@ void ConfigureAddon() {
           .tooltip = "Unit Detail 0.69x, Dead Unit Detail 0.50x, Unit Animation 1.50x, Unit Variety and Footstep Effects 3x,\n"
                      "Building Detail 3x, Campaign Tree Detail 4x, Shadow Map Size 8192. The rest at its default.",
           .on_change = [graphics_atn_large_units]() { renodx::utils::settings::UpdateSettings(graphics_atn_large_units); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "With vanilla unit sizes",
+          .section = "Graphics (Experimental)",
+          .group = "graphics-presets",
+          .tooltip = "Unit Detail 1.20x, Dead Unit Detail 0.85x, Unit Animation, Unit Variety and Footstep Effects 3x,\n"
+                     "Building Detail 4x, Campaign Tree Detail 4x, Shadow Map Size 8192. The rest at its default.",
+          .on_change = [graphics_atn_vanilla_units]() { renodx::utils::settings::UpdateSettings(graphics_atn_vanilla_units); },
       },
       unit_distance(0, "GraphicsUnitDetailSmall", "Unit Detail: Foot Soldiers", "foot soldiers"),
       unit_distance(1, "GraphicsUnitDetailMedium", "Unit Detail: Cavalry", "cavalry"),
@@ -1996,6 +2042,9 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
+    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset (as Attila's).
+    float saved_mode = 0.f;
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
@@ -2005,6 +2054,7 @@ void ConfigureAddon() {
           const bool frame_generation = aa_sliders.method == 5.f && aa_sliders.frame_generation != 0.f;
           return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
     });
     settings.push_back(setting);
   }
