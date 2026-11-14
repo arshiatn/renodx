@@ -144,6 +144,8 @@ void ApplyResetPreset() {
       // Active extra controls
       {"bloom", 1.f},
       {"fog_strength", 1.f},
+      {"sky_smooth", 0.f},
+      {"sky_smooth_strength", 1.f},
       {"dof", 1.f},
       {"vignette", 1.f},
       {"distortion", 1.f},
@@ -678,15 +680,6 @@ void BuildRuntimeData() {
     },
     // Extra //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
-    //     .key = "dof",
-    //     .binding = &shader_injection.dof,
-    //     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-    //     .default_value = 1.f,
-    //     .label = "Depth of Field",
-    //     .section = "Extra",
-    //     .tooltip = "Toggle depth of field effect.",
-    // },
-    // new renodx::utils::settings::Setting{
     //     .key = "uvdistort",
     //     .binding = &shader_injection.uvdistort,
     //     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
@@ -1064,6 +1057,29 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
+        .key = "sky_smooth_strength",
+        .binding = &shader_injection.sky_smooth_strength,
+        .default_value = 1.f,
+        .label = "Fog & Sky Smoothing Strength",
+        .section = "Extra",
+        .tooltip = "How wide Fog & Sky Smoothing below reaches. 1 = default.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+        .is_enabled = [] { return shader_injection.sky_smooth != 0.f; },
+    },
+    new renodx::utils::settings::Setting{
+        .key = "sky_smooth",
+        .binding = &shader_injection.sky_smooth,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Fog & Sky Smoothing",
+        .section = "Extra",
+        .tooltip = "Removes the vertical lines and blocks the game's low-resolution sky leaves in thick fog.\n"
+                   "Higher: smoother, a little heavier.",
+        .labels = {"Off", "Low", "Medium", "High"},
     },
     new renodx::utils::settings::Setting{
         .key = "dof",

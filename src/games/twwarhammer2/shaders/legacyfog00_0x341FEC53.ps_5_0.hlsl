@@ -1,7 +1,8 @@
-// legacybattlefog ps40_main (maps with the old fog): in no trace of ATN's settings; the game's, with Fog Strength (SI.fog_strength), 1: the game's.
+// legacybattlefog ps40_main (maps with the old fog): in no trace of ATN's settings; the game's, with Fog Strength (SI.fog_strength) and Fog & Sky Smoothing (SI.sky_smooth, 0: off), 1: the game's.
 // Decompiled from the game's 341FEC53 by 3Dmigoto v1.3.16 (tools/tw/wh2/par_w2_make_perms.py); WARP
 // tools/tw/warp_tests/par_w2/run_perms.sh.
 #include "../shared.h"
+#include "../../twattila/sky_smooth.hlsli"
 
 cbuffer camera : register(b0)
 {
@@ -169,6 +170,11 @@ void main(
   o0.w = min(o0.w * SI.fog_strength, max(o0.w, 1.f));  // RenoDX: Fog Strength
   r1.w = max(0, r1.y);
   r0.yzw = t_sky.Sample(s_sky_s, r1.xwz).xyz;
+  // Fog & Sky Smoothing; no fog or no sky in it: not needed.
+  [branch]
+  if (SI.sky_smooth != 0.f && o0.w > 0.f && r0.x > 0.f) {
+    r0.yzw = SkySmooth(t_sky, s_sky_s, r1.xwz);
+  }
   r1.xyz = g_legacy_volume_fog_colour.xyz * sun_colour.xyz;
   r1.xyz = float3(1.5,1.5,1.5) * r1.xyz;
   r1.xyz = abs(sun_direction.y) * r1.xyz;  // the decompile named c0.x (cb1[0].z)
