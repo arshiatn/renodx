@@ -2,6 +2,44 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+## v13 (2026-11-14, ATN's 67% / 50% runs; built only, not run in game; installed: INSTALLED_PLACEHOLDER)
+
+- Fixed (safe side): ATN's 67% run reset the TW helper's ray tracing device twice within seconds of a battle's start
+  (0x887A0006, sun shadows + AO on; then off until a restart), none in 1.5 min of the campaign map before. Not Ray
+  Reconstruction: the add-on asks for none (no guides, no RR line in the helper's log) and DLAA kept running after.
+  The battle's scene holds draws the campaign's never had (its terrain, props, trees, alpha-tested plants); the cause
+  among them is not found (the harness with Rome-like dynamic leaves ran clean). The rays now see only the kinds traced
+  without a reset (`ray_tracing.hpp` TESTED_VERTEX_SHADERS: AerialMap, AerialMapTrees, PBR 9594545F, BasicLit); the
+  units' banners never (their own matrix at b0, not the main camera). Graphics (Experimental) **Ray Tracing Battle
+  Objects (Test)**: Tested (default) / Solid (+ the battle's solid draws) / All (as v11).
+- Test: `test/tw_romer_rays` case 1 (the battle's kinds out at Tested, solid ones in at Solid, an alpha-tested one only
+  at All, a banner never).
+- DLAA below 100% Resolution Scale: v9's text said off, but v9-v12 ran DLAA at the render size (the scene's depth and
+  the tone mapper both 2572x1446 at 67%), then Feral's upscaler. Now (plan item 4, ATN's 67% / 50% traces: the tone
+  mapper and SMAA at the render size, the exe's upscaler VS 9F3C9B3D / PS 3C19543E into a 3840x2160 FP16 target, the UI
+  on it) **DLSS** from the tone mapper's output to the upscaler's size, copied into its target in its place (`dlaa.hpp`
+  Upscale; the upscaler's four PS hashes). Frame generation keeps DLSS's result as the HUD-less frame. With a ray row on
+  it stays as before (DLAA at the render size, Feral's upscaler after): rt_core captures the main view's depth at the
+  bridge's size. Log: `DLAA: on, DLSS 2572x1446 to 3840x2160 (Resolution Scale below 100%).`
+- Test: `test/tw_romer_dlaa` case 6 (DLSS's result copied into the upscaler's target, its draw skipped; no result /
+  another size / DLAA off: the game's draw).
+
+Test (ATN): a battle with Ray-Traced Sun Shadows + AO at Battle Objects Tested: no reset (renodx-tw-dlaa64.log); then
+Solid, then All (one each, a restart after a reset): which one resets. DLAA (rays off) at 67% and 50%: sharp at 4K, no
+shake; the log's DLSS line; the helper's "Upscaling: DLSS ... to 3840 x 2160".
+
+## v12 (2026-11-14, crash fix; built only, not run in game; installed: INSTALLED_PLACEHOLDER)
+
+- Fixed: changing Resolution Scale in game crashed (ATN 10:22, crash_1022.dmp: exe + 0x6ee594, an AddRef on a null
+  view). The game rebuilds its swap chain in the format its back buffer's view reports, which the HDR upgrade made
+  16-bit; for that format the game's own code makes no sRGB view and later uses the missing one. `swap_chain_format.hpp`
+  hooks the game's rebuild (exe + 0xFB420, found by its bytes; another build is left alone) and gives it the game's own
+  8-bit format back, so the rebuild runs as at the start.
+- Test: `test/tw_romer_dlaa` case 5 (the installed exe's bytes found at + 0xFB420, not in another exe; the formats given).
+
+Test (ATN): Resolution Scale 100% to 67% and back, in the menu and in a battle: no crash; ReShade.log has "Swap chain
+rebuilt at ...: the game's format 87 for the upgraded 10." once.
+
 ## v11 (2026-11-14, phase I part 4; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - Graphics (Experimental, Advanced, off): **Frame Generation** (Off, 2x-6x, Dynamic: NVIDIA DLSS Frame Generation through
