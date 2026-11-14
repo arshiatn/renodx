@@ -46,6 +46,7 @@
 #include "../twattila/water_effects.hpp"
 #include "../twattila/water_reflections.hpp"
 #include "./more_tests.h"
+#include "./tweak_objects.hpp"
 #include "../twpharaohdynasties/trace_reads.hpp"
 // Pharaoh's outside-view geometry shaders (built bytes): Troy's shadow vertex shaders write the same outputs (SCENE_SHADERS).
 #include "../twpharaohdynasties/rt_outside_view_branch_gs.h"
@@ -1658,6 +1659,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::light_count::OnPresent(rt_sliders.debug_log != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
+  // Troy's tweaks by its own initializers' code before Update's Find, whose `lea rdx, [name]` finds none here (tweak_objects.hpp).
+  if (!graphics_found) {
+    twtroy::tweak_objects::Find(tw::engine_tweaks::ModuleSections(GetModuleHandleW(nullptr)), graphics_options);
+  }
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
 
