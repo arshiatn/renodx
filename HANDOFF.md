@@ -626,6 +626,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [ ] OPEN: ScreenSpaceShadowsColoured and ScreenSpaceShadowsBannerLight need the banners' own depth (Attila's
       InstallThin, inside twattila/screen_space_shadows.hpp): an opt-in there or a Shogun copy. Owner: PARITY ROUND 3
   - [ ] PARITY ROUND 3 (one agent, p3_, started ~21:30): the three lines above, then parity_check over every game at HEAD
+- [ ] EVERY-PRESET GPU AUDIT (pre_, started ~22:15, ATN "go for it"): Attila's inventory of presets + Experimental rows
+  (RT shadows, SSS, AO, reflections, particles, fog, bounce); one measurement session at the bench view (Reset, non-RT,
+  RT shadows, RT/PT, Path Tracing, RT/PT + chosen quality rows: Time Each Pass, PresentMon, screenshot each); per-preset
+  costs; non-ray wins implemented; quality rows that cost little and score better into RT/PT (ATN delegated), the rest
+  Experimental with numbers; ray findings handed to the GPU round
 - [ ] CPU ROUND 4 (cpu4_, started ~21:30): the five game-code items + author patches (memfast 65-127 B, loopfetch site,
   x87 block question); writes bench variants + a run plan
 - [x] ATN 21:2x: Attila's number_of_threads set to 16 (ATN's preferences.script.txt 559f4696 -> 432ba846; fresh backup
