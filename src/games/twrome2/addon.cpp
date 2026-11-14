@@ -1515,7 +1515,7 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 39> MOTION_SHADERS =
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py): the main view's terrain (old and custom
 // geom, shader models 3 and 4.1), rigid objects, tree branches and leaves and units (Rome II's own:
 // data_rome2.pack's builds), and their capture versions (world positions; leaves also UVs).
-constexpr std::array<twattila::rt_scene::SceneShader, 43> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x83AB3AFC, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true},
     {.hash = 0x2898B8F6, .capture_shader = __rt_capture_terrain_old_sm3_a, .terrain = true},
     {.hash = 0xD8475AB1, .capture_shader = __rt_capture_terrain_custom_material_sm3_b, .terrain = true},
@@ -1552,10 +1552,13 @@ constexpr std::array<twattila::rt_scene::SceneShader, 43> SCENE_SHADERS = {{
     {.hash = 0x2D15A993, .capture_shader = __rt_capture_grass_2d15, .dynamic = true, .foliage = true, .grass = true},
     {.hash = 0x5AB72F3F, .capture_shader = __rt_capture_grass_5ab7, .dynamic = true, .foliage = true, .grass = true},
     // Cloth (banners, tents) and sails: thin, captured every frame (the CPU moves them), as Attila's 772B26FF / D11B5EC7 (the
-    // same shaders; in none of ATN's traces: level B). The sail symbol 2C98F649 (Attila's B2CCA764: no capture there either)
-    // lies on its sail. Ropes 4F90C2B5 stay out: Rome II's own (no Attila capture), 12 draws of 12 indices, lines.
+    // same shaders; in none of ATN's traces; their captures WARP-checked against Rome II's bytes, warp_tests/par_r2/run_rope.sh).
+    // The sail symbol 2C98F649 (Attila's B2CCA764: no capture there either) lies on its sail.
     {.hash = 0x997A7119, .capture_shader = __rt_capture_cloth_sm3, .dynamic = true, .thin = true},
     {.hash = 0x438E2D53, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
+    // Ropes (Rome II's own, 4F90C2B5: 56 of ATN's 72 traces, 12 draws of 12 indices from a dynamic buffer; the game casts them
+    // into its sun map, 5082AD7D): solid, captured every frame (make_wind_motion_vs.py :world; WARP: run_rope.sh).
+    {.hash = 0x4F90C2B5, .capture_shader = __rt_capture_rope_sm3, .dynamic = true},
     // Far Tree Shadows (Experimental): the far trees' cards (rigidtreebillboard D2EC24BD, drawn in 45 of ATN's 72 traces with
     // ps C5AED7B7; its MSAA twin 2C1F0C31 with B2B1A4F3 in A2; lq 60DAA886 in none) turned to the sun as Attila's, each
     // showing the tree from there; cut out by the diffuse's alpha at t1 (C5AED7B7: discard below 0.35).
