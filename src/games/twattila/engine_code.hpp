@@ -17,13 +17,15 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "../../utils/log.hpp"
 #include "../twrome2/engine_tweaks.hpp"
 
 // Faster Game CPU Code: three of Attila's hot routines in empire.retail.dll, each replaced by code with the same results
-// (test/tw_engine_code runs the game's code and this one side by side: every register, the stack, the x87 state).
+// (test/tw_engine_code runs the game's code and this one side by side: every register, the stack, the x87 state); Faster
+// Render Lists (its own row): a fourth site the same way.
 // Each is found by its exact bytes: code another mod changed (the Attila CPU Performance Fix patches 1277 x87 blocks,
 // the first one below among them) or another build is left alone. A jump into the addon's own code page replaces the
 // first instruction(s) of each; the page is never freed (a thread can still be in it after the game's bytes are back).
@@ -209,6 +211,24 @@ constexpr std::array<uint8_t, 155> FMOD_STUB = {
     0xE9, 0x00, 0x00, 0x00, 0x00,              // jmp the dispatcher
 };
 
+// 4. The render lists' push (+0x176ced0, every item drawn, on every thread; 6.2 ms of workers and 1 ms of the render
+// thread a frame in cpl2's recording): after the thread's own vector took the item it sets the list's "has items" byte
+// (+0x1c), a store into the list's own cache line on every push, so that line (the thread index provider at +0, the
+// vectors' headers at +0x18) moves between the cores and every push's first loads miss. The stub stores only when the
+// byte isn't 1 yet: the same bytes in memory under every order of the threads, the line stays shared. Its flags differ
+// (cmp's), the function's add esp before its ret overwrites them all.
+constexpr uint32_t LIST_PUSH_RVA = 0x176cfb9;
+constexpr std::string_view LIST_PUSH = "8B 44 24 0C FF 44 BE 04 C6 40 1C 01 8B 4C BE 04 8B 44 24 10 49 40 5F C1 E0 18";
+constexpr size_t LIST_PUSH_SITE = 8;     // mov byte ptr [eax + 0x1c], 1; mov ecx, dword ptr [esi + edi*4 + 4]
+constexpr size_t LIST_PUSH_RESUME = 16;  // mov eax, dword ptr [esp + 0x10]
+constexpr std::array<uint8_t, 19> LIST_PUSH_STUB = {
+    0x80, 0x78, 0x1C, 0x01,        // cmp byte ptr [eax + 0x1c], 1
+    0x74, 0x04,                    // je kept
+    0xC6, 0x40, 0x1C, 0x01,        // mov byte ptr [eax + 0x1c], 1
+    0x8B, 0x4C, 0xBE, 0x04,        // kept: mov ecx, dword ptr [esi + edi*4 + 4]
+    0xE9, 0x00, 0x00, 0x00, 0x00,  // jmp back
+};
+
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half and fmod the
 // same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots (control word 0x20,
 // float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the same steps; the CRT's
@@ -228,7 +248,8 @@ constexpr std::string_view ROME2_TRUNCATION =
     "D9 6C 24 28 DB 5C 24 24 D9 6C 24 18 58 0F B7 44 24 20 66 0F 6E C0 0F 5B C0 F3 0F 11 84 24";
 constexpr std::array<uint8_t, 44> ROME2_TRUNCATION_STUB = TruncationStub(0x18, 0x28, 0x20, 0x24);
 
-// What differs between the games' builds.
+// What differs between the games' builds. Thrones' render list push the same bytes; Rome II has no such function
+// (list_push_rva 0: not looked for).
 struct Build {
   uint32_t truncation_rva;
   std::string_view truncation;
@@ -236,19 +257,26 @@ struct Build {
   uint32_t half_rva;
   uint32_t fmod_rva;
   std::string_view fmod_matherr;
+  uint32_t list_push_rva;
 };
-constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR};
-constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR};
-constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR};
+constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA};
+constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9};
+constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0};
 constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
 // Where each stub sits in the page.
 constexpr size_t TRUNCATION_PAGE = 0x000;
 constexpr size_t HALF_PAGE = 0x040;
 constexpr size_t FMOD_PAGE = 0x180;
+constexpr size_t LIST_PUSH_PAGE = 0x240;
 constexpr size_t PAGE_SIZE = 0x1000;
 
-// The first instruction (or two, whole) of each site: 5 bytes that become a jump into the page.
+// Which sites each row writes (bits by `sites` index).
+constexpr uint32_t CPU_CODE_SITES = 0b0111;  // Faster Game CPU Code
+constexpr uint32_t LIST_SITES = 0b1000;      // Faster Render Lists
+
+// The first instruction (or two, whole) of each site: 5 bytes that become a jump into the page (the render list push's:
+// a 4-byte instruction and the first byte of the next, both run by its stub).
 constexpr size_t SITE_SIZE = 5;
 
 struct Site {
@@ -258,21 +286,25 @@ struct Site {
   std::array<uint8_t, SITE_SIZE> jump = {};
 };
 
-static std::array<Site, 3> sites = {{{.name = "soldier draw rounding"}, {.name = "half floats"}, {.name = "fmod"}}};
+static std::array<Site, 4> sites = {
+    {{.name = "soldier draw rounding"}, {.name = "half floats"}, {.name = "fmod"}, {.name = "render list pushes"}}};
 static uint8_t* page = nullptr;
 static bool prepared = false;
-static bool written = false;
-static bool asked = false;  // the row's last value
+static uint32_t found = 0;    // the sites found (bits by index)
+static uint32_t written = 0;  // the sites holding their jump
+static uint32_t asked = 0;    // the sites the rows last asked for
 static uint32_t failed_writes = 0;
 // Presents with a thread inside a site before giving up (until the row changes); each try snapshots the system's threads
 // (~0.1 s with some antivirus hooks; 3 of 200 writes waited once in the test, four threads running the sites nonstop).
 constexpr uint32_t MAX_FAILED_WRITES = 30;
 
-// The sites' jumps (`patch`) or the game's bytes back, written while every other thread of the process is suspended and
-// none stands inside a site past its first byte (it would go on in the middle of the jump). False: one did (or its
-// position is unknown), nothing written. From the first suspension to the last resume nothing allocates, logs or takes a
-// lock: a suspended thread may hold it. A thread started after the snapshot isn't held (as with Detours).
-inline bool PausedWrite(bool patch) {
+// The jumps of the sites in `patched` and the game's bytes in the others, written (where that changes `written`) while
+// every other thread of the process is suspended and none stands inside a changing site past its first byte (it would go
+// on in the middle of the jump). False: one did (or its position is unknown), nothing written. From the first suspension
+// to the last resume nothing allocates, logs or takes a lock: a suspended thread may hold it. A thread started after the
+// snapshot isn't held (as with Detours).
+inline bool PausedWrite(uint32_t patched) {
+  const uint32_t changing = (patched ^ written) & found;
   std::vector<HANDLE> threads;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
   if (snapshot == INVALID_HANDLE_VALUE) return false;
@@ -298,17 +330,18 @@ inline bool PausedWrite(bool patch) {
     CONTEXT context = {.ContextFlags = CONTEXT_CONTROL};
     clear = (GetThreadContext(threads[suspended], &context) != FALSE);
     ++suspended;
-    for (const Site& site : sites) {
-      const auto start = reinterpret_cast<uintptr_t>(site.at);
-      if (site.at != nullptr && context.Eip > start && context.Eip < start + SITE_SIZE) clear = false;
+    for (size_t index = 0; index < sites.size(); ++index) {
+      const auto start = reinterpret_cast<uintptr_t>(sites[index].at);
+      if ((changing >> index & 1) != 0 && context.Eip > start && context.Eip < start + SITE_SIZE) clear = false;
     }
   }
   if (clear) {
-    for (const Site& site : sites) {
-      if (site.at == nullptr) continue;
+    for (size_t index = 0; index < sites.size(); ++index) {
+      const Site& site = sites[index];
+      if ((changing >> index & 1) == 0) continue;
       DWORD protection;
       if (VirtualProtect(site.at, SITE_SIZE, PAGE_EXECUTE_READWRITE, &protection) == FALSE) continue;
-      const auto& bytes = (patch ? site.jump : site.game);
+      const auto& bytes = ((patched >> index & 1) != 0 ? site.jump : site.game);
       std::memcpy(site.at, bytes.data(), SITE_SIZE);
       VirtualProtect(site.at, SITE_SIZE, protection, &protection);
     }
@@ -325,6 +358,7 @@ inline bool PausedWrite(bool patch) {
 // game yet). One log line: which are faster, which left alone.
 inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   prepared = true;
+  found = 0;
   auto* base = reinterpret_cast<uint8_t*>(module);
   const auto* headers = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
   const uint8_t* image_end = base + headers->OptionalHeader.SizeOfImage;
@@ -358,7 +392,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   };
 
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-  std::array<uint8_t*, 3> stubs = {};
+  std::array<uint8_t*, 4> stubs = {};
   if (page != nullptr) {
     if (uint8_t* match = find(build.truncation, build.truncation_rva); match != nullptr) {
       uint8_t* stub = page + TRUNCATION_PAGE;
@@ -405,6 +439,14 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
         stubs[2] = stub;
       }
     }
+    if (uint8_t* match = (build.list_push_rva != 0 ? find(LIST_PUSH, build.list_push_rva) : nullptr); match != nullptr) {
+      uint8_t* stub = page + LIST_PUSH_PAGE;
+      std::memcpy(stub, LIST_PUSH_STUB.data(), LIST_PUSH_STUB.size());
+      uint8_t* stub_end = stub + LIST_PUSH_STUB.size();
+      write32(stub_end - 4, relative(stub_end, match + LIST_PUSH_RESUME));
+      sites[3].at = match + LIST_PUSH_SITE;
+      stubs[3] = stub;
+    }
     DWORD protection;
     VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
     FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
@@ -413,9 +455,11 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   std::string left;
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
+    if ((LIST_SITES >> index & 1) != 0 && build.list_push_rva == 0) continue;
     std::string& names = (site.at != nullptr ? faster : left);
     names += std::format("{}{}", names.empty() ? "" : ", ", site.name);
     if (site.at == nullptr) continue;
+    found |= 1u << index;
     std::memcpy(site.game.data(), site.at, SITE_SIZE);
     site.jump[0] = 0xE9;
     write32(site.jump.data() + 1, relative(site.at + SITE_SIZE, stubs[index]));
@@ -426,23 +470,31 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
 
 }  // namespace internal
 
-// Every present: `enabled` (the row) once empire.retail.dll is loaded, the first time on prepared (`game`'s build); then
-// the jumps go in or the game's bytes back, while no thread stands inside them.
-inline void Update(bool enabled, Game game = Game::ATTILA) {
-  if (enabled && !internal::prepared) {
+// Every present: `enabled` (Faster Game CPU Code) and `lists` (Faster Render Lists) once empire.retail.dll is loaded, the
+// first time either is on prepared (`game`'s build); then the jumps go in or the game's bytes back, while no thread
+// stands inside them.
+inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false) {
+  const uint32_t wanted = (enabled ? internal::CPU_CODE_SITES : 0u) | (lists ? internal::LIST_SITES : 0u);
+  if (wanted != 0 && !internal::prepared) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
     internal::Prepare(module, internal::BUILDS[static_cast<size_t>(game)]);
   }
-  if (enabled != internal::asked) {
-    internal::asked = enabled;
+  if (wanted != internal::asked) {
+    internal::asked = wanted;
     internal::failed_writes = 0;
   }
-  if (enabled == internal::written || !internal::prepared || internal::failed_writes >= internal::MAX_FAILED_WRITES) return;
-  if (internal::PausedWrite(enabled)) {
-    internal::written = enabled;
+  const uint32_t target = wanted & internal::found;
+  if (target == internal::written || internal::failed_writes >= internal::MAX_FAILED_WRITES) return;
+  if (internal::PausedWrite(target)) {
+    const uint32_t changed = target ^ internal::written;
+    internal::written = target;
     internal::failed_writes = 0;
-    renodx::utils::log::i("[Total War] Faster Game CPU Code: ", (enabled ? "on" : "off, the game's own code back"));
+    for (const auto& [row_sites, name] : {std::pair{internal::CPU_CODE_SITES, "Faster Game CPU Code"},
+                                          std::pair{internal::LIST_SITES, "Faster Render Lists"}}) {
+      if ((changed & row_sites) == 0) continue;
+      renodx::utils::log::i("[Total War] ", name, ": ", ((target & row_sites) != 0 ? "on" : "off, the game's own code back"));
+    }
   } else if (++internal::failed_writes == internal::MAX_FAILED_WRITES) {
     renodx::utils::log::w("[Total War] Faster Game CPU Code: not written, a game thread kept running the code");
   }
@@ -451,19 +503,19 @@ inline void Update(bool enabled, Game game = Game::ATTILA) {
 // Addon detach: the game's bytes back. The page stays (a thread may still be in it), so the jumps are safe to leave in
 // the game's code if no attempt finds the threads clear: the stubs need nothing of this module.
 inline void Uninstall() {
-  for (int attempt = 0; internal::written && attempt < 100; ++attempt) {
-    if (internal::PausedWrite(false)) {
-      internal::written = false;
+  for (int attempt = 0; internal::written != 0 && attempt < 100; ++attempt) {
+    if (internal::PausedWrite(0)) {
+      internal::written = 0;
     } else {
       Sleep(1);
     }
   }
-  if (internal::written) renodx::utils::log::w("[Total War] Faster Game CPU Code: left in at detach (a game thread kept running it)");
+  if (internal::written != 0) renodx::utils::log::w("[Total War] Faster Game CPU Code: left in at detach (a game thread kept running it)");
 }
 
 #else
 
-inline void Update(bool, Game = Game::ATTILA) {}
+inline void Update(bool, Game = Game::ATTILA, bool = false) {}
 inline void Uninstall() {}
 
 #endif

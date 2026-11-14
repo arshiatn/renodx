@@ -1307,6 +1307,8 @@ float lod_bias_trilinear_row = 0.f;  // twattila/texture_lod_bias.hpp SetWrappin
 // draw's rounding at its own stack slots, float to half and fmod the same bytes; test/tw_engine_code with this game's DLL:
 // every register and the x87 state the game's). Experimental, off until a game run.
 float engine_code_row = 0.f;
+// Faster Render Lists (Experimental, off; graphics_page.hpp): engine_code.hpp's render list push site.
+float render_lists_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1679,7 +1681,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                 shader_injection.ssao_temporal != 0.f, shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
-  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::THRONES);
+  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::THRONES, render_lists_row != 0.f);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &object_detail, &graphics_found, graphics_status);
   twattila::graphics_hooks::shadow_map::Set(std::exp2(shadow_map_size), false);
   twattila::graphics_hooks::Update(
@@ -1980,6 +1982,17 @@ void ConfigureAddon() {
           .tooltip = "Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
                      "with it). More video memory. Applies after a restart.",
           .labels = {"2048 (Game's)", "4096", "8192"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FasterRenderLists",
+          .binding = &render_lists_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Faster Render Lists (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "The game's draw lists stop rewriting a flag every CPU core reads for each item they take:\n"
+                     "less waiting between the cores in big battles. Same results.",
+          .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedSkipShadowPass",
