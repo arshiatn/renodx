@@ -174,6 +174,17 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   wh1_data_batch.ps1 A-E (+F -Night, G -Campaign; NOT -AaOff: ATN's gfx_aa 2 stays) after ATN's Rome Remastered session;
   the Epic start (warhammer.exe with -epicapp... and no exchange code) is a one-try guess. Exe code protected: no engine CPU
   features. Phase I trace-free items started.
+- [x] Rome Remastered: ATN's own menu start 01:59-02:19 (campaign + battle), atn_trace_watch 50 traces
+  (romeremastered/runs/ATN_battle_015951); phase I part 2 resumed with them.
+- [x] WH2 Round v48 MERGED 28779515 (graphics_page, Graphics 2 of 2, viewport chains, Torch and Fire Shadows via
+  InstallPointLights, Rays Replace / Skip the Shadow Maps, Fog Shadows + light in fog, all Experimental; Hue Clip 100;
+  render scale reached the traces; SH flag on in every battle blocks PT AO). Round 2 on the branch: PT AO, casters out of
+  view, spot lights, smoke, water.
+- [x] Troy phase P: plan tools/tw/troy/plan_1114.md, trace build f7defa00 (merged 03beac2b; shared:
+  twpharaohdynasties/trace_reads.hpp takes a Shaders struct, Pharaoh's output unchanged), installed 02:24 "troy t1" +
+  helper110 --first. Offline bugs B: Coloured Shadows reads c1 (sun direction) not c3; AA wrappers lack TW_AA_FRAME_LINEAR.
+  Data run after WH1's with -MsaaOff (direct starts only, no launcher-click fallback).
+- [x] ATN 02:25: "You are allowed to change the game's settings for all of them" (memory feedback_game_aa_allowed.md).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
