@@ -16,14 +16,16 @@
 #include "../../utils/data.hpp"
 #include "../../utils/resource_upgrade.hpp"
 
-// The Total War add-ons' opt-in to command_action's fast dispatch (utils/command_action_fast.hpp), with the gate of the
-// resource upgrades' command-wide callback; view_share and object_motion gate their own.
+// The Total War HDR add-ons' opt-in to command_action's fast dispatch (utils/command_action_fast.hpp), with the gate of
+// the resource upgrades' command-wide callback; view_share, object_motion and rt_scene gate their own. An add-on without
+// resource upgrades (Shogun 2 DLSS) calls fast::Use itself.
 namespace twattila::draw_dispatch {
 
 namespace internal {
 
 // Sticky: set at the first begin_render_pass event of any command list. Before it no list has a pending render pass, and
-// the gate below skips its private-data lookup.
+// the gate below skips its private-data lookup. ReShade's D3D11 backend raises no begin_render_pass today, so the gate
+// costs one relaxed load a command; the flag keeps it exact should a ReShade version raise the event there.
 static std::atomic_bool render_pass_begun = false;
 
 inline void OnBeginRenderPass(reshade::api::command_list*, uint32_t, const reshade::api::render_pass_render_target_desc*,

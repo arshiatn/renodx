@@ -4,11 +4,11 @@
 # the test exe goes (default build\tw_draw_dispatch_test_<arch>).
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [string]$OutDir = '')
 $ErrorActionPreference = 'Stop'
-$repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
-$testRoot = Join-Path $repairRoot 'test\tw_draw_dispatch'
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
+$testRoot = Join-Path $repoRoot 'test\tw_draw_dispatch'
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation
-$testBuild = if ($OutDir -ne '') { $OutDir } else { Join-Path $repairRoot "build\tw_draw_dispatch_test_$Architecture" }
+$testBuild = if ($OutDir -ne '') { $OutDir } else { Join-Path $repoRoot "build\tw_draw_dispatch_test_$Architecture" }
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
@@ -16,8 +16,8 @@ $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64
 $exe = "fast_draws_$Architecture.exe"
 $partner = "fast_draws_partner_$Architecture.dll"
 $compile = @("--target=$triple", '/nologo', '/std:c++20', '/EHsc', '/O2', '/MT', '/bigobj', '/DNOMINMAX', '/DWIN32=1', '-Wno-deprecated-declarations',
-  '/I', $repairRoot, '/I', "$repairRoot\external\reshade", '/I', "$repairRoot\external\frozen\include", '/I', "$repairRoot\external\Detours\include",
-  '/I', "$repairRoot\external\gtl\include")
+  '/I', $repoRoot, '/I', "$repoRoot\external\reshade", '/I', "$repoRoot\external\frozen\include", '/I', "$repoRoot\external\Detours\include",
+  '/I', "$repoRoot\external\gtl\include")
 $libraries = @('user32.lib', 'advapi32.lib', 'd3d11.lib', 'dxgi.lib', 'd3dcompiler.lib', 'dxguid.lib')
 # Case 8's second module (partner.cpp), loaded by the exe from its folder.
 & 'C:\Program Files\LLVM\bin\clang-cl.exe' @compile /LD "$testRoot\partner.cpp" /Fe:$partner /link /OPT:REF /OPT:ICF @libraries

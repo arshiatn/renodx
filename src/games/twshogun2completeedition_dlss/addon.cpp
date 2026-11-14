@@ -26,12 +26,12 @@
 #include <include/reshade.hpp>
 
 #include "../../utils/command_action.hpp"
+#include "../../utils/command_action_fast.hpp"
 #include "../../utils/icons.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/state.hpp"
 #include "../twattila/engine_tests.hpp"
-#include "../twattila/draw_dispatch.hpp"
 #include "./dlss_jitter.hpp"
 #include "./hdr_link.hpp"
 #include "./frame_trace.hpp"
@@ -1682,7 +1682,8 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   reshade::register_overlay("Shogun 2 DLSS", OnOverlay);
   renodx::utils::state::Use(DLL_PROCESS_ATTACH);
   renodx::utils::command_action::Use(DLL_PROCESS_ATTACH);
-  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
+  // The fast draw dispatch alone: this add-on registers no resource upgrades (twattila::draw_dispatch gates theirs).
+  renodx::utils::command_action::fast::Use(DLL_PROCESS_ATTACH);
   twshogun2::dlss_jitter::Use(DLL_PROCESS_ATTACH);
   twshogun2::hdr_link::Use(DLL_PROCESS_ATTACH);
   attached = true;
@@ -1693,7 +1694,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
   if (attached) {
     twshogun2::frame_trace::Stop();
     renodx::utils::command_action::Unregister(OnSunDraw);
-    twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
+    renodx::utils::command_action::fast::Use(DLL_PROCESS_DETACH);
     renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);
     twshogun2::dlss_jitter::Use(DLL_PROCESS_DETACH);

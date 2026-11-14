@@ -172,7 +172,7 @@ struct CommandListCache {
 
 // This module's private-data key: a fixed prefix and the module's token, so a module never reads another's cache.
 static std::array<uint8_t, 16> cache_guid = {};
-static std::shared_mutex caches_mutex;
+static std::mutex caches_mutex;  // caches: a list's first command, its destroy, the detach
 // What the log last said of the opt-in of every attached module (fast::Use said "on").
 static std::atomic_bool logged_all_opted_in = true;
 static std::unordered_map<reshade::api::command_list*, std::unique_ptr<CommandListCache>> caches;
@@ -536,7 +536,7 @@ inline void SetGate(const Callback& callback, const Gate& gate) {
   {
     const std::unique_lock lock(data->mutex);
     const auto gates = std::span(data->gates.data(), data->gate_count);
-    size_t index = std::ranges::find(gates, callback_identity, &internal::GateEntry::callback) - gates.begin();
+    const size_t index = std::ranges::find(gates, callback_identity, &internal::GateEntry::callback) - gates.begin();
     if (index == data->gate_count) {
       // Out of room the callback stays ungated: called on every command, as RunCallbacks does.
       assert(data->gate_count < internal::MAX_GATES);
