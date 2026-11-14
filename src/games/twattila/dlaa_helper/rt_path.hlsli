@@ -812,10 +812,21 @@ void ReuseTexel(uint2 id) {
     const float radius = REUSE_RADIUS * sqrt(Random(uint3(id, frame * 16u + neighbour * 2u + 7201u)));
     const int2 texel = int2(id) + int2(round(float2(cos(angle), sin(angle)) * radius));
     if (any(texel < 0) || texel.x >= (int)bounce_width || texel.y >= (int)bounce_height || all(texel == int2(id))) continue;
+#if defined(REUSE_LEAN)
+    // Lean Reuse (only its rt_reuse_lean build): the neighbour's surface from its position and the normal its reservoir was
+    // made for (one fetch besides the reservoir's, not the normal's and planarity's five), its rays' origin that position.
+    const float4 other_position = positions[min(uint2(texel) * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u)];
+    if (other_position.w <= 0.f || abs(other_position.w - position.w) > 0.1f * position.w
+        || dot(LoadReceiverNormal(reuse_data[set], uint2(texel)), normal) < 0.9f) {
+      continue;
+    }
+    const float3 other_origin = other_position.xyz;
+#else
     float3 other_normal;
     float3 other_origin;
     const float4 other_position = TexelSurface(uint2(texel), other_normal, other_origin);
     if (other_position.w <= 0.f || abs(other_position.w - position.w) > 0.1f * position.w || dot(other_normal, normal) < 0.9f) continue;
+#endif
     const Reservoir other = LoadReservoir(reuse_samples[set], reuse_data[set], uint2(texel));
     if (other.count <= 0.f) continue;
     const float jacobian = ReuseJacobian(other, other_origin, origin);
