@@ -381,6 +381,24 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   phase B Attila perf variants behind switches (GPU Trace + quality scorer; defaults bit-identical; no GPU job while a
   game runs). WH1 agent resumed: AO / SSR reader census from the existing traces (else a trace with gfx_ssao /
   gfx_screen_space_reflections false set by us, DLSS Performance).
+- [ ] Rome Remastered battle GPU resets: safe-side fix a8afd660 on the agent's branch (rays take only the tested capture
+  kinds; banners out; row Ray Tracing Battle Objects (Test): Tested / Solid / All = v11; WARP tw_romer_rays case 1). Not
+  merged. ATN TEST later: a battle with rays at Tested, Solid, All: the first to reset names the group. RR not involved.
+- [ ] ATN ~11:0x: "Other games didn't miss any of the skills, right? If they did, we have to do them too." Page dumps at
+  0c28a0ea: Thrones / WH2 / Troy / WH1 / WH3 lack many Attila rows (Graphics* engine rows, SSR rows, fog / sky / bloom,
+  particle resolution, smoke-map rows, grass height, torch-from-paths rows ...). PARITY ROUND, brief
+  tools/tw/round_notes/parity_brief_1114.md (base fdfb307e): worktree agents Thrones (par_th_), WH2 (par_w2_), Troy
+  (par_t_), WH1 (par_w1_), Shogun 2 (par_s2_): parity table by feature (HAVE / DO NOW / NEEDS A TRACE / WON'T GET + proof)
+  + the DO NOW items, Experimental off; Rome Remastered's agent does the same after its page move; read-only survey of WH3 /
+  Pharaoh / Rome II (par_old_: tools/tw/round_notes/parity_<game>_1114.md). After the merges: one shared step moves the torch
+  rows from Path Tracing (RayTracedLightsInBounce / RayTracedLightShadowRatio) into graphics_page for every game that can
+  carry them. Merge one branch at a time, verify the merged tree once, stamp, install.
+- [ ] Forge's points (01:35 screenshots): scorer covers RMSE / SMAPE / boiling / swimming / covariance (done); Nsight GPU Trace
+  done, replay + shader swap = Nsight agent phase A; SER per pass in GPU Trace added to the Nsight agent; unified DI + GI
+  reservoir failed as one reservoir (U1 66 % / U2 20.5 % rRMSE), shipped as the light-per-bounce-texel rows (helper111).
+- [ ] ATN ~11:0x: heapfix in WH3: the author is fine; first prove it doable + a gain in our RT/PT preset in a jungle battle,
+  then ATN sends him the whole code. Feasibility agent (hfw3_, private under tools/tw/heapfix_wh3; no game run: a WH3 A/B
+  needs ATN's OK).
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
 ## LATE NIGHT ROUNDS (2026-11-13 23:10, two worktree agents, offline; installed state = NIGHT MERGES 22:59)
