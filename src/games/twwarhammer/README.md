@@ -1,5 +1,15 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Parity round 3 (2026-11-14; built only, not run in game)
+
+- **Campaign trees and props' liquid in the rays** (with Ray-Traced shadows): the campaign's trees (rigidcampaigntrees) and
+  the liquid in props cast ray shadows, placed as the campaign plants (test part 21). Trees out of view cast none.
+
+Test list (in game, ATN): campaign map with RT/PT: the trees' shadows on the ground follow the sun; no stray triangles.
+
+Not done: Sprite Soldier Shadows (needs a shared geometry shader capture in rt_core), the cloth casters, the tessellated
+mesh, the raycast at 50%; Modded Auto Exposure: WH1's exposure points come from the CPU (a luma readback), not a GPU pass.
+
 ### Parity round, continuation (2026-11-14; built only, not run in game)
 
 The table now: tools/tw/wh1/parity_1114.md (HAVE 28, done now 12, left 6, needs a trace 3, won't get 12).
