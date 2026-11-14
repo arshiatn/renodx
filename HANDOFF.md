@@ -287,6 +287,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   All agents told: atomic gpu_job.lock (two overwrites tonight).
 - [x] WH2 follow-up MERGED f8484655 (far cards 75914932 out of view, 16AFAF14 cut-outs in the rays = fix on by default,
   Light Through Foliage for Bend, Experimental). Agent resumed: Particle Resolution (indirect layer path), Water Clarity.
+- [x] Shogun 2 round 6 MERGED 96e35372 (cloth / sprites / leaves / branches out of view via Pharaoh's leaf GS, PT AO
+  own sky / steady bounce rows, Experimental; shared rt_core SceneShader::cascade_world opt-in, consumers' suites PASS;
+  the 04:51 lock overwrite was its suite run.ps1: fixed to CreateNew; tw_warhammer_shaders run.ps1 -> WH1 agent).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
