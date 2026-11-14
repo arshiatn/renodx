@@ -215,6 +215,10 @@ int sss_fade_samples = 0;  // overlay
 int sss_ignore_edges = 0;  // overlay
 int sss_along_ray = 0;     // overlay
 int sss_mirror_edges = 0;  // overlay
+// ReShade.ini WaterClarity, WaterCaustics (HDR addon, waterplane00: Attila's rows, its keys and ranges; rivers and lakes in
+// battles). Experimental, in no preset.
+float water_clarity = 1.f;   // overlay
+float water_caustics = 0.f;  // overlay
 // Ambient Occlusion (GT-VBAO) and Global Illumination (GT-VBGI, the Light Bounce): the HDR addon's
 // (twattila/lighting_settings.hpp's settings; it reads these from ReShade.ini). Defaults: ATN's recommended presets
 // (Global Illumination off).
@@ -688,6 +692,14 @@ void OnOverlay(reshade::api::effect_runtime*) {
                     "Reflection resolution below 100%. Full: sharper, steadier reflections. At 100% no change.")) {
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSRResolution", ssr_resolution);
   }
+  if (float_slider("Water clarity (Experimental)", &water_clarity, 0.25f, 16.f, "%.2f", 1.f,
+                   "How far you see into rivers and lakes in battles. 1: the game's; higher: clearer water.")) {
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "WaterClarity", water_clarity);
+  }
+  if (float_slider("Water caustics (Experimental)", &water_caustics, 0.f, 2.f, (water_caustics == 0.f ? "Off" : "%.2f"), 0.f,
+                   "Rippling light on river and lake beds in battles. 0: off.")) {
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "WaterCaustics", water_caustics);
+  }
   if (int choice = particle_resolution.load();
       choice_slider("Particle resolution", &choice, PARTICLE_RESOLUTIONS.size(), PARTICLE_RESOLUTIONS[choice],
                     GRAPHICS_DEFAULT.particle_resolution,
@@ -1048,6 +1060,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedSheetsUnselfed", 0.f},
         {"RayTracedGrassShadowRange", 0.f},
         {"RayTracedAoReblur", 0.f},
+        {"RayTracedLightGlow", 0.f},
         {"RayTracedAmbientRange", 2.f},
         {"RayTracedAORays", 2.f},
         {"RayTracedAOQuarter", 0.f},
@@ -1175,6 +1188,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::EndDisabled();
     const bool fog_shadows = checkbox("Ray-traced fog shadows (Experimental)", "RayTracedFogShadows",
                                       "The sun's light in the battle fog shaded where hills, trees and buildings stand in its way.");
+    ImGui::BeginDisabled(!local_lights || !fog_shadows);
+    slider("Torch and fire light in fog (Experimental)", "RayTracedLightGlow", 0.f, 0.f, 2.f, "%.2f",
+           "Torches and fires light the battle fog around them, their shafts and shadows in it. 0: off.");
+    ImGui::EndDisabled();
     const bool reflections = checkbox("Ray-traced reflections", "RayTracedReflections",
                                       "Reflections from rays in place of the screen-space ones: also what is off screen.\n"
                                       "Needs the game's screen-space reflections on.");
@@ -1460,6 +1477,8 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSIgnoreEdges", value)) sss_ignore_edges = std::clamp(value, 0, 1);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSAlongRay", value)) sss_along_ray = std::clamp(value, 0, 1);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSMirrorEdges", value)) sss_mirror_edges = std::clamp(value, 0, 1);
+  if (float value = 1.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "WaterClarity", value)) water_clarity = std::clamp(value, 0.25f, 16.f);
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "WaterCaustics", value)) water_caustics = std::clamp(value, 0.f, 2.f);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", value) && value >= 0
                       && value < static_cast<int>(SSS_STABILITIES.size())) {
     sss_stability = value;

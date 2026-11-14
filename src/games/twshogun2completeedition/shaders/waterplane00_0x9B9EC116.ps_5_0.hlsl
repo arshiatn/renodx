@@ -2,6 +2,10 @@
 // Ray-Traced Water Reflections (Experimental; ray_tracing.hpp WaterSurface / OnWaterDraw): where the rays left from the
 // water's own surface (b10, and rt_water_plane's mask at t45), their reflection replaces the environment probes' (and the
 // sky's where the game reads the sky alone) for the share of rays that met something; the rest as the game's.
+// Water Clarity and Water Caustics (Experimental, the DLSS addon's WaterClarity / WaterCaustics; Attila's water_effects.hpp):
+// the water's depth (t_terrain_refraction's w) before it takes the deep water colour divided by the clarity; the refracted bed
+// x (1 + Attila's caustics tile at the surface's world position x the strength), worked out here (no tile texture).
+#include "../shared.h"
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -114,6 +118,38 @@ Texture2D<float> t_rt_water : register(t45);  // rt_water_plane's mask (unbound:
 // 3Dmigoto declarations
 #define cmp -
 
+// Attila's water_caustics.cs at `uv` (the tile's 0..1, repeated every WATER_CAUSTICS_TILE metres): bright borders between
+// drifting cells, `cells` across, their points circling at `speed` radians a second.
+float CausticsBorders(float2 uv, int cells, float speed)
+{
+  const float tau = 6.2831853f;
+  const float2 bend = float2(sin(tau * (3.f * uv.y + uv.x) + time_in_sec * 0.7f * speed),
+                             sin(tau * (2.f * uv.x - 3.f * uv.y) - time_in_sec * 0.9f * speed));
+  const float2 place = uv * cells + 0.3f * bend;
+  const int2 base = int2(floor(place));
+  float nearest = 9.f;
+  float second = 9.f;
+  [unroll]
+  for (int y = -1; y <= 1; ++y)
+  {
+    [unroll]
+    for (int x = -1; x <= 1; ++x)
+    {
+      const int2 cell = base + int2(x, y);
+      const int2 wrapped = (cell % cells + cells) % cells;
+      uint n = uint(wrapped.x) * 1973u + uint(wrapped.y) * 9277u + 26699u;
+      n = (n << 13u) ^ n;
+      n = n * (n * n * 15731u + 789221u) + 1376312589u;
+      const float2 random = float2(n & 0xFFFFu, (n >> 16) & 0xFFFFu) / 65536.f;
+      const float angle = tau * random.x + time_in_sec * speed * (0.75f + 0.5f * random.y);
+      const float distance_to = distance(place, float2(cell) + 0.5f + 0.35f * float2(cos(angle), sin(angle)));
+      second = (distance_to < nearest) ? nearest : min(second, distance_to);
+      nearest = min(nearest, distance_to);
+    }
+  }
+  return pow(saturate(1.f - (second - nearest) * 2.5f), 6.f);
+}
+
 
 void main(
   float4 v0 : SV_Position0,
@@ -207,11 +243,15 @@ void main(
     r3.xyz = t_terrain_refraction.SampleLevel(s_terrain_refraction_s, r0.xy, 0).xyz;
     r1.y = r3.w;
   }
+  if (SI.water_caustics > 0.f) {
+    const float2 tile = frac(v4.xz / 4.f);
+    r3.xyz *= 1.f + saturate(CausticsBorders(tile, 7, 0.6f) + 0.5f * CausticsBorders(tile, 11, -0.8f)) * SI.water_caustics;
+  }
   r0.xyw = -camera_position.xyz + v4.xyz;
   r1.z = dot(r0.xyw, r0.xyw);
   r1.z = rsqrt(r1.z);
   r4.xyz = r1.zzz * r0.xyw;
-  r1.w = saturate(4 * r1.y);
+  r1.w = saturate(4 * r1.y / ((SI.water_clarity > 0.f) ? SI.water_clarity : 1.f));
   r5.xyz = g_deep_water_colour.xyz + -r3.xyz;
   r3.xyz = r1.www * r5.xyz + r3.xyz;
   r1.w = dot(r4.xyz, -r2.xzw);
