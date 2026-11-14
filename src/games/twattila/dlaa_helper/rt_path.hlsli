@@ -795,7 +795,7 @@ void PathTraceTexel(uint2 id) {
   // give, no ray; ReuseTexel's visibility ray shades it). Its domain (the lights) is its own, so its MIS weight is 1
   // against the paths' 1 / samples each: its weight is samples x pi x the lights' sum (its target over its odds), and it
   // adds no M.
-  const bool light_candidates = reuse && lights_in_bounce != 0u && (path_flags & PATH_LOCAL_LIGHTS) != 0u;
+  const bool light_candidates = reuse && (lights_in_bounce & LIGHTS_MODE) != 0u && (path_flags & PATH_LOCAL_LIGHTS) != 0u;
   if (light_candidates) {
     const uint light_total = min(light_count, BOUNCE_LIGHTS);
     float total = 0.f;
@@ -876,6 +876,7 @@ void ReuseTexel(uint2 id) {
   const float4 position = TexelSurface(id, normal, origin);
   if (position.w <= 0.f) {
     bounce[id] = 0.f;
+    if ((lights_in_bounce & LIGHTS_MODE) == LIGHTS_RATIO_MODE) light_ratio[((lights_in_bounce & LIGHTS_RATIO_SET) != 0u) ? 1u : 0u][id] = 0.f;
     return;
   }
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
@@ -903,17 +904,35 @@ void ReuseTexel(uint2 id) {
   // The chosen surface in view of this one (no light through walls); the integrand over its density.
   const float3 to_hit = combined.hit - origin;
   const float hit_distance = length(to_hit);
-  // Torch and Fire Light in the Light Bounce 2 (a measurement): the local lights' samples alone.
-  const bool lights_only = lights_in_bounce == 2u;
+  // Torch and Fire Light in the Light Bounce 2 (a measurement): the local lights' samples alone; 3 (Torch and Fire Shadows
+  // from the Light Bounce): theirs only into the shadow ratio (shadowed, unshadowed: the same sample, its noise shared).
+  const bool lights_only = (lights_in_bounce & LIGHTS_MODE) == 2u;
+  const bool ratio = (lights_in_bounce & LIGHTS_MODE) == LIGHTS_RATIO_MODE;
+  float2 shadowed_unshadowed = 0.f;
   float3 arriving = ((path_flags & PATH_SKY_APART) != 0u && !lights_only) ? bounce[id].rgb : 0.f;
   if (combined.reach > 0.f) {
     // A local light's sample: its shadow ray stops short of its lamp (as rt_lights'), its light at this receiver.
-    if (combined.weight > 0.f && hit_distance > 1e-3f
-        && !Occluded(origin, to_hit / hit_distance, hit_distance - min(LIGHT_CLEARANCE, 0.5f * hit_distance), NO_GRASS_SMOKE)) {
-      arriving += LightSampleArriving(origin, normal, combined) * combined.weight;
+    const float3 light_here = LightSampleArriving(origin, normal, combined) * combined.weight;
+    const bool lit = combined.weight > 0.f && hit_distance > 1e-3f
+                     && !Occluded(origin, to_hit / hit_distance, hit_distance - min(LIGHT_CLEARANCE, 0.5f * hit_distance), NO_GRASS_SMOKE);
+    if (ratio) {
+      shadowed_unshadowed = float2(lit ? Luminance(light_here) : 0.f, Luminance(light_here));
+    } else if (lit) {
+      arriving += light_here;
     }
   } else if (!lights_only && combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
     arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
+  }
+  if (ratio) {
+    // Kept over frames at the surface last frame's texel showed (a texel nothing chose a light for adds zeros to both).
+    const uint written = ((lights_in_bounce & LIGHTS_RATIO_SET) != 0u) ? 1u : 0u;
+    float4 kept = 0.f;
+    uint2 previous_pixel;
+    if ((lights_in_bounce & LIGHTS_RATIO_VALID) != 0u && SeenLastFrame(position.xyz, previous_pixel)) {
+      kept = light_ratio[1u - written][min(previous_pixel / bounce_scale, uint2(bounce_width, bounce_height) - 1u)];
+    }
+    const float frames = min(kept.z + 1.f, RATIO_FRAMES);
+    light_ratio[written][id] = float4(lerp(kept.xy, shadowed_unshadowed, 1.f / frames), frames, position.w);
   }
   bounce[id] = float4(arriving, distance(position.xyz, Camera()));
   if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = (combined.weight > 0.f) ? hit_distance : bounce_range;

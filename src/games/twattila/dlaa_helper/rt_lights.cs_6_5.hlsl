@@ -133,6 +133,36 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     }
     reached_slots &= ~bounce_slots;
   }
+  // Torch and Fire Shadows from the Light Bounce: no rays; the word is the last bounce's shadow ratio at this surface (its
+  // texels around where the last trace saw it, by the bounce apply's weights: near, and alike in depth), 1 where nothing
+  // was seen (the game's light unshadowed for that frame).
+  if ((flags & (LIGHTS_IN_BOUNCE | LIGHT_RATIO)) == (LIGHTS_IN_BOUNCE | LIGHT_RATIO)) {
+    float ratio = 1.f;
+    uint2 seen_pixel;
+    if (bounce_slots != 0u && (lights_in_bounce & LIGHTS_RATIO_VALID) != 0u && (path_flags & PATH_AMBIENT_HISTORY) != 0u && bounce_scale != 0u
+        && SeenByLastTrace(position.xyz, seen_pixel)) {
+      const uint read_set = ((lights_in_bounce & LIGHTS_RATIO_SET) != 0u) ? 1u : 0u;
+      const float seen_depth = ambient_positions[seen_pixel].w;
+      const int2 center = int2(seen_pixel / bounce_scale);
+      float2 sum = 0.f;
+      [unroll]
+      for (int y = -1; y <= 1; ++y) {
+        [unroll]
+        for (int x = -1; x <= 1; ++x) {
+          const int2 texel = center + int2(x, y);
+          if (any(texel < 0) || texel.x >= (int)bounce_width || texel.y >= (int)bounce_height) continue;
+          const float4 kept = light_ratio[read_set][texel];
+          const float2 offset = float2((texel * (int)bounce_scale) - int2(seen_pixel)) / (float)bounce_scale;
+          const float similar = saturate(1.f - abs(kept.w - seen_depth) / (0.030001808f * seen_depth));
+          sum += kept.xy * ((kept.w > 0.f) ? exp2(-0.25f * dot(offset, offset)) * similar : 0.f);
+        }
+      }
+      if (sum.y > 1e-8f) ratio = saturate(sum.x / sum.y);
+    }
+    light_mask[id.xy] = asuint(ratio);
+    light_history[parity_written][id.xy] = 0xFFFFFFFFu;
+    return;
+  }
   uint traced = reached_slots;
   uint lit = 0xFFFFFFFFu;
   uint2 seen_pixel;

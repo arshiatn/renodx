@@ -55,6 +55,9 @@ static const uint LIGHT_STEADY = 268435456u;  // Steady Torch Shadows (dlaa_brid
 // go dark in rt_lights' bits, untraced; the paths' ReSTIR GI reservoir brings their light (rt_path.hlsli).
 static const uint LIGHTS_IN_BOUNCE = 536870912u;
 static const uint BOUNCE_LIGHTS = 32u;
+// With LIGHTS_IN_BOUNCE, Torch and Fire Shadows from the Light Bounce (dlaa_bridge.h RT_LIGHT_RATIO): rt_lights writes each
+// pixel's word as the last bounce's shadow ratio (rt_bounce's NRD_BOUNCE has this value in its own word).
+static const uint LIGHT_RATIO = 4194304u;
 static const uint NRD_SUN = 2097152u;      // RT_NRD: rt_trace's soft shadows for NRD (rt_nrd_front.hlsl)
 static const uint NRD_BOUNCE = 4194304u;   // rt_bounce: its hit distance for NRD
 static const uint NRD_AMBIENT = 8388608u;  // rt_trace: the ambient as traced for NRD, no history
