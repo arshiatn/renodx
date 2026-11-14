@@ -169,6 +169,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Round 2 on the branch: PT AO (SH sky), foliage light, families, water, casters out of view.
 - [ ] 02:00 ATN started Rome Remastered from the menu, loads a battle and goes to bed: atn_trace_watch.ps1 (25 min, every
   20 s, romeremastered/runs/ATN_battle_*), gpu_job.lock held by the coordinator; then close the game through its window.
+- [x] WH1 phase P: plan tools/tw/wh1/plan_1114.md, trace build e89b8453 (branch wh1-p1114, merged 19de303e), installed
+  02:19 "wh1 t1" + helper110 with --first (symlink aside; helper DLLs + NVIDIA 310.9.16 copied, none before). Data run
+  wh1_data_batch.ps1 A-E (+F -Night, G -Campaign; NOT -AaOff: ATN's gfx_aa 2 stays) after ATN's Rome Remastered session;
+  the Epic start (warhammer.exe with -epicapp... and no exchange code) is a one-try guess. Exe code protected: no engine CPU
+  features. Phase I trace-free items started.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
