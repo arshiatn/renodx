@@ -256,19 +256,23 @@ inline void OnInitPipeline(
   }
   if (!prepared.registrations_by_command_type.empty()) {
     shared.data->registrations_by_pipeline_handle.insert_or_assign(info->pipeline.handle, std::move(prepared));
-  } else {
-    shared.data->registrations_by_pipeline_handle.erase(info->pipeline.handle);
+  } else if (shared.data->registrations_by_pipeline_handle.erase(info->pipeline.handle) == 0u && info->shader_details.empty()) {
+    // A state object (ReShade raises blend / depth / rasterizer / input layout objects again when D3D11 hands back an
+    // existing one): nothing the fast dispatch keeps changed. A shader pipeline always notifies: gates are kept on it.
+    return;
   }
   NotifyRegistrationsChanged();
 }
 
 inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info) {
   if (shared.data != nullptr) {
-    shared.data->registrations_by_pipeline_handle.erase_if(info.pipeline.handle, [&](const auto& entry) {
+    const bool erased = shared.data->registrations_by_pipeline_handle.erase_if(info.pipeline.handle, [&](const auto& entry) {
       const auto& [pipeline_handle, matches] = entry;
       return matches.generation == info.generation;
     });
-    NotifyRegistrationsChanged();
+    if (erased || !info.shader_details.empty()) {
+      NotifyRegistrationsChanged();
+    }
   }
 }
 
