@@ -1,5 +1,49 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Phase I, round 3 (2026-11-14 morning; built only, not run in game)
+
+- **Ray Reconstruction's guides**: WH1's are Warhammer II's file and read the G-buffer as the sun shaders do (230F2241 asm
+  212-370: normals from channel 1's two angles, roughness 1 - its z, diffuse albedo the albedo x (1 - channel 3's specular
+  colour), specular albedo that colour; water writes flag 64, specular 0.04, gloss 0.95 itself). No change;
+  test/tw_warhammer_shaders part 9 proves it against the game's bytes (CONTROLS: the angles the other way, the albedo
+  without the specular colour).
+- **Light Through All Banners (Experimental, off; Warhammer III's row)**: the units' banners are rigidtextureblend meshes
+  (DBCC30FD, E7F0D71A with 2 bones), the shaders of other unit parts too, so only with this row: thin in the rays and in
+  the screen-space shadows (InstallThin; their vertex shaders give SV_Position first, as sss_thin reads; Coloured Shadows
+  with the G-buffer's colour linear: the sun shaders' diffuse is, part 10). E7F0D71A stays out of the rays (not a caster
+  there yet).
+- **Light Through Foliage (Experimental, off)**: the leaves' G-buffer shader 744FDFF0 writes channel 3's flag 128 and the
+  sun shaders let the sun through from behind only there (part 11), Warhammer III's bit (`foliage_material_bit`): the
+  screen-space shadows that leaves cast let that share of the sun through.
+- **Water Clarity and Water Caustics (Experimental; Clarity 1 and Caustics 0: the game's)**: Rome II's water_effects on the
+  battle water 44B4A2F0, whose g_sea_bed_light_scatter (its lighting_VS_PS's c10) is the base of the water depth's power.
+  Part 12: water_clarity.cs leaves the rest of the constants bit-identical, and the game's bytes with its c10 raised to 1/2
+  a metre deep equal its own half a metre deep; the caustics patch (on top of Skip the Shadow Maps' forward patch, as the
+  runtime chains them) is bit-identical with t51 unbound. The campaign's sea and lake read c10 otherwise: left out.
+- **Cut-out census, Cut-outs on More Models (Experimental, off)**: tools/tw/wh1/cut_out_census_wh1.txt sorts the 49 vertex and pixel
+  shader pairs ATN's traces drew in the scene by the pixel shader's discards (wh1_cut_out_census.py): 29 solid, 6 alpha 0.5 at
+  TEXCOORD1 (the units' fx__weighted 1ACA3E8C, F4333A3C, alpha overlay F0BB1D3C, forward 0BF2DB7F), 14 other tests (fades
+  by distance and dither, leaves, cards). The units' four go in the rays' masks with their UV through new capture versions
+  of 20A9E5FD / 3FC5424C (part 13: their UV the game's TEXCOORD1). The 14 others need their own masks (not done).
+
+Test list (in game, ATN):
+1. Battle with banners, Light Through All Banners on: their shadows lighter and coloured (screen-space and RT); off: as
+   before; nothing else (shields, cloaks) lighter.
+2. Battle in a forest, Light Through Foliage at 0.5: the leaves' screen-space shadows lighter, walls' and soldiers' as
+   dark as before.
+3. Battle by a river or lake: Water Clarity 4 shows the bed deeper; Water Caustics 1 ripples light on the bed; both at their
+   defaults: the game's water. ReShade.log: "Water Caustics: water shader 44B4A2F0 patched."
+4. Battle with fur- or feather-clad units, RT/PT, Cut-outs on More Models on: their ray-traced shadows show the gaps;
+   with Log Details "cut out: vs 20A9E5FD with ps ..." lines; off: as before.
+
+Not done: Sprite Shadows (WH1's far soldiers are points the game's geometry shader 12D3A4BC / D6954DFC turns into quads;
+the rays capture a vertex shader's vertices with the draw's own indices, so they need new shared capture work, and none of
+ATN's traces drew one); the particle rows (Particle Resolution, Smooth Half-Size Particles, Full-Res Edges: Attila's
+particle_layer is Attila's draws only; WH1's particles are GPU-simulated and sorted, quads from a geometry shader
+E8B4354D, composed by E88CBE3C: a port of their own, with ATN's Black Fire Pass traces); Fog Strength (Warhammer III's
+fog shaders; WH1's battle fog E684D54E never drew in ATN's 36 traces); the other 14 discarding pixel shaders' masks
+(fades by distance and dither, leaves 744FDFF0, far cards C5875F67, campaign plants 73C9A8D6: not a plain alpha 0.5).
+
 ### Phase I, round 2 (2026-11-14 night; built only, not run in game)
 
 - **The paths' sky from the spherical harmonics, Path-Traced AO (Experimental)**: ATN's traces have
@@ -14,6 +58,12 @@
   light's traced visibility; their instances as Warhammer II's (ATN's 03:30 traces: colour, place and reach 50 / 150 m).
 - **Rays Replace Shadow Maps (Experimental, off)**: the 18 sun shaders that read the shadow map see a cleared one while the
   rays' shadow is bound: the rays' shadow alone, cloud shadows the game's. The maps are still drawn.
+- **Skip the Shadow Maps (Experimental, off, under Rays Replace)**: nothing drawn into the shadow map; its 7 other readers
+  in ATN's traces (battle and campaign water, forward-lit units and props, particles) take the rays' shadow instead (Rome
+  II's forward patch). 0BF2DB7F / BCB9B1D6 have no SV_Position declared and 7865CDC9 only its w: the shared Patch's opt-in
+  `declare_position` declares its xy (the other games' bytes unchanged: Patch's defaults on all 21300 PS of the 8 dumps,
+  forward and not). test/tw_warhammer_shaders part 8: each bit-identical without the rays and fully shadowed with t49 1,
+  their shadow constants filled by name (CONTROL: the shadow map's value changes each one's output).
 - **Below 100%**: the SSR result added to the scene (69A57B14) reads its share (ATN's Performance / Ultra Performance
   traces); the tone mapper's bloom read is right there (drawn after the bloom of the whole view).
 
@@ -26,12 +76,11 @@ Test list (in game, ATN):
 6. Shadow Casters Out of View on: units behind the camera still shade the ground in front; off: as before.
 7. Night siege, Torch and Fire Shadows on: walls and units block the torches' light; off: the game's light.
 8. Rays Replace Shadow Maps on: one sun shadow (the rays'), Softness changes it; clouds' shadows still move.
-9. Water, forward-lit units and banners keep their shadows with every new row on.
+9. Skip the Shadow Maps on (with Rays Replace): water, forward-lit units and particles keep the sun's shadow; big battles
+   faster; off: as before.
 10. ReShade.log: "drawn with the rays" lines for D0C67938 / 5D1695BC, no device loss, the frame time as before.
 
-Not done: Skip the Shadow Maps (the shadow map's 7 other readers, battle and campaign water and forward-lit units / props,
-would lose their shadows; Rome II's forward patch takes 5 of them, not 0BF2DB7F / BCB9B1D6, and the WARP check needs each
-one's cascade constants to reach its shadow: tools/tw/wh1/skip_maps_attempt.diff); Fog Shadows (WH1's battle fog is analytic, no shadowed march to give the
+Not done: Fog Shadows (WH1's battle fog is analytic, no shadowed march to give the
 rays); the campaign's far terrain CDCF1ADD (where it lies against the near terrain); the SSR march's patch below 100%
 (021D7515, needs a picture); the reader census without SSAO / SSR (needs ATN's start with both off).
 

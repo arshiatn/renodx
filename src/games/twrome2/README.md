@@ -1,5 +1,12 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
+### Faster Game CPU Code (2026-11-14; built only, not run in game)
+
+New:
+- **Faster Game CPU Code (Experimental, off)**, under the ray-traced options' More Options, as Attila's and Thrones': the soldier draw's rounding, the half floats (sprite soldiers) and the animations' fmod run faster with the same results, each checked against this game's own code (every register, the x87 state; test/tw_engine_code with this game's DLL).
+
+Test (ATN): a big battle, Faster Game CPU Code on: ReShade.log "soldier draw rounding, half floats, fmod faster", then "on"; FPS against off; soldiers, sprites and their animations as before.
+
 ### Round 3 (2026-11-14, torch and smoke shadows and water reflections from the rays; built only, not run in game)
 
 New:

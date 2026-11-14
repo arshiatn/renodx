@@ -43,6 +43,8 @@
 #include "../twattila/contact_shadows_off.hpp"
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
+#include "../twattila/water_effects.hpp"
+#include "../twattila/water_reflections.hpp"
 #include "./more_tests.h"
 #include "../twpharaohdynasties/trace_reads.hpp"
 // Pharaoh's outside-view geometry shaders (built bytes): Troy's shadow vertex shaders write the same outputs (SCENE_SHADERS).
@@ -51,6 +53,7 @@
 #include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
 #include "../twpharaohdynasties/rt_outside_view_world_gs.h"
 #include "./rt_outside_view_leaf_gs.h"
+#include "./rt_particle_lights_gs.h"
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
@@ -365,6 +368,9 @@ void BuildRuntimeData() {
       // UpgradeRTVReplaceShader(EMPTY),
       __ALL_CUSTOM_SHADERS,
   };
+  // The water's reflection apply (shaders/ssrapply00): ours only where the rays left from the water or below 100%
+  // (twattila/water_reflections.hpp OnWaterApplyDraw), as Pharaoh's.
+  custom_shaders.erase(0x00645DA1);
   // Ambient Occlusion: Visibility Bitmask in place of the AO's horizontal blur: the addon's own shader
   // (ao_bitmask_blur, twwarhammer2/line_sweep_ao.hpp) with the blur's bindings; the blur's replacement stays the game's
   // code (Game's costs what it did). The collect always runs: where no blur runs (Warhammer II at some settings), the
@@ -1495,6 +1501,88 @@ constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADER
     {.hash = 0x563BA3E8},
     {.hash = 0x9C8987DD, .view_shift = 3, .sampler_shift = 2},
 }};
+// The night siege's fires in Torch and Fire Shadows: the particle lights' draw (ps_main_deferred_dynamic_light 643FC156, one
+// light volume an instance of F5CE48CC's mesh branch, every draw over the frame's whole sorted list: ATN's session 2, 60
+// indices x 642-1335 instances) holds its lights in the particle list, not in instances: streamed from the vertex shader's
+// outputs (rt_particle_lights_gs.h: the position, reach and colour shaders/particlelight00 draws with).
+constexpr twattila::rt_scene::LightInstances PARTICLE_LIGHTS = {.stream_shader = __rt_particle_lights};
+
+// Water Clarity and Water Caustics (twattila/water_effects.hpp): every water pixel shader of the dump (water_troy's battle and
+// campaign sea and lake, battle_river_troy; ps_5_0 and ps_4_1; Pharaoh's twins by name, no water props or big river here),
+// each a material water (g_sea_bed_light_scatter unread). Their absorption is exp2(-depth x opacity), no log2(e): Clarity
+// scales the mul that reads the opacity, sp_water_opacity (shader_params + 76: cb2[4].w, cb3[4].w or cb4[4].w) or the
+// river's COLOR2.w (v10.w). The caustics after the refraction's colour sample, off in the campaign (its world a twentieth of
+// a battle's). WARP: tools\tw\troy\water (Pharaoh's water_v58 on Troy's bytes; neutral: the game's bits).
+constexpr std::array<twattila::water_effects::WaterShader, 68> WATER_SHADERS = {{
+    {.hash = 0x50583F38, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_high (traced), shadows
+    {.hash = 0x50724F56, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_ultra (traced), shadows
+    {.hash = 0x8B98D7DE, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_high (traced), shadows
+    {.hash = 0xD71305F1, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_ultra (traced), shadows
+    {.hash = 0xF016D3AB, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_high, baked shadows
+    {.hash = 0x50E4A201, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_high, shadows
+    {.hash = 0xB520BED0, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_high, ps_4_1
+    {.hash = 0xB503EC5F, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_lake_high, no shadows
+    {.hash = 0x45DFBB3B, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_low, baked shadows
+    {.hash = 0x6EFFCB80, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_low, shadows
+    {.hash = 0x869B898A, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_low, ps_4_1
+    {.hash = 0x02BE0F85, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_lake_low, no shadows
+    {.hash = 0x15EB14F9, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_medium, baked shadows
+    {.hash = 0x943723E6, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_medium, shadows
+    {.hash = 0x56256223, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_medium, ps_4_1
+    {.hash = 0x4E6F49B5, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_lake_medium, no shadows
+    {.hash = 0x6DF2A99D, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_high, baked shadows
+    {.hash = 0x54109424, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_high, ps_4_1
+    {.hash = 0xA384045C, .world_input = 1, .refraction_slot = 2, .normal_slot = 3, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_high, no shadows
+    {.hash = 0xFB2749CE, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_low, baked shadows
+    {.hash = 0x8B40E4B0, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_low, shadows
+    {.hash = 0x426038E1, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_low, ps_4_1
+    {.hash = 0xA0CD3B27, .world_input = 1, .refraction_slot = 2, .normal_slot = 3, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_low, no shadows
+    {.hash = 0x6F0C2423, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_medium, baked shadows
+    {.hash = 0xEBC7559B, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_medium, shadows
+    {.hash = 0xF8842109, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_medium, ps_4_1
+    {.hash = 0xDAE336C0, .world_input = 1, .refraction_slot = 2, .normal_slot = 3, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_medium, no shadows
+    {.hash = 0x4D51A9D7, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_high, baked shadows
+    {.hash = 0xF9031B39, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_high, shadows
+    {.hash = 0xB457E719, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_high, ps_4_1
+    {.hash = 0xA80386D9, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_sea_high, no shadows
+    {.hash = 0xBDCCF45B, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_low, baked shadows
+    {.hash = 0x467EBEF2, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_low, shadows
+    {.hash = 0x1499C98E, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_low, ps_4_1
+    {.hash = 0x5FF73DC6, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_sea_low, no shadows
+    {.hash = 0xEEE9CAC5, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_medium, baked shadows
+    {.hash = 0x0DF1C0DF, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_medium, shadows
+    {.hash = 0x0ACDB2A0, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_medium, ps_4_1
+    {.hash = 0x37375FE5, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_sea_medium, no shadows
+    {.hash = 0x980F5FB1, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_ultra, baked shadows
+    {.hash = 0xEC4A5FD9, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_ultra, ps_4_1
+    {.hash = 0x8A932872, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_sea_ultra, no shadows
+    {.hash = 0x93D324C1, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_high, baked shadows
+    {.hash = 0xDAF9DD3B, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_high, ps_4_1
+    {.hash = 0xFBB014C5, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // campaign_lake_high, no shadows
+    {.hash = 0x7151CEEC, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_low, baked shadows
+    {.hash = 0xD8A2D8AF, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_low, shadows
+    {.hash = 0x3A16F373, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_low, ps_4_1
+    {.hash = 0xE2FA720F, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // campaign_lake_low, no shadows
+    {.hash = 0x31C5503D, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_medium, baked shadows
+    {.hash = 0x96AF6BBC, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_medium, shadows
+    {.hash = 0x58465DAC, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_medium, ps_4_1
+    {.hash = 0x7E0D088A, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // campaign_lake_medium, no shadows
+    {.hash = 0xCF12BB0F, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_high, baked shadows
+    {.hash = 0x55CABB08, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_high, shadows
+    {.hash = 0x659D3BC7, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_high, ps_4_1
+    {.hash = 0x2E12E239, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 3, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_sea_high, no shadows
+    {.hash = 0x2AD79ECA, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_low, baked shadows
+    {.hash = 0x5D77B117, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_low, shadows
+    {.hash = 0x2E660037, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_low, ps_4_1
+    {.hash = 0x9DB8B110, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 3, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_sea_low, no shadows
+    {.hash = 0x3F289065, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_medium, baked shadows
+    {.hash = 0xDD32A3BC, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_medium, shadows
+    {.hash = 0xB17A0632, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_medium, ps_4_1
+    {.hash = 0xCA6428C5, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 3, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_sea_medium, no shadows
+    {.hash = 0xDBCA18D4, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_ultra, baked shadows
+    {.hash = 0x5F53DEE8, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_ultra, ps_4_1
+    {.hash = 0x2C1F9FA0, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 3, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_sea_ultra, no shadows
+}};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
 constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
@@ -1555,6 +1643,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
   rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
+  // The game's reflections fall on the water alone (its apply 00645DA1, as Pharaoh's): twattila/water_reflections.hpp's gate.
+  twattila::water_reflections::GateSettings(&rt_settings);
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -1629,7 +1719,8 @@ namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
 // (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO, the paths take the sky from the sun
-// shaders' ambient cube; point lights (143A02ED) and smoke (F5CE48CC) hooked, no ray-traced reflections, fog or water.
+// shaders' ambient cube; point lights (143A02ED), smoke (F5CE48CC), the water's Clarity and Caustics and its ray-traced
+// reflections (the game's reflections fall on the water alone, Pharaoh's texts) hooked, no fog.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -1637,8 +1728,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                      "and shadows. The rest at its default.",
     .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"
                        "The rest of this page at its default.",
-    .rays_tooltip = "Ray-traced shadows, path-traced ambient occlusion and Global Illumination at my settings.\n"
-                    "The rest of this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
+    .rays_tooltip = "Ray-traced shadows and water reflections, path-traced ambient occlusion and Global Illumination at my\n"
+                    "settings. The rest of this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
@@ -1653,9 +1744,16 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "turns it on below. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+    .water_caustics_label = "Water Caustics (Experimental)",
+    .water_reflections_label = "Water Reflections (Experimental)",
+    .water_reflections_tooltip = "Rivers and the sea reflect what the rays find, also off screen. Needs in-game Screen Space\n"
+                                 "Reflections on. Off: the game's reflections.",
     .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Water, effects and the shadows the game\n"
                             "baked for the map (past about 200 m) keep the game's. Use with Shadow Casters Out of View.\n"
                             "Off: the rays' shadows on top of the game's shadow maps.",
+    .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
+                           "Game's SSR: the original. DXR: from rays, also what is off screen or hidden (turn Water Reflections\n"
+                           "on below). Needs an upscaler.",
 };
 
 void ConfigureAddon() {
@@ -1756,7 +1854,9 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders);
+  // The water's reflection apply reads the ray-traced reflections (twattila/water_reflections.hpp): their rows, the water's too.
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  twattila::rt_scene::internal::water_pass = true;
 
   // Appended Settings (HDR10)
   {
@@ -1838,18 +1938,44 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
   // Mode's pages. Only what this game hooks: the paths' sky from the sun shaders' ambient cube (InstallSunDraws' 24),
   // foliage in the screen-space shadows (bit 128) and casters out of view (the shadow pass's; both Experimental, off: no
-  // game run has shown them here), Rays Replace Shadow Maps, point lights and smoke (Experimental, off); no ray-traced
-  // reflections, fog or water (their rows stay hidden).
+  // game run has shown them here), Rays Replace Shadow Maps, point lights, smoke, the water's Clarity and Caustics and its
+  // ray-traced reflections (Experimental, off); no fog (its rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it (hidden: not hooked here) and Smoke Shadows (no game run has shown the particles'
-  // records in this game) start off, Far Tree Shadows (Experimental: the cards' capture is new here) and Specular Occlusion
-  // too (Experimental before the page); RT/PT turns all but the smoke and far trees on, as ATN's list does.
+  // records in this game) start off, Far Tree Shadows too (Experimental: the cards' capture is new here); RT/PT turns all but
+  // the smoke and far trees on, as ATN's list does.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
-        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedFarTreeShadows") {
+        || setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
     }
   }
+  // Water Reflections (Experimental, off: no game run has shown the apply with the rays here; RT/PT turns it on, as ATN's list
+  // does), Specular Occlusion and the reflections' Samples and Reuse where the water alone takes them, as Pharaoh's.
+  twattila::water_reflections::SetRows(&settings, &rt_sliders);
+  // Water Clarity at the game's 1 and Water Caustics off (Experimental: no game run has shown them here yet; RT/PT leaves the
+  // caustics off, water_caustics_tested), Pharaoh's rows, under Reflections and Water.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterClarity",
+      .binding = &twattila::water_effects::water_clarity,
+      .default_value = 1.f,
+      .label = "Water Clarity (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "How far you see into water. 1: the game's; higher: clearer water.",
+      .min = 0.25f,
+      .max = 16.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterCaustics",
+      .binding = &twattila::water_effects::water_caustics,
+      .default_value = 0.f,
+      .label = "Water Caustics (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Rippling light on the bed under battle water and rivers. 0: off.",
+      .max = 2.f,
+      .format = "%.2f",
+  });
   // Torch and Fire Shadows from rays (Pharaoh's row): after the preset's defaults, so it starts off (Experimental: no game run
   // has shown them here yet); RT/PT turns it on, as ATN's list does.
   settings.push_back(new renodx::utils::settings::Setting{
@@ -1878,7 +2004,6 @@ void ConfigureAddon() {
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .lights_own_row = true,
-                                             .has_reflections = false,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -1914,6 +2039,14 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  // Water Clarity and Caustics: every row a material water (the patched copy swapped in at the draw), as Pharaoh's.
+  twattila::water_effects::water_shaders = WATER_SHADERS;
+  renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
+  for (const auto& water : WATER_SHADERS) {
+    renodx::utils::command_action::Register(
+        twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -1923,6 +2056,15 @@ bool AttachAddon() {
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
+  // Ray-Traced Water Reflections (twattila/water_reflections.hpp, Pharaoh's): the twins of Pharaoh's ssr_new chain, the same
+  // order in ATN's traces (the water's G-buffer after the sun draw, extract_mask 1CE9217F, then these). Traced at backward_ssr
+  // C1DC66B4 (its depth from t0: Troy's binds no mask before it; the light, R16G16B16A16F, at t2); where they left from the
+  // water, downsample C2017771 and its 10 downsample_mip 9877558C and 10 lute_mip F49D4738 left out and our apply 00645DA1
+  // drawn (shaders/ssrapply00; WARP tools\tw\troy\water\ssr_rays).
+  twattila::water_reflections::Install(&custom_shaders,
+                                       {.backward_ssr = 0xC1DC66B4, .inputs_slot = 0, .chain = {0xC2017771, 0x9877558C, 0xF49D4738}, .apply = 0x00645DA1,
+                                        .apply_code = __0x00645DA1},
+                                       &rt_sliders);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The tests' clock first: the Light Bounce's callback draws the sun draws itself (none after it runs).
   for (const auto& draw : LIGHT_BOUNCE_DRAWS) {
@@ -2008,11 +2150,17 @@ bool AttachAddon() {
   };
   // The point light PS's diffuse scale (143A02ED's literal 0x389FB405, Pharaoh's).
   rt_host.local_light_scale = 7.615242e-05f;
+  // The water's reflections (water_reflections' OnBackwardSsr): its guides again from the sun draw's G-buffer channels, the
+  // water drawn into them since, and its R16G16B16A16F light copied, as Pharaoh's.
+  rt_host.rewrite_guides = twattila::anti_aliasing::RewriteSunGuides;
+  rt_host.light_copy = __rt_light_copy;
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
   twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // The point lights (ATN's session 3: two instanced draws a frame, VS 6CFF8F83 with PS 143A02ED after the sun draw; 64-byte
   // instances, the light's position at POSITION2.xyz): shaders/pointlight00 reads the rays' bits (Pharaoh's fire02 form).
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x143A02ED});
+  // The fires: their particle lights' draws, the lights streamed (PARTICLE_LIGHTS); shaders/particlelight00 reads the bits.
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x643FC156}, twattila::rt_scene::internal::NO_LIGHT_CONSTANTS, &PARTICLE_LIGHTS);
   // Log Details' light count: the point lights and the night siege's fires (particle lights 643FC156, VS F5CE48CC: one draw,
   // 192k indices in ATN's session 2; Pharaoh's 5AD46115).
   twattila::light_count::Install(0x143A02ED, 0x643FC156);
@@ -2043,6 +2191,10 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  twattila::water_reflections::Uninstall();
+  renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
+  renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::engine_tests::StopAtStart(&at_start_stop);
   tw::engine_tweaks::Uninstall(graphics_options);
   twattila::anti_aliasing::Uninstall();

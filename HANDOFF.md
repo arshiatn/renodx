@@ -290,6 +290,28 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] Shogun 2 round 6 MERGED 96e35372 (cloth / sprites / leaves / branches out of view via Pharaoh's leaf GS, PT AO
   own sky / steady bounce rows, Experimental; shared rt_core SceneShader::cascade_world opt-in, consumers' suites PASS;
   the 04:51 lock overwrite was its suite run.ps1: fixed to CreateNew; tw_warhammer_shaders run.ps1 -> WH1 agent).
+- [x] Troy Water Clarity / Caustics MERGED 92d44484 (68 PS, Experimental, WARP 68 / 68). WH1 Skip the Shadow Maps + RR
+  guides proof MERGED 1c9c3dc5 (shared Patch declare_position opt-in: 21300 PS of 8 dumps byte-identical by default).
+- [x] Thrones Grass Height Distance MERGED 8f6de4c7 (Experimental; shared grass_fade::Install(hashes), rt_grass.hlsli's
+  RT_GRASS_HEIGHT_DISTANCE define removed: Thrones was its only user, now has SI.grass_height_distance; WARP 31 / 31).
+- [x] Pharaoh's RT water reflections moved to twattila/water_reflections.hpp MERGED 02249af9 (131 / 131 statements, page
+  dump unchanged); Troy v53 RT water reflections MERGED 12472535 (off; RT/PT turns them on as Pharaoh). Troy next: fires.
+- [x] Shogun 2 variantrigid B0E006EE out of view MERGED fab4ce3e (HDR v72). Thrones Light Through All Banners MERGED
+  eca50543 (unit banners only; shared graphics_page Bindings::banner_light_tested default true).
+- [x] Thrones Faster Game CPU Code MERGED 2c89ced4 (shared engine_code.hpp Game / Build parameters, Attila's constants
+  unchanged; tw_engine_code PASS on both DLLs; truncation 66.8 -> 41.7 ns, fmod 140 -> 62 ns; Experimental off).
+- [x] Thrones round 3 DONE (README 925a6211; capture test 42 / 48 = game's, 6 by design as Attila). Shogun 2 leaf fade
+  MERGED 57a8266f; far cards 30C453EE not doable by rows (per-corner sun turn + own atlas view).
+- [x] WH2 Water Clarity / Caustics MERGED aa12ece2 (15 PS; shared water_effects type 4 + every_refraction, other games' 133
+  rows byte-identical). Thrones agent: Faster Game CPU Code for Rome II if its routines match.
+- [x] Rome II Faster Game CPU Code MERGED (empire.retail.dll 6AB978BD; truncation 104.5 -> 43.0 ns, fmod 155 -> 71 ns;
+  Experimental off; rome2 gets a new build tonight).
+- [x] WH1 round 3 MERGED f99ae4e3 (Light Through All Banners, Light Through Foliage, Water Clarity / Caustics on battle water,
+  unit cut-outs + census; Experimental off). NOT DONE: sprites (GS-made quads), particle rows, Fog Strength, 14 cut-outs.
+- [x] Troy fires 643FC156 MERGED 61d0b84b (shared rt_scene LightInstances::stream_shader opt-in; WARP ALL PASSED).
+  Troy agent DONE; follow-up: Pharaoh's fires 5AD46115 behind their own off row.
+- [x] WH2 Smooth Half-Size Particles MERGED 5d102904 (at the game's own upsample 21DE8D05; no shared change). WH2 agent DONE.
+  Agents done: Thrones, WH1, WH2, Rome Remastered, quality. Running: Shogun 2, Troy (Pharaoh fires), ReSTIR, Nsight.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
