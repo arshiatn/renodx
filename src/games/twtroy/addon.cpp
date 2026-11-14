@@ -2170,6 +2170,7 @@ void ConfigureAddon() {
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
                                              .smoke_map_tested = false,

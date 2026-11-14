@@ -4081,6 +4081,7 @@ void ConfigureAddon() {
                                              .rays_grass_counts_later = &rays_grass_counts_later_row,
                                              .water_motion = &water_motion_row,
                                              .scale_fix_gi_shadow = &reflections::scale_fix_row,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = twwarhammer3::taa_dlss::Status,

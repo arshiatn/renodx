@@ -2374,6 +2374,7 @@ void ConfigureAddon() {
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
                                              .smoke_shadows_tested = false,

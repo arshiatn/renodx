@@ -224,8 +224,9 @@ struct Bindings {
   // Object motion written by the game's own draws and the units' records (object_motion.hpp: the addon reads it at start);
   // null: no such row (Attila: always).
   float* motion_in_draw = nullptr;
-  // With path-traced Light Bounce (rt_core.hpp Settings::lights_in_bounce, light_ratio): torch and fire light, or their
-  // shadows, from the paths' samples; null: no such rows.
+  // With path-traced Light Bounce (rt_scene::Sliders::lights_in_bounce, light_ratio: rt_core.hpp Settings'): torch and fire
+  // light, or their shadows, from the paths' samples; null: no such rows. A game with Path-Traced GI and the rays' torch
+  // shadows binds both to its rt_scene::Sliders.
   float* lights_in_bounce = nullptr;
   float* light_ratio = nullptr;
   const Texts* texts = &ATTILA_TEXTS;

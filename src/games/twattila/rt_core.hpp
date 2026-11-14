@@ -2808,6 +2808,10 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     if (const float range = runtime.settings.light_range; range > 0.f) {
       std::erase_if(candidates, [&](const LocalLight& light) { return distance_squared(light) > range * range; });
     }
+    // The paths light the first 32 and darken them for the game's light shaders (or give them their one ratio): a light
+    // whose colour stays out of the paths (shadows_only: Warhammer II's spot lights, a cone they don't know) would go dark
+    // or take the torches' shadow; left out, it keeps the game's light, unshadowed.
+    if (lights_in_bounce) std::erase_if(candidates, [](const LocalLight& light) { return light.shadows_only; });
     // The shadow ratio covers the lights the bounce samples: the first 32.
     const size_t count = std::min<size_t>({candidates.size(), runtime.settings.light_count, light_ratio ? dlaa_bridge::RT_MAX_LIGHTS : dlaa_bridge::RT_ALL_LIGHTS});
     std::partial_sort(candidates.begin(), candidates.begin() + static_cast<ptrdiff_t>(count), candidates.end(),

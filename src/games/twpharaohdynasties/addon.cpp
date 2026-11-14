@@ -2838,6 +2838,7 @@ void ConfigureAddon() {
                                              // sheets are always thin here, and the unit banners (76225B91) cast nothing.
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = true,
                                              .foliage_light_tested = false,

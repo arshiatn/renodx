@@ -2169,6 +2169,7 @@ void ConfigureAddon() {
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row,
                                              .motion_in_draw = &motion_in_draw_row,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .foliage_light_tested = false,
                                              .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,

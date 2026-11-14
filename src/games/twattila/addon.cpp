@@ -1259,11 +1259,6 @@ float lod_bias_trilinear_row = 0.f;
 // Faster Game CPU Code (graphics_page.hpp, twattila/engine_code.hpp): on by default, every routine proven to give the game's
 // results (test/tw_engine_code).
 float engine_code_row = 1.f;
-// Torch and Fire Light / Shadows from Path Tracing (Experimental, graphics_page.hpp; helper111): the path-traced Light
-// Bounce's unified reservoir lights the torches (rt_core.hpp Settings::lights_in_bounce) or gives their shadows' ratio
-// (light_ratio).
-float lights_in_bounce_row = 0.f;
-float light_ratio_row = 0.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1432,8 +1427,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
-  rt_settings.lights_in_bounce = lights_in_bounce_row != 0.f;
-  rt_settings.light_ratio = light_ratio_row != 0.f;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too.
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -2019,8 +2012,8 @@ void ConfigureAddon() {
                                              .smoke_strength = &smoke_map_sliders.strength, .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row,
                                              .rays_untraced_casters = &rays_untraced_casters_row, .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
-                                             .engine_code = &engine_code_row, .lights_in_bounce = &lights_in_bounce_row,
-                                             .light_ratio = &light_ratio_row});
+                                             .engine_code = &engine_code_row, .lights_in_bounce = &rt_sliders.lights_in_bounce,
+                                             .light_ratio = &rt_sliders.light_ratio});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;

@@ -2330,6 +2330,7 @@ void ConfigureAddon() {
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_unseen_cut_outs = &rays_unit_cut_outs_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
                                              .smoke_shadows_tested = false,

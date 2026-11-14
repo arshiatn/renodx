@@ -1156,6 +1156,9 @@ void ReadDlssAddonOptions() {
   ray_tracing.path_bounces = read_count("PathTracingBounces", 2, 1, 2);
   ray_tracing.sharc = ray_tracing.path_tracing && read_on("RayTracedSharc", false);
   ray_tracing.reuse_lean = ray_tracing.path_tracing && read_on("RayTracedReuseLean", false);
+  // Torch and Fire Light / Shadows from Path Tracing (Attila's keys; rt_core.hpp Settings::lights_in_bounce, light_ratio).
+  ray_tracing.lights_in_bounce = read_on("RayTracedLightsInBounce", false);
+  ray_tracing.light_ratio = read_on("RayTracedLightShadowRatio", false);
   ray_tracing.path_ser = read_on("RayTracedPathSer", false);
   ray_tracing.micromaps = read_on("RayTracedLeafMicromaps", false);
   ray_tracing.gpu_micromaps = read_on("RayTracedGpuMicromaps", true);
