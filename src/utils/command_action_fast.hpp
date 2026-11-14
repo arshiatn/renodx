@@ -51,7 +51,8 @@
 //   prepared callbacks (registrations_by_pipeline_handle), per command type the command-wide callbacks
 //   (global_callbacks_by_command_type). Every change to them bumps the epoch, which drops what the caches hold:
 //   command_action's OnInitPipeline / OnDestroyPipeline / RegisterCallback (command-wide) / UnregisterCallback in every
-//   opted-in module (command_action::internal::on_registrations_changed). A module without the opt-in doesn't bump it:
+//   module that opted in, also after its detach (command_action::internal::on_registrations_changed stays set). A
+//   module without the opt-in doesn't bump it:
 //   while one is attached to command_action, every command takes RunCallbacks; when the attached modules change, the
 //   caches resolve everything again (module signature). Registrations, like today, must not change while a command
 //   dispatches.
@@ -558,7 +559,7 @@ inline void ClearGate(const Callback& callback) {
 inline void Use(DWORD fdw_reason) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH: {
-      if (command_action::internal::on_registrations_changed != nullptr) return;
+      if (command_action::internal::fast_run_callbacks<DrawArguments> != nullptr) return;
       // command_action's control block (attached before this), read once; the slot's view closes again, the block stays.
       auto slot = platform::OpenProcessSharedSlot<cross_addon::internal::ControlBlock<command_action::internal::SharedData>>(
           __uuidof(command_action::internal::SharedData), [](auto*&) {});
@@ -597,11 +598,13 @@ inline void Use(DWORD fdw_reason) {
     }
     case DLL_PROCESS_DETACH: {
       auto* data = internal::shared.data;
-      if (data == nullptr || command_action::internal::on_registrations_changed == nullptr) return;
+      if (data == nullptr || command_action::internal::fast_run_callbacks<DrawArguments> == nullptr) return;
       command_action::internal::fast_run_callbacks<DrawArguments> = nullptr;
       command_action::internal::fast_run_callbacks<DrawIndexedArguments> = nullptr;
       command_action::internal::fast_run_callbacks<DispatchArguments> = nullptr;
-      command_action::internal::on_registrations_changed = nullptr;
+      // on_registrations_changed stays: this module still changes the shared registrations after its detach (an
+      // Unregister after command_action's detach, as resource_upgrade's in swapchain::Use(DETACH)), and the other
+      // opted-in modules' caches must see that. BumpEpoch touches only the process-shared block, which outlives the module.
       reshade::unregister_event<reshade::addon_event::destroy_command_list>(internal::OnDestroyCommandList);
       {
         const std::unique_lock lock(internal::caches_mutex);

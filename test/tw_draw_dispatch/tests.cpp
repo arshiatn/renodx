@@ -14,6 +14,9 @@
 // 6. Device loss: every pipeline and command list destroyed, a new device whose pipelines reuse the old handles.
 // 7. Mixed modules: a module attached to command_action without the opt-in sends every command to RunCallbacks; once it
 //    detaches, the fast dispatch takes the commands again with every slot resolved anew.
+// 8. Two modules (partner.cpp, a DLL with its own command_action and opt-in): the partner registers a command-wide
+//    callback, detaches, and only then unregisters it (as resource_upgrade does after command_action's detach) while
+//    this module goes on drawing; that late Unregister must move the epoch.
 // CONTROL: a gate that says "inactive" while its callback acts must show a difference.
 // The fast dispatch must have taken the commands it should (counted), else the comparison proves nothing.
 #include <windows.h>
@@ -38,6 +41,12 @@ using api_event = reshade::addon_event;
 using namespace reshade::api;
 
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (false)
+
+#if defined(_WIN64)
+constexpr const wchar_t* PARTNER_DLL = L"fast_draws_partner_amd64.dll";
+#else
+constexpr const wchar_t* PARTNER_DLL = L"fast_draws_partner_x86.dll";
+#endif
 
 // ---- ReShade: the exports the utilities call, the event lists, private data.
 static std::array<std::vector<void*>, 512> event_lists;
@@ -457,6 +466,29 @@ int main() {
   std::printf("7. mixed modules: declined %zu of 9 while attached, taken %zu of 9 after, differences %zu\n", mixed_declined,
               fast_taken - taken_unmixed, differences);
   CHECK(differences == 0u && mixed_declined == 9u && fast_taken - taken_unmixed == 9u);
+
+  // 8. Two modules: the partner DLL next to this exe.
+  std::wstring partner_path(MAX_PATH, L'\0');
+  partner_path.resize(GetModuleFileNameW(nullptr, partner_path.data(), MAX_PATH));
+  partner_path = partner_path.substr(0, partner_path.find_last_of(L"\\/") + 1) + PARTNER_DLL;
+  HMODULE partner = LoadLibraryW(partner_path.c_str());
+  CHECK(partner != nullptr);
+  const auto partner_attach = reinterpret_cast<void (*)(void (*)(const char*))>(GetProcAddress(partner, "PartnerAttach"));
+  const auto partner_detach = reinterpret_cast<void (*)()>(GetProcAddress(partner, "PartnerDetach"));
+  const auto partner_unregister = reinterpret_cast<void (*)()>(GetProcAddress(partner, "PartnerUnregister"));
+  CHECK(partner_attach != nullptr && partner_detach != nullptr && partner_unregister != nullptr);
+  partner_attach([](const char* line) { log_lines.emplace_back(line); });
+  const size_t taken_partner = fast_taken;
+  for (int i = 0; i < 6; ++i) Command(list, static_cast<Kind>(i % 3));
+  partner_detach();
+  for (int i = 0; i < 6; ++i) Command(list, static_cast<Kind>(i % 3));
+  const uint64_t epoch_before_unregister = fast::internal::shared.data->epoch.load();
+  partner_unregister();
+  const bool late_unregister_moved_epoch = fast::internal::shared.data->epoch.load() != epoch_before_unregister;
+  for (int i = 0; i < 6; ++i) Command(list, static_cast<Kind>(i % 3));
+  std::printf("8. two modules: taken %zu of 18, the late Unregister moved the epoch: %s, differences %zu\n",
+              fast_taken - taken_partner, late_unregister_moved_epoch ? "yes" : "no", differences);
+  CHECK(differences == 0u && late_unregister_moved_epoch && fast_taken - taken_partner == 18u);
 
   std::printf("all: %zu commands, %zu callback lines, fast taken %zu (basic %zu), declined %zu, differences %zu\n", commands, callbacks_seen,
               fast_taken, taken_basic, fast_declined, differences);
