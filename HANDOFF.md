@@ -346,6 +346,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Pharaoh v67, Rome II r3, Thrones r3, WH2 v49, Troy v53, WH1 r3 (all helper112); Shogun 2 v72 + DLSS v64 and Rome
   Remastered v11 --first with helper112 + NVIDIA DLLs 310.9.16 (Shogun 2's own nvngx_dlss 310.5.2 renamed aside).
   READMEs 7a930173. Test lists: tools/tw/round_notes/tests_1114.md. Report: tools/tw/round_notes/morning_report_1114.md.
+- [x] ATN ~10:00 (awake briefly): tests 1-3 (Lean default, torch rows, REBLUR under RR) themselves; Aftermath: not shipped
+  (so no licence text in the zips); WH1 Hue Clip default 40 -> WH1 r4 7d21a0b0 installed 10:10 (page dump default=40;
+  ATN's own WH1 ReShade.ini keeps hue_clip=50 until Reset / Recommended); ATN restarted the PC (zombies gone).
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
 ## LATE NIGHT ROUNDS (2026-11-13 23:10, two worktree agents, offline; installed state = NIGHT MERGES 22:59)
