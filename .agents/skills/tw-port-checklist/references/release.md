@@ -6,8 +6,10 @@
 2. The source game's code compared, by file and symbol.
 3. Bugs found on the way: shared code (fixed for all, rebuild) or the same pattern in `twattila/` (fix there and in every addon that carries it, a README line each). Check the source game without the game: `build32`, harness, WARP, numeric identity on a refactor, a key diff on the page.
 4. Every consumer built: every target in `SKILL.md`'s build lines, x64 and `build32`; every `test/tw_*` the change touches on x86 and amd64; `all_modes.sh` by name after a helper change.
-5. One independent review of the round's diff, then one agent for its fixes. Every close so far found real bugs (5, 6, 5 and 9).
+5. One independent review of the merged round's diff, then one agent for its fixes. Every close so far found real bugs (5, 6, 5 and 9). With the maintainer's OK: Fable 5.2 at high effort, once over the merged tree at the end, not per merge (each merge's review cost more than it found); a risky shared redesign gets its own high review; a targeted hunt (one crash, one subsystem) runs at medium.
 6. Page dumps before and after: only the intended rows, labels, tooltips and the date differ.
+7. Parity: [parity_check.py](../scripts/parity_check.py) over every TW game prints no open row (the Nothing dropped rule in [SKILL.md](../SKILL.md)); a row it prints is done now, or gets its ledger status and proof, or a `HANDOFF.md` checkbox with an owner.
+8. Every agent report of the round read to its end: each not-done, later, listed or found line is a checkbox with an owner before the report goes to the maintainer.
 
 ## 2. Release and install
 

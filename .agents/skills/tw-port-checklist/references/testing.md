@@ -88,7 +88,9 @@ Rules:
 - The helper's GPU time from per-process GPU Engine counters.
 - Record Ray Tracing Profile for 30 s with ReShade's menu closed (FG is off under the menu); read `answer_wait_ms`, `present_pacing_ms`, `cpu_record_parts`.
 - Time Each Pass for one frame; A/B inside one run (`RENODX_TW_SET`).
-- A CPU question needs a sampled profile, a GPU question one with GPU events: `wpr -start CPU -filemode` (GPU: `-start GPU -start CPU`), then `wpr -stop <file>.etl`, in the maintainer's admin terminal; read it with xperf or WPA (`Windows Kits\10\Windows Performance Toolkit`) by module offsets. PresentMon alone guesses.
+- Nsight Graphics doesn't attach to 32-bit D3D11 (Attila): the game's side by Time Each Pass, the helper in the 4K harness with `RENODX_TW_REPLAYABLE` and `RENODX_TW_NO_CLUSTERS` (`tools/tw/nsight`). Its ranked list goes into `HANDOFF.md` line by line (the Nothing dropped rule): the first Attila check's code items were lost at a compaction.
+- The game's own CPU hot spots (the CRT's x87 `fmod`, software float to half, x87 truncation blocks, its sort, per-item locks) are fair game: our own detour, bit-exact against the game's function offline (all 2^32 inputs where it takes one float), an Experimental row, never on bytes a third-party fix patches (read the live bytes first). A third-party fix's own code stays its author's: a patch goes to the author, with the maintainer's OK.
+- A CPU question needs a sampled profile, a GPU question one with GPU events: `wpr -start CPU -filemode` (GPU: `-start GPU -start CPU`), then `wpr -stop <file>.etl`, only through the maintainer's own elevated scheduled tasks `RenoDX_WPR_Start` / `RenoDX_WPR_Stop` (never elevate another way); read it with xperf or WPA (`Windows Kits\10\Windows Performance Toolkit`) by module offsets. PresentMon alone guesses.
 - An A/B measures a change only where its code is on the critical path: heapfix's sort, 6-7x faster, changed nothing in a GPU-bound replay (54.45 against 54.35 fps) and was 3.6% slower with 4 threads in a CPU-bound one, where the render thread never waited on it. Find the waiting thread in a profile before building the A/B.
 
 ## 6. Other traps
@@ -105,4 +107,10 @@ Rules:
 | A plan built on one start form or one trace | Two forms or two traces before planning |
 | A WARP sun test's comparison sampler on an RGBA32F shadow map returned 0 everywhere | Shadow maps as R32_FLOAT (the game's D32 view), `sun_scale_v61` |
 | PowerShell `-Filter "*.addon32.*"` matches plain `.addon32` files too | Never delete by it; old files are renamed aside ([release.md](release.md)) |
-| Bitdefender quarantined freshly built unsigned test exes (mingw builds, Gen:Variant.Draftor) | A new test goes into an existing `test/tw_*` suite or the harness, not a new exe; a flagged exe: stop building it, never evade or exclude, tell the maintainer |
+| Bitdefender quarantined freshly built unsigned test exes (mingw builds, Gen:Variant.Draftor) | Standalone test exes are built only in `tools/tw/testbin`, which the maintainer excluded (nothing downloaded goes there); a flagged exe elsewhere: stop that path, never evade or add exclusions, tell the maintainer |
+| `ps_compare` with random constants hung loop-heavy shaders (Pharaoh t05) and broke fog upsamples; WARP world checks with inputs x1024 read outside 64x64 textures and passed on nothing (WH2) | Constants from a trace (`cbf:`) or range-limited inputs, a control that must fail, `cb_audit` for what the check reads |
+| The quality scorer's scene has no smoke or fog | Smoke and fog changes need their own WARP or harness check; no score |
+| A finder that found 0 looked like "this game has none" (Troy's 167 tweaks) | A suite asserts each game's finder hit count (`test/tw_troy_tweaks`); 0 is a failure |
+| A restore deleted every replay outside a name list (the maintainer's WH3 `2.replay`) | Restores move aside only files the run created between its start and end marks (`wh3_common.ps1`); never delete the maintainer's replays or saves |
+| Agent worktrees link `bin`, `downloads` and `external` into the main checkout as junctions | Delete the links alone before any recursive delete of a worktree |
+| Many agents building at once ran the machine short of commit | Start a build only under 45 GB Committed Bytes, `-j 3`; one GPU job at a time through `tools/tw/gpu_job.lock`, taken atomically, deleted only by its owner |

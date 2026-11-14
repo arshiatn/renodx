@@ -1354,13 +1354,21 @@ constexpr auto OnFogDraw = []<typename Context>(Context& command) -> renodx::uti
   }};
 };
 
-// Attila's and Thrones' particles (particle_vfx_main: one vertex a particle, a geometry shader makes its quad) and the
-// main pass's lit pixel shaders: ps_main_high_quality by the game's shadow mode (gather, fetch4, pcf, software, none: smoke
-// and dust), ps_main (one hash in all: torch and fire smoke). Fire's glow is added, the overlay pass's.
-constexpr uint32_t PARTICLE_VERTEX_SHADER = 0xA7F257B5;
-constexpr std::array<SmokeVertexShader, 1> PARTICLE_VERTEX_SHADERS = {{{.hash = PARTICLE_VERTEX_SHADER}}};
-constexpr std::array<SmokePixelShader, 6> LIT_PARTICLE_PIXEL_SHADERS = {
-    {{.hash = 0xACE33D5D}, {.hash = 0xDF0F041A}, {.hash = 0x905429B6}, {.hash = 0x79A71E7B}, {.hash = 0xF9D9D3FB}, {.hash = 0xF5379F78}}};
+// Attila's and Thrones' particles (particle_vfx_main: one vertex a particle, a geometry shader makes its quad; vs50_main
+// A7F257B5 at Shader Model 5, vs40_main A3966664 at 4 / 4.1: the same outputs, its sorted list a texture, test/tw_attila_builds
+// S) and the main pass's lit pixel shaders: ps_main_high_quality by the game's shadow mode (gather, fetch4, pcf, software,
+// none: smoke and dust) and shader model, ps_main (torch and fire smoke). Fire's glow is added, the overlay pass's.
+constexpr std::array<uint32_t, 2> PARTICLE_VERTEX_SHADER_HASHES = {0xA7F257B5, 0xA3966664};
+constexpr std::array<SmokeVertexShader, 2> PARTICLE_VERTEX_SHADERS = {{{.hash = PARTICLE_VERTEX_SHADER_HASHES[0]}, {.hash = PARTICLE_VERTEX_SHADER_HASHES[1]}}};
+constexpr std::array<SmokePixelShader, 13> LIT_PARTICLE_PIXEL_SHADERS = {
+    {{.hash = 0xACE33D5D}, {.hash = 0xDF0F041A}, {.hash = 0x905429B6}, {.hash = 0x79A71E7B}, {.hash = 0xF9D9D3FB}, {.hash = 0xF5379F78},
+     {.hash = 0xF5F73B79}, {.hash = 0x1F60E59D}, {.hash = 0x2F66954B}, {.hash = 0x3A12A66D}, {.hash = 0xEA5AB372}, {.hash = 0x2CA01137},
+     {.hash = 0x6DCB7DA0}}};
+// The lit particles' builds besides vfx00 / vfx01 (ps_main_high_quality with the gather 4.1, software, pcf and fetch4 shadows
+// or none, ps_main at Shader Model 4 / 4.1), replaced with their edits (shaders/vfx00<method>_*, vfx01_*): they read the rays'
+// sun at t49 and the torch lights at b9 as vfx00 / vfx01 do (InstallShadowReaders).
+constexpr std::array<uint32_t, 11> PARTICLE_BUILD_READERS = {0xF5F73B79, 0x79A71E7B, 0x1F60E59D, 0x905429B6, 0x2F66954B, 0xDF0F041A,
+                                                             0x3A12A66D, 0xF9D9D3FB, 0xEA5AB372, 0x2CA01137, 0x6DCB7DA0};
 
 // A particle draw (Smoke Shadows): its lit particles streamed out for the next trace or smoke_map.hpp.
 constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {

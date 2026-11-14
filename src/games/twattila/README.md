@@ -17,6 +17,13 @@ not at ATN's settings now get the same. All level B (WARP against the game's dum
   3926A823) and, with the game's Tessellation on, tessellated objects (9AEE504E) cast ray-traced shadows. Tessellated
   ones are taken without the game's displacement, which fades out 5 to 20 m from the camera (shared
   `rt_core.hpp SceneShader::patch_triangles`, off for every other game). `tw_attila_builds` T / R / Q.
+- Fixed: at Shader Model 4 / 4.1, Smoke Shadows and Particle Resolution take the particles: their vertex shader
+  A3966664 (A7F257B5's build, its sorted list in a texture) is hooked beside A7F257B5, with the 7 lit sm_4_x pixel
+  shaders. `tw_attila_builds` S: both stream out the same particles, bit for bit.
+- Fixed: Reflection Quality and FidelityFX SSSR at Shader Model 4 / 4.1 (ssr02-05 are now ssr00 / ssr01 at their shader
+  model; the pyramid and hit hooks cover them), and Reflection Quality with the game's MSAA (ssr06 / ssr07: 5724C43A,
+  1469E169, 42F48C08, 97F6C9FC; no pyramid, rays or render scale there). `tw_thrones_ssr -Game twattila`: at Quality 1
+  the game's picture (MSAA: bit for bit), Quality 2 differs.
 - Test lines for ATN:
   - In-game Shader Model below the top, a battle with smoke: VFX Brightness 2 brightens the smoke; Ray-Traced Shadows
     Only: smoke in shade is darker.
@@ -24,14 +31,12 @@ not at ATN's settings now get the same. All level B (WARP against the game's dum
   - In-game MSAA on: Fog Strength 0.5 thins the battle fog.
   - In-game Tessellation on, Rarer Objects in the Rays on, near walls / rocks: shadows from them, no black patches.
   - A naval battle or a siege with ropes, Rarer Objects in the Rays on / off: rope shadows appear.
+  - In-game Shader Model below the top, a battle with smoke: Smoke Shadows on the ground; Particle Resolution Half:
+    the smoke as at the top Shader Model.
+  - Same, on water: Reflection Quality 2 and FidelityFX SSSR change the reflections; in-game MSAA on: Quality 2 too.
 - Not done:
-  - Smoke Shadows casting and Particle Resolution at Shader Model 4 / 4.1: their particles' vertex shader A3966664 is
-    not hooked. Smallest step: A3966664 beside A7F257B5 (the same outputs) with the 7 lit sm_4_x pixel shaders, and a
-    WARP check streaming both out.
-  - SSR Quality and the hierarchical march at Shader Model 1 / 2 and with the game's MSAA (8 builds): only the sm_5_0
-    builds have them. Smallest step: ssr00 / ssr01's edits generated into the 8, WARP as `tw_thrones_ssr`.
-  - The constant tone mapper (D9123DE1 and its MSAA builds) is not replaced and in no trace: needs a trace of the mode
-    that draws it (the game's auto exposure off?).
+  - The constant tone mapper's "with_bloom_and_gamma" builds (D9123DE1 and its MSAA builds; the constant tone mapper
+    itself is replaced, t09 / t10) are in no trace: needs a trace of the mode that draws them.
   - Sail symbols (B2CCA764, E9C34FAB): decals on sails, which cast already (as Rome II's 2C98F649). Won't get.
   - Point lights' MSAA builds: the game's MSAA leaves no rays and no render scale. Won't get.
   - Parity table: `tools/tw/attila_gaps/parity_1114.md`.

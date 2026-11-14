@@ -1,11 +1,13 @@
-# The environment_specular_light replacements for Shader Model 4 / 4.1 (twattila/shaders/ssr02-05, Thrones of Britannia's
-# include them) against the game's shaders on WARP (tests.cpp): 100% bit for bit, 50% bit for bit 100% in the view's part,
-# CONTROL the game's at 50%. -Game: twthronesofbritannia (default) or twattila (the same game bytes, each add-on's build).
-# -GameShaders: the folder of the game's dumped csos (0x485F33D7 / 0x0AC579F6 .ps_4_1.cso, 0x8E734BAA / 0xC8BD2B2F .ps_4_0.cso),
-# only read; default the game's pack. -Built: the add-on's compiled shaders (default build32\<game>.include\embed after a
+# The environment_specular_light replacements of the game's other builds (twattila/shaders/ssr02-07: Shader Model 4 / 4.1
+# and the game's MSAA; Thrones of Britannia's include them) against the game's shaders on WARP (tests.cpp): 100% the game's,
+# 50% bit for bit 100% in the view's part, CONTROLS the game's at 50% and SSR Quality 2. -Game: twthronesofbritannia
+# (default) or twattila (the same game bytes, each add-on's build and settings). -GameShaders: the folder of the game's
+# dumped csos, only read; default the game's pack. -Built: the add-on's compiled shaders (default build32\<game>.include\embed after a
 # renodx-<game>.addon32 build). Holds tools/tw's GPU job lock while it runs when -Lock names it. x86 (the games are 32-bit;
 # the shaders are the same either way).
 param([string]$Game = 'twthronesofbritannia', [string]$GameShaders = '', [string]$Built = '', [string]$Lock = '')
+# SSR Quality's and Effects at Output Resolution's floats in b13 (the game's shared.h).
+$settings = if ($Game -eq 'twattila') { @(56, 84) } else { @(41, 67) }
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 if ($GameShaders -eq '') { $GameShaders = "D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\dump_shader_${Game}_pack\cso" }
@@ -34,7 +36,7 @@ while ($Lock -ne '') {
 }
 try {
   # Also kept in last_run.txt (a failing run's lines survive a caller's pipeline).
-  & (Join-Path $testBuild 'thrones_ssr.exe') $GameShaders $Built | Tee-Object -FilePath (Join-Path $testBuild 'last_run.txt')
+  & (Join-Path $testBuild 'thrones_ssr.exe') $GameShaders $Built $settings[0] $settings[1] | Tee-Object -FilePath (Join-Path $testBuild "last_run_$Game.txt")
   if ($LASTEXITCODE -ne 0) { throw 'Thrones SSR test failed' }
 } finally {
   if ($Lock -ne '' -and (Get-Content -LiteralPath $Lock -Raw -ErrorAction SilentlyContinue) -eq $mine) { Remove-Item -LiteralPath $Lock -Force -Confirm:$false }
