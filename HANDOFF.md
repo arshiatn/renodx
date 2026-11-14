@@ -185,6 +185,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   helper110 --first. Offline bugs B: Coloured Shadows reads c1 (sun direction) not c3; AA wrappers lack TW_AA_FRAME_LINEAR.
   Data run after WH1's with -MsaaOff (direct starts only, no launcher-click fallback).
 - [x] ATN 02:25: "You are allowed to change the game's settings for all of them" (memory feedback_game_aa_allowed.md).
+- [x] Shogun 2 round 2 MERGED 878fffea (PT AO with the game's SH sky, Light Through Foliage, cloth / grass families, RT
+  specular occlusion; HDR v67 / DLSS v59). Round 3 on the branch: water reflections, imposters / billboards, W7d.
+- [x] WH1 + Troy data runs 02:20-02:34: no 3D frame in either (Epic). WH1: warhammer.exe -epicapp... without an exchange
+  code loads the add-on, stays in the frontend (wh1/runs/A_022108); Troy.exe direct: "Please use the Epic launcher"
+  dialog (troy/runs/S1_022643, S2_023214). ATN's files the same. Their traces need ATN's Epic start with
+  atn_trace_watch.ps1; agents continue offline + the 10-27 traces (build/ingame/traces). Skill 8fad0a89.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
