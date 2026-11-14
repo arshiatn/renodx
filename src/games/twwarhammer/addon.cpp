@@ -272,6 +272,15 @@ float rays_replace_maps_row = 0.f;
 // (screen_space_shadows::PatchForwardShadows with declare_position: 0BF2DB7F / BCB9B1D6 / 7865CDC9 leave SV_Position's xy
 // undeclared; rt_scene::InstallShadowReaders).
 float rays_skip_cascades_row = 0.f;
+// Light Through All Banners (Experimental, off; Warhammer III's row): the units' banners are rigidtextureblend meshes
+// (DBCC30FD, and E7F0D71A with 2 bones: ATN's battles draw 20 a frame), the same shaders as other unit parts, so only with
+// this row: thin in the rays (DBCC30FD's capture) and in the screen-space shadows (InstallThin; their vertex shaders' outputs
+// start with SV_Position, as sss_thin reads, test/tw_warhammer_shaders part 10).
+float rays_banner_light_row = 0.f;
+constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{
+    {.hash = 0xDBCC30FD, .row = &rays_banner_light_row},
+    {.hash = 0xE7F0D71A, .row = &rays_banner_light_row},
+}};
 constexpr std::array<uint32_t, 7> SHADOW_READER_SHADERS = {0x44B4A2F0, 0x0BF2DB7F, 0xBCB9B1D6, 0x7865CDC9, 0x122F218C, 0x1A3FE75F, 0x0FDF70BF};
 struct AtlasLit {
   std::shared_mutex mutex;
@@ -1393,7 +1402,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
     {.hash = 0xF6DBA4F4, .capture_shader = __rt_capture_rigid_standard_sm41, .rows_shader = __motion_record_rigid_rigidambientmapfiremesh_f6db},
     {.hash = 0x875BB987, .capture_shader = __rt_capture_rigid_default},
     {.hash = 0xD1A96B76, .capture_shader = __rt_capture_rigid_vertexpush},
-    {.hash = 0xDBCC30FD, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_dbcc},
+    {.hash = 0xDBCC30FD, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_dbcc, .thin_row = &rays_banner_light_row},
     {.hash = 0xC1E79772, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_c1e7},
     {.hash = 0x29F7B3D7, .capture_shader = __rt_capture_branch},
     {.hash = 0xD26C7B7A, .capture_shader = __rt_capture_branch_sm40},
@@ -1958,6 +1967,7 @@ void ConfigureAddon() {
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
+                                             .rays_banner_light = &rays_banner_light_row,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
@@ -2040,6 +2050,8 @@ bool AttachAddon() {
   twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS, true);
   twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowsOnly();
+  // Light Through Banners' Coloured Shadows: the G-buffer's colour is linear (the sun shaders' diffuse, part 10).
+  twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 1.f);
   // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's.
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
   for (const uint32_t shader_hash : ATLAS_SUN_SHADERS) {

@@ -41,6 +41,10 @@
 //    colour): the game's diffuse per unit albedo over its length the guides' normal; the game's ambient per unit albedo
 //    (every cube side 1) with specular colour 0.3 and 0 the guides' diffuse albedo over the albedo (1 - specular colour);
 //    their roughness 1 - gloss. CONTROLS: the angles read the other way, the diffuse albedo without the specular colour.
+// 10. Light Through All Banners: the banners' vertex shaders (rigidtextureblend DBCC30FD, its 2 bones E7F0D71A) output
+//    SV_Position first (register 0), which sss_thin reads; Coloured Shadows' albedo_power 1: 230F2241's diffuse is linear in
+//    channel 2's colour (its slope from 0.1 to 0.3 the one from 0.3 to 0.9; a squared colour makes it 3 times). CONTROL:
+//    the imposter's vertex shader 381E079E (POSITION first) fails the first.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -1470,6 +1474,32 @@ static void TestGuides(const std::string& games, const std::string& dump) {
               normal_misses, largest, albedo_misses, roughness_misses, swapped_differ, unspecular_differ);
 }
 
+static void TestThin(const std::string& dump) {
+  const auto position_first = [&dump](uint32_t hash) {
+    const auto code = GameBytes(dump, hash);
+    ComPtr<ID3D11ShaderReflection> reflection;
+    if (code.empty() || FAILED(D3DReflect(code.data(), code.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) {
+      return false;
+    }
+    D3D11_SIGNATURE_PARAMETER_DESC output = {};
+    reflection->GetOutputParameterDesc(0, &output);
+    return output.SystemValueType == D3D_NAME_POSITION && output.Register == 0;
+  };
+  const bool banners = position_first(0xDBCC30FD) && position_first(0xE7F0D71A);
+  const bool imposter = position_first(0x381E079E);
+  const auto bytes = GameBytes(dump, 0x230F2241);
+  const auto diffuse = [&bytes](float albedo) {
+    return DrawGame(bytes, {.lighting = SunLighting({1.f, 1.f, 1.f, 0.f}, {}, 1.f), .albedo = albedo})[0];
+  };
+  const float low = (diffuse(0.3f) - diffuse(0.1f)) / 0.2f;
+  const float high = (diffuse(0.9f) - diffuse(0.3f)) / 0.6f;
+  CHECK(banners && !imposter, "thin: the banners' SV_Position first %d, CONTROL the imposter's %d", banners, imposter);
+  CHECK(low > 0.f && Near(high / low, 1.f, 1e-4f), "thin: 230F2241's diffuse slopes %.8g, %.8g (linear: equal)", low, high);
+  std::printf("Light Through All Banners: DBCC30FD / E7F0D71A output SV_Position first %s (CONTROL the imposter's %s); 230F2241's diffuse "
+              "slopes %.8g / %.8g (ratio %.6f: linear, albedo_power 1)\n",
+              banners ? "yes" : "NO", imposter ? "YES" : "no", low, high, high / low);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -1493,6 +1523,7 @@ int main(int argc, char** argv) {
   TestPointLights(argv[1], argv[2]);
   TestForwardShadows(argv[2]);
   TestGuides(games, argv[2]);
+  TestThin(argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

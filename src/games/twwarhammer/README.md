@@ -7,6 +7,19 @@
   colour), specular albedo that colour; water writes flag 64, specular 0.04, gloss 0.95 itself). No change;
   test/tw_warhammer_shaders part 9 proves it against the game's bytes (CONTROLS: the angles the other way, the albedo
   without the specular colour).
+- **Light Through All Banners (Experimental, off; Warhammer III's row)**: the units' banners are rigidtextureblend meshes
+  (DBCC30FD, E7F0D71A with 2 bones), the shaders of other unit parts too, so only with this row: thin in the rays and in
+  the screen-space shadows (InstallThin; their vertex shaders give SV_Position first, as sss_thin reads; Coloured Shadows
+  with the G-buffer's colour linear: the sun shaders' diffuse is, part 10). E7F0D71A stays out of the rays (not a caster
+  there yet).
+
+Test list (in game, ATN):
+1. Battle with banners, Light Through All Banners on: their shadows lighter and coloured (screen-space and RT); off: as
+   before; nothing else (shields, cloaks) lighter.
+
+Not done: Sprite Shadows (WH1's far soldiers are points the game's geometry shader 12D3A4BC / D6954DFC turns into quads;
+the rays capture a vertex shader's vertices with the draw's own indices, so they need new shared capture work, and none of
+ATN's traces drew one).
 
 ### Phase I, round 2 (2026-11-14 night; built only, not run in game)
 
