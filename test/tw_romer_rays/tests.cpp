@@ -16,6 +16,9 @@
 // 5. The game's bytes: the PBR pixel shader's output is affine in the mask's red (the sun's term x it; 1 is the game's
 //    unshadowed light), the mask's green changes nothing; the AO changes it; the mask and the AO multiplied by the module
 //    (4) light it as the products would.
+// 6. contact_shadows::Draw (Bend's march, twattila's sss_setup / sss_bend, into the mask): a pillar's shadow from a sun at
+//    the camera's left darkens the ground the CPU finds shadowed, the sunlit ground and the mask's green kept; CONTROL: the
+//    sun at the right (the setup's sign the other way) leaves it lit.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -29,7 +32,9 @@
 #include <iterator>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <vector>
+#include "src/games/twromeremastered/contact_shadows.hpp"
 #include "src/games/twromeremastered/ray_tracing.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
 
@@ -379,8 +384,8 @@ int main(int argc, char** argv) {
     context->OMSetBlendState(game_blend.Get(), nullptr, 0xFFFFFFFF);
     context->PSSetShaderResources(0, 1, game_view.GetAddressOf());
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
-    rays::internal::DrawMultiply(context1.Get(), mask_rtv.Get(), visibility_srv.Get());
-    rays::internal::DrawMultiply(context1.Get(), ao_rtv.Get(), visibility_srv.Get());
+    rays::internal::DrawMultiply(context1.Get(), mask_rtv.Get(), visibility_srv.Get(), false);
+    rays::internal::DrawMultiply(context1.Get(), ao_rtv.Get(), visibility_srv.Get(), false);
     ComPtr<ID3D11RenderTargetView> after_rtv;
     ComPtr<ID3D11DepthStencilView> after_dsv;
     context->OMGetRenderTargets(1, after_rtv.GetAddressOf(), after_dsv.GetAddressOf());
@@ -540,14 +545,159 @@ Output main(uint id : SV_VertexID) {
     const auto ao = MakeTexture(4, 4, DXGI_FORMAT_R8_UNORM, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE, ao_bytes.data(), 4);
     const std::vector<uint8_t> half_open(16, 128);
     const auto half_visibility = MakeTexture(4, 4, DXGI_FORMAT_R8_UNORM, D3D11_BIND_SHADER_RESOURCE, half_open.data(), 4);
-    rays::internal::DrawMultiply(context1.Get(), Rtv(mask.Get()).Get(), Srv(half_visibility.Get()).Get());
-    rays::internal::DrawMultiply(context1.Get(), Rtv(ao.Get()).Get(), Srv(half_visibility.Get()).Get());
+    rays::internal::DrawMultiply(context1.Get(), Rtv(mask.Get()).Get(), Srv(half_visibility.Get()).Get(), false);
+    rays::internal::DrawMultiply(context1.Get(), Rtv(ao.Get()).Get(), Srv(half_visibility.Get()).Get(), false);
     context->ClearState();
     const auto multiplied = shade(Srv(mask.Get()).Get(), Srv(ao.Get()).Get());
     const auto products = shade(uniform(static_cast<uint8_t>(std::lround(230. * 128. / 255.)), 77, true).Get(),
                                 uniform(static_cast<uint8_t>(std::lround(204. * 128. / 255.)), 0, false).Get());
     std::printf("multiplied by the module: %.4f, the products: %.4f\n", multiplied[1], products[1]);
     for (int channel = 0; channel < 3; ++channel) CHECK(std::abs(multiplied[channel] - products[channel]) <= 2e-3 * std::max(products[channel], 1e-3));
+  }
+
+  // 6. contact_shadows::Draw: a 3 x 8 x 3 m pillar on the ground 64 m in front of the battle camera (unjittered), the
+  //    sun from the camera's left (c2 toward it). The ground the CPU finds in the pillar's shadow darkened in the mask's
+  //    red (more of it with a thicker Thickness), the ground in the sun kept, the green kept; CONTROL: the sun from the
+  //    right leaves that shadow lit.
+  {
+    constexpr UINT SIZE_X = 480;
+    constexpr UINT SIZE_Y = 270;
+    dlaa::internal::Camera battle;
+    std::copy_n(BATTLE.begin(), 16, battle.view.begin());
+    std::copy_n(BATTLE.begin() + 16, 16, battle.projection.begin());
+    std::copy_n(BATTLE.begin() + 32, 16, battle.view_projection.begin());
+    battle.jittered_view_projection = battle.view_projection;
+    const Matrix view_projection = Rows(battle.view_projection.data());
+    const Matrix inverse = Inverse(view_projection);
+    const Matrix inverse_view = Inverse(Rows(BATTLE.data()));
+    const std::array<double, 3> eye = {inverse_view[12], inverse_view[13], inverse_view[14]};
+    const std::array<double, 3> forward = {BATTLE[2], BATTLE[6], BATTLE[10]};
+    const std::array<double, 3> right = {BATTLE[0], BATTLE[4], BATTLE[8]};
+    const double ground = eye[1] - 12.;
+    const double reach = 12. / -forward[1];
+    const std::array<double, 3> base = {eye[0] + (reach * forward[0]), ground, eye[2] + (reach * forward[2])};
+    const std::array<double, 3> box_min = {base[0] - 1.5, ground, base[2] - 1.5};
+    const std::array<double, 3> box_max = {base[0] + 1.5, ground + 8., base[2] + 1.5};
+    // The nearest positive distance along `direction` from `origin` into the pillar (slabs), or -1.
+    const auto box_hit = [&](const std::array<double, 3>& origin, const std::array<double, 3>& direction) {
+      double enter = 0.;
+      double leave = 1e30;
+      for (int axis = 0; axis < 3; ++axis) {
+        if (std::abs(direction[axis]) < 1e-12) {
+          if (origin[axis] < box_min[axis] || origin[axis] > box_max[axis]) return -1.;
+          continue;
+        }
+        double near_t = (box_min[axis] - origin[axis]) / direction[axis];
+        double far_t = (box_max[axis] - origin[axis]) / direction[axis];
+        if (near_t > far_t) std::swap(near_t, far_t);
+        enter = std::max(enter, near_t);
+        leave = std::min(leave, far_t);
+      }
+      return (enter <= leave && leave > 0.) ? enter : -1.;
+    };
+    std::vector<float> depth(SIZE_X * SIZE_Y, 1.f);
+    std::vector<int> kind(SIZE_X * SIZE_Y, 0);  // 0 sky, 1 the pillar, 2 ground in the sun, 3 ground in the shadow
+    const auto sun_from = [](double x, double z) { return std::array<double, 3>{x, 1., z}; };
+    const auto normalized = [](std::array<double, 3> v) {
+      const double length = std::sqrt((v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]));
+      for (double& value : v) value /= length;
+      return v;
+    };
+    const auto toward_sun = normalized(sun_from(-right[0], -right[2]));  // from the camera's left
+    for (UINT y = 0; y < SIZE_Y; ++y) {
+      for (UINT x = 0; x < SIZE_X; ++x) {
+        const size_t at = (static_cast<size_t>(y) * SIZE_X) + x;
+        const double ndc_x = (((x + 0.5) / SIZE_X) * 2.) - 1.;
+        const double ndc_y = 1. - (((y + 0.5) / SIZE_Y) * 2.);
+        auto near_point = Transform({ndc_x, ndc_y, 0., 1.}, inverse);
+        auto far_point = Transform({ndc_x, ndc_y, 0.5, 1.}, inverse);
+        std::array<double, 3> direction = {};
+        for (int k = 0; k < 3; ++k) {
+          near_point[k] /= near_point[3];
+          far_point[k] /= far_point[3];
+          direction[k] = far_point[k] - near_point[k];
+        }
+        const std::array<double, 3> origin = {near_point[0], near_point[1], near_point[2]};
+        const double pillar = box_hit(origin, direction);
+        const double plane = (direction[1] < 0.) ? (ground - origin[1]) / direction[1] : -1.;
+        double along = -1.;
+        if (pillar > 0. && (plane < 0. || pillar <= plane)) {
+          along = pillar;
+          kind[at] = 1;
+        } else if (plane > 0. && plane < 400.) {
+          along = plane;
+          const std::array<double, 3> point = {origin[0] + (plane * direction[0]), ground, origin[2] + (plane * direction[2])};
+          kind[at] = (box_hit(point, toward_sun) > 0. ? 3 : 2);
+        }
+        if (along < 0.) continue;
+        const auto drawn = Transform({origin[0] + (along * direction[0]), origin[1] + (along * direction[1]), origin[2] + (along * direction[2]), 1.},
+                                     view_projection);
+        depth[at] = static_cast<float>(drawn[2] / drawn[3]);
+      }
+    }
+    const auto depth_texture = MakeTexture(SIZE_X, SIZE_Y, DXGI_FORMAT_R32_FLOAT, D3D11_BIND_SHADER_RESOURCE, depth.data(), SIZE_X * 4);
+    const auto depth_srv = Srv(depth_texture.Get());
+    // The red of the mask after the screen-space shadows with the sun toward `sun`.
+    const auto shadowed = [&](const std::array<double, 3>& sun) {
+      std::array<float, 16> constants = frame_constants;
+      for (int axis = 0; axis < 3; ++axis) constants[8 + axis] = static_cast<float>(sun[axis]);
+      const auto frame = ConstantBuffer(constants.data(), 64);
+      const std::vector<std::array<uint8_t, 2>> mask_bytes(SIZE_X * SIZE_Y, {255, 77});
+      const auto mask = MakeTexture(SIZE_X, SIZE_Y, DXGI_FORMAT_R8G8_UNORM, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE, mask_bytes.data(), SIZE_X * 2);
+      twromeremastered::contact_shadows::internal::Draw(context1.Get(), depth_srv.Get(), battle, frame.Get(), Rtv(mask.Get()).Get());
+      context->ClearState();
+      return ReadBack<std::array<uint8_t, 2>>(mask.Get());
+    };
+    // Shares of the shadow's and of the sun's ground darker than half (the sun's ground 3 pixels clear of the shadow).
+    const auto shares = [&](const std::vector<std::array<uint8_t, 2>>& red) {
+      size_t shadow_count = 0;
+      size_t shadow_dark = 0;
+      size_t sun_count = 0;
+      size_t sun_dark = 0;
+      bool green_kept = true;
+      for (UINT y = 0; y < SIZE_Y; ++y) {
+        for (UINT x = 0; x < SIZE_X; ++x) {
+          const size_t at = (static_cast<size_t>(y) * SIZE_X) + x;
+          green_kept = green_kept && red[at][1] == 77;
+          if (kind[at] == 3) {
+            ++shadow_count;
+            shadow_dark += (red[at][0] < 128) ? 1 : 0;
+          } else if (kind[at] == 2) {
+            bool clear = true;
+            for (int dy = -3; dy <= 3 && clear; ++dy) {
+              for (int dx = -3; dx <= 3 && clear; ++dx) {
+                const int sx = std::clamp(static_cast<int>(x) + dx, 0, static_cast<int>(SIZE_X) - 1);
+                const int sy = std::clamp(static_cast<int>(y) + dy, 0, static_cast<int>(SIZE_Y) - 1);
+                clear = kind[(static_cast<size_t>(sy) * SIZE_X) + sx] != 3 && kind[(static_cast<size_t>(sy) * SIZE_X) + sx] != 1;
+              }
+            }
+            if (clear) {
+              ++sun_count;
+              sun_dark += (red[at][0] < 128) ? 1 : 0;
+            }
+          }
+        }
+      }
+      return std::tuple{shadow_count, static_cast<double>(shadow_dark) / std::max<size_t>(shadow_count, 1),
+                        static_cast<double>(sun_dark) / std::max<size_t>(sun_count, 1), green_kept};
+    };
+    // Bend takes each pixel as thin (Thickness x its distance, ~0.3 m here at the default): where the CPU's shadow ray
+    // passes deep behind the pillar's front face it stays lit, so the default covers part of the shadow, a thicker row more.
+    twromeremastered::contact_shadows::rows = {.enabled = 1.f};
+    const auto [shadow_pixels, shadow_dark, sun_dark, green_kept] = shares(shadowed(toward_sun));
+    const auto [control_pixels, control_dark, control_sun_dark, control_green] = shares(shadowed(normalized(sun_from(right[0], right[2]))));
+    twromeremastered::contact_shadows::rows.thickness = 0.05f;
+    const auto [thick_pixels, thick_dark, thick_sun_dark, thick_green] = shares(shadowed(toward_sun));
+    twromeremastered::contact_shadows::rows = {};
+    std::printf("contact shadows: %zu shadow pixels, %.3f of them dark (Thickness 0.05: %.3f), %.3f of the sun's ground dark (%.3f), green kept "
+                "%d; CONTROL sun from the right: %.3f of them dark\n",
+                shadow_pixels, shadow_dark, thick_dark, sun_dark, thick_sun_dark, green_kept ? 1 : 0, control_dark);
+    CHECK(shadow_pixels > 50);
+    CHECK(shadow_dark > 0.3);
+    CHECK(thick_dark > shadow_dark + 0.1);
+    CHECK(sun_dark < 0.02 && thick_sun_dark < 0.05);
+    CHECK(green_kept && control_green && thick_green);
+    CHECK(control_dark < 0.05);
   }
 
   std::printf("%s (%d failures)\n", (failures == 0 ? "PASS" : "FAIL"), failures);

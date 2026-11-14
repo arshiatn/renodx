@@ -41,6 +41,7 @@
 #include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/reflex.hpp"
+#include "./contact_shadows.hpp"
 #include "./dlaa.hpp"
 #include "./ray_tracing.hpp"
 #include "./shared.h"
@@ -143,6 +144,9 @@ void ApplyResetPreset() {
       {"RayTracedSunShadows", 0.f},
       {"RayTracedAmbientOcclusion", 0.f},
       {"RayTracedDebugView", 0.f},
+      {"ScreenSpaceShadows", 0.f},
+      {"ScreenSpaceShadowsLength", 2.f},
+      {"ScreenSpaceShadowsThickness", 0.005f},
       {"FrameGeneration", 0.f},
       {"TestSunShadowsOff", 0.f},
       {"TestAmbientOcclusionOff", 0.f},
@@ -581,6 +585,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
       .sdr_output = (shader_injection.swap_chain_encoding == 2.f),
   });
   twattila::reflex::Update(swapchain, static_cast<uint32_t>(reflex), static_cast<uint32_t>(frame_limit));
+  twromeremastered::dlaa::contact = (twromeremastered::contact_shadows::rows.enabled != 0.f);
   const bool drew_3d = post_drawn.exchange(false, std::memory_order_relaxed);
   twattila::frame_trace::OnPresent(false, drew_3d);
   if (drew_3d || twattila::frame_trace::Tracing()) {
@@ -701,6 +706,7 @@ void BuildRuntimeData() {
                               twromeremastered::dlaa::KeepDepth(cmd_list, false);
                               if (test_sun_shadows_off != 0.f) { ClearOutputToOne(cmd_list, false, &logged_test_shadows, "the sun's shadow mask"); }
                               twromeremastered::ray_tracing::Multiply(cmd_list, false);
+                              twromeremastered::contact_shadows::Apply(cmd_list);
                             }};
   }
   for (const uint32_t hash : TONE_MAPPER_SHADERS) {
@@ -1927,6 +1933,43 @@ void ConfigureAddon() {
           },
       },
       new renodx::utils::settings::Setting{
+          .key = "ScreenSpaceShadows",
+          .binding = &twromeremastered::contact_shadows::rows.enabled,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Screen-Space Shadows",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Fine sun shadows from what is on screen (Bend Studio's): soldiers, weapons and small details get\n"
+                     "contact shadows the shadow map is too coarse for. Needs in-game shadows. Experimental, off by default.",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ScreenSpaceShadowsLength",
+          .binding = &twromeremastered::contact_shadows::rows.length,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 2.f,
+          .label = "Screen-Space Shadows Length",
+          .section = "Graphics (Experimental)",
+          .tooltip = "How far the shadows reach, in screen pixels. Longer: heavier.",
+          .labels = {"60", "120", "240", "480", "960", "1920"},
+          .is_enabled = [] { return twromeremastered::contact_shadows::rows.enabled != 0.f; },
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ScreenSpaceShadowsThickness",
+          .binding = &twromeremastered::contact_shadows::rows.thickness,
+          .default_value = 0.005f,
+          .label = "Screen-Space Shadows Thickness",
+          .section = "Graphics (Experimental)",
+          .tooltip = "How thick objects are taken to be. Lower: thinner shadows, light gets behind things;\n"
+                     "higher: fuller shadows, more halo-like shading behind objects.",
+          .min = 0.001f,
+          .max = 0.05f,
+          .format = "%.3f",
+          .is_enabled = [] { return twromeremastered::contact_shadows::rows.enabled != 0.f; },
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
           .key = "TestSunShadowsOff",
           .binding = &test_sun_shadows_off,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
@@ -2070,6 +2113,7 @@ bool AttachAddon() {
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   twattila::reflex::Install();
+  twromeremastered::contact_shadows::Install();
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   // A ray tracing row on at launch: its scene's shaders kept from the start.
@@ -2106,6 +2150,7 @@ void DetachAddon() {
   twromeremastered::ray_tracing::Uninstall();
   twattila::frame_generation::Uninstall();
   twattila::reflex::Uninstall();
+  twromeremastered::contact_shadows::Uninstall();
 
   reshade::unregister_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);

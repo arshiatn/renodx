@@ -48,8 +48,15 @@ static float setting = 0.f;
 // Ray tracing (ray_tracing.hpp) is on: the main camera and the scene's depth are kept without DLAA too, the bridge made
 // with its ray tracing textures and kept.
 static bool rays = false;
+// Screen-space shadows (contact_shadows.hpp) are on: the main camera and the scene's depth kept without DLAA too.
+static bool contact = false;
 
 namespace internal {
+
+// DLAA, the rays or the screen-space shadows want the main camera and the scene's depth.
+inline bool CameraWanted() {
+  return setting != 0.f || rays || contact;
+}
 
 constexpr UINT CAMERA_BYTES = 192;
 constexpr size_t PROJECTION = 16;
@@ -221,7 +228,7 @@ inline void JitterCamera(float* c) {
 
 inline void OnMapBufferRegion(reshade::api::device* device, reshade::api::resource resource, uint64_t offset, uint64_t,
                               reshade::api::map_access access, void** data) {
-  if ((setting == 0.f && !rays) || access == reshade::api::map_access::read_only || offset != 0 || data == nullptr
+  if (!CameraWanted() || access == reshade::api::map_access::read_only || offset != 0 || data == nullptr
       || *data == nullptr || device->get_api() != reshade::api::device_api::d3d11) {
     return;
   }
@@ -241,7 +248,7 @@ inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource re
 // UpdateSubresource: the main camera uploaded jittered instead (true: the game's update skipped).
 inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data, reshade::api::resource resource,
                                  uint64_t offset, uint64_t size) {
-  if ((setting == 0.f && !rays) || data == nullptr || offset != 0 || size < CAMERA_BYTES
+  if (!CameraWanted() || data == nullptr || offset != 0 || size < CAMERA_BYTES
       || device->get_api() != reshade::api::device_api::d3d11) {
     return false;
   }
@@ -302,9 +309,9 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 }  // namespace internal
 
 // The shadow mask's resolve (its PS, or CS with `compute`) just read the scene's depth at t1: kept for this frame's DLAA
-// (and the rays: SceneDepth).
+// (and the rays and the screen-space shadows: SceneDepth).
 inline void KeepDepth(reshade::api::command_list* cmd_list, bool compute) {
-  if ((setting == 0.f && !rays) || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  if (!internal::CameraWanted() || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   ComPtr<ID3D11ShaderResourceView> depth;
   if (compute) {

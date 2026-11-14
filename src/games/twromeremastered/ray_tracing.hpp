@@ -65,7 +65,8 @@ struct Objects {
   ComPtr<ID3D11ComputeShader> sun;
   ComPtr<ID3D11VertexShader> full_screen;
   ComPtr<ID3D11PixelShader> multiply;
-  ComPtr<ID3D11BlendState> multiply_red;
+  ComPtr<ID3D11BlendState> multiply_red;   // the target's red x the source
+  ComPtr<ID3D11BlendState> unshadow_red;   // the target's red x (1 - the source): an occlusion (contact_shadows.hpp)
   ComPtr<ID3D11RasterizerState> no_cull;
   bool failed = false;
 };
@@ -114,18 +115,50 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
   twattila::rt_scene::Update({.sun_shadows = sun_shadows, .ambient_occlusion = ambient_occlusion, .debug_view = static_cast<uint32_t>(rows.debug_view)});
 }
 
-inline void OnDestroyDevice(reshade::api::device* device) {
-  twattila::rt_scene::OnDestroyDevice(device);
-  const std::unique_lock lock(state.mutex);
+// The game's `device` is going away: the objects on it with it (OnDestroyDevice, contact_shadows.hpp).
+inline void ReleaseObjects(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  const std::unique_lock lock(state.mutex);
   if (state.objects.device.Get() == native) state.objects = {};
 }
 
-// The multiply draw (Multiply; test/tw_romer_rays): `visibility` times `target`'s red, in the addon's own context state
-// (the game's put back after).
-inline void DrawMultiply(ID3D11DeviceContext1* native, ID3D11RenderTargetView* target, ID3D11ShaderResourceView* visibility) {
+inline void OnDestroyDevice(reshade::api::device* device) {
+  twattila::rt_scene::OnDestroyDevice(device);
+  ReleaseObjects(device);
+}
+
+// The objects on the game's `device` (made again when it changes; Trace, contact_shadows.hpp); false: not available.
+inline bool MakeObjects(ID3D11Device* device) {
+  const std::unique_lock lock(state.mutex);
+  auto& objects = state.objects;
+  if (objects.device.Get() == device) return !objects.failed;
+  objects = {.device = device};
+  ComPtr<ID3D11Device1> device1;
+  const D3D_FEATURE_LEVEL feature_level = device->GetFeatureLevel();
+  D3D11_BLEND_DESC blend_desc = {};
+  blend_desc.RenderTarget[0] = {.BlendEnable = TRUE, .SrcBlend = D3D11_BLEND_ZERO, .DestBlend = D3D11_BLEND_SRC_COLOR,
+                                .BlendOp = D3D11_BLEND_OP_ADD, .SrcBlendAlpha = D3D11_BLEND_ZERO, .DestBlendAlpha = D3D11_BLEND_ONE,
+                                .BlendOpAlpha = D3D11_BLEND_OP_ADD, .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED};
+  D3D11_BLEND_DESC unshadow_desc = blend_desc;
+  unshadow_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_COLOR;
+  const D3D11_RASTERIZER_DESC raster_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE, .DepthClipEnable = TRUE};
+  objects.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
+                   || FAILED(device1->CreateDeviceContextState(0, &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr,
+                                                               objects.private_state.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__rt_frame_sun.data(), __rt_frame_sun.size(), nullptr, objects.sun.GetAddressOf()))
+                   || FAILED(device->CreateVertexShader(__light_bounce_vs.data(), __light_bounce_vs.size(), nullptr, objects.full_screen.GetAddressOf()))
+                   || FAILED(device->CreatePixelShader(__rt_multiply.data(), __rt_multiply.size(), nullptr, objects.multiply.GetAddressOf()))
+                   || FAILED(device->CreateBlendState(&blend_desc, objects.multiply_red.GetAddressOf()))
+                   || FAILED(device->CreateBlendState(&unshadow_desc, objects.unshadow_red.GetAddressOf()))
+                   || FAILED(device->CreateRasterizerState(&raster_desc, objects.no_cull.GetAddressOf()));
+  return !objects.failed;
+}
+
+// The multiply draw (Multiply, contact_shadows.hpp; test/tw_romer_rays): `target`'s red times `visibility` (`occlusion`:
+// times 1 - it), in the addon's own context state (the game's put back after).
+inline void DrawMultiply(ID3D11DeviceContext1* native, ID3D11RenderTargetView* target, ID3D11ShaderResourceView* visibility, bool occlusion) {
   ComPtr<ID3D11Resource> target_resource;
   target->GetResource(target_resource.GetAddressOf());
   ComPtr<ID3D11Texture2D> target_texture;
@@ -143,7 +176,7 @@ inline void DrawMultiply(ID3D11DeviceContext1* native, ID3D11RenderTargetView* t
   native->PSSetShaderResources(0, 1, &visibility);
   native->RSSetState(objects.no_cull.Get());
   native->RSSetViewports(1, &viewport);
-  native->OMSetBlendState(objects.multiply_red.Get(), nullptr, 0xFFFFFFFF);
+  native->OMSetBlendState((occlusion ? objects.unshadow_red : objects.multiply_red).Get(), nullptr, 0xFFFFFFFF);
   native->OMSetRenderTargets(1, &target, nullptr);
   native->Draw(3, 0);
 }
@@ -187,29 +220,8 @@ inline void Trace(reshade::api::command_list* cmd_list) {
   depth_texture->GetDesc(&depth_desc);
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  auto& objects = state.objects;
-  {
-    const std::unique_lock lock(state.mutex);
-    if (objects.device != device) {
-      objects = {.device = device};
-      ComPtr<ID3D11Device1> device1;
-      const D3D_FEATURE_LEVEL feature_level = device->GetFeatureLevel();
-      D3D11_BLEND_DESC blend_desc = {};
-      blend_desc.RenderTarget[0] = {.BlendEnable = TRUE, .SrcBlend = D3D11_BLEND_ZERO, .DestBlend = D3D11_BLEND_SRC_COLOR,
-                                    .BlendOp = D3D11_BLEND_OP_ADD, .SrcBlendAlpha = D3D11_BLEND_ZERO, .DestBlendAlpha = D3D11_BLEND_ONE,
-                                    .BlendOpAlpha = D3D11_BLEND_OP_ADD, .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED};
-      const D3D11_RASTERIZER_DESC raster_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE, .DepthClipEnable = TRUE};
-      objects.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
-                       || FAILED(device1->CreateDeviceContextState(0, &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr,
-                                                                   objects.private_state.GetAddressOf()))
-                       || FAILED(device->CreateComputeShader(__rt_frame_sun.data(), __rt_frame_sun.size(), nullptr, objects.sun.GetAddressOf()))
-                       || FAILED(device->CreateVertexShader(__light_bounce_vs.data(), __light_bounce_vs.size(), nullptr, objects.full_screen.GetAddressOf()))
-                       || FAILED(device->CreatePixelShader(__rt_multiply.data(), __rt_multiply.size(), nullptr, objects.multiply.GetAddressOf()))
-                       || FAILED(device->CreateBlendState(&blend_desc, objects.multiply_red.GetAddressOf()))
-                       || FAILED(device->CreateRasterizerState(&raster_desc, objects.no_cull.GetAddressOf()));
-    }
-    if (objects.failed) return;
-  }
+  if (!internal::MakeObjects(device.Get())) return;
+  const auto& objects = state.objects;
   auto& bridge = twattila::dlaa_bridge::bridge;
   if (!dlaa::PrepareBridge(device.Get(), depth_desc.Width, depth_desc.Height) || !bridge.rt_sun.uav) return;
   {
@@ -237,7 +249,7 @@ inline void Multiply(reshade::api::command_list* cmd_list, bool ambient) {
   native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
   ComPtr<ID3D11DeviceContext1> native1;
   if (visibility == nullptr || !target || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
-  internal::DrawMultiply(native1.Get(), target.Get(), visibility);
+  internal::DrawMultiply(native1.Get(), target.Get(), visibility, false);
 }
 
 // After ResolveMainColor (and DLAA): the Debug View over its output (the bridge's size).
