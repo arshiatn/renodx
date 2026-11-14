@@ -246,6 +246,25 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   reflections on rivers, lakes, the Ultra sea; Experimental, off; HDR v69 / DLSS v61; WARP parts 7-9 PASS). NOT DONE: W7d
   (cascades draw before the main view; rigid shadow 38-326M indices x instances vs a 29M budget): agent resumed on the
   per-instance record (opt-in rt_core changes, every rt_core user's suite must stay unchanged).
+- [x] Troy v51 MERGED 4053fe95 (Torch and Fire Shadows 143A02ED in Pharaoh's fire02 form, campaign trees 54D2CFBD +
+  billboards DF8EAF69 in the rays; shared twattila/contact_shadows_off.hpp = Pharaoh's contact march off moved verbatim:
+  verify Pharaoh in the merged check). NOT DONE: fires 643FC156 in the rays (after WH2's rt_scene light reader change),
+  shroud test, Log Details light count: agent resumed.
+- [x] WH1 round 2 MERGED 61f0bbb7 (PT AO with the harmonics' sky + PatchAmbient AMBIENT_AFTER_HARMONICS_Z (shared, other 7
+  games' 238 rows byte-identical), far cards CA6BCF19, campaign plants 84797031, casters out of view, Torch and Fire
+  Shadows D0C67938 / 5D1695BC, Rays Replace Shadow Maps (game-side), SSR share BUG 69A57B14 fixed; RT/PT preset turns on
+  PT AO + torch shadows). NOT DONE: Skip the Shadow Maps (agent resumed: forward readers first), Fog Shadows (analytic),
+  CDCF1ADD, raycast 021D7515 below 100%, AO / SSR reader census (needs ATN's start with SSAO + SSR off).
+- [x] WH1 Skip the Shadow Maps NOT DONE (merged README 49eff1b7: 7 forward readers, 2 outside the shared forward patch,
+  WARP control failed; attempt kept in tools/tw/wh1/skip_maps_attempt.diff); agent resumed (opt-in patch parameter,
+  cascade constants, then RR guides, sprites, thin sheets, Bend foliage, cut-outs, particles, water).
+- [x] Nsight DONE (tools/tw/nsight, README; memory reference_nsight_gpu_trace): helper110 8.4 ms at base clock, ReSTIR
+  reuse 2.55 (L2 bandwidth), trace 1.48 (RT core), reflections 1.27, PT 1.16 (registers). No capture / shader swap: the
+  helper has no frame boundary; NGFX_FrameBoundary_D3D12 (Apache-2.0 header, no-op without Nsight) = ATN DECIDES. The
+  45 GB process at 03:2x was the Nsight run (commit grows ~8 MB a frame under injection); the ReSTIR agent overwrote its
+  lock twice (told: atomic create + re-check). Reuse optimisation handed to the ReSTIR agent after U1 / U2.
+- [x] Thrones round 2 MERGED 3da5efd9 (campaign census, Particle Resolution + edges + smooth half-size, Experimental);
+  agent resumed: Light Through All Banners, Grass Height Distance, Faster Game CPU Code if provable.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
