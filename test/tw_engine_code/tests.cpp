@@ -27,6 +27,9 @@
 //    random ones, then with every scratch slot taken: the array, ebx esi edi ebp and esp equal; 20000 random lists
 //    through the merge-then-sort function (+0x17b91f0) in both copies: every byte, eax ebx esi edi ebp esp equal; 12
 //    threads through the stub at once; on and off 200 times while 4 threads merge and sort; timing.
+// 10. The instance gather's prefetch (+0x182c990, Faster Game CPU Code): 20000 random draws (ranges, strides, the items'
+//    pointers ending where a page without access starts) in both copies: every register, esp and destination byte
+//    equal; on and off 200 times while 4 threads gather; timing with cold sources.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots.
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -98,13 +101,14 @@ struct TestBuild {
   uint32_t list_push_function_rva;  // 0: none in this build
   uint32_t sort_rva;                // std::sort<uint32_t>; 0: its render list caller isn't in this build
   uint32_t sort_caller_rva;
+  uint32_t gather_rva;  // the instance gather; 0: none in this build
 };
 constexpr TestBuild ATTILA = {"Attila", &twattila::engine_code::internal::ATTILA_BUILD, 0x169a220, 0x17f6515, 0x17f6539, 0x1a05cc0,
-                              0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28, 0x176ced0, 0xda6b0, 0x17b91f0};
+                              0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28, 0x176ced0, 0xda6b0, 0x17b91f0, 0x182c990};
 constexpr TestBuild THRONES = {"Thrones of Britannia", &twattila::engine_code::internal::THRONES_BUILD, 0x1707eb0, 0x186aa48, 0x186aa6c,
-                               0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18, 0x17defc0, 0x220850, 0x182cf80};
+                               0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18, 0x17defc0, 0x220850, 0x182cf80, 0x18a13e0};
 constexpr TestBuild ROME2 = {"Rome II", &twattila::engine_code::internal::ROME2_BUILD, 0x1368030, 0x14b434a, 0x14b436e, 0x169ca30,
-                             0x19ebd74, 0x21263cc, 0x2126394, 0x1c, 0x20, 0, 0, 0};
+                             0x19ebd74, 0x21263cc, 0x2126394, 0x1c, 0x20, 0, 0, 0, 0};
 
 uint32_t Read32(const uint8_t* at) {
   uint32_t value;
@@ -548,6 +552,7 @@ int main(int argc, char** argv) {
     CHECK(Matches(game + text_rva, text_size, ec::SORT) == 1);
     CHECK(Matches(game + text_rva, text_size, ec::SORT_CALLER) == 7);  // seven kinds of list, each its own sort
   }
+  CHECK(Matches(game + text_rva, text_size, ec::GATHER) == (build.gather_rva != 0 ? 1u : 0u));
   // B's own code as mapped (A's differs in every relocated address).
   const std::vector<uint8_t> unpatched(patched + text_rva, patched + text_rva + text_size);
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
@@ -556,9 +561,11 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[2].at == patched + build.fmod_rva);
   CHECK(ec::sites[3].at == (build.list_push_function_rva != 0 ? patched + build.code->list_push_rva + ec::LIST_PUSH_SITE : nullptr));
   CHECK(ec::sites[4].at == (build.sort_rva != 0 ? patched + build.sort_caller_rva + ec::SORT_CALLER_SITE : nullptr));
+  CHECK(ec::sites[5].at == (build.gather_rva != 0 ? patched + build.gather_rva + ec::GATHER_SITE : nullptr));
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
-  const uint32_t expected_sites = 0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.sort_rva != 0 ? 0b10000u : 0u);
+  const uint32_t expected_sites = 0b000111u | (build.list_push_function_rva != 0 ? 0b001000u : 0u) | (build.sort_rva != 0 ? 0b010000u : 0u)
+                                  | (build.gather_rva != 0 ? 0b100000u : 0u);
   CHECK(ec::written == ec::found && ec::found == expected_sites);
   if (build.sort_rva != 0) CHECK(patched[build.sort_caller_rva + ec::SORT_CALLER_SITE] == 0xE8);  // still a call
   size_t differing = 0;
@@ -1288,6 +1295,138 @@ int main(int argc, char** argv) {
     std::printf("9. render list sort: none in this build\n");
   }
 
+  // 10. The instance gather's prefetch.
+  if (build.gather_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
+    CHECK((ec::written & 0b100000u) != 0);
+    const uint32_t game_gather = Address(game + build.gather_rva);
+    const uint32_t patched_gather = Address(patched + build.gather_rva);
+    // The items' pointers end where a page without access starts: a read past the loop's end would fault.
+    constexpr uint32_t MAX_ITEMS = 4096;
+    auto* item_pages = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x5000, MEM_RESERVE, PAGE_NOACCESS));
+    CHECK(item_pages != nullptr && VirtualAlloc(item_pages, 0x4000, MEM_COMMIT, PAGE_READWRITE) != nullptr);
+    auto* items_end = reinterpret_cast<uint32_t*>(item_pages + 0x4000);
+    std::vector<uint8_t> sources(1 << 20);
+    Random random = {.state = 0x6A7};
+    for (uint8_t& byte : sources) byte = static_cast<uint8_t>(random.Next());
+    // The gather's object: first index +0x18, end +0x1c, +0x24 a pointer to its draw's description: stride +0x44,
+    // destination +0x48, the items' pointers +0x84.
+    struct Gather {
+      std::array<uint8_t, 0x40> self = {};
+      std::array<uint8_t, 0x100> desc = {};
+      uint32_t desc_pointer = 0;
+      std::vector<uint8_t> destination;
+      void Set(uint32_t first, uint32_t end, uint32_t stride, const uint32_t* items, const std::vector<uint8_t>& initial) {
+        destination = initial;
+        Write32(desc.data() + 0x44, stride);
+        Write32(desc.data() + 0x48, Address(destination.data()));
+        Write32(desc.data() + 0x84, Address(items));
+        desc_pointer = Address(desc.data());
+        Write32(self.data() + 0x18, first);
+        Write32(self.data() + 0x1c, end);
+        Write32(self.data() + 0x24, Address(&desc_pointer));
+      }
+    };
+    auto a_world = std::make_unique<Gather>();
+    auto b_world = std::make_unique<Gather>();
+    for (int run = 0; run < 20000; ++run) {
+      const uint32_t end = random.Next() % (MAX_ITEMS + 1);
+      const uint32_t first = (end == 0 ? 0 : random.Next() % (end + 1));
+      const uint32_t stride = random.Next() % 260;
+      uint32_t* items = items_end - end;
+      for (uint32_t index = 0; index < end; ++index) items[index] = Address(sources.data() + random.Next() % (sources.size() - 260));
+      std::vector<uint8_t> initial(static_cast<size_t>(end) * stride + 64);
+      for (uint8_t& byte : initial) byte = static_cast<uint8_t>(random.Next());
+      a_world->Set(first, end, stride, items, initial);
+      b_world->Set(first, end, stride, items, initial);
+      RegisterCall a = {.function = game_gather};
+      for (uint32_t& in : a.in) in = random.Next();
+      a.in[1] = Address(a_world->self.data());  // ecx: this
+      RegisterCall b = a;
+      b.function = patched_gather;
+      b.in[1] = Address(b_world->self.data());
+      CallWithRegisters(&a);
+      CallWithRegisters(&b);
+      // ecx: memcpy's, or `this` when the loop doesn't run (each copy's own object).
+      const bool same_ecx = a.out[1] == b.out[1] || (a.out[1] == a.in[1] && b.out[1] == b.in[1]);
+      if (a.out[0] != b.out[0] || !same_ecx || std::memcmp(a.out + 2, b.out + 2, 20) != 0 || a.esp_after != a.esp_before
+          || b.esp_after != b.esp_before || a_world->destination != b_world->destination) {
+        std::printf("  gather run %d (%u..%u, stride %u): eax %08X / %08X\n", run, first, end, stride, a.out[0], b.out[0]);
+        CHECK(false);
+      }
+    }
+    std::printf("10. instance gather: 20000 random draws (0 to 4096 items, strides 0 to 259, the items' pointers ending at a "
+                "page without access): every register, esp and destination byte equal\n");
+
+    // On and off 200 times while 4 threads run the patched gather.
+    {
+      using GatherCall = uint32_t(__thiscall*)(void*);
+      const auto gather = reinterpret_cast<GatherCall>(patched_gather);
+      std::atomic<bool> stop = false;
+      std::atomic<uint64_t> wrong = 0;
+      std::atomic<uint64_t> draws = 0;
+      std::vector<std::thread> threads;
+      for (int worker = 0; worker < 4; ++worker) {
+        threads.emplace_back([&, worker] {
+          Random local = {.state = 0x900ull + static_cast<uint64_t>(worker)};
+          std::vector<uint32_t> items(2000);
+          for (uint32_t& item : items) item = Address(sources.data() + local.Next() % (sources.size() - 260));
+          auto world = std::make_unique<Gather>();
+          std::vector<uint8_t> expected(items.size() * 96 + 64, 0);
+          for (size_t index = 0; index < items.size(); ++index) {
+            std::memcpy(expected.data() + index * 96, reinterpret_cast<const void*>(static_cast<uintptr_t>(items[index])), 96);
+          }
+          while (!stop.load(std::memory_order_relaxed)) {
+            world->Set(0, static_cast<uint32_t>(items.size()), 96, items.data(), std::vector<uint8_t>(expected.size(), 0));
+            if (gather(world->self.data()) != 0 || world->destination != expected) wrong.fetch_add(1);
+            draws.fetch_add(1);
+          }
+        });
+      }
+      constexpr int SWITCHES = 200;
+      int toggles = 0;
+      for (int round = 0; round < SWITCHES; ++round) {
+        const bool on = (round % 2) != 0;  // on at the start: off first
+        int tries = 0;
+        do {
+          twattila::engine_code::Update(on);
+          ++tries;
+        } while (((ec::written & 0b100000u) != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
+        toggles += (((ec::written & 0b100000u) != 0) == on) ? 1 : 0;
+      }
+      stop = true;
+      for (auto& thread : threads) thread.join();
+      CHECK(wrong == 0);
+      CHECK(toggles == SWITCHES);
+      std::printf("   %d switches while 4 threads gathered %llu draws: every destination the game's\n", SWITCHES, draws.load());
+    }
+
+    // Timing: 30000 items of 128 bytes on random slots of 64 MB, 64 MB written between runs (cold).
+    {
+      twattila::engine_code::Update(true);
+      std::vector<uint8_t> arena(64u << 20);
+      std::vector<uint8_t> garbage(64u << 20);
+      std::vector<uint32_t> items(30000);
+      for (uint32_t& item : items) item = Address(arena.data() + (random.Next() % ((64u << 20) / 256)) * 256);
+      auto world = std::make_unique<Gather>();
+      const auto time = [&](uint32_t function) {
+        std::vector<double> runs;
+        for (int run = 0; run < 9; ++run) {
+          world->Set(0, static_cast<uint32_t>(items.size()), 128, items.data(), std::vector<uint8_t>(items.size() * 128 + 64));
+          for (size_t at = 0; at < garbage.size(); at += 64) garbage[at] += 1;
+          const auto begin = std::chrono::steady_clock::now();
+          reinterpret_cast<uint32_t(__thiscall*)(void*)>(function)(world->self.data());
+          runs.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count());
+        }
+        std::sort(runs.begin(), runs.end());
+        return runs[4];
+      };
+      std::printf("   30000 items of 128 bytes, cold: ms a gather, game %.3f / ours %.3f\n", time(game_gather), time(patched_gather));
+    }
+  } else {
+    std::printf("10. instance gather: none in this build\n");
+  }
+
   // Off: the game's bytes back (the harness's jumps removed first).
   std::memcpy(game + build.truncation_resume_rva, file.data() + (build.truncation_resume_rva - text_rva + text_header->PointerToRawData), 5);
   std::memcpy(patched + build.truncation_resume_rva, unpatched.data() + (build.truncation_resume_rva - text_rva), 5);
@@ -1309,6 +1448,7 @@ int main(int argc, char** argv) {
   CHECK(ec::sites[0].at == nullptr && ec::sites[1].at != nullptr && ec::sites[2].at != nullptr);
   CHECK((ec::sites[3].at != nullptr) == (build.list_push_function_rva != 0));
   CHECK((ec::sites[4].at != nullptr) == (build.sort_rva != 0));
+  CHECK((ec::sites[5].at != nullptr) == (build.gather_rva != 0));
   CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("soldier draw rounding") != std::string::npos);
   std::printf("7. a block another mod changed: left alone, the other two found\nPASS\n");
   return 0;
