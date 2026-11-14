@@ -28,11 +28,11 @@
 // the first one below among them) or another build is left alone. A jump into the addon's own code page replaces the
 // first instruction(s) of each; the page is never freed (a thread can still be in it after the game's bytes are back).
 // RVAs are the Steam build's (1.6.0): there they are tried first, then the code section is searched.
-// Thrones of Britannia (Game::THRONES): the same three routines, its build's (internal::THRONES_BUILD).
+// Thrones of Britannia and Rome II (Game::THRONES, Game::ROME2): the same three routines, their builds' (internal::BUILDS).
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
-enum class Game : uint8_t { ATTILA, THRONES };
+enum class Game : uint8_t { ATTILA, THRONES, ROME2 };
 
 #if !defined(_WIN64)
 namespace internal {
@@ -49,19 +49,25 @@ constexpr std::string_view TRUNCATION =
     "D9 6C 24 1C DB 5C 24 2C D9 6C 24 18 58 0F B7 44 24 28 66 0F 6E C0 0F 5B C0 F3 0F 11 84 24";
 constexpr size_t TRUNCATION_SITE = 14;    // push eax; fld dword ptr [esp + 0x20]
 constexpr size_t TRUNCATION_RESUME = 50;  // after pop eax
-constexpr std::array<uint8_t, 44> TRUNCATION_STUB = {
-    0x50,                                      // push eax
-    0x0F, 0xB7, 0x44, 0x24, 0x1A,              // movzx eax, word ptr [esp + 0x1a]  the slot's high half (fstcw leaves it)
-    0x9B, 0xD9, 0x7C, 0x24, 0x18,              // fstcw word ptr [esp + 0x18]
-    0xC1, 0xE0, 0x10,                          // shl eax, 0x10
-    0x66, 0x8B, 0x44, 0x24, 0x18,              // mov ax, word ptr [esp + 0x18]
-    0x0D, 0x00, 0x0C, 0x00, 0x00,              // or eax, 0xc00
-    0x89, 0x44, 0x24, 0x1C,                    // mov dword ptr [esp + 0x1c], eax
-    0xF3, 0x0F, 0x2C, 0x44, 0x24, 0x20,        // cvttss2si eax, dword ptr [esp + 0x20]
-    0x89, 0x44, 0x24, 0x2C,                    // mov dword ptr [esp + 0x2c], eax
-    0x58,                                      // pop eax
-    0xE9, 0x00, 0x00, 0x00, 0x00,              // jmp back (after the game's pop eax)
-};
+// The stub for a build's stack slots after its push eax (each game's soldier draw keeps them elsewhere): the control
+// word, it | 0xc00, the float, the integer.
+constexpr std::array<uint8_t, 44> TruncationStub(uint8_t control, uint8_t rounding, uint8_t value, uint8_t integer) {
+  return {
+      0x50,                                                        // push eax
+      0x0F, 0xB7, 0x44, 0x24, static_cast<uint8_t>(control + 2),   // movzx eax, word ptr [esp + control + 2]  the slot's high
+                                                                   //   half (fstcw leaves it)
+      0x9B, 0xD9, 0x7C, 0x24, control,                             // fstcw word ptr [esp + control]
+      0xC1, 0xE0, 0x10,                                            // shl eax, 0x10
+      0x66, 0x8B, 0x44, 0x24, control,                             // mov ax, word ptr [esp + control]
+      0x0D, 0x00, 0x0C, 0x00, 0x00,                                // or eax, 0xc00
+      0x89, 0x44, 0x24, rounding,                                  // mov dword ptr [esp + rounding], eax
+      0xF3, 0x0F, 0x2C, 0x44, 0x24, value,                         // cvttss2si eax, dword ptr [esp + value]
+      0x89, 0x44, 0x24, integer,                                   // mov dword ptr [esp + integer], eax
+      0x58,                                                        // pop eax
+      0xE9, 0x00, 0x00, 0x00, 0x00,                                // jmp back (after the game's pop eax)
+  };
+}
+constexpr std::array<uint8_t, 44> TRUNCATION_STUB = TruncationStub(0x18, 0x1C, 0x20, 0x2C);
 
 // 2. float to half (+0x169a220, 98 callers; the sprite soldiers' instance rows, 20 a row: ~4.3 ms a frame): uint16_t
 // __cdecl(const float*) in software, its own rounding (half way down, NaN to infinity), and it leaves the pointer's
@@ -211,20 +217,16 @@ constexpr uint32_t THRONES_TRUNCATION_RVA = 0x186aa3a;
 constexpr std::string_view THRONES_TRUNCATION =
     "8B 84 24 7C 01 00 00 89 84 24 84 00 00 00 50 D9 44 24 24 9B D9 7C 24 20 8B 44 24 20 0D 00 0C 00 00 89 44 24 28 "
     "D9 6C 24 28 DB 5C 24 1C D9 6C 24 20 58 0F B7 44 24 18 66 0F 6E C0 0F 5B C0 F3 0F 11 84 24";
-constexpr std::array<uint8_t, 44> THRONES_TRUNCATION_STUB = {
-    0x50,                                      // push eax
-    0x0F, 0xB7, 0x44, 0x24, 0x22,              // movzx eax, word ptr [esp + 0x22]  the slot's high half (fstcw leaves it)
-    0x9B, 0xD9, 0x7C, 0x24, 0x20,              // fstcw word ptr [esp + 0x20]
-    0xC1, 0xE0, 0x10,                          // shl eax, 0x10
-    0x66, 0x8B, 0x44, 0x24, 0x20,              // mov ax, word ptr [esp + 0x20]
-    0x0D, 0x00, 0x0C, 0x00, 0x00,              // or eax, 0xc00
-    0x89, 0x44, 0x24, 0x28,                    // mov dword ptr [esp + 0x28], eax
-    0xF3, 0x0F, 0x2C, 0x44, 0x24, 0x24,        // cvttss2si eax, dword ptr [esp + 0x24]
-    0x89, 0x44, 0x24, 0x1C,                    // mov dword ptr [esp + 0x1c], eax
-    0x58,                                      // pop eax
-    0xE9, 0x00, 0x00, 0x00, 0x00,              // jmp back (after the game's pop eax)
-};
+constexpr std::array<uint8_t, 44> THRONES_TRUNCATION_STUB = TruncationStub(0x20, 0x28, 0x24, 0x1C);
 constexpr std::string_view THRONES_FMOD_MATHERR = "A1 ?? ?? ?? ?? 8B C8 33 05 ?? ?? ?? ?? 83 E1 1F D3 C8 85 C0 0F 95 C0 C3";
+
+// Rome II's build (empire.retail.dll 6AB978BD; test/tw_engine_code with its DLL): float to half and fmod the same bytes at
+// other RVAs, its _matherr check as Thrones'; the soldier draw's truncation at other stack slots (control word 0x18,
+// float 0x20, its control word | 0xc00 0x28, integer 0x24 after the push).
+constexpr std::string_view ROME2_TRUNCATION =
+    "8B 84 24 38 02 00 00 89 84 24 84 00 00 00 50 D9 44 24 20 9B D9 7C 24 18 8B 44 24 18 0D 00 0C 00 00 89 44 24 28 "
+    "D9 6C 24 28 DB 5C 24 24 D9 6C 24 18 58 0F B7 44 24 20 66 0F 6E C0 0F 5B C0 F3 0F 11 84 24";
+constexpr std::array<uint8_t, 44> ROME2_TRUNCATION_STUB = TruncationStub(0x18, 0x28, 0x20, 0x24);
 
 // What differs between the games' builds.
 struct Build {
@@ -237,6 +239,8 @@ struct Build {
 };
 constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR};
 constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR};
+constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR};
+constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
 // Where each stub sits in the page.
 constexpr size_t TRUNCATION_PAGE = 0x000;
@@ -428,7 +432,7 @@ inline void Update(bool enabled, Game game = Game::ATTILA) {
   if (enabled && !internal::prepared) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
-    internal::Prepare(module, game == Game::THRONES ? internal::THRONES_BUILD : internal::ATTILA_BUILD);
+    internal::Prepare(module, internal::BUILDS[static_cast<size_t>(game)]);
   }
   if (enabled != internal::asked) {
     internal::asked = enabled;
