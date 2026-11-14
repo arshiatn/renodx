@@ -739,8 +739,15 @@ struct Runtime {
     std::future<dlaa_bridge::ClusterSetData> making;  // its set on a worker (PrepareClusterSet)
     ComPtr<ID3D11Buffer> corners;  // its first instance's captured corners, copied at a full capture (the set's order)
     bool unsorted = false;         // its set made without them
+    // Its range of `indices` in bytes, and the frame the game wrote into that range after it was copied (OnIndexWrite; 0:
+    // never): its triangles captured until its set is made again from the new indices.
+    uint64_t first_byte = 0;
+    uint64_t end_byte = 0;
+    uint64_t rewritten_frame = 0;
   };
   std::unordered_map<uint64_t, ClusterMesh> cluster_meshes;
+  // The cluster meshes' keys by the game's index buffer they hold (its pointer): OnIndexWrite's lookup.
+  std::unordered_map<uint64_t, std::vector<uint64_t>> index_buffer_sets;
   // This frame's compact draws (consecutive ones of a mesh joined), the sets its trace sends and their bytes, its
   // dynamic triangles and clusters (captures' and compact draws': the helper's RT_DYNAMIC_*), the sets made.
   std::vector<dlaa_bridge::RtCompactDraw> compact;
@@ -899,6 +906,8 @@ static bool world_captures = false;  // and some are placed (or SceneShader::cas
 static float leaf_cutoff = 0.f;  // the scene shaders' SceneShader::alpha_cutoff (0: none has one)
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
+// A cluster mesh holds one of the game's index buffers (runtime.index_buffer_sets not empty): else OnIndexWrite returns.
+static std::atomic_bool index_buffers_held = false;
 
 inline float RangeScale() {
   return (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? host.campaign_metre : 1.f);
@@ -1187,6 +1196,16 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
                               UINT first_index, UINT index_count) {
   auto& mesh = runtime.cluster_meshes[set_key];
   mesh.used_frame = runtime.frame;
+  if (mesh.rewritten_frame != 0) {
+    // The game wrote into its range after its indices were copied: a new set from the new indices, a frame after the write
+    // (a deferred context's write lands when its list runs; this frame's trace still sends the old set its earlier draws
+    // used) and once the last making is done. Sent again under its key, the helper's old set gives way.
+    if (runtime.frame < mesh.rewritten_frame + 2
+        || (mesh.making.valid() && mesh.making.wait_for(std::chrono::seconds(0)) != std::future_status::ready)) {
+      return;
+    }
+    mesh = {.used_frame = runtime.frame};
+  }
   if (mesh.failed || mesh.remap) return;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
@@ -1212,11 +1231,19 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
     const uint64_t first = uint64_t{offset} + (uint64_t{first_index} * index_bytes);
     const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = index_count * index_bytes, .Usage = D3D11_USAGE_STAGING,
                                             .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    // An index buffer the GPU may write (stream output, UAVs) can change with no write seen: no set.
     mesh.failed = (format != DXGI_FORMAT_R16_UINT && format != DXGI_FORMAT_R32_UINT) || desc.Usage == D3D11_USAGE_DYNAMIC
+                  || (desc.BindFlags & (D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_UNORDERED_ACCESS)) != 0
                   || first + staging_desc.ByteWidth > desc.ByteWidth
                   || FAILED(device->CreateBuffer(&staging_desc, nullptr, mesh.staging.GetAddressOf()));
     if (mesh.failed) return;
     mesh.indices = index_buffer;
+    mesh.first_byte = first;
+    mesh.end_byte = first + staging_desc.ByteWidth;
+    if (auto& keys = runtime.index_buffer_sets[reinterpret_cast<uint64_t>(index_buffer)]; std::ranges::find(keys, set_key) == keys.end()) {
+      keys.push_back(set_key);
+    }
+    index_buffers_held.store(true, std::memory_order_relaxed);
     const D3D11_BOX range = {.left = static_cast<UINT>(first), .top = 0, .front = 0, .right = static_cast<UINT>(first) + staging_desc.ByteWidth,
                              .bottom = 1, .back = 1};
     native->CopySubresourceRegion(mesh.staging.Get(), 0, 0, 0, 0, index_buffer, 0, &range);
@@ -1598,7 +1625,7 @@ void Capture(Context& command, const SceneShader& shader) {
       if (!added && entry->second.key != key) entry->second.ambiguous = true;
     }
     if (const auto mesh = (compactable ? runtime.cluster_meshes.find(set_key) : runtime.cluster_meshes.end());
-        mesh != runtime.cluster_meshes.end() && mesh->second.remap) {
+        mesh != runtime.cluster_meshes.end() && mesh->second.remap && mesh->second.rewritten_frame == 0) {
       mesh->second.used_frame = runtime.frame;
       blocks = mesh->second.sent || std::ranges::find(runtime.new_sets, set_key) != runtime.new_sets.end()
                || (runtime.new_sets.size() < dlaa_bridge::RT_NEW_SETS
@@ -3162,6 +3189,52 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
   }
 }
 
+// The game wrote bytes `offset` to `offset + size` of `dest` (UpdateSubresource or a copy, on any context). A cluster set is
+// keyed by its index buffer and range, which stay when the game writes other indices into them: kept, the set laid the old
+// triangles over the new vertices, stretched triangles across the scene (traces of 100 ms and more, as suspect 2's wrong
+// vertices; Rome Remastered's battle resets, suspect 3). Each set whose range the write touches is made again
+// (PrepareClusterSet), its triangles captured meanwhile.
+inline void OnIndexWrite(reshade::api::resource dest, uint64_t offset, uint64_t size) {
+  if (!index_buffers_held.load(std::memory_order_relaxed) || dest.handle == 0) return;
+  auto* resource = reinterpret_cast<ID3D11Resource*>(dest.handle);
+  D3D11_RESOURCE_DIMENSION dimension = D3D11_RESOURCE_DIMENSION_UNKNOWN;
+  resource->GetType(&dimension);
+  if (dimension != D3D11_RESOURCE_DIMENSION_BUFFER) return;
+  D3D11_BUFFER_DESC desc = {};
+  static_cast<ID3D11Buffer*>(resource)->GetDesc(&desc);
+  if ((desc.BindFlags & D3D11_BIND_INDEX_BUFFER) == 0) return;
+  const uint64_t end_byte = (size > UINT64_MAX - offset) ? UINT64_MAX : offset + size;
+  const std::unique_lock lock(runtime.mutex);
+  const auto keys = runtime.index_buffer_sets.find(dest.handle);
+  if (keys == runtime.index_buffer_sets.end()) return;
+  for (const uint64_t set_key : keys->second) {
+    if (const auto mesh = runtime.cluster_meshes.find(set_key);
+        mesh != runtime.cluster_meshes.end() && mesh->second.indices.Get() == resource && mesh->second.first_byte < end_byte && offset < mesh->second.end_byte) {
+      mesh->second.rewritten_frame = std::max<uint64_t>(runtime.frame, 1);
+    }
+  }
+}
+
+inline bool OnUpdateIndices(reshade::api::device*, const void*, reshade::api::resource dest, uint64_t offset, uint64_t size) {
+  OnIndexWrite(dest, offset, size);
+  return false;
+}
+
+inline bool OnUpdateIndicesCommand(reshade::api::command_list*, const void*, reshade::api::resource dest, uint64_t offset, uint64_t size) {
+  OnIndexWrite(dest, offset, size);
+  return false;
+}
+
+inline bool OnCopyIndices(reshade::api::command_list*, reshade::api::resource, uint64_t, reshade::api::resource dest, uint64_t offset, uint64_t size) {
+  OnIndexWrite(dest, offset, size);
+  return false;
+}
+
+inline bool OnCopyIndexBuffer(reshade::api::command_list*, reshade::api::resource, reshade::api::resource dest) {
+  OnIndexWrite(dest, 0, UINT64_MAX);
+  return false;
+}
+
 }  // namespace internal
 
 // The reflections and specular occlusion (the reflection texture: reflected light, the share of samples that met a
@@ -3703,6 +3776,11 @@ inline void Update(const Settings& settings) {
     runtime.new_static_time = now;
     // Meshes not drawn for RELEASE_FRAMES give their sets (and the game's index buffers) back.
     std::erase_if(runtime.cluster_meshes, [&](const auto& entry) { return entry.second.used_frame + internal::RELEASE_FRAMES < runtime.frame; });
+    runtime.index_buffer_sets.clear();
+    for (const auto& [set_key, mesh] : runtime.cluster_meshes) {
+      if (mesh.indices) runtime.index_buffer_sets[reinterpret_cast<uint64_t>(mesh.indices.Get())].push_back(set_key);
+    }
+    internal::index_buffers_held.store(!runtime.index_buffer_sets.empty(), std::memory_order_relaxed);
     // Mask textures not used for as long give their atlas slices (and the textures themselves) back.
     std::erase_if(runtime.atlas_slices, [&](const auto& entry) {
       const uint32_t slice = entry.second.second;
@@ -3957,6 +4035,10 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   internal::leaf_cutoff = shaders.empty() ? 0.f : std::ranges::max(shaders, {}, &SceneShader::alpha_cutoff).alpha_cutoff;
   if (internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   if (host.scene_draw != nullptr) reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
+  reshade::register_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateIndices);
+  reshade::register_event<reshade::addon_event::update_buffer_region_command>(internal::OnUpdateIndicesCommand);
+  reshade::register_event<reshade::addon_event::copy_buffer_region>(internal::OnCopyIndices);
+  reshade::register_event<reshade::addon_event::copy_resource>(internal::OnCopyIndexBuffer);
   for (const SceneShader& shader : shaders) {
     renodx::utils::command_action::Register(
         OnSceneDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW | (shader.indirect ? renodx::utils::command_action::COMMAND_TYPE_INDIRECT : 0u)}, &shader);
@@ -3973,6 +4055,10 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
 inline void UninstallScene() {
   if (internal::clip_captures) reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   if (internal::host.scene_draw != nullptr) reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
+  reshade::unregister_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateIndices);
+  reshade::unregister_event<reshade::addon_event::update_buffer_region_command>(internal::OnUpdateIndicesCommand);
+  reshade::unregister_event<reshade::addon_event::copy_buffer_region>(internal::OnCopyIndices);
+  reshade::unregister_event<reshade::addon_event::copy_resource>(internal::OnCopyIndexBuffer);
   renodx::utils::command_action::Unregister(OnSceneDraw);
   renodx::utils::command_action::fast::ClearGate(OnAnyDraw);
   renodx::utils::command_action::Unregister(OnAnyDraw);
@@ -3996,6 +4082,8 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   internal::runtime.known.clear();
   internal::runtime.short_keys.clear();
   internal::runtime.cluster_meshes.clear();
+  internal::runtime.index_buffer_sets.clear();
+  internal::index_buffers_held.store(false, std::memory_order_relaxed);
 }
 
 }  // namespace twattila::rt_scene
