@@ -568,8 +568,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   test/tw_rome2_shaders; Light Through All Banners (Experimental; material 29 = the 4 army_banner_flag models; the traces draw
   banners only as 3D UI); SSR rays / denoiser + Grass Height WON'T with proof; DrawScrub skip needs a Rome II hook + trace).
   Rome II agent DONE.
-- [ ] Merged-HEAD build check started (both lines) after the many shared opt-ins (rt_core held_row / depth_at_render_size /
-  behaviours_at_cb3, particle_layer options, GS variants).
+- [x] Merged-HEAD build check at ef212467: both lines exit 0 (every TW add-on, x64 + build32) after the many shared opt-ins
+  (rt_core held_row / depth_at_render_size / behaviours_at_cb3, particle_layer options, GS variants). Suites + harness +
+  page dumps follow at the final verification.
 - [x] Rome Remastered so far MERGED a4d6e0a6 (crash fix f6a7cfc4, reset safe side a8afd660, DLSS below 100 % 867187d4, Attila's
   page + Reset / No RT/PT / RT/PT 09a083f0 with opt-in graphics_page has_gtvbao / has_gi / every_row: Attila / WH3 / Thrones /
   WH2 / Troy / WH1 page dumps unchanged; dump target 'rr'). Not installed. Agent on: parity table + DO NOW, B (input bug), C
