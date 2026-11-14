@@ -62,6 +62,12 @@ constexpr std::array<twattila::light_bounce::SunDraw, 4> SUN_DRAWS = {{
      .environment_slot = 1},
 }};
 constexpr UINT CAMPAIGN_LIGHTING_SLOT = 3;
+// The scene's families by their G-buffer vertex shaders (shader_names.txt; the 2026-11-14 data run's battle drew 11
+// cloth and 90 grass G-buffer draws): cloth (sails, banners) thin sheets (RT_THIN), rigidgrass / rigidgrasswet the
+// grass (RT_GRASS, the grass's share of the alpha-tested corners). Imposters (03FB2979: 68 draws) and tree billboards
+// (FAAE535B, 4B0E8CE6: 98) stay as drawn: they face the camera, their sun-facing capture versions are not made.
+constexpr uint32_t CLOTH_VERTEX_SHADER = 0xBDFF60D4;
+constexpr uint32_t GRASS_VERTEX_SHADER = 0xB7A0270E;
 // The point light draws (pointlight00 / 01: point_light_PS at b2, its light's position c0, colour c1.xyz, reach c1.w).
 constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0x5CBF4FB6, 0x57139F8D};
 // The battle fog's light (fog01, battlefog ps40_main_inscattering: the sun's part through rt_fog.hlsli's RtFogSun).
@@ -169,6 +175,8 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
     return false;
   }
   shader->dynamic = twattila::rt_scene::SkinnedVertexShader(shader->hash);
+  shader->thin = shader->hash == CLOTH_VERTEX_SHADER;
+  shader->grass = shader->hash == GRASS_VERTEX_SHADER;
   return true;
 }
 
