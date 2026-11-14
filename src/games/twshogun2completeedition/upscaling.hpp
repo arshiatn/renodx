@@ -48,6 +48,7 @@ struct BridgeUse {
   uint32_t ray_reconstruction = 0;
   DXGI_FORMAT frame_format = DXGI_FORMAT_UNKNOWN;
   uint32_t frame_backend = twattila::dlaa_bridge::FG_BACKEND_DLSS;
+  uint32_t debug_view = 0;  // the Upscaling Debug View: 1 the motion the upscaler gets
 };
 
 namespace internal {
@@ -58,7 +59,8 @@ struct ShaderSettings {
   std::array<float, 2> motion_scale = {1.f, 1.f};
   float unused = 0.f;
   std::array<uint32_t, 2> render_size = {};
-  std::array<uint32_t, 2> unused_size = {};
+  uint32_t debug_view = 0;
+  uint32_t unused_view = 0;
 };
 
 // A game texture's view, made again when the texture changes.
@@ -261,6 +263,7 @@ inline bool Evaluate(const hdr_link::UpscaleRequest& request, bool guides_writte
       .square_root = square_root ? 1.f : 0.f,
       .motion_scale = {request.motion_scale_x, request.motion_scale_y},
       .render_size = {request.render_width, request.render_height},
+      .debug_view = use.debug_view,
   };
   twattila::dlaa_bridge::BeforeSharedWrites(native);
   bool evaluated = false;
@@ -283,10 +286,11 @@ inline bool Evaluate(const hdr_link::UpscaleRequest& request, bool guides_writte
                                                    request.reset, request.preset, reconstruct ? &reconstruction : nullptr,
                                                    nvidia_model ? nullptr : &state.view_to_clip);
     if (evaluated) {
-      ID3D11ShaderResourceView* result = bridge.output.srv.Get();
+      // The Debug View's motion and the dimmed scene: the upscaler's inputs.
+      const std::array<ID3D11ShaderResourceView*, 3> results = {bridge.output.srv.Get(), bridge.motion.srv.Get(), bridge.color.srv.Get()};
       ID3D11UnorderedAccessView* target = state.target.view.Get();
       native->CSSetShader(state.output.Get(), nullptr, 0);
-      native->CSSetShaderResources(0, 1, &result);
+      native->CSSetShaderResources(0, static_cast<UINT>(results.size()), results.data());
       native->CSSetUnorderedAccessViews(0, 1, &target, nullptr);
       native->CSSetConstantBuffers(0, 1, state.settings.GetAddressOf());
       native->Dispatch((output_desc.Width + 7) / 8, (output_desc.Height + 7) / 8, 1);

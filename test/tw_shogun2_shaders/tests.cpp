@@ -10,6 +10,7 @@
 //    scale (-1, 1)) into the bridge's formats one texel larger each way: the colour (its square root and not), the depth
 //    as stored, the motion x the scale, nothing past the render size. CONTROLS: motion scale (1, 1) and the square root
 //    off must differ.
+// 3. upscale_output and its Upscaling Debug View (TestOutput).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -313,6 +314,92 @@ static void TestInputs(const std::string& games, const std::string& capture) {
               height, negative, moving, sky / rows, ground / rows);
 }
 
+// twattila/motion.hlsli's MotionColour.
+static std::array<float, 3> MotionColour(float x, float y) {
+  const float hue = (std::atan2(y, x) * (0.5f / 3.14159265f)) + 0.5f;
+  const float brightness = std::clamp(std::log2(1.f + std::sqrt((x * x) + (y * y))) / 5.f, 0.f, 1.f);
+  std::array<float, 3> rgb = {};
+  const std::array<float, 3> offsets = {0.f, 2.f / 3.f, 1.f / 3.f};
+  for (size_t channel = 0; channel < 3; ++channel) {
+    const float shifted = hue + offsets[channel];
+    rgb[channel] = std::clamp((std::fabs(((shifted - std::floor(shifted)) * 6.f) - 3.f)) - 1.f, 0.f, 1.f) * brightness;
+  }
+  return rgb;
+}
+
+// 3. upscale_output from a 1280x720 render to 1920x1080 (synthetic: the result 0.5 everywhere as a square root, the
+//    motion -20..20 pixels by position, the colour input a ramp): view 0 squares the result; the Upscaling Debug View
+//    (1) shows MotionColour of the stretched render texel over the dimmed input. CONTROL: view 0 is not view 1.
+static void TestOutput(const std::string& games) {
+  constexpr UINT RENDER_WIDTH = 1280, RENDER_HEIGHT = 720, WIDTH = 1920, HEIGHT = 1080;
+  const std::vector<std::array<float, 4>> result(static_cast<size_t>(WIDTH) * HEIGHT, {0.5f, 0.5f, 0.5f, 1.f});
+  std::vector<std::array<float, 2>> motion(static_cast<size_t>(WIDTH) * HEIGHT);
+  std::vector<std::array<float, 4>> input(static_cast<size_t>(WIDTH) * HEIGHT);
+  for (UINT y = 0; y < HEIGHT; ++y) {
+    for (UINT x = 0; x < WIDTH; ++x) {
+      const size_t at = (static_cast<size_t>(y) * WIDTH) + x;
+      motion[at] = {(static_cast<float>(x) - 640.f) / 32.f, (static_cast<float>(y) - 360.f) / 18.f};
+      const float ramp = static_cast<float>(x) / static_cast<float>(RENDER_WIDTH);  // a square root: the scene ramp^2
+      input[at] = {ramp, ramp, ramp, 1.f};
+    }
+  }
+  const std::array<ComPtr<ID3D11Texture2D>, 3> sources = {
+      Texture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, result.data(), WIDTH * 16, D3D11_BIND_SHADER_RESOURCE),
+      Texture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32_FLOAT, motion.data(), WIDTH * 8, D3D11_BIND_SHADER_RESOURCE),
+      Texture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, input.data(), WIDTH * 16, D3D11_BIND_SHADER_RESOURCE)};
+  std::array<ComPtr<ID3D11ShaderResourceView>, 3> views;
+  for (size_t i = 0; i < 3; ++i) device->CreateShaderResourceView(sources[i].Get(), nullptr, views[i].GetAddressOf());
+  const auto shader = Compile(games + "/twshogun2completeedition/upscale_output.cs_5_0.hlsl");
+  const auto run = [&](uint32_t debug_view) {
+    struct Settings {
+      float square_root;
+      float motion_scale[2];
+      float pad;
+      uint32_t render_size[2];
+      uint32_t debug_view;
+      uint32_t pad2;
+    } settings = {.square_root = 1.f, .motion_scale = {-1.f, 1.f}, .pad = 0.f, .render_size = {RENDER_WIDTH, RENDER_HEIGHT}, .debug_view = debug_view,
+                  .pad2 = 0};
+    const auto target = Texture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
+    ComPtr<ID3D11UnorderedAccessView> uav;
+    device->CreateUnorderedAccessView(target.Get(), nullptr, uav.GetAddressOf());
+    const auto constants = Constants(&settings, sizeof(settings));
+    const std::array<ID3D11ShaderResourceView*, 3> bound = {views[0].Get(), views[1].Get(), views[2].Get()};
+    context->CSSetShader(shader.Get(), nullptr, 0);
+    context->CSSetShaderResources(0, 3, bound.data());
+    context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
+    context->CSSetConstantBuffers(0, 1, constants.GetAddressOf());
+    context->Dispatch((WIDTH + 7) / 8, (HEIGHT + 7) / 8, 1);
+    context->ClearState();
+    std::vector<std::array<float, 4>> texels(static_cast<size_t>(WIDTH) * HEIGHT);
+    std::memcpy(texels.data(), Read(target.Get(), 16).data(), texels.size() * 16);
+    return texels;
+  };
+  const auto plain = run(0);
+  const auto debug = run(1);
+  size_t bad_plain = 0, bad_debug = 0, same = 0, checked = 0;
+  for (UINT y = 0; y < HEIGHT; y += 7) {
+    for (UINT x = 0; x < WIDTH; x += 5) {
+      const size_t at = (static_cast<size_t>(y) * WIDTH) + x;
+      const UINT input_x = std::min(static_cast<UINT>((static_cast<float>(x) + 0.5f) * RENDER_WIDTH / WIDTH), RENDER_WIDTH - 1);
+      const UINT input_y = std::min(static_cast<UINT>((static_cast<float>(y) + 0.5f) * RENDER_HEIGHT / HEIGHT), RENDER_HEIGHT - 1);
+      const size_t from = (static_cast<size_t>(input_y) * WIDTH) + input_x;
+      const auto colour = MotionColour(motion[from][0], motion[from][1]);
+      const float dim = 0.1f * input[from][0] * input[from][0];
+      for (size_t channel = 0; channel < 3; ++channel) {
+        bad_plain += Near(plain[at][channel], 0.25f, 1e-6f) ? 0 : 1;
+        bad_debug += (std::fabs(debug[at][channel] - std::max(colour[channel], dim)) <= 2e-3f) ? 0 : 1;
+      }
+      same += (debug[at][0] == plain[at][0] && debug[at][1] == plain[at][1] && debug[at][2] == plain[at][2]) ? 1 : 0;
+      ++checked;
+    }
+  }
+  CHECK(bad_plain == 0 && bad_debug == 0, "view 0 %zu, Debug View %zu of %zu texels' channels", bad_plain, bad_debug, checked * 3);
+  CHECK(same * 100 < checked, "CONTROL: %zu of %zu texels the same with the Debug View", same, checked);
+  std::printf("upscale_output %ux%u -> %ux%u: %zu texels checked, Debug View against MotionColour\n", RENDER_WIDTH, RENDER_HEIGHT, WIDTH, HEIGHT,
+              checked);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -325,6 +412,7 @@ int main(int argc, char** argv) {
   const std::string games = std::string(argv[1]) + "/src/games";
   TestSun(games);
   TestInputs(games, argv[2]);
+  TestOutput(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

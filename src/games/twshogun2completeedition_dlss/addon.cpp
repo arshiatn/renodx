@@ -90,6 +90,7 @@ int frame_limit = 0;
 int hud_recomposition = 1;
 int frame_preset_choice = 0;
 int frame_debug_view = 0;
+int upscale_debug_view = 0;  // UpscalingDebugView: 1 the motion the helper's upscaler gets
 constexpr std::array<uint32_t, 4> FRAME_BACKENDS = {twattila::dlaa_bridge::FG_BACKEND_AUTO, twattila::dlaa_bridge::FG_BACKEND_DLSS,
                                                     twattila::dlaa_bridge::FG_BACKEND_FSR, twattila::dlaa_bridge::FG_BACKEND_XESS};
 // Data-run marks in ReShade.log (2026-11-14): each sun light draw's first run (the HDR addon's sunlight00-03: battle,
@@ -375,6 +376,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, con
       .frame_preset = static_cast<uint32_t>(frame_preset_choice),
       .hud_recomposition = hud_recomposition != 0,
       .frame_debug_view = static_cast<uint32_t>(frame_debug_view),
+      .upscale_debug_view = static_cast<uint32_t>(upscale_debug_view),
   });
   const float scale = twshogun2::game_dlss::UpdateFeature();
   const auto display = twshogun2::game_dlss::DisplaySize();
@@ -566,6 +568,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
     return changed;
   };
+  if (upscaler_choice.load() != 0) {
+    helper_combo("Upscaling debug view", "UpscalingDebugView", &upscale_debug_view, "Off\0Motion Vectors\0",
+                 "Motion Vectors: the motion the upscaler gets over the picture (colour: direction, brighter: faster).");
+  }
   if (int choice = frame_generation_choice.load();
       helper_combo("Frame generation (Experimental)", "HelperFrameGeneration", &choice, "Off\0" "2x\0" "3x\0" "4x\0" "5x\0" "6x\0" "Dynamic\0",
                    "Frames shown per rendered frame (the RenoDX helper presents, with the RenoDX HDR addon). Turn the game's VSync off;\n"
@@ -1284,6 +1290,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   };
   read_choice("FrameGenerationMethod", static_cast<int>(FRAME_BACKENDS.size()) - 1, &frame_method_choice);
   read_choice("Reflex", 2, &reflex_choice);
+  read_choice("UpscalingDebugView", 1, &upscale_debug_view);
   read_choice("FrameGenerationFrameLimit", 240, &frame_limit);
   read_choice("FrameGenerationHudRecomposition", 1, &hud_recomposition);
   read_choice("FrameGenerationPreset", 3, &frame_preset_choice);

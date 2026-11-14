@@ -59,6 +59,7 @@ struct Choices {
   uint32_t frame_preset = 0;        // NVIDIA's A-C as 1-3, 0: the driver's
   bool hud_recomposition = true;
   uint32_t frame_debug_view = 0;  // 1 the HUD-less image, 2 the UI layer
+  uint32_t upscale_debug_view = 0;  // 1 the motion the helper's upscaler gets
 };
 
 struct __declspec(uuid("22ca4013-6c28-4d0d-b7c0-c7956e91bf43")) SharedData {

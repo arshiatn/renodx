@@ -1082,6 +1082,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
       .ray_reconstruction = any_rays ? choices.ray_reconstruction : 0u,
       .frame_format = twattila::frame_generation::Format(),
       .frame_backend = choices.frame_backend,
+      .debug_view = choices.upscale_debug_view,
   });
   if (ray_tracing_installed) {
     // NRD reads the upscaler's motion and depth: only with the helper's.
