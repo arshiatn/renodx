@@ -142,6 +142,7 @@ void ApplyResetPreset() {
       {"vignette", 1.f},
       {"distortion", 1.f},
       {"sharpening", 1.f},
+      {"some_indicators", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -1081,6 +1082,19 @@ void BuildRuntimeData() {
         .tooltip = "Smooths the sky's banding and adds fine dither.\n"
                    "Higher: removes wider bands, softens sky details more.",
         .labels = {"Off", "Low", "Medium", "High"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "some_indicators",
+        .binding = &shader_injection.someindicators,
+        .default_value = 1.f,
+        .label = "Unit/Building Indicator Brightness (Experimental)",
+        .section = "Extra",
+        .tooltip = "Brightness of the indicators under units and buildings, fire arcs and deployment lines.\n"
+                   "Lower helps at night. 1 = the game's.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.1f",
+        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "VfxParticleSmoothing",
