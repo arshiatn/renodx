@@ -47,6 +47,7 @@
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
+#include "../twwarhammer2/shadow_cascades.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 #include "./trace_reads.hpp"
@@ -1541,6 +1542,9 @@ tw::engine_tweaks::Option small_shadows;
 tw::engine_tweaks::Option unit_shadows;
 // Shadow Map Size: the game's shadowmap_extreme_quality (8192 at the highest Shadows setting).
 tw::engine_tweaks::Option shadow_map = {.scale = 0.f};
+// Two Shadow Cascades Under Rays (Experimental): the highest Shadows setting's cascades as the lowest's (shadow_cascades.hpp).
+float shadow_cascades_row = 0.f;
+twwarhammer2::shadow_cascades::Options shadow_cascades;
 // Every engine option above, then the tests' (Graphics 2 of 2: more_tests.h, twattila/engine_tests.hpp).
 std::vector<tw::engine_tweaks::Option*> graphics_options;
 std::vector<twattila::engine_tests::EngineTest> engine_tests;
@@ -1816,6 +1820,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
+  twwarhammer2::shadow_cascades::Set(&shadow_cascades, shadow_cascades_row != 0.f && rt_settings.shadows_only, 1.f);
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
 
@@ -1995,7 +2000,9 @@ void ConfigureAddon() {
     auto more = more_tests::MoreTests();
     engine_tests.insert(engine_tests.end(), more.begin(), more.end());
   }
-  graphics_options = {&unit_detail[0], &unit_detail[1], &unit_detail[2], &unit_detail[3], &unit_detail[4], &unit_animation, &unit_variety, &footstep_effects, &tree_detail, &bush_detail, &terrain_detail, &terrain_draw, &campaign_detail, &campaign_draw, &shadow_distance, &small_shadows, &unit_shadows, &shadow_map};
+  shadow_cascades = twwarhammer2::shadow_cascades::Make(twwarhammer2::shadow_cascades::Game::WARHAMMER);
+  graphics_options = {&unit_detail[0], &unit_detail[1], &unit_detail[2], &unit_detail[3], &unit_detail[4], &unit_animation, &unit_variety, &footstep_effects, &tree_detail, &bush_detail, &terrain_detail, &terrain_draw, &campaign_detail, &campaign_draw, &shadow_distance, &small_shadows, &unit_shadows, &shadow_map,
+                      &shadow_cascades.count, &shadow_cascades.split_row, &shadow_cascades.tile};
   for (auto& test : engine_tests) graphics_options.push_back(&test.option);
   graphics_status = new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
@@ -2128,6 +2135,17 @@ void ConfigureAddon() {
           .tooltip = "Sharper sun shadows that flicker less, at the highest Shadows setting. More video memory.\n"
                      "Applies after a restart.",
           .labels = {"4096 (Game's)", "8192"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedShadowCascades",
+          .binding = &shadow_cascades_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Two Shadow Cascades Under Rays (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows and Skip the Shadow Maps: at the highest Shadows setting the game prepares\n"
+                     "2 shadow cascades, as at the lowest, instead of 4. Faster in forests. Applies after a restart.",
+          .labels = {"Off", "On"},
       },
       graphics_status,
       // Two empty lines between this section and the ambient occlusion (ATN).
