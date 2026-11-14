@@ -770,7 +770,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [ ] ATN tests: Faster Render Lists off / on in cpl2's view (PresentMon 60 s, log "Faster Render Lists: on"); Rome II
       Skip the Shadow Maps in a forest battle (log "pass kind N draws only into the sun's map", shadows unchanged)
   - [x] hfp_ agent: heapfix's whole test set + eqtest on every packaged variant; battle_draw_batching A/B (keep it on)
-  - [ ] GPU PERF ROUND (one agent after the drw_ merge; helper / rt_core; ATN 21:xx: measure at the bench's stopped view,
+  - [ ] GPU PERF ROUND STARTED ~22:00 (gpu_ agent, base cdfae24e; no game runs: its bench variants go into the single
+    end-of-batch session). Plan: (one agent after the drw_ merge; helper / rt_core; ATN 21:xx: measure at the bench's stopped view,
     Constantinople after the camera move: Time Each Pass (One Frame) + a frame trace there in game, the helper's D3D12
     work from that view replayed in the 4K harness for Nsight (Attila's own D3D11 can't be captured: 32-bit)): (a) FIRST Rome Remastered reset suspect 3 (a
     cluster set kept after the game rewrites an index buffer under the same key: offline check); (b) units ray-tracing
