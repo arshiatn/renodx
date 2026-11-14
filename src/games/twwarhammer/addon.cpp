@@ -1975,11 +1975,12 @@ void ConfigureAddon() {
   // The paths' sky from the game's ambient (the spherical harmonics or the cube, rt_sun) and Path-Traced AO in the AO methods
   // (Experimental), as Warhammer II's: ATN's 2026-11-14 traces show g_hdr_on and g_use_spherical_harmonics on.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
-  // Fog Shadows, the torches' light in it and Smoke Shadows start off (hidden: not hooked here yet), Specular Occlusion and
-  // Far Tree Shadows too (Experimental); RT/PT turns them on, as Attila's (rays_preset_as_attila).
+  // Fog Shadows, the torches' light in it and Smoke Shadows start off (hidden: not hooked here yet), Specular Occlusion, Far
+  // Tree Shadows and Water Caustics too (Experimental); RT/PT turns them on, as Attila's (rays_preset_as_attila). Before Apply:
+  // No RT/PT and Reset read these defaults as the page is built.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
-        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedFarTreeShadows") {
+        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedFarTreeShadows" || setting->key == "WaterCaustics") {
       setting->default_value = 0.f;
     }
   }
@@ -2020,10 +2021,6 @@ void ConfigureAddon() {
     if (setting->key == "RayTracedSkipCascades") {
       setting->tooltip = "With Rays Replace Shadow Maps: nothing is drawn into the game's shadow maps. Faster with many units and\n"
                          "buildings. Water and the other forward-lit surfaces take the rays' shadow too.";
-    }
-    // Water Caustics (Experimental) stays off: SetRaysPresetDefaults gave it the RT/PT preset's 1.
-    if (setting->key == "WaterCaustics") {
-      setting->default_value = 0.f;
     }
     if (setting->key == "RayTracedUnseenCutOuts") {
       setting->tooltip = "Rays see the soldiers' fur, feathers and frayed cloth with the holes the game cuts in them.";
