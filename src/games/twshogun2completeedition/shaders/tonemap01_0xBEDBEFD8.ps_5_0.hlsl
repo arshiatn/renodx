@@ -70,5 +70,5 @@ void main(
   colour = lerp(colour, sum, saturate(d * 2.2f * strength));
   colour *= 1.f + strength * 0.75f;
 
-  o0 = HdrToScreen(colour, bloom, g_auto_exposure_input_buffer[0].tone_mapper_brightness);
+  o0 = SssDebugView(v0.xy, HdrToScreen(colour, bloom, g_auto_exposure_input_buffer[0].tone_mapper_brightness));
 }

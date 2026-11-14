@@ -251,7 +251,7 @@ float DynamicShadowFiltered_3x3( float3 tc, float4 shadow_buffer_size, Texture2D
 // Shadow map stability (v31, DLSS addon): normal_offset (the surface normal x texels; 0: the game's) moves the receiver
 // off its surface by that many of this split's texels.
 // Sun shadow softness (v63, DLSS addon): contact-hardening shadows (pcss.hlsli) in place of the game's 3x3 filter, the
-// sun SI.sun_shadow_softness degrees across, its disks turned by `shadow_rotation` (ReadShadowMap's pixel and frame).
+// sun SI.sun_shadow_softness degrees across, its disks turned by `shadow_rotation` (ShadowCascades' pixel and frame).
 static const float PCSS_MAX_TEXELS = 24.f;
 static float shadow_rotation = 0.f;
 
@@ -318,7 +318,7 @@ float3 WorldPositionAt(int2 pixel)
 }
 
 // screen_space_shadows.hlsl ReadShadowMap: the cascades at a (rendered) pixel.
-float ReadShadowMap(float2 pixel_xy)
+float ShadowCascades(float2 pixel_xy)
 {
   uint2 size;
   gbuffer_colour_texture.GetDimensions(size.x, size.y);
@@ -353,9 +353,42 @@ float ReadShadowMap(float2 pixel_xy)
 }
 #else
 // No cascades (get_shadow_coverage without ENABLE_SHADOWS).
-float ReadShadowMap(float2 pixel_xy)
+float ShadowCascades(float2 pixel_xy)
 {
   return 1;
+}
+#endif
+
+#ifndef SSS_PASSTHROUGH
+// Attila's SSS Softness and Debug View (screen_space_shadows.hpp binds u1 only with either on): Bend's min with the cascades
+// (its ReadShadowMap at each pixel it writes) gets 1, so the game's mask holds Bend's shadows alone; the cascades go to u1 (r)
+// with the Screen Edge share (b: Attila's sss_debug, how much of the shadow's ray towards the sun leaves the screen before
+// its length), and sss_soft_mask puts their min back at the first sun light draw. Off or u1 unbound: the game's.
+RWTexture2D<unorm float4> t_rw_sss_split : register(u1);
+
+float ReadShadowMap(float2 pixel_xy)
+{
+  const float cascades = ShadowCascades(pixel_xy);
+  uint2 split_size;
+  t_rw_sss_split.GetDimensions(split_size.x, split_size.y);
+  if ((SI.sss_softness <= 0.f && SI.sss_debug_view <= 0.f) || split_size.x == 0u) return cascades;
+  const float4 light = g_sss_light_coordinate;
+  const float2 render_size = min(g_viewport_dimensions.xy, screen_size.xy);
+  const float2 position = pixel_xy + 0.5f;
+  const float2 towards = (light.xy - position) * light.w;
+  const float samples = (float)(120 << clamp(int(SI.sss_samples), 0, 5));
+  float cut = 0.f;
+  if (dot(towards, towards) > 1e-6f)
+  {
+    const float2 direction = normalize(towards);
+    // The ray's length on screen before an edge, along each axis.
+    const float2 room = (direction > 0.f) ? (render_size - position) : position;
+    const float2 reach = (abs(direction) > 1e-6f) ? room / abs(direction) : 1e9f;
+    const float ray_length = (light.w > 0.f) ? min(samples, 0.5f * length(towards)) : samples;
+    cut = saturate(1.f - min(reach.x, reach.y) / max(ray_length, 1.f));
+  }
+  t_rw_sss_split[int2(pixel_xy)] = float4(cascades, 0.f, cut, 1.f);
+  return 1.f;
 }
 #endif
 
@@ -367,7 +400,7 @@ float ReadShadowMap(float2 pixel_xy)
 [numthreads(32, 32, 1)]
 void main(uint3 coords : SV_DispatchThreadID)
 {
-  t_rw_shadow[coords.xy] = ReadShadowMap(coords.xy);
+  t_rw_shadow[coords.xy] = ShadowCascades(coords.xy);
 }
 #else
 [numthreads(WAVE_SIZE, 1, 1)]

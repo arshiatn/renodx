@@ -134,6 +134,10 @@ struct ShaderInjectData {
   float auto_exposure_highlight_headroom_stops;
   float indicator_brightness;  // indicator00-02 in HDR: Attila's Unit/Building Indicator Brightness (some_indicators), 1 the game's
   float ssao_frame;  // GT-VBAO's noise frame, 0-63, moving with the AO filter's Temporal Smoothing (0: still, the game's)
+  // Attila's SSS Softness (render pixels, 0 off; screen_space_shadows.hpp) and Debug View (0 off, 1 Bend's shadows as the
+  // picture, 2 with the screen edge's limit; tonemap.hlsli): with either, sss.hlsli keeps Bend's and the cascades apart.
+  float sss_softness;
+  float sss_debug_view;
 };
 
 #define SI  shader_injection

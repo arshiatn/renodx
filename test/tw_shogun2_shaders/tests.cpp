@@ -24,6 +24,7 @@
 // 17. rt_particle_quads (Smoke Shadows' quad shader for 0xBEA3F2D4's outputs) on synthetic quads (TestParticleQuads).
 // 18. rt_capture_displacement / rt_capture_terrain_patches (Rarer Objects in the Rays) against the game's tessellated draws
 //     0x5074655A / 0xC24D8705 with their hull and domain shaders (TestPatches; the csos' folder third).
+// 19. sss_soft_mask (SSS Softness and Debug View) on synthetic masks (TestSoftMask).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -2839,6 +2840,91 @@ static void TestPatches(const std::string& games, const std::string& folder) {
               PATCHES, rigid_near_game.triangles, rigid_near_bad, PATCHES, terrain_rough_game.triangles);
 }
 
+// 19. sss_soft_mask (SSS Softness and Debug View: Bend's shadows and the cascades put back together) on a 64 x 64 mask with a
+//     40 x 32 render part, its left half one surface (depth 0.9) and its right another (0.99): at radius 0 each rendered texel
+//     the darker of the cascades (split r) and Bend's (the copy) bit for bit, the rest untouched; at 3 px Bend's 1 on the left
+//     and 0 on the right stay 1 and 0 (no tap across the depth step), random Bend shadows on one surface come out smoother.
+//     CONTROL: with one depth everywhere the left half's texels at the step darken.
+static void TestSoftMask(const std::string& games) {
+  constexpr UINT SIZE = 64;
+  constexpr UINT RENDER_WIDTH = 40;
+  constexpr UINT RENDER_HEIGHT = 32;
+  const auto shader = Compile(games + "/twshogun2completeedition/sss_soft_mask.cs_5_0.hlsl");
+  std::mt19937 random(19);
+  // Runs the pass; the mask after it (R8, 0.5 where it never writes).
+  const auto run = [&](float radius, const std::vector<float>& depth, const std::vector<uint8_t>& bend, const std::vector<uint32_t>& split) {
+    const auto depth_texture = Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, depth.data(), SIZE * 4, D3D11_BIND_SHADER_RESOURCE);
+    const auto bend_texture = Texture(SIZE, SIZE, DXGI_FORMAT_R8_UNORM, bend.data(), SIZE, D3D11_BIND_SHADER_RESOURCE);
+    const auto split_texture = Texture(SIZE, SIZE, DXGI_FORMAT_R8G8B8A8_UNORM, split.data(), SIZE * 4, D3D11_BIND_SHADER_RESOURCE);
+    const std::vector<uint8_t> untouched(SIZE * SIZE, 128);
+    const auto mask = Texture(SIZE, SIZE, DXGI_FORMAT_R8_UNORM, untouched.data(), SIZE, D3D11_BIND_UNORDERED_ACCESS);
+    const std::array<float, 4> constants = {static_cast<float>(RENDER_WIDTH), static_cast<float>(RENDER_HEIGHT), radius, 0.f};
+    const auto constant_buffer = Constants(constants.data(), sizeof(constants));
+    const std::array<ComPtr<ID3D11ShaderResourceView>, 3> views = {Srv(depth_texture.Get()), Srv(bend_texture.Get()), Srv(split_texture.Get())};
+    const std::array<ID3D11ShaderResourceView*, 3> sources = {views[0].Get(), views[1].Get(), views[2].Get()};
+    const auto target = Uav(mask.Get());
+    context->CSSetShader(shader.Get(), nullptr, 0);
+    context->CSSetConstantBuffers(0, 1, constant_buffer.GetAddressOf());
+    context->CSSetShaderResources(0, 3, sources.data());
+    context->CSSetUnorderedAccessViews(0, 1, target.GetAddressOf(), nullptr);
+    context->Dispatch((SIZE + 7) / 8, (SIZE + 7) / 8, 1);
+    context->ClearState();
+    return Read(mask.Get(), 1);
+  };
+  std::vector<float> two_surfaces(SIZE * SIZE);
+  for (UINT texel = 0; texel < SIZE * SIZE; ++texel) two_surfaces[texel] = (texel % SIZE < RENDER_WIDTH / 2) ? 0.9f : 0.99f;
+  const std::vector<float> one_surface(SIZE * SIZE, 0.9f);
+  std::vector<uint8_t> random_bend(SIZE * SIZE);
+  std::vector<uint32_t> random_split(SIZE * SIZE);
+  for (UINT texel = 0; texel < SIZE * SIZE; ++texel) {
+    random_bend[texel] = static_cast<uint8_t>(random() & 0xFF);
+    random_split[texel] = 0xFF000000u | static_cast<uint32_t>(random() & 0xFF);
+  }
+  const auto exact = run(0.f, two_surfaces, random_bend, random_split);
+  size_t wrong = 0, touched = 0;
+  for (UINT y = 0; y < SIZE; ++y) {
+    for (UINT x = 0; x < SIZE; ++x) {
+      const UINT texel = (y * SIZE) + x;
+      if (x < RENDER_WIDTH && y < RENDER_HEIGHT) {
+        wrong += (exact[texel] == std::min<uint32_t>(random_bend[texel], random_split[texel] & 0xFF)) ? 0 : 1;
+      } else {
+        touched += (exact[texel] == 128) ? 0 : 1;
+      }
+    }
+  }
+  CHECK(wrong == 0 && touched == 0, "sss_soft_mask radius 0: %zu texels not the min, %zu outside the render part written", wrong, touched);
+  // Bend lit on the left surface, shadowed on the right; the cascades lit.
+  std::vector<uint8_t> step_bend(SIZE * SIZE);
+  for (UINT texel = 0; texel < SIZE * SIZE; ++texel) step_bend[texel] = (texel % SIZE < RENDER_WIDTH / 2) ? 255 : 0;
+  const std::vector<uint32_t> lit_split(SIZE * SIZE, 0xFF0000FFu);
+  const auto apart = run(3.f, two_surfaces, step_bend, lit_split);
+  const auto joined = run(3.f, one_surface, step_bend, lit_split);
+  size_t crossed = 0, control_darker = 0;
+  for (UINT y = 0; y < RENDER_HEIGHT; ++y) {
+    for (UINT x = 0; x < RENDER_WIDTH; ++x) {
+      const UINT texel = (y * SIZE) + x;
+      crossed += (apart[texel] == step_bend[texel]) ? 0 : 1;
+      control_darker += (x < RENDER_WIDTH / 2 && joined[texel] < 255) ? 1 : 0;
+    }
+  }
+  CHECK(crossed == 0, "sss_soft_mask: %zu texels took Bend's shadows across the depth step", crossed);
+  CHECK(control_darker > 0, "CONTROL: one surface, no left texel darkened at the step");
+  // Random Bend shadows on one surface (the cascades lit): smoother at 3 px.
+  const auto rough = run(0.f, one_surface, random_bend, lit_split);
+  const auto smooth = run(3.f, one_surface, random_bend, lit_split);
+  const auto roughness = [](const std::vector<uint8_t>& mask) {
+    double sum = 0.0;
+    for (UINT y = 0; y < RENDER_HEIGHT; ++y) {
+      for (UINT x = 1; x < RENDER_WIDTH; ++x) sum += std::abs(static_cast<int>(mask[(y * SIZE) + x]) - static_cast<int>(mask[(y * SIZE) + x - 1]));
+    }
+    return sum / (RENDER_HEIGHT * (RENDER_WIDTH - 1));
+  };
+  CHECK(roughness(smooth) < 0.5 * roughness(rough), "sss_soft_mask: 3 px not smoother (%.1f against %.1f)", roughness(smooth), roughness(rough));
+  std::printf("sss_soft_mask: radius 0 the min bit for bit (%u x %u rendered, the rest untouched); 3 px none across the depth step "
+              "(%zu darken on one surface), neighbour steps %.1f -> %.1f\n",
+              RENDER_WIDTH, RENDER_HEIGHT, control_darker, roughness(rough), roughness(smooth));
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -2879,6 +2965,7 @@ int main(int argc, char** argv) {
   }
   TestSunTint(games);
   TestParticleQuads(games);
+  TestSoftMask(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

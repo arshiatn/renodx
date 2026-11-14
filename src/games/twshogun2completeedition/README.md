@@ -972,3 +972,10 @@ On atn-mods b435a0e6, the parity round 2 brief (ledger tools/tw/parity/shogun2.t
   20 m of the camera) and the near terrain's rounding of rough patches. The terrain's only where the vertex stage's b0 is the domain shader's
   camera (its vertex shader reads no constants). WARP part 18: 64 far patches each the game's VS + HS + DS corners bit for
   bit (CONTROLS: near rigid patches tessellate and move, rough terrain tessellates).
+- **SSS softness, SSS debug view** (DLSS addon, screen-space shadows; Attila's ScreenSpaceShadowsSoftness Off / 1-3 px and
+  ScreenSpaceShadowsDebugView Off / Shadows / Shadows + Screen Edge): Shogun's own Bend pass (sss00 / sss01, Remastered CE's)
+  writes the sun's mask with the cascades in it. With either row on it gets screen_space_shadows.hpp's texture at u1:
+  shaders/sss.hlsli's ReadShadowMap keeps the cascades (and the Screen Edge share) there and gives Bend 1, so the mask holds
+  Bend's shadows alone; at the first sun light draw sss_soft_mask puts back the darker of the cascades and Bend's shadows,
+  averaged over Softness on the same surface (Attila's sss_soft disc). The tone mappers show the mask's copy with the Debug
+  View. Both off: nothing bound, the cascades as before. WARP part 19 (sss_soft_mask).

@@ -42,6 +42,7 @@
 #include "../twshogun2completeedition_dlss/hdr_link.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "./foliage_light.hpp"
+#include "./screen_space_shadows.hpp"
 #include "./ray_tracing.hpp"
 #include "./upscaling.hpp"
 #include "../twattila/reflex.hpp"
@@ -454,30 +455,41 @@ void BuildRuntimeData() {
   }
 
   // Light Through Foliage (foliage_light.hpp): the screen-space shadow passes' depth (sss00 and Remastered CE's at t3,
-  // sss01 and its at t0) with the foliage negative while the row is on, the game's put back after.
+  // sss01 and its at t0) with the foliage negative while the row is on, the game's put back after. Then SSS Softness and
+  // Debug View's texture at u1 (screen_space_shadows.hpp).
   for (const auto [hash, depth_slot] : {std::pair{0x34ECD06Eu, 3u}, std::pair{0x9147EB4Eu, 3u}, std::pair{0x1B529672u, 0u},
                                         std::pair{0x7FA1D600u, 0u}}) {
     custom_shaders[hash].on_draw = [depth_slot](reshade::api::command_list* cmd_list) {
       twshogun2::foliage_light::OnShadowPass(cmd_list, depth_slot, shader_injection.sss_foliage_light);
+      twshogun2::screen_space_shadows::OnShadowPass(cmd_list, depth_slot, shader_injection.sss_softness, shader_injection.sss_debug_view);
       return true;
     };
-    custom_shaders[hash].on_drawn = twshogun2::foliage_light::OnShadowPassDone;
+    custom_shaders[hash].on_drawn = [](reshade::api::command_list* cmd_list) {
+      twshogun2::foliage_light::OnShadowPassDone(cmd_list);
+      twshogun2::screen_space_shadows::OnShadowPassDone(cmd_list);
+    };
   }
   // Render scale: captured on the game's own reflections copy and battle fog (drawn every frame before the depth of
   // field and the auto exposure), reset after the tonemaps.
   for (const uint32_t hash : {0x962CEB71u, 0xA61D2853u, 0x4355E897u}) {
     custom_shaders[hash].on_draw = render_scale::OnDrawCapture;
   }
-  // Ray tracing's Debug View over the tone mapper's output.
+  // Ray tracing's Debug View over the tone mapper's output; SSS Debug View's textures (screen_space_shadows.hpp) during it.
   for (const uint32_t hash : {0xEF060C7Cu, 0xBEDBEFD8u}) {
     custom_shaders[hash].on_drawn = [](reshade::api::command_list* cmd_list) {
+      twshogun2::screen_space_shadows::OnTonemapDrawn(cmd_list);
       render_scale::Set(1.f, 1.f);
       if (ray_tracing_installed) twshogun2::ray_tracing::OnTonemapDrawn(cmd_list);
       twshogun2::upscaling::KeepFrame(cmd_list);
     };
   }
   // The heat haze's distortion texture was drawn with DLSS's jitter (tonemap01 reads it there).
-  custom_shaders[0xBEDBEFD8].on_draw = [](reshade::api::command_list*) {
+  custom_shaders[0xEF060C7C].on_draw = [](reshade::api::command_list* cmd_list) {
+    twshogun2::screen_space_shadows::OnTonemap(cmd_list, shader_injection.sss_debug_view);
+    return true;
+  };
+  custom_shaders[0xBEDBEFD8].on_draw = [](reshade::api::command_list* cmd_list) {
+    twshogun2::screen_space_shadows::OnTonemap(cmd_list, shader_injection.sss_debug_view);
     const auto jitter = twshogun2::dlss_jitter::Load();
     shader_injection.render_jitter_x = jitter[0];
     shader_injection.render_jitter_y = jitter[1];
@@ -1083,6 +1095,9 @@ void ReadDlssAddonOptions() {
   read_bend("SSSEdgeThreshold", 0.1f, &shader_injection.sss_edge_threshold);
   read_bend("SSSPrecisionOffset", 1.f, &shader_injection.sss_precision_offset);
   read_bend("SSSFoliageLight", 1.f, &shader_injection.sss_foliage_light);
+  // Attila's SSS Softness (Off, 1-3 px) and Debug View (Off, Shadows, Shadows + Screen Edge), its keys.
+  read_bend("ScreenSpaceShadowsSoftness", 3.f, &shader_injection.sss_softness);
+  read_bend("ScreenSpaceShadowsDebugView", 2.f, &shader_injection.sss_debug_view);
   read_bend("SSSIgnoreEdges", 1.f, &shader_injection.sss_ignore_edges);
   read_bend("SSSAlongRay", 1.f, &shader_injection.sss_along_ray);
   read_bend("SSSMirrorEdges", 1.f, &shader_injection.sss_mirror_edges);
@@ -1540,6 +1555,8 @@ bool AttachAddon() {
   // the later callbacks).
   twshogun2::foliage_light::Install(twshogun2::ray_tracing::SUN_DRAWS);
   reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::foliage_light::OnDestroyDevice);
+  twshogun2::screen_space_shadows::Install(twshogun2::ray_tracing::SUN_DRAWS);
+  reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::screen_space_shadows::OnDestroyDevice);
   // The AO filter (its 3D size first, then the filter): before the Light Bounce, which draws the sun draws itself.
   for (const auto& draw : AO_FILTER_DRAWS) {
     renodx::utils::command_action::Register(
@@ -1578,6 +1595,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   twshogun2::foliage_light::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::foliage_light::OnDestroyDevice);
+  twshogun2::screen_space_shadows::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::screen_space_shadows::OnDestroyDevice);
   if (ray_tracing_installed) {
     twshogun2::ray_tracing::Uninstall();
     reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::ray_tracing::OnDestroyDevice);

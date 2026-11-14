@@ -11,5 +11,5 @@ void main(
   float2 frame_tex = v0.xy * screen_size.zw;
   float3 scene = g_hdr_rgb_texture.SampleLevel(g_hdr_rgb_texture_sampler_s, frame_tex, 0).rgb;
   float3 bloom = hdr_output_texture.SampleLevel(hdr_output_sampler_s, frame_tex, 0).rgb;
-  o0 = HdrToScreen(scene, bloom, g_auto_exposure_input_buffer[0].tone_mapper_brightness);
+  o0 = SssDebugView(v0.xy, HdrToScreen(scene, bloom, g_auto_exposure_input_buffer[0].tone_mapper_brightness));
 }
