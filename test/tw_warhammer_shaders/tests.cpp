@@ -119,6 +119,12 @@
 //    rt_capture_rope_rigid: with no main view each corner kept, the game's TEXCOORD0 (the rigid rope's: its SV_Position by the
 //    shadow camera). CONTROLS: the captures without the world_matrix's row, without the ribbon, the rigid ribbon not turned
 //    back from the view; a main view holding the shadow pass's corners collapses some.
+// 24. The SSR raycast 021D7515 below 100% (the game's bytes, patched by view_share.hpp's Reflect / Patch as the runtime does:
+//    run.ps1 copies them out as view_share_patch): a room of four planes (64 x 64 view pixels, its hierarchical depth's 6
+//    mips min / max) at 100% on 64 x 64 targets and at 50% on 128 x 128 targets whose top-left 64 x 64 hold the same texels
+//    (cb12 0.5, the rest 7): at every half-size pixel of the view the same march (its hit, and its length in the half-size
+//    texture's uv half as long). CONTROLS: the game's bytes, the patch with cb12 unbound differ. Printed: with the rest of the
+//    depth near (0.2), how many differ (the march's bounds are the texture's half size, not the view's).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -2312,6 +2318,205 @@ static void TestCloth(const std::string& root, const std::string& dump) {
               depth_values, depth_misses, depth_worst, collapsed);
 }
 
+// Part 24's room for the raycast 021D7515, seen from the origin along +z (view identity, 90 degrees, depth near 0.5 / far
+// 100 in [0, 1]): floor y = -1, back wall z = 8, side walls x = -3 / +3, their normals into the room; 64 x 64 view pixels.
+struct RaycastRoom {
+  std::vector<Float4> normal;    // gbuffer_channel_1: t5's two angles, gloss 1
+  std::vector<Float4> specular;  // gbuffer_channel_3: specular colour 0.5, flags 1 (SSR)
+  std::vector<std::vector<Float4>> depth;  // t_hierarchical_depth's mips, 32 x 32 down to 1 x 1: min, max of the 2 x 2 below
+  std::array<float, 28 * 4> camera = {};
+};
+
+static RaycastRoom MakeRaycastRoom() {
+  constexpr UINT VIEW = 64;
+  constexpr float NEAR_PLANE = 0.5f;
+  constexpr float FAR_PLANE = 100.f;
+  constexpr float A = FAR_PLANE / (FAR_PLANE - NEAR_PLANE);
+  constexpr float B = -NEAR_PLANE * FAR_PLANE / (FAR_PLANE - NEAR_PLANE);
+  constexpr float PI = 3.14159265f;
+  RaycastRoom room;
+  std::vector<float> full_depth(VIEW * VIEW);
+  for (UINT y = 0; y < VIEW; ++y) {
+    for (UINT x = 0; x < VIEW; ++x) {
+      const float ndc_x = ((static_cast<float>(x) + 0.5f) / VIEW * 2.f) - 1.f;
+      const float ndc_y = 1.f - ((static_cast<float>(y) + 0.5f) / VIEW * 2.f);
+      float distance = 8.f;  // along z: the back wall
+      std::array<float, 3> normal = {0.f, 0.f, -1.f};
+      if (ndc_y < 0.f && -1.f / ndc_y < distance) {
+        distance = -1.f / ndc_y;
+        normal = {0.f, 1.f, 0.f};
+      }
+      if (ndc_x != 0.f && 3.f / std::fabs(ndc_x) < distance) {
+        distance = 3.f / std::fabs(ndc_x);
+        normal = {(ndc_x < 0.f) ? 1.f : -1.f, 0.f, 0.f};
+      }
+      full_depth[(y * VIEW) + x] = A + (B / distance);
+      const float theta = std::asin(normal[1]);
+      const float phi = std::atan2(normal[2], normal[0]);
+      room.normal.push_back({(theta + (PI / 2.f)) / PI, (phi + PI) / (2.f * PI), 1.f, 0.f});
+      room.specular.push_back({0.5f, 0.5f, 0.5f, 1.f / 255.f});
+    }
+  }
+  std::vector<Float4> level;
+  for (UINT y = 0; y < VIEW / 2; ++y) {
+    for (UINT x = 0; x < VIEW / 2; ++x) {
+      const std::array<float, 4> block = {full_depth[(2 * y * VIEW) + (2 * x)], full_depth[(2 * y * VIEW) + (2 * x) + 1],
+                                          full_depth[(((2 * y) + 1) * VIEW) + (2 * x)], full_depth[(((2 * y) + 1) * VIEW) + (2 * x) + 1]};
+      level.push_back({*std::ranges::min_element(block), *std::ranges::max_element(block), 0.f, 0.f});
+    }
+  }
+  room.depth.push_back(level);
+  for (UINT size = VIEW / 4; size >= 1; size /= 2) {
+    const auto& below = room.depth.back();
+    std::vector<Float4> next;
+    for (UINT y = 0; y < size; ++y) {
+      for (UINT x = 0; x < size; ++x) {
+        Float4 texel = {2.f, -1.f, 0.f, 0.f};
+        for (UINT k = 0; k < 4; ++k) {
+          const Float4& child = below[(((2 * y) + (k / 2)) * size * 2) + (2 * x) + (k % 2)];
+          texel[0] = std::min(texel[0], child[0]);
+          texel[1] = std::max(texel[1], child[1]);
+        }
+        next.push_back(texel);
+      }
+    }
+    room.depth.push_back(next);
+  }
+  auto& c = room.camera;
+  for (size_t row = 0; row < 3; ++row) c[((1 + row) * 4) + row] = 1.f;  // view: identity
+  c[(4 * 4) + 3] = 1.f;
+  c[(5 * 4) + 0] = 1.f;  // projection
+  c[(6 * 4) + 1] = 1.f;
+  c[(7 * 4) + 2] = A;
+  c[(7 * 4) + 3] = B;
+  c[(8 * 4) + 2] = 1.f;
+  c[(21 * 4) + 0] = 1.f;  // its inverse
+  c[(22 * 4) + 1] = 1.f;
+  c[(23 * 4) + 3] = 1.f;
+  c[(24 * 4) + 2] = 1.f / B;
+  c[(24 * 4) + 3] = -A / B;
+  c[(25 * 4) + 0] = NEAR_PLANE;
+  c[(25 * 4) + 1] = FAR_PLANE;
+  return room;
+}
+
+// The raycast's u0 (the march's hit: x 1 hit / 0, y 65504 x 2^-(its length in the half-size texture's uv)) over `size` x
+// `size` targets (the view's 64 x 64 top-left, the rest `rest`; the hierarchical depth's mips as many as the view's), cb12
+// `share` (0: unbound).
+static std::vector<Float4> RunRaycast(std::span<const uint8_t> code, const RaycastRoom& room, UINT size, float share, float rest) {
+  constexpr UINT VIEW = 64;
+  ComPtr<ID3D11ComputeShader> shader;
+  if (FAILED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))) return {};
+  const auto padded = [&](const std::vector<Float4>& texels, UINT view, UINT whole) {
+    std::vector<Float4> out(static_cast<size_t>(whole) * whole, Float4{rest, rest, rest, rest});
+    for (UINT y = 0; y < view; ++y) std::copy_n(texels.begin() + (static_cast<ptrdiff_t>(y) * view), view, out.begin() + (static_cast<ptrdiff_t>(y) * whole));
+    return out;
+  };
+  const UINT levels = static_cast<UINT>(room.depth.size());
+  std::vector<std::vector<Float4>> mips;
+  std::vector<D3D11_SUBRESOURCE_DATA> initial;
+  for (UINT mip = 0; mip < levels; ++mip) mips.push_back(padded(room.depth[mip], (VIEW / 2) >> mip, (size / 2) >> mip));
+  for (UINT mip = 0; mip < levels; ++mip) initial.push_back({.pSysMem = mips[mip].data(), .SysMemPitch = ((size / 2) >> mip) * 16});
+  const D3D11_TEXTURE2D_DESC depth_desc = {.Width = size / 2, .Height = size / 2, .MipLevels = levels, .ArraySize = 1,
+                                           .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                           .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  ComPtr<ID3D11Texture2D> depth;
+  device->CreateTexture2D(&depth_desc, initial.data(), depth.GetAddressOf());
+  ComPtr<ID3D11ShaderResourceView> depth_view;
+  device->CreateShaderResourceView(depth.Get(), nullptr, depth_view.GetAddressOf());
+  std::vector<Float4> jitter(64 * 64);
+  for (size_t at = 0; at < jitter.size(); ++at) jitter[at] = {0.1f + (0.8f * static_cast<float>(at % 7) / 7.f), 0.3f, 0.9f, 0.f};
+  const std::array<ID3D11ShaderResourceView*, 4> views = {View(size, size, padded(room.normal, VIEW, size)).Detach(),
+                                                          View(size, size, padded(room.specular, VIEW, size)).Detach(), depth_view.Get(),
+                                                          View(64, 64, jitter).Detach()};
+  const auto output = Texture(size / 2, size / 2, nullptr, D3D11_BIND_UNORDERED_ACCESS);
+  ComPtr<ID3D11UnorderedAccessView> uav;
+  device->CreateUnorderedAccessView(output.Get(), nullptr, uav.GetAddressOf());
+  auto camera = room.camera;
+  const auto extent = static_cast<float>(size);
+  camera[(27 * 4) + 0] = extent;  // g_screen_size: the targets'
+  camera[(27 * 4) + 1] = extent;
+  camera[(27 * 4) + 2] = 1.f / extent;
+  camera[(27 * 4) + 3] = 1.f / extent;
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const std::array<float, 4> render_scale = {share, share, share, share};
+  const auto scale = Constants(render_scale.data(), 16);
+  const D3D11_SAMPLER_DESC point = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                    .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&point, sampler.GetAddressOf());
+  const std::array<ID3D11SamplerState*, 2> samplers = {sampler.Get(), sampler.Get()};
+  context->CSSetShader(shader.Get(), nullptr, 0);
+  context->CSSetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
+  if (share > 0.f) context->CSSetConstantBuffers(12, 1, scale.GetAddressOf());
+  context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+  context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+  context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
+  context->Dispatch((size / 2 + 31) / 32, (size / 2 + 31) / 32, 1);
+  context->ClearState();
+  views[0]->Release();
+  views[1]->Release();
+  views[3]->Release();
+  return Read(output.Get());
+}
+
+static void TestRaycast(const std::string& dump) {
+  const auto game = GameBytes(dump, 0x021D7515);
+  if (game.empty()) {
+    CHECK(false, "raycast: 021D7515's bytes");
+    return;
+  }
+  // As the runtime patches it (view_share::OnCreatePipeline with Warhammer's Install: no region reads, no whole textures,
+  // SetViewportChains(true)).
+  const twattila::dxbc::Program program = twattila::dxbc::Read(game);
+  const auto patched = view_share_patch::Patch(game, view_share_patch::Reflect(game, program), 0, true);
+  CHECK(!patched.code.empty(), "raycast: 021D7515 not patched");
+  if (patched.code.empty()) return;
+  const auto room = MakeRaycastRoom();
+  constexpr UINT HALF_VIEW = 32;
+  constexpr float NO_MARCH = 0.00001f;
+  const auto full = RunRaycast(patched.code, room, 64, 0.f, 7.f);
+  const auto half = RunRaycast(patched.code, room, 128, 0.5f, 7.f);
+  const auto half_game = RunRaycast(game, room, 128, 0.f, 7.f);
+  const auto half_unbound = RunRaycast(patched.code, room, 128, 0.f, 7.f);
+  const auto half_near = RunRaycast(patched.code, room, 128, 0.5f, 0.2f);
+  CHECK(full.size() == 32 * 32 && half.size() == 64 * 64 && half_game.size() == 64 * 64 && half_unbound.size() == 64 * 64 && half_near.size() == 64 * 64,
+        "raycast: outputs");
+  if (full.size() != 32 * 32 || half.size() != 64 * 64 || half_game.size() != 64 * 64 || half_unbound.size() != 64 * 64 || half_near.size() != 64 * 64) return;
+  const auto length = [](float encoded) { return -std::log2(encoded / 65504.f); };
+  // The same march in the view's texels: the same hit (x) and, where it marched, half its length in the twice as wide texture's uv.
+  const auto same = [&](const Float4& at_full, const Float4& at_half) {
+    if (at_full[0] != at_half[0]) return false;
+    if (at_full[1] == NO_MARCH || at_half[1] == NO_MARCH) return at_full[1] == at_half[1];
+    return std::fabs(length(at_half[1]) - (length(at_full[1]) / 2.f)) <= 1e-4f * std::max(1.f, length(at_full[1]));
+  };
+  int equal = 0;
+  int hits = 0;
+  int marched = 0;
+  int game_differs = 0;
+  int unbound_differs = 0;
+  int near_differs = 0;
+  for (UINT y = 0; y < HALF_VIEW; ++y) {
+    for (UINT x = 0; x < HALF_VIEW; ++x) {
+      const auto& a = full[(y * HALF_VIEW) + x];
+      equal += same(a, half[(y * 64) + x]) ? 1 : 0;
+      hits += (a[0] == 1.f) ? 1 : 0;
+      marched += (a[1] != NO_MARCH) ? 1 : 0;
+      game_differs += same(a, half_game[(y * 64) + x]) ? 0 : 1;
+      unbound_differs += same(a, half_unbound[(y * 64) + x]) ? 0 : 1;
+      near_differs += same(a, half_near[(y * 64) + x]) ? 0 : 1;
+    }
+  }
+  constexpr int PIXELS = HALF_VIEW * HALF_VIEW;
+  CHECK(equal == PIXELS && hits > PIXELS / 8 && marched - hits > PIXELS / 8 && game_differs > PIXELS / 4 && unbound_differs > PIXELS / 4,
+        "raycast 50%% vs 100%%: %d of %d the same (hits %d, marched %d); CONTROLS the game's bytes %d, cb12 unbound %d differ", equal, PIXELS, hits, marched,
+        game_differs, unbound_differs);
+  std::printf("raycast 021D7515 patched (%u positions, %u projected reads) at 50%% vs 100%%: %d of %d half-size pixels the same march (hits %d, "
+              "misses %d, not marched %d; the rest of the targets 7); CONTROLS the game's bytes %d, cb12 unbound %d differ; with the rest of the "
+              "depth 0.2 (near, not the far a cleared depth holds) %d differ\n",
+              patched.ndc, patched.projected, equal, PIXELS, hits, marched - hits, PIXELS - marched, game_differs, unbound_differs, near_differs);
+}
+
 static void TestAoAlone(const std::string& games, const std::string& dump) {
   constexpr UINT SIZE = 16;
   const std::string path = games + "/twattila/rt_ambient_combine.cs_5_0.hlsl";
@@ -3085,6 +3290,7 @@ int main(int argc, char** argv) {
   TestPlaced(argv[1], argv[2]);
   TestTreeShadows(argv[2]);
   TestCloth(argv[1], argv[2]);
+  TestRaycast(argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
