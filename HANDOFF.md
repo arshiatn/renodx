@@ -314,6 +314,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Agents done: Thrones, WH1, WH2, Rome Remastered, quality. Running: Shogun 2, Troy (Pharaoh fires), ReSTIR, Nsight.
 - [x] Shogun 2 round 7 MERGED 1790ecd5 (Reflection reuse + Steadier water reflections rows, Coloured shadows; HDR v72 / DLSS
   v64). Shogun 2 agent DONE. NOT DONE: far cards 30C453EE, units out of view, Softer water reflections.
+- [x] 06:08 page dumps at HEAD (c606eaf7+): Attila and WH3 = night1113 (v159 / v58) except Build Date. Final runner ready:
+  tools/tw/round_notes/run_tests.ps1 (every suite x86 + amd64, atomic lock, game / 55 GB guard), build_shared.ps1.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
