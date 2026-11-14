@@ -1,5 +1,41 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+### Attila gaps (2026-11-14; built only, not run in game)
+
+The game's other builds of what Attila already does (other shader models, shadow methods, MSAA, Tessellation): players
+not at ATN's settings now get the same. All level B (WARP against the game's dumped bytes; no trace drew them).
+
+- Fixed: below 100%, reflections at the game's Shader Model 1 / 2 (environment_specular_light 485F33D7, 0AC579F6,
+  8E734BAA, C8BD2B2F) ran past the view's right and bottom edges. Thrones' fix, now shared from here (ssr02-05; Thrones
+  includes them). `tw_thrones_ssr -Game twattila` PASS.
+- Fixed: sprite soldiers and far trees at Shader Model 4.1 / 5 (E42AE09F; 398BD3DF, B2585ABA) cast in the rays like
+  their Shader Model 3 twins. 758C250B checked: the material pass of the held E03E161C (nothing to do).
+- Fixed: VFX Brightness, Ray-Traced Shadows Only on smoke and torch light on smoke in the lit particles' 11 other builds
+  (every shadow method, Shader Model 4 / 4.1 / 5). `tw_attila_builds` (was `tw_vfx_builds`).
+- Fixed: with the game's MSAA, Fog Strength and Fog & Sky Smoothing work (battle fog's MSAA build A538288B).
+- New: **Rarer Objects in the Rays (Experimental, off)**, under the rays' More Options: ropes (8D0D26B9, placed
+  3926A823) and, with the game's Tessellation on, tessellated objects (9AEE504E) cast ray-traced shadows. Tessellated
+  ones are taken without the game's displacement, which fades out 5 to 20 m from the camera (shared
+  `rt_core.hpp SceneShader::patch_triangles`, off for every other game). `tw_attila_builds` T / R / Q.
+- Test lines for ATN:
+  - In-game Shader Model below the top, a battle with smoke: VFX Brightness 2 brightens the smoke; Ray-Traced Shadows
+    Only: smoke in shade is darker.
+  - Same, render scale 50%: no reflections past the right / bottom edge.
+  - In-game MSAA on: Fog Strength 0.5 thins the battle fog.
+  - In-game Tessellation on, Rarer Objects in the Rays on, near walls / rocks: shadows from them, no black patches.
+  - A naval battle or a siege with ropes, Rarer Objects in the Rays on / off: rope shadows appear.
+- Not done:
+  - Smoke Shadows casting and Particle Resolution at Shader Model 4 / 4.1: their particles' vertex shader A3966664 is
+    not hooked. Smallest step: A3966664 beside A7F257B5 (the same outputs) with the 7 lit sm_4_x pixel shaders, and a
+    WARP check streaming both out.
+  - SSR Quality and the hierarchical march at Shader Model 1 / 2 and with the game's MSAA (8 builds): only the sm_5_0
+    builds have them. Smallest step: ssr00 / ssr01's edits generated into the 8, WARP as `tw_thrones_ssr`.
+  - The constant tone mapper (D9123DE1 and its MSAA builds) is not replaced and in no trace: needs a trace of the mode
+    that draws it (the game's auto exposure off?).
+  - Sail symbols (B2CCA764, E9C34FAB): decals on sails, which cast already (as Rome II's 2C98F649). Won't get.
+  - Point lights' MSAA builds: the game's MSAA leaves no rays and no render scale. Won't get.
+  - Parity table: `tools/tw/attila_gaps/parity_1114.md`.
+
 ## Dev, whole-frame check's code items (2026-11-14 afternoon; built only, not stamped, not installed, not run in game)
 
 - New: **Two Shadow Cascades Under Rays (Experimental, off)**, under Shadows' More Options with ray-traced shadows. The

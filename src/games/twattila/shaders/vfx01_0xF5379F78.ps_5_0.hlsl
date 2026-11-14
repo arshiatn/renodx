@@ -135,8 +135,9 @@ void main(
   r0.y = (uint)ps_alpha_crush_params[r0.x].x;
   r1.xyzw = int4(0x20000,0x400000,0x80000,0x800000) & (int4)behaviour_mask[r0.x].xxxx;
   if (r1.x != 0) {
-    r2.xyz = ddx_coarse(v3.xyx);
-    r3.xyz = ddy_coarse(v3.xyx);
+    // ddx / ddy: coarse at Shader Model 5 (the game's ddx_coarse), the game's at 4 / 4.1 (the builds that include this file).
+    r2.xyz = ddx(v3.xyx);
+    r3.xyz = ddy(v3.xyx);
     r4.z = (uint)behaviour_mask[r0.x].y;
     r4.xy = v3.xy;
     // Texture2DArray uses float3 coordinates, but only float2 UV gradients.

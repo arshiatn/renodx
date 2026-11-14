@@ -1,14 +1,15 @@
-# Thrones of Britannia's environment_specular_light replacements for Shader Model 4 / 4.1 (ssr02-05) against the game's
-# shaders on WARP (tests.cpp): 100% bit for bit, 50% bit for bit 100% in the view's part, CONTROL the game's at 50%.
+# The environment_specular_light replacements for Shader Model 4 / 4.1 (twattila/shaders/ssr02-05, Thrones of Britannia's
+# include them) against the game's shaders on WARP (tests.cpp): 100% bit for bit, 50% bit for bit 100% in the view's part,
+# CONTROL the game's at 50%. -Game: twthronesofbritannia (default) or twattila (the same game bytes, each add-on's build).
 # -GameShaders: the folder of the game's dumped csos (0x485F33D7 / 0x0AC579F6 .ps_4_1.cso, 0x8E734BAA / 0xC8BD2B2F .ps_4_0.cso),
-# only read. -Built: the add-on's compiled shaders (build32\twthronesofbritannia.include\embed after a
-# renodx-twthronesofbritannia.addon32 build). Holds tools/tw's GPU job lock while it runs when -Lock names it. x86 (the game is
-# 32-bit; the shaders are the same either way).
-param([string]$GameShaders = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\dump_shader_twthronesofbritannia_pack\cso', [string]$Built = '',
-      [string]$Lock = '')
+# only read; default the game's pack. -Built: the add-on's compiled shaders (default build32\<game>.include\embed after a
+# renodx-<game>.addon32 build). Holds tools/tw's GPU job lock while it runs when -Lock names it. x86 (the games are 32-bit;
+# the shaders are the same either way).
+param([string]$Game = 'twthronesofbritannia', [string]$GameShaders = '', [string]$Built = '', [string]$Lock = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
-if ($Built -eq '') { $Built = Join-Path $repairRoot 'build32\twthronesofbritannia.include\embed' }
+if ($GameShaders -eq '') { $GameShaders = "D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\dump_shader_${Game}_pack\cso" }
+if ($Built -eq '') { $Built = Join-Path $repairRoot "build32\$Game.include\embed" }
 $testRoot = Join-Path $repairRoot 'test\tw_thrones_ssr'
 $testBuild = Join-Path $repairRoot 'build\tw_thrones_ssr_test_x86'
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null

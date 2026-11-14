@@ -1241,6 +1241,14 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 // models' material) and the flags the CPU moves (rigidcommon from a dynamic vertex buffer, drawn from both sides or by the
 // capture-point flag's pixel shaders) as thin cloth.
 float rays_banner_light_row = 0.f;
+// Rarer Objects in the Rays (Experimental): the scene's families drawn in no trace (level B: SCENE_SHADERS' held_row).
+float rays_untraced_casters_row = 0.f;
+// The lit particles' other builds (particle_vfx_main ps_main_high_quality with the gather 4.1, software, pcf and fetch4 shadows
+// or none, ps_main at shader models 4 / 4.1), replaced with vfx00's / vfx01's edits (shaders/vfx00<method>_*, vfx01_*): their
+// draws take the rays' sun at t49 under Ray-Traced Shadows Only and the torch lights at b9, as vfx00's / vfx01's do
+// (rt_scene::SHADOW_READER_SHADERS).
+constexpr std::array<uint32_t, 11> PARTICLE_BUILD_READERS = {0xF5F73B79, 0x79A71E7B, 0x1F60E59D, 0x905429B6, 0x2F66954B, 0xDF0F041A,
+                                                             0x3A12A66D, 0xF9D9D3FB, 0xEA5AB372, 0x2CA01137, 0x6DCB7DA0};
 // The capture-point flag: rigidstandard's ps30_gbuffer_alpha_test with vs 347F3DD9 (a pixel trace and names.tsv: level A), its
 // ps41_gbuffer_alpha_test_ms twin with vs D830AD9B under MSAA (the shader dump only: level B). The game culls its back faces.
 constexpr std::array<uint32_t, 1> FLAG_PIXEL_SHADERS = {0xED1DF335};
@@ -1257,7 +1265,7 @@ float engine_code_row = 1.f;
 float lights_in_bounce_row = 0.f;
 float light_ratio_row = 0.f;
 
-constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x2FF76986, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0x6ECB6C09, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1272,6 +1280,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
      .thin_sheets_pixel_shaders = FLAG_PIXEL_SHADERS_MS},
     {.hash = 0xB06CB969, .capture_shader = __rt_capture_rigid_blend_sm3, .rows_shader = __motion_record_rigid_blend_sm3, .thin_row = &rays_banner_light_row},
     {.hash = 0x10FE7EBC, .capture_shader = __rt_capture_rigid_blend_wind_sm3, .rows_shader = __motion_record_rigid_blend_wind_sm3, .thin_row = &rays_banner_light_row},
+    // Rigid objects with the game's Tessellation on (rigidcommon vs30_displacement, HS 0A3E0133, DS 1C0B3B3A; in no trace): D830AD9B's
+    // placement and world position (the same instructions), the patches without the domain shader's displacement, which fades out
+    // 5 to 20 m from the camera (test/tw_attila_builds).
+    {.hash = 0x9AEE504E, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41, .patch_triangles = true, .held_row = &rays_untraced_casters_row},
     // Rocks and cliffs blended into the terrain (rigidterrainblend): its depth pass (its material pass has no camera).
     {.hash = 0xE03E161C, .capture_shader = __rt_capture_rigid_terrain_blend_sm3, .rows_shader = __motion_record_rigid_terrain_blend_sm3},
     {.hash = 0x77B993FD, .capture_shader = __rt_capture_branch_sm3, .rows_shader = __motion_record_tree},
@@ -1296,10 +1308,19 @@ constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x902253FD, .capture_shader = __rt_capture_cloth_sm41, .dynamic = true, .thin = true},
     {.hash = 0xD11B5EC7, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
+    // Ropes (in no trace): ribbons the game turns to the camera, solid, captured every frame as drawn (Rome II's 4F90C2B5); the CPU's
+    // (8D0D26B9) and the placed ones (3926A823, turned in view space: back to the world through inv_view).
+    {.hash = 0x8D0D26B9, .capture_shader = __rt_capture_rope_sm3, .dynamic = true, .held_row = &rays_untraced_casters_row},
+    {.hash = 0x3926A823, .capture_shader = __rt_capture_rope_rigid_sm3, .dynamic = true, .held_row = &rays_untraced_casters_row},
     // Sprite soldiers: cards facing the sun, cut out by their diffuse map's alpha.
+    // Each with its Shader Model 4.1 / 5 builds (E42AE09F; 398BD3DF, B2585ABA): the same instructions, only the version
+    // token and dcl_globalFlags differ (tools/tw/attila_gaps/atg_cards_bytes.txt; no trace drew them: level B).
     {.hash = 0x1B9E7692, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
+    {.hash = 0xE42AE09F, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
     // Far trees' billboards: the same, each showing the tree from the sun.
     {.hash = 0x4D50E1C7, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    {.hash = 0x398BD3DF, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    {.hash = 0xB2585ABA, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
     // The campaign's plants and forests, and its trees: placed like the battle's, no wind.
     {.hash = 0x924D7813, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
     {.hash = 0x819A414C, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
@@ -1996,7 +2017,8 @@ void ConfigureAddon() {
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
                                              .smoke_strength = &smoke_map_sliders.strength, .smoke_softness = &smoke_map_sliders.softness,
-                                             .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row, .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row, .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row, .lights_in_bounce = &lights_in_bounce_row,
                                              .light_ratio = &light_ratio_row});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -2091,6 +2113,7 @@ bool AttachAddon() {
   twattila::rt_scene::InstallShadowsOnly();
   twattila::screen_space_shadows::PatchForwardShadows(twattila::rt_scene::SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(twattila::rt_scene::SHADOW_READER_SHADERS);
+  twattila::rt_scene::InstallShadowReaders(PARTICLE_BUILD_READERS);
   for (const auto& water : WATER_SHADERS) {
     renodx::utils::command_action::Register(
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});

@@ -1,8 +1,8 @@
-// Thrones of Britannia's environment_specular_light replacements for Shader Model 4 / 4.1 (src/games/twthronesofbritannia/
-// shaders/ssr02-05: the game's 485F33D7, 0AC579F6, 8E734BAA, C8BD2B2F, the same bytes in Attila) against the game's own
-// shaders on WARP, each with g_buffers_scale 1 and 0.5, on a synthetic scene (a floor, a wall and a back wall in the
-// G-buffer depth and normals, a light buffer pattern, stencil 1 but every 16th pixel).
-// tests.exe <the game's dumped csos> <the add-on's built csos (build32\twthronesofbritannia.include\embed)>
+// The environment_specular_light replacements for Shader Model 4 / 4.1 (src/games/twattila/shaders/ssr02-05: the game's
+// 485F33D7, 0AC579F6, 8E734BAA, C8BD2B2F, the same bytes in Attila and Thrones of Britannia, Thrones' files include
+// Attila's) against the game's own shaders on WARP, each with g_buffers_scale 1 and 0.5, on a synthetic scene (a floor, a
+// wall and a back wall in the G-buffer depth and normals, a light buffer pattern, stencil 1 but every 16th pixel).
+// tests.exe <the game's dumped csos> <the add-on's built csos (build32\<game>.include\embed)>
 // A. 100%: the replacement (nothing at b12) and the game's shader: both targets bit for bit.
 // B. 50%: the replacement on display-size (2x) textures holding the view in their top-left part (the rest the view's last
 //    row / column, as a clamp sampler holds it at 100%), its viewport half its target, the camera's screen size the display's,
@@ -437,7 +437,7 @@ int main(int argc, char** argv) {
     const auto replacement_code = ReadFile(built_folder + "\\" + pair.replacement);
     ComPtr<ID3D11PixelShader> game;
     ComPtr<ID3D11PixelShader> replacement;
-    const auto today = PatchedToday(RepositoryRoot() + "\\src\\games\\twthronesofbritannia\\shaders\\" + pair.source, pair.target);
+    const auto today = PatchedToday(RepositoryRoot() + "\\src\\games\\twattila\\shaders\\" + pair.source, pair.target);
     if (game_code.empty() || replacement_code.empty() || !today
         || FAILED(device->CreatePixelShader(game_code.data(), game_code.size(), nullptr, game.GetAddressOf()))
         || FAILED(device->CreatePixelShader(replacement_code.data(), replacement_code.size(), nullptr, replacement.GetAddressOf()))) {
