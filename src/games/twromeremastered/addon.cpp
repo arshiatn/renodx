@@ -35,6 +35,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/credits.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/frame_generation.hpp"
@@ -1969,7 +1970,13 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                   "PsychoV31 and PsychoV35. Uncharted 2 extended: Musa and DabVeed.",
+                   "PsychoV31 and PsychoV35. Uncharted 2 extended: Musa and DabVeed.\n"
+                   "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0.",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::HELPER,
           .section = "About",
       },
       new renodx::utils::settings::Setting{
