@@ -1355,6 +1355,11 @@ constexpr std::array<uint32_t, 92> UNIT_CUT_OUT_PIXEL_SHADERS = {
     0xFBD501F7, 0xFF1C02CC,
 };
 
+// The forward passes that read the sun's shadow map (the data run's traces, by the map's handle): the battle water and
+// rivers, the lit particles and their other path (Attila's, the same bytes; Thrones draws the game's own, patched), the
+// ocean (Thrones' F7E011A4: gather4_c at t9, S2's trace) and the campaign's sea (Thrones' twins by name: no campaign trace).
+constexpr std::array<uint32_t, 7> SHADOW_READER_SHADERS = {0xC9FBACCB, 0x2E9F5935, 0xACE33D5D, 0xF5379F78, 0xF7E011A4, 0xDE739661, 0x08F47D8C};
+
 // What only the campaign map draws: its borders (Attila's shader), the shroud's plane (Thrones' twin by name), its sea
 // (waterplane ps30_campaign, Thrones' twins by name).
 constexpr std::array<uint32_t, 4> CAMPAIGN_SHADERS = {0x0CC96E53, 0x2860172D, 0xDE739661, 0x08F47D8C};
@@ -2098,8 +2103,11 @@ bool AttachAddon() {
   twattila::rt_scene::InstallFogShadows(twattila::rt_scene::FOG_SHADERS);
   // Smoke's ray-traced shadows and the smoke map (Attila's particle vertex shader and lit pixel shaders, the same bytes here).
   twattila::rt_scene::InstallSmokeShadows(twattila::rt_scene::PARTICLE_VERTEX_SHADERS, twattila::rt_scene::LIT_PARTICLE_PIXEL_SHADERS);
-  // Ray-Traced Shadows Only: the sun's shadow map's casters skipped (the map the sun draws read).
+  // Ray-Traced Shadows Only: the sun's shadow map's casters skipped (the map the sun draws read); the forward passes that
+  // read it take the rays' shadows instead.
   twattila::rt_scene::InstallShadowsOnly();
+  twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS);
+  twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
   // Last of the sun draws' hooks: it draws the sun draws itself (no callback after it runs).
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
