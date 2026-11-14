@@ -18,6 +18,10 @@
 // 5. Toggling on and off 200 times while 4 threads run B's float to half: their results stay A's, no fault.
 // 6. Timing, A against B: float to half on sprite-like rows, the truncation, fmod(x, 1).
 // 7. The truncation block as the Attila CPU Performance Fix leaves it: left alone, the other two still found.
+// 8. The render lists' push (+0x176ced0, Faster Render Lists): 1 M random pushes (thread, vector sizes, the "has items"
+//    byte, the list's other bytes, the item, every register): the registers, esp and every byte of the list, its
+//    vectors and their items equal; on and off 200 times while 4 threads push to one list: every item in its place,
+//    every return the game's; timing with 4 threads pushing to 16 lists (the byte cleared each round, as the merge does).
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots.
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -27,6 +31,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -34,6 +39,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -83,13 +89,14 @@ struct TestBuild {
   uint32_t crt_flag_rva;
   uint32_t float_slot;
   uint32_t integer_slot;
+  uint32_t list_push_function_rva;  // 0: none in this build
 };
 constexpr TestBuild ATTILA = {"Attila", &twattila::engine_code::internal::ATTILA_BUILD, 0x169a220, 0x17f6515, 0x17f6539, 0x1a05cc0,
-                              0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28};
+                              0x1dae4f4, 0x2a8b504, 0x2a8b4cc, 0x1c, 0x28, 0x176ced0};
 constexpr TestBuild THRONES = {"Thrones of Britannia", &twattila::engine_code::internal::THRONES_BUILD, 0x1707eb0, 0x186aa48, 0x186aa6c,
-                               0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18};
+                               0x1b0a030, 0x1eec634, 0x25fde74, 0x25fde3c, 0x20, 0x18, 0x17defc0};
 constexpr TestBuild ROME2 = {"Rome II", &twattila::engine_code::internal::ROME2_BUILD, 0x1368030, 0x14b434a, 0x14b436e, 0x169ca30,
-                             0x19ebd74, 0x21263cc, 0x2126394, 0x1c, 0x20};
+                             0x19ebd74, 0x21263cc, 0x2126394, 0x1c, 0x20, 0};
 
 uint32_t Read32(const uint8_t* at) {
   uint32_t value;
@@ -156,7 +163,8 @@ struct Random {
   }
 };
 
-// A cdecl call with every register set: in (eax ecx edx ebx esi edi ebp), out after, esp as the callee left it.
+// A call with every register set: in (eax ecx edx ebx esi edi ebp), out after, esp as the callee left it (cdecl: at the
+// argument; a callee popping it, thiscall or stdcall: past it).
 struct RegisterCall {
   uint32_t in[7];       // 0
   uint32_t function;    // 28
@@ -170,6 +178,7 @@ __declspec(naked) void __cdecl CallWithRegisters(RegisterCall*) {
   __asm {
     pushad
     mov ebp, [esp + 36]
+    push ebp
     push ebp
     push dword ptr [ebp + 32]
     call set_up
@@ -185,7 +194,8 @@ __declspec(naked) void __cdecl CallWithRegisters(RegisterCall*) {
     mov [eax + 68], ecx
     pop ecx
     mov [eax + 36], ecx
-    add esp, 8
+    mov esp, [eax + 64]
+    add esp, 12
     popad
     ret
   set_up:
@@ -352,6 +362,22 @@ void Report(const char* format, Args... args) {
   std::printf(format, args...);
 }
 
+// The render list's thread index provider: its vtable's +4 (a thiscall without arguments) returns the calling thread's.
+thread_local uint32_t push_thread = 0;
+uint32_t __fastcall ThreadIndexOf(void*, void*) { return push_thread; }
+
+// One render list as the game lays it out: the provider at +0, the threads' vectors {capacity, size, data} at +0x18, the
+// "has items" byte at +0x1c; 8 threads, room for 64 items each.
+struct PushWorld {
+  std::array<uint32_t, 2> vtable;
+  uint32_t provider;
+  alignas(64) std::array<uint8_t, 64> list;
+  alignas(64) std::array<uint32_t, 8 * 3> headers;
+  std::array<std::array<uint32_t, 64>, 8> data;
+};
+
+uint32_t Address(const void* pointer) { return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(pointer)); }
+
 // An 80-bit value from sign, exponent (15 bits) and 64-bit mantissa.
 void Extended(uint8_t* out, bool sign, uint32_t exponent, uint64_t mantissa) {
   std::memcpy(out, &mantissa, 8);
@@ -405,16 +431,17 @@ int main(int argc, char** argv) {
     CHECK(Matches(game + text_rva, text_size, pattern) == 1);
   }
   CHECK(Matches(game + text_rva, text_size, build.code->fmod_matherr) >= 1);
+  CHECK(Matches(game + text_rva, text_size, ec::LIST_PUSH) == (build.list_push_function_rva != 0 ? 1u : 0u));
   // B's own code as mapped (A's differs in every relocated address).
   const std::vector<uint8_t> unpatched(patched + text_rva, patched + text_rva + text_size);
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
-  for (const ec::Site& site : ec::sites) CHECK(site.at != nullptr);
   CHECK(ec::sites[0].at == patched + build.truncation_block_rva);
   CHECK(ec::sites[1].at == patched + build.half_rva);
   CHECK(ec::sites[2].at == patched + build.fmod_rva);
+  CHECK(ec::sites[3].at == (build.list_push_function_rva != 0 ? patched + build.code->list_push_rva + ec::LIST_PUSH_SITE : nullptr));
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
-  twattila::engine_code::Update(true);
-  CHECK(ec::written);
+  twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
+  CHECK(ec::written == ec::found && ec::found == (build.list_push_function_rva != 0 ? 0b1111u : 0b0111u));
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
     if (unpatched[at - text_rva] == patched[at]) continue;
@@ -423,7 +450,7 @@ int main(int argc, char** argv) {
     for (const ec::Site& site : ec::sites) in_site |= (patched + at >= site.at && patched + at < site.at + ec::SITE_SIZE);
     CHECK(in_site);
   }
-  std::printf("1. patterns once each; %zu bytes differ, all in the three sites\n", differing);
+  std::printf("1. patterns once each; %zu bytes differ, all in the %d sites\n", differing, std::popcount(ec::found));
 
   // The truncation's end jumps back to the harness in both copies (after Prepare: its pattern reads these bytes).
   JumpTo(game + build.truncation_resume_rva, reinterpret_cast<const void*>(&BlockReturn));
@@ -697,9 +724,9 @@ int main(int argc, char** argv) {
       do {
         twattila::engine_code::Update(on);
         ++tries;
-      } while (ec::written != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
+      } while ((ec::written != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
       busy += tries - 1;
-      toggles += (ec::written == on) ? 1 : 0;
+      toggles += ((ec::written != 0) == on) ? 1 : 0;
     }
     const double milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     stop = true;
@@ -713,8 +740,8 @@ int main(int argc, char** argv) {
 
   // 6. Timing (one thread, warm).
   {
-    if (!ec::written) twattila::engine_code::Update(true);
-    CHECK(ec::written);
+    if (ec::written == 0) twattila::engine_code::Update(true);
+    CHECK(ec::written == ec::CPU_CODE_SITES);
     using Half = uint16_t(__cdecl*)(const float*);
     std::vector<float> rows(20 * 4096);
     Random random = {.state = 5};
@@ -769,11 +796,193 @@ int main(int argc, char** argv) {
                 half_game, half_ours, block_game, block_ours, fmod_game, fmod_ours);
   }
 
+  // 8. The render lists' push.
+  if (build.list_push_function_rva != 0) {
+    twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
+    CHECK(ec::written == ec::found);
+    const uint32_t game_push = Address(game + build.list_push_function_rva);
+    const uint32_t patched_push = Address(patched + build.list_push_function_rva);
+    const auto start = std::chrono::steady_clock::now();
+    auto world = std::make_unique<PushWorld>();
+    auto before = std::make_unique<PushWorld>();
+    auto after_game = std::make_unique<PushWorld>();
+    Random random = {.state = 0x5EED};
+    uint32_t kept = 0;
+    constexpr int PUSHES = 1'000'000;
+    for (int run = 0; run < PUSHES; ++run) {
+      for (auto& byte : world->list) byte = static_cast<uint8_t>(random.Next());
+      const uint32_t flags[] = {0, 1, 2, 0xFF, random.Next() & 0xFF};
+      world->list[0x1c] = static_cast<uint8_t>(flags[random.Next() % 5]);
+      world->vtable = {random.Next(), Address(reinterpret_cast<const void*>(&ThreadIndexOf))};
+      world->provider = Address(world->vtable.data());
+      Write32(world->list.data(), Address(&world->provider));
+      Write32(world->list.data() + 0x18, Address(world->headers.data()));
+      for (uint32_t thread = 0; thread < 8; ++thread) {
+        world->headers[thread * 3] = 64;
+        world->headers[thread * 3 + 1] = random.Next() % 64;
+        world->headers[thread * 3 + 2] = Address(world->data[thread].data());
+        if ((run & 63) == 0) {
+          for (uint32_t& item : world->data[thread]) item = random.Next();
+        }
+      }
+      push_thread = random.Next() % 8;
+      const uint32_t item = random.Next();
+      RegisterCall a = {.function = game_push, .argument = Address(&item)};
+      for (uint32_t& in : a.in) in = random.Next();
+      a.in[1] = Address(world->list.data());  // ecx: the list
+      RegisterCall b = a;
+      b.function = patched_push;
+      *before = *world;
+      CallWithRegisters(&a);
+      *after_game = *world;
+      *world = *before;
+      CallWithRegisters(&b);
+      kept += (before->list[0x1c] == 1) ? 1 : 0;
+      if (std::memcmp(a.out, b.out, sizeof(a.out)) != 0 || a.esp_after != a.esp_before + 4 || b.esp_after != b.esp_before + 4
+          || std::memcmp(after_game.get(), world.get(), sizeof(PushWorld)) != 0) {
+        std::printf("  push %d (thread %u, size %u, byte %02X): eax %08X / %08X, ecx %08X / %08X\n", run, push_thread,
+                    before->headers[push_thread * 3 + 1], before->list[0x1c], a.out[0], b.out[0], a.out[1], b.out[1]);
+        CHECK(false);
+      }
+      CHECK(world->list[0x1c] == 1);
+    }
+    std::printf("8. render list push: %d random pushes (%u with the byte already 1), every register, esp and byte equal (%.1f s)\n",
+                PUSHES, kept, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+
+    // On and off while 4 threads push to one list, each to its own vector, the byte cleared now and then (the merge's).
+    using Push = uint32_t(__fastcall*)(uint8_t* list, void* unused_edx, const uint32_t* item);
+    {
+      constexpr uint32_t CHUNK = 1u << 16;
+      std::vector<std::vector<uint32_t>> data(4, std::vector<uint32_t>(CHUNK));
+      *world = {};
+      world->vtable = {0, Address(reinterpret_cast<const void*>(&ThreadIndexOf))};
+      world->provider = Address(world->vtable.data());
+      Write32(world->list.data(), Address(&world->provider));
+      Write32(world->list.data() + 0x18, Address(world->headers.data()));
+      for (uint32_t thread = 0; thread < 4; ++thread) {
+        world->headers[thread * 3] = CHUNK;
+        world->headers[thread * 3 + 2] = Address(data[thread].data());
+      }
+      const auto push = reinterpret_cast<Push>(patched_push);
+      std::atomic<bool> stop = false;
+      std::atomic<uint64_t> wrong = 0;
+      std::atomic<uint64_t> pushes = 0;
+      std::vector<std::thread> threads;
+      for (uint32_t thread = 0; thread < 4; ++thread) {
+        threads.emplace_back([&, thread] {
+          push_thread = thread;
+          uint64_t local = 0;
+          uint32_t* size = &world->headers[thread * 3 + 1];
+          while (!stop.load(std::memory_order_relaxed)) {
+            for (uint32_t index = 0; index < CHUNK; ++index) {
+              const uint32_t item = (thread << 24) | index;
+              if (push(world->list.data(), nullptr, &item) != (((thread + 1) << 24) | index)) wrong.fetch_add(1);
+            }
+            for (uint32_t index = 0; index < CHUNK; ++index) {
+              if (data[thread][index] != ((thread << 24) | index)) wrong.fetch_add(1);
+            }
+            if (*size != CHUNK) wrong.fetch_add(1);
+            *size = 0;
+            local += CHUNK;
+          }
+          pushes += local;
+        });
+      }
+      constexpr int SWITCHES = 200;
+      int toggles = 0;
+      for (int round = 0; round < SWITCHES; ++round) {
+        const bool on = (round % 2) != 0;  // on at the start: off first
+        int tries = 0;
+        do {
+          reinterpret_cast<volatile uint8_t*>(world->list.data())[0x1c] = 0;
+          twattila::engine_code::Update(false, twattila::engine_code::Game::ATTILA, on);
+          ++tries;
+        } while ((ec::written != 0) != on && tries < static_cast<int>(ec::MAX_FAILED_WRITES));
+        toggles += ((ec::written != 0) == on) ? 1 : 0;
+      }
+      stop = true;
+      for (auto& thread : threads) thread.join();
+      CHECK(wrong == 0);
+      CHECK(toggles == SWITCHES);
+      std::printf("   %d switches while 4 threads pushed %llu items to one list: every item and return the game's\n", SWITCHES,
+                  pushes.load());
+    }
+
+    // Timing: 4 threads push to 16 lists 32 bytes apart (the game's), each list's byte cleared before each round.
+    {
+      constexpr uint32_t LISTS = 16;
+      constexpr uint32_t ROUND = 512;  // pushes a thread makes to each list a round
+      constexpr int ROUNDS = 400;
+      struct alignas(64) Lists {
+        std::array<uint8_t, 32 * LISTS> lists;
+        std::array<std::array<uint32_t, 4 * 3>, LISTS> headers;
+      };
+      auto lists = std::make_unique<Lists>();
+      std::vector<std::vector<uint32_t>> data(4 * LISTS, std::vector<uint32_t>(ROUND));
+      std::array<uint32_t, 2> vtable = {0, Address(reinterpret_cast<const void*>(&ThreadIndexOf))};
+      const uint32_t provider = Address(vtable.data());
+      const auto time = [&](uint32_t function) {
+        const auto push = reinterpret_cast<Push>(function);
+        std::atomic<int> ready = 0;
+        std::atomic<int> round_done = 0;
+        std::atomic<int> round_go = 0;
+        std::vector<std::thread> threads;
+        for (uint32_t list = 0; list < LISTS; ++list) {
+          uint8_t* at = lists->lists.data() + 32 * list;
+          Write32(at, Address(&provider));
+          Write32(at + 0x18, Address(lists->headers[list].data()));
+        }
+        double seconds = 0.;
+        for (uint32_t thread = 0; thread < 4; ++thread) {
+          threads.emplace_back([&, thread] {
+            push_thread = thread;
+            ++ready;
+            for (int round = 0; round < ROUNDS; ++round) {
+              while (round_go.load() <= round) {}
+              for (uint32_t index = 0; index < ROUND; ++index) {
+                for (uint32_t list = 0; list < LISTS; ++list) {
+                  const uint32_t item = index;
+                  push(lists->lists.data() + 32 * list, nullptr, &item);
+                }
+              }
+              ++round_done;
+            }
+          });
+        }
+        while (ready.load() < 4) {}
+        for (int round = 0; round < ROUNDS; ++round) {
+          for (uint32_t list = 0; list < LISTS; ++list) {
+            lists->lists[32 * list + 0x1c] = 0;
+            for (uint32_t thread = 0; thread < 4; ++thread) {
+              lists->headers[list][thread * 3] = ROUND;
+              lists->headers[list][thread * 3 + 1] = 0;
+              lists->headers[list][thread * 3 + 2] = Address(data[list * 4 + thread].data());
+            }
+          }
+          const auto round_start = std::chrono::steady_clock::now();
+          round_go = round + 1;
+          while (round_done.load() < 4 * (round + 1)) {}
+          seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - round_start).count();
+        }
+        for (auto& thread : threads) thread.join();
+        return seconds * 1e9 / (static_cast<double>(ROUNDS) * ROUND * LISTS);
+      };
+      const double game_ns = time(game_push);
+      const double ours_ns = time(patched_push);
+      const double game_again = time(game_push);
+      const double ours_again = time(patched_push);
+      std::printf("   4 threads, 16 lists: ns a push (wall clock, each thread's), game %.2f / %.2f, ours %.2f / %.2f\n", game_ns,
+                  game_again, ours_ns, ours_again);
+    }
+  } else {
+    std::printf("8. render list push: none in this build\n");
+  }
+
   // Off: the game's bytes back (the harness's jumps removed first).
   std::memcpy(game + build.truncation_resume_rva, file.data() + (build.truncation_resume_rva - text_rva + text_header->PointerToRawData), 5);
   std::memcpy(patched + build.truncation_resume_rva, unpatched.data() + (build.truncation_resume_rva - text_rva), 5);
   twattila::engine_code::Update(false);
-  CHECK(!ec::written);
+  CHECK(ec::written == 0);
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Uninstall();
   std::printf("off: the game's code back byte for byte\n");
@@ -788,6 +997,7 @@ int main(int argc, char** argv) {
   ec::prepared = false;
   ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
   CHECK(ec::sites[0].at == nullptr && ec::sites[1].at != nullptr && ec::sites[2].at != nullptr);
+  CHECK((ec::sites[3].at != nullptr) == (build.list_push_function_rva != 0));
   CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("soldier draw rounding") != std::string::npos);
   std::printf("7. a block another mod changed: left alone, the other two found\nPASS\n");
   return 0;

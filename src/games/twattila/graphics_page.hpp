@@ -1329,6 +1329,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .is_visible = more(&more_rt, always),
       });
     }
+    page.Take({.match = "FasterRenderLists", .section = section, .shown = more(&more_rt, always), .only_some_games = true});
     page.Add(new Setting{
         .key = "RayTracingDenoiser",
         .binding = &b.rt->denoiser,
@@ -1388,10 +1389,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
 
   page.Finish({lighting_settings::AO_SECTION, lighting_settings::GI_SECTION, feature_settings::SSS_SECTION, feature_settings::AA_SECTION}, RT_SECTION);
   page_defaults = page.Defaults(AA_SECTION);
-  // The presets leave Shadow Map Size alone (it needs a restart; Graphics 2 of 2's presets set it), Log Details and Faster
-  // Game CPU Code (not a look).
+  // The presets leave Shadow Map Size alone (it needs a restart; Graphics 2 of 2's presets set it), Log Details, Faster
+  // Game CPU Code and Faster Render Lists (not a look).
   std::erase_if(page_defaults, [](const auto& value) {
-    return value.first == "GraphicsShadowMapSize" || value.first == "RayTracedDebugLog" || value.first == "FasterGameCpuCode";
+    return value.first == "GraphicsShadowMapSize" || value.first == "RayTracedDebugLog" || value.first == "FasterGameCpuCode"
+           || value.first == "FasterRenderLists";
   });
   for (const std::string& section : Sections()) renodx::utils::settings::section_tints.emplace_back(section, TITLE_TINT);
 }

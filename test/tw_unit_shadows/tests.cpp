@@ -105,6 +105,11 @@ static void __fastcall StandInRender(uint8_t*, void*, void*, uint8_t* pass_bytes
   }
 }
 
+// Rome II's Render: the same stand-in without the context.
+static void __fastcall StandInRenderRome2(uint8_t* self, void* unused_edx, uint8_t* pass_bytes) {
+  StandInRender(self, unused_edx, nullptr, pass_bytes);
+}
+
 int main(int argc, char** argv) {
   hooks::internal::original_unit_distances = &GameUnitDistances;
   hooks::internal::hooks_active = true;
@@ -341,6 +346,8 @@ int main(int argc, char** argv) {
     std::array<StandInPass, 3> passes = {StandInPass{pass_vtable.data(), 5}, StandInPass{pass_vtable.data(), 0},
                                          StandInPass{pass_vtable.data(), 9}};
     pass::original_render = &StandInRender;
+    pass::original_render_rome2 = &StandInRenderRome2;
+    bool rome2 = false;              // the calls through Rome II's hook
     pass::searched = true;           // no search for empire.retail.dll in the test
     pass::binds_counted = true;
     pass::hooks.emplace_back();      // as installed (never installed here)
@@ -349,9 +356,16 @@ int main(int argc, char** argv) {
       stand_in.calls.clear();
       stand_in.numbers = {};
       scene::internal::skipping_casters.store(true);  // the stage bound the sun's map
-      for (int cascade = 0; cascade < 4; ++cascade) pass::OnRender(self.data(), nullptr, nullptr, reinterpret_cast<uint8_t*>(&passes[0]));
-      pass::OnRender(self.data(), nullptr, nullptr, reinterpret_cast<uint8_t*>(&passes[2]));
-      pass::OnRender(self.data(), nullptr, nullptr, reinterpret_cast<uint8_t*>(&passes[1]));
+      const auto render = [&](StandInPass* drawn) {
+        if (rome2) {
+          pass::OnRenderRome2(self.data(), nullptr, reinterpret_cast<uint8_t*>(drawn));
+        } else {
+          pass::OnRender(self.data(), nullptr, nullptr, reinterpret_cast<uint8_t*>(drawn));
+        }
+      };
+      for (int cascade = 0; cascade < 4; ++cascade) render(&passes[0]);
+      render(&passes[2]);
+      render(&passes[1]);
       return stand_in.calls;
     };
     const std::vector<std::pair<uint32_t, uint32_t>> every = {{5, 0}, {5, 1}, {5, 2}, {5, 3}, {9, 0}, {0, 0}};
@@ -378,6 +392,33 @@ int main(int argc, char** argv) {
     stand_in.other_bind_in_cascade = false;
     CHECK(pass::kinds[5].mixed);
     for (int index = 0; index < 8; ++index) CHECK(frame(true, true) == every);
+    // Rome II (+0x14b84a0, one argument): its pattern not in this DLL, once in Rome II's (when installed); the same
+    // learning and turns through its hook.
+    CHECK(tw::engine_tweaks::FindPattern({file}, pass::RENDER_ROME2) == nullptr);
+    const char* rome2_status = "Rome II's DLL not found";
+    if (std::ifstream rome2_stream(R"(C:\Program Files (x86)\Steam\steamapps\common\Total War Rome II\empire.retail.dll)", std::ios::binary);
+        rome2_stream.good()) {
+      const std::string rome2_file((std::istreambuf_iterator<char>(rome2_stream)), std::istreambuf_iterator<char>());
+      const uint8_t* rome2_render = tw::engine_tweaks::FindPattern({rome2_file}, pass::RENDER_ROME2);
+      CHECK(rome2_render != nullptr);
+      CHECK(tw::engine_tweaks::FindPattern({std::string_view(rome2_file).substr(static_cast<size_t>(rome2_render - reinterpret_cast<const uint8_t*>(rome2_file.data())) + 1)},
+                                           pass::RENDER_ROME2) == nullptr);
+      CHECK(tw::engine_tweaks::FindPattern({rome2_file}, pass::RENDER) == nullptr);
+      rome2_status = "Rome II's pattern once in its DLL (Attila's none there)";
+    }
+    pass::kinds = {};
+    rome2 = true;
+    for (int index = 0; index < 4; ++index) CHECK(frame(true, true) == every);
+    CHECK(pass::kinds[5].sun_only == 16 && pass::kinds[0].mixed && !pass::kinds[9].mixed);
+    drawn_cascades = {};
+    for (int index = 0; index < 40; ++index) {
+      const auto calls = frame(true, true);
+      CHECK(calls.size() == 3 && calls[0].first == 5 && calls[0].second == static_cast<uint32_t>(pass::frame % 4));
+      ++drawn_cascades[calls[0].second];
+    }
+    CHECK(std::ranges::all_of(drawn_cascades, [](uint32_t count) { return count == 10; }));
+    CHECK(frame(false, true) == every);
+    std::printf("7 Rome II: %s; through its one-argument hook the same learning and turns\n", rome2_status);
     pass::hooks.clear();
     pass::active.store(false);
     std::printf("7 shadow map work: Render's pattern once in the shipped empire.retail.dll; off / casters drawn: every call; "
