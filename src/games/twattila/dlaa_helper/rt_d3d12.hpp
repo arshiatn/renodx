@@ -4788,7 +4788,10 @@ class RtScene12 {
     const bool ambient_kept = version >= 11 && (((shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0 && !nrd_ambient) || lights_kept)
                               && EnsureHistory(HISTORY_AMBIENT, frame);
     {
-      const bool last_frame = ambient_kept && ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame;
+      // RENODX_TW_NO_TRACE_HISTORY=1 (the quality scorer's raw AO and torches with every other history kept: frame numbers
+      // two apart turned off the paths' and the reflections' too): neither history is applied, both still written.
+      static const bool no_trace_history = GetEnvironmentVariableW(L"RENODX_TW_NO_TRACE_HISTORY", nullptr, 0) != 0;
+      const bool last_frame = !no_trace_history && ambient_kept && ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame;
       PathConstants constants = {.flags = (last_frame ? PATH_AMBIENT_HISTORY : 0u) | (((shared.rt_flags & dlaa_bridge::RT_START_PAST) != 0) ? PATH_START_PAST : 0u)
                                           | (lights_kept && last_frame && lights_frame_ + 1 == frame && lights_mode == lights_mode_traced_ ? PATH_LIGHT_HISTORY : 0u)
                                           | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u) | (tint ? PATH_TINT : 0u)
