@@ -556,8 +556,15 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   change alone (two perspectives; the end-of-batch whole-tree review stays). Agent drw_ phase 1 (design + draw-stream replay
   oracle + cost map, no src code) started; phase 2 (code) only after the Attila gaps + Nsight smoke work is merged; proof =
   identical decisions per draw over every recorded trace, x86 + amd64, + the suites.
-- [ ] ATTILA GAPS agent started (atg_, worktree): share Thrones' ssr02-05 with Attila, E42AE09F / far card builds held, the 11
-  other vfx builds, MSAA battlefog + point lights, tessellated rigid 9AEE504E (opt-in rt_core), ropes / sail symbols.
+- [x] ATTILA GAPS MERGED b43dcc14 (ssr02-05 shared in twattila, Thrones includes them; E42AE09F / 398BD3DF / B2585ABA held;
+  758C250B = HAVE; the 11 other vfx builds edited (suite test/tw_attila_builds); MSAA battle fog A538288B with Fog Strength +
+  Smoothing; Rarer Objects in the Rays (Experimental: tessellated rigid 9AEE504E via shared opt-in rt_core
+  SceneShader::patch_triangles, ropes 8D0D26B9 / 3926A823); point-light MSAA builds WON'T (no rays / scale under MSAA)).
+  Agent resumed: sm4 smoke / particle layer, SSR quality in the 8 sm4 + MSAA builds, Thrones' vfx wrappers.
+- [ ] SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
+  capture path in rt_core (WH1 / Pharaoh / Troy / WH2 imposters), tessellated meshes via patch_triangles (WH1 / Troy / WH2),
+  per-game leaf cut-off through the bridge (Troy 0.01), Faster Smoke Build row to the other smoke games, smoke without rays
+  for 64-bit games if small.
 - [x] Rome Remastered parity round MERGED c0a61b2d (table tools/tw/romeremastered/parity_1114.md: 47 features, 13 have / 3 do
   now left / 6 trace / 24 won't; credits, Bend rows + Softness, GitHub button; no PT GI -> no torch rows). Input bug (task B):
   study only: the wall clock is a seconds-since-2001 double; obfuscated code at 0xbbaa60 reads GetMessageTime; the
