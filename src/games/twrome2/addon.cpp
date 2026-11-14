@@ -1779,6 +1779,10 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                            "across the screen, usually faster. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
     .reflections_rays_label = "Ray-Traced (DXR, Experimental)",
     .water_caustics_label = "Water Caustics (Experimental)",
+    .fog_shadows_label = "Fog Shadows (Experimental)",
+    .light_glow_label = "Torch and Fire Light in Fog (Experimental)",
+    .light_glow_tooltip = "Torches and fires light the fog around them, with their shafts and shadows in it. Needs Fog Shadows and\n"
+                          "Torch and Fire Shadows. 0: off.",
 };
 
 void ConfigureAddon() {
@@ -2171,18 +2175,19 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
-  // Mode's pages. Fog Shadows keep their 0 (nothing here hooks the fog yet), Smoke Shadows (Experimental) theirs (no game run
-  // has shown them yet), Water Caustics its 0 (untested here), Sprite Soldier and Far Tree Shadows theirs (Experimental: no
-  // game run has shown Rome II's cards in the rays yet).
+  // Mode's pages. Fog Shadows keep their 0 (Experimental: no game run has shown the fog's rays yet; RT/PT turns them on, as
+  // ATN's list does, as Pharaoh's), Smoke Shadows (Experimental) theirs (no game run has shown them yet), Water Caustics its
+  // 0 (untested here), Sprite Soldier and Far Tree Shadows theirs (Experimental: no game run has shown Rome II's cards in the
+  // rays yet).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedSmokeShadows" || setting->key == "WaterCaustics"
         || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
     }
-    // Torch and fire light in fog and smoke: no fog hooked here and no particle shader reads it.
+    // Torch and fire light in the fog (no particle shader reads it here): off, Experimental (PAGE_TEXTS), as Fog Shadows.
     if (setting->key == "RayTracedLightGlow") {
-      setting->is_visible = [] { return false; };
+      setting->default_value = 0.f;
     }
     // Bend's Light Through Banners and Coloured Shadows (the cloth and sails, InstallThin) off, Experimental, as Pharaoh's: no
     // game run has drawn Rome II's cloth yet.
@@ -2288,7 +2293,7 @@ bool AttachAddon() {
       clear({"RayTracedFarTreeShadows", "RayTracedLightImportance", "RayTracedPathKeptCube", "RayTracedSmokeQuality",
              "RayTracedSpriteShadows", "RayTracedSwayRange"});
     }
-    clear({"RayTracedFarTreeShadows", "RayTracedSpriteShadows", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
+    clear({"RayTracedFarTreeShadows", "RayTracedLightGlow", "RayTracedSpriteShadows", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
     reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
   }
 
@@ -2365,6 +2370,8 @@ bool AttachAddon() {
     renodx::utils::command_action::Register(
         OnLightShadowsDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
+  // The battle fog's ray-traced shadows and the torches' light in it (its shader replaced: shaders/battlefog00, Attila's form).
+  twattila::rt_scene::InstallFogShadows(std::array<uint32_t, 1>{0x259AEC56});
   twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   // Ray-Traced Shadows Only (Skip the Shadow Maps): the atlas's casters skipped; its other readers in ATN's runs (the battle
   // water and river, the campaign's sea) take the rays' shadow (WARP tools/tw/rome2/water_r2: t49 unbound bit-identical,
