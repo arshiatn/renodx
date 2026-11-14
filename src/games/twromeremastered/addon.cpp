@@ -1856,7 +1856,7 @@ void ConfigureAddon() {
   // DLSS with its preset, frame generation and Reflex; SMAA, CMAA2 and TAA stay hidden), Bend's screen-space shadows, the
   // rays' rows (rt_scene::AppendSettings); this game's own rows go under Ray Tracing Extra Options (graphics_page's
   // Finish). Keys as before: AntiAliasing's DLAA 1 is DLSS 5 since SETTINGS_REVISION 1 (AttachAddon).
-  twattila::feature_settings::AppendAa(&settings, &twromeremastered::dlaa::sliders);
+  twattila::feature_settings::AppendAa(&settings, &twromeremastered::dlaa::sliders, false, false, true);
   // Bend's rows as Attila's; the extended march (Softer Away from the Caster) and the Debug View are not drawn here:
   // hidden (banners' and torches' rows hide themselves: not installed).
   twattila::feature_settings::AppendSss(&settings, &twromeremastered::contact_shadows::rows);

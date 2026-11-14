@@ -10,7 +10,8 @@
 // 3. The jitter: 0 unless DLAA ran the frame presented; then Halton (2, 3) over 8 frames, centred, all distinct.
 // 4. aa_dlaa_prepare: the depth passed through, the colour squared into BT.2020, the camera's motion from the depth (a
 //    ground plane drawn with the jittered camera, the camera moved 2 m since) against the CPU's reprojection (worst 0.05
-//    px, mean 0.01); 0 after a reset. aa_dlaa_finish: NVIDIA's output = its input gives the frame back.
+//    px, mean 0.01); 0 after a reset. aa_dlaa_finish: NVIDIA's output = its input gives the frame back; with the DLSS
+//    Debug View's Motion Vectors (dlaa_debug.x 1) the motion's colour instead (16 px lit, still black).
 // 5. swap_chain_format (no GPU): the game's Renderer::Resize found by its bytes in the installed exe (argv[1], mapped as an
 //    image; skipped when it is not there), not in this test's exe (CONTROL); the hook on a function of its kind gives it the
 //    game's 8-bit format for the upgraded R16G16B16A16 / R10G10B10A2 (ATN's crash 2026-11-14), the rest as asked, its
@@ -459,6 +460,40 @@ int main(int argc, char** argv) {
     }
     std::printf("finish(prepare(frame)): worst %.2e off the frame\n", round_trip);
     CHECK(round_trip < 4e-3);
+
+    // The DLSS Debug View's Motion Vectors (Rome's row: dlaa_debug.x 1, dlaa.hpp) over a black frame: 16 px a frame in the
+    // left half gives its colour, none in the right half black; CONTROL: x 0 (above) gives the frame.
+    std::vector<std::array<float, 2>> halves(static_cast<size_t>(WIDTH) * HEIGHT);
+    for (size_t at = 0; at < halves.size(); ++at) halves[at] = {(at % WIDTH) < WIDTH / 2 ? 16.f : 0.f, 0.f};
+    const auto halves_texture = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32_FLOAT, D3D11_BIND_SHADER_RESOURCE, halves.data(), WIDTH * 8);
+    const std::vector<std::array<uint16_t, 4>> black(static_cast<size_t>(WIDTH) * HEIGHT, {0, 0, 0, ToHalf(1.f)});
+    const auto black_texture = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D11_BIND_SHADER_RESOURCE, black.data(), WIDTH * 8);
+    dlaa::internal::ShaderSettings debug_settings = shader_settings;
+    debug_settings.dlaa_debug[0] = 1.f;
+    context->UpdateSubresource(settings_buffer.Get(), 0, nullptr, &debug_settings, 0, 0);
+    const auto halves_srv = srv(halves_texture.Get());
+    const auto black_srv = srv(black_texture.Get());
+    const std::array<ID3D11ShaderResourceView*, 3> debug_views = {color_srv.Get(), black_srv.Get(), halves_srv.Get()};
+    context->CSSetShader(finish.Get(), nullptr, 0);
+    context->CSSetShaderResources(0, 3, debug_views.data());
+    context->CSSetUnorderedAccessViews(0, 1, result_uav.GetAddressOf(), nullptr);
+    context->Dispatch((WIDTH + 7) / 8, (HEIGHT + 7) / 8, 1);
+    context->CSSetShaderResources(0, 3, none.data());
+    context->CSSetUnorderedAccessViews(0, 1, &no_uav, nullptr);
+    context->UpdateSubresource(settings_buffer.Get(), 0, nullptr, &shader_settings, 0, 0);
+    const auto debug_back = ReadBack<std::array<uint16_t, 4>>(result.Get(), WIDTH, HEIGHT);
+    const auto brightness = [&](size_t at) { return Half(debug_back[at][0]) + Half(debug_back[at][1]) + Half(debug_back[at][2]); };
+    float left = 1e9f;
+    float right = 0.f;
+    for (size_t at = 0; at < debug_back.size(); ++at) {
+      if ((at % WIDTH) < WIDTH / 2) {
+        left = std::min(left, brightness(at));
+      } else {
+        right = std::max(right, brightness(at));
+      }
+    }
+    std::printf("DLSS Debug View, Motion Vectors: 16 px dimmest %.3f, still brightest %.3f\n", left, right);
+    CHECK(left > 0.3 && right == 0.);
   }
 
   run_prepare(true);

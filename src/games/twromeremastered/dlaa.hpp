@@ -539,7 +539,8 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     const float pass_height_f = static_cast<float>(pass_height);
     const internal::ShaderSettings shader_settings = {
         .metrics = {1.f / pass_width_f, 1.f / pass_height_f, pass_width_f, pass_height_f},
-        .dlaa_debug = {0.f, static_cast<float>(width), static_cast<float>(height), (square_root ? 1.f : 0.f)},
+        // The DLSS Debug View: its Motion Vectors (1) alone here (no object motion).
+        .dlaa_debug = {(sliders.debug_view != 0.f ? 1.f : 0.f), static_cast<float>(width), static_cast<float>(height), (square_root ? 1.f : 0.f)},
     };
     native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &shader_settings, 0, 0);
   };
