@@ -302,6 +302,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   unchanged; tw_engine_code PASS on both DLLs; truncation 66.8 -> 41.7 ns, fmod 140 -> 62 ns; Experimental off).
 - [x] Thrones round 3 DONE (README 925a6211; capture test 42 / 48 = game's, 6 by design as Attila). Shogun 2 leaf fade
   MERGED 57a8266f; far cards 30C453EE not doable by rows (per-corner sun turn + own atlas view).
+- [x] WH2 Water Clarity / Caustics MERGED aa12ece2 (15 PS; shared water_effects type 4 + every_refraction, other games' 133
+  rows byte-identical). Thrones agent: Faster Game CPU Code for Rome II if its routines match.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
