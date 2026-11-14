@@ -1,5 +1,20 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Next (helper111, 2026-11-14 night: torch light from the Light Bounce; not run in game)
+
+- New: **Torch and Fire Shadows from Path Tracing (Experimental, off)**, under Shadows' More Options with ray-traced
+  shadows and ReSTIR GI. The game's torch and fire light keeps its look. Its shadows come from the Light Bounce: one light
+  sample and shadow ray per bounce texel, a 12-frame shadow ratio. The light shaders read that ratio in place of the
+  rays' bits (`rt_local_lights.hlsli`, b9's w), 32 fires at most.
+  - Harness, 4K: torch rays 2.06 -> 0.90 ms at 29 lights, 0.70 -> 0.47 ms at 3.
+  - Quality (rRMSE against a soft reference): 3.1 % at Full and 5.1 % at Half (Steady Torch Shadows + RR 5.2 %); at Half
+    it lags moving shadows (11 % moving).
+- New: **Torch and Fire Light from Path Tracing (Experimental, off)**, same place. Torches and fires are lit by that
+  sample in the Light Bounce instead of the game's light shaders: faster, softer, no torch highlights, follows Light
+  Bounce Strength. Noisier: 5.1 % at Full, 10 % at Half. With both rows on, Shadows wins.
+- Needs helper111. With the rows off, helper111 gives helper110's picture byte for byte. Its shaders for these rows
+  (`TORCHES_IN_BOUNCE`) are separate builds; the reservoirs, paths, SER, SHaRC and Reflection Reuse are untouched.
+
 ## v159 (2026-11-13, night merges: GPU options, engine CPU code, grass / unit hooks; stamped and installed 22:59 with renodx-tw-dlaa64.exe helper110, not run in game)
 
 - New: **Grass Ray Tracing Range (Experimental, off)** under More Options: grass farther than this leaves the ray tracing
