@@ -1472,7 +1472,12 @@ constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
     {.pixel_shader = 0x8A83B40C},  // rigidstandard gbuffer_alpha_test
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
+// The campaign's trees and plants (rigidcampaignvegetation vs40_main 04C7C807) draw twice: the depth prefill BD1C437E (t0.w)
+// and the G-buffer 74B2E609 (t2.w, both below 0.5 at (TEXCOORD0.w, TEXCOORD1.w) discarded): the G-buffer draw alone, its
+// diffuse map at t2. Its MSAA G-buffer EAEF01A9 stays out (no rays under the game's MSAA).
+constexpr std::array<twattila::rt_scene::PixelMask, 1> VEGETATION_MASKS = {{{.pixel_shader = 0x74B2E609, .slot = 2}}};
+
+constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1504,6 +1509,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     // game's start distance or under the shroud; no shadow-pass draw, so only with Far Tree Shadows): turned to the sun, their
     // alpha DAEF2EEF's t0 (below 0.5 discarded, as the helper's cut-out). Its vertex shader reads the shroud at t0: rt_sun at t1.
     {.hash = 0xDF8EAF69, .capture_shader = __rt_capture_campaign_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .sun_slot = 1, .far_tree = true},
+    // The campaign's trees and plants (rigidcampaignvegetation vs40_main 04C7C807: ATN's campaign traces, 10 of 33, 18 draws
+    // a frame), every frame as drawn (their wind and their lean toward a high camera), Warhammer II's 41147CD3 capture made
+    // again from Troy's bytes (rt_capture_campaign_vegetation: the camera at b0, the wind at b1). WARP: test\tw_troy_shaders.
+    {.hash = 0x04C7C807, .capture_shader = __rt_capture_campaign_vegetation, .dynamic = true, .foliage = true, .pixel_masks = VEGETATION_MASKS},
     // The shadow pass's casters (the 6144 x 6144 R32 atlas, 2 x 2 cascades; its vertex shaders' view-projection at cb0[9-12]):
     // what is out of the main view still casts there (Pharaoh's rt_outside_view geometry shaders: each variant's input is a
     // prefix of these vertex shaders' outputs, fxc /dumpbin, and their world position is that output: tools\tw\troy\
@@ -1515,6 +1524,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     // test: Warhammer II's RT_WORLD_UV (its input a prefix of these outputs). That test also weighs the alpha by the blade's
     // angle to the light and a dissolve map; the rays cut at the alpha alone, as the main pass's grass.
     {.hash = 0x62E0F935, .dynamic = true, .foliage = true, .grass = true, .cascade_keep = __rt_outside_view_world_uv},
+    // The campaign's trees and plants in the shadow pass (rigidcampaignvegetation vs40_shadow 42093D29: 6 of 33 traces): Warhammer
+    // II's 7D979F60 signature, TEXCOORD0 the world (w the fade 9F6D9081 dithers by: left out), TEXCOORD1 the UV of its t0 test.
+    {.hash = 0x42093D29, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
     {.hash = 0xAF7C4636, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0xC8DA195D, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     // The campaign's terrain tiles in the shadow pass (rigidterrain vs41_shadow_new 0D70D820: ATN's campaign traces, 10 of
