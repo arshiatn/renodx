@@ -655,7 +655,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     1.3-3.0 ms): the GPU side of Skip the Game's Shadow Map Work
   - [ ] Bend torches' remaining +2.3 ms (march 1.4 of 3.2 in the synthetic battle; the pick + 127 small copies)
   - [ ] GT-VBAO ~1.1, GT-VBGI ~1.0, SSSR ~0.3 ms (the SSSR pyramid as a single-pass downsample)
-  - [ ] 128 torch lights' cost at night / burning city / WH3 / Pharaoh (if ATN wants e606e8ef)
+  - [x] ATN 23:5x YES: 128 torch lights in RT/PT taken (603ca343 = e606e8ef; the default also becomes 128 in the 8 games
+    calling SetRaysPresetDefaults; all TW add-ons built)
+  - [ ] 128 torch lights' cost at night / burning city / WH3 / Pharaoh: a variant in the end-of-batch bench
   - [ ] Rarer Objects needs a view with siege towers or ships (bench scene choice)
   Was: EVERY-PRESET GPU AUDIT (pre_, started ~22:15, ATN "go for it"): Attila's inventory of presets + Experimental rows
   (RT shadows, SSS, AO, reflections, particles, fog, bounce); one measurement session at the bench view (Reset, non-RT,
