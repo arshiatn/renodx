@@ -1640,7 +1640,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 10> CUT_OUT_MASKS = {{
 
 // The sprite soldiers' G-buffer pixel shader (imposter ps40_main_gbuffer): their scene draws (SCENE_SHADERS' imposter rows).
 constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixel_shader = 0x5B1345B7}}};
-constexpr std::array<twattila::rt_scene::SceneShader, 45> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 49> SCENE_SHADERS = {{
     {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
     {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
     {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
@@ -1702,6 +1702,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 45> SCENE_SHADERS = {{
     // drawn; whole (their pixel shaders clip by an alpha map's red at a UV of their own, which the helper's test can't read).
     {.hash = 0xFF9FC42C, .capture_shader = __rt_capture_sail, .dynamic = true, .thin = true, .held_row = &rays_untraced_casters_row},
     {.hash = 0xBB80BC52, .capture_shader = __rt_capture_sail_symbol, .dynamic = true, .thin = true, .held_row = &rays_untraced_casters_row},
+    // The ropes (in no trace, level B): ribbons the game turns to the camera, solid, captured every frame as drawn, as Warhammer's
+    // (rope vs40_main 9ECDC023 and the placed vs40_main_rigid 0334E480: Warhammer's 7BD6E8CB / 1CEFE3BB instruction for
+    // instruction, so its capture shaders).
+    {.hash = 0x9ECDC023, .capture_shader = __rt_capture_rope, .dynamic = true, .held_row = &rays_untraced_casters_row},
+    {.hash = 0x0334E480, .capture_shader = __rt_capture_rope_rigid, .dynamic = true, .held_row = &rays_untraced_casters_row},
     // The shadow pass's casters into the atlas (the data run's census: drawn there only), what is out of the main view (Pharaoh's
     // rt_outside_view: each shadow vertex shader keeps its view-projection at cb0[9-12] and writes the world it multiplies):
     // rigidterrain vs41_shadow_new and fx__rigidcommon vs40_shadow (TEXCOORD0 the world), fx__weighted vs40_shadow and its
@@ -1719,6 +1724,12 @@ constexpr std::array<twattila::rt_scene::SceneShader, 45> SCENE_SHADERS = {{
     {.hash = 0x3FDF97B2, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0x100F52AF, .dynamic = true, .cascade_keep = __rt_outside_view_branch},
     {.hash = 0x00326F05, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_leaf},
+    // The ropes in the shadow pass (level B; Warhammer's CF629296 / 52D806A0 instruction for instruction): vs40_depth C2CA1469
+    // writes the world at TEXCOORD0 (RT_WORLD); the placed vs40_depth_rigid F75E8029 its centre line, so its capture version
+    // runs in its place (the ribbon as the shadow camera sees it, SceneShader::cascade_world). With the ropes' row.
+    {.hash = 0xC2CA1469, .dynamic = true, .cascade_keep = __rt_outside_view_world, .held_row = &rays_untraced_casters_row},
+    {.hash = 0xF75E8029, .capture_shader = __rt_capture_rope_rigid, .dynamic = true, .cascade_keep = __rt_outside_view_world, .cascade_world = true,
+     .held_row = &rays_untraced_casters_row},
     // The campaign's banners (7DF335FF: two draws into the atlas in ATN's campaign traces 03-14, none in battle; one vertex shader
     // for its main and shadow passes, o0 = r1 . cb0[9-12], TEXCOORD0 = r1, fxc /dumpbin): from the shadow pass alone, every
     // triangle kept (RT_KEEP_IN_VIEW: no main-pass row holds them), as the game shadows them there.
@@ -2377,8 +2388,8 @@ void ConfigureAddon() {
       .default_value = 0.f,
       .label = "Rarer Units and Props in the Rays (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "Units with liquid or animated surfaces, liquid or wind-blown props and objects the game tessellates\n"
-                 "(its Tessellation on) also cast ray-traced shadows. Not yet seen in game.",
+      .tooltip = "Units with liquid or animated surfaces, liquid or wind-blown props, ropes and objects the game\n"
+                 "tessellates (its Tessellation on) also cast ray-traced shadows. Not yet seen in game.",
       .is_visible = [] { return twattila::dlaa_bridge::bridge.ray_tracing; },
   });
   settings.push_back(new renodx::utils::settings::Setting{
