@@ -2,6 +2,42 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+### Parity round (2026-11-14; built only, not run in game)
+
+- New: **Attila's graphics page** (ATN: "the same/similar page layouts as Attila and thus the buttons too"): Anti-Aliasing
+  and Upscaling, Shadows, Ambient Occlusion and Ray Tracing Extra Options in Advanced, with **Reset**, **No RT/PT
+  (Recommended)** and **RT/PT** (Attila's preset: ray-traced sun shadows + RTAO + DLSS; this game has no GI or
+  path-traced AO, so those stay out). Graphics (Experimental) is gone: its rows moved there with the same keys (Battle
+  Objects and the two Remove tests under Ray Tracing Extra Options). A saved DLAA comes back as DLSS (SettingsRevision 1).
+  New with it: DLSS's preset (default L, its dark tones kept as Attila's), frame generation's preset, HUD recomposition
+  and debug view, the ray tracing rows Attila shows (Softness, AO range, debug views). Shared: three opt-in page fields
+  (`has_gtvbao`, `has_gi`, `every_row`); every other game's page dump unchanged.
+- New: Bend's **More Options** as Attila's: Softness (1-3 px, along surfaces), Contrast, Hard Shadow Samples, Fade-Out
+  Samples, Edge Threshold, Ignore Edge Pixels, Precision Offset, Sample Along the Ray, Mirror Screen Edges. Defaults give
+  the same shadows as before (`test/tw_romer_rays` case 6).
+- About: Bend Studio's and the helper's credits, a GitHub (Downloads) button.
+- Parity table (every Attila feature: have / do now / needs a trace / won't get, with proof):
+  `tools\tw\romeremastered\parity_1114.md` in the maintainer's tools.
+
+Test (ATN; the v13 lines first):
+1. Control: page Reset, Anti-Aliasing Game's: the picture as v12 (the game's shadows, AO and SMAA).
+2. Settings Mode Advanced: the four sections show; a saved DLAA shows as DLSS.
+3. Campaign, RT/PT, restart once: ray-traced sun shadows + AO + DLSS on (ReShade.log `DLAA: on`, the helper's log).
+4. Battle, No RT/PT (Recommended): Bend's contact shadows under soldiers; Shadows > More Options > Softness Off / 2 px:
+   softer edges, no halos (decides the default).
+5. Battle, DLSS preset L vs K: dark tones the same, L steadier (decides the default).
+6. Page Reset mid-battle: the game's shadows and AO back, no reset in renodx-tw-dlaa64.log.
+
+Not done:
+- Upscaling Debug View (motion vectors): the row sits in AppendAa's render-scale group this game doesn't use. Step: a
+  shared opt-in for the row alone; the shaders are the same.
+- Bend's Softer Away from the Caster and Debug View (rows hidden): their passes not dispatched here. Step: sss_bend_extended
+  + sss_soft and sss_debug as Attila's, a WARP case each.
+- Texture LOD Bias below 100%, units' object motion, units / banners / grass in the rays, static captures, smoke shadows:
+  each needs a fact no trace shows yet. Step: one battle trace with `[renodx] FrameTraceReads=1` at 67%, and a siege
+  with fire.
+- GT-VBAO, Global Illumination, reflections, the Warscape engine pages: not in this game (proof in the table).
+
 ## v13 (2026-11-14, ATN's 67% / 50% runs; built only, not run in game; installed: INSTALLED_PLACEHOLDER)
 
 - Fixed (safe side): ATN's 67% run reset the TW helper's ray tracing device twice within seconds of a battle's start
