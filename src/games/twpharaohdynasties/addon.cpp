@@ -1988,7 +1988,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 1> CAMPAIGN_TREE_MASKS = {{{
 // of its diffuse map's alpha (t2.w at (TEXCOORD0.w, TEXCOORD1.w)), Troy's 74B2E609's test; its MSAA G-buffer 191C5CCD stays
 // out (no rays under the game's MSAA), and so does its z-prefill B39D02A5 (the same draw again).
 constexpr std::array<twattila::rt_scene::PixelMask, 1> VEGETATION_MASKS = {{{.pixel_shader = 0xEB0089B4, .slot = 2}}};
-constexpr std::array<twattila::rt_scene::SceneShader, 36> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 37> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -2033,6 +2033,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 36> SCENE_SHADERS = {{
     {.hash = 0x4A716936, .capture_shader = __rt_capture_unit_4_bones, .dynamic = true},
     {.hash = 0x475A8CDF, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
     {.hash = 0x07936F02, .capture_shader = __rt_capture_unit_4_bones_dismember, .dynamic = true},
+    // The fur-clad units (weighted4_fur_alpha vs40_main_4_bones_fur 621E86DD: the 4-bone skinning plus the fur's sway; in no
+    // trace, level B), as Troy's EE95696C: solid, as the other units. WARP: test\tw_pharaoh.
+    {.hash = 0x621E86DD, .capture_shader = __rt_capture_unit_4_bones_fur, .dynamic = true},
     {.hash = 0xE710D4E7, .capture_shader = __rt_capture_grass_e710, .dynamic = true, .foliage = true, .grass = true},
     // The shadow pass's casters (pass 6 of tools\tw\pharaoh\phase2.md, into the 2 x 2 atlas): what is out of the main view still casts
     // there (rt_outside_view.gs_5_0.hlsl: the game's own draws, world positions from their vertex shaders' outputs). Every frame as drawn;

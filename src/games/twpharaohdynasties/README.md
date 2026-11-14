@@ -72,6 +72,18 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     view they cast since round 1): Troy's capture made again from Pharaoh's bytes (the same code, the wind's constants
     elsewhere), cut where the G-buffer EB0089B4 cuts (its diffuse map's alpha below 0.5). WARP (`test/tw_pharaoh` 4): the
     game's position within 6e-8, the UV within half precision; a second later (the wind) differs.
+  - **New: fur-clad units cast in the rays** (weighted4_fur_alpha 621E86DD, the fur's sway included; in no trace), solid as
+    the other units and Troy's. WARP (`test/tw_pharaoh` 5): the capture is the game's world position from random skinned
+    vertices; the 4-bone units' capture (no sway, the control) differs.
+  - Settled without code: Grass Height Distance is on the page already (Tests: grass_fade_start and grass_visible_range are
+    the two distances the grass shader shrinks the blades between, read from Pharaoh.exe's grass constants); Skip the Game's
+    Shadow Map Work belongs to the CPU round (not built here). Census casters left out with proof: the unit banners
+    76225B91 (unlit, no shadow draw), the far forest's blocks FE92BA2D (camera-facing, no shadow draw), the sail symbols
+    88A29130 / D69B93A8 (decals on cast sails), the displacement meshes F5AFBFFD (need a hull shader the game doesn't ship).
+  - Scale census at this build (`tools/tw/pharaoh/p2ph/p2ph_scale_census.txt`): 8 "BUG (B)" rows, each settled. The shroud
+    decals and the reflections' apply are fixed (WARP proofs the census can't see), the smoke streams use the screen
+    position only for depth, and the legacy fog's MSAA build (new: Fog & Sky Smoothing's) runs only under the game's MSAA,
+    where no upscaler runs. The building water's four rows from round 1 are handled.
 
 - **New: Fog Strength** (Extra, 0 to 2, default 1), on every fog the game ships, also the ones the maintainer's settings
   don't draw. That covers the battle fog's upsample (also its own full-resolution fallback along edges), low spec, MSAA,
@@ -96,20 +108,32 @@ Test lines (the maintainer):
 3. A sea or river battle with ships, RT/PT preset: the sails and ropes cast; no flicker as they move.
 4. If a map uses the older fog: Fog & Sky Smoothing Low to High removes lines in the fogged sky.
 
+Evening test lines (the maintainer; send `ReShade.log`, `renodx-tw-dlaa64.log`, `ReShade.ini`):
+
+5. Control: Reset, the siege benchmark: looks like v67.
+6. Campaign, RT/PT preset, camera low over forests and palms: trees and plants in view cast with holes between the leaves;
+   no shadow pops at the view's edge as the camera turns.
+7. A battle, Shadows at its highest, RT/PT: Three Shadow Cascades Under Rays (Shadows, More Options) off / on, restart or
+   change Shadows between: Record Ray Tracing Profile both ways (the shadow pass's CPU time); look past 250 m. Decides on or off.
+8. A river or sea battle with ships and tents, RT/PT: Rarer Objects in the Rays off / on: the fixed ropes cast thin shadows,
+   no flicker. Decides on or off.
+9. A burning siege, Particle Resolution Full / Half / Quarter, Full-Resolution Particle Edges on / off, Smooth Half-Size
+   Particles on / off: smoke and fire as at Full, no halos along walls and units, frame time lower. Decides the defaults.
+10. A battle with fur-cloaked and feather-helmeted units close, RT/PT: the fur cloaks cast; one Frame Trace there (for the
+    feathers' pixel shaders and the banners 2C00FCA9).
+
 Not done (what, why, smallest step):
 
-- Sprite Soldier Shadows: the imposters (dx11_imposter, VS 370A7440, GS 27A16995) build their cards in a geometry shader;
-  the rays' sun-facing capture takes a vertex shader. Provable offline: a capture GS path in `twattila/rt_core.hpp`
-  (shared), then a WARP of the imposter cards turned to the sun.
-- Particle Resolution / Smooth Half-Size Particles / edges: the shared particle layer is keyed on Attila's particle shaders.
-  Smallest step: map Pharaoh's particle passes (the burning siege's W2 trace) onto it.
-- Grass Height Distance: Pharaoh's grass (dx11_grass) has no fixed fade in its pixel shader (Attila's 100 m). Its fade is
-  in the vertex shader's grass constants (E710D4E7 g_fade_distances), probably what Grass Distance already moves. Needs
-  E710D4E7's cb1 in a battle trace at two Grass Distance values.
-- Level-B casters (in no trace) not added: feather and fur units (15389925, 2C5A6427, 5CE17813, 72BD9CFD, 621E86DD + their
-  shadow VS) need their pixel shaders' cut-out masks (a battle trace with those units close); banners 2C00FCA9 / AF88E0A3,
-  phar_standard_dynamic 281A331A / 85086BAE, terrain blend 8C511965 / 515FA244, fire meshes F5AFBFFD (tessellated) need a
-  settlement or siege trace for their pixel shaders; 026CBC61 needs its reads in a campaign trace (doubles?).
+- Census casters that need a trace (parity ledger, tools/tw/parity/pharaoh.tsv): the feathered units (6 main VS + 6 shadow
+  VS: cut-out cards, their pixel shaders unpaired; a battle with feather-helmeted units close), banners 2C00FCA9 / cinematic
+  AF88E0A3 (a battle with standard bearers; a cinematic: lit or unlit), phar_standard_dynamic 281A331A / 85086BAE (a
+  settlement or siege), terrain blend 8C511965 / 515FA244 (a battle with blended rocks: repeats of held draws?), the
+  campaign's prefab sky ring 3EF23291, its global terrain 026CBC61 and blend-mask pieces 58733DB8 / 5DC7A874 (campaign
+  traces with vertex reads).
+- The 8-bone models (weightedcommon F81881EB, never drawn in a trace): a capture from the disassembly's translation (the
+  fur's way) missed the game's positions on WARP by metres, and so does the plain translation, so the translation (also the
+  motion vectors' motion_unit_weightedcommon_f818) is suspect. Smallest step: find what the translation gets wrong (WARP
+  part by part), and a scene that draws these models.
 
 ### Parity round (2026-11-14; built only, not run in game)
 

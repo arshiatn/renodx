@@ -18,6 +18,9 @@
 //    offsets): the capture (rt_capture_campaign_vegetation) from 256 random vertices with the camera and a blowing wind: its
 //    world x the view-projection is the game's SV_Position (to the float rounding of its terms), its w the UV (POSITION0.w,
 //    NORMAL0.w) as two halves; CONTROL the capture a second later differs (the wind is in play).
+// 5. The fur-clad units (weighted4_fur_alpha vs40_main_4_bones_fur 621E86DD): the capture (rt_capture_unit_4_bones_fur) from
+//    random skinned vertices is the game's TEXCOORD0 (the skinned position plus the fur's sway); CONTROL 4A716936's capture
+//    (no sway) differs.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -130,10 +133,10 @@ static ComPtr<ID3D11InputLayout> InputLayout(const std::vector<char>& code, UINT
 }
 
 // What `geometry` streams out (4 floats a vertex) of `vertices` drawn as `topology` with the vertex shader `vertex_code` and
-// `constants` at the vertex stage's b0..; `geometry_constant` at the geometry stage's b0.
+// `constants` at the vertex stage's b0.., `textures` at its t0..; `geometry_constant` at the geometry stage's b0.
 static std::vector<float> Run(const std::vector<char>& vertex_code, ID3D11GeometryShader* geometry, D3D11_PRIMITIVE_TOPOLOGY topology,
                               const std::vector<float>& vertices, std::span<const ComPtr<ID3D11Buffer>> constants,
-                              ID3D11Buffer* geometry_constant) {
+                              ID3D11Buffer* geometry_constant, std::span<const ComPtr<ID3D11ShaderResourceView>> textures = {}) {
   ComPtr<ID3D11VertexShader> shader;
   device->CreateVertexShader(vertex_code.data(), vertex_code.size(), nullptr, &shader);
   UINT input_stride = 0;
@@ -156,6 +159,7 @@ static std::vector<float> Run(const std::vector<char>& vertex_code, ID3D11Geomet
   context->IASetVertexBuffers(0, 1, input.GetAddressOf(), &input_stride, &offset);
   context->IASetPrimitiveTopology(topology);
   for (UINT slot = 0; slot < constants.size(); ++slot) context->VSSetConstantBuffers(slot, 1, constants[slot].GetAddressOf());
+  for (UINT slot = 0; slot < textures.size(); ++slot) context->VSSetShaderResources(slot, 1, textures[slot].GetAddressOf());
   if (geometry_constant != nullptr) context->GSSetConstantBuffers(0, 1, &geometry_constant);
   context->VSSetShader(shader.Get(), nullptr, 0);
   context->GSSetShader(geometry, nullptr, 0);
@@ -177,15 +181,16 @@ static std::vector<float> Run(const std::vector<char>& vertex_code, ID3D11Geomet
 }
 
 // A vertex shader's output `semantic` (`semantic_index`) for each point of `vertices`, streamed out through a geometry shader made
-// from its own bytes.
+// from its own bytes; `textures` at t0...
 static std::vector<float> StreamOut(const std::vector<char>& code, const char* semantic, const std::vector<float>& vertices,
-                                    std::span<const ComPtr<ID3D11Buffer>> constants, UINT semantic_index = 0) {
+                                    std::span<const ComPtr<ID3D11Buffer>> constants, UINT semantic_index = 0,
+                                    std::span<const ComPtr<ID3D11ShaderResourceView>> textures = {}) {
   const D3D11_SO_DECLARATION_ENTRY entry = {.SemanticName = semantic, .SemanticIndex = semantic_index, .ComponentCount = 4};
   const UINT stride = 16;
   ComPtr<ID3D11GeometryShader> stream;
   device->CreateGeometryShaderWithStreamOutput(code.data(), code.size(), &entry, 1, &stride, 1, D3D11_SO_NO_RASTERIZED_STREAM,
                                                nullptr, &stream);
-  return Run(code, stream.Get(), D3D11_PRIMITIVE_TOPOLOGY_POINTLIST, vertices, constants, nullptr);
+  return Run(code, stream.Get(), D3D11_PRIMITIVE_TOPOLOGY_POINTLIST, vertices, constants, nullptr, textures);
 }
 
 // Each triangle corner's SV_Position out of the geometry shader `geometry_code` over `vertices` drawn with `vertex_code`;
@@ -568,6 +573,84 @@ static void TestCampaignVegetation(const std::string& game_folder, const std::st
               now_error, uv_error, later_error);
 }
 
+// The fur-clad units: the capture against the game's 621E86DD, both streamed out from the same random skinned vertices.
+static void TestFur(const std::string& game_folder, const std::string& built_folder) {
+  const auto game = ReadFile(game_folder + "\\0x621E86DD.vs_5_0.cso");
+  const auto capture = ReadFile(built_folder + "\\rt_capture_unit_4_bones_fur.cso");
+  const auto control = ReadFile(built_folder + "\\rt_capture_unit_4_bones.cso");
+  CHECK(!game.empty() && !capture.empty() && !control.empty(), "fur: the csos");
+  if (game.empty() || capture.empty() || control.empty()) return;
+  uint32_t seed = 4242;
+  const auto random = [&seed](float low, float high) {
+    seed = seed * 1664525u + 1013904223u;
+    return low + (high - low) * static_cast<float>(seed >> 8) / 16777216.f;
+  };
+  // The animation map (64 x 64 texels of random rows) and the selection ids.
+  constexpr UINT MAP = 64;
+  std::vector<float> rows(MAP * MAP * 4);
+  for (float& value : rows) value = random(-1.f, 1.f);
+  std::vector<uint32_t> ids(MAP * MAP);
+  for (uint32_t& id : ids) id = static_cast<uint32_t>(random(0.f, 65536.f));
+  const auto make_view = [](DXGI_FORMAT format, const void* data, UINT pitch) {
+    const D3D11_TEXTURE2D_DESC desc = {.Width = MAP, .Height = MAP, .MipLevels = 1, .ArraySize = 1, .Format = format,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = data, .SysMemPitch = pitch};
+    ComPtr<ID3D11Texture2D> texture;
+    ComPtr<ID3D11ShaderResourceView> view;
+    device->CreateTexture2D(&desc, &initial, &texture);
+    if (texture) device->CreateShaderResourceView(texture.Get(), nullptr, &view);
+    return view;
+  };
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 2> textures = {make_view(DXGI_FORMAT_R32G32B32A32_FLOAT, rows.data(), MAP * 16),
+                                                                     make_view(DXGI_FORMAT_R32_UINT, ids.data(), MAP * 4)};
+  // Each vertex 15 inputs x 4 floats: POSITION0 the bind pose, POSITION1 four bone indices (x 255), POSITION2 their weights,
+  // POSITION3 a normal with the fur's length in w, the rest (tangents, the instance's rows, the base row in TEXCOORD3.x) random.
+  constexpr int VERTICES = 256;
+  std::vector<float> vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    for (int input = 0; input < 15; ++input) {
+      for (int component = 0; component < 4; ++component) {
+        float value = random(-1.f, 1.f);
+        if (input == 1) value = std::floor(random(0.f, 6.f)) / 255.f;
+        if (input == 2) value = random(0.f, 0.33f);
+        if (input == 3 && component == 3) value = random(0.f, 1.f);
+        if (input == 10 && component == 0) value = std::floor(random(0.f, 40.f));
+        vertices.push_back(value);
+      }
+    }
+  }
+  const std::array<float, 20> rigid_config = {};
+  const std::array<float, 4> animation_size = {MAP, 1.f / MAP, MAP, 1.f / MAP};
+  const std::array<ComPtr<ID3D11Buffer>, 3> constants = {ConstantBuffer(CAMERA.data(), sizeof(CAMERA)), ConstantBuffer(rigid_config.data(), sizeof(rigid_config)),
+                                                         ConstantBuffer(animation_size.data(), sizeof(animation_size))};
+  const auto reference = StreamOut(game, "TEXCOORD", vertices, constants, 0, textures);
+  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, constants, 0, textures);
+  const auto unswayed = StreamOut(control, "TEXCOORD", vertices, constants, 0, textures);
+  if (reference.size() != VERTICES * 4 || worlds.size() != VERTICES * 4 || unswayed.size() != VERTICES * 4) {
+    CHECK(false, "fur: stream output sizes");
+    return;
+  }
+  const auto worst = [&reference](const std::vector<float>& world) {
+    double error = 0.0;
+    for (size_t index = 0; index < reference.size(); ++index) {
+      error = std::max(error, std::abs(static_cast<double>(world[index]) - reference[index]) / std::max(1.0, std::abs(static_cast<double>(reference[index]))));
+    }
+    return error;
+  };
+  int moved = 0;  // vertices the skinning placed off the origin (the animation map's rows in play)
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    if (std::abs(reference[vertex * 4]) + std::abs(reference[vertex * 4 + 1]) + std::abs(reference[vertex * 4 + 2]) > 1e-3) ++moved;
+  }
+  const double error = worst(worlds);
+  const double control_error = worst(unswayed);
+  CHECK(moved > VERTICES / 2, "fur: only %d of %d vertices skinned off the origin", moved, VERTICES);
+  CHECK(error < 1e-6, "fur: the capture %g off the game's world position", error);
+  CHECK(control_error > 1e-3, "fur: CONTROL the 4-bone capture without the sway = the game's (%g)", control_error);
+  std::printf("5 621E86DD: the capture's world within %.2g of the game's (%d of %d vertices skinned off the origin); CONTROL "
+              "4A716936's capture %.2g\n",
+              error, moved, VERTICES, control_error);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("usage: pharaoh.exe <the game's csos> <the add-on's built csos> [Pharaoh.exe]\n");
@@ -582,6 +665,7 @@ int main(int argc, char** argv) {
   TestCampaignTrees(argv[1], argv[2]);
   TestPlacedRopes(argv[1], argv[2]);
   TestCampaignVegetation(argv[1], argv[2]);
+  TestFur(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
   return failures == 0 ? 0 : 1;
 }
