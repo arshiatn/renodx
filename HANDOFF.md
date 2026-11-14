@@ -435,6 +435,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Pharaoh / Rome II (par_old_: tools/tw/round_notes/parity_<game>_1114.md). After the merges: one shared step moves the torch
   rows from Path Tracing (RayTracedLightsInBounce / RayTracedLightShadowRatio) into graphics_page for every game that can
   carry them. Merge one branch at a time, verify the merged tree once, stamp, install.
+- [x] Troy parity round MERGED 9095731c (table tools/tw/troy/parity_1114.md: 20 have / 4 done now / 6 trace / 12 won't / 7 open;
+  BUG: all 400 Graphics 2 of 2 rows did nothing (the shared lea-name finder matched 0 of 167 heap-copied names + 4 unresolved
+  audio at-start tests blocked every slider): twtroy/tweak_objects.hpp finds them by Troy's initializers (memory image),
+  384 dead rows removed, 21 rows live; Depth of Field, Smoke Shadows without rays (Experimental), Fog Strength; suites
+  tw_troy_tweaks / tw_troy_shaders). Agent resumed on 7 open items. SHARED STEP LATER: per-game leaf cut-out (Troy 0.01 vs
+  the helper's LEAF_ALPHA_CUTOFF 0.5), with the torch rows step.
 - [x] WH1 parity round MERGED a5787d66 (table tools/tw/wh1/parity_1114.md: 27 have / 8 done now / 3 left / 7 trace / 14 won't;
   Fog Strength, Fog Shadows + torch light in fog (Experimental, RT/PT on), Depth of Field, Smooth Banner Shadows, SDR preset +
   first start + GitHub button, Smoke Shadows (Experimental, not in RT/PT), far card / plant twins held (NOT HELD 22 -> 19),
