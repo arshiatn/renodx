@@ -1,5 +1,26 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### Round v52 (2026-11-14, built only, not run in game)
+
+- **New (Experimental, off): Smoke Shadows.** Smoke and dust dim the ray-traced sunlight, as in Pharaoh: Troy's particle shaders are Pharaoh's twins (the vertex shader reads the particle's orientation as halves; the lit pixel shaders bind their textures one slot higher). WARP (`tools/tw/troy/smoke`, Pharaoh's smoke test on Troy's bytes and ATN's constants): every particle's place and size 0 of 120 apart, its opacity 0 of 69 apart for both pixel shaders (worst 9.1e-7), the texture level 0 of 23; every control fails as it must.
+- **Fixed: the rays no longer take the sea, lakes and road overlays as shadow casters.** The rigid default shader also draws them; only its three G-buffer materials are in the scene now (Pharaoh's form). Fences, palms and other alpha-tested props cast their cut-out shadow, not a solid card.
+- **Fixed (Far Tree Shadows): campaign billboards under the shroud cast no shadow,** and the rays no longer unbind the shroud the game's next billboards read (cards could vanish with Far Tree Shadows on). WARP: a half-hidden shroud gives the game's cards, 960 of 1,536 corners hidden in both.
+- **New: Log Details counts the point lights and the fires' particle lights** (Pharaoh's count, now shared code).
+
+Test list (in-game AA off, DLSS, RT/PT preset):
+1. Smoke Shadows on, a burning siege: smoke columns dim the sunlight on the ground under them; no flicker.
+2. Smoke Quality Low and Maximum: the same shadows, Maximum with fewer holes.
+3. A coastal or river battle with rays on: no shadow on the sea floor from the water's surface; roads not darker than before.
+4. Fences, palm cards and other cut-out props: their shadows show the gaps.
+5. Campaign map, Far Tree Shadows on: far forests cast; none from under the shroud; no billboards vanish.
+6. Torch and Fire Shadows on at night: light stops at walls and units.
+7. Campaign trees cast shadows that match the trees while the camera moves.
+8. Bend or ray-traced shadows on: no dark halo near walls and units (the game's contact march off).
+9. Log Details on: one light count line in the log, at the first night battle frame.
+10. DLAA, then DLSS Performance: dark scenes keep their shadow detail.
+
+Not done: the fires' particle lights in the rays (after the WH2 agent's point light reader change); Water Clarity / Caustics and ray-traced water reflections (68 twins of Pharaoh's water shaders, each row's operand read on Troy's bytes, then Pharaoh's water_v58 WARP; the reflections' hooks moved to shared code first); Light Through Banners on sails (no trace draws a ship); the leaves' cut-out at 0.5 (the game's 0.01, and its fade). Not needed: Fog Shadows (Troy's battle fog 018FED0C reads no shadow map), an SDR preset or settings revision (Pharaoh has neither for this; the SDR tone mapper and SDR output are there), Hue Clip measured on 0C12E608 (that tone mapper is the ACES fit to 4.8e-4: the default 80 is Pharaoh's row).
+
 ### Round v51 (2026-11-14, built only, not run in game)
 
 - **New (Experimental, off; on in RT/PT): Torch and Fire Shadows.** The point lights (143A02ED, two instanced draws a frame in ATN's third session) cast their shadows from rays: the light shader replaced in Pharaoh's form (`shaders/pointlight00`), the light's place read from its 64-byte instances. WARP (`tools/tw/troy/point_light`): the built shader against the game's bytes at 100%, 0 of 393,216 values apart (7,773 lit; control 8,958 apart). The night siege's fires (particle lights 643FC156) keep the game's light: already patched for the render share (as Pharaoh's 5AD46115), no shadows from rays in Pharaoh either.
