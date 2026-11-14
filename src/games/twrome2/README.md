@@ -1,5 +1,31 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
+### Parity round 2 (2026-11-14; built only, not run in game)
+
+New:
+- **Reflection Quality** (Reflections and Water's Quality; 1 the game's): the water's reflections take finer steps (Game's method) or more of them (Hierarchical). Attila's row.
+- **Light Through All Banners** (Shadows' More Options, Experimental, off; RT/PT leaves it off): the unit banners let sunlight through as thin cloth, in the rays and in Bend.
+
+Fixed:
+- Water reflections below 100% (Game's, Hierarchical and Ray-Traced): the depth, its pyramid and the rays are read at the view's share of the screen.
+
+Proven offline: test/tw_rome2_shaders (WARP, the build before against this one): at 100% bit-identical with all three methods; at 50% the same picture as at 100%, bit for bit; the build before and the share unbound differ there. The banners: their 4 army_banner_flag models are the only ones of Rome II's 14337 with their material, and the traces' rigidtextureblendwind draws have exactly their index counts (rigidtextureblend also draws ships' damage parts: solid).
+
+Settled, no change: the 12 sun shaders the scale census left unclear are right below 100% (their one camera-projected uv is read only by the ambient occlusion's whole-texture read, so the two patches cancel); 7F44346E is never drawn (data_rome2.pack's 28C847C0 replaces it).
+
+Won't:
+- Reflection Rays and the SSR Denoiser: Attila's rows drive its own SSR's resolve, which needs hit targets and camera constants Rome II's water reflections have not.
+- Grass Height Distance: none of the 6 grass vertex shaders shrinks blades with distance (the position comes before any camera term); the pixel shaders drop blades past 200 m.
+
+Not done:
+- Grass past every LOD skips DrawScrub (Attila v159): Rome II's DrawScrub is another function (6 arguments, its own key, a shared LOD picker with a quality override). It needs a hook of its own, then a grassy battle with the hook's counts (tools/tw/rome2/par_r2_scrub_read.txt).
+
+Test (ATN):
+- A river or coastal battle at 50% (DLSS): water reflections in place as at 100%, with each Reflection Method. Reflection Quality 4: fewer gaps; 0.25: coarser.
+- Light Through All Banners on with RT shadows: where a unit banner casts a ray shadow, it is lighter. Off: as before.
+
+Build: `cmake --build build32 --config Release --target renodx-twrome2.addon32`; test: `test/tw_rome2_shaders/run.ps1`.
+
 ### Parity round (2026-11-14; built only, not run in game)
 
 New (Experimental rows start off; RT/PT turns on what it turns on in Attila unless marked):
@@ -28,10 +54,9 @@ Test (ATN):
 - Everything above off: the picture as before.
 
 Not done:
-- Light Through All Banners: Rome II's banner material (rigidtextureblend) is drawn in 36 / 41 of 72 traces, also by other meshes. Smallest step: read data.pack's army_banner_flag models' material, or one trace with banners in view.
+- Light Through All Banners: done in Parity round 2.
 - Particle Resolution, Smooth Half-Size Particles and the 26 soft-particle rows below 100%: the particles read the depth through cb_vfx's g_viewport_offset_scale, which no trace logged. Smallest step: one 50% battle trace with fire and smoke logging 97D98192's b3. The virtual texture's page_touch 28C847C0 waits on the same trace (its cb2).
-- Grass Height Distance: Rome II's grass has no height shrink or colour fade; its pixel shaders drop every blade past 200 m. Smallest step: read the grass cells' reach in empire.retail.dll before a 200 m slider.
-- Water reflection rows (Quality, Rays, Denoiser) and the scrub skip: not reached this round.
+- Grass Height Distance, the water reflection rows and the scrub skip: settled in Parity round 2.
 - The game's MSAA sun shaders (24) are over-patched below 100% in the scale census; below 100% needs an upscaler, which in-game MSAA stops.
 - Tessellated rigid objects and terrain (in-game tessellation, in no run) and the sail symbol (on its sail) stay out of the rays' scene.
 

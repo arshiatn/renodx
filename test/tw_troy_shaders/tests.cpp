@@ -1,10 +1,24 @@
 // Troy's replaced shaders (src/games/twtroy/shaders) against the game's on WARP.
 // tests.exe <the game's dumped csos> <the add-on's built csos (build\twtroy.include\embed)>
-// 1. Fog Strength: battlefog00 / 01 (the battle fog 018FED0C and its MSAA twin D9A3B04F, 4 samples) with the camera and
+// 1. Fog Strength: battlefog00 / 01 (the battle fog 018FED0C and its MSAA twin D9A3B04F, 4 samples) and their shader
+//    model 4.1 twins battlefog02 / 03 (4ED4200E, 78E00DBB: feature level 10.1 devices) with the camera and
 //    fog constants of the fog draw in ATN's session 3 trace_04 over a synthetic depth ramp (each sample its own depth):
 //    at Fog Strength 1 with nothing at b12 the game's bits; 0 no fog (rgb 0, alpha 1); 2 alpha T^2 and rgb x (1 + T) (the
 //    optical depth doubled); CONTROL 0.5 differs. Below 100% (b12 xy 0.5, the draw's viewport the target's top-left
 //    quarter, the screen size the target's) the game's on a target of that size; CONTROL without b12 it differs.
+// 2. The campaign vegetation's capture (rt_capture_campaign_vegetation) against the game's 04C7C807, both streamed out from
+//    256 random vertices with that trace's camera and a blowing wind: the capture's world position x the view-projection is
+//    the game's SV_Position (to the float rounding of its terms), its w the UV (POSITION0.w, NORMAL0.w) as two halves.
+//    CONTROL: the capture a second later differs (the wind is in play).
+// 2b. The fur-clad units' capture (rt_capture_unit_4_bones_fur) against the game's EE95696C: the same world position as
+//    its TEXCOORD0 from random skinned vertices; CONTROL 26A41B7D's capture (no fur sway) differs.
+// 2c. The campaign's trees: the capture (rt_capture_campaign_trees) against 07321725 (world, UV), and their shadow pass
+//    5192C0BA through the outside-view geometry shader with RT_COLOUR (each kept corner its world and UV); CONTROLs.
+// 2d. The sails: the capture (rt_capture_sail) against 18CE6F5A, their shadow pass F4B04EF3 through RT_WORLD; CONTROLs.
+// 3. VFX Brightness (src/games/twtroy/vfx_brightness.hpp's Patch) on the game's particle pixel shaders 563BA3E8 and 9C8987DD:
+//    the patched program is the game's plus dcl_constantbuffer cb7 and one mad (disassembly), WARP takes it, and drawn over a
+//    grid of random interpolants, emitters, textures and constants it gives the game's bits with cb7 unbound and with cb7.x 0
+//    (the slider at 1); CONTROL cb7.x 1 (the slider at 2) differs.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -18,10 +32,18 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "../../src/games/twtroy/shared.h"
+#include "../../src/games/twtroy/vfx_brightness.hpp"
+#include "../../src/games/twtroy/rt_outside_view_colour_world_uv_gs.h"
+#include "../../src/games/twwarhammer2/rt_outside_view_world_uv_gs.h"
+#include "../../src/games/twpharaohdynasties/rt_outside_view_world_gs.h"
+
+extern "C" __declspec(dllexport) const char* const NAME = "Troy shader test";
+extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) { std::printf("  log: %s\n", message); }
 
 using Microsoft::WRL::ComPtr;
 
@@ -225,7 +247,10 @@ static bool SameBits(const std::vector<float>& a, const std::vector<float>& b, s
 }
 
 static void TestFog(const std::string& game_folder, const std::string& built_folder, const char* hash, bool msaa) {
-  const auto game = ReadFile(game_folder + "\\0x" + hash + ".ps_5_0.cso");
+  std::vector<char> game;
+  for (const char* model : {".ps_5_0.cso", ".ps_4_1.cso"}) {
+    if (game.empty()) game = ReadFile(game_folder + "\\0x" + hash + model);
+  }
   const auto built = ReadFile(built_folder + "\\0x" + hash + ".cso");
   CHECK(!game.empty() && !built.empty(), "%s: the csos", hash);
   if (game.empty() || built.empty()) return;
@@ -294,6 +319,672 @@ static void TestFog(const std::string& game_folder, const std::string& built_fol
   std::printf("%s: 50%%: the game's bits at that size (CONTROL without b12: %zu samples differ)\n", hash, control);
 }
 
+// A vertex shader's output `semantic` (`semantic_index`, 4 floats) for each of `vertices` points, streamed out through a geometry shader
+// made from the vertex shader's own bytes: its inputs (its signature's, system values aside) each 4 floats of `vertices` in
+// order, from one buffer; `constants` at b0.., `textures` at t0...
+static std::vector<float> StreamOut(const std::vector<char>& code, const char* semantic, const std::vector<float>& vertices,
+                                    std::span<const ComPtr<ID3D11Buffer>> constants,
+                                    std::span<const ComPtr<ID3D11ShaderResourceView>> textures = {}, UINT semantic_index = 0) {
+  ComPtr<ID3D11VertexShader> shader;
+  CHECK(SUCCEEDED(device->CreateVertexShader(code.data(), code.size(), nullptr, &shader)), "%s: vertex shader", semantic);
+  const D3D11_SO_DECLARATION_ENTRY entry = {.SemanticName = semantic, .SemanticIndex = semantic_index, .ComponentCount = 4};
+  const UINT stride = 16;
+  ComPtr<ID3D11GeometryShader> stream;
+  CHECK(SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(code.data(), code.size(), &entry, 1, &stride, 1,
+                                                               D3D11_SO_NO_RASTERIZED_STREAM, nullptr, &stream)),
+        "%s: stream output", semantic);
+  ComPtr<ID3D11ShaderReflection> reflection;
+  D3DReflect(code.data(), code.size(), IID_PPV_ARGS(&reflection));
+  if (shader == nullptr || stream == nullptr || reflection == nullptr) return {};
+  D3D11_SHADER_DESC shader_desc = {};
+  reflection->GetDesc(&shader_desc);
+  std::vector<D3D11_INPUT_ELEMENT_DESC> elements;
+  for (UINT parameter = 0; parameter < shader_desc.InputParameters; ++parameter) {
+    D3D11_SIGNATURE_PARAMETER_DESC input = {};
+    reflection->GetInputParameterDesc(parameter, &input);
+    if (input.SystemValueType != D3D_NAME_UNDEFINED) continue;
+    const DXGI_FORMAT format = (input.ComponentType == D3D_REGISTER_COMPONENT_UINT32) ? DXGI_FORMAT_R32G32B32A32_UINT
+                               : (input.ComponentType == D3D_REGISTER_COMPONENT_SINT32) ? DXGI_FORMAT_R32G32B32A32_SINT
+                                                                                         : DXGI_FORMAT_R32G32B32A32_FLOAT;
+    elements.push_back({input.SemanticName, input.SemanticIndex, format, 0, static_cast<UINT>(16 * elements.size()), D3D11_INPUT_PER_VERTEX_DATA, 0});
+  }
+  ComPtr<ID3D11InputLayout> layout;
+  CHECK(SUCCEEDED(device->CreateInputLayout(elements.data(), static_cast<UINT>(elements.size()), code.data(), code.size(), &layout)),
+        "%s: input layout", semantic);
+  const UINT input_stride = static_cast<UINT>(16 * elements.size());
+  const UINT count = static_cast<UINT>(vertices.size() * 4 / input_stride);
+  const D3D11_BUFFER_DESC input_desc = {.ByteWidth = static_cast<UINT>(vertices.size() * 4), .Usage = D3D11_USAGE_DEFAULT,
+                                        .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+  const D3D11_SUBRESOURCE_DATA input_data = {.pSysMem = vertices.data()};
+  ComPtr<ID3D11Buffer> input;
+  device->CreateBuffer(&input_desc, &input_data, &input);
+  const D3D11_BUFFER_DESC out_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+  ComPtr<ID3D11Buffer> out;
+  device->CreateBuffer(&out_desc, nullptr, &out);
+  context->ClearState();
+  context->IASetInputLayout(layout.Get());
+  const UINT offset = 0;
+  context->IASetVertexBuffers(0, 1, input.GetAddressOf(), &input_stride, &offset);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+  for (UINT slot = 0; slot < constants.size(); ++slot) context->VSSetConstantBuffers(slot, 1, constants[slot].GetAddressOf());
+  for (UINT slot = 0; slot < textures.size(); ++slot) context->VSSetShaderResources(slot, 1, textures[slot].GetAddressOf());
+  context->VSSetShader(shader.Get(), nullptr, 0);
+  context->GSSetShader(stream.Get(), nullptr, 0);
+  context->SOSetTargets(1, out.GetAddressOf(), &offset);
+  context->Draw(count, 0);
+  ID3D11Buffer* no_target = nullptr;
+  context->SOSetTargets(1, &no_target, &offset);
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, &staging);
+  context->CopyResource(staging.Get(), out.Get());
+  std::vector<float> values(count * 4, 0.f);
+  D3D11_MAPPED_SUBRESOURCE mapped;
+  if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+    std::memcpy(values.data(), mapped.pData, values.size() * 4);
+    context->Unmap(staging.Get(), 0);
+  }
+  return values;
+}
+
+static float HalfToFloat(uint32_t bits) {
+  const uint32_t exponent = (bits >> 10) & 0x1Fu;
+  const uint32_t value = (exponent == 0) ? ((bits & 0x8000u) << 16) : (((bits & 0x8000u) << 16) | ((exponent + 112u) << 23) | ((bits & 0x3FFu) << 13));
+  float result;
+  std::memcpy(&result, &value, 4);
+  return result;
+}
+
+static void TestVegetation(const std::string& game_folder, const std::string& built_folder) {
+  const auto game = ReadFile(game_folder + "\\0x04C7C807.vs_5_0.cso");
+  const auto capture = ReadFile(built_folder + "\\rt_capture_campaign_vegetation.cso");
+  CHECK(!game.empty() && !capture.empty(), "vegetation: the csos");
+  if (game.empty() || capture.empty()) return;
+  // Random trees and plants around the trace's camera: each vertex 20 floats (POSITION0 the local offset with the UV's u in w,
+  // NORMAL0 with v in w, COLOR0 with the wind weight in w, POSITION1 the place's x / z, POSITION2 its height, turn, scale, fade).
+  uint32_t seed = 12345;
+  const auto random = [&seed](float low, float high) {
+    seed = seed * 1664525u + 1013904223u;
+    return low + (high - low) * static_cast<float>(seed >> 8) / 16777216.f;
+  };
+  constexpr int VERTICES = 256;
+  std::vector<float> vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    const float values[20] = {random(-3.f, 3.f), random(0.f, 8.f), random(-3.f, 3.f), random(0.f, 1.f),
+                              random(-1.f, 1.f), random(-1.f, 1.f), random(-1.f, 1.f), random(0.f, 1.f),
+                              random(0.f, 1.f), random(0.f, 1.f), random(0.f, 1.f), random(0.7f, 1.f),
+                              CAMERA[0] + random(-150.f, 150.f), CAMERA[2] + random(-150.f, 150.f), 0.f, 0.f,
+                              CAMERA[1] - random(20.f, 120.f), random(0.f, 6.28f), random(0.6f, 1.4f), random(0.f, 1.f)};
+    vertices.insert(vertices.end(), std::begin(values), std::end(values));
+  }
+  // cb_environment: the wind's direction, vector, gust start, multiplier, horizontal and vertical strength.
+  const std::array<float, 20> wind = {0.8f, 0.6f, 1.f, 0.5f, 0.f, 1.f, 1.3f, 0.9f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f, 1.f, 0.f, 0.f, 0.f};
+  auto camera = CAMERA;
+  const std::array<ComPtr<ID3D11Buffer>, 2> now = {ConstantBuffer(camera.data(), sizeof(camera)), ConstantBuffer(wind.data(), sizeof(wind))};
+  const auto positions = StreamOut(game, "SV_POSITION", vertices, now);
+  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, now);
+  camera[104] += 1.f;  // time_in_sec (c26.x)
+  const std::array<ComPtr<ID3D11Buffer>, 2> later = {ConstantBuffer(camera.data(), sizeof(camera)), ConstantBuffer(wind.data(), sizeof(wind))};
+  const auto worlds_later = StreamOut(capture, "TEXCOORD", vertices, later);
+  if (positions.size() != VERTICES * 4 || worlds.size() != VERTICES * 4 || worlds_later.size() != VERTICES * 4) {
+    CHECK(false, "vegetation: stream output sizes");
+    return;
+  }
+  // SV_Position = dot(world, c9 .. c12) (view_projection, column-major), in double from the capture's world; the error over
+  // the sum of the dot's terms' sizes (world positions some 600 m out: each term rounds in float, and the depth row's terms
+  // cancel to a small w).
+  const auto place_error = [](const std::vector<float>& world, const std::vector<float>& game_clip) {
+    double worst = 0.0;
+    for (int vertex = 0; vertex < VERTICES; ++vertex) {
+      for (int row = 0; row < 4; ++row) {
+        double clip = 0.0;
+        double size = 0.0;
+        for (int column = 0; column < 4; ++column) {
+          const double term = ((column == 3) ? 1.0 : static_cast<double>(world[vertex * 4 + column])) * CAMERA[36 + row * 4 + column];
+          clip += term;
+          size += std::abs(term);
+        }
+        worst = std::max(worst, std::abs(clip - game_clip[vertex * 4 + row]) / std::max(size, 1e-6));
+      }
+    }
+    return worst;
+  };
+  const double now_error = place_error(worlds, positions);
+  const double later_error = place_error(worlds_later, positions);
+  double uv_error = 0.0;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    uint32_t bits;
+    std::memcpy(&bits, &worlds[vertex * 4 + 3], 4);
+    uv_error = std::max(uv_error, static_cast<double>(std::abs(HalfToFloat(bits & 0xFFFFu) - vertices[vertex * 20 + 3])));
+    uv_error = std::max(uv_error, static_cast<double>(std::abs(HalfToFloat(bits >> 16) - vertices[vertex * 20 + 7])));
+  }
+  CHECK(now_error < 1e-6, "vegetation: the capture's world x the camera %g off the game's SV_Position (over its terms' size)", now_error);
+  CHECK(uv_error < 1e-3, "vegetation: the UV off by %g", uv_error);
+  CHECK(later_error > 1e-4, "vegetation: CONTROL a second later = now (%g): the wind not in play", later_error);
+  std::printf("04C7C807: the capture's world x the camera within %.2g of the game's SV_Position (over its terms' size), its UV within %.2g; CONTROL a second later %.2g\n",
+              now_error, uv_error, later_error);
+}
+
+// The fur-clad units' capture (rt_capture_unit_4_bones_fur) against the game's EE95696C, both streamed out from the same random
+// skinned vertices (bone indices into a random animation map, weights, the fur's length in POSITION3.w): its world position is
+// the game's TEXCOORD0 (the skinned position plus the fur's sway, before the camera). CONTROL: the 4-bone capture of 26A41B7D
+// (no sway) differs.
+static void TestFur(const std::string& game_folder, const std::string& built_folder) {
+  const auto game = ReadFile(game_folder + "\\0xEE95696C.vs_5_0.cso");
+  const auto capture = ReadFile(built_folder + "\\rt_capture_unit_4_bones_fur.cso");
+  const auto control = ReadFile(built_folder + "\\rt_capture_unit_4_bones.cso");
+  CHECK(!game.empty() && !capture.empty() && !control.empty(), "fur: the csos");
+  if (game.empty() || capture.empty() || control.empty()) return;
+  uint32_t seed = 4242;
+  const auto random = [&seed](float low, float high) {
+    seed = seed * 1664525u + 1013904223u;
+    return low + (high - low) * static_cast<float>(seed >> 8) / 16777216.f;
+  };
+  // The animation map (64 x 64 texels of random rows) and the selection ids.
+  constexpr UINT MAP = 64;
+  std::vector<float> rows(MAP * MAP * 4);
+  for (float& value : rows) value = random(-1.f, 1.f);
+  std::vector<uint32_t> ids(MAP * MAP);
+  for (uint32_t& id : ids) id = static_cast<uint32_t>(random(0.f, 65536.f));
+  const auto make_view = [](DXGI_FORMAT format, const void* data, UINT pitch) {
+    const D3D11_TEXTURE2D_DESC desc = {.Width = MAP, .Height = MAP, .MipLevels = 1, .ArraySize = 1, .Format = format,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = data, .SysMemPitch = pitch};
+    ComPtr<ID3D11Texture2D> texture;
+    ComPtr<ID3D11ShaderResourceView> view;
+    device->CreateTexture2D(&desc, &initial, &texture);
+    if (texture) device->CreateShaderResourceView(texture.Get(), nullptr, &view);
+    return view;
+  };
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 2> textures = {make_view(DXGI_FORMAT_R32G32B32A32_FLOAT, rows.data(), MAP * 16),
+                                                                     make_view(DXGI_FORMAT_R32_UINT, ids.data(), MAP * 4)};
+  // Each vertex 15 inputs x 4 floats: POSITION0 the bind pose, POSITION1 four bone indices (x 255), POSITION2 their weights,
+  // POSITION3 a normal with the fur's length in w, the rest (tangents, the instance's rows, the base row in TEXCOORD3.x) random.
+  constexpr int VERTICES = 256;
+  std::vector<float> vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    for (int input = 0; input < 15; ++input) {
+      for (int component = 0; component < 4; ++component) {
+        float value = random(-1.f, 1.f);
+        if (input == 1) value = std::floor(random(0.f, 6.f)) / 255.f;
+        if (input == 2) value = random(0.f, 0.33f);
+        if (input == 3 && component == 3) value = random(0.f, 1.f);
+        if (input == 10 && component == 0) value = std::floor(random(0.f, 40.f));
+        vertices.push_back(value);
+      }
+    }
+  }
+  const std::array<float, 20> rigid_config = {};
+  const std::array<float, 4> animation_size = {MAP, 1.f / MAP, MAP, 1.f / MAP};
+  const std::array<ComPtr<ID3D11Buffer>, 3> constants = {ConstantBuffer(CAMERA.data(), sizeof(CAMERA)), ConstantBuffer(rigid_config.data(), sizeof(rigid_config)),
+                                                         ConstantBuffer(animation_size.data(), sizeof(animation_size))};
+  const auto reference = StreamOut(game, "TEXCOORD", vertices, constants, textures);
+  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, constants, textures);
+  const auto unswayed = StreamOut(control, "TEXCOORD", vertices, constants, textures);
+  if (reference.size() != VERTICES * 4 || worlds.size() != VERTICES * 4 || unswayed.size() != VERTICES * 4) {
+    CHECK(false, "fur: stream output sizes");
+    return;
+  }
+  const auto worst = [&reference](const std::vector<float>& world) {
+    double error = 0.0;
+    for (size_t index = 0; index < reference.size(); ++index) {
+      error = std::max(error, std::abs(static_cast<double>(world[index]) - reference[index]) / std::max(1.0, std::abs(static_cast<double>(reference[index]))));
+    }
+    return error;
+  };
+  int moved = 0;  // vertices the skinning placed off the origin (the animation map's rows in play)
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    if (std::abs(reference[vertex * 4]) + std::abs(reference[vertex * 4 + 1]) + std::abs(reference[vertex * 4 + 2]) > 1e-3) ++moved;
+  }
+  const double error = worst(worlds);
+  const double control_error = worst(unswayed);
+  CHECK(moved > VERTICES / 2, "fur: only %d of %d vertices skinned off the origin", moved, VERTICES);
+  CHECK(error < 1e-6, "fur: the capture %g off the game's world position", error);
+  CHECK(control_error > 1e-3, "fur: CONTROL the 4-bone capture without the sway = the game's (%g)", control_error);
+  std::printf("EE95696C: the capture's world within %.2g of the game's (%d of %d vertices skinned off the origin); CONTROL 26A41B7D's "
+              "capture %.2g\n",
+              error, moved, VERTICES, control_error);
+}
+
+// A geometry shader's SV_Position for each triangle corner of `vertices` drawn with the vertex shader `vertex_code`, streamed
+// out (the geometry shader made from `geometry_code` with stream output); `main_view` at the geometry stage's b0.
+static std::vector<float> StreamOutThrough(const std::vector<char>& vertex_code, std::span<const uint8_t> geometry_code,
+                                           const std::vector<float>& vertices, std::span<const ComPtr<ID3D11Buffer>> constants,
+                                           ID3D11Buffer* main_view) {
+  ComPtr<ID3D11VertexShader> shader;
+  device->CreateVertexShader(vertex_code.data(), vertex_code.size(), nullptr, &shader);
+  const D3D11_SO_DECLARATION_ENTRY entry = {.SemanticName = "SV_Position", .ComponentCount = 4};
+  const UINT stride = 16;
+  ComPtr<ID3D11GeometryShader> geometry;
+  device->CreateGeometryShaderWithStreamOutput(geometry_code.data(), geometry_code.size(), &entry, 1, &stride, 1,
+                                               D3D11_SO_NO_RASTERIZED_STREAM, nullptr, &geometry);
+  ComPtr<ID3D11ShaderReflection> reflection;
+  D3DReflect(vertex_code.data(), vertex_code.size(), IID_PPV_ARGS(&reflection));
+  CHECK(shader != nullptr && geometry != nullptr && reflection != nullptr, "geometry stream output: the shaders");
+  if (shader == nullptr || geometry == nullptr || reflection == nullptr) return {};
+  D3D11_SHADER_DESC shader_desc = {};
+  reflection->GetDesc(&shader_desc);
+  std::vector<D3D11_INPUT_ELEMENT_DESC> elements;
+  for (UINT parameter = 0; parameter < shader_desc.InputParameters; ++parameter) {
+    D3D11_SIGNATURE_PARAMETER_DESC input = {};
+    reflection->GetInputParameterDesc(parameter, &input);
+    if (input.SystemValueType != D3D_NAME_UNDEFINED) continue;
+    elements.push_back({input.SemanticName, input.SemanticIndex, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(16 * elements.size()),
+                        D3D11_INPUT_PER_VERTEX_DATA, 0});
+  }
+  ComPtr<ID3D11InputLayout> layout;
+  device->CreateInputLayout(elements.data(), static_cast<UINT>(elements.size()), vertex_code.data(), vertex_code.size(), &layout);
+  const UINT input_stride = static_cast<UINT>(16 * elements.size());
+  const UINT count = static_cast<UINT>(vertices.size() * 4 / input_stride);
+  const D3D11_BUFFER_DESC input_desc = {.ByteWidth = static_cast<UINT>(vertices.size() * 4), .Usage = D3D11_USAGE_DEFAULT,
+                                        .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+  const D3D11_SUBRESOURCE_DATA input_data = {.pSysMem = vertices.data()};
+  ComPtr<ID3D11Buffer> input;
+  device->CreateBuffer(&input_desc, &input_data, &input);
+  const D3D11_BUFFER_DESC out_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+  ComPtr<ID3D11Buffer> out;
+  device->CreateBuffer(&out_desc, nullptr, &out);
+  context->ClearState();
+  context->IASetInputLayout(layout.Get());
+  const UINT offset = 0;
+  context->IASetVertexBuffers(0, 1, input.GetAddressOf(), &input_stride, &offset);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  for (UINT slot = 0; slot < constants.size(); ++slot) context->VSSetConstantBuffers(slot, 1, constants[slot].GetAddressOf());
+  context->GSSetConstantBuffers(0, 1, &main_view);
+  context->VSSetShader(shader.Get(), nullptr, 0);
+  context->GSSetShader(geometry.Get(), nullptr, 0);
+  context->SOSetTargets(1, out.GetAddressOf(), &offset);
+  context->Draw(count, 0);
+  ID3D11Buffer* no_target = nullptr;
+  context->SOSetTargets(1, &no_target, &offset);
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = count * stride, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, &staging);
+  context->CopyResource(staging.Get(), out.Get());
+  std::vector<float> values(count * 4, 0.f);
+  D3D11_MAPPED_SUBRESOURCE mapped;
+  if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+    std::memcpy(values.data(), mapped.pData, values.size() * 4);
+    context->Unmap(staging.Get(), 0);
+  }
+  return values;
+}
+
+// The campaign's trees: the capture (rt_capture_campaign_trees) against the game's 07321725 from random instanced vertices
+// (its world the game's TEXCOORD0, its UV TEXCOORD0's (o3.xy) as halves; CONTROL: an instance row a metre off), and their
+// shadow pass 5192C0BA through the outside-view geometry shader RT_WORLD_UV + RT_COLOUR with every triangle outside the
+// main view: each corner the game's TEXCOORD0.xyz with the UV (CONTROL: Warhammer II's RT_WORLD_UV without the COLOR0 member
+// on the same vertex shader differs).
+static void TestCampaignTrees(const std::string& game_folder, const std::string& built_folder) {
+  const auto game = ReadFile(game_folder + "\\0x07321725.vs_5_0.cso");
+  const auto shadow = ReadFile(game_folder + "\\0x5192C0BA.vs_5_0.cso");
+  const auto capture = ReadFile(built_folder + "\\rt_capture_campaign_trees.cso");
+  CHECK(!game.empty() && !shadow.empty() && !capture.empty(), "campaign trees: the csos");
+  if (game.empty() || shadow.empty() || capture.empty()) return;
+  uint32_t seed = 777;
+  const auto random = [&seed](float low, float high) {
+    seed = seed * 1664525u + 1013904223u;
+    return low + (high - low) * static_cast<float>(seed >> 8) / 16777216.f;
+  };
+  // 13 inputs x 4 floats: POSITION0 the model's point (w 1), TEXCOORD0 its UV, the normals, colour, the instance's rows in
+  // POSITION1-3 (a turn and scale, the place near the trace's camera in w), the rest random. 85 triangles.
+  constexpr int VERTICES = 255;
+  std::vector<float> vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    const float turn = random(0.f, 6.28f);
+    const float scale = random(0.6f, 1.4f);
+    for (int input = 0; input < 13; ++input) {
+      std::array<float, 4> value = {random(-1.f, 1.f), random(-1.f, 1.f), random(-1.f, 1.f), random(0.f, 1.f)};
+      if (input == 0) value = {random(-4.f, 4.f), random(0.f, 12.f), random(-4.f, 4.f), 1.f};
+      if (input == 1) value = {random(0.f, 1.f), random(0.f, 1.f), 0.f, 0.f};
+      if (input == 7) value = {scale * std::cos(turn), 0.f, scale * std::sin(turn), CAMERA[0] + random(-300.f, 300.f)};
+      if (input == 8) value = {0.f, scale, 0.f, CAMERA[1] - random(20.f, 200.f)};
+      if (input == 9) value = {-scale * std::sin(turn), 0.f, scale * std::cos(turn), CAMERA[2] + random(-300.f, 300.f)};
+      vertices.insert(vertices.end(), value.begin(), value.end());
+    }
+  }
+  const std::array<ComPtr<ID3D11Buffer>, 1> constants = {ConstantBuffer(CAMERA.data(), sizeof(CAMERA))};
+  const auto reference = StreamOut(game, "TEXCOORD", vertices, constants);
+  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, constants);
+  auto moved = vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) moved[vertex * 52 + 7 * 4 + 3] += 1.f;
+  const auto moved_worlds = StreamOut(capture, "TEXCOORD", moved, constants);
+  const auto shadow_worlds = StreamOut(shadow, "TEXCOORD", vertices, constants);
+  // Every triangle outside the main view (w -1 everywhere).
+  std::array<float, 56> main_view = {};
+  main_view[13 * 4 + 3] = -1.f;
+  const auto view = ConstantBuffer(main_view.data(), sizeof(main_view));
+  const auto kept = StreamOutThrough(shadow, std::span<const uint8_t>(__rt_outside_view_colour_world_uv, sizeof(__rt_outside_view_colour_world_uv)),
+                                     vertices, constants, view.Get());
+  const auto kept_control = StreamOutThrough(shadow, std::span<const uint8_t>(__rt_outside_view_world_uv, sizeof(__rt_outside_view_world_uv)),
+                                             vertices, constants, view.Get());
+  if (reference.size() != VERTICES * 4 || worlds.size() != VERTICES * 4 || moved_worlds.size() != VERTICES * 4
+      || shadow_worlds.size() != VERTICES * 4 || kept.size() != VERTICES * 4 || kept_control.size() != VERTICES * 4) {
+    CHECK(false, "campaign trees: stream output sizes");
+    return;
+  }
+  // The world against `expected` (x / w), relative to the size; the UV halves in w against TEXCOORD0.
+  const auto errors = [&vertices](const std::vector<float>& world, const std::vector<float>& expected) {
+    double place = 0.0;
+    double uv = 0.0;
+    for (int vertex = 0; vertex < VERTICES; ++vertex) {
+      for (int axis = 0; axis < 3; ++axis) {
+        const double want = static_cast<double>(expected[vertex * 4 + axis]) / expected[vertex * 4 + 3];
+        place = std::max(place, std::abs(world[vertex * 4 + axis] - want) / std::max(1.0, std::abs(want)));
+      }
+      uint32_t bits;
+      std::memcpy(&bits, &world[vertex * 4 + 3], 4);
+      uv = std::max(uv, static_cast<double>(std::abs(HalfToFloat(bits & 0xFFFFu) - vertices[vertex * 52 + 4])));
+      uv = std::max(uv, static_cast<double>(std::abs(HalfToFloat(bits >> 16) - vertices[vertex * 52 + 5])));
+    }
+    return std::array<double, 2>{place, uv};
+  };
+  const auto capture_errors = errors(worlds, reference);
+  const auto moved_errors = errors(moved_worlds, reference);
+  const auto kept_errors = errors(kept, shadow_worlds);
+  const auto control_errors = errors(kept_control, shadow_worlds);
+  CHECK(capture_errors[0] < 1e-6 && capture_errors[1] < 1e-3, "campaign trees: the capture %g off the game's world, its UV %g",
+        capture_errors[0], capture_errors[1]);
+  CHECK(moved_errors[0] > 1e-3, "campaign trees: CONTROL an instance row a metre off = the game's (%g)", moved_errors[0]);
+  CHECK(kept_errors[0] < 1e-6 && kept_errors[1] < 1e-3, "campaign trees' shadow pass: kept corners %g off its world, the UV %g",
+        kept_errors[0], kept_errors[1]);
+  CHECK(control_errors[0] > 1e-3, "campaign trees' shadow pass: CONTROL without COLOR0 = its world (%g)", control_errors[0]);
+  std::printf("07321725: the capture's world within %.2g of the game's, its UV within %.2g; CONTROL a row a metre off %.2g. "
+              "5192C0BA kept outside the view: its world within %.2g, the UV within %.2g; CONTROL without COLOR0 %.2g\n",
+              capture_errors[0], capture_errors[1], moved_errors[0], kept_errors[0], kept_errors[1], control_errors[0]);
+}
+
+// The sails: the capture (rt_capture_sail) against the game's 18CE6F5A from random cloth vertices and a placed sail (its world
+// the game's TEXCOORD1; CONTROL: the sail placed a metre off), and their shadow pass F4B04EF3 through Pharaoh's RT_WORLD
+// geometry shader with every triangle outside the main view (each kept corner its TEXCOORD0 world; CONTROL: every triangle in
+// view, nothing kept).
+static void TestSails(const std::string& game_folder, const std::string& built_folder) {
+  const auto game = ReadFile(game_folder + "\\0x18CE6F5A.vs_5_0.cso");
+  const auto shadow = ReadFile(game_folder + "\\0xF4B04EF3.vs_5_0.cso");
+  const auto capture = ReadFile(built_folder + "\\rt_capture_sail.cso");
+  CHECK(!game.empty() && !shadow.empty() && !capture.empty(), "sails: the csos");
+  if (game.empty() || shadow.empty() || capture.empty()) return;
+  uint32_t seed = 99;
+  const auto random = [&seed](float low, float high) {
+    seed = seed * 1664525u + 1013904223u;
+    return low + (high - low) * static_cast<float>(seed >> 8) / 16777216.f;
+  };
+  // 5 inputs x 4 floats: POSITION0 the cloth's point (w 1), the rest random. 85 triangles.
+  constexpr int VERTICES = 255;
+  std::vector<float> vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    const std::array<float, 20> values = {random(-6.f, 6.f), random(0.f, 15.f), random(-2.f, 2.f), 1.f};
+    vertices.insert(vertices.end(), values.begin(), values.end());
+    for (int index = 4; index < 20; ++index) vertices[vertices.size() - 20 + index] = random(0.f, 1.f);
+  }
+  // sail_VS: world_matrix (float4x3, columns: a turn about y and the ship's place near the camera).
+  const float turn = 0.7f;
+  std::array<float, 16> sail = {std::cos(turn), 0.f, std::sin(turn), CAMERA[0] + 40.f, 0.f, 1.f, 0.f, CAMERA[1] - 80.f,
+                                -std::sin(turn), 0.f, std::cos(turn), CAMERA[2] + 25.f};
+  const std::array<ComPtr<ID3D11Buffer>, 2> constants = {ConstantBuffer(CAMERA.data(), sizeof(CAMERA)), ConstantBuffer(sail.data(), sizeof(sail))};
+  sail[3] += 1.f;
+  const std::array<ComPtr<ID3D11Buffer>, 2> moved = {ConstantBuffer(CAMERA.data(), sizeof(CAMERA)), ConstantBuffer(sail.data(), sizeof(sail))};
+  std::array<float, 56> main_view = {};
+  main_view[13 * 4 + 3] = -1.f;  // w -1: every triangle outside
+  const auto outside = ConstantBuffer(main_view.data(), sizeof(main_view));
+  main_view[13 * 4 + 3] = 1.f;  // x, y, z 0, w 1: every triangle inside
+  const auto inside = ConstantBuffer(main_view.data(), sizeof(main_view));
+  // The game's TEXCOORD1: o2, its world.
+  const auto reference = StreamOut(game, "TEXCOORD", vertices, constants, {}, 1);
+  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, constants);
+  const auto moved_worlds = StreamOut(capture, "TEXCOORD", vertices, moved);
+  const auto shadow_worlds = StreamOut(shadow, "TEXCOORD", vertices, constants);
+  const std::span<const uint8_t> keep(__rt_outside_view_world, sizeof(__rt_outside_view_world));
+  const auto kept = StreamOutThrough(shadow, keep, vertices, constants, outside.Get());
+  const auto in_view = StreamOutThrough(shadow, keep, vertices, constants, inside.Get());
+  if (reference.size() != VERTICES * 4 || worlds.size() != VERTICES * 4 || moved_worlds.size() != VERTICES * 4
+      || shadow_worlds.size() != VERTICES * 4 || kept.size() != VERTICES * 4 || in_view.size() != VERTICES * 4) {
+    CHECK(false, "sails: stream output sizes");
+    return;
+  }
+  const auto worst = [](const std::vector<float>& world, const std::vector<float>& expected) {
+    double error = 0.0;
+    for (int vertex = 0; vertex < VERTICES; ++vertex) {
+      for (int axis = 0; axis < 3; ++axis) {
+        const double want = expected[vertex * 4 + axis];
+        error = std::max(error, std::abs(world[vertex * 4 + axis] - want) / std::max(1.0, std::abs(want)));
+      }
+    }
+    return error;
+  };
+  const double capture_error = worst(worlds, reference);
+  const double moved_error = worst(moved_worlds, reference);
+  const double kept_error = worst(kept, shadow_worlds);
+  const double in_view_error = worst(in_view, shadow_worlds);
+  CHECK(capture_error < 1e-6, "sails: the capture %g off the game's world", capture_error);
+  CHECK(moved_error > 1e-3, "sails: CONTROL a metre off = the game's (%g)", moved_error);
+  CHECK(kept_error < 1e-6, "sails' shadow pass: kept corners %g off its world", kept_error);
+  CHECK(in_view_error > 1e-3, "sails' shadow pass: CONTROL in view kept every corner (%g)", in_view_error);
+  std::printf("18CE6F5A: the capture's world within %.2g of the game's; CONTROL a metre off %.2g. F4B04EF3 kept outside the view: "
+              "its world within %.2g; CONTROL in view %.2g\n",
+              capture_error, moved_error, kept_error, in_view_error);
+}
+
+// A shader's instructions and declarations (D3DDisassemble), comments and its version line left out.
+static std::array<std::vector<std::string>, 2> Disassembly(std::span<const uint8_t> code) {
+  ComPtr<ID3DBlob> text;
+  std::array<std::vector<std::string>, 2> lines;  // declarations, instructions
+  if (FAILED(D3DDisassemble(code.data(), code.size(), 0, nullptr, &text))) return lines;
+  std::string line;
+  for (const char* at = static_cast<const char*>(text->GetBufferPointer()); *at != '\0'; ++at) {
+    if (*at != '\n') {
+      line += *at;
+      continue;
+    }
+    const size_t start = line.find_first_not_of(" \r");
+    const std::string trimmed = (start == std::string::npos) ? "" : line.substr(start, line.find_last_not_of(" \r") - start + 1);
+    if (!trimmed.empty() && !trimmed.starts_with("//") && !trimmed.starts_with("ps_")) {
+      lines[trimmed.starts_with("dcl_") ? 0 : 1].push_back(trimmed);
+    }
+    line.clear();
+  }
+  return lines;
+}
+
+static void TestVfxBrightness(const std::string& game_folder) {
+  for (const uint32_t hash : twtroy::vfx_brightness::HASHES) {
+    char name[32];
+    std::snprintf(name, sizeof(name), "%08X", hash);
+    std::vector<char> file;
+    for (const char* model : {".ps_5_0.cso", ".ps_4_1.cso"}) {
+      if (file.empty()) file = ReadFile(game_folder + "\\0x" + name + model);
+    }
+    CHECK(!file.empty(), "%s: the cso", name);
+    if (file.empty()) continue;
+    const std::span<const uint8_t> game(reinterpret_cast<const uint8_t*>(file.data()), file.size());
+    const auto patched = twtroy::vfx_brightness::Patch(game);
+    CHECK(!patched.empty(), "%s: not patched", name);
+    if (patched.empty()) continue;
+
+    // The program: the game's, one declaration and one instruction more: mad rC.xyz on the colour the movc before it wrote,
+    // right before the fog test.
+    const auto before = Disassembly(game);
+    const auto after = Disassembly(patched);
+    const std::string slot = std::to_string(twtroy::vfx_brightness::SLOT);
+    auto declarations = after[0];
+    std::erase(declarations, "dcl_constantbuffer CB" + slot + "[1], immediateIndexed");
+    auto instructions = after[1];
+    const auto inserted = std::ranges::find_if(
+        instructions, [&](const std::string& line) { return line.starts_with("mad ") && line.find("cb" + slot + "[0]") != std::string::npos; });
+    std::string mad;
+    bool placed = false;
+    if (inserted != instructions.end()) {
+      mad = *inserted;
+      const std::string colour = mad.substr(4, mad.find('.') - 4);
+      auto movc = inserted;
+      while (movc != instructions.begin() && (*(movc - 1) == "endif" || *(movc - 1) == "else")) --movc;
+      placed = mad == "mad " + colour + ".xyz, " + colour + ".xyzx, cb" + slot + "[0].xxxx, " + colour + ".xyzx" && movc != instructions.begin()
+               && (movc - 1)->starts_with("movc " + colour + ".xyz,") && (inserted + 1) != instructions.end()
+               && (inserted + 1)->starts_with("and r0.x, r0.w, cb");
+      instructions.erase(inserted);
+    }
+    CHECK(declarations == before[0] && after[0].size() == before[0].size() + 1, "%s: declarations", name);
+    CHECK(placed && instructions == before[1], "%s: instructions: the game's and '%s' after the colour's movc, before the fog test",
+          name, mad.c_str());
+
+    // On WARP: a grid of quads over random interpolants (each quad its own emitter), every resource the shader binds random.
+    ComPtr<ID3D11ShaderReflection> reflection;
+    CHECK(SUCCEEDED(D3DReflect(game.data(), game.size(), IID_PPV_ARGS(&reflection))), "%s: reflection", name);
+    if (reflection == nullptr) continue;
+    D3D11_SHADER_DESC desc = {};
+    reflection->GetDesc(&desc);
+    std::string source = "void main(uint id : SV_VertexID, out float4 position : SV_Position";
+    std::string body;
+    for (UINT index = 0; index < desc.InputParameters; ++index) {
+      D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+      reflection->GetInputParameterDesc(index, &parameter);
+      if (parameter.SystemValueType != D3D_NAME_UNDEFINED) continue;
+      const std::string out = "o" + std::to_string(index);
+      const bool integer = parameter.ComponentType == D3D_REGISTER_COMPONENT_UINT32;
+      source += std::string(integer ? ", nointerpolation out uint4 " : ", out float4 ") + out + " : " + parameter.SemanticName
+                + std::to_string(parameter.SemanticIndex);
+      body += integer ? "  " + out + " = uint4(quad % 4u, quad, 3u, 7u);\n"
+                      : "  " + out + " = frac(sin(float4(id, id + 1, id + 2, id + 3) * 12.9898 + " + std::to_string(index)
+                            + " * 78.233) * 43758.5453) * 3.0 - 1.0;\n";
+    }
+    source += ") {\n  const uint quad = id / 6u;\n  const uint corner = id % 6u;\n"
+              "  const float2 offset = float2((corner == 1u || corner == 4u || corner == 5u) ? 1.0 : 0.0, (corner == 2u || corner == 3u || corner == 5u) ? 1.0 : 0.0);\n"
+              "  const float2 cell = (float2(quad % 8u, quad / 8u) + offset) / 8.0;\n"
+              "  position = float4(cell * float2(2, -2) + float2(-1, 1), 0.5, 1);\n" + body + "}\n";
+    const auto vs = CompileSource(source.c_str(), "vs_5_0");
+    ComPtr<ID3D11VertexShader> vertex_shader;
+    device->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &vertex_shader);
+    ComPtr<ID3D11PixelShader> game_shader;
+    ComPtr<ID3D11PixelShader> patched_shader;
+    CHECK(SUCCEEDED(device->CreatePixelShader(game.data(), game.size(), nullptr, &game_shader)), "%s: the game's on WARP", name);
+    CHECK(SUCCEEDED(device->CreatePixelShader(patched.data(), patched.size(), nullptr, &patched_shader)), "%s: patched on WARP", name);
+    if (game_shader == nullptr || patched_shader == nullptr) continue;
+
+    uint32_t seed = hash;
+    const auto random = [&seed]() {
+      seed = seed * 1664525u + 1013904223u;
+      return static_cast<float>(seed >> 8) / 16777216.f;
+    };
+    std::vector<ComPtr<ID3D11ShaderResourceView>> views(16);
+    std::vector<ComPtr<ID3D11SamplerState>> samplers(16);
+    std::vector<ComPtr<ID3D11Buffer>> buffers(14);
+    for (UINT index = 0; index < desc.BoundResources; ++index) {
+      D3D11_SHADER_INPUT_BIND_DESC bind = {};
+      reflection->GetResourceBindingDesc(index, &bind);
+      if (bind.Type == D3D_SIT_CBUFFER || bind.Type == D3D_SIT_STRUCTURED) {
+        D3D11_SHADER_BUFFER_DESC buffer_desc = {};
+        reflection->GetConstantBufferByName(bind.Name)->GetDesc(&buffer_desc);
+        // Constants in 0..4 (floats from 2 up set bit 30, the flags' fog bit, so the paths vary); 8 emitters.
+        const UINT count = (bind.Type == D3D_SIT_STRUCTURED) ? 8 : 1;
+        std::vector<float> values(buffer_desc.Size * count / 4);
+        for (float& value : values) value = random() * 4.f;
+        if (bind.Type == D3D_SIT_CBUFFER) {
+          buffers[bind.BindPoint] = ConstantBuffer(values.data(), static_cast<UINT>(values.size() * 4));
+          continue;
+        }
+        const D3D11_BUFFER_DESC structured = {.ByteWidth = static_cast<UINT>(values.size() * 4), .Usage = D3D11_USAGE_DEFAULT,
+                                              .BindFlags = D3D11_BIND_SHADER_RESOURCE, .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED,
+                                              .StructureByteStride = buffer_desc.Size};
+        const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = values.data()};
+        ComPtr<ID3D11Buffer> buffer;
+        device->CreateBuffer(&structured, &initial, &buffer);
+        device->CreateShaderResourceView(buffer.Get(), nullptr, &views[bind.BindPoint]);
+      } else if (bind.Type == D3D_SIT_SAMPLER) {
+        const bool comparison = (bind.uFlags & D3D_SIF_COMPARISON_SAMPLER) != 0;
+        const D3D11_SAMPLER_DESC sampler = {.Filter = comparison ? D3D11_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR : D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+                                            .AddressU = D3D11_TEXTURE_ADDRESS_WRAP, .AddressV = D3D11_TEXTURE_ADDRESS_WRAP,
+                                            .AddressW = D3D11_TEXTURE_ADDRESS_WRAP, .ComparisonFunc = D3D11_COMPARISON_LESS, .MaxLOD = D3D11_FLOAT32_MAX};
+        device->CreateSamplerState(&sampler, &samplers[bind.BindPoint]);
+      } else if (bind.Type == D3D_SIT_TEXTURE) {
+        // 2D textures single-channel R32 (comparison samplers take it), the others RGBA; 16 texels a side, 4 layers or slices.
+        const bool flat = bind.Dimension == D3D_SRV_DIMENSION_TEXTURE2D;
+        const DXGI_FORMAT format = flat ? DXGI_FORMAT_R32_FLOAT : DXGI_FORMAT_R32G32B32A32_FLOAT;
+        const UINT channels = flat ? 1 : 4;
+        const bool cube = bind.Dimension == D3D_SRV_DIMENSION_TEXTURECUBE;
+        const UINT layers = cube ? 6 : ((bind.Dimension == D3D_SRV_DIMENSION_TEXTURE2DARRAY) ? 4 : 1);
+        std::vector<float> texels(16 * 16 * channels * layers * ((bind.Dimension == D3D_SRV_DIMENSION_TEXTURE3D) ? 16 : 1));
+        for (float& texel : texels) texel = random();
+        if (bind.Dimension == D3D_SRV_DIMENSION_TEXTURE3D) {
+          const D3D11_TEXTURE3D_DESC volume = {.Width = 16, .Height = 16, .Depth = 16, .MipLevels = 1, .Format = format,
+                                               .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+          const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = texels.data(), .SysMemPitch = 16 * channels * 4, .SysMemSlicePitch = 256 * channels * 4};
+          ComPtr<ID3D11Texture3D> texture;
+          device->CreateTexture3D(&volume, &initial, &texture);
+          device->CreateShaderResourceView(texture.Get(), nullptr, &views[bind.BindPoint]);
+          continue;
+        }
+        std::vector<D3D11_SUBRESOURCE_DATA> initial(layers);
+        for (UINT layer = 0; layer < layers; ++layer) {
+          initial[layer] = {.pSysMem = texels.data() + (layer * 256 * channels), .SysMemPitch = 16 * channels * 4};
+        }
+        const D3D11_TEXTURE2D_DESC surface = {.Width = 16, .Height = 16, .MipLevels = 1, .ArraySize = layers, .Format = format,
+                                              .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                              .MiscFlags = cube ? static_cast<UINT>(D3D11_RESOURCE_MISC_TEXTURECUBE) : 0u};
+        ComPtr<ID3D11Texture2D> texture;
+        device->CreateTexture2D(&surface, initial.data(), &texture);
+        device->CreateShaderResourceView(texture.Get(), nullptr, &views[bind.BindPoint]);
+      }
+    }
+
+    constexpr UINT SIZE = 64;
+    const auto target = Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, D3D11_BIND_RENDER_TARGET);
+    ComPtr<ID3D11RenderTargetView> target_view;
+    device->CreateRenderTargetView(target.Get(), nullptr, &target_view);
+    const D3D11_TEXTURE2D_DESC staging_desc = {.Width = SIZE, .Height = SIZE, .MipLevels = 1, .ArraySize = 1,
+                                               .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1},
+                                               .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+    ComPtr<ID3D11Texture2D> staging;
+    device->CreateTexture2D(&staging_desc, nullptr, &staging);
+    const auto draw = [&](ID3D11PixelShader* pixel_shader, const float* brightness_constant) {
+      context->ClearState();
+      const float clear[4] = {SENTINEL, SENTINEL, SENTINEL, SENTINEL};
+      context->ClearRenderTargetView(target_view.Get(), clear);
+      context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+      const D3D11_VIEWPORT viewport = {.Width = SIZE, .Height = SIZE, .MaxDepth = 1.f};
+      context->RSSetViewports(1, &viewport);
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+      context->PSSetShader(pixel_shader, nullptr, 0);
+      std::vector<ID3D11ShaderResourceView*> bound_views;
+      for (const auto& view : views) bound_views.push_back(view.Get());
+      context->PSSetShaderResources(0, static_cast<UINT>(bound_views.size()), bound_views.data());
+      std::vector<ID3D11SamplerState*> bound_samplers;
+      for (const auto& sampler : samplers) bound_samplers.push_back(sampler.Get());
+      context->PSSetSamplers(0, static_cast<UINT>(bound_samplers.size()), bound_samplers.data());
+      auto bound_buffers = buffers;
+      if (brightness_constant != nullptr) bound_buffers[twtroy::vfx_brightness::SLOT] = ConstantBuffer(brightness_constant, 16);
+      std::vector<ID3D11Buffer*> raw;
+      for (const auto& buffer : bound_buffers) raw.push_back(buffer.Get());
+      context->PSSetConstantBuffers(0, static_cast<UINT>(raw.size()), raw.data());
+      context->Draw(64 * 6, 0);
+      context->CopyResource(staging.Get(), target.Get());
+      std::vector<float> values(SIZE * SIZE * 4);
+      D3D11_MAPPED_SUBRESOURCE mapped;
+      if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        for (UINT row = 0; row < SIZE; ++row) {
+          std::memcpy(&values[row * SIZE * 4], static_cast<const uint8_t*>(mapped.pData) + (row * mapped.RowPitch), SIZE * 16);
+        }
+        context->Unmap(staging.Get(), 0);
+      }
+      return values;
+    };
+    const float at_one[4] = {0.f, 0.f, 0.f, 0.f};
+    const float at_two[4] = {1.f, 0.f, 0.f, 0.f};
+    const auto reference = draw(game_shader.Get(), nullptr);
+    size_t drawn = 0;
+    for (size_t i = 0; i < reference.size(); i += 4) drawn += (reference[i + 3] != SENTINEL) ? 1 : 0;
+    size_t differing = 0;
+    const bool unbound = SameBits(draw(patched_shader.Get(), nullptr), reference, &differing);
+    CHECK(unbound, "%s: cb7 unbound: %zu of %zu floats off the game's", name, differing, reference.size());
+    const bool one = SameBits(draw(patched_shader.Get(), at_one), reference, &differing);
+    CHECK(one, "%s: at 1: %zu of %zu floats off the game's", name, differing, reference.size());
+    SameBits(draw(patched_shader.Get(), at_two), reference, &differing);
+    CHECK(drawn > 0 && differing > 0, "%s: CONTROL at 2 the game's (%zu of %zu pixels drawn)", name, drawn, reference.size() / 4);
+    std::printf("%s: patched = the game's + cb7 and '%s'; the game's bits at 1 and unbound over %zu drawn pixels; CONTROL at 2: %zu "
+                "floats differ\n", name, mad.c_str(), drawn, differing);
+  }
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("usage: troy_shaders.exe <the game's csos> <the add-on's built csos>\n");
@@ -321,6 +1012,13 @@ int main(int argc, char** argv) {
 
   TestFog(argv[1], argv[2], "018FED0C", false);
   TestFog(argv[1], argv[2], "D9A3B04F", true);
+  TestFog(argv[1], argv[2], "4ED4200E", false);
+  TestFog(argv[1], argv[2], "78E00DBB", true);
+  TestVegetation(argv[1], argv[2]);
+  TestFur(argv[1], argv[2]);
+  TestCampaignTrees(argv[1], argv[2]);
+  TestSails(argv[1], argv[2]);
+  TestVfxBrightness(argv[1]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
   return failures == 0 ? 0 : 1;
 }

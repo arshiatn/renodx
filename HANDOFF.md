@@ -470,8 +470,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Shadows without rays (Experimental; off while the rays' sun shadows run), Smooth Banner Shadows (RT/PT on), Hue Clip measured:
   fire best at 70 (burn 0.2) / 80 (burn 0): default stays 80; campaign billboards CE5AA8D1 (Troy's capture, WARP 4.3e-5 m) +
   vegetation 3368E9E7 out of view; shared opt-ins rt_core SmokeVertexShader::behaviours_at_cb3, Troy billboard
-  RT_BILLBOARD_SCALE (Troy bytes unchanged), psychov35 curve 8; scale census BUG (B) rows settled). Agent resumed: Fog
-  Strength, Fog & Sky Smoothing, smoke_v57 / v61 tools to follow #include.
+  RT_BILLBOARD_SCALE (Troy bytes unchanged), psychov35 curve 8; scale census BUG (B) rows settled). Round 2 MERGED 887ee24c:
+  Fog Strength on all 24 last-stage fog shaders (patched as created; 1 = bit for bit), Fog & Sky Smoothing on the legacy fog
+  (Experimental), sails ED0BC391 + ropes DD5D5694 in the rays (level B), vegetation WARP on Pharaoh's bytes, smoke_v57 / v61
+  run again. Pharaoh agent DONE. Left: Sprite Soldier Shadows (GS imposter 27A16995: shared GS capture path, WH1 agent
+  building it opt-in), particle rows, grass height (trace), feather / fur and level-B casters (traces).
 - [x] Rome Remastered task C MERGED cb98cd5e (DLSS below 100 % with the ray rows on; shared rt_core Host::depth_at_render_size
   opt-in: other games' rt_core suites PASS x86 + amd64, page dumps unchanged; tw_romer_rays case 7). Rome Remastered agent DONE
   (3 DO NOW left: Upscaling Debug View (shared opt-in in AppendAa), Bend's Softer Away + Debug View). ATN runs: Battle Objects
@@ -493,11 +496,28 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   384 dead rows removed, 21 rows live; Depth of Field, Smoke Shadows without rays (Experimental), Fog Strength; suites
   tw_troy_tweaks / tw_troy_shaders). Agent resumed on 7 open items. SHARED STEP LATER: per-game leaf cut-out (Troy 0.01 vs
   the helper's LEAF_ALPHA_CUTOFF 0.5), with the torch rows step.
+  Round 2 MERGED c28d1591 (campaign terrain 0D70D820 / grass 62E0F935 / vegetation 04C7C807 out of view, Shadow Map Size
+  (Experimental; Troy's own table +0x2e81920, quality 4 only: quality 3 = ATN DECIDES), VFX Brightness (10 lit particle PS,
+  Experimental), Fog Strength on sm4.1 twins, Particle Resolution / Edges / Smooth Half-Size (Experimental; shared
+  particle_layer Install(shaders, readers, Options): Attila / Thrones same behaviour, not byte-identical), fur EE95696C +
+  campaign trees 07321725 / 5192C0BA + sails 18CE6F5A / F4B04EF3 in the rays; held 35 -> 40). Conflict in the outside-view GS
+  comment resolved; all 10 variants recompile to their headers. Troy agent DONE. Left: GS sprites 370A7440 + tessellated
+  D6DEB200 (shared step), leaf cut-out (shared step), 3 traces.
 - [x] WH1 parity round MERGED a5787d66 (table tools/tw/wh1/parity_1114.md: 27 have / 8 done now / 3 left / 7 trace / 14 won't;
   Fog Strength, Fog Shadows + torch light in fog (Experimental, RT/PT on), Depth of Field, Smooth Banner Shadows, SDR preset +
   first start + GitHub button, Smoke Shadows (Experimental, not in RT/PT), far card / plant twins held (NOT HELD 22 -> 19),
   Indicator Brightness (Reset wrote 0.4 to a missing row before); WARP 1-17). Agent resumed: Grass Height Distance, 14
   cut-out masks, RT water reflections on 44B4A2F0.
+  Continuation MERGED 9d945a18; round 3 MERGED 96aefe57 (campaign trees A8BB2DB2 + props' liquid 766D159E in the rays; AE
+  closed: compute atomics + CPU readback). Round 4 MERGED e7ed33e7 (3888C71F out of view via a new RT_COLOR_WORLD variant of
+  Pharaoh's shared outside-view GS: the 7 existing variants byte-identical). That agent ran out of context; a FRESH WH1 agent
+  (par_w1b_) does the cloth casters, raycast 021D7515 at 50 %, AE via 96BCFCBB.
+- [ ] SHARED STEP (after the Attila gaps merge; one agent): (1) the torch rows from Path Tracing (RayTracedLightsInBounce /
+  RayTracedLightShadowRatio) into graphics_page for every game with PT GI + Torch and Fire Shadows (Thrones, WH2, Troy, WH1,
+  Shogun 2, WH3, Pharaoh incl. its particle lights, Rome II); (2) the GS capture path in rt_core (SceneShader::
+  capture_geometry_shader + SO statistics count, WH1's design) for the GS imposters of WH1 381E079E / 883D12E7, Pharaoh
+  27A16995, Troy / WH2 370A7440; (3) per-game leaf cut-out (Troy 0.01) through the bridge; (4) PREFER_FAST_BUILD smoke row
+  to the other games.
 - [x] Thrones parity round MERGED 348a383b (table tools/tw/thrones/parity_1114.md: 31 have / 9 done now / 1 left / 6 trace / 4
   won't; flares + vignette into FG's HUD-less image, flare occlusion + markers below 100 %, Depth of Field, Indicator
   Brightness, VFX Brightness (Experimental), UI sprite fixes, Water Clarity on sea / lake (shared water_effects
@@ -508,6 +528,15 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   tw_unit_pack_rounds PASS; shared graphics_page motion_in_draw opt-in, Attila's page identical); 29 unclear scale rows
   settled (24 sun OK; 4 SSR sm4 / 4.1 bugs only at gfx_shadermodel 1-2: not fixed, trace listed; 0FB73442 in no trace).
   Thrones agent DONE. Note: its WARP checks use small tool exes under tools/tw/thrones (as earlier rounds), not quarantined.
+  Round 3 MERGED e73b72c5: the 4 sm4 / 4.1 SSR builds fixed below 100 % (suite test/tw_thrones_ssr), far card builds
+  98AA2F91 / A86B4247 + sprite build E42AE09F held; 43 unreplaced builds listed (Attila's bytes too: particles in other shader
+  models / shadow methods, point lights with point shadows, MSAA builds, bloom tone mappers). Thrones agent DONE.
+- [ ] ATN ~13:3x: the per-draw handling REDESIGN (OnDrawIndexed 2.2 ms a frame in cpl2), then a FABLE 5.2 HIGH review of that
+  change alone (two perspectives; the end-of-batch whole-tree review stays). Agent drw_ phase 1 (design + draw-stream replay
+  oracle + cost map, no src code) started; phase 2 (code) only after the Attila gaps + Nsight smoke work is merged; proof =
+  identical decisions per draw over every recorded trace, x86 + amd64, + the suites.
+- [ ] ATTILA GAPS agent started (atg_, worktree): share Thrones' ssr02-05 with Attila, E42AE09F / far card builds held, the 11
+  other vfx builds, MSAA battlefog + point lights, tessellated rigid 9AEE504E (opt-in rt_core), ropes / sail symbols.
 - [x] Rome Remastered parity round MERGED c0a61b2d (table tools/tw/romeremastered/parity_1114.md: 47 features, 13 have / 3 do
   now left / 6 trace / 24 won't; credits, Bend rows + Softness, GitHub button; no PT GI -> no torch rows). Input bug (task B):
   study only: the wall clock is a seconds-since-2001 double; obfuscated code at 0xbbaa60 reads GetMessageTime; the
@@ -517,7 +546,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] Shogun 2 parity round MERGED 5e4e2d80 (table tools/shogun2/pkg_1114/parity_1114.md: 43 have / 23 do now (8 done) / 5 trace
   / 13 won't; FG HDR read the wrong key (fixed), Softer water reflections, Smooth banner shadows, Grass shadow range, AO under
   RR, 5 Bend rows, casters out of view: far tree cards 30C453EE, units A22FA941 ("too big" was a counting error: 1.18 M
-  corners), naval 7B067623; page dump only the 9 new rows; WARP PASS). Round 2 MERGED 16126f41 (naval sails / symbols / ropes
+  corners), naval 7B067623; page dump only the 9 new rows; WARP PASS). Round 3 MERGED 48ddae02 (RT/PT = Attila's incl.
+  LightGlow / Caustics / Clarity, smoke shadows via a quad GS for BEA3F2D4 (Experimental), water rows at low / medium water
+  quality, 5 casters out of view + 3k far cards, engine-name reader (8 tweaks, 5 Experimental rows, suite tw_shogun2_tweaks
+  built in testbin); finding: a global built at start-up from Attila's header globals came out empty under clang-cl (static
+  init order); the other add-ons call engine_tests::Attila() inside functions (checked). Left: SSS Softness (second UAV),
+  particle smoothing, CAS sharpening, AO temporal. Shogun 2 agent DONE. Round 2 MERGED 16126f41 (naval sails / symbols / ropes
   out of view, Water Clarity + Caustics, Modded Auto Exposure (GPU 8233E11F), Indicator Brightness, torch light in fog,
   campaign overlay D7E27B35 below 100 % fixed (scale census), Gamma = WON'T (in-game Gamma reaches every mode)). Round 3:
   RT/PT = Attila's (LightGlow, WaterCaustics), smoke GS for BEA3F2D4, engine-name reader, SSS Softness pass.
@@ -525,6 +559,18 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   dead engine rows removed (0 code uses, 0 pointers), 5 Attila tests, Bloom, Indicator Brightness (Experimental), smoke
   twins DDABB799 / 687378DB, 4 casters out of view (level B); census held 26 -> 30; no shared change). Agent resumed:
   fog_strength, GrassHeightDistance, 4 units / props captures, 7DF335FF campaign banners (opt-in shared GS define).
+  Round 2 MERGED 316aa162 (Fog Strength + Grass Height Distance incl. untraced permutations, Depth of Field, Fog & Sky
+  Smoothing (legacy fog), Indicator Brightness x3, Rarer Units and Props in the Rays (Experimental), Smooth Banner Shadows;
+  shared opt-ins rt_core SceneShader::held_row + GS RT_KEEP_IN_VIEW; held 35 -> 44). GS comment conflict resolved, all 11
+  variants recompile to their headers. WH2 agent DONE. Left: VFX rows (snow / rain trace), smoke without rays (shared 64-bit
+  host), ropes (sun-facing flag), GS sprites 370A7440, tessellated 4CC2D68F (shared step).
+- [x] Rome II round 2 MERGED f4f39372 (water reflections 7C9C8ECF fixed below 100 % + Reflection Quality, suite
+  test/tw_rome2_shaders; Light Through All Banners (Experimental; material 29 = the 4 army_banner_flag models; the traces draw
+  banners only as 3D UI); SSR rays / denoiser + Grass Height WON'T with proof; DrawScrub skip needs a Rome II hook + trace).
+  Rome II agent DONE.
+- [x] Merged-HEAD build check at ef212467: both lines exit 0 (every TW add-on, x64 + build32) after the many shared opt-ins
+  (rt_core held_row / depth_at_render_size / behaviours_at_cb3, particle_layer options, GS variants). Suites + harness +
+  page dumps follow at the final verification.
 - [x] Rome Remastered so far MERGED a4d6e0a6 (crash fix f6a7cfc4, reset safe side a8afd660, DLSS below 100 % 867187d4, Attila's
   page + Reset / No RT/PT / RT/PT 09a083f0 with opt-in graphics_page has_gtvbao / has_gi / every_row: Attila / WH3 / Thrones /
   WH2 / Troy / WH1 page dumps unchanged; dump target 'rr'). Not installed. Agent on: parity table + DO NOW, B (input bug), C

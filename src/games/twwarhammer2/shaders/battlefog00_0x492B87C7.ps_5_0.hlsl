@@ -2,7 +2,11 @@
 // its sun-shadow march with the rays' visibility in place of the shadow maps over the camera ray's first 400 m (Fog
 // Shadows: twattila/rt_scene.hpp InstallFogShadows, twattila/rt_fog.hlsli). The game's lit share of the march scales
 // the sun's and sky's light in the fog as before; the torches' and fires' light there comes apart (unshadowed by the
-// sun). Runs only with t43 bound (addon.cpp FogRays); otherwise the game's own bytes do.
+// sun). Runs only with t43 bound or Fog Strength off 1 (addon.cpp FogRays); otherwise the game's own bytes do. Fog
+// Strength x its light (b8: the slider minus 1, bound by FogRays whenever this runs; as Warhammer III's battlefog03).
+cbuffer rt_fog_strength : register(b8) {
+  float rt_fog_strength_above_one;
+};
 #define RT_FOG_SHADE 0.f
 #include "../../twattila/rt_fog.hlsli"
 
@@ -551,6 +555,7 @@ void main(
   if (rt_fog_bound) r0.xyz = r0.xyz * (0.0625 * rt_fog_lit) + RtFogLights(v0.xy);
   r0.xyz = r2.xyz * r0.xyz;
   o0.xyz = g_fog_lerp * r0.xyz;
+  o0.xyz *= 1.f + rt_fog_strength_above_one;  // RenoDX: Fog Strength
   o0.w = g_fog_lerp;
   return;
 }

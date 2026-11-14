@@ -6,6 +6,9 @@
 // 2. The shared tw::engine_tweaks::Find (lea rdx / lea r8, [name]) on the same names: what Troy's rows had before.
 // 3. Troy's Graphics 2 of 2 rows as ConfigureAddon builds them (Attila's tests in ATTILA_TESTS, then MoreTests()): every
 //    engine value found, none read at the game's start (no at-start thread).
+// 4. Shadow Map Size (src/games/twtroy/shadow_map.hpp): its pattern names the shadow table at RVA 0x2e81920, the top row
+//    (quality 4) 4 cascades, 6144, 3072 and the row below 4096; Set writes the size and half of it there (the row below
+//    unchanged), Uninstall the game's bytes back. CONTROL: Pharaoh's pattern (twpharaohdynasties/shadow_map.hpp) finds nothing.
 // tests.exe <troy.exe.memory.bin> <par_t_troy_tweaks.txt>
 #include <windows.h>
 
@@ -18,6 +21,7 @@
 #include <vector>
 
 #include "src/games/twtroy/more_tests.h"
+#include "src/games/twtroy/shadow_map.hpp"
 #include "src/games/twtroy/tweak_objects.hpp"
 
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (false)
@@ -138,6 +142,27 @@ int main(int argc, char** argv) {
     }
   }
   std::printf("3. Troy's %zu Graphics 2 of 2 rows: all %zu engine values found, none at start\n", tests.size(), values);
+
+  // 4. Shadow Map Size.
+  const auto read_ints = [](const uint8_t* at, size_t count) {
+    std::vector<uint32_t> ints(count);
+    std::memcpy(ints.data(), at, count * sizeof(uint32_t));
+    return ints;
+  };
+  CHECK(tw::engine_tweaks::FindPattern(sections.code, "48 8D 05 ?? ?? ?? ?? 48 03 D0 8B 42 04 F3 48 0F 2A C0 F3 0F 11 83 50 2A 00 00") == nullptr);
+  uint8_t* sizes = twtroy::shadow_map::FindSizes(sections);
+  CHECK(sizes == base + 0x2e81920 + (4 * 16) + 4);
+  CHECK(read_ints(sizes - 4, 3) == (std::vector<uint32_t>{4, 6144, 3072}));
+  CHECK(read_ints(sizes - 16, 3) == (std::vector<uint32_t>{4096, 2048, 0x3F800000}));
+  twtroy::shadow_map::internal::sizes = sizes;
+  std::memcpy(twtroy::shadow_map::internal::original.data(), sizes, twtroy::shadow_map::internal::original.size());
+  twtroy::shadow_map::Set(16384);
+  CHECK(read_ints(sizes, 2) == (std::vector<uint32_t>{16384, 8192}));
+  CHECK(read_ints(sizes - 16, 2) == (std::vector<uint32_t>{4096, 2048}));
+  twtroy::shadow_map::Uninstall();
+  CHECK(read_ints(sizes, 2) == (std::vector<uint32_t>{6144, 3072}));
+  std::printf("4. Shadow Map Size: the table's top row (4, 6144, 3072) at RVA 0x%zx; 16384 written as 16384 / 8192, the row below "
+              "unchanged; the game's back after Uninstall\n", static_cast<size_t>(sizes - 4 - base));
   std::printf("PASS\n");
   return 0;
 }

@@ -2,8 +2,13 @@
 // The water's screen-space reflections (helpers.hlsl). RenoDX: with Reflection Method Hierarchical, the march is
 // Attila's hierarchical one (twattila/ssr_march.hlsli, in world space here) instead of the game's fixed 200 x quality
 // steps: no gaps, no length limit. With Ray-Traced Water Reflections (twrome2/addon.cpp TraceWaterReflections: the rays
-// left from this water's surface, rt_water_surface) the rays' reflection where bound.
+// left from this water's surface, rt_water_surface) the rays' reflection where bound. Reflection Quality (SI.ssr_quality)
+// x the game's quality_factor: finer steps in the game's march, more in the hierarchical one; 1 the game's.
+// Below 100% (render_scale.hlsli): drawn at the render scale's viewport, TEXCOORD0 is the view's uv (helper_quad_vs: the
+// quad's 0 - 1), so the display-size depth (t1, the view in its top-left), its pyramid and the render-size rays read it x
+// the frame's share; the scene copy (t0, water refraction 2A3297C6 drawn whole: RENDER_SCALE_READS) by the view's uv.
 #include "../shared.h"
+#include "../../twattila/render_scale.hlsli"
 #include "../../twattila/rt_reflection.hlsli"
 
 cbuffer screen_space_refl_params : register(b0)
@@ -28,6 +33,9 @@ Texture2D<float4> water_height_tex : register(t2);
 // The march's space: world space (the shader has the camera's view_projection only). No normals here: never a back face
 // (the ray's own direction reversed).
 static float3 water_ray_direction;
+// The view's size in the depth's pixels (its share of the display-size depth below 100%).
+static float2 water_view_size;
+#define SSR_VIEW_SIZE water_view_size
 
 float3 FFX_SSSR_LoadWorldSpaceNormal(int2 pixel)
 {
@@ -63,8 +71,14 @@ void main(
   uint4 bitmask, uiDest;
   float4 fDest;
 
+  const float2 share = FrameRenderShare();
+  uint depth_width, depth_height;
+  depth_tex.GetDimensions(depth_width, depth_height);
+  water_view_size = float2(depth_width, depth_height) * share;
+  const float quality = quality_factor * SI.ssr_quality;
+
   r0.xy = v1.xy * float2(1,-1) + float2(0,1);
-  r0.xyzw = depth_tex.SampleLevel(depth_sam_s, r0.xy, 0).yzxw;
+  r0.xyzw = depth_tex.SampleLevel(depth_sam_s, r0.xy * share, 0).yzxw;
   r0.xy = v1.xy * float2(2,2) + float2(-1,-1);
   r0.w = 1;
   r1.x = dot(r0.xyzw, inv_view_projection_matrix._m00_m10_m20_m30);
@@ -95,9 +109,7 @@ void main(
   // confidence are.
   [branch]
   if (RtReflectionsBound() && RtWaterReflections()) {
-    uint width, height;
-    depth_tex.GetDimensions(width, height);
-    const float4 traced = t_rt_reflection.Load(int3((v1.xy * float2(1.f, -1.f) + float2(0.f, 1.f)) * float2(width, height), 0));
+    const float4 traced = t_rt_reflection.Load(int3((v1.xy * float2(1.f, -1.f) + float2(0.f, 1.f)) * water_view_size, 0));
     o0 = float4(traced.rgb, traced.a * saturate(0.01f * (250.f - r0.y)));
     return;
   }
@@ -116,7 +128,7 @@ void main(
     float3 hit;
     const float confidence =
         SsrTrace(origin, WaterProject(r1.xyz + water_ray_direction * ray_length) - origin, water_ray_direction,
-                 (uint)clamp(128.f * quality_factor, 32.f, 512.f), camera_position_and_reflection_height.xyz, hit);
+                 (uint)clamp(128.f * quality, 32.f, 512.f), camera_position_and_reflection_height.xyz, hit);
     o0.xyz = confidence > 0.f ? scene_tex.SampleLevel(scene_sam_s, hit.xy, 0).xyz : 0.f;
     o0.w = confidence * saturate(0.01f * (250.f - r0.y));
     return;
@@ -132,7 +144,7 @@ void main(
   r0.z = 1 / r0.z;
   r2.xy = r3.xy * r0.zz;
   r2.xy = r2.yx * float2(-0.5,0.5) + float2(0.5,0.5);
-  r2.zw = float2(0.00499999989,0.00300000003) / quality_factor;
+  r2.zw = float2(0.00499999989,0.00300000003) / quality;
   r0.w = 1 + r0.y;
   r0.w = r2.z / r0.w;
   r1.w = 1;
@@ -143,7 +155,7 @@ void main(
   r1.x = 1 / r1.x;
   r1.xyz = r3.xyz * r1.xxx;
   r1.xy = r1.xy * float2(0.5,-0.5) + float2(0.5,0.5);
-  r1.w = 200 * quality_factor;
+  r1.w = 200 * quality;
   r2.xy = r2.xy + -r1.yx;
   r2.x = 1 / r2.x;
   r2.y = -r2.w * r2.y;
@@ -154,7 +166,7 @@ void main(
   while (true) {
     r0.z = cmp(r3.w >= r1.w);
     if (r0.z != 0) break;
-    r4.xyzw = depth_tex.SampleLevel(depth_sam_s, r3.xy, 0).xyzw;
+    r4.xyzw = depth_tex.SampleLevel(depth_sam_s, r3.xy * share, 0).xyzw;
     r0.z = cmp(r4.x == 1.000000);
     r0.z = r0.z ? 10000 : r4.x;
     r2.z = cmp(r0.z < r3.z);

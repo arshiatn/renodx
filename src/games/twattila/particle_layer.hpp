@@ -46,7 +46,10 @@
 // the addon's at the light buffer's size; each particle draw is drawn again there right after, as the game drew it (its
 // depth test, stencil 1), and the composite leaves them alone (stencil 0). A draw with any other blend, a scissor, more
 // targets, the game's MSAA, the output stage's UAVs bound or (with the edges) its own stencil test stays at full size, and the
-// frame's later ones (one log line for the blends, one for the rest). D3D11, the main view.
+// frame's later ones (one log line for the blends, one for the rest). D3D11, the main view. Troy (Options): instanced
+// quads without a geometry shader, one draw of every particle; its particle vertex shader draws their lights and decals too,
+// so its lit particle pixel shaders open the layer; its camera's target size at c31; the light buffer's first reader after
+// them its luma statistics, a dispatch.
 namespace twattila::particle_layer {
 
 using Microsoft::WRL::ComPtr;
@@ -58,8 +61,6 @@ static float edges_row = 1.f;
 namespace internal {
 
 constexpr UINT CAMERA_SLOT = 0;  // camera_VS_PS in the particle shaders (vertex, geometry, pixel)
-// Its g_render_target_dimensions (c30: width, height, 1 / width, 1 / height).
-constexpr UINT RENDER_TARGET_DIMENSIONS = 30 * 16;
 // Full-Resolution Particle Edges' stencil test: the reference alone.
 constexpr D3D11_DEPTH_STENCILOP_DESC STENCIL_EQUAL = {.StencilFailOp = D3D11_STENCIL_OP_KEEP, .StencilDepthFailOp = D3D11_STENCIL_OP_KEEP,
                                                       .StencilPassOp = D3D11_STENCIL_OP_KEEP, .StencilFunc = D3D11_COMPARISON_EQUAL};
@@ -74,7 +75,7 @@ struct DeviceObjects {
   ComPtr<ID3D11DepthStencilState> edges_mark;       // the edges: the depth written, stencil 1
   ComPtr<ID3D11DepthStencilState> composite_edges;  // the composite: stencil 0 alone
   ComPtr<ID3D11BlendState> composite_blend;
-  ComPtr<ID3D11Buffer> dimensions;  // the layer's size as c30 holds the target's
+  ComPtr<ID3D11Buffer> dimensions;  // the layer's size as g_render_target_dimensions holds the target's
   std::array<float, 4> written_dimensions = {};
   ComPtr<ID3D11Buffer> camera;      // the particles' camera with the layer's size
   // The layer's textures, for a light buffer of `light_width` x `light_height` at `scale` render pixels a texel.
@@ -117,6 +118,8 @@ struct GameBindings {
 
 struct Runtime {
   std::shared_mutex mutex;
+  // The camera's g_render_target_dimensions (width, height, 1 / width, 1 / height), in bytes: Options' register.
+  UINT render_target_dimensions = 30 * 16;
   uint64_t frame = 0;  // counted at each present
   UINT display_width = 0;
   UINT display_height = 0;
@@ -362,7 +365,7 @@ inline bool Open(ID3D11DeviceContext* native, ID3D11Device* device, ID3D11Render
   }
   D3D11_BUFFER_DESC camera_desc = {};
   camera->GetDesc(&camera_desc);
-  if (!objects.scene_depth_view || camera_desc.ByteWidth < RENDER_TARGET_DIMENSIONS + 16) return false;
+  if (!objects.scene_depth_view || camera_desc.ByteWidth < runtime.render_target_dimensions + 16) return false;
 
   D3D11_TEXTURE2D_DESC layer_desc = {};
   objects.layer.texture->GetDesc(&layer_desc);
@@ -375,7 +378,8 @@ inline bool Open(ID3D11DeviceContext* native, ID3D11Device* device, ID3D11Render
   frame_history::KeepCamera(device, native, camera, std::addressof(objects.camera));
   if (!objects.camera) return false;
   const D3D11_BOX target_dimensions = {.left = 0, .top = 0, .front = 0, .right = 16, .bottom = 1, .back = 1};
-  native->CopySubresourceRegion(objects.camera.Get(), 0, RENDER_TARGET_DIMENSIONS, 0, 0, objects.dimensions.Get(), 0, &target_dimensions);
+  native->CopySubresourceRegion(objects.camera.Get(), 0, runtime.render_target_dimensions, 0, 0, objects.dimensions.Get(), 0,
+                                &target_dimensions);
 
   runtime.render_viewport = viewport;
   runtime.layer_viewport = {
@@ -579,6 +583,11 @@ constexpr auto OnLayerReader = []<typename Context>(Context& command) -> renodx:
     runtime.restart = false;
     if (smoothed[0] != nullptr) layer = smoothed[0];
   }
+  // A dispatch (Troy's luma statistics): the light buffer as the composite's target unbinds it from the compute stage's
+  // views; they go back after it.
+  constexpr bool DISPATCH = std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::DispatchArguments>;
+  std::array<ID3D11ShaderResourceView*, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT> compute_views = {};
+  if constexpr (DISPATCH) native->CSGetShaderResources(0, static_cast<UINT>(compute_views.size()), compute_views.data());
   {
     const particle_history::DrawState game_state(native);
     native->OMSetRenderTargets(1, runtime.light.GetAddressOf(), runtime.edges_open ? objects.edges_target.Get() : nullptr);
@@ -586,6 +595,12 @@ constexpr auto OnLayerReader = []<typename Context>(Context& command) -> renodx:
                                      {layer, nullptr, objects.depth_view.Get(), objects.scene_depth_view.Get()},
                                      {objects.history.constants.Get(), nullptr, nullptr, objects.camera.Get()},
                                      objects.composite_blend.Get(), runtime.edges_open ? objects.composite_edges.Get() : objects.history.no_depth.Get());
+  }
+  if constexpr (DISPATCH) {
+    native->CSSetShaderResources(0, static_cast<UINT>(compute_views.size()), compute_views.data());
+    for (auto* view : compute_views) {
+      if (view != nullptr) view->Release();
+    }
   }
   if (!runtime.applied_logged) {
     runtime.applied_logged = true;
@@ -601,14 +616,34 @@ constexpr auto OnLayerReader = []<typename Context>(Context& command) -> renodx:
 
 }  // namespace internal
 
-// The particles' vertex shader (`vertex_shader`) and the light buffer's readers after them (`readers`), kept while installed.
-// Late: the other modules' callbacks on the particle draws see the game's state.
-inline void Install(uint32_t vertex_shader, std::span<const uint32_t> readers) {
+// A game's particles where they differ from Attila's (the defaults).
+struct Options {
+  // The light buffer's readers after the particles that are dispatches (Troy's luma statistics).
+  std::span<const uint32_t> dispatch_readers = {};
+  // The register of g_render_target_dimensions in the particles' camera: Attila's and Thrones' c30, Troy's c31.
+  UINT render_target_dimensions = 30;
+};
+
+// The particles' shaders (`shaders`, any stage: their draws go into the layer) and the light buffer's readers after them
+// (`readers`, draws), kept while installed. Late: the other modules' callbacks on the particle draws see the game's state.
+inline void Install(std::span<const uint32_t> shaders, std::span<const uint32_t> readers, const Options& options = {}) {
+  internal::runtime.render_target_dimensions = options.render_target_dimensions * 16;
   const auto draws = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW;
-  renodx::utils::command_action::Register(internal::OnParticleDraw, {.shader_hash = vertex_shader, .command_types = draws});
+  for (const uint32_t shader : shaders) {
+    renodx::utils::command_action::Register(internal::OnParticleDraw, {.shader_hash = shader, .command_types = draws});
+  }
   for (const uint32_t reader : readers) {
     renodx::utils::command_action::Register(internal::OnLayerReader, {.shader_hash = reader, .command_types = draws});
   }
+  for (const uint32_t reader : options.dispatch_readers) {
+    renodx::utils::command_action::Register(internal::OnLayerReader,
+                                            {.shader_hash = reader, .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH});
+  }
+}
+
+// Attila's and Thrones': their particles' vertex shader.
+inline void Install(uint32_t vertex_shader, std::span<const uint32_t> readers) {
+  Install(std::span<const uint32_t>(&vertex_shader, 1), readers);
 }
 
 inline void Uninstall() {
