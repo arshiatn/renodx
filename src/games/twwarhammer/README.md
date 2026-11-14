@@ -1,5 +1,10 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### r4 (2026-11-14: Hue Clip default 40, ATN's choice; stamped and installed with renodx-tw-dlaa64.exe helper112, not run in game)
+
+- **Hue Clip default 40** (Attila's), was 90 (WH1's own tone mappers measured closest to SDR at 80-90). Test: Recommended
+  (PsychoV35), fires and sky against SDR.
+
 ### Phase I, round 3 (2026-11-14 morning; "wh1 r3", stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - **Ray Reconstruction's guides**: WH1's are Warhammer II's file and read the G-buffer as the sun shaders do (230F2241 asm
