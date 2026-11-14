@@ -589,7 +589,17 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   - [ ] render-list append, lock xadd per item 0x17ae370 / 3d0 / 420 (6.2 ms workers, 0.9 render at 8x; research first)
   - [ ] the game's introsort 0xda6b0 / 0xda4b0 (3.5 ms workers at maxed grass; only with an equal-key order proof)
   - [x] ALREADY DONE for float->half / fmod / x87: Rome II 0246a786, Thrones 2c89ced4 (the rest: with each item)
-  - [ ] APPROVED by ATN 14:5x, owner hfp_ agent (game runs, Constantinople auto_save.replay, camera moved left at the start
+  - [x] DONE 17:57 (hfp_): P = prefetch-only sort WINS where the CPU sets the frame: ATN's settings -0.7 to -2.0 ms median
+    (every P start faster than every A start; p99 -1.5 to -2.8), CPU-bound -2.6 / -2.8 ms (+7 % fps), maxed CPU-bound
+    -3.2 / -3.7 ms (+8 %, p99 -4.2 / -5.2); maxed with ATN's rays (GPU / helper-limited) no change (fps and mean equal,
+    median +0.5 / +0.9 in a two-cluster distribution, p95 / p99 slightly better). B (parallel) helps less than P everywhere.
+    WPR: the render thread waits at the workers' join 1.96 ms (A) / 1.37 (P) / 1.70 (B), 75 % ended by a sorting worker.
+    battle_draw_batching off: +17.6 to +21.3 ms: keep on. number_of_threads 8 best (6: -7 % fps, 4: -20 %). Whole heapfix
+    test set + eq_test_pf (3,528 sorts, stress, page-end lists) pass for A / P / B. 48 starts valid, ATN's files back
+    (hashes equal). Package for the author: tools/tw/heapfix/for_author_pf/ (NOTE.md, sortfix_prefetch.patch,
+    eq_test_pf.c): ATN sends it, never us. Runs: tools/tw/heapfix/ab_runs_pf/ (summary.txt per scene; 3 WPR ETLs of
+    ~1.1 GB each to delete when done).
+    Original plan: APPROVED by ATN 14:5x, owner hfp_ agent (game runs, Constantinople auto_save.replay, camera moved left at the start
     so artillery, units, walls and shots are on screen): heapfix A = 7.0, P = prefetch-only sort, B = last night's parallel
     sort, interleaved A,P,B in three scenarios (ATN's settings GPU-bound; CPU-bound rays off + Ultra Performance; everything
     maxed in view: 8x units + the game's max unit LOD / buildings / grass / model LOD); then U4 number_of_threads 8 / 6 / 4
@@ -624,7 +634,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
       (heapfix's loopfetch has a prefetch site there, disabled by its author: a note for the author package)
     - [ ] ATN tests (README lines): Skip the Game's Shadow Map Work off / on in cpl1's view, Time Each Pass x3 + PresentMon
       30 s, cut-outs and unit shadows; G1 grass maxed against the previous build
-  - [ ] hfp_ agent (sent): heapfix's whole test set + eqtest on every packaged variant; battle_draw_batching A/B (2.16 ms)
+  - [x] hfp_ agent: heapfix's whole test set + eqtest on every packaged variant; battle_draw_batching A/B (keep it on)
   - [ ] GPU PERF ROUND (one agent after the drw_ merge; helper / rt_core): (a) FIRST Rome Remastered reset suspect 3 (a
     cluster set kept after the game rewrites an index buffer under the same key: offline check); (b) units ray-tracing
     range row (Experimental; cluster pass 1.8-2.58 ms GPU over 18.7-22.6 M soldier triangles; harness GPU Trace with
@@ -644,7 +654,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     settings note text
   - [ ] ATN 15:xx YES: WH3 own ReSTIR reflections (~0.3 ms cheaper, picture differs) as an Experimental row, off. Owner:
     PARITY ROUND 2 WH3
-  - [ ] ATN 15:xx YES: remove the dead keys GraphicsModelDetail / GraphicsUnitDetail / GraphicsUnitFade* from ATN's Attila
+  - [x] DONE 18:07: 6 lines removed from [renodx-preset1] (ReShade.ini f0c01bd0 -> 397a2141; fresh backup
+    tools/tw/attila_ini_backup_20261114_180736). Was: ATN 15:xx YES: remove the dead keys GraphicsModelDetail / GraphicsUnitDetail / GraphicsUnitFade* from ATN's Attila
     ReShade.ini (twattila reads none of them; other games' add-ons do, their inis stay). Owner: coordinator, AFTER the hfp_
     batch (its runs restore their own ini backups); fresh backup, edit, hash noted
   - [x] HAGS: stays on (ATN: FG and MFG need it); no measurement, never suggest it off
