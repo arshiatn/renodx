@@ -569,7 +569,37 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   detours 1.2 ms, (4) the render thread's 12 ms unnamed tail (research), (5) Capture 0.9 + DrawObjectMotion 0.63 (after the
   redesign). CPU perf agent (cpu_) started on 1-4, Attila first, then Rome II / Thrones. ATN's A/B list: Small Soldiers as
   Sprites, game Shadows Medium + Two Shadow Cascades, Lean Reuse, Light Bounce Half, pause Wallpaper Engine (3.0 ms GPU).
-- [ ] SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
+- [x] SHARED STEP MERGED b435a0e6 (fast-forward; built only): torch rows from PT in Thrones / Rome II / WH1 / WH2 / Troy /
+  Pharaoh (its particle lights too) / WH3 / Shogun 2 (overlay); sprite soldiers through a GS capture (WH1, Troy, WH2,
+  Pharaoh; rt_core SceneShader::capture_geometry_shader; tw_rays_captures WARP 5 pairs PASS); tessellated rigid WH1
+  E168387B / WH2 4CC2D68F (Troy D6DEB200 WON'T: no hull / domain shaders in its dump); a scene shader's own alpha cut-off
+  through the bridge (Shared::rt_leaf_cutoff in v8's padding, RT_OWN_CUTOFF 1024; Troy's campaign trees 0.01); Faster
+  Smoke Shadow Build in every smoke game (graphics_page makes the row); WH2 Smoke Shadows without rays. Every new row
+  Experimental, off; 18 consumers built; page dumps: only the intended rows. Leftovers:
+  - [ ] helper114 = helper113 + the own cut-off (05b79c7b): build, harness, stamp and install with the next release
+    (Troy's trees stay at 0.5 until then). Owner: final verification
+  - [ ] Pharaoh's campaign-tree twin 1C4B8681 at 0.01? Owner: PARITY ROUND 2 Pharaoh
+  - [ ] ATN's in-game tests of the new Experimental rows (README lines, level B)
+- [ ] PARITY ROUND 2 started ~18:20 (brief tools/tw/round_notes/parity_round2_brief_1114.md; goal parity_check exits 0
+  per game): agents p2w3_ (WH3 + own ReSTIR reflections row + unit round D / E), p2ph_ (Pharaoh), p2r2_ (Rome II), p2rr_
+  (Rome Remastered), p2s2_ (Shogun 2), p2sm_ (Thrones, WH1, Troy, WH2 in that order). Merge one at a time, then the final
+  verification.
+  - [x] Rome Remastered DONE (1c4f8f36, fddd7ae6 cherry-picked; ledger + README only, no code): parity_check rr exits 0
+    (open 0 / waiting 49 / settled 235). 85 casters: 29 HAVE, 33 NEEDS A TRACE (one battle trace with FrameTraceReads=1,
+    already on ATN's list), 23 WON'T GET with proof; ShadowCascades / SkipShadowPass WON'T (game's own 1-4 cascades,
+    Feral exe), UntracedCasters HAVE (RayTracedBattleScene).
+    - [ ] ATN DECIDES: grass and banners into Rome Remastered's rays as Experimental rows? (the game gives them no shadow:
+      0 cascade draws in 50 traces, so it would be a new look)
+  - [x] Rome II DONE: 12bc7a08 Rarer Objects in the Rays (tessellated terrain B1C7E29F + rigid E51A2D2A, Experimental),
+    d99b3a10 Two Shadow Cascades Under Rays (Experimental, restart; patches Rome II's own shadow-quality switch +0x142fcdd,
+    level B), b3d7e1b6 README; parity_check r2 exits 0 (0 / 8 / 70). Its Skip the Game's Shadow Map Work (edc6fb65) and
+    tw_unit_shadows section 8 (dac1a645) DUPLICATED the CPU round's d52fb7ae: not taken (the CPU version stays); conflict
+    resolved by hand. After the cherry-picks: rome2 / attila / thrones x86 + wh1 / wh2 x64 built; tw_rays_captures ALL
+    PASSED (Rome II T + G). Lesson 25 + SKILL.md: owned pieces go into every ledger first. Waiting: the 3 Vfx particle rows
+    and DrawScrub / Grass Trace NEED A TRACE; rays_preset_as_attila and Hue Clip 90 vs 80 are ATN's.
+    - [ ] caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
+      so parity_check settles Rome Remastered's casters itself. Owner: coordinator, after parity round 2 (shared script)
+- Was: SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
   capture path in rt_core (WH1 / Pharaoh / Troy / WH2 imposters), tessellated meshes via patch_triangles (WH1 / Troy / WH2),
   per-game leaf cut-off through the bridge (Troy 0.01), Faster Smoke Build row to the other smoke games, smoke without rays
   for 64-bit games if small.
@@ -606,6 +636,25 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     (A only, CPU-bound). The winner's patch + numbers go to tools/tw/heapfix/for_author_pf/ for ATN to send (never by us).
     Quiet machine during measurement: tools/tw/quiet_run.lock (all running agents told: no builds / WARP / GPU jobs while it
     exists) + gpu_job.lock + no compiler processes before each start.
+- [ ] DRAW REDESIGN phase 2 DONE on drw-draw-redesign (6f2d8dea utility + test/tw_draw_dispatch, 5a00df0a every TW add-on
+  opts in with gates, 1a4ed7c7 cost pass; not merged): command_action_fast.hpp per-command-list cache, TW-only opt-in,
+  other mods unchanged. Replay oracle 832 runs / 2.05 M commands 0 differences; tw_draw_dispatch x86 + amd64 0 differences
+  (control fails); 14 TW suite runs PASS; both build lines + Ryse / Tales / Expeditions / R.U.S.E. build; page dumps date
+  only. Saves 0.43 ms (cpl1) / 0.54 ms (cpl2) of dispatch a frame in the replay.
+  - [ ] FABLE 5.2 HIGH review of this change alone (ATN's request) started; findings -> tools/tw/draw_redesign/
+    fable_review.md; then one fix agent; then merge
+  - [ ] rt_scene::OnAnyDraw (Rome Remastered, Shogun 2 RT) left ungated: gate rt_scene::internal::active, with the fixes
+  - [ ] render_pass_behavior / shader_injection_behavior suites need ReShade 6.7.3's DLL (a download): ATN DECIDES
+  - [ ] The agent started 6 amd64 replay builds early while quiet_run.lock existed (the hfp_ A/B window): every hfp_ start
+    was checked for compilers and the A-to-A spreads stayed small; the 16-thread run re-measures P anyway
+- [ ] ATN 19:xx: (1) a 16-thread test: ATN sets CPU Set Setter's Attila rule to the V-cache CCD's 16 logical CPUs (now 8
+  cores), then CPU-bound P with number_of_threads 8 / 12 / 16, and P vs B4 vs B8 (sort threads) at the best count in the
+  three scenes. hfp_ agent preparing (variants, tests, runner); NOT started until ATN confirms the rule. (2) The same siege
+  benchmark after every CPU / GPU optimization round, heapfix P as the baseline: tools/tw/bench/constantinople_bench.ps1
+  (hfp_ preparing); first use = the end-of-round build (new Experimental CPU rows off / each on / all on). (3) Ideas that
+  belong in the author's fix (ATN decides what to send): a radix sort for the game's plain 4-byte introsort 0xda6b0,
+  memfast extended to 65-127 B copies, and a note that our Faster Render Lists patches +0x176ced0 (so his fix doesn't
+  collide). Owner: coordinator collects with the package.
 - [ ] Audit agent (aud_, read-only, ATN 14:5x "did the same happen to Nsight?"): every actionable line of the 2026-11-13 / 14
   analysis reports (Nsight, CPU / GPU recordings, heapfix, draw redesign cost map, Rome Remastered hunt, round notes) against
   HANDOFF, commits and the running agents' scopes; report tools/tw/round_notes/audit_1114.md. Each MISSING line becomes a
@@ -634,6 +683,28 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
       (heapfix's loopfetch has a prefetch site there, disabled by its author: a note for the author package)
     - [ ] ATN tests (README lines): Skip the Game's Shadow Map Work off / on in cpl1's view, Time Each Pass x3 + PresentMon
       30 s, cut-outs and unit shadows; G1 grass maxed against the previous build
+  - [x] CPU PERF ROUND 3 MERGED 438c060f (one conflict: Attila's torch row floats, moved to graphics_page by the shared
+    step, dropped; x86 three + 8 x64 TW add-ons rebuilt after the merge): the 15 x64 consumers built (5e1aa6ee), Thrones'
+    page +1 row; Faster Render Lists (Experimental, off, Attila + Thrones: the push writes its shared "has items" byte only
+    when not 1; tw_engine_code part 8 bit-exact over 1 M pushes + 720 M threaded; 94 / 84 -> 44 / 31 ns a push; E 2-3.5 ms
+    workers, ~0.4 render in cpl2); Rome II Skip the Game's Shadow Map Work (Experimental, off; its one-argument Render
+    +0x14b84a0); research doc tools/tw/perf_plan/render_thread_tail.md (the "memset" is memcpy 32-127 B; introsort sorts
+    plain 4-byte values; the 8x tail is the battle simulation). Measured and not kept: ScaleModelLods' cache check (no
+    gain). The x64 games: no Render / scrub hook found statically. The earlier leftovers above are settled by this round.
+    Its leftovers, owner CPU ROUND 4 (a fresh agent after parity round 2):
+    - [ ] render-list headers 64 bytes apart (~1-2 ms workers): find where the header array is allocated (readers
+      0x176ced0, 0x178fd90, 0x176d430, 0x176da30, 0x176dbf0, 0x176ddb0)
+    - [ ] radix sort at +0x17b9217 for 0xda6b0's plain 4-byte values (0.5-1 ms workers, ~2 ms at maxed grass): a harness
+      test against the game's own sort first
+    - [ ] prefetch in the 0x182c990 gather loop (<= 0.3 ms): harness timing first
+    - [ ] 8x pose hold / half rate: read what 0x49aad0 writes (pose or simulation) before any row
+    - [ ] the animation pack loop 0x182e080: read its loop
+    - [ ] ATN DECIDES (data runs): mesh LOD part counts; the x64 shadow-pass skip (WH3 first: one stack capture a frame
+      while the sun's map is bound)
+    - [ ] ATN, when sending the heapfix package: ask the author whether we may patch the x87 block over heapfix's bytes
+      (+0x17f6515) and about his disabled prefetch site in the animation pack loop
+    - [ ] ATN tests: Faster Render Lists off / on in cpl2's view (PresentMon 60 s, log "Faster Render Lists: on"); Rome II
+      Skip the Shadow Maps in a forest battle (log "pass kind N draws only into the sun's map", shadows unchanged)
   - [x] hfp_ agent: heapfix's whole test set + eqtest on every packaged variant; battle_draw_batching A/B (keep it on)
   - [ ] GPU PERF ROUND (one agent after the drw_ merge; helper / rt_core): (a) FIRST Rome Remastered reset suspect 3 (a
     cluster set kept after the game rewrites an index buffer under the same key: offline check); (b) units ray-tracing
