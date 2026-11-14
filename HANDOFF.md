@@ -268,6 +268,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] Shogun 2 round 5 MERGED acfa8633 (W7d rigid casters out of view AC25DAB8 by rows v6-v8, Experimental off, needs a
   restart; shared rt_core Host::cascade_last_view opt-in: Attila x64 / build32, WH3, Ryse, Ryse DLSS, Expeditions DLSS,
   Rome Remastered rebuilt, their rt_core suites PASS). Agent resumed: cloth 8A00A1D4 + sprites E3DA20D4 (world route).
+- [x] ATN ~04:50: "use the nvidia nsight sdk and any other nvidia sdks that you need" (free + donations OK). Nsight agent
+  resumed: Nsight Graphics SDK 0.9.2 headers (Apache-2.0) + NGFX_FrameBoundary_D3D12 in dlaa_helper (ships in helper111,
+  all_modes proof), capture + replay shader swaps for the reuse pass, Aftermath licence read (NVIDIA SDK licence:
+  binaries only, no headers in the repo; dev-only opt-in crash dumps if the licence allows).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
