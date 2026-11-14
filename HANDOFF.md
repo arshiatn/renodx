@@ -306,6 +306,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   rows byte-identical). Thrones agent: Faster Game CPU Code for Rome II if its routines match.
 - [x] Rome II Faster Game CPU Code MERGED (empire.retail.dll 6AB978BD; truncation 104.5 -> 43.0 ns, fmod 155 -> 71 ns;
   Experimental off; rome2 gets a new build tonight).
+- [x] WH1 round 3 MERGED f99ae4e3 (Light Through All Banners, Light Through Foliage, Water Clarity / Caustics on battle water,
+  unit cut-outs + census; Experimental off). NOT DONE: sprites (GS-made quads), particle rows, Fog Strength, 14 cut-outs.
+- [x] Troy fires 643FC156 MERGED 61d0b84b (shared rt_scene LightInstances::stream_shader opt-in; WARP ALL PASSED).
+  Troy agent DONE; follow-up: Pharaoh's fires 5AD46115 behind their own off row.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
