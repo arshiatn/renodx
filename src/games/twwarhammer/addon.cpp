@@ -38,6 +38,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/water_effects.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "./more_tests.h"
 #include "../twrome2/engine_tweaks.hpp"
@@ -277,6 +278,12 @@ float rays_skip_cascades_row = 0.f;
 // this row: thin in the rays (DBCC30FD's capture) and in the screen-space shadows (InstallThin; their vertex shaders' outputs
 // start with SV_Position, as sss_thin reads, test/tw_warhammer_shaders part 10).
 float rays_banner_light_row = 0.f;
+// Water Clarity and Caustics (Experimental; twattila/water_effects.hpp, as Rome II's): the battle water 44B4A2F0 (ATN's
+// battles), g_sea_bed_light_scatter at its lighting_VS_PS's (b3) c10 the base of the depth's power (asm 673). The campaign's
+// sea and lake read c10 otherwise (1 - c10.xyz x c10.w): left out. test/tw_warhammer_shaders part 12.
+constexpr std::array<twattila::water_effects::WaterShader, 1> WATER_SHADERS = {{
+    {.hash = 0x44B4A2F0, .lighting_slot = 3, .world_input = 3, .refraction_slot = 4, .normal_slot = 3},
+}};
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{
     {.hash = 0xDBCC30FD, .row = &rays_banner_light_row},
     {.hash = 0xE7F0D71A, .row = &rays_banner_light_row},
@@ -1548,6 +1555,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+    .water_caustics_label = "Water Caustics (Experimental)",
     .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Cloud shadows stay the game's;\n"
                             "what is outside the view casts none. Off: the rays' shadows on top of the game's shadow maps.",
     .reflections_tooltip = "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
@@ -1852,6 +1860,27 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterClarity",
+      .binding = &twattila::water_effects::water_clarity,
+      .default_value = 1.f,
+      .label = "Water Clarity (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "How far you see into rivers and lakes in battles. 1: the game's; higher: clearer water.",
+      .min = 0.25f,
+      .max = 16.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterCaustics",
+      .binding = &twattila::water_effects::water_caustics,
+      .default_value = 0.f,
+      .label = "Water Caustics (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Rippling light on river and lake beds in battles. 0: off.",
+      .max = 2.f,
+      .format = "%.2f",
+  });
 
   // Appended Settings (HDR10)
   {
@@ -1981,6 +2010,10 @@ void ConfigureAddon() {
       setting->tooltip = "With Rays Replace Shadow Maps: nothing is drawn into the game's shadow maps. Faster with many units and\n"
                          "buildings. Water and the other forward-lit surfaces take the rays' shadow too.";
     }
+    // Water Caustics (Experimental) stays off: SetRaysPresetDefaults gave it the RT/PT preset's 1.
+    if (setting->key == "WaterCaustics") {
+      setting->default_value = 0.f;
+    }
   }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
@@ -2092,6 +2125,15 @@ bool AttachAddon() {
                                        .instances_apart = true,
                                        .draw_reads = twwarhammer::trace_reads::Read,
                                    });
+  // Water Clarity and Caustics at the battle water's draws; Caustics' patch on top of Skip the Shadow Maps' forward patch
+  // (registered above), as part 12 chains them.
+  twattila::water_effects::water_shaders = WATER_SHADERS;
+  renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  for (const auto& water : WATER_SHADERS) {
+    renodx::utils::command_action::Register(
+        twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
@@ -2121,6 +2163,9 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
+  renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   renodx::utils::command_action::Unregister(PointLightRays::OnDraw);
   renodx::utils::command_action::Unregister(LinearPointLightRays::OnDraw);
   renodx::utils::command_action::Unregister(OnSunReplaceMaps);

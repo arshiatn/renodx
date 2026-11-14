@@ -15,12 +15,19 @@
 - **Light Through Foliage (Experimental, off)**: the leaves' G-buffer shader 744FDFF0 writes channel 3's flag 128 and the
   sun shaders let the sun through from behind only there (part 11), Warhammer III's bit (`foliage_material_bit`): the
   screen-space shadows that leaves cast let that share of the sun through.
+- **Water Clarity and Water Caustics (Experimental; Clarity 1 and Caustics 0: the game's)**: Rome II's water_effects on the
+  battle water 44B4A2F0, whose g_sea_bed_light_scatter (its lighting_VS_PS's c10) is the base of the water depth's power.
+  Part 12: water_clarity.cs leaves the rest of the constants bit-identical, and the game's bytes with its c10 raised to 1/2
+  a metre deep equal its own half a metre deep; the caustics patch (on top of Skip the Shadow Maps' forward patch, as the
+  runtime chains them) is bit-identical with t51 unbound. The campaign's sea and lake read c10 otherwise: left out.
 
 Test list (in game, ATN):
 1. Battle with banners, Light Through All Banners on: their shadows lighter and coloured (screen-space and RT); off: as
    before; nothing else (shields, cloaks) lighter.
 2. Battle in a forest, Light Through Foliage at 0.5: the leaves' screen-space shadows lighter, walls' and soldiers' as
    dark as before.
+3. Battle by a river or lake: Water Clarity 4 shows the bed deeper; Water Caustics 1 ripples light on the bed; both at their
+   defaults: the game's water. ReShade.log: "Water Caustics: water shader 44B4A2F0 patched."
 
 Not done: Sprite Shadows (WH1's far soldiers are points the game's geometry shader 12D3A4BC / D6954DFC turns into quads;
 the rays capture a vertex shader's vertices with the draw's own indices, so they need new shared capture work, and none of

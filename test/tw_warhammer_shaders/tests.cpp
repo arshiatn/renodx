@@ -49,6 +49,11 @@
 //    8 draws, the camera far and its inputs' w 0: no fade) writes channel 3's alpha 128 / 255; 230F2241 lit from behind (sun
 //    1 along the normal, no ambient) lets light through only with that bit. CONTROLS: the branches' 4CF47121 writes 0;
 //    flags 64 (water) and 16 let none through.
+// 12. Water Clarity and Caustics on the battle water 44B4A2F0 (water_effects.hpp, WH1's WATER_SHADERS row): water_clarity.cs
+//    leaves every dword of a lighting_VS_PS copy but c10 (g_sea_bed_light_scatter) bit-identical and raises those to 1 /
+//    clarity; the game's bytes with that c10 a metre deep equal its own half a metre deep (clarity 2; a flat surface, the
+//    depth buffer's ground by name). PatchWaterCaustics (on the game's bytes and on part 8's forward patch, as the runtime
+//    chains them): t51 unbound bit-identical. CONTROLS: the game's c10 a metre deep differs; t51 = 1 differs.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -1160,8 +1165,12 @@ struct ForwardScene {
                            // water's sun glint, its only shadowed light)
   float height = 0.f;      // added to every float input's y (the battle water's world place above its ground)
   float input_w = 1.f;     // every float input's w (the leaves' fade)
+  bool flat = false;       // every float input's y the same at every pixel (no ramp)
+  float ground = NAN;      // inv_view_projection's rows 1 and 3: the depth buffer's world y (NaN: the fill)
+  float scatter = -1.f;    // g_sea_bed_light_scatter's 4 dwords (< 0: the fill)
   float atlas = 1.f;       // the shadow map's depth
   float occlusion = -1.f;  // t49 (< 0: unbound)
+  float caustics = -1.f;   // t51 (< 0: unbound)
 };
 
 // A forward pixel shader's bytes drawn over 4 x 4 pixels: its inputs from a vertex shader made from its input signature
@@ -1189,7 +1198,8 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
     const std::string name = "v" + std::to_string(index);
     const bool integer = input.ComponentType != D3D_REGISTER_COMPONENT_FLOAT32;
     vertex += std::string(", out ") + (input.ComponentType == D3D_REGISTER_COMPONENT_SINT32 ? "int4 " : (integer ? "uint4 " : "float4 ")) + name + " : " + input.SemanticName + std::to_string(input.SemanticIndex);
-    body += " " + name + (integer ? " = 0;" : " = float4(corner.x * 0.31 + " + std::to_string(0.13f * static_cast<float>(index)) + ", corner.y * 0.27 + 0.2, " +
+    body += " " + name + (integer ? " = 0;" : " = float4(corner.x * 0.31 + " + std::to_string(0.13f * static_cast<float>(index)) + ", corner.y * " +
+                                                    (scene.flat ? "0" : "0.27") + " + 0.2, " +
                                                     std::to_string(0.5f + (0.05f * static_cast<float>(index))) + ", " + std::to_string(scene.input_w) +
                                                     ") + float4(0, " +
                                                     std::to_string(scene.height) + ", 0, 0);");
@@ -1226,6 +1236,10 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
           if (scene.glint) std::ranges::copy(std::array{-0.70710678f, -0.70710678f, 0.f}, at);
         }
         if (std::strcmp(variable_desc.Name, "camera_position") == 0 && scene.glint) std::ranges::copy(std::array{707.f, 707.f, 0.f}, at);
+        if (std::strcmp(variable_desc.Name, "inv_view_projection") == 0 && !std::isnan(scene.ground)) {
+          std::ranges::copy(std::array{0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, scene.ground, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f}, at);
+        }
+        if (std::strcmp(variable_desc.Name, "g_sea_bed_light_scatter") == 0 && scene.scatter >= 0.f) std::fill_n(at, 4, scene.scatter);
       }
       buffers.push_back(Constants(data.data(), static_cast<UINT>(data.size() * 4)));
       context->PSSetConstantBuffers(bind.BindPoint, 1, buffers.back().GetAddressOf());
@@ -1287,6 +1301,10 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
   if (scene.occlusion >= 0.f) {
     views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.occlusion, scene.occlusion, scene.occlusion, scene.occlusion})));
     context->PSSetShaderResources(49, 1, views.back().GetAddressOf());
+  }
+  if (scene.caustics >= 0.f) {
+    views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.caustics, scene.caustics, scene.caustics, scene.caustics})));
+    context->PSSetShaderResources(water_patch::WATER_CAUSTICS_SLOT, 1, views.back().GetAddressOf());
   }
   std::vector<ComPtr<ID3D11Texture2D>> targets;
   std::vector<ID3D11RenderTargetView*> rtvs;
@@ -1533,6 +1551,101 @@ static void TestFoliage(const std::string& dump) {
               leaves, branches, through[0], through[1], through[2], through[3]);
 }
 
+static void TestWater(const std::string& games, const std::string& dump) {
+  constexpr water_patch::WaterShader WATER = {.hash = 0x44B4A2F0, .lighting_slot = 3, .world_input = 3, .refraction_slot = 4, .normal_slot = 3};
+  constexpr float CLARITY = 2.f;
+  constexpr float SCATTER = 0.3f;
+  // water_clarity.cs over 72 dwords (lighting_VS_PS's 18 registers) of a ramp.
+  const std::string path = games + "/twwarhammer/water_clarity.cs_5_0.hlsl";
+  const auto clarity = ComputeShader(ReadText(path), path);
+  std::vector<float> lighting(72);
+  for (size_t index = 0; index < lighting.size(); ++index) lighting[index] = 0.05f + (0.01f * static_cast<float>(index));
+  const auto raw = [](const void* data, UINT bytes, UINT bind) {
+    const D3D11_BUFFER_DESC desc = {.ByteWidth = bytes, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = bind, .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
+    const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = data};
+    ComPtr<ID3D11Buffer> buffer;
+    device->CreateBuffer(&desc, (data != nullptr) ? &initial : nullptr, buffer.GetAddressOf());
+    return buffer;
+  };
+  const auto source = raw(lighting.data(), 288, D3D11_BIND_SHADER_RESOURCE);
+  const auto output = raw(nullptr, 288, D3D11_BIND_UNORDERED_ACCESS);
+  const D3D11_SHADER_RESOURCE_VIEW_DESC source_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX,
+                                                       .BufferEx = {.FirstElement = 0, .NumElements = 72, .Flags = D3D11_BUFFEREX_SRV_FLAG_RAW}};
+  const D3D11_UNORDERED_ACCESS_VIEW_DESC output_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER,
+                                                        .Buffer = {.FirstElement = 0, .NumElements = 72, .Flags = D3D11_BUFFER_UAV_FLAG_RAW}};
+  ComPtr<ID3D11ShaderResourceView> source_view;
+  ComPtr<ID3D11UnorderedAccessView> output_view;
+  device->CreateShaderResourceView(source.Get(), &source_desc, source_view.GetAddressOf());
+  device->CreateUnorderedAccessView(output.Get(), &output_desc, output_view.GetAddressOf());
+  const float inverse = 1.f / CLARITY;
+  std::array<uint32_t, 4> constants = {72, 0, 0, 0};
+  std::memcpy(&constants[1], &inverse, 4);
+  const auto clarity_constants = Constants(constants.data(), 16);
+  context->CSSetShader(clarity.Get(), nullptr, 0);
+  context->CSSetShaderResources(0, 1, source_view.GetAddressOf());
+  context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
+  context->CSSetConstantBuffers(0, 1, clarity_constants.GetAddressOf());
+  context->Dispatch(2, 1, 1);
+  context->ClearState();
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = 288, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), output.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  std::vector<float> clarified(72);
+  std::memcpy(clarified.data(), mapped.pData, 288);
+  context->Unmap(staging.Get(), 0);
+  int copy_misses = 0;
+  for (size_t index = 0; index < lighting.size(); ++index) {
+    const bool scatter = index >= 40 && index < 44;
+    const bool same = scatter ? Near(clarified[index], std::pow(lighting[index], inverse), 1e-5f)
+                              : std::memcmp(&clarified[index], &lighting[index], 4) == 0;
+    copy_misses += same ? 0 : 1;
+  }
+  // The game's water with that c10 a metre deep against its own half a metre deep: a flat surface 4.2 m up, the ground below.
+  const auto game = GameBytes(dump, WATER.hash);
+  const ForwardScene metre = {.height = 4.f, .flat = true, .ground = 3.2f, .scatter = std::pow(SCATTER, inverse)};
+  ForwardScene half = metre;
+  half.ground = 3.7f;
+  half.scatter = SCATTER;
+  ForwardScene plain_metre = metre;
+  plain_metre.scatter = SCATTER;
+  const auto clear = DrawForward(game, game, metre);
+  const auto shallow = DrawForward(game, game, half);
+  const auto murky = DrawForward(game, game, plain_metre);
+  int depth_misses = 0;
+  int control_differ = 0;
+  for (size_t texel = 0; texel < clear.size() && clear.size() == shallow.size(); ++texel) {
+    for (size_t channel = 0; channel < 4; ++channel) {
+      depth_misses += Near(clear[texel][channel], shallow[texel][channel], 1e-4f) ? 0 : 1;
+      control_differ += Near(murky[texel][channel], shallow[texel][channel], 1e-4f) ? 0 : 1;
+    }
+  }
+  // Caustics: on the game's bytes and on top of part 8's forward patch.
+  const auto caustic = water_patch::PatchWaterCaustics(game, WATER);
+  const auto forward = ambient_patch::Patch(game, true, 1, true);
+  const auto chained = water_patch::PatchWaterCaustics(forward, WATER);
+  ForwardScene lit = metre;
+  lit.scatter = SCATTER;
+  ForwardScene with_tile = lit;
+  with_tile.caustics = 1.f;
+  const auto same_bits = [](const std::vector<Float4>& a, const std::vector<Float4>& b) {
+    return !a.empty() && a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(Float4)) == 0;
+  };
+  const bool unbound = same_bits(DrawForward(caustic, game, lit), DrawForward(game, game, lit))
+                       && same_bits(DrawForward(chained, game, lit), DrawForward(forward, game, lit));
+  const bool tiled = !same_bits(DrawForward(caustic, game, with_tile), DrawForward(game, game, lit));
+  CHECK(copy_misses == 0 && !clear.empty() && depth_misses == 0, "water clarity: copy %d, depth %d misses", copy_misses, depth_misses);
+  CHECK(control_differ > 0, "water clarity CONTROL: the game's c10 a metre deep the same as half");
+  CHECK(!caustic.empty() && !chained.empty() && unbound && tiled, "water caustics: patched %d / chained %d, t51 unbound same %d, t51 = 1 differs %d",
+        !caustic.empty(), !chained.empty(), unbound, tiled);
+  std::printf("water: water_clarity.cs copy %d misses of 72; 44B4A2F0 with c10^(1/2) a metre deep vs half a metre: %d misses of %zu (CONTROL the game's "
+              "c10 a metre deep: %d differ); caustics patched %s, on the forward patch %s, t51 unbound bit-identical %s, CONTROL t51 = 1 %s\n",
+              copy_misses, depth_misses, clear.size() * 4, control_differ, caustic.empty() ? "NO" : "yes", chained.empty() ? "NO" : "yes",
+              unbound ? "yes" : "NO", tiled ? "differs" : "SAME");
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -1558,6 +1671,7 @@ int main(int argc, char** argv) {
   TestGuides(games, argv[2]);
   TestThin(argv[2]);
   TestFoliage(argv[2]);
+  TestWater(games, argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
