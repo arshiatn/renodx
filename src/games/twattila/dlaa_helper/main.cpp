@@ -19,6 +19,8 @@
 #include <d3d11_4.h>
 #include <dbghelp.h>
 #include <dxgi1_6.h>
+#include <nsight_graphics_sdk/NGFX_GPUTrace_D3D12.h>
+#include <nsight_graphics_sdk/NGFX_GraphicsCapture_D3D12.h>
 #include <shellapi.h>
 #include <wrl/client.h>
 
@@ -136,6 +138,29 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   _wfopen_s(&log_file, log_path.c_str(), L"w");
   wcsncpy_s(dump_path.data(), dump_path.size(), (folder + L"\\renodx-tw-dlaa64.dmp").c_str(), _TRUNCATE);
   SetUnhandledExceptionFilter(OnUnhandledFault);
+  // Nsight Graphics' GPU Trace or Graphics Capture in this process (started by it, or by a game it started): its frame
+  // boundaries (`run`, below) reach it once its activity is initialized here. Without Nsight Graphics nothing is injected
+  // and they do nothing.
+  if (NGFX_ActivityType injected = NGFX_ActivityType_COUNT; NGFX_GetInjectedActivity(&injected) == NGFX_Result_Success) {
+    NGFX_Result initialized = NGFX_Result_NotImplemented;
+    switch (injected) {
+      case NGFX_ActivityType_GraphicsCapture: {
+        NGFX_GraphicsCapture_InitializeActivity_D3D12_Params capture = {.version = NGFX_GraphicsCapture_InitializeActivity_D3D12_Params_VER};
+        initialized = NGFX_GraphicsCapture_InitializeActivity_D3D12(&capture);
+        break;
+      }
+      case NGFX_ActivityType_GPUTrace: {
+        NGFX_GPUTrace_InitializeActivity_D3D12_Params trace = {.version = NGFX_GPUTrace_InitializeActivity_D3D12_Params_VER};
+        initialized = NGFX_GPUTrace_InitializeActivity_D3D12(&trace);
+        break;
+      }
+      default:
+        break;
+    }
+    LogWithTime(std::format("[TW DLAA helper] Nsight Graphics activity {}: frame boundaries {} (result {}).", static_cast<int>(injected),
+                            (initialized == NGFX_Result_Success ? "on" : "off"), static_cast<int>(initialized))
+                    .c_str());
+  }
   // A live GPU did not finish work whose resources are about to be freed (a removed device never gets here: a new one is
   // made below). Freeing them under it is not safe and nothing else can go on: the reason logged, then the process ends
   // without unwinding the GPU objects (the addon sees the exit).
@@ -316,7 +341,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                                      : std::span<const uint8_t>();
   };
   const auto run = [&](const twattila::dlaa_bridge::Shared& from, std::span<const uint8_t> sets) {
-    return (version >= 7 && from.rt_request >= 2) ? scene->Paths(from, version, from.rt_request == 3) : scene->Trace(from, version, sets);
+    if (version >= 7 && from.rt_request >= 2) return scene->Paths(from, version, from.rt_request == 3);
+    // A frame's ray tracing starts with its trace request, so the last frame's last submit is behind: Nsight Graphics'
+    // frame boundary (the helper never presents, its default delimiter).
+    NGFX_FrameBoundary_D3D12_Params boundary = {.version = NGFX_FrameBoundary_D3D12_Params_VER, .commandQueue = scene->Queue()};
+    NGFX_FrameBoundary_D3D12(&boundary);
+    return scene->Trace(from, version, sets);
   };
   const auto kind = [&](const twattila::dlaa_bridge::Shared& from) {
     return std::min<uint32_t>(version >= 7 ? from.rt_request : 1u, 3u) - 1;

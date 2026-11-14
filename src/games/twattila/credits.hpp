@@ -12,7 +12,8 @@ namespace twattila::credits {
 constexpr const char* HELPER =
     "NVIDIA DLSS (Super Resolution, Ray Reconstruction and Frame Generation), NVIDIA Reflex, Streamline, "
     "NVAPI, the Opacity Micro-Map SDK, SHaRC and NRD: NVIDIA Corporation, under NVIDIA's licenses (this software "
-    "contains source code provided by NVIDIA Corporation). NVIDIA, GeForce "
+    "contains source code provided by NVIDIA Corporation). The Nsight Graphics SDK: NVIDIA Corporation (Apache "
+    "License 2.0). NVIDIA, GeForce "
     "RTX, DLSS and Reflex are trademarks and/or registered trademarks of NVIDIA Corporation. DirectX "
     "Agility SDK: Microsoft. Ray tracing: ideas from Embark Studios' kajiya (MIT) and Bustanity's "
     "Phantom FX (MIT). AMD FSR: Advanced Micro Devices, Inc. (MIT License). XeSS: Intel Corporation (Intel "
