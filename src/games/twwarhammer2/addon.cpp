@@ -59,6 +59,7 @@
 #include "./ao_trace.hpp"
 #include "./line_sweep_ao.hpp"
 #include "./particle_smoothing.hpp"
+#include "./shadow_cascades.hpp"
 #include "./trace_reads.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
@@ -1527,6 +1528,10 @@ tw::engine_tweaks::Option shadow_detail;
 tw::engine_tweaks::Option small_shadows;
 // Shadow Map Size: the highest Shadows setting's 8192 x 8192 (written into the game's code) x 1 or 1.5.
 tw::engine_tweaks::Option shadow_map;
+// Two Shadow Cascades Under Rays (Experimental): the highest Shadows setting's cascades as the lowest's; its tile follows
+// Shadow Map Size (shadow_cascades.hpp).
+float shadow_cascades_row = 0.f;
+twwarhammer2::shadow_cascades::Options shadow_cascades;
 // Every engine option above, then the tests' (Graphics 2 of 2: more_tests.h, twattila/engine_tests.hpp).
 std::vector<tw::engine_tweaks::Option*> graphics_options;
 std::vector<twattila::engine_tests::EngineTest> engine_tests;
@@ -1577,8 +1582,12 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   // settings[3]->default_value = renodx::utils::swapchain::ComputeReferenceWhite(peak.value());
 }
 
-// The shadow map size, before the game builds its shadows.
+// The shadow map size and cascades, before the game builds its shadows; Ray-Traced Shadows Only as OnPresent's.
 void OnInitDevice(reshade::api::device*) {
+  const bool sun_shadows = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).sun_shadows;
+  twwarhammer2::shadow_cascades::Set(&shadow_cascades,
+                                     shadow_cascades_row != 0.f && sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f,
+                                     shadow_map.scale);
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
 
@@ -1838,6 +1847,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
+  twwarhammer2::shadow_cascades::Set(&shadow_cascades, shadow_cascades_row != 0.f && rt_settings.shadows_only, shadow_map.scale);
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
 
@@ -2035,7 +2045,9 @@ void ConfigureAddon() {
     auto more = more_tests::MoreTests();
     engine_tests.insert(engine_tests.end(), more.begin(), more.end());
   }
-  graphics_options = {&unit_detail[0], &unit_detail[1], &unit_detail[2], &unit_detail[3], &unit_detail[4], &unit_animation, &unit_variety, &footstep_effects, &model_detail, &terrain_detail, &bush_detail, &campaign_draw, &shadow_detail, &small_shadows, &shadow_map};
+  shadow_cascades = twwarhammer2::shadow_cascades::Make(twwarhammer2::shadow_cascades::Game::WARHAMMER_2);
+  graphics_options = {&unit_detail[0], &unit_detail[1], &unit_detail[2], &unit_detail[3], &unit_detail[4], &unit_animation, &unit_variety, &footstep_effects, &model_detail, &terrain_detail, &bush_detail, &campaign_draw, &shadow_detail, &small_shadows, &shadow_map,
+                      &shadow_cascades.count, &shadow_cascades.split_row, &shadow_cascades.tile};
   for (auto& test : engine_tests) graphics_options.push_back(&test.option);
   graphics_status = new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
@@ -2044,14 +2056,12 @@ void ConfigureAddon() {
   };
   // Graphics presets (ATN): MAX (every graphics setting at its maximum) and Reset (all graphics settings and tests at their
   // defaults, as Attila's; not the ambient occlusion or the Light Bounce).
-  // The highest Shadows setting (+0x7e157d): mov [rbx + 0x1dd8], 8192.f; mov [rbx + 0x1ddc], 8192.f;
-  // mov [rbx + 0x15c], 4096 (read when the game builds its shadow map: start-up, Shadows changed). The lower settings
-  // use 4096 x shadow_resolution_multiplier.
-  constexpr std::string_view HIGHEST_SHADOW_SIZE = "C7 83 D8 1D 00 00 00 00 00 46 C7 83 DC 1D 00 00 00 00 00 46 C7 83 5C 01 00 00 00 10 00 00";
+  // The highest Shadows setting (+0x7e157d): mov [rbx + 0x1dd8], 8192.f; mov [rbx + 0x1ddc], 8192.f (read when the game
+  // builds its shadow map: start-up, Shadows changed); its tile (4096) through shadow_cascades.tile, scaled with the size.
+  // The lower settings use 4096 x shadow_resolution_multiplier.
   shadow_map.tweaks = {
-      {.code_pattern = HIGHEST_SHADOW_SIZE, .code_offset = 6},
-      {.code_pattern = HIGHEST_SHADOW_SIZE, .code_offset = 16},
-      {.code_pattern = HIGHEST_SHADOW_SIZE, .code_offset = 26, .integer = true},
+      {.code_pattern = twwarhammer2::shadow_cascades::WARHAMMER_2_SETUP, .code_offset = twwarhammer2::shadow_cascades::WARHAMMER_2_WIDTH},
+      {.code_pattern = twwarhammer2::shadow_cascades::WARHAMMER_2_SETUP, .code_offset = twwarhammer2::shadow_cascades::WARHAMMER_2_HEIGHT},
   };
   std::vector<std::pair<std::string, float>> graphics_defaults = {
       {"GraphicsShadowMapSize", 0.f},
@@ -2193,6 +2203,17 @@ void ConfigureAddon() {
                      "Applies after a restart.",
           .labels = {"8192 (Game's)", "12288"},
           .parse = [](float value) { return (value >= 1.f) ? 1.5f : 1.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedShadowCascades",
+          .binding = &shadow_cascades_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Two Shadow Cascades Under Rays (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows and Skip the Shadow Maps: at the highest Shadows setting the game prepares\n"
+                     "2 shadow cascades, as at the lowest, instead of 4. Faster in forests. Applies after a restart.",
+          .labels = {"Off", "On"},
       },
       graphics_status,
       // The pixel trace (talesofarise_dlss/pixel_trace.hpp), one frame on request; its marker only while it is open.
