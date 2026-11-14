@@ -1493,13 +1493,26 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 24> MOTION_SHADERS =
 // branches and leaves and units, and their capture versions (world positions; leaves also UVs).
 // The floating unit banners (rigidtextureblend, 2 bones, 7DF335FF) stay out: the game gives them no shadow (no atlas draw in
 // any trace of the data run).
+// 16AFAF14's alpha-tested materials (sorted): each discards where its diffuse map's alpha (x the instance's fade, v6.w) is
+// below 0.5 at TEXCOORD1.xy (the vertex's TEXCOORD0, the VS's o2), the helper's cut-out; captured with that UV
+// (rt_capture_rigid_standard_cut_out). Drawn in ATN's traces and the data run's (tools/tw/wh2/runs): fences, palms and props
+// in battle; every campaign object through the shroud's material (45 diffuse maps, most solid).
+constexpr std::array<twattila::rt_scene::PixelMask, 5> CUT_OUT_MASKS = {{
+    {.pixel_shader = 0x2BE667BC, .slot = 1},  // rigidstandard ps40_gbuffer_shroud
+    {.pixel_shader = 0x34858FD0},             // rigidstandard ps40_gbuffer_alpha_test
+    {.pixel_shader = 0x40EE89BC, .slot = 1},  // rigidstandard ps40_gbuffer_alpha_test_shroud_fizzle_oblique_tris
+    {.pixel_shader = 0x5395F751},             // rigidstandard ps_pixel_selection_alpha_test
+    {.pixel_shader = 0xD960DC10},             // rigidambientmapmesh ps40_gbuffer_alpha_test
+}};
+
 constexpr std::array<twattila::rt_scene::SceneShader, 25> SCENE_SHADERS = {{
     {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
     {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
     {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xE8291DEF, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
     {.hash = 0x6B25B4D2, .capture_shader = __rt_capture_rigid_default},
-    {.hash = 0x16AFAF14, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_16af},
+    {.hash = 0x16AFAF14, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_16af,
+     .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true},
     {.hash = 0xC5CD75C5, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_c5cd},
     {.hash = 0xB7CE3413, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_b7ce},
     {.hash = 0x8F4BAB8C, .capture_shader = __rt_capture_rigid_vertexpush},
@@ -2169,6 +2182,7 @@ bool AttachAddon() {
     return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
   };
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
+  twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // Torch and Fire Shadows: the point lights (one instanced draw a frame, VS D2A0FF23 with PS D96A8DC3; its instances
   // POSITION1 the colour, POSITION2 the place and reach: FrameTraceReads in the data run's B, 131 lights at 25 m), then
   // ours over the game's shader while their rays are bound (PointLightRays). Fog Shadows the same way (FogRays).

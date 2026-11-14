@@ -29,6 +29,11 @@
   B7ED5B72's, at the nearest of the two views it blends; a card it fades out stays out). Pharaoh's `rt_outside_view` has two
   new variants for them (`RT_WORLD_UV`, `RT_CARD_SPLIT`; its other variants' bytes the same). WARP
   `tools/tw/warp_tests/outside_view_wh2` passes (its controls fail).
+- **Fixed: alpha-tested props cast solid shadows in the rays.** Fences, palms and other cut-out props of the rigid shader
+  (16AFAF14) cast their cut-out shadow now, as the game's shadow pass does: its five alpha-tested G-buffer materials (the
+  traces' census of every scene shader's pixel shaders) are cut by their diffuse map's alpha at 0.5, as Troy's and Pharaoh's
+  (`rt_capture_rigid_standard_cut_out`; its world on the GPU: 1.4e-8 relative). The campaign's objects go through one of
+  them (the shroud's material), so they are cut where their textures are.
 - **Rays Replace Shadow Maps through the shared hook** (`twattila/sun_replace_maps.hpp` with its sampler slot, s1 here):
   the same as before.
 - Checked, nothing to change: the siege's walls, buildings, units, trees and terrain are all in the rays (the caster census
@@ -45,11 +50,14 @@ Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon6
 4. The campaign: forests take ray-traced AO and shadows, no dark patches under trees; frame time as v48.
 5. Shadow Casters Out of View on, the campaign at a low camera: trees just off screen shadow into it as leaves, not cards;
    in a battle with Far Tree Shadows on, distant forests behind the camera keep their shadows.
+6. Fences, palms and bushes in a battle: their ray-traced shadows show the gaps; campaign towns' shadows as v48.
 
 Not done:
 - The campaign's far terrain (above).
 - Smoke Shadows' lower-effects twins DDABB799 / 687378DB drew in no trace (one slot below F32116B4's: a shift away).
 - Out of the rays: the depth-only EF11AD35 (no world to read) and the floating banners 7DF335FF (the game gives them none).
+- The rigid default shader 6B25B4D2 also draws the battle water, the campaign sea and overlays into the G-buffer; they stay
+  casters (the water is opaque there, nothing under it shows; listing its 25 traced materials would drop untraced ones).
 
 ### Round v48 (2026-11-14, Attila's package with the data run's findings; built only, not run in game)
 
