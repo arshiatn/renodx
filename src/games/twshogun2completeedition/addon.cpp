@@ -324,6 +324,7 @@ void BuildRuntimeData() {
       CustomShaderEntry(0xB670BCA1),  // treevelocity01 (rigidleafwet_v3)
       CustomShaderEntry(0x29EB778A),  // treevelocity02 (rigidbranch_v3)
       CustomShaderEntry(0x3A9E203D),  // treevelocity03 (rigidbranchwet_v3)
+      CustomShaderEntry(0xD7E27B35),  // campaignoverlay00 (mtbcampaignterrainoverlay: map positions below 100%)
       CustomShaderEntry(0xD12FA660),  // indicator00 (indicator ps30_main: Indicator Brightness)
       CustomShaderEntry(0xC454C1EA),  // indicator01 (indicator ps30_main_deferred)
       CustomShaderEntry(0x3C9BC2F9),  // vfxoverlay00 (effects_overlay: the particles onto the scene)
