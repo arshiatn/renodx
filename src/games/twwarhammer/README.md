@@ -19,6 +19,11 @@
   campaign clouds / trees / plants / sea, voice memory limit, sound file memory. Out: Far Buildings, Building Collapse
   Effects / Animations and 7 More Tests rows (never found). Rope Distance without ROPE_DISTANCE(_FADEOUT); WH1's own values
   in the tooltips that differ (blood 0.05, audio 62 / 10 / 164 / 4 / 2 MB). Reset puts the tests back too.
+- **Graphics 1 of 2 as Warhammer II's / Pharaoh's** (`graphics_page::Apply`): Reset / No RT/PT (Recommended) / RT/PT,
+  the shadow, AO, GI and reflection methods, FSR and XeSS (a saved DLSS becomes XeSS on Intel, FSR on AMD), TAA Motion,
+  Texture LOD Bias on All Textures (Experimental, off), the full-download note; Bend's shadows off while the rays' sun
+  shadows run. The rays' sun shadows multiply the game's maps, RTAO multiplies its SSAO; Path-Traced AO not in the
+  methods yet. Every key kept (page dump: +5 keys, none lost).
 
 ### Trace build (2026-11-14, for the data run; built only, not run in game)
 
