@@ -36,6 +36,7 @@
 #include <embed/shaders.h>
 
 #include "../../utils/command_action.hpp"
+#include "../../utils/command_action_fast.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/hash.hpp"
 #include "../../utils/platform.hpp"
@@ -3910,6 +3911,10 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   }
   if (host.scene_draw != nullptr) {
     renodx::utils::command_action::Register(OnAnyDraw, {.shader_hash = 0u, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+    // OnAnyDraw acts only while the scene is traced (internal::active, set once a frame).
+    renodx::utils::command_action::fast::SetGate(OnAnyDraw, {.active = [](reshade::api::command_list*) {
+                                                   return internal::active.load(std::memory_order_relaxed);
+                                                 }});
   }
 }
 
@@ -3917,6 +3922,7 @@ inline void UninstallScene() {
   if (internal::clip_captures) reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   if (internal::host.scene_draw != nullptr) reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   renodx::utils::command_action::Unregister(OnSceneDraw);
+  renodx::utils::command_action::fast::ClearGate(OnAnyDraw);
   renodx::utils::command_action::Unregister(OnAnyDraw);
   const std::unique_lock lock(internal::runtime.mutex);
   internal::scene_shaders = {};

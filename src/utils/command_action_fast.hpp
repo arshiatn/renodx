@@ -173,6 +173,8 @@ struct CommandListCache {
 // This module's private-data key: a fixed prefix and the module's token, so a module never reads another's cache.
 static std::array<uint8_t, 16> cache_guid = {};
 static std::shared_mutex caches_mutex;
+// What the log last said of the opt-in of every attached module (fast::Use said "on").
+static std::atomic_bool logged_all_opted_in = true;
 static std::unordered_map<reshade::api::command_list*, std::unique_ptr<CommandListCache>> caches;
 
 inline void BumpEpoch() {
@@ -250,6 +252,14 @@ bool Run(CommandContext<Arguments>* context, bool* skip) {
       if (module->active && std::ranges::find(opted_in, module->token) == opted_in.end()) {
         cache->all_opted_in = false;
       }
+    }
+    // A module attached without the opt-in (the DevKit, an older build of a partner add-on) turns the fast dispatch
+    // off: said in the log at each change, so a measurement taken meanwhile isn't misread.
+    if (logged_all_opted_in.exchange(cache->all_opted_in, std::memory_order_relaxed) != cache->all_opted_in) {
+      reshade::log::message(cache->all_opted_in ? reshade::log::level::info : reshade::log::level::warning,
+                            cache->all_opted_in ? "utils::command_action fast dispatch on again: every attached module opted in."
+                                                : "utils::command_action fast dispatch off: a module attached to command_action has not "
+                                                  "opted in (the DevKit, an older add-on); every command takes RunCallbacks.");
     }
     cache->gates = shared.data->gates;
     cache->gate_count = shared.data->gate_count;
