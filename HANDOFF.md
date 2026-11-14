@@ -436,6 +436,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Pharaoh / Rome II (par_old_: tools/tw/round_notes/parity_<game>_1114.md). After the merges: one shared step moves the torch
   rows from Path Tracing (RayTracedLightsInBounce / RayTracedLightShadowRatio) into graphics_page for every game that can
   carry them. Merge one branch at a time, verify the merged tree once, stamp, install.
+- [x] Rome II parity round MERGED 8b8ba21d (275 keyed rows: HAVE 224 -> 239; SDR preset + vanilla unit sizes, Far Tree /
+  campaign tree / Sprite Soldier Shadows, Fog Strength, Texture LOD Bias, Smoke Shadows without rays, soldier shadow distance 0
+  under the skip, cloth / sails / ropes in the rays + Bend thin rows + Smooth Banner Shadows, Fog Shadows + Torch Light in Fog,
+  Small Soldiers as Sprites + Sprite Size, Light Through Foliage incl. MSAA; caster census NOT HELD 20 -> 4; shared shader
+  ifndefs opt-in (Attila / Thrones bytes SAME); SettingsRevision 2). Hue Clip measured 90 for Rome II (default stays 80: ATN
+  DECIDES). Agent resumed: SSR rows, 14 unclear sun rows, DrawScrub skip, banner material read, grass reach.
+- [x] ATN ~15:30: "include everything, not everyone plays at highest settings": rule in the skill (d5b92cdb), memory
+  feedback_every_setting, sent to every running agent; Thrones resumed for the 4 sm4 / 4.1 SSR shaders below 100 %.
 - [x] Pharaoh parity round MERGED 74568884 (SDR preset + first start, Depth of Field, Texture LOD Bias (Experimental), Smoke
   Shadows without rays (Experimental; off while the rays' sun shadows run), Smooth Banner Shadows (RT/PT on), Hue Clip measured:
   fire best at 70 (burn 0.2) / 80 (burn 0): default stays 80; campaign billboards CE5AA8D1 (Troy's capture, WARP 4.3e-5 m) +
