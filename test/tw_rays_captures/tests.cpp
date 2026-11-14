@@ -13,7 +13,8 @@
 // C. CONTROL: the camera turned 90 degrees from the sun: corners differ by more than 0.1 m.
 // T. The tessellated rigid objects (SceneShader::patch_triangles, Rarer Objects in the Rays), as test/tw_attila_builds' 9AEE504E:
 //   Warhammer E168387B (HS F04A8DF4, DS 7C266A97) through F6DBA4F4's capture and rows, Warhammer II 4CC2D68F (HS EB3218C8, DS
-//   C92A2D5F) through 16AFAF14's (the add-ons' built shaders); 64 patches of 3, each its placement:
+//   C92A2D5F) through 16AFAF14's, Rome II E51A2D2A (HS E2BF92FC, DS A13A267D) through F343950E's (the add-ons' built shaders;
+//   Rome II's from build32); 64 patches of 3, each its placement:
 //   T1 the capture's TEXCOORD0 (a triangle list, no hull or domain shader) is the game vertex shader's world position (its
 //      TEXCOORD0) bit for bit, w 1;
 //   T2 the rows shader's TEXCOORD0-2 are POSITION1-3 bit for bit;
@@ -21,7 +22,14 @@
 //      displacement faded out) streams out the capture's triangles, patch for patch, their corners bit for bit;
 //   T4 CONTROL: the camera among the patches (under 5 m: Tessellation 4, the displacement in full): the chain's triangles leave
 //      the capture's plane, by at most the displacement.
+// G. Rome II's tessellated terrain (rigidterrain vs50_geom B1C7E29F, HS BE9FC167, DS 93979D65: Phong tessellation, the factor
+//   the CPU's POSITION4.x, 1 where the ground is flat) through 83AB3AFC's capture, 64 patches of 3 on a random height map:
+//   G1 the capture's TEXCOORD0 is the game vertex shader's world position (its TEXCOORD1) bit for bit, w 1;
+//   G2 the game's chain at factor 1 streams out the capture's triangles, patch for patch, each corner within 1e-6 (the domain
+//      shader's 0.2 / 0.8 Phong blend at a corner);
+//   G3 CONTROL: at factor 4 with the corners' normals apart the chain's triangles leave the capture's plane.
 // tests.exe <dump root: the folder holding dump_shader_<game>_pack\cso> <build root: the folder holding <game>.include\embed>
+//           <build32 root: the same for the 32-bit games>
 #include <windows.h>
 
 #include <d3d11.h>
@@ -91,6 +99,8 @@ struct Draw {
   ID3D11ShaderResourceView* gs_view = nullptr;
   ID3D11ShaderResourceView* ds_view = nullptr;
   ID3D11SamplerState* ds_sampler = nullptr;
+  ID3D11ShaderResourceView* vs_view = nullptr;
+  ID3D11SamplerState* vs_sampler = nullptr;
 };
 
 struct Streamed {
@@ -156,6 +166,8 @@ static Streamed StreamOut(const Draw& draw, const std::vector<float>& vertices, 
     context->GSSetShaderResources(0, 1, &draw.gs_view);
     context->DSSetShaderResources(0, 1, &draw.ds_view);
     context->DSSetSamplers(0, 1, &draw.ds_sampler);
+    context->VSSetShaderResources(0, 1, &draw.vs_view);
+    context->VSSetSamplers(0, 1, &draw.vs_sampler);
     context->SOSetTargets(1, &output, &offset);
     context->Begin(query);
     context->Draw(count, 0);
@@ -211,6 +223,8 @@ struct TessellatedGame {
   const char* capture;  // the add-on's built shaders (<game>.include\embed)
   const char* rows;
   UINT factor;          // rigid_config_PS: g_tesselation_factor's float, g_tesselation_displacement_scale the next
+  bool config_at_b1 = false;  // the vertex shader's rigid_config_PS at b1, wind_VS at b2 (Rome II); false: the wind at b1
+  UINT inputs = 13;           // its inputs: POSITION0, TEXCOORD0, NORMAL0-2, COLOR0, POSITION1-7 (Rome II: to POSITION6)
 };
 
 static bool CheckTessellated(const TessellatedGame& game, const std::string& dump_root, const std::string& build_root) {
@@ -226,9 +240,8 @@ static bool CheckTessellated(const TessellatedGame& game, const std::string& dum
     std::printf("  MISSING a shader's bytes\n");
     return false;
   }
-  // POSITION0, TEXCOORD0, NORMAL0-2, COLOR0, POSITION1-7 (13 inputs); POSITION0 and the rows small (the world within 1.25 m of
-  // the origin), each patch its placement.
-  constexpr UINT INPUTS = 13;
+  // The game's inputs; POSITION0 and the rows small (the world within 1.25 m of the origin), each patch its placement.
+  const UINT INPUTS = game.inputs;
   std::vector<float> vertices;
   for (UINT patch = 0; patch < PATCHES; ++patch) {
     std::array<std::array<float, 4>, 3> placement = {};
@@ -267,7 +280,8 @@ static bool CheckTessellated(const TessellatedGame& game, const std::string& dum
   ID3D11SamplerState* sampler = nullptr;
   device->CreateSamplerState(&sampler_desc, &sampler);
 
-  const std::array<ID3D11Buffer*, 3> vs_constants = {far_camera, wind, config};
+  const std::array<ID3D11Buffer*, 3> vs_constants = game.config_at_b1 ? std::array<ID3D11Buffer*, 3>{far_camera, config, wind}
+                                                                      : std::array<ID3D11Buffer*, 3>{far_camera, wind, config};
   const auto captured = StreamOut({.vs = &capture, .topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, .vs_constants = vs_constants}, vertices, "TEXCOORD", 0, 4).values;
   // The game's TEXCOORD0 is its xyz.
   const auto world = StreamOut({.vs = &vs, .topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, .vs_constants = vs_constants}, vertices, "TEXCOORD", 0, 3).values;
@@ -339,13 +353,143 @@ static bool CheckTessellated(const TessellatedGame& game, const std::string& dum
   return passed;
 }
 
+// G (see the top).
+static bool CheckTerrain(const std::string& dump_root, const std::string& build32_root) {
+  const std::string dump = dump_root + "\\dump_shader_twrome2_pack\\cso\\";
+  const auto vs = Load(dump + "0xB1C7E29F.vs_5_0.cso");
+  const auto hs = Load(dump + "0xBE9FC167.hs_5_0.cso");
+  const auto ds = Load(dump + "0x93979D65.ds_5_0.cso");
+  const auto capture = Load(build32_root + "\\twrome2.include\\embed\\rt_capture_terrain_old_sm41_a.cso");
+  std::printf("G Rome II terrain: vs B1C7E29F, hs BE9FC167, ds 93979D65; rt_capture_terrain_old_sm41_a (%u patches)\n", PATCHES);
+  if (vs.empty() || hs.empty() || ds.empty() || capture.empty()) {
+    std::printf("  MISSING a shader's bytes\n");
+    return false;
+  }
+  // POSITION0, NORMAL0, POSITION1-3 (the block's rows: x, height, z), POSITION4 (x the CPU's tessellation factor): each patch
+  // its rows, its corners within the height map's unit square.
+  constexpr UINT INPUTS = 6;
+  const auto make_vertices = [](float factor, bool tilted) {
+    std::vector<float> vertices;
+    for (UINT patch = 0; patch < PATCHES; ++patch) {
+      const std::array<std::array<float, 4>, 3> rows = {{{Range(0.5f, 1.f), 0.f, 0.f, Range(0.f, 0.2f)},
+                                                         {0.f, Range(0.5f, 1.f), 0.f, Range(-1.f, 1.f)},
+                                                         {0.f, 0.f, Range(0.5f, 1.f), Range(0.f, 0.2f)}}};
+      for (int corner = 0; corner < 3; ++corner) {
+        vertices.insert(vertices.end(), {Range(0.f, 0.6f), Range(-0.5f, 0.5f), Range(0.f, 0.6f), 1.f});
+        // Flat (y 1: factor 1 whatever POSITION4) or tilted apart per corner (never within the hull shader's 0.999 of y).
+        if (tilted) {
+          vertices.insert(vertices.end(), {Range(0.2f, 0.6f), 1.f, -Range(0.2f, 0.6f), 0.f});
+        } else {
+          vertices.insert(vertices.end(), {0.f, 1.f, 0.f, 0.f});
+        }
+        for (const auto& row : rows) vertices.insert(vertices.end(), row.begin(), row.end());
+        vertices.insert(vertices.end(), {factor, 0.f, 0.f, 0.f});
+      }
+    }
+    return vertices;
+  };
+  const auto flat = make_vertices(1.f, false);
+  const auto tilted = make_vertices(4.f, true);
+  // lf_block_cb: the height map 16 x 16 (texel 1 / 16), the world's xz to its uv as is; vs_height_map_cb: heights x 10, the
+  // detail x 1, offset 0.5.
+  const std::array<float, 4 * 4> block = {16.f, 16.f, 1.f / 16.f, 1.f / 16.f, 0.f, 0.f, 1.f, 1.f, 0.f, 0.f, 1.f, 1.f, 0.f, 0.f, 1.f, 1.f};
+  const std::array<float, 2 * 4> heights = {10.f, 1.f, 0.5f, 0.f, 0.f, 1.f, 0.f, 0.f};
+  ID3D11Buffer* block_constants = MakeConstants(block);
+  ID3D11Buffer* height_constants = MakeConstants(heights);
+  // 30 m away (past the vertex shader's 20 m: its 0.09 m lift by the height's sign in full).
+  ID3D11Buffer* camera = MakeCamera({30.f, 0.f, 30.f});
+  std::array<float, 16 * 16 * 4> texels = {};
+  for (float& texel : texels) texel = Range(0.f, 1.f);
+  const D3D11_TEXTURE2D_DESC texture_desc = {16, 16, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_IMMUTABLE, D3D11_BIND_SHADER_RESOURCE, 0, 0};
+  const D3D11_SUBRESOURCE_DATA texture_data = {texels.data(), 16 * 16, 0};
+  ID3D11Texture2D* texture = nullptr;
+  ID3D11ShaderResourceView* height_map = nullptr;
+  device->CreateTexture2D(&texture_desc, &texture_data, &texture);
+  device->CreateShaderResourceView(texture, nullptr, &height_map);
+  const D3D11_SAMPLER_DESC sampler_desc = {D3D11_FILTER_MIN_MAG_MIP_POINT, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           0.f, 1, D3D11_COMPARISON_NEVER, {0.f, 0.f, 0.f, 0.f}, 0.f, D3D11_FLOAT32_MAX};
+  ID3D11SamplerState* sampler = nullptr;
+  device->CreateSamplerState(&sampler_desc, &sampler);
+  const std::array<ID3D11Buffer*, 3> vs_constants = {camera, block_constants, height_constants};
+  Draw draw = {.vs = &capture, .topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, .vs_constants = vs_constants, .vs_view = height_map,
+               .vs_sampler = sampler};
+  const auto captured = StreamOut(draw, flat, "TEXCOORD", 0, 4).values;
+  draw.vs = &vs;
+  const auto world = StreamOut(draw, flat, "TEXCOORD", 1, 3).values;
+  uint64_t g1_differ = 0;
+  uint64_t g1_w = 0;
+  const bool g1_sizes = captured.size() == PATCHES * 12 && world.size() == PATCHES * 9;
+  for (size_t v = 0; g1_sizes && v < PATCHES * 3; ++v) {
+    g1_differ += SameBits(&captured[v * 4], &world[v * 3], 3) ? 0 : 1;
+    g1_w += captured[(v * 4) + 3] == 1.f ? 0 : 1;
+  }
+  const bool g1 = g1_sizes && g1_differ == 0 && g1_w == 0;
+  std::printf("  G1 capture vs the game's world position: %zu / %zu vertices, %llu differ, %llu w not 1 (0, 0)\n", captured.size() / 4, world.size() / 3,
+              (unsigned long long)g1_differ, (unsigned long long)g1_w);
+  draw.hs = &hs;
+  draw.ds = &ds;
+  draw.topology = D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST;
+  draw.tessellation_constants = {camera, nullptr};
+  // The domain shader's TEXCOORD1: the world position.
+  const auto chain = StreamOut(draw, flat, "TEXCOORD", 1, 3).values;
+  // Corner order within a triangle is the tessellator's: each capture corner's nearest chain corner.
+  uint64_t g2_differ = 0;
+  double g2_largest = 0.0;
+  for (UINT patch = 0; patch < PATCHES && g1 && chain.size() == PATCHES * 9; ++patch) {
+    for (int corner = 0; corner < 3; ++corner) {
+      const float* c = &captured[((patch * 3) + corner) * 4];
+      double nearest = 1e30;
+      for (int other = 0; other < 3; ++other) {
+        const float* p = &chain[((patch * 3) + other) * 3];
+        double largest = 0.0;
+        for (int axis = 0; axis < 3; ++axis) largest = std::max(largest, std::fabs(double(p[axis]) - c[axis]) / std::max(1.0, std::fabs(double(c[axis]))));
+        nearest = std::min(nearest, largest);
+      }
+      g2_largest = std::max(g2_largest, nearest);
+      g2_differ += nearest <= 1e-6 ? 0 : 1;
+    }
+  }
+  const bool g2 = g1 && chain.size() == PATCHES * 9 && g2_differ == 0;
+  std::printf("  G2 the game's chain at factor 1: %zu triangles (%u), %llu corners off the capture's, largest %.2e (<= 1e-6)\n", chain.size() / 9, PATCHES,
+              (unsigned long long)g2_differ, g2_largest);
+  const auto tilted_captured = StreamOut({.vs = &capture, .topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, .vs_constants = vs_constants, .vs_view = height_map,
+                                          .vs_sampler = sampler},
+                                         tilted, "TEXCOORD", 0, 4)
+                                   .values;
+  const auto tilted_chain = StreamOut(draw, tilted, "TEXCOORD", 1, 3).values;
+  const size_t per_patch = tilted_chain.size() / 9 / PATCHES;
+  uint64_t off_plane = 0;
+  for (UINT patch = 0; patch < PATCHES && per_patch > 1 && tilted_captured.size() == PATCHES * 12 && tilted_chain.size() == per_patch * PATCHES * 9; ++patch) {
+    const float* a = &tilted_captured[patch * 12];
+    const std::array<double, 3> e1 = {double(a[4]) - a[0], double(a[5]) - a[1], double(a[6]) - a[2]};
+    const std::array<double, 3> e2 = {double(a[8]) - a[0], double(a[9]) - a[1], double(a[10]) - a[2]};
+    std::array<double, 3> n = {(e1[1] * e2[2]) - (e1[2] * e2[1]), (e1[2] * e2[0]) - (e1[0] * e2[2]), (e1[0] * e2[1]) - (e1[1] * e2[0])};
+    const double length = std::sqrt((n[0] * n[0]) + (n[1] * n[1]) + (n[2] * n[2]));
+    for (double& c : n) c /= length;
+    for (size_t v = patch * per_patch * 3; v < (patch + 1) * per_patch * 3; ++v) {
+      const float* p = &tilted_chain[v * 3];
+      off_plane += std::fabs(((p[0] - a[0]) * n[0]) + ((p[1] - a[1]) * n[1]) + ((p[2] - a[2]) * n[2])) > 1e-3 ? 1 : 0;
+    }
+  }
+  const bool g3 = per_patch > 1 && off_plane > 0;
+  std::printf("  G3 CONTROL factor 4, normals apart: %zu triangles a patch (> 1), %llu corners off the capture's plane (> 0)\n", per_patch,
+              (unsigned long long)off_plane);
+  const bool passed = g1 && g2 && g3;
+  std::printf("  %s\n", passed ? "PASSED" : "FAILED");
+  for (IUnknown* object : std::initializer_list<IUnknown*>{block_constants, height_constants, camera, texture, height_map, sampler}) {
+    if (object != nullptr) object->Release();
+  }
+  return passed;
+}
+
 int main(int argc, char** argv) {
-  if (argc < 3) {
-    std::printf("tests.exe <dump root> <build root>\n");
+  if (argc < 4) {
+    std::printf("tests.exe <dump root> <build root> <build32 root>\n");
     return 2;
   }
   const std::string root = argv[1];
   const std::string build_root = argv[2];
+  const std::string build32_root = argv[3];
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context))) {
     std::printf("no WARP device\n");
     return 2;
@@ -440,7 +584,7 @@ int main(int argc, char** argv) {
     std::printf("  %s\n", passed ? "PASSED" : "FAILED");
     all = all && passed;
   }
-  // rigid_config_PS's g_tesselation_factor: Warhammer's at offset 20, Warhammer II's at 16.
+  // rigid_config_PS's g_tesselation_factor: Warhammer's and Rome II's at offset 20, Warhammer II's at 16.
   const std::array<TessellatedGame, 2> tessellated = {{
       {"Warhammer", "twwarhammer", "0xE168387B.vs_5_0", "0xF04A8DF4.hs_5_0", "0x7C266A97.ds_5_0", "rt_capture_rigid_standard_sm41",
        "motion_record_rigid_rigidambientmapfiremesh_f6db", 5},
@@ -450,6 +594,11 @@ int main(int argc, char** argv) {
   for (const TessellatedGame& game : tessellated) {
     all = CheckTessellated(game, root, build_root) && all;
   }
+  all = CheckTessellated({"Rome II", "twrome2", "0xE51A2D2A.vs_5_0", "0xE2BF92FC.hs_5_0", "0xA13A267D.ds_5_0", "rt_capture_rigid_sm41_b",
+                          "motion_record_rigid_sm41_b", 5, true, 12},
+                         root, build32_root)
+        && all;
+  all = CheckTerrain(root, build32_root) && all;
   std::printf("%s\n", all ? "ALL PASSED" : "SOME FAILED");
   return all ? 0 : 1;
 }

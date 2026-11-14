@@ -7,6 +7,7 @@
 New:
 - **Reflection Quality** (Reflections and Water's Quality; 1 the game's): the water's reflections take finer steps (Game's method) or more of them (Hierarchical). Attila's row.
 - **Light Through All Banners** (Shadows' More Options, Experimental, off; RT/PT leaves it off): the unit banners let sunlight through as thin cloth, in the rays and in Bend.
+- **Rarer Objects in the Rays** (Shadows' More Options, Experimental, off): with the game's Tessellation on, the ground and the tessellated objects are in the rays' scene (before: left out; the ground then cast no ray-traced shadow). Attila's row. Proven on WARP against the game's bytes (test/tw_rays_captures T and G: the captures are the game's world positions bit for bit; far away the game's own tessellation draws the same triangles).
 
 Fixed:
 - Water reflections below 100% (Game's, Hierarchical and Ray-Traced): the depth, its pyramid and the rays are read at the view's share of the screen.

@@ -1523,8 +1523,15 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 39> MOTION_SHADERS =
 // 4212): tools/tw/rome2/par_r2_rmv2_census.txt. rigidtextureblend (54FB9355 / EBB7BFED, material 30) also draws ships'
 // damage parts: solid. The traces draw the banners only as 3D UI after the tone mapper (no capture): level B.
 float rays_banner_light_row = 0.f;
-constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
+// Rarer Objects in the Rays (Experimental, off): the scene's families drawn in no trace (level B: SCENE_SHADERS' held_row).
+float rays_untraced_casters_row = 0.f;
+constexpr std::array<twattila::rt_scene::SceneShader, 46> SCENE_SHADERS = {{
     {.hash = 0x83AB3AFC, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true},
+    // The terrain with the game's Tessellation on (rigidterrain vs50_geom B1C7E29F, HS BE9FC167, DS 93979D65: 3-control-point
+    // patches; in no trace, level B): 83AB3AFC's world position (the same instructions and input signature), the patches without
+    // the domain shader's Phong smoothing (the corners its own). WARP against the game's bytes: test/tw_rays_captures (T).
+    {.hash = 0xB1C7E29F, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true, .patch_triangles = true,
+     .held_row = &rays_untraced_casters_row},
     {.hash = 0x2898B8F6, .capture_shader = __rt_capture_terrain_old_sm3_a, .terrain = true},
     {.hash = 0xD8475AB1, .capture_shader = __rt_capture_terrain_custom_material_sm3_b, .terrain = true},
     {.hash = 0x5B7D7DF3, .capture_shader = __rt_capture_terrain_custom_material_sm41_b, .terrain = true},
@@ -1548,6 +1555,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x59431BB2, .capture_shader = __rt_capture_rigid_sm3_a, .rows_shader = __motion_record_rigid_sm3_a},
     {.hash = 0x658FEA51, .capture_shader = __rt_capture_rigid_sm3_b, .rows_shader = __motion_record_rigid_sm3_b},
     {.hash = 0xF343950E, .capture_shader = __rt_capture_rigid_sm41_b, .rows_shader = __motion_record_rigid_sm41_b},
+    // Rigid objects with the game's Tessellation on (rigidcommon vs30_displacement E51A2D2A, HS E2BF92FC, DS A13A267D: 3-control-point
+    // patches; in no trace, level B): F343950E's placement and world position (the same instructions and input signature), the
+    // patches without the domain shader's displacement, which fades out 5 to 20 m from the camera. WARP: test/tw_rays_captures (T).
+    {.hash = 0xE51A2D2A, .capture_shader = __rt_capture_rigid_sm41_b, .rows_shader = __motion_record_rigid_sm41_b, .patch_triangles = true,
+     .held_row = &rays_untraced_casters_row},
     {.hash = 0x3E086AFB, .capture_shader = __rt_capture_rigid_lq, .rows_shader = __motion_record_rigid_lq},
     {.hash = 0x54FB9355, .capture_shader = __rt_capture_rigid_blend_sm3_a, .rows_shader = __motion_record_rigid_blend_sm3_a},
     {.hash = 0xEBB7BFED, .capture_shader = __rt_capture_rigid_blend_sm3_b, .rows_shader = __motion_record_rigid_blend_sm3_b},
@@ -1811,6 +1823,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .light_glow_label = "Torch and Fire Light in Fog (Experimental)",
     .light_glow_tooltip = "Torches and fires light the fog around them, with their shafts and shadows in it. Needs Fog Shadows and\n"
                           "Torch and Fire Shadows. 0: off.",
+    .untraced_casters_tooltip = "With the game's Tessellation on: the ground and the objects it tessellates also cast ray-traced shadows.",
 };
 
 void ConfigureAddon() {
@@ -2310,6 +2323,7 @@ void ConfigureAddon() {
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_banner_light = &rays_banner_light_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row,
                                              .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
