@@ -98,8 +98,12 @@ constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
 // had these two families in view only, and rigidambientmapmesh_mtb's (7B067623: 4 of the naval traces; AC25DAB8 with a TEXCOORD1
 // it never reads) placed as AC25DAB8's. Ships' sails and sail symbols (A42F9EDE / F7EDF855: their mesh by the draw's world_matrix
 // at b1; F7EDF855 20 draws, 34K corners in the naval trace) masked as their pixel shader's first test, ropes (4E3EE717: ribbons
-// turned to the shadow camera, solid) world alone.
-inline const std::array<twattila::rt_scene::SceneShader, 12> SCENE_SHADERS = {{
+// turned to the shadow camera, solid) world alone. Drawn in none of the data run's traces (other settings and scenes; their
+// capture versions tested against the game's csos): burning buildings (rigidburning / rigidburningpanel 124C85A5: AC25DAB8's
+// inputs and rows, placed as it), wind-swayed rigid meshes (rigidvertexwind EDCD8445) and soldiers drawn without the animation
+// map (variantweighted 1E0425DE: bones from its matrix stack at b1) world alone, and grass with the in-game grass shadows on
+// (rigidgrass F6CBD06E: its shrink and sway from the pass's camera) masked as its pixel shader's test.
+inline const std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
     {.hash = 0xAC25DAB8, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
     {.hash = 0x7B067623, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
     {.hash = 0xB0E006EE, .capture_shader = __rt_capture_cascade_variant, .rows_shader = __rt_rows_cascade_variant, .moving = true,
@@ -122,6 +126,13 @@ inline const std::array<twattila::rt_scene::SceneShader, 12> SCENE_SHADERS = {{
      .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
     {.hash = 0x4E3EE717, .capture_shader = __rt_capture_cascade_rope, .dynamic = true, .cascade_keep = __rt_outside_view_world,
      .cascade_world = true},
+    {.hash = 0x124C85A5, .capture_shader = __rt_capture_cascade_rigid, .rows_shader = __rt_rows_cascade_rigid, .cascade_keep = __rt_outside_view},
+    {.hash = 0xEDCD8445, .capture_shader = __rt_capture_cascade_wind, .dynamic = true, .cascade_keep = __rt_outside_view_world,
+     .cascade_world = true},
+    {.hash = 0x1E0425DE, .capture_shader = __rt_capture_cascade_weighted, .dynamic = true, .cascade_keep = __rt_outside_view_world,
+     .cascade_world = true},
+    {.hash = 0xF6CBD06E, .capture_shader = __rt_capture_cascade_grass, .dynamic = true, .foliage = true, .grass = true,
+     .cascade_keep = __rt_outside_view_leaf, .cascade_world = true},
 }};
 // Smoke Shadows (Experimental): the particles' vertex shader (particle.hlsl particle_vertex_30, BEA3F2D4: a quad an instance)
 // through rt_particle_quads (one record an instance), the lit draws those with volumetric_particle_alpha 3D0BC5F1 (texture

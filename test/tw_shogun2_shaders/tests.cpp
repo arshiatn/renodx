@@ -10,10 +10,11 @@
 // 4. sss_foliage_depth, Light Through Foliage's depth (TestFoliage).
 // 5-6. rt_capture_tree_billboard and rt_capture_imposter against the game's csos (TestBillboard, TestImposter; their folder third).
 // 7. rt_water_plane (TestWaterPlane). 8-9. ocean00-03 and waterplane00-01 against the game's csos (TestWaters).
-// 10. rt_capture / rt_rows_cascade_rigid and _variant against the game's 0xAC25DAB8 / 0x7B067623 / 0xB0E006EE (TestPlacedShadow).
+// 10. rt_capture / rt_rows_cascade_rigid and _variant against the game's 0xAC25DAB8 / 0x7B067623 / 0x124C85A5 / 0xB0E006EE
+//     (TestPlacedShadow).
 // 11. rt_capture_cascade_cloth / imposter / tree / far_tree / unit through Pharaoh's outside-view geometry shaders against the
 //     game's 0x8A00A1D4 / 0xE3DA20D4 / 0x5851CA62 / 0x6F20485E / 0x30C453EE / 0xA22FA941, sail / rope against 0xA42F9EDE /
-//     0xF7EDF855 / 0x4E3EE717 (TestCascadeLeaves).
+//     0xF7EDF855 / 0x4E3EE717, wind / weighted / grass against 0xEDCD8445 / 0x1E0425DE / 0xF6CBD06E (TestCascadeLeaves).
 // 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
 // 13. Coloured Shadows in shaders/sunlight00-03 (TestSunTint).
 // 14. autoexposure00's Modded Auto Exposure against the game's 0x8233E11F (TestAutoExposure).
@@ -1275,7 +1276,8 @@ static void TestWaters(const std::string& games, const std::string& folder) {
 //     (|x|, |y| <= w), kept as v6-v8 elsewhere; with cb0 all 0 (a new mesh's first rows) all kept. CONTROL: the view turned away
 //     leaves out another set. The same for variantrigid vs30_shadow (0xB0E006EE: rt_capture / rt_rows_cascade_variant, its rows
 //     v8-v10) with its sway's weight (v6.w) 0; with it 1 the game's corners stray from ours by the sway alone, under 2 cm. The rigid
-//     versions also against rigidambientmapmesh_mtb vs30_shadow (0x7B067623: the same with a TEXCOORD1 it never reads).
+//     versions also against rigidambientmapmesh_mtb vs30_shadow (0x7B067623: the same with a TEXCOORD1 it never reads) and
+//     rigidburning vs30_shadow (0x124C85A5: the same with a POSITION5 it never reads, POSITION0's w 1 as a mesh's).
 struct RigidShadowVertex {
   std::array<std::array<float, 4>, 10> inputs;  // v0-v9
 };
@@ -1449,7 +1451,11 @@ static void TestPlacedShadow(const std::string& games, const std::string& folder
 //     horses) against 0xA22FA941 with a random animation map at t0 (two bones a corner, its instance's row): TEXCOORD0 the game's
 //     SV_Position, through the world-only geometry shader. rt_capture_cascade_sail (ships' sails and sail symbols) against
 //     0xA42F9EDE / 0xF7EDF855 with a random world_matrix at b1, rt_capture_cascade_rope against 0x4E3EE717 (ribbons turned to
-//     the camera at c0, world alone). Through Pharaoh's outside-view geometry shader with a main view at cb0[10-13] (as rt_core streams them out): the
+//     the camera at c0, world alone). rt_capture_cascade_wind against 0xEDCD8445 (rigid rows swayed by COLOR0.w and the wind at
+//     b1), rt_capture_cascade_weighted against 0x1E0425DE (the units' bones from a random matrix stack at b1), world alone;
+//     rt_capture_cascade_grass against 0xF6CBD06E (blades shrunk and swayed from a camera at c0 with a random inv_view, clumps
+//     up to 375 m away: some past the wind's reach). Through Pharaoh's outside-view geometry shader with a main view at
+//     cb0[10-13] (as rt_core streams them out): the
 //     triangles wholly outside it (the CPU's test of the game's corners) kept, their world positions and UVs (two halves in w) the
 //     game's; the others collapsed onto their first corner. CONTROL: the view turned away keeps another set.
 struct ClothVertex {
@@ -1614,6 +1620,21 @@ static void TestCascadeLeaf(const std::string& games, const std::string& folder,
               name, vertices.size(), with_uv ? " and UV" : "", kept, vertices.size() / 3, turned_differs);
 }
 
+// Grass in the shadow pass (0xF6CBD06E): POSITION0, TEXCOORD0 (xy), NORMAL0-1, COLOR0, its clump's rows TEXCOORD1-3 (the place in w).
+struct GrassVertex {
+  std::array<std::array<float, 4>, 8> inputs;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC GRASS_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 96, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 112, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
 static void TestCascadeLeaves(const std::string& games, const std::string& folder) {
   std::mt19937 random(12);
   std::uniform_real_distribution<float> spread(-1.f, 1.f);
@@ -1715,6 +1736,56 @@ static void TestCascadeLeaves(const std::string& games, const std::string& folde
   }
   TestCascadeLeaf(games, folder, "A22FA941", L"rt_capture_cascade_unit", UNIT_LAYOUT, units, card_constants, CascadeCorners::world,
                   animation_view.Get());
+  // The same corners drawn without the animation map: their bones from a random matrix stack (150 registers) at b1.
+  std::vector<std::array<float, 4>> stack(150);
+  for (auto& row : stack) row = {spread(random), spread(random), spread(random), 10.f * spread(random)};
+  const auto stack_buffer = Constants(stack.data(), static_cast<UINT>(stack.size() * sizeof(stack[0])));
+  const std::array<ID3D11Buffer*, 2> weighted_constants = {camera_buffer.Get(), stack_buffer.Get()};
+  TestCascadeLeaf(games, folder, "1E0425DE", L"rt_capture_cascade_weighted", UNIT_LAYOUT, units, weighted_constants, CascadeCorners::world);
+  // Wind-swayed rigid meshes: the rigid shadow vertex (rows v6-v8), the sway's weight COLOR0.w (v5.w) from 0 to 1.
+  std::vector<RigidShadowVertex> swaying;
+  for (int triangle = 0; triangle < 64; ++triangle) {
+    const std::array<float, 3> centre = {100.f * spread(random), 5.f * spread(random), 100.f * spread(random)};
+    const float turn = spread(random) * 3.14159f;
+    for (int corner = 0; corner < 3; ++corner) {
+      RigidShadowVertex vertex = {};
+      for (auto& input : vertex.inputs) input = {spread(random), spread(random), spread(random), spread(random)};
+      vertex.inputs[0] = {2.f * spread(random), 2.f * spread(random), 2.f * spread(random), 1.f};
+      vertex.inputs[5][3] = 0.5f + (0.5f * spread(random));
+      vertex.inputs[6] = {std::cos(turn), 0.f, std::sin(turn), centre[0]};
+      vertex.inputs[7] = {0.f, 1.f, 0.f, centre[1]};
+      vertex.inputs[8] = {-std::sin(turn), 0.f, std::cos(turn), centre[2]};
+      swaying.push_back(vertex);
+    }
+  }
+  TestCascadeLeaf(games, folder, "EDCD8445", L"rt_capture_cascade_wind", RIGID_SHADOW_LAYOUT, swaying, tree_constants, CascadeCorners::world);
+  // Grass: the pass's camera at (10, 20, -30) with a random inv_view (c18-21), inv_lod_distance 0.01 (grass_PS at b2); clumps
+  // turned about y, up to 375 m away (the wind's reach 300 m).
+  std::array<float, 44 * 4> grass_camera = camera;
+  grass_camera[0] = 10.f;
+  grass_camera[1] = 20.f;
+  grass_camera[2] = -30.f;
+  for (int value = 18 * 4; value < 22 * 4; ++value) grass_camera[value] = spread(random);
+  const auto grass_camera_buffer = Constants(grass_camera.data(), sizeof(grass_camera));
+  const std::array<float, 4> lod = {0.01f, 0.f, 0.f, 0.f};
+  const auto lod_buffer = Constants(lod.data(), sizeof(lod));
+  std::vector<GrassVertex> grass;
+  for (int triangle = 0; triangle < 64; ++triangle) {
+    const std::array<float, 3> clump = {250.f * spread(random), 5.f * spread(random), 250.f * spread(random)};
+    const float turn = spread(random) * 3.14159f;
+    for (int corner = 0; corner < 3; ++corner) {
+      GrassVertex vertex = {};
+      for (auto& input : vertex.inputs) input = {spread(random), spread(random), spread(random), spread(random)};
+      vertex.inputs[0][3] = 1.f;
+      vertex.inputs[4][3] = 0.5f + (0.5f * spread(random));
+      vertex.inputs[5] = {std::cos(turn), 0.f, std::sin(turn), clump[0]};
+      vertex.inputs[6] = {0.f, 1.f, 0.f, clump[1]};
+      vertex.inputs[7] = {-std::sin(turn), 0.f, std::cos(turn), clump[2]};
+      grass.push_back(vertex);
+    }
+  }
+  const std::array<ID3D11Buffer*, 3> grass_constants = {grass_camera_buffer.Get(), wind_buffer.Get(), lod_buffer.Get()};
+  TestCascadeLeaf(games, folder, "F6CBD06E", L"rt_capture_cascade_grass", GRASS_LAYOUT, grass, grass_constants);
   // Sails: their mesh near the origin, a random turn and place in world_matrix (three registers, a column each); ropes: their
   // ribbons around random points, the shadow camera at c0.
   const float sail_turn = spread(random) * 3.14159f;
@@ -2510,6 +2581,10 @@ int main(int argc, char** argv) {
     std::vector<D3D11_INPUT_ELEMENT_DESC> mtb_layout(std::begin(RIGID_SHADOW_LAYOUT), std::end(RIGID_SHADOW_LAYOUT));
     mtb_layout.push_back({"TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0});
     TestPlacedShadow<RigidShadowVertex>(games, argv[3], "7B067623", L"rt_capture_cascade_rigid", L"rt_rows_cascade_rigid", mtb_layout, 6, 0);
+    // Burning buildings: their POSITION5 over TEXCOORD0's first half (unread).
+    std::vector<D3D11_INPUT_ELEMENT_DESC> burning_layout(std::begin(RIGID_SHADOW_LAYOUT), std::end(RIGID_SHADOW_LAYOUT));
+    burning_layout.push_back({"POSITION", 5, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0});
+    TestPlacedShadow<RigidShadowVertex>(games, argv[3], "124C85A5", L"rt_capture_cascade_rigid", L"rt_rows_cascade_rigid", burning_layout, 6, 0);
     TestPlacedShadow<VariantShadowVertex>(games, argv[3], "B0E006EE", L"rt_capture_cascade_variant", L"rt_rows_cascade_variant",
                                           VARIANT_SHADOW_LAYOUT, 8, 6);
     TestCascadeLeaves(games, argv[3]);
