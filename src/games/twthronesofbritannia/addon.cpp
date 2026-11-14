@@ -35,6 +35,7 @@
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/graphics_page.hpp"
+#include "../twattila/grass_fade.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/particle_layer.hpp"
@@ -1444,6 +1445,16 @@ constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {
 
 // The screen-space shadows' Light Through Foliage: grass and leaves, and the rigid objects drawn after them (Attila's
 // shaders, the same bytes in this dump: depth copies around the foliage, as Attila's; its draw order not yet seen here).
+// Grass Height Distance's colour fade (twattila/grass_fade.hpp): this game's twins by name of Attila's 13 grass pixel shaders
+// (rigidgrass(wet) gbuffer no_clip / gbuffer / gbuffer_ms, forward_lit_oit and _aoit by shadow method), each with the one
+// fade grass_fade patches (tools/tw/thrones/th_grass_patterns.py; WARP tools/tw/thrones/grass_test); its depth pre-pass
+// 125A0DD5 Attila's. The grass vertex shaders are Attila's bytes: shaders/grass00-02 Attila's.
+constexpr std::array<uint32_t, 13> GRASS_FADE_SHADERS = {
+    0xA196A465, 0x23A8968D, 0xF348EED4,                          // gbuffer_no_clip, gbuffer, gbuffer_ms
+    0x0C375991, 0x89A78CBE, 0x305C940C, 0x32E0182A, 0x50138B9D,  // forward_lit_oit (none, pcf, fetch4, software, gather)
+    0x99808ED0, 0x153497D2, 0x348F6F8C, 0x10109427, 0xF411ABD8,  // forward_lit_aoit (none, software, gather, pcf, fetch4)
+};
+
 constexpr std::array<uint32_t, 5> FOLIAGE_VERTEX_SHADERS = {0x46C616F0, 0x5B880546, 0xCABCB9D1, 0xF3741248, 0x01FA9CDE};
 constexpr std::array<uint32_t, 4> AFTER_FOLIAGE_VERTEX_SHADERS = {0x347F3DD9, 0xD830AD9B, 0xB06CB969, 0x10FE7EBC};
 
@@ -1563,6 +1574,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   twattila::particle_layer::Update(swapchain);
+  twattila::grass_fade::Update(shader_injection.grass_height_distance);
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
   // preset's is XeSS on Intel's, else FSR.
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -1718,6 +1730,7 @@ void ConfigureAddon() {
       {"GraphicsCampaignProps", 1.f},
       {"GraphicsGrassDistance", 1.f},
       {"GraphicsGrassDensity", 1.f},
+      {"GrassHeightDistance", 1.f},
       {"GraphicsBigBattleFix", 0.f},
       {"GraphicsSmallSoldiersAsSprites", 0.f},
       {"GraphicsSpriteSize", 20.f},
@@ -1917,10 +1930,22 @@ void ConfigureAddon() {
       .section = twattila::engine_tests::GRASS,
       .tint = 0xFFD23C,
   });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "GrassHeightDistance",
+      .binding = &shader_injection.grass_height_distance,
+      .default_value = 1.f,
+      .label = "Grass Height Distance (Experimental)",
+      .section = twattila::engine_tests::GRASS,
+      .tooltip = "Grass blades shrink and fade into the ground with distance, gone at 100 m (the game's).\n"
+                 "Higher: full grass farther away.",
+      .min = 0.25f,
+      .max = 10.f,
+      .format = "%.2fx",
+  });
   // Attila's grass hooks (ScrubUpdate, its cell loop and quadtree query, DrawScrub to its no-LOD return: the same code here).
   for (auto* setting : {tw::engine_tweaks::Slider(&grass_distance, "GraphicsGrassDistance", "Grass Detail Distance",
                                                   "Battle: grass and plants keep their fuller versions farther away, and their cells reach\n"
-                                                  "farther (the game: 200 m). Heavier for the CPU.",
+                                                  "farther (the game: 200 m). Heavier for the CPU. How far grass shows: Grass Height Distance.",
                                                   4.f),
                         tw::engine_tweaks::Slider(&grass_density, "GraphicsGrassDensity", "Grass Density",
                                                   "Battle: more grass and plants (the game leaves some out, more of them farther away;\n"
@@ -2112,6 +2137,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ssr_hiz::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::grass_fade::OnDestroyDevice);
 
   // Rows saved at an old default, cleared once (as Rome II's): Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
   // until what they act on is hooked: they show then at ATN's values. 2: the sliders split from Unit Animation and Campaign
@@ -2162,6 +2188,7 @@ bool AttachAddon() {
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  twattila::grass_fade::Install(GRASS_FADE_SHADERS);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's camera b0, shadowmap b1,
   // lighting_VS_PS b2, shroud b3, directional_light b4): the SM5 sun draws (slm 1B10DDD8 / 21B916AF, skinlm 77586F30 /
@@ -2245,8 +2272,10 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ssr_hiz::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::grass_fade::OnDestroyDevice);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  twattila::grass_fade::Uninstall();
   twattila::engine_tests::StopAtStart(&at_start_stop);
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
