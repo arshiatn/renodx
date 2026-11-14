@@ -33,13 +33,25 @@ namespace twpharaohdynasties::trace_reads {
 // also the frame after: whether they move), the water reflection apply's quad (A0EA5C9E's vb0 at DE4F92CD: TEXCOORD0's
 // range) and the terrain's world bounds (377DE0D5: x / z of vb0 through its instance rows POSITION1 / 3, y from the height
 // map left out; 026CBC61: vb0 x (1, 1, 1.15476), its asm).
-inline std::string Read(const twattila::frame_trace::Draw& draw) {
+// The shaders read: Pharaoh's, or a game's twins of them with the same layouts (Troy's: the same RDEF strides and slots).
+struct Shaders {
+  uint32_t particle_vertex = 0x109B79CE;
+  std::array<uint32_t, 2> particle_pixel = {0x3F1B86E1, 0xE8524BB1};
+  uint32_t light_pixel = 0xE318CE77;
+  uint32_t quad_vertex = 0xA0EA5C9E;
+  uint32_t quad_pixel = 0xDE4F92CD;
+  uint32_t terrain_rows = 0x377DE0D5;    // x / z through its instance rows
+  uint32_t terrain_scaled = 0x026CBC61;  // vb0 x (1, 1, 1.15476)
+};
+
+inline std::string ReadOf(const twattila::frame_trace::Draw& draw, const Shaders& shaders) {
   using twattila::frame_trace::ReadBuffer;
   ID3D11DeviceContext* context = draw.context;
-  const bool particles = draw.vertex_shader == 0x109B79CE && (draw.pixel_shader == 0x3F1B86E1 || draw.pixel_shader == 0xE8524BB1);
-  const bool lights = draw.pixel_shader == 0xE318CE77;
-  const bool quad = draw.vertex_shader == 0xA0EA5C9E && draw.pixel_shader == 0xDE4F92CD;
-  const bool terrain = draw.vertex_shader == 0x377DE0D5 || draw.vertex_shader == 0x026CBC61;
+  const bool particles = draw.vertex_shader == shaders.particle_vertex
+                         && std::ranges::find(shaders.particle_pixel, draw.pixel_shader) != shaders.particle_pixel.end();
+  const bool lights = draw.pixel_shader == shaders.light_pixel;
+  const bool quad = draw.vertex_shader == shaders.quad_vertex && draw.pixel_shader == shaders.quad_pixel;
+  const bool terrain = draw.vertex_shader == shaders.terrain_rows || draw.vertex_shader == shaders.terrain_scaled;
   if (!lights && (draw.next_frame || !(particles || quad || terrain))) return "";
 
   std::string layout = " | layout";
@@ -158,13 +170,13 @@ inline std::string Read(const twattila::frame_trace::Draw& draw) {
     const auto z_row = element(3);
     const bool rows_known = x_row != draw.layout.end() && z_row != draw.layout.end() && x_row->slot == z_row->slot;
     const auto ids = vertex_ids();
-    if (position == draw.layout.end() || ids.empty() || (draw.vertex_shader == 0x377DE0D5 && !rows_known)) {
-      return text + std::format("\n  world bounds: no POSITION0 (or 377DE0D5's rows) or no vertices read{}", layout);
+    if (position == draw.layout.end() || ids.empty() || (draw.vertex_shader == shaders.terrain_rows && !rows_known)) {
+      return text + std::format("\n  world bounds: no POSITION0 (or {:08X}'s rows) or no vertices read{}", shaders.terrain_rows, layout);
     }
     const auto [lowest, highest] = std::ranges::minmax(ids);
     const Stream vertices = stream(position->slot, lowest, highest - lowest + 1);
     Stream instances;
-    if (draw.vertex_shader == 0x377DE0D5) {
+    if (draw.vertex_shader == shaders.terrain_rows) {
       instances = stream(x_row->slot, draw.first_instance, draw.instances);
     }
     constexpr float LARGEST = std::numeric_limits<float>::max();
@@ -175,7 +187,7 @@ inline std::string Read(const twattila::frame_trace::Draw& draw) {
       return field.offset + reshade::api::format_row_pitch(field.format, 1) <= stride;
     };
     bool read = !vertices.bytes.empty() && fits(*position, vertices.stride);
-    if (draw.vertex_shader == 0x377DE0D5) {
+    if (draw.vertex_shader == shaders.terrain_rows) {
       read = read && fits(*x_row, instances.stride) && fits(*z_row, instances.stride);
     }
     for (const uint32_t id : ids) {
@@ -186,7 +198,7 @@ inline std::string Read(const twattila::frame_trace::Draw& draw) {
         break;
       }
       const auto [x, y, z, w] = *vertex;
-      if (draw.vertex_shader == 0x026CBC61) {
+      if (draw.vertex_shader == shaders.terrain_scaled) {
         const std::array<float, 3> world = {x, y, z * 1.15476f};
         for (size_t c = 0; c < 3; ++c) {
           low[c] = std::min(low[c], world[c]);
@@ -213,7 +225,7 @@ inline std::string Read(const twattila::frame_trace::Draw& draw) {
     const std::string counts = std::format("{} indices, vertices {} to {}, {} instances{}", ids.size(), lowest, highest, draw.instances, layout);
     if (!read) {
       text += std::format("\n  world bounds: a buffer or format not read ({})", counts);
-    } else if (draw.vertex_shader == 0x026CBC61) {
+    } else if (draw.vertex_shader == shaders.terrain_scaled) {
       text += std::format("\n  world bounds: x {} {} y {} {} z {} {} ({})", low[0], high[0], low[1], high[1], low[2], high[2], counts);
     } else {
       text += std::format("\n  world bounds: x {} {} z {} {}, y from the height map ({})", low[0], high[0], low[2], high[2], counts);
@@ -305,5 +317,8 @@ inline std::string Read(const twattila::frame_trace::Draw& draw) {
   }
   return text;
 }
+
+// Pharaoh's (its frame trace Options' draw_reads).
+inline std::string Read(const twattila::frame_trace::Draw& draw) { return ReadOf(draw, {}); }
 
 }  // namespace twpharaohdynasties::trace_reads

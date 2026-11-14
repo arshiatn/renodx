@@ -161,6 +161,30 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   01:56 menu form (no arguments): 60 s up, add-on loaded, swap chain, no 3D frame (ATN's options window / menu need
   clicks), 2 empty traces (romeremastered/runs/data_1114_015643/M). Rome Remastered traces need ATN's menu start with
   rome2\atn_trace_watch.ps1 (plan_1114.md sections 7-8). No further agent start tonight.
+- [x] Shogun 2 phase I MERGED d378aac2 (14 commits: W3 rt_sun texel 2 + cube, W4 helper upscaler beside the game's DLSS,
+  W5 helper FG + Reflex, W6, W7a, W8 part, W10 fog shadows (Experimental), W11 presets, rt_sun ~52525x too bright fixed,
+  Upscaling Debug View, test/tw_shogun2_shaders WARP PASS; HDR v66 / DLSS v58). Campaign crash = the game's own exit
+  path (heightmap.dat unmapped before the campaign renderer's destructor; no add-on frame; test 9 settles it). The
+  helper ships now (tw_install.py shogun2 uses_helper True: helper110 + DLLs + NVIDIA 310.9.16 replace the game's 310.5.2).
+  Round 2 on the branch: PT AO (SH sky), foliage light, families, water, casters out of view.
+- [ ] 02:00 ATN started Rome Remastered from the menu, loads a battle and goes to bed: atn_trace_watch.ps1 (25 min, every
+  20 s, romeremastered/runs/ATN_battle_*), gpu_job.lock held by the coordinator; then close the game through its window.
+- [x] WH1 phase P: plan tools/tw/wh1/plan_1114.md, trace build e89b8453 (branch wh1-p1114, merged 19de303e), installed
+  02:19 "wh1 t1" + helper110 with --first (symlink aside; helper DLLs + NVIDIA 310.9.16 copied, none before). Data run
+  wh1_data_batch.ps1 A-E (+F -Night, G -Campaign; NOT -AaOff: ATN's gfx_aa 2 stays) after ATN's Rome Remastered session;
+  the Epic start (warhammer.exe with -epicapp... and no exchange code) is a one-try guess. Exe code protected: no engine CPU
+  features. Phase I trace-free items started.
+- [x] Rome Remastered: ATN's own menu start 01:59-02:19 (campaign + battle), atn_trace_watch 50 traces
+  (romeremastered/runs/ATN_battle_015951); phase I part 2 resumed with them.
+- [x] WH2 Round v48 MERGED 28779515 (graphics_page, Graphics 2 of 2, viewport chains, Torch and Fire Shadows via
+  InstallPointLights, Rays Replace / Skip the Shadow Maps, Fog Shadows + light in fog, all Experimental; Hue Clip 100;
+  render scale reached the traces; SH flag on in every battle blocks PT AO). Round 2 on the branch: PT AO, casters out of
+  view, spot lights, smoke, water.
+- [x] Troy phase P: plan tools/tw/troy/plan_1114.md, trace build f7defa00 (merged 03beac2b; shared:
+  twpharaohdynasties/trace_reads.hpp takes a Shaders struct, Pharaoh's output unchanged), installed 02:24 "troy t1" +
+  helper110 --first. Offline bugs B: Coloured Shadows reads c1 (sun direction) not c3; AA wrappers lack TW_AA_FRAME_LINEAR.
+  Data run after WH1's with -MsaaOff (direct starts only, no launcher-click fallback).
+- [x] ATN 02:25: "You are allowed to change the game's settings for all of them" (memory feedback_game_aa_allowed.md).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
