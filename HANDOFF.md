@@ -590,6 +590,13 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     Feral exe), UntracedCasters HAVE (RayTracedBattleScene).
     - [ ] ATN DECIDES: grass and banners into Rome Remastered's rays as Experimental rows? (the game gives them no shadow:
       0 cascade draws in 50 traces, so it would be a new look)
+  - [x] Rome II DONE: 12bc7a08 Rarer Objects in the Rays (tessellated terrain B1C7E29F + rigid E51A2D2A, Experimental),
+    d99b3a10 Two Shadow Cascades Under Rays (Experimental, restart; patches Rome II's own shadow-quality switch +0x142fcdd,
+    level B), b3d7e1b6 README; parity_check r2 exits 0 (0 / 8 / 70). Its Skip the Game's Shadow Map Work (edc6fb65) and
+    tw_unit_shadows section 8 (dac1a645) DUPLICATED the CPU round's d52fb7ae: not taken (the CPU version stays); conflict
+    resolved by hand. After the cherry-picks: rome2 / attila / thrones x86 + wh1 / wh2 x64 built; tw_rays_captures ALL
+    PASSED (Rome II T + G). Lesson 25 + SKILL.md: owned pieces go into every ledger first. Waiting: the 3 Vfx particle rows
+    and DrawScrub / Grass Trace NEED A TRACE; rays_preset_as_attila and Hue Clip 90 vs 80 are ATN's.
     - [ ] caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
       so parity_check settles Rome Remastered's casters itself. Owner: coordinator, after parity round 2 (shared script)
 - Was: SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
