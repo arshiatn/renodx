@@ -524,6 +524,11 @@ that pass (waterplane, ocean: debug18's trace) keeps the motion of what is under
   under the water reflections, **Steadier water reflections (Experimental)** (RayTracedWaterSteady). Both off, in Reset,
   not in RT/PT.
 - Under Light through leaves: **Coloured shadows (Experimental)** (RayTracedColouredShadows), off, in Reset, not in RT/PT.
+- **RT/PT now matches Attila's preset** (ATN 2026-11-14): this section's rows at their defaults first, then Attila's values:
+  coloured, sprite soldier and far tree shadows, Path-traced AO with own sky rays and steady bounce light, reflection reuse
+  Own ReSTIR, water reflections and steadier water reflections, specular occlusion and leaf micromaps on, Global
+  Illumination strength 1; of this game's own rows shadow casters out of view on (as Warhammer III's), ray-traced AO kept
+  on (the HDR addon turns it off itself while Path-traced AO runs; the campaign keeps it). No RT/PT and Reset as before.
 
 
 ### F4/F8 sampler ownership (2026-11-09, GPT-6 Astra)
