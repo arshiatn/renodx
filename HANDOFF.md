@@ -501,6 +501,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   first start + GitHub button, Smoke Shadows (Experimental, not in RT/PT), far card / plant twins held (NOT HELD 22 -> 19),
   Indicator Brightness (Reset wrote 0.4 to a missing row before); WARP 1-17). Agent resumed: Grass Height Distance, 14
   cut-out masks, RT water reflections on 44B4A2F0.
+  Continuation MERGED 9d945a18; round 3 MERGED 96aefe57 (campaign trees A8BB2DB2 + props' liquid 766D159E in the rays; AE
+  closed: compute atomics + CPU readback). Agent resumed: cloth casters, raycast 021D7515 at 50 %, AE via 96BCFCBB, 3888C71F.
+- [ ] SHARED STEP (after the Attila gaps merge; one agent): (1) the torch rows from Path Tracing (RayTracedLightsInBounce /
+  RayTracedLightShadowRatio) into graphics_page for every game with PT GI + Torch and Fire Shadows (Thrones, WH2, Troy, WH1,
+  Shogun 2, WH3, Pharaoh incl. its particle lights, Rome II); (2) the GS capture path in rt_core (SceneShader::
+  capture_geometry_shader + SO statistics count, WH1's design) for the GS imposters of WH1 381E079E / 883D12E7, Pharaoh
+  27A16995, Troy / WH2 370A7440; (3) per-game leaf cut-out (Troy 0.01) through the bridge; (4) PREFER_FAST_BUILD smoke row
+  to the other games.
 - [x] Thrones parity round MERGED 348a383b (table tools/tw/thrones/parity_1114.md: 31 have / 9 done now / 1 left / 6 trace / 4
   won't; flares + vignette into FG's HUD-less image, flare occlusion + markers below 100 %, Depth of Field, Indicator
   Brightness, VFX Brightness (Experimental), UI sprite fixes, Water Clarity on sea / lake (shared water_effects
@@ -529,7 +537,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] Shogun 2 parity round MERGED 5e4e2d80 (table tools/shogun2/pkg_1114/parity_1114.md: 43 have / 23 do now (8 done) / 5 trace
   / 13 won't; FG HDR read the wrong key (fixed), Softer water reflections, Smooth banner shadows, Grass shadow range, AO under
   RR, 5 Bend rows, casters out of view: far tree cards 30C453EE, units A22FA941 ("too big" was a counting error: 1.18 M
-  corners), naval 7B067623; page dump only the 9 new rows; WARP PASS). Round 2 MERGED 16126f41 (naval sails / symbols / ropes
+  corners), naval 7B067623; page dump only the 9 new rows; WARP PASS). Round 3 MERGED 48ddae02 (RT/PT = Attila's incl.
+  LightGlow / Caustics / Clarity, smoke shadows via a quad GS for BEA3F2D4 (Experimental), water rows at low / medium water
+  quality, 5 casters out of view + 3k far cards, engine-name reader (8 tweaks, 5 Experimental rows, suite tw_shogun2_tweaks
+  built in testbin); finding: a global built at start-up from Attila's header globals came out empty under clang-cl (static
+  init order); the other add-ons call engine_tests::Attila() inside functions (checked). Left: SSS Softness (second UAV),
+  particle smoothing, CAS sharpening, AO temporal. Shogun 2 agent DONE. Round 2 MERGED 16126f41 (naval sails / symbols / ropes
   out of view, Water Clarity + Caustics, Modded Auto Exposure (GPU 8233E11F), Indicator Brightness, torch light in fog,
   campaign overlay D7E27B35 below 100 % fixed (scale census), Gamma = WON'T (in-game Gamma reaches every mode)). Round 3:
   RT/PT = Attila's (LightGlow, WaterCaustics), smoke GS for BEA3F2D4, engine-name reader, SSS Softness pass.
