@@ -1501,6 +1501,10 @@ float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
 // Fire Shadows from Particle Lights (Experimental, off, not in the RT/PT preset): PARTICLE_LIGHTS' draws left alone while 0.
 float particle_light_shadows_row = 0.f;
+// Texture LOD Bias on All Textures (Experimental, off, as Warhammer III's): the game's wrapping trilinear samplers biased too
+// (texture_lod_bias.hpp SetWrappingTrilinear). Which of Pharaoh's samplers filter without anisotropy is unread (their descs
+// come at run time; Log Details' Texture LOD Bias line counts them).
+float lod_bias_trilinear_row = 0.f;
 
 // Smoke Shadows' particles (Experimental, off): vfx vs50_main_instancing 109B79CE draws each particle as an instance of a
 // quad (6 indices), and of the pixel shaders it draws with only vfxextremeultra 3F1B86E1 (ps_main_high_quality) blends quads
@@ -1947,6 +1951,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
   // Fog Shadows alone light no surface: no Ray Reconstruction for them (as Warhammer III's).
   rt_settings.cheap_fog_alone = true;
+  twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // The game's reflections fall on the water alone (its apply DE4F92CD): twattila/water_reflections.hpp's gate.
   twattila::water_reflections::GateSettings(&rt_settings);
   // Ray-traced shadows replace the screen-space ones (the Shadows method, as Attila's).
@@ -2620,6 +2625,7 @@ void ConfigureAddon() {
   });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
                                              .rays_replace_maps_tested = false,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
