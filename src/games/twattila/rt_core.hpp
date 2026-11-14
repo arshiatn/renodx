@@ -322,6 +322,9 @@ struct SceneShader {
   // A mesh's identity in place of `hash`: shaders that draw one mesh (the main pass's and the shadow pass's) share its BLAS and its
   // instances (0: its hash).
   uint32_t key_family = 0;
+  // A dynamic draw captured even when one with its key was this frame: its own transform lies outside the key (Rome
+  // Remastered: one object buffer at VS b7 written again for each draw). False: one capture a key a frame.
+  bool every_draw = false;
 };
 
 // The main view's camera as ray tracing needs it: its view-projection and inverse (rows acting on column vectors; with
@@ -1627,7 +1630,7 @@ void Capture(Context& command, const SceneShader& shader) {
         return;
       }
       place = !corners_wanted;
-    } else if (!shader.tessellated && runtime.captured_keys.contains(key)) {
+    } else if (!shader.tessellated && !(shader.every_draw && dynamic) && runtime.captured_keys.contains(key)) {
       if (!placed) return;
       place = true;
     }

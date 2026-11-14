@@ -24,6 +24,8 @@
 // 7. DLSS below 100% with the rays (rt_core Host::depth_at_render_size): the kept depth's size is the render size; a
 //    prepass draw into the render-size depth is the main view's for Capture; CONTROL: without the field, another size;
 //    today's rule at the bridge's size kept. DrawMultiply reads the traced visibility's top-left corner texel for texel.
+// 8. (Inside 7.) One mesh drawn again with another object matrix (VS b7, outside rt_core's key): captured with every_draw;
+//    CONTROL without: dropped.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -827,6 +829,48 @@ Output main(uint id : SV_VertexID) {
     const bool render_sized = main_view(rays::HOST, scene_dsv.Get());
     const bool today_rule = main_view(today, scene_dsv.Get());
     const bool other_size = main_view(rays::HOST, other_dsv.Get());
+
+    // 8. One mesh drawn twice with other object matrices at VS b7 (outside rt_core's key: its slots 1-4, textures, buffers,
+    //    ranges): the second draw, its key captured this frame, goes on to the main view's mark with every_draw (Rome's
+    //    SceneDraw sets it); CONTROL without: dropped before it. The key as Capture makes it for a draw with nothing bound.
+    const auto empty_draw_key = [](uint32_t hash) {
+      uint64_t key = 14695981039346656037ull;
+      const auto mix = [&key](uint64_t value) { key = (key ^ value) * 1099511628211ull; };
+      for (const uint64_t value : {uint64_t{hash}, uint64_t{3}, uint64_t{1}, uint64_t{0}, uint64_t{0}}) mix(value);
+      // Constant buffers and their first constants, textures, vertex buffers with strides and offsets; the index buffer,
+      // its format and offset, the mask: none bound, all 0.
+      for (int value = 0; value < (4 * 2) + 4 + (4 * 2) + 3; ++value) mix(0);
+      return key;
+    };
+    std::array<float, 16> object_matrix = {1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f};
+    const auto drawn_again = [&](bool every_draw) {
+      object_matrix[12] += 25.f;  // the next object, 25 m on
+      const auto object_constants = ConstantBuffer(object_matrix.data(), 64);
+      {
+        const std::unique_lock lock(runtime.mutex);
+        runtime.captured_keys.insert(empty_draw_key(0x77472F17));
+        runtime.main_view_frame = 0;
+      }
+      twattila::rt_scene::internal::host = rays::HOST;
+      context->OMSetRenderTargets(0, nullptr, scene_dsv.Get());
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->VSSetConstantBuffers(7, 1, object_constants.GetAddressOf());
+      const twattila::rt_scene::SceneShader shader = {.hash = 0x77472F17, .dynamic = true, .every_draw = every_draw};
+      renodx::utils::command_action::CommandContext<renodx::utils::command_action::DrawArguments> command = {
+          .cmd_list = &command_list, .arguments = {.vertex_count = 3, .instance_count = 1}};
+      twattila::rt_scene::internal::Capture(command, shader);
+      context->ClearState();
+      const std::unique_lock lock(runtime.mutex);
+      runtime.captured_keys.clear();
+      return runtime.main_view_frame == runtime.frame;
+    };
+    const bool every_draw_on = drawn_again(true);
+    const bool every_draw_off = drawn_again(false);
+    std::printf("one mesh, another object matrix, its key captured this frame: every_draw %d; CONTROL without %d\n", every_draw_on ? 1 : 0,
+                every_draw_off ? 1 : 0);
+    CHECK(every_draw_on);
+    CHECK(!every_draw_off);  // CONTROL: one capture a key a frame (the dropped BasicLit instances)
+
     // The bridge at the render size (100%): today's rule takes it too.
     bridge.width = WIDTH;
     bridge.height = HEIGHT;

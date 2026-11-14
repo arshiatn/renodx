@@ -128,6 +128,8 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
     return false;
   }
   shader->dynamic = true;
+  // Each draw its own capture: one mesh drawn with other object matrices (VS b7, outside rt_core's key) is other triangles.
+  shader->every_draw = true;
   return true;
 }
 
