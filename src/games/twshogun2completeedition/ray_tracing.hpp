@@ -114,8 +114,9 @@ namespace internal {
 constexpr uint32_t CAMERA_ROWS = 41;
 constexpr uint32_t CAMERA_VIEW_PROJECTION = 10;
 constexpr uint32_t CAMERA_VIEWPORT = 38;
-// The traced visibilities' slots (shaders/rt_sun.hlsli).
+// The traced visibilities' slots (shaders/rt_sun.hlsli), Coloured Shadows' filter's (RtSunColour).
 constexpr UINT VISIBILITY_SLOT = 40;
+constexpr UINT TINT_SLOT = 50;
 // rt_sun's b1 (rt_sun.cs_5_0.hlsl): lighting_VS_PS's first floats of the sun's direction (c0), the ambient cube (c3-c8:
 // +x, -x, +y, -y, +z, -z, index 0 where the normal's axis is 0 or more; with the harmonics the paths' sky) and the sun
 // colour (c1; the paths' sun light with Path-Traced AO). Its third: 0 (Shogun 2's rt_sun makes the same sky either way).
@@ -443,7 +444,8 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
     state.campaign = draw.lighting_slot == CAMPAIGN_LIGHTING_SLOT;
   }
   WriteSun(native, draw);
-  if (settings.reflections || settings.path_tracing || upscaling::Reconstructing()) WriteGuides(native, draw.gbuffer_slot);
+  // Coloured Shadows: the helper colours the sun's filter by the albedo guide where the screen shows the cloth.
+  if (settings.reflections || settings.path_tracing || settings.coloured_shadows || upscaling::Reconstructing()) WriteGuides(native, draw.gbuffer_slot);
   if (twattila::rt_scene::Camera camera; Camera(camera_buffer.Get(), &camera)) twattila::rt_scene::Trace(native, depth.Get(), camera);
   const auto [sun, ambient] = twattila::rt_scene::Visibilities();
   const std::array<ID3D11ShaderResourceView*, 2> visibilities = {settings.sun_shadows ? sun : nullptr,
@@ -451,6 +453,8 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
   const bool no_ambient = draw.lighting_slot != CAMPAIGN_LIGHTING_SLOT && PathAmbientNow() && LightingWithoutAmbient(native, draw.lighting_slot);
   if (visibilities[0] == nullptr && visibilities[1] == nullptr && !no_ambient) return {};
   native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(visibilities.size()), visibilities.data());
+  ID3D11ShaderResourceView* tint = (settings.coloured_shadows && visibilities[0] != nullptr) ? twattila::dlaa_bridge::bridge.rt_tint.srv.Get() : nullptr;
+  native->PSSetShaderResources(TINT_SLOT, 1, &tint);
   // Put back in finalize callbacks: the Light Bounce draws the sun draw itself (bypass), which skips post callbacks.
   return {.finalize_callback = [](Context& command, const void*) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
@@ -458,6 +462,7 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
     if (native == nullptr) return;
     constexpr std::array<ID3D11ShaderResourceView*, 2> NONE = {};
     native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(NONE.size()), NONE.data());
+    native->PSSetShaderResources(TINT_SLOT, 1, NONE.data());
     const std::unique_lock lock(state.mutex);
     if (state.game_lighting) native->PSSetConstantBuffers(state.game_lighting_slot, 1, state.game_lighting.GetAddressOf());
     state.game_lighting.Reset();

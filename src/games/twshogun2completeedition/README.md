@@ -608,7 +608,7 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
-## v72 (2026-11-14): variantrigid out of view (built only, not run in game)
+## v72 (2026-11-14): variantrigid out of view, dissolved leaves, reflection rows, coloured shadows (built only, not run in game)
 
 - **Shadow casters out of view** (the same Experimental row, off) also takes variantrigid's shadow draws (B0E006EE: 10 draws,
   4 to 256 instances in the battle trace), placed by their instances' rows (v8-v10) as the rigid ones
@@ -619,6 +619,16 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   shader (A97EF2E0) drops every texel at every dissolve value (saturate(fade) x fade > 1 - 0.196, fade = 1 - v10.y). Its
   branches keep casting, as in the game (their shadow pixel shader reads no fade). Part 12: against the game's leaf shadow
   pass (its vertex and pixel shaders, an occlusion query) at 12 fades; control: the branches' version keeps them.
+- **Reflection reuse** (Experimental, off: from ReSTIR GI with the ray-traced Global Illumination, or Own ReSTIR) and
+  **Steadier water reflections** (Experimental, off): Attila's RT_REFLECTIONS_REUSE / _OWN / _STEADY (DLSS addon v64).
+- Not done: far tree cards out of view (rigidtreebillboard 30C453EE): no rows path (each card turns to the shadow camera at
+  its corners and takes its own atlas view from its facing: no shared mesh and mask), 38.8M indices x instances a frame;
+  Softer Water Reflections (needs rt_water_plane's roughness and the water's positions).
+- **Coloured shadows** (Experimental, off; with Light through leaves): sunlight through sails, banners and cloth takes their
+  colour (Attila's RT_COLOURED_SHADOWS): the helper's filter at t50 for the sun draws with this frame's trace, every use of
+  the sun's colour in sunlight00-03 multiplied by 1 - it (shaders/rt_sun.hlsli RtSunColour); the G-buffer guides written
+  for it (the colour where the screen shows the cloth). Part 13 (WARP): in each of the four, the filter 1 gives exactly the
+  picture of the sun colour 0, unbound the sun lights it; control: half the filter lies between.
 
 ## v71 (2026-11-14): cloth, sprite soldiers and trees out of view, Path-traced AO rows (built only, not run in game)
 

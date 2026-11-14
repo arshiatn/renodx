@@ -122,6 +122,7 @@ void main(
                               { 2, 2, 0, 0} };
   float4 r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,r10,r11,r12,r13,r14,r15,r16,r17,r18,r19,r20;
   uint4 bitmask, uiDest;
+  float3 sun_tinted = sun_colour.xyz;  // Coloured Shadows: RtSunColour once the pixel is known
   float4 fDest;
 
   r0.xy = screen_size.zw * v0.xy;
@@ -209,6 +210,7 @@ void main(
     r10.xy = (uint2)r1.yw;
     r10.zw = float2(0,0);
     r1.y = RtDarker(t_rt_sun, r10.xy, t_shadow.Load(r10.xyz).x);
+    sun_tinted = RtSunColour(sun_colour.xyz, r10.xy);
     r1.y = max(g_Shadow_low_clamp, r1.y);
     r1.y = min(1, r1.y);
     r1.y = -0.200000003 + r1.y;
@@ -535,7 +537,7 @@ void main(
     r3.xyz = r6.xyz * r0.www + r5.xyz;
     r0.z = r2.z * r0.z;
     r3.xyz = r0.zzz * r3.xyz;
-    r3.xyz = sun_colour.xyz * r3.xyz;
+    r3.xyz = sun_tinted * r3.xyz;
     r8.xzw = g_light_scale_for_units * r3.xyz;
     r3.xyz = r14.yyy ? r8.xzw : r3.xyz;
     r8.xzw = float3(-1,-1,-1) + g_water_reflection_tint.xyz;
@@ -557,7 +559,7 @@ void main(
       r0.z = -r0.z * r0.z + 1;
       r0.z = g_vegetation_wrap_lighting_bias * r0.z + r0.w;
       r6.xyz = r7.xyz * r0.zzz;
-      r6.xyz = sun_colour.xyz * r6.xyz;
+      r6.xyz = sun_tinted * r6.xyz;
       r6.xyz = r6.xyz * r5.xyz;
       r0.z = dot(sun_direction.xyz, r9.xyz);
       r0.w = max(0.100000001, r1.y);
@@ -582,7 +584,7 @@ void main(
       r0.z = 0.0814694166 / r0.z;
       r8.xzw = float3(1,1,1) + -r8.xzw;
       r8.xzw = r8.xzw * r0.zzz;
-      r12.xyz = sun_colour.xyz * r7.xyz;
+      r12.xyz = sun_tinted * r7.xyz;
       r12.xyz = float3(1.90384671e-005,1.90384671e-005,1.90384671e-005) * r12.xyz;
       r8.xzw = r9.xyz * r11.xyz + r8.xzw;
       r8.xzw = r12.xyz * r8.xzw;
@@ -692,7 +694,7 @@ void main(
       r1.x = r2.x * r2.y + r1.x;
       r1.y = max(0, r1.y);
       r1.x = r1.x * r1.y;
-      r2.xyz = sun_colour.xyz * r5.xyz;
+      r2.xyz = sun_tinted * r5.xyz;
       r2.xyz = r2.xyz * r7.xyz;
       r1.y = cmp(0.5 < g_camera_temp0.x);
       r1.x = r1.y ? r1.w : r1.x;
