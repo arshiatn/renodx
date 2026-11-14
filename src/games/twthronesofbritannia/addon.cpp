@@ -25,6 +25,7 @@
 #include "../../mods/swapchain.hpp"
 #include "../../utils/command_action.hpp"
 #include "../../utils/log.hpp"
+#include "../../utils/pipeline.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../twattila/graphics_hooks.hpp"
@@ -43,6 +44,7 @@
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/ssr_hiz.hpp"
 #include "../twattila/test_hooks.hpp"
+#include "../twattila/water_effects.hpp"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
@@ -1368,6 +1370,28 @@ constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils:
   return {};
 };
 
+// Attila's water rows read again here (tools/tw/thrones/th_water_rows.py: the same bytes, else Thrones' twin by name, its
+// bindings from the reflection; WARP tools/tw/thrones/water_test). The seas' and the campaign lake's twins don't read
+// g_sea_bed_light_scatter: Water Clarity changes the rivers, the battle plane and the placed water meshes only.
+constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {{
+    {.hash = 0x2E9F5935, .lighting_slot = 2, .world_input = 1, .refraction_slot = 2},  // battle river
+    {.hash = 0xC9FBACCB, .lighting_slot = 2, .world_input = 3, .refraction_slot = 2},  // battle plane, Water Quality Ultra
+    {.hash = 0x2E69BF8E, .lighting_slot = 1, .world_input = 3, .refraction_slot = 2},  // placed water meshes; the plane below Ultra
+    {.hash = 0xF7E011A4, .lighting_slot = 2, .world_input = 2, .refraction_slot = 6},  // battle sea, high / ultra
+    {.hash = 0xA9724510, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6},  // battle sea, medium
+    {.hash = 0x736DB670, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},  // battle sea, low
+    {.hash = 0xDE739661, .lighting_slot = 2, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign sea
+    {.hash = 0x08F47D8C, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign sea, low
+    {.hash = 0x4229959B, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},  // campaign lake
+    // Without shadows.
+    {.hash = 0x52228234, .lighting_slot = 1, .world_input = 1, .refraction_slot = 2},
+    {.hash = 0x5CB9A865, .lighting_slot = 1, .world_input = 1, .refraction_slot = 2},
+    {.hash = 0xBF93E312, .lighting_slot = 1, .world_input = 2, .refraction_slot = 6},
+    {.hash = 0x761A07B1, .lighting_slot = 1, .world_input = 2, .refraction_slot = 5},
+    {.hash = 0xF6DFFEBC, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},
+    {.hash = 0xECB1E7B5, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},
+}};
+
 // The screen-space shadows' Light Through Foliage: grass and leaves, and the rigid objects drawn after them (Attila's
 // shaders, the same bytes in this dump: depth copies around the foliage, as Attila's; its draw order not yet seen here).
 constexpr std::array<uint32_t, 5> FOLIAGE_VERTEX_SHADERS = {0x46C616F0, 0x5B880546, 0xCABCB9D1, 0xF3741248, 0x01FA9CDE};
@@ -1870,6 +1894,27 @@ void ConfigureAddon() {
   // The rays' AO in place of the game's and GT-VBAO (ssao00's rt_ambient_alone, as Attila's), the reflections' pass hooked.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterClarity",
+      .binding = &twattila::water_effects::water_clarity,
+      .default_value = 1.f,
+      .label = "Water Clarity",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "How far you see into rivers and lakes in battles. 1: the game's; higher: clearer water.",
+      .min = 0.25f,
+      .max = 16.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterCaustics",
+      .binding = &twattila::water_effects::water_caustics,
+      .default_value = 0.f,
+      .label = "Water Caustics (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Rippling light on river, lake and shallow sea beds in battles. 0: off.",
+      .max = 2.f,
+      .format = "%.2f",
+  });
 
   // Appended Settings (HDR10)
   {
@@ -1961,11 +2006,12 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (twattila/graphics_page.hpp, as Attila's and Rome II's), ATN's RT/PT preset as the defaults of
-  // what the methods leave, then Settings Mode's pages. No water rows hooked here yet; Light Through Foliage, both Smoke
-  // Shadows and the sprite soldiers' and far trees' ray-traced shadows Experimental (no run has shown them here).
+  // what the methods leave, then Settings Mode's pages. Light Through Foliage, both Smoke Shadows, Water Caustics and the
+  // sprite soldiers' and far trees' ray-traced shadows Experimental (no run has shown them here).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
-    if (setting->key == "RayTracedSmokeShadows" || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows") {
+    if (setting->key == "RayTracedSmokeShadows" || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows"
+        || setting->key == "WaterCaustics") {
       setting->default_value = 0.f;
     }
   }
@@ -1981,9 +2027,9 @@ void ConfigureAddon() {
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false});
-  // Faster Game CPU Code Experimental, off (engine_code_row).
+  // Faster Game CPU Code (engine_code_row) and Water Caustics Experimental, off.
   for (auto* setting : settings) {
-    if (setting->key != "FasterGameCpuCode") continue;
+    if (setting->key != "FasterGameCpuCode" && setting->key != "WaterCaustics") continue;
     setting->default_value = 0.f;
     setting->label += " (Experimental)";
   }
@@ -2014,6 +2060,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ssr_hiz::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
 
   // Rows saved at an old default, cleared once (as Rome II's): Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
   // until what they act on is hooked: they show then at ATN's values. 2: the sliders split from Unit Animation and Campaign
@@ -2062,6 +2109,8 @@ bool AttachAddon() {
   twattila::screen_space_shadows::InstallFoliage(FOLIAGE_VERTEX_SHADERS, AFTER_FOLIAGE_VERTEX_SHADERS);
   // Light Through Banners: cloth and sails (as the rays), the G-buffer's colour squared (gamma 2).
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 2.f);
+  twattila::water_effects::water_shaders = WATER_SHADERS;
+  renodx::utils::pipeline::RegisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's camera b0, shadowmap b1,
   // lighting_VS_PS b2, shroud b3, directional_light b4): the SM5 sun draws (slm 1B10DDD8 / 21B916AF, skinlm 77586F30 /
@@ -2109,6 +2158,10 @@ bool AttachAddon() {
   twattila::rt_scene::InstallShadowsOnly();
   twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
+  for (const auto& water : WATER_SHADERS) {
+    renodx::utils::command_action::Register(
+        twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   // Last of the sun draws' hooks: it draws the sun draws itself (no callback after it runs).
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
@@ -2137,6 +2190,9 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ssr_hiz::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
+  renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
   twattila::engine_tests::StopAtStart(&at_start_stop);
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
