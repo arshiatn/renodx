@@ -427,6 +427,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Pharaoh / Rome II (par_old_: tools/tw/round_notes/parity_<game>_1114.md). After the merges: one shared step moves the torch
   rows from Path Tracing (RayTracedLightsInBounce / RayTracedLightShadowRatio) into graphics_page for every game that can
   carry them. Merge one branch at a time, verify the merged tree once, stamp, install.
+- [x] WH2 parity round MERGED 4ded8d0d (table tools/tw/wh2/parity_1114.md: 207 have / 4 do now left / 7 trace / 55 won't; 19
+  dead engine rows removed (0 code uses, 0 pointers), 5 Attila tests, Bloom, Indicator Brightness (Experimental), smoke
+  twins DDABB799 / 687378DB, 4 casters out of view (level B); census held 26 -> 30; no shared change). Agent resumed:
+  fog_strength, GrassHeightDistance, 4 units / props captures, 7DF335FF campaign banners (opt-in shared GS define).
 - [x] Rome Remastered so far MERGED a4d6e0a6 (crash fix f6a7cfc4, reset safe side a8afd660, DLSS below 100 % 867187d4, Attila's
   page + Reset / No RT/PT / RT/PT 09a083f0 with opt-in graphics_page has_gtvbao / has_gi / every_row: Attila / WH3 / Thrones /
   WH2 / Troy / WH1 page dumps unchanged; dump target 'rr'). Not installed. Agent on: parity table + DO NOW, B (input bug), C
