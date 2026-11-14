@@ -14,7 +14,9 @@
 //    (SDR: BT.709 within 1) with Gamut Compression 1, luminance within Peak always (Gamut Compression 0: within 1%);
 //    grey's ramp never darker as it rises.
 // 4. Report: PsychoV35's hue (OkLab) against the game's own SDR picture (the same chain in its SDR mode) where SDR
-//    reaches its clip, for fire, sky blue and 48 hues, Hue Clip 0 to 1 (sky to 2): what the default comes from.
+//    reaches its clip, for fire, sky blue and 48 hues, Hue Clip 0 to 1 (sky to 2): what the default comes from. Rome II's
+//    own chain too (t00 EE1DA45C -> t01 850AEE44, Rendering Mode 3: its SDR curve is on xyY luminance, then each channel
+//    clipped, not Attila's curve per channel; an identity curve as Attila's, black 10^-4, white 1).
 // 5. The same for the other games' kinds of stock curve (hue_curves.hlsl: a luminance curve then each channel clipped,
 //    or a curve on each channel), PsychoV35 right after Hue Clip as their shaders call it. Its WH3 form agrees with part
 //    4's WH3 (1.00); WH2's own t00 (curve 6: its anchored handoff, at burns 0.1, 0.3 and 0.5) too (1.00); WH1's tone
@@ -50,6 +52,10 @@ namespace attila {
 namespace wh3 {
 #include "src/games/twwarhammer3/shared.h"
 }  // namespace wh3
+#undef SRC_TEMPLATE_SHARED_H_
+namespace rome2 {
+#include "src/games/twrome2/shared.h"
+}  // namespace rome2
 
 using Microsoft::WRL::ComPtr;
 using Float3 = std::array<float, 3>;
@@ -750,6 +756,8 @@ struct Chain {
   const Pair* attila_hdr_to_screen;
   const Pair* wh3;
   const Shader* curves;  // hue_curves.hlsl (part 5)
+  const Pair* rome2_tone_mapper;  // part 4
+  const Pair* rome2_hdr_to_screen;
 };
 
 // Linear BT.709 in units of the UI's white (x graphics nits = nits) of PsychoV35's (or the SDR mode's) output.
@@ -771,6 +779,44 @@ static std::vector<Float3> RunWh3(const Chain& chain, const std::vector<Float4>&
   const auto output = Draw(chain.wh3->after, bindings);
   std::vector<Float3> linear;
   for (const auto& o : output) linear.push_back(Decode(o, 2.2f));
+  return linear;
+}
+
+// Rome II's t00 -> t01 (part 4), Attila's settings: its black and white points as log10 and linear (x, y black 10^-4; z, w
+// white 1), the identity curve; both modes 2.2-encoded.
+static std::vector<Float3> RunRome2(const Chain& chain, const std::vector<Float4>& scene, float mode, float hue_clip) {
+  rome2::ShaderInjectData si = {};
+  si.peak_white_nits = 1000.f;
+  si.diffuse_white_nits = 203.f;
+  si.graphics_white_nits = 203.f;
+  si.gamma_correction = 1.f;
+  si.swap_chain_encoding = 1.f;
+  si.hdr = mode;
+  si.bloom = 1.f;
+  si.vignette = 1.f;
+  si.godrays = 1.f;
+  si.v35_exposure = 1.f;
+  si.v35_highlights = 1.f;
+  si.v35_shadows = 1.f;
+  si.v35_contrast = 1.f;
+  si.v35_highlight_contrast = 1.f;
+  si.v35_shadow_contrast = 1.f;
+  si.v35_saturation = 1.f;
+  si.v35_highlight_saturation = 1.f;
+  si.v35_roll_off = 1.f;
+  si.v35_gamut_compression = 1.f;
+  si.hue_clip = hue_clip;
+  Bindings first = AttilaToneMapper(scene, true);
+  first.views["g_black_and_white_points_sampler"] = Texture2D(1, 1, {Float4{-4.f, 1e-4f, 0.f, 1.f}});
+  first.injection = Bytes(si);
+  const auto handoff = Draw(chain.rome2_tone_mapper->after, first);
+  Bindings second = AttilaHdrToScreen(handoff, true);
+  second.views["god_rays_sampler"] = Texture2D(WIDTH, HEIGHT, std::vector<Float4>(WIDTH * HEIGHT, Float4{}));
+  second.words["g_gamma_output"] = F({2.2f});
+  second.words["g_inv_gamma_output"] = F({1.f / 2.2f});
+  second.injection = Bytes(si);
+  std::vector<Float3> linear;
+  for (const auto& o : Draw(chain.rome2_hdr_to_screen->after, second)) linear.push_back(Decode(o, 2.2f));
   return linear;
 }
 
@@ -902,6 +948,7 @@ static void ReportHue(const Chain& chain) {
          si.hue_clip = hue_clip;
          return RunAttila(chain, Scene(columns, first_stop, stops_per_row, 1.f), si);
        }},
+      {"Rome II", [&](float mode, float hue_clip) { return RunRome2(chain, Scene(columns, first_stop, stops_per_row, 1.f), mode, hue_clip); }},
   };
   for (const float burn : {0.1f, 0.5f}) {
     games.push_back({burn == 0.1f ? "WH3 burn 0.1" : "WH3 burn 0.5", [&, burn](float mode, float hue_clip) {
@@ -1012,7 +1059,8 @@ int main(int argc, char** argv) {
   REQUIRE(SUCCEEDED(device->CreateSamplerState(&sampler_desc, &linear_clamp)));
 
   std::map<std::string, Pair> shaders;
-  for (const char* name : {"a_t00", "a_t01", "a_t02", "a_t03", "a_t04", "a_t05", "a_t06", "a_t07", "a_t08", "a_t09", "a_t10", "w_t00"}) {
+  for (const char* name : {"a_t00", "a_t01", "a_t02", "a_t03", "a_t04", "a_t05", "a_t06", "a_t07", "a_t08", "a_t09", "a_t10", "w_t00", "r_t00",
+                           "r_t01"}) {
     shaders[name] = {LoadPixelShader(before / (std::string(name) + ".cso")), LoadPixelShader(after / (std::string(name) + ".cso"))};
   }
   const bool report_only = (argc >= 4 && std::string(argv[3]) == "--report");
@@ -1021,7 +1069,7 @@ int main(int argc, char** argv) {
     TestHueClip(after);
   }
   const Shader curves = LoadPixelShader(after / "hue_curves.cso");
-  const Chain chain = {&shaders["a_t00"], &shaders["a_t01"], &shaders["w_t00"], &curves};
+  const Chain chain = {&shaders["a_t00"], &shaders["a_t01"], &shaders["w_t00"], &curves, &shaders["r_t00"], &shaders["r_t01"]};
   if (!report_only) TestPsychoV35(chain);
   ReportHue(chain);
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);

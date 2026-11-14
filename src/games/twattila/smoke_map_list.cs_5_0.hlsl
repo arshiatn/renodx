@@ -30,9 +30,11 @@ void main(uint3 id : SV_DispatchThreadID)
   const float radius = 0.5f * sqrt(max(size.x * size.y, 0.f));
   // As rt_smoke: less than 0.05 m^2 of full opacity (arrows' trails) shows no shadow.
   if (!(opacity * radius * radius * 4.f >= 0.05f) || !all(isfinite(centre))) return;
+#ifndef SMOKE_MAP_WITHOUT_BEHAVIOURS  // Rome II: its smoke effects' quads hold no emitter, and no weather is among them
   // The textures' weather (vfx00): snow (slice 1) and the fog and haze kept around the camera (slice 7) cast none.
   const uint4 behaviour = behaviour_mask[min((uint)size.w, 511u)];
   if ((behaviour.x & 0x20000u) != 0u && (behaviour.y == 1u || behaviour.y == 7u)) return;
+#endif
   const float2 at = float2(dot(centre, map.right), dot(centre, map.up)) - map.origin;
   const float half_coverage = map.coverage * 0.5f;
   const float texel = map.coverage / SMOKE_MAP_SIZE;

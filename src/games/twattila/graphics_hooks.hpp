@@ -796,7 +796,8 @@ inline void Uninstall() {
 // size by the Shadows option, Max: 2048 (4 cascades), High: 2048 (3), Medium: 1024 (2), each as two immediates, the
 // width and the height (mov dword ptr [esp + 0x10 / 0x14], size), copied to +0x19c4 / +0x19c8 and made into the
 // textures. All six are the game's values x the slider; it reads them when it builds its shadows (at start and when
-// the Shadows option changes).
+// the Shadows option changes). Two Shadow Cascades Under Rays: Max's and High's cascade count (+0x98: 4, 3) and +0x84
+// (2, 1) written as Medium's (2, 0: its own writes, right after the pattern, read the same at shadow build).
 namespace shadow_map {
 
 namespace internal {
@@ -809,26 +810,42 @@ constexpr std::string_view PATTERN =
 constexpr std::array<size_t, 6> SIZE_OFFSETS = {4, 22, 87, 95, 125, 133};  // Max, High, Medium: width, height
 constexpr std::array<float, 6> GAME_SIZES = {2048.f, 2048.f, 2048.f, 2048.f, 1024.f, 1024.f};
 constexpr size_t CODE_SIZE = 137;
+// Max's and High's: +0x98 and +0x84 (the game's values in the pattern); Medium's, and its two writes of them after the pattern
+// (mov dword ptr [edi + 0x98], 2; mov dword ptr [edi + 0x84], 0): only where those follow are they written.
+constexpr std::array<size_t, 4> CASCADE_OFFSETS = {59, 69, 105, 115};
+constexpr std::array<uint32_t, 4> GAME_CASCADES = {4, 2, 3, 1};
+constexpr std::array<uint32_t, 4> TWO_CASCADES = {2, 0, 2, 0};
+constexpr std::array<uint8_t, 20> MEDIUM_CASCADES = {0xC7, 0x87, 0x98, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+                                                     0xC7, 0x87, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 static uint8_t* code = nullptr;
-static float written = 1.f;  // the scale last written
+static float written = 1.f;              // the scale last written
+static bool two_cascades_written = false;
 }  // namespace internal
 
-// The game's sizes x `scale` (every present: the code is written only when it changes).
-inline void Set(float scale) {
-  if (internal::code == nullptr || scale == internal::written) return;
+// The game's sizes x `scale`, and Max's and High's cascades as Medium's where `two_cascades` (every present: the code is
+// written only when either changes).
+inline void Set(float scale, bool two_cascades) {
+  if (internal::code == nullptr) return;
+  two_cascades = two_cascades && std::memcmp(internal::code + internal::CODE_SIZE, internal::MEDIUM_CASCADES.data(), internal::MEDIUM_CASCADES.size()) == 0;
+  if (scale == internal::written && two_cascades == internal::two_cascades_written) return;
   internal::written = scale;
+  internal::two_cascades_written = two_cascades;
   DWORD protection;
   if (VirtualProtect(internal::code, internal::CODE_SIZE, PAGE_EXECUTE_READWRITE, &protection) == FALSE) return;
   for (size_t index = 0; index < internal::SIZE_OFFSETS.size(); ++index) {
     const float size = internal::GAME_SIZES[index] * scale;
     std::memcpy(internal::code + internal::SIZE_OFFSETS[index], &size, sizeof(size));
   }
+  const auto& cascades = two_cascades ? internal::TWO_CASCADES : internal::GAME_CASCADES;
+  for (size_t index = 0; index < internal::CASCADE_OFFSETS.size(); ++index) {
+    std::memcpy(internal::code + internal::CASCADE_OFFSETS[index], &cascades[index], sizeof(cascades[index]));
+  }
   VirtualProtect(internal::code, internal::CODE_SIZE, protection, &protection);
   FlushInstructionCache(GetCurrentProcess(), internal::code, internal::CODE_SIZE);
 }
 
-// At the game's device creation, before it builds its shadows: finds the code and sets `scale`.
-inline void Install(float scale) {
+// At the game's device creation, before it builds its shadows: finds the code and sets `scale` and `two_cascades`.
+inline void Install(float scale, bool two_cascades) {
   if (internal::code == nullptr) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
@@ -842,12 +859,12 @@ inline void Install(float scale) {
     renodx::utils::log::i("[Total War] Graphics: shadow map size ",
                           internal::code != nullptr ? "found" : "not found, or changed by another mod");
   }
-  Set(scale);
+  Set(scale, two_cascades);
 }
 
-// Addon detach: the game's sizes back.
+// Addon detach: the game's sizes and cascades back.
 inline void Uninstall() {
-  Set(1.f);
+  Set(1.f, false);
 }
 
 }  // namespace shadow_map

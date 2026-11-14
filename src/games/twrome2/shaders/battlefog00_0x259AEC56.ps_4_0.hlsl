@@ -1,7 +1,10 @@
 // 0x259AEC56 (battlefog ps30_main, data_rome2.pack: data.pack's 0x890A842B is overridden): the battle's height and
 // distance fog, its colour the sun-lit fog colour blended toward the sky's. Fog & Sky Smoothing (twattila/sky_smooth.hlsli).
+// Ray tracing (Attila's): the sun-lit colour x the sun's visibility along the camera's ray, plus the torches' and fires'
+// light along it (twattila/rt_scene.hpp InstallFogShadows; rt_fog.hlsli: nothing bound, the game's fog).
 #include "../shared.h"
 #include "../../twattila/render_scale.hlsli"
+#include "../../twattila/rt_fog.hlsli"
 #include "../../twattila/sky_smooth.hlsli"
 
 cbuffer camera_VS_PS : register(b0)
@@ -65,7 +68,8 @@ void main(
   r0.z = saturate(dot(r0.zz, g_fog_colour_blend));
   r0.y = min(1, distance_to_camera / max(0.00100000005, g_fog_clear_distance));
   r0.y = r0.y * r0.y * (3 - 2 * r0.y);
-  o0.w = saturate(r0.x * r0.y);
+  // Fog Strength (Attila's): x the opacity, 1 the game's.
+  o0.w = saturate(r0.x * r0.y * SI.fog_strength);
   r1.w = max(0, r1.y);
   float3 sky = s_sky.Sample(s_sky_s, r1.xwz).xyz;
   // No fog or no sky in it: not needed.
@@ -73,7 +77,8 @@ void main(
   if (SI.sky_smooth != 0.f && r0.x > 0.f && r0.z > 0.f) {
     sky = SkySmooth(s_sky, s_sky_s, r1.xwz);
   }
-  const float3 sun_lit = sun_colour.xyz * g_volume_fog_colour.xyz * 1.5 * abs(sun_direction.y);
+  const float3 sun_lit = sun_colour.xyz * g_volume_fog_colour.xyz * 1.5 * abs(sun_direction.y) * RtFogSun(v0.xy);
   const float sun_lit_scale = (0 < g_hdr_on) ? 0.00400000019 : 1;
   o0.xyz = r0.z * (sky - sun_lit * sun_lit_scale) + sun_lit * sun_lit_scale;
+  o0.xyz += g_volume_fog_colour.xyz * RtFogLights(v0.xy) * (1.5 * sun_lit_scale);
 }

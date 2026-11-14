@@ -65,6 +65,9 @@ void main(
   r0.xyzw = v3.xyzw * r0.xyzw;
   r1.x = cmp(r1.x < 0);
   if (r1.x != 0) discard;
+  // Below 100% the depth read is right (vpos over the display-size target) and the NDC needs no share: it only gives the
+  // view depth, through inv_projection's z / w columns, whose x / y terms are 0 for any (jittered) perspective (ATN's 50%
+  // trace A1_01: c19.xy, c20.xy 0).
   r1.xy = g_vpos_texel_offset + v0.xy;
   r1.xy = g_screen_size.zw * r1.xy;
   r2.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r1.xy, 0).yzxw;

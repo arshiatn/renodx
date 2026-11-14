@@ -62,6 +62,8 @@ float4 GameAmbientOcclusion(float4 v0)
   r0.zw = g_vpos_texel_offset + v0.xy;
   r1.xy = g_screen_size.zw * r0.zw;
   r2.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r1.xy, 0).yzxw;
+  // Below 100% this NDC and the eight below need no share (as highlightindicator00's): it only gives the view depth, through inv_projection's
+  // z / w columns, whose x / y terms are 0 for any (jittered) perspective (ATN's 50% trace A1_01: c19.xy, c20.xy 0).
   r2.xy = r1.xy * float2(2,-2) + float2(-1,1);
   r2.w = 1;
   r1.z = dot(r2.xyzw, inv_projection._m02_m12_m22_m32);

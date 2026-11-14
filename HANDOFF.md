@@ -408,7 +408,13 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   frame while playing: ATN's app setting), trim per-draw callbacks, grass numbers, Light Bounce Half (-1.2 ms, ATN), fewer
   hand-offs (design), smoke cap (needs a stress mode). No gain: SER, cluster build flags. WH3 harness 8.4-8.5 ms. Agent next:
   callbacks trim, cascade row, smoke stress mode, hand-off design. ns-replay-mode 25125baa + 8357ef5c MERGED 29b54d18
-  (all_modes 179 / 179).
+  (all_modes 179 / 179). Code items MERGED 77958ae7: light readback key sort + order reuse (identical; -0.5 ms amd64, up to
+  -0.84 ms when the lights repeat), Attila Two Shadow Cascades Under Rays (Experimental; tw_unit_shadows part 6 over the
+  shipped dll bytes). Hot callbacks (cpl2): OnDrawIndexed 2.22 ms (no identical cut: redesign), Capture 0.90, light sort 0.84,
+  DrawObjectMotion 0.63; workers OnDrawScrub 1.79, ScaleModelLods 1.16. Smoke stress: cap 262,144 = build 1.80 ms;
+  PREFER_FAST_BUILD -0.66 ms (not bit-identical). Hand-off design: merge requests 0.1-0.3 ms; 2.9 ms untimed helper work.
+  BITDEFENDER: blocked a scratch x86 benchmark exe of the Nsight agent; path stopped, exe deleted; ATN TOLD. Agent resumed:
+  smoke fast-build row (Experimental), the 2.9 ms helper work.
 - [ ] ATN ~11:4x: the skill checks the whole dump for render scale (scale_census.py) but casters only in traces: agent
   (cdc_, worktree) adds caster_census.py --whole-dump (every VS classified, held / NOT HELD / not a caster), validates on
   Attila + Pharaoh e34c6089 palms, runs it for nine games (tools/tw/round_notes/caster_dump_<game>.txt), skill lines; results
@@ -436,6 +442,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Pharaoh / Rome II (par_old_: tools/tw/round_notes/parity_<game>_1114.md). After the merges: one shared step moves the torch
   rows from Path Tracing (RayTracedLightsInBounce / RayTracedLightShadowRatio) into graphics_page for every game that can
   carry them. Merge one branch at a time, verify the merged tree once, stamp, install.
+- [x] Rome II parity round MERGED 8b8ba21d (275 keyed rows: HAVE 224 -> 239; SDR preset + vanilla unit sizes, Far Tree /
+  campaign tree / Sprite Soldier Shadows, Fog Strength, Texture LOD Bias, Smoke Shadows without rays, soldier shadow distance 0
+  under the skip, cloth / sails / ropes in the rays + Bend thin rows + Smooth Banner Shadows, Fog Shadows + Torch Light in Fog,
+  Small Soldiers as Sprites + Sprite Size, Light Through Foliage incl. MSAA; caster census NOT HELD 20 -> 4; shared shader
+  ifndefs opt-in (Attila / Thrones bytes SAME); SettingsRevision 2). Hue Clip measured 90 for Rome II (default stays 80: ATN
+  DECIDES). Agent resumed: SSR rows, 14 unclear sun rows, DrawScrub skip, banner material read, grass reach.
+- [x] ATN ~15:30: "include everything, not everyone plays at highest settings": rule in the skill (d5b92cdb), memory
+  feedback_every_setting, sent to every running agent; Thrones resumed for the 4 sm4 / 4.1 SSR shaders below 100 %.
 - [x] Pharaoh parity round MERGED 74568884 (SDR preset + first start, Depth of Field, Texture LOD Bias (Experimental), Smoke
   Shadows without rays (Experimental; off while the rays' sun shadows run), Smooth Banner Shadows (RT/PT on), Hue Clip measured:
   fire best at 70 (burn 0.2) / 80 (burn 0): default stays 80; campaign billboards CE5AA8D1 (Troy's capture, WARP 4.3e-5 m) +
@@ -452,8 +466,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Indicator Brightness (Experimental; MBOIT resolve 492ED8DA left out), four own-flag tests (Far Tree Block Shadows, Point Light
   Shadow Maps, Debris Shadows, Ragdolls), traced casters 03298FD5 + 1C3500F0 held (census 44 -> 46), 54 engine rows level A
   (name scan); Modded Auto Exposure WON'T (the game's AE is off: buffer 0 in 39 traces); Fog & Sky Smoothing WON'T (fog reads
-  no cube); scale census at HEAD mostly N/A (WH3 owns its scale, no view_share)). Agent resumed: scale_census view_share
-  check, MBOIT particle edges on WARP, water march step cap.
+  no cube); scale census at HEAD mostly N/A (WH3 owns its scale, no view_share)). Round 2 MERGED 10b3c753: scale_census.py
+  checks view_share before patch verdicts + parses uint64_t slots (skill script; WH3 BUG 10 -> 2, Pharaoh only its 4
+  building-water rows to OK), Reflection Quality (Experimental, march step cap), Modded Auto Exposure (Experimental; the exe
+  can turn its AE on), Indicator Brightness on the MBOIT resolve, suite test/tw_warhammer3_shaders (casters, march, AE).
+  Particle edges STOPPED (effect meshes in the half layer: every material replayed; gain half a texel). WH3 agent DONE.
 - [x] Troy parity round MERGED 9095731c (table tools/tw/troy/parity_1114.md: 20 have / 4 done now / 6 trace / 12 won't / 7 open;
   BUG: all 400 Graphics 2 of 2 rows did nothing (the shared lea-name finder matched 0 of 167 heap-copied names + 4 unresolved
   audio at-start tests blocked every slider): twtroy/tweak_objects.hpp finds them by Troy's initializers (memory image),
