@@ -65,6 +65,7 @@
 #include "./rt_outside_view_unit_gs.h"
 #include "./rt_outside_view_world_gs.h"
 #include "../twwarhammer2/rt_outside_view_world_uv_gs.h"
+#include "./fog_strength.hpp"
 #include "./rt_particle_quads_gs.h"
 #include "./shared.h"
 
@@ -138,6 +139,9 @@ void ApplyResetPreset() {
       {"godrays", 1.f},
       {"vignette", 1.f},
       {"dof", 1.f},
+      {"fog_strength", 1.f},
+      {"sky_smooth", 0.f},
+      {"sky_smooth_strength", 1.f},
       {"distortion", 1.f},
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
@@ -423,6 +427,9 @@ void OnDestroyDevice(reshade::api::device* device) {
 // baked map t0): Fog Shadows' (OnFogShadowsDraw). The other permutations (fetch4, gather 4.1, pcf, baked shadows only) were
 // drawn in no trace: left as the game's. WARP on the game's bytes: tools\tw\warp_tests\pharaoh\fog_v54.
 constexpr std::array<uint32_t, 1> FOG_SHADERS = {0x598C59F3};
+// Fog & Sky Smoothing: the legacy fog (dx11_battlefog main, dx11_legacybattlefog main_ms; in no trace), the only fog passes that read
+// the sky cube (shaders/legacyfog00 / 01, OnSkySmoothDraw).
+constexpr std::array<uint32_t, 2> SKY_SMOOTH_SHADERS = {0xD9F9A6C9, 0x51EC7FE0};
 
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
@@ -449,6 +456,8 @@ void BuildRuntimeData() {
   };
   // The fog's in-scattering stays the game's: our copy is bound only for Fog Shadows' draws (OnFogShadowsDraw).
   custom_shaders.erase(FOG_SHADERS[0]);
+  // The legacy fog: ours only with Fog & Sky Smoothing on (OnSkySmoothDraw).
+  for (const uint32_t hash : SKY_SMOOTH_SHADERS) custom_shaders.erase(hash);
   // So does the water's reflection apply: ours only where the rays left from the water or below 100%
   // (twattila/water_reflections.hpp OnWaterApplyDraw).
   custom_shaders.erase(0xDE4F92CD);
@@ -1070,6 +1079,40 @@ void BuildRuntimeData() {
         .format = "%.2f",
     },
     new renodx::utils::settings::Setting{
+        .key = "fog_strength",
+        .binding = &shader_injection.fog_strength,
+        .default_value = 1.f,
+        .label = "Fog Strength",
+        .section = "Extra",
+        .tooltip = "How thick the game's fog and haze are. 0 = none, 1 = the game's, 2 = double.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+    },
+    new renodx::utils::settings::Setting{
+        .key = "sky_smooth_strength",
+        .binding = &shader_injection.sky_smooth_strength,
+        .default_value = 1.f,
+        .label = "Fog & Sky Smoothing Strength",
+        .section = "Extra",
+        .tooltip = "How wide Fog & Sky Smoothing below reaches. 1 = default.",
+        .min = 0.f,
+        .max = 2.f,
+        .format = "%.2f",
+        .is_enabled = [] { return shader_injection.sky_smooth != 0.f; },
+    },
+    new renodx::utils::settings::Setting{
+        .key = "sky_smooth",
+        .binding = &shader_injection.sky_smooth,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Fog & Sky Smoothing (Experimental)",
+        .section = "Extra",
+        .tooltip = "Removes the vertical lines and blocks the game's low-resolution sky leaves in thick fog\n"
+                   "(the older fog some maps use). Higher: smoother, a little heavier.",
+        .labels = {"Off", "Low", "Medium", "High"},
+    },
+    new renodx::utils::settings::Setting{
         .key = "distortion",
         .binding = &shader_injection.uvdistort,
         .default_value = 1.f,
@@ -1614,6 +1657,137 @@ void OnDestroyFogShadowsDevice(reshade::api::device* device) {
   state.device = nullptr;
 }
 
+// Fog Strength (fog_strength.hpp): the fog's last passes, every permutation, patched as the game creates them (after the
+// render scale's patch: its hash still the game's); each of their draws gets the strength above one at cb8 (0 at 1: the
+// game's bits, WARP: tools\tw\warp_tests\pharaoh\fog_v54 strength), the draw's own cb8 back after it.
+struct FogStrength {
+  std::mutex mutex;
+  std::unordered_map<uint32_t, std::vector<uint8_t>> patched;  // by the game's hash; kept for the pipelines made from it
+  ID3D11Device* device = nullptr;  // the buffer's (compared only)
+  Microsoft::WRL::ComPtr<ID3D11Buffer> above_one;
+  float uploaded = 0.f;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> game_buffer;
+};
+FogStrength fog_strength_state;
+
+bool OnCreateFogStrengthPipeline(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
+                                 const reshade::api::pipeline_subobject* subobjects) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return false;
+  bool modified = false;
+  for (uint32_t index = 0; index < subobject_count; ++index) {
+    if (subobjects[index].type != reshade::api::pipeline_subobject_type::pixel_shader) continue;
+    auto* desc = static_cast<reshade::api::shader_desc*>(subobjects[index].data);
+    if (desc == nullptr || desc->code == nullptr || desc->code_size == 0) continue;
+    const std::span<const uint8_t> code(static_cast<const uint8_t*>(desc->code), desc->code_size);
+    const uint32_t hash = twattila::view_share::OriginalHash(desc->code).value_or(renodx::utils::hash::ComputeCRC32(code.data(), code.size()));
+    const auto shader = std::ranges::find(fog_strength::SHADERS, hash, &fog_strength::Shader::hash);
+    if (shader == fog_strength::SHADERS.end()) continue;
+    const std::unique_lock lock(fog_strength_state.mutex);
+    auto [entry, added] = fog_strength_state.patched.try_emplace(hash);
+    if (added) {
+      entry->second = fog_strength::Patch(code, shader->kind);
+      renodx::utils::log::i(std::format("[Total War] Fog Strength: fog shader {:08X} {}.", hash, entry->second.empty() ? "not patched" : "patched"));
+    }
+    if (entry->second.empty()) continue;
+    twattila::view_share::Repatched(desc->code, entry->second.data(), hash);
+    desc->code = entry->second.data();
+    desc->code_size = entry->second.size();
+    modified = true;
+  }
+  return modified;
+}
+
+constexpr auto OnFogStrengthDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr) return {};
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& state = fog_strength_state;
+  const std::unique_lock lock(state.mutex);
+  const std::array<float, 4> above_one = {shader_injection.fog_strength - 1.f, 0.f, 0.f, 0.f};
+  if (state.device != device.Get()) {
+    state.above_one.Reset();
+    state.device = nullptr;
+    const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(above_one), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = above_one.data()};
+    if (FAILED(device->CreateBuffer(&desc, &data, state.above_one.GetAddressOf()))) return {};
+    state.device = device.Get();
+    state.uploaded = above_one[0];
+  } else if (state.uploaded != above_one[0]) {
+    native->UpdateSubresource(state.above_one.Get(), 0, nullptr, above_one.data(), 0, 0);
+    state.uploaded = above_one[0];
+  }
+  native->PSGetConstantBuffers(fog_strength::SLOT, 1, state.game_buffer.ReleaseAndGetAddressOf());
+  native->PSSetConstantBuffers(fog_strength::SLOT, 1, state.above_one.GetAddressOf());
+  return {.post_callback = [](Context& post, const void*) {
+    auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
+    const std::unique_lock post_lock(fog_strength_state.mutex);
+    if (post_native != nullptr) post_native->PSSetConstantBuffers(fog_strength::SLOT, 1, fog_strength_state.game_buffer.GetAddressOf());
+    fog_strength_state.game_buffer.Reset();
+  }};
+};
+
+// Its buffer's device (nullptr: the addon's end, DetachAddon).
+void OnDestroyFogStrengthDevice(reshade::api::device* device) {
+  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
+  const std::unique_lock lock(fog_strength_state.mutex);
+  if (device != nullptr && fog_strength_state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
+  fog_strength_state.above_one.Reset();
+  fog_strength_state.game_buffer.Reset();
+  fog_strength_state.device = nullptr;
+}
+
+// Fog & Sky Smoothing (SKY_SMOOTH_SHADERS): with the row on, our copy of the legacy fog (its sky cube smoothed, Fog Strength
+// from the same cb8) draws in place of the game's, which is bound again after it; off, the game's own bytes.
+struct SkySmoothing {
+  std::mutex mutex;
+  ID3D11Device* device = nullptr;  // ours' (compared only)
+  std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, SKY_SMOOTH_SHADERS.size()> ours;
+  Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;
+};
+SkySmoothing sky_smoothing;
+constexpr auto OnSkySmoothDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (shader_injection.sky_smooth == 0.f || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr) return {};
+  const size_t index = &command.template GetCallbackData<uint32_t>() - SKY_SMOOTH_SHADERS.data();
+  const std::array<std::span<const uint8_t>, SKY_SMOOTH_SHADERS.size()> codes = {__0xD9F9A6C9, __0x51EC7FE0};
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& state = sky_smoothing;
+  const std::unique_lock lock(state.mutex);
+  if (state.device != device.Get()) {
+    for (auto& shader : state.ours) shader.Reset();
+    state.device = device.Get();
+  }
+  if (!state.ours[index] && FAILED(device->CreatePixelShader(codes[index].data(), codes[index].size(), nullptr, state.ours[index].GetAddressOf()))) {
+    return {};
+  }
+  native->PSGetShader(state.game_shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
+  native->PSSetShader(state.ours[index].Get(), nullptr, 0);
+  return {.post_callback = [](Context& post, const void*) {
+    auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
+    const std::unique_lock post_lock(sky_smoothing.mutex);
+    if (post_native != nullptr) post_native->PSSetShader(sky_smoothing.game_shader.Get(), nullptr, 0);
+    sky_smoothing.game_shader.Reset();
+  }};
+};
+
+// Our shaders' device (nullptr: the addon's end, DetachAddon).
+void OnDestroySkySmoothDevice(reshade::api::device* device) {
+  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
+  const std::unique_lock lock(sky_smoothing.mutex);
+  if (device != nullptr && sky_smoothing.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
+  for (auto& shader : sky_smoothing.ours) shader.Reset();
+  sky_smoothing.game_shader.Reset();
+  sky_smoothing.device = nullptr;
+}
+
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
 bool graphics_found = false;
@@ -1746,7 +1920,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 8> CUT_OUT_MASKS = {{
 // The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do the far forest's
 // blocks (rigidtreebillboard vs40_main_block FE92BA2D): cards facing the camera with no shadow-pass draw, the forest's
 // shadow there the game's kept baked map.
-constexpr std::array<twattila::rt_scene::SceneShader, 29> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 31> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1771,6 +1945,11 @@ constexpr std::array<twattila::rt_scene::SceneShader, 29> SCENE_SHADERS = {{
     // Cloth (phar_rigid_battle_cloth_wind) and flags (rigid_default_flag): sheets moved by the time and the wind, every frame.
     {.hash = 0x2F2A0E7E, .capture_shader = __rt_capture_cloth_wind, .dynamic = true, .thin = true},
     {.hash = 0x8DE94E2F, .capture_shader = __rt_capture_flag, .dynamic = true, .thin = true},
+    // Sails (sail vs40_main) and ropes (rope vs40_main): moved by the CPU, captured every frame as Attila's sails (their world
+    // positions from the game's code, make_wind_motion_vs.py :world; WARP: motion_warp, warp_tests\pharaoh\par_p\run_sail_rope).
+    // In no trace (level B): the sail symbols (88A29130, a decal on the sail) stay out.
+    {.hash = 0xED0BC391, .capture_shader = __rt_capture_sail, .dynamic = true, .thin = true},
+    {.hash = 0xDD5D5694, .capture_shader = __rt_capture_rope, .dynamic = true, .thin = true},
     {.hash = 0xFF969484, .capture_shader = __rt_capture_unit, .dynamic = true},
     {.hash = 0x4A716936, .capture_shader = __rt_capture_unit_4_bones, .dynamic = true},
     {.hash = 0x475A8CDF, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
@@ -1790,7 +1969,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 29> SCENE_SHADERS = {{
     {.hash = 0xEB2A56A1, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 2, .cascade_keep = __rt_outside_view_card},
     // The campaign's trees and plants in the shadow pass (rigidcampaignvegetation vs40_shadow; ATN's 2026-11-14 campaign trace
     // ATN_UP_181940: 1 of 24): Warhammer II's 7D979F60 with its wind constants elsewhere (the same outputs and writes; shadow PS
-    // C7350ED5 = its 5906CF6E): TEXCOORD0 the world, TEXCOORD1 the UV of the t0 test (alpha below 0.5).
+    // C7350ED5 = its 5906CF6E): TEXCOORD0 the world, TEXCOORD1 the UV of the t0 test (alpha below 0.5). WARP on its own bytes:
+    // tools\tw\warp_tests\outside_view_pharaoh_veg.
     {.hash = 0x3368E9E7, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
 }};
 
@@ -2820,6 +3000,18 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyFogShadowsDevice);
   renodx::utils::command_action::Register(
       OnFogShadowsDraw, {.shader_hash = FOG_SHADERS[0], .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  // Fog Strength: after the render scale's create callback (view_share), so its patch goes on top of that one.
+  renodx::utils::pipeline::RegisterOnCreateCallback(OnCreateFogStrengthPipeline);
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyFogStrengthDevice);
+  for (const auto& shader : fog_strength::SHADERS) {
+    renodx::utils::command_action::Register(
+        OnFogStrengthDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroySkySmoothDevice);
+  for (const uint32_t& hash : SKY_SMOOTH_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnSkySmoothDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &hash);
+  }
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
@@ -2867,6 +3059,13 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(OnFogShadowsDraw);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyFogShadowsDevice);
   OnDestroyFogShadowsDevice(nullptr);
+  renodx::utils::pipeline::UnregisterOnCreateCallback(OnCreateFogStrengthPipeline);
+  renodx::utils::command_action::Unregister(OnFogStrengthDraw);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyFogStrengthDevice);
+  OnDestroyFogStrengthDevice(nullptr);
+  renodx::utils::command_action::Unregister(OnSkySmoothDraw);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroySkySmoothDevice);
+  OnDestroySkySmoothDevice(nullptr);
   twattila::light_count::Uninstall();
   renodx::utils::command_action::Unregister(OnSkyDomeGuides);
   twattila::water_reflections::Uninstall();
