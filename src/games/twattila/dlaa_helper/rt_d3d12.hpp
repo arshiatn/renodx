@@ -67,9 +67,13 @@
 #include "rt_fog.h"               // dxc -Fh (build.ps1)
 #include "rt_lights.h"            // dxc -Fh (build.ps1)
 #include "rt_lights_omm.h"        // dxc -Fh (build.ps1)
+#include "rt_lights_bounce.h"     // dxc -Fh (build.ps1)
+#include "rt_lights_bounce_omm.h" // dxc -Fh (build.ps1)
 #include "rt_fog_omm.h"           // dxc -Fh (build.ps1)
 #include "rt_path.h"              // dxc -Fh (build.ps1)
 #include "rt_path_omm.h"          // dxc -Fh (build.ps1)
+#include "rt_path_lights.h"       // dxc -Fh (build.ps1)
+#include "rt_path_lights_omm.h"   // dxc -Fh (build.ps1)
 #include "rt_path_ser.h"          // dxc -Fh (build.ps1)
 #include "rt_place.h"             // dxc -Fh (build.ps1)
 #include "rt_omm_uvs.h"           // dxc -Fh (build.ps1)
@@ -78,6 +82,8 @@
 #include "rt_reflect_omm.h"       // dxc -Fh (build.ps1)
 #include "rt_reuse.h"             // dxc -Fh (build.ps1)
 #include "rt_reuse_omm.h"         // dxc -Fh (build.ps1)
+#include "rt_reuse_lights.h"      // dxc -Fh (build.ps1)
+#include "rt_reuse_lights_omm.h"  // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir.h"      // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir_omm.h"  // dxc -Fh (build.ps1)
 #include "rt_scene_data.h"        // dxc -Fh (build.ps1)
@@ -627,6 +633,17 @@ class RtScene12 {
         || !pipeline(RT_REFLECT_FILTER, sizeof(RT_REFLECT_FILTER), &reflect_filter_pipeline_)
         || FAILED(device_->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(descriptors_.GetAddressOf())))) {
       return Fail("Ray tracing: the trace shaders failed (needs shader model 6.5)");
+    }
+    // Torch and Fire Light in the Light Bounce's builds (TORCHES_IN_BOUNCE; none: its rows do nothing).
+    if (!(dxr12_ ? pipeline(RT_PATH_LIGHTS_OMM, sizeof(RT_PATH_LIGHTS_OMM), &path_lights_pipeline_)
+                       && pipeline(RT_REUSE_LIGHTS_OMM, sizeof(RT_REUSE_LIGHTS_OMM), &reuse_lights_pipeline_)
+                       && pipeline(RT_LIGHTS_BOUNCE_OMM, sizeof(RT_LIGHTS_BOUNCE_OMM), &lights_bounce_pipeline_)
+                 : pipeline(RT_PATH_LIGHTS, sizeof(RT_PATH_LIGHTS), &path_lights_pipeline_)
+                       && pipeline(RT_REUSE_LIGHTS, sizeof(RT_REUSE_LIGHTS), &reuse_lights_pipeline_)
+                       && pipeline(RT_LIGHTS_BOUNCE, sizeof(RT_LIGHTS_BOUNCE), &lights_bounce_pipeline_))) {
+      path_lights_pipeline_.Reset();
+      reuse_lights_pipeline_.Reset();
+      lights_bounce_pipeline_.Reset();
     }
     clusters_ = clusters_ && pipeline(RT_COMPACT, sizeof(RT_COMPACT), &compact_pipeline_);
     // DXR 1.2: the paths and reflections as ray generation shaders for Path Tracing SER (none: their compute shaders).
@@ -1410,7 +1427,8 @@ class RtScene12 {
         if (reflections && specular_history_valid_ && specular_frame_ + 1 == frame) flags |= PATH_SPECULAR_HISTORY;
         // Reflection Reuse from ReSTIR GI (v19): this frame's reservoirs (the Light Bounce's request before this one used set
         // reuse_parity_ then and turned it).
-        if (reflections && version >= 19 && (requested & dlaa_bridge::RT_REFLECTIONS_REUSE) != 0 && reuse_frame_ == frame) {
+        // Not from Torch and Fire Light in the Light Bounce's reservoirs (their local lights' samples).
+        if (reflections && version >= 19 && (requested & dlaa_bridge::RT_REFLECTIONS_REUSE) != 0 && reuse_frame_ == frame && reuse_lights_mode_ == 0) {
           flags |= PATH_REFLECT_REUSE | (reuse_parity_ == 0 ? PATH_REUSE_PARITY : 0u);
         }
         // Own ReSTIR (v19, helpers 55 on): the reflections' own reservoirs, made once a frame (set reflect_parity_, then
@@ -1498,8 +1516,11 @@ class RtScene12 {
         const uint32_t lights_asked = ((requested & dlaa_bridge::RT_PATH_LIGHTS_IN_BOUNCE) != 0)
                                           ? (((requested & dlaa_bridge::RT_PATH_LIGHT_RATIO) != 0) ? 3u : std::max(lights_test, 1u))
                                           : lights_test;
-        const bool ratio_written = path_traced && reuse && light_count != 0 && lights_asked == 3u && EnsureHistory(HISTORY_RATIO, frame);
-        const uint32_t lights_mode = (path_traced && reuse && light_count != 0 && (lights_asked != 3u || ratio_written)) ? lights_asked : 0u;
+        const bool lights_possible = path_lights_pipeline_ && path_traced && reuse && light_count != 0;
+        const bool ratio_written = lights_possible && lights_asked == 3u && EnsureHistory(HISTORY_RATIO, frame);
+        const uint32_t lights_mode = (lights_possible && (lights_asked != 3u || ratio_written)) ? lights_asked : 0u;
+        // Last frame's reservoirs from another mode hold other samples: a new history.
+        if (reuse_lights_mode_ != lights_mode) flags &= ~PATH_REUSE_HISTORY;
         PathConstants constants = {
             .bounce_width = render_pixels ? width : shared.rt_bounce_width,
             .bounce_height = render_pixels ? height : shared.rt_bounce_height,
@@ -1548,7 +1569,8 @@ class RtScene12 {
         // SHaRC Radiance Cache (bridge v18, with Path Tracing): its buffers at u6-u8, its update (a bounce texel of each
         // SHARC_BLOCK x SHARC_BLOCK) and resolve, then the paths read it (their SHaRC variant). Not the reflections: their
         // SHaRC variant hung the GPU at 4K in the harness (the 5090).
-        bool sharc = sharc_path_pipeline_ && path_traced && version >= 18 && (requested & dlaa_bridge::RT_PATH_SHARC) != 0;
+        // (Not with Torch and Fire Light in the Light Bounce: its paths' build has no SHaRC.)
+        bool sharc = sharc_path_pipeline_ && path_traced && lights_mode == 0 && version >= 18 && (requested & dlaa_bridge::RT_PATH_SHARC) != 0;
         for (size_t index = 0; index < sharc_buffers_.size() && sharc; ++index) {
           sharc = GrowBuffer(&sharc_buffers_[index], uint64_t{SHARC_ENTRIES} * SHARC_STRIDES[index], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         }
@@ -1587,10 +1609,10 @@ class RtScene12 {
         if (path_traced && sharc) {
           list->SetPipelineState(sharc_path_pipeline_.Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
-        } else if (path_traced && ser) {
+        } else if (path_traced && ser && lights_mode == 0) {
           dispatch_rays(0, shared.rt_bounce_width, shared.rt_bounce_height);
         } else if (path_traced) {
-          list->SetPipelineState(path_pipeline_.Get());
+          list->SetPipelineState((lights_mode != 0 ? path_lights_pipeline_ : path_pipeline_).Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
         } else if (fills_cache) {
           Mark(list, L"bounce");
@@ -1606,9 +1628,10 @@ class RtScene12 {
         if (reuse) {
           list->ResourceBarrier(1, &uav_barrier);
           Mark(list, L"reuse");
-          list->SetPipelineState(reuse_pipeline_.Get());
+          list->SetPipelineState((lights_mode != 0 ? reuse_lights_pipeline_ : reuse_pipeline_).Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
           reuse_frame_ = frame;
+          reuse_lights_mode_ = lights_mode;
           reuse_parity_ ^= 1u;
           reuse_size_ = reuse_size;
           if (ratio_written) {
@@ -4674,7 +4697,8 @@ class RtScene12 {
 #endif
     // Torch and Fire Light in the Light Bounce (helper111): the paths take the first 32 lights; rt_lights leaves them dark,
     // or with RT_LIGHT_RATIO (Torch and Fire Shadows from the Light Bounce) writes the last bounce's shadow ratio.
-    const bool lights_in_bounce = local_lights && ((shared.rt_flags & dlaa_bridge::RT_LIGHTS_IN_BOUNCE) != 0 || LightsInBounceTest() != 0);
+    const bool lights_in_bounce = local_lights && lights_bounce_pipeline_ && reuse_lights_mode_ != 0 && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 >= frame
+                                  && ((shared.rt_flags & dlaa_bridge::RT_LIGHTS_IN_BOUNCE) != 0 || LightsInBounceTest() != 0);
     const bool light_ratio = lights_in_bounce && ((shared.rt_flags & dlaa_bridge::RT_LIGHT_RATIO) != 0 || LightsInBounceTest() == 3u);
     const uint32_t lights_mode = light_ratio ? 3u : (lights_in_bounce ? 1u : 0u);
     const bool ratio_kept = light_ratio && light_ratio_[0] && EnsureHistory(HISTORY_RATIO, frame) && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame;
@@ -4743,7 +4767,7 @@ class RtScene12 {
     // The local lights' shadows (rt_lights: their own registers; before this trace's positions become the history).
     if (local_lights) {
       Mark(list, L"local lights");
-      list->SetPipelineState(lights_pipeline_.Get());
+      list->SetPipelineState((lights_in_bounce ? lights_bounce_pipeline_ : lights_pipeline_).Get());
       list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
     }
     if (ambient_kept) {
@@ -5967,6 +5991,10 @@ class RtScene12 {
   uint32_t previous_light_count_ = 0;
   ComPtr<ID3D12PipelineState> fog_pipeline_;
   ComPtr<ID3D12PipelineState> lights_pipeline_;
+  // Torch and Fire Light in the Light Bounce (TORCHES_IN_BOUNCE builds): the local lights' trace, the paths, their reuse.
+  ComPtr<ID3D12PipelineState> lights_bounce_pipeline_;
+  ComPtr<ID3D12PipelineState> path_lights_pipeline_;
+  ComPtr<ID3D12PipelineState> reuse_lights_pipeline_;
   ComPtr<ID3D12PipelineState> bounce_pipeline_;
   // Paths (v8): last frame's colour (the DLAA input), the G-buffer guides, the reflections' outputs; the history and the
   // cache of the helper's own; the pipelines.
@@ -6024,18 +6052,19 @@ class RtScene12 {
   std::array<ComPtr<ID3D12Resource>, 2> reuse_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
   uint32_t reuse_frame_ = UINT32_MAX;  // the frame the reservoirs were last made in
+  uint32_t reuse_lights_mode_ = 0;     // their Torch and Fire Light in the Light Bounce mode (rt_camera.hlsli LIGHTS_MODE; 0: none)
   uint32_t reuse_parity_ = 0;          // this frame's set
   std::array<uint32_t, 3> reuse_size_ = {};  // the bounce's size and scale they are at
   std::array<ComPtr<ID3D12Resource>, 2> own_sky_;  // Path-Traced Ambient's own sky at the bounce texels (rt_path.hlsli ScreenSky)
   uint32_t sky_frame_ = UINT32_MAX;          // the frame the paths last wrote it in
+  uint32_t sky_parity_ = 0;                  // the set the next paths write
+  std::array<uint32_t, 3> sky_size_ = {};    // the bounce's size and scale it is at
   // Torch and Fire Shadows from the Light Bounce (rt_path.hlsli ReuseTexel, rt_lights): the ratio's two sets at the bounce
   // texels, the set the next bounce writes, the frame and texels of the last.
   std::array<ComPtr<ID3D12Resource>, 2> light_ratio_;
   uint32_t ratio_parity_ = 0;
   uint32_t ratio_frame_ = UINT32_MAX;
   std::array<uint32_t, 3> ratio_size_ = {};
-  uint32_t sky_parity_ = 0;                  // the set the next paths write
-  std::array<uint32_t, 3> sky_size_ = {};    // the bounce's size and scale it is at
   ComPtr<ID3D12PipelineState> reflect_reservoir_pipeline_;  // Own ReSTIR's reservoirs
   std::array<ComPtr<ID3D12Resource>, 2> reflect_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reflect_data_;

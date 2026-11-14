@@ -24,6 +24,14 @@ Set-Location $out
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REUSE -D OPACITY_MICROMAPS -Fh "$out\rt_reuse_omm.h" -Vn RT_REUSE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D REFLECT_RESERVOIR -Fh "$out\rt_reflect_reservoir.h" -Vn RT_REFLECT_RESERVOIR "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D REFLECT_RESERVOIR -D OPACITY_MICROMAPS -Fh "$out\rt_reflect_reservoir_omm.h" -Vn RT_REFLECT_RESERVOIR_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+# Torch and Fire Light in the Light Bounce (TORCHES_IN_BOUNCE): the paths, their reuse and the local lights' trace with the
+# lights in ReSTIR GI's reservoirs, used only with that row (the builds above stay as without it).
+foreach ($variant in @(@('rt_path', '', 'rt_path_lights', 'RT_PATH_LIGHTS'), @('rt_path', 'REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'),
+                       @('rt_lights', '', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'))) {
+  $defines = @('-D', 'TORCHES_IN_BOUNCE') + $(if ($variant[1]) { @('-D', $variant[1]) } else { @() })
+  & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 @defines -Fh "$out\$($variant[2]).h" -Vn $variant[3] "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
+  & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 @defines -D OPACITY_MICROMAPS -Fh "$out\$($variant[2])_omm.h" -Vn "$($variant[3])_OMM" "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
+}
 & "$root\bin\dxc.exe" -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
 & "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
 # NVIDIA's SHaRC (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/SHARC: its 1.6.5 release) for SHaRC Radiance Cache when
