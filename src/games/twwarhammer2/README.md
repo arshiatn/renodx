@@ -34,6 +34,10 @@
   traces' census of every scene shader's pixel shaders) are cut by their diffuse map's alpha at 0.5, as Troy's and Pharaoh's
   (`rt_capture_rigid_standard_cut_out`; its world on the GPU: 1.4e-8 relative). The campaign's objects go through one of
   them (the shroud's material), so they are cut where their textures are.
+- **New: Light Through Foliage (Experimental, off)** for Bend's screen-space shadows, as Troy's and Pharaoh's: the
+  G-buffer's foliage bit (128 in channel 3's alpha byte, which the game's own sun shaders test). In the traces leaves, far
+  cards and grass set it, and so do the blend meshes (76B5602C, the banners' too) and the campaign's terrain-blend objects
+  (41FD3F65, 255), as the game's own code reads them (`tools/tw/wh2/material_writes_wh2.txt`).
 - **Rays Replace Shadow Maps through the shared hook** (`twattila/sun_replace_maps.hpp` with its sampler slot, s1 here):
   the same as before.
 - Checked, nothing to change: the siege's walls, buildings, units, trees and terrain are all in the rays (the caster census
@@ -51,6 +55,7 @@ Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon6
 5. Shadow Casters Out of View on, the campaign at a low camera: trees just off screen shadow into it as leaves, not cards;
    in a battle with Far Tree Shadows on, distant forests behind the camera keep their shadows.
 6. Fences, palms and bushes in a battle: their ray-traced shadows show the gaps; campaign towns' shadows as v48.
+7. Bend's shadows, Light Through Foliage 0.5: lighter shadows under trees and grass, walls and soldiers as dark as before.
 
 Not done:
 - The campaign's far terrain (above).

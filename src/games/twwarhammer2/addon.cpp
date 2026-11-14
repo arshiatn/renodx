@@ -2131,7 +2131,7 @@ void ConfigureAddon() {
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .texts = &PAGE_TEXTS,
-                                             .has_foliage_light = false,
+                                             .foliage_light_tested = false,
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
@@ -2210,6 +2210,11 @@ bool AttachAddon() {
   // sun_colour at c1 (float 4) for the paths' sky and sun (rt_sun.cs_5_0.hlsl), with Path-Traced AO's hook.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // Light Through Foliage (Experimental): the G-buffer's channel 3 alpha byte (t7 of the sun draws), bit 128, which the sun
+  // shaders' own code tests (1AB80044: and with 128 and 16). In the traces leaves (042027C6), far cards (72E40C15) and blocks
+  // (B3758A01) and the banners' and blend meshes' 76B5602C write 128, grass (2315FFAB) 144, the campaign's terrain-blend
+  // objects (41FD3F65) 255; the others 0-64 (tools/tw/wh2/material_writes_wh2.txt).
+  twattila::screen_space_shadows::foliage_material_bit = 128;
   // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's. Skip the Shadow Maps through
   // Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
   twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &rays_replace_maps_row, ATLAS_SAMPLER_SLOT);
