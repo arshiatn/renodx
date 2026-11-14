@@ -36,6 +36,11 @@
 //    and the shadow's constants by name (FORWARD_CONSTANTS): t49 unbound bit-identical to the game's bytes (atlas 0 and
 //    1), t49 = 1 over a lit atlas equal to the game's with every comparison failing (atlas 0). CONTROL: the atlas's value
 //    changes the game's output.
+// 9. Ray Reconstruction's guides (twwarhammer/aa_rr_guides: Warhammer II's file) against 230F2241's own decode of the same
+//    G-buffer: 6 oblique normals (t5's two angles, gloss 0.3) lit from +x, +y and +z (sun 1, no ambient, no specular
+//    colour): the game's diffuse per unit albedo over its length the guides' normal; the game's ambient per unit albedo
+//    (every cube side 1) with specular colour 0.3 and 0 the guides' diffuse albedo over the albedo (1 - specular colour);
+//    their roughness 1 - gloss. CONTROLS: the angles read the other way, the diffuse albedo without the specular colour.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -189,6 +194,8 @@ struct SunScene {
   Lighting lighting;
   float albedo = 0.5f;
   std::array<float, 2> normal = {0.5f, 0.5f};
+  float gloss = 0.f;
+  float specular = 0.f;  // channel 3's specular colour (its flags 0)
   float depth = 0.5f;
   UINT harmonics_width = 0;
   UINT harmonics_height = 0;
@@ -235,8 +242,9 @@ static Float4 DrawGame(std::span<const uint8_t> code, const SunScene& scene) {
       context->PSSetConstantBuffers(bind.BindPoint, 1, buffers.back().GetAddressOf());
     } else if (bind.Type == D3D_SIT_TEXTURE) {
       if (name == "t_ssao") views.push_back(View(1, 1, {Float4{1.f, 1.f, 1.f, 1.f}}));
-      else if (name == "gbuffer_channel_1_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.normal[0], scene.normal[1], 0.f, 0.f})));
+      else if (name == "gbuffer_channel_1_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.normal[0], scene.normal[1], scene.gloss, 0.f})));
       else if (name == "gbuffer_channel_2_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.albedo, scene.albedo, scene.albedo, 0.f})));
+      else if (name == "gbuffer_channel_3_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.specular, scene.specular, scene.specular, 0.f})));
       else if (name == "gbuffer_channel_4_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.depth, 0.f, 0.f, 0.f})));
       else if (name == "t_world_spherical_harmonics" && !scene.harmonics.empty()) views.push_back(View(scene.harmonics_width, scene.harmonics_height, scene.harmonics));
       else continue;
@@ -1353,6 +1361,115 @@ static void TestForwardShadows(const std::string& dump) {
               patched, identical, failing_same, controls);
 }
 
+// The guides' four outputs (diffuse albedo, specular albedo, normal, roughness) for one G-buffer texel, as
+// anti_aliasing.hpp binds them: t0-t2 channels 1-3, u0-u3 (unorm 16-bit, float, unorm 16-bit) of 4 x 4.
+static std::array<Float4, 4> RunGuides(ID3D11ComputeShader* shader, const SunScene& scene) {
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 3> channels = {
+      View(4, 4, std::vector<Float4>(16, Float4{scene.normal[0], scene.normal[1], scene.gloss, 0.f})),
+      View(4, 4, std::vector<Float4>(16, Float4{scene.albedo, scene.albedo, scene.albedo, 0.f})),
+      View(4, 4, std::vector<Float4>(16, Float4{scene.specular, scene.specular, scene.specular, 0.f}))};
+  constexpr std::array<DXGI_FORMAT, 4> FORMATS = {DXGI_FORMAT_R16G16B16A16_UNORM, DXGI_FORMAT_R16G16B16A16_UNORM, DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                                  DXGI_FORMAT_R16_UNORM};
+  std::array<ComPtr<ID3D11Texture2D>, 4> targets;
+  std::array<ComPtr<ID3D11UnorderedAccessView>, 4> uavs;
+  for (size_t index = 0; index < 4; ++index) {
+    const D3D11_TEXTURE2D_DESC desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = 1, .Format = FORMATS[index], .SampleDesc = {.Count = 1},
+                                       .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_UNORDERED_ACCESS};
+    device->CreateTexture2D(&desc, nullptr, targets[index].GetAddressOf());
+    device->CreateUnorderedAccessView(targets[index].Get(), nullptr, uavs[index].GetAddressOf());
+  }
+  std::array<ID3D11ShaderResourceView*, 3> views = {channels[0].Get(), channels[1].Get(), channels[2].Get()};
+  std::array<ID3D11UnorderedAccessView*, 4> unordered = {uavs[0].Get(), uavs[1].Get(), uavs[2].Get(), uavs[3].Get()};
+  context->CSSetShader(shader, nullptr, 0);
+  context->CSSetShaderResources(0, 3, views.data());
+  context->CSSetUnorderedAccessViews(0, 4, unordered.data(), nullptr);
+  context->Dispatch(1, 1, 1);
+  context->ClearState();
+  // Texel (1, 1) of each, as floats.
+  std::array<Float4, 4> texel = {};
+  for (size_t index = 0; index < 4; ++index) {
+    D3D11_TEXTURE2D_DESC desc = {};
+    targets[index]->GetDesc(&desc);
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.BindFlags = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Texture2D> staging;
+    device->CreateTexture2D(&desc, nullptr, staging.GetAddressOf());
+    context->CopyResource(staging.Get(), targets[index].Get());
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    const uint8_t* row = static_cast<const uint8_t*>(mapped.pData) + mapped.RowPitch;
+    if (FORMATS[index] == DXGI_FORMAT_R32G32B32A32_FLOAT) {
+      std::memcpy(texel[index].data(), row + 16, 16);
+    } else {
+      const size_t components = (FORMATS[index] == DXGI_FORMAT_R16_UNORM) ? 1 : 4;
+      for (size_t component = 0; component < components; ++component) {
+        uint16_t value = 0;
+        std::memcpy(&value, row + (components * 2) + (component * 2), 2);
+        texel[index][component] = static_cast<float>(value) / 65535.f;
+      }
+    }
+    context->Unmap(staging.Get(), 0);
+  }
+  return texel;
+}
+
+static void TestGuides(const std::string& games, const std::string& dump) {
+  const auto bytes = GameBytes(dump, 0x230F2241);
+  const std::string path = games + "/twwarhammer/aa_rr_guides.cs_5_0.hlsl";
+  const auto guides = ComputeShader(ReadText(path), path);
+  const std::string shared_path = games + "/twwarhammer2/aa_rr_guides.cs_5_0.hlsl";
+  const std::string shared = ReadText(shared_path);
+  const auto swapped = ComputeShader(Without(shared, "normal.xy * float2(", "normal.yx * float2("), shared_path);
+  const auto no_specular = ComputeShader(Without(shared, "gbuffer_colour[id.xy].rgb * (1.f - specular)", "gbuffer_colour[id.xy].rgb"), shared_path);
+  // Sun 1 along `axis` (the way to it), no ambient.
+  const auto lit_from = [](size_t axis) {
+    Lighting lighting;
+    lighting.c[1 + axis] = -1.f;
+    std::fill_n(lighting.c.begin() + 4, 3, 1.f);
+    lighting.c[44] = 1.f;
+    lighting.c[51] = 1.f;
+    return lighting;
+  };
+  Lighting sky;
+  for (size_t side = 0; side < 6; ++side) std::fill_n(sky.c.begin() + 8 + (side * 4), 3, 1.f);
+  sky.c[44] = 1.f;
+  sky.c[51] = 1.f;
+  int normal_misses = 0;
+  int albedo_misses = 0;
+  int roughness_misses = 0;
+  int swapped_differ = 0;
+  int unspecular_differ = 0;
+  float largest = 0.f;
+  const std::array<std::array<float, 2>, 6> normals = {{{0.62f, 0.55f}, {0.71f, 0.6f}, {0.83f, 0.53f}, {0.58f, 0.7f}, {0.9f, 0.66f}, {0.66f, 0.72f}}};
+  for (const auto& normal : normals) {
+    std::array<float, 3> lit = {};
+    for (size_t axis = 0; axis < 3; ++axis) lit[axis] = PerAlbedo(bytes, {.lighting = lit_from(axis), .normal = normal, .gloss = 0.3f})[0];
+    const float length = std::sqrt((lit[0] * lit[0]) + (lit[1] * lit[1]) + (lit[2] * lit[2]));
+    const auto ours = RunGuides(guides.Get(), {.albedo = 0.5f, .normal = normal, .gloss = 0.3f, .specular = 0.3f});
+    for (size_t axis = 0; axis < 3; ++axis) {
+      const float miss = std::fabs((lit[axis] / length) - ours[2][axis]);
+      largest = std::max(largest, miss);
+      normal_misses += (miss > 1e-4f) ? 1 : 0;
+    }
+    roughness_misses += (std::fabs(ours[3][0] - 0.7f) > 1e-4f) ? 1 : 0;
+    const auto other = RunGuides(swapped.Get(), {.albedo = 0.5f, .normal = normal, .gloss = 0.3f, .specular = 0.3f});
+    swapped_differ += (std::fabs(other[2][0] - ours[2][0]) + std::fabs(other[2][1] - ours[2][1]) > 1e-3f) ? 1 : 0;
+    // The ambient per unit albedo with specular colour 0.3 over the one with 0: the game's (1 - specular colour).
+    const float game_share = PerAlbedo(bytes, {.lighting = sky, .normal = normal, .specular = 0.3f})[0] / PerAlbedo(bytes, {.lighting = sky, .normal = normal})[0];
+    albedo_misses += (std::fabs((ours[0][0] / 0.5f) - game_share) > 1e-3f) ? 1 : 0;
+    const auto plain = RunGuides(no_specular.Get(), {.albedo = 0.5f, .normal = normal, .gloss = 0.3f, .specular = 0.3f});
+    unspecular_differ += (std::fabs((plain[0][0] / 0.5f) - game_share) > 1e-2f) ? 1 : 0;
+  }
+  CHECK(normal_misses == 0 && albedo_misses == 0 && roughness_misses == 0, "RR guides: normal %d, diffuse albedo %d, roughness %d misses", normal_misses,
+        albedo_misses, roughness_misses);
+  CHECK(swapped_differ == 6 && unspecular_differ == 6, "RR guides CONTROLS: angles swapped %d, no specular colour %d of 6 differ", swapped_differ,
+        unspecular_differ);
+  std::printf("RR guides against 230F2241's decode, 6 normals: normal %d misses of 18 (largest %.3g), diffuse albedo %d, roughness %d misses; "
+              "CONTROLS angles swapped %d, no specular colour %d of 6 differ\n",
+              normal_misses, largest, albedo_misses, roughness_misses, swapped_differ, unspecular_differ);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -1375,6 +1492,7 @@ int main(int argc, char** argv) {
   TestCasters(argv[1], argv[2]);
   TestPointLights(argv[1], argv[2]);
   TestForwardShadows(argv[2]);
+  TestGuides(games, argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

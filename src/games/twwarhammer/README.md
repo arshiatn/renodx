@@ -1,5 +1,13 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Phase I, round 3 (2026-11-14 morning; built only, not run in game)
+
+- **Ray Reconstruction's guides**: WH1's are Warhammer II's file and read the G-buffer as the sun shaders do (230F2241 asm
+  212-370: normals from channel 1's two angles, roughness 1 - its z, diffuse albedo the albedo x (1 - channel 3's specular
+  colour), specular albedo that colour; water writes flag 64, specular 0.04, gloss 0.95 itself). No change;
+  test/tw_warhammer_shaders part 9 proves it against the game's bytes (CONTROLS: the angles the other way, the albedo
+  without the specular colour).
+
 ### Phase I, round 2 (2026-11-14 night; built only, not run in game)
 
 - **The paths' sky from the spherical harmonics, Path-Traced AO (Experimental)**: ATN's traces have
