@@ -597,6 +597,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     resolved by hand. After the cherry-picks: rome2 / attila / thrones x86 + wh1 / wh2 x64 built; tw_rays_captures ALL
     PASSED (Rome II T + G). Lesson 25 + SKILL.md: owned pieces go into every ledger first. Waiting: the 3 Vfx particle rows
     and DrawScrub / Grass Trace NEED A TRACE; rays_preset_as_attila and Hue Clip 90 vs 80 are ATN's.
+  - [ ] WH3 DONE on its branch (f8a6353d Rarer Objects in the Rays: tessellated D5D2905E / 958EC025; 6f4c5065 Particle
+    Edges by Depth; da965fc9 Faster Reflections, ATN-approved Experimental: 1.35-1.42 -> 1.06 ms in the 4K harness, only
+    with Attila's narrower lobe; 5d570f20 unit draws' geometry in FrameTraceReads for unit round D): parity_check w exits 0
+    (0 / 79 / 123). ShadowCascades WON'T (no cascade count in WH3), SkipShadowPass SHARED STEP CPU round 4, the GS line =
+    editor wireframe (WON'T), fx_imposter 4B4AC54B NEEDS A TRACE, unit round E (TBB rows) SHARED STEP coordinator. NOT
+    MERGED yet: its test/tw_rays_captures conflicts with Rome II's; the agent merges atn-mods, combines both, reruns the
+    suite, and fixes tw_psychov35 (fails on atn-mods since Rome II's 5206dcbc put r_ shaders in part 1 with Attila's
+    bindings). Then merge.
     - [ ] caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
       so parity_check settles Rome Remastered's casters itself. Owner: coordinator, after parity round 2 (shared script)
 - Was: SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
