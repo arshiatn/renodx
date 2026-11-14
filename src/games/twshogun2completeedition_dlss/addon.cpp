@@ -16,8 +16,10 @@
 #include <format>
 #include <ranges>
 #include <shared_mutex>
+#include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <deps/imgui/imgui.h>
@@ -29,6 +31,7 @@
 #include "../../utils/platform.hpp"
 #include "../../utils/state.hpp"
 #include "./dlss_jitter.hpp"
+#include "./hdr_link.hpp"
 #include "./frame_trace.hpp"
 #include "./game_dlss.hpp"
 #include "./grass_distance.hpp"
@@ -38,10 +41,9 @@
 #include "./render_scale.hpp"
 #include "./shadow_resolution.hpp"
 #include "./terrain_detail.hpp"
-#include "../twattila/fg_camera.hpp"
+#include "../twattila/dlaa_bridge.h"
 #include "../twattila/texture_lod_bias.hpp"
 #include "./unit_detail.hpp"
-#include "../talesofarise_dlss/frame_generation.hpp"
 
 // Total War: SHOGUN 2 Complete Edition: the game's DLSS (DLAA only) toward real upscaling. Step 1: hooks on the
 // game's DLSS creation and evaluation (what it passes, in the overlay and ReShade.log) and a one-frame trace.
@@ -76,56 +78,21 @@ using Microsoft::WRL::ComPtr;
 bool registered = false;
 bool attached = false;
 bool advanced = false;  // overlay: Settings mode Advanced (ReShade.ini SettingsMode)
-// DLSS Frame Generation (Experimental, Tales' frame_generation.hpp): set at launch (config FrameGeneration).
-bool frame_generation = false;
-// Frame generation's inputs from the game's DLSS evaluation, submitted at the next present (`frame`: presents so far),
-// and the camera's motion between frames.
-struct FrameGenerationFrame {
-  std::shared_mutex mutex;
-  talesofarise::frame_generation::Inputs inputs;
-  uint64_t frame = UINT64_MAX;
-  twattila::fg_camera::Tracker camera;
-} frame_generation_frame;
-std::atomic<uint64_t> presents = 0;
-// The HDR addon's tonemappers (display size, after DLSS): frame generation's hudless colour after them.
-constexpr std::array<uint32_t, 2> TONEMAPPER_SHADERS = {0xEF060C7Cu, 0xBEDBEFD8u};
-
-// Frame generation's inputs from the game's DLSS evaluation and the main view's camera (camera_VS_PS).
-void StoreFrameGeneration(const NVSDK_NGX_D3D11_DLSS_Eval_Params& eval) {
-  std::array<float, 44 * 4> c;
-  ComPtr<ID3D11Texture2D> depth;
-  ComPtr<ID3D11Texture2D> motion;
-  if (!twshogun2::render_scale::MainCamera(&c) || eval.pInDepth == nullptr || eval.pInMotionVectors == nullptr
-      || FAILED(eval.pInDepth->QueryInterface(IID_PPV_ARGS(depth.GetAddressOf())))
-      || FAILED(eval.pInMotionVectors->QueryInterface(IID_PPV_ARGS(motion.GetAddressOf())))) {
-    return;
-  }
-  const std::unique_lock lock(frame_generation_frame.mutex);
-  frame_generation_frame.inputs = {
-      .depth = depth,
-      .motion = motion,
-      .render_width = eval.InRenderSubrectDimensions.Width,
-      .render_height = eval.InRenderSubrectDimensions.Height,
-      .jitter = {eval.InJitterOffsetX, eval.InJitterOffsetY},
-      .motion_scale = {eval.InMVScaleX, eval.InMVScaleY},
-      .reset = eval.InReset != 0,
-      .camera = frame_generation_frame.camera.Next(c.data()),
-  };
-  frame_generation_frame.frame = presents.load();
-}
-
-// After the tonemapper's draw (the display size): frame generation's hudless colour from its target.
-constexpr auto OnTonemapper = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (!talesofarise::frame_generation::Presenting()) return {};
-  return {.post_callback = [](Context& command, const void*) {
-    auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
-    if (context == nullptr) return;
-    ComPtr<ID3D11RenderTargetView> target;
-    context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
-    talesofarise::frame_generation::DrawHudless(context, target.Get(), presents.load());
-  }};
-};
+// Frame generation (Experimental, the HDR addon's: twattila/frame_generation.hpp, the RenoDX helper presents; in place
+// of Tales' in-process one, v55) and NVIDIA Reflex (twattila/reflex.hpp). ReShade.ini HelperFrameGeneration (off,
+// 2x-6x, Dynamic), FrameGenerationMethod (Auto, DLSS, FSR, XeSS), Reflex (off, on, on + boost), FrameGenerationFrameLimit,
+// FrameGenerationHudRecomposition, FrameGenerationPreset (the driver's, A-C), FrameGenerationDebugView. Overlay and
+// present thread; the evaluations read the frame generation row.
+std::atomic_int frame_generation_choice = 0;
+int frame_method_choice = 0;
+int reflex_choice = 0;
+int frame_limit = 0;
+int hud_recomposition = 1;
+int frame_preset_choice = 0;
+int frame_debug_view = 0;
+int upscale_debug_view = 0;  // UpscalingDebugView: 1 the motion the helper's upscaler gets
+constexpr std::array<uint32_t, 4> FRAME_BACKENDS = {twattila::dlaa_bridge::FG_BACKEND_AUTO, twattila::dlaa_bridge::FG_BACKEND_DLSS,
+                                                    twattila::dlaa_bridge::FG_BACKEND_FSR, twattila::dlaa_bridge::FG_BACKEND_XESS};
 // Data-run marks in ReShade.log (2026-11-14): each sun light draw's first run (the HDR addon's sunlight00-03: battle,
 // campaign map), each new render size the game's DLSS is evaluated at.
 struct SunShader {
@@ -201,6 +168,12 @@ constexpr std::array<PresetChoice, 4> PRESETS = {{
     {.value = NVSDK_NGX_DLSS_Hint_Render_Preset_L, .label = "L (Transformer 2, Slower but better than M)"},
 }};
 uint32_t preset = NVSDK_NGX_DLSS_Hint_Render_Preset_K;  // overlay
+// The helper's upscaler (Experimental, the HDR addon's: hdr_link.hpp; ReShade.ini HelperUpscaler): 0 the game's DLSS,
+// 1 DLSS, 2 FSR, 3 XeSS; with DLSS its Ray Reconstruction (AntiAliasingRayReconstruction, Attila's: off, NVIDIA's
+// preset, D, E, F).
+std::atomic_int upscaler_choice = 0;
+std::atomic_int ray_reconstruction_choice = 0;
+constexpr std::array<uint32_t, 5> RAY_RECONSTRUCTION_PRESETS = {0, 0, 4, 5, 6};  // NVSDK_NGX_RayReconstruction_Hint_Render_Preset
 // Graphics (ReShade.ini SSRResolution, read by the RenoDX HDR addon, whose shaders it changes): 0 the game's, 1 full.
 constexpr std::array<const char*, 2> SSR_RESOLUTIONS = {"Game (half the render size)", "Full"};
 int ssr_resolution = 1;  // overlay
@@ -226,6 +199,12 @@ int shadow_map_stability = 0;  // overlay
 // ReShade.ini SunShadowSoftness (HDR addon, pcss.hlsli): contact-hardening sun shadows, the sun's size in degrees; 0 the
 // game's filter. In no preset (ATN removed the uniform shadow softness: this one changes the look too).
 float sun_shadow_softness = 0.f;  // overlay
+// ReShade.ini SSSThickness, SSSContrast, SSSEdgeThreshold, SSSPrecisionOffset (HDR addon, sss.hlsli: Bend's parameters;
+// 0 the game's). Advanced settings only, in no preset.
+float sss_thickness = 0.f;       // overlay
+float sss_contrast = 0.f;        // overlay
+float sss_edge_threshold = 0.f;  // overlay
+int sss_precision_offset = 0;    // overlay
 // Ambient Occlusion (GT-VBAO) and Global Illumination (GT-VBGI, the Light Bounce): the HDR addon's
 // (twattila/lighting_settings.hpp's settings; it reads these from ReShade.ini). Defaults: ATN's recommended presets
 // (Global Illumination off).
@@ -374,18 +353,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, con
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twshogun2::frame_trace::OnPresent();
   twshogun2::terrain_detail::Apply(terrain_detail.load() == 1);
-  if (talesofarise::frame_generation::Presenting()) {
-    auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
-    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
-    const uint64_t frame = presents.load();
-    talesofarise::frame_generation::Inputs inputs;
-    {
-      const std::shared_lock lock(frame_generation_frame.mutex);
-      if (frame_generation_frame.frame == frame) inputs = frame_generation_frame.inputs;
-    }
-    talesofarise::frame_generation::Submit(context, inputs, frame);
-  }
-  ++presents;
   // The game's DLSS ran since the last present: jitter for the next frames (off with any other anti-aliasing).
   const uint64_t evaluations = twshogun2::game_dlss::Evaluations();
   const bool dlss_running = (evaluations != last_evaluations);
@@ -396,6 +363,21 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, con
     twshogun2::dlss_jitter::Store(0.f, 0.f);
   }
   twshogun2::game_dlss::SetJitter(jitter_enabled.load() && dlss_running);
+  const int ray_reconstruction = ray_reconstruction_choice.load();
+  const int frame_generation = frame_generation_choice.load();
+  twshogun2::hdr_link::SetChoices({
+      .upscaler = static_cast<uint32_t>(upscaler_choice.load()),
+      .ray_reconstruction = (ray_reconstruction != 0) ? RAY_RECONSTRUCTION_PRESETS[ray_reconstruction] + 1 : 0u,
+      // 2x-6x, Dynamic (1).
+      .frame_generation = (frame_generation >= 6) ? 1u : ((frame_generation >= 1) ? static_cast<uint32_t>(frame_generation) + 1u : 0u),
+      .frame_backend = FRAME_BACKENDS[frame_method_choice],
+      .reflex = static_cast<uint32_t>(reflex_choice),
+      .frame_limit = static_cast<uint32_t>(frame_limit),
+      .frame_preset = static_cast<uint32_t>(frame_preset_choice),
+      .hud_recomposition = hud_recomposition != 0,
+      .frame_debug_view = static_cast<uint32_t>(frame_debug_view),
+      .upscale_debug_view = static_cast<uint32_t>(upscale_debug_view),
+  });
   const float scale = twshogun2::game_dlss::UpdateFeature();
   const auto display = twshogun2::game_dlss::DisplaySize();
   const bool scaling = dlss_running && scale < 0.999f;
@@ -405,7 +387,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, con
   } else {
     twshogun2::particle_resolution::Apply(1.f);
   }
-  twshogun2::render_scale::BeginFrame(scaling, display, render, talesofarise::frame_generation::Presenting() && dlss_running);
+  twshogun2::render_scale::BeginFrame(scaling, display, render,
+                                      (upscaler_choice.load() != 0 || frame_generation_choice.load() != 0) && dlss_running);
   // Until the DLSS evaluation (its callback clears it): log2(render / display width), minus 1 (sharper) or 2.
   float bias = 0.f;
   if (const int choice = texture_lod_bias_choice.load(); scaling && choice != 0 && display[0] != 0) {
@@ -552,9 +535,68 @@ void OnOverlay(reshade::api::effect_runtime*) {
     }
     ImGui::EndCombo();
   }
-  talesofarise::frame_generation::DrawSettings("Shogun 2 DLSS", &frame_generation);
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("For every render scale. A DLSS preset override in the NVIDIA app wins over this.");
+  }
+  if (int choice = upscaler_choice.load();
+      ImGui::Combo("Upscaler (Experimental)", &choice, "Game's DLSS\0DLSS (RenoDX helper)\0FSR (RenoDX helper)\0XeSS (RenoDX helper)\0")) {
+    upscaler_choice.store(choice);
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "HelperUpscaler", choice);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("The game's DLSS, or the RenoDX helper's (renodx-tw-dlaa64.exe next to the addons, with the RenoDX HDR addon):\n"
+                      "newer DLSS with Ray Reconstruction for the ray tracing, AMD FSR or Intel XeSS. The game's Anti-aliasing on DLSS.");
+  }
+  if (upscaler_choice.load() != 0 && !twshogun2::hdr_link::UpscalerAvailable()) {
+    ImGui::TextWrapped("The RenoDX HDR addon isn't loaded: the game's DLSS runs.");
+  }
+  if (upscaler_choice.load() == 1) {
+    if (int choice = ray_reconstruction_choice.load();
+        ImGui::Combo("Ray Reconstruction (Experimental)", &choice, "Off\0NVIDIA's preset\0D\0E\0F\0")) {
+      ray_reconstruction_choice.store(choice);
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingRayReconstruction", choice);
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("DLSS Ray Reconstruction cleans the ray-traced effects (Ray Tracing below): sharper, steadier.\n"
+                        "NVIDIA only; with a ray-traced effect on.");
+    }
+  }
+  // A combo over a ReShade.ini key; true when changed.
+  const auto helper_combo = [](const char* label, const char* key, int* value, const char* items, const char* tooltip) {
+    const bool changed = ImGui::Combo(label, value, items);
+    if (changed) reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, *value);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+    return changed;
+  };
+  if (upscaler_choice.load() != 0) {
+    helper_combo("Upscaling debug view", "UpscalingDebugView", &upscale_debug_view, "Off\0Motion Vectors\0",
+                 "Motion Vectors: the motion the upscaler gets over the picture (colour: direction, brighter: faster).");
+  }
+  if (int choice = frame_generation_choice.load();
+      helper_combo("Frame generation (Experimental)", "HelperFrameGeneration", &choice, "Off\0" "2x\0" "3x\0" "4x\0" "5x\0" "6x\0" "Dynamic\0",
+                   "Frames shown per rendered frame (the RenoDX helper presents, with the RenoDX HDR addon). Turn the game's VSync off;\n"
+                   "windowed or borderless. DLSS: 2x on RTX 40 or newer, 3x to 6x and Dynamic on RTX 50. FSR: 2x. XeSS: 2x, up to 4x on Intel Arc.")) {
+    frame_generation_choice.store(choice);
+  }
+  if (frame_generation_choice.load() != 0) {
+    ImGui::TextWrapped("Frame generation pauses while this menu is open.");
+    helper_combo("Frame generation method", "FrameGenerationMethod", &frame_method_choice, "Auto\0DLSS\0FSR\0XeSS\0",
+                 "Auto: DLSS on an RTX 40 or newer, XeSS on Intel, else FSR. Their files next to renodx-tw-dlaa64.exe.");
+    helper_combo("HUD recomposition", "FrameGenerationHudRecomposition", &hud_recomposition, "Off\0On\0",
+                 "Lays the HUD over the generated frames instead of warping it with the scene (no HUD smears).");
+    helper_combo("Frame generation preset", "FrameGenerationPreset", &frame_preset_choice, "Driver's\0A\0B\0C\0",
+                 "NVIDIA's presets. A: HUD recomposition off. B: on. C (Lite): lighter, lower quality.\n"
+                 "Saved in the NVIDIA driver profile of renodx-tw-dlaa64.exe; applies after restarting the game.");
+    helper_combo("Frame generation debug view", "FrameGenerationDebugView", &frame_debug_view, "Off\0HUD-less image\0UI layer\0",
+                 "What frame generation gets, shown while this menu is closed: the picture without the HUD, or the HUD in magenta.");
+  }
+  helper_combo("NVIDIA Reflex", "Reflex", &reflex_choice, "Off\0On\0On + Boost\0",
+               "Less input lag on NVIDIA GPUs: each frame starts only as the GPU needs it. Always on with frame generation.");
+  if (ImGui::SliderInt("Frame rate limit", &frame_limit, 0, 240, "%d fps", ImGuiSliderFlags_AlwaysClamp)) {
+    reshade::set_config_value(nullptr, "Shogun 2 DLSS", "FrameGenerationFrameLimit", frame_limit);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Caps the rendered frame rate with Reflex (frame generation multiplies it). 0: off.");
   }
   if (int choice = texture_lod_bias_choice.load();
       ImGui::Combo("Texture LOD bias", &choice,
@@ -565,6 +607,16 @@ void OnOverlay(reshade::api::effect_runtime*) {
   }
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("Texture sharpness below 100%%. Matched: as at your resolution; Sharper / Sharpest: more.");
+  }
+  // Attila's key (twattila/texture_lod_bias.hpp SetWrappingTrilinear: the samplers filtered without anisotropy too).
+  if (render_scale_choice != 0 && texture_lod_bias_choice.load() != 0) {
+    bool all = false;
+    reshade::get_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingTextureLodBiasTrilinear", all);
+    if (ImGui::Checkbox("Texture LOD bias on all textures (Experimental)", &all)) {
+      twattila::texture_lod_bias::SetWrappingTrilinear(all);
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingTextureLodBiasTrilinear", all);
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Texture LOD bias also on the textures the game filters without anisotropy. Can shimmer.");
   }
   if (const auto display = twshogun2::game_dlss::DisplaySize(); render_scale_choice != 0 && display[0] != 0) {
     const auto render = twattila::frame_history::AspectSize(display[0], display[1], SelectedRenderScale());
@@ -644,6 +696,25 @@ void OnOverlay(reshade::api::effect_runtime*) {
                     "Less flickering screen-space shadows. Steadier: softer shadow edges.\n"
                     "Steadiest: also no shadows from thin edges (slightly thinner shadows).")) {
     reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", sss_stability);
+  }
+  if (advanced) {
+    if (float_slider("SSS thickness (Experimental)", &sss_thickness, 0.f, 0.05f, (sss_thickness == 0.f ? "Game's" : "%.4f"), 0.f,
+                     "How thick each pixel counts as for casting screen-space shadows. Thicker: fuller shadows, more halos.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSThickness", sss_thickness);
+    }
+    if (float_slider("SSS contrast (Experimental)", &sss_contrast, 0.f, 8.f, (sss_contrast == 0.f ? "Game's" : "%.2f"), 0.f,
+                     "How fast screen-space shadows go from lit to shadowed (the game's: 4; halved by Shadow stability).")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSContrast", sss_contrast);
+    }
+    if (float_slider("SSS edge threshold (Experimental)", &sss_edge_threshold, 0.f, 0.1f,
+                     (sss_edge_threshold == 0.f ? "Game's" : "%.4f"), 0.f,
+                     "Depth jumps above this count as edges, not blended between. Lower: crisper, more aliasing.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSEdgeThreshold", sss_edge_threshold);
+    }
+    if (choice_slider("SSS precision offset (Experimental)", &sss_precision_offset, OFF_ON.size(), OFF_ON[sss_precision_offset], 0,
+                      "A small offset for depth imprecision: less shadow acne far away, contact shadows start a bit later.")) {
+      reshade::set_config_value(nullptr, "Shogun 2 DLSS", "SSSPrecisionOffset", sss_precision_offset);
+    }
   }
   if (choice_slider("Shadow map resolution", &shadow_map_resolution, SHADOW_MAP_RESOLUTIONS.size(),
                     SHADOW_MAP_RESOLUTIONS[shadow_map_resolution], GRAPHICS_DEFAULT.shadow_map_resolution,
@@ -835,32 +906,142 @@ void OnOverlay(reshade::api::effect_runtime*) {
   if (gi_changed) save_gi();
   heading("Ray Tracing (Experimental, restart after turning on)", RT_COLOR);
   {
-    // ReShade.ini [Shogun 2 DLSS] RayTraced* / PathTracing*: the HDR addon's ray tracing (its ray_tracing.hpp).
-    const auto checkbox = [](const char* label, const char* key, const char* tooltip) {
+    // ReShade.ini [Shogun 2 DLSS] RayTraced* / RayTracing* / PathTracing*: the HDR addon's ray tracing (its
+    // ray_tracing.hpp, twattila/rt_scene.hpp's rows; Attila's keys).
+    const auto tooltip_of = [](const char* tooltip) {
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+    };
+    const auto checkbox = [&](const char* label, const char* key, const char* tooltip) {
       bool value = false;
       reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
       if (ImGui::Checkbox(label, &value)) reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+      tooltip_of(tooltip);
       return value;
     };
-    const auto slider = [](const char* label, const char* key, float default_value, float min, float max, const char* format,
-                           const char* tooltip) {
+    const auto slider = [&](const char* label, const char* key, float default_value, float min, float max, const char* format,
+                            const char* tooltip) {
       float value = default_value;
       reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
       if (ImGui::SliderFloat(label, &value, min, max, format, ImGuiSliderFlags_AlwaysClamp)) {
         reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
       }
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+      tooltip_of(tooltip);
     };
-    const auto count = [](const char* label, const char* key, int default_value, int max, const char* tooltip) {
+    const auto count = [&](const char* label, const char* key, int default_value, int max, const char* tooltip) {
       int value = default_value;
       reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
       if (ImGui::SliderInt(label, &value, 1, max, "%d", ImGuiSliderFlags_AlwaysClamp)) {
         reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
       }
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
+      tooltip_of(tooltip);
     };
+    // A slider over named choices (0 the first); its value.
+    const auto choice = [&](const char* label, const char* key, int default_value, std::span<const char* const> names,
+                            const char* tooltip) {
+      int value = default_value;
+      reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, value);
+      value = std::clamp(value, 0, static_cast<int>(names.size()) - 1);
+      if (ImGui::SliderInt(label, &value, 0, static_cast<int>(names.size()) - 1, names[value],
+                           ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
+        reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
+      }
+      tooltip_of(tooltip);
+      return value;
+    };
+    constexpr std::array<const char*, 2> OFF_ON_NAMES = {"Off", "On"};
     ImGui::TextWrapped("Needs an RTX GPU and renodx-tw-dlaa64.exe next to the addons.");
+    // The presets (twattila/graphics_page.hpp's): RT/PT is ATN's RAYS_PRESET in this section's keys (no Path-Traced AO
+    // here: ray-traced AO in its place), No RT/PT turns every ray-traced effect off and keeps their rows, Reset puts
+    // every row at its default. Whole values go in as integers (the checkboxes and choices read ints).
+    constexpr std::pair<const char*, float> RAYS_OFF[] = {
+        {"RayTracedSunShadows", 0.f},
+        {"RayTracedAmbientOcclusion", 0.f},
+        {"RayTracedLocalLights", 0.f},
+        {"RayTracedReflections", 0.f},
+        {"RayTracedLightBounce", 0.f},
+        {"PathTracing", 0.f},
+        {"RayTracedFogShadows", 0.f},
+    };
+    constexpr std::pair<const char*, float> RAYS_PRESET[] = {
+        {"RayTracedSunShadows", 1.f},
+        {"RayTracedShadowSoftness", 0.8f},
+        {"RayTracedLeafLight", 1.f},
+        {"RayTracedAmbientOcclusion", 1.f},
+        {"RayTracedLocalLights", 1.f},
+        {"RayTracedLightSoftness", 0.25f},
+        {"RayTracedLightImportance", 1.f},
+        {"RayTracingDenoiser", 1.f},
+        {"RayTracedLightBounce", 1.f},
+        {"PathTracing", 1.f},
+        {"RayTracedLightBounceRays", 1.f},
+        {"RayTracedLightBounceResolution", 0.f},
+        {"RayTracedLightBounceRange", 50.f},
+        {"PathTracingBounces", 1.f},
+        {"RayTracedReflections", 1.f},
+        {"RayTracedReflectionSamples", 1.f},
+        {"RayTracedFogShadows", 1.f},
+    };
+    constexpr std::pair<const char*, float> RAYS_RESET[] = {
+        {"RayTracedShadowSoftness", 0.5f},
+        {"RayTracedLeafLight", 0.f},
+        {"RayTracedAmbientRange", 2.f},
+        {"RayTracedAORays", 2.f},
+        {"RayTracedAOQuarter", 0.f},
+        {"RayTracedLightSoftness", 0.25f},
+        {"RayTracedLightCount", 0.f},
+        {"RayTracedLightImportance", 0.f},
+        {"RayTracedLightSteady", 0.f},
+        {"RayTracedLightRange", 0.f},
+        {"RayTracedReflectionSamples", 1.f},
+        {"RayTracedLightBounceRays", 4.f},
+        {"RayTracedLightBounceRange", 10.f},
+        {"RayTracedLightBounceResolution", 1.f},
+        {"PathTracingBounces", 2.f},
+        {"RayTracedSharc", 0.f},
+        {"RayTracedPathSer", 0.f},
+        {"RayTracingDenoiser", 0.f},
+        {"RayTracedLeafMicromaps", 0.f},
+        {"RayTracedGpuMicromaps", 1.f},
+        {"RayTracedFastLeafShadows", 0.f},
+        {"RayTracingOutputResolution", 0.f},
+        {"RayTracingRaysShadows", 1.f},
+        {"RayTracingRaysAmbient", 1.f},
+        {"RayTracingRaysReflections", 1.f},
+        {"RayTracingRaysPaths", 1.f},
+        {"RayTracedDebugLog", 0.f},
+        {"RayTracedDebugView", 0.f},
+        {"RayTracedSceneTest", 0.f},
+    };
+    const auto write_rays = [](std::span<const std::pair<const char*, float>> values) {
+      for (const auto& [key, value] : values) {
+        if (value == std::floor(value)) {
+          reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, static_cast<int>(value));
+        } else {
+          reshade::set_config_value(nullptr, "Shogun 2 DLSS", key, value);
+        }
+      }
+    };
+    if (preset_button("RT/PT##rays", RT_COLOR,
+                      "Every ray-traced effect and path tracing on, as ATN plays (restart the game).\n"
+                      "Turns the Global Illumination on, and Ray Reconstruction where DLSS runs without it.")) {
+      write_rays(RAYS_PRESET);
+      gi.strength = std::max(gi.strength, 1.f);
+      save_gi();
+      // Without Ray Reconstruction the rays have only the built-in denoisers (Attila's preset: F).
+      if (upscaler_choice.load() == 1 && ray_reconstruction_choice.load() == 0) {
+        ray_reconstruction_choice.store(4);
+        reshade::set_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingRayReconstruction", 4);
+      }
+    }
+    ImGui::SameLine();
+    if (preset_button("No RT/PT (Recommended)##rays", RT_COLOR, "Every ray-traced effect off, their sliders kept (restart the game).")) {
+      write_rays(RAYS_OFF);
+    }
+    ImGui::SameLine();
+    if (preset_button("Reset##rays", RT_COLOR, "Every ray-traced effect off, this section's sliders at their defaults (restart the game).")) {
+      write_rays(RAYS_OFF);
+      write_rays(RAYS_RESET);
+    }
     const bool sun_shadows = checkbox("Ray-traced sun shadows", "RayTracedSunShadows",
                                       "Sun shadows from rays, with the game's: also where its shadow maps miss things or end.\n"
                                       "Faster: the game's Screen Space Shadows off, the rays then alone (grass casts no contact shadows).");
@@ -874,12 +1055,33 @@ void OnOverlay(reshade::api::effect_runtime*) {
                                   "Faster: the game's SSAO off, the rays then alone.");
     ImGui::BeginDisabled(!ambient);
     slider("Ray-traced AO range", "RayTracedAmbientRange", 2.f, 0.25f, 5.f, "%.2f m", "How far its rays look for what shades a point.");
+    count("Ray-traced AO rays", "RayTracedAORays", 2, 8, "More rays: less noise. Heavier.");
     checkbox("Ray-traced AO at a quarter rate", "RayTracedAOQuarter",
              "One pixel of each 2 x 2 traced a frame, in turn: a quarter of the rays (DLSS smooths it). Faster.");
     ImGui::EndDisabled();
-    checkbox("Ray-traced point light shadows", "RayTracedLocalLights",
-             "Shadows from rays for the nearest, brightest point lights (fires, torches): what stands between them and the\n"
-             "ground or walls shades them.");
+    const bool local_lights = checkbox("Ray-traced point light shadows", "RayTracedLocalLights",
+                                       "Shadows from rays for the nearest, brightest point lights (fires, torches): what stands between them and the\n"
+                                       "ground or walls shades them.");
+    ImGui::BeginDisabled(!local_lights);
+    if (upscaler_choice.load() == 1 && ray_reconstruction_choice.load() != 0) {
+      slider("Torch and fire shadow softness", "RayTracedLightSoftness", 0.25f, 0.f, 1.f, "%.2f m",
+             "How big torches and fires are for their soft shadows. 0: sharp. With Ray Reconstruction.");
+    }
+    constexpr std::array<const char*, 3> LIGHT_COUNTS = {"32", "64", "128"};
+    choice("Torch and fire shadow lights (Experimental)", "RayTracedLightCount", 0, LIGHT_COUNTS,
+           "How many torches and fires cast ray-traced shadows, the nearest and brightest first.\n"
+           "Each spot of the screen traces the 32 that light it most. More: heavier in big fires.");
+    choice("Importance-sampled torch shadows (Experimental)", "RayTracedLightImportance", 0, OFF_ON_NAMES,
+           "Two torch / fire shadow rays a pixel, picked by how much light they give:\n"
+           "faster with many fires; dim fires' shadows follow moving units slower.");
+    choice("Steady torch shadows (Experimental)", "RayTracedLightSteady", 0, OFF_ON_NAMES,
+           "Torch and fire shadows that don't flicker: every fire traced every frame, with sharp edges.\n"
+           "Heavier with many fires. Overrides Importance-sampled torch shadows.");
+    slider("Torch and fire shadow range (Experimental)", "RayTracedLightRange", 0.f, 0.f, 500.f, "%.0f m",
+           "Only torches and fires this close to the camera cast ray-traced shadows. 0 m: any distance.");
+    ImGui::EndDisabled();
+    const bool fog_shadows = checkbox("Ray-traced fog shadows (Experimental)", "RayTracedFogShadows",
+                                      "The sun's light in the battle fog shaded where hills, trees and buildings stand in its way.");
     const bool reflections = checkbox("Ray-traced reflections", "RayTracedReflections",
                                       "Reflections from rays in place of the screen-space ones: also what is off screen.\n"
                                       "Needs the game's screen-space reflections on.");
@@ -892,14 +1094,89 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::BeginDisabled(!bounce);
     count("Ray-traced GI rays", "RayTracedLightBounceRays", 4, 16, "Rays per texel: less noise, heavier.");
     slider("Ray-traced GI range", "RayTracedLightBounceRange", 10.f, 1.f, 50.f, "%.0f m", "How far its rays look for light.");
+    constexpr std::array<const char*, 3> RESOLUTIONS = {"Full", "Half", "Quarter"};
+    choice("Ray-traced GI resolution", "RayTracedLightBounceResolution", 1, RESOLUTIONS,
+           "Its own resolution (the Global Illumination's Resolution and Checkerboard no longer apply to it).\n"
+           "Full: sharpest, about 4x Half's cost.");
     ImGui::EndDisabled();
     ImGui::BeginDisabled(!bounce && !reflections);
     const bool path_tracing = checkbox("Path tracing", "PathTracing",
                                        "The Global Illumination's and the reflections' rays go on bouncing: lit by what the screen never saw. Heavy.");
     ImGui::BeginDisabled(!path_tracing);
-    count("Path tracing bounces", "PathTracingBounces", 2, 4, "Bounces past the first. More: brighter shade, heavier.");
+    count("Path tracing bounces", "PathTracingBounces", 2, 2, "Bounces past the first where the camera sees nothing. 1: faster, a little darker.");
+    choice("SHaRC radiance cache (Experimental)", "RayTracedSharc", 0, OFF_ON_NAMES,
+           "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).");
     ImGui::EndDisabled();
+    choice("Path tracing SER (Experimental)", "RayTracedPathSer", 0, OFF_ON_NAMES,
+           "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.");
     ImGui::EndDisabled();
+    if (sun_shadows || ambient || local_lights || fog_shadows || reflections || bounce) {
+      if (upscaler_choice.load() != 0 && !(upscaler_choice.load() == 1 && ray_reconstruction_choice.load() != 0)) {
+        constexpr std::array<const char*, 2> DENOISERS = {"Built-in", "NRD"};
+        choice("Ray tracing denoiser (Experimental)", "RayTracingDenoiser", 0, DENOISERS,
+               "Cleans the ray-traced shadows, AO, Global Illumination and reflections (with the helper's upscaler).\n"
+               "Built-in: the mod's own filters. NRD: NVIDIA's denoisers, steadier, uses more memory.");
+      }
+      const bool micromaps = choice("Leaf micromaps (Experimental)", "RayTracedLeafMicromaps", 0, OFF_ON_NAMES,
+                                    "Faster ray-traced shadows through leaves: their cut-outs are baked once (NVIDIA Opacity Micro-Map SDK).") != 0;
+      ImGui::BeginDisabled(!micromaps);
+      choice("GPU micromap baking", "RayTracedGpuMicromaps", 1, OFF_ON_NAMES,
+             "Leaf micromaps baked on the GPU instead of CPU threads:\n"
+             "frees the CPU, and new grass's and leaves' shadows settle sooner.");
+      choice("Fast leaf shadows (Experimental)", "RayTracedFastLeafShadows", 0, OFF_ON_NAMES,
+             "Leaves and grass with Leaf micromaps skip their alpha tests:\n"
+             "faster shadows under trees and in fields, but coarser and darker.");
+      ImGui::EndDisabled();
+      // Attila's Rays a Pixel (twattila/rt_scene.hpp): the HDR addon counts them.
+      constexpr std::array<const char*, 9> RAYS_A_PIXEL = {"1", "Match Output", "2", "3", "4", "5", "6", "7", "8"};
+      if (choice("Rays a pixel (Experimental)", "RayTracingOutputResolution", 0, RAYS_A_PIXEL,
+                 "More rays for every rendered pixel, each from its own spot of it: less noise, finer shadow edges.\n"
+                 "The cost grows with the rays. Match Output: as many rays on screen as at 100% (up to 8 a pixel).") != 0) {
+        choice("Rays a pixel: shadows", "RayTracingRaysShadows", 1, OFF_ON_NAMES, "The sun's and the torches' and fires' shadows take the extra rays.");
+        choice("Rays a pixel: ray-traced AO", "RayTracingRaysAmbient", 1, OFF_ON_NAMES, "Ray-traced AO takes the extra rays.");
+        choice("Rays a pixel: reflections", "RayTracingRaysReflections", 1, OFF_ON_NAMES, "Ray-traced reflections take the extra rays.");
+        choice("Rays a pixel: Global Illumination", "RayTracingRaysPaths", 1, OFF_ON_NAMES,
+               "Ray-traced and path-traced Global Illumination take the extra rays (up to 16 a texel). The heaviest.");
+      }
+      choice("Log details", "RayTracedDebugLog", 0, OFF_ON_NAMES,
+             "Ray tracing's numbers in the logs every 10 s, for bug reports. Off: nothing of this runs.");
+      // rt_scene's Debug View values (Off, its effects, All; the others: nothing here makes them).
+      struct DebugView {
+        int value;
+        const char* label;
+      };
+      constexpr std::array<DebugView, 7> DEBUG_VIEWS = {{
+          {.value = 0, .label = "Off"},
+          {.value = 1, .label = "Sun Shadows"},
+          {.value = 2, .label = "Ambient Occlusion"},
+          {.value = 3, .label = "Global Illumination"},
+          {.value = 4, .label = "Reflections"},
+          {.value = 6, .label = "Point Light Shadows"},
+          {.value = 9, .label = "All"},
+      }};
+      int debug_view = 0;
+      reshade::get_config_value(nullptr, "Shogun 2 DLSS", "RayTracedDebugView", debug_view);
+      const auto shown = std::ranges::find(DEBUG_VIEWS, debug_view, &DebugView::value);
+      if (ImGui::BeginCombo("Ray tracing debug view", (shown != DEBUG_VIEWS.end() ? shown->label : DEBUG_VIEWS[0].label))) {
+        for (const auto& view : DEBUG_VIEWS) {
+          if (ImGui::Selectable(view.label, view.value == debug_view)) {
+            reshade::set_config_value(nullptr, "Shogun 2 DLSS", "RayTracedDebugView", view.value);
+          }
+        }
+        ImGui::EndCombo();
+      }
+      tooltip_of("A ray-traced effect's raw result as the picture (All: every one tiled), to check they work.\n"
+                 "Magenta: it made nothing (off or not traced).");
+      if (debug_view != 0) {
+        constexpr std::array<const char*, 5> SCENE_TESTS = {"Everything", "Terrain Only", "Objects and Trees Only", "No Leaves",
+                                                            "Nothing Kept Off-Screen"};
+        choice("Ray tracing scene (test)", "RayTracedSceneTest", 0, SCENE_TESTS,
+               "While the Debug View is on: one part of the scene alone, to find what breaks an effect.");
+      }
+      if (ImGui::Button("Record ray tracing profile (30 s)")) twshogun2::hdr_link::RequestProfile();
+      tooltip_of("30 s of every frame's ray tracing costs into tw_rt_profile.csv and tw_rt_profile_helper.csv\n"
+                 "(next to the game's exe). Turn the effects on, press, then move the camera over the map.");
+    }
   }
   heading("About", OTHER_COLOR);
   auto link_button = [](const char* label, ImU32 color, ImU32 hovered, ImU32 active, const char* url) {
@@ -993,11 +1270,35 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
                       && value <= 3) {
     texture_lod_bias_choice.store(value);
   }
+  if (bool all = false; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingTextureLodBiasTrilinear", all)) {
+    twattila::texture_lod_bias::SetWrappingTrilinear(all);
+  }
   if (uint32_t value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "Preset", value)
                           && std::ranges::find(PRESETS, value, &PresetChoice::value) != PRESETS.end()) {
     preset = value;
   }
   twshogun2::game_dlss::RequestPreset(preset);
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "HelperUpscaler", value) && value >= 0 && value <= 3) {
+    upscaler_choice.store(value);
+  }
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "AntiAliasingRayReconstruction", value) && value >= 0
+                      && value < static_cast<int>(RAY_RECONSTRUCTION_PRESETS.size())) {
+    ray_reconstruction_choice.store(value);
+  }
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "HelperFrameGeneration", value) && value >= 0 && value <= 6) {
+    frame_generation_choice.store(value);
+  }
+  // A ReShade.ini choice from 0 to `last`.
+  const auto read_choice = [](const char* key, int last, int* value) {
+    if (int read = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", key, read) && read >= 0 && read <= last) *value = read;
+  };
+  read_choice("FrameGenerationMethod", static_cast<int>(FRAME_BACKENDS.size()) - 1, &frame_method_choice);
+  read_choice("Reflex", 2, &reflex_choice);
+  read_choice("UpscalingDebugView", 1, &upscale_debug_view);
+  read_choice("FrameGenerationFrameLimit", 240, &frame_limit);
+  read_choice("FrameGenerationHudRecomposition", 1, &hud_recomposition);
+  read_choice("FrameGenerationPreset", 3, &frame_preset_choice);
+  read_choice("FrameGenerationDebugView", 2, &frame_debug_view);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "ParticleResolution", value) && value >= 0
                       && value < static_cast<int>(PARTICLE_RESOLUTIONS.size())) {
     particle_resolution.store(value);
@@ -1021,6 +1322,12 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SunShadowSoftness", value)) {
     sun_shadow_softness = std::clamp(value, 0.f, 5.f);
   }
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSThickness", value)) sss_thickness = std::clamp(value, 0.f, 0.05f);
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSContrast", value)) sss_contrast = std::clamp(value, 0.f, 8.f);
+  if (float value = 0.f; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSEdgeThreshold", value)) {
+    sss_edge_threshold = std::clamp(value, 0.f, 0.1f);
+  }
+  if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSPrecisionOffset", value)) sss_precision_offset = std::clamp(value, 0, 1);
   if (int value = 0; reshade::get_config_value(nullptr, "Shogun 2 DLSS", "SSSStability", value) && value >= 0
                       && value < static_cast<int>(SSS_STABILITIES.size())) {
     sss_stability = value;
@@ -1107,32 +1414,39 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
     twshogun2::object_velocity::OnEvaluate(context, eval);
     twshogun2::frame_trace::OnEvaluate(context, *eval);
     twshogun2::dlss_jitter::Store(eval->InJitterOffsetX, eval->InJitterOffsetY);
-    if (talesofarise::frame_generation::Presenting()) StoreFrameGeneration(*eval);
+    // The helper's upscaler in place of the game's DLSS, frame generation's inputs (the HDR addon's; false: the game's).
+    if (upscaler_choice.load(std::memory_order_relaxed) == 0 && frame_generation_choice.load(std::memory_order_relaxed) == 0) return false;
+    twshogun2::hdr_link::UpscaleRequest request = {
+        .context = context,
+        .color = eval->Feature.pInColor,
+        .depth = eval->pInDepth,
+        .motion = eval->pInMotionVectors,
+        .output = eval->Feature.pInOutput,
+        .render_width = eval->InRenderSubrectDimensions.Width,
+        .render_height = eval->InRenderSubrectDimensions.Height,
+        .jitter_x = eval->InJitterOffsetX,
+        .jitter_y = eval->InJitterOffsetY,
+        .motion_scale_x = eval->InMVScaleX,
+        .motion_scale_y = eval->InMVScaleY,
+        .reset = eval->InReset != 0,
+        .preset = twshogun2::game_dlss::Preset(),
+    };
+    request.camera = twshogun2::render_scale::MainCamera(&request.constants);
+    return twshogun2::hdr_link::Upscale(request);
   });
-  // Frame generation takes over the game's swap chain, which it makes after its device.
-  talesofarise::frame_generation::LoadSettings("Shogun 2 DLSS", &frame_generation);
   renodx::utils::log::i(std::format(
       "[Shogun 2 DLSS] Options: render scale {} ({}% custom), preset {}, texture LOD bias {}, jitter {}, object motion {}, "
-      "frame generation {}, particle resolution {}, SSR resolution {}, SSS samples {} stability {}, shadow map {} "
-      "stability {}, sun shadow softness {}, grass {} model {} unit {} / {} / {} terrain {}",
+      "upscaler {} RR {}, frame generation {} method {} Reflex {} limit {}, particle resolution {}, SSR resolution {}, "
+      "SSS samples {} stability {}, shadow map {} stability {}, sun shadow softness {}, grass {} model {} unit {} / {} / {} "
+      "terrain {}",
       render_scale_choice, render_scale_percent, preset, texture_lod_bias_choice.load(), jitter_enabled.load(),
-      twshogun2::object_velocity::Enabled(), frame_generation, particle_resolution.load(), ssr_resolution, sss_samples,
+      twshogun2::object_velocity::Enabled(), upscaler_choice.load(), ray_reconstruction_choice.load(), frame_generation_choice.load(),
+      frame_method_choice, reflex_choice, frame_limit, particle_resolution.load(), ssr_resolution, sss_samples,
       sss_stability, shadow_map_resolution, shadow_map_stability, sun_shadow_softness, grass_distance, model_detail,
       unit_detail, unit_animation, unit_variety, terrain_detail.load()));
   for (const auto& shader : SUN_SHADERS) {
     renodx::utils::command_action::Register(
         OnSunDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &shader);
-  }
-  if (frame_generation) {
-    std::wstring module_path(32768, L'\0');
-    module_path.resize(GetModuleFileNameW(module, module_path.data(), static_cast<DWORD>(module_path.size())));
-    talesofarise::frame_generation::Install(std::filesystem::path(module_path).parent_path(), "Shogun 2");
-    for (const uint32_t shader_hash : TONEMAPPER_SHADERS) {
-      renodx::utils::command_action::Register(OnTonemapper, {
-                                                                .shader_hash = shader_hash,
-                                                                .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
-                                                            });
-    }
   }
   twshogun2::object_velocity::Install();
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
@@ -1153,6 +1467,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   renodx::utils::state::Use(DLL_PROCESS_ATTACH);
   renodx::utils::command_action::Use(DLL_PROCESS_ATTACH);
   twshogun2::dlss_jitter::Use(DLL_PROCESS_ATTACH);
+  twshogun2::hdr_link::Use(DLL_PROCESS_ATTACH);
   attached = true;
   return true;
 }
@@ -1160,11 +1475,11 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
   if (attached) {
     twshogun2::frame_trace::Stop();
-    renodx::utils::command_action::Unregister(OnTonemapper);
     renodx::utils::command_action::Unregister(OnSunDraw);
     renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);
     twshogun2::dlss_jitter::Use(DLL_PROCESS_DETACH);
+    twshogun2::hdr_link::Use(DLL_PROCESS_DETACH);
     reshade::unregister_overlay("Shogun 2 DLSS", OnOverlay);
     reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
     reshade::unregister_event<reshade::addon_event::present>(OnPresent);
