@@ -300,6 +300,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   eca50543 (unit banners only; shared graphics_page Bindings::banner_light_tested default true).
 - [x] Thrones Faster Game CPU Code MERGED 2c89ced4 (shared engine_code.hpp Game / Build parameters, Attila's constants
   unchanged; tw_engine_code PASS on both DLLs; truncation 66.8 -> 41.7 ns, fmod 140 -> 62 ns; Experimental off).
+- [x] Thrones round 3 DONE (README 925a6211; capture test 42 / 48 = game's, 6 by design as Attila). Shogun 2 leaf fade
+  MERGED 57a8266f; far cards 30C453EE not doable by rows (per-corner sun turn + own atlas view).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
