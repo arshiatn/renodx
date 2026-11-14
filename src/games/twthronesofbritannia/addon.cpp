@@ -1286,10 +1286,13 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl ps30 slm / slm_reflection (standard) and
 // skinlm, every shadow method, with the camera at b0 and the G-buffer at t0-t3.
-// Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py): the main view's terrain (rigidterrain geom /
-// custom geom, shader models 3 and 4.1, old and new; Thrones' own), rigid objects, tree branches and leaves (Attila's
-// shaders, the same hashes) and units (Thrones' own), and their capture versions (world positions; leaves also UVs).
-constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
+// Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py), as Attila's (tools/tw/thrones/th_caster_census.txt
+// over the data run's three battle traces: every G-buffer caster held): the main view's terrain (rigidterrain geom / custom
+// geom, shader models 3 and 4.1, old and new; Thrones' own), rigid objects and their alpha-tested cut-outs, rocks blended into
+// the terrain, tree branches and leaves, grass, sprite soldiers and the campaign's plants and trees (Attila's shaders, the
+// same hashes; their rows shaders Attila's), the far trees' cards (Thrones' 79DFD18D: Attila's inputs and view choice) and
+// the units (Thrones' own, one rounding apart from Attila's; their cut-outs as Attila's).
+constexpr std::array<twattila::rt_scene::SceneShader, 38> SCENE_SHADERS = {{
     {.hash = 0x289AC6F1, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x958620C8, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0xBFD9331A, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1298,32 +1301,67 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     {.hash = 0xBC15D489, .capture_shader = __rt_capture_terrain_custom_material_sm41, .terrain = true},
     {.hash = 0x0BF40414, .capture_shader = __rt_capture_terrain_custom_sm41, .terrain = true},
     {.hash = 0x7E9E7121, .capture_shader = __rt_capture_terrain_custom_sm3, .terrain = true},
-    {.hash = 0x347F3DD9, .capture_shader = __rt_capture_rigid_sm3, .rows_shader = __motion_record_rigid_sm3},
-    {.hash = 0xD830AD9B, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41},
+    {.hash = 0x347F3DD9, .capture_shader = __rt_capture_rigid_sm3, .rows_shader = __motion_record_rigid_sm3, .cut_out_shader = __rt_capture_rigid_cut_out_sm3},
+    {.hash = 0xD830AD9B, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41, .cut_out_shader = __rt_capture_rigid_cut_out_sm41},
     {.hash = 0xB06CB969, .capture_shader = __rt_capture_rigid_blend_sm3, .rows_shader = __motion_record_rigid_blend_sm3},
     {.hash = 0x10FE7EBC, .capture_shader = __rt_capture_rigid_blend_wind_sm3, .rows_shader = __motion_record_rigid_blend_wind_sm3},
-    {.hash = 0x77B993FD, .capture_shader = __rt_capture_branch_sm3},
-    {.hash = 0xB8C3E83D, .capture_shader = __rt_capture_branch_sm41},
-    {.hash = 0x6EEF4062, .capture_shader = __rt_capture_branch_sm5},
-    {.hash = 0x46C616F0, .capture_shader = __rt_capture_leaf_sm3, .foliage = true},
-    {.hash = 0x5B880546, .capture_shader = __rt_capture_leaf_sm41, .foliage = true},
-    {.hash = 0xCABCB9D1, .capture_shader = __rt_capture_leaf_sm5, .foliage = true},
-    {.hash = 0xDC9FBA4A, .capture_shader = __rt_capture_unit_sm3, .dynamic = true},
-    {.hash = 0x76682C60, .capture_shader = __rt_capture_unit_4_bones_sm3, .dynamic = true},
-    {.hash = 0x0D8C2A96, .capture_shader = __rt_capture_unit_dismember_sm3, .dynamic = true},
-    {.hash = 0x61DED001, .capture_shader = __rt_capture_unit_4_bones_dismember_sm3, .dynamic = true},
-    {.hash = 0x25839CC5, .capture_shader = __rt_capture_unit_sm41, .dynamic = true},
-    {.hash = 0xFF473BE8, .capture_shader = __rt_capture_unit_4_bones_sm41, .dynamic = true},
-    {.hash = 0xC9F9DBA5, .capture_shader = __rt_capture_unit_dismember_sm41, .dynamic = true},
-    {.hash = 0x65C0AE28, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .dynamic = true},
-    {.hash = 0xF3741248, .capture_shader = __rt_capture_grass_sm5, .dynamic = true, .foliage = true, .grass = true},
-    {.hash = 0x01FA9CDE, .capture_shader = __rt_capture_grass_sm4, .dynamic = true, .foliage = true, .grass = true},
+    // Rocks and cliffs blended into the terrain (rigidterrainblend): its depth pass (its material pass has no camera).
+    {.hash = 0xE03E161C, .capture_shader = __rt_capture_rigid_terrain_blend_sm3, .rows_shader = __motion_record_rigid_terrain_blend_sm3},
+    {.hash = 0x77B993FD, .capture_shader = __rt_capture_branch_sm3, .rows_shader = __motion_record_tree},
+    {.hash = 0xB8C3E83D, .capture_shader = __rt_capture_branch_sm41, .rows_shader = __motion_record_tree},
+    {.hash = 0x6EEF4062, .capture_shader = __rt_capture_branch_sm5, .rows_shader = __motion_record_tree},
+    {.hash = 0x46C616F0, .capture_shader = __rt_capture_leaf_sm3, .rows_shader = __motion_record_tree, .foliage = true},
+    {.hash = 0x5B880546, .capture_shader = __rt_capture_leaf_sm41, .rows_shader = __motion_record_tree, .foliage = true},
+    {.hash = 0xCABCB9D1, .capture_shader = __rt_capture_leaf_sm5, .rows_shader = __motion_record_tree, .foliage = true},
+    {.hash = 0xDC9FBA4A, .capture_shader = __rt_capture_unit_sm3, .cut_out_shader = __rt_capture_unit_cut_out_sm3, .dynamic = true},
+    {.hash = 0x76682C60, .capture_shader = __rt_capture_unit_4_bones_sm3, .cut_out_shader = __rt_capture_unit_4_bones_cut_out_sm3, .dynamic = true},
+    {.hash = 0x0D8C2A96, .capture_shader = __rt_capture_unit_dismember_sm3, .cut_out_shader = __rt_capture_unit_dismember_cut_out_sm3, .dynamic = true},
+    {.hash = 0x61DED001, .capture_shader = __rt_capture_unit_4_bones_dismember_sm3, .cut_out_shader = __rt_capture_unit_4_bones_dismember_cut_out_sm3, .dynamic = true},
+    {.hash = 0x25839CC5, .capture_shader = __rt_capture_unit_sm41, .cut_out_shader = __rt_capture_unit_cut_out_sm41, .dynamic = true},
+    {.hash = 0xFF473BE8, .capture_shader = __rt_capture_unit_4_bones_sm41, .cut_out_shader = __rt_capture_unit_4_bones_cut_out_sm41, .dynamic = true},
+    {.hash = 0xC9F9DBA5, .capture_shader = __rt_capture_unit_dismember_sm41, .cut_out_shader = __rt_capture_unit_dismember_cut_out_sm41, .dynamic = true},
+    {.hash = 0x65C0AE28, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .cut_out_shader = __rt_capture_unit_4_bones_dismember_cut_out_sm41, .dynamic = true},
+    // Grass placed (its instance rows), swaying within its share, past it still (rt_rows_grass).
+    {.hash = 0xF3741248, .capture_shader = __rt_capture_grass_sm5, .rows_shader = __rt_rows_grass, .foliage = true, .grass = true},
+    {.hash = 0x01FA9CDE, .capture_shader = __rt_capture_grass_sm4, .rows_shader = __rt_rows_grass, .foliage = true, .grass = true},
     // Cloth (banners, tents) and sails: thin, captured every frame (the CPU moves them).
     {.hash = 0x772B26FF, .capture_shader = __rt_capture_cloth_sm3, .dynamic = true, .thin = true},
     {.hash = 0x902253FD, .capture_shader = __rt_capture_cloth_sm41, .dynamic = true, .thin = true},
     {.hash = 0xD11B5EC7, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
+    // Sprite soldiers: cards facing the sun, cut out by their diffuse map's alpha.
+    {.hash = 0x1B9E7692, .capture_shader = __rt_capture_imposter, .dynamic = true, .foliage = true, .sun_facing = true},
+    // Far trees' cards: the same, each showing the tree from the sun (their alpha at t1, as Attila's).
+    {.hash = 0x79DFD18D, .capture_shader = __rt_capture_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 1},
+    // The campaign's plants and forests, and its trees: placed like the battle's, no wind (no campaign trace yet).
+    {.hash = 0x924D7813, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
+    {.hash = 0x819A414C, .capture_shader = __rt_capture_campaign_vegetation, .rows_shader = __rt_rows_campaign_vegetation, .foliage = true, .still = true},
+    {.hash = 0x4657DA8A, .capture_shader = __rt_capture_campaign_tree, .rows_shader = __rt_rows_campaign_tree, .foliage = true, .still = true},
 }};
+
+// The units' G-buffer pixel shaders that clip at t0's alpha (weighted ps30_gbuffer without noclip), sorted: Attila's 92
+// (56 the same hash, 36 Thrones twins; each clip to its discard Attila's, tools/tw/thrones/th_cut_outs.py over the dump
+// and blood.pack).
+constexpr std::array<uint32_t, 92> UNIT_CUT_OUT_PIXEL_SHADERS = {
+    0x04451F97, 0x078FE2F8, 0x092FAE7D, 0x0C6FF9DE, 0x0CA5AA79, 0x11CD57DD, 0x16468155, 0x165E8EE7, 0x1B064C40, 0x20C7AB1F,
+    0x21A8210A, 0x239963D1, 0x24576145, 0x24C09B83, 0x28C3EAD4, 0x29482F73, 0x2B7D2720, 0x2B92395E, 0x2C3EA513, 0x2D4B1E78,
+    0x2DBF5C78, 0x2EA00B20, 0x32463113, 0x3BCC202B, 0x3CE0CAD3, 0x3DE5867F, 0x3DF777E5, 0x3EA3AE02, 0x3EA5229E, 0x4918D429,
+    0x4DB87C72, 0x58BCF4AE, 0x61CD6092, 0x680FB8BE, 0x6D764062, 0x6E058CEB, 0x6EC2D95F, 0x7AC17F0A, 0x7B01A295, 0x7B85D2C8,
+    0x7C44CB62, 0x7D6AFE41, 0x82FF1DB5, 0x8524F338, 0x879A8AFD, 0x8A031046, 0x8C501D38, 0x8D8F67DE, 0x940D83F4, 0x950C02A3,
+    0x95BD2B3D, 0x9C38C3D8, 0xA01EEF45, 0xA223822E, 0xA482BA91, 0xA4C87797, 0xAF38BF92, 0xB6E881F4, 0xB866973E, 0xBA2A6179,
+    0xBB381C44, 0xBCC9321F, 0xBE51C839, 0xBE7CF084, 0xC1822803, 0xC3057069, 0xC3144AD4, 0xC3728871, 0xC5DF37DF, 0xC5E213AC,
+    0xC64A7A31, 0xC8CB357B, 0xCA398999, 0xCACD9B8E, 0xCEDA829D, 0xD5668711, 0xD764AEC8, 0xDCC30AB7, 0xDD85EE06, 0xE39EBF7B,
+    0xE5A5F801, 0xE7AE71FE, 0xE91382B4, 0xEBD63231, 0xEDCD6CC3, 0xEE62565B, 0xEF7C0A67, 0xF0CF5FF7, 0xF504924C, 0xF6A9B5E2,
+    0xFBD501F7, 0xFF1C02CC,
+};
+
+// What only the campaign map draws: its borders (Attila's shader), the shroud's plane (Thrones' twin by name), its sea
+// (waterplane ps30_campaign, Thrones' twins by name).
+constexpr std::array<uint32_t, 4> CAMPAIGN_SHADERS = {0x0CC96E53, 0x2860172D, 0xDE739661, 0x08F47D8C};
+constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+  twattila::frame_history::campaign_frames.store(2, std::memory_order_relaxed);
+  return {};
+};
 
 // The screen-space shadows' Light Through Foliage: grass and leaves, and the rigid objects drawn after them (Attila's
 // shaders, the same bytes in this dump: depth copies around the foliage, as Attila's; its draw order not yet seen here).
@@ -1441,6 +1479,9 @@ void OnInitDevice(reshade::api::device*) {
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
+    campaign_frames.fetch_sub(1, std::memory_order_relaxed);
+  }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
   // preset's is XeSS on Intel's, else FSR.
@@ -1913,11 +1954,13 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (twattila/graphics_page.hpp, as Attila's and Rome II's), ATN's RT/PT preset as the defaults of
-  // what the methods leave, then Settings Mode's pages. No water rows hooked here yet; Light Through Foliage and both Smoke
-  // Shadows Experimental (no run has shown their draws here).
+  // what the methods leave, then Settings Mode's pages. No water rows hooked here yet; Light Through Foliage, both Smoke
+  // Shadows and the sprite soldiers' and far trees' ray-traced shadows Experimental (no run has shown them here).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
-    if (setting->key == "RayTracedSmokeShadows") setting->default_value = 0.f;
+    if (setting->key == "RayTracedSmokeShadows" || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows") {
+      setting->default_value = 0.f;
+    }
   }
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
@@ -1929,6 +1972,7 @@ void ConfigureAddon() {
                                              .foliage_light_tested = false,
                                              .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
+                                             .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .rays_replace_ao = false});
   // Faster Game CPU Code Experimental, off (engine_code_row).
@@ -2043,6 +2087,11 @@ bool AttachAddon() {
   // The ambient occlusion pass before ray tracing's (its result multiplied after), as Attila.
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS);
+  twattila::rt_scene::InstallCutOuts(0xF79BFB14, UNIT_CUT_OUT_PIXEL_SHADERS);  // rigidcommon ps30_shadow_alpha_test
+  for (const uint32_t shader_hash : CAMPAIGN_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnCampaignDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   // The point lights' ray-traced shadows (their light shaders replaced: shaders/pointlight*).
   twattila::rt_scene::InstallPointLights(twattila::rt_scene::POINT_LIGHT_SHADERS);
   // The battle fog's ray-traced shadows (its shader replaced: shaders/battlefog00).
@@ -2070,6 +2119,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twattila::test_hooks::Uninstall();
+  renodx::utils::command_action::Unregister(OnCampaignDraw);
   renodx::utils::command_action::Unregister(OnSunDrawClock);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
