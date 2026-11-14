@@ -246,6 +246,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   reflections on rivers, lakes, the Ultra sea; Experimental, off; HDR v69 / DLSS v61; WARP parts 7-9 PASS). NOT DONE: W7d
   (cascades draw before the main view; rigid shadow 38-326M indices x instances vs a 29M budget): agent resumed on the
   per-instance record (opt-in rt_core changes, every rt_core user's suite must stay unchanged).
+- [x] Troy v51 MERGED 4053fe95 (Torch and Fire Shadows 143A02ED in Pharaoh's fire02 form, campaign trees 54D2CFBD +
+  billboards DF8EAF69 in the rays; shared twattila/contact_shadows_off.hpp = Pharaoh's contact march off moved verbatim:
+  verify Pharaoh in the merged check). NOT DONE: fires 643FC156 in the rays (after WH2's rt_scene light reader change),
+  shroud test, Log Details light count: agent resumed.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
