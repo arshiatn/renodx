@@ -1,6 +1,6 @@
 ---
 name: tw-port-checklist
-description: "RenoDX workflow for Total War (TW) addons: bringing up a new or older TW game (Rome II, Thrones, Troy, Pharaoh, WH1, WH2, WH3, Shogun 2) and porting features between TW addons in both directions, Attila (src/games/twattila) first. Covers the dlaa_helper process and bridge, DLSS, DLAA, FSR, XeSS, Ray Reconstruction, frame generation, Reflex, render scale, jitter, motion vectors, RT shadow coverage (casters, cut-outs, grass, trees, far cards, units out of view, black patches), the game's shadow maps, AO, GI, path-traced AO, double work, screen-space shadows (Bend), smoke, particles, SSR, water, fog, HDR output, PsychoV35, Hue Clip, replaced shaders, frame traces, shader census, engine values, the graphics page, presets, crashes, GPU resets, device loss, game runs, log checks, the test list, install, release zips. Use when bringing up, porting, reviewing or debugging a TW feature, adding a hash or a row, or editing shared code under twattila or twrome2."
+description: "RenoDX workflow for Total War (TW) addons: bringing up a new or older TW game (Rome II, Thrones, Troy, Pharaoh, WH1, WH2, WH3, Shogun 2) and porting features between TW addons in both directions, Attila (src/games/twattila) first. Covers the dlaa_helper process and bridge, DLSS, DLAA, FSR, XeSS, Ray Reconstruction, frame generation, Reflex, render scale, jitter, motion vectors, RT shadow coverage (casters, cut-outs, grass, trees, far cards, units out of view, black patches), the game's shadow maps, AO, GI, path-traced AO, double work, screen-space shadows (Bend), smoke, particles, SSR, water, fog, HDR output, PsychoV35, Hue Clip, replaced shaders, frame traces, shader census, caster census, engine values, the graphics page, presets, crashes, GPU resets, device loss, game runs, log checks, the test list, install, release zips. Use when bringing up, porting, reviewing or debugging a TW feature, adding a hash or a row, or editing shared code under twattila or twrome2."
 argument-hint: "target game, feature or phase, and the Attila or WH3 code it comes from"
 ---
 
@@ -54,7 +54,7 @@ Read the file for every area the work touches before planning. Each row is a mis
 
 Details, exit criteria and the WH3 history in [bringup.md](references/bringup.md).
 
-0. Offline census first, no game run: shader names, engine values, the scale census over the whole dump, the caster census over any trace there is, the game-facts sheet, a parity table against Attila's page; a first build from the closest TW addon with only the trace and log rows, every feature off.
+0. Offline census first, no game run: shader names, engine values, the scale census over the whole dump, the caster census over the whole dump, then over any trace, the game-facts sheet, a parity table against Attila's page; a first build from the closest TW addon with only the trace and log rows, every feature off.
 1. One data run, only when the maintainer allows it: frame traces in four scenes, on the maintainer's settings and on defaults, at 100% and at the game's own lower scales. Each run folder through `tools/tw/check_logs.py` before reading it.
 2. Offline from the traces: pass map, reader census by handle, capture candidates, pass diffs between scales and settings; the game-facts rows answered again from the traces.
 3. Features in dependency order, each with its offline check green before the next. Never skipped: the game's sun colour into `rt_sun` texel 2 for Path-Traced GI, the AO hook only where the AO pass binds a camera ([game-facts.md](references/game-facts.md)), every full-screen quad's uv read below 100% ([render-scale-dlss.md](references/render-scale-dlss.md)).
@@ -119,7 +119,7 @@ A behaviour one game needs goes behind a parameter that defaults to today's valu
 
 **New callback on the sun draws**: say where in the run order it lands and why. Registration order is run order.
 
-**New caster family or capture row**: its line in the census of [rt-scene.md](references/rt-scene.md), with which pass draws it, its budget, its overflow answer, a log line and a harness stress mode. [scripts/caster_census.py](scripts/caster_census.py) on campaign and battle traces lists what the scene still misses.
+**New caster family or capture row**: its line in the census of [rt-scene.md](references/rt-scene.md), with which pass draws it, its budget, its overflow answer, a log line and a harness stress mode. [scripts/caster_census.py](scripts/caster_census.py) `--whole-dump` lists every caster VS the scene doesn't hold, traces or not; on campaign and battle traces it lists what they drew and the scene misses.
 
 **Replacing or skipping a game pass** (AO, GI, shadow maps, fog march, SSR): readers by resource handle in traces at 100% and 50%; every term the output multiplies; per-frame or kept across frames; never switch a render stage's engine value back on live ([game-facts.md](references/game-facts.md) traps); exactly one method, enforced at load and at present. See [ao-gi.md](references/ao-gi.md).
 
