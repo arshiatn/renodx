@@ -46,6 +46,73 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     stops at walls and units; the lit side as bright as before; no flicker as fires start and go out.
 27. v67: with it on, ReShade.log "the particle lights streamed from their vertex shader" once, at the first fire.
 
+### Parity round (2026-11-14; built only, not run in game)
+
+Rows other TW add-ons have, brought over where Pharaoh's own shaders were read. Off or unchanged by default unless said.
+
+- **New: SDR preset button** (Presets, as Warhammer III / Attila): Reset plus Rendering Mode SDR and Output SDR. A first start
+  on a display without HDR (no saved preset yet) runs it once.
+- **New: Depth of Field** (Extra, 0 to 2, default 1): scales the blur of the game's depth of field (its four DOF tone mappers,
+  t05-t08, the circle of confusion at the centre and every tap). At 1 the game's bits (the build's disassembly: x 1 and a + a);
+  0 gives the picture without blur. Needs the game's Depth of Field on; photo mode's left alone.
+- **New (Experimental, off): Texture LOD Bias on All Textures** (as Warhammer III / Attila): the wrapping trilinear samplers
+  get the render scale's LOD bias too.
+- **New (Experimental, off): Smoke Shadows (no rays)**, Strength and Softness (Attila's smoke map): the smoke's lit particles
+  dim the sun from a map seen from the sun, on any GPU; off while the rays' sun shadows are on (they have their own Smoke
+  Shadows). It reads the same particle stream the ray-traced Smoke Shadows fill.
+- **New (Experimental, off; on in RT/PT as in every game): Smooth Banner Shadows**: the cloth and flags (always thin in the
+  rays) no longer shadow themselves.
+- **New (with Far Tree Shadows): the campaign's far tree billboards cast** (CE5AA8D1, turned to the sun as the battle's far
+  trees; Troy's capture at Pharaoh's card size). WARP (Troy's billboard test on Pharaoh's bytes): a level camera with the sun
+  behind gives the game's own card, 4.3e-05 m apart, under the shroud too; 30 degrees off, 72 m (the control).
+- **New (with Shadow Casters Out of View): the campaign's trees and plants out of view cast** (their shadow pass, 3368E9E7,
+  Warhammer II's twin 7D979F60: the same outputs, the same shadow pixel shader).
+- Hue Clip measured on Pharaoh's own tone mapper (`test/tw_psychov35`, curve 8): at the battles' burn 0.2 the fire's hue
+  error is lowest at 70 (0.82 degrees; 1.99 at 80); at burn 0, 80. The default stays 80 (the maintainer's call).
+- Scale census at this build: its 11 "BUG (B)" rows are settled: 9 fixed in v58-v61 with WARP proofs the census can't see; the
+  smoke streams 3F1B86E1 / E8524BB1 use the screen position only for depth (their traced inverse projection has no x / y
+  term there), so below 100% doesn't move them.
+- Shared code: `twattila/rt_core.hpp` SmokeVertexShader::behaviours_at_cb3 (default true, today's; false for Pharaoh's
+  109B79CE, which binds no cb3); `twtroy/rt_capture_campaign_billboard` takes its card scale from RT_BILLBOARD_SCALE (Troy's
+  bytes unchanged).
+- Page dump against the round's start: only the new rows differ. After RT/PT against Attila's: only per-game rows (Smoke
+  Shadows off in both its forms, as in v57).
+
+Test lines (the maintainer):
+
+1. Control: Reset, siege benchmark: looks like v67.
+2. SDR preset: the picture as the game's SDR; a clean ReShade.ini on an SDR display starts in it.
+3. Depth of Field 0 / 1 / 2, in-game Depth of Field on, a battle close-up: no blur / the game's / fuller.
+4. Smoke Shadows (Experimental) on, rays off, a burning siege: the smoke shadows the ground, softer with Softness.
+5. Texture LOD Bias on All Textures at DLSS Performance: ground and walls sharper, no shimmer added.
+6. Smooth Banner Shadows on, the siege: cloth and flags without self-shadow speckles.
+7. Campaign, Far Tree Shadows on: far forests cast; none from under the shroud; no billboards vanish.
+8. Campaign, Shadow Casters Out of View on, camera low over forests: trees just outside the view cast into it.
+9. Hue Clip 70 against 80 at a fire: the closer one to the SDR fire's hue.
+
+Not done (what, why, smallest step):
+
+- Fog Strength: the fog's last stages (8D0D7355 / 13A8B466 / 0945ADC5, dual-source) couldn't be proven: the WARP compare
+  tool's random constants break the fog upsample, the decompile of 13A8B466 fails (ldms). Smallest step: fog_v54's WARP case
+  with a strength constant (rgb x s, transmittance 1 + (T - 1) s).
+- Fog and Sky Smoothing: it goes into the same fog shaders (0945ADC5, 13A8B466), unproven for the same reasons. Smallest
+  step: the fog WARP case above first.
+- Sprite Soldier Shadows: no sprite soldier drawn in any of the 24 traces. Smallest step: a trace of a large battle zoomed out.
+- Particle Resolution / Smooth Half-Size Particles / edges: the shared particle layer is keyed on Attila's particle shaders;
+  Pharaoh's particle draws need mapping first. Smallest step: the burning siege's trace (W2) read for its particle passes.
+- Grass Height Distance: Pharaoh's grass distance row (GraphicsGrassDistance) probably covers it (E710D4E7's g_fade_distances,
+  B); smallest step: E710D4E7's cb1 in a battle trace.
+- Casters (census): CE5AA8D1 and 3368E9E7 done above. 026CBC61 (campaign terrain geometry_41_global) needs a campaign trace with
+  its reads (it is drawn in the frames that draw the held tiles 377DE0D5 / DCC840AF: doubles?); 58733DB8 / 5DC7A874 (campaign
+  blend-mask terrain) drape on the terrain, little to cast; 76225B91 (banners, unlit, no shadow draw) and FE92BA2D (tree
+  billboard main_block) stay out on purpose. Level B, in no trace: feather and fur units (15389925, 2C5A6427, 5CE17813,
+  72BD9CFD, 621E86DD + 4 shadow VS: a battle with feathered or fur-clad units close), ropes / sails / sail symbols (DD5D5694,
+  ED0BC391, 88A29130, 655AB38D + 4 depth VS: a battle or campaign with ships), banners 2C00FCA9 / cinematic AF88E0A3 (a battle
+  with standard bearers; a cinematic), campaign vegetation's main pass E7792B60 (a campaign trace with plants in view),
+  terrain blend 8C511965 / 515FA244, phar_standard_dynamic 281A331A / 85086BAE, fire meshes F5AFBFFD (a settlement / siege).
+- Light Through All Banners: nothing to act on (cloth and flags are always thin; the unit banners are unlit, out on purpose).
+- Rays preset as Attila's: the maintainer's decision.
+
 ### Round v67 (2026-11-14; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - Moved to shared code, unchanged (statement for statement): contact march off, Rays Replace Shadow Maps, water reflections,

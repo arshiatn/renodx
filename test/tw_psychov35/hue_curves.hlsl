@@ -10,7 +10,8 @@
 // t09 7759B956, t10 9C8E40E6) as they run with the exposure's black 0 and white 1 and the S-curve at identity: Hue Clip
 // toward the luminance clamped at white (Attila's engine form without its highlight limit), PsychoV35 at 0.18; their SDR
 // picture the stock path: the whiteout toward white from white + `whiteout_start` to white + `whiteout_end`, the
-// luminance clamped at white, each channel clipped.
+// luminance clamped at white, each channel clipped. 8 Pharaoh's t00 (976C1C74) as it runs, `white` its burn: the ACES fit
+// with its lift and black, the handoff anchored at mid gray, Hue Clip toward the stock.
 // sdr 1: the game's SDR picture (its curve, each channel clipped at 1).
 #include "shared.h"
 #include "psycho35.hlsli"
@@ -105,6 +106,22 @@ float4 main(float4 position : SV_Position) : SV_Target {
       return float4(saturate(whited * ((whited_y > 0.f) ? clamp(whited_y, 0.f, 1.f) / whited_y : 1.f)), 1.f);
     }
     hued = (strength > 0.f) ? renodx::tonemap::psychov::AttilaEngineHueClip(c, y, c, 0.f, 0.f, 1.f, false, strength) : c;
+  } else if (kind == 8) {
+    // Pharaoh's t00 (twpharaohdynasties/shaders/t00_0x976C1C74.ps_5_0.hlsl) as it runs, exposure 1 and
+    // post_processing_strength 0 (both traced): its ACES fit on each channel of the scene plus the lift (0.25 x burn,
+    // `white`), its black at the lift taken off; the handoff anchored where the fit reaches mid gray plus that black; Hue Clip
+    // toward the stock; PsychoV35 at 0.18 (t01 with the grade at identity).
+    const float lift = 0.25f * white;
+    const float black = saturate(AcesFit(lift.xxx).x);
+    const float3 stock = saturate(AcesFit(max(c, 0.f) + lift)) - black;
+    if (sdr != 0.f) return float4(saturate(stock), 1.f);
+    const float mid_target = min(0.18f + black, 1.02f);
+    const float qa = 2.51f - 2.43f * mid_target;
+    const float qb = 0.03f - 0.59f * mid_target;
+    const float qc = 0.14f * mid_target;
+    const float x_mid = (-qb + sqrt(max(qb * qb + 4.f * qa * qc, 0.f))) / (2.f * max(qa, 0.000001f));
+    hued = c * (0.18f / max(x_mid - lift, 0.000001f));
+    if (strength > 0.f) hued = renodx::tonemap::psychov::HueTransfer(hued, saturate(stock), strength);
   } else if (kind <= 2) {
     const float clip_scale = (y > 0.f) ? LuminanceCurve(y, kind) / y : 0.f;
     if (sdr != 0.f) return float4(saturate(c * clip_scale), 1.f);
