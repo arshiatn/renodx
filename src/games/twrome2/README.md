@@ -8,6 +8,8 @@ New:
 - **Reflection Quality** (Reflections and Water's Quality; 1 the game's): the water's reflections take finer steps (Game's method) or more of them (Hierarchical). Attila's row.
 - **Light Through All Banners** (Shadows' More Options, Experimental, off; RT/PT leaves it off): the unit banners let sunlight through as thin cloth, in the rays and in Bend.
 - **Rarer Objects in the Rays** (Shadows' More Options, Experimental, off): with the game's Tessellation on, the ground and the tessellated objects are in the rays' scene (before: left out; the ground then cast no ray-traced shadow). Attila's row. Proven on WARP against the game's bytes (test/tw_rays_captures T and G: the captures are the game's world positions bit for bit; far away the game's own tessellation draws the same triangles).
+- **Skip the Game's Shadow Map Work** (Shadows' More Options, Experimental, off): with Skip the Shadow Maps, the game stops preparing most of the shadow map draws the rays replace (less CPU time in forests and big battles). Attila's and Thrones' row on Rome II's own model-manager draw (its code read: one match, one argument fewer than Attila's); which passes it leaves out is learned in game, as there.
+- **Two Shadow Cascades Under Rays** (Shadows' More Options, Experimental, off; applies after a restart): with Skip the Shadow Maps, the game prepares 2 sun shadow cascades, as at its lower Shadows settings, instead of 3 or 4 (its own sizes kept). Attila's row on Rome II's own shadow set-up (its code read: the cascade count and tier its Shadows settings 1-2 use; tools/tw/rome2/p2r2_cascades.txt).
 
 Fixed:
 - Water reflections below 100% (Game's, Hierarchical and Ray-Traced): the depth, its pyramid and the rays are read at the view's share of the screen.
