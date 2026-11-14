@@ -1515,6 +1515,12 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 39> MOTION_SHADERS =
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_scene_map.py): the main view's terrain (old and custom
 // geom, shader models 3 and 4.1), rigid objects, tree branches and leaves and units (Rome II's own:
 // data_rome2.pack's builds), and their capture versions (world positions; leaves also UVs).
+// Light Through All Banners (Experimental, off): the unit banners as thin cloth. Their models (data.pack's 4
+// ui/3dui/models/default/army_banner_flag_*) are the only ones of Rome II's 14337 with rigid material 29, and the traces'
+// rigidtextureblendwind draws (95A90798, its low-quality twin B08CD963) have exactly their index counts (3456 / 3672 /
+// 4212): tools/tw/rome2/par_r2_rmv2_census.txt. rigidtextureblend (54FB9355 / EBB7BFED, material 30) also draws ships'
+// damage parts: solid. The traces draw the banners only as 3D UI after the tone mapper (no capture): level B.
+float rays_banner_light_row = 0.f;
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x83AB3AFC, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true},
     {.hash = 0x2898B8F6, .capture_shader = __rt_capture_terrain_old_sm3_a, .terrain = true},
@@ -1543,8 +1549,8 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x3E086AFB, .capture_shader = __rt_capture_rigid_lq, .rows_shader = __motion_record_rigid_lq},
     {.hash = 0x54FB9355, .capture_shader = __rt_capture_rigid_blend_sm3_a, .rows_shader = __motion_record_rigid_blend_sm3_a},
     {.hash = 0xEBB7BFED, .capture_shader = __rt_capture_rigid_blend_sm3_b, .rows_shader = __motion_record_rigid_blend_sm3_b},
-    {.hash = 0x95A90798, .capture_shader = __rt_capture_rigid_blend_wind_sm3_a, .rows_shader = __motion_record_rigid_blend_wind_sm3_a},
-    {.hash = 0xB08CD963, .capture_shader = __rt_capture_rigid_blend_wind_sm3_b, .rows_shader = __motion_record_rigid_blend_wind_sm3_b},
+    {.hash = 0x95A90798, .capture_shader = __rt_capture_rigid_blend_wind_sm3_a, .rows_shader = __motion_record_rigid_blend_wind_sm3_a, .thin_row = &rays_banner_light_row},
+    {.hash = 0xB08CD963, .capture_shader = __rt_capture_rigid_blend_wind_sm3_b, .rows_shader = __motion_record_rigid_blend_wind_sm3_b, .thin_row = &rays_banner_light_row},
     {.hash = 0xD4D9A7CE, .capture_shader = __rt_capture_grass_d4d9, .dynamic = true, .foliage = true, .grass = true},
     {.hash = 0x239E12B0, .capture_shader = __rt_capture_grass_239e, .dynamic = true, .foliage = true, .grass = true},
     {.hash = 0x69FCD0B3, .capture_shader = __rt_capture_grass_69fc, .dynamic = true, .foliage = true, .grass = true},
@@ -1574,12 +1580,13 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0xAAFE8EAB, .capture_shader = __rt_capture_campaign_tree, .rows_shader = __rt_rows_campaign_tree, .foliage = true, .still = true},
 }};
 
-// The screen-space shadows' Light Through Banners: cloth and sails (as the rays). Rome II's rigidtextureblend (54FB9355,
-// 95A90798: Attila's banner material) is drawn in 36 and 41 of ATN's 72 traces, so it stays solid: Light Through All
-// Banners has no row here.
-constexpr std::array<twattila::screen_space_shadows::ThinShader, 2> THIN_SHADERS = {{
+// The screen-space shadows' Light Through Banners: cloth and sails (as the rays), the unit banners with Light Through All
+// Banners (rays_banner_light_row's).
+constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{
     {.hash = 0x997A7119},
     {.hash = 0x438E2D53},
+    {.hash = 0x95A90798, .row = &rays_banner_light_row},
+    {.hash = 0xB08CD963, .row = &rays_banner_light_row},
 }};
 
 // Light Through Foliage (Experimental): leaves and grass (SCENE_SHADERS), and what is drawn after them. In all 56 of ATN's
@@ -1897,6 +1904,7 @@ void ConfigureAddon() {
       {"GraphicsCampaignDetail", 1.f},
       {"GraphicsSmallSoldiersAsSprites", 0.f},
       {"GraphicsSpriteSize", 20.f},
+      {"ssr_quality", 1.f},
   };
   const std::vector<std::pair<std::string, float>> graphics_max = {
       {"GraphicsShadowMapSize", 1.f},
@@ -2074,6 +2082,19 @@ void ConfigureAddon() {
     settings.insert(settings.end(), reflections.begin(), reflections.end());
   }
   settings.insert(settings.end(), {
+      // Attila's Reflection Quality on Rome II's only screen-space reflections, the water's (waterreflection00).
+      new renodx::utils::settings::Setting{
+          .key = "ssr_quality",
+          .binding = &shader_injection.ssr_quality,
+          .default_value = 1.f,
+          .label = "Reflection Quality",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Water reflections: finer steps (Game's), or more of them, reaching farther (Hierarchical), so fewer\n"
+                     "gaps. Heavier. Below 1x: faster, coarser. Needs in-game Screen Space Reflections on.",
+          .min = 0.25f,
+          .max = 16.f,
+          .format = "%.2fx",
+      },
       graphics_status,
       // Two empty lines between this section and the ambient occlusion (ATN).
       new renodx::utils::settings::Setting{
@@ -2274,6 +2295,7 @@ void ConfigureAddon() {
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
+                                             .rays_banner_light = &rays_banner_light_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row,
                                              .texts = &PAGE_TEXTS,
@@ -2282,6 +2304,7 @@ void ConfigureAddon() {
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
+                                             .banner_light_tested = false,
                                              .lights_own_row = true,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
