@@ -6,8 +6,8 @@
   one method slider each for Shadows, Ambient Occlusion, Global Illumination and Reflections, the rest under More Options.
   FSR and XeSS beside DLSS (with their Frame Generation); a saved DLSS becomes FSR on AMD, XeSS on Intel. New: Texture LOD
   Bias on All Textures (Experimental, off). Every saved setting kept. RT/PT here: the rays' sun shadows on top of the game's
-  shadow maps, RTAO on top of its SSAO, path-traced Global Illumination, ray-traced reflections, torch and fog shadows (no
-  Path-Traced AO yet). Bend's screen-space shadows now stay off while the rays' sun shadows run (before, both could).
+  shadow maps, path-traced AO and Global Illumination, ray-traced reflections, torch, fog and far tree shadows. Bend's
+  screen-space shadows now stay off while the rays' sun shadows run (before, both could).
 - **New, Experimental, off** (the data run's traces: one shader each, in every battle):
   - Torch and Fire Shadows from rays (the point lights' draw, VS D2A0FF23 / PS D96A8DC3: 131 lights in run B, 25 m reach)
     and from the screen-space shadows (Bend, no rays): the same lit bits in our copy of the light shader.
@@ -15,6 +15,11 @@
     Shadow Maps under it (Ray-Traced Shadows Only skips the atlas's casters). Cloud shadows stay the game's.
   - Fog Shadows (the fog's in-scattering 492B87C7: the march's steps within 400 m take the rays' visibility, further on the
     game's maps) and Torch and Fire Light in Fog. Three decompiler errors fixed against the game's bytecode.
+  - Path-Traced AO ("Path-Traced (ReSTIR GI, Experimental)"): the paths' sky is the game's own ambient, the spherical
+    harmonics every battle uses (the cube without them), and their sun the game's; the sun shaders' diffuse ambient is taken
+    away at its one place (`screen_space_shadows::PatchAmbient`, Warhammer II's form; WARP on all 31).
+  - Far Tree Shadows (the far trees' cards, both kinds, turned to the sun), Shadow Casters Out of View (terrain, buildings
+    and soldiers the shadow pass draws outside the view) and Hills Out of View.
 - **Graphics 2 of 2 as Attila's:** 23 more of Attila's tests (Tree LOD Scale, Projected Tree LODs, Object Detail
   Distances, Buildings Never Vanish, Sort Particles, All Soldiers as Sprites, Campaign Cloud Distance and more); Reset puts
   the tests back too. Out: 12 rows whose values the game never finds (Far Buildings, Building Collapse Effects /
@@ -30,26 +35,25 @@
 Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon64`. Test list (a battle benchmark, DLSS Quality):
 1. Your saved settings: the picture as v47. Send ReShade.log.
 2. Reset, then No RT/PT: Bend's contact shadows, GT-VBAO, GT-VBGI on. Graphics 2 of 2: "Engine values found", no misses.
-3. RT/PT: ray-traced shadows, AO, Light Bounce, reflections, torch and fog shadows on; Bend's contact shadows gone.
-4. Torch and Fire Shadows (rays) on, a siege at night or with torches: walls and soldiers shadow the torch light.
-5. Shadows: Torch and Fire Shadows (Bend, rays off) at 8: the same, from what is on screen.
-6. Rays Replace Shadow Maps on, then Skip the Shadow Maps: soft sun shadows alone; nothing lit that was in shadow.
-7. Fog Shadows on, a foggy map with low sun: light shafts between trees and buildings, no seam at 400 m. Then Torch and
-   Fire Light in Fog at 1: glow around torches.
-8. Texture LOD Bias on All Textures on at DLSS Performance: sharper ground and walls, or shimmer? (decides its default)
-9. DLSS Performance, a fire or flaming arrows: sparks bounce on the ground, not above or under it.
+3. RT/PT (Path-Traced AO, torch, fog, far tree shadows on): open ground as bright and as coloured as with No RT/PT.
+4. Torch and Fire Shadows (rays) on, a siege at night: walls and soldiers shadow the torch light. Then Bend's at 8, rays off.
+5. Rays Replace Shadow Maps, then Skip the Shadow Maps: soft sun shadows alone; distant forests keep theirs with Far Tree
+   Shadows on, and with Shadow Casters Out of View on nothing behind the camera loses its shadow.
+6. Fog Shadows on, a foggy map with low sun: light shafts, no seam at 400 m; Torch and Fire Light in Fog at 1: glow.
+7. Texture LOD Bias on All Textures on at DLSS Performance: sharper ground and walls, or shimmer? (decides its default)
+8. DLSS Performance, a fire or flaming arrows: sparks bounce on the ground, not above or under it.
 
 Not done:
-- Path-Traced AO and the game's sun light for the paths: every battle traced uses the spherical harmonics (c11.y 1), so
-  the sky for the paths needs WH3's harmonics form in rt_sun plus a WH2 ambient patch at two places (WARP), then
-  `InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4)`.
-- Smoke Shadows: the particles (VS C3300B96 / 1FC776EF, GS 4660626E, PS DDABB799 / F32116B4 / 687378DB) are Attila's form
-  (one vertex a particle, a geometry shader's quads) with Attila's output signature, but they read structured buffers where
-  Attila's read texture arrays: what each output means needs a WARP check before Attila's particle capture takes them.
-- Ray-traced water reflections: WH2's water resolve is not mapped yet.
-- Shadow Casters Out of View: the casters the rays miss (far tree billboards 62C6A599 / C1A857A3, rigidtextureblend 2 bones
-  7DF335FF, six atlas-only shadow vertex shaders) are not in the scene yet.
-- Spot lights (5E0BC81E with PS 0764179D / F550D451) cast no traced shadows; the night run (F) drew a day sun.
+- Smoke Shadows: the particles' vertex shader (C3300B96, one vertex a particle) writes the atlas cell's UV rectangle at
+  TEXCOORD3, which Attila's capture reads into its record (centre, colour, size): it needs a WH2 record of its own.
+- Ray-traced water reflections: no water pass of its own; the battle water (battle_water 8686041E) is drawn into the
+  G-buffer and takes the same screen-space reflection resolve every surface does, which Reflections DXR replaces.
+- Spot lights (5E0BC81E with PS 0764179D / F550D451): their data is instance rows too, but laid out apart from the point
+  lights' (position at POSITION1, colour at POSITION4); the one traced sits about 3 km out with 1000 m reach.
+- Out of the rays: the far cards' shadow version 75914932 (its outputs packed apart from Pharaoh's), the depth-only
+  EF11AD35, the floating banners 7DF335FF (the game gives them no shadow). Near cards: the cull distance is the pixel
+  shader's, so cards inside it cast with the 3D trees there.
+- The night run (F) drew a day sun: night untested.
 - Attila's two unit-size presets: this game has no Dead Unit, Building or Campaign Detail rows (ATN: which rows they map to).
 - Shadow Slope Bias: its value has a constructor, but the game's lookup never finds it.
 
