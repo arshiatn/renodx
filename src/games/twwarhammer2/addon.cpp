@@ -1600,15 +1600,21 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 24> MOTION_SHADERS =
 // below 0.5 at TEXCOORD1.xy (the vertex's TEXCOORD0, the VS's o2), the helper's cut-out; captured with that UV
 // (rt_capture_rigid_standard_cut_out). Drawn in ATN's traces and the data run's (tools/tw/wh2/runs): fences, palms and props
 // in battle; every campaign object through the shroud's material (45 diffuse maps, most solid).
-constexpr std::array<twattila::rt_scene::PixelMask, 5> CUT_OUT_MASKS = {{
+// The alpha units' and props' G-buffer pixel shaders (level B, in no trace; their materials' only G-buffer shaders in the
+// pack, tools/tw/wh2/parity_1114.md): the same test of their diffuse map at TEXCOORD1.
+constexpr std::array<twattila::rt_scene::PixelMask, 9> CUT_OUT_MASKS = {{
+    {.pixel_shader = 0x192DF32F, .slot = 3},  // weighted4_wind_alpha ps_main_gbuffer
     {.pixel_shader = 0x2BE667BC, .slot = 1},  // rigidstandard ps40_gbuffer_shroud
     {.pixel_shader = 0x34858FD0},             // rigidstandard ps40_gbuffer_alpha_test
     {.pixel_shader = 0x40EE89BC, .slot = 1},  // rigidstandard ps40_gbuffer_alpha_test_shroud_fizzle_oblique_tris
+    {.pixel_shader = 0x47BE2827},             // rigid_vertexpush_battle_alpha ps_main_gbuffer
     {.pixel_shader = 0x5395F751},             // rigidstandard ps_pixel_selection_alpha_test
+    {.pixel_shader = 0x8D776EA7, .slot = 1},  // weighted2 / weighted4_emissive_wind_alpha ps_main_gbuffer
     {.pixel_shader = 0xD960DC10},             // rigidambientmapmesh ps40_gbuffer_alpha_test
+    {.pixel_shader = 0xE5C2B901, .slot = 2},  // weighted4_animated_overlay_alpha ps_main_gbuffer
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 39> SCENE_SHADERS = {{
     {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
     {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
     {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
@@ -1641,6 +1647,19 @@ constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     {.hash = 0x772F13E0, .capture_shader = __rt_capture_unit_animated_overlay, .dynamic = true, .held_row = &rays_untraced_casters_row},
     {.hash = 0xA3631EC0, .capture_shader = __rt_capture_rigid_character_prop_liquid, .held_row = &rays_untraced_casters_row},
     {.hash = 0xFF36EFA5, .capture_shader = __rt_capture_rigid_wind_worldspace, .held_row = &rays_untraced_casters_row},
+    // Their alpha-tested twins (the same row): weighted4_animated_overlay_alpha, weighted2 / weighted4_emissive_wind_alpha and
+    // weighted4_wind_alpha units, rigid_vertexpush_battle_alpha props; only their draws with a G-buffer pixel shader (the
+    // blended and distortion passes left out), cut out as it clips (CUT_OUT_MASKS).
+    {.hash = 0x59D73E4C, .capture_shader = __rt_capture_unit_animated_overlay_alpha, .cut_out_shader = __rt_capture_unit_animated_overlay_alpha_cut_out,
+     .clip_cut_outs = true, .dynamic = true, .pixel_masks = CUT_OUT_MASKS, .held_row = &rays_untraced_casters_row},
+    {.hash = 0xB228811C, .capture_shader = __rt_capture_unit_emissive_wind_alpha, .cut_out_shader = __rt_capture_unit_emissive_wind_alpha_cut_out,
+     .clip_cut_outs = true, .dynamic = true, .pixel_masks = CUT_OUT_MASKS, .held_row = &rays_untraced_casters_row},
+    {.hash = 0xC251DF91, .capture_shader = __rt_capture_unit_emissive_wind_alpha_4_bones, .cut_out_shader = __rt_capture_unit_emissive_wind_alpha_4_bones_cut_out,
+     .clip_cut_outs = true, .dynamic = true, .pixel_masks = CUT_OUT_MASKS, .held_row = &rays_untraced_casters_row},
+    {.hash = 0xEBF2233E, .capture_shader = __rt_capture_unit_wind_alpha, .cut_out_shader = __rt_capture_unit_wind_alpha_cut_out,
+     .clip_cut_outs = true, .dynamic = true, .pixel_masks = CUT_OUT_MASKS, .held_row = &rays_untraced_casters_row},
+    {.hash = 0xCB878258, .capture_shader = __rt_capture_rigid_vertexpush_alpha, .cut_out_shader = __rt_capture_rigid_vertexpush_alpha_cut_out,
+     .clip_cut_outs = true, .pixel_masks = CUT_OUT_MASKS, .held_row = &rays_untraced_casters_row},
     // The shadow pass's casters into the atlas (the data run's census: drawn there only), what is out of the main view (Pharaoh's
     // rt_outside_view: each shadow vertex shader keeps its view-projection at cb0[9-12] and writes the world it multiplies):
     // rigidterrain vs41_shadow_new and fx__rigidcommon vs40_shadow (TEXCOORD0 the world), fx__weighted vs40_shadow and its
