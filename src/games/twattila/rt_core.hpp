@@ -1771,7 +1771,9 @@ void Capture(Context& command, const SceneShader& shader) {
   // The capture version (by the shader's place in the list: listed shaders have them, and record versions), else the
   // game's own: its stream output (SV_Position; its foliage's UV into the second buffer) made once from its code (null:
   // it could not be).
-  const bool clip_space = shader.capture_shader.empty() || (clip_captures && !placed);
+  // A SceneShader::cascade_world cascade draw's capture version streams out through its cascade_keep in a world-space game too
+  // (clip-space games take that path already).
+  const bool clip_space = shader.capture_shader.empty() || ((clip_captures || (cascade_draw && shader.cascade_world)) && !placed);
   const bool clip_uv = clip_space && foliage && shader.uv_semantic != nullptr;
   // By its hash where CaptureDraw made a copy (a list of pixel shaders).
   const size_t listed_index = (shader.pixel_masks.empty() ? static_cast<size_t>(&shader - scene_shaders.data())
