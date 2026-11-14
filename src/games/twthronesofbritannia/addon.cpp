@@ -2326,6 +2326,8 @@ bool AttachAddon() {
   twattila::rt_scene::InstallShadowsOnly();
   twattila::screen_space_shadows::PatchForwardShadows(SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(SHADOW_READER_SHADERS);
+  // The lit particles' other builds (shaders/vfx00<method>_*, vfx01_*: Attila's, the same bytes) read t49 and b9 themselves.
+  twattila::rt_scene::InstallShadowReaders(twattila::rt_scene::PARTICLE_BUILD_READERS);
   for (const auto& water : WATER_SHADERS) {
     renodx::utils::command_action::Register(
         twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -2335,7 +2337,7 @@ bool AttachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
   // After the smoke's capture on the same draws (it sees the game's targets and camera).
-  twattila::particle_layer::Install(twattila::rt_scene::PARTICLE_VERTEX_SHADER, PARTICLE_LAYER_READERS);
+  twattila::particle_layer::Install(twattila::rt_scene::PARTICLE_VERTEX_SHADER_HASHES, PARTICLE_LAYER_READERS);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
 
   twattila::device_loss::InstallLast();
