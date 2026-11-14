@@ -48,6 +48,7 @@ Rules:
 - Fullscreen Pharaoh draws no frame while another window is in front ("No frame for 20 s"), and the app keeps the foreground: run windowed at full size (`gfx_fullscreen false`, restored from that run's backup).
 - `RENODX_TW_SET` is read at launch; its timed changes fire only while frames are drawn and pile up otherwise. Time them from the battle's first-frames line, and place each trace marker after the log shows the value set.
 - In-game MSAA turns the addon's AA off, and the frame trace hangs off the AA frame: an MSAA start gives no trace until the trace has its own path. With it on, DLSS, the rays and FG stay off too (Rome II round 2): an install or a run that needs them sets the game's AA preference off (`gfx_aa 0`) only with the maintainer's OK, from a fresh backup.
+- A game exe with the "Run as administrator" compatibility flag (`RUNASADMIN` under `AppCompatFlags\Layers`, HKCU or HKLM) raises a UAC prompt no agent can answer: Rome Remastered's start failed "canceled by the user" (2026-11-14). Read both keys for the exe while planning a run; only the maintainer may clear the flag or start the game.
 - Crashed starts leave `Get-Process` entries with 0 threads until a reboot (six Rome2.exe after the command-line crashes): count only processes with threads, as `tw_install.py` and `atn_trace_watch.ps1` do.
 - An agent's data run (start, traces, logs, quit) runs at medium effort: it collects; the reading stays offline.
 - The games read the mouse through DirectInput: synthetic clicks never land. Keys by SendInput scan codes after `SetForegroundWindow`; settings through `ReShade.ini` or `RENODX_TW_SET`.
@@ -97,7 +98,7 @@ Rules:
 | Debug layer | Needs Graphics Tools; deterministic for lifetime bugs (`RENODX_TW_D3D12_DEBUG`) |
 | A lambda with `CHECK` must return int | Exit 3 with no output otherwise |
 | Script corruption; a German decimal comma in `-f` | InvariantCulture; read before running |
-| PowerShell variable names ignore case: `$start` overwrote a `[string]$Start` parameter | One spelling per name in a script; no local shadowing a parameter |
+| PowerShell variable names ignore case: `$start` overwrote a `[string]$Start` parameter (rome2_data_run.ps1, then again romeremastered_data_run.ps1 with this row in place) | One spelling per name in a script; no local shadowing a parameter. `tools/tw/ps_param_shadow.ps1 <scripts>` lists every assignment to a parameter under another spelling (exit 1); run it on every new run script before its first start |
 | An own compute pass in a replaced pass's `on_draw` runs before the mod's push: the settings register holds what the last replaced pass pushed | Bind the settings at the register `shared.h` names; write one value of it out to check it arrives |
 | A plan built on one start form or one trace | Two forms or two traces before planning |
 | A WARP sun test's comparison sampler on an RGBA32F shadow map returned 0 everywhere | Shadow maps as R32_FLOAT (the game's D32 view), `sun_scale_v61` |
