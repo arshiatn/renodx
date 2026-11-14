@@ -319,6 +319,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] Pharaoh v67 fires MERGED a6a4fed3 (Fire Shadows from Particle Lights, Experimental off, not in RT/PT; rt_scene
   LightInstances::enabled opt-in; row off = v66: WARP bits + page dump 615 -> 616 keys). Troy agent DONE.
   Running: ReSTIR (helper111), Nsight (frame boundary). Then: final suites, harness, builds, dumps, stamp, install.
+- [x] helper111 MERGED b7b858c5 (Torch and Fire Light / Shadows from Path Tracing, Attila rows Experimental off; cost at
+  29 lights rt_lights 2.06 -> 0.87 / 0.90 ms; quality U2 Full + RR 3.13 %, Half + RR 5.08 still / 11.48 moving vs Steady
+  5.15; U1 worse; off = helper110 proven). Lean Reuse (reuse 2.72 -> 1.02 ms in Nsight, helper 8.63 -> 6.96 ms, same
+  quality): shipping as an Experimental row (off) = ATN DECIDES the default. Final helper112 = helper111 + Lean flag +
+  Nsight frame boundary, built by the ReSTIR agent with the off proof.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 
