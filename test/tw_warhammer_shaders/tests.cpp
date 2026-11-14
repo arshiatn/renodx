@@ -41,6 +41,23 @@
 //    colour): the game's diffuse per unit albedo over its length the guides' normal; the game's ambient per unit albedo
 //    (every cube side 1) with specular colour 0.3 and 0 the guides' diffuse albedo over the albedo (1 - specular colour);
 //    their roughness 1 - gloss. CONTROLS: the angles read the other way, the diffuse albedo without the specular colour.
+// 10. Light Through All Banners: the banners' vertex shaders (rigidtextureblend DBCC30FD, its 2 bones E7F0D71A) output
+//    SV_Position first (register 0), which sss_thin reads; Coloured Shadows' albedo_power 1: 230F2241's diffuse is linear in
+//    channel 2's colour (its slope from 0.1 to 0.3 the one from 0.3 to 0.9; a squared colour makes it 3 times). CONTROL:
+//    the imposter's vertex shader 381E079E (POSITION first) fails the first.
+// 11. Light Through Foliage's bit (foliage_material_bit 128): the leaves' G-buffer shader 744FDFF0 (its bytes, drawn as part
+//    8 draws, the camera far and its inputs' w 0: no fade) writes channel 3's alpha 128 / 255; 230F2241 lit from behind (sun
+//    1 along the normal, no ambient) lets light through only with that bit. CONTROLS: the branches' 4CF47121 writes 0;
+//    flags 64 (water) and 16 let none through.
+// 12. Water Clarity and Caustics on the battle water 44B4A2F0 (water_effects.hpp, WH1's WATER_SHADERS row): water_clarity.cs
+//    leaves every dword of a lighting_VS_PS copy but c10 (g_sea_bed_light_scatter) bit-identical and raises those to 1 /
+//    clarity; the game's bytes with that c10 a metre deep equal its own half a metre deep (clarity 2; a flat surface, the
+//    depth buffer's ground by name). PatchWaterCaustics (on the game's bytes and on part 8's forward patch, as the runtime
+//    chains them): t51 unbound bit-identical. CONTROLS: the game's c10 a metre deep differs; t51 = 1 differs.
+// 13. Cut-outs on More Models: the units' capture versions with the UV (the build's embed/rt_capture_unit_cut_out.cso and
+//    its 4 bones', RT_CAPTURE_UV) stream out in TEXCOORD0's w the UV the game's 20A9E5FD / 3FC5424C give at TEXCOORD1 (what
+//    their pixel shaders' alpha test reads, tools/tw/wh1/cut_out_census_wh1.txt), as two halves. CONTROL: the captures
+//    without the UV.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -195,7 +212,8 @@ struct SunScene {
   float albedo = 0.5f;
   std::array<float, 2> normal = {0.5f, 0.5f};
   float gloss = 0.f;
-  float specular = 0.f;  // channel 3's specular colour (its flags 0)
+  float specular = 0.f;  // channel 3's specular colour
+  float flags = 0.f;     // channel 3's alpha byte (the material's flags)
   float depth = 0.5f;
   UINT harmonics_width = 0;
   UINT harmonics_height = 0;
@@ -244,7 +262,7 @@ static Float4 DrawGame(std::span<const uint8_t> code, const SunScene& scene) {
       if (name == "t_ssao") views.push_back(View(1, 1, {Float4{1.f, 1.f, 1.f, 1.f}}));
       else if (name == "gbuffer_channel_1_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.normal[0], scene.normal[1], scene.gloss, 0.f})));
       else if (name == "gbuffer_channel_2_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.albedo, scene.albedo, scene.albedo, 0.f})));
-      else if (name == "gbuffer_channel_3_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.specular, scene.specular, scene.specular, 0.f})));
+      else if (name == "gbuffer_channel_3_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.specular, scene.specular, scene.specular, scene.flags / 255.f})));
       else if (name == "gbuffer_channel_4_texture") views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.depth, 0.f, 0.f, 0.f})));
       else if (name == "t_world_spherical_harmonics" && !scene.harmonics.empty()) views.push_back(View(scene.harmonics_width, scene.harmonics_height, scene.harmonics));
       else continue;
@@ -1150,8 +1168,13 @@ struct ForwardScene {
   bool glint = false;      // the camera far along (1, 1, 0) and the sun along -(1, 1, 0): a +x normal reflects it (the battle
                            // water's sun glint, its only shadowed light)
   float height = 0.f;      // added to every float input's y (the battle water's world place above its ground)
+  float input_w = 1.f;     // every float input's w (the leaves' fade)
+  bool flat = false;       // every float input's y the same at every pixel (no ramp)
+  float ground = NAN;      // inv_view_projection's rows 1 and 3: the depth buffer's world y (NaN: the fill)
+  float scatter = -1.f;    // g_sea_bed_light_scatter's 4 dwords (< 0: the fill)
   float atlas = 1.f;       // the shadow map's depth
   float occlusion = -1.f;  // t49 (< 0: unbound)
+  float caustics = -1.f;   // t51 (< 0: unbound)
 };
 
 // A forward pixel shader's bytes drawn over 4 x 4 pixels: its inputs from a vertex shader made from its input signature
@@ -1179,8 +1202,10 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
     const std::string name = "v" + std::to_string(index);
     const bool integer = input.ComponentType != D3D_REGISTER_COMPONENT_FLOAT32;
     vertex += std::string(", out ") + (input.ComponentType == D3D_REGISTER_COMPONENT_SINT32 ? "int4 " : (integer ? "uint4 " : "float4 ")) + name + " : " + input.SemanticName + std::to_string(input.SemanticIndex);
-    body += " " + name + (integer ? " = 0;" : " = float4(corner.x * 0.31 + " + std::to_string(0.13f * static_cast<float>(index)) + ", corner.y * 0.27 + 0.2, " +
-                                                    std::to_string(0.5f + (0.05f * static_cast<float>(index))) + ", 1) + float4(0, " +
+    body += " " + name + (integer ? " = 0;" : " = float4(corner.x * 0.31 + " + std::to_string(0.13f * static_cast<float>(index)) + ", corner.y * " +
+                                                    (scene.flat ? "0" : "0.27") + " + 0.2, " +
+                                                    std::to_string(0.5f + (0.05f * static_cast<float>(index))) + ", " + std::to_string(scene.input_w) +
+                                                    ") + float4(0, " +
                                                     std::to_string(scene.height) + ", 0, 0);");
   }
   const auto vertex_code = CompileText(vertex + ") {" + body + " }", "forward vertex", "main", "vs_5_0");
@@ -1215,6 +1240,10 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
           if (scene.glint) std::ranges::copy(std::array{-0.70710678f, -0.70710678f, 0.f}, at);
         }
         if (std::strcmp(variable_desc.Name, "camera_position") == 0 && scene.glint) std::ranges::copy(std::array{707.f, 707.f, 0.f}, at);
+        if (std::strcmp(variable_desc.Name, "inv_view_projection") == 0 && !std::isnan(scene.ground)) {
+          std::ranges::copy(std::array{0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, scene.ground, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f}, at);
+        }
+        if (std::strcmp(variable_desc.Name, "g_sea_bed_light_scatter") == 0 && scene.scatter >= 0.f) std::fill_n(at, 4, scene.scatter);
       }
       buffers.push_back(Constants(data.data(), static_cast<UINT>(data.size() * 4)));
       context->PSSetConstantBuffers(bind.BindPoint, 1, buffers.back().GetAddressOf());
@@ -1276,6 +1305,10 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
   if (scene.occlusion >= 0.f) {
     views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.occlusion, scene.occlusion, scene.occlusion, scene.occlusion})));
     context->PSSetShaderResources(49, 1, views.back().GetAddressOf());
+  }
+  if (scene.caustics >= 0.f) {
+    views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.caustics, scene.caustics, scene.caustics, scene.caustics})));
+    context->PSSetShaderResources(water_patch::WATER_CAUSTICS_SLOT, 1, views.back().GetAddressOf());
   }
   std::vector<ComPtr<ID3D11Texture2D>> targets;
   std::vector<ID3D11RenderTargetView*> rtvs;
@@ -1470,6 +1503,215 @@ static void TestGuides(const std::string& games, const std::string& dump) {
               normal_misses, largest, albedo_misses, roughness_misses, swapped_differ, unspecular_differ);
 }
 
+static void TestThin(const std::string& dump) {
+  const auto position_first = [&dump](uint32_t hash) {
+    const auto code = GameBytes(dump, hash);
+    ComPtr<ID3D11ShaderReflection> reflection;
+    if (code.empty() || FAILED(D3DReflect(code.data(), code.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) {
+      return false;
+    }
+    D3D11_SIGNATURE_PARAMETER_DESC output = {};
+    reflection->GetOutputParameterDesc(0, &output);
+    return output.SystemValueType == D3D_NAME_POSITION && output.Register == 0;
+  };
+  const bool banners = position_first(0xDBCC30FD) && position_first(0xE7F0D71A);
+  const bool imposter = position_first(0x381E079E);
+  const auto bytes = GameBytes(dump, 0x230F2241);
+  const auto diffuse = [&bytes](float albedo) {
+    return DrawGame(bytes, {.lighting = SunLighting({1.f, 1.f, 1.f, 0.f}, {}, 1.f), .albedo = albedo})[0];
+  };
+  const float low = (diffuse(0.3f) - diffuse(0.1f)) / 0.2f;
+  const float high = (diffuse(0.9f) - diffuse(0.3f)) / 0.6f;
+  CHECK(banners && !imposter, "thin: the banners' SV_Position first %d, CONTROL the imposter's %d", banners, imposter);
+  CHECK(low > 0.f && Near(high / low, 1.f, 1e-4f), "thin: 230F2241's diffuse slopes %.8g, %.8g (linear: equal)", low, high);
+  std::printf("Light Through All Banners: DBCC30FD / E7F0D71A output SV_Position first %s (CONTROL the imposter's %s); 230F2241's diffuse "
+              "slopes %.8g / %.8g (ratio %.6f: linear, albedo_power 1)\n",
+              banners ? "yes" : "NO", imposter ? "YES" : "no", low, high, high / low);
+}
+
+static void TestFoliage(const std::string& dump) {
+  // Channel 3's alpha (target 2) at pixel 5 of a G-buffer shader drawn as part 8 draws it.
+  const auto flags_written = [&dump](uint32_t hash) {
+    const auto code = GameBytes(dump, hash);
+    const auto texels = DrawForward(code, code, {.glint = true, .input_w = 0.f});
+    return (texels.size() >= 48) ? texels[32 + 5][3] * 255.f : -1.f;
+  };
+  const float leaves = flags_written(0x744FDFF0);
+  const float branches = flags_written(0x4CF47121);
+  const auto bytes = GameBytes(dump, 0x230F2241);
+  Lighting behind;
+  behind.c[1] = 1.f;  // the sun shines along +x onto a +x normal: from behind
+  std::fill_n(behind.c.begin() + 4, 3, 1.f);
+  behind.c[44] = 1.f;
+  behind.c[51] = 1.f;
+  std::array<float, 4> through = {};
+  constexpr std::array<float, 4> FLAGS = {128.f, 0.f, 64.f, 16.f};
+  for (size_t index = 0; index < FLAGS.size(); ++index) through[index] = DrawGame(bytes, {.lighting = behind, .flags = FLAGS[index]})[0];
+  CHECK(std::fabs(leaves - 128.f) < 1e-3f && std::fabs(branches) < 1e-3f, "foliage: leaves write %g, CONTROL branches %g", leaves, branches);
+  CHECK(through[0] > 1e-6f && through[1] == 0.f && through[2] == 0.f && through[3] == 0.f, "foliage: through with flags 128 %g, 0 %g, 64 %g, 16 %g",
+        through[0], through[1], through[2], through[3]);
+  std::printf("Light Through Foliage: 744FDFF0 writes flags %g (CONTROL 4CF47121 %g); 230F2241 from behind: flags 128 %g, "
+              "CONTROLS 0 %g, 64 %g, 16 %g\n",
+              leaves, branches, through[0], through[1], through[2], through[3]);
+}
+
+static void TestWater(const std::string& games, const std::string& dump) {
+  constexpr water_patch::WaterShader WATER = {.hash = 0x44B4A2F0, .lighting_slot = 3, .world_input = 3, .refraction_slot = 4, .normal_slot = 3};
+  constexpr float CLARITY = 2.f;
+  constexpr float SCATTER = 0.3f;
+  // water_clarity.cs over 72 dwords (lighting_VS_PS's 18 registers) of a ramp.
+  const std::string path = games + "/twwarhammer/water_clarity.cs_5_0.hlsl";
+  const auto clarity = ComputeShader(ReadText(path), path);
+  std::vector<float> lighting(72);
+  for (size_t index = 0; index < lighting.size(); ++index) lighting[index] = 0.05f + (0.01f * static_cast<float>(index));
+  const auto raw = [](const void* data, UINT bytes, UINT bind) {
+    const D3D11_BUFFER_DESC desc = {.ByteWidth = bytes, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = bind, .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
+    const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = data};
+    ComPtr<ID3D11Buffer> buffer;
+    device->CreateBuffer(&desc, (data != nullptr) ? &initial : nullptr, buffer.GetAddressOf());
+    return buffer;
+  };
+  const auto source = raw(lighting.data(), 288, D3D11_BIND_SHADER_RESOURCE);
+  const auto output = raw(nullptr, 288, D3D11_BIND_UNORDERED_ACCESS);
+  const D3D11_SHADER_RESOURCE_VIEW_DESC source_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX,
+                                                       .BufferEx = {.FirstElement = 0, .NumElements = 72, .Flags = D3D11_BUFFEREX_SRV_FLAG_RAW}};
+  const D3D11_UNORDERED_ACCESS_VIEW_DESC output_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER,
+                                                        .Buffer = {.FirstElement = 0, .NumElements = 72, .Flags = D3D11_BUFFER_UAV_FLAG_RAW}};
+  ComPtr<ID3D11ShaderResourceView> source_view;
+  ComPtr<ID3D11UnorderedAccessView> output_view;
+  device->CreateShaderResourceView(source.Get(), &source_desc, source_view.GetAddressOf());
+  device->CreateUnorderedAccessView(output.Get(), &output_desc, output_view.GetAddressOf());
+  const float inverse = 1.f / CLARITY;
+  std::array<uint32_t, 4> constants = {72, 0, 0, 0};
+  std::memcpy(&constants[1], &inverse, 4);
+  const auto clarity_constants = Constants(constants.data(), 16);
+  context->CSSetShader(clarity.Get(), nullptr, 0);
+  context->CSSetShaderResources(0, 1, source_view.GetAddressOf());
+  context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
+  context->CSSetConstantBuffers(0, 1, clarity_constants.GetAddressOf());
+  context->Dispatch(2, 1, 1);
+  context->ClearState();
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = 288, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), output.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  std::vector<float> clarified(72);
+  std::memcpy(clarified.data(), mapped.pData, 288);
+  context->Unmap(staging.Get(), 0);
+  int copy_misses = 0;
+  for (size_t index = 0; index < lighting.size(); ++index) {
+    const bool scatter = index >= 40 && index < 44;
+    const bool same = scatter ? Near(clarified[index], std::pow(lighting[index], inverse), 1e-5f)
+                              : std::memcmp(&clarified[index], &lighting[index], 4) == 0;
+    copy_misses += same ? 0 : 1;
+  }
+  // The game's water with that c10 a metre deep against its own half a metre deep: a flat surface 4.2 m up, the ground below.
+  const auto game = GameBytes(dump, WATER.hash);
+  const ForwardScene metre = {.height = 4.f, .flat = true, .ground = 3.2f, .scatter = std::pow(SCATTER, inverse)};
+  ForwardScene half = metre;
+  half.ground = 3.7f;
+  half.scatter = SCATTER;
+  ForwardScene plain_metre = metre;
+  plain_metre.scatter = SCATTER;
+  const auto clear = DrawForward(game, game, metre);
+  const auto shallow = DrawForward(game, game, half);
+  const auto murky = DrawForward(game, game, plain_metre);
+  int depth_misses = 0;
+  int control_differ = 0;
+  for (size_t texel = 0; texel < clear.size() && clear.size() == shallow.size(); ++texel) {
+    for (size_t channel = 0; channel < 4; ++channel) {
+      depth_misses += Near(clear[texel][channel], shallow[texel][channel], 1e-4f) ? 0 : 1;
+      control_differ += Near(murky[texel][channel], shallow[texel][channel], 1e-4f) ? 0 : 1;
+    }
+  }
+  // Caustics: on the game's bytes and on top of part 8's forward patch.
+  const auto caustic = water_patch::PatchWaterCaustics(game, WATER);
+  const auto forward = ambient_patch::Patch(game, true, 1, true);
+  const auto chained = water_patch::PatchWaterCaustics(forward, WATER);
+  ForwardScene lit = metre;
+  lit.scatter = SCATTER;
+  ForwardScene with_tile = lit;
+  with_tile.caustics = 1.f;
+  const auto same_bits = [](const std::vector<Float4>& a, const std::vector<Float4>& b) {
+    return !a.empty() && a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(Float4)) == 0;
+  };
+  const bool unbound = same_bits(DrawForward(caustic, game, lit), DrawForward(game, game, lit))
+                       && same_bits(DrawForward(chained, game, lit), DrawForward(forward, game, lit));
+  const bool tiled = !same_bits(DrawForward(caustic, game, with_tile), DrawForward(game, game, lit));
+  CHECK(copy_misses == 0 && !clear.empty() && depth_misses == 0, "water clarity: copy %d, depth %d misses", copy_misses, depth_misses);
+  CHECK(control_differ > 0, "water clarity CONTROL: the game's c10 a metre deep the same as half");
+  CHECK(!caustic.empty() && !chained.empty() && unbound && tiled, "water caustics: patched %d / chained %d, t51 unbound same %d, t51 = 1 differs %d",
+        !caustic.empty(), !chained.empty(), unbound, tiled);
+  std::printf("water: water_clarity.cs copy %d misses of 72; 44B4A2F0 with c10^(1/2) a metre deep vs half a metre: %d misses of %zu (CONTROL the game's "
+              "c10 a metre deep: %d differ); caustics patched %s, on the forward patch %s, t51 unbound bit-identical %s, CONTROL t51 = 1 %s\n",
+              copy_misses, depth_misses, clear.size() * 4, control_differ, caustic.empty() ? "NO" : "yes", chained.empty() ? "NO" : "yes",
+              unbound ? "yes" : "NO", tiled ? "differs" : "SAME");
+}
+
+static void TestCutOuts(const std::string& root, const std::string& dump) {
+  const std::string embed = root + "/build/twwarhammer.include/embed/";
+  uint32_t state = 777u;
+  const auto unit = [&state](float low, float high) {
+    state = state * 1664525u + 1013904223u;
+    return low + ((high - low) * static_cast<float>(state >> 8) / 16777216.f);
+  };
+  int values = 0;
+  int misses = 0;
+  int control = 0;
+  for (const auto& [hash, name] : {std::pair{0x20A9E5FDu, "rt_capture_unit"}, std::pair{0x3FC5424Cu, "rt_capture_unit_4_bones"}}) {
+    const auto game = GameBytes(dump, hash);
+    const auto cut_out = Bytes(embed + name + "_cut_out.cso");
+    const auto plain = Bytes(embed + name + ".cso");
+    ComPtr<ID3D11ShaderReflection> reflection;
+    if (game.empty() || FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) {
+      CHECK(false, "cut-outs: %08X's bytes", hash);
+      continue;
+    }
+    D3D11_SHADER_DESC desc = {};
+    reflection->GetDesc(&desc);
+    UINT floats = 0;
+    for (UINT index = 0; index < desc.InputParameters; ++index) {
+      D3D11_SIGNATURE_PARAMETER_DESC input = {};
+      reflection->GetInputParameterDesc(index, &input);
+      floats += static_cast<UINT>(std::bit_width(static_cast<UINT>(input.Mask)));
+    }
+    std::vector<float> vertices;
+    for (int vertex = 0; vertex < 16; ++vertex) {
+      for (UINT component = 0; component < floats; ++component) vertices.push_back(unit(0.f, 1.f));
+    }
+    std::array<float, 64 * 4> zeros = {};
+    const auto buffer = Constants(zeros.data(), sizeof(zeros));
+    const std::array<ID3D11Buffer*, 3> constants = {buffer.Get(), buffer.Get(), buffer.Get()};
+    const std::array<Streamed, 1> game_uv = {{{"TEXCOORD", 1, 2}}};
+    const std::array<Streamed, 1> capture_world = {{{"TEXCOORD", 0, 4}}};
+    const auto expected = StreamOut(game, game, game_uv, vertices, constants);
+    const auto ours = StreamOut(game, cut_out, capture_world, vertices, constants);
+    const auto without = StreamOut(game, plain, capture_world, vertices, constants);
+    CHECK(!expected.empty() && ours.size() == expected.size() * 2 && without.size() == ours.size(), "cut-outs: %08X's stream out", hash);
+    if (expected.empty() || ours.size() != expected.size() * 2 || without.size() != ours.size()) continue;
+    for (size_t vertex = 0; vertex < expected.size() / 2; ++vertex) {
+      const auto halves = [](float packed) {
+        uint32_t bits = 0;
+        std::memcpy(&bits, &packed, 4);
+        return std::array<float, 2>{HalfValue(bits & 0xFFFFu), HalfValue(bits >> 16)};
+      };
+      const auto uv = halves(ours[(vertex * 4) + 3]);
+      const auto other = halves(without[(vertex * 4) + 3]);
+      for (size_t axis = 0; axis < 2; ++axis) {
+        ++values;
+        misses += (std::fabs(uv[axis] - expected[(vertex * 2) + axis]) > 1e-3f) ? 1 : 0;
+        control += (std::fabs(other[axis] - expected[(vertex * 2) + axis]) > 1e-3f) ? 1 : 0;
+      }
+    }
+  }
+  CHECK(values == 64 && misses == 0 && control > 0, "cut-outs: %d values, %d misses, CONTROL %d differ", values, misses, control);
+  std::printf("cut-outs: rt_capture_unit(_4_bones)_cut_out against 20A9E5FD / 3FC5424C's TEXCOORD1, %d values, %d misses; CONTROL without the UV: %d "
+              "differ\n",
+              values, misses, control);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -1493,6 +1735,10 @@ int main(int argc, char** argv) {
   TestPointLights(argv[1], argv[2]);
   TestForwardShadows(argv[2]);
   TestGuides(games, argv[2]);
+  TestThin(argv[2]);
+  TestFoliage(argv[2]);
+  TestWater(games, argv[2]);
+  TestCutOuts(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
