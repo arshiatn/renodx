@@ -1,7 +1,7 @@
 # Pharaoh's shadow-map table and ray-traced captures against the game's own bytes (tests.cpp): Three Shadow Cascades Under Rays
-# over Pharaoh.exe's shadow setup (read from the Steam folder, or -Exe), and on WARP the campaign trees'
+# over Pharaoh.exe's shadow setup (read from the Steam folder, or -Exe), and on WARP the campaign trees' and the placed ropes'
 # captures against the game's vertex shaders.
-# -GameShaders: the folder of the game's dumped csos (0x16D14106, 0x81696642; not in the repository), only read.
+# -GameShaders: the folder of the game's dumped csos (0x16D14106, 0x81696642, 0x655AB38D; not in the repository), only read.
 # -Built: the add-on's compiled shaders (build\twpharaohdynasties.include\embed after a renodx-twpharaohdynasties.addon64
 # build). -OutDir: where the test exe is built and run (default build\tw_pharaoh_test_<arch>; ATN's antivirus-excluded test
 # folder, tools\tw\testbin, when given). Run as amd64 (the game's) and x86. Holds tools/tw's GPU job lock while it runs when

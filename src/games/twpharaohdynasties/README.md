@@ -59,6 +59,10 @@ Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.
     Less CPU time in the shadow pass; applies after a restart or a change of the game's Shadows. Its shadow table's cascade
     counts are written, nothing else (`test/tw_pharaoh` 2 over Pharaoh.exe's bytes: off, Shadow Map Size's bytes alone; on,
     3 bytes; back, the game's; the controls write nothing).
+  - **New (Experimental, off): Rarer Objects in the Rays** (Attila's row): the fixed ropes of ships, tents and buildings
+    (rope vs40_main_rigid 655AB38D; in no trace) cast, captured as Attila's placed ropes. WARP (`test/tw_pharaoh` 3): the
+    capture through the camera is the game's position within 5e-6 of w; the rope's middle (the control) misses. Attila's other
+    family there, tessellated objects, has no Pharaoh counterpart in the dump (no hull or domain shader in it).
 
 - **New: Fog Strength** (Extra, 0 to 2, default 1), on every fog the game ships, also the ones the maintainer's settings
   don't draw. That covers the battle fog's upsample (also its own full-resolution fallback along edges), low spec, MSAA,

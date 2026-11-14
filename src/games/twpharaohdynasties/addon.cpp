@@ -1604,6 +1604,8 @@ constexpr std::array<uint32_t, 12> ATLAS_SUN_SHADERS = {0xF883F5B2, 0xFA856110, 
                                                         0xC701CDD0, 0xE5A6A379, 0x3323BDCC, 0x47DDD6EE, 0x955658C3, 0xF4E19A48};
 float rays_replace_maps_row = 0.f;
 float rays_skip_cascades_row = 0.f;
+// Rarer Objects in the Rays (Experimental, as Attila's): families drawn in no trace (SCENE_SHADERS' held_row).
+float rays_untraced_casters_row = 0.f;
 // Fog Shadows (FOG_SHADERS): in a draw where rt_scene's fog hook (InstallFogShadows, registered before this) bound this frame's
 // rays at t43, our copy (shaders/battlefog00: the march's gate false, the sun's light in the fog x the rays) draws in its place
 // and the game's shader is bound again after it (finalize); otherwise the game's own bytes.
@@ -1929,7 +1931,7 @@ constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixe
 // map falls below the distance fade, and again against the angle to the camera (Troy's 07295514 instruction for instruction,
 // the fade at cb1 there cb0); the rays cut at t0.w alone (the helper's 0.5), as Troy's.
 constexpr std::array<twattila::rt_scene::PixelMask, 1> CAMPAIGN_TREE_MASKS = {{{.pixel_shader = 0xE924C902, .slot = 0}}};
-constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 35> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1962,6 +1964,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 34> SCENE_SHADERS = {{
     // In no trace (level B): the sail symbols (88A29130, a decal on the sail) stay out.
     {.hash = 0xED0BC391, .capture_shader = __rt_capture_sail, .dynamic = true, .thin = true},
     {.hash = 0xDD5D5694, .capture_shader = __rt_capture_rope, .dynamic = true, .thin = true},
+    // The placed ropes (rope vs40_main_rigid 655AB38D; in no trace, level B): instance rows, then turned toward the camera in view
+    // space and projected; captured as Attila's 3926A823 (make_wind_motion_vs.py :world_view: that view-space point back to the
+    // world through inv_view), solid, every frame as drawn, under Rarer Objects in the Rays. WARP: test\tw_pharaoh.
+    {.hash = 0x655AB38D, .capture_shader = __rt_capture_rope_rigid, .dynamic = true, .held_row = &rays_untraced_casters_row},
     {.hash = 0xFF969484, .capture_shader = __rt_capture_unit, .dynamic = true},
     {.hash = 0x4A716936, .capture_shader = __rt_capture_unit_4_bones, .dynamic = true},
     {.hash = 0x475A8CDF, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
@@ -2250,6 +2256,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. DXR: from rays, also what is off screen or hidden (turn Water Reflections\n"
                            "on below). Needs an upscaler.",
+    .untraced_casters_tooltip = "The fixed ropes of ships, tents and buildings also cast ray-traced shadows.",
 };
 
 void ConfigureAddon() {
@@ -2870,6 +2877,7 @@ void ConfigureAddon() {
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row,
                                              // Smooth Banner Shadows: the thin sheets (cloth 2F2A0E7E, flags 8DE94E2F) don't
                                              // shade themselves (RT_SHEETS_UNSELFED). No Light Through All Banners: those
                                              // sheets are always thin here, and the unit banners (76225B91) cast nothing.

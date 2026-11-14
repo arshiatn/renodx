@@ -11,6 +11,9 @@
 //    Set writes Shadow Map Size's bytes alone; on, the three rows above Medium (qualities 3-5, 4 cascades each) take Medium's
 //    count (3), nothing else; off again and the game's size: the game's bytes; CONTROL: a Medium of 4 or of 0, none written.
 //    Printed: the last split of the battle's and the campaign's highest quality (the shadow distance) with 4 and with 3.
+// 3. The placed ropes (rope vs40_main_rigid 655AB38D): the capture (rt_capture_rope_rigid, make_wind_motion_vs.py :world_view)
+//    from random ropes near the camera: its world through the camera's view_projection is the game's SV_Position within 1e-4
+//    of w; CONTROL: the rope's middle (the game's TEXCOORD5, before its camera-facing offset) misses that tolerance, every one.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -424,6 +427,70 @@ static void TestCampaignTrees(const std::string& game_folder, const std::string&
               capture_errors[0], capture_errors[1], moved_errors[0], kept_errors[0], kept_errors[1], control_errors[0]);
 }
 
+// The placed ropes: the capture against the game's 655AB38D from random ropes 10-60 m from the camera.
+static void TestPlacedRopes(const std::string& game_folder, const std::string& built_folder) {
+  const auto game = ReadFile(game_folder + "\\0x655AB38D.vs_5_0.cso");
+  const auto capture = ReadFile(built_folder + "\\rt_capture_rope_rigid.cso");
+  CHECK(!game.empty() && !capture.empty(), "placed ropes: the csos");
+  if (game.empty() || capture.empty()) return;
+  uint32_t seed = 4242;
+  const auto random = [&seed](float low, float high) {
+    seed = seed * 1664525u + 1013904223u;
+    return low + (high - low) * static_cast<float>(seed >> 8) / 16777216.f;
+  };
+  // 11 inputs x 4 floats (POSITION0, NORMAL0, TEXCOORD0-2, POSITION1-6): the rope's point and direction, its UV, its width
+  // (TEXCOORD1.x), the instance's rows (a turn and scale, the place 10-60 m in front of the camera) in POSITION1-3.
+  constexpr int VERTICES = 300;
+  const std::array<float, 3> forward = {CAMERA[12], CAMERA[13], CAMERA[14]};  // view's third row: the camera's axis (sign either way)
+  std::vector<float> vertices;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    const float turn = random(0.f, 6.28f);
+    const float scale = random(0.8f, 1.2f);
+    const float distance = -random(10.f, 60.f);
+    for (int input = 0; input < 11; ++input) {
+      std::array<float, 4> value = {random(-1.f, 1.f), random(-1.f, 1.f), random(-1.f, 1.f), random(0.f, 1.f)};
+      if (input == 0) value = {random(-2.f, 2.f), random(0.f, 6.f), random(-2.f, 2.f), 1.f};
+      if (input == 3) value = {random(0.05f, 0.3f), random(0.f, 1.f), 0.f, 0.f};
+      if (input == 5) value = {scale * std::cos(turn), 0.f, scale * std::sin(turn), CAMERA[0] + forward[0] * distance};
+      if (input == 6) value = {0.f, scale, 0.f, CAMERA[1] + forward[1] * distance};
+      if (input == 7) value = {-scale * std::sin(turn), 0.f, scale * std::cos(turn), CAMERA[2] + forward[2] * distance};
+      vertices.insert(vertices.end(), value.begin(), value.end());
+    }
+  }
+  const std::array<ComPtr<ID3D11Buffer>, 1> constants = {ConstantBuffer(CAMERA.data(), sizeof(CAMERA))};
+  const auto clips = StreamOut(game, "SV_Position", vertices, constants);
+  const auto middles = StreamOut(game, "TEXCOORD", vertices, constants, 5);
+  const auto worlds = StreamOut(capture, "TEXCOORD", vertices, constants);
+  if (clips.size() != VERTICES * 4 || middles.size() != VERTICES * 4 || worlds.size() != VERTICES * 4) {
+    CHECK(false, "placed ropes: stream output sizes");
+    return;
+  }
+  // `world` through view_projection (c9-12, rows acting on column vectors) against the game's clip position, over |w|.
+  const auto off = [&](const std::vector<float>& world, int vertex) {
+    double worst = 0.0;
+    for (int axis = 0; axis < 4; ++axis) {
+      double clip = 0.0;
+      for (int component = 0; component < 4; ++component) {
+        const double value = (component == 3) ? 1.0 : world[vertex * 4 + component];
+        clip += value * CAMERA[(9 + axis) * 4 + component];
+      }
+      worst = std::max(worst, std::abs(clip - clips[vertex * 4 + axis]) / std::abs(clips[vertex * 4 + 3]));
+    }
+    return worst;
+  };
+  double capture_worst = 0.0;
+  int middles_missing = 0;
+  for (int vertex = 0; vertex < VERTICES; ++vertex) {
+    capture_worst = std::max(capture_worst, off(worlds, vertex));
+    if (off(middles, vertex) > 1e-4) ++middles_missing;  // outside the tolerance the capture passes
+  }
+  CHECK(capture_worst < 1e-4, "placed ropes: the capture's world %g of w off the game's clip position", capture_worst);
+  CHECK(middles_missing == VERTICES, "placed ropes: CONTROL the rope's middle: only %d of %d miss", middles_missing, VERTICES);
+  std::printf("3 655AB38D: the capture's world through view_projection within %.2g of w of the game's SV_Position (%d ropes' "
+              "points 10-60 m away); CONTROL the rope's middle: %d of %d miss\n",
+              capture_worst, VERTICES, middles_missing, VERTICES);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("usage: pharaoh.exe <the game's csos> <the add-on's built csos> [Pharaoh.exe]\n");
@@ -436,6 +503,7 @@ int main(int argc, char** argv) {
     return 1;
   }
   TestCampaignTrees(argv[1], argv[2]);
+  TestPlacedRopes(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
   return failures == 0 ? 0 : 1;
 }
