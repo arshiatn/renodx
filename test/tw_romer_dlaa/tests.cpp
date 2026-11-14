@@ -16,7 +16,8 @@
 //    game's 8-bit format for the upgraded R16G16B16A16 / R10G10B10A2 (ATN's crash 2026-11-14), the rest as asked, its
 //    return value back; unhooked, the format as asked again.
 // 6. Upscale (below 100%): DLSS's result copied into the upscaler's display-size target in its place, the target's size
-//    noted; CONTROL: no result this frame, another size, DLAA off: the game's draw.
+//    noted; CONTROL: no result this frame, another size, DLAA off: the game's draw. DLSS's output size with the upscaler
+//    drawn: the upscaler's, the rays on or off; CONTROL: the upscaler not drawn: the render's.
 #include <windows.h>
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -27,6 +28,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 #include "src/games/twromeremastered/dlaa.hpp"
@@ -526,6 +528,22 @@ int main(int argc, char** argv) {
     CHECK(!upscale(unused_view.Get()));  // CONTROL: no result this frame
     CHECK((ReadBack<std::array<uint16_t, 4>>(unused_target.Get(), DISPLAY_WIDTH, DISPLAY_HEIGHT)[5][0] == grey));
     CHECK(state.upscaler[0] == DISPLAY_WIDTH && state.upscaler[1] == DISPLAY_HEIGHT && state.upscaler_frame == state.frame);
+    // DLSS's output (the bridge's size) with the upscaler drawn: its size, with the rays on too (their captures at the
+    // render size); CONTROL: the upscaler not drawn for frames (100%): the render's.
+    {
+      const auto kept_frames = std::pair{state.frame, state.upscaler_frame};
+      dlaa::rays = true;
+      const std::array<UINT, 2> rays_below = dlaa::internal::OutputSize(WIDTH, HEIGHT);
+      dlaa::rays = false;
+      const std::array<UINT, 2> below = dlaa::internal::OutputSize(WIDTH, HEIGHT);
+      state.frame = kept_frames.first + 5;
+      const std::array<UINT, 2> full = dlaa::internal::OutputSize(WIDTH, HEIGHT);
+      std::tie(state.frame, state.upscaler_frame) = kept_frames;
+      std::printf("DLSS's output below 100%%: %ux%u (rays on %ux%u); the upscaler not drawn: %ux%u\n", below[0], below[1], rays_below[0],
+                  rays_below[1], full[0], full[1]);
+      CHECK(rays_below[0] == DISPLAY_WIDTH && rays_below[1] == DISPLAY_HEIGHT && below == rays_below);
+      CHECK(full[0] == WIDTH && full[1] == HEIGHT);
+    }
     state.upscaled_frame = state.frame;
     const auto [target, view] = make_target(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     CHECK(upscale(view.Get()));

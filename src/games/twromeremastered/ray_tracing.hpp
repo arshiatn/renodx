@@ -205,11 +205,13 @@ inline ID3D11DeviceContext* ImmediateContext(reshade::api::command_list* cmd_lis
 }  // namespace internal
 
 inline const twattila::rt_scene::Host HOST = {
-    .render_size = [] { return std::array<UINT, 2>{twattila::dlaa_bridge::bridge.width, twattila::dlaa_bridge::bridge.height}; },
+    // The scene's depth at the render size (below 100% smaller than the bridge, DLSS's output).
+    .render_size = dlaa::SceneSize,
     .guides_written = [] { return false; },
     // The captures' clip positions go back to the world with the trace's camera (the prepass's: one camera a frame).
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
+    .depth_at_render_size = true,
 };
 
 // Before ASSAO's apply or the shadow mask's resolve (PS b8 bound: the frame constants): the sun from them, then this

@@ -19,7 +19,11 @@
 //    (4) light it as the products would.
 // 6. contact_shadows::Draw (Bend's march, twattila's sss_setup / sss_bend, into the mask): a pillar's shadow from a sun at
 //    the camera's left darkens the ground the CPU finds shadowed, the sunlit ground and the mask's green kept; CONTROL: the
-//    sun at the right (the setup's sign the other way) leaves it lit.
+//    sun at the right (the setup's sign the other way) leaves it lit. Softness (sss_blur): more partial pixels, the same
+//    dark share.
+// 7. DLSS below 100% with the rays (rt_core Host::depth_at_render_size): the kept depth's size is the render size; a
+//    prepass draw into the render-size depth is the main view's for Capture; CONTROL: without the field, another size;
+//    today's rule at the bridge's size kept. DrawMultiply reads the traced visibility's top-left corner texel for texel.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -746,6 +750,92 @@ Output main(uint id : SV_VertexID) {
     CHECK(control_dark < 0.05);
     CHECK(partial(soft) > partial(hard));
     CHECK(std::abs(soft_dark - shadow_dark) < 0.15);
+  }
+
+  // 7. DLSS below 100% with the rays (rt_core's Host::depth_at_render_size): the kept depth's size is the rays' render
+  //    size; a prepass draw into the render-size depth (64 x 36, the bridge DLSS's 96 x 54) is the main view's (Capture
+  //    marks it) with Rome's host; CONTROL: that host without the field (the bridge's size, today's rule), a depth of
+  //    another size. DrawMultiply reads the visibility's top-left corner (the traced render) texel for texel.
+  {
+    constexpr UINT BRIDGE_WIDTH = WIDTH * 3 / 2;
+    constexpr UINT BRIDGE_HEIGHT = HEIGHT * 3 / 2;
+    dlaa::rays = true;
+    context->PSSetShaderResources(1, 1, camera_state.depth.GetAddressOf());
+    dlaa::KeepDepth(&command_list, false);
+    context->ClearState();
+    const std::array<UINT, 2> scene_size = dlaa::SceneSize();
+    CHECK(scene_size[0] == WIDTH && scene_size[1] == HEIGHT);
+    auto& bridge = twattila::dlaa_bridge::bridge;
+    auto& runtime = twattila::rt_scene::internal::runtime;
+    const auto kept_bridge = std::tuple{bridge.width, bridge.height, bridge.ray_tracing};
+    bridge.width = BRIDGE_WIDTH;
+    bridge.height = BRIDGE_HEIGHT;
+    bridge.ray_tracing = true;
+    {
+      // Full (the frame's dynamic room): Capture returns right after the main view's mark.
+      const std::unique_lock lock(runtime.mutex);
+      runtime.settings.sun_shadows = true;
+      runtime.dynamic_vertices = twattila::rt_scene::internal::MAX_DYNAMIC_VERTICES;
+      runtime.frame = 100;
+    }
+    const auto other_depth = MakeTexture(WIDTH + 8, HEIGHT, DXGI_FORMAT_R32_TYPELESS, D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE);
+    ComPtr<ID3D11DepthStencilView> other_dsv;
+    REQUIRE(SUCCEEDED(device->CreateDepthStencilView(other_depth.Get(), &d32, other_dsv.GetAddressOf())));
+    // Whether a prepass draw (3 vertices, a dynamic scene shader) into `dsv` marked this frame's main view with `host`.
+    const auto main_view = [&](const twattila::rt_scene::Host& host, ID3D11DepthStencilView* dsv) {
+      twattila::rt_scene::internal::host = host;
+      {
+        const std::unique_lock lock(runtime.mutex);
+        runtime.main_view_frame = 0;
+      }
+      context->OMSetRenderTargets(0, nullptr, dsv);
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      const twattila::rt_scene::SceneShader shader = {.hash = 0x9594545F, .dynamic = true};
+      renodx::utils::command_action::CommandContext<renodx::utils::command_action::DrawArguments> command = {
+          .cmd_list = &command_list, .arguments = {.vertex_count = 3, .instance_count = 1}};
+      twattila::rt_scene::internal::Capture(command, shader);
+      context->ClearState();
+      const std::unique_lock lock(runtime.mutex);
+      return runtime.main_view_frame == runtime.frame;
+    };
+    twattila::rt_scene::Host today = rays::HOST;
+    today.depth_at_render_size = false;
+    const bool render_sized = main_view(rays::HOST, scene_dsv.Get());
+    const bool today_rule = main_view(today, scene_dsv.Get());
+    const bool other_size = main_view(rays::HOST, other_dsv.Get());
+    // The bridge at the render size (100%): today's rule takes it too.
+    bridge.width = WIDTH;
+    bridge.height = HEIGHT;
+    const bool today_full = main_view(today, scene_dsv.Get());
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.settings.sun_shadows = false;
+      runtime.dynamic_vertices = 0;
+    }
+    twattila::rt_scene::internal::host = {};
+    std::tie(bridge.width, bridge.height, bridge.ray_tracing) = kept_bridge;
+
+    // The traced visibility in a bridge-size texture: 128 in the render's corner, 0 past it; the render-size mask's red 200.
+    std::vector<uint8_t> traced(BRIDGE_WIDTH * BRIDGE_HEIGHT, 0);
+    for (UINT y = 0; y < HEIGHT; ++y) std::fill_n(traced.begin() + (static_cast<size_t>(y) * BRIDGE_WIDTH), WIDTH, uint8_t{128});
+    const auto traced_texture = MakeTexture(BRIDGE_WIDTH, BRIDGE_HEIGHT, DXGI_FORMAT_R8_UNORM, D3D11_BIND_SHADER_RESOURCE, traced.data(), BRIDGE_WIDTH);
+    const std::vector<std::array<uint8_t, 2>> corner_bytes(WIDTH * HEIGHT, {200, 77});
+    const auto corner_mask = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R8G8_UNORM, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE, corner_bytes.data(), WIDTH * 2);
+    rays::internal::DrawMultiply(context1.Get(), Rtv(corner_mask.Get()).Get(), Srv(traced_texture.Get()).Get(), false);
+    context->ClearState();
+    const auto multiplied = ReadBack<std::array<uint8_t, 2>>(corner_mask.Get());
+    const bool corner_read = std::ranges::all_of(multiplied, [](const std::array<uint8_t, 2>& texel) {
+      return std::abs(static_cast<int>(texel[0]) - 100) <= 1 && texel[1] == 77;
+    });
+    std::printf("render-size depth (DLSS below 100%%) with the rays: kept size %ux%u; main view %d (today's rule %d, another size %d, "
+                "today's rule at 100%% %d); visibility's corner multiplied texel for texel %d\n",
+                scene_size[0], scene_size[1], render_sized ? 1 : 0, today_rule ? 1 : 0, other_size ? 1 : 0, today_full ? 1 : 0, corner_read ? 1 : 0);
+    CHECK(render_sized);
+    CHECK(!today_rule);   // CONTROL: without the field the render-size depth is no main view below 100%
+    CHECK(!other_size);   // CONTROL: a depth of another size
+    CHECK(today_full);    // today's rule unchanged at the bridge's size
+    CHECK(corner_read);
+    dlaa::rays = false;
   }
 
   std::printf("%s (%d failures)\n", (failures == 0 ? "PASS" : "FAIL"), failures);
