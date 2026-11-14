@@ -30,14 +30,19 @@ Test list (in game, ATN):
 Not done: a GPU time for the two rows (no game run); Path-Traced AO: the game's SSAO stays under it (the rays' AO setting
 is off there, so Rays' AO Alone is hidden and does nothing).
 
-### r4 (2026-11-14: Hue Clip default 40, ATN's choice; stamped and installed with renodx-tw-dlaa64.exe helper112, not run in game)
+### r5 (2026-11-14: RT/PT as Attila's; "wh1 r5", stamped and installed 10:45 with renodx-tw-dlaa64.exe helper112, not run in game; the reader census above came after it)
 
-- **Hue Clip default 40** (Attila's), was 90 (WH1's own tone mappers measured closest to SDR at 80-90). Test: Recommended
-  (PsychoV35), fires and sky against SDR.
 - **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Far Tree Shadows on, Smoke Shadows on
   (hidden: not hooked here), Light Through Foliage 0.5 (rests under the rays); of this game's own rows Shadow Casters Out of
   View on (as Warhammer III's), Rays Replace and Skip the Shadow Maps and Cut-outs on More Models off. Defaults, labels and
   No RT/PT as before.
+- **Fixed**: No RT/PT (Recommended) and Reset turned Water Caustics on (the page read its default before it was zeroed);
+  RT/PT turns it on, as Attila's.
+
+### r4 (2026-11-14: Hue Clip default 40, ATN's choice; stamped and installed 10:10 with renodx-tw-dlaa64.exe helper112, not run in game)
+
+- **Hue Clip default 40** (Attila's), was 90 (WH1's own tone mappers measured closest to SDR at 80-90). Test: Recommended
+  (PsychoV35), fires and sky against SDR.
 
 ### Phase I, round 3 (2026-11-14 morning; "wh1 r3", stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 

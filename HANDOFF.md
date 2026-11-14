@@ -349,11 +349,25 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] ATN ~10:00 (awake briefly): tests 1-3 (Lean default, torch rows, REBLUR under RR) themselves; Aftermath: not shipped
   (so no licence text in the zips); WH1 Hue Clip default 40 -> WH1 r4 7d21a0b0 installed 10:10 (page dump default=40;
   ATN's own WH1 ReShade.ini keeps hue_clip=50 until Reset / Recommended); ATN restarted the PC (zombies gone).
-- [ ] ATN ~10:1x: "I like my RT/PT preset of Attila ... put the new games to Attila's preset (sliders that don't exist in
+- [x] ATN ~10:1x: "I like my RT/PT preset of Attila ... put the new games to Attila's preset (sliders that don't exist in
   Attila: a value as you fit)": MERGED ba290b8c (graphics_page Bindings::rays_preset_as_attila opt-in; Thrones, WH2, Troy,
   WH1, Shogun 2 DLSS; page dumps after RT/PT = Attila's but per-game tone mapping / AO keys; Attila / WH3 unchanged; Rome
   Remastered has no RT/PT button = ATN decides) + WH1 0124b5dc (No RT/PT / Reset wrote Water Caustics 1: default zeroed
-  before Apply). Building 10:37 at 0124b5dc; then dumps, stamp thrones r4 / wh2 v50 / troy v54 / wh1 r5 / shogun2 v73, install.
+  before Apply). Built 10:37 at 0124b5dc (both lines exit 0); page dumps *_rtpt1040: Attila / WH3 = 1114final, Thrones /
+  WH2 / Troy / WH1 after RT/PT = Attila's but tone mapping / AO / FasterGameCpuCode, WH1 No RT/PT WaterCaustics 1 -> 0.
+  INSTALLED 10:45 (dry run first, ATN's files unchanged): thrones r4, wh2 v50, troy v54, wh1 r5, "shogun2 v73 dlss addon"
+  (HDR addon v72 unchanged: tw_install.py now keeps an unchanged add-on's earlier stamp, as the helper's; backup
+  tw_install.py.bak_1114b); helper112 everywhere. READMEs: own sections.
+- [x] WH1 AO / SSR reader census MERGED 0c28a0ea (from ATN's 36 traces, no new run: Skip the Game's Reflection Passes (42
+  passes under RT reflections) + Rays' AO Alone (WH3's SkipGameSsao; changes the look: ATN decides), Experimental off;
+  WARP parts 14 / 15). Not installed (after wh1 r5). WH1 agent DONE.
+- [ ] ATN ~10:4x: (1) Rome Remastered on Attila's page layout + preset buttons (the skill has it: shaders-ui rows 59 / 65)
+  -> Rome Remastered agent after resets / DLAA / DLSS below 100 %; (2) its base-game input bug (keys / clicks stop
+  registering; players' fix RunAsDate year 2020): study the date-dependent input path read-only, then a detour of that one
+  routine as an Experimental row; (3) Nsight: a whole-frame Attila check plan (game D3D11 + add-on + helper; 32-bit: tool
+  per part), fixes behind switches with off = bit-identical, ONE in-game Attila run allowed on the Constantinople replay;
+  then WH3 (harness only; an in-game run needs ATN's OK); (4) heapfix (Attila CPU Performance Fix): no fork / publish; its
+  code in WH3 = "elsewhere" in its licence: needs the author's written OK first (ATN asks him).
 - [x] ATN's Rome Remastered runs (FrameTrace=1 in its ReShade.ini, backup ini_backup_20261114_101134; prefs
   resolution_scale-1 100 -> 67 -> 50, backup prefs_backup_20261114_102403): in-game Resolution Scale change CRASHED
   (exe +0x6ee594, null sRGB RTV); 67 % run 10:24 (17 traces runs/ATN_multi_romer_102433; battle start "hung multiple

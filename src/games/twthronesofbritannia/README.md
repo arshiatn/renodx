@@ -1,5 +1,9 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
+### r4 (2026-11-14: RT/PT as Attila's; "thrones r4", stamped and installed 10:45 with renodx-tw-dlaa64.exe helper112, not run in game)
+
+- **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Light Through All Banners, Far Tree, Smoke and Sprite Soldier Shadows and Water Caustics on, Light Through Foliage 0.5 and the smoke's shadows without rays 1 (both rest under the rays). Their defaults, labels and No RT/PT stay as they were.
+
 ### Round 3 (2026-11-14, grass, banners, CPU code; "thrones r3", stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 New:
@@ -7,7 +11,6 @@ New:
 - **Light Through All Banners (Experimental, off)**: the unit banners let some sunlight through as thin cloth, for the rays and for Bend's screen-space shadows (with Light Through Banners). RT/PT leaves it off.
 - **Faster Game CPU Code (Experimental, off)** now runs all three of Attila's faster routines here: the soldier draw's rounding and the animations' fmod beside the half floats, each checked against the game's own code (every register, the x87 state).
 - **The ray-traced scene checked against the game's own shaders** on the GPU (each capture's world position through the camera against the game's position): 42 of 48 the same to 1e-7; the other 6 differ by design, as Attila's (grass shrinks with distance, sprite soldiers and far tree cards face the sun, campaign plants stand upright).
-- **RT/PT now matches Attila's preset** (ATN 2026-11-14; page dump against Attila's): Light Through All Banners, Far Tree, Smoke and Sprite Soldier Shadows and Water Caustics on, Light Through Foliage 0.5 and the smoke's shadows without rays 1 (both rest under the rays). Their defaults, labels and No RT/PT stay as they were.
 
 Not done:
 - The capture-point flags in Light Through All Banners: Attila's rule would make every alpha-tested object here thin.
