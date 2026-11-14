@@ -26,7 +26,9 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../twattila/dlaa_bridge.hpp"
+#include "../twattila/frame_generation.hpp"
 #include "../twattila/frame_trace.hpp"
+#include "../twattila/reflex.hpp"
 
 // DLAA (Graphics (Experimental) > Anti-Aliasing, off by default; tools\tw\romeremastered\plan_1114.md item 3) through
 // the TW helper's bridge. The game has no TAA, jitter or motion vectors. ATN's 2026-11-14 traces (level A): every scene
@@ -43,8 +45,18 @@ using Microsoft::WRL::ComPtr;
 
 // The Anti-Aliasing row: 0 the game's, 1 DLAA.
 static float setting = 0.f;
+// Ray tracing (ray_tracing.hpp) is on: the main camera and the scene's depth are kept without DLAA too, the bridge made
+// with its ray tracing textures and kept.
+static bool rays = false;
+// Screen-space shadows (contact_shadows.hpp) are on: the main camera and the scene's depth kept without DLAA too.
+static bool contact = false;
 
 namespace internal {
+
+// DLAA, the rays or the screen-space shadows want the main camera and the scene's depth.
+inline bool CameraWanted() {
+  return setting != 0.f || rays || contact;
+}
 
 constexpr UINT CAMERA_BYTES = 192;
 constexpr size_t PROJECTION = 16;
@@ -73,10 +85,15 @@ struct TaaConstants {
   float object_motion = 0.f;
 };
 
+// The game's rows (v x rows).
 struct Camera {
-  std::array<float, 16> view_projection = {};          // without the jitter
-  std::array<float, 16> inverse_view_projection = {};  // as the depth was drawn (with it)
-  std::array<float, 2> jitter = {};                    // written into this upload: pixels, x right, y up
+  std::array<float, 16> view = {};
+  std::array<float, 16> projection = {};                // without the jitter
+  std::array<float, 16> view_projection = {};           // without the jitter
+  std::array<float, 16> jittered_view_projection = {};  // as the depth was drawn
+  std::array<float, 16> inverse_view_projection = {};   // of the jittered
+  std::array<float, 3> position = {};
+  std::array<float, 2> jitter = {};  // written into this upload: pixels, x right, y up
   uint64_t frame = 0;
 };
 
@@ -111,20 +128,22 @@ static Objects objects;
 static thread_local ID3D11Buffer* mapped_buffer = nullptr;
 static thread_local float* mapped_data = nullptr;
 
-// aa_taa for this frame. The game's cameras act as v x rows (its VS: mul v.x by row 8, add v.y x row 9...); aa.hlsli's
-// matrices are column-major under mul(v, m): given transposed.
+// The game's cameras act as v x rows (its VS: v.x x row 8, + v.y x row 9...); aa.hlsli's matrices (column-major under
+// mul(v, m)) and rt_core's (rows acting on column vectors) are their transposes.
+inline std::array<float, 16> Transposed(const std::array<float, 16>& rows) {
+  std::array<float, 16> columns = {};
+  for (size_t row = 0; row < 4; ++row) {
+    for (size_t column = 0; column < 4; ++column) columns[(column * 4) + row] = rows[(row * 4) + column];
+  }
+  return columns;
+}
+
+// aa_taa for this frame.
 inline TaaConstants MakeTaaConstants(const Camera& camera, const std::array<float, 16>& previous_view_projection, bool continued) {
-  const auto transposed = [](const std::array<float, 16>& rows) {
-    std::array<float, 16> columns = {};
-    for (size_t row = 0; row < 4; ++row) {
-      for (size_t column = 0; column < 4; ++column) columns[(column * 4) + row] = rows[(row * 4) + column];
-    }
-    return columns;
-  };
   return {
-      .view_projection = transposed(camera.view_projection),
-      .inverse_view_projection = transposed(camera.inverse_view_projection),
-      .previous_view_projection = transposed(continued ? previous_view_projection : camera.view_projection),
+      .view_projection = Transposed(camera.view_projection),
+      .inverse_view_projection = Transposed(camera.inverse_view_projection),
+      .previous_view_projection = Transposed(continued ? previous_view_projection : camera.view_projection),
       .reset = (continued ? 0.f : 1.f),
       // The camera's jitter (y up) as it moves the picture (y down).
       .jitter = {camera.jitter[0], -camera.jitter[1]},
@@ -158,7 +177,13 @@ inline void JitterCamera(float* c) {
     }
   }
   auto& camera = state.camera;
+  std::copy_n(c, 16, camera.view.begin());
+  std::copy_n(c + PROJECTION, 16, camera.projection.begin());
   std::copy_n(c + VIEW_PROJECTION, 16, camera.view_projection.begin());
+  // The eye: the view's rows 0-2 a rotation, row 3 its translation (the eye x the view = 0).
+  for (size_t axis = 0; axis < 3; ++axis) {
+    camera.position[axis] = -((c[12] * c[axis * 4]) + (c[13] * c[(axis * 4) + 1]) + (c[14] * c[(axis * 4) + 2]));
+  }
   camera.jitter = state.jitter;
   camera.frame = state.frame;
   // Clip x / y move by the jitter x w (in clip units: 2 / the size a pixel), the projection's and the view-projection's.
@@ -171,6 +196,7 @@ inline void JitterCamera(float* c) {
       values[1] += jitter_y * values[3];
     }
   }
+  std::copy_n(c + VIEW_PROJECTION, 16, camera.jittered_view_projection.begin());
   // The jittered view-projection's inverse (Gauss-Jordan in doubles): the depth's positions.
   std::array<std::array<double, 8>, 4> rows = {};
   for (size_t row = 0; row < 4; ++row) {
@@ -202,8 +228,8 @@ inline void JitterCamera(float* c) {
 
 inline void OnMapBufferRegion(reshade::api::device* device, reshade::api::resource resource, uint64_t offset, uint64_t,
                               reshade::api::map_access access, void** data) {
-  if (setting == 0.f || access == reshade::api::map_access::read_only || offset != 0 || data == nullptr || *data == nullptr
-      || device->get_api() != reshade::api::device_api::d3d11) {
+  if (!CameraWanted() || access == reshade::api::map_access::read_only || offset != 0 || data == nullptr
+      || *data == nullptr || device->get_api() != reshade::api::device_api::d3d11) {
     return;
   }
   auto* buffer = reinterpret_cast<ID3D11Buffer*>(resource.handle);
@@ -222,7 +248,7 @@ inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource re
 // UpdateSubresource: the main camera uploaded jittered instead (true: the game's update skipped).
 inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data, reshade::api::resource resource,
                                  uint64_t offset, uint64_t size) {
-  if (setting == 0.f || data == nullptr || offset != 0 || size < CAMERA_BYTES
+  if (!CameraWanted() || data == nullptr || offset != 0 || size < CAMERA_BYTES
       || device->get_api() != reshade::api::device_api::d3d11) {
     return false;
   }
@@ -260,8 +286,8 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
                         : std::array<float, 2>{});
     ++state.frame;
   }
-  // Turned off: the helper's DLAA and the shared textures let go (made again when turned on).
-  if (setting == 0.f && twattila::dlaa_bridge::bridge.width != 0) {
+  // Turned off (and no rays): the helper's DLAA and the shared textures let go (made again when turned on).
+  if (setting == 0.f && !rays && twattila::dlaa_bridge::bridge.width != 0) {
     twattila::dlaa_bridge::Release(true);
   }
 }
@@ -269,6 +295,8 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  twattila::frame_generation::OnDestroyDevice(native);
+  twattila::reflex::OnDestroyDevice(native);
   {
     const std::unique_lock lock(state.mutex);
     state.depth.Reset();
@@ -280,9 +308,10 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 
 }  // namespace internal
 
-// The shadow mask's resolve (its PS, or CS with `compute`) just read the scene's depth at t1: kept for this frame's DLAA.
+// The shadow mask's resolve (its PS, or CS with `compute`) just read the scene's depth at t1: kept for this frame's DLAA
+// (and the rays and the screen-space shadows: SceneDepth).
 inline void KeepDepth(reshade::api::command_list* cmd_list, bool compute) {
-  if (setting == 0.f || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  if (!internal::CameraWanted() || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   ComPtr<ID3D11ShaderResourceView> depth;
   if (compute) {
@@ -293,6 +322,27 @@ inline void KeepDepth(reshade::api::command_list* cmd_list, bool compute) {
   const std::unique_lock lock(internal::state.mutex);
   internal::state.depth = depth;
   internal::state.depth_frame = internal::state.frame;
+}
+
+// The bridge at `width` x `height` as DLAA, the rays and frame generation want it (one set of arguments for all: any other
+// makes its textures again).
+inline bool PrepareBridge(ID3D11Device* device, UINT width, UINT height) {
+  return twattila::dlaa_bridge::Prepare(device, width, height, false, rays, twattila::frame_generation::Format());
+}
+
+// The scene's depth as last kept (one texture through the frames: before this frame's resolve, the last frame's view of
+// it, this frame's prepass already drawn into it); null: none yet.
+inline ComPtr<ID3D11ShaderResourceView> SceneDepth() {
+  const std::shared_lock lock(internal::state.mutex);
+  return internal::state.depth;
+}
+
+// The main view's camera uploaded this frame; false: none yet this frame.
+inline bool MainCamera(internal::Camera* camera) {
+  const std::shared_lock lock(internal::state.mutex);
+  if (internal::state.camera.frame != internal::state.frame) return false;
+  *camera = internal::state.camera;
+  return true;
 }
 
 // DLAA ran this frame: the game's SMAA passes after it find no edges (its blend then copies the frame).
@@ -422,7 +472,7 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     }
   }
   auto& bridge = twattila::dlaa_bridge::bridge;
-  if (!twattila::dlaa_bridge::Prepare(device.Get(), width, height)) {
+  if (!PrepareBridge(device.Get(), width, height)) {
     report(std::format("off: {}", bridge.status));
     return;
   }
@@ -481,6 +531,26 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     native->Dispatch(groups_x, groups_y, 1);
     bind(nullptr, {}, {});
     native->CopyResource(target.Get(), objects.result.Get());
+  }
+  // Frame generation: the tone mapper's output after DLAA is the HUD-less frame (the traces: SMAA's passes, copying it
+  // under DLAA, then the UI on their target), with this frame's inputs (the camera as the registers would hold it: its
+  // rows transposed; near and far from the projection's z column).
+  if (resolved && twattila::frame_generation::Wanted()) {
+    twattila::frame_generation::Inputs inputs = {
+        .width = width,
+        .height = height,
+        .jitter_x = camera.jitter[0],
+        .jitter_y = -camera.jitter[1],
+        .reset = !continued,
+    };
+    const std::array<float, 16> projection = internal::Transposed(camera.projection);
+    twattila::frame_generation::SetCamera(&inputs, projection, internal::Transposed(camera.view), internal::Transposed(camera.view_projection),
+                                          internal::Transposed(continued ? previous_view_projection : camera.view_projection), camera.position);
+    const float depth_scale = projection[10];
+    const float depth_offset = projection[11];
+    inputs.near_plane = (depth_scale != 0.f ? -depth_offset / depth_scale : 1.f);
+    inputs.far_plane = (depth_scale != 1.f ? depth_scale * inputs.near_plane / (depth_scale - 1.f) : 25000.f);
+    twattila::frame_generation::KeepFrame(native, target.Get(), inputs);
   }
 
   native->CSSetShader(game_shader.Get(), nullptr, 0);

@@ -9,6 +9,12 @@
 // 3. upscale_output and its Upscaling Debug View (TestOutput).
 // 4. sss_foliage_depth, Light Through Foliage's depth (TestFoliage).
 // 5-6. rt_capture_tree_billboard and rt_capture_imposter against the game's csos (TestBillboard, TestImposter; their folder third).
+// 7. rt_water_plane (TestWaterPlane). 8-9. ocean00 / 01 and waterplane00 against the game's csos (TestWaters).
+// 10. rt_capture / rt_rows_cascade_rigid and _variant against the game's 0xAC25DAB8 / 0xB0E006EE (TestPlacedShadow).
+// 11. rt_capture_cascade_cloth / imposter / tree through Pharaoh's outside-view geometry shader against the game's 0x8A00A1D4 /
+//     0xE3DA20D4 / 0x5851CA62 / 0x6F20485E (TestCascadeLeaves).
+// 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
+// 13. Coloured Shadows in shaders/sunlight00-03 (TestSunTint).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -20,12 +26,17 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <random>
 #include <span>
 #include <string>
 #include <vector>
+
+// __rt_outside_view_leaf: the geometry shader rt_core streams Shogun 2's cloth and sprite soldiers out of view through.
+#include "../../src/games/twpharaohdynasties/rt_outside_view_leaf_gs.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -596,16 +607,19 @@ static const D3D11_INPUT_ELEMENT_DESC IMPOSTER_LAYOUT[] = {
     {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 60, D3D11_INPUT_PER_VERTEX_DATA, 0}};
 
 // One output (`semantic`, `components` of it) of a vertex shader for each of `vertices` (points), streamed out; its
-// constants at b0.., rt_sun at t0.
+// constants at b0.., rt_sun at t0. With `geometry`: that geometry shader's output instead (`vertices` a triangle list), its
+// constants at b0.
 template <typename Vertex>
 static std::vector<std::array<float, 4>> StreamOut(const void* code, size_t size, const char* semantic, UINT index, BYTE components,
                                                    std::span<const D3D11_INPUT_ELEMENT_DESC> layout, const std::vector<Vertex>& vertices,
-                                                   std::span<ID3D11Buffer* const> constants, ID3D11ShaderResourceView* sun) {
+                                                   std::span<ID3D11Buffer* const> constants, ID3D11ShaderResourceView* sun,
+                                                   std::span<const BYTE> geometry = {}, ID3D11Buffer* geometry_constants = nullptr) {
   const D3D11_SO_DECLARATION_ENTRY entry = {.Stream = 0, .SemanticName = semantic, .SemanticIndex = index, .StartComponent = 0,
                                             .ComponentCount = components, .OutputSlot = 0};
   const UINT stride = 16;
   ComPtr<ID3D11GeometryShader> stream;
-  device->CreateGeometryShaderWithStreamOutput(code, size, &entry, 1, &stride, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf());
+  device->CreateGeometryShaderWithStreamOutput(geometry.empty() ? code : geometry.data(), geometry.empty() ? size : geometry.size(), &entry, 1,
+                                               &stride, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf());
   ComPtr<ID3D11VertexShader> vertex;
   device->CreateVertexShader(code, size, nullptr, vertex.GetAddressOf());
   ComPtr<ID3D11InputLayout> input;
@@ -622,12 +636,13 @@ static std::vector<std::array<float, 4>> StreamOut(const void* code, size_t size
   const UINT vertex_stride = sizeof(Vertex);
   const UINT offset = 0;
   context->IASetInputLayout(input.Get());
-  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+  context->IASetPrimitiveTopology(geometry.empty() ? D3D11_PRIMITIVE_TOPOLOGY_POINTLIST : D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &vertex_stride, &offset);
   context->VSSetShader(vertex.Get(), nullptr, 0);
   context->VSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
   context->VSSetShaderResources(0, 1, &sun);
   context->GSSetShader(stream.Get(), nullptr, 0);
+  context->GSSetConstantBuffers(0, 1, &geometry_constants);
   context->SOSetTargets(1, out.GetAddressOf(), &offset);
   context->Draw(count, 0);
   context->ClearState();
@@ -784,10 +799,11 @@ static void TestImposter(const std::string& games, const std::string& folder) {
               checked, turned_differs);
 }
 
-// 7. rt_water_plane (Ray-Traced Water Reflections' sea surface) for a camera 50 m over the sea (the plane y 0) looking
+// 7. rt_water_plane (Ray-Traced Water Reflections' water surface) for a camera 50 m over the sea (the plane y 0) looking
 //    down: the seabed half (y -3) and the sky's far depth get the plane's depth (the CPU's), the water's guides (normal up,
-//    specular 0.02, roughness 0.03) and mask 1; the land half (y +2) keeps its depth and guides, mask 0. CONTROL: a plane
-//    over the camera marks nothing.
+//    specular 0.02, roughness 0.03) and mask 1; on the land half (y +2) a band of water plane mesh (y 2.5, nearer: its depth)
+//    is water too, a band under the land (y 1) is not; the rest of the land keeps its depth and guides, mask 0. CONTROL: a
+//    plane over the camera and no meshes mark nothing.
 static std::array<std::array<double, 4>, 4> Inverse(std::array<std::array<double, 4>, 4> matrix) {
   std::array<std::array<double, 4>, 4> inverse = {{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}};
   for (int column = 0; column < 4; ++column) {
@@ -842,21 +858,24 @@ static void TestWaterPlane(const std::string& games) {
     }
   }
   const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const auto depth_at = [&](double y) { return static_cast<float>(a + (b / (HEIGHT - y))); };
   std::vector<float> depth(SIZE * SIZE);
-  std::vector<bool> water(SIZE * SIZE);
+  std::vector<float> meshes(SIZE * SIZE, 1.f);
+  std::vector<float> expected(SIZE * SIZE);  // the water's depth, or 0: land
   for (UINT y = 0; y < SIZE; ++y) {
     for (UINT x = 0; x < SIZE; ++x) {
-      const double across = ((x + 0.5) / SIZE * 2.0) - 1.0;
+      const size_t pixel = (y * SIZE) + x;
+      const bool sea = ((x + 0.5) / SIZE * 2.0) - 1.0 < 0.0;
       const bool sky = 1.0 - ((y + 0.5) / SIZE * 2.0) > 0.75;
-      depth[(y * SIZE) + x] = sky ? 1.f : static_cast<float>(a + (b / (HEIGHT - ((across < 0.0) ? -3.0 : 2.0))));
-      water[(y * SIZE) + x] = sky || across < 0.0;
+      depth[pixel] = sky ? 1.f : depth_at(sea ? -3.0 : 2.0);
+      if (!sea && !sky && y >= 20 && y < 32) meshes[pixel] = depth_at((y < 28) ? 2.5 : 1.0);
+      expected[pixel] = (sky || sea) ? depth_at(0.0) : ((meshes[pixel] < depth[pixel]) ? meshes[pixel] : 0.f);
     }
   }
-  const auto depth_texture = Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, depth.data(), SIZE * 4, D3D11_BIND_SHADER_RESOURCE);
-  const auto depth_view = Srv(depth_texture.Get());
-  const float plane_depth = static_cast<float>(a + (b / HEIGHT));
-  size_t marked = 0, bad = 0, control_marked = 0;
-  for (const float plane_w : {0.f, -60.f}) {
+  const auto depth_view = Srv(Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, depth.data(), SIZE * 4, D3D11_BIND_SHADER_RESOURCE).Get());
+  const auto meshes_view = Srv(Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, meshes.data(), SIZE * 4, D3D11_BIND_SHADER_RESOURCE).Get());
+  size_t marked = 0, by_mesh = 0, bad = 0, control_marked = 0;
+  for (const bool control : {false, true}) {
     const std::vector<uint8_t> grey(SIZE * SIZE * 4, 0x80);
     const std::vector<float> nines(SIZE * SIZE * 4, 9.f);
     const std::array<ComPtr<ID3D11Texture2D>, 6> targets = {
@@ -872,11 +891,12 @@ static void TestWaterPlane(const std::string& games) {
       views[index] = Uav(targets[index].Get());
       bound[index] = views[index].Get();
     }
-    const std::array<uint32_t, 8> plane = {0u, Bits(1.f), 0u, Bits(plane_w), SIZE, SIZE, 0u, 0u};
+    const std::array<uint32_t, 8> plane = {0u, Bits(1.f), 0u, Bits(control ? -60.f : 0.f), SIZE, SIZE, 1u, control ? 0u : 1u};
     const auto plane_buffer = Constants(plane.data(), sizeof(plane));
     const std::array<ID3D11Buffer*, 2> buffers = {camera_buffer.Get(), plane_buffer.Get()};
+    const std::array<ID3D11ShaderResourceView*, 2> inputs = {depth_view.Get(), meshes_view.Get()};
     context->CSSetShader(shader.Get(), nullptr, 0);
-    context->CSSetShaderResources(0, 1, depth_view.GetAddressOf());
+    context->CSSetShaderResources(0, 2, inputs.data());
     context->CSSetConstantBuffers(0, 2, buffers.data());
     context->CSSetUnorderedAccessViews(0, 6, bound.data(), nullptr);
     context->Dispatch(SIZE / 8, SIZE / 8, 1);
@@ -891,56 +911,59 @@ static void TestWaterPlane(const std::string& games) {
       std::array<float, 4> normal = {};
       std::memcpy(&surface_depth, surface.data() + (pixel * 4), 4);
       std::memcpy(normal.data(), normals.data() + (pixel * 16), 16);
-      if (plane_w != 0.f) {
+      if (control) {
         control_marked += (mask[pixel] != 0 || surface_depth != depth[pixel]) ? 1 : 0;
         continue;
       }
       marked += (mask[pixel] == 255) ? 1 : 0;
-      const bool water_ok = std::fabs(surface_depth - plane_depth) < 1e-5f && mask[pixel] == 255 && normal[0] == 0.f && normal[1] == 1.f
+      by_mesh += (mask[pixel] == 255 && meshes[pixel] == surface_depth) ? 1 : 0;
+      const bool water_ok = std::fabs(surface_depth - expected[pixel]) < 1e-5f && mask[pixel] == 255 && normal[0] == 0.f && normal[1] == 1.f
                             && normal[2] == 0.f && roughness[pixel] == 8 && specular[pixel * 4] == 5;
       const bool land_ok = surface_depth == depth[pixel] && mask[pixel] == 0 && normal[1] == 9.f && roughness[pixel] == 0x80 && specular[pixel * 4] == 0x80;
-      bad += (water[pixel] ? water_ok : land_ok) ? 0 : 1;
+      bad += ((expected[pixel] != 0.f) ? water_ok : land_ok) ? 0 : 1;
     }
   }
-  const auto expected = static_cast<size_t>(std::ranges::count(water, true));
-  CHECK(bad == 0 && marked == expected, "%zu pixels wrong, %zu marked of %zu", bad, marked, expected);
-  CHECK(control_marked == 0, "CONTROL: %zu pixels marked under a plane over the camera", control_marked);
-  std::printf("rt_water_plane %ux%u: %zu water pixels the plane's depth and guides, the rest kept; 0 with the plane over the camera\n", SIZE, SIZE,
-              marked);
+  const auto water = static_cast<size_t>(std::ranges::count_if(expected, [](float value) { return value != 0.f; }));
+  CHECK(bad == 0 && marked == water && by_mesh > 0, "%zu pixels wrong, %zu marked of %zu (%zu by the meshes)", bad, marked, water, by_mesh);
+  CHECK(control_marked == 0, "CONTROL: %zu pixels marked under a plane over the camera, no meshes", control_marked);
+  std::printf("rt_water_plane %ux%u: %zu water pixels (%zu the meshes') their depth and guides, the rest kept; 0 in the control\n", SIZE, SIZE, marked,
+              by_mesh);
 }
 
-// 8. shaders/ocean00 (the rays' reflection in the sea's pixel shader) against the game's ocean high (0x16ADFD60's cso) on a
-//    32 x 32 target, same inputs, in its probe and its sky branch: the rays unbound, bound with no hits (share 0), or
-//    flagged off (b10 0: CONTROL): its five outputs the game's; the rays' light (share 1, flags 1): the colour changes where
-//    the mask is 1 and nowhere else.
-static void TestOcean(const std::string& games, const std::string& folder) {
-  std::ifstream file(folder + "/0x16ADFD60.ps_5_0.cso", std::ios::binary);
+// A water pixel shader of the game's and ours (shaders/), what their draw needs: the vertex shader giving their inputs,
+// the slots of their textures by kind, the cbuffers at b3 and (not empty) b4.
+struct WaterShader {
+  const char* hash;
+  const wchar_t* ours;
+  const char* vertex_source;
+  std::vector<UINT> plain_slots;  // RGBA 8 x 8 (the harmonics' 9 x 9)
+  UINT harmonics_slot;
+  std::vector<UINT> single_slots;  // one channel
+  UINT cube_slot;
+  std::vector<UINT> cube_array_slots;  // the probe grid's 4 cubes
+  UINT samplers;
+  std::vector<float> scalars;        // b3
+  std::vector<float> ocean_scalars;  // b4 (ocean ultra's ocean_PS)
+};
+
+// 8-9. shaders/ocean00, ocean01 and waterplane00 (the rays' reflection in the water's pixel shaders) against the game's
+//      (0x16ADFD60's, 0x6B8954A6's, 0x9B9EC116's csos) on a 32 x 32 target, same inputs, in the probe and the sky branch: the rays unbound, bound with no
+//      hits (share 0), or flagged off (b10 0: CONTROL): the five outputs the game's; the rays' light (share 1, flags 1): the
+//      colour changes where the mask is 1 and nowhere else.
+static void TestWater(const std::string& games, const std::string& folder, const WaterShader& water) {
+  std::ifstream file(folder + "/0x" + water.hash + ".ps_5_0.cso", std::ios::binary);
   const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
   const std::wstring path(games.begin(), games.end());
-  const char* vertex_source =
-      "void main(uint id : SV_VertexID, out float4 p : SV_Position0, out float3 c : COLOR0, out float4 t0 : TEXCOORD0, out float4 t1 : TEXCOORD1,\n"
-      "          out float4 t2 : TEXCOORD2, out float4 t3 : TEXCOORD3, out float4 t4 : TEXCOORD4, out float4 t5 : TEXCOORD5, out float4 t6 : TEXCOORD6) {\n"
-      "  const float2 uv = float2((id << 1) & 2, id & 2);\n"
-      "  p = float4(uv * float2(2, -2) + float2(-1, 1), 0.5, 1);\n"
-      "  c = float3(uv, 0.5);\n"
-      "  t0 = float4(uv.x * 40 - 20, 0.5, uv.y * 40 - 20, 1);\n"
-      "  t1 = p;\n"
-      "  t2 = float4(uv * 0.5, 0.5, 1);\n"
-      "  t3 = float4(0.8, uv, 0);\n"
-      "  t4 = float4(uv * 3, uv * 2);\n"
-      "  t5 = float4(normalize(float3(uv.x - 0.5, -0.4, uv.y - 0.5)), 30);\n"
-      "  t6 = float4(uv, 10, 1);\n"
-      "}\n";
   ComPtr<ID3DBlob> vertex_code;
   ComPtr<ID3DBlob> ours_code;
   ComPtr<ID3DBlob> errors;
   if (game_code.empty()
-      || FAILED(D3DCompile(vertex_source, std::strlen(vertex_source), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_code.GetAddressOf(),
-                           errors.GetAddressOf()))
-      || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/ocean00_0x16ADFD60.ps_5_0.hlsl").c_str(), nullptr,
+      || FAILED(D3DCompile(water.vertex_source, std::strlen(water.vertex_source), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0,
+                           vertex_code.GetAddressOf(), errors.GetAddressOf()))
+      || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/" + water.ours + L".ps_5_0.hlsl").c_str(), nullptr,
                                    D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(),
                                    errors.GetAddressOf()))) {
-    std::printf("missing 0x16ADFD60, or %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+    std::printf("missing 0x%s, or %s\n", water.hash, errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
     std::exit(2);
   }
   ComPtr<ID3D11VertexShader> vertex;
@@ -957,17 +980,24 @@ static void TestOcean(const std::string& games, const std::string& folder) {
     for (auto& value : filled) value = unit(random);
     return filled;
   };
-  // t0-t3, t7 (the harmonics: 3 x 3 cells of 3 x 3), t8-t11 RGBA; t12 one channel; t4 a cube; t5 / t6 cube arrays of the probe grid's 4.
-  std::array<ComPtr<ID3D11ShaderResourceView>, 13> views;
-  for (const UINT slot : {0u, 1u, 2u, 3u, 7u, 8u, 9u, 10u, 11u}) {
-    const UINT width = (slot == 7) ? 9 : 8;
+  std::array<ComPtr<ID3D11ShaderResourceView>, 16> views;
+  UINT view_count = 0;
+  for (const UINT slot : water.plain_slots) {
+    const UINT width = (slot == water.harmonics_slot) ? 9 : 8;
     const auto texels = values(static_cast<size_t>(width) * width * 4);
     views[slot] = Srv(Texture(width, width, DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), width * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+    view_count = std::max(view_count, slot + 1);
   }
-  const auto single = values(64);
-  views[12] = Srv(Texture(8, 8, DXGI_FORMAT_R32_FLOAT, single.data(), 32, D3D11_BIND_SHADER_RESOURCE).Get());
-  for (const UINT slot : {4u, 5u, 6u}) {
-    const UINT faces = (slot == 4) ? 6 : 24;
+  for (const UINT slot : water.single_slots) {
+    const auto texels = values(64);
+    views[slot] = Srv(Texture(8, 8, DXGI_FORMAT_R32_FLOAT, texels.data(), 32, D3D11_BIND_SHADER_RESOURCE).Get());
+    view_count = std::max(view_count, slot + 1);
+  }
+  std::vector<UINT> cube_slots = water.cube_array_slots;
+  cube_slots.push_back(water.cube_slot);
+  for (const UINT slot : cube_slots) {
+    const bool single_cube = slot == water.cube_slot;
+    const UINT faces = single_cube ? 6 : 24;
     const D3D11_TEXTURE2D_DESC desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = faces, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
                                        .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
                                        .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE};
@@ -980,20 +1010,20 @@ static void TestOcean(const std::string& games, const std::string& folder) {
     ComPtr<ID3D11Texture2D> cube;
     device->CreateTexture2D(&desc, initial.data(), cube.GetAddressOf());
     D3D11_SHADER_RESOURCE_VIEW_DESC view = {.Format = desc.Format,
-                                            .ViewDimension = (slot == 4) ? D3D11_SRV_DIMENSION_TEXTURECUBE : D3D11_SRV_DIMENSION_TEXTURECUBEARRAY};
-    if (slot == 4) {
+                                            .ViewDimension = single_cube ? D3D11_SRV_DIMENSION_TEXTURECUBE : D3D11_SRV_DIMENSION_TEXTURECUBEARRAY};
+    if (single_cube) {
       view.TextureCube = {.MipLevels = 1};
     } else {
       view.TextureCubeArray = {.MipLevels = 1, .NumCubes = 4};
     }
     device->CreateShaderResourceView(cube.Get(), &view, views[slot].GetAddressOf());
+    view_count = std::max(view_count, slot + 1);
   }
   const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
                                            .AddressV = D3D11_TEXTURE_ADDRESS_WRAP, .AddressW = D3D11_TEXTURE_ADDRESS_WRAP, .MaxLOD = D3D11_FLOAT32_MAX};
   ComPtr<ID3D11SamplerState> sampler;
   device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
-  const std::array<ID3D11SamplerState*, 9> samplers = {sampler.Get(), sampler.Get(), sampler.Get(), sampler.Get(), sampler.Get(),
-                                                       sampler.Get(), sampler.Get(), sampler.Get(), sampler.Get()};
+  const std::vector<ID3D11SamplerState*> samplers(water.samplers, sampler.Get());
   std::array<float, 44 * 4> camera = {};
   camera[1] = 30.f;
   for (int row = 0; row < 4; ++row) camera[((2 + row) * 4) + row] = camera[((10 + row) * 4) + row] = 1.f;
@@ -1010,13 +1040,15 @@ static void TestOcean(const std::string& games, const std::string& folder) {
   lighting[0] = 0.3f;
   lighting[1] = -0.8f;
   lighting[2] = 0.5f;
-  lighting[7] = 1.f;                              // sun_specular
-  lighting[43] = std::bit_cast<float>(1u);        // g_use_spherical_harmonics
-  lighting[47] = 0.f;                             // g_cloud_shadow_scale
-  const std::array<float, 4> wind = {0.3f, 0.7f, 0.f, 0.f};
+  lighting[7] = 1.f;                        // sun_specular
+  lighting[43] = std::bit_cast<float>(1u);  // g_use_spherical_harmonics
+  lighting[47] = 0.f;                       // g_cloud_shadow_scale
   const auto camera_buffer = Constants(camera.data(), sizeof(camera));
   const auto lighting_buffer = Constants(lighting.data(), sizeof(lighting));
-  const auto wind_buffer = Constants(wind.data(), sizeof(wind));
+  const auto scalars_buffer = Constants(water.scalars.data(), static_cast<UINT>(water.scalars.size() * sizeof(float)));
+  const auto ocean_buffer = water.ocean_scalars.empty()
+                                ? ComPtr<ID3D11Buffer>()
+                                : Constants(water.ocean_scalars.data(), static_cast<UINT>(water.ocean_scalars.size() * sizeof(float)));
   std::vector<float> traced(SIZE * SIZE * 4);
   std::vector<float> mask(SIZE * SIZE);
   for (size_t pixel = 0; pixel < mask.size(); ++pixel) {
@@ -1044,16 +1076,17 @@ static void TestOcean(const std::string& games, const std::string& folder) {
       device->CreateRenderTargetView(outputs[index].Get(), nullptr, targets[index].GetAddressOf());
       bound[index] = targets[index].Get();
     }
-    std::array<ID3D11ShaderResourceView*, 13> bound_views = {};
+    std::array<ID3D11ShaderResourceView*, 16> bound_views = {};
     for (size_t index = 0; index < views.size(); ++index) bound_views[index] = views[index].Get();
-    const std::array<ID3D11Buffer*, 4> buffers = {camera_buffer.Get(), environment_buffer, lighting_buffer.Get(), wind_buffer.Get()};
+    const std::array<ID3D11Buffer*, 5> buffers = {camera_buffer.Get(), environment_buffer, lighting_buffer.Get(), scalars_buffer.Get(),
+                                                  ocean_buffer.Get()};
     const D3D11_VIEWPORT viewport = {.Width = SIZE, .Height = SIZE, .MaxDepth = 1.f};
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     context->VSSetShader(vertex.Get(), nullptr, 0);
     context->PSSetShader(pixel_shader, nullptr, 0);
-    context->PSSetShaderResources(0, 13, bound_views.data());
-    context->PSSetSamplers(0, 9, samplers.data());
-    context->PSSetConstantBuffers(0, 4, buffers.data());
+    context->PSSetShaderResources(0, view_count, bound_views.data());
+    context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+    context->PSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
     if (rays_view != nullptr) {
       context->PSSetShaderResources(45, 1, mask_view.GetAddressOf());
       context->PSSetShaderResources(47, 1, &rays_view);
@@ -1085,20 +1118,696 @@ static void TestOcean(const std::string& games, const std::string& folder) {
       const size_t channels = (output < 3) ? 4 : 1;
       for (size_t value = 0; value < reference[output].size(); ++value) {
         const float expected = reference[output][value];
-        const bool water = mask[value / channels] > 0.5f;
+        const bool masked = mask[value / channels] > 0.5f;
         differs_unbound += same(unbound[output][value], expected) ? 0 : 1;
         differs_kept += same(no_hits[output][value], expected) ? 0 : 1;
         control_changed += same(control[output][value], expected) ? 0 : 1;
-        changed += (water && output == 0 && !same(hits[output][value], expected)) ? 1 : 0;
-        changed_outside += ((!water || output != 0) && !same(hits[output][value], expected)) ? 1 : 0;
+        changed += (masked && output == 0 && !same(hits[output][value], expected)) ? 1 : 0;
+        changed_outside += ((!masked || output != 0) && !same(hits[output][value], expected)) ? 1 : 0;
       }
     }
   }
-  CHECK(differs_unbound == 0 && differs_kept == 0, "%zu values differ unbound, %zu with no hits", differs_unbound, differs_kept);
-  CHECK(changed > 0 && changed_outside == 0, "%zu colour values changed under the mask, %zu elsewhere", changed, changed_outside);
-  CHECK(control_changed == 0, "CONTROL: %zu values changed with the flags off", control_changed);
-  std::printf("ocean00 32x32, probe and sky branches: the game's outputs unbound / no hits / flags off; %zu colour values the rays' under the mask\n",
-              changed);
+  const std::string name(water.ours, water.ours + std::wcslen(water.ours));
+  CHECK(differs_unbound == 0 && differs_kept == 0, "%s: %zu values differ unbound, %zu with no hits", name.c_str(), differs_unbound, differs_kept);
+  CHECK(changed > 0 && changed_outside == 0, "%s: %zu colour values changed under the mask, %zu elsewhere", name.c_str(), changed, changed_outside);
+  CHECK(control_changed == 0, "CONTROL %s: %zu values changed with the flags off", name.c_str(), control_changed);
+  std::printf("%s 32x32, probe and sky branches: the game's outputs unbound / no hits / flags off; %zu colour values the rays' under the mask\n",
+              name.c_str(), changed);
+}
+
+static void TestWaters(const std::string& games, const std::string& folder) {
+  // The ocean's inputs: COLOR0 and TEXCOORD0-6 (v2 its world position, v7 the view's way and distance).
+  const char* ocean_vertex =
+      "void main(uint id : SV_VertexID, out float4 p : SV_Position0, out float3 c : COLOR0, out float4 t0 : TEXCOORD0, out float4 t1 : TEXCOORD1,\n"
+      "          out float4 t2 : TEXCOORD2, out float4 t3 : TEXCOORD3, out float4 t4 : TEXCOORD4, out float4 t5 : TEXCOORD5, out float4 t6 : TEXCOORD6) {\n"
+      "  const float2 uv = float2((id << 1) & 2, id & 2);\n"
+      "  p = float4(uv * float2(2, -2) + float2(-1, 1), 0.5, 1);\n"
+      "  c = float3(uv, 0.5);\n"
+      "  t0 = float4(uv.x * 40 - 20, 0.5, uv.y * 40 - 20, 1);\n"
+      "  t1 = p;\n"
+      "  t2 = float4(uv * 0.5, 0.5, 1);\n"
+      "  t3 = float4(0.8, uv, 0);\n"
+      "  t4 = float4(uv * 3, uv * 2);\n"
+      "  t5 = float4(normalize(float3(uv.x - 0.5, -0.4, uv.y - 0.5)), 30);\n"
+      "  t6 = float4(uv, 10, 1);\n"
+      "}\n";
+  // The water plane's: TEXCOORD0-6 (v1-v2 its UVs, v4 its world position, v7 the overlay's projection).
+  const char* plane_vertex =
+      "void main(uint id : SV_VertexID, out float4 p : SV_Position0, out float4 t0 : TEXCOORD0, out float4 t1 : TEXCOORD1,\n"
+      "          out float4 t2 : TEXCOORD2, out float4 t3 : TEXCOORD3, out float4 t4 : TEXCOORD4, out float4 t5 : TEXCOORD5, out float4 t6 : TEXCOORD6) {\n"
+      "  const float2 uv = float2((id << 1) & 2, id & 2);\n"
+      "  p = float4(uv * float2(2, -2) + float2(-1, 1), 0.5, 1);\n"
+      "  t0 = float4(uv * 0.7 + 0.4, uv * 0.3);\n"
+      "  t1 = float4(uv * 0.5 + 0.4, uv * 0.2);\n"
+      "  t2 = float4(uv * 0.02, uv * 0.03);\n"
+      "  t3 = float4(uv.x * 40 - 20, 0.5, uv.y * 40 - 20, 1);\n"
+      "  t4 = p;\n"
+      "  t5 = float4(uv, 10, 1);\n"
+      "  t6 = float4(uv * 0.5, 0.5, 1);\n"
+      "}\n";
+  TestWater(games, folder,
+            {.hash = "16ADFD60", .ours = L"ocean00_0x16ADFD60", .vertex_source = ocean_vertex, .plain_slots = {0, 1, 2, 3, 7, 8, 9, 10, 11},
+             .harmonics_slot = 7, .single_slots = {12}, .cube_slot = 4, .cube_array_slots = {5, 6}, .samplers = 9, .scalars = {0.3f, 0.7f, 0.f, 0.f}});
+  TestWater(games, folder,
+            {.hash = "6B8954A6", .ours = L"ocean01_0x6B8954A6", .vertex_source = ocean_vertex, .plain_slots = {0, 1, 2, 3, 7, 8, 9, 10, 11},
+             .harmonics_slot = 7, .single_slots = {12}, .cube_slot = 4, .cube_array_slots = {5, 6}, .samplers = 9, .scalars = {0.3f, 0.7f, 0.f, 0.f},
+             .ocean_scalars = {0.02f, 50.f, 0.5f, 0.3f, 0.1f, 2.f, 0.f, 0.f}});
+  TestWater(games, folder,
+            {.hash = "9B9EC116", .ours = L"waterplane00_0x9B9EC116", .vertex_source = plane_vertex, .plain_slots = {3, 4, 5, 6, 7, 8},
+             .harmonics_slot = 3, .single_slots = {}, .cube_slot = 0, .cube_array_slots = {1, 2}, .samplers = 7,
+             .scalars = {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.f, 1.f, -1000.f, 1000.f, -1000.f, 1000.f, 0.f}});
+}
+
+// 10. rt_capture_cascade_rigid and rt_rows_cascade_rigid (Shadow Casters Out of View: the shadow pass's rigid casters placed by their
+//     instances' rows) against the game's rigidterrainblend vs30_shadow (0xAC25DAB8's cso): 256 random instances and corners, the
+//     capture's world position the game's SV_Position with an identity view-projection; with a main view at
+//     cb0[10-13] an instance's rows left out (translation 1e30) exactly where the game's own projection of its origin is in that view
+//     (|x|, |y| <= w), kept as v6-v8 elsewhere; with cb0 all 0 (a new mesh's first rows) all kept. CONTROL: the view turned away
+//     leaves out another set. The same for variantrigid vs30_shadow (0xB0E006EE: rt_capture / rt_rows_cascade_variant, its rows
+//     v8-v10) with its sway's weight (v6.w) 0; with it 1 the game's corners stray from ours by the sway alone, under 2 cm.
+struct RigidShadowVertex {
+  std::array<std::array<float, 4>, 10> inputs;  // v0-v9
+};
+
+static const D3D11_INPUT_ELEMENT_DESC RIGID_SHADOW_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 96, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 112, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 128, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 144, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+static ComPtr<ID3DBlob> CompileVertex(const std::string& games, const wchar_t* name) {
+  const std::wstring path(games.begin(), games.end());
+  ComPtr<ID3DBlob> code;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/" + name + L".vs_5_0.hlsl").c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
+                                "main", "vs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, code.GetAddressOf(), errors.GetAddressOf()))) {
+    std::printf("compile failed: %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
+    std::exit(2);
+  }
+  return code;
+}
+
+// variantrigid vs30_shadow's vertex (0xB0E006EE): v0-v15, its rows v8-v10, its sway's weight v6.w, v14 a uint.
+struct VariantShadowVertex {
+  std::array<std::array<float, 4>, 16> inputs;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC VARIANT_SHADOW_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"NORMAL", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 96, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 112, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 128, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 144, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 160, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 176, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 192, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 6, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 208, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 7, DXGI_FORMAT_R32G32B32A32_UINT, 0, 224, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 8, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 240, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+// `rows`: the first of the instance's three world rows among the inputs; `sway`: the input whose w weighs the game's wind sway (0: none).
+template <typename Vertex>
+static void TestPlacedShadow(const std::string& games, const std::string& folder, const char* name, const wchar_t* capture_name,
+                             const wchar_t* rows_name, std::span<const D3D11_INPUT_ELEMENT_DESC> layout, size_t rows, size_t sway) {
+  std::ifstream file(folder + "/0x" + name + ".vs_5_0.cso", std::ios::binary);
+  const std::vector<char> game((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  if (game.empty()) {
+    std::printf("missing 0x%s\n", name);
+    std::exit(2);
+  }
+  const auto capture = CompileVertex(games, capture_name);
+  const auto rows_code = CompileVertex(games, rows_name);
+  std::mt19937 random(11);
+  std::uniform_real_distribution<float> spread(-1.f, 1.f);
+  std::vector<Vertex> vertices(256);
+  std::vector<Vertex> origins(256);
+  for (size_t index = 0; index < vertices.size(); ++index) {
+    auto& inputs = vertices[index].inputs;
+    for (auto& input : inputs) input = {spread(random), spread(random), spread(random), spread(random)};
+    inputs[0][3] = 1.f;
+    if (sway != 0) inputs[sway][3] = 0.f;
+    // Rows: a turn and a scale about y, the translation in w.
+    const float turn = spread(random) * 3.14159f;
+    const float scale = 1.f + (0.5f * spread(random));
+    inputs[rows] = {std::cos(turn) * scale, 0.f, std::sin(turn) * scale, 100.f * spread(random)};
+    inputs[rows + 1] = {0.f, scale, 0.f, 5.f * spread(random)};
+    inputs[rows + 2] = {-std::sin(turn) * scale, 0.f, std::cos(turn) * scale, 100.f * spread(random)};
+    origins[index] = vertices[index];
+    origins[index].inputs[0] = {0.f, 0.f, 0.f, 1.f};
+  }
+  std::array<float, 44 * 4> identity = {};
+  for (int row = 0; row < 4; ++row) identity[((10 + row) * 4) + row] = 1.f;
+  identity[35 * 4] = 38.696f;  // time_in_sec (the battle trace's)
+  // A main view at c10-13 (each register a row acting on column vectors, as the game's view_projection's columns): looking along +z
+  // from (0, 0, -60), 0.8 wide.
+  std::array<float, 44 * 4> view = {};
+  const std::array<std::array<float, 4>, 4> main_view = {{{1.25f, 0.f, 0.f, 0.f}, {0.f, 1.25f, 0.f, 0.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 0.f, 1.f, 60.f}}};
+  std::array<float, 44 * 4> turned = {};
+  for (int row = 0; row < 4; ++row) {
+    for (int column = 0; column < 4; ++column) {
+      view[((10 + row) * 4) + column] = main_view[row][column];
+      turned[((10 + row) * 4) + column] = (column == 2) ? -main_view[row][column] : main_view[row][column];
+    }
+  }
+  std::array<float, 44 * 4> zero = {};
+  const auto identity_buffer = Constants(identity.data(), sizeof(identity));
+  const auto view_buffer = Constants(view.data(), sizeof(view));
+  const auto turned_buffer = Constants(turned.data(), sizeof(turned));
+  const auto zero_buffer = Constants(zero.data(), sizeof(zero));
+  // wind_VS: direction, gust, multipliers and strengths.
+  const std::array<float, 12> wind = {0.8f, -0.6f, 0.8f, -0.6f, 0.f, 1.f, 1.3f, 0.7f, 0.5f, 300.f, 200.f, 0.f};
+  const auto wind_buffer = Constants(wind.data(), sizeof(wind));
+  const auto run = [&](const void* code, size_t size, const char* semantic, UINT index, const std::vector<Vertex>& points, ID3D11Buffer* camera) {
+    const std::array<ID3D11Buffer*, 2> constants = {camera, wind_buffer.Get()};
+    return StreamOut(code, size, semantic, index, 4, layout, points, constants, nullptr);
+  };
+  const auto game_world = run(game.data(), game.size(), "SV_POSITION", 0, vertices, identity_buffer.Get());
+  const auto ours_world = run(capture->GetBufferPointer(), capture->GetBufferSize(), "TEXCOORD", 0, vertices, identity_buffer.Get());
+  size_t bad_world = 0;
+  for (size_t index = 0; index < vertices.size(); ++index) {
+    for (int axis = 0; axis < 4; ++axis) bad_world += (std::fabs(ours_world[index][axis] - game_world[index][axis]) < 1e-4f) ? 0 : 1;
+  }
+  // The sway left out: with its weight 1 the game's corners stray from ours by it alone.
+  float most_stray = 0.f;
+  size_t swayed = 0;
+  if (sway != 0) {
+    auto swaying = vertices;
+    for (auto& vertex : swaying) vertex.inputs[sway][3] = 1.f;
+    const auto game_swaying = run(game.data(), game.size(), "SV_POSITION", 0, swaying, identity_buffer.Get());
+    for (size_t index = 0; index < swaying.size(); ++index) {
+      float stray = 0.f;
+      for (int axis = 0; axis < 3; ++axis) stray = std::max(stray, std::fabs(game_swaying[index][axis] - ours_world[index][axis]));
+      most_stray = std::max(most_stray, stray);
+      swayed += (stray > 1e-5f) ? 1 : 0;
+    }
+  }
+  // Left out where the game's projection of the origin is in the view; the rows are the instance's otherwise.
+  size_t left_out = 0, bad_rows = 0, new_left_out = 0, turned_differs = 0;
+  for (ID3D11Buffer* camera : {view_buffer.Get(), zero_buffer.Get(), turned_buffer.Get()}) {
+    const auto origin_clip = run(game.data(), game.size(), "SV_POSITION", 0, origins, camera);
+    const auto row0 = run(rows_code->GetBufferPointer(), rows_code->GetBufferSize(), "TEXCOORD", 0, origins, camera);
+    const auto row2 = run(rows_code->GetBufferPointer(), rows_code->GetBufferSize(), "TEXCOORD", 2, origins, camera);
+    for (size_t index = 0; index < origins.size(); ++index) {
+      const auto& clip = origin_clip[index];
+      const bool in_view = camera != zero_buffer.Get() && clip[3] + clip[0] >= 0.f && clip[3] - clip[0] >= 0.f && clip[3] + clip[1] >= 0.f
+                           && clip[3] - clip[1] >= 0.f;
+      const bool out = row0[index][3] == 1e30f && row2[index][3] == 1e30f;
+      const bool kept = row0[index] == origins[index].inputs[rows] && row2[index] == origins[index].inputs[rows + 2];
+      if (camera == view_buffer.Get()) {
+        left_out += out ? 1 : 0;
+        bad_rows += (in_view ? out : kept) ? 0 : 1;
+      } else if (camera == zero_buffer.Get()) {
+        new_left_out += out ? 1 : 0;
+        bad_rows += kept ? 0 : 1;
+      } else {
+        bad_rows += (in_view ? out : kept) ? 0 : 1;
+      }
+    }
+    if (camera == turned_buffer.Get()) {
+      const auto view_rows = run(rows_code->GetBufferPointer(), rows_code->GetBufferSize(), "TEXCOORD", 0, origins, view_buffer.Get());
+      for (size_t index = 0; index < origins.size(); ++index) turned_differs += ((row0[index][3] == 1e30f) != (view_rows[index][3] == 1e30f)) ? 1 : 0;
+    }
+  }
+  CHECK(bad_world == 0, "%s: %zu world components differ from the game's", name, bad_world);
+  CHECK(sway == 0 || (swayed > 0 && most_stray < 0.02f), "%s: the sway moved %zu corners, at most %f", name, swayed, most_stray);
+  CHECK(bad_rows == 0 && left_out > 0 && left_out < origins.size() && new_left_out == 0, "%s: %zu rows wrong, %zu of %zu left out, %zu with no view",
+        name, bad_rows, left_out, origins.size(), new_left_out);
+  CHECK(turned_differs > 0, "CONTROL: %s: the view turned away left out the same instances", name);
+  std::printf("%ls / %ls (0x%s): 256 corners the game's world (the sway left out: %zu corners up to %.4f m); %zu of 256 instances left out as "
+              "the game's view has them, 0 with no view; %zu differ turned away\n",
+              capture_name, rows_name, name, swayed, most_stray, left_out, turned_differs);
+}
+
+// 11. rt_capture_cascade_cloth, imposter and tree (cloth, sprite soldiers, leaves and branches casting from out of view) against the
+//     game's shadow vertex shaders (0x8A00A1D4, 0xE3DA20D4, 0x5851CA62, 0x6F20485E csos) with an identity view-projection (the
+//     imposter's shadow camera's view, the trees' rows, blend, time and wind random): 64 random triangles each, every corner's world position (TEXCOORD2) the game's SV_Position and its UV (TEXCOORD1) the
+//     game's. Through Pharaoh's outside-view geometry shader with a main view at cb0[10-13] (as rt_core streams them out): the
+//     triangles wholly outside it (the CPU's test of the game's corners) kept, their world positions and UVs (two halves in w) the
+//     game's; the others collapsed onto their first corner. CONTROL: the view turned away keeps another set.
+struct ClothVertex {
+  std::array<std::array<float, 4>, 4> inputs;  // v0-v3
+};
+
+// The trees' vertex: POSITION0-6 (POSITION4 the UV), TEXCOORD0-6 (two instance row sets at 0-2 and 4-6).
+struct TreeVertex {
+  std::array<std::array<float, 4>, 14> inputs;
+};
+
+static const D3D11_INPUT_ELEMENT_DESC TREE_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 80, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"POSITION", 6, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 96, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 112, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 128, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 144, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 160, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 176, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 192, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 6, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 208, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+static const D3D11_INPUT_ELEMENT_DESC CLOTH_LAYOUT[] = {
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0}};
+
+template <typename Vertex>
+static void TestCascadeLeaf(const std::string& games, const std::string& folder, const char* name, const wchar_t* capture_name,
+                            std::span<const D3D11_INPUT_ELEMENT_DESC> layout, const std::vector<Vertex>& vertices,
+                            std::span<ID3D11Buffer* const> constants) {
+  const auto [game_code, capture] = Shaders(games, folder, name, capture_name);
+  const auto run = [&](const void* code, size_t size, const char* semantic, UINT index, BYTE components) {
+    return StreamOut(code, size, semantic, index, components, layout, vertices, constants, nullptr);
+  };
+  const auto game_world = run(game_code.data(), game_code.size(), "SV_POSITION", 0, 4);
+  const auto game_uv = run(game_code.data(), game_code.size(), "TEXCOORD", 1, 2);
+  const auto our_world = run(capture->GetBufferPointer(), capture->GetBufferSize(), "TEXCOORD", 2, 4);
+  const auto our_uv = run(capture->GetBufferPointer(), capture->GetBufferSize(), "TEXCOORD", 1, 2);
+  size_t bad_world = 0, bad_uv = 0;
+  for (size_t corner = 0; corner < vertices.size(); ++corner) {
+    for (int axis = 0; axis < 4; ++axis) bad_world += (std::fabs(our_world[corner][axis] - game_world[corner][axis]) < 1e-3f) ? 0 : 1;
+    for (int axis = 0; axis < 2; ++axis) bad_uv += (std::fabs(our_uv[corner][axis] - game_uv[corner][axis]) < 1e-5f) ? 0 : 1;
+  }
+  // Main views at c10-13 (rows acting on column vectors): along +z from (0, 0, -60), 0.8 wide; turned: along -z from (0, 0, 60).
+  size_t kept = 0, collapsed = 0, bad_kept = 0, turned_differs = 0;
+  std::vector<bool> kept_ahead;
+  for (const float facing : {1.f, -1.f}) {
+    const std::array<std::array<float, 4>, 4> main_view = {{{1.25f, 0.f, 0.f, 0.f}, {0.f, 1.25f, 0.f, 0.f}, {0.f, 0.f, facing, 0.f}, {0.f, 0.f, facing, 60.f}}};
+    std::array<float, 44 * 4> registers = {};
+    for (int row = 0; row < 4; ++row) std::ranges::copy(main_view[row], registers.begin() + ((10 + row) * 4));
+    const auto view_buffer = Constants(registers.data(), sizeof(registers));
+    const auto streamed = StreamOut(capture->GetBufferPointer(), capture->GetBufferSize(), "SV_POSITION", 0, 4, layout, vertices, constants, nullptr,
+                                    __rt_outside_view_leaf, view_buffer.Get());
+    for (size_t triangle = 0; triangle * 3 < vertices.size(); ++triangle) {
+      std::array<std::array<float, 4>, 3> clip = {};
+      for (size_t corner = 0; corner < 3; ++corner) {
+        const auto& world = game_world[(triangle * 3) + corner];
+        for (int row = 0; row < 4; ++row) {
+          clip[corner][row] = (main_view[row][0] * world[0]) + (main_view[row][1] * world[1]) + (main_view[row][2] * world[2]) + main_view[row][3];
+        }
+      }
+      const auto all = [&clip](auto test) { return std::ranges::all_of(clip, test); };
+      const bool outside = all([](const auto& p) { return p[3] <= 0.f; }) || all([](const auto& p) { return p[0] > p[3]; })
+                           || all([](const auto& p) { return p[0] < -p[3]; }) || all([](const auto& p) { return p[1] > p[3]; })
+                           || all([](const auto& p) { return p[1] < -p[3]; }) || all([](const auto& p) { return p[2] > p[3]; });
+      if (facing > 0.f) {
+        kept_ahead.push_back(outside);
+        kept += outside ? 1 : 0;
+        collapsed += outside ? 0 : 1;
+      } else {
+        turned_differs += (outside != kept_ahead[triangle]) ? 1 : 0;
+      }
+      for (size_t corner = 0; corner < 3; ++corner) {
+        const size_t source = (triangle * 3) + (outside ? corner : 0);
+        const auto& out = streamed[(triangle * 3) + corner];
+        const uint32_t halves = std::bit_cast<uint32_t>(out[3]);
+        bool same = std::fabs(Half(static_cast<uint16_t>(halves & 0xFFFFu)) - game_uv[source][0]) <= 1e-3f * std::max(1.f, std::fabs(game_uv[source][0]))
+                    && std::fabs(Half(static_cast<uint16_t>(halves >> 16)) - game_uv[source][1]) <= 1e-3f * std::max(1.f, std::fabs(game_uv[source][1]));
+        for (int axis = 0; axis < 3; ++axis) same = same && std::fabs(out[axis] - game_world[source][axis]) < 1e-3f;
+        bad_kept += same ? 0 : 1;
+      }
+    }
+  }
+  CHECK(bad_world == 0 && bad_uv == 0, "%s: %zu world components, %zu UV components differ from the game's", name, bad_world, bad_uv);
+  CHECK(bad_kept == 0 && kept > 0 && collapsed > 0, "%s: %zu streamed corners wrong, %zu kept, %zu collapsed", name, bad_kept, kept, collapsed);
+  CHECK(turned_differs > 0, "CONTROL: %s: the view turned away kept the same triangles", name);
+  std::printf("%ls (0x%s): %zu corners the game's world and UV; %zu of %zu triangles out of view kept, %zu differ turned away\n", capture_name,
+              name, vertices.size(), kept, vertices.size() / 3, turned_differs);
+}
+
+static void TestCascadeLeaves(const std::string& games, const std::string& folder) {
+  std::mt19937 random(12);
+  std::uniform_real_distribution<float> spread(-1.f, 1.f);
+  std::array<float, 44 * 4> camera = {};
+  for (int row = 0; row < 4; ++row) camera[((10 + row) * 4) + row] = 1.f;
+  // The imposter's shadow camera's view (c2-c5): random.
+  for (int value = 2 * 4; value < 6 * 4; ++value) camera[value] = spread(random);
+  camera[35 * 4] = 38.696f;  // time_in_sec (the battle trace's)
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  // wind_VS: direction, gust, multipliers and strengths.
+  const std::array<float, 12> wind = {0.8f, -0.6f, 0.8f, -0.6f, 0.f, 1.f, 1.3f, 0.7f, 0.5f, 300.f, 200.f, 0.f};
+  const auto wind_buffer = Constants(wind.data(), sizeof(wind));
+  const std::array<float, 4> size = {0.125f, 0.25f, 0.f, 0.f};
+  const auto size_buffer = Constants(size.data(), sizeof(size));
+  std::vector<ClothVertex> cloth;
+  std::vector<ImposterVertex> imposters;
+  std::vector<TreeVertex> trees;
+  for (int triangle = 0; triangle < 64; ++triangle) {
+    const std::array<float, 3> centre = {100.f * spread(random), 100.f * spread(random), 100.f * spread(random)};
+    const float frame = std::floor(2.f + (2.f * spread(random)));
+    for (int corner = 0; corner < 3; ++corner) {
+      cloth.push_back({.inputs = {{{centre[0] + (2.f * spread(random)), centre[1] + (2.f * spread(random)), centre[2] + (2.f * spread(random)), 1.f},
+                                   {spread(random), spread(random), spread(random), spread(random)},
+                                   {0.5f + (0.5f * spread(random)), 0.5f + (0.5f * spread(random)), spread(random), spread(random)},
+                                   {spread(random), spread(random), spread(random), spread(random)}}}});
+      imposters.push_back({.place = {centre[0], centre[1], centre[2], frame}, .last_place = centre,
+                           .frame = {0.5f + (0.5f * spread(random)), 0.5f + (0.5f * spread(random)), spread(random), 0.5f * spread(random)},
+                           .corner = {(corner & 1) ? 1.f : 0.f, (corner & 2) ? 1.f : 0.f, spread(random), 0.f},
+                           .flat = {0.6f * spread(random), 0.6f * spread(random), 1.8f * spread(random), spread(random)}});
+      // Two row sets (a turn about y, the centre in w, the second a little apart), blended by v5.xy (summing to 1) at the sets
+      // v5.zw names; v6.w the sway's weight past the saturate's 0.7, v10.xy the phase and the fade.
+      TreeVertex tree = {};
+      auto& inputs = tree.inputs;
+      for (auto& input : inputs) input = {spread(random), spread(random), spread(random), spread(random)};
+      inputs[0] = {2.f * spread(random), 2.f * spread(random), 2.f * spread(random), 1.f};
+      const float blend = 0.5f + (0.5f * spread(random));
+      inputs[5] = {blend, 1.f - blend, (corner & 1) ? 1.f : 0.f, (corner & 2) ? 1.f : 0.f};
+      inputs[6][3] = 0.75f + (0.75f * spread(random));
+      for (const int first : {7, 11}) {
+        const float turn = spread(random) * 3.14159f;
+        const float apart = (first == 11) ? 0.3f : 0.f;
+        inputs[first] = {std::cos(turn), 0.f, std::sin(turn), centre[0] + apart};
+        inputs[first + 1] = {0.f, 1.f, 0.f, centre[1]};
+        inputs[first + 2] = {-std::sin(turn), 0.f, std::cos(turn), centre[2] - apart};
+      }
+      trees.push_back(tree);
+    }
+  }
+  const std::array<ID3D11Buffer*, 1> cloth_constants = {camera_buffer.Get()};
+  TestCascadeLeaf(games, folder, "8A00A1D4", L"rt_capture_cascade_cloth", CLOTH_LAYOUT, cloth, cloth_constants);
+  const std::array<ID3D11Buffer*, 2> imposter_constants = {camera_buffer.Get(), size_buffer.Get()};
+  TestCascadeLeaf(games, folder, "E3DA20D4", L"rt_capture_cascade_imposter", IMPOSTER_LAYOUT, imposters, imposter_constants);
+  const std::array<ID3D11Buffer*, 2> tree_constants = {camera_buffer.Get(), wind_buffer.Get()};
+  TestCascadeLeaf(games, folder, "5851CA62", L"rt_capture_cascade_tree", TREE_LAYOUT, trees, tree_constants);
+  TestCascadeLeaf(games, folder, "6F20485E", L"rt_capture_cascade_tree", TREE_LAYOUT, trees, tree_constants);
+}
+
+// 12. rt_capture_cascade_tree_leaves (Shadow Casters Out of View's leaves): a dissolved tree's leaves left out (NaN) exactly where the
+//     game's leaf shadow pass (0x5851CA62 + 0xA97EF2E0's csos: a quad over the whole view, the mask's alpha 1 and the dissolve map 0,
+//     the texels it keeps longest) draws no sample (an occlusion query), for 12 fades from 0 to 1.5. CONTROL: rt_capture_cascade_tree
+//     (the branches' version, no fade) keeps the dissolved ones.
+static void TestLeafFade(const std::string& games, const std::string& folder) {
+  const auto read = [&folder](const char* name) {
+    std::ifstream file(folder + "/" + name, std::ios::binary);
+    return std::vector<char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  };
+  const auto game_vertex = read("0x5851CA62.vs_5_0.cso");
+  const auto game_pixel = read("0xA97EF2E0.ps_5_0.cso");
+  if (game_vertex.empty() || game_pixel.empty()) {
+    std::printf("missing 0x5851CA62 or 0xA97EF2E0\n");
+    std::exit(2);
+  }
+  const auto leaves = CompileVertex(games, L"rt_capture_cascade_tree_leaves");
+  const auto tree = CompileVertex(games, L"rt_capture_cascade_tree");
+  ComPtr<ID3D11VertexShader> vertex_shader;
+  ComPtr<ID3D11PixelShader> pixel_shader;
+  ComPtr<ID3D11InputLayout> input;
+  device->CreateVertexShader(game_vertex.data(), game_vertex.size(), nullptr, vertex_shader.GetAddressOf());
+  device->CreatePixelShader(game_pixel.data(), game_pixel.size(), nullptr, pixel_shader.GetAddressOf());
+  device->CreateInputLayout(TREE_LAYOUT, static_cast<UINT>(std::size(TREE_LAYOUT)), game_vertex.data(), game_vertex.size(), input.GetAddressOf());
+  // t0 the dissolve map (0), t1 the diffuse map (alpha 1).
+  const std::vector<uint32_t> dissolve(16, 0x00000000u);
+  const std::vector<uint32_t> diffuse(16, 0xFFFFFFFFu);
+  const auto dissolve_texture = Texture(4, 4, DXGI_FORMAT_R8G8B8A8_UNORM, dissolve.data(), 16, D3D11_BIND_SHADER_RESOURCE);
+  const auto diffuse_texture = Texture(4, 4, DXGI_FORMAT_R8G8B8A8_UNORM, diffuse.data(), 16, D3D11_BIND_SHADER_RESOURCE);
+  const auto dissolve_view = Srv(dissolve_texture.Get());
+  const auto diffuse_view = Srv(diffuse_texture.Get());
+  const std::array<ID3D11ShaderResourceView*, 2> views = {dissolve_view.Get(), diffuse_view.Get()};
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_WRAP, .AddressW = D3D11_TEXTURE_ADDRESS_WRAP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  const std::array<ID3D11SamplerState*, 2> samplers = {sampler.Get(), sampler.Get()};
+  const auto target = Texture(16, 16, DXGI_FORMAT_R8G8B8A8_UNORM, nullptr, 0, D3D11_BIND_RENDER_TARGET);
+  ComPtr<ID3D11RenderTargetView> target_view;
+  device->CreateRenderTargetView(target.Get(), nullptr, target_view.GetAddressOf());
+  const D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE, .DepthClipEnable = TRUE};
+  ComPtr<ID3D11RasterizerState> rasterizer;
+  device->CreateRasterizerState(&rasterizer_desc, rasterizer.GetAddressOf());
+  const D3D11_QUERY_DESC query_desc = {.Query = D3D11_QUERY_OCCLUSION};
+  ComPtr<ID3D11Query> query;
+  device->CreateQuery(&query_desc, query.GetAddressOf());
+  // An identity view-projection, no wind: the game's corners where the quad's are.
+  std::array<float, 44 * 4> camera = {};
+  for (int row = 0; row < 4; ++row) camera[((10 + row) * 4) + row] = 1.f;
+  camera[35 * 4] = 38.696f;
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const std::array<float, 12> calm = {};
+  const auto wind_buffer = Constants(calm.data(), sizeof(calm));
+  const std::array<ID3D11Buffer*, 2> constants = {camera_buffer.Get(), wind_buffer.Get()};
+  size_t bad = 0, left_out = 0, control_differs = 0;
+  constexpr std::array<float, 12> FADES = {0.f, 0.3f, 0.5f, 0.7f, 0.8f, 0.85f, 0.89f, 0.9f, 0.92f, 1.f, 1.2f, 1.5f};
+  for (const float fade : FADES) {
+    std::vector<TreeVertex> quad;
+    for (const auto& corner : std::array<std::array<float, 2>, 6>{{{-1.f, -1.f}, {-1.f, 1.f}, {1.f, -1.f}, {1.f, -1.f}, {-1.f, 1.f}, {1.f, 1.f}}}) {
+      TreeVertex vertex = {};
+      auto& inputs = vertex.inputs;
+      inputs[0] = {corner[0], corner[1], 0.5f, 1.f};
+      inputs[4] = {0.5f, 0.5f, 0.f, 0.f};  // the UV
+      inputs[5] = {1.f, 0.f, 0.f, 0.f};    // all the first row set
+      inputs[7] = {1.f, 0.f, 0.f, 0.f};
+      inputs[8] = {0.f, 1.f, 0.f, 0.f};
+      inputs[9] = {0.f, 0.f, 1.f, 0.f};
+      inputs[10] = {0.f, 1.f - fade, 0.f, 0.f};
+      quad.push_back(vertex);
+    }
+    const D3D11_BUFFER_DESC vertex_desc = {.ByteWidth = static_cast<UINT>(quad.size() * sizeof(TreeVertex)), .Usage = D3D11_USAGE_DEFAULT,
+                                           .BindFlags = D3D11_BIND_VERTEX_BUFFER};
+    const D3D11_SUBRESOURCE_DATA vertex_data = {.pSysMem = quad.data()};
+    ComPtr<ID3D11Buffer> vertex_buffer;
+    device->CreateBuffer(&vertex_desc, &vertex_data, vertex_buffer.GetAddressOf());
+    const UINT stride = sizeof(TreeVertex);
+    const UINT offset = 0;
+    const D3D11_VIEWPORT viewport = {.Width = 16.f, .Height = 16.f, .MaxDepth = 1.f};
+    context->IASetInputLayout(input.Get());
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &stride, &offset);
+    context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+    context->VSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
+    context->PSSetShader(pixel_shader.Get(), nullptr, 0);
+    context->PSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+    context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+    context->RSSetState(rasterizer.Get());
+    context->RSSetViewports(1, &viewport);
+    context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+    context->Begin(query.Get());
+    context->Draw(static_cast<UINT>(quad.size()), 0);
+    context->End(query.Get());
+    UINT64 samples = 0;
+    while (context->GetData(query.Get(), &samples, sizeof(samples), 0) != S_OK) {}
+    context->ClearState();
+    const auto ours = StreamOut(leaves->GetBufferPointer(), leaves->GetBufferSize(), "TEXCOORD", 2, 4, TREE_LAYOUT, quad, constants, nullptr);
+    const auto kept = StreamOut(tree->GetBufferPointer(), tree->GetBufferSize(), "TEXCOORD", 2, 4, TREE_LAYOUT, quad, constants, nullptr);
+    const bool gone = std::ranges::all_of(ours, [](const std::array<float, 4>& world) { return std::isnan(world[0]); });
+    const bool all_kept = std::ranges::none_of(ours, [](const std::array<float, 4>& world) { return std::isnan(world[0]); });
+    bad += ((samples == 0) == gone && (gone || all_kept)) ? 0 : 1;
+    left_out += gone ? 1 : 0;
+    control_differs += ((samples == 0) != std::isnan(kept[0][0])) ? 1 : 0;
+    std::printf("  fade %.2f: the game's %llu samples, ours %s\n", fade, samples, gone ? "left out" : "kept");
+  }
+  CHECK(bad == 0 && left_out > 0 && left_out < FADES.size(), "%zu fades wrong, %zu left out of %zu", bad, left_out, FADES.size());
+  CHECK(control_differs > 0, "CONTROL: the branches' version left out the dissolved leaves too");
+  std::printf("rt_capture_cascade_tree_leaves: %zu of %zu fades left out where the game's leaf shadow draws nothing; the branches' version "
+              "keeps %zu of them\n", left_out, FADES.size(), control_differs);
+}
+
+// 13. Coloured Shadows in shaders/sunlight00-03 (RtSunColour: the sun's colour x (1 - t50)) on a 16 x 16 target with random
+//     G-buffer, depth, shadow, AO, probes and lighting: the filter 1 everywhere (all of the sun's colour taken out) gives what
+//     the sun colour (lighting c1) 0 gives unbound, so every use of the sun's colour is filtered; unbound the sun lights the
+//     picture (it differs from c1 0). CONTROL: a filter of 0.5 differs from both.
+// #include from the folders of the files opened so far, the latest first, as fxc finds shared.h's ../../shaders/renodx.hlsl
+// (D3D_COMPILE_STANDARD_FILE_INCLUDE looked from the first file's folder; the compiler's parent pointers aren't the buffers given).
+class FolderInclude : public ID3DInclude {
+ public:
+  explicit FolderInclude(const std::filesystem::path& root) : folders_{root} {}
+  HRESULT __stdcall Open(D3D_INCLUDE_TYPE, LPCSTR name, LPCVOID, LPCVOID* data, UINT* bytes) noexcept override {
+    const auto folder = std::find_if(folders_.rbegin(), folders_.rend(),
+                                     [name](const std::filesystem::path& candidate) { return std::filesystem::exists(candidate / name); });
+    if (folder == folders_.rend()) return E_FAIL;
+    const std::filesystem::path path = std::filesystem::weakly_canonical(*folder / name);
+    if (std::ranges::find(folders_, path.parent_path()) == folders_.end()) folders_.push_back(path.parent_path());
+    std::ifstream file(path, std::ios::binary);
+    const std::vector<char> text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    auto* copy = new char[text.size() + 1];
+    std::memcpy(copy, text.data(), text.size());
+    *data = copy;
+    *bytes = static_cast<UINT>(text.size());
+    return S_OK;
+  }
+  HRESULT __stdcall Close(LPCVOID data) noexcept override {
+    delete[] static_cast<const char*>(data);
+    return S_OK;
+  }
+
+ private:
+  std::vector<std::filesystem::path> folders_;
+};
+
+struct SunShader {
+  const wchar_t* file;
+  UINT lighting_slot;
+  UINT constant_buffers;  // b0.. bound
+  std::vector<UINT> cube_array_slots;
+  std::vector<UINT> harmonics_slots;  // 9 x 9
+  UINT textures;  // t0.. bound (the rest 16 x 16 RGBA)
+  UINT samplers;
+};
+
+static void TestSunTint(const std::string& games) {
+  constexpr char VERTEX[] = "float4 main(uint id : SV_VertexID) : SV_Position { const float2 uv = float2((id << 1) & 2, id & 2); "
+                            "return float4(uv * float2(2, -2) + float2(-1, 1), 0.5, 1); }";
+  ComPtr<ID3DBlob> vertex_code;
+  ComPtr<ID3DBlob> errors;
+  D3DCompile(VERTEX, std::strlen(VERTEX), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_code.GetAddressOf(), errors.GetAddressOf());
+  ComPtr<ID3D11VertexShader> vertex;
+  device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex.GetAddressOf());
+  constexpr UINT SIZE = 16;
+  std::mt19937 random(13);
+  std::uniform_real_distribution<float> unit(0.05f, 0.95f);
+  const auto values = [&](size_t count) {
+    std::vector<float> filled(count);
+    for (auto& value : filled) value = unit(random);
+    return filled;
+  };
+  const auto plain = [&](UINT width, const std::vector<float>& texels) {
+    return Srv(Texture(width, width, DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), width * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+  };
+  // The camera: every matrix the identity, near 0.1 and far 1000, the render size 16.
+  std::array<float, 44 * 4> camera = {};
+  for (int matrix = 0; matrix < 8; ++matrix) {
+    for (int row = 0; row < 4; ++row) camera[((2 + (matrix * 4) + row) * 4) + row] = 1.f;
+  }
+  camera[34 * 4] = 0.1f;
+  camera[(34 * 4) + 1] = 1000.f;
+  camera[35 * 4] = 1.5f;
+  for (const int at : {37, 38, 40}) {
+    camera[(at * 4) + 0] = camera[(at * 4) + 1] = SIZE;
+    camera[(at * 4) + 2] = camera[(at * 4) + 3] = 1.f / SIZE;
+  }
+  std::array<float, 7 * 4> environment = {0.3f, -0.8f, 0.5f, 0.f, 1.f, 10.f, 0.8f, 0.5f, 1.f, 1.f, 1.f, 1.f, -20.f, -20.f, 20.f, 20.f};
+  environment[16] = std::bit_cast<float>(2u);  // g_probe_grid_size
+  environment[17] = 1.f;                       // g_specular_probes_count
+  environment[18] = 0.5f;                      // g_specular_probe_lerp
+  environment[23] = 9.f;                       // g_spherical_harmonic_terms
+  std::array<float, 18 * 4> lighting = {};
+  const auto lighting_values = values(lighting.size());
+  std::copy(lighting_values.begin(), lighting_values.end(), lighting.begin());
+  lighting[0] = 0.3f;
+  lighting[1] = -0.8f;
+  lighting[2] = 0.5f;
+  lighting[43] = std::bit_cast<float>(1u);  // g_use_spherical_harmonics
+  lighting[47] = 0.f;                       // g_cloud_shadow_scale
+  // sun_colour in the game's units (its shaders scale it by 1.90384671e-005: about 1 here).
+  lighting[4] = 52525.f;
+  lighting[5] = 47000.f;
+  lighting[6] = 41000.f;
+  auto dark = lighting;
+  dark[4] = dark[5] = dark[6] = 0.f;
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const auto environment_buffer = Constants(environment.data(), sizeof(environment));
+  const auto lit_buffer = Constants(lighting.data(), sizeof(lighting));
+  const auto dark_buffer = Constants(dark.data(), sizeof(dark));
+  const auto other_values = values(16 * 4);
+  const auto other_buffer = Constants(other_values.data(), static_cast<UINT>(other_values.size() * sizeof(float)));
+  const auto filter = [&](float value) { return plain(SIZE, std::vector<float>(SIZE * SIZE * 4, value)); };
+  const auto all_filtered = filter(1.f);
+  const auto half_filtered = filter(0.5f);
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  const std::wstring path(games.begin(), games.end());
+  const std::array<SunShader, 4> shaders = {{
+      {.file = L"sunlight00_0xED1BED93", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4},
+      {.file = L"sunlight01_0x5496DE73", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4},
+      {.file = L"sunlight02_0xC3E0E939", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6},
+      {.file = L"sunlight03_0xD5FDDE8F", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6},
+  }};
+  for (const auto& shader : shaders) {
+    ComPtr<ID3DBlob> code;
+    FolderInclude include(path + L"/twshogun2completeedition/shaders");
+    if (FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/" + shader.file + L".ps_5_0.hlsl").c_str(), nullptr, &include,
+                                  "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, code.GetAddressOf(), errors.ReleaseAndGetAddressOf()))) {
+      std::printf("compile failed: %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
+      std::exit(2);
+    }
+    ComPtr<ID3D11PixelShader> pixel;
+    device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, pixel.GetAddressOf());
+    std::vector<ComPtr<ID3D11ShaderResourceView>> views(shader.textures);
+    for (UINT slot = 0; slot < shader.textures; ++slot) {
+      if (std::ranges::find(shader.cube_array_slots, slot) != shader.cube_array_slots.end()) {
+        const D3D11_TEXTURE2D_DESC desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = 24, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                           .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                           .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE};
+        std::vector<std::vector<float>> face_texels(24);
+        std::vector<D3D11_SUBRESOURCE_DATA> initial(24);
+        for (UINT face = 0; face < 24; ++face) {
+          face_texels[face] = values(64);
+          initial[face] = {.pSysMem = face_texels[face].data(), .SysMemPitch = 64};
+        }
+        ComPtr<ID3D11Texture2D> cubes;
+        device->CreateTexture2D(&desc, initial.data(), cubes.GetAddressOf());
+        const D3D11_SHADER_RESOURCE_VIEW_DESC view = {.Format = desc.Format, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY,
+                                                      .TextureCubeArray = {.MipLevels = 1, .NumCubes = 4}};
+        device->CreateShaderResourceView(cubes.Get(), &view, views[slot].GetAddressOf());
+      } else {
+        const UINT width = (std::ranges::find(shader.harmonics_slots, slot) != shader.harmonics_slots.end()) ? 9 : SIZE;
+        views[slot] = plain(width, values(static_cast<size_t>(width) * width * 4));
+      }
+    }
+    const std::vector<ID3D11SamplerState*> samplers(shader.samplers, sampler.Get());
+    const auto run = [&](ID3D11Buffer* lighting_buffer, ID3D11ShaderResourceView* tint) {
+      const auto output = Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET);
+      ComPtr<ID3D11RenderTargetView> target;
+      device->CreateRenderTargetView(output.Get(), nullptr, target.GetAddressOf());
+      std::vector<ID3D11Buffer*> buffers(shader.constant_buffers, other_buffer.Get());
+      buffers[0] = camera_buffer.Get();
+      buffers[1] = environment_buffer.Get();
+      buffers[shader.lighting_slot] = lighting_buffer;
+      std::vector<ID3D11ShaderResourceView*> bound(views.size());
+      for (size_t slot = 0; slot < views.size(); ++slot) bound[slot] = views[slot].Get();
+      const D3D11_VIEWPORT viewport = {.Width = SIZE, .Height = SIZE, .MaxDepth = 1.f};
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->VSSetShader(vertex.Get(), nullptr, 0);
+      context->PSSetShader(pixel.Get(), nullptr, 0);
+      context->PSSetShaderResources(0, static_cast<UINT>(bound.size()), bound.data());
+      context->PSSetShaderResources(50, 1, &tint);
+      context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+      context->PSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
+      context->RSSetViewports(1, &viewport);
+      context->OMSetRenderTargets(1, target.GetAddressOf(), nullptr);
+      context->Draw(3, 0);
+      context->ClearState();
+      const auto bytes = Read(output.Get(), 16);
+      std::vector<float> result(bytes.size() / 4);
+      std::memcpy(result.data(), bytes.data(), bytes.size());
+      return result;
+    };
+    const auto unbound = run(lit_buffer.Get(), nullptr);
+    const auto filtered = run(lit_buffer.Get(), all_filtered.Get());
+    const auto no_sun = run(dark_buffer.Get(), nullptr);
+    const auto half = run(lit_buffer.Get(), half_filtered.Get());
+    const auto same = [](float x, float y) { return std::fabs(x - y) <= (1e-5f * std::max(std::fabs(x), std::fabs(y))) + 1e-6f; };
+    size_t bad = 0, not_finite = 0, sunlit = 0, between = 0;
+    for (size_t value = 0; value < unbound.size(); ++value) {
+      not_finite += std::isfinite(unbound[value]) ? 0 : 1;
+      bad += same(filtered[value], no_sun[value]) ? 0 : 1;
+      sunlit += same(unbound[value], no_sun[value]) ? 0 : 1;
+      between += (!same(half[value], unbound[value]) && !same(half[value], no_sun[value])) ? 1 : 0;
+    }
+    const std::string name(shader.file, shader.file + std::wcslen(shader.file));
+    CHECK(bad == 0 && not_finite == 0 && sunlit > 0, "%s: %zu values differ filtered from no sun, %zu not finite, %zu sunlit (unbound: %zu zero, "
+          "at most %f; no sun at most %f)", name.c_str(), bad, not_finite, sunlit,
+          static_cast<size_t>(std::ranges::count(unbound, 0.f)), *std::ranges::max_element(unbound), *std::ranges::max_element(no_sun));
+    CHECK(between > 0, "CONTROL %s: half the filter gave the unfiltered or the sunless picture", name.c_str());
+    std::printf("%s Coloured Shadows: the filter 1 gives the sun colour 0's picture; %zu of %zu values sunlit unbound, %zu between at half\n",
+                name.c_str(), sunlit, unbound.size(), between);
+  }
 }
 
 int main(int argc, char** argv) {
@@ -1119,8 +1828,15 @@ int main(int argc, char** argv) {
   if (argc > 3) {
     TestBillboard(games, argv[3]);
     TestImposter(games, argv[3]);
-    TestOcean(games, argv[3]);
+    TestWaters(games, argv[3]);
+    TestPlacedShadow<RigidShadowVertex>(games, argv[3], "AC25DAB8", L"rt_capture_cascade_rigid", L"rt_rows_cascade_rigid",
+                                        RIGID_SHADOW_LAYOUT, 6, 0);
+    TestPlacedShadow<VariantShadowVertex>(games, argv[3], "B0E006EE", L"rt_capture_cascade_variant", L"rt_rows_cascade_variant",
+                                          VARIANT_SHADOW_LAYOUT, 8, 6);
+    TestCascadeLeaves(games, argv[3]);
+    TestLeafFade(games, argv[3]);
   }
+  TestSunTint(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

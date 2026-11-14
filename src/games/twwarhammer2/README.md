@@ -1,5 +1,91 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### Round v49 (2026-11-14, ATN's session traces of 03:38-03:48; built only, not run in game)
+
+- **Fixed below 100%: the screen-space reflections came out twice their size.** The SSR's copy (environment_specular_light
+  ps40_copy 7F23C472) sampled its resolve's whole output while the resolve wrote only the render share; it now reads that
+  share (a `view_share` region read, as Pharaoh's). The traces at DLSS Performance and Ultra Performance drew it at 1920 x 1080
+  and 1280 x 720 over a 3840 x 2160 texture. The scale census on all 26 traces finds no other pass below 100%
+  (`tools/tw/wh2/scale_census_wh2_atn2.txt`; the unit portraits' tone mapper runs a display-size chain of its own).
+- **Torch and Fire Shadows now cover the spot lights** (spotlight F550D451, gobospotlight 0764179D; 26 in the siege, 1 in the
+  campaign): the traces' instance rows give each one's place (POSITION1), range (POSITION2.x) and colour (POSITION4). Our copies
+  of both shaders put the rays' visibility on the light the surface takes; their light shafts stay the game's. They rank among
+  the torches by their colour but light nothing in the paths, the fog or the glow (a spot would light all around there).
+  Shared: `rt_scene::InstallPointLights` takes where a light family's instances keep each light (`LightInstances`, the point
+  lights' by default) and a second family. WARP `tools/tw/warp_tests/spot_wh2` passes: nothing bound, the game's bits; each
+  pixel's bit exact; a light the rays don't have, as the game draws it; shafts kept (3Dmigoto's -pi in the shafts' atan2 put
+  back to the game's).
+- **New: Smoke Shadows (Experimental, off).** Every lit particle in the traces is one indirect draw of 1FC776EF (a GPU-sorted
+  list, 19597 in the siege) with F32116B4: the same vertex shader family and outputs as Pharaoh's, so Pharaoh's quad shader at
+  F32116B4's slots (now `twattila/rt_particle_quads_instancing.hlsli`, Pharaoh's bytes the same). The rays' capture streams
+  indirect draws out (`SmokeVertexShader::indirect`: 65536 records emptied first, the GPU's count filled). WARP
+  `tools/tw/warp_tests/smoke_wh2` passes: places, sizes, opacity and mip level as the game's shaders draw them, every record
+  past the GPU's count empty (its controls fail).
+- **The campaign's trees and plants in the rays** (rigidcampaignvegetation 41147CD3, 156 draws a frame, in no scene before):
+  as drawn (their wind, their lean toward a high camera), cut out by their diffuse map's alpha. GPU check: the capture's world
+  position times the camera is the game's SV_Position (1e-8 relative).
+- **Shadow Casters Out of View (Experimental, off) takes two more of the shadow pass's draws**: the campaign trees' 7D979F60
+  (49 draws, cut out by 5906CF6E's alpha test) and, with Far Tree Shadows, the far trees' cards 75914932 (cut out by
+  B7ED5B72's, at the nearest of the two views it blends; a card it fades out stays out). Pharaoh's `rt_outside_view` has two
+  new variants for them (`RT_WORLD_UV`, `RT_CARD_SPLIT`; its other variants' bytes the same). WARP
+  `tools/tw/warp_tests/outside_view_wh2` passes (its controls fail).
+- **Fixed: alpha-tested props cast solid shadows in the rays.** Fences, palms and other cut-out props of the rigid shader
+  (16AFAF14) cast their cut-out shadow now, as the game's shadow pass does: its five alpha-tested G-buffer materials (the
+  traces' census of every scene shader's pixel shaders) are cut by their diffuse map's alpha at 0.5, as Troy's and Pharaoh's
+  (`rt_capture_rigid_standard_cut_out`; its world on the GPU: 1.4e-8 relative). The campaign's objects go through one of
+  them (the shroud's material), so they are cut where their textures are.
+- **New: Light Through Foliage (Experimental, off)** for Bend's screen-space shadows, as Troy's and Pharaoh's: the
+  G-buffer's foliage bit (128 in channel 3's alpha byte, which the game's own sun shaders test). In the traces leaves, far
+  cards and grass set it, and so do the blend meshes (76B5602C, the banners' too) and the campaign's terrain-blend objects
+  (41FD3F65, 255), as the game's own code reads them (`tools/tw/wh2/material_writes_wh2.txt`).
+- **New: Water Clarity and Water Caustics (Experimental; at 1 and 0 the game's water).** The battle water (battle_water
+  8686041E), the campaign sea (campaign_sea DB511A83) and lakes (campaign_lake EFE43500), each with its four shadow twins:
+  Clarity stretches how deep the water's colour fades (the battle water over 10 m plus its waves, the sea over 0.3 m, the lakes'
+  Beer-Lambert as Warhammer III's); Caustics light the bed under battle water, after each of its four refraction reads.
+  Shared (`water_effects.hpp`): the depth's literal as the opacity (a mul or mad reading it, `divisor` where it makes the
+  depth's divisor) and `every_refraction`, off by default: every other game's patched water bytes the same (133 rows).
+  WARP `tools/tw/warp_tests/water_wh2` passes on all 15: neutral bit-exact, Caustics as the refraction x (1 + k), Clarity as
+  the game's literal scaled (its controls fail: a wrong literal, mul for div, the last refraction alone).
+- **New: Smooth Half-Size Particles (Experimental, off; Extra).** The game draws its lit smoke, fire and dust at half size
+  into a layer of its own and brings it up with its cross-bilateral upsample (deferred_alpha_composition 21DE8D05, once a
+  frame in every trace). With the row on, that layer is first smoothed over frames by the shared resolve Warhammer III and
+  Attila use (`particle_history`), on this game's camera rows, and the game's upsample reads the result. Below 100% only the
+  view's part is resolved and the rest is copied from the game's layer. No shared change. WARP
+  `tools/tw/warp_tests/particles_wh2` passes with the camera buffer laid out by the game's own RDEF (21DE8D05's) and a moving
+  camera, at 100% and below: every texel reads the history where the last camera saw its point (within 0.0074 texel). Its
+  controls fail: Warhammer III's rows, and no motion.
+- **Rays Replace Shadow Maps through the shared hook** (`twattila/sun_replace_maps.hpp` with its sampler slot, s1 here):
+  the same as before.
+- Checked, nothing to change: the siege's walls, buildings, units, trees and terrain are all in the rays (the caster census
+  on traces 17-30: every G-buffer draw of scene geometry held; the shadow pass's casters out of view as v48). The campaign's
+  far terrain (geometry_41_global CC981FF9) stays out: its 49 chunks lie under the 161 near terrain patches the rays have
+  (both drawn into the G-buffer, the shadow pass draws it alone), so the two would shadow each other.
+- The rays' cost in ATN's session (the helper's GPU ms of one frame in each mode, trace + reflections): campaign 3.8 + 3.2 at
+  DLAA, 1.0 + 1.0 at DLSS Performance, 0.4 + 0.5 at Ultra Performance; siege 6.9 + 4.7, 1.7 + 1.3, 0.8 + 0.7.
+
+Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon64`. Test list (RT/PT, DLSS Performance):
+1. A battle by water or wet stone: reflections sit where they belong (before: stretched to twice their size).
+2. A siege at night with Torch and Fire Shadows: the city's spot lights shadow walls and soldiers; their cones as before.
+3. Smoke Shadows on, a burning siege: the smoke shades the ground and walls under it. Send ReShade.log (1FC776EF's line).
+4. The campaign: forests take ray-traced AO and shadows, no dark patches under trees; frame time as v48.
+5. Shadow Casters Out of View on: campaign trees just off screen shadow as leaves; far forests behind keep their shadows.
+6. Fences, palms and bushes in a battle: their ray-traced shadows show the gaps; campaign towns' shadows as v48.
+7. Bend's shadows, Light Through Foliage 0.5: lighter shadows under trees and grass, walls and soldiers as dark as before.
+8. Water Clarity 4, Caustics 1: clearer battle water with light rippling on its bed; the campaign's sea and lakes clearer.
+9. Smooth Half-Size Particles, a burning siege: smoke and fire flicker less; no dark line at the view's right or bottom edge.
+
+Not done:
+- The campaign's far terrain (above).
+- Smoke Shadows' lower-effects twins DDABB799 / 687378DB drew in no trace (one slot below F32116B4's: a shift away).
+- Out of the rays: the depth-only EF11AD35 (no world to read) and the floating banners 7DF335FF (the game gives them none).
+- The rigid default shader 6B25B4D2 also draws the battle water, the campaign sea and overlays into the G-buffer; they stay
+  casters (the water is opaque there, nothing under it shows; listing its 25 traced materials would drop untraced ones).
+- Particle Resolution (Attila's particle layer): the game already draws its lit particles at half size into its own layer
+  (above). Half would change nothing. Quarter would need an indirect path in the shared layer, a shared change for every
+  game, and a second upsample in place of the game's cross-bilateral one, for a small gain over half.
+- Water left out: the campaign rivers (campaign_river 4F6E96D0: a fixed half blend, no depth to stretch) and the battle rivers
+  (battle_river 47339F81: in no trace; its fade divides by a material constant, which needs a patch before the divide).
+
 ### Round v48 (2026-11-14, Attila's package with the data run's findings; built only, not run in game)
 
 - **Graphics 1 of 2 as Attila's and Pharaoh's** (`twattila/graphics_page.hpp`): Reset, No RT/PT (Recommended) and RT/PT;

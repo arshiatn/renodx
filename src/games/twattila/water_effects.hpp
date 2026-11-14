@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Water Clarity and Water Caustics at the game's water draws (Attila; WH3; Pharaoh). The addon gives its water_shaders, registers OnWaterDraw for each of them
+// Water Clarity and Water Caustics at the game's water draws (Attila; WH3; Pharaoh; Warhammer II). The addon gives its water_shaders, registers OnWaterDraw for each of them
 // and OnCreateWater as a pipeline callback, has the embeds __water_clarity and __water_caustics, and the rows bind water_clarity and water_caustics.
 #ifndef SRC_GAMES_TWATTILA_WATER_EFFECTS_HPP_
 #define SRC_GAMES_TWATTILA_WATER_EFFECTS_HPP_
@@ -47,10 +47,13 @@ using Microsoft::WRL::ComPtr;
 // light a metre, 4 times as far still dark. Logged once where it applies.
 // The opacity a material water's absorption multiplies by (PatchWaterAbsorption): an operand, type 8 a constant buffer (index:
 // slot, register) or 1 an input (index: register, 0), and its component. Type 0: every mul by +-log2(e) (WH3's battle water).
+// Type 4 an immediate (index[0]: its bits): the mul or mad reading that literal scales the depth (Warhammer II's linear fades);
+// `divisor`: what it makes divides the depth instead, so it is divided by 1 / clarity.
 struct WaterOpacity {
   uint32_t type = 0;
   std::array<uint32_t, 2> index = {};
   uint32_t component = 0;
+  bool divisor = false;
 };
 struct WaterShader {
   uint32_t hash = 0;
@@ -61,6 +64,7 @@ struct WaterShader {
   uint32_t normal_slot = 0;      // t: the normal map, a plain sample of it gives the caustics' sampler
   bool material_water = false;   // Colour per material, no scatter to raise: swapped at the draw for a patched copy (PatchWaterAbsorption)
   WaterOpacity opacity = {};     // material_water's
+  bool every_refraction = false;  // the caustics after every refraction colour sample (Warhammer II's battle water reads it 4 times), not the last alone
 };
 // The game's water shaders, read per game; the addon's table.
 static std::span<const WaterShader> water_shaders;
@@ -124,9 +128,10 @@ static WaterObjects water_objects;
 // them, with rT one more temp and t51 declared:
 //   mul rT.xy, vW.xzxx, l(1 / tile) / frc rT.xy, rT.xyxx / sample_l rT.x, rT.xyxx, t51, s(the normal map's), l(0) /
 //   mad rD.xyz(w's left), rD, rT.xxxx, rD
+// every_refraction: after each such sample instead (one of an if / else pair: after the else's).
 inline std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, const WaterShader& water) {
-  constexpr uint32_t OP_ENDIF = 21, OP_FRC = 26, OP_IF = 31, OP_MAD = 50, OP_MUL = 56, OP_SAMPLE = 69, OP_SAMPLE_L = 72, OP_DCL_RESOURCE = 88,
-                     OP_DCL_TEMPS = 104;
+  constexpr uint32_t OP_ELSE = 18, OP_ENDIF = 21, OP_FRC = 26, OP_IF = 31, OP_MAD = 50, OP_MUL = 56, OP_SAMPLE = 69, OP_SAMPLE_L = 72,
+                     OP_DCL_RESOURCE = 88, OP_DCL_TEMPS = 104;
   constexpr uint32_t EXTENDED = 1u << 31;
   dxbc::Program program = dxbc::Read(code);
   auto& tokens = program.tokens;
@@ -136,6 +141,7 @@ inline std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, co
   size_t refraction_operands = 0;
   size_t normal_at = 0;  // the normal map's (normal_slot) sample, its operands' start
   size_t normal_operands = 0;
+  std::vector<std::array<size_t, 2>> sites;  // every_refraction's: each sample's at and operands
   for (size_t at = 2; at < tokens.size();) {
     const uint32_t opcode = tokens[at] & 0x7FF;
     const size_t length = dxbc::Length(tokens, at);
@@ -158,39 +164,49 @@ inline std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, co
           && std::popcount((tokens[operands] >> 4) & 0xFu) >= 3) {
         refraction_at = at;
         refraction_operands = operands;
+        if (water.every_refraction && at + length < tokens.size() && (tokens[at + length] & 0x7FF) != OP_ELSE) sites.push_back({at, operands});
       }
     }
     at += length;
   }
   if (temps_at == 0 || refraction_at == 0 || normal_at == 0) return {};
+  if (!water.every_refraction) sites = {{refraction_at, refraction_operands}};
   const uint32_t temp = tokens[temps_at + 1];
-  const uint32_t bed = tokens[refraction_operands + 1];
   const uint32_t scale = std::bit_cast<uint32_t>(1.f / WATER_CAUSTICS_TILE);
-  // A whole xyzw read: its w stays.
-  const uint32_t destination = ((tokens[refraction_operands] & 0xF0) == 0xF0 ? (tokens[refraction_operands] & ~0x80u) : tokens[refraction_operands]);
-  std::vector<uint32_t> added = {
-      // mul rT.xy, vW.xzxx, l(scale, scale, 0, 0) / frc rT.xy, rT.xyxx (the tile repeats whatever the sampler's address mode)
-      OP_MUL | (10u << 24), 0x00100032, temp, 0x00101086, water.world_input, 0x00004002, scale, scale, 0u, 0u,
-      OP_FRC | (5u << 24), 0x00100032, temp, 0x00100046, temp,
-      // sample_l(_indexable(texture2d)(float,float,float,float): the normal map's extended tokens, none below shader model 5)
-      // rT.x, rT.xyxx, t51.xyzw, sN, l(0)
-      OP_SAMPLE_L | (tokens[normal_at] & EXTENDED) | (static_cast<uint32_t>(10 + normal_operands - normal_at) << 24),
-  };
-  added.insert(added.end(), tokens.begin() + static_cast<ptrdiff_t>(normal_at + 1), tokens.begin() + static_cast<ptrdiff_t>(normal_operands));
-  added.insert(added.end(), {
-      0x00100012, temp, 0x00100046, temp, 0x00107E46, WATER_CAUSTICS_SLOT, tokens[normal_operands + 6], tokens[normal_operands + 7], 0x00004001, 0u,
-      // mad rD, rD.xyzw, rT.xxxx, rD.xyzw
-      OP_MAD | (9u << 24), destination, bed, 0x00100E46, bed, 0x00100006, temp, 0x00100E46, bed,
-  });
-  size_t added_at = refraction_at + dxbc::Length(tokens, refraction_at);
-  if ((tokens[added_at] & 0x7FF) == OP_IF) {
-    while ((tokens[added_at] & 0x7FF) != OP_ENDIF) added_at += dxbc::Length(tokens, added_at);
-    ++added_at;
-  } else if (water.material_water && (tokens[added_at] & 0x7FF) == OP_ENDIF) {
-    // The near water's five samples or the far water's one: the same register either way.
-    ++added_at;
+  // The normal map's sample's extended tokens and sampler, kept before anything moves.
+  const std::vector<uint32_t> normal_extended(tokens.begin() + static_cast<ptrdiff_t>(normal_at + 1), tokens.begin() + static_cast<ptrdiff_t>(normal_operands));
+  const uint32_t normal_opcode = tokens[normal_at];
+  const std::array<uint32_t, 2> normal_sampler = {tokens[normal_operands + 6], tokens[normal_operands + 7]};
+  // The last site first: the earlier ones keep their places.
+  for (auto site = sites.rbegin(); site != sites.rend(); ++site) {
+    const auto [sample_at, sample_operands] = *site;
+    const uint32_t bed = tokens[sample_operands + 1];
+    // A whole xyzw read: its w stays.
+    const uint32_t destination = ((tokens[sample_operands] & 0xF0) == 0xF0 ? (tokens[sample_operands] & ~0x80u) : tokens[sample_operands]);
+    std::vector<uint32_t> added = {
+        // mul rT.xy, vW.xzxx, l(scale, scale, 0, 0) / frc rT.xy, rT.xyxx (the tile repeats whatever the sampler's address mode)
+        OP_MUL | (10u << 24), 0x00100032, temp, 0x00101086, water.world_input, 0x00004002, scale, scale, 0u, 0u,
+        OP_FRC | (5u << 24), 0x00100032, temp, 0x00100046, temp,
+        // sample_l(_indexable(texture2d)(float,float,float,float): the normal map's extended tokens, none below shader model 5)
+        // rT.x, rT.xyxx, t51.xyzw, sN, l(0)
+        OP_SAMPLE_L | (normal_opcode & EXTENDED) | (static_cast<uint32_t>(10 + normal_extended.size() + 1) << 24),
+    };
+    added.insert(added.end(), normal_extended.begin(), normal_extended.end());
+    added.insert(added.end(), {
+        0x00100012, temp, 0x00100046, temp, 0x00107E46, WATER_CAUSTICS_SLOT, normal_sampler[0], normal_sampler[1], 0x00004001, 0u,
+        // mad rD, rD.xyzw, rT.xxxx, rD.xyzw
+        OP_MAD | (9u << 24), destination, bed, 0x00100E46, bed, 0x00100006, temp, 0x00100E46, bed,
+    });
+    size_t added_at = sample_at + dxbc::Length(tokens, sample_at);
+    if ((tokens[added_at] & 0x7FF) == OP_IF) {
+      while ((tokens[added_at] & 0x7FF) != OP_ENDIF) added_at += dxbc::Length(tokens, added_at);
+      ++added_at;
+    } else if (water.material_water && (tokens[added_at] & 0x7FF) == OP_ENDIF) {
+      // The near water's five samples or the far water's one: the same register either way.
+      ++added_at;
+    }
+    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(added_at), added.begin(), added.end());
   }
-  tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(added_at), added.begin(), added.end());
   // dcl_resource_texture2d (float,float,float,float) t51, before dcl_temps (the declarations come first).
   const std::array<uint32_t, 4> declaration = {OP_DCL_RESOURCE | (3u << 11) | (4u << 24), 0x00107000, WATER_CAUSTICS_SLOT, 0x5555};
   ++tokens[temps_at + 1];
@@ -201,12 +217,14 @@ inline std::vector<uint8_t> PatchWaterCaustics(std::span<const uint8_t> code, co
 
 // Beer-Lambert in battle_water and battle_river: every exp(x * log2(e)) of absorption x depth, per channel and for the material's
 // opacity. After each `mul rX, rY, l(+-1.442695)`: mul rX, rX, cb11[0].xxxx, which is what looking through 1 / clarity of the depth does.
-// An `opacity` operand (Pharaoh's water: exp2(-depth x opacity), no log2(e)): after each mul that reads it.
+// An `opacity` operand (Pharaoh's water: exp2(-depth x opacity), no log2(e)): after each mul that reads it. An immediate (Warhammer
+// II's linear fades): after each mul or mad that reads it, a div by cb11[0].xxxx where it makes the depth's divisor.
 inline std::vector<uint8_t> PatchWaterAbsorption(std::span<const uint8_t> code, const WaterOpacity& opacity) {
-  constexpr uint32_t OP_MUL = 56, OP_DCL_CONSTANT_BUFFER = 89, OP_DCL_TEMPS = 104;
+  constexpr uint32_t OP_MAD = 50, OP_MUL = 56, OP_DCL_CONSTANT_BUFFER = 89, OP_DCL_TEMPS = 104;
   constexpr uint32_t LOG2_E = 0x3FB8AA3B;
   constexpr uint32_t SIGN = 0x80000000;
   constexpr uint32_t CLARITY_OPERAND = 0x00208006;  // cb[][].xxxx
+  const bool immediate = opacity.type == dxbc::OPERAND_IMMEDIATE;
   dxbc::Program program = dxbc::Read(code);
   auto& tokens = program.tokens;
   if (tokens.empty()) return {};
@@ -220,7 +238,7 @@ inline std::vector<uint8_t> PatchWaterAbsorption(std::span<const uint8_t> code, 
     if (opcode == OP_DCL_TEMPS) temps_at = patched.size();
     if (opcode == OP_DCL_CONSTANT_BUFFER && tokens[at + 2] == WATER_CLARITY_SLOT) return {};
     patched.insert(patched.end(), tokens.begin() + static_cast<ptrdiff_t>(at), tokens.begin() + static_cast<ptrdiff_t>(at + length));
-    if (opcode == OP_MUL) {
+    if (opcode == OP_MUL || (immediate && opcode == OP_MAD)) {
       const size_t destination = dxbc::internal::FirstOperand(tokens, at);
       bool absorption = false;
       if (opacity.type == 0) {
@@ -232,15 +250,16 @@ inline std::vector<uint8_t> PatchWaterAbsorption(std::span<const uint8_t> code, 
           const size_t operand_length = dxbc::ParseOperand(tokens, next, at + length, &operand);
           if (operand_length == 0) return {};
           absorption = absorption
-                       || (operand.type == opacity.type && operand.mode == 2 && operand.select == opacity.component && !operand.relative
-                           && operand.index == opacity.index);
+                       || (immediate ? (operand.type == opacity.type && operand.values[0] == opacity.index[0])
+                                     : (operand.type == opacity.type && operand.mode == 2 && operand.select == opacity.component && !operand.relative
+                                        && operand.index == opacity.index));
           next += operand_length;
         }
       }
       if (absorption) {
         if ((tokens[at] & (1u << 13)) != 0 || (tokens[destination] & 0x001FF003) != 0x00100002) return {};
-        patched.insert(patched.end(), {OP_MUL | (8u << 24), tokens[destination], tokens[destination + 1], 0x00100E46, tokens[destination + 1],
-                                       CLARITY_OPERAND, WATER_CLARITY_SLOT, 0u});
+        patched.insert(patched.end(), {(opacity.divisor ? dxbc::OP_DIV : OP_MUL) | (8u << 24), tokens[destination], tokens[destination + 1], 0x00100E46,
+                                       tokens[destination + 1], CLARITY_OPERAND, WATER_CLARITY_SLOT, 0u});
         ++found;
       }
     }

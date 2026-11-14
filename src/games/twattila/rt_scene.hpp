@@ -857,15 +857,21 @@ constexpr auto OnPathAmbientDraw = []<typename T, typename Context>(Context& com
 
 namespace internal {
 
-// The point lights' instance data as the game's input layouts give it (POSITION1: the light's colour, POSITION2: its
-// world position and reach; the light shaders' inputs), by input layout.
+// The light draws' instance data as the game's input layouts give it: their POSITION elements past the mesh's (the light
+// shaders' inputs), by input layout; InstallPointLights' LightInstances says which hold a light's colour and position.
+struct InputPosition {
+  uint32_t semantic_index = 0;
+  uint32_t slot = 0;
+  uint32_t offset = 0;
+};
+// A light draw's: its instances' buffer slot, the colour's and the position's byte offsets in each.
 struct PointLightLayout {
   uint32_t slot = 0;
   uint32_t colour = 0;
   uint32_t position = 0;
 };
 static std::mutex point_light_mutex;
-static std::unordered_map<uint64_t, PointLightLayout> point_light_layouts;
+static std::unordered_map<uint64_t, std::vector<InputPosition>> point_light_layouts;
 static bool point_lights_installed = false;
 static bool point_lights_read = false;
 static bool point_light_layout_missed = false;
@@ -879,7 +885,11 @@ struct PointLightCopy {
   UINT count = 0;
   UINT stride = 0;
   PointLightLayout layout;
+  bool shadows_only = false;  // LightInstances'
+  bool streamed = false;      // LightInstances::stream_shader's records: an undrawn instance's reach 0, left out
 };
+// A streamed light record (LightInstances::stream_shader): the light (position, reach), then its colour.
+constexpr UINT STREAMED_LIGHT_BYTES = 32;
 struct PointLightReadback {
   ComPtr<ID3D11Device> device;
   std::array<ComPtr<ID3D11Buffer>, 3> staging;
@@ -887,6 +897,10 @@ struct PointLightReadback {
   std::array<UINT, 3> used = {};
   uint64_t frame = UINT64_MAX;  // the frame the current buffer fills in
   size_t current = 0;
+  // LightInstances::stream_shader's (made at its first draw on the device; one family streamed).
+  ComPtr<ID3D11GeometryShader> stream_output;
+  ComPtr<ID3D11Buffer> streamed;
+  bool stream_failed = false;
 };
 static PointLightReadback point_light_readback;
 
@@ -978,17 +992,15 @@ inline void OnInitInputLayout(reshade::api::device* device, reshade::api::pipeli
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   for (const auto& subobject : std::span(subobjects, subobject_count)) {
     if (subobject.type != reshade::api::pipeline_subobject_type::input_layout) continue;
-    const std::span elements(static_cast<const reshade::api::input_element*>(subobject.data), subobject.count);
-    const auto find = [&](uint32_t index) {
-      return std::ranges::find_if(elements, [&](const reshade::api::input_element& element) {
-        return element.semantic != nullptr && std::string_view(element.semantic) == "POSITION" && element.semantic_index == index;
-      });
-    };
-    const auto colour = find(1);
-    const auto position = find(2);
-    if (colour == elements.end() || position == elements.end() || colour->buffer_binding != position->buffer_binding) continue;
+    std::vector<InputPosition> positions;
+    for (const auto& element : std::span(static_cast<const reshade::api::input_element*>(subobject.data), subobject.count)) {
+      if (element.semantic != nullptr && std::string_view(element.semantic) == "POSITION" && element.semantic_index != 0) {
+        positions.push_back({.semantic_index = element.semantic_index, .slot = element.buffer_binding, .offset = element.offset});
+      }
+    }
+    if (positions.size() < 2) continue;
     const std::unique_lock lock(point_light_mutex);
-    point_light_layouts[pipeline.handle] = {.slot = position->buffer_binding, .colour = colour->offset, .position = position->offset};
+    point_light_layouts[pipeline.handle] = std::move(positions);
   }
 }
 
@@ -999,10 +1011,30 @@ inline void OnDestroyInputLayout(reshade::api::device*, reshade::api::pipeline p
 
 }  // namespace internal
 
+// Where a light draw's instances keep each light: the POSITION semantic indices of its colour (16 bytes) and of its world
+// position with its reach after it (16 bytes). `shadows_only`: LocalLight's (Warhammer II's spot lights: POSITION4, then
+// POSITION1 with POSITION2.x its range). `stream_shader`: lights the vertex shader makes from a particle list, not from
+// instance buffers (Troy's and Pharaoh's fires, particle lights 643FC156 / 5AD46115): a geometry shader taking that vertex
+// shader's outputs, one point an instance, and streaming out each light's record (STREAMED_LIGHT_BYTES: position and
+// reach, then colour; reach 0 where the instance is not drawn); for the rays alone (the screen-space torch shadows take
+// instance buffers). Empty: the instances' semantics. `enabled`: a row of the family's own (its binding; Pharaoh's Fire
+// Shadows from Particle Lights): its draws left alone while it is 0. Null: Torch and Fire Shadows' rows alone.
+struct LightInstances {
+  uint32_t colour = 1;
+  uint32_t position = 2;
+  bool shadows_only = false;
+  std::span<const uint8_t> stream_shader = {};
+  const float* enabled = nullptr;
+};
+// Attila's and the other games' point lights.
+inline constexpr LightInstances POINT_LIGHTS = {};
+
 // A point light draw (the addon's replaced light shaders with rt_local_lights.hlsli): its instances copied for the next
 // traces; this frame's traced lights' bits and positions bound (put back after). Without rays tracing them, the
 // screen-space shadows' Torch and Fire Shadows' (screen_space_lights.hpp) where on.
 constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  const auto& light_instances = command.template GetCallbackData<LightInstances>();
+  if (light_instances.enabled != nullptr && *light_instances.enabled == 0.f) return {};
   bool traced = internal::active.load(std::memory_order_relaxed);
   uint64_t frame = 0;
   if (traced) {
@@ -1079,8 +1111,9 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
       for (const auto& copy : copies) {
         for (UINT index = 0; index < copy.count; ++index) {
           const auto* instance = static_cast<const std::byte*>(mapped.pData) + copy.offset + (index * copy.stride);
-          LocalLight light = {};
+          LocalLight light = {.shadows_only = copy.shadows_only};
           std::memcpy(light.light.data(), instance + copy.layout.position, sizeof(light.light));
+          if (copy.streamed && !(light.light[3] > 0.f)) continue;
           std::memcpy(light.colour.data(), instance + copy.layout.colour, sizeof(light.colour));
           for (size_t channel = 0; channel < 3; ++channel) light.colour[channel] *= internal::host.local_light_scale;
           lights.push_back(light);
@@ -1098,6 +1131,66 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
     copies.clear();
     readback.used[readback.current] = 0;
   }
+  // Lights a particle list makes (LightInstances::stream_shader): the draw again as points, one vertex an instance, its
+  // vertex shader's outputs streamed out as light records into the ring, read as instances are; the game's geometry and pixel
+  // stages, stream targets and topology put back.
+  if (!light_instances.stream_shader.empty()) {
+    if (!traced) return {};
+    if constexpr (requires { command.arguments.first_index; }) {
+      constexpr UINT RECORD = internal::STREAMED_LIGHT_BYTES;
+      if (!readback.stream_output && !readback.stream_failed) {
+        const std::array<D3D11_SO_DECLARATION_ENTRY, 2> entries = {{
+            {.SemanticName = "POSITION", .SemanticIndex = 0, .ComponentCount = 4},
+            {.SemanticName = "COLOR", .SemanticIndex = 0, .ComponentCount = 4},
+        }};
+        const D3D11_BUFFER_DESC streamed_desc = {.ByteWidth = internal::POINT_LIGHT_BYTES, .Usage = D3D11_USAGE_DEFAULT,
+                                                 .BindFlags = D3D11_BIND_STREAM_OUTPUT};
+        readback.stream_failed =
+            FAILED(device->CreateBuffer(&streamed_desc, nullptr, readback.streamed.GetAddressOf()))
+            || FAILED(device->CreateGeometryShaderWithStreamOutput(light_instances.stream_shader.data(), light_instances.stream_shader.size(), entries.data(),
+                                                                   static_cast<UINT>(entries.size()), &RECORD, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                                                                   readback.stream_output.GetAddressOf()));
+        renodx::utils::log::i(readback.stream_failed ? "[Total War] Local lights: no stream output for the particle lights: not read."
+                                                     : "[Total War] Local lights: the particle lights streamed from their vertex shader.");
+      }
+      auto& buffer = readback.staging[readback.current];
+      UINT& used = readback.used[readback.current];
+      const UINT count = std::min(command.arguments.instance_count, (internal::POINT_LIGHT_BYTES - used) / RECORD);
+      if (buffer && readback.stream_output && count != 0) {
+        ComPtr<ID3D11GeometryShader> game_geometry_shader;
+        ComPtr<ID3D11PixelShader> game_pixel_shader;
+        ComPtr<ID3D11Buffer> game_output;
+        D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+        native->GSGetShader(game_geometry_shader.GetAddressOf(), nullptr, nullptr);
+        native->PSGetShader(game_pixel_shader.GetAddressOf(), nullptr, nullptr);
+        native->SOGetTargets(1, game_output.GetAddressOf());
+        native->IAGetPrimitiveTopology(&topology);
+        ID3D11Buffer* target = readback.streamed.Get();
+        constexpr UINT START = 0;
+        native->GSSetShader(readback.stream_output.Get(), nullptr, 0);
+        native->PSSetShader(nullptr, nullptr, 0);
+        native->SOSetTargets(1, &target, &START);
+        native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+        native->DrawIndexedInstanced(1, count, command.arguments.first_index, command.arguments.vertex_offset, command.arguments.first_instance);
+        ID3D11Buffer* output = game_output.Get();
+        constexpr UINT APPEND = UINT_MAX;
+        native->SOSetTargets(1, &output, &APPEND);
+        native->GSSetShader(game_geometry_shader.Get(), nullptr, 0);
+        native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);
+        native->IASetPrimitiveTopology(topology);
+        const D3D11_BOX box = {.left = 0, .top = 0, .front = 0, .right = count * RECORD, .bottom = 1, .back = 1};
+        native->CopySubresourceRegion(buffer.Get(), 0, used, 0, 0, readback.streamed.Get(), 0, &box);
+        readback.copies[readback.current].push_back({.offset = used, .count = count, .stride = RECORD, .layout = {.colour = 16},
+                                                     .shadows_only = light_instances.shadows_only, .streamed = true});
+        used += count * RECORD;
+      }
+    }
+    if (!BindLocalLights(native)) return {};
+    return {.post_callback = [](Context& post, const void*) {
+      auto* post_native = internal::NativeContext(post.cmd_list);
+      if (post_native != nullptr) UnbindLocalLights(post_native);
+    }};
+  }
   ComPtr<ID3D11InputLayout> input_layout;
   native->IAGetInputLayout(input_layout.GetAddressOf());
   internal::PointLightLayout layout;
@@ -1106,8 +1199,13 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
     const std::unique_lock lock(internal::point_light_mutex);
     const auto found = internal::point_light_layouts.find(reinterpret_cast<uintptr_t>(input_layout.Get()));
     if (found != internal::point_light_layouts.end()) {
-      layout = found->second;
-      layout_known = true;
+      const auto& positions = found->second;
+      const auto colour = std::ranges::find(positions, light_instances.colour, &internal::InputPosition::semantic_index);
+      const auto position = std::ranges::find(positions, light_instances.position, &internal::InputPosition::semantic_index);
+      if (colour != positions.end() && position != positions.end() && colour->slot == position->slot) {
+        layout = {.slot = position->slot, .colour = colour->offset, .position = position->offset};
+        layout_known = true;
+      }
     }
   }
   ComPtr<ID3D11Buffer> instances;
@@ -1117,7 +1215,8 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
   if (layout_known) {
     native->IAGetVertexBuffers(layout.slot, 1, instances.GetAddressOf(), &stride, &offset);
   } else if (!std::exchange(internal::point_light_layout_missed, true)) {
-    renodx::utils::log::i("[Total War] Local lights: a light draw's input layout has no POSITION1 and POSITION2 in one buffer: not read.");
+    renodx::utils::log::i(std::format("[Total War] Local lights: a light draw's input layout has no POSITION{} and POSITION{} in one buffer: not read.",
+                                      light_instances.colour, light_instances.position));
   }
   UINT instance_count = 0;
   UINT first_instance = 0;
@@ -1134,7 +1233,8 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
     if (readable && buffer && count != 0) {
       const D3D11_BOX box = {.left = first, .top = 0, .front = 0, .right = first + (count * stride), .bottom = 1, .back = 1};
       native->CopySubresourceRegion(buffer.Get(), 0, used, 0, 0, instances.Get(), 0, &box);
-      readback.copies[readback.current].push_back({.offset = used, .count = count, .stride = stride, .layout = layout});
+      readback.copies[readback.current].push_back(
+          {.offset = used, .count = count, .stride = stride, .layout = layout, .shadows_only = light_instances.shadows_only});
       used += count * stride;
     }
     if (!BindLocalLights(native)) return {};
@@ -1161,23 +1261,26 @@ constexpr std::array<uint32_t, 8> POINT_LIGHT_SHADERS = {0x6426B042, 0x90981DA1,
 // game's input layouts tracked from now (before the device: install at load), Ray-Traced Point Light Shadows shown.
 // `light_constants`: the pixel shader constant buffer slot holding each draw's one light (position c0, colour c1.xyz, reach
 // c1.w; Rome II's point_light_PS b2), its uploads read instead of instances; the screen-space torch shadows, which take a
-// draw's instances, stay hidden there.
-inline void InstallPointLights(std::span<const uint32_t> shader_hashes, UINT light_constants = internal::NO_LIGHT_CONSTANTS) {
-  internal::point_lights_installed = true;
-  internal::light_constants_slot = light_constants;
-  if (light_constants == internal::NO_LIGHT_CONSTANTS) {
-    screen_space_lights::installed = true;
-    reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
-    reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
-  } else {
-    reshade::register_event<reshade::addon_event::map_buffer_region>(internal::OnMapLightConstants);
-    reshade::register_event<reshade::addon_event::unmap_buffer_region>(internal::OnUnmapLightConstants);
-    reshade::register_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateLightConstants);
+// draw's instances, stay hidden there. `instances`: where the draws' instances keep each light (static storage). A second
+// call (another light family with instances of its own layout: Warhammer II's spot lights) adds its draws alone.
+inline void InstallPointLights(std::span<const uint32_t> shader_hashes, UINT light_constants = internal::NO_LIGHT_CONSTANTS,
+                               const LightInstances* instances = &POINT_LIGHTS) {
+  if (!std::exchange(internal::point_lights_installed, true)) {
+    internal::light_constants_slot = light_constants;
+    if (light_constants == internal::NO_LIGHT_CONSTANTS) {
+      screen_space_lights::installed = true;
+      reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitInputLayout);
+      reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyInputLayout);
+    } else {
+      reshade::register_event<reshade::addon_event::map_buffer_region>(internal::OnMapLightConstants);
+      reshade::register_event<reshade::addon_event::unmap_buffer_region>(internal::OnUnmapLightConstants);
+      reshade::register_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateLightConstants);
+    }
+    reshade::register_event<reshade::addon_event::destroy_device>(internal::OnDestroyPointLightDevice);
   }
-  reshade::register_event<reshade::addon_event::destroy_device>(internal::OnDestroyPointLightDevice);
   for (const uint32_t shader_hash : shader_hashes) {
     renodx::utils::command_action::Register(
-        OnPointLightDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+        OnPointLightDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, instances);
   }
 }
 
@@ -1218,8 +1321,9 @@ inline void InstallSmokeShadows(std::span<const SmokeVertexShader> vertex_shader
   internal::smoke_pixel_shaders = pixel_shaders;
   if (!internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   for (const SmokeVertexShader& shader : vertex_shaders) {
+    const uint32_t indirect = shader.indirect ? renodx::utils::command_action::COMMAND_TYPE_INDIRECT : 0u;
     renodx::utils::command_action::Register(
-        OnParticleDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+        OnParticleDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW | indirect});
   }
 }
 

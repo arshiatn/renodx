@@ -42,11 +42,17 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
+#include "../twattila/water_effects.hpp"
 #include "./more_tests.h"
+#include "./rt_outside_view_card_split_gs.h"
+#include "./rt_outside_view_world_uv_gs.h"
+#include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "./ao_trace.hpp"
 #include "./line_sweep_ao.hpp"
+#include "./particle_smoothing.hpp"
 #include "./trace_reads.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
@@ -321,17 +327,38 @@ struct RaysShader {
 // light's traced visibility (shaders/pointlight00), the rays' mask at t42. Every trace of the data run drew its point lights
 // with this one shader (VS D2A0FF23).
 using PointLightRays = RaysShader<0xD96A8DC3, 42>;
+// The spot lights the same (shaders/spotlight00-01: spotlight F550D451, gobospotlight 0764179D, VS 5E0BC81E), their surface
+// light only (the light shaft stays the game's). Their instances (ATN's 2026-11-14 siege traces, FrameTraceReads: 26 lights
+// 22-1000 m, stride 76): POSITION1 the place with POSITION2.x the range after it, POSITION4 the colour (its w the cone's
+// exponent); their light stays out of the paths, the fog and the glow (lit all around there).
+using SpotLightRays = RaysShader<0xF550D451, 42>;
+using GoboSpotLightRays = RaysShader<0x0764179D, 42>;
+constexpr twattila::rt_scene::LightInstances SPOT_LIGHTS = {.colour = 4, .position = 1, .shadows_only = true};
 // Fog Shadows (InstallFogShadows, rt_fog.hlsli): the fog's in-scattering (shaders/battlefog00, the only one in every trace of
 // the data run, at the render size) with the rays' sun visibility in place of its shadow-map march near the camera, t43.
 using FogRays = RaysShader<0x492B87C7, 43>;
+
+// Smoke Shadows' particles (Experimental, off): ATN's 2026-11-14 traces (all 26 of the campaign and the siege) draw the lit
+// particles with vfx vs50_main_instancing 1FC776EF only, indexed indirect (6 indices an instance, a frame-wide GPU-sorted
+// list: 19597 in the siege's), and of its six pixel shaders only ps_main_high_quality F32116B4 blends them over the light
+// buffer (ONE / INV_SRC_ALPHA, at half size); the others are decals (61AFC16D, DE44A861), the particles' lights (51B21D74),
+// overlay (73514DBC) and distortion (F0998601). The one-vertex C3300B96 drew in none. 1FC776EF's output signature and its
+// writes to it are Pharaoh's 109B79CE's (fxc -dumpbin): Pharaoh's quad shader at F32116B4's slots
+// (rt_particle_quads.gs_5_0.hlsl). Its lower-effects twins DDABB799 / 687378DB (t4, s3, t7: one slot below) drew in no
+// trace: left out.
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{
+    {.hash = 0x1FC776EF, .quad_shader = __rt_particle_quads, .indirect = true},
+}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADERS = {{{.hash = 0xF32116B4}}};
 
 // Rays Replace Shadow Maps (Experimental, off; Pharaoh's way): the six sun shaders whose shadow the screen-space shadows
 // patched (the data run's log: hardware gather 5.0, standard and skin, single-sampled and MSAA) read the sun's atlas
 // (g_tShadowBuffer_SM50 t1, 12288 x 12288 R32) only through s1, 28 gather4_c each, s1's only reads; there is no baked map.
 // Where the rays' shadow is bound at t49 an ALWAYS sampler at s1 makes every comparison lit, so their patched comparisons
 // (each x the rays' visibility) give the rays' shadow alone; the cloud shadows stay the game's. The game's sampler is bound
-// again after the draw (finalize: the Light Bounce draws the sun draw itself and bypasses). Skip the Shadow Maps (under it):
-// rt_scene's Ray-Traced Shadows Only skips the atlas's draws (the atlas is the sun draw's square R32 map).
+// again after the draw (finalize: the Light Bounce draws the sun draw itself and bypasses; twattila/sun_replace_maps.hpp at s1).
+// Skip the Shadow Maps (under it): rt_scene's Ray-Traced Shadows Only skips the atlas's draws (the atlas is the sun draw's square
+// R32 map).
 constexpr std::array<uint32_t, 6> ATLAS_SUN_SHADERS = {0x1AB80044, 0x37237EC7, 0x060623DD, 0xD7990748, 0xCEEE8017, 0xDF071F9D};
 constexpr UINT ATLAS_SAMPLER_SLOT = 1;
 float rays_replace_maps_row = 0.f;
@@ -340,66 +367,6 @@ float rays_skip_cascades_row = 0.f;
 // View for its terrain (Experimental, off: no game run has shown them yet).
 float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
-struct AtlasLit {
-  std::shared_mutex mutex;
-  ID3D11Device* device = nullptr;  // the sampler's (compared only)
-  Microsoft::WRL::ComPtr<ID3D11SamplerState> always;
-  Microsoft::WRL::ComPtr<ID3D11SamplerState> game_sampler;  // bound again after the draw
-  bool logged = false;
-};
-AtlasLit atlas_lit;
-constexpr auto OnSunReplaceMaps = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (rays_replace_maps_row == 0.f || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> rays;
-  native->PSGetShaderResources(twattila::screen_space_shadows::internal::MASK_SLOT, 1, rays.GetAddressOf());
-  // With the rays' sun shadows on, t49 holds theirs alone (Bend's are off under them: OnPresent).
-  if (!rays || !twattila::rt_scene::SunShadowsTraced()) return {};
-  Microsoft::WRL::ComPtr<ID3D11Device> device;
-  native->GetDevice(device.GetAddressOf());
-  auto& state = atlas_lit;
-  const std::unique_lock lock(state.mutex);
-  if (state.device != device.Get()) {
-    state.always.Reset();
-    state.device = nullptr;
-    // Point: each comparison exactly 1.
-    const D3D11_SAMPLER_DESC desc = {.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT,
-                                     .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
-                                     .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
-                                     .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
-                                     .ComparisonFunc = D3D11_COMPARISON_ALWAYS,
-                                     .MaxLOD = D3D11_FLOAT32_MAX};
-    if (FAILED(device->CreateSamplerState(&desc, state.always.GetAddressOf()))) return {};
-    state.device = device.Get();
-  }
-  native->PSGetSamplers(ATLAS_SAMPLER_SLOT, 1, state.game_sampler.ReleaseAndGetAddressOf());
-  native->PSSetSamplers(ATLAS_SAMPLER_SLOT, 1, state.always.GetAddressOf());
-  if (!std::exchange(state.logged, true)) {
-    renodx::utils::log::i("[Total War] First run: Rays Replace Shadow Maps: the sun draws' shadow atlas read as lit (the rays shadow).");
-  }
-  return {.finalize_callback = [](Context& drawn, const void*) {
-    auto* drawn_native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
-    renodx::utils::directx::TryNativeFromReShadeProxy(&drawn_native);
-    auto& drawn_state = atlas_lit;
-    const std::unique_lock drawn_lock(drawn_state.mutex);
-    if (drawn_native != nullptr) {
-      drawn_native->PSSetSamplers(ATLAS_SAMPLER_SLOT, 1, drawn_state.game_sampler.GetAddressOf());
-    }
-    drawn_state.game_sampler.Reset();
-  }};
-};
-
-// Only our sampler's device (nullptr: the addon's end, DetachAddon).
-void OnDestroyAtlasLitDevice(reshade::api::device* device) {
-  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
-  auto& state = atlas_lit;
-  const std::unique_lock lock(state.mutex);
-  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
-  state.always.Reset();
-  state.device = nullptr;
-}
 
 #define FrameCopyShader(value)              \
   {                                         \
@@ -482,8 +449,10 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0x143BD25Cu, 0x60AF6F79u, 0xBDBC783Bu}) {
     custom_shaders[hash].on_draw = twattila::rt_scene::OnReflectionMarch;
   }
-  // The point lights' and the fog's shaders: ours only while the rays are bound (RaysShader above).
+  // The point and spot lights' and the fog's shaders: ours only while the rays are bound (RaysShader above).
   PointLightRays::Take(&custom_shaders);
+  SpotLightRays::Take(&custom_shaders);
+  GoboSpotLightRays::Take(&custom_shaders);
   FogRays::Take(&custom_shaders);
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1101,6 +1070,17 @@ void BuildRuntimeData() {
                    "Higher: removes wider bands, softens sky details more.",
         .labels = {"Off", "Low", "Medium", "High"},
     },
+    new renodx::utils::settings::Setting{
+        .key = "VfxParticleSmoothing",
+        .binding = &twwarhammer2::particle_smoothing::row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Half-Size Particles (Experimental)",
+        .section = "Extra",
+        .tooltip = "Smoke, fire and dust the game draws at half size flicker less.\n"
+                   "Small cost.",
+        .labels = {"Off", "On"},
+    },
     // new renodx::utils::settings::Setting{
     //     .key = "filmgrain",
     //     .binding = &shader_injection.filmgrain,
@@ -1526,13 +1506,26 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 24> MOTION_SHADERS =
 // branches and leaves and units, and their capture versions (world positions; leaves also UVs).
 // The floating unit banners (rigidtextureblend, 2 bones, 7DF335FF) stay out: the game gives them no shadow (no atlas draw in
 // any trace of the data run).
-constexpr std::array<twattila::rt_scene::SceneShader, 22> SCENE_SHADERS = {{
+// 16AFAF14's alpha-tested materials (sorted): each discards where its diffuse map's alpha (x the instance's fade, v6.w) is
+// below 0.5 at TEXCOORD1.xy (the vertex's TEXCOORD0, the VS's o2), the helper's cut-out; captured with that UV
+// (rt_capture_rigid_standard_cut_out). Drawn in ATN's traces and the data run's (tools/tw/wh2/runs): fences, palms and props
+// in battle; every campaign object through the shroud's material (45 diffuse maps, most solid).
+constexpr std::array<twattila::rt_scene::PixelMask, 5> CUT_OUT_MASKS = {{
+    {.pixel_shader = 0x2BE667BC, .slot = 1},  // rigidstandard ps40_gbuffer_shroud
+    {.pixel_shader = 0x34858FD0},             // rigidstandard ps40_gbuffer_alpha_test
+    {.pixel_shader = 0x40EE89BC, .slot = 1},  // rigidstandard ps40_gbuffer_alpha_test_shroud_fizzle_oblique_tris
+    {.pixel_shader = 0x5395F751},             // rigidstandard ps_pixel_selection_alpha_test
+    {.pixel_shader = 0xD960DC10},             // rigidambientmapmesh ps40_gbuffer_alpha_test
+}};
+
+constexpr std::array<twattila::rt_scene::SceneShader, 25> SCENE_SHADERS = {{
     {.hash = 0x1D5C903F, .capture_shader = __rt_capture_terrain_geom_new_a, .terrain = true},
     {.hash = 0x1FC50EA9, .capture_shader = __rt_capture_terrain_geom_new_b, .terrain = true},
     {.hash = 0xE50F6CDF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xE8291DEF, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
     {.hash = 0x6B25B4D2, .capture_shader = __rt_capture_rigid_default},
-    {.hash = 0x16AFAF14, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_16af},
+    {.hash = 0x16AFAF14, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidstandard_16af,
+     .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true},
     {.hash = 0xC5CD75C5, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_c5cd},
     {.hash = 0xB7CE3413, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_b7ce},
     {.hash = 0x8F4BAB8C, .capture_shader = __rt_capture_rigid_vertexpush},
@@ -1547,15 +1540,32 @@ constexpr std::array<twattila::rt_scene::SceneShader, 22> SCENE_SHADERS = {{
     // the sun (Far Tree Shadows), cut out by their tree map's alpha (72E40C15 t4, B3758A01 t3).
     {.hash = 0xC1A857A3, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 4},
     {.hash = 0x62C6A599, .capture_shader = __rt_capture_far_tree_block, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    // The campaign's trees and plants (rigidcampaignvegetation vs40_main; ATN's 2026-11-14 campaign traces: 156 draws a frame, in
+    // no scene before), every frame as drawn (their wind and their lean toward a high camera), cut out by their diffuse map's
+    // alpha (F5C1006F: t1.w below 0.5).
+    {.hash = 0x41147CD3, .capture_shader = __rt_capture_campaign_vegetation, .dynamic = true, .foliage = true, .mask_slot = 1},
     // The shadow pass's casters into the atlas (the data run's census: drawn there only), what is out of the main view (Pharaoh's
     // rt_outside_view: each shadow vertex shader keeps its view-projection at cb0[9-12] and writes the world it multiplies):
     // rigidterrain vs41_shadow_new and fx__rigidcommon vs40_shadow (TEXCOORD0 the world), fx__weighted vs40_shadow and its
-    // 4 bones (TEXCOORD1 the UV, TEXCOORD2 the world). Every frame as drawn. Out: the far cards' shadow version 75914932 (its
-    // outputs packed apart from Pharaoh's) and the depth-only EF11AD35.
+    // 4 bones (TEXCOORD1 the UV, TEXCOORD2 the world). Every frame as drawn. Out: the depth-only EF11AD35.
     {.hash = 0x02EFC035, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0xE2C36310, .dynamic = true, .cascade_keep = __rt_outside_view_world},
     {.hash = 0x2EE37868, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
     {.hash = 0x2A54DBEE, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    // The campaign's trees and plants (rigidcampaignvegetation vs40_shadow; ATN's 2026-11-14 campaign traces: 49 draws a frame,
+    // the shadow pass's only): TEXCOORD0 the world, TEXCOORD1 the UV of 5906CF6E's t0 test (its diffuse map's alpha below 0.5).
+    {.hash = 0x7D979F60, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
+    // The far trees' cards in the shadow pass (rigidtreebillboard vs40_shadow; ATN's siege traces: 2-16 draws a frame), turned to
+    // the shadow camera: TEXCOORD0 the UV with the view's whole part and blend, TEXCOORD1 the world; cut out by B7ED5B72's t0
+    // test, a card faded below half left out as that shader leaves it.
+    {.hash = 0x75914932, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .cascade_keep = __rt_outside_view_card_split},
+}};
+
+// The SSR's copy (environment_specular_light ps40_copy) samples the resolve's output (7E1CDD0A, its content at the render
+// share) at the quad's whole uv: ATN's 2026-11-14 traces 07-14 and 22-30 (vp 1920x1080 / 1280x720 reading t0 3840x2160).
+// The portraits' tone mapper 1C42B26B (sprite.hlsl, vp 214x214) reads a display-size chain: left.
+constexpr std::array<twattila::view_share::RegionRead, 1> RENDER_SCALE_READS = {{
+    {.shader_hash = 0x7F23C472, .slots = 0b1},
 }};
 
 // Path-Traced AO and the paths' sky (rt_sun.cs_5_0.hlsl): each one makes its diffuse ambient in its first if on c11.y
@@ -1606,6 +1616,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
   tw::ao_trace::OnPresent();
+  twwarhammer2::particle_smoothing::OnPresent();
   talesofarise::pixel_trace::OnPresent(queue);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
@@ -1641,9 +1652,34 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 
 namespace {
 
+// Water Clarity and Water Caustics (Experimental, off; twattila/water_effects.hpp): the game's water writes the G-buffer with
+// its colour per material (the patched copy swapped in at the draw), each family's five shadow variants (ps_4_1 the first).
+// battle_water (8686041E in the traces): the colour lerps from shallow to deep by saturate(depth / (10 + 10 x waves)), the
+// mad making that divisor divided by 1 / clarity; its refraction read 4 times (two outputs), the caustics after each.
+// campaign_sea (DB511A83): saturate(depth x 3.333333), that mul's result x 1 / clarity. campaign_lake (EFE43500): Beer-Lambert,
+// the exponent's log2(e) mul as WH3's. Campaign water no caustics (its world a twentieth of the battles'). Left out: campaign_river
+// 4F6E96D0 (a fixed 50% lerp, no depth term), battle_river 47339F81 (in no trace; its fade a div_sat by sp_color_fade_dist).
+constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {{
+    {.hash = 0x8686041E, .world_input = 1, .refraction_slot = 5, .normal_slot = 10, .material_water = true, .opacity = {.type = 4, .index = {0x41200000, 0}, .divisor = true}, .every_refraction = true},  // battle_water (traced), gather 5_0
+    {.hash = 0x094317D6, .world_input = 1, .refraction_slot = 5, .normal_slot = 10, .material_water = true, .opacity = {.type = 4, .index = {0x41200000, 0}, .divisor = true}, .every_refraction = true},  // battle_water, ps_4_1
+    {.hash = 0x24ED82AD, .world_input = 1, .refraction_slot = 5, .normal_slot = 10, .material_water = true, .opacity = {.type = 4, .index = {0x41200000, 0}, .divisor = true}, .every_refraction = true},  // battle_water, pcf
+    {.hash = 0xFCECCA82, .world_input = 1, .refraction_slot = 5, .normal_slot = 10, .material_water = true, .opacity = {.type = 4, .index = {0x41200000, 0}, .divisor = true}, .every_refraction = true},  // battle_water, software
+    {.hash = 0x02533797, .world_input = 1, .refraction_slot = 4, .normal_slot = 9, .material_water = true, .opacity = {.type = 4, .index = {0x41200000, 0}, .divisor = true}, .every_refraction = true},  // battle_water, no shadows
+    {.hash = 0xDB511A83, .world_input = 1, .refraction_slot = 5, .caustics = false, .material_water = true, .opacity = {.type = 4, .index = {0x40555555, 0}}},  // campaign_sea (traced), gather 5_0
+    {.hash = 0xEAEECE81, .world_input = 1, .refraction_slot = 5, .caustics = false, .material_water = true, .opacity = {.type = 4, .index = {0x40555555, 0}}},  // campaign_sea, ps_4_1
+    {.hash = 0x73F2961B, .world_input = 1, .refraction_slot = 5, .caustics = false, .material_water = true, .opacity = {.type = 4, .index = {0x40555555, 0}}},  // campaign_sea, pcf
+    {.hash = 0xB814FB8E, .world_input = 1, .refraction_slot = 5, .caustics = false, .material_water = true, .opacity = {.type = 4, .index = {0x40555555, 0}}},  // campaign_sea, software
+    {.hash = 0xC82CEAAC, .world_input = 1, .refraction_slot = 4, .caustics = false, .material_water = true, .opacity = {.type = 4, .index = {0x40555555, 0}}},  // campaign_sea, no shadows
+    {.hash = 0xEFE43500, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true},  // campaign_lake (traced), gather 5_0
+    {.hash = 0x98158B27, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true},  // campaign_lake, ps_4_1
+    {.hash = 0x219D206A, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true},  // campaign_lake, pcf
+    {.hash = 0x3A864ECC, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true},  // campaign_lake, software
+    {.hash = 0xDEA0A768, .world_input = 3, .refraction_slot = 5, .caustics = false, .material_water = true},  // campaign_lake, no shadows
+}};
+
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
 // (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO; reflections on the game's SSR resolve;
-// the paths' sky from the game's spherical harmonics (rt_sun); no water or smoke hooked.
+// the paths' sky from the game's spherical harmonics (rt_sun); Water Clarity and Caustics on the water's own draws.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -1665,6 +1701,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+    .water_caustics_label = "Water Caustics (Experimental)",
     .fog_shadows_label = "Fog Shadows (Experimental)",
     .fog_shadows_tooltip = "Light shafts from rays in place of the game's own in the fog over the first 400 m: it loses the\n"
                            "sun's light in the shadow of buildings, trees and hills. Further on, the game's shadow maps.",
@@ -2097,11 +2134,10 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Pharaoh's and Warhammer III's), ATN's RT/PT preset as the defaults of what the methods
-  // leave, then Settings Mode's pages. Only what this game hooks: no foliage in the screen-space shadows, no water pass or
-  // smoke (their rows stay hidden).
+  // leave, then Settings Mode's pages. Only what this game hooks: no water pass for the rays (its rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
-  // Fog Shadows, the torches' light in it and Far Tree Shadows start off (Experimental: no game run has shown them here yet),
-  // Smoke Shadows (hidden: not hooked here) and Specular Occlusion too; RT/PT turns all but the smoke and the far trees on
+  // Fog Shadows, the torches' light in it, Far Tree Shadows and Smoke Shadows start off (Experimental: no game run has shown
+  // them here yet), Specular Occlusion too; RT/PT turns all but the smoke (smoke_shadows_tested) and the far trees on
   // (far_cards_tested), as ATN's list does.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
@@ -2120,9 +2156,31 @@ void ConfigureAddon() {
       .default_value = 0.f,
       .label = "Torch and Fire Shadows (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "Torches and fires cast their shadows from rays too.\n"
-                 "With Path-Traced Global Illumination they also light what the screen never saw.",
+      .tooltip = "Torches, fires and spot lights cast their shadows from rays too.\n"
+                 "With Path-Traced Global Illumination torches and fires also light what the screen never saw.",
       .labels = {"Off", "On"},
+  });
+  // Water Clarity and Caustics (Experimental: no game run has shown them here yet): the game's water at 1 and off.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterClarity",
+      .binding = &twattila::water_effects::water_clarity,
+      .default_value = 1.f,
+      .label = "Water Clarity (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "How far you see into water. 1: the game's; higher: clearer water.",
+      .min = 0.25f,
+      .max = 16.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterCaustics",
+      .binding = &twattila::water_effects::water_caustics,
+      .default_value = 0.f,
+      .label = "Water Caustics (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Rippling light on the bed under battle water. 0: off.",
+      .max = 2.f,
+      .format = "%.2f",
   });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
@@ -2134,7 +2192,7 @@ void ConfigureAddon() {
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .texts = &PAGE_TEXTS,
-                                             .has_foliage_light = false,
+                                             .foliage_light_tested = false,
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
@@ -2164,6 +2222,16 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
+  twwarhammer2::particle_smoothing::Install();
+  // Water Clarity and Caustics: every row a material water (the patched copy swapped in at the draw).
+  twattila::water_effects::water_shaders = WATER_SHADERS;
+  renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
+  for (const auto& water : WATER_SHADERS) {
+    renodx::utils::command_action::Register(
+        twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -2185,6 +2253,7 @@ bool AttachAddon() {
     return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
   };
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
+  twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // Torch and Fire Shadows: the point lights (one instanced draw a frame, VS D2A0FF23 with PS D96A8DC3; its instances
   // POSITION1 the colour, POSITION2 the place and reach: FrameTraceReads in the data run's B, 131 lights at 25 m), then
   // ours over the game's shader while their rays are bound (PointLightRays). Fog Shadows the same way (FogRays).
@@ -2192,10 +2261,19 @@ bool AttachAddon() {
   renodx::utils::command_action::Register(
       PointLightRays::OnDraw, {.shader_hash = PointLightRays::SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   reshade::register_event<reshade::addon_event::destroy_device>(PointLightRays::OnDestroyDevice);
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 2>{SpotLightRays::SHADER, GoboSpotLightRays::SHADER},
+                                         twattila::rt_scene::internal::NO_LIGHT_CONSTANTS, &SPOT_LIGHTS);
+  renodx::utils::command_action::Register(
+      SpotLightRays::OnDraw, {.shader_hash = SpotLightRays::SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  renodx::utils::command_action::Register(
+      GoboSpotLightRays::OnDraw, {.shader_hash = GoboSpotLightRays::SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  reshade::register_event<reshade::addon_event::destroy_device>(SpotLightRays::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(GoboSpotLightRays::OnDestroyDevice);
   twattila::rt_scene::InstallFogShadows(std::array<uint32_t, 1>{FogRays::SHADER});
   renodx::utils::command_action::Register(
       FogRays::OnDraw, {.shader_hash = FogRays::SHADER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   reshade::register_event<reshade::addon_event::destroy_device>(FogRays::OnDestroyDevice);
+  twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   // The Debug View's Screen-Space AO: before every other sun draw hook (they replace the AO the draw reads). No AO pass hook
   // keeps it here (the game's AO is compute line sweeps).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
@@ -2203,13 +2281,14 @@ bool AttachAddon() {
   // sun_colour at c1 (float 4) for the paths' sky and sun (rt_sun.cs_5_0.hlsl), with Path-Traced AO's hook.
   twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4);
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // Light Through Foliage (Experimental): the G-buffer's channel 3 alpha byte (t7 of the sun draws), bit 128, which the sun
+  // shaders' own code tests (1AB80044: and with 128 and 16). In the traces leaves (042027C6), far cards (72E40C15) and blocks
+  // (B3758A01) and the banners' and blend meshes' 76B5602C write 128, grass (2315FFAB) 144, the campaign's terrain-blend
+  // objects (41FD3F65) 255; the others 0-64 (tools/tw/wh2/material_writes_wh2.txt).
+  twattila::screen_space_shadows::foliage_material_bit = 128;
   // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's. Skip the Shadow Maps through
   // Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
-  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
-  for (const uint32_t shader_hash : ATLAS_SUN_SHADERS) {
-    renodx::utils::command_action::Register(
-        OnSunReplaceMaps, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
-  }
+  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &rays_replace_maps_row, ATLAS_SAMPLER_SLOT);
   twattila::rt_scene::InstallShadowsOnly();
   // The data run's frame traces (tools\tw\wh2\plan_1114.md; twattila/frame_trace.hpp): on demand (renodx_trace_now next to the
   // exe) and at 100% too. The camera's g_screen_size / g_viewport_dimensions at c27 / c29 as Attila's (the sun PS's camera RDEF).
@@ -2225,7 +2304,7 @@ bool AttachAddon() {
                                                         .unit_pixel_shader = __motion_unit,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
-                                   {}, {}, {}, {},
+                                   RENDER_SCALE_READS, {}, {}, {},
                                    {
                                        .value_hashes = {0x1AB80044, 0x2DCA8E30, 0xA03688A3, 0xC960A275, 0xE091B8C4, 0xF2484739, 0x1494188B,
                                                         0x1579598F, 0x3115B6D3, 0x37237EC7, 0xDF7EA1A3, 0x2333E142, 0xD2A0FF23, 0x5E0BC81E,
@@ -2268,6 +2347,11 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
+  twwarhammer2::particle_smoothing::Uninstall();
+  renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
+  renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::engine_tests::StopAtStart(&at_start_stop);
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
@@ -2280,11 +2364,13 @@ void DetachAddon() {
   tw::engine_tweaks::Uninstall(graphics_options);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   renodx::utils::command_action::Unregister(PointLightRays::OnDraw);
+  renodx::utils::command_action::Unregister(SpotLightRays::OnDraw);
+  renodx::utils::command_action::Unregister(GoboSpotLightRays::OnDraw);
   renodx::utils::command_action::Unregister(FogRays::OnDraw);
-  renodx::utils::command_action::Unregister(OnSunReplaceMaps);
-  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
-  OnDestroyAtlasLitDevice(nullptr);
+  twattila::sun_replace_maps::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(PointLightRays::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(SpotLightRays::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(GoboSpotLightRays::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(FogRays::OnDestroyDevice);
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);

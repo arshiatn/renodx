@@ -217,6 +217,113 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   moving shadows) or U2 (keep the game's torches, bounce supplies a shadow ratio: bridge + every game's point-light PS,
   several nights): ATN DECIDES. Smallest step: helper-only U1 prototype behind RENODX_TW_LIGHTS_IN_BOUNCE + a harness
   comparison against Steady.
+- [x] Shogun 2 round 3 MERGED 22affa04 (sun-facing sprite / far tree captures, RT sea reflections, all Experimental;
+  shared rt_core Host::scene_draw capture_shader, unchanged without it; HDR v68 / DLSS v60). NOT DONE: waterplane
+  9B9EC116 (replay its 6 draws depth-only), other ocean qualities, W7d casters out of view.
+- [x] ATN's WH1 session 02:57-03:02 (battle, then campaign): 15 traces wh1/runs/ATN_session_025635 -> WH1 agent.
+- [ ] ATN 03:0x: "Can we just do both?" U1 + U2: the ReSTIR agent resumed: U1 prototype + harness comparison, then an
+  Experimental row (helper111, spare flag bits); U2 designed and started behind an off row.
+- [x] Merged: Rome Remastered v10 551ec58b (RT sun shadows + AO, Experimental), WH1 v48 df1aff82 (Hue Clip 90 measured:
+  ATN eyes it), Troy v48 c7b41326 / v49 44bf144f / v50 22950581 (shared twattila/sun_replace_maps.hpp = Pharaoh's
+  OnSunReplaceMaps moved verbatim: verify Pharaoh in the merged check).
+- [x] ATN's trace sessions 03:08-03:48 (FrameTraceReads=1 in the four ini, removed after; ATN's own changes kept):
+  Troy session 3 (17, rays on, DLSS P / UP, battle + campaign), Thrones campaign (13, DLAA / Balanced / UP, RT, RR F),
+  WH1 session 2 (21, P / UP battle + campaign, RT, RR F), WH2 (30, campaign + fire siege, DLAA / P / UP). Rome Remastered
+  wouldn't start: memory (a quality-scorer harness helper at 45 GB committed, PC at 74.8 / 73.8 GB; its agent stopped
+  it; my kill was refused by the permission classifier); ATN does Rome Remastered 67 / 50% another day.
+- [x] ATN 04:0x: "just keep working until you have finished everything" - no 08:30 stop: every agent finishes its whole
+  plan (WH1, WH2, Thrones, Troy, Shogun 2, Rome Remastered resumed: Bend, FG, debug views; ReSTIR U1 + U2, quality
+  baseline, Nsight). An interim install of the merged state at ~12:00 if agents still run (no game running); final
+  install after the last merge + verification.
+- [x] Quality scorer DONE (tools/tw/quality/report.md; outside the repo, no helper change): 11 / 11 validation, helper110
+  baseline (rRMSE: sun RR 3.7, RTAO RR 1.03, PT AO ReSTIR + RR 2.19, torch RR + importance 1.40, Steady + RR 3.29).
+  FINDING for ATN: PT AO with REBLUR under RR is 4.4x worse than RR alone and grows while the camera stands still (blotches).
+  all_modes 179 / 179 (all_modes_iq1114.txt). quality.sh compare <helperA> <helperB> for helper111.
+- [x] Rome Remastered v11 MERGED 6fccf345 (frame generation + Reflex via DLAA's HUD-less point, Screen-Space Shadows =
+  twattila sss_bend into the mask, Ray Tracing Debug View, profile button; all Experimental, off; tw_romer_dlaa + rays PASS,
+  case 6 proves the sun sign). Test list: tools/tw/round_notes/tests_1114.md.
+- [x] Shogun 2 round 4 MERGED 5601f257 (waterplane 9B9EC116 recorded + replayed depth-only, Ultra sea 6B8954A6: RT water
+  reflections on rivers, lakes, the Ultra sea; Experimental, off; HDR v69 / DLSS v61; WARP parts 7-9 PASS). NOT DONE: W7d
+  (cascades draw before the main view; rigid shadow 38-326M indices x instances vs a 29M budget): agent resumed on the
+  per-instance record (opt-in rt_core changes, every rt_core user's suite must stay unchanged).
+- [x] Troy v51 MERGED 4053fe95 (Torch and Fire Shadows 143A02ED in Pharaoh's fire02 form, campaign trees 54D2CFBD +
+  billboards DF8EAF69 in the rays; shared twattila/contact_shadows_off.hpp = Pharaoh's contact march off moved verbatim:
+  verify Pharaoh in the merged check). NOT DONE: fires 643FC156 in the rays (after WH2's rt_scene light reader change),
+  shroud test, Log Details light count: agent resumed.
+- [x] WH1 round 2 MERGED 61f0bbb7 (PT AO with the harmonics' sky + PatchAmbient AMBIENT_AFTER_HARMONICS_Z (shared, other 7
+  games' 238 rows byte-identical), far cards CA6BCF19, campaign plants 84797031, casters out of view, Torch and Fire
+  Shadows D0C67938 / 5D1695BC, Rays Replace Shadow Maps (game-side), SSR share BUG 69A57B14 fixed; RT/PT preset turns on
+  PT AO + torch shadows). NOT DONE: Skip the Shadow Maps (agent resumed: forward readers first), Fog Shadows (analytic),
+  CDCF1ADD, raycast 021D7515 below 100%, AO / SSR reader census (needs ATN's start with SSAO + SSR off).
+- [x] WH1 Skip the Shadow Maps NOT DONE (merged README 49eff1b7: 7 forward readers, 2 outside the shared forward patch,
+  WARP control failed; attempt kept in tools/tw/wh1/skip_maps_attempt.diff); agent resumed (opt-in patch parameter,
+  cascade constants, then RR guides, sprites, thin sheets, Bend foliage, cut-outs, particles, water).
+- [x] Nsight DONE (tools/tw/nsight, README; memory reference_nsight_gpu_trace): helper110 8.4 ms at base clock, ReSTIR
+  reuse 2.55 (L2 bandwidth), trace 1.48 (RT core), reflections 1.27, PT 1.16 (registers). No capture / shader swap: the
+  helper has no frame boundary; NGFX_FrameBoundary_D3D12 (Apache-2.0 header, no-op without Nsight) = ATN DECIDES. The
+  45 GB process at 03:2x was the Nsight run (commit grows ~8 MB a frame under injection); the ReSTIR agent overwrote its
+  lock twice (told: atomic create + re-check). Reuse optimisation handed to the ReSTIR agent after U1 / U2.
+- [x] Thrones round 2 MERGED 3da5efd9 (campaign census, Particle Resolution + edges + smooth half-size, Experimental);
+  agent resumed: Light Through All Banners, Grass Height Distance, Faster Game CPU Code if provable.
+- [x] Shogun 2 round 5 MERGED acfa8633 (W7d rigid casters out of view AC25DAB8 by rows v6-v8, Experimental off, needs a
+  restart; shared rt_core Host::cascade_last_view opt-in: Attila x64 / build32, WH3, Ryse, Ryse DLSS, Expeditions DLSS,
+  Rome Remastered rebuilt, their rt_core suites PASS). Agent resumed: cloth 8A00A1D4 + sprites E3DA20D4 (world route).
+- [x] ATN ~04:50: "use the nvidia nsight sdk and any other nvidia sdks that you need" (free + donations OK). Nsight agent
+  resumed: Nsight Graphics SDK 0.9.2 headers (Apache-2.0) + NGFX_FrameBoundary_D3D12 in dlaa_helper (ships in helper111,
+  all_modes proof), capture + replay shader swaps for the reuse pass, Aftermath licence read (NVIDIA SDK licence:
+  binaries only, no headers in the repo; dev-only opt-in crash dumps if the licence allows).
+- [x] Troy v52 MERGED (Smoke Shadows, Experimental; A96ACBCB masks + B057851F cut-outs; billboards' shroud (fixes v51 cards
+  vanishing with Far Tree Shadows); shared rt_core SceneShader::sun_slot default 0, twattila/light_count.hpp (Pharaoh's moved),
+  Pharaoh's rt_particle_quads slots as defines: build32 Attila not built by the agent -> merged check). Agent resumed: water.
+- [x] WH2 v49 MERGED (SSR copy 7F23C472 BUG below 100% fixed, spot lights F550D451 / 0764179D in Torch and Fire Shadows,
+  Smoke Shadows 1FC776EF indirect, campaign trees 41147CD3, 7D979F60 out of view, Rays Replace via sun_replace_maps s1;
+  shared rt_scene LightInstances + InstallPointLights(instances), rt_core LocalLight.shadows_only + indirect smoke,
+  rt_particle_quads_instancing.hlsli: Pharaoh / Troy / WH2 GS headers byte-identical). Agent on 75914932 out of view.
+  Troy told: fires 643FC156 can go on top of the new rt_scene light reader.
+- [ ] ReSTIR U1 / U2 (branch worktree-agent-afd5e1bbbc7a65b04, NOT merged): off = helper110 proven (38 headers cmp, DUMP,
+  all_modes 178 / 179 + 1 memory flake); cost rt_lights 2.20 -> 0.81 (U1) / 0.90 (U2) ms at 29 lights. Quality FAILED as a
+  unified reservoir (U1 66 %, U2 20.5 % rRMSE vs RR + importance 1.98 %, Steady 5.15 %: the sun's bounce outweighs the torches).
+  Redesign 39a8e204 (one light per bounce texel apart from the reservoir) being measured; helper111 only if it holds.
+  All agents told: atomic gpu_job.lock (two overwrites tonight).
+- [x] WH2 follow-up MERGED f8484655 (far cards 75914932 out of view, 16AFAF14 cut-outs in the rays = fix on by default,
+  Light Through Foliage for Bend, Experimental). Agent resumed: Particle Resolution (indirect layer path), Water Clarity.
+- [x] Shogun 2 round 6 MERGED 96e35372 (cloth / sprites / leaves / branches out of view via Pharaoh's leaf GS, PT AO
+  own sky / steady bounce rows, Experimental; shared rt_core SceneShader::cascade_world opt-in, consumers' suites PASS;
+  the 04:51 lock overwrite was its suite run.ps1: fixed to CreateNew; tw_warhammer_shaders run.ps1 -> WH1 agent).
+- [x] Troy Water Clarity / Caustics MERGED 92d44484 (68 PS, Experimental, WARP 68 / 68). WH1 Skip the Shadow Maps + RR
+  guides proof MERGED 1c9c3dc5 (shared Patch declare_position opt-in: 21300 PS of 8 dumps byte-identical by default).
+- [x] Thrones Grass Height Distance MERGED 8f6de4c7 (Experimental; shared grass_fade::Install(hashes), rt_grass.hlsli's
+  RT_GRASS_HEIGHT_DISTANCE define removed: Thrones was its only user, now has SI.grass_height_distance; WARP 31 / 31).
+- [x] Pharaoh's RT water reflections moved to twattila/water_reflections.hpp MERGED 02249af9 (131 / 131 statements, page
+  dump unchanged); Troy v53 RT water reflections MERGED 12472535 (off; RT/PT turns them on as Pharaoh). Troy next: fires.
+- [x] Shogun 2 variantrigid B0E006EE out of view MERGED fab4ce3e (HDR v72). Thrones Light Through All Banners MERGED
+  eca50543 (unit banners only; shared graphics_page Bindings::banner_light_tested default true).
+- [x] Thrones Faster Game CPU Code MERGED 2c89ced4 (shared engine_code.hpp Game / Build parameters, Attila's constants
+  unchanged; tw_engine_code PASS on both DLLs; truncation 66.8 -> 41.7 ns, fmod 140 -> 62 ns; Experimental off).
+- [x] Thrones round 3 DONE (README 925a6211; capture test 42 / 48 = game's, 6 by design as Attila). Shogun 2 leaf fade
+  MERGED 57a8266f; far cards 30C453EE not doable by rows (per-corner sun turn + own atlas view).
+- [x] WH2 Water Clarity / Caustics MERGED aa12ece2 (15 PS; shared water_effects type 4 + every_refraction, other games' 133
+  rows byte-identical). Thrones agent: Faster Game CPU Code for Rome II if its routines match.
+- [x] Rome II Faster Game CPU Code MERGED (empire.retail.dll 6AB978BD; truncation 104.5 -> 43.0 ns, fmod 155 -> 71 ns;
+  Experimental off; rome2 gets a new build tonight).
+- [x] WH1 round 3 MERGED f99ae4e3 (Light Through All Banners, Light Through Foliage, Water Clarity / Caustics on battle water,
+  unit cut-outs + census; Experimental off). NOT DONE: sprites (GS-made quads), particle rows, Fog Strength, 14 cut-outs.
+- [x] Troy fires 643FC156 MERGED 61d0b84b (shared rt_scene LightInstances::stream_shader opt-in; WARP ALL PASSED).
+  Troy agent DONE; follow-up: Pharaoh's fires 5AD46115 behind their own off row.
+- [x] WH2 Smooth Half-Size Particles MERGED 5d102904 (at the game's own upsample 21DE8D05; no shared change). WH2 agent DONE.
+  Agents done: Thrones, WH1, WH2, Rome Remastered, quality. Running: Shogun 2, Troy (Pharaoh fires), ReSTIR, Nsight.
+- [x] Shogun 2 round 7 MERGED 1790ecd5 (Reflection reuse + Steadier water reflections rows, Coloured shadows; HDR v72 / DLSS
+  v64). Shogun 2 agent DONE. NOT DONE: far cards 30C453EE, units out of view, Softer water reflections.
+- [x] 06:08 page dumps at HEAD (c606eaf7+): Attila and WH3 = night1113 (v159 / v58) except Build Date. Final runner ready:
+  tools/tw/round_notes/run_tests.ps1 (every suite x86 + amd64, atomic lock, game / 55 GB guard), build_shared.ps1.
+- [x] Pharaoh v67 fires MERGED a6a4fed3 (Fire Shadows from Particle Lights, Experimental off, not in RT/PT; rt_scene
+  LightInstances::enabled opt-in; row off = v66: WARP bits + page dump 615 -> 616 keys). Troy agent DONE.
+  Running: ReSTIR (helper111), Nsight (frame boundary). Then: final suites, harness, builds, dumps, stamp, install.
+- [x] helper111 MERGED b7b858c5 (Torch and Fire Light / Shadows from Path Tracing, Attila rows Experimental off; cost at
+  29 lights rt_lights 2.06 -> 0.87 / 0.90 ms; quality U2 Full + RR 3.13 %, Half + RR 5.08 still / 11.48 moving vs Steady
+  5.15; U1 worse; off = helper110 proven). Lean Reuse (reuse 2.72 -> 1.02 ms in Nsight, helper 8.63 -> 6.96 ms, same
+  quality): shipping as an Experimental row (off) = ATN DECIDES the default. Final helper112 = helper111 + Lean flag +
+  Nsight frame boundary, built by the ReSTIR agent with the off proof.
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 

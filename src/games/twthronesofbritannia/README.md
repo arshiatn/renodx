@@ -1,5 +1,56 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
+### Round 3 (2026-11-14, grass, banners, CPU code; built only, not run in game)
+
+New:
+- **Grass Height Distance (Experimental, 1 = the game's)** in Grass & Trees, as Attila's: grass keeps its full height farther away (the game flattens it into the ground by 100 m). The rays' grass and the grass's motion vectors follow it.
+- **Light Through All Banners (Experimental, off)**: the unit banners let some sunlight through as thin cloth, for the rays and for Bend's screen-space shadows (with Light Through Banners). RT/PT leaves it off.
+- **Faster Game CPU Code (Experimental, off)** now runs all three of Attila's faster routines here: the soldier draw's rounding and the animations' fmod beside the half floats, each checked against the game's own code (every register, the x87 state).
+- **The ray-traced scene checked against the game's own shaders** on the GPU (each capture's world position through the camera against the game's position): 42 of 48 the same to 1e-7; the other 6 differ by design, as Attila's (grass shrinks with distance, sprite soldiers and far tree cards face the sun, campaign plants stand upright).
+
+Not done:
+- The capture-point flags in Light Through All Banners: Attila's rule would make every alpha-tested object here thin.
+- A harness stress run per family: the families, their budgets and stress modes are the shared helper's (run for Attila); none is this game's own.
+- From Round 2: the campaign's far terrain in the rays, Water Clarity on the sea and the campaign lake, the `_ms` passes below 100%.
+
+Test (ATN):
+1. Grass Height Distance 4 in a grassy battle: full grass farther; 1: as before.
+2. The same with RT shadows (Debug View Sun Shadows): far grass casts as it now stands.
+3. Light Through All Banners with RT shadows: sunlight through unit banners; off: as before.
+4. Bend's shadows with Light Through Banners 0.5 and Light Through All Banners: the same banners let light through.
+5. Faster Game CPU Code on in a big battle: ReShade.log "soldier draw rounding, half floats, fmod faster", then "on".
+6. The same battle, Faster Game CPU Code off / on: FPS; soldiers, sprites and their animations as before.
+7. Round 2's checks below (campaign, Particle Resolution), still open.
+8. Round 1's battle checks (RT scene, readers, AO below 100%, water, graphics rows), still open.
+
+Build: `cmake --build build32 --config Release --target renodx-twthronesofbritannia.addon32`.
+
+### Round 2 (2026-11-14, the campaign and Particle Resolution; built only, not run in game)
+
+New:
+- **Particle Resolution (Experimental, Full)** with Full-Resolution Particle Edges and Smooth Half-Size Particles, as Attila's: smoke, fire and dust drawn at half or a quarter of the render's size. The lit particles now draw with Attila's particle shaders (this game's are the same): at Full they look as before, at half size the rays' shadows in smoke stay in place, and torches and fires light the smoke near them (Torch and Fire Light in Fog and Smoke).
+- **The campaign map checked against ATN's campaign session** (DLAA, DLSS Balanced, Ultra Performance): every shadow caster there is in the ray-traced scene (terrain, settlements, plants and forests, armies), the campaign sea takes the rays' shadows, and the campaign's own passes read right below 100%.
+
+Not done:
+- The campaign's far terrain (drawn into depth only, never into the game's own shadow map) stays out of the rays: far hills cast no ray-traced shadows there. Smallest step: an Experimental row holding it.
+- Light Through All Banners, Grass Height Distance, the soldier draw rounding and fmod of Faster Game CPU Code: other code in this game.
+- Water Clarity on the sea and the campaign lake: their shaders don't read the scatter it raises.
+- The 24 MSAA (`_ms`) passes below 100%: they run only with in-game MSAA, where no upscaler runs.
+
+Test (ATN):
+1. Campaign, RT/PT + DLSS, Debug View Sun Shadows: settlements, plants, forests and armies cast; hills near the camera too.
+2. Campaign, RT shadows at the coast: the sea shadowed like the land; ReShade.log "forward shader ... DE739661 patched".
+3. Campaign at DLSS Ultra Performance: AO, shroud, borders and decals in place (no shifted halos).
+4. Particle Resolution Full in a battle with fires and smoke: smoke and fire look as before.
+5. Particle Resolution Half, then Quarter, in a big fire: softer smoke, FPS up.
+6. Half with RT shadows (Shadows Only): smoke shadowed where the ground is, not shifted.
+7. Full-Resolution Particle Edges off / on: smoke edges against soldiers and walls blurry / sharp.
+8. Smooth Half-Size Particles on: less flicker at smoke edges.
+9. Torch and Fire Light in Fog and Smoke 1, RT/PT at night: smoke near torches lit.
+10. Round 1's battle checks below (RT scene, readers, AO below 100%, water, graphics rows), still open.
+
+Build: `cmake --build build32 --config Release --target renodx-twthronesofbritannia.addon32`.
+
 ### Round 1 (2026-11-14, toward Attila's package; built only, not run in game)
 
 New:
@@ -17,12 +68,7 @@ New:
 Fixed:
 - The game's ambient occlusion below 100% render scale (DLSS, FSR, XeSS, Below 100%): it was read from the wrong part of the screen.
 
-Not done:
-- Particle Resolution: this game draws its own lit particle shaders; Attila's replacements carry the particle layer's constants. Smallest step: Thrones' vfx00 / vfx01 from Attila's, WARP against these bytes.
-- Light Through All Banners, Grass Height Distance, the soldier draw rounding and fmod of Faster Game CPU Code: other code in this game (not possible as Attila's).
-- The campaign: no campaign trace yet; its rows go by shader names (Attila's twins). Smallest step: one campaign frame trace.
-- Water Clarity on the sea and the campaign lake: their shaders don't read the scatter it raises.
-- The 24 MSAA (`_ms`) passes below 100%: they run only with in-game MSAA, where no upscaler runs.
+Not done: see Round 2 (Particle Resolution and the campaign done there).
 
 Test (ATN):
 1. First start without ReShade.ini on an SDR monitor: the SDR preset; on HDR the picture as before.

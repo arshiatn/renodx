@@ -2,7 +2,11 @@
 // its radius / strength / limit by distance (g_RadiusAndPower1-3 over g_Distances). Ambient Occlusion: Game's (the
 // 3Dmigoto decompile, unchanged: the replacement) or, with AO_BITMASK, Visibility Bitmask (Warhammer II's
 // bitmask_ao.hlsli) with the game's radius, strength and limit there (the addon's own shader). Output as the game's: the AO and the depth for its blur.
+// Below 100% (DLSS, FSR, XeSS at a render scale) the pass draws the top-left share of its target, and its uv (TEXCOORD0,
+// the full-screen vertex shader 31C49ED2's) runs 0-1 over that share: the depth is read at uv x the share, its pixels
+// (g_Resolution, the game's 100% size) are the share's (render_scale.hlsli: view_share.hpp binds it; unbound: 1).
 #include "../shared.h"
+#include "../../twattila/render_scale.hlsli"
 
 cbuffer ssao2_PS : register(b0)
 {
@@ -28,12 +32,23 @@ Texture2D<float3> ssao2_random_texture : register(t1);
 
 #define cmp -
 
+// The linear depth at the view's uv (the depth texture's top-left share below 100%), kept on the share's texels as the
+// point clamp sampler keeps it on the texture's at 100% (g_Resolution.zw: the texture's texel).
+float AoDepth(float2 uv)
+{
+  const float2 share = FrameRenderShare();
+  const float2 edge = 0.5f * g_Resolution.zw;
+  return ssao2_linear_depth_texture.SampleLevel(s_point_clamp_sampler_s, clamp(uv * share, edge, share - edge), 0).x;
+}
+
 float2 GameAmbientOcclusion(float4 v0, float2 v1)
 {
   float2 o0;
   float4 r0,r1,r2,r3,r4,r5,r6,r7,r8,r9;
+  // The game's pixel size over the view's share (its 100% size below 100%).
+  const float4 resolution = float4(g_Resolution.xy * FrameRenderShare(), g_Resolution.zw / FrameRenderShare());
 
-  r0.w = ssao2_linear_depth_texture.SampleLevel(s_point_clamp_sampler_s, v1.xy, 0).x;
+  r0.w = AoDepth(v1.xy);
   r1.x = saturate(g_Distances.y * r0.w);
   r1.y = -g_Distances.x + r0.w;
   r1.y = saturate(g_Distances.z * r1.y);
@@ -44,7 +59,7 @@ float2 GameAmbientOcclusion(float4 v0, float2 v1)
   r1.w = g_CameraFovXY.x * r1.x;
   r1.w = 0.5 * r1.w;
   r1.w = r1.w / r0.w;
-  r1.w = g_Resolution.x * r1.w;
+  r1.w = resolution.x * r1.w;
   r2.x = cmp(r1.w < 1);
   if (r2.x != 0) {
     return float2(1,1);
@@ -67,7 +82,7 @@ float2 GameAmbientOcclusion(float4 v0, float2 v1)
   r5.x = max(1, r1.w);
   r5.y = g_MaxRadius / r5.x;
   r3.zw = r3.zz ? r5.xy : r4.xy;
-  r4.xy = g_Resolution.zw * r3.ww;
+  r4.xy = resolution.zw * r3.ww;
   r1.w = 0.5 * NUM_DIRS;
   r3.w = g_AngleBias.y * g_AngleBias.y + 1;
   r3.w = rsqrt(r3.w);
@@ -84,11 +99,11 @@ float2 GameAmbientOcclusion(float4 v0, float2 v1)
     r7.y = r6.x * r2.x + r5.y;
     r5.xy = r7.xy * r4.xy;
     r5.zw = r5.xy * r2.zz;
-    r6.xy = r7.xy * g_Resolution.zw + r5.zw;
-    r6.xy = g_Resolution.xy * r6.xy;
+    r6.xy = r7.xy * resolution.zw + r5.zw;
+    r6.xy = resolution.xy * r6.xy;
     r6.xy = round(r6.xy);
-    r6.zw = r6.xy * g_Resolution.zw + v1.xy;
-    r7.z = ssao2_linear_depth_texture.SampleLevel(s_point_clamp_sampler_s, r6.zw, 0).x;
+    r6.zw = r6.xy * resolution.zw + v1.xy;
+    r7.z = AoDepth(r6.zw);
     r6.zw = g_ToViewTransform.xy * r6.zw + g_ToViewTransform.zw;
     r7.xy = r6.zw * r7.zz;
     r7.w = -r7.z + r0.w;
@@ -110,8 +125,8 @@ float2 GameAmbientOcclusion(float4 v0, float2 v1)
     } else {
       r6.z = 0;
     }
-    r6.xy = -r6.xy * g_Resolution.zw + v1.xy;
-    r7.z = ssao2_linear_depth_texture.SampleLevel(s_point_clamp_sampler_s, r6.xy, 0).x;
+    r6.xy = -r6.xy * resolution.zw + v1.xy;
+    r7.z = AoDepth(r6.xy);
     r6.xy = g_ToViewTransform.xy * r6.xy + g_ToViewTransform.zw;
     r7.xy = r6.xy * r7.zz;
     r6.w = -r7.z + r0.w;
@@ -133,10 +148,10 @@ float2 GameAmbientOcclusion(float4 v0, float2 v1)
     }
     r6.x = r6.z * 0.5 + -1;
     r6.x = max(0, r6.x);
-    r5.xyzw = g_Resolution.xyxy * r5.xyzw;
+    r5.xyzw = resolution.xyxy * r5.xyzw;
     r5.xyzw = round(r5.xyzw);
-    r5.zw = r5.zw * g_Resolution.zw + v1.xy;
-    r6.yz = g_Resolution.zw * r5.xy;
+    r5.zw = r5.zw * resolution.zw + v1.xy;
+    r6.yz = resolution.zw * r5.xy;
     r7.xy = r5.zw;
     r6.w = 0;
     r7.z = g_AngleBias.y;
@@ -145,8 +160,8 @@ float2 GameAmbientOcclusion(float4 v0, float2 v1)
     while (true) {
       r8.y = cmp(r3.z < r8.x);
       if (r8.y != 0) break;
-      r7.xy = r5.xy * g_Resolution.zw + r7.xy;
-      r8.w = ssao2_linear_depth_texture.SampleLevel(s_point_clamp_sampler_s, r7.xy, 0).x;
+      r7.xy = r5.xy * resolution.zw + r7.xy;
+      r8.w = AoDepth(r7.xy);
       r9.xy = g_ToViewTransform.xy * r7.xy + g_ToViewTransform.zw;
       r8.yz = r9.xy * r8.ww;
       r9.z = -r8.w + r0.w;
@@ -172,9 +187,9 @@ float2 GameAmbientOcclusion(float4 v0, float2 v1)
       r8.x = 1 + r8.x;
     }
     r5.zw = -r6.yz * r2.zz;
-    r5.zw = g_Resolution.xy * r5.zw;
+    r5.zw = resolution.xy * r5.zw;
     r5.zw = round(r5.zw);
-    r5.zw = r5.zw * g_Resolution.zw + v1.xy;
+    r5.zw = r5.zw * resolution.zw + v1.xy;
     r6.yz = r5.zw;
     r7.x = r6.w;
     r7.y = g_AngleBias.y;
@@ -183,8 +198,8 @@ float2 GameAmbientOcclusion(float4 v0, float2 v1)
     while (true) {
       r8.x = cmp(r3.z < r7.w);
       if (r8.x != 0) break;
-      r6.yz = -r5.xy * g_Resolution.zw + r6.yz;
-      r8.z = ssao2_linear_depth_texture.SampleLevel(s_point_clamp_sampler_s, r6.yz, 0).x;
+      r6.yz = -r5.xy * resolution.zw + r6.yz;
+      r8.z = AoDepth(r6.yz);
       r9.xy = g_ToViewTransform.xy * r6.yz + g_ToViewTransform.zw;
       r8.xy = r9.xy * r8.zz;
       r8.w = -r8.z + r0.w;
@@ -221,11 +236,6 @@ float2 GameAmbientOcclusion(float4 v0, float2 v1)
   return o0;
 }
 
-float AoDepth(float2 uv)
-{
-  return ssao2_linear_depth_texture.SampleLevel(s_point_clamp_sampler_s, uv, 0).x;
-}
-
 // The game's: view xy at depth 1 from the uv, times the linear depth.
 float3 AoViewPosition(float2 uv, float depth)
 {
@@ -241,10 +251,12 @@ float3 AoViewPosition(float2 uv, float depth)
 float2 BitmaskAmbientOcclusion(float4 v0, float2 v1)
 {
   const float scale = (SI.ssao_resolution != 0.f) ? 2.f : 1.f;
-  const float2 uv = v1 - 0.5f * (scale - 1.f) * g_Resolution.zw;
+  // One of the game's AO pixels in the view's uv (below 100%: of its share).
+  const float2 texel = g_Resolution.zw / FrameRenderShare();
+  const float2 uv = v1 - 0.5f * (scale - 1.f) * texel;
   const float depth = AoDepth(uv);
   // GT-VBAO's own radius (metres) and strength, not the game's.
-  const float visibility = BitmaskVisibility(uv, uint2(v0.xy), g_Resolution.zw, g_Resolution.zw, SI.ssao_radius);
+  const float visibility = BitmaskVisibility(uv, uint2(v0.xy), texel, texel, SI.ssao_radius);
   return float2(exp2(log2(max(visibility, 1.0000598e-4f)) * SI.ssao_strength), depth);
 }
 

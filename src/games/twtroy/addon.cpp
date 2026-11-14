@@ -29,6 +29,7 @@
 #include "../../utils/settings.hpp"
 #include "../twattila/ao_pass.hpp"
 #include "../twattila/light_bounce.hpp"
+#include "../twattila/light_count.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_scene.hpp"
@@ -36,11 +37,24 @@
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/contact_shadows_off.hpp"
+#include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
+#include "../twattila/water_effects.hpp"
+#include "../twattila/water_reflections.hpp"
 #include "./more_tests.h"
 #include "../twpharaohdynasties/trace_reads.hpp"
+// Pharaoh's outside-view geometry shaders (built bytes): Troy's shadow vertex shaders write the same outputs (SCENE_SHADERS).
+#include "../twpharaohdynasties/rt_outside_view_branch_gs.h"
+#include "../twpharaohdynasties/rt_outside_view_card_gs.h"
+#include "../twpharaohdynasties/rt_outside_view_unit_gs.h"
+#include "../twpharaohdynasties/rt_outside_view_world_gs.h"
+#include "./rt_outside_view_leaf_gs.h"
+#include "./rt_particle_lights_gs.h"
+#include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -354,6 +368,9 @@ void BuildRuntimeData() {
       // UpgradeRTVReplaceShader(EMPTY),
       __ALL_CUSTOM_SHADERS,
   };
+  // The water's reflection apply (shaders/ssrapply00): ours only where the rays left from the water or below 100%
+  // (twattila/water_reflections.hpp OnWaterApplyDraw), as Pharaoh's.
+  custom_shaders.erase(0x00645DA1);
   // Ambient Occlusion: Visibility Bitmask in place of the AO's horizontal blur: the addon's own shader
   // (ao_bitmask_blur, twwarhammer2/line_sweep_ao.hpp) with the blur's bindings; the blur's replacement stays the game's
   // code (Game's costs what it did). The collect always runs: where no blur runs (Warhammer II at some settings), the
@@ -393,6 +410,8 @@ void BuildRuntimeData() {
         .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
     },
+    twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
+                                  [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
     // Gamma Correction //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .value_type = renodx::utils::settings::SettingValueType::BULLET,
@@ -1354,6 +1373,18 @@ twattila::feature_settings::SssSliders sss_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
+// Texture LOD Bias on All Textures (Graphics 1 of 2, Experimental): the trilinear samplers too
+// (texture_lod_bias.hpp SetWrappingTrilinear).
+float lod_bias_trilinear_row = 0.f;
+// Shadow Casters Out of View and the hills' (Graphics 1 of 2, Experimental): SCENE_SHADERS' cascade_keep casters.
+float rays_units_out_of_view_row = 0.f;
+float rays_hills_out_of_view_row = 0.f;
+// Rays Replace Shadow Maps and Skip the Shadow Maps under it (Graphics 1 of 2, Experimental): twattila/sun_replace_maps.hpp on the
+// sun draws reading the per-frame atlas through s2: the twins of Pharaoh's 12 (same names; tools\tw\troy\troy_atlas_twins.py).
+constexpr std::array<uint32_t, 12> ATLAS_SUN_SHADERS = {0x049C3CFB, 0x2599D799, 0xD38FA7E4, 0x66D6229E, 0x5B17424A, 0xEB98DED2,
+                                                        0x707B069C, 0x6D3D2B69, 0xE1707311, 0x089D1B5B, 0x5835F96C, 0xE885C018};
+float rays_replace_maps_row = 0.f;
+float rays_skip_cascades_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1386,14 +1417,42 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 20> MOTION_SHADERS =
 }};
 
 // Ray tracing's scene (twattila/rt_scene.hpp; tools\tw\rt_port.py): the main view's terrain, rigid objects, tree
-// branches and leaves and units, and their capture versions (world positions; leaves also UVs).
-// The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow.
-constexpr std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
+// branches and leaves, units, grass and far tree cards, and their capture versions (world positions; leaves, grass and
+// cards also UVs). The floating unit banners (rigidtextureblend, 2 bones) stay out: the game gives them no shadow. So do
+// the far forest's blocks (rigidtreebillboard vs40_main_block 1FD86210): cards facing the camera with no shadow-pass draw,
+// as Pharaoh's FE92BA2D.
+// A96ACBCB (rigid_default.xml and its building materials) also draws the sea and lakes (water_troy), the roads' spline
+// overlays, vfx borders and random-colour meshes, and the emissive buildings' second pass (deferred_alpha AC1DC303): only
+// its G-buffer pixel shaders are in the scene, the three ATN's traces drew (sessions 2 / 3, 2026-10-27; tools\tw\troy\runs),
+// as Pharaoh's BUILDING_MASKS. None alpha-tests (a dither, t2 / t0, or nothing).
+constexpr std::array<twattila::rt_scene::PixelMask, 3> BUILDING_MASKS = {{
+    {.pixel_shader = 0x42AE1C31},  // rigid_default
+    {.pixel_shader = 0xB6F037CC},  // rigid_building_default
+    {.pixel_shader = 0xD64BE263},  // rigid_building_emissive (all discarded where g_dynamic_light_scale <= 0.2)
+}};
+
+// B057851F's alpha-tested materials (sorted): each discards where t0.w x the fade (v6.w) is below 0.5 at TEXCOORD1.xy (the
+// vertex's TEXCOORD0.xy, the VS's o2), the helper's cut-out (LEAF_ALPHA_CUTOFF 0.5); captured with that UV
+// (rt_capture_rigid_standard_cut_out). Pharaoh's CUT_OUT_MASKS' twins; 8A83B40C 472 of session 3's captures.
+constexpr std::array<twattila::rt_scene::PixelMask, 4> CUT_OUT_MASKS = {{
+    {.pixel_shader = 0x18A8AF9B},  // rigidstandard gbuffer_alpha_test_shroud_fizzle_oblique_tris
+    {.pixel_shader = 0x1C0705F6},  // rigidambientmapground gbuffer_shroud, rigidambientmapmesh gbuffer_alpha_test
+    {.pixel_shader = 0x36A9A33D},  // rigidwithdirtmesh gbuffer_alpha_test
+    {.pixel_shader = 0x8A83B40C},  // rigidstandard gbuffer_alpha_test
+}};
+
+constexpr std::array<twattila::rt_scene::SceneShader, 30> SCENE_SHADERS = {{
     {.hash = 0x981F929B, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0x8BE644E7, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0x8974E616, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
-    {.hash = 0xA96ACBCB, .capture_shader = __rt_capture_rigid_default},
-    {.hash = 0xB057851F, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidambientmapground_b057},
+    {.hash = 0xA96ACBCB, .capture_shader = __rt_capture_rigid_default, .pixel_masks = BUILDING_MASKS},
+    {.hash = 0xB057851F, .capture_shader = __rt_capture_rigid_standard, .rows_shader = __motion_record_rigid_rigidambientmapground_b057,
+     .cut_out_shader = __rt_capture_rigid_standard_cut_out, .clip_cut_outs = true},
+    // The campaign's trees (rigidstandard vs40_main_campaign_trees, Pharaoh's 1C4B8681): B057851F's vertex shader and instance
+    // rows, then an x / z sway of at most 0.12 m x g_wind_vegetation_multiplier (left out: still); C7FDC209 cuts out t0.w x the
+    // fade below 0.01 (the helper's cut-out 0.5).
+    {.hash = 0x54D2CFBD, .capture_shader = __rt_capture_rigid_standard_cut_out, .rows_shader = __motion_record_rigid_rigidambientmapground_b057,
+     .foliage = true, .still = true},
     {.hash = 0x283E18D7, .capture_shader = __rt_capture_rigid_blend, .rows_shader = __motion_record_rigid_rigidtextureblend_283e},
     {.hash = 0xDD82D47A, .capture_shader = __rt_capture_rigid_blend_wind, .rows_shader = __motion_record_rigid_rigidtextureblendwind_dd82},
     {.hash = 0x86534458, .capture_shader = __rt_capture_rigid_vertexpush},
@@ -1405,6 +1464,124 @@ constexpr std::array<twattila::rt_scene::SceneShader, 16> SCENE_SHADERS = {{
     {.hash = 0xB9B62F83, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
     {.hash = 0x3CEE34E8, .capture_shader = __rt_capture_unit_4_bones_dismember, .dynamic = true},
     {.hash = 0x0AF83680, .capture_shader = __rt_capture_grass_0af8, .dynamic = true, .foliage = true, .grass = true},
+    // The drawn grass (grass.hlsl vs40_main: 2026-10-27's battle, 7 draws, 9.7 M indices; ATN's 2026-11-14 traces), its UV
+    // at o2.xy (TEXCOORD0; Pharaoh's twin E710D4E7 has it at o3).
+    {.hash = 0x2C7FBC7D, .capture_shader = __rt_capture_grass_2c7f, .dynamic = true, .foliage = true, .grass = true},
+    // Far trees' cards (rigidtreebillboard vs40_main): turned to the sun, their alpha at t3 (FCE1EAEC's t_diffuse_map_tree).
+    {.hash = 0xE25688ED, .capture_shader = __rt_capture_far_tree, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 3},
+    // The campaign's far trees (campaigntreebillboards 0xDF8EAF69: instanced cards turned to the camera, none closer than the
+    // game's start distance or under the shroud; no shadow-pass draw, so only with Far Tree Shadows): turned to the sun, their
+    // alpha DAEF2EEF's t0 (below 0.5 discarded, as the helper's cut-out). Its vertex shader reads the shroud at t0: rt_sun at t1.
+    {.hash = 0xDF8EAF69, .capture_shader = __rt_capture_campaign_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .sun_slot = 1, .far_tree = true},
+    // The shadow pass's casters (the 6144 x 6144 R32 atlas, 2 x 2 cascades; its vertex shaders' view-projection at cb0[9-12]):
+    // what is out of the main view still casts there (Pharaoh's rt_outside_view geometry shaders: each variant's input is a
+    // prefix of these vertex shaders' outputs, fxc /dumpbin, and their world position is that output: tools\tw\troy\
+    // troy_signatures.txt, troy_output_writes_casters.txt). Every frame as drawn; far cards cut out by 9004F948's t2, leaves by
+    // 3372DE0B's t0 (t_diffuse_map). Troy's leaves write no TEXCOORD4: their variant without it (RT_NO_FADE, our own header).
+    {.hash = 0xA295269F, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_leaf},
+    {.hash = 0xAF7C4636, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0xC8DA195D, .terrain = true, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0x83A7A039, .dynamic = true, .cascade_keep = __rt_outside_view_world},
+    {.hash = 0xCB8BA7B6, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0xAEE2A80A, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0x8624BF7C, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0xB6BC2496, .dynamic = true, .cascade_keep = __rt_outside_view_unit},
+    {.hash = 0x4215C70C, .dynamic = true, .cascade_keep = __rt_outside_view_branch},
+    {.hash = 0xB320F789, .dynamic = true, .foliage = true, .sun_facing = true, .far_tree = true, .mask_slot = 2, .cascade_keep = __rt_outside_view_card},
+}};
+
+// Smoke Shadows' particles (Experimental, off; Pharaoh's): particle_vfx_main vs50_main_instancing F5CE48CC (Pharaoh's 109B79CE:
+// the same signatures, 14 of 594 instructions apart) draws each particle as an instance of a quad, and ps_main_high_quality
+// 563BA3E8 blends the lit ones (its alpha Pharaoh's 3F1B86E1's: the diffuse array's alpha at both cells, sRGB-decoded with
+// 0.947867334, x COLOR.w, the alpha crush; EMITTER_CONSTANTS_PS the same to byte 72). Its diffuse array, emitters and sampler
+// at t7 / t9 / s5: Pharaoh's rt_particle_quads with those slots (rt_particle_quads_gs.h). Effects quality 0-2's ps_main
+// 9C8987DD binds them at t4 / t6 / s3: three views and two samplers up.
+constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{{.hash = 0xF5CE48CC, .quad_shader = __rt_particle_quads}}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADERS = {{
+    {.hash = 0x563BA3E8},
+    {.hash = 0x9C8987DD, .view_shift = 3, .sampler_shift = 2},
+}};
+// The night siege's fires in Torch and Fire Shadows: the particle lights' draw (ps_main_deferred_dynamic_light 643FC156, one
+// light volume an instance of F5CE48CC's mesh branch, every draw over the frame's whole sorted list: ATN's session 2, 60
+// indices x 642-1335 instances) holds its lights in the particle list, not in instances: streamed from the vertex shader's
+// outputs (rt_particle_lights_gs.h: the position, reach and colour shaders/particlelight00 draws with).
+constexpr twattila::rt_scene::LightInstances PARTICLE_LIGHTS = {.stream_shader = __rt_particle_lights};
+
+// Water Clarity and Water Caustics (twattila/water_effects.hpp): every water pixel shader of the dump (water_troy's battle and
+// campaign sea and lake, battle_river_troy; ps_5_0 and ps_4_1; Pharaoh's twins by name, no water props or big river here),
+// each a material water (g_sea_bed_light_scatter unread). Their absorption is exp2(-depth x opacity), no log2(e): Clarity
+// scales the mul that reads the opacity, sp_water_opacity (shader_params + 76: cb2[4].w, cb3[4].w or cb4[4].w) or the
+// river's COLOR2.w (v10.w). The caustics after the refraction's colour sample, off in the campaign (its world a twentieth of
+// a battle's). WARP: tools\tw\troy\water (Pharaoh's water_v58 on Troy's bytes; neutral: the game's bits).
+constexpr std::array<twattila::water_effects::WaterShader, 68> WATER_SHADERS = {{
+    {.hash = 0x50583F38, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_high (traced), shadows
+    {.hash = 0x50724F56, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_ultra (traced), shadows
+    {.hash = 0x8B98D7DE, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_high (traced), shadows
+    {.hash = 0xD71305F1, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_ultra (traced), shadows
+    {.hash = 0xF016D3AB, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_high, baked shadows
+    {.hash = 0x50E4A201, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_high, shadows
+    {.hash = 0xB520BED0, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_high, ps_4_1
+    {.hash = 0xB503EC5F, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_lake_high, no shadows
+    {.hash = 0x45DFBB3B, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_low, baked shadows
+    {.hash = 0x6EFFCB80, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_low, shadows
+    {.hash = 0x869B898A, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_low, ps_4_1
+    {.hash = 0x02BE0F85, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_lake_low, no shadows
+    {.hash = 0x15EB14F9, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_medium, baked shadows
+    {.hash = 0x943723E6, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_medium, shadows
+    {.hash = 0x56256223, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_lake_medium, ps_4_1
+    {.hash = 0x4E6F49B5, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_lake_medium, no shadows
+    {.hash = 0x6DF2A99D, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_high, baked shadows
+    {.hash = 0x54109424, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_high, ps_4_1
+    {.hash = 0xA384045C, .world_input = 1, .refraction_slot = 2, .normal_slot = 3, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_high, no shadows
+    {.hash = 0xFB2749CE, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_low, baked shadows
+    {.hash = 0x8B40E4B0, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_low, shadows
+    {.hash = 0x426038E1, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_low, ps_4_1
+    {.hash = 0xA0CD3B27, .world_input = 1, .refraction_slot = 2, .normal_slot = 3, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_low, no shadows
+    {.hash = 0x6F0C2423, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_medium, baked shadows
+    {.hash = 0xEBC7559B, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_medium, shadows
+    {.hash = 0xF8842109, .world_input = 1, .refraction_slot = 5, .normal_slot = 6, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_medium, ps_4_1
+    {.hash = 0xDAE336C0, .world_input = 1, .refraction_slot = 2, .normal_slot = 3, .material_water = true, .opacity = {.type = 1, .index = {10, 0}, .component = 3}},  // battle_river_medium, no shadows
+    {.hash = 0x4D51A9D7, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_high, baked shadows
+    {.hash = 0xF9031B39, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_high, shadows
+    {.hash = 0xB457E719, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_high, ps_4_1
+    {.hash = 0xA80386D9, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_sea_high, no shadows
+    {.hash = 0xBDCCF45B, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_low, baked shadows
+    {.hash = 0x467EBEF2, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_low, shadows
+    {.hash = 0x1499C98E, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_low, ps_4_1
+    {.hash = 0x5FF73DC6, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_sea_low, no shadows
+    {.hash = 0xEEE9CAC5, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_medium, baked shadows
+    {.hash = 0x0DF1C0DF, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_medium, shadows
+    {.hash = 0x0ACDB2A0, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_medium, ps_4_1
+    {.hash = 0x37375FE5, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_sea_medium, no shadows
+    {.hash = 0x980F5FB1, .world_input = 1, .refraction_slot = 3, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_ultra, baked shadows
+    {.hash = 0xEC4A5FD9, .world_input = 1, .refraction_slot = 4, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // battle_sea_ultra, ps_4_1
+    {.hash = 0x8A932872, .world_input = 1, .refraction_slot = 1, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // battle_sea_ultra, no shadows
+    {.hash = 0x93D324C1, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_high, baked shadows
+    {.hash = 0xDAF9DD3B, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_high, ps_4_1
+    {.hash = 0xFBB014C5, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // campaign_lake_high, no shadows
+    {.hash = 0x7151CEEC, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_low, baked shadows
+    {.hash = 0xD8A2D8AF, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_low, shadows
+    {.hash = 0x3A16F373, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_low, ps_4_1
+    {.hash = 0xE2FA720F, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // campaign_lake_low, no shadows
+    {.hash = 0x31C5503D, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 4, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_medium, baked shadows
+    {.hash = 0x96AF6BBC, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_medium, shadows
+    {.hash = 0x58465DAC, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_lake_medium, ps_4_1
+    {.hash = 0x7E0D088A, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 2, .material_water = true, .opacity = {.type = 8, .index = {2, 4}, .component = 3}},  // campaign_lake_medium, no shadows
+    {.hash = 0xCF12BB0F, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_high, baked shadows
+    {.hash = 0x55CABB08, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_high, shadows
+    {.hash = 0x659D3BC7, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_high, ps_4_1
+    {.hash = 0x2E12E239, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 3, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_sea_high, no shadows
+    {.hash = 0x2AD79ECA, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_low, baked shadows
+    {.hash = 0x5D77B117, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_low, shadows
+    {.hash = 0x2E660037, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_low, ps_4_1
+    {.hash = 0x9DB8B110, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 3, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_sea_low, no shadows
+    {.hash = 0x3F289065, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_medium, baked shadows
+    {.hash = 0xDD32A3BC, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_medium, shadows
+    {.hash = 0xB17A0632, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_medium, ps_4_1
+    {.hash = 0xCA6428C5, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 3, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_sea_medium, no shadows
+    {.hash = 0xDBCA18D4, .world_input = 1, .refraction_slot = 3, .caustics = false, .normal_slot = 5, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_ultra, baked shadows
+    {.hash = 0x5F53DEE8, .world_input = 1, .refraction_slot = 4, .caustics = false, .normal_slot = 6, .material_water = true, .opacity = {.type = 8, .index = {4, 4}, .component = 3}},  // campaign_sea_ultra, ps_4_1
+    {.hash = 0x2C1F9FA0, .world_input = 1, .refraction_slot = 1, .caustics = false, .normal_slot = 3, .material_water = true, .opacity = {.type = 8, .index = {3, 4}, .component = 3}},  // campaign_sea_ultra, no shadows
 }};
 
 // The game's passes that read render-size textures at the display's size (texture slots), below 100%.
@@ -1443,11 +1620,16 @@ constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
+  // preset's is XeSS on Intel's, else FSR.
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
   // The HBAO setting's Visibility Bitmask (ssao01): its Depth Levels (twattila/ao_pass.hpp; no Temporal Smoothing).
   twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f, false, (shader_injection.ssao_resolution != 0.f) ? 2.f : 1.f,
                             false);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
   static uint32_t ao_frame = 0;
@@ -1456,12 +1638,24 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::ao_filter::Update(swapchain, {.temporal = bitmask_ao && shader_injection.ssao_temporal != 0.f,
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
-  const twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
+  rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
+  // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
+  rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
+  // The game's reflections fall on the water alone (its apply 00645DA1, as Pharaoh's): twattila/water_reflections.hpp's gate.
+  twattila::water_reflections::GateSettings(&rt_settings);
+  twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
+  // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
+  auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
+  sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
+  twattila::screen_space_shadows::Update(swapchain, sss_settings);
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
+  twattila::light_count::OnPresent(rt_sliders.debug_log != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
@@ -1522,6 +1716,45 @@ extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Total War Saga: Troy by ATN";  // TODO: change me!
 
 namespace {
+
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
+// (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO, the paths take the sky from the sun
+// shaders' ambient cube; point lights (143A02ED), smoke (F5CE48CC), the water's Clarity and Caustics and its ray-traced
+// reflections (the game's reflections fall on the water alone, Pharaoh's texts) hooked, no fog.
+constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
+    .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
+    .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
+    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its ambient occlusion\n"
+                     "and shadows. The rest at its default.",
+    .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"
+                       "The rest of this page at its default.",
+    .rays_tooltip = "Ray-traced shadows and water reflections, path-traced ambient occlusion and Global Illumination at my\n"
+                    "settings. The rest of this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
+                    "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
+    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
+                      "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "Needs an upscaler.",
+    .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
+                  "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
+                  "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
+                  "thin ones.\n"
+                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.\n"
+                  "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
+                  "turns it on below. Needs an upscaler.",
+    .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
+    .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+    .water_caustics_label = "Water Caustics (Experimental)",
+    .water_reflections_label = "Water Reflections (Experimental)",
+    .water_reflections_tooltip = "Rivers and the sea reflect what the rays find, also off screen. Needs in-game Screen Space\n"
+                                 "Reflections on. Off: the game's reflections.",
+    .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Water, effects and the shadows the game\n"
+                            "baked for the map (past about 200 m) keep the game's. Use with Shadow Casters Out of View.\n"
+                            "Off: the rays' shadows on top of the game's shadow maps.",
+    .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
+                           "Game's SSR: the original. DXR: from rays, also what is off screen or hidden (turn Water Reflections\n"
+                           "on below). Needs an upscaler.",
+};
 
 void ConfigureAddon() {
   if (configured) return;
@@ -1621,7 +1854,9 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders);
+  // The water's reflection apply reads the ray-traced reflections (twattila/water_reflections.hpp): their rows, the water's too.
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  twattila::rt_scene::internal::water_pass = true;
 
   // Appended Settings (HDR10)
   {
@@ -1699,7 +1934,79 @@ void ConfigureAddon() {
     if (std::ranges::find(engine_sections, test.section) == engine_sections.end()) engine_sections.push_back(test.section);
   }
   twattila::feature_settings::SetTints({}, engine_sections);
-  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections);
+
+  // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
+  // Mode's pages. Only what this game hooks: the paths' sky from the sun shaders' ambient cube (InstallSunDraws' 24),
+  // foliage in the screen-space shadows (bit 128) and casters out of view (the shadow pass's; both Experimental, off: no
+  // game run has shown them here), Rays Replace Shadow Maps, point lights, smoke, the water's Clarity and Caustics and its
+  // ray-traced reflections (Experimental, off); no fog (its rows stay hidden).
+  twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  // Fog Shadows, the torches' light in it (hidden: not hooked here) and Smoke Shadows (no game run has shown the particles'
+  // records in this game) start off, Far Tree Shadows too (Experimental: the cards' capture is new here); RT/PT turns all but
+  // the smoke and far trees on, as ATN's list does.
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
+        || setting->key == "RayTracedFarTreeShadows") {
+      setting->default_value = 0.f;
+    }
+  }
+  // Water Reflections (Experimental, off: no game run has shown the apply with the rays here; RT/PT turns it on, as ATN's list
+  // does), Specular Occlusion and the reflections' Samples and Reuse where the water alone takes them, as Pharaoh's.
+  twattila::water_reflections::SetRows(&settings, &rt_sliders);
+  // Water Clarity at the game's 1 and Water Caustics off (Experimental: no game run has shown them here yet; RT/PT leaves the
+  // caustics off, water_caustics_tested), Pharaoh's rows, under Reflections and Water.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterClarity",
+      .binding = &twattila::water_effects::water_clarity,
+      .default_value = 1.f,
+      .label = "Water Clarity (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "How far you see into water. 1: the game's; higher: clearer water.",
+      .min = 0.25f,
+      .max = 16.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterCaustics",
+      .binding = &twattila::water_effects::water_caustics,
+      .default_value = 0.f,
+      .label = "Water Caustics (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Rippling light on the bed under battle water and rivers. 0: off.",
+      .max = 2.f,
+      .format = "%.2f",
+  });
+  // Torch and Fire Shadows from rays (Pharaoh's row): after the preset's defaults, so it starts off (Experimental: no game run
+  // has shown them here yet); RT/PT turns it on, as ATN's list does.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedPointLightShadows",
+      .binding = &rt_sliders.local_lights,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Torch and Fire Shadows (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Torches and fires cast their shadows from rays too.\n"
+                 "With Path-Traced Global Illumination they also light what the screen never saw.",
+      .labels = {"Off", "On"},
+  });
+  twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
+                                             .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .lod_bias_trilinear = &lod_bias_trilinear_row,
+                                             .rays_replace_maps = &rays_replace_maps_row,
+                                             .rays_replace_maps_tested = false,
+                                             .rays_units_out_of_view = &rays_units_out_of_view_row,
+                                             .units_out_of_view_tested = false,
+                                             .rays_skip_cascades = &rays_skip_cascades_row,
+                                             .rays_hills_out_of_view = &rays_hills_out_of_view_row,
+                                             .texts = &PAGE_TEXTS,
+                                             .foliage_light_tested = false,
+                                             .smoke_shadows_tested = false,
+                                             .far_cards_tested = false,
+                                             .water_caustics_tested = false,
+                                             .lights_own_row = true,
+                                             .rays_replace_ao = false,
+                                             .rays_multiply_maps = true});
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
 }
@@ -1732,6 +2039,14 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  // Water Clarity and Caustics: every row a material water (the patched copy swapped in at the draw), as Pharaoh's.
+  twattila::water_effects::water_shaders = WATER_SHADERS;
+  renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
+  for (const auto& water : WATER_SHADERS) {
+    renodx::utils::command_action::Register(
+        twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -1741,6 +2056,15 @@ bool AttachAddon() {
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
+  // Ray-Traced Water Reflections (twattila/water_reflections.hpp, Pharaoh's): the twins of Pharaoh's ssr_new chain, the same
+  // order in ATN's traces (the water's G-buffer after the sun draw, extract_mask 1CE9217F, then these). Traced at backward_ssr
+  // C1DC66B4 (its depth from t0: Troy's binds no mask before it; the light, R16G16B16A16F, at t2); where they left from the
+  // water, downsample C2017771 and its 10 downsample_mip 9877558C and 10 lute_mip F49D4738 left out and our apply 00645DA1
+  // drawn (shaders/ssrapply00; WARP tools\tw\troy\water\ssr_rays).
+  twattila::water_reflections::Install(&custom_shaders,
+                                       {.backward_ssr = 0xC1DC66B4, .inputs_slot = 0, .chain = {0xC2017771, 0x9877558C, 0xF49D4738}, .apply = 0x00645DA1,
+                                        .apply_code = __0x00645DA1},
+                                       &rt_sliders);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The tests' clock first: the Light Bounce's callback draws the sun draws itself (none after it runs).
   for (const auto& draw : LIGHT_BOUNCE_DRAWS) {
@@ -1751,9 +2075,27 @@ bool AttachAddon() {
   // keeps it here (ssao01 binds no camera, below).
   twattila::rt_scene::InstallSunDebugAmbient(LIGHT_BOUNCE_DRAWS, &rt_sliders);
   // Before the Light Bounce's (its callback draws the sun draw again).
-  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.
-  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS);
+  // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. The ambient cube starts at
+  // lighting_VS_PS float 24 (c6-c11: +x, -x, +y, -y, +z, -z), the sun colour at float 12 (c3; x 0x389FB405 in rt_sun:
+  // twtroy/rt_sun.cs_5_0.hlsl), the paths' sky and sun light: all 25 sun shaders' RDEF, WARP tools\tw\troy\sun_test.
+  twattila::rt_scene::InstallSunDraws(LIGHT_BOUNCE_DRAWS, 24, 12);
+  // Coloured Shadows (Bend's and the rays' filter at t50) on the sun's colour: lighting_VS_PS c3 (sun_colour; c1 is
+  // sun_direction), in all 25 sun shaders' RDEF (b3, b2 without the shadow maps; tools\tw\troy\troy_sun_rdef.py).
+  twattila::screen_space_shadows::sun_colour_register = 3;
   twattila::screen_space_shadows::Install(LIGHT_BOUNCE_DRAWS);
+  // Light Through Foliage: the G-buffer's channel 3 alpha byte, bit 128, which the sun shaders' own code tests (049C3CFB:
+  // and with 128). Of the 2026-10-27 battle's 21 G-buffer shaders, leaves (A6D82BAF), far tree cards (FCE1EAEC) and blocks
+  // (6DA297BD) write 128, grass (EBC9553B) 160, the others 0-64 (units 1 / 33, the lake 64; terrain material 3C1C6172 its
+  // vertex value; tools\tw\troy\troy_material_writes_1027.txt).
+  twattila::screen_space_shadows::foliage_material_bit = 128;
+  // The game's contact shadows off where ours shadow (Pharaoh's): g_contact_shadows at byte 4 of every sun draw's lighting_VS_PS
+  // (troy_sun_rdef.py), its 8-step march under one if_nz cb[0].y (049C3CFB). After the screen-space shadows' (t49), before the
+  // Light Bounce's. WARP: tools\tw\troy\sun_test v51.
+  twattila::contact_shadows_off::Install(LIGHT_BOUNCE_DRAWS);
+  // Rays Replace Shadow Maps: after the screen-space shadows' (t49) and before the Light Bounce's. Skip the Shadow Maps through
+  // Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
+  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &rays_replace_maps_row);
+  twattila::rt_scene::InstallShadowsOnly();
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's environment b0, camera b1 with
   // g_screen_size c27 / g_viewport_dimensions c29 as the Options' defaults, shadowmap b2's splits, lighting_VS_PS b3's sun
@@ -1764,6 +2106,12 @@ bool AttachAddon() {
   // decals 516488AB and terrain A34C0DDA (tools/tw/troy/plan_1114.md; names.tsv of the dump). The SSR apply's and the lit
   // particles' blend; the VS inputs of the particles F5CE48CC, the point lights 6CFF8F83, the grass 2C7FBC7D and the far
   // trees' blocks 1FD86210 and cards E25688ED (the 10-27 trace's casters the rays lack); instanced counts apart.
+  // The game maps many uvs to its viewport itself (uv x (c29.zw x c31.xy): the forward-lit shaders, the sun shaders' SSEO;
+  // the scale census's 807 unclear, Pharaoh's class): view_share leaves those chains.
+  twattila::view_share::SetViewportChains(true);
+  // The campaign's shroud decals (campaignshrouddecals 516488AB) build their NDC from SV_Position x inv_rt_size (their
+  // buffer's c13, as Pharaoh's): patched as the camera's target size below 100%.
+  twattila::view_share::SetTargetSizes(std::array<const char*, 1>{"inv_rt_size"});
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit,
@@ -1792,7 +2140,31 @@ bool AttachAddon() {
   // D42C3523 binds only its own constants (ssao2_PS at b0, the linear depth at t0), no camera, so the trace and the rays'
   // AO stay at the sun draws (their t_ssao at ao_slot), as Pharaoh's.
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
-  twattila::rt_scene::Install(SCENE_SHADERS, {});
+  // The TW games' view; the shadow pass's casters through world positions (its vertex shaders' view-projection at cb0[9-12]),
+  // from the sun's per-frame atlas only (R32_TYPELESS 6144 x 6144, 2 x 2 cascades of 3072: ATN's 2026-11-14 traces; not the
+  // kept baked map, R16 4096 x 4096), as Pharaoh's.
+  twattila::rt_scene::Host rt_host = twattila::rt_scene::TW_HOST;
+  rt_host.cascade_world = true;
+  rt_host.cascade_target = [](const D3D11_TEXTURE2D_DESC& desc) {
+    return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
+  };
+  // The point light PS's diffuse scale (143A02ED's literal 0x389FB405, Pharaoh's).
+  rt_host.local_light_scale = 7.615242e-05f;
+  // The water's reflections (water_reflections' OnBackwardSsr): its guides again from the sun draw's G-buffer channels, the
+  // water drawn into them since, and its R16G16B16A16F light copied, as Pharaoh's.
+  rt_host.rewrite_guides = twattila::anti_aliasing::RewriteSunGuides;
+  rt_host.light_copy = __rt_light_copy;
+  twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
+  twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
+  // The point lights (ATN's session 3: two instanced draws a frame, VS 6CFF8F83 with PS 143A02ED after the sun draw; 64-byte
+  // instances, the light's position at POSITION2.xyz): shaders/pointlight00 reads the rays' bits (Pharaoh's fire02 form).
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x143A02ED});
+  // The fires: their particle lights' draws, the lights streamed (PARTICLE_LIGHTS); shaders/particlelight00 reads the bits.
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x643FC156}, twattila::rt_scene::internal::NO_LIGHT_CONSTANTS, &PARTICLE_LIGHTS);
+  // Log Details' light count: the point lights and the night siege's fires (particle lights 643FC156, VS F5CE48CC: one draw,
+  // 192k indices in ATN's session 2; Pharaoh's 5AD46115).
+  twattila::light_count::Install(0x143A02ED, 0x643FC156);
+  twattila::rt_scene::InstallSmokeShadows(SMOKE_VERTEX_SHADERS, SMOKE_PIXEL_SHADERS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
 
@@ -1819,12 +2191,19 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  twattila::water_reflections::Uninstall();
+  renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
+  renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::engine_tests::StopAtStart(&at_start_stop);
   tw::engine_tweaks::Uninstall(graphics_options);
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();
   twattila::screen_space_shadows::Uninstall();
+  twattila::contact_shadows_off::Uninstall();
+  twattila::sun_replace_maps::Uninstall();
   twattila::light_bounce::Uninstall();
+  twattila::light_count::Uninstall();
   twattila::rt_scene::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::ao_filter::Uninstall();

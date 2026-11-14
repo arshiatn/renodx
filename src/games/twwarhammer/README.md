@@ -1,5 +1,134 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Phase I, round 3 (2026-11-14 morning; built only, not run in game)
+
+- **Ray Reconstruction's guides**: WH1's are Warhammer II's file and read the G-buffer as the sun shaders do (230F2241 asm
+  212-370: normals from channel 1's two angles, roughness 1 - its z, diffuse albedo the albedo x (1 - channel 3's specular
+  colour), specular albedo that colour; water writes flag 64, specular 0.04, gloss 0.95 itself). No change;
+  test/tw_warhammer_shaders part 9 proves it against the game's bytes (CONTROLS: the angles the other way, the albedo
+  without the specular colour).
+- **Light Through All Banners (Experimental, off; Warhammer III's row)**: the units' banners are rigidtextureblend meshes
+  (DBCC30FD, E7F0D71A with 2 bones), the shaders of other unit parts too, so only with this row: thin in the rays and in
+  the screen-space shadows (InstallThin; their vertex shaders give SV_Position first, as sss_thin reads; Coloured Shadows
+  with the G-buffer's colour linear: the sun shaders' diffuse is, part 10). E7F0D71A stays out of the rays (not a caster
+  there yet).
+- **Light Through Foliage (Experimental, off)**: the leaves' G-buffer shader 744FDFF0 writes channel 3's flag 128 and the
+  sun shaders let the sun through from behind only there (part 11), Warhammer III's bit (`foliage_material_bit`): the
+  screen-space shadows that leaves cast let that share of the sun through.
+- **Water Clarity and Water Caustics (Experimental; Clarity 1 and Caustics 0: the game's)**: Rome II's water_effects on the
+  battle water 44B4A2F0, whose g_sea_bed_light_scatter (its lighting_VS_PS's c10) is the base of the water depth's power.
+  Part 12: water_clarity.cs leaves the rest of the constants bit-identical, and the game's bytes with its c10 raised to 1/2
+  a metre deep equal its own half a metre deep; the caustics patch (on top of Skip the Shadow Maps' forward patch, as the
+  runtime chains them) is bit-identical with t51 unbound. The campaign's sea and lake read c10 otherwise: left out.
+- **Cut-out census, Cut-outs on More Models (Experimental, off)**: tools/tw/wh1/cut_out_census_wh1.txt sorts the 49 vertex and pixel
+  shader pairs ATN's traces drew in the scene by the pixel shader's discards (wh1_cut_out_census.py): 29 solid, 6 alpha 0.5 at
+  TEXCOORD1 (the units' fx__weighted 1ACA3E8C, F4333A3C, alpha overlay F0BB1D3C, forward 0BF2DB7F), 14 other tests (fades
+  by distance and dither, leaves, cards). The units' four go in the rays' masks with their UV through new capture versions
+  of 20A9E5FD / 3FC5424C (part 13: their UV the game's TEXCOORD1). The 14 others need their own masks (not done).
+
+Test list (in game, ATN):
+1. Battle with banners, Light Through All Banners on: their shadows lighter and coloured (screen-space and RT); off: as
+   before; nothing else (shields, cloaks) lighter.
+2. Battle in a forest, Light Through Foliage at 0.5: the leaves' screen-space shadows lighter, walls' and soldiers' as
+   dark as before.
+3. Battle by a river or lake: Water Clarity 4 shows the bed deeper; Water Caustics 1 ripples light on the bed; both at their
+   defaults: the game's water. ReShade.log: "Water Caustics: water shader 44B4A2F0 patched."
+4. Battle with fur- or feather-clad units, RT/PT, Cut-outs on More Models on: their ray-traced shadows show the gaps;
+   with Log Details "cut out: vs 20A9E5FD with ps ..." lines; off: as before.
+
+Not done: Sprite Shadows (WH1's far soldiers are points the game's geometry shader 12D3A4BC / D6954DFC turns into quads;
+the rays capture a vertex shader's vertices with the draw's own indices, so they need new shared capture work, and none of
+ATN's traces drew one); the particle rows (Particle Resolution, Smooth Half-Size Particles, Full-Res Edges: Attila's
+particle_layer is Attila's draws only; WH1's particles are GPU-simulated and sorted, quads from a geometry shader
+E8B4354D, composed by E88CBE3C: a port of their own, with ATN's Black Fire Pass traces); Fog Strength (Warhammer III's
+fog shaders; WH1's battle fog E684D54E never drew in ATN's 36 traces); the other 14 discarding pixel shaders' masks
+(fades by distance and dither, leaves 744FDFF0, far cards C5875F67, campaign plants 73C9A8D6: not a plain alpha 0.5).
+
+### Phase I, round 2 (2026-11-14 night; built only, not run in game)
+
+- **The paths' sky from the spherical harmonics, Path-Traced AO (Experimental)**: ATN's traces have
+  g_use_spherical_harmonics on in every battle and campaign frame. rt_sun reads t_world_spherical_harmonics at the camera's
+  place (the playable area c17 in cells of 3 x 3 texels, all 9 terms; the cube when off); the ambient patch sits after the
+  harmonics' if on c11.z (shared PatchAmbient AMBIENT_AFTER_HARMONICS_Z: 15 of the 31 keep their ambient in rA.xzw; the
+  other games' bytes unchanged). Path-Traced (ReSTIR GI, Experimental) is in the AO methods; RT/PT picks it as WH2's does.
+- **More in the rays**: far tree cards (Warhammer II's capture: the same shader), the campaign's plants (placed, standing
+  and still as Attila's), Far Tree Shadows and Shadow Casters Out of View (Warhammer II's shadow shaders: the same code),
+  both Experimental, off. Out: floating banners and the campaign's far terrain (neither drawn into the shadow map).
+- **Torch and Fire Shadows (Experimental, off)**: the point lights' two shaders (smooth and linear falloff) with each
+  light's traced visibility; their instances as Warhammer II's (ATN's 03:30 traces: colour, place and reach 50 / 150 m).
+- **Rays Replace Shadow Maps (Experimental, off)**: the 18 sun shaders that read the shadow map see a cleared one while the
+  rays' shadow is bound: the rays' shadow alone, cloud shadows the game's. The maps are still drawn.
+- **Skip the Shadow Maps (Experimental, off, under Rays Replace)**: nothing drawn into the shadow map; its 7 other readers
+  in ATN's traces (battle and campaign water, forward-lit units and props, particles) take the rays' shadow instead (Rome
+  II's forward patch). 0BF2DB7F / BCB9B1D6 have no SV_Position declared and 7865CDC9 only its w: the shared Patch's opt-in
+  `declare_position` declares its xy (the other games' bytes unchanged: Patch's defaults on all 21300 PS of the 8 dumps,
+  forward and not). test/tw_warhammer_shaders part 8: each bit-identical without the rays and fully shadowed with t49 1,
+  their shadow constants filled by name (CONTROL: the shadow map's value changes each one's output).
+- **Below 100%**: the SSR result added to the scene (69A57B14) reads its share (ATN's Performance / Ultra Performance
+  traces); the tone mapper's bloom read is right there (drawn after the bloom of the whole view).
+
+Test list (in game, ATN):
+1. Battle, RT/PT: AO method Path-Traced; corners and under units darker, open ground as before; no black or white frames.
+2. Campaign, RT/PT with Path-Traced AO: the sky's light on hills as before (compare Game's SSAO), no colour shift.
+3. Battle at DLSS Performance: SSR reflections on water and armour where they are at DLAA (no doubled or stretched copy).
+4. Battle with forest edges: Far Tree Shadows on, far trees cast shadows that stay put when the camera turns.
+5. Campaign close to forests: the plants and trees cast ray-traced shadows (RT/PT), none floating or swaying.
+6. Shadow Casters Out of View on: units behind the camera still shade the ground in front; off: as before.
+7. Night siege, Torch and Fire Shadows on: walls and units block the torches' light; off: the game's light.
+8. Rays Replace Shadow Maps on: one sun shadow (the rays'), Softness changes it; clouds' shadows still move.
+9. Skip the Shadow Maps on (with Rays Replace): water, forward-lit units and particles keep the sun's shadow; big battles
+   faster; off: as before.
+10. ReShade.log: "drawn with the rays" lines for D0C67938 / 5D1695BC, no device loss, the frame time as before.
+
+Not done: Fog Shadows (WH1's battle fog is analytic, no shadowed march to give the
+rays); the campaign's far terrain CDCF1ADD (where it lies against the near terrain); the SSR march's patch below 100%
+(021D7515, needs a picture); the reader census without SSAO / SSR (needs ATN's start with both off).
+
+### Phase I (2026-11-14; built only, not run in game)
+
+- **Render scale below 100%**: the weather effects (3619B413, 4BEEAAE2, 5B006315, 9A369793; 5B006315 drawn in the 10-27
+  battle trace at 50%) map their uv to the viewport themselves: view_share leaves them (`SetViewportChains(true)`); the scale
+  census's BUG (A) 4 -> 0. The SSR resolve replacement (6B80E35B) takes the frame's share where view_share patches the game's
+  bytes: the position from the view's uv, the projected uv in the targets' share. test/tw_warhammer_shaders: 50% the same as
+  100% on WARP, the march's direction the same; controls without each share differ.
+- **The paths' sky and sun** (`InstallSunDraws(LIGHT_BOUNCE_DRAWS, 8, 4)`): rt_sun takes the ambient cube (c2-c7) x 1 and the
+  sun colour (c1) x 0.318310 x 0.01, what the game's sun shaders light the diffuse colour by with g_hdr_on 1 (all 31 the same;
+  230F2241's own bytes measured on WARP: 0.0031831, 0.318310 with g_hdr_on 0; ATN's battle and campaign traces: g_hdr_on 1).
+  Float 44 is g_hdr_on here, not Attila's ambient switch: WH1's rt_sun wrapper turns that off. Path-Traced Ambient's rows
+  now show (Experimental, off). The unlit (ulm) and default reflection sun PS stay unhooked: they write the G-buffer's
+  colour or black.
+- **Graphics 2 of 2 as Attila's** (as Warhammer II's round): 31 more of Attila's tests whose values engine_tweaks::Find
+  finds in WH1 (emulated on the decrypted image; its misses hold all 10 of the 2026-11-14 log's "not found"): grass slopes,
+  projected tree LODs, vegetation blocks, billboards, object / building detail and culling, shadow biases, warped / new
+  shadows, sprite shadows, cutscene point shadows high, particle sorting, night lights, shared poses, fast soldier culling,
+  campaign clouds / trees / plants / sea, voice memory limit, sound file memory. Out: Far Buildings, Building Collapse
+  Effects / Animations and 7 More Tests rows (never found). Rope Distance without ROPE_DISTANCE(_FADEOUT); WH1's own values
+  in the tooltips that differ (blood 0.05, audio 62 / 10 / 164 / 4 / 2 MB). Reset puts the tests back too.
+- **Graphics 1 of 2 as Warhammer II's / Pharaoh's** (`graphics_page::Apply`): Reset / No RT/PT (Recommended) / RT/PT,
+  the shadow, AO, GI and reflection methods, FSR and XeSS (a saved DLSS becomes XeSS on Intel, FSR on AMD), TAA Motion,
+  Texture LOD Bias on All Textures (Experimental, off), the full-download note; Bend's shadows off while the rays' sun
+  shadows run. The rays' sun shadows multiply the game's maps, RTAO multiplies its SSAO; Path-Traced AO not in the
+  methods yet. Every key kept (page dump: +5 keys, none lost).
+- **Hue Clip default 90** (was Attila's 40): measured on WH1's own tone mappers (test/tw_psychov35 part 5 curve 7, the
+  battle's whiteout 0 / 10 from ATN's traces): fire's hue against the game's SDR crosses 0 between 0.80 and 0.90, sky's
+  between 1.00 and 1.25; Attila's 40 came from its stock path's highlight limit, which WH1's has not.
+
+Test list (in game, ATN):
+1. Battle, Upscaling DLAA then Performance: weather (rain, snow) and the SSR reflections sit where they do at DLAA.
+2. Graphics 1 of 2: Reset, No RT/PT, RT/PT each; the methods' rows follow; FSR / XeSS listed; nothing left on after Reset.
+3. RT/PT in a battle: sun shadows on top of the game's, RTAO darker in corners, RT reflections on water and armour.
+4. Graphics 2 of 2: ReShade.log "Engine values found: N of N" (none missing); Reset puts every test at Game's.
+5. A test or two from the new rows (Object Detail Distances, Shadow Slope Bias) change what they say; MAX unchanged.
+6. Night siege: torches and fires as before (no row changed them).
+7. Campaign: the map, shroud and water as before; the minimap's picture as before.
+8. Recommended (PsychoV35): fires and sky against SDR at Hue Clip 90 (new default) and 40 (the old one).
+
+Not done (this round): the paths' sky from the game's spherical harmonics (ATN's traces: on in battle and campaign) and the
+ambient patch after them, so Path-Traced AO stays out of the methods; far tree cards, texture-blend props, campaign
+vegetation and campaign terrain in the rays (caster census MISSING); Rays Replace / Skip the Shadow Maps, Torch and Fire
+Shadows, Fog Shadows (WH2 v48's rows); every scale below 100% from a trace (the census's 7 unclear); the reader census;
+the lights' instance rows; Faster Game CPU Code (no byte twin of Attila's x87 routines in WH1's x64 code).
+
 ### Trace build (2026-11-14, for the data run; built only, not run in game)
 
 - **Frame traces on demand and at 100%** (`twattila/frame_trace.hpp` Options, as Warhammer II's): `renodx_trace_now` next to

@@ -992,8 +992,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
     constexpr std::pair<const char*, float> RAYS_RESET[] = {
         {"RayTracedShadowSoftness", 0.5f},
         {"RayTracedLeafLight", 0.f},
+        {"RayTracedColouredShadows", 0.f},
         {"RayTracedSpriteShadows", 0.f},
         {"RayTracedFarTreeShadows", 0.f},
+        {"RayTracedUnitsOutOfView", 0.f},
         {"RayTracedAmbientRange", 2.f},
         {"RayTracedAORays", 2.f},
         {"RayTracedAOQuarter", 0.f},
@@ -1003,12 +1005,16 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedLightSteady", 0.f},
         {"RayTracedLightRange", 0.f},
         {"RayTracedReflectionSamples", 1.f},
+        {"RayTracedReflectionReuse", 0.f},
         {"RayTracedWaterReflections", 0.f},
+        {"RayTracedWaterSteady", 0.f},
         {"RayTracedLightBounceRays", 4.f},
         {"RayTracedLightBounceRange", 10.f},
         {"RayTracedLightBounceResolution", 1.f},
         {"PathTracingBounces", 2.f},
         {"RayTracedSharc", 0.f},
+        {"RayTracedPathSkyApart", 0.f},
+        {"RayTracedPathKeptCube", 0.f},
         {"RayTracedPathSer", 0.f},
         {"RayTracingDenoiser", 0.f},
         {"RayTracedLeafMicromaps", 0.f},
@@ -1059,10 +1065,18 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::BeginDisabled(!sun_shadows);
     slider("Ray-traced shadow softness", "RayTracedShadowSoftness", 0.5f, 0.f, 3.f, "%.2f",
            "The sun's size in degrees: shadows softer away from what casts them. 0: sharp.");
-    checkbox("Light through leaves", "RayTracedLeafLight", "Leaves let some sunlight through ray-traced shadows (where they reach past the game's).");
+    const bool leaf_light = checkbox("Light through leaves", "RayTracedLeafLight",
+                                     "Leaves let some sunlight through ray-traced shadows (where they reach past the game's).");
+    ImGui::BeginDisabled(!leaf_light);
+    choice("Coloured shadows (Experimental)", "RayTracedColouredShadows", 0, OFF_ON_NAMES,
+           "Sunlight through sails, banners and cloth takes their colour where you can see them.");
+    ImGui::EndDisabled();
     choice("Sprite soldier shadows (Experimental)", "RayTracedSpriteShadows", 0, OFF_ON_NAMES,
            "The flat far soldiers' ray-traced shadows keep their shape as the camera turns.");
     choice("Far tree shadows (Experimental)", "RayTracedFarTreeShadows", 0, OFF_ON_NAMES, "The flat far trees cast ray-traced shadows too.");
+    choice("Shadow casters out of view (Experimental)", "RayTracedUnitsOutOfView", 0, OFF_ON_NAMES,
+           "Buildings, rocks, trees, sails and banners behind the camera cast ray-traced shadows into view too, far soldiers with Sprite "
+           "soldier shadows (restart the game).");
     ImGui::EndDisabled();
     const bool ambient = checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion",
                                   "Shade in corners and under things from rays, with the game's (the darker).\n"
@@ -1101,8 +1115,18 @@ void OnOverlay(reshade::api::effect_runtime*) {
                                       "Needs the game's screen-space reflections on.");
     ImGui::BeginDisabled(!reflections);
     count("Ray-traced reflection samples", "RayTracedReflectionSamples", 1, 8, "Rays per pixel on rough surfaces: less noise, heavier.");
-    choice("Ray-traced sea reflections (Experimental)", "RayTracedWaterReflections", 0, OFF_ON_NAMES,
-           "The sea reflects ships, coasts and units with rays (water quality High).");
+    constexpr std::array<const char*, 3> REUSE_NAMES = {"Off", "From ReSTIR GI", "Own ReSTIR"};
+    choice("Reflection reuse (Experimental)", "RayTracedReflectionReuse", 0, REUSE_NAMES,
+           "Less noise on rough reflections.\n"
+           "From ReSTIR GI: also the ray-traced Global Illumination's samples (needs it on).\n"
+           "Own ReSTIR: their own samples, reused over frames and between neighbours.");
+    const bool water_reflections = choice("Ray-traced water reflections (Experimental)", "RayTracedWaterReflections", 0, OFF_ON_NAMES,
+                                          "The sea, rivers and lakes reflect ships, shores and units with rays (water quality High or Ultra).")
+                                   != 0;
+    ImGui::BeginDisabled(!water_reflections);
+    choice("Steadier water reflections (Experimental)", "RayTracedWaterSteady", 0, OFF_ON_NAMES,
+           "Fewer flickering dots in calm water's reflections: each pixel stays within what the water around it shows.");
+    ImGui::EndDisabled();
     ImGui::EndDisabled();
     const bool specular_occlusion = checkbox("Ray-traced specular occlusion (Experimental)", "RayTracedSpecularOcclusion",
                                              "The sky's reflection taken off shiny surfaces where something stands over them (inside\n"
@@ -1125,9 +1149,16 @@ void OnOverlay(reshade::api::effect_runtime*) {
     count("Path tracing bounces", "PathTracingBounces", 2, 2, "Bounces past the first where the camera sees nothing. 1: faster, a little darker.");
     choice("SHaRC radiance cache (Experimental)", "RayTracedSharc", 0, OFF_ON_NAMES,
            "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).");
-    choice("Path-traced AO (Experimental)", "RayTracedPathAmbient", 0, OFF_ON_NAMES,
-           "The paths bring the sky's light in place of the game's ambient: shade wherever the sky can't reach.\n"
-           "In battles, in place of ray-traced AO (the campaign map keeps it). Needs Ray-traced Global Illumination.");
+    const bool path_ambient = choice("Path-traced AO (Experimental)", "RayTracedPathAmbient", 0, OFF_ON_NAMES,
+                                     "The paths bring the sky's light in place of the game's ambient: shade wherever the sky can't reach.\n"
+                                     "In battles, in place of ray-traced AO (the campaign map keeps it). Needs Ray-traced Global Illumination.")
+                              != 0;
+    ImGui::BeginDisabled(!path_ambient);
+    choice("Path-traced AO: own sky rays (Experimental)", "RayTracedPathSkyApart", 0, OFF_ON_NAMES,
+           "The sky's light averaged from each pixel's own rays: less noise, and more rays help. Off: through ReSTIR GI.");
+    choice("Path-traced AO: steady bounce light (Experimental)", "RayTracedPathKeptCube", 0, OFF_ON_NAMES,
+           "Light bouncing off walls and ground follows the game's sky, not the view Path-traced AO started in.");
+    ImGui::EndDisabled();
     ImGui::EndDisabled();
     choice("Path tracing SER (Experimental)", "RayTracedPathSer", 0, OFF_ON_NAMES,
            "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.");

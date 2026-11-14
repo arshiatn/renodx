@@ -608,6 +608,72 @@ glow meshes, point lights, distortion via Heat Haze) except rigidburning / rigid
   replaces. ReShade and the addons go into Remastered CE's own folder (CE\RemasteredCE, where its executable runs).
 
 
+## v72 (2026-11-14): variantrigid out of view, dissolved leaves, reflection rows, coloured shadows (built only, not run in game)
+
+- **Shadow casters out of view** (the same Experimental row, off) also takes variantrigid's shadow draws (B0E006EE: 10 draws,
+  4 to 256 instances in the battle trace), placed by their instances' rows (v8-v10) as the rigid ones
+  (rt_capture / rt_rows_cascade_variant), their rows every frame (they sway in the wind like banners: what carries them
+  isn't known). The sway itself (under 2 cm) is left out.
+- test/tw_shogun2_shaders part 10 for both: the capture and rows versions against the game's AC25DAB8 and B0E006EE.
+- Out of view, a dissolved tree's leaves no longer cast (rt_capture_cascade_tree_leaves): left out where the leaves' pixel
+  shader (A97EF2E0) drops every texel at every dissolve value (saturate(fade) x fade > 1 - 0.196, fade = 1 - v10.y). Its
+  branches keep casting, as in the game (their shadow pixel shader reads no fade). Part 12: against the game's leaf shadow
+  pass (its vertex and pixel shaders, an occlusion query) at 12 fades; control: the branches' version keeps them.
+- **Reflection reuse** (Experimental, off: from ReSTIR GI with the ray-traced Global Illumination, or Own ReSTIR) and
+  **Steadier water reflections** (Experimental, off): Attila's RT_REFLECTIONS_REUSE / _OWN / _STEADY (DLSS addon v64).
+- Not done: far tree cards out of view (rigidtreebillboard 30C453EE): no rows path (each card turns to the shadow camera at
+  its corners and takes its own atlas view from its facing: no shared mesh and mask), 38.8M indices x instances a frame;
+  Softer Water Reflections (needs rt_water_plane's roughness and the water's positions).
+- **Coloured shadows** (Experimental, off; with Light through leaves): sunlight through sails, banners and cloth takes their
+  colour (Attila's RT_COLOURED_SHADOWS): the helper's filter at t50 for the sun draws with this frame's trace, every use of
+  the sun's colour in sunlight00-03 multiplied by 1 - it (shaders/rt_sun.hlsli RtSunColour); the G-buffer guides written
+  for it (the colour where the screen shows the cloth). Part 13 (WARP): in each of the four, the filter 1 gives exactly the
+  picture of the sun colour 0, unbound the sun lights it; control: half the filter lies between.
+
+## v71 (2026-11-14): cloth, sprite soldiers and trees out of view, Path-traced AO rows (built only, not run in game)
+
+- **Shadow casters out of view** (the same Experimental row, off; DLSS addon v63) also takes the shadow pass's cloth (sails,
+  banners: 8A00A1D4, 44 draws in the battle trace), sprite soldiers (E3DA20D4, 272 draws; only with Sprite Soldier
+  Shadows on, cards turned to the sun as the game's shadow pass turns them) and trees' leaves and branches (5851CA62,
+  6F20485E: 22 and 17 draws, 327K and 32K corners; swayed by the game's wind, leaves cut out by their diffuse alpha).
+  Streamed out every frame in world space by their capture versions (rt_capture_cascade_cloth / imposter / tree: the
+  game's corners and the UV of its mask test) through
+  Pharaoh's outside-view geometry shader (twpharaohdynasties RT_LEAF): the triangles wholly outside the last frame's main
+  view kept, cut out by the game's masks; the rest collapse (the main pass has them).
+- Shared rt_core (opt-in, the other games unchanged): SceneShader::cascade_world, Host::cascade_world for one shader, its
+  capture version in place of the game's vertex shader and its world positions into the captured buffer's world part in a
+  clip-space game.
+- test/tw_shogun2_shaders part 11: the capture versions against the game's four csos (world, UV), through the geometry shader
+  with a main view (kept, collapsed) and a control (the view turned away keeps another set). The test's GPU lock is taken
+  atomically now (made only where none exists, removed only while it is this run's).
+- **Path-traced AO: Own Sky Rays** and **Steady Bounce Light** (Experimental, off; Attila's RT_PATH_SKY_APART /
+  RT_PATH_KEPT_CUBE): the sky averaged from each pixel's own rays; the bounces' stand-in light from rt_sun's cube (texel 3
+  w 1: the sun shaders' sky, texel 4 w 1: in the game's units).
+- Still not done: units (140M indices x instances a frame, no rows), far tree cards (rigidtreebillboard 30C453EE: 39M) and
+  variantrigid (B0E006EE: 13M), too many to stream out every frame; a fully dissolved tree (the leaves' fade) still casts.
+
+## v70 (2026-11-14): rigid shadow casters out of view (built only, not run in game)
+
+- **Shadow casters out of view** (Experimental, off; with ray-traced sun shadows; restart the game): buildings and rocks
+  the main view culled but the shadow maps draw (rigidterrainblend vs30_shadow, AC25DAB8) join the ray-traced scene, as
+  Warhammer III's: each mesh captured once in world space (rt_capture_cascade_rigid), its instances placed by their rows
+  (rt_rows_cascade_rigid), those whose origin is in the main view left out (the main pass has them). Shogun 2 draws its
+  shadow maps before its main view: they test against the last frame's (rt_core Host::cascade_last_view, opt-in).
+- Not done: cloth and sprite soldiers' shadow draws (small, but not placed: streamed in the last frame's clip space they
+  would shift with the camera), units (140M indices x instances a frame, no rows).
+- test/tw_shogun2_shaders part 10: the capture and rows versions against the game's AC25DAB8.
+
+## v69 (2026-11-14): rivers, lakes and the Ultra sea in the water reflections (built only, not run in game)
+
+- **Ray-traced water reflections** (the row's new name; Experimental, off) also on the battles' rivers and lakes
+  (waterplane high / medium / ultra, waterplane00) and the sea at water quality Ultra (ocean01). The water planes' draws
+  are kept (their mesh, vertex shader and a copy of their g_world) and drawn again depth-only with the next frame's
+  camera before the reflections; rt_water_plane takes the nearer of the sea's plane and them.
+- test/tw_shogun2_shaders: rt_water_plane with a water mesh band (nearer: water; under the land: not), ocean01 and
+  waterplane00 against the game's csos.
+- Casters out of view (W7d) not made: the shadow pass comes before the main view, and its instanced draws are far too
+  many to stream out every frame (rigid: 38M, 53M, 326M indices x instances in cascades 1-3; units 140M).
+
 ## v68 (2026-11-14): sea reflections, sun-facing sprite soldiers and far trees (built only, not run in game)
 
 - **Ray-traced sea reflections** (Experimental, off; with ray-traced reflections): the sea (ocean, water quality High)

@@ -2,6 +2,39 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+## v11 (2026-11-14, phase I part 4; built only, not run in game; installed: INSTALLED_PLACEHOLDER)
+
+- Graphics (Experimental, Advanced, off): **Frame Generation** (Off, 2x-6x, Dynamic: NVIDIA DLSS Frame Generation through
+  the TW helper; needs DLAA, a windowed or borderless game, the game's VSync off). The HUD-less image is the tone mapper's
+  output after DLAA (ATN's traces: SMAA only copies it under DLAA, the UI comes after), the camera the main camera's
+  unjittered rows. **NVIDIA Reflex** (Off, On, On + Boost) and **Frame Rate Limit** (Reflex's, 0 off).
+- **Screen-Space Shadows** with **Length** and **Thickness** (`contact_shadows.hpp`): Bend Studio's screen-space shadows
+  (twattila's `sss_setup` / `sss_bend`) over the scene's depth toward the sun (the frame constants' c2), multiplied into
+  the game's shadow mask after CSMResolve: soldiers, weapons and small details get contact shadows the cascades miss.
+  Any GPU, no helper, no DLAA needed.
+- **Ray Tracing Debug View** (Off, Sun Shadows, Ambient Occlusion; shown with a ray row on) and Tools > **Record Ray
+  Tracing Profile (30 s)** (`tw_rt_profile.csv` next to the exe).
+- Test: `test/tw_romer_rays` case 6 (WARP: a pillar's shadow from a sun at the camera's left lands where the CPU puts it;
+  CONTROL: a sun at the right leaves it lit).
+
+Test (ATN): DLAA + Frame Generation 2x then 4x (borderless): frame rate, the HUD not warped, ReShade.log's frame
+generation lines; Reflex On; Screen-Space Shadows on in a sunny battle (with the Test row, Bend's alone: away from the
+sun); a ray row + its Debug View; Record Ray Tracing Profile.
+
+## v10 (2026-11-14, phase I part 3: ray tracing; built only, not run in game)
+
+- Graphics (Experimental, Advanced, off; restart the game after turning one on): **Ray-Traced Sun Shadows** and
+  **Ray-Traced Ambient Occlusion** (`ray_tracing.hpp` on the TW helper's DXR, `twattila/rt_core.hpp`). The scene: the
+  game's depth prepass (terrain, buildings, trees), captured every frame; soldiers, grass and far tree cards stay out
+  (the game's own shadows keep them). Traced before ASSAO's apply; the traced sun multiplies the game's shadow mask, the
+  traced AO ASSAO's result: the game's shadows and AO stay, the rays add theirs. With **Remove the Game's Sun Shadows
+  (Test)** on, the shadows are the rays' alone (the same for AO). Needs the full download; DLAA not needed.
+- Test: `test/tw_romer_rays` (WARP: the scene's draws, the trace's camera, the sun, the multiply, and the game's own
+  forward PBR shader lit with the multiplied mask and AO as with the products).
+
+Test (ATN): a battle with Ray-Traced Sun Shadows (restart): small buildings' and trees' contact shadows sharper, the
+game's shadows still there; with the Test row on the rays' alone; then Ray-Traced AO; the frame rate with each.
+
 ## v9 (2026-11-14, phase I part 2: from ATN's first traces; built only, not run in game)
 
 - Graphics (Experimental, Advanced) > **Anti-Aliasing**: Game's (default) / **DLAA** (`dlaa.hpp`). NVIDIA's DLAA through

@@ -175,12 +175,15 @@ constexpr float SOFT_RADIUS_2160 = 32.f;
 // - Else (Warhammer III's shadow mask): rT first, and after each read of the texture named t_shadow (ld / sample) the
 //   same mul.
 // - A forward pass reading the sun's shadow map (`forward`: Attila's under Ray-Traced Shadows Only) as Troy's.
+//   `declare_position` (Warhammer's forward-lit units: SV_Position in the signature, undeclared or only its w): its xy
+//   declared first (dcl_input_ps_siv linear noperspective, the input signature's register), so rT reads t49 at the pixel.
 // Empty: not such a shader.
-inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = false, uint32_t colour_register = 1) {
+inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = false, uint32_t colour_register = 1,
+                                  bool declare_position = false) {
   constexpr uint32_t OP_CUSTOMDATA = 53, OP_DIV = 14, OP_FTOU = 28, OP_LD = 45, OP_MAD = 50, OP_MIN = 51, OP_MOV = 54,
                      OP_MUL = 56, OP_SAMPLE = 69, OP_SAMPLE_C = 70, OP_SAMPLE_C_LZ = 71, OP_SAMPLE_L = 72,
                      OP_GATHER4_C = 126, OP_GATHER4_PO_C = 128;
-  constexpr uint32_t OP_DCL_RESOURCE = 88, OP_DCL_INPUT_PS_SIV = 100, OP_DCL_TEMPS = 104, OP_DCL_GLOBAL_FLAGS = 106;
+  constexpr uint32_t OP_DCL_RESOURCE = 88, OP_DCL_INPUT = 95, OP_DCL_INPUT_PS_SIV = 100, OP_DCL_TEMPS = 104, OP_DCL_GLOBAL_FLAGS = 106;
   constexpr uint32_t CUSTOMDATA_IMMEDIATE_CONSTANT_BUFFER = 3;
   constexpr uint32_t SATURATE = 1u << 13;
   constexpr uint32_t EXTENDED = 1u << 31;
@@ -194,14 +197,24 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
   // the lighting constants' (type 0, lighting_VS_PS).
   uint32_t mask_slot = UINT32_MAX;
   uint32_t lighting_slot = UINT32_MAX;
+  uint32_t signature_position = UINT32_MAX;  // SV_Position's input register (the ISGN chunk's 24-byte elements)
   for (const uint32_t offset : program.offsets) {
-    if (std::memcmp(code.data() + offset, "RDEF", 4) != 0) continue;
-    const size_t data = offset + 8;
     const auto read = [&](size_t at) {
       uint32_t value = 0;
       if (at + 4 <= code.size()) std::memcpy(&value, code.data() + at, 4);
       return value;
     };
+    if (declare_position && std::memcmp(code.data() + offset, "ISGN", 4) == 0) {
+      const size_t data = offset + 8;
+      for (uint32_t index = 0; index < read(data); ++index) {
+        const size_t element = data + 8 + (24 * size_t{index});
+        if (read(element + 8) == NAME_POSITION) {
+          signature_position = read(element + 16);
+        }
+      }
+    }
+    if (std::memcmp(code.data() + offset, "RDEF", 4) != 0) continue;
+    const size_t data = offset + 8;
     const uint32_t bindings = read(data + 8);
     const size_t binding_at = data + read(data + 12);
     for (uint32_t index = 0; index < bindings && binding_at + 32 * (index + 1) <= code.size(); ++index) {
@@ -271,6 +284,32 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
     tokens[1] = static_cast<uint32_t>(tokens.size());
   } else {
     coloured = false;
+  }
+
+  if (declare_position) {
+    // Before the first input's declaration (dcl_input .. dcl_input_ps_siv: v0 first, as the compiler orders them).
+    size_t declared_at = 0;
+    size_t first_input = 0;
+    for (size_t at = 2; at < tokens.size() && (tokens[at] & 0x7FF) != OP_DCL_TEMPS;) {
+      const uint32_t opcode = tokens[at] & 0x7FF;
+      const size_t length = dxbc::Length(tokens, at);
+      if (length == 0) return {};
+      if (opcode == OP_DCL_INPUT_PS_SIV && length == 4 && tokens[at + 3] == NAME_POSITION) {
+        declared_at = at;
+      }
+      if (opcode >= OP_DCL_INPUT && opcode <= OP_DCL_INPUT_PS_SIV && first_input == 0) {
+        first_input = at;
+      }
+      at += length;
+    }
+    if (declared_at != 0) {
+      tokens[declared_at + 1] |= 0b0011u << 4;
+    } else if (first_input != 0 && signature_position != UINT32_MAX) {
+      const std::array<uint32_t, 4> declaration = {OP_DCL_INPUT_PS_SIV | (4u << 11) | (4u << 24), 2u | (0b0011u << 4) | (TYPE_INPUT << 12) | (1u << 20),
+                                                   signature_position, NAME_POSITION};
+      tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(first_input), declaration.begin(), declaration.end());
+      tokens[1] = static_cast<uint32_t>(tokens.size());
+    }
   }
 
   // The declarations (where the code starts), the shadow's last step, the comparisons and the shadow mask's reads.
@@ -413,7 +452,8 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool forward = 
 // first) makes it on both ways (the harmonics faded to the cube outside the playable area, or the cube), and right after its
 // endif
 //   mul rA.xyz, rB.xyzx, rA.xyzx   (x the diffuse colour)
-// the same three instructions on rA.xyz before that mul. Not so: empty.
+// the same three instructions on rA.xyz before that mul. Not so: empty. AMBIENT_AFTER_HARMONICS_Z (Warhammer): its if on c11.z,
+// the mul on any three components of rA read in place (mul rA.xzw, rB.xxyz, rA.xxzw).
 inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* foliage, uint32_t final_sites = 0) {
   constexpr uint32_t OP_LD = 45, OP_MAD = 50, OP_MOVC = 55, OP_MUL = 56, OP_CUSTOMDATA = 53;
   constexpr uint32_t OP_ENDIF = 21, OP_IF = 31;
@@ -454,9 +494,16 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
   size_t temps_at = 0;
   size_t cube_at = 0;    // the movc reading c7 / c6
   size_t mads = 0;       // after it
-  // After the cube's last step, or `final_sites` places.
-  std::vector<std::pair<size_t, uint32_t>> sites;
-  const bool after_harmonics = final_sites == light_bounce::AMBIENT_AFTER_HARMONICS;
+  // After the cube's last step, or `final_sites` places: where, the ambient's temp, its components and their read.
+  struct Site {
+    size_t at;
+    uint32_t temp;
+    uint32_t mask;
+    uint32_t swizzle;
+  };
+  std::vector<Site> sites;
+  const bool after_harmonics = final_sites >= light_bounce::AMBIENT_AFTER_HARMONICS_Z;
+  const uint32_t harmonics_component = (final_sites == light_bounce::AMBIENT_AFTER_HARMONICS_Z) ? 2u : 1u;
   size_t harmonics_depth = 0;  // inside the harmonics' if (its nesting)
   bool harmonics_seen = false;
   for (size_t at = 2; at < tokens.size() && (final_sites != 0 || sites.empty());) {
@@ -468,8 +515,8 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
       const size_t next = at + length;
       if (harmonics_depth == 0 && !harmonics_seen && opcode == OP_IF) {
         dxbc::Operand test;
-        if (dxbc::ParseOperand(tokens, at + 1, next, &test) != 0 && test.type == TYPE_CONSTANT_BUFFER && test.mode == 2 && test.select == 1
-            && !test.relative && test.index[0] == lighting_slot && test.index[1] == 11) {
+        if (dxbc::ParseOperand(tokens, at + 1, next, &test) != 0 && test.type == TYPE_CONSTANT_BUFFER && test.mode == 2
+            && test.select == harmonics_component && !test.relative && test.index[0] == lighting_slot && test.index[1] == 11) {
           harmonics_depth = 1;
           harmonics_seen = true;
         }
@@ -478,9 +525,16 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
       } else if (harmonics_depth != 0 && opcode == OP_ENDIF && --harmonics_depth == 0 && next + 6 < tokens.size()
                  && (tokens[next] & 0x7FF) == OP_MUL && dxbc::Length(tokens, next) == 7) {
         const uint32_t ambient_temp = tokens[next + 2];
-        if (tokens[next + 1] == masked(ambient_temp, 0b0111)[0] && tokens[next + 5] == swizzled(TYPE_TEMP, 0, XYZX)[0]
-            && tokens[next + 6] == ambient_temp) {
-          sites.emplace_back(next, ambient_temp);
+        const uint32_t mask = (tokens[next + 1] >> 4) & 0xF;
+        const uint32_t swizzle = (tokens[next + 5] >> 4) & 0xFF;
+        // Warhammer II: rA.xyz. Warhammer: any three components read in place (rA.xzw, rA.xxzw).
+        bool in_place = std::popcount(mask) == 3;
+        for (uint32_t component = 0; component < 4; ++component) {
+          if (((mask >> component) & 1) != 0 && ((swizzle >> (2 * component)) & 3) != component) in_place = false;
+        }
+        if (tokens[next + 1] == masked(ambient_temp, mask)[0] && tokens[next + 5] == swizzled(TYPE_TEMP, 0, swizzle)[0]
+            && tokens[next + 6] == ambient_temp && (harmonics_component == 2 ? in_place : (mask == 0b0111 && swizzle == XYZX))) {
+          sites.push_back({next, ambient_temp, mask, swizzle});
         }
       }
       at = next;
@@ -493,7 +547,7 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
         if (tokens[at + 1] == masked(irradiance, 0b1111)[0] && tokens[at + 5] == swizzled(TYPE_TEMP, 0, XYZW)[0]
             && tokens[at + 7] == swizzled(TYPE_TEMP, 0, WXYZ)[0] && tokens[at + 8] == irradiance
             && tokens[next + 1] == masked(irradiance, 0b1110)[0] && tokens[next + 2] == irradiance) {
-          sites.emplace_back(next, irradiance);
+          sites.push_back({next, irradiance, 0b1110, XYZW});
         }
       }
       at += length;
@@ -525,7 +579,7 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
           || (dest.select & 0b0111) != 0b0111) {
         return {};
       }
-      sites.emplace_back(at + length, dest.index[0]);
+      sites.push_back({at + length, dest.index[0], 0b0111, XYZX});
     }
     at += length;
   }
@@ -537,16 +591,14 @@ inline std::vector<uint8_t> PatchAmbient(std::span<const uint8_t> code, bool* fo
   const std::array<uint32_t, 2> share = swizzled(TYPE_TEMP, temp, XXXX);
   // From the last one back (the earlier ones keep their place).
   for (auto site = sites.rbegin(); site != sites.rend(); ++site) {
-    const auto [insert_at, ambient_temp] = *site;
-    const bool irradiance = final_sites != 0 && !after_harmonics;  // Warhammer III's rA.yzw
-    const std::array<uint32_t, 2> ambient = masked(ambient_temp, irradiance ? 0b1110 : 0b0111);
-    const std::array<uint32_t, 2> ambient_read = swizzled(TYPE_TEMP, ambient_temp, irradiance ? XYZW : XYZX);
+    const std::array<uint32_t, 2> ambient = masked(site->temp, site->mask);
+    const std::array<uint32_t, 2> ambient_read = swizzled(TYPE_TEMP, site->temp, site->swizzle);
     const std::vector<uint32_t> scale = {
         OP_LD | (10u << 24), taken[0], taken[1], 2u | (TYPE_IMMEDIATE << 12), 0, 0, 0, 0, resource[0], resource[1],
         OP_MAD | (9u << 24), taken[0], taken[1], share[0], share[1], 1u | (TYPE_IMMEDIATE << 12), MINUS_ONE, 1u | (TYPE_IMMEDIATE << 12), ONE,
         OP_MUL | (7u << 24), ambient[0], ambient[1], ambient_read[0], ambient_read[1], share[0], share[1],
     };
-    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(insert_at), scale.begin(), scale.end());
+    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(site->at), scale.begin(), scale.end());
   }
   // dcl_resource_texture2d (float,float,float,float) t51 before dcl_temps (the declarations come first); one more temp.
   tokens[temps_at + 1] += 1;
@@ -679,6 +731,7 @@ struct Runtime {
   bool ambient_not_as_expected = false;
   std::vector<uint32_t> sun_hashes;
   std::vector<uint32_t> forward_hashes;
+  std::vector<uint32_t> position_hashes;  // forward_hashes patched with Patch's declare_position (PatchForwardShadows)
   DeviceObjects objects;
   uint32_t off_presents = 0;
   // Light Through Banners (InstallThin): the G-buffer colour's gamma for their colour, the frame their depth is of.
@@ -1077,7 +1130,8 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
     if (!forward && std::ranges::find(runtime.sun_hashes, hash) == runtime.sun_hashes.end()) continue;
     auto [entry, added] = runtime.patched.try_emplace(hash);
     if (added) {
-      entry->second = Patch(code, forward, sun_colour_register);
+      entry->second = Patch(code, forward, sun_colour_register,
+                            forward && std::ranges::find(runtime.position_hashes, hash) != runtime.position_hashes.end());
       std::stringstream s;
       s << "[Total War] Screen-space shadows: " << (forward ? "forward shader " : "sun shader ") << PRINT_CRC32(hash)
         << (entry->second.empty() ? " has no shadow to patch." : " patched.");
@@ -1635,9 +1689,13 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 // The game's forward passes that read the sun's shadow map (`hashes`), patched as they are created to take its
 // occlusion at t49 too (each comparison x (1 - t49 at the pixel); t49 unbound reads 0: the game's shadow); their draws
 // bind it themselves (Attila: rt_scene::InstallShadowReaders, under Ray-Traced Shadows Only). After Install.
-inline void PatchForwardShadows(std::span<const uint32_t> hashes) {
+// `declare_position`: Patch's (their SV_Position's xy declared first; Warhammer's forward-lit units).
+inline void PatchForwardShadows(std::span<const uint32_t> hashes, bool declare_position = false) {
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.forward_hashes.insert(internal::runtime.forward_hashes.end(), hashes.begin(), hashes.end());
+  if (declare_position) {
+    internal::runtime.position_hashes.insert(internal::runtime.position_hashes.end(), hashes.begin(), hashes.end());
+  }
 }
 
 inline void Uninstall() {

@@ -34,6 +34,7 @@
 #include "../twattila/engine_tests.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/graphics_page.hpp"
+#include "../twattila/engine_code.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/ssr_hiz.hpp"
@@ -1390,6 +1391,10 @@ twattila::feature_settings::AaSliders aa_sliders;
 twattila::rt_scene::Sliders rt_sliders;
 // Skip the Shadow Maps (Experimental, off): Ray-Traced Shadows Only with the rays' sun shadows (rt_scene InstallShadowsOnly).
 float rays_skip_cascades_row = 0.f;
+// Faster Game CPU Code (twattila/engine_code.hpp, Game::ROME2): Attila's three routines on this game's build (the soldier
+// draw's rounding at its own stack slots, float to half and fmod the same bytes; test/tw_engine_code with this game's DLL:
+// every register and the x87 state the game's). Experimental, off until a game run.
+float engine_code_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -1644,6 +1649,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                                 shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
+  twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ROME2);
   tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, &model_detail, &graphics_found, graphics_status);
   twattila::graphics_hooks::Update(
       {
@@ -2098,6 +2104,7 @@ void ConfigureAddon() {
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
+                                             .engine_code = &engine_code_row,
                                              .texts = &PAGE_TEXTS,
                                              .has_foliage_light = false,
                                              .smoke_shadows_tested = false,
@@ -2105,6 +2112,12 @@ void ConfigureAddon() {
                                              .lights_own_row = true,
                                              .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
+  // Faster Game CPU Code (engine_code_row) Experimental, off.
+  for (auto* setting : settings) {
+    if (setting->key != "FasterGameCpuCode") continue;
+    setting->default_value = 0.f;
+    setting->label += " (Experimental)";
+  }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
@@ -2261,6 +2274,7 @@ void DetachAddon() {
   twattila::frame_generation::Uninstall();
   twattila::screen_space_shadows::Uninstall();
   tw::engine_tweaks::Uninstall(graphics_options);
+  twattila::engine_code::Uninstall();
   twattila::graphics_hooks::Uninstall();
   twattila::light_bounce::Uninstall();
   twattila::ao_pass::Uninstall();

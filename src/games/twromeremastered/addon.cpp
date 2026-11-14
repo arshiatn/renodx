@@ -36,10 +36,14 @@
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../twattila/device_loss.hpp"
+#include "../twattila/frame_generation.hpp"
 #include "../twattila/frame_trace.hpp"
 #include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "../twattila/reflex.hpp"
+#include "./contact_shadows.hpp"
 #include "./dlaa.hpp"
+#include "./ray_tracing.hpp"
 #include "./shared.h"
 #include "./trace_reads.hpp"
 
@@ -137,6 +141,13 @@ void ApplyResetPreset() {
 
       // Active experimental controls
       {"AntiAliasing", 0.f},
+      {"RayTracedSunShadows", 0.f},
+      {"RayTracedAmbientOcclusion", 0.f},
+      {"RayTracedDebugView", 0.f},
+      {"ScreenSpaceShadows", 0.f},
+      {"ScreenSpaceShadowsLength", 2.f},
+      {"ScreenSpaceShadowsThickness", 0.005f},
+      {"FrameGeneration", 0.f},
       {"TestSunShadowsOff", 0.f},
       {"TestAmbientOcclusionOff", 0.f},
       // {"auto_exposure_highlight_protection", 0.f},
@@ -558,8 +569,23 @@ void OnPostDraw(reshade::api::command_list* cmd_list, uint32_t hash) {
                                     viewport.Height, viewport.TopLeftX, viewport.TopLeftY, describe(target.Get()), describe(input.Get())));
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*, uint32_t,
-               const reshade::api::rect*) {
+// Frame generation (DLAA keeps the frames: dlaa.hpp) and Reflex's rows: off, 2x-6x, Dynamic; off, on, on + boost; fps.
+float frame_generation = 0.f;
+float reflex = 0.f;
+float frame_limit = 0.f;
+
+void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
+               uint32_t, const reshade::api::rect*) {
+  // 2-6 frames shown per rendered frame, 1 Dynamic (twattila/frame_generation.hpp), 0 off.
+  const uint32_t multiplier = (frame_generation >= 6.f ? 1u : (frame_generation >= 1.f ? static_cast<uint32_t>(frame_generation) + 1u : 0u));
+  twattila::frame_generation::Update({
+      .multiplier = (twromeremastered::dlaa::setting != 0.f ? multiplier : 0u),
+      .reflex_boost = (reflex == 2.f),
+      .frame_limit = static_cast<uint32_t>(frame_limit),
+      .sdr_output = (shader_injection.swap_chain_encoding == 2.f),
+  });
+  twattila::reflex::Update(swapchain, static_cast<uint32_t>(reflex), static_cast<uint32_t>(frame_limit));
+  twromeremastered::dlaa::contact = (twromeremastered::contact_shadows::rows.enabled != 0.f);
   const bool drew_3d = post_drawn.exchange(false, std::memory_order_relaxed);
   twattila::frame_trace::OnPresent(false, drew_3d);
   if (drew_3d || twattila::frame_trace::Tracing()) {
@@ -669,20 +695,37 @@ void BuildRuntimeData() {
                               if (test_sun_shadows_off != 0.f) { ClearOutputToOne(cmd_list, true, &logged_test_shadows, "the sun's shadow mask"); }
                             }};
   }
+  // The rays (ray_tracing.hpp): traced before ASSAO's apply (or this resolve), multiplied into their targets after.
   for (const uint32_t hash : SHADOW_MASK_PIXEL_SHADERS) {
-    custom_shaders[hash] = {.crc32 = hash, .on_drawn = [](reshade::api::command_list* cmd_list) {
+    custom_shaders[hash] = {.crc32 = hash,
+                            .on_draw = [](reshade::api::command_list* cmd_list) {
+                              twromeremastered::ray_tracing::Trace(cmd_list);
+                              return true;
+                            },
+                            .on_drawn = [](reshade::api::command_list* cmd_list) {
                               twromeremastered::dlaa::KeepDepth(cmd_list, false);
                               if (test_sun_shadows_off != 0.f) { ClearOutputToOne(cmd_list, false, &logged_test_shadows, "the sun's shadow mask"); }
+                              twromeremastered::ray_tracing::Multiply(cmd_list, false);
+                              twromeremastered::contact_shadows::Apply(cmd_list);
                             }};
   }
   for (const uint32_t hash : TONE_MAPPER_SHADERS) {
-    custom_shaders[hash].on_drawn = twromeremastered::dlaa::OnToneMapped;
+    custom_shaders[hash].on_drawn = [](reshade::api::command_list* cmd_list) {
+      twromeremastered::dlaa::OnToneMapped(cmd_list);
+      twromeremastered::ray_tracing::OnToneMapped(cmd_list);
+    };
   }
   for (const uint32_t hash : SMAA_EDGE_AND_WEIGHT_SHADERS) {
     custom_shaders[hash] = {.crc32 = hash, .on_draw = [](reshade::api::command_list*) { return !twromeremastered::dlaa::Evaluated(); }};
   }
-  custom_shaders[AO_APPLY_PIXEL_SHADER] = {.crc32 = AO_APPLY_PIXEL_SHADER, .on_drawn = [](reshade::api::command_list* cmd_list) {
+  custom_shaders[AO_APPLY_PIXEL_SHADER] = {.crc32 = AO_APPLY_PIXEL_SHADER,
+                                           .on_draw = [](reshade::api::command_list* cmd_list) {
+                                             twromeremastered::ray_tracing::Trace(cmd_list);
+                                             return true;
+                                           },
+                                           .on_drawn = [](reshade::api::command_list* cmd_list) {
                                              if (test_ao_off != 0.f) { ClearOutputToOne(cmd_list, false, &logged_test_ao, "the ambient occlusion"); }
+                                             twromeremastered::ray_tracing::Multiply(cmd_list, true);
                                            }};
   // The trees' AO drawn into ASSAO's target: left out while the Test row is on.
   custom_shaders[TREE_AO_PIXEL_SHADER] = {.crc32 = TREE_AO_PIXEL_SHADER, .on_draw = [](reshade::api::command_list*) { return test_ao_off == 0.f; }};
@@ -1802,13 +1845,129 @@ void ConfigureAddon() {
           .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
+          .key = "FrameGeneration",
+          .binding = &frame_generation,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Frame Generation",
+          .section = "Graphics (Experimental)",
+          .tooltip = "NVIDIA DLSS Frame Generation: frames shown per rendered frame. Turn the game's VSync off.\n"
+                     "2x: RTX 40 or newer. 3x to 6x and Dynamic: RTX 50. Needs DLAA and a windowed or borderless game.\n"
+                     "Experimental, off by default.",
+          .labels = {"Off", "2x", "3x", "4x", "5x", "6x", "Dynamic"},
+          .is_enabled = [] { return twromeremastered::dlaa::setting != 0.f; },
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "Reflex",
+          .binding = &reflex,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "NVIDIA Reflex",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Less input lag on NVIDIA GPUs: each frame starts only as the GPU needs it. Boost also keeps the\n"
+                     "GPU's clocks up. Always on with frame generation. Experimental, off by default.",
+          .labels = {"Off", "On", "On + Boost"},
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FrameGenerationFrameLimit",
+          .binding = &frame_limit,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Frame Rate Limit",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Caps the rendered frame rate with NVIDIA Reflex (frame generation multiplies it). Needs Reflex\n"
+                     "or frame generation on. 0: off.",
+          .min = 0.f,
+          .max = 240.f,
+          .format = "%d fps",
+          .is_enabled = [] { return reflex != 0.f || (twromeremastered::dlaa::setting != 0.f && frame_generation != 0.f); },
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSunShadows",
+          .binding = &twromeremastered::ray_tracing::rows.sun_shadows,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Sun Shadows",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Adds ray-traced sun shadows to the game's (buildings, terrain, trees; soldiers keep the game's). Restart the "
+                     "game after turning it on. Experimental, off by default.",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedAmbientOcclusion",
+          .binding = &twromeremastered::ray_tracing::rows.ambient_occlusion,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Ambient Occlusion",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Adds ray-traced ambient occlusion to the game's. Restart the game after turning it on. Experimental, off by "
+                     "default.",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedDebugView",
+          .binding = &twromeremastered::ray_tracing::rows.debug_view,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Ray Tracing Debug View",
+          .section = "Graphics (Experimental)",
+          .tooltip = "A ray-traced effect's raw result as the picture, to check it works. Magenta: it made nothing.",
+          .labels = {"Off", "Sun Shadows", "Ambient Occlusion"},
+          .is_visible = [] {
+            return IsAdvancedSettings()
+                   && (twromeremastered::ray_tracing::rows.sun_shadows != 0.f || twromeremastered::ray_tracing::rows.ambient_occlusion != 0.f);
+          },
+      },
+      new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "DLAA needs the full download from GitHub: github.com/arshiatn/renodx/releases",
+          .label = "DLAA, frame generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases",
           .section = "Graphics (Experimental)",
           .tint = 0xFF5050,
           .is_visible = []() {
-            return IsAdvancedSettings() && twromeremastered::dlaa::setting != 0.f && !twattila::dlaa_bridge::HelperInstalled();
+            const bool wanted = twromeremastered::dlaa::setting != 0.f || twromeremastered::ray_tracing::rows.sun_shadows != 0.f
+                                || twromeremastered::ray_tracing::rows.ambient_occlusion != 0.f;
+            return IsAdvancedSettings() && wanted && !twattila::dlaa_bridge::HelperInstalled();
           },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ScreenSpaceShadows",
+          .binding = &twromeremastered::contact_shadows::rows.enabled,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Screen-Space Shadows",
+          .section = "Graphics (Experimental)",
+          .tooltip = "Fine sun shadows from what is on screen (Bend Studio's): soldiers, weapons and small details get\n"
+                     "contact shadows the shadow map is too coarse for. Needs in-game shadows. Experimental, off by default.",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ScreenSpaceShadowsLength",
+          .binding = &twromeremastered::contact_shadows::rows.length,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 2.f,
+          .label = "Screen-Space Shadows Length",
+          .section = "Graphics (Experimental)",
+          .tooltip = "How far the shadows reach, in screen pixels. Longer: heavier.",
+          .labels = {"60", "120", "240", "480", "960", "1920"},
+          .is_enabled = [] { return twromeremastered::contact_shadows::rows.enabled != 0.f; },
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "ScreenSpaceShadowsThickness",
+          .binding = &twromeremastered::contact_shadows::rows.thickness,
+          .default_value = 0.005f,
+          .label = "Screen-Space Shadows Thickness",
+          .section = "Graphics (Experimental)",
+          .tooltip = "How thick objects are taken to be. Lower: thinner shadows, light gets behind things;\n"
+                     "higher: fuller shadows, more halo-like shading behind objects.",
+          .min = 0.001f,
+          .max = 0.05f,
+          .format = "%.3f",
+          .is_enabled = [] { return twromeremastered::contact_shadows::rows.enabled != 0.f; },
+          .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
           .key = "TestSunShadowsOff",
@@ -1843,6 +2002,18 @@ void ConfigureAddon() {
             renodx::utils::log::i("[Rome Remastered] Trace One Frame: renodx_trace_now written.");
           },
           .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Record Ray Tracing Profile (30 s)",
+          .section = "Tools",
+          .tooltip = "30 s of every frame's ray tracing costs into tw_rt_profile.csv next to the game's exe.\n"
+                     "Turn the effects on, press, then move the camera over the map.",
+          .on_change = [] { twattila::rt_scene::StartProfile(); },
+          .is_visible = [] {
+            return IsAdvancedSettings()
+                   && (twromeremastered::ray_tracing::rows.sun_shadows != 0.f || twromeremastered::ray_tracing::rows.ambient_occlusion != 0.f);
+          },
       },
   });
 
@@ -1938,8 +2109,17 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
   twromeremastered::dlaa::Install();
+  // The swap chain shader reads its constants at b13 (frame_generation's default).
+  twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
+                                      sizeof(shader_injection), __fg_hdr10);
+  twattila::reflex::Install();
+  twromeremastered::contact_shadows::Install();
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  // A ray tracing row on at launch: its scene's shaders kept from the start.
+  if (twromeremastered::ray_tracing::rows.sun_shadows != 0.f || twromeremastered::ray_tracing::rows.ambient_occlusion != 0.f) {
+    twromeremastered::ray_tracing::Install();
+  }
 
   // Before the swapchain mod: a new chain's output is decided first (output_encoding), a removed device's chain goes.
   twattila::device_loss::Install();
@@ -1967,6 +2147,10 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twromeremastered::dlaa::Uninstall();
+  twromeremastered::ray_tracing::Uninstall();
+  twattila::frame_generation::Uninstall();
+  twattila::reflex::Uninstall();
+  twromeremastered::contact_shadows::Uninstall();
 
   reshade::unregister_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
