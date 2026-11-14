@@ -46,6 +46,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/particle_layer.hpp"
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
@@ -66,6 +67,7 @@
 #include "./rt_outside_view_unit_gs.h"
 #include "./rt_outside_view_world_gs.h"
 #include "../twwarhammer2/rt_outside_view_world_uv_gs.h"
+#include "../twtroy/rt_outside_view_colour_world_uv_gs.h"
 #include "./fog_strength.hpp"
 #include "./rt_particle_quads_gs.h"
 #include "./shared.h"
@@ -1259,6 +1261,41 @@ void BuildRuntimeData() {
         .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
+        .key = "VfxHalfResolution",
+        .binding = &twattila::particle_layer::half_resolution_row,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Particle Resolution",
+        .section = "Extra (Experimental)",
+        .tooltip = "Smoke, fire and dust drawn at half or a quarter of the render's size.\n"
+                   "Much faster in big fires and smoke, softer particles.",
+        .labels = {"Full", "Half", "Quarter"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxFullResolutionEdges",
+        .binding = &twattila::particle_layer::edges_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 1.f,
+        .label = "Full-Resolution Particle Edges",
+        .section = "Extra (Experimental)",
+        .tooltip = "Smoke, fire and dust stay sharp against the outlines of units, trees and walls:\n"
+                   "drawn at full size there. Small cost.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
+    },
+    new renodx::utils::settings::Setting{
+        .key = "VfxParticleSmoothing",
+        .binding = &twattila::particle_layer::smoothing_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Half-Size Particles",
+        .section = "Extra (Experimental)",
+        .tooltip = "Half-size smoke, fire and dust keep clean edges against units and flicker less.\n"
+                   "Small cost.",
+        .labels = {"Off", "On"},
+        .is_enabled = [] { return twattila::particle_layer::half_resolution_row != 0.f; },
+    },
+    new renodx::utils::settings::Setting{
         .key = "filmgrain",
         .binding = &shader_injection.filmgrain,
         .default_value = 0.f,
@@ -1531,6 +1568,7 @@ tw::engine_tweaks::Option contact_shadow_quality;
 // Shadow Map Size (shadow_map.hpp): the highest Shadows settings' shadow map, an index into SHADOW_MAP_SIZES.
 float shadow_map_size = 0.f;
 constexpr std::array<uint32_t, 4> SHADOW_MAP_SIZES = {0, 8192, 12288, 16384};  // 0: the game's (6144)
+float shadow_cascades_row = 0.f;  // Three Shadow Cascades Under Rays (shadow_map.hpp), with the rays' sun shadows
 // Every engine option above, then the tests' (Graphics 2 of 2: more_tests.h, twattila/engine_tests.hpp).
 std::vector<tw::engine_tweaks::Option*> graphics_options;
 std::vector<twattila::engine_tests::EngineTest> engine_tests;
@@ -1572,6 +1610,23 @@ constexpr std::array<twattila::rt_scene::SmokePixelShader, 2> SMOKE_PIXEL_SHADER
     {.hash = 0x3F1B86E1},
     {.hash = 0xE8524BB1, .view_shift = 3, .sampler_shift = 2},
 }};
+// Particle Resolution (twattila/particle_layer.hpp, Troy's Options): Pharaoh's lit particles are one instanced draw a frame (VS
+// 109B79CE with 3F1B86E1 in all 23 traced frames with particles), blended over (one / inverse source alpha) into
+// the display-size light buffer at the render size against the read-only depth; their soft edges read the depth at the
+// screen position x the camera's g_render_target_dimensions (c31). The VS also draws their lights (5AD46115) and decals: the
+// lit pixel shaders open the layer, Troy's ten by name (particle_vfx_main ps_main_high_quality with each shadow method, shader
+// model 4.1, the game's MSAA; effects quality 0-2's ps_main). The light buffer's first reader after them: the luma statistics
+// (hdr_tone_mapper cs50_compute_luma_stats BAF987B3, a dispatch: 10 of 23) or the ACES tone mapper 976C1C74 (13 of 23),
+// nothing drawn into it in between; else the other tone mappers by name and the indicators (ps40_main_deferred 979C5DD9, Troy's
+// 56D3757C: they stay over the particles). tools\tw\pharaoh\p2ph\p2ph_particle_order.txt (the runs' 24 traces).
+constexpr std::array<uint32_t, 10> PARTICLE_LAYER_SHADERS = {
+    0x3F1B86E1, 0x9DB92B1E, 0xC5037D2E, 0xC33E3C68,  // ps_main_high_quality: shadows, baked only, none, shader model 4.1
+    0x740B2536, 0x9D4E637C, 0x2E620275, 0xC4CBFC2D,  // ps_main_high_quality_ms (the game's MSAA), the same four
+    0xE8524BB1, 0xD631B8D4,                          // ps_main: shader model 5, 4.1
+};
+constexpr std::array<uint32_t, 7> PARTICLE_LAYER_READERS = {0x979C5DD9, 0x976C1C74, 0x3C41551E, 0x3348243E,
+                                                            0xE6643826, 0x5237C183, 0xB2CE170B};
+constexpr std::array<uint32_t, 1> PARTICLE_LAYER_DISPATCH_READERS = {0xBAF987B3};
 // The fires (burning buildings) in the rays, behind their own row: the particle lights' draw (ps_main_deferred_dynamic_light
 // 5AD46115 with 109B79CE: 60 indices an instance, 13-85 instances in the phase 2 captures) holds its lights in the particle
 // list, not in instances: streamed from the vertex shader's outputs (Troy's rt_particle_lights: 109B79CE's output signature
@@ -1602,6 +1657,8 @@ constexpr std::array<uint32_t, 12> ATLAS_SUN_SHADERS = {0xF883F5B2, 0xFA856110, 
                                                         0xC701CDD0, 0xE5A6A379, 0x3323BDCC, 0x47DDD6EE, 0x955658C3, 0xF4E19A48};
 float rays_replace_maps_row = 0.f;
 float rays_skip_cascades_row = 0.f;
+// Rarer Objects in the Rays (Experimental, as Attila's): families drawn in no trace (SCENE_SHADERS' held_row).
+float rays_untraced_casters_row = 0.f;
 // Fog Shadows (FOG_SHADERS): in a draw where rt_scene's fog hook (InstallFogShadows, registered before this) bound this frame's
 // rays at t43, our copy (shaders/battlefog00: the march's gate false, the sun's light in the fog x the rays) draws in its place
 // and the game's shader is bound again after it (finalize); otherwise the game's own bytes.
@@ -1923,7 +1980,15 @@ constexpr std::array<twattila::rt_scene::PixelMask, 8> CUT_OUT_MASKS = {{
 // shadow there the game's kept baked map.
 // The sprite soldiers' G-buffer pixel shader (imposter ps40_main_gbuffer): their scene draws (SCENE_SHADERS' imposter rows).
 constexpr std::array<twattila::rt_scene::PixelMask, 1> IMPOSTER_MASKS = {{{.pixel_shader = 0x03D4B559}}};
-constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
+// The campaign's trees (rigidcampaigntrees vs40_main 16D14106) and their G-buffer E924C902: it discards where t0.w x a dissolve
+// map falls below the distance fade, and again against the angle to the camera (Troy's 07295514 instruction for instruction,
+// the fade at cb1 there cb0); the rays cut at t0.w alone (the helper's 0.5), as Troy's.
+constexpr std::array<twattila::rt_scene::PixelMask, 1> CAMPAIGN_TREE_MASKS = {{{.pixel_shader = 0xE924C902, .slot = 0}}};
+// The campaign's trees and plants (rigidcampaignvegetation vs40_main E7792B60): its one G-buffer, EB0089B4, discards below 0.5
+// of its diffuse map's alpha (t2.w at (TEXCOORD0.w, TEXCOORD1.w)), Troy's 74B2E609's test; its MSAA G-buffer 191C5CCD stays
+// out (no rays under the game's MSAA), and so does its z-prefill B39D02A5 (the same draw again).
+constexpr std::array<twattila::rt_scene::PixelMask, 1> VEGETATION_MASKS = {{{.pixel_shader = 0xEB0089B4, .slot = 2}}};
+constexpr std::array<twattila::rt_scene::SceneShader, 37> SCENE_SHADERS = {{
     {.hash = 0x377DE0D5, .capture_shader = __rt_capture_terrain_geom_new, .terrain = true},
     {.hash = 0xDCC840AF, .capture_shader = __rt_capture_terrain_custom_material, .terrain = true},
     {.hash = 0xFAB7BA95, .capture_shader = __rt_capture_terrain_custom, .terrain = true},
@@ -1945,6 +2010,13 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     // The campaign's far trees (campaigntreebillboards 0xCE5AA8D1, Troy's DF8EAF69 at 0.47 x: no shadow-pass draw, so only with Far
     // Tree Shadows): turned to the sun, their alpha 7CB58C1B's t0 (below 0.5 discarded). Its vertex shader reads the shroud at t0.
     {.hash = 0xCE5AA8D1, .capture_shader = __rt_capture_campaign_billboard, .dynamic = true, .foliage = true, .sun_facing = true, .sun_slot = 1, .far_tree = true},
+    // The campaign's trees (rigidcampaigntrees vs40_main 16D14106; in no trace, level B): Troy's 07321725 line for line, its
+    // capture (rigid, instanced, rows in POSITION1-3, no wind; the UV o3.xy of E924C902's t0 test). WARP: test\tw_pharaoh.
+    {.hash = 0x16D14106, .capture_shader = __rt_capture_campaign_trees, .foliage = true, .pixel_masks = CAMPAIGN_TREE_MASKS},
+    // The campaign's trees and plants in view (rigidcampaignvegetation vs40_main E7792B60; in no trace, level B), every frame as
+    // drawn (their wind and their lean toward a high camera): Troy's 04C7C807 capture made again from Pharaoh's bytes (the same
+    // code, the wind constants at other offsets). Out of view: their shadow pass 3368E9E7 below. WARP: test\tw_pharaoh.
+    {.hash = 0xE7792B60, .capture_shader = __rt_capture_campaign_vegetation, .dynamic = true, .foliage = true, .pixel_masks = VEGETATION_MASKS},
     // Cloth (phar_rigid_battle_cloth_wind) and flags (rigid_default_flag): sheets moved by the time and the wind, every frame.
     {.hash = 0x2F2A0E7E, .capture_shader = __rt_capture_cloth_wind, .dynamic = true, .thin = true},
     {.hash = 0x8DE94E2F, .capture_shader = __rt_capture_flag, .dynamic = true, .thin = true},
@@ -1953,10 +2025,17 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     // In no trace (level B): the sail symbols (88A29130, a decal on the sail) stay out.
     {.hash = 0xED0BC391, .capture_shader = __rt_capture_sail, .dynamic = true, .thin = true},
     {.hash = 0xDD5D5694, .capture_shader = __rt_capture_rope, .dynamic = true, .thin = true},
+    // The placed ropes (rope vs40_main_rigid 655AB38D; in no trace, level B): instance rows, then turned toward the camera in view
+    // space and projected; captured as Attila's 3926A823 (make_wind_motion_vs.py :world_view: that view-space point back to the
+    // world through inv_view), solid, every frame as drawn, under Rarer Objects in the Rays. WARP: test\tw_pharaoh.
+    {.hash = 0x655AB38D, .capture_shader = __rt_capture_rope_rigid, .dynamic = true, .held_row = &rays_untraced_casters_row},
     {.hash = 0xFF969484, .capture_shader = __rt_capture_unit, .dynamic = true},
     {.hash = 0x4A716936, .capture_shader = __rt_capture_unit_4_bones, .dynamic = true},
     {.hash = 0x475A8CDF, .capture_shader = __rt_capture_unit_dismember, .dynamic = true},
     {.hash = 0x07936F02, .capture_shader = __rt_capture_unit_4_bones_dismember, .dynamic = true},
+    // The fur-clad units (weighted4_fur_alpha vs40_main_4_bones_fur 621E86DD: the 4-bone skinning plus the fur's sway; in no
+    // trace, level B), as Troy's EE95696C: solid, as the other units. WARP: test\tw_pharaoh.
+    {.hash = 0x621E86DD, .capture_shader = __rt_capture_unit_4_bones_fur, .dynamic = true},
     {.hash = 0xE710D4E7, .capture_shader = __rt_capture_grass_e710, .dynamic = true, .foliage = true, .grass = true},
     // The shadow pass's casters (pass 6 of tools\tw\pharaoh\phase2.md, into the 2 x 2 atlas): what is out of the main view still casts
     // there (rt_outside_view.gs_5_0.hlsl: the game's own draws, world positions from their vertex shaders' outputs). Every frame as drawn;
@@ -1975,6 +2054,9 @@ constexpr std::array<twattila::rt_scene::SceneShader, 32> SCENE_SHADERS = {{
     // C7350ED5 = its 5906CF6E): TEXCOORD0 the world, TEXCOORD1 the UV of the t0 test (alpha below 0.5). WARP on its own bytes:
     // tools\tw\warp_tests\outside_view_pharaoh_veg.
     {.hash = 0x3368E9E7, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_world_uv},
+    // The campaign's trees in the shadow pass (rigidcampaigntrees vs40_shadow 81696642; in no trace, level B): Troy's 5192C0BA
+    // line for line, COLOR0 first, then TEXCOORD0 the world, TEXCOORD1 the UV of E924C902's t0 test: Troy's RT_WORLD_UV + RT_COLOUR.
+    {.hash = 0x81696642, .dynamic = true, .foliage = true, .cascade_keep = __rt_outside_view_colour_world_uv},
     // The sprite soldiers (imposter vs40_main_gs: points its gs_main turns into cards; in no trace, level B): streamed out through
     // twattila/rt_capture_imposter_gs in place of gs_main (SceneShader::capture_geometry_shader), the card turned to the sun; only
     // the G-buffer draw (ps40_main_gbuffer 03D4B559: its t0's alpha the cut-out, from 0.376), as Sprite Soldier Shadows
@@ -2126,10 +2208,12 @@ constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {
     {.shader_hash = 0xF4E19A48, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .sun_direction = 4, .ao_slot = 12},  // skinlm_interior
 }};
 
-// The shadow map size, before the game builds its shadows.
+// The shadow map size and cascades, before the game builds its shadows.
 void OnInitDevice(reshade::api::device*) {
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
-  twpharaohdynasties::shadow_map::Install(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
+  twpharaohdynasties::shadow_map::Install(
+      SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)],
+      shadow_cascades_row != 0.f && twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).sun_shadows);
 }
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
@@ -2144,6 +2228,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f, false, (shader_injection.ssao_resolution != 0.f) ? 2.f : 1.f,
                             false);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  twattila::particle_layer::Update(swapchain);
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   // As Warhammer III's rows (the game's shadow maps under the rays shadow from behind the camera already: without Rays Replace
   // Shadow Maps the casters are for the other rays).
@@ -2179,7 +2264,8 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
-  twpharaohdynasties::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
+  twpharaohdynasties::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)],
+                                      shadow_cascades_row != 0.f && rt_settings.sun_shadows);
   twattila::light_count::OnPresent(rt_sliders.debug_log != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
@@ -2235,6 +2321,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. DXR: from rays, also what is off screen or hidden (turn Water Reflections\n"
                            "on below). Needs an upscaler.",
+    .untraced_casters_tooltip = "The fixed ropes of ships, tents and buildings also cast ray-traced shadows.",
 };
 
 void ConfigureAddon() {
@@ -2636,6 +2723,19 @@ void ConfigureAddon() {
                      "(16384: 1 GB or more). Applies after a restart or after changing the game's Shadows option.",
           .labels = {"6144 (Game's)", "8192", "12288", "16384"},
       },
+      // Taken into the rays' Shadows rows by graphics_page (as Attila's Two Shadow Cascades; Pharaoh's Medium has three).
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedShadowCascades",
+          .binding = &shadow_cascades_row,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Three Shadow Cascades Under Rays (Experimental)",
+          .section = "Graphics (Experimental)",
+          .tooltip = "With ray-traced shadows: the game prepares 3 shadow cascades, as at Shadows Medium, instead of 4,\n"
+                     "and its shadows end nearer. The rays shadow instead; less CPU time with many objects.\n"
+                     "Applies after a restart or after changing the game's Shadows option.",
+          .labels = {"Off", "On"},
+      },
       graphics_status,
       // Two empty lines between this section and the ambient occlusion (ATN).
       new renodx::utils::settings::Setting{
@@ -2842,6 +2942,7 @@ void ConfigureAddon() {
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row,
                                              // Smooth Banner Shadows: the thin sheets (cloth 2F2A0E7E, flags 8DE94E2F) don't
                                              // shade themselves (RT_SHEETS_UNSELFED). No Light Through All Banners: those
                                              // sheets are always thin here, and the unit banners (76225B91) cast nothing.
@@ -3024,6 +3125,11 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   renodx::utils::command_action::Register(
       OnSkyDomeGuides, {.shader_hash = 0x9CF980D0, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  // Last on the particle draws: the smoke's capture and the fires' lights see the game's targets and camera; the camera's
+  // target size at c31 (as Troy's).
+  twattila::particle_layer::Install(PARTICLE_LAYER_SHADERS, PARTICLE_LAYER_READERS,
+                                   {.dispatch_readers = PARTICLE_LAYER_DISPATCH_READERS, .render_target_dimensions = 31});
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
 
   reshade::register_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
   twattila::device_loss::InstallLast();
@@ -3079,6 +3185,8 @@ void DetachAddon() {
   twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   twattila::smoke_map::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::particle_layer::OnDestroyDevice);
+  twattila::particle_layer::Uninstall();
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();
 
