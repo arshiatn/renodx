@@ -1,9 +1,10 @@
 # The rays' captures that needed a new path in rt_core (tests.cpp): the sprite soldiers' imposter vertex shader of Warhammer
 # (sm 4.0 and 4.1), Troy, Warhammer II and Pharaoh streamed out through its game's gs_main and through
-# twattila/rt_capture_imposter_gs.h (the bytes the add-ons embed), and Warhammer's and Warhammer II's tessellated rigid objects
-# through their add-on's capture and rows shaders, on WARP. amd64 (the games are 64-bit).
+# twattila/rt_capture_imposter_gs.h (the bytes the add-ons embed), and Warhammer's, Warhammer II's and Warhammer III's tessellated
+# rigid objects through their add-on's capture and rows shaders, on WARP. amd64 (the games are 64-bit).
 # -GameShaders: the folder holding dump_shader_<game>_pack\cso (default the decompiler's, only read). -Built: the folder holding
-# <game>.include\embed (default this tree's build, after renodx-twwarhammer.addon64 and renodx-twwarhammer2.addon64). -OutDir:
+# <game>.include\embed (default this tree's build, after renodx-twwarhammer.addon64, renodx-twwarhammer2.addon64 and
+# renodx-twwarhammer3.addon64). -OutDir:
 # where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin). Holds tools/tw's GPU job lock
 # while it runs when -Lock names it.
 param([Parameter(Mandatory = $true)][string]$OutDir, [string]$GameShaders = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16', [string]$Built = '',

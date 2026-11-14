@@ -1,5 +1,13 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### Parity round 2 (2026-11-14 evening; built only, not run in game)
+
+- New: **Rarer Objects in the Rays (Experimental, off)** in Shadows' More Options, as Attila's, Warhammer's and Warhammer
+  II's: rigid objects the game tessellates (its Tessellation on; D5D2905E and 958EC025 into hull shader FE7929BE, in no
+  trace) cast ray-traced shadows, as their triangles without the displacement, which fades out 5 to 20 m from the camera.
+  WARP (`test/tw_rays_captures` T): the capture is the game's world position bit for bit, the rows its POSITION1-3, the
+  game's chain seen from far its triangles exactly; up close its displacement stays within the game's 0.1.
+
 ### Whole-frame check's code items (2026-11-14, shared with Attila; built only, not run in game)
 
 - New: **Faster Smoke Shadow Build (Experimental, off)**, after Smoke Shadow Quality (helper113): the smoke's BLAS built

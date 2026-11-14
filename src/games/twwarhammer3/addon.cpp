@@ -2840,6 +2840,7 @@ constexpr float TREE_REACH_METRES = 149.f;
 tw::engine_tweaks::Option* first_map_reach = nullptr;  // engine_tests' battle_shadow_split_0
 std::atomic_bool tree_reach_logged = false;
 float rays_one_at_a_place_row = 0.f;
+float rays_untraced_casters_row = 0.f;  // Rarer Objects in the Rays: the tessellated rigid objects (SCENE_SHADERS' held_row)
 float rays_banner_light_row = 0.f;
 float rays_branch_cut_outs_row = 0.f;
 float rays_faded_parts_row = 0.f;
@@ -3004,6 +3005,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                            "no rays needed; costs more, may shimmer. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
     .reflections_middle_label = "All Surfaces (Experimental)",
     .reflections_rays_label = "Ray-Traced (DXR, Experimental)",
+    .untraced_casters_tooltip = "Objects the game tessellates (its Tessellation on) also cast ray-traced shadows.",
 };
 
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -3097,9 +3099,16 @@ constexpr std::array<twattila::rt_scene::PixelMask, 2> GROUND_MESH_PASSES = {{
     {.pixel_shader = 0x90FBDD61},
 }};
 
-constexpr std::array<twattila::rt_scene::SceneShader, 46> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 48> SCENE_SHADERS = {{
     {.hash = 0xF0395CC4, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0xF0395CC4},  // fx_rigidanisotropic
     {.hash = 0x8EE34EC5, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .moving = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .key_family = 0x8EE34EC5},  // fx_rigidambientmapfiremesh
+    // Rigid objects with the game's Tessellation on (gfx_tesselation; HS FE7929BE, DS 187E9195: 3-control-point patches; in no trace,
+    // level B): D5D2905E has F0395CC4's input signature, 958EC025 8EE34EC5's (with last rows), and both write the world position
+    // as rt_capture_rigid (rows x the position scaled by its w at least 1, TEXCOORD0). The patches without the domain shader's
+    // displacement, which fades out 5 to 20 m from the camera; Rarer Objects in the Rays (Experimental, off). WARP against the
+    // game's bytes: test/tw_rays_captures (T).
+    {.hash = 0xD5D2905E, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .patch_triangles = true, .key_family = 0xF0395CC4, .held_row = &rays_untraced_casters_row},
+    {.hash = 0x958EC025, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .moving = true, .patch_triangles = true, .key_family = 0x8EE34EC5, .held_row = &rays_untraced_casters_row},
     // Buildings, tents, shrubs, mountains, rocks: the same position math as F0395CC4, by their bytes. 4F35D09F also draws water, decals and effects: its listed pixel shaders only.
     {.hash = 0x4F35D09F, .capture_shader = __rt_capture_rigid, .rows_shader = __rt_rows_rigid, .faded_rows_shader = __rt_rows_rigid_faded, .cut_out_shader = __rt_capture_rigid_cut_out, .clip_cut_outs = true, .uv_semantic = "TEXCOORD", .uv_semantic_index = 2, .pixel_masks = twwarhammer3::BUILDING_MASKS, .key_family = 0xF0395CC4},
     // Rocks. A rock's second draw into the terrain's targets (087C74E6, A5A266C3) only paints its blend: the same mesh again, not listed.
@@ -4033,6 +4042,7 @@ void ConfigureAddon() {
                                              .rays_banner_light = &rays_banner_light_row,
                                              .rays_branch_cut_outs = &rays_branch_cut_outs_row,
                                              .rays_unseen_cut_outs = &twwarhammer3::unseen_cut_outs_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row,
                                              .rays_start_past = &rt_sliders.start_past,
                                              .rays_faded_parts = &rays_faded_parts_row,
                                              .rays_trunks_as_drawn = &rays_trunks_as_drawn_row,
