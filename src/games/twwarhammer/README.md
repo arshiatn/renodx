@@ -1,5 +1,30 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Parity round 5 (2026-11-14; built only, not run in game)
+
+The table: tools/tw/wh1/parity_1114.md (HAVE 28, done now 17, left 2 (other agents' shared steps), needs a trace 3, won't
+get 13).
+
+- **Sails and ropes in the rays** (with Ray-Traced shadows): sails (thin: light comes through, as banners) and ropes cast
+  ray shadows, captured every frame as Attila's and Rome II's (test part 23). With Shadow Casters Out of View, sails and
+  ropes out of view cast too. The sail symbols stay out (they lie on their sail). None of ATN's traces drew them.
+- **Light Through Banners** (screen-space shadows) takes the sails too, as Attila's.
+- **Render scale**: the screen-space reflections' march (021D7515) at 50% marches as at 100% (part 24): nothing to change.
+- **Modded Auto Exposure (Experimental, off)**: Attila's two rows. The exposure's metered brightest point is capped at last
+  frame's average x 2^Sensitivity, so the sun or a fire darkens the frame less; the picture's highlights stay (part 25).
+
+Test list (in game, ATN):
+1. RT/PT, a scene with sails or ropes (ships, siege equipment): their ray shadows follow them, sails' shadows lighter than
+   solid ones; no stray triangles. Shadow Casters Out of View on: sails and ropes behind the camera still shade the view.
+2. Modded Auto Exposure on, a battle facing the sun or big fires: the frame darkens less than off; Sensitivity 1 the
+   strongest, 8 near the game's; off: as before.
+3. Light Through Banners above 0 (Shadows), sails in the sun: light through them as through banners.
+
+Not done: the reflections' march at render scale stops at the texture's edge, not the view's (rays leaving the view's right
+or bottom edge march on through what lies there: the game's cleared depth there ends them as at 100%; a 50% trace shows
+it). Modded Auto Exposure's effect on the picture is the game's CPU code's (unread): test 2. Sprite soldiers' shadows and
+the tessellated mesh wait for the shared steps.
+
 ### Parity round 3 (2026-11-14; built only, not run in game)
 
 - **Campaign trees and props' liquid in the rays** (with Ray-Traced shadows): the campaign's trees (rigidcampaigntrees) and
