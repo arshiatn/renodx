@@ -34,6 +34,7 @@
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../talesofarise_dlss/pixel_trace.hpp"
+#include "../twattila/draw_dispatch.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
@@ -2493,6 +2494,7 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
   // Before the Light Bounce's (its callback draws the sun draw again).
   // Ray tracing's at the sun draws first: its trace for the screen-space shadows and the AO filter after it.
   // The point lights' diffuse scale: D96A8DC3's literal 0x389FB405 (7.615242e-05; Warhammer III's, Pharaoh's).
@@ -2629,6 +2631,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(GoboSpotLightRays::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(FogRays::OnDestroyDevice);
 
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);

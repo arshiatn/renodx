@@ -184,6 +184,22 @@ struct CallbackRegistration {
 
 static thread_local uint64_t command_sequence = 0u;
 
+// Opt-in fast dispatch for this module (command_action_fast.hpp; only the Total War add-ons set it). Null: every
+// command takes RunCallbacks as before. Set: OfferOrRunCallbacks offers it each draw, indexed draw and dispatch first;
+// it returns false (before any callback ran) to leave the command to RunCallbacks, or true once it has done exactly
+// what RunCallbacks would (callbacks, replay) with the command's skip in `skip`.
+template <typename Arguments>
+static bool (*fast_run_callbacks)(CommandContext<Arguments>* context, bool* skip) = nullptr;
+// Told whenever this module changes registrations_by_pipeline_handle or the command-wide callbacks: the fast dispatch
+// borrows their entries across commands and must resolve them again.
+static void (*on_registrations_changed)() = nullptr;
+
+inline void NotifyRegistrationsChanged() {
+  if (on_registrations_changed != nullptr) {
+    on_registrations_changed();
+  }
+}
+
 struct PipelineRegistration {
   CallbackRegistration callback;
   renodx::utils::shader::PipelineShaderDetails* pipeline_details = nullptr;
@@ -240,17 +256,23 @@ inline void OnInitPipeline(
   }
   if (!prepared.registrations_by_command_type.empty()) {
     shared.data->registrations_by_pipeline_handle.insert_or_assign(info->pipeline.handle, std::move(prepared));
-  } else {
-    shared.data->registrations_by_pipeline_handle.erase(info->pipeline.handle);
+  } else if (shared.data->registrations_by_pipeline_handle.erase(info->pipeline.handle) == 0u && info->shader_details.empty()) {
+    // A state object (ReShade raises blend / depth / rasterizer / input layout objects again when D3D11 hands back an
+    // existing one): nothing the fast dispatch keeps changed. A shader pipeline always notifies: gates are kept on it.
+    return;
   }
+  NotifyRegistrationsChanged();
 }
 
 inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info) {
   if (shared.data != nullptr) {
-    shared.data->registrations_by_pipeline_handle.erase_if(info.pipeline.handle, [&](const auto& entry) {
+    const bool erased = shared.data->registrations_by_pipeline_handle.erase_if(info.pipeline.handle, [&](const auto& entry) {
       const auto& [pipeline_handle, matches] = entry;
       return matches.generation == info.generation;
     });
+    if (erased || !info.shader_details.empty()) {
+      NotifyRegistrationsChanged();
+    }
   }
 }
 
@@ -567,13 +589,24 @@ inline bool RunCallbacks(CommandContext<Arguments> context) {
   return true;
 }
 
+// RunCallbacks, the command offered to this module's fast dispatch first. Outside RunCallbacks: entering its frame
+// costs more than the fast dispatch does.
+template <typename Arguments>
+inline bool OfferOrRunCallbacks(CommandContext<Arguments> context) {
+  if (fast_run_callbacks<Arguments> != nullptr && shared.data != nullptr) {
+    context.command_id = ++command_sequence;
+    if (bool skip = false; fast_run_callbacks<Arguments>(&context, &skip)) return skip;
+  }
+  return RunCallbacks<Arguments>(context);
+}
+
 inline bool OnDraw(
     reshade::api::command_list* cmd_list,
     uint32_t vertex_count,
     uint32_t instance_count,
     uint32_t first_vertex,
     uint32_t first_instance) {
-  return RunCallbacks<DrawArguments>({
+  return OfferOrRunCallbacks<DrawArguments>({
       .cmd_list = cmd_list,
       .arguments = DrawArguments{
           .vertex_count = vertex_count,
@@ -591,7 +624,7 @@ inline bool OnDrawIndexed(
     uint32_t first_index,
     int32_t vertex_offset,
     uint32_t first_instance) {
-  return RunCallbacks<DrawIndexedArguments>({
+  return OfferOrRunCallbacks<DrawIndexedArguments>({
       .cmd_list = cmd_list,
       .arguments = DrawIndexedArguments{
           .index_count = index_count,
@@ -608,7 +641,7 @@ inline bool OnDispatch(
     uint32_t group_count_x,
     uint32_t group_count_y,
     uint32_t group_count_z) {
-  return RunCallbacks<DispatchArguments>({
+  return OfferOrRunCallbacks<DispatchArguments>({
       .cmd_list = cmd_list,
       .arguments = DispatchArguments{
           .group_count_x = group_count_x,
@@ -724,6 +757,7 @@ inline void RegisterCallback(Callback&& callback, Filter filter) {
       auto& registrations = data->global_callbacks_by_command_type[command_type];
       update_registrations(&registrations, command_type);
     }
+    internal::NotifyRegistrationsChanged();
     return;
   }
   data->callback_registrations_by_shader_hash.lazy_emplace_l(
@@ -816,6 +850,7 @@ inline void RegisterCallback(Callback&& callback, Filter filter, const T* callba
       auto& registrations = data->global_callbacks_by_command_type[command_type];
       update_registrations(&registrations, command_type);
     }
+    internal::NotifyRegistrationsChanged();
     return;
   }
   data->callback_registrations_by_shader_hash.lazy_emplace_l(
@@ -911,6 +946,7 @@ inline void UnregisterCallback(Callback&& callback) {
   for (const auto pipeline_handle : empty_pipelines) {
     data->registrations_by_pipeline_handle.erase(pipeline_handle);
   }
+  internal::NotifyRegistrationsChanged();
 }
 
 template <typename Callback>

@@ -27,6 +27,7 @@
 #include "../../mods/swapchain.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/draw_dispatch.hpp"
 #include "../twattila/graphics_hooks.hpp"
 #include "../twattila/ao_pass.hpp"
 #include "../twattila/light_bounce.hpp"
@@ -2469,6 +2470,7 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
   // Before the Light Bounce's (its callback draws the sun draw again).
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace. lighting_VS_PS as Attila's (WARP sun test,
   // tools/tw/rome2/sun_test): the ambient cube at float 8 (c2-c7, the paths' sky), the sun colour at float 4 (c1, x 0.004
@@ -2594,6 +2596,7 @@ void DetachAddon() {
   twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
   twattila::smoke_map::Uninstall();
 
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);

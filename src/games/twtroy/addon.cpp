@@ -28,6 +28,7 @@
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../twattila/ao_pass.hpp"
+#include "../twattila/draw_dispatch.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/light_count.hpp"
 #include "../twattila/particle_layer.hpp"
@@ -2292,6 +2293,7 @@ bool AttachAddon() {
                                         .apply_code = __0x00645DA1},
                                        &rt_sliders);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
   // The tests' clock first: the Light Bounce's callback draws the sun draws itself (none after it runs).
   for (const auto& draw : LIGHT_BOUNCE_DRAWS) {
     renodx::utils::command_action::Register(
@@ -2453,6 +2455,7 @@ void DetachAddon() {
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();
 
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);

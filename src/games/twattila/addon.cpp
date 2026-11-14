@@ -41,6 +41,7 @@
 #include "./anti_aliasing.hpp"
 #include "./ao_pass.hpp"
 #include "./device_loss.hpp"
+#include "./draw_dispatch.hpp"
 #include "./engine_code.hpp"
 #include "./engine_tests.hpp"
 #include "./feature_settings.hpp"
@@ -2085,6 +2086,7 @@ bool AttachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
   // Before the Light Bounce's (its callback draws the sun draw again).
   twattila::anti_aliasing::Install(LIGHT_BOUNCE_DRAWS, {.shaders = MOTION_SHADERS,
                                                         .wind_pixel_shader = __motion_wind,
@@ -2188,6 +2190,7 @@ void DetachAddon() {
   twattila::smoke_map::Uninstall();
   talesofarise::pixel_trace::Stop();
 
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);

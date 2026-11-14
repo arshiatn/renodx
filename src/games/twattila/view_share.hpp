@@ -29,6 +29,7 @@
 #include <include/reshade.hpp>
 
 #include "../../utils/command_action.hpp"
+#include "../../utils/command_action_fast.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/format.hpp"
 #include "../../utils/hash.hpp"
@@ -709,16 +710,21 @@ inline void OnInitPipeline(renodx::utils::pipeline::PipelineInfo* info, uint32_t
     }
     const auto* desc = static_cast<const reshade::api::shader_desc*>(subobjects[index].data);
     if (desc == nullptr) continue;
-    const std::unique_lock lock(runtime.mutex);
+    std::unique_lock lock(runtime.mutex);
     if (const auto wanted = runtime.wanted_code.find(desc->code); wanted != runtime.wanted_code.end()) {
       runtime.pipelines[info->pipeline.handle] = wanted->second;
+      lock.unlock();
+      // OnCommand's gate answers from runtime.pipelines; command_action's init callback already ran.
+      renodx::utils::command_action::fast::Invalidate();
     }
   }
 }
 
 inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info) {
-  const std::unique_lock lock(runtime.mutex);
-  runtime.pipelines.erase(info.pipeline.handle);
+  std::unique_lock lock(runtime.mutex);
+  if (runtime.pipelines.erase(info.pipeline.handle) == 0u) return;
+  lock.unlock();
+  renodx::utils::command_action::fast::Invalidate();
 }
 
 // cb12 for a patched (or render_scale) shader's draw / dispatch: `values` (xy the draw's share, zw the frame's), for
@@ -982,6 +988,17 @@ inline void Install(std::span<const RegionRead> region_reads = {}, std::span<con
   renodx::utils::pipeline::RegisterOnDestroyCallback(internal::OnDestroyPipeline);
   renodx::utils::command_action::Register(internal::OnCommand, {.command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW
                                                                                  | renodx::utils::command_action::COMMAND_TYPE_DISPATCH});
+  // OnCommand acts only while the frame is scaled, on a draw whose pixel shader (a dispatch: compute shader) is patched.
+  renodx::utils::command_action::fast::SetGate(
+      internal::OnCommand,
+      {
+          .active = [](reshade::api::command_list*) { return internal::frame_share_x.load(std::memory_order_relaxed) != 0.f; },
+          .pipeline_active = [](reshade::api::pipeline pipeline, reshade::api::pipeline_stage stage) {
+            if (stage != reshade::api::pipeline_stage::pixel_shader && stage != reshade::api::pipeline_stage::compute_shader) return false;
+            const std::shared_lock lock(internal::runtime.mutex);
+            return internal::runtime.pipelines.contains(pipeline.handle);
+          },
+      });
   for (const uint32_t hash : vertex_shaders) {
     renodx::utils::command_action::Register(
         internal::OnVertexShareDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -992,6 +1009,7 @@ inline void Uninstall() {
   renodx::utils::pipeline::UnregisterOnCreateCallback(internal::OnCreatePipeline);
   renodx::utils::pipeline::UnregisterOnInitCallback(internal::OnInitPipeline);
   renodx::utils::pipeline::UnregisterOnDestroyCallback(internal::OnDestroyPipeline);
+  renodx::utils::command_action::fast::ClearGate(internal::OnCommand);
   renodx::utils::command_action::Unregister(internal::OnCommand);
   renodx::utils::command_action::Unregister(internal::OnVertexShareDraw);
 }
