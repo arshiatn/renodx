@@ -20,6 +20,32 @@
   (helper113, the reflections pass at ATN's Warhammer III rows, 3 x 300 frames): his rows 1.35-1.42 ms, this 1.06 ms. Own
   ReSTIR is cheap on the narrow lobe only: with Reflections as Rough as the Game's on it costs 2.27-2.32 ms. Armour and metal
   look more mirror-like. Shared step: the graphics page places the row where a game has it (other games' pages unchanged).
+- Trace: with ReShade.ini `[renodx] FrameTraceReads=1` a frame trace adds each skinned unit draw's geometry (index and
+  vertex buffers, offsets, instances) and its first instance's bytes; `tools\tw\wh3_parity\p2w3_unit_geometry.py` counts how
+  many shadow-pass unit draws repeat a main-pass draw: the evidence a cross-pass unit capture needs before it can skip the
+  shadow pass's copy. Off by default (nothing read).
+
+Not done in round 2:
+- Cross-pass unit capture key (unit round D): needs one battle trace with FrameTraceReads=1 (bm_siege, RT/PT on); level C
+  until then.
+- TBB grain rows (unit round E): Warhammer III has no tbb grain value in its exe; Attila's five rows wait for the
+  coordinator.
+- Skip the Game's Shadow Map Work: CPU round 4 (needs a Warhammer III data run, ATN decides). Shadow cascades: Warhammer III
+  has no cascade count to set (no name, maps 4096 x 4096 x 4 in every trace).
+- Far unit imposters (fx_imposter): drawn in no trace yet.
+
+Test in game (ATN):
+- Siege benchmark, your preset, the three new rows Off (default): looks and runs as v59 (control). Send nothing unless it
+  differs.
+- Siege benchmark, RT/PT, the game's Tessellation on, paused at a gate tower: Rarer Objects in the Rays Off / On: the tower
+  and gate cast ray-traced shadows as the walls do, none floating off them. Decides: default on. Send two screenshots and
+  `ReShade.log`.
+- Same run: Faster Reflections Off / On, Time Each Pass (One Frame) each way: the reflections pass about 0.3 ms less; armour
+  and wet stone more mirror-like. Decides: keep the row, put it in RT/PT. Send `ReShade.log`.
+- A battle with smoke or fire behind units, Smooth Half-Size Particles Off, paused: Particle Edges by Depth Off / On: unit
+  outlines sharp against the smoke, no dark or bright fringe. Decides: default on. Send two screenshots.
+- Siege benchmark with `[renodx] FrameTrace=1` and `FrameTraceReads=1` in ReShade.ini (no picture change): send
+  `tw_frame_trace.txt` for the cross-pass unit capture key.
 
 ### Whole-frame check's code items (2026-11-14, shared with Attila; built only, not run in game)
 
