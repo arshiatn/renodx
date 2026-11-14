@@ -721,20 +721,31 @@ Output main(uint id : SV_VertexID) {
     // Bend takes each pixel as thin (Thickness x its distance, ~0.3 m here at the default): where the CPU's shadow ray
     // passes deep behind the pillar's front face it stays lit, so the default covers part of the shadow, a thicker row more.
     twromeremastered::contact_shadows::rows = {.enabled = 1.f};
-    const auto [shadow_pixels, shadow_dark, sun_dark, green_kept] = shares(shadowed(toward_sun));
+    const auto hard = shadowed(toward_sun);
+    const auto [shadow_pixels, shadow_dark, sun_dark, green_kept] = shares(hard);
     const auto [control_pixels, control_dark, control_sun_dark, control_green] = shares(shadowed(normalized(sun_from(right[0], right[2]))));
     twromeremastered::contact_shadows::rows.thickness = 0.05f;
     const auto [thick_pixels, thick_dark, thick_sun_dark, thick_green] = shares(shadowed(toward_sun));
+    // Softness 2 px (sss_blur): more pixels between lit and shadowed, the shadow's dark share and the sun's ground kept.
+    twromeremastered::contact_shadows::rows = {.enabled = 1.f, .softness = 2.f};
+    const auto soft = shadowed(toward_sun);
+    const auto [soft_pixels, soft_dark, soft_sun_dark, soft_green] = shares(soft);
     twromeremastered::contact_shadows::rows = {};
-    std::printf("contact shadows: %zu shadow pixels, %.3f of them dark (Thickness 0.05: %.3f), %.3f of the sun's ground dark (%.3f), green kept "
-                "%d; CONTROL sun from the right: %.3f of them dark\n",
-                shadow_pixels, shadow_dark, thick_dark, sun_dark, thick_sun_dark, green_kept ? 1 : 0, control_dark);
+    const auto partial = [](const std::vector<std::array<uint8_t, 2>>& red) {
+      return std::ranges::count_if(red, [](const std::array<uint8_t, 2>& texel) { return texel[0] > 25 && texel[0] < 230; });
+    };
+    std::printf("contact shadows: %zu shadow pixels, %.3f of them dark (Thickness 0.05: %.3f; Softness 2: %.3f), %.3f of the sun's ground dark "
+                "(%.3f; %.3f), green kept %d; partial pixels %td, Softness 2: %td; CONTROL sun from the right: %.3f of them dark\n",
+                shadow_pixels, shadow_dark, thick_dark, soft_dark, sun_dark, thick_sun_dark, soft_sun_dark, green_kept ? 1 : 0, partial(hard),
+                partial(soft), control_dark);
     CHECK(shadow_pixels > 50);
     CHECK(shadow_dark > 0.3);
     CHECK(thick_dark > shadow_dark + 0.1);
-    CHECK(sun_dark < 0.02 && thick_sun_dark < 0.05);
-    CHECK(green_kept && control_green && thick_green);
+    CHECK(sun_dark < 0.02 && thick_sun_dark < 0.05 && soft_sun_dark < 0.02);
+    CHECK(green_kept && control_green && thick_green && soft_green);
     CHECK(control_dark < 0.05);
+    CHECK(partial(soft) > partial(hard));
+    CHECK(std::abs(soft_dark - shadow_dark) < 0.15);
   }
 
   std::printf("%s (%d failures)\n", (failures == 0 ? "PASS" : "FAIL"), failures);
