@@ -44,6 +44,7 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
+#include "../twattila/water_effects.hpp"
 #include "./more_tests.h"
 #include "./rt_outside_view_card_split_gs.h"
 #include "./rt_outside_view_world_uv_gs.h"
@@ -1638,9 +1639,34 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 
 namespace {
 
+// Water Clarity and Water Caustics (Experimental, off; twattila/water_effects.hpp): the game's water writes the G-buffer with
+// its colour per material (the patched copy swapped in at the draw), each family's five shadow variants (ps_4_1 the first).
+// battle_water (8686041E in the traces): the colour lerps from shallow to deep by saturate(depth / (10 + 10 x waves)), the
+// mad making that divisor divided by 1 / clarity; its refraction read 4 times (two outputs), the caustics after each.
+// campaign_sea (DB511A83): saturate(depth x 3.333333), that mul's result x 1 / clarity. campaign_lake (EFE43500): Beer-Lambert,
+// the exponent's log2(e) mul as WH3's. Campaign water no caustics (its world a twentieth of the battles'). Left out: campaign_river
+// 4F6E96D0 (a fixed 50% lerp, no depth term), battle_river 47339F81 (in no trace; its fade a div_sat by sp_color_fade_dist).
+constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {{
+    {.hash = 0x8686041E, .world_input = 1, .refraction_slot = 5, .normal_slot = 10, .material_water = true, .opacity = {.type = 4, .index = {0x41200000, 0}, .divisor = true}, .every_refraction = true},  // battle_water (traced), gather 5_0
+    {.hash = 0x094317D6, .world_input = 1, .refraction_slot = 5, .normal_slot = 10, .material_water = true, .opacity = {.type = 4, .index = {0x41200000, 0}, .divisor = true}, .every_refraction = true},  // battle_water, ps_4_1
+    {.hash = 0x24ED82AD, .world_input = 1, .refraction_slot = 5, .normal_slot = 10, .material_water = true, .opacity = {.type = 4, .index = {0x41200000, 0}, .divisor = true}, .every_refraction = true},  // battle_water, pcf
+    {.hash = 0xFCECCA82, .world_input = 1, .refraction_slot = 5, .normal_slot = 10, .material_water = true, .opacity = {.type = 4, .index = {0x41200000, 0}, .divisor = true}, .every_refraction = true},  // battle_water, software
+    {.hash = 0x02533797, .world_input = 1, .refraction_slot = 4, .normal_slot = 9, .material_water = true, .opacity = {.type = 4, .index = {0x41200000, 0}, .divisor = true}, .every_refraction = true},  // battle_water, no shadows
+    {.hash = 0xDB511A83, .world_input = 1, .refraction_slot = 5, .caustics = false, .material_water = true, .opacity = {.type = 4, .index = {0x40555555, 0}}},  // campaign_sea (traced), gather 5_0
+    {.hash = 0xEAEECE81, .world_input = 1, .refraction_slot = 5, .caustics = false, .material_water = true, .opacity = {.type = 4, .index = {0x40555555, 0}}},  // campaign_sea, ps_4_1
+    {.hash = 0x73F2961B, .world_input = 1, .refraction_slot = 5, .caustics = false, .material_water = true, .opacity = {.type = 4, .index = {0x40555555, 0}}},  // campaign_sea, pcf
+    {.hash = 0xB814FB8E, .world_input = 1, .refraction_slot = 5, .caustics = false, .material_water = true, .opacity = {.type = 4, .index = {0x40555555, 0}}},  // campaign_sea, software
+    {.hash = 0xC82CEAAC, .world_input = 1, .refraction_slot = 4, .caustics = false, .material_water = true, .opacity = {.type = 4, .index = {0x40555555, 0}}},  // campaign_sea, no shadows
+    {.hash = 0xEFE43500, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true},  // campaign_lake (traced), gather 5_0
+    {.hash = 0x98158B27, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true},  // campaign_lake, ps_4_1
+    {.hash = 0x219D206A, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true},  // campaign_lake, pcf
+    {.hash = 0x3A864ECC, .world_input = 3, .refraction_slot = 6, .caustics = false, .material_water = true},  // campaign_lake, software
+    {.hash = 0xDEA0A768, .world_input = 3, .refraction_slot = 5, .caustics = false, .material_water = true},  // campaign_lake, no shadows
+}};
+
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
 // (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO; reflections on the game's SSR resolve;
-// the paths' sky from the game's spherical harmonics (rt_sun); no water hooked.
+// the paths' sky from the game's spherical harmonics (rt_sun); Water Clarity and Caustics on the water's own draws.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -1662,6 +1688,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
+    .water_caustics_label = "Water Caustics (Experimental)",
     .fog_shadows_label = "Fog Shadows (Experimental)",
     .fog_shadows_tooltip = "Light shafts from rays in place of the game's own in the fog over the first 400 m: it loses the\n"
                            "sun's light in the shadow of buildings, trees and hills. Further on, the game's shadow maps.",
@@ -2094,8 +2121,7 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Pharaoh's and Warhammer III's), ATN's RT/PT preset as the defaults of what the methods
-  // leave, then Settings Mode's pages. Only what this game hooks: no foliage in the screen-space shadows, no water pass
-  // (its rows stay hidden).
+  // leave, then Settings Mode's pages. Only what this game hooks: no water pass for the rays (its rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it, Far Tree Shadows and Smoke Shadows start off (Experimental: no game run has shown
   // them here yet), Specular Occlusion too; RT/PT turns all but the smoke (smoke_shadows_tested) and the far trees on
@@ -2120,6 +2146,28 @@ void ConfigureAddon() {
       .tooltip = "Torches, fires and spot lights cast their shadows from rays too.\n"
                  "With Path-Traced Global Illumination torches and fires also light what the screen never saw.",
       .labels = {"Off", "On"},
+  });
+  // Water Clarity and Caustics (Experimental: no game run has shown them here yet): the game's water at 1 and off.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterClarity",
+      .binding = &twattila::water_effects::water_clarity,
+      .default_value = 1.f,
+      .label = "Water Clarity (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "How far you see into water. 1: the game's; higher: clearer water.",
+      .min = 0.25f,
+      .max = 16.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "WaterCaustics",
+      .binding = &twattila::water_effects::water_caustics,
+      .default_value = 0.f,
+      .label = "Water Caustics (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Rippling light on the bed under battle water. 0: off.",
+      .max = 2.f,
+      .format = "%.2f",
   });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
@@ -2161,6 +2209,14 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  // Water Clarity and Caustics: every row a material water (the patched copy swapped in at the draw).
+  twattila::water_effects::water_shaders = WATER_SHADERS;
+  renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
+  for (const auto& water : WATER_SHADERS) {
+    renodx::utils::command_action::Register(
+        twattila::water_effects::OnWaterDraw, {.shader_hash = water.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -2276,6 +2332,9 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
+  renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
+  renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::engine_tests::StopAtStart(&at_start_stop);
   twattila::anti_aliasing::Uninstall();
   twattila::frame_generation::Uninstall();

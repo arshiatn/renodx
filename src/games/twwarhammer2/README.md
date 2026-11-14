@@ -38,6 +38,14 @@
   G-buffer's foliage bit (128 in channel 3's alpha byte, which the game's own sun shaders test). In the traces leaves, far
   cards and grass set it, and so do the blend meshes (76B5602C, the banners' too) and the campaign's terrain-blend objects
   (41FD3F65, 255), as the game's own code reads them (`tools/tw/wh2/material_writes_wh2.txt`).
+- **New: Water Clarity and Water Caustics (Experimental; at 1 and 0 the game's water).** The battle water (battle_water
+  8686041E), the campaign sea (campaign_sea DB511A83) and lakes (campaign_lake EFE43500), each with its four shadow twins:
+  Clarity stretches how deep the water's colour fades (the battle water over 10 m plus its waves, the sea over 0.3 m, the lakes'
+  Beer-Lambert as Warhammer III's); Caustics light the bed under battle water, after each of its four refraction reads.
+  Shared (`water_effects.hpp`): the depth's literal as the opacity (a mul or mad reading it, `divisor` where it makes the
+  depth's divisor) and `every_refraction`, off by default: every other game's patched water bytes the same (133 rows).
+  WARP `tools/tw/warp_tests/water_wh2` passes on all 15: neutral bit-exact, Caustics as the refraction x (1 + k), Clarity as
+  the game's literal scaled (its controls fail: a wrong literal, mul for div, the last refraction alone).
 - **Rays Replace Shadow Maps through the shared hook** (`twattila/sun_replace_maps.hpp` with its sampler slot, s1 here):
   the same as before.
 - Checked, nothing to change: the siege's walls, buildings, units, trees and terrain are all in the rays (the caster census
@@ -56,6 +64,7 @@ Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon6
    in a battle with Far Tree Shadows on, distant forests behind the camera keep their shadows.
 6. Fences, palms and bushes in a battle: their ray-traced shadows show the gaps; campaign towns' shadows as v48.
 7. Bend's shadows, Light Through Foliage 0.5: lighter shadows under trees and grass, walls and soldiers as dark as before.
+8. Water Clarity 4, Caustics 1: clearer battle water with light rippling on its bed; the campaign's sea and lakes clearer.
 
 Not done:
 - The campaign's far terrain (above).
@@ -65,8 +74,8 @@ Not done:
   casters (the water is opaque there, nothing under it shows; listing its 25 traced materials would drop untraced ones).
 - Particle Resolution (Attila's particle layer): this game's lit particles are one GPU-sorted indirect draw of their own
   vertex shader, not Attila's; the layer needs an indirect path first (a shared change).
-- Water Clarity / Caustics: the battle water and the campaign sea are opaque G-buffer materials of the rigid default shader,
-  none of Pharaoh's water shaders; their operands not yet read.
+- Water left out: the campaign rivers (campaign_river 4F6E96D0: a fixed half blend, no depth to stretch) and the battle rivers
+  (battle_river 47339F81: in no trace; its fade divides by a material constant, which needs a patch before the divide).
 
 ### Round v48 (2026-11-14, Attila's package with the data run's findings; built only, not run in game)
 
