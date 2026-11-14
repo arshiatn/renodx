@@ -1,5 +1,30 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
+### Round 3 (2026-11-14, grass, banners, CPU code; built only, not run in game)
+
+New:
+- **Grass Height Distance (Experimental, 1 = the game's)** in Grass & Trees, as Attila's: grass keeps its full height farther away (the game flattens it into the ground by 100 m). The rays' grass and the grass's motion vectors follow it.
+- **Light Through All Banners (Experimental, off)**: the unit banners let some sunlight through as thin cloth, for the rays and for Bend's screen-space shadows (with Light Through Banners). RT/PT leaves it off.
+- **Faster Game CPU Code (Experimental, off)** now runs all three of Attila's faster routines here: the soldier draw's rounding and the animations' fmod beside the half floats, each checked against the game's own code (every register, the x87 state).
+- **The ray-traced scene checked against the game's own shaders** on the GPU (each capture's world position through the camera against the game's position): 42 of 48 the same to 1e-7; the other 6 differ by design, as Attila's (grass shrinks with distance, sprite soldiers and far tree cards face the sun, campaign plants stand upright).
+
+Not done:
+- The capture-point flags in Light Through All Banners: Attila's rule would make every alpha-tested object here thin.
+- A harness stress run per family: the families, their budgets and stress modes are the shared helper's (run for Attila); none is this game's own.
+- From Round 2: the campaign's far terrain in the rays, Water Clarity on the sea and the campaign lake, the `_ms` passes below 100%.
+
+Test (ATN):
+1. Grass Height Distance 4 in a grassy battle: full grass farther; 1: as before.
+2. The same with RT shadows (Debug View Sun Shadows): far grass casts as it now stands.
+3. Light Through All Banners with RT shadows: sunlight through unit banners; off: as before.
+4. Bend's shadows with Light Through Banners 0.5 and Light Through All Banners: the same banners let light through.
+5. Faster Game CPU Code on in a big battle: ReShade.log "soldier draw rounding, half floats, fmod faster", then "on".
+6. The same battle, Faster Game CPU Code off / on: FPS; soldiers, sprites and their animations as before.
+7. Round 2's checks below (campaign, Particle Resolution), still open.
+8. Round 1's battle checks (RT scene, readers, AO below 100%, water, graphics rows), still open.
+
+Build: `cmake --build build32 --config Release --target renodx-twthronesofbritannia.addon32`.
+
 ### Round 2 (2026-11-14, the campaign and Particle Resolution; built only, not run in game)
 
 New:
