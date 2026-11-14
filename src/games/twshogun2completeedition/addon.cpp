@@ -1046,6 +1046,9 @@ void ReadDlssAddonOptions() {
   ray_tracing.water_reflections = read_on("RayTracedWaterReflections", false);
   ray_tracing.reflection_samples = read_count("RayTracedReflectionSamples", 1, 1, 8);
   ray_tracing.water_steady = read_on("RayTracedWaterSteady", false);
+  // Softer Water Reflections (Attila's): the water's guide rougher (ray_tracing.hpp WaterSurface), its reflections' history
+  // from the water's own positions (rt_core's RT_REFLECTIONS_WATER_POSITIONS).
+  ray_tracing.water_soft = ray_tracing.water_reflections && read_on("RayTracedWaterSoft", false);
   ray_tracing.local_lights = read_on("RayTracedLocalLights", false);
   ray_tracing.fog_shadows = read_on("RayTracedFogShadows", false);
   // No torch light in the fog (fog01 takes the sun's part alone): the helper traces none.

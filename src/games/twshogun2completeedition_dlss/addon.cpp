@@ -999,6 +999,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedReflectionReuse", 2.f},
         {"RayTracedWaterReflections", 1.f},
         {"RayTracedWaterSteady", 1.f},
+        {"RayTracedWaterSoft", 1.f},
         {"RayTracedSpecularOcclusion", 1.f},
         {"RayTracedFogShadows", 1.f},
         {"RayTracedLeafMicromaps", 1.f},
@@ -1022,6 +1023,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
         {"RayTracedReflectionReuse", 0.f},
         {"RayTracedWaterReflections", 0.f},
         {"RayTracedWaterSteady", 0.f},
+        {"RayTracedWaterSoft", 0.f},
         {"RayTracedLightBounceRays", 4.f},
         {"RayTracedLightBounceRange", 10.f},
         {"RayTracedLightBounceResolution", 1.f},
@@ -1142,6 +1144,8 @@ void OnOverlay(reshade::api::effect_runtime*) {
     ImGui::BeginDisabled(!water_reflections);
     choice("Steadier water reflections (Experimental)", "RayTracedWaterSteady", 0, OFF_ON_NAMES,
            "Fewer flickering dots in calm water's reflections: each pixel stays within what the water around it shows.");
+    choice("Softer water reflections (Experimental)", "RayTracedWaterSoft", 0, OFF_ON_NAMES,
+           "Calmer water reflections, a little softer. Samples and reuse then work on water too. Heavier.");
     ImGui::EndDisabled();
     ImGui::EndDisabled();
     const bool specular_occlusion = checkbox("Ray-traced specular occlusion (Experimental)", "RayTracedSpecularOcclusion",

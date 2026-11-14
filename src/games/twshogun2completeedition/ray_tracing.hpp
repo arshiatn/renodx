@@ -121,6 +121,10 @@ constexpr UINT TINT_SLOT = 50;
 // +x, -x, +y, -y, +z, -z, index 0 where the normal's axis is 0 or more; with the harmonics the paths' sky) and the sun
 // colour (c1; the paths' sun light with Path-Traced AO). Its third: 0 (Shogun 2's rt_sun makes the same sky either way).
 constexpr std::array<uint32_t, 8> SUN_OFFSETS = {0, 12, 0, 0, 4, 0, 0, 0};
+// Softer Water Reflections' least roughness on the water's guide (rt_water_plane): Attila's WATER_SOFT_ROUGHNESS
+// (twattila/rt_scene.hpp, which this host can't include), past the helper's mirrors (under 0.05: one ray, no history), so
+// Samples, the history and its filter take the water.
+constexpr float WATER_SOFT_ROUGHNESS = 0.06f;
 
 // Ray-Traced Water Reflections' objects (WaterSurface): rt_water_plane, its constants, the water's depth (R32) and mask
 // (R8) at the depth's size, the replayed water meshes' depth (D32) and its states.
@@ -605,7 +609,7 @@ inline void WaterSurface(reshade::api::command_list* cmd_list) {
   auto& state = internal::state;
   internal::Water water;
   std::vector<internal::WaterDraw> draws;
-  std::array<uint32_t, 8> constants = {};
+  std::array<uint32_t, 12> constants = {};
   {
     const std::unique_lock lock(state.mutex);
     const auto& size = state.render_size;
@@ -657,7 +661,8 @@ inline void WaterSurface(reshade::api::command_list* cmd_list) {
     water = kept;
     const auto& plane = state.sea_plane;
     constants = {std::bit_cast<uint32_t>(plane[0]), std::bit_cast<uint32_t>(plane[1]), std::bit_cast<uint32_t>(plane[2]),
-                 std::bit_cast<uint32_t>(plane[3]), size[0], size[1], sea ? 1u : 0u, draws.empty() ? 0u : 1u};
+                 std::bit_cast<uint32_t>(plane[3]), size[0], size[1], sea ? 1u : 0u, draws.empty() ? 0u : 1u,
+                 std::bit_cast<uint32_t>(state.settings.water_soft ? internal::WATER_SOFT_ROUGHNESS : 0.f)};
   }
   {
     const talesofarise::dlss::ContextStateScope scope(native1.Get(), state.private_state.Get());

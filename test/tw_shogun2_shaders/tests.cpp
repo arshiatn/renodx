@@ -874,8 +874,11 @@ static void TestWaterPlane(const std::string& games) {
   }
   const auto depth_view = Srv(Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, depth.data(), SIZE * 4, D3D11_BIND_SHADER_RESOURCE).Get());
   const auto meshes_view = Srv(Texture(SIZE, SIZE, DXGI_FORMAT_R32_FLOAT, meshes.data(), SIZE * 4, D3D11_BIND_SHADER_RESOURCE).Get());
-  size_t marked = 0, by_mesh = 0, bad = 0, control_marked = 0;
-  for (const bool control : {false, true}) {
+  size_t marked = 0, by_mesh = 0, bad = 0, control_marked = 0, soft_bad = 0;
+  // The control, then Softer Water Reflections' roughness (0.06: the water's guide 15 / 255, the rest as without it).
+  for (const int variant : {0, 1, 2}) {
+    const bool control = variant == 1;
+    const bool soft = variant == 2;
     const std::vector<uint8_t> grey(SIZE * SIZE * 4, 0x80);
     const std::vector<float> nines(SIZE * SIZE * 4, 9.f);
     const std::array<ComPtr<ID3D11Texture2D>, 6> targets = {
@@ -891,7 +894,8 @@ static void TestWaterPlane(const std::string& games) {
       views[index] = Uav(targets[index].Get());
       bound[index] = views[index].Get();
     }
-    const std::array<uint32_t, 8> plane = {0u, Bits(1.f), 0u, Bits(control ? -60.f : 0.f), SIZE, SIZE, 1u, control ? 0u : 1u};
+    const std::array<uint32_t, 12> plane = {0u, Bits(1.f), 0u, Bits(control ? -60.f : 0.f), SIZE, SIZE, 1u, control ? 0u : 1u,
+                                            Bits(soft ? 0.06f : 0.f)};
     const auto plane_buffer = Constants(plane.data(), sizeof(plane));
     const std::array<ID3D11Buffer*, 2> buffers = {camera_buffer.Get(), plane_buffer.Get()};
     const std::array<ID3D11ShaderResourceView*, 2> inputs = {depth_view.Get(), meshes_view.Get()};
@@ -915,6 +919,10 @@ static void TestWaterPlane(const std::string& games) {
         control_marked += (mask[pixel] != 0 || surface_depth != depth[pixel]) ? 1 : 0;
         continue;
       }
+      if (soft) {
+        soft_bad += (roughness[pixel] != ((expected[pixel] != 0.f) ? 15 : 0x80)) ? 1 : 0;
+        continue;
+      }
       marked += (mask[pixel] == 255) ? 1 : 0;
       by_mesh += (mask[pixel] == 255 && meshes[pixel] == surface_depth) ? 1 : 0;
       const bool water_ok = std::fabs(surface_depth - expected[pixel]) < 1e-5f && mask[pixel] == 255 && normal[0] == 0.f && normal[1] == 1.f
@@ -926,8 +934,9 @@ static void TestWaterPlane(const std::string& games) {
   const auto water = static_cast<size_t>(std::ranges::count_if(expected, [](float value) { return value != 0.f; }));
   CHECK(bad == 0 && marked == water && by_mesh > 0, "%zu pixels wrong, %zu marked of %zu (%zu by the meshes)", bad, marked, water, by_mesh);
   CHECK(control_marked == 0, "CONTROL: %zu pixels marked under a plane over the camera, no meshes", control_marked);
-  std::printf("rt_water_plane %ux%u: %zu water pixels (%zu the meshes') their depth and guides, the rest kept; 0 in the control\n", SIZE, SIZE, marked,
-              by_mesh);
+  CHECK(soft_bad == 0, "Softer Water Reflections: %zu pixels' roughness not 15 on water / kept elsewhere", soft_bad);
+  std::printf("rt_water_plane %ux%u: %zu water pixels (%zu the meshes') their depth and guides, the rest kept; 0 in the control; "
+              "Softer Water Reflections' roughness 0.06 on them alone\n", SIZE, SIZE, marked, by_mesh);
 }
 
 // A water pixel shader of the game's and ours (shaders/), what their draw needs: the vertex shader giving their inputs,
