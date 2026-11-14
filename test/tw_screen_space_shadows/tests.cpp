@@ -28,6 +28,11 @@
 //    rasterizer, depth and blend states as they were.
 // 7. Rows turned off (sss::Update): Coloured Shadows' filter (taken off t50 at the next sun draw), the penumbra, the
 //    lights' objects, the banners' depth let go (their resources' last reference the test's), made again when turned on.
+// 8. Shogun 2's own sun shadow passes (twshogun2completeedition/shaders/sss00 / sss01 / sss02, whose bytes changed since
+//    fc24dbce: Bend's parameters as rows, Light Through Foliage's caster light) at the rows' defaults (shader_injection all
+//    0: the game's parameters, foliage off) to the bit as fc24dbce's (run.ps1's csos) on the box scene: its depth, the sun's
+//    Bend dispatches as sss_setup lists them, 4 cascades of random depths; 8 runs each in turns, as case 1. CONTROLS (must
+//    differ): Bend's contrast row at 2 (sss00, sss01), the shadow map stability row at 2 (sss02).
 // --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), torches near and far, and the CPU
 // time of a later light draw. --time-only: that alone.
 #include <windows.h>
@@ -36,10 +41,13 @@
 #include <wrl/client.h>
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstddef>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <mutex>
@@ -51,6 +59,11 @@
 #include <vector>
 #include "src/games/twattila/screen_space_lights.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
+
+// Shogun 2's shader_injection (case 8: a row's place in it).
+namespace shogun2 {
+#include "src/games/twshogun2completeedition/shared.h"
+}  // namespace shogun2
 
 using Microsoft::WRL::ComPtr;
 using Vector = std::array<float, 3>;
@@ -449,40 +462,41 @@ static int WrongPixels(const Frame& frame, std::span<const Box> boxes, const std
 static const std::array<Box, 1> BOX_SCENE = {{{.low = {-1.f, -2.f, 9.f}, .high = {1.f, 1.f, 11.f}}}};
 static const Vector BOX_SUN = {0.6f, -0.5f, 0.6f};
 
+// Bend's waves near a quadrant's diagonal can write a pixel twice in one dispatch, and WARP runs the groups in any
+// order: such a pixel can differ between two runs of the same shaders (today's too). Both sides run RUNS times, in turns;
+// a pixel is apart when no run of one gives a value a run of the other gave. `same` false: the sides must differ (more
+// than 20 pixels apart).
+constexpr int RUNS = 8;
+static void CompareRuns(const char* what, const std::vector<std::vector<uint8_t>>& ours, const std::vector<std::vector<uint8_t>>& theirs,
+                        bool same = true) {
+  int varying = 0;
+  int apart = 0;
+  int over_half = 0;
+  for (size_t pixel = 0; pixel < ours[0].size(); ++pixel) {
+    bool stable = true;
+    bool shared = false;
+    for (int run = 0; run < RUNS; ++run) {
+      stable = stable && ours[run][pixel] == ours[0][pixel] && theirs[run][pixel] == ours[0][pixel];
+      for (int other = 0; other < RUNS; ++other) shared = shared || ours[run][pixel] == theirs[other][pixel];
+    }
+    varying += stable ? 0 : 1;
+    apart += shared ? 0 : 1;
+    over_half += (stable && ours[0][pixel] > 127) ? 1 : 0;
+  }
+  std::printf("   %s: %d pixels over half the same, %d apart, %d varying between runs\n", what, over_half, apart, varying);
+  if (same) {
+    CHECK(apart == 0);
+    CHECK(over_half > 100 && varying < static_cast<int>(ours[0].size() / 500));
+  } else {
+    CHECK(apart > 20);
+  }
+}
+
 static void TestRowsOff(const std::string& before_folder) {
   std::printf("1. rows off\n");
   MakeDevice(D3D_DRIVER_TYPE_WARP);
   const Frame frame = MakeFrame(480, 270, BOX_SCENE, BOX_SUN);
   auto& objects = sss::internal::runtime.objects;
-  // Bend's waves near a quadrant's diagonal can write a pixel twice in one dispatch, and WARP runs the groups in any
-  // order: such a pixel can differ between two runs of the same shaders (today's too). Both sides run 8 times, in turns;
-  // a pixel is apart when no run of one gives a value a run of the other gave.
-  constexpr int RUNS = 8;
-  // `same` false: the sides must differ (more than 20 pixels apart).
-  const auto compare = [](const char* what, const std::vector<std::vector<uint8_t>>& ours, const std::vector<std::vector<uint8_t>>& theirs,
-                          bool same = true) {
-    int varying = 0;
-    int apart = 0;
-    int shadowed = 0;
-    for (size_t pixel = 0; pixel < ours[0].size(); ++pixel) {
-      bool stable = true;
-      bool shared = false;
-      for (int run = 0; run < RUNS; ++run) {
-        stable = stable && ours[run][pixel] == ours[0][pixel] && theirs[run][pixel] == ours[0][pixel];
-        for (int other = 0; other < RUNS; ++other) shared = shared || ours[run][pixel] == theirs[other][pixel];
-      }
-      varying += stable ? 0 : 1;
-      apart += shared ? 0 : 1;
-      shadowed += (stable && ours[0][pixel] > 127) ? 1 : 0;
-    }
-    std::printf("   %s: %d shadowed pixels the same, %d apart, %d varying between runs\n", what, shadowed, apart, varying);
-    if (same) {
-      CHECK(apart == 0);
-      CHECK(shadowed > 100 && varying < static_cast<int>(ours[0].size() / 500));
-    } else {
-      CHECK(apart > 20);
-    }
-  };
   for (const float softness : {0.f, 2.f}) {
     sss::Settings settings = Defaults();
     settings.softness = softness;
@@ -519,7 +533,7 @@ static void TestRowsOff(const std::string& before_folder) {
     // sss_setup's output, the march's whole input from it: to the bit.
     CHECK(parameters[0] == parameters[1]);
     CHECK(arguments[0] == arguments[1]);
-    compare((softness == 0.f) ? "against fc24dbce's" : "Softness 2 px against fc24dbce's", ours, theirs);
+    CompareRuns((softness == 0.f) ? "against fc24dbce's" : "Softness 2 px against fc24dbce's", ours, theirs);
   }
   // The extended march with nothing to do: banners on but none in view, foliage marked (a bush's depth pass).
   const std::array<Box, 2> bush_scene = {{BOX_SCENE[0], {.low = {2.f, -2.f, 7.f}, .high = {3.f, -1.f, 8.f}, .kind = Kind::FOLIAGE}}};
@@ -553,7 +567,7 @@ static void TestRowsOff(const std::string& before_folder) {
     std::vector<std::vector<uint8_t>> by_material;
     for (int run = 0; run < RUNS; ++run) by_material.push_back(ReadView<uint8_t>(RunFrame(bush, plain_settings, false, &marked)));
     sss::foliage_material_bit = 0;
-    compare("foliage marked by the G-buffer's material byte against the depth copies", by_material, plain);
+    CompareRuns("foliage marked by the G-buffer's material byte against the depth copies", by_material, plain);
     // Pharaoh: its bit 128 on leaves, tree cards and the far forest's blocks (128) and grass (160); every other byte its drawn
     // G-buffer shaders write (branches 0, rigid 1, skin 8, banners 10, terrain 21, units and props 33, water 64), in turns.
     // CONTROL (must differ): the water's SSR bit (64) taken as the mark.
@@ -571,10 +585,10 @@ static void TestRowsOff(const std::string& before_folder) {
     sss::foliage_material_bit = 64;
     for (int run = 0; run < RUNS; ++run) by_water_bit.push_back(ReadView<uint8_t>(RunFrame(bush, plain_settings, false, &pharaoh_marked)));
     sss::foliage_material_bit = 0;
-    compare("Pharaoh's material bytes, bit 128, against the depth copies", by_pharaoh_bit, plain);
-    compare("CONTROL Pharaoh's material bytes, bit 64 (water), against the depth copies", by_water_bit, plain, false);
+    CompareRuns("Pharaoh's material bytes, bit 128, against the depth copies", by_pharaoh_bit, plain);
+    CompareRuns("CONTROL Pharaoh's material bytes, bit 64 (water), against the depth copies", by_water_bit, plain, false);
   }
-  compare("extended march with nothing to do against the plain one", extended, plain);
+  CompareRuns("extended march with nothing to do against the plain one", extended, plain);
 
   // Below 100% (the render the top-left of the display's textures, 960 x 540): the sun's 60 samples are 30 at 50% and 35
   // at 58% (557 x 313), their fade-outs (32 after 16 hard ones) 14 and 19. The extended march (nothing to do) takes them
@@ -619,8 +633,8 @@ static void TestRowsOff(const std::string& before_folder) {
     std::printf("   %u x %u of 960 x 540: the module's %.0f samples, fade-out %.0f\n", scale.width, scale.height, objects.uploaded.samples,
                 objects.uploaded.fade_samples);
     CHECK(objects.uploaded.samples == std::round(60.f * static_cast<float>(scale.width) / 960.f) && std::fmod(objects.uploaded.samples, 4.f) != 0.f);
-    compare("   extended march in fours against the plain one's with the counts in fours", rounded_extended, rounded_plain);
-    compare("   the plain march's with the counts in fours against its own with the odd ones", rounded_plain, odd_plain, false);
+    CompareRuns("   extended march in fours against the plain one's with the counts in fours", rounded_extended, rounded_plain);
+    CompareRuns("   the plain march's with the counts in fours against its own with the odd ones", rounded_plain, odd_plain, false);
   }
   twattila::frame_history::render_width = 0;
   twattila::frame_history::render_height = 0;
@@ -1273,6 +1287,156 @@ static void TestRowsTurnedOff() {
         && runtime.soft_frame == runtime.frame);
 }
 
+static void TestShogun2(const std::string& before_folder) {
+  std::printf("8. Shogun 2's sss00-02 at the rows' defaults\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  const Frame frame = MakeFrame(480, 270, BOX_SCENE, BOX_SUN);
+  const UINT width = frame.camera.width;
+  const UINT height = frame.camera.height;
+  // The sun's dispatches as sss_setup lists them for the frame: the light coordinate, 8 dispatches' offsets (x the wave size)
+  // and wave counts.
+  RunFrame(frame, Defaults());
+  auto& objects = sss::internal::runtime.objects;
+  const auto parameters = ReadBuffer<std::array<int32_t, 4>>(objects.parameters.Get());
+  const auto arguments = ReadBuffer<std::array<uint32_t, 3>>(objects.arguments.Get());
+  // camera_VS_PS: view_projection c10, inv_view_projection c30, screen_size c37, g_viewport_dimensions c38,
+  // g_render_target_dimensions c40 (each register a matrix's column, as MakeFrame's).
+  const auto put = [](std::span<float> constants, UINT base, const Matrix& m) {
+    for (int i = 0; i < 4; ++i) {
+      for (int j = 0; j < 4; ++j) constants[((base + j) * 4) + i] = m[i][j];
+    }
+  };
+  std::array<float, 44 * 4> camera = {};
+  put(camera, 10, frame.camera.view_projection);
+  put(camera, 30, Inverse(frame.camera.view_projection));
+  for (const UINT at : {37u, 38u, 40u}) {
+    camera[at * 4] = static_cast<float>(width);
+    camera[(at * 4) + 1] = static_cast<float>(height);
+    camera[(at * 4) + 2] = 1.f / static_cast<float>(width);
+    camera[(at * 4) + 3] = 1.f / static_cast<float>(height);
+  }
+  // shadowmap_PS: 4 splits of 128 texels, each a top-down map over twice the last's width; fade ranges, bias, the sun, the
+  // splits' distances.
+  constexpr UINT MAP_SIZE = 128;
+  std::array<float, 24 * 4> shadow_map = {MAP_SIZE, MAP_SIZE, 1.f / MAP_SIZE, 1.f / MAP_SIZE};
+  for (UINT split = 0; split < 4; ++split) {
+    const float scale = 1.f / (8.f * static_cast<float>(1u << split));
+    put(shadow_map, 1 + (split * 4), {{{scale, 0.f, 0.f, 0.f}, {0.f, 0.f, -0.01f, 0.f}, {0.f, scale, 0.f, 0.f}, {0.5f, 0.5f - (10.f * scale), 0.5f, 1.f}}});
+  }
+  std::copy_n(std::array<float, 4>{0.1f, 0.1f, 0.01f, 4.f}.begin(), 4, shadow_map.begin() + (17 * 4));
+  std::copy(frame.sun.begin(), frame.sun.end(), shadow_map.begin() + (18 * 4));
+  for (UINT split = 0; split < 5; ++split) shadow_map[(19 + split) * 4] = std::array<float, 5>{0.f, 4.f, 8.f, 16.f, 60.f}[split];
+  const auto camera_buffer = MakeBuffer(sizeof(camera), D3D11_BIND_CONSTANT_BUFFER, camera.data());
+  const auto shadow_map_buffer = MakeBuffer(sizeof(shadow_map), D3D11_BIND_CONSTANT_BUFFER, shadow_map.data());
+  // The cascades' depths: random around the ground's and the box's.
+  std::mt19937 random(8);
+  std::uniform_real_distribution<float> map_depth(0.47f, 0.53f);
+  std::vector<float> map_texels(MAP_SIZE * MAP_SIZE * 4);
+  for (auto& texel : map_texels) texel = map_depth(random);
+  const D3D11_TEXTURE2D_DESC map_desc = {MAP_SIZE, MAP_SIZE, 1, 4, DXGI_FORMAT_R32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0};
+  std::array<D3D11_SUBRESOURCE_DATA, 4> map_slices = {};
+  for (UINT slice = 0; slice < 4; ++slice) map_slices[slice] = {map_texels.data() + (slice * MAP_SIZE * MAP_SIZE), MAP_SIZE * 4, 0};
+  ComPtr<ID3D11Texture2D> map;
+  ComPtr<ID3D11ShaderResourceView> map_srv;
+  REQUIRE(SUCCEEDED(device->CreateTexture2D(&map_desc, map_slices.data(), map.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateShaderResourceView(map.Get(), nullptr, map_srv.GetAddressOf())));
+  const D3D11_SAMPLER_DESC comparison_desc = {D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE_ADDRESS_CLAMP,
+                                        D3D11_TEXTURE_ADDRESS_CLAMP, 0.f, 1, D3D11_COMPARISON_LESS_EQUAL, {}, 0.f, D3D11_FLOAT32_MAX};
+  const D3D11_SAMPLER_DESC border_desc = {D3D11_FILTER_MIN_MAG_MIP_POINT, D3D11_TEXTURE_ADDRESS_BORDER, D3D11_TEXTURE_ADDRESS_BORDER,
+                                         D3D11_TEXTURE_ADDRESS_BORDER, 0.f, 1, D3D11_COMPARISON_NEVER, {1.f, 1.f, 1.f, 1.f}, 0.f, D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> comparison;
+  ComPtr<ID3D11SamplerState> border;
+  REQUIRE(SUCCEEDED(device->CreateSamplerState(&comparison_desc, comparison.GetAddressOf())));
+  REQUIRE(SUCCEEDED(device->CreateSamplerState(&border_desc, border.GetAddressOf())));
+  const Texture output = MakeTexture(width, height, DXGI_FORMAT_R8_UNORM, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
+  ComPtr<ID3D11UnorderedAccessView> output_uav;
+  REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(output.texture.Get(), nullptr, output_uav.GetAddressOf())));
+  // Bend's sss constants for each listed dispatch: the game's thickness, edge threshold and contrast, the light coordinate and
+  // the dispatch's offset.
+  std::vector<ComPtr<ID3D11Buffer>> bend_buffers;
+  std::vector<std::array<uint32_t, 3>> bend_groups;
+  for (size_t dispatch = 0; dispatch < 8; ++dispatch) {
+    if (arguments[dispatch][0] == 0 || arguments[dispatch][1] == 0 || arguments[dispatch][2] == 0) continue;
+    std::array<uint32_t, 12> bend = {std::bit_cast<uint32_t>(0.005f), std::bit_cast<uint32_t>(0.02f), std::bit_cast<uint32_t>(4.f), 0u};
+    for (int axis = 0; axis < 4; ++axis) bend[4 + axis] = static_cast<uint32_t>(parameters[0][axis]);
+    bend[8] = static_cast<uint32_t>(parameters[1 + dispatch][0]);
+    bend[9] = static_cast<uint32_t>(parameters[1 + dispatch][1]);
+    bend_buffers.push_back(MakeBuffer(sizeof(bend), D3D11_BIND_CONSTANT_BUFFER, bend.data()));
+    bend_groups.push_back(arguments[dispatch]);
+  }
+  REQUIRE(!bend_buffers.empty());
+  // shader_injection: all 0 (the rows' defaults), or one row at a value.
+  const auto injection = [](size_t offset, float value) {
+    std::vector<float> floats((sizeof(shogun2::ShaderInjectData) + 15) / 16 * 4, 0.f);
+    floats[offset / sizeof(float)] = value;
+    return MakeBuffer(static_cast<UINT>(floats.size() * sizeof(float)), D3D11_BIND_CONSTANT_BUFFER, floats.data());
+  };
+  const auto defaults = injection(0, 0.f);
+  struct Pass {
+    const char* name;
+    bool cascades;
+    bool bend;
+    size_t control_row;
+  };
+  constexpr std::array<Pass, 3> PASSES = {{
+      {.name = "sss00_0x34ECD06E", .cascades = true, .bend = true, .control_row = offsetof(shogun2::ShaderInjectData, sss_contrast)},
+      {.name = "sss01_0x1B529672", .cascades = false, .bend = true, .control_row = offsetof(shogun2::ShaderInjectData, sss_contrast)},
+      {.name = "sss02_0x78E88E1D", .cascades = true, .bend = false, .control_row = offsetof(shogun2::ShaderInjectData, shadow_map_stability)},
+  }};
+  const std::filesystem::path after_folder = std::filesystem::path(before_folder).parent_path() / "after_cso";
+  for (const auto& pass : PASSES) {
+    const auto load = [&pass](const std::string& folder) {
+      const auto code = ReadFile(folder + "\\" + pass.name + ".cso");
+      REQUIRE(!code.empty());
+      ComPtr<ID3D11ComputeShader> shader;
+      REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf())));
+      return shader;
+    };
+    const auto before = load(before_folder);
+    const auto after = load(after_folder.string());
+    const auto control = injection(pass.control_row, 2.f);
+    const auto run = [&](ID3D11ComputeShader* shader, ID3D11Buffer* settings) {
+      constexpr std::array<UINT, 4> CLEAR = {};
+      context->ClearUnorderedAccessViewUint(output_uav.Get(), CLEAR.data());
+      context->CSSetShader(shader, nullptr, 0);
+      context->CSSetConstantBuffers(13, 1, &settings);
+      context->CSSetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
+      context->CSSetUnorderedAccessViews(0, 1, output_uav.GetAddressOf(), nullptr);
+      if (pass.cascades) {
+        context->CSSetConstantBuffers(1, 1, shadow_map_buffer.GetAddressOf());
+        const std::array<ID3D11ShaderResourceView*, 4> views = {map_srv.Get(), frame.colour.srv.Get(), frame.depth.srv.Get(), frame.depth.srv.Get()};
+        context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+        const std::array<ID3D11SamplerState*, 2> samplers = {comparison.Get(), border.Get()};
+        context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+      } else {
+        context->CSSetShaderResources(0, 1, frame.depth.srv.GetAddressOf());
+        context->CSSetSamplers(0, 1, border.GetAddressOf());
+      }
+      if (pass.bend) {
+        for (size_t dispatch = 0; dispatch < bend_buffers.size(); ++dispatch) {
+          context->CSSetConstantBuffers(pass.cascades ? 2 : 1, 1, bend_buffers[dispatch].GetAddressOf());
+          context->Dispatch(bend_groups[dispatch][0], bend_groups[dispatch][1], bend_groups[dispatch][2]);
+        }
+      } else {
+        context->Dispatch((width + 31) / 32, (height + 31) / 32, 1);
+      }
+      context->ClearState();
+      return ReadTexture<uint8_t>(output.texture.Get());
+    };
+    std::vector<std::vector<uint8_t>> ours;
+    std::vector<std::vector<uint8_t>> theirs;
+    std::vector<std::vector<uint8_t>> controls;
+    for (int round = 0; round < RUNS; ++round) {
+      ours.push_back(run(after.Get(), defaults.Get()));
+      theirs.push_back(run(before.Get(), defaults.Get()));
+      controls.push_back(run(after.Get(), control.Get()));
+    }
+    CompareRuns((std::string(pass.name) + " at the rows' defaults against fc24dbce's").c_str(), ours, theirs);
+    CompareRuns((std::string("CONTROL ") + pass.name + " with " + (pass.bend ? "Bend's contrast" : "shadow map stability") + " at 2").c_str(),
+                controls, theirs, false);
+  }
+}
+
 // ---- --time -----------------------------------------------------------------------------------------------------------
 
 // The median GPU time (ms) of `work` over 30 frames, after 5 to warm up.
@@ -1394,6 +1558,7 @@ int main(int argc, char** argv) {
     TestTorches();
     TestReplay();
     TestRowsTurnedOff();
+    TestShogun2(argv[1]);
   }
   if (mode == "--time" || mode == "--time-only") Time();
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
