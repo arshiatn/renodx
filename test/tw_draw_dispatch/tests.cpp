@@ -48,12 +48,12 @@ __declspec(dllexport) void ReShadeUnregisterAddon(void*) {}
 __declspec(dllexport) void ReShadeLogMessage(void*, int, const char*) {}
 __declspec(dllexport) bool ReShadeGetConfigValue(void*, void*, const char*, const char*, char*, size_t*) { return false; }
 __declspec(dllexport) void ReShadeSetConfigValue(void*, void*, const char*, const char*, const char*) {}
-__declspec(dllexport) void ReShadeRegisterEvent(api_event ev,void* callback) { event_lists[static_cast<size_t>(ev)].push_back(callback); }
-__declspec(dllexport) void ReShadeRegisterEventForAddon(void*, api_event ev,void* callback) {
+__declspec(dllexport) void ReShadeRegisterEvent(api_event ev, void* callback) { event_lists[static_cast<size_t>(ev)].push_back(callback); }
+__declspec(dllexport) void ReShadeRegisterEventForAddon(void*, api_event ev, void* callback) {
   event_lists[static_cast<size_t>(ev)].push_back(callback);
 }
-__declspec(dllexport) void ReShadeUnregisterEvent(api_event ev,void* callback) { std::erase(event_lists[static_cast<size_t>(ev)], callback); }
-__declspec(dllexport) void ReShadeUnregisterEventForAddon(void*, api_event ev,void* callback) {
+__declspec(dllexport) void ReShadeUnregisterEvent(api_event ev, void* callback) { std::erase(event_lists[static_cast<size_t>(ev)], callback); }
+__declspec(dllexport) void ReShadeUnregisterEventForAddon(void*, api_event ev, void* callback) {
   std::erase(event_lists[static_cast<size_t>(ev)], callback);
 }
 }
@@ -145,7 +145,7 @@ action::CallbackResult<Context> Scripted(Context& context) {
 }
 
 template <int ID>
-constexpr auto SCRIPTED_CALLBACK =[]<typename Context>(Context& context) -> action::CallbackResult<Context> { return Scripted<ID>(context); };
+constexpr auto SCRIPTED_CALLBACK = []<typename Context>(Context& context) -> action::CallbackResult<Context> { return Scripted<ID>(context); };
 
 // Command-wide, ungated: always runs.
 constexpr auto ANY_COMMAND = []<typename Context>(Context& context) -> action::CallbackResult<Context> {

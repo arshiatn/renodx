@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include <gtl/phmap.hpp>
 #include <include/reshade.hpp>
 
 #include "./command_action.hpp"
@@ -36,21 +37,24 @@
 // Opt-in fast dispatch of command_action's draw, indexed draw and dispatch commands (the Total War add-ons turn it on;
 // every other module keeps RunCallbacks). RunCallbacks recomputes, on every command, which callbacks the bound
 // pipelines have: five bound-slot reads, a registrations_by_pipeline_handle lookup under its shared lock per bound
-// pipeline, every command-wide callback called. This keeps that answer per command list and computes it again only
-// for a slot whose bound pipeline changed, or for every slot when the registrations, the modules or the gates changed
-// (the epoch). A command-wide callback with a gate (SetGate) is called only when its gate says it can act. Everything
-// else is RunCallbacks' order and semantics, which the replay oracle (tools/tw/draw_redesign) and test/tw_draw_dispatch
-// compare decision for decision.
+// pipeline, every command-wide callback called. This keeps the answer per command list: what each pipeline brings to
+// its slot, resolved at its first bind, and each command type's command-wide callbacks with their gates, both until the
+// registrations, the modules or the gates change (the epoch); a command reads its slots and combines only what changed.
+// A command-wide callback with a gate (SetGate) is called only when its gate says it can act. Everything else is
+// RunCallbacks' order and semantics, which the replay oracle (tools/tw/draw_redesign) and test/tw_draw_dispatch
+// compare decision for decision. command_action's OfferOrRunCallbacks offers each command (Use sets its hook).
 //
 // Invariants:
 // - Only D3D11 command lists, and only pipelines whose prepared callbacks all sit on the stage the pipeline is bound
 //   at, in registration order (one shader a pipeline). Anything else is left to RunCallbacks for that command.
-// - A cached slot borrows registrations_by_pipeline_handle's entries across commands. Every change to them bumps the
-//   epoch: command_action's OnInitPipeline / OnDestroyPipeline / UnregisterCallback in every opted-in module
-//   (command_action::internal::on_pipeline_registrations_changed). A module without the opt-in doesn't bump it: while
-//   one is attached to command_action, every command takes RunCallbacks; when the attached modules change, every slot
-//   is resolved again (module signature). Registrations, like today, must not change while a command dispatches.
-// - The command-wide callbacks' list is read on every command, as RunCallbacks reads it.
+// - A command list's cache borrows command_action's registrations across commands: per slot and pipeline handle its
+//   prepared callbacks (registrations_by_pipeline_handle), per command type the command-wide callbacks
+//   (global_callbacks_by_command_type). Every change to them bumps the epoch, which drops what the caches hold:
+//   command_action's OnInitPipeline / OnDestroyPipeline / RegisterCallback (command-wide) / UnregisterCallback in every
+//   opted-in module (command_action::internal::on_registrations_changed). A module without the opt-in doesn't bump it:
+//   while one is attached to command_action, every command takes RunCallbacks; when the attached modules change, the
+//   caches resolve everything again (module signature). Registrations, like today, must not change while a command
+//   dispatches.
 namespace renodx::utils::command_action::fast {
 
 // When a command-wide callback (Register without a shader hash) can act. A gate may only leave out calls that would
@@ -59,8 +63,9 @@ namespace renodx::utils::command_action::fast {
 struct Gate {
   // Per command; null: always.
   bool (*active)(reshade::api::command_list* cmd_list) = nullptr;
-  // Per bound pipeline, when the command list's slot is resolved: whether the callback can act with `pipeline` bound at
-  // `stage`. The command calls it only when one of its bound pipelines said so. Null: with any pipeline.
+  // Per pipeline and stage, at its first bind after the epoch moved: whether the callback can act with `pipeline` bound
+  // at `stage`. Its answer must hold until the pipeline is destroyed (or SetGate / a registration moves the epoch). The
+  // command calls the callback only when one of its bound pipelines said so. Null: with any pipeline.
   bool (*pipeline_active)(reshade::api::pipeline pipeline, reshade::api::pipeline_stage stage) = nullptr;
 };
 
@@ -71,6 +76,11 @@ constexpr size_t MAX_GATES = 8u;
 // The callbacks one command can run with two pipelines contributing (RunCallbacks' identity set); a command with
 // more takes RunCallbacks.
 constexpr size_t MAX_CALLED = 64u;
+// A command type's command-wide callbacks (a bit each); a command type with more takes RunCallbacks.
+constexpr size_t MAX_GLOBALS = 64u;
+
+// The command types this dispatch takes; the others never reach it.
+constexpr std::array FAST_COMMAND_TYPES = {DrawArguments::COMMAND_TYPE, DrawIndexedArguments::COMMAND_TYPE, DispatchArguments::COMMAND_TYPE};
 
 // The slots a command reads, in RunCallbacks' stage order: the graphics stages, then compute.
 constexpr std::array SLOT_STAGES = {
@@ -106,15 +116,21 @@ static cross_addon::Shared<SharedData> shared;
 // the life of the process.
 static const cross_addon::internal::ControlBlock<command_action::internal::SharedData>* action_control = nullptr;
 
-// One bound slot, resolved for the pipeline it held then.
+// What a pipeline brings to the slot it is bound at. Fixed until the epoch moves, so each list keeps it per slot and
+// handle (CommandListCache::resolved): a rebind costs a lookup, not registrations_by_pipeline_handle's lock.
+struct Resolution {
+  // Borrowed from registrations_by_pipeline_handle (valid until the epoch moves), by command index.
+  std::array<const cross_addon::vector<command_action::internal::PipelineRegistration>*, COMMAND_INDEX_COUNT> matches = {};
+  uint32_t command_types = 0u;  // of DrawArguments, DrawIndexedArguments, DispatchArguments
+  uint32_t gate_bits = 0u;      // the gates (CommandListCache::gates) this pipeline arms
+  bool in_order = true;         // every match on this slot's stage alone, by registration position
+};
+
+// One bound slot.
 struct Slot {
   reshade::api::pipeline pipeline = {0u};
   reshade::api::pipeline_stage applied_stages = {};
-  // Borrowed from registrations_by_pipeline_handle (valid until the epoch moves), by command index.
-  std::array<const cross_addon::vector<command_action::internal::PipelineRegistration>*, COMMAND_INDEX_COUNT> matches = {};
-  uint32_t command_types = 0u;
-  uint32_t gate_bits = 0u;  // the gates (CommandListCache::gates) this pipeline arms
-  bool in_order = true;     // every match on this slot's stage alone, by registration position
+  Resolution resolution = {};
 };
 
 // The slots a command reads, combined.
@@ -124,15 +140,30 @@ struct Bound {
   bool in_order = true;
 };
 
+// One command type's command-wide callbacks with their gates, as of the epoch.
+struct Globals {
+  // Borrowed from global_callbacks_by_command_type (valid until the epoch moves); null: none.
+  const cross_addon::vector<command_action::internal::CallbackRegistration>* registrations = nullptr;
+  bool too_many = false;  // more than MAX_GLOBALS: the command takes RunCallbacks
+  uint64_t ungated = 0u;  // by registration index
+  uint64_t gated = 0u;    // by registration index; its gate: gate_of[index] (CommandListCache::gates)
+  std::array<uint8_t, MAX_GLOBALS> gate_of = {};
+};
+
 // Per command list and module (ReShade private data: cache_guid); used by the thread recording the list.
 struct CommandListCache {
   bool d3d11 = false;
+  // state.hpp's handle: set at the list's init_command_list, freed at its destroy_command_list (as this cache is).
+  const state::internal::CommandListStateHandle* state_handle = nullptr;
   uintptr_t module_signature = 0u;
   uint64_t epoch = UINT64_MAX;
   bool all_opted_in = false;
   std::array<GateEntry, MAX_GATES> gates = {};
   size_t gate_count = 0u;
+  std::array<Globals, COMMAND_INDEX_COUNT> globals = {};  // by command index (FAST_COMMAND_TYPES')
   std::array<Slot, SLOT_STAGES.size()> slots = {};
+  // Per slot, the pipelines resolved since the epoch moved, by handle.
+  std::array<gtl::flat_hash_map<uint64_t, Resolution>, SLOT_STAGES.size()> resolved;
   Bound graphics = {};
   Bound compute = {};
 };
@@ -190,11 +221,15 @@ bool Run(CommandContext<Arguments>* context, bool* skip) {
     cmd_list->set_private_data(cache_guid.data(), reinterpret_cast<uintptr_t>(cache));
   }
   if (!cache->d3d11) return false;
-  const auto* state_handle = state::internal::GetCommandListStateHandle(cmd_list);
-  if (state_handle == nullptr) return false;
+  if (cache->state_handle == nullptr) {
+    cache->state_handle = state::internal::GetCommandListStateHandle(cmd_list);
+    if (cache->state_handle == nullptr) return false;
+  }
+  const auto* state_handle = cache->state_handle;
 
-  // Every slot again when the epoch moved or the modules attached to command_action changed (the sum of the active
-  // module records' addresses); then whether every one of them opted in.
+  // Everything again when the epoch moved or the modules attached to command_action changed (the sum of the active
+  // module records' addresses): whether every one of them opted in, the gates, each command type's command-wide
+  // callbacks with their gates; the pipelines' resolutions dropped, every slot read.
   uintptr_t module_signature = 0u;
   for (const auto* module = action_control->modules; module != nullptr; module = module->next) {
     if (module->active) {
@@ -216,12 +251,35 @@ bool Run(CommandContext<Arguments>* context, bool* skip) {
     }
     cache->gates = shared.data->gates;
     cache->gate_count = shared.data->gate_count;
+    for (auto& resolved : cache->resolved) {
+      resolved.clear();
+    }
+    const auto gates = std::span(cache->gates.data(), cache->gate_count);
+    for (const uint32_t command_type : FAST_COMMAND_TYPES) {
+      Globals& globals = cache->globals[std::countr_zero(command_type)];
+      globals = {};
+      command_action::internal::shared.data->global_callbacks_by_command_type.if_contains(command_type, [&](const auto& entry) {
+        globals.registrations = &entry.second;
+      });
+      if (globals.registrations == nullptr) continue;
+      globals.too_many = globals.registrations->size() > MAX_GLOBALS;
+      for (size_t index = 0u; index < globals.registrations->size() && index < MAX_GLOBALS; ++index) {
+        const auto gate = std::ranges::find(gates, (*globals.registrations)[index].callback, &GateEntry::callback);
+        if (gate == gates.end()) {
+          globals.ungated |= uint64_t{1u} << index;
+        } else {
+          globals.gated |= uint64_t{1u} << index;
+          globals.gate_of[index] = static_cast<uint8_t>(gate - gates.begin());
+        }
+      }
+    }
   }
   if (!cache->all_opted_in) return false;
 
-  // The command's slots from state.hpp's tracked binds (as RunCallbacks' collect_stage reads them); a slot whose
-  // pipeline changed is resolved again: its prepared callbacks by command index (borrowed), whether they run in vector
-  // order, the gates its pipeline arms. Every slot when every_slot (the other kind's slots then hold this epoch too).
+  // The command's slots from state.hpp's tracked binds (as RunCallbacks' collect_stage reads them). A slot whose
+  // pipeline changed takes that pipeline's resolution: its prepared callbacks by command index (borrowed), whether they
+  // run in vector order, the gates it arms; made on the pipeline's first bind at that slot since the epoch moved. Every
+  // slot when every_slot (the other kind's slots then hold this epoch too).
   const size_t first_read = (every_slot ? 0u : FIRST_SLOT);
   const size_t last_read = (every_slot ? SLOT_STAGES.size() : LAST_SLOT);
   bool graphics_changed = every_slot;
@@ -233,35 +291,47 @@ bool Run(CommandContext<Arguments>* context, bool* skip) {
       const auto pipeline = tracked.GetBoundShaderPipeline(stage, &bind);
       Slot& slot = cache->slots[slot_index];
       if (!every_slot && pipeline == slot.pipeline && (pipeline.handle == 0u || bind.stages == slot.applied_stages)) continue;
-      slot = {.pipeline = pipeline, .applied_stages = bind.stages};
       graphics_changed = graphics_changed || slot_index < COMPUTE_SLOT;
       compute_changed = compute_changed || slot_index == COMPUTE_SLOT;
-      if (pipeline.handle == 0u) continue;
-      const auto stage_index = renodx::utils::pipeline::GetShaderStageIndex(stage);
-      command_action::internal::shared.data->registrations_by_pipeline_handle.if_contains(pipeline.handle, [&](const auto& entry) {
-        const auto& [pipeline_handle, prepared] = entry;
-        prepared.registrations_by_command_type.for_each([&](const auto& group) {
-          const auto& [command_type, matches] = group;
-          if (matches.empty()) return;
-          slot.matches[std::countr_zero(command_type)] = &matches;
-          slot.command_types |= command_type;
-          // RunCallbacks runs a stage's matches by registration position; this runs them in vector order.
-          size_t next_position = 0u;
-          for (const auto& match : matches) {
-            const size_t position = match.registration_position_by_stage[stage_index];
-            if (match.eligible_stages != static_cast<uint32_t>(stage) || position < next_position) {
-              slot.in_order = false;
-            }
-            next_position = position + 1u;
+      slot.pipeline = pipeline;
+      slot.applied_stages = bind.stages;
+      if (pipeline.handle == 0u) {
+        slot.resolution = {};
+        continue;
+      }
+      const auto [found, made] = cache->resolved[slot_index].try_emplace(pipeline.handle);
+      Resolution& resolution = found->second;
+      if (made) {
+        const auto stage_index = renodx::utils::pipeline::GetShaderStageIndex(stage);
+        command_action::internal::shared.data->registrations_by_pipeline_handle.if_contains(pipeline.handle, [&](const auto& entry) {
+          const auto& [pipeline_handle, prepared] = entry;
+          // Only the command types this dispatch takes (a lookup each, cheaper than walking the nested map).
+          for (const uint32_t command_type : FAST_COMMAND_TYPES) {
+            prepared.registrations_by_command_type.if_contains(command_type, [&](const auto& group) {
+              const auto& matches = group.second;
+              if (matches.empty()) return;
+              resolution.matches[std::countr_zero(command_type)] = &matches;
+              resolution.command_types |= command_type;
+              // RunCallbacks runs a stage's matches by registration position; this runs them in vector order.
+              size_t next_position = 0u;
+              for (const auto& match : matches) {
+                const size_t position = match.registration_position_by_stage[stage_index];
+                if (match.eligible_stages != static_cast<uint32_t>(stage) || position < next_position) {
+                  resolution.in_order = false;
+                }
+                next_position = position + 1u;
+              }
+            });
           }
         });
-      });
-      for (size_t gate = 0u; gate < cache->gate_count; ++gate) {
-        const auto pipeline_active = cache->gates[gate].gate.pipeline_active;
-        if (pipeline_active != nullptr && pipeline_active(pipeline, stage)) {
-          slot.gate_bits |= 1u << gate;
+        for (size_t gate = 0u; gate < cache->gate_count; ++gate) {
+          const auto pipeline_active = cache->gates[gate].gate.pipeline_active;
+          if (pipeline_active != nullptr && pipeline_active(pipeline, stage)) {
+            resolution.gate_bits |= 1u << gate;
+          }
         }
       }
+      slot.resolution = resolution;
     }
   });
   // A pipeline bound in two slots (at several stages) is RunCallbacks' merge, not this.
@@ -269,9 +339,9 @@ bool Run(CommandContext<Arguments>* context, bool* skip) {
     Bound combined = {};
     for (size_t slot_index = first; slot_index < last; ++slot_index) {
       const Slot& slot = cache->slots[slot_index];
-      combined.command_types |= slot.command_types;
-      combined.gate_bits |= slot.gate_bits;
-      combined.in_order = combined.in_order && slot.in_order;
+      combined.command_types |= slot.resolution.command_types;
+      combined.gate_bits |= slot.resolution.gate_bits;
+      combined.in_order = combined.in_order && slot.resolution.in_order;
       for (size_t other = first; other < slot_index; ++other) {
         if (slot.pipeline.handle != 0u && cache->slots[other].pipeline == slot.pipeline) {
           combined.in_order = false;
@@ -290,26 +360,16 @@ bool Run(CommandContext<Arguments>* context, bool* skip) {
   if (!bound.in_order) return false;
 
   // The command-wide callbacks that can act now: ungated, or their gate says so.
-  const cross_addon::vector<command_action::internal::CallbackRegistration>* globals = nullptr;
-  command_action::internal::shared.data->global_callbacks_by_command_type.if_contains(COMMAND_TYPE, [&](const auto& entry) {
-    const auto& [command_type, registrations] = entry;
-    globals = &registrations;
-  });
-  uint64_t acting_globals = 0u;
-  if (globals != nullptr) {
-    if (globals->size() > 64u) return false;
-    for (size_t index = 0u; index < globals->size(); ++index) {
-      bool acts = true;
-      for (size_t gate = 0u; gate < cache->gate_count; ++gate) {
-        const auto& [gated_callback, gate_functions] = cache->gates[gate];
-        if (gated_callback != (*globals)[index].callback) continue;
-        acts = (gate_functions.pipeline_active == nullptr || (bound.gate_bits & (1u << gate)) != 0u)
-               && (gate_functions.active == nullptr || gate_functions.active(cmd_list));
-        break;
-      }
-      if (acts) {
-        acting_globals |= uint64_t{1u} << index;
-      }
+  const Globals& globals = cache->globals[COMMAND_INDEX];
+  if (globals.too_many) return false;
+  uint64_t acting_globals = globals.ungated;
+  for (uint64_t gated = globals.gated; gated != 0u; gated &= gated - 1u) {
+    const size_t index = std::countr_zero(gated);
+    const size_t gate = globals.gate_of[index];
+    const Gate& gate_functions = cache->gates[gate].gate;
+    if ((gate_functions.pipeline_active == nullptr || (bound.gate_bits & (1u << gate)) != 0u)
+        && (gate_functions.active == nullptr || gate_functions.active(cmd_list))) {
+      acting_globals |= uint64_t{1u} << index;
     }
   }
   if (acting_globals == 0u && (bound.command_types & COMMAND_TYPE) == 0u) {
@@ -319,7 +379,7 @@ bool Run(CommandContext<Arguments>* context, bool* skip) {
   size_t contributing = 0u;
   size_t match_count = 0u;
   for (size_t slot_index = FIRST_SLOT; slot_index < LAST_SLOT; ++slot_index) {
-    const auto* matches = cache->slots[slot_index].matches[COMMAND_INDEX];
+    const auto* matches = cache->slots[slot_index].resolution.matches[COMMAND_INDEX];
     if (matches == nullptr || matches->empty()) continue;
     ++contributing;
     match_count += matches->size();
@@ -381,24 +441,31 @@ bool Run(CommandContext<Arguments>* context, bool* skip) {
     return false;
   };
 
-  for (size_t index = 0u; globals != nullptr && index < globals->size(); ++index) {
-    if ((acting_globals & (uint64_t{1u} << index)) == 0u) continue;
-    if (run_registration((*globals)[index])) {
+  // In registration order: the bits from the lowest index up.
+  for (uint64_t acting = acting_globals; acting != 0u; acting &= acting - 1u) {
+    if (run_registration((*globals.registrations)[std::countr_zero(acting)])) {
       *skip = true;
       return true;
     }
   }
-  std::array<std::pair<const void*, const void*>, MAX_CALLED> called = {};
+  // The callback identities called so far when two pipelines contribute; only the first called_count entries are read
+  // (left uninitialized: zeroing it would cost every command with callbacks).
+  struct Identity {
+    const void* callback;
+    const void* callback_data;
+    bool operator==(const Identity&) const = default;
+  };
+  std::array<Identity, MAX_CALLED> called;
   size_t called_count = 0u;
   for (size_t slot_index = FIRST_SLOT; slot_index < LAST_SLOT; ++slot_index) {
     const Slot& slot = cache->slots[slot_index];
-    const auto* matches = slot.matches[COMMAND_INDEX];
+    const auto* matches = slot.resolution.matches[COMMAND_INDEX];
     if (matches == nullptr) continue;
     const auto stage = SLOT_STAGES[slot_index];
     const auto stage_index = renodx::utils::pipeline::GetShaderStageIndex(stage);
     for (const auto& match : *matches) {
       if (contributing > 1u) {
-        const std::pair identity = {match.callback.callback, match.callback.callback_data};
+        const Identity identity = {.callback = match.callback.callback, .callback_data = match.callback.callback_data};
         const auto called_span = std::span(called.data(), called_count);
         if (std::ranges::find(called_span, identity) != called_span.end()) continue;
         called[called_count++] = identity;
@@ -491,7 +558,7 @@ inline void ClearGate(const Callback& callback) {
 inline void Use(DWORD fdw_reason) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH: {
-      if (command_action::internal::on_pipeline_registrations_changed != nullptr) return;
+      if (command_action::internal::on_registrations_changed != nullptr) return;
       // command_action's control block (attached before this), read once; the slot's view closes again, the block stays.
       auto slot = platform::OpenProcessSharedSlot<cross_addon::internal::ControlBlock<command_action::internal::SharedData>>(
           __uuidof(command_action::internal::SharedData), [](auto*&) {});
@@ -523,18 +590,18 @@ inline void Use(DWORD fdw_reason) {
       command_action::internal::fast_run_callbacks<DrawArguments> = &internal::Run<DrawArguments>;
       command_action::internal::fast_run_callbacks<DrawIndexedArguments> = &internal::Run<DrawIndexedArguments>;
       command_action::internal::fast_run_callbacks<DispatchArguments> = &internal::Run<DispatchArguments>;
-      command_action::internal::on_pipeline_registrations_changed = &internal::BumpEpoch;
+      command_action::internal::on_registrations_changed = &internal::BumpEpoch;
       internal::BumpEpoch();
       reshade::log::message(reshade::log::level::info, "utils::command_action fast dispatch on.");
       break;
     }
     case DLL_PROCESS_DETACH: {
       auto* data = internal::shared.data;
-      if (data == nullptr || command_action::internal::on_pipeline_registrations_changed == nullptr) return;
+      if (data == nullptr || command_action::internal::on_registrations_changed == nullptr) return;
       command_action::internal::fast_run_callbacks<DrawArguments> = nullptr;
       command_action::internal::fast_run_callbacks<DrawIndexedArguments> = nullptr;
       command_action::internal::fast_run_callbacks<DispatchArguments> = nullptr;
-      command_action::internal::on_pipeline_registrations_changed = nullptr;
+      command_action::internal::on_registrations_changed = nullptr;
       reshade::unregister_event<reshade::addon_event::destroy_command_list>(internal::OnDestroyCommandList);
       {
         const std::unique_lock lock(internal::caches_mutex);
