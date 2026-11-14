@@ -1782,11 +1782,11 @@ void ConfigureAddon() {
   // (their rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it and Smoke Shadows start off (hidden: not hooked here yet; once they are, no game
-  // run has shown them in this game), Specular Occlusion too (Experimental before the page); RT/PT turns all but the smoke
-  // on, as ATN's list does.
+  // run has shown them in this game), Far Tree Shadows (Experimental: the cards' capture is new here) and Specular Occlusion
+  // too (Experimental before the page); RT/PT turns all but the smoke and far trees on, as ATN's list does.
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
-        || setting->key == "RayTracedSpecularOcclusion") {
+        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
     }
   }
@@ -1799,6 +1799,7 @@ void ConfigureAddon() {
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
                                              .smoke_shadows_tested = false,
+                                             .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .has_reflections = false,
                                              .rays_replace_ao = false,
