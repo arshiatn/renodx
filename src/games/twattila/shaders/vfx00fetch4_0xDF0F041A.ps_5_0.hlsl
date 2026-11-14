@@ -10,7 +10,7 @@
 // particle_vfx_main.hlsl ps_main_high_quality (shadows hardware_fetch4, sm_5_0 (sm_4_0: 3A12A66D)): the lit particles (smoke, dust,
 // clouds, flames) with vfx00's edits (twattila/shaders/vfx00_0xACE33D5D.ps_5_0.hlsl, the game's
 // hardware_gather_5_0 build). Made by tools/tw/attila_gaps/atg_vfx_make.py from the 3Dmigoto decompile; checked on
-// WARP against the game's bytes (test/tw_vfx_builds). With every control at 1 and t49 / b8 / b9 unbound: the game's.
+// WARP against the game's bytes (test/tw_attila_builds). With every control at 1 and t49 / b8 / b9 unbound: the game's.
 
 cbuffer camera_VS_PS : register(b0)
 {

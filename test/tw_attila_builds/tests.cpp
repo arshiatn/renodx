@@ -1,5 +1,6 @@
-// The lit particles' pixel shaders (particle_vfx_main ps_main_high_quality and ps_main, every shadow method and shader
-// model: Attila's vfx00 / vfx01 and the builds src/games/twattila/shaders/vfx00<method> / vfx01 replace, made by
+// The game's other builds of Attila's replaced shaders. The lit particles' pixel shaders (particle_vfx_main
+// ps_main_high_quality and ps_main, every shadow method and shader model: Attila's vfx00 / vfx01 and the builds
+// src/games/twattila/shaders/vfx00<method> / vfx01 replace, made by
 // tools/tw/attila_gaps/atg_vfx_make.py) on WARP against the game's dumped bytes (Attila's; Thrones of Britannia's are the
 // same). As tools/tw/thrones/par_th_vfx_test, per build:
 // A. t49, b8, b9 unbound, every control at 1, fog off: the replacement equals the game's, bit for bit (discards the same).
@@ -13,8 +14,14 @@
 //    pixels from W/4 on equal B's failing game draw at that viewport, the rest the game's; CONTROL b8 unbound differs.
 // ps_main builds: D. t49 = 1 ignored (no shadow).
 // X. CONTROL: another build's game shader (another shadow method or path, the same bindings) against the replacement differs.
+// The battle fog (battlefog00 A6A0F887 and its MSAA build battlefog01 A538288B, per sample on a 4x multisampled depth), random
+// fog, t43 / t44 / b9 / b12 unbound:
+// A. Fog Strength 1, Fog & Sky Smoothing off: the game's within 1e-4 x the value (fxc orders some adds otherwise: a few
+//    ulp, as battlefog00 since it was made).
+// G. Fog Strength 0.5: rgb bit for bit, alpha never above A's; CONTROL: some alpha moves.
+// H. Fog & Sky Smoothing Medium: CONTROL: some rgb moves.
 // tests.exe <the game's dumped csos> <the add-on's built csos (build32\<game>.include\embed)> <VFX Brightness's float in b13>
-//           [all: every build's replacement must be there]
+//           <Fog Strength's float in b13 (-1: no fog builds)> [all: every build's replacement must be there]
 #include <d3d11.h>
 #include <d3d11shader.h>
 #include <d3dcompiler.h>
@@ -42,6 +49,8 @@ static std::mt19937 rng(1);
 static ID3D11Buffer* injection = nullptr;  // b13: the add-on's settings, VFX Brightness 1
 static ID3D11Buffer* brighter_2 = nullptr;  // VFX Brightness 2
 static ID3D11Buffer* brighter_3 = nullptr;  // VFX Brightness 3
+static ID3D11Buffer* fog_half = nullptr;    // Fog Strength 0.5
+static ID3D11Buffer* sky_smooth = nullptr;  // Fog & Sky Smoothing Medium, Strength 1
 static float Range(float lo, float hi) { return lo + (hi - lo) * std::uniform_real_distribution<float>(0.f, 1.f)(rng); }
 
 static std::vector<uint8_t> Load(const std::string& path) {
@@ -49,8 +58,50 @@ static std::vector<uint8_t> Load(const std::string& path) {
   return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 }
 
+// A W x H RGBA32F texture with 4 samples a pixel, each a hash of its pixel, sample and `seed` in 0..1 (drawn: a multisampled
+// texture takes no initial data).
+static ID3D11ShaderResourceView* MakeMultisampled(uint32_t seed) {
+  const std::string source = "float4 vs(uint id : SV_VertexID) : SV_Position { return float4(float2((id << 1) & 2, id & 2) * float2(2, -2) + float2(-1, 1), 0, 1); }\n"
+                             "float4 ps(float4 p : SV_Position, uint s : SV_SampleIndex) : SV_Target {\n"
+                             "  uint4 h = uint4(uint2(p.xy), s, " + std::to_string(seed) + "u) * uint4(73856093u, 19349663u, 83492791u, 2654435761u);\n"
+                             "  uint x = h.x ^ h.y ^ h.z ^ h.w; x ^= x >> 13; x *= 0x5BD1E995u; x ^= x >> 15;\n"
+                             "  return float4(x & 0xFFu, (x >> 8) & 0xFFu, (x >> 16) & 0xFFu, x >> 24) / 255.0; }\n";
+  ID3DBlob* vs_blob = nullptr;
+  ID3DBlob* ps_blob = nullptr;
+  D3DCompile(source.data(), source.size(), nullptr, nullptr, nullptr, "vs", "vs_5_0", 0, 0, &vs_blob, nullptr);
+  D3DCompile(source.data(), source.size(), nullptr, nullptr, nullptr, "ps", "ps_5_0", 0, 0, &ps_blob, nullptr);
+  ID3D11VertexShader* vs = nullptr;
+  ID3D11PixelShader* ps = nullptr;
+  device->CreateVertexShader(vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(), nullptr, &vs);
+  device->CreatePixelShader(ps_blob->GetBufferPointer(), ps_blob->GetBufferSize(), nullptr, &ps);
+  const D3D11_TEXTURE2D_DESC desc = {W, H, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {4, 0}, D3D11_USAGE_DEFAULT,
+                                     D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET, 0, 0};
+  ID3D11Texture2D* texture = nullptr;
+  device->CreateTexture2D(&desc, nullptr, &texture);
+  ID3D11RenderTargetView* rtv = nullptr;
+  device->CreateRenderTargetView(texture, nullptr, &rtv);
+  context->OMSetRenderTargets(1, &rtv, nullptr);
+  const D3D11_VIEWPORT viewport = {0.f, 0.f, float(W), float(H), 0.f, 1.f};
+  context->RSSetViewports(1, &viewport);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  context->VSSetShader(vs, nullptr, 0);
+  context->PSSetShader(ps, nullptr, 0);
+  context->Draw(3, 0);
+  context->OMSetRenderTargets(0, nullptr, nullptr);
+  ID3D11ShaderResourceView* view = nullptr;
+  device->CreateShaderResourceView(texture, nullptr, &view);
+  rtv->Release();
+  texture->Release();
+  vs->Release();
+  ps->Release();
+  vs_blob->Release();
+  ps_blob->Release();
+  return view;
+}
+
 // A W x H (cube: 16 x 16) RGBA32F texture: random texels, all `uniform` when not NaN, or 1 from column `from_column` on.
 static ID3D11ShaderResourceView* MakeTexture(D3D_SRV_DIMENSION dimension, uint32_t seed, float uniform = NAN, int from_column = -1) {
+  if (dimension == D3D_SRV_DIMENSION_TEXTURE2DMS) return MakeMultisampled(seed);
   std::mt19937 own(seed);
   std::uniform_real_distribution<float> unit(0.f, 1.f);
   const bool cube = dimension == D3D_SRV_DIMENSION_TEXTURECUBE;
@@ -425,21 +476,77 @@ static bool Check(const Build& build, const std::string& dump, const std::string
   return ok;
 }
 
+// The battle fog: A, G, H (above).
+static bool CheckFog(const Build& build, const std::string& dump, const std::string& built) {
+  const auto game_code = Load(dump + "/" + build.game);
+  ID3D11PixelShader* game = Shader(game_code);
+  ID3D11PixelShader* replacement = Shader(Load(built + "/" + build.built));
+  Fixture fixture;
+  if (game == nullptr || replacement == nullptr || !fixture.Make(game_code)) {
+    std::printf("%s: shaders not loaded (%s, %s)\n  FAILED\n", build.name, build.game, build.built);
+    return false;
+  }
+  Tally a;
+  uint64_t written = 0, rgb_moved = 0, alpha_moved = 0, alpha_up = 0, smooth_moved = 0;
+  for (int run = 0; run < 12; ++run) {
+    std::array<ID3D11Buffer*, 8> buffers = {};
+    std::array<ID3D11ShaderResourceView*, 24> views = {};
+    fixture.Inputs(run, true, 1.f, false, &buffers, &views);
+    const auto game_out = fixture.Draw(game, buffers, views, nullptr, nullptr, false);
+    const auto replacement_out = fixture.Draw(replacement, buffers, views, nullptr, nullptr, false);
+    const auto half_out = fixture.Draw(replacement, buffers, views, nullptr, nullptr, false, W, H, fog_half);
+    const auto smooth_out = fixture.Draw(replacement, buffers, views, nullptr, nullptr, false, W, H, sky_smooth);
+    for (size_t i = 0; i < game_out.size(); ++i) {
+      a.Add(replacement_out[i], game_out[i]);
+      if (game_out[i] != SENTINEL && game_out[i] != 0.f) ++written;
+      if (i % 4 == 3) {
+        if (half_out[i] != replacement_out[i]) ++alpha_moved;
+        if (half_out[i] > replacement_out[i]) ++alpha_up;
+      } else {
+        if (std::memcmp(&half_out[i], &replacement_out[i], 4) != 0) ++rgb_moved;
+        if (smooth_out[i] != replacement_out[i]) ++smooth_moved;
+      }
+    }
+    Release(&buffers, &views);
+  }
+  std::printf("%s: %s / %s (written %llu of %llu values)\n", build.name, build.game, build.built, (unsigned long long)written, (unsigned long long)a.values);
+  a.Print("A rows at the game's vs the game's");
+  std::printf("  G Fog Strength 0.5: rgb moved %llu (0), alpha moved %llu (CONTROL > 0), alpha above A's %llu (0)\n", (unsigned long long)rgb_moved,
+              (unsigned long long)alpha_moved, (unsigned long long)alpha_up);
+  std::printf("  H Fog & Sky Smoothing Medium: rgb moved %llu (CONTROL > 0)\n", (unsigned long long)smooth_moved);
+  const bool ok = a.Same() && written > 0 && rgb_moved == 0 && alpha_moved > 0 && alpha_up == 0 && smooth_moved > 0;
+  std::printf("  %s\n", ok ? "PASSED" : "FAILED");
+  return ok;
+}
+
 int main(int argc, char** argv) {
-  if (argc < 4) {
-    std::printf("usage: tests.exe <the game's dumped csos> <the add-on's built csos> <VFX Brightness's float in b13> [all]\n");
+  if (argc < 5) {
+    std::printf("usage: tests.exe <the game's dumped csos> <the add-on's built csos> <VFX Brightness's float in b13> <Fog Strength's (-1 none)> [all]\n");
     return 2;
   }
   const std::string dump = argv[1];
   const std::string built = argv[2];
   const int brightness = std::atoi(argv[3]);
-  const bool all = argc > 4 && std::string(argv[4]) == "all";
+  const int fog_strength = std::atoi(argv[4]);
+  const bool all = argc > 5 && std::string(argv[5]) == "all";
   D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, &device, nullptr, &context))) return 1;
-  // VFX Brightness and (Attila's two after it: weather, snow) at 1, the game's look; then 2, 3.
+  // VFX Brightness and (Attila's two after it: weather, snow) at 1, Fog Strength 1 and Fog & Sky Smoothing off (the float
+  // before Fog Strength is its strength, the one before that the smoothing; shared.h): the game's look. Then the others.
   std::vector<float> settings(256 * 4, 0.f);
   for (int k = 0; k < 3; ++k) settings[brightness + k] = 1.f;
+  if (fog_strength >= 2) settings[fog_strength] = 1.f;
   injection = MakeConstants(settings);
+  if (fog_strength >= 2) {
+    settings[fog_strength] = 0.5f;
+    fog_half = MakeConstants(settings);
+    settings[fog_strength] = 1.f;
+    settings[fog_strength - 2] = 2.f;
+    settings[fog_strength - 1] = 1.f;
+    sky_smooth = MakeConstants(settings);
+    settings[fog_strength - 2] = 0.f;
+    settings[fog_strength - 1] = 0.f;
+  }
   settings[brightness] = 2.f;
   brighter_2 = MakeConstants(settings);
   settings[brightness] = 3.f;
@@ -467,6 +574,19 @@ int main(int argc, char** argv) {
     }
     ++checked;
     passed += Check(build, dump, built) ? 1 : 0;
+  }
+  constexpr std::array<Build, 2> FOG_BUILDS = {{
+      {"battlefog00, sm_3_0", "0xA6A0F887.ps_4_0.cso", "0xA6A0F887.cso", Kind::PS_MAIN, ""},
+      {"battlefog01 MSAA, sm_4_1", "0xA538288B.ps_4_1.cso", "0xA538288B.cso", Kind::PS_MAIN, ""},
+  }};
+  for (const Build& build : FOG_BUILDS) {
+    if (fog_strength < 2) break;
+    if (!all && !std::ifstream(built + "/" + build.built).good()) {
+      std::printf("%s: not in this add-on (skipped)\n", build.name);
+      continue;
+    }
+    ++checked;
+    passed += CheckFog(build, dump, built) ? 1 : 0;
   }
   std::printf("%s: %d of %d\n", passed == checked && checked > 0 ? "PASS" : "FAIL", passed, checked);
   return passed == checked && checked > 0 ? 0 : 1;
