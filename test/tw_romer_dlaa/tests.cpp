@@ -11,6 +11,10 @@
 // 4. aa_dlaa_prepare: the depth passed through, the colour squared into BT.2020, the camera's motion from the depth (a
 //    ground plane drawn with the jittered camera, the camera moved 2 m since) against the CPU's reprojection (worst 0.05
 //    px, mean 0.01); 0 after a reset. aa_dlaa_finish: NVIDIA's output = its input gives the frame back.
+// 5. swap_chain_format (no GPU): the game's Renderer::Resize found by its bytes in the installed exe (argv[1], mapped as an
+//    image; skipped when it is not there), not in this test's exe (CONTROL); the hook on a function of its kind gives it the
+//    game's 8-bit format for the upgraded R16G16B16A16 / R10G10B10A2 (ATN's crash 2026-11-14), the rest as asked, its
+//    return value back; unhooked, the format as asked again.
 #include <windows.h>
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -24,6 +28,7 @@
 #include <utility>
 #include <vector>
 #include "src/games/twromeremastered/dlaa.hpp"
+#include "src/games/twromeremastered/swap_chain_format.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
 
 using Microsoft::WRL::ComPtr;
@@ -173,7 +178,14 @@ static uint16_t ToHalf(float value) {
   return static_cast<uint16_t>(sign | (exponent << 10) | ((bits >> 13) & 0x3FFu));
 }
 
-int main() {
+// A function of the game's Renderer::Resize kind for the hook (the formats it was given kept).
+static std::vector<uint32_t> resized_formats;
+__declspec(noinline) static uint64_t __fastcall TestResize(void*, uint32_t, uint32_t, uint32_t format, uint32_t, uint32_t) {
+  resized_formats.push_back(format);
+  return 7;
+}
+
+int main(int argc, char** argv) {
   REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
                                       context.GetAddressOf())));
   mock_device.native = device;
@@ -445,6 +457,35 @@ int main() {
   run_prepare(true);
   const auto reset_motion = ReadBack<std::array<float, 2>>(motion_out.Get(), WIDTH, HEIGHT);
   CHECK(std::ranges::all_of(reset_motion, [](const std::array<float, 2>& value) { return value[0] == 0.f && value[1] == 0.f; }));
+
+  // 5. swap_chain_format.
+  {
+    namespace format = twromeremastered::swap_chain_format;
+    if (argc >= 2 && GetFileAttributesA(argv[1]) != INVALID_FILE_ATTRIBUTES) {
+      HMODULE image = LoadLibraryExA(argv[1], nullptr, LOAD_LIBRARY_AS_IMAGE_RESOURCE);
+      REQUIRE(image != nullptr);
+      auto* base = reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(image) & ~uintptr_t{3});
+      const uint8_t* found = format::internal::Find(reinterpret_cast<HMODULE>(base));
+      std::printf("swap chain format: the game's resize at exe + %#llx\n", (found != nullptr ? static_cast<unsigned long long>(found - base) : 0ull));
+      CHECK(found == base + format::internal::RESIZE_RVA);
+      FreeLibrary(image);
+    } else {
+      std::printf("swap chain format: the game's exe not given or not there: its bytes not checked\n");
+    }
+    CHECK(format::internal::Find(GetModuleHandleW(nullptr)) == nullptr);  // CONTROL: not this exe
+    REQUIRE(format::internal::Hook(reinterpret_cast<void*>(&TestResize)));
+    auto* volatile resize = &TestResize;
+    std::vector<uint64_t> returned;
+    for (const uint32_t asked : {87u, 10u, 28u, 24u, 0u, 41u}) returned.push_back(resize(nullptr, 2572, 1446, asked, 0, 1));
+    const std::vector<uint32_t> hooked_formats = resized_formats;
+    format::Uninstall();
+    resize(nullptr, 2572, 1446, 10u, 0, 1);
+    std::printf("swap chain format: asked 87 10 28 24 0 41, given %u %u %u %u %u %u; unhooked 10, given %u\n", hooked_formats[0], hooked_formats[1],
+                hooked_formats[2], hooked_formats[3], hooked_formats[4], hooked_formats[5], resized_formats.back());
+    CHECK((hooked_formats == std::vector<uint32_t>{87u, 87u, 28u, 28u, 0u, 41u}));
+    CHECK(std::ranges::all_of(returned, [](uint64_t value) { return value == 7; }));
+    CHECK(resized_formats.size() == 7 && resized_formats.back() == 10u);
+  }
 
   std::printf("%s (%d failures)\n", (failures == 0 ? "PASS" : "FAIL"), failures);
   return (failures == 0 ? 0 : 1);

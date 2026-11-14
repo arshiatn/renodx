@@ -45,6 +45,7 @@
 #include "./dlaa.hpp"
 #include "./ray_tracing.hpp"
 #include "./shared.h"
+#include "./swap_chain_format.hpp"
 #include "./trace_reads.hpp"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -2123,6 +2124,8 @@ bool AttachAddon() {
 
   // Before the swapchain mod: a new chain's output is decided first (output_encoding), a removed device's chain goes.
   twattila::device_loss::Install();
+  // The game's swap chain rebuild in its own format, not the upgraded one (a Resolution Scale change crashed otherwise).
+  twromeremastered::swap_chain_format::Install();
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
@@ -2144,6 +2147,7 @@ void DetachAddon() {
   if (!attached) return;
 
   twattila::device_loss::Uninstall();
+  twromeremastered::swap_chain_format::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twromeremastered::dlaa::Uninstall();

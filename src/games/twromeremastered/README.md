@@ -2,6 +2,18 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+## v12 (2026-11-14, crash fix; built only, not run in game; installed: INSTALLED_PLACEHOLDER)
+
+- Fixed: changing Resolution Scale in game crashed (ATN 10:22, crash_1022.dmp: exe + 0x6ee594, an AddRef on a null
+  view). The game rebuilds its swap chain in the format its back buffer's view reports, which the HDR upgrade made
+  16-bit; for that format the game's own code makes no sRGB view and later uses the missing one. `swap_chain_format.hpp`
+  hooks the game's rebuild (exe + 0xFB420, found by its bytes; another build is left alone) and gives it the game's own
+  8-bit format back, so the rebuild runs as at the start.
+- Test: `test/tw_romer_dlaa` case 5 (the installed exe's bytes found at + 0xFB420, not in another exe; the formats given).
+
+Test (ATN): Resolution Scale 100% to 67% and back, in the menu and in a battle: no crash; ReShade.log has "Swap chain
+rebuilt at ...: the game's format 87 for the upgraded 10." once.
+
 ## v11 (2026-11-14, phase I part 4; stamped and installed 07:50 with renodx-tw-dlaa64.exe helper112, not run in game)
 
 - Graphics (Experimental, Advanced, off): **Frame Generation** (Off, 2x-6x, Dynamic: NVIDIA DLSS Frame Generation through
