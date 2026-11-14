@@ -265,6 +265,26 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   lock twice (told: atomic create + re-check). Reuse optimisation handed to the ReSTIR agent after U1 / U2.
 - [x] Thrones round 2 MERGED 3da5efd9 (campaign census, Particle Resolution + edges + smooth half-size, Experimental);
   agent resumed: Light Through All Banners, Grass Height Distance, Faster Game CPU Code if provable.
+- [x] Shogun 2 round 5 MERGED acfa8633 (W7d rigid casters out of view AC25DAB8 by rows v6-v8, Experimental off, needs a
+  restart; shared rt_core Host::cascade_last_view opt-in: Attila x64 / build32, WH3, Ryse, Ryse DLSS, Expeditions DLSS,
+  Rome Remastered rebuilt, their rt_core suites PASS). Agent resumed: cloth 8A00A1D4 + sprites E3DA20D4 (world route).
+- [x] ATN ~04:50: "use the nvidia nsight sdk and any other nvidia sdks that you need" (free + donations OK). Nsight agent
+  resumed: Nsight Graphics SDK 0.9.2 headers (Apache-2.0) + NGFX_FrameBoundary_D3D12 in dlaa_helper (ships in helper111,
+  all_modes proof), capture + replay shader swaps for the reuse pass, Aftermath licence read (NVIDIA SDK licence:
+  binaries only, no headers in the repo; dev-only opt-in crash dumps if the licence allows).
+- [x] Troy v52 MERGED (Smoke Shadows, Experimental; A96ACBCB masks + B057851F cut-outs; billboards' shroud (fixes v51 cards
+  vanishing with Far Tree Shadows); shared rt_core SceneShader::sun_slot default 0, twattila/light_count.hpp (Pharaoh's moved),
+  Pharaoh's rt_particle_quads slots as defines: build32 Attila not built by the agent -> merged check). Agent resumed: water.
+- [x] WH2 v49 MERGED (SSR copy 7F23C472 BUG below 100% fixed, spot lights F550D451 / 0764179D in Torch and Fire Shadows,
+  Smoke Shadows 1FC776EF indirect, campaign trees 41147CD3, 7D979F60 out of view, Rays Replace via sun_replace_maps s1;
+  shared rt_scene LightInstances + InstallPointLights(instances), rt_core LocalLight.shadows_only + indirect smoke,
+  rt_particle_quads_instancing.hlsli: Pharaoh / Troy / WH2 GS headers byte-identical). Agent on 75914932 out of view.
+  Troy told: fires 643FC156 can go on top of the new rt_scene light reader.
+- [ ] ReSTIR U1 / U2 (branch worktree-agent-afd5e1bbbc7a65b04, NOT merged): off = helper110 proven (38 headers cmp, DUMP,
+  all_modes 178 / 179 + 1 memory flake); cost rt_lights 2.20 -> 0.81 (U1) / 0.90 (U2) ms at 29 lights. Quality FAILED as a
+  unified reservoir (U1 66 %, U2 20.5 % rRMSE vs RR + importance 1.98 %, Steady 5.15 %: the sun's bounce outweighs the torches).
+  Redesign 39a8e204 (one light per bounce texel apart from the reservoir) being measured; helper111 only if it holds.
+  All agents told: atomic gpu_job.lock (two overwrites tonight).
 - [ ] Phase I, the four agents resumed with their run folders; merges one at a time; one merged verification.
 - [ ] Stamp + install the newest of all eight games before ATN wakes; round report per game.
 

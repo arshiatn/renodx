@@ -5,8 +5,8 @@
 
 #pragma once
 
-// Rays Replace Shadow Maps (Pharaoh's and Troy's directionallight.hlsl, Experimental, off): the sun draws reading the
-// per-frame atlas (g_tShadowBuffer_SM50 t3 through sShadowBuffer_SM50 s2, their only reads of s2) take every comparison
+// Rays Replace Shadow Maps (Pharaoh's and Troy's directionallight.hlsl, Experimental, off; Warhammer II's through s1): the sun
+// draws reading the per-frame atlas (g_tShadowBuffer_SM50 t3 through sShadowBuffer_SM50 s2, their only reads of s2) take every comparison
 // there as lit (an ALWAYS sampler) where the rays' shadow is bound at t49, so their patched comparisons
 // (screen_space_shadows.hpp Patch, each x the rays' visibility) give the rays' shadow alone. The kept baked map (t1 by s1)
 // stays the game's, and so do the atlas's other readers. The game's sampler is bound again after the draw (finalize: the
@@ -34,8 +34,6 @@ namespace twattila::sun_replace_maps {
 
 namespace internal {
 
-constexpr UINT ATLAS_SAMPLER_SLOT = 2;
-
 struct AtlasLit {
   std::shared_mutex mutex;
   ID3D11Device* device = nullptr;  // the sampler's (compared only)
@@ -45,6 +43,7 @@ struct AtlasLit {
 };
 inline AtlasLit atlas_lit;
 inline const float* row = nullptr;  // the addon's Rays Replace Shadow Maps row (0: off)
+inline UINT atlas_sampler_slot = 2;  // Install's
 
 constexpr auto OnSunReplaceMaps = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   if (row == nullptr || *row == 0.f || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
@@ -72,8 +71,8 @@ constexpr auto OnSunReplaceMaps = []<typename Context>(Context& command) -> reno
     if (FAILED(device->CreateSamplerState(&desc, state.always.GetAddressOf()))) return {};
     state.device = device.Get();
   }
-  native->PSGetSamplers(ATLAS_SAMPLER_SLOT, 1, state.game_sampler.ReleaseAndGetAddressOf());
-  native->PSSetSamplers(ATLAS_SAMPLER_SLOT, 1, state.always.GetAddressOf());
+  native->PSGetSamplers(atlas_sampler_slot, 1, state.game_sampler.ReleaseAndGetAddressOf());
+  native->PSSetSamplers(atlas_sampler_slot, 1, state.always.GetAddressOf());
   if (!std::exchange(state.logged, true)) {
     renodx::utils::log::i("[Total War] First run: Rays Replace Shadow Maps: the sun draws' per-frame shadow maps read as lit (the rays shadow).");
   }
@@ -83,7 +82,7 @@ constexpr auto OnSunReplaceMaps = []<typename Context>(Context& command) -> reno
     auto& drawn_state = atlas_lit;
     const std::unique_lock drawn_lock(drawn_state.mutex);
     if (drawn_native != nullptr) {
-      drawn_native->PSSetSamplers(ATLAS_SAMPLER_SLOT, 1, drawn_state.game_sampler.GetAddressOf());
+      drawn_native->PSSetSamplers(atlas_sampler_slot, 1, drawn_state.game_sampler.GetAddressOf());
     }
     drawn_state.game_sampler.Reset();
   }};
@@ -101,9 +100,11 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 
 }  // namespace internal
 
-// `atlas_sun_shaders`: the sun draws reading the per-frame atlas through s2; `replace_row`: the addon's row (0: off).
-inline void Install(std::span<const uint32_t> atlas_sun_shaders, const float* replace_row) {
+// `atlas_sun_shaders`: the sun draws reading the per-frame atlas through `sampler_slot` alone; `replace_row`: the addon's row
+// (0: off).
+inline void Install(std::span<const uint32_t> atlas_sun_shaders, const float* replace_row, UINT sampler_slot = 2) {
   internal::row = replace_row;
+  internal::atlas_sampler_slot = sampler_slot;
   reshade::register_event<reshade::addon_event::destroy_device>(internal::OnDestroyDevice);
   for (const uint32_t shader_hash : atlas_sun_shaders) {
     renodx::utils::command_action::Register(
