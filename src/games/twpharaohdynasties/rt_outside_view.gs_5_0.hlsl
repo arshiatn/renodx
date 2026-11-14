@@ -22,13 +22,15 @@
 //     world, TEXCOORD1 the UV of 5906CF6E's (Pharaoh's C7350ED5) t0 test.
 //   RT_CARD_SPLIT: Warhammer II's 75914932 (rigidtreebillboard vs40_shadow): TEXCOORD0 the card's UV, its view's whole part (z)
 //     and the blend to the next (w) of B7ED5B72's t0 test, TEXCOORD1's xyz the world, TEXCOORD2's x 1 - the card's fade.
+//   RT_COLOR_WORLD: Warhammer's 3888C71F (rigidcampaigntrees vs40_shadow): COLOR0 first, TEXCOORD0 the world.
 // CMake's shader rule takes no gs_ target: after a change run from the repository's root, once a variant
 // bin\fxc.exe src\games\twpharaohdynasties\rt_outside_view.gs_5_0.hlsl -T gs_5_0 -E main /O3 /Qstrip_reflect /nologo /D RT_WORLD /Vn __rt_outside_view_world /Fh src\games\twpharaohdynasties\rt_outside_view_world_gs.h
 // (RT_UNIT __rt_outside_view_unit _unit_gs.h, RT_BRANCH __rt_outside_view_branch _branch_gs.h, RT_LEAF __rt_outside_view_leaf
 // _leaf_gs.h, RT_CARD __rt_outside_view_card _card_gs.h); Troy's leaves: /D RT_LEAF /D RT_NO_FADE /Vn __rt_outside_view_leaf
 // /Fh src\games\twtroy\rt_outside_view_leaf_gs.h; Warhammer II's campaign trees: /D RT_WORLD_UV /Vn __rt_outside_view_world_uv
 // /Fh src\games\twwarhammer2\rt_outside_view_world_uv_gs.h, its far cards: /D RT_CARD_SPLIT /Vn __rt_outside_view_card_split
-// /Fh src\games\twwarhammer2\rt_outside_view_card_split_gs.h.
+// /Fh src\games\twwarhammer2\rt_outside_view_card_split_gs.h; Warhammer's campaign trees: /D RT_COLOR_WORLD
+// /Vn __rt_outside_view_colour_world /Fh src\games\twwarhammer\rt_outside_view_colour_world_gs.h.
 #include "../twattila/rt_capture.hlsli"
 
 cbuffer MainView : register(b0) {
@@ -74,6 +76,12 @@ struct Corner {
   float4 position : SV_Position;
   float4 world : TEXCOORD0;
   float2 uv : TEXCOORD1;
+};
+#elif defined(RT_COLOR_WORLD)
+struct Corner {
+  float4 position : SV_Position;
+  float4 colour : COLOR0;
+  float4 world : TEXCOORD0;
 };
 #elif defined(RT_CARD_SPLIT)
 struct Corner {

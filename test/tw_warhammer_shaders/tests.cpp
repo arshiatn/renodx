@@ -108,6 +108,9 @@
 //    (rt_rows_campaign_trees / prop_liquid: rows x the vertex, the trees' world; the liquid's without its ripple, under
 //    1.4 cm in y).
 //    CONTROLS: each capture against the other's game shader differs.
+// 22. The campaign trees' shadow VS out of view: the game's 3888C71F with the shared GS's RT_COLOR_WORLD variant (WH1's
+//    rt_outside_view_colour_world_gs.h) after it, 5 triangles of random inputs: with no main view (b0 0: every triangle
+//    outside) each corner the game's TEXCOORD0 world. CONTROL: a main view holding them collapses some.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -132,6 +135,7 @@
 #include "ambient_patch.h"
 // The add-on's settings buffer (b13) as the shaders read it.
 #include "../../src/games/twwarhammer/shared.h"
+#include "../../src/games/twwarhammer/rt_outside_view_colour_world_gs.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -867,7 +871,8 @@ struct Streamed {
 // `code`'s outputs streamed out for `vertices` (floats, one point each) laid out by the game vertex shader's input signature,
 // as rt_core draws a capture with the game's layout; `constants` from b0, t0 bound.
 static std::vector<float> StreamOut(std::span<const uint8_t> game, std::span<const uint8_t> code, std::span<const Streamed> outputs,
-                                    const std::vector<float>& vertices, std::span<ID3D11Buffer* const> constants, ID3D11ShaderResourceView* t0 = nullptr) {
+                                    const std::vector<float>& vertices, std::span<ID3D11Buffer* const> constants, ID3D11ShaderResourceView* t0 = nullptr,
+                                    std::span<const uint8_t> geometry = {}) {
   ComPtr<ID3D11ShaderReflection> reflection;
   D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf()));
   D3D11_SHADER_DESC desc = {};
@@ -894,8 +899,10 @@ static std::vector<float> StreamOut(std::span<const uint8_t> game, std::span<con
   ComPtr<ID3D11GeometryShader> stream;
   const HRESULT layout_made = device->CreateInputLayout(layout.data(), static_cast<UINT>(layout.size()), game.data(), game.size(), input_layout.GetAddressOf());
   const HRESULT vertex_made = device->CreateVertexShader(code.data(), code.size(), nullptr, vertex_shader.GetAddressOf());
-  const HRESULT stream_made = device->CreateGeometryShaderWithStreamOutput(code.data(), code.size(), entries.data(), static_cast<UINT>(entries.size()), &stride, 1,
-                                                                           D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf());
+  // `geometry`: a geometry shader after `code` streams out (triangles), else `code` itself (points).
+  const auto streamed = geometry.empty() ? code : geometry;
+  const HRESULT stream_made = device->CreateGeometryShaderWithStreamOutput(streamed.data(), streamed.size(), entries.data(), static_cast<UINT>(entries.size()),
+                                                                           &stride, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr, stream.GetAddressOf());
   if (FAILED(layout_made) || FAILED(vertex_made) || FAILED(stream_made)) {
     std::printf("  stream out: input layout %08lX, vertex shader %08lX, stream output %08lX\n", static_cast<unsigned long>(layout_made),
                 static_cast<unsigned long>(vertex_made), static_cast<unsigned long>(stream_made));
@@ -911,7 +918,8 @@ static std::vector<float> StreamOut(std::span<const uint8_t> game, std::span<con
   const UINT zero = 0;
   context->IASetVertexBuffers(0, 1, vertex_buffer.GetAddressOf(), &vertex_bytes, &zero);
   context->IASetInputLayout(input_layout.Get());
-  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+  context->IASetPrimitiveTopology(geometry.empty() ? D3D11_PRIMITIVE_TOPOLOGY_POINTLIST : D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  if (!geometry.empty()) context->GSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
   context->VSSetShader(vertex_shader.Get(), nullptr, 0);
   context->VSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
   context->VSSetShaderResources(0, 1, &t0);
@@ -2020,6 +2028,58 @@ static void TestPlaced(const std::string& root, const std::string& dump) {
               values, misses, row_misses, control);
 }
 
+static void TestTreeShadows(const std::string& dump) {
+  const auto game = GameBytes(dump, 0x3888C71F);
+  ComPtr<ID3D11ShaderReflection> reflection;
+  if (game.empty() || FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) {
+    CHECK(false, "tree shadows: 3888C71F's bytes");
+    return;
+  }
+  D3D11_SHADER_DESC desc = {};
+  reflection->GetDesc(&desc);
+  UINT floats = 0;
+  for (UINT index = 0; index < desc.InputParameters; ++index) {
+    D3D11_SIGNATURE_PARAMETER_DESC input = {};
+    reflection->GetInputParameterDesc(index, &input);
+    floats += static_cast<UINT>(std::bit_width(static_cast<UINT>(input.Mask)));
+  }
+  uint32_t state = 4421u;
+  std::vector<float> vertices;
+  for (int vertex = 0; vertex < 15; ++vertex) {
+    for (UINT component = 0; component < floats; ++component) {
+      state = state * 1664525u + 1013904223u;
+      vertices.push_back(-2.f + (4.f * static_cast<float>(state >> 8) / 16777216.f));
+    }
+  }
+  std::array<float, 64 * 4> none = {};
+  std::array<float, 64 * 4> holding = {};
+  for (size_t row = 0; row < 4; ++row) holding[((10 + row) * 4) + row] = 1.f;  // main_view[10-13]: the world as clip space, w 1
+  holding[(13 * 4) + 3] = 4.f;
+  const auto none_buffer = Constants(none.data(), sizeof(none));
+  const auto holding_buffer = Constants(holding.data(), sizeof(holding));
+  const std::array<ID3D11Buffer*, 1> none_constants = {none_buffer.Get()};
+  const std::array<ID3D11Buffer*, 1> holding_constants = {holding_buffer.Get()};
+  const std::array<Streamed, 1> world_out = {{{"TEXCOORD", 0, 4}}};
+  const std::array<Streamed, 1> kept_out = {{{"SV_Position", 0, 4}}};
+  const std::span<const uint8_t> keep(__rt_outside_view_colour_world, sizeof(__rt_outside_view_colour_world));
+  const auto expected = StreamOut(game, game, world_out, vertices, none_constants);
+  const auto kept = StreamOut(game, game, kept_out, vertices, none_constants, nullptr, keep);
+  const auto held = StreamOut(game, game, kept_out, vertices, holding_constants, nullptr, keep);
+  CHECK(expected.size() == 60 && kept.size() == 60 && held.size() == 60, "tree shadows: stream out %zu / %zu / %zu", expected.size(), kept.size(), held.size());
+  if (expected.size() != 60 || kept.size() != 60 || held.size() != 60) return;
+  int misses = 0;
+  int collapsed = 0;
+  for (size_t vertex = 0; vertex < 15; ++vertex) {
+    for (size_t axis = 0; axis < 3; ++axis) misses += Near(kept[(vertex * 4) + axis], expected[(vertex * 4) + axis], 1e-6f) ? 0 : 1;
+    misses += kept[(vertex * 4) + 3] == 1.f ? 0 : 1;
+    collapsed += std::memcmp(&held[vertex * 4], &kept[vertex * 4], 16) != 0 ? 1 : 0;
+  }
+  CHECK(misses == 0 && collapsed > 0, "tree shadows: %d misses, CONTROL %d collapsed", misses, collapsed);
+  std::printf("tree shadows: 3888C71F + rt_outside_view_colour_world, 15 corners out of view, %d misses against its TEXCOORD0; CONTROL in view: %d "
+              "corners collapsed\n",
+              misses, collapsed);
+}
+
 static void TestAoAlone(const std::string& games, const std::string& dump) {
   constexpr UINT SIZE = 16;
   const std::string path = games + "/twattila/rt_ambient_combine.cs_5_0.hlsl";
@@ -2791,6 +2851,7 @@ int main(int argc, char** argv) {
   TestWaterPass(games, argv[2]);
   TestBloom(argv[1], argv[2]);
   TestPlaced(argv[1], argv[2]);
+  TestTreeShadows(argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
