@@ -474,7 +474,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
 - [x] Shogun 2 parity round MERGED 5e4e2d80 (table tools/shogun2/pkg_1114/parity_1114.md: 43 have / 23 do now (8 done) / 5 trace
   / 13 won't; FG HDR read the wrong key (fixed), Softer water reflections, Smooth banner shadows, Grass shadow range, AO under
   RR, 5 Bend rows, casters out of view: far tree cards 30C453EE, units A22FA941 ("too big" was a counting error: 1.18 M
-  corners), naval 7B067623; page dump only the 9 new rows; WARP PASS). Agent resumed on the 15 DO NOW left.
+  corners), naval 7B067623; page dump only the 9 new rows; WARP PASS). Round 2 MERGED 16126f41 (naval sails / symbols / ropes
+  out of view, Water Clarity + Caustics, Modded Auto Exposure (GPU 8233E11F), Indicator Brightness, torch light in fog,
+  campaign overlay D7E27B35 below 100 % fixed (scale census), Gamma = WON'T (in-game Gamma reaches every mode)). Round 3:
+  RT/PT = Attila's (LightGlow, WaterCaustics), smoke GS for BEA3F2D4, engine-name reader, SSS Softness pass.
 - [x] WH2 parity round MERGED 4ded8d0d (table tools/tw/wh2/parity_1114.md: 207 have / 4 do now left / 7 trace / 55 won't; 19
   dead engine rows removed (0 code uses, 0 pointers), 5 Attila tests, Bloom, Indicator Brightness (Experimental), smoke
   twins DDABB799 / 687378DB, 4 casters out of view (level B); census held 26 -> 30; no shared change). Agent resumed:
