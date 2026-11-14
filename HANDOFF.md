@@ -391,6 +391,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Fable 5.2 HIGH review of the whole merged tree at the end, before the install.
 - [ ] ATN 11:02 restarted Steam non-elevated (checked: PID 27416, module readable): Nsight agent told to do its one Attila
   Constantinople run.
+  ATN ~11:5x: the run (or ONE extra run) with grass / unit LOD / model / building detail maxed (our rows via RENODX_TW_SET,
+  prefs with backup), camera left to the map border (all units + artillery smoke on screen); Time Each Pass, helper capture,
+  PresentMon, Log Details; CPU ETL only through ATN's own elevated tasks RenoDX_WPR_Start / _Stop if ATN creates them; then
+  a ranked units / buildings / grass / smoke / rays speed-up analysis.
 - [ ] ATN ~11:4x: the skill checks the whole dump for render scale (scale_census.py) but casters only in traces: agent
   (cdc_, worktree) adds caster_census.py --whole-dump (every VS classified, held / NOT HELD / not a caster), validates on
   Attila + Pharaoh e34c6089 palms, runs it for nine games (tools/tw/round_notes/caster_dump_<game>.txt), skill lines; results
