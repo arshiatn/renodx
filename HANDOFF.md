@@ -460,8 +460,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   Indicator Brightness (Experimental; MBOIT resolve 492ED8DA left out), four own-flag tests (Far Tree Block Shadows, Point Light
   Shadow Maps, Debris Shadows, Ragdolls), traced casters 03298FD5 + 1C3500F0 held (census 44 -> 46), 54 engine rows level A
   (name scan); Modded Auto Exposure WON'T (the game's AE is off: buffer 0 in 39 traces); Fog & Sky Smoothing WON'T (fog reads
-  no cube); scale census at HEAD mostly N/A (WH3 owns its scale, no view_share)). Agent resumed: scale_census view_share
-  check, MBOIT particle edges on WARP, water march step cap.
+  no cube); scale census at HEAD mostly N/A (WH3 owns its scale, no view_share)). Round 2 MERGED 10b3c753: scale_census.py
+  checks view_share before patch verdicts + parses uint64_t slots (skill script; WH3 BUG 10 -> 2, Pharaoh only its 4
+  building-water rows to OK), Reflection Quality (Experimental, march step cap), Modded Auto Exposure (Experimental; the exe
+  can turn its AE on), Indicator Brightness on the MBOIT resolve, suite test/tw_warhammer3_shaders (casters, march, AE).
+  Particle edges STOPPED (effect meshes in the half layer: every material replayed; gain half a texel). WH3 agent DONE.
 - [x] Troy parity round MERGED 9095731c (table tools/tw/troy/parity_1114.md: 20 have / 4 done now / 6 trace / 12 won't / 7 open;
   BUG: all 400 Graphics 2 of 2 rows did nothing (the shared lea-name finder matched 0 of 167 heap-copied names + 4 unresolved
   audio at-start tests blocked every slider): twtroy/tweak_objects.hpp finds them by Troy's initializers (memory image),
