@@ -1379,8 +1379,10 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 32> MOTION_SHADERS =
 // draw is dynamic and culls back faces, and AAE52888 (the twin of Attila's flag pixel shader) draws 561-820 times a battle
 // frame, so the rule would make every alpha-tested rigid object thin (th_drawn_names.py over the data run's traces).
 float rays_banner_light_row = 0.f;
+// Rarer Objects in the Rays (Experimental): the scene's families drawn in no trace (level B: SCENE_SHADERS' held_row).
+float rays_untraced_casters_row = 0.f;
 
-constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
+constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x289AC6F1, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x958620C8, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0xBFD9331A, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1393,6 +1395,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0xD830AD9B, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41, .cut_out_shader = __rt_capture_rigid_cut_out_sm41},
     {.hash = 0xB06CB969, .capture_shader = __rt_capture_rigid_blend_sm3, .rows_shader = __motion_record_rigid_blend_sm3, .thin_row = &rays_banner_light_row},
     {.hash = 0x10FE7EBC, .capture_shader = __rt_capture_rigid_blend_wind_sm3, .rows_shader = __motion_record_rigid_blend_wind_sm3, .thin_row = &rays_banner_light_row},
+    // Rigid objects with the game's Tessellation on (rigidcommon vs30_displacement, HS 0A3E0133, DS 1C0B3B3A; Attila's bytes, all
+    // three; in no trace): D830AD9B's placement and world position, the patches without the domain shader's displacement
+    // (test/tw_attila_builds T).
+    {.hash = 0x9AEE504E, .capture_shader = __rt_capture_rigid_sm41, .rows_shader = __motion_record_rigid_sm41, .patch_triangles = true, .held_row = &rays_untraced_casters_row},
     // Rocks and cliffs blended into the terrain (rigidterrainblend): its depth pass (its material pass has no camera).
     {.hash = 0xE03E161C, .capture_shader = __rt_capture_rigid_terrain_blend_sm3, .rows_shader = __motion_record_rigid_terrain_blend_sm3},
     {.hash = 0x77B993FD, .capture_shader = __rt_capture_branch_sm3, .rows_shader = __motion_record_tree},
@@ -1417,6 +1423,10 @@ constexpr std::array<twattila::rt_scene::SceneShader, 41> SCENE_SHADERS = {{
     {.hash = 0x902253FD, .capture_shader = __rt_capture_cloth_sm41, .dynamic = true, .thin = true},
     {.hash = 0xD11B5EC7, .capture_shader = __rt_capture_sail_sm3, .dynamic = true, .thin = true},
     {.hash = 0x202FA188, .capture_shader = __rt_capture_sail_sm41, .dynamic = true, .thin = true},
+    // Ropes (Attila's bytes; in no trace): ribbons the game turns to the camera, solid, captured every frame as drawn; the CPU's
+    // (8D0D26B9) and the placed ones (3926A823, turned in view space: back to the world through inv_view) (test/tw_attila_builds R, Q).
+    {.hash = 0x8D0D26B9, .capture_shader = __rt_capture_rope_sm3, .dynamic = true, .held_row = &rays_untraced_casters_row},
+    {.hash = 0x3926A823, .capture_shader = __rt_capture_rope_rigid_sm3, .dynamic = true, .held_row = &rays_untraced_casters_row},
     // Sprite soldiers: cards facing the sun, cut out by their diffuse map's alpha.
     // Each with its Shader Model 4.1 / 5 builds (E42AE09F; 98AA2F91, A86B4247): the same instructions, only the version
     // token and dcl_globalFlags differ (tools/tw/thrones/par_th_cards; no trace drew them: level B).
@@ -2181,6 +2191,7 @@ void ConfigureAddon() {
                                              .ssr_hierarchical = &shader_injection.ssr_hierarchical,
                                              .smoke_strength = &smoke_map_sliders.strength, .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row,
+                                             .rays_untraced_casters = &rays_untraced_casters_row,
                                              .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row,
                                              .motion_in_draw = &motion_in_draw_row,

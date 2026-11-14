@@ -14,6 +14,7 @@ Attila's fixes for the game's other builds, the same bytes here (Thrones' files 
 ### Parity round (2026-11-14; built only, not run in game)
 
 - Shared step (built only, not run in game): Torch and Fire Light / Shadows from Path Tracing (Experimental, off, as Attila's); Faster Smoke Shadow Build (Experimental, off; where Smoke Shadows are).
+- Round 2 (built only, not run in game): **Rarer Objects in the Rays (Experimental, off; the rays' More Options)**, as Attila's: with the game's Tessellation on its tessellated objects, and the ropes, cast ray-traced shadows (Attila's capture shaders: the game's bytes are Attila's). Offline: `tw_attila_builds -Game twthronesofbritannia` (T, R, Q on WARP).
 
 The rest of Attila's page and shader fixes this game can take (table: tools/tw/thrones/parity_1114.md).
 
@@ -34,7 +35,7 @@ Fixed:
 Not done:
 - VFX Brightness: Snowflakes, Rain & Fire Sparks and Blood Splash & Storm Fog: Attila picks them by the particle texture's layers, unread here. Smallest step: a snow battle and a storm with ReShade's texture view of the particle array.
 - The terrain's virtual texture page pass below 100%: no trace has drawn it yet.
-- Tessellation on (gfx_tesselation): its rigid objects (vs 9AEE504E, Attila's too) stay out of the rays. Smallest step, in Attila first: their control points captured as triangles (without the displacement), then a trace with tessellation on.
+- Tessellation on (gfx_tesselation): its rigid objects (vs 9AEE504E, Attila's too) in the rays only through Rarer Objects in the Rays (round 2), without the displacement; no trace with tessellation on yet.
 - Settings other than ATN's draw other builds of shaders this mod replaces, which Attila doesn't replace either: the point lights with point shadows (32: no torch shadows from the rays; the shared torch step), the tone mappers "with_bloom_and_gamma" and the MSAA fog and lights (tools/tw/thrones/par_th_models/models.txt).
 - The campaign's far terrain and its sea bed stay out of the rays (on purpose: just under the near terrain). The 24 MSAA passes: with in-game MSAA no upscaler runs.
 - Torch and Fire Shadows / Light from Path Tracing: the shared torch step; this game can take them.
