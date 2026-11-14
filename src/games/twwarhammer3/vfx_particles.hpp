@@ -34,7 +34,7 @@
 // Smooth Half-Size Particles: the half layer's colour and zeroth moment smoothed over frames (twattila/particle_history.hpp) and
 // composited by depth (particle_composite.ps_5_0.hlsl in 43606BB8's place; trace bm_siege/trace_35 lines 1280-1305: the half
 // layer's depth is the farthest of each 2 x 2 (7C758D23), A759AD5D adds its moments to the sharp ones by nearest, 43606BB8 reads
-// its colour bilinear without depth).
+// its colour bilinear without depth). Particle Edges by Depth: that composite alone, over the half layer as drawn.
 namespace twwarhammer3::vfx_particles {
 
 using Microsoft::WRL::ComPtr;
@@ -47,6 +47,9 @@ static float effect_meshes = 1.f;
 static float particle_fog = 1.f;
 static float half_resolution_row = 0.f;
 static float smoothing_row = 0.f;
+// Particle Edges by Depth (Attila's Full-Resolution Particle Edges' key): Smooth Half-Size Particles' composite by depth with the
+// half layer as the game drew it, no history.
+static float edges_row = 0.f;
 
 namespace internal {
 
@@ -129,6 +132,7 @@ struct Smoothing {
   std::array<ID3D11ShaderResourceView*, particle_history::VIEW_COUNT> game_views = {};
   std::array<ID3D11Buffer*, particle_history::CONSTANTS_COUNT> game_constants = {};
   bool applied_logged = false;
+  bool edges_logged = false;  // Particle Edges by Depth's first composite
 };
 
 static std::shared_mutex mutex;
@@ -309,7 +313,7 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
   const bool sprite = hash == SPRITE_MOMENTS_PS || hash == SPRITE_COLOUR_PS;
   const bool half_on = half_resolution_row != 0.f && sprite && command.arguments.draw_count <= 1u;
   const bool brightness_on = hash != SPRITE_MOMENTS_PS && BrightnessRowsOn();
-  const bool layer_seen = smoothing_row != 0.f && hash == SPRITE_MOMENTS_PS;
+  const bool layer_seen = (smoothing_row != 0.f || edges_row != 0.f) && hash == SPRITE_MOMENTS_PS;
   if (!half_on && !brightness_on && !layer_seen) {
     if (sprite && objects.device) objects.held[hash == SPRITE_COLOUR_PS ? 1 : 0].arguments.Reset();
     return {};
@@ -379,9 +383,10 @@ constexpr auto OnParticleDraw = []<typename Context>(Context& command) -> renodx
   }
 };
 
-// Smooth Half-Size Particles: the half layer's zeroth moment, as A759AD5D adds it to the sharp layer's (its t0).
+// Smooth Half-Size Particles, Particle Edges by Depth: the half layer's zeroth moment, as A759AD5D adds it to the sharp layer's
+// (its t0).
 constexpr auto OnMomentsCombine = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (smoothing_row == 0.f) return {};
+  if (smoothing_row == 0.f && edges_row == 0.f) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
@@ -392,10 +397,11 @@ constexpr auto OnMomentsCombine = []<typename Context>(Context& command) -> reno
 
 // Smooth Half-Size Particles: at the particles' composite (43606BB8: t0 the zeroth moment, t1 the sharp layer's colour, t2 the
 // half one's, the camera at b0), the half layer smoothed (particle_history.hpp), then the game's draw with
-// particle_composite.ps_5_0.hlsl, which brings it up by depth (all put back after). Before taa_dlss.hpp's own callback here
-// (Ray Reconstruction's particle layer draws the same shader again). Without this frame's layers: the game's composite.
+// particle_composite.ps_5_0.hlsl, which brings it up by depth (all put back after). Particle Edges by Depth alone: the same
+// composite over the half layer and its zeroth moment as the game drew them. Before taa_dlss.hpp's own callback here (Ray
+// Reconstruction's particle layer draws the same shader again). Without this frame's layers: the game's composite.
 constexpr auto OnComposite = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (smoothing_row == 0.f) return {};
+  if (smoothing_row == 0.f && edges_row == 0.f) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
@@ -442,8 +448,8 @@ constexpr auto OnComposite = []<typename Context>(Context& command) -> renodx::u
     if ((depth_target_desc.Flags & D3D11_DSV_READ_ONLY_DEPTH) == 0 && (written(half_layer->depth.Get()) || written(full_layer->depth.Get()))) {
       if (!smoothing.depth_clash_logged) {
         smoothing.depth_clash_logged = true;
-        renodx::utils::log::w("[Warhammer III] Smooth Half-Size Particles: the composite's depth target is a depth it reads: the game's "
-                              "composite.");
+        renodx::utils::log::w("[Warhammer III] Half-size particles by depth: the composite's depth target is a depth it reads: the "
+                              "game's composite.");
       }
       return {};
     }
@@ -457,31 +463,42 @@ constexpr auto OnComposite = []<typename Context>(Context& command) -> renodx::u
   if (!objects.composite && !objects.composite_failed) {
     objects.composite_failed = FAILED(device->CreatePixelShader(__particle_composite.data(), __particle_composite.size(), nullptr,
                                                                 objects.composite.GetAddressOf()));
-    if (objects.composite_failed) renodx::utils::log::w("[Warhammer III] Smooth Half-Size Particles: could not create its composite: off.");
+    if (objects.composite_failed) renodx::utils::log::w("[Warhammer III] Half-size particles by depth: could not create the composite: off.");
   }
   if (!objects.composite) return {};
-  const auto smoothed = particle_history::Resolve(native,
-                                                  {.colour = game_layers[2].Get(),
-                                                   .optical_depth = smoothing.half_optical_depth.Get(),
-                                                   .depth = half_layer->depth.Get(),
-                                                   .camera = camera.Get(),
-                                                   .viewport = half_layer->viewport},
-                                                  smoothing.frame, smoothing.restart, &objects.history);
-  smoothing.restart = false;
-  if (smoothed[0] == nullptr) return {};
+  // The half layer's colour and zeroth moment (t50, t51's x): smoothed over frames, or as the game drew them with the layer's
+  // region in the constants (b8) the resolve would have written.
+  std::array<ID3D11ShaderResourceView*, 2> half = {game_layers[2].Get(), smoothing.half_optical_depth.Get()};
+  if (smoothing_row != 0.f) {
+    half = particle_history::Resolve(native,
+                                     {.colour = game_layers[2].Get(),
+                                      .optical_depth = smoothing.half_optical_depth.Get(),
+                                      .depth = half_layer->depth.Get(),
+                                      .camera = camera.Get(),
+                                      .viewport = half_layer->viewport},
+                                     smoothing.frame, smoothing.restart, &objects.history);
+    smoothing.restart = false;
+    if (half[0] == nullptr) return {};
+  } else {
+    if (!particle_history::MakeObjects(device.Get(), &objects.history)) return {};
+    particle_history::Upload(native, {.region_width = half_layer->viewport.Width, .region_height = half_layer->viewport.Height}, &objects.history);
+  }
 
   native->PSGetShader(smoothing.game_shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
   native->PSGetShaderResources(particle_history::VIEWS_SLOT, particle_history::VIEW_COUNT, smoothing.game_views.data());
   native->PSGetConstantBuffers(particle_history::CONSTANTS_SLOT, particle_history::CONSTANTS_COUNT, smoothing.game_constants.data());
   const std::array<ID3D11ShaderResourceView*, particle_history::VIEW_COUNT> views = {
-      smoothed[0], smoothed[1], half_layer->depth.Get(), full_layer->depth.Get(), smoothing.half_optical_depth.Get(), nullptr};
+      half[0], half[1], half_layer->depth.Get(), full_layer->depth.Get(), smoothing.half_optical_depth.Get(), nullptr};
   const std::array<ID3D11Buffer*, particle_history::CONSTANTS_COUNT> constants = {objects.history.constants.Get(), nullptr, nullptr, camera.Get()};
   native->PSSetShader(objects.composite.Get(), nullptr, 0);
   native->PSSetShaderResources(particle_history::VIEWS_SLOT, particle_history::VIEW_COUNT, views.data());
   native->PSSetConstantBuffers(particle_history::CONSTANTS_SLOT, particle_history::CONSTANTS_COUNT, constants.data());
-  if (!smoothing.applied_logged) {
-    smoothing.applied_logged = true;
-    renodx::utils::log::i(std::format("[Warhammer III] Smooth Half-Size Particles: the first composite smoothed ({} x {} half layer).",
+  bool& logged = (smoothing_row != 0.f) ? smoothing.applied_logged : smoothing.edges_logged;
+  if (!logged) {
+    logged = true;
+    renodx::utils::log::i(std::format("[Warhammer III] {} ({} x {} half layer).",
+                                      (smoothing_row != 0.f) ? "Smooth Half-Size Particles: the first composite smoothed"
+                                                             : "Particle Edges by Depth: the first composite by depth",
                                       half_layer->viewport.Width, half_layer->viewport.Height));
   }
   return {.finalize_callback = [](Context& post, const void*) {

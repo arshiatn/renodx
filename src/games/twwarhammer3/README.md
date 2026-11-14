@@ -1,5 +1,52 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### Parity round 2 (2026-11-14 evening; built only, not run in game)
+
+- New: **Rarer Objects in the Rays (Experimental, off)** in Shadows' More Options, as Attila's, Warhammer's and Warhammer
+  II's: rigid objects the game tessellates (its Tessellation on; D5D2905E and 958EC025 into hull shader FE7929BE, in no
+  trace) cast ray-traced shadows, as their triangles without the displacement, which fades out 5 to 20 m from the camera.
+  WARP (`test/tw_rays_captures` T): the capture is the game's world position bit for bit, the rows its POSITION1-3, the
+  game's chain seen from far its triangles exactly; up close its displacement stays within the game's 0.1.
+- New: **Particle Edges by Depth (VFX, Experimental, off)**, in the place of Attila's Full-Resolution Particle Edges (its
+  key): the game's half-size particle layer brought up by depth, as Smooth Half-Size Particles does, without its smoothing
+  over frames (bilinear unless one of the 2 x 2 texels lies more than 10% off the pixel's distance, then by nearness: the
+  rule of the game's own unused filtered composite). Smoke behind a unit no longer covers his outline. WARP
+  (`test/tw_particle_history` 5, 6): on flat depth the game's composite to 2.75e-6; at a box's edge the box takes 0.18% of
+  the smoke behind it, where the game's composite gives the pixels next to the edge about half. Attila's way, the edge
+  pixels drawn again at full size, would replay every effect mesh's material in the half layer (all 95 traces have them)
+  for half a texel more.
+- New: **Faster Reflections (Experimental, off)** under the ray-traced reflections (ATN's OK): their own ReSTIR samples on
+  Attila's narrower lobe, in place of Reuse and Reflections as Rough as the Game's (both greyed while on). 4K harness
+  (helper113, the reflections pass at ATN's Warhammer III rows, 3 x 300 frames): his rows 1.35-1.42 ms, this 1.06 ms. Own
+  ReSTIR is cheap on the narrow lobe only: with Reflections as Rough as the Game's on it costs 2.27-2.32 ms. Armour and metal
+  look more mirror-like. Shared step: the graphics page places the row where a game has it (other games' pages unchanged).
+- Trace: with ReShade.ini `[renodx] FrameTraceReads=1` a frame trace adds each skinned unit draw's geometry (index and
+  vertex buffers, offsets, instances) and its first instance's bytes; `tools\tw\wh3_parity\p2w3_unit_geometry.py` counts how
+  many shadow-pass unit draws repeat a main-pass draw: the evidence a cross-pass unit capture needs before it can skip the
+  shadow pass's copy. Off by default (nothing read).
+
+Not done in round 2:
+- Cross-pass unit capture key (unit round D): needs one battle trace with FrameTraceReads=1 (bm_siege, RT/PT on); level C
+  until then.
+- TBB grain rows (unit round E): Warhammer III has no tbb grain value in its exe; Attila's five rows wait for the
+  coordinator.
+- Skip the Game's Shadow Map Work: CPU round 4 (needs a Warhammer III data run, ATN decides). Shadow cascades: Warhammer III
+  has no cascade count to set (no name, maps 4096 x 4096 x 4 in every trace).
+- Far unit imposters (fx_imposter): drawn in no trace yet.
+
+Test in game (ATN):
+- Siege benchmark, your preset, the three new rows Off (default): looks and runs as v59 (control). Send nothing unless it
+  differs.
+- Siege benchmark, RT/PT, the game's Tessellation on, paused at a gate tower: Rarer Objects in the Rays Off / On: the tower
+  and gate cast ray-traced shadows as the walls do, none floating off them. Decides: default on. Send two screenshots and
+  `ReShade.log`.
+- Same run: Faster Reflections Off / On, Time Each Pass (One Frame) each way: the reflections pass about 0.3 ms less; armour
+  and wet stone more mirror-like. Decides: keep the row, put it in RT/PT. Send `ReShade.log`.
+- A battle with smoke or fire behind units, Smooth Half-Size Particles Off, paused: Particle Edges by Depth Off / On: unit
+  outlines sharp against the smoke, no dark or bright fringe. Decides: default on. Send two screenshots.
+- Siege benchmark with `[renodx] FrameTrace=1` and `FrameTraceReads=1` in ReShade.ini (no picture change): send
+  `tw_frame_trace.txt` for the cross-pass unit capture key.
+
 ### Whole-frame check's code items (2026-11-14, shared with Attila; built only, not run in game)
 
 - New: **Faster Smoke Shadow Build (Experimental, off)**, after Smoke Shadow Quality (helper113): the smoke's BLAS built

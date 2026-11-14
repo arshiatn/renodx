@@ -13,8 +13,9 @@
 // C. CONTROL: the camera turned 90 degrees from the sun: corners differ by more than 0.1 m.
 // T. The tessellated rigid objects (SceneShader::patch_triangles, Rarer Objects in the Rays), as test/tw_attila_builds' 9AEE504E:
 //   Warhammer E168387B (HS F04A8DF4, DS 7C266A97) through F6DBA4F4's capture and rows, Warhammer II 4CC2D68F (HS EB3218C8, DS
-//   C92A2D5F) through 16AFAF14's, Rome II E51A2D2A (HS E2BF92FC, DS A13A267D) through F343950E's (the add-ons' built shaders;
-//   Rome II's from build32); 64 patches of 3, each its placement:
+//   C92A2D5F) through 16AFAF14's, Warhammer III D5D2905E and 958EC025 (HS FE7929BE, DS 187E9195, its world at the domain shader's
+//   TEXCOORD1) through its rt_capture_rigid and rt_rows_rigid, Rome II E51A2D2A (HS E2BF92FC, DS A13A267D) through F343950E's
+//   (the add-ons' built shaders; Rome II's from build32); 64 patches of 3, each its placement:
 //   T1 the capture's TEXCOORD0 (a triangle list, no hull or domain shader) is the game vertex shader's world position (its
 //      TEXCOORD0) bit for bit, w 1;
 //   T2 the rows shader's TEXCOORD0-2 are POSITION1-3 bit for bit;
@@ -99,6 +100,9 @@ struct Draw {
   ID3D11ShaderResourceView* gs_view = nullptr;
   ID3D11ShaderResourceView* ds_view = nullptr;
   ID3D11SamplerState* ds_sampler = nullptr;
+  // Bytes a vertex of `vertices` (0: a float4 an input of this vertex shader): the game shader's, when this one reads a first part
+  // of its inputs (the tessellated games' capture and rows shaders).
+  UINT stride = 0;
   ID3D11ShaderResourceView* vs_view = nullptr;
   ID3D11SamplerState* vs_sampler = nullptr;
 };
@@ -121,7 +125,7 @@ static Streamed StreamOut(const Draw& draw, const std::vector<float>& vertices, 
     if (parameter.SystemValueType != D3D_NAME_UNDEFINED) continue;
     elements.push_back({parameter.SemanticName, parameter.SemanticIndex, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, UINT(elements.size() * 16), D3D11_INPUT_PER_VERTEX_DATA, 0});
   }
-  const UINT stride = UINT(elements.size() * 16);
+  const UINT stride = (draw.stride != 0) ? draw.stride : UINT(elements.size() * 16);
   const UINT count = UINT(vertices.size() * 4 / stride);
   const std::span<const uint8_t> last = !draw.gs.empty() ? draw.gs : std::span<const uint8_t>(draw.ds != nullptr ? *draw.ds : *draw.vs);
   const D3D11_SO_DECLARATION_ENTRY entry = {0, semantic, index, 0, components, 0};
@@ -223,8 +227,8 @@ struct TessellatedGame {
   const char* capture;  // the add-on's built shaders (<game>.include\embed)
   const char* rows;
   UINT factor;          // rigid_config_PS: g_tesselation_factor's float, g_tesselation_displacement_scale the next
+  UINT chain_world = 0;       // the domain shader's TEXCOORD holding the world position (w 1)
   bool config_at_b1 = false;  // the vertex shader's rigid_config_PS at b1, wind_VS at b2 (Rome II); false: the wind at b1
-  UINT inputs = 13;           // its inputs: POSITION0, TEXCOORD0, NORMAL0-2, COLOR0, POSITION1-7 (Rome II: to POSITION6)
 };
 
 static bool CheckTessellated(const TessellatedGame& game, const std::string& dump_root, const std::string& build_root) {
@@ -240,14 +244,28 @@ static bool CheckTessellated(const TessellatedGame& game, const std::string& dum
     std::printf("  MISSING a shader's bytes\n");
     return false;
   }
-  // The game's inputs; POSITION0 and the rows small (the world within 1.25 m of the origin), each patch its placement.
-  const UINT INPUTS = game.inputs;
+  // The game vertex shader's inputs: POSITION0, TEXCOORD0, NORMAL0-2, COLOR0, POSITION1-6 (Rome II: 12), POSITION7 (Warhammer,
+  // Warhammer II: 13), then POSITION8-9 (Warhammer III: 15) and the last rows POSITION10-12 (its 958EC025: 18); system values
+  // left out. POSITION0 and the rows small (the world within 1.25 m of the origin), each patch its placement.
+  UINT inputs = 0;
+  ID3D11ShaderReflection* reflection = nullptr;
+  if (SUCCEEDED(D3DReflect(vs.data(), vs.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(&reflection)))) {
+    D3D11_SHADER_DESC desc = {};
+    reflection->GetDesc(&desc);
+    for (UINT i = 0; i < desc.InputParameters; ++i) {
+      D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+      reflection->GetInputParameterDesc(i, &parameter);
+      inputs += (parameter.SystemValueType == D3D_NAME_UNDEFINED) ? 1u : 0u;
+    }
+    reflection->Release();
+  }
+  const UINT stride = inputs * 16;
   std::vector<float> vertices;
   for (UINT patch = 0; patch < PATCHES; ++patch) {
     std::array<std::array<float, 4>, 3> placement = {};
     for (auto& row : placement) row = {Range(-0.5f, 0.5f), Range(-0.5f, 0.5f), Range(-0.5f, 0.5f), Range(-0.5f, 0.5f)};
     for (int corner = 0; corner < 3; ++corner) {
-      for (UINT input = 0; input < INPUTS; ++input) {
+      for (UINT input = 0; input < inputs; ++input) {
         if (input == 0) {
           vertices.insert(vertices.end(), {Range(-0.5f, 0.5f), Range(-0.5f, 0.5f), Range(-0.5f, 0.5f), 1.f});
         } else if (input >= 6 && input <= 8) {
@@ -282,7 +300,8 @@ static bool CheckTessellated(const TessellatedGame& game, const std::string& dum
 
   const std::array<ID3D11Buffer*, 3> vs_constants = game.config_at_b1 ? std::array<ID3D11Buffer*, 3>{far_camera, config, wind}
                                                                       : std::array<ID3D11Buffer*, 3>{far_camera, wind, config};
-  const auto captured = StreamOut({.vs = &capture, .topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, .vs_constants = vs_constants}, vertices, "TEXCOORD", 0, 4).values;
+  const auto captured =
+      StreamOut({.vs = &capture, .topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, .vs_constants = vs_constants, .stride = stride}, vertices, "TEXCOORD", 0, 4).values;
   // The game's TEXCOORD0 is its xyz.
   const auto world = StreamOut({.vs = &vs, .topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, .vs_constants = vs_constants}, vertices, "TEXCOORD", 0, 3).values;
   uint64_t t1_differ = 0;
@@ -297,17 +316,17 @@ static bool CheckTessellated(const TessellatedGame& game, const std::string& dum
               (unsigned long long)t1_differ, (unsigned long long)t1_w);
   uint64_t t2_differ = 0;
   for (UINT row = 0; row < 3; ++row) {
-    const auto rows_out = StreamOut({.vs = &rows, .vs_constants = vs_constants}, vertices, "TEXCOORD", row, 4).values;
+    const auto rows_out = StreamOut({.vs = &rows, .vs_constants = vs_constants, .stride = stride}, vertices, "TEXCOORD", row, 4).values;
     for (size_t v = 0; v < PATCHES * 3; ++v) {
-      t2_differ += (rows_out.size() == PATCHES * 12 && SameBits(&rows_out[v * 4], &vertices[((v * INPUTS) + 6 + row) * 4], 4)) ? 0 : 1;
+      t2_differ += (rows_out.size() == PATCHES * 12 && SameBits(&rows_out[v * 4], &vertices[((v * inputs) + 6 + row) * 4], 4)) ? 0 : 1;
     }
   }
   const bool t2 = t2_differ == 0;
   std::printf("  T2 rows vs POSITION1-3: %llu of %u differ (0)\n", (unsigned long long)t2_differ, PATCHES * 9);
   Draw chain = {.vs = &vs, .hs = &hs, .ds = &ds, .topology = D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST, .vs_constants = vs_constants,
                 .tessellation_constants = {far_camera, config}, .ds_view = displacement, .ds_sampler = sampler};
-  // The domain shader's TEXCOORD0: the world position, w 1.
-  const auto far_chain = StreamOut(chain, vertices, "TEXCOORD", 0, 4).values;
+  // The domain shader's world position, w 1.
+  const auto far_chain = StreamOut(chain, vertices, "TEXCOORD", game.chain_world, 4).values;
   // Corner order within a triangle is the tessellator's: compared as sets.
   const auto sorted = [](const float* triangle) {
     std::array<std::array<uint32_t, 4>, 3> corners = {};
@@ -324,7 +343,7 @@ static bool CheckTessellated(const TessellatedGame& game, const std::string& dum
               (unsigned long long)t3_differ);
   chain.vs_constants[0] = near_camera;
   chain.tessellation_constants[0] = near_camera;
-  const auto near_chain = StreamOut(chain, vertices, "TEXCOORD", 0, 4).values;
+  const auto near_chain = StreamOut(chain, vertices, "TEXCOORD", game.chain_world, 4).values;
   const size_t per_patch = near_chain.size() / 12 / PATCHES;
   double largest = 0.0;
   uint64_t off_plane = 0;
@@ -584,18 +603,22 @@ int main(int argc, char** argv) {
     std::printf("  %s\n", passed ? "PASSED" : "FAILED");
     all = all && passed;
   }
-  // rigid_config_PS's g_tesselation_factor: Warhammer's and Rome II's at offset 20, Warhammer II's at 16.
-  const std::array<TessellatedGame, 2> tessellated = {{
+  // rigid_config_PS's g_tesselation_factor: Warhammer's and Rome II's at offset 20, Warhammer II's at 16, Warhammer III's at 3 (its
+  // hull shader's cb1[0].w, the domain shader's displacement cb1[1].x; its vertex shaders read them at cb2, the wind at cb1, both
+  // bound here).
+  const std::array<TessellatedGame, 4> tessellated = {{
       {"Warhammer", "twwarhammer", "0xE168387B.vs_5_0", "0xF04A8DF4.hs_5_0", "0x7C266A97.ds_5_0", "rt_capture_rigid_standard_sm41",
        "motion_record_rigid_rigidambientmapfiremesh_f6db", 5},
       {"Warhammer II", "twwarhammer2", "0x4CC2D68F.vs_5_0", "0xEB3218C8.hs_5_0", "0xC92A2D5F.ds_5_0", "rt_capture_rigid_standard",
        "motion_record_rigid_rigidstandard_16af", 4},
+      {"Warhammer III D5D2905E", "twwarhammer3", "0xD5D2905E.vs_5_0", "0xFE7929BE.hs_5_0", "0x187E9195.ds_5_0", "rt_capture_rigid", "rt_rows_rigid", 3, 1},
+      {"Warhammer III 958EC025", "twwarhammer3", "0x958EC025.vs_5_0", "0xFE7929BE.hs_5_0", "0x187E9195.ds_5_0", "rt_capture_rigid", "rt_rows_rigid", 3, 1},
   }};
   for (const TessellatedGame& game : tessellated) {
     all = CheckTessellated(game, root, build_root) && all;
   }
   all = CheckTessellated({"Rome II", "twrome2", "0xE51A2D2A.vs_5_0", "0xE2BF92FC.hs_5_0", "0xA13A267D.ds_5_0", "rt_capture_rigid_sm41_b",
-                          "motion_record_rigid_sm41_b", 5, true, 12},
+                          "motion_record_rigid_sm41_b", 5, 0, true},
                          root, build32_root)
         && all;
   all = CheckTerrain(root, build32_root) && all;

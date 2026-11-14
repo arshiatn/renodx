@@ -1301,6 +1301,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Take({.match = "RayTracedReflectionLight", .section = section, .shown = rays, .only_some_games = true});
       page.Take({.match = "RayTracedReflectionFog", .section = section, .shown = rays, .only_some_games = true});
       page.Take({.match = "RayTracedReflectionLobe", .section = section, .shown = rays, .only_some_games = true});
+      page.Take({.match = "RayTracedReflectionFaster", .section = section, .shown = rays, .only_some_games = true});
       page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = b.texts->specular_occlusion_label});
       page.Take({.match = "RayTracedSkipGameReflections", .section = section, .shown = rays, .only_some_games = true});
     }

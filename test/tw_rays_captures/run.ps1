@@ -1,11 +1,12 @@
 # The rays' captures that needed a new path in rt_core (tests.cpp): the sprite soldiers' imposter vertex shader of Warhammer
 # (sm 4.0 and 4.1), Troy, Warhammer II and Pharaoh streamed out through its game's gs_main and through
-# twattila/rt_capture_imposter_gs.h (the bytes the add-ons embed), and Warhammer's, Warhammer II's and Rome II's tessellated
-# rigid objects and Rome II's tessellated terrain through their add-on's capture and rows shaders, on WARP. amd64 (WARP runs
-# Rome II's 32-bit add-on's shaders the same).
+# twattila/rt_capture_imposter_gs.h (the bytes the add-ons embed), and Warhammer's, Warhammer II's, Warhammer III's and Rome
+# II's tessellated rigid objects and Rome II's tessellated terrain through their add-on's capture and rows shaders, on WARP.
+# amd64 (the games are 64-bit; WARP runs Rome II's 32-bit add-on's shaders the same).
 # -GameShaders: the folder holding dump_shader_<game>_pack\cso (default the decompiler's, only read). -Built: the folder holding
-# <game>.include\embed (default this tree's build, after renodx-twwarhammer.addon64 and renodx-twwarhammer2.addon64); -Built32
-# the same for the 32-bit games (default this tree's build32, after renodx-twrome2.addon32). -OutDir:
+# <game>.include\embed (default this tree's build, after renodx-twwarhammer.addon64, renodx-twwarhammer2.addon64 and
+# renodx-twwarhammer3.addon64); -Built32 the same for the 32-bit games (default this tree's build32, after
+# renodx-twrome2.addon32). -OutDir:
 # where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin). Holds tools/tw's GPU job lock
 # while it runs when -Lock names it.
 param([Parameter(Mandatory = $true)][string]$OutDir, [string]$GameShaders = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16', [string]$Built = '',
