@@ -47,6 +47,7 @@
 #include "../twattila/water_effects.hpp"
 #include "../twattila/water_reflections.hpp"
 #include "./more_tests.h"
+#include "./shadow_map.hpp"
 #include "./tweak_objects.hpp"
 #include "../twpharaohdynasties/trace_reads.hpp"
 // Pharaoh's outside-view geometry shaders (built bytes): Troy's shadow vertex shaders write the same outputs (SCENE_SHADERS).
@@ -1407,6 +1408,9 @@ twattila::smoke_map::Sliders smoke_map_sliders;
 // Texture LOD Bias on All Textures (Graphics 1 of 2, Experimental): the trilinear samplers too
 // (texture_lod_bias.hpp SetWrappingTrilinear).
 float lod_bias_trilinear_row = 0.f;
+// Shadow Map Size (shadow_map.hpp, Experimental): the highest Shadows setting's shadow map, an index into SHADOW_MAP_SIZES.
+float shadow_map_size = 0.f;
+constexpr std::array<uint32_t, 4> SHADOW_MAP_SIZES = {0, 8192, 12288, 16384};  // 0: the game's (6144)
 // Shadow Casters Out of View and the hills' (Graphics 1 of 2, Experimental): SCENE_SHADERS' cascade_keep casters.
 float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
@@ -1671,6 +1675,11 @@ constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {
     {.shader_hash = 0xE885C018, .gbuffer_slot = 6, .camera_slot = 1, .lighting_slot = 3, .sun_direction = 4, .ao_slot = 4},  // skinlm_interior
 }};
 
+// The shadow map size, before the game builds its shadows (Pharaoh's place).
+void OnInitDevice(reshade::api::device*) {
+  twtroy::shadow_map::Install(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
+}
+
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
@@ -1715,6 +1724,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
+  twtroy::shadow_map::Set(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)]);
   twattila::light_count::OnPresent(rt_sliders.debug_log != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
@@ -1900,6 +1910,18 @@ void ConfigureAddon() {
   }
   graphics_options = {};
   for (auto& test : engine_tests) graphics_options.push_back(&test.option);
+  // graphics_page moves it under Shadows (shown with the game's shadow maps); its presets leave it alone.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "GraphicsShadowMapSize",
+      .binding = &shadow_map_size,
+      .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+      .default_value = 0.f,
+      .label = "Shadow Map Size (Experimental)",
+      .section = "Graphics (Experimental)",
+      .tooltip = "Sharper sun shadows that flicker less, at the highest Shadows setting. More video memory\n"
+                 "(16384: 1 GB or more). Applies after a restart or after changing the game's Shadows option.",
+      .labels = {"6144 (Game's)", "8192", "12288", "16384"},
+  });
   graphics_status = tw::engine_tweaks::StatusLine();
   settings.push_back(graphics_status);
 
@@ -2085,6 +2107,7 @@ bool AttachAddon() {
   ConfigureAddon();
 
   twattila::device_loss::Install();
+  reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
@@ -2251,6 +2274,7 @@ void DetachAddon() {
 
   twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
@@ -2280,6 +2304,7 @@ void DetachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
   twattila::smoke_map::Uninstall();
+  twtroy::shadow_map::Uninstall();
   twattila::ao_filter::Uninstall();
   twattila::ao_pass::Uninstall();
 
