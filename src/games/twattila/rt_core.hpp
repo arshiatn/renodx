@@ -3506,9 +3506,10 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
 // keyed by its index buffer and range, which stay when the game writes other indices into them: kept, the set laid the old
 // triangles over the new vertices, stretched triangles across the scene (traces of 100 ms and more, as suspect 2's wrong
 // vertices; Rome Remastered's battle resets, suspect 3). Each set whose range the write touches is made again
-// (PrepareClusterSet), its triangles captured meanwhile.
-inline void OnIndexWrite(reshade::api::resource dest, uint64_t offset, uint64_t size) {
+// (PrepareClusterSet), its triangles captured meanwhile. Only a D3D11 device's handles are ID3D11Resource pointers.
+inline void OnIndexWrite(reshade::api::device* device, reshade::api::resource dest, uint64_t offset, uint64_t size) {
   if (!index_buffers_held.load(std::memory_order_relaxed) || dest.handle == 0) return;
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* resource = reinterpret_cast<ID3D11Resource*>(dest.handle);
   D3D11_RESOURCE_DIMENSION dimension = D3D11_RESOURCE_DIMENSION_UNKNOWN;
   resource->GetType(&dimension);
@@ -3549,23 +3550,23 @@ inline bool OnBatchUpdateTexture(reshade::api::device*, const reshade::api::subr
   return false;
 }
 
-inline bool OnUpdateIndices(reshade::api::device*, const void*, reshade::api::resource dest, uint64_t offset, uint64_t size) {
-  OnIndexWrite(dest, offset, size);
+inline bool OnUpdateIndices(reshade::api::device* device, const void*, reshade::api::resource dest, uint64_t offset, uint64_t size) {
+  OnIndexWrite(device, dest, offset, size);
   return false;
 }
 
-inline bool OnUpdateIndicesCommand(reshade::api::command_list*, const void*, reshade::api::resource dest, uint64_t offset, uint64_t size) {
-  OnIndexWrite(dest, offset, size);
+inline bool OnUpdateIndicesCommand(reshade::api::command_list* cmd_list, const void*, reshade::api::resource dest, uint64_t offset, uint64_t size) {
+  OnIndexWrite(cmd_list->get_device(), dest, offset, size);
   return false;
 }
 
-inline bool OnCopyIndices(reshade::api::command_list*, reshade::api::resource, uint64_t, reshade::api::resource dest, uint64_t offset, uint64_t size) {
-  OnIndexWrite(dest, offset, size);
+inline bool OnCopyIndices(reshade::api::command_list* cmd_list, reshade::api::resource, uint64_t, reshade::api::resource dest, uint64_t offset, uint64_t size) {
+  OnIndexWrite(cmd_list->get_device(), dest, offset, size);
   return false;
 }
 
-inline bool OnCopyIndexBuffer(reshade::api::command_list*, reshade::api::resource, reshade::api::resource dest) {
-  OnIndexWrite(dest, 0, UINT64_MAX);
+inline bool OnCopyIndexBuffer(reshade::api::command_list* cmd_list, reshade::api::resource, reshade::api::resource dest) {
+  OnIndexWrite(cmd_list->get_device(), dest, 0, UINT64_MAX);
   return false;
 }
 
