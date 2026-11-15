@@ -26,7 +26,7 @@
 #include "../twattila/rt_core.hpp"
 #include "./bridge.hpp"
 #include "./bridge_replay.hpp"
-#include "./object_shadow_shaders.h"
+#include "./patched_shaders.h"
 #include "./sun_shaders.h"
 
 // R.U.S.E.'s ray-traced ground shadows (tools/nontw/ruse/plan.md 10b A5, G1): the TW helper traces the sun through the
@@ -38,14 +38,20 @@
 // trace, and the traced visibility into the mask's red by minimum (the darker of the game's shadow and the rays').
 // Objects (O1) shade with the game's shadow maps alone: their pixels have no depth before the main pass, so last frame's
 // main depth (kept at the bloom) goes into this frame's view over the ground's and the rays start from both; the object
-// shaders (object_shadow_shaders.h) read the traced visibility at s15 by screen position, a white texel when untraced.
+// shaders (patched_shaders.h) read the traced visibility at s15 by screen position, a white texel when untraced. The
+// ground's ambient occlusion (AO) comes from the same trace: the terrain shaders read it at s14 into their ambient.
 namespace ruse::ray_tracing {
+
+// The rays' ambient range in world units: 2 m if a unit is a centimetre (eye heights near 67,000 on the B0 trace; the
+// T-run checks).
+constexpr float AMBIENT_RANGE = 200.f;
 
 using Microsoft::WRL::ComPtr;
 
 struct State {
   bool ground = false;  // the Ray-Traced Ground Shadows row (restart; with the anti-aliasing's helper)
   bool objects = false;  // the Ray-Traced Object Shadows row (restart; with the ground's)
+  bool ambient = false;  // the Ray-Traced Ground Ambient Occlusion row (restart; with the ground's)
   bool failed = false;
   // This frame's pre-pass (the camera pass's target and depth), where its copy went (an IDirect3DTexture9), the sun.
   uint32_t camera_frame = UINT32_MAX;
@@ -77,6 +83,10 @@ struct State {
   ComPtr<ID3D11ComputeShader> reproject;
   ComPtr<ID3D11Buffer> reprojection;
   ComPtr<IDirect3DTexture9> unshadowed;
+  // AO: the traced ambient occlusion for the D3D9 pass (R32F), and the frame it holds.
+  bridge::SharedTexture occlusion;
+  ComPtr<ID3D11UnorderedAccessView> occlusion_uav;
+  uint32_t occlusion_frame = UINT32_MAX;
 };
 inline State state;
 
@@ -132,6 +142,11 @@ inline bool TraceGround(reshade::api::command_list* cmd_list) {
                       && SUCCEEDED(proxy->CreateUnorderedAccessView(state.visibility.proxy.Get(), nullptr, state.visibility_uav.ReleaseAndGetAddressOf()))
                       && SUCCEEDED(proxy->CreateShaderResourceView(bridge.depth.proxy.Get(), nullptr, state.depth_view.ReleaseAndGetAddressOf()))
                       && SUCCEEDED(proxy->CreateComputeShader(__rt_ground_copy.data(), __rt_ground_copy.size(), nullptr, state.copy.ReleaseAndGetAddressOf()));
+    if (made && state.ambient) {
+      made = bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.occlusion,
+                                D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS)
+             && SUCCEEDED(proxy->CreateUnorderedAccessView(state.occlusion.proxy.Get(), nullptr, state.occlusion_uav.ReleaseAndGetAddressOf()));
+    }
     if (made && state.objects) {
       D3D11_TEXTURE2D_DESC desc = {
           .Width = bridge.width,
@@ -263,13 +278,20 @@ inline bool TraceGround(reshade::api::command_list* cmd_list) {
   twattila::rt_scene::WriteSun(context.Get(), state.toward_sun);
   replay::CaptureScene(state.proxy_queue->get_immediate_command_list(), view_projection);
   if (!twattila::rt_scene::Trace(context.Get(), start_depth, camera)) return false;
-  ID3D11ShaderResourceView* visibility = twattila::rt_scene::Visibilities()[0];
+  const auto [visibility, occlusion] = twattila::rt_scene::Visibilities();
   if (visibility == nullptr) return false;
-  ID3D11UnorderedAccessView* output = state.visibility_uav.Get();
+  // The helper's R8 results into the textures the D3D9 device shares (R32F).
+  const auto copy = [&](ID3D11ShaderResourceView* source, ID3D11UnorderedAccessView* destination) {
+    context->CSSetShaderResources(0, 1, &source);
+    context->CSSetUnorderedAccessViews(0, 1, &destination, nullptr);
+    context->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+  };
   context->CSSetShader(state.copy.Get(), nullptr, 0);
-  context->CSSetShaderResources(0, 1, &visibility);
-  context->CSSetUnorderedAccessViews(0, 1, &output, nullptr);
-  context->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+  copy(visibility, state.visibility_uav.Get());
+  if (state.ambient && occlusion != nullptr) {
+    copy(occlusion, state.occlusion_uav.Get());
+    state.occlusion_frame = bridge.frame;
+  }
   ID3D11ShaderResourceView* no_view = nullptr;
   ID3D11UnorderedAccessView* no_output = nullptr;
   context->CSSetShaderResources(0, 1, &no_view);
@@ -285,26 +307,34 @@ inline bool TraceGround(reshade::api::command_list* cmd_list) {
   return true;
 }
 
-// O1: the object shaders' s15 (point, clamped: one texel a pixel by VPOS).
-inline void BindVisibility(IDirect3DDevice9* host, IDirect3DTexture9* visibility) {
-  host->SetTexture(15, visibility);
-  host->SetSamplerState(15, D3DSAMP_MINFILTER, D3DTEXF_POINT);
-  host->SetSamplerState(15, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
-  host->SetSamplerState(15, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
-  host->SetSamplerState(15, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
-  host->SetSamplerState(15, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
-  host->SetSamplerState(15, D3DSAMP_SRGBTEXTURE, FALSE);
+// The patched shaders' textures, read by VPOS (point, clamped: one texel a pixel): s15 the sun visibility (O1's object
+// shaders), s14 the ambient occlusion (the terrain's); white (the game's shading) unless `traced` this frame.
+inline void BindTraced(IDirect3DDevice9* host, bool traced) {
+  const auto bind = [host](DWORD stage, IDirect3DTexture9* texture) {
+    host->SetTexture(stage, texture);
+    host->SetSamplerState(stage, D3DSAMP_MINFILTER, D3DTEXF_POINT);
+    host->SetSamplerState(stage, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
+    host->SetSamplerState(stage, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+    host->SetSamplerState(stage, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+    host->SetSamplerState(stage, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+    host->SetSamplerState(stage, D3DSAMP_SRGBTEXTURE, FALSE);
+  };
+  if (state.objects) {
+    bind(15, traced ? state.visibility.host.Get() : state.unshadowed.Get());
+  }
+  if (state.ambient) {
+    bind(14, (traced && state.occlusion_frame == bridge::state.frame) ? state.occlusion.host.Get() : state.unshadowed.Get());
+  }
 }
 
-// O1, at the bloom (the bridge's prepare pass has just written this frame's main depth into its shared depth): kept for
-// the next frame's trace, since the shadow-map, sprite and ground passes reuse the game's depth before then; s15 white
-// again, for the sprite atlas the same object shaders draw before the next main pass.
-inline void KeepObjectDepth(reshade::api::command_list* cmd_list) {
+// At the bloom: the patched shaders' textures white again (the sprite atlas draws with the object shaders before the
+// next main pass). O1: the bridge's prepare pass has just written this frame's main depth into its shared depth: kept
+// for the next frame's trace, since the shadow-map, sprite and ground passes reuse the game's depth before then.
+inline void OnBloom(reshade::api::command_list* cmd_list) {
   auto& bridge = bridge::state;
   auto* proxy_reshade = renodx::utils::device_proxy::proxy_device_reshade;
-  if (!state.objects) return;
-  BindVisibility(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()), state.unshadowed.Get());
-  if (state.kept_depth == nullptr || proxy_reshade == nullptr || bridge.depth_frame != bridge.frame) return;
+  BindTraced(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()), false);
+  if (!state.objects || state.kept_depth == nullptr || proxy_reshade == nullptr || bridge.depth_frame != bridge.frame) return;
   ComPtr<ID3D11DeviceContext> context;
   reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native())->GetImmediateContext(context.GetAddressOf());
   context->CopyResource(state.kept_depth.Get(), bridge.depth.proxy.Get());
@@ -329,9 +359,9 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
       }
     }
   }
-  // O1: the object shaders' s15, white (the game's shadows alone) from each frame's first scene draw until a trace.
+  // The patched shaders' textures white from each frame's first scene draw until a trace.
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
-  if (state.objects && state.bound_frame != bridge.frame) {
+  if ((state.objects || state.ambient) && state.bound_frame != bridge.frame) {
     state.bound_frame = bridge.frame;
     if (state.unshadowed == nullptr) {
       ComPtr<IDirect3DSurface9> texel;
@@ -341,18 +371,18 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
         state.unshadowed.Reset();
       }
     }
-    BindVisibility(host, state.unshadowed.Get());
+    BindTraced(host, false);
   }
   if (state.mask_frame != bridge.frame || state.traced_frame == bridge.frame || bridge.depth_stencil == state.prepass_depth) return;
   state.traced_frame = bridge.frame;
-  if (TraceGround(cmd_list) && state.objects) {
-    BindVisibility(host, state.visibility.host.Get());
+  if (TraceGround(cmd_list)) {
+    BindTraced(host, true);
   }
 }
 
 // The game's present: rt_core's new frame.
 inline void OnPresent() {
-  twattila::rt_scene::Update({.sun_shadows = state.ground});
+  twattila::rt_scene::Update({.sun_shadows = state.ground, .ambient_occlusion = state.ambient, .ambient_range = AMBIENT_RANGE});
 }
 
 // The proxy's device (rt_core's objects, ours on it) or the game's (its shaders, the mask) going.
@@ -373,12 +403,15 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.reproject.Reset();
     state.reprojection.Reset();
     state.kept_frame = UINT32_MAX;
+    state.occlusion = {};
+    state.occlusion_uav.Reset();
   } else if (device->get_api() == reshade::api::device_api::d3d9) {
     state.depth_copy.Reset();
     state.shadows.Reset();
     state.unshadowed.Reset();
     state.bound_frame = UINT32_MAX;
     state.visibility = {};
+    state.occlusion = {};
     state.ground_mask = 0;
     state.prepass_depth = 0;
     state.prepass_target = 0;

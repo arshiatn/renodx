@@ -1158,7 +1158,7 @@ void ConfigureAddon() {
       for (const uint32_t bloom : {0x41B68A24u, 0xF663E47Eu}) {
         custom_shaders[bloom] = {.crc32 = bloom, .on_draw = [](reshade::api::command_list* cmd_list) {
                                    ruse::bridge::Evaluate(cmd_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
-                                   ruse::ray_tracing::KeepObjectDepth(cmd_list);
+                                   ruse::ray_tracing::OnBloom(cmd_list);
                                    return true;
                                  }};
       }
@@ -1241,6 +1241,29 @@ void ConfigureAddon() {
     ruse::ray_tracing::state.objects = ruse::ray_tracing::state.ground && setting->GetValue() != 0.f;
     if (ruse::ray_tracing::state.objects) {
       for (const auto& [hash, code] : ruse::ray_tracing::OBJECT_SHADOW_SHADERS) {
+        custom_shaders[hash] = {.crc32 = hash, .code = code};
+      }
+    }
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseRayTracedGroundOcclusion",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Ray-Traced Ground Ambient Occlusion (Experimental)",
+        .section = "Output (Restart Required)",
+        .tooltip = "Ray-traced ambient occlusion on the ground: softly darker under buildings, units and trees (costs GPU time).\n"
+                   "Needs Ray-Traced Ground Shadows. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The terrain shaders with the rays' occlusion in their ambient (each proved the game's with it at 1).
+    ruse::ray_tracing::state.ambient = ruse::ray_tracing::state.ground && setting->GetValue() != 0.f;
+    if (ruse::ray_tracing::state.ambient) {
+      for (const auto& [hash, code] : ruse::ray_tracing::GROUND_AMBIENT_SHADERS) {
         custom_shaders[hash] = {.crc32 = hash, .code = code};
       }
     }
