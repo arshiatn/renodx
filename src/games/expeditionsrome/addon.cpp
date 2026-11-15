@@ -445,7 +445,7 @@ void ConfigureAddon() {
   settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote());
   settings.insert(settings.begin() + 2, new renodx::utils::settings::Setting{
                                             .value_type = renodx::utils::settings::SettingValueType::TEXT,
-                                            .label = "The game has no HDR option of its own: this add-on's Output makes it HDR.",
+                                            .label = "Keep the game's own HDR setting off: this add-on's Output makes it HDR.",
                                             .section = "General",
                                         });
   // Section titles: one colour, Graphics 2 of 2's pink, the page's its own; then the page (Graphics 1 and 2 of 2).
@@ -551,7 +551,6 @@ void ConfigureAddon() {
       .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
       .section = "About",
   });
-  // No NexusMods page known for this game's mod yet.
   const auto buttons = talesofarise::hdr_only::AboutButtons("https://www.nexusmods.com/expeditionsrome/mods/2");
   settings.insert(settings.end(), buttons.begin(), buttons.end());
 
