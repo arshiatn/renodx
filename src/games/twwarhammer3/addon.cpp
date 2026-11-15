@@ -3971,9 +3971,6 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
-    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset.
-    float saved_mode = 0.f;
-    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
@@ -3983,7 +3980,8 @@ void ConfigureAddon() {
           const bool frame_generation = twattila::feature_settings::Upscaling(aa_sliders) && aa_sliders.frame_generation != 0.f;
           return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
-        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+        .first_start_without_hdr = &ApplySdrPreset,
+        .recommended_preset = &ApplyPsychoRecommended2500,
     });
     settings.push_back(setting);
   }

@@ -94,6 +94,12 @@ void ApplySdrPreset() {
   renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}});
 }
 
+// The Recommended button; Output Auto takes it once when Windows HDR comes on after a first start without HDR.
+void ApplyRecommendedPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 3.f}, {"volumetric_fog", 0.5f}, {"sharpening", 0.0f}});
+}
+
 // Moves the bound render targets to their 16-bit clones (hot swap), so the HDR frame
 // written here (and read by the next passes) is not clipped to 8/10-bit UNORM.
 bool ActivateRenderTargetClones(reshade::api::command_list* cmd_list) {
@@ -261,10 +267,7 @@ void BuildRuntimeData() {
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV35)\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
-          .on_change = []() {
-            ApplyResetPreset();
-            renodx::utils::settings::UpdateSettings({{"tonemapper", 3.f}, {"volumetric_fog", 0.5f}, {"sharpening", 0.0f}});
-          },
+          .on_change = []() { ApplyRecommendedPreset(); },
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
@@ -529,9 +532,6 @@ void ConfigureAddon() {
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    // No settings saved yet: a player's first start. On a display without HDR (Auto) it starts with the SDR preset.
-    float saved_mode = 0.f;
-    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = static_cast<int>(setting->GetValue()),
@@ -542,7 +542,9 @@ void ConfigureAddon() {
           if (frame_generation || output == twattila::output_encoding::HDR10) return twattila::output_encoding::HDR10;
           return twattila::output_encoding::SCRGB;
         },
-        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+        .first_start_without_hdr = &ApplySdrPreset,
+        .recommended_preset = &ApplyRecommendedPreset,
+        .log_name = "[Rome]",
     });
     settings.push_back(setting);
   }

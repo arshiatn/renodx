@@ -175,6 +175,12 @@ void ApplySdrPreset() {
   renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}});
 }
 
+// The Recommended button; Output Auto takes it once when Windows HDR comes on after a first start without HDR.
+void ApplyRecommendedPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings(LESS_POST_PROCESSING);
+}
+
 // This add-on alone (the upstream snapshot): the helper, the DLSS add-on and the NVIDIA files come with the full download.
 constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
 constexpr uint32_t WARNING_TINT = 0xFF5050;
@@ -418,10 +424,7 @@ void BuildRuntimeData() {
           .tooltip = "Recommended look: HDR (PsychoV35), no film grain, no motion blur,\n"
                      "no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.25.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
-          .on_change = []() {
-            ApplyResetPreset();
-            renodx::utils::settings::UpdateSettings(LESS_POST_PROCESSING);
-          },
+          .on_change = []() { ApplyRecommendedPreset(); },
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
@@ -1582,9 +1585,6 @@ void ConfigureAddon() {
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    // No settings saved yet: a player's first start. On a display without HDR it starts with the SDR preset.
-    float saved_mode = 0.f;
-    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     // Decided at each new swap chain (device_loss's create_swapchain, before the swap chain mod's), Auto by Windows HDR
     // for the game's display.
     twattila::output_encoding::Configure({
@@ -1596,7 +1596,9 @@ void ConfigureAddon() {
           reshade::get_config_value(nullptr, "Ryse AA", "FrameGeneration", frame_generation);
           return (output == twattila::output_encoding::HDR10 || frame_generation) ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
-        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+        .first_start_without_hdr = &ApplySdrPreset,
+        .recommended_preset = &ApplyRecommendedPreset,
+        .log_name = "[Ryse]",
     });
     settings.push_back(setting);
   }
