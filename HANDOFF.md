@@ -1,5 +1,97 @@
 # Handoff: Ryse HDR + DLSS (2026-10-05, Claude Code session)
 
+## OPEN FOR ATN (2026-11-15)
+ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
+from (search its text). Tick here and on that line when ATN answers.
+- [ ] Rome Remastered battle with rays at Battle Objects Tested, then Solid + restart, then All + restart: any GPU reset? (send renodx-tw-dlaa64.log + ReShade.log) (from: "Rome Remastered battle GPU resets: safe-side fix a8afd660 ...")
+- [ ] test the shared-step rows (torch from PT, GS sprite soldiers, tessellated rigid, own cut-off, Faster Smoke Build) from the README test lines, or let the bench take the numbers first? (from: "ATN's in-game tests of the new Experimental rows (README ...")
+- [ ] grass and banners into Rome Remastered's rays as Experimental rows (off)? (from: "ATN DECIDES: grass and banners into Rome Remastered's rays ...")
+- [ ] set the path-traced method sliders' Reset defaults to RT/PT's (paths 6.50 -> 2.82 ms), yes / no? (from: "Path-traced method sliders turned on from Reset default ...")
+- [ ] keep or remove the Lean ReSTIR Reuse row? (from: "Lean Reuse row: now saves only ~0.06 ms (RT_PROFILE) / 0.39 ...")
+- [ ] in game, do SDR first start / SDR preset / SDR output look right in Troy, WH2, Rome Remastered, Shogun 2? (from: "In game: SDR first start, SDR preset, SDR output for Troy ...")
+- [ ] end PID 35256 and delete page_dump_ry_rys1.exe / page_dump_ryd_rys1.exe in tools/tw/page_dump? (from: "A page_dump_ryd_rys1.exe (PID 35256) is stuck in ...")
+- [ ] Skip the Game's Shadow Map Work: let the end bench take the numbers (Time Each Pass, PresentMon) and you only check cut-outs / unit shadows? (from: "ATN tests (README lines): Skip the Game's Shadow Map Work ...")
+- [ ] allow data runs for unit mesh LOD part counts and one WH3 stack capture for the x64 shadow-pass skip (with the x64 Faster Render Lists WPR runs)? (from: "ATN DECIDES (data runs): mesh LOD part counts; the x64 ...")
+- [ ] (when sending heapfix package) may we patch the x87 block over heapfix's bytes (+0x17f6515), and what about his disabled prefetch site? (from: "Author packages (tools/tw/testbin/cpu4_heapfix/ ... (the heapfix-package question merged there)")
+- [ ] Faster Render Lists + Rome II Skip the Shadow Maps: bench numbers enough, or do you want to look in game? (from: "ATN tests: Faster Render Lists off / on in cpl2's view ...")
+- [ ] one cascade instead of two under Rays Replace (after your Shadows Medium A/B), and which grass settings note text? (from: "ATN DECIDES: one cascade instead of two (after ATN's ...")
+- [ ] do swaying grass shadows still flicker with helper112 + RR? (if yes: Swaying Shadows Range 50 / Off-Screen Sway Off / RR off A/B) (from: "NEXT BATCH: swaying grass shadows still flicker "a bit" ...")
+Also waiting on ATN, newer than the audit: "In game (ATN's list): new player HDR off -> SDR preset" (SDR first start ->
+HDR later, 24cdfb9c).
+
+## OPEN (owners)
+Pointer index of every open box below (short title | owner, file order); the detailed line stays where it is.
+Rebuild it when boxes change; the boxes themselves are the record.
+- Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace ... | coordinator (D: WH3 data run; E)
+- A2 sprite soldiers' 276 shadow draws into the sun map (submission code not ... | coordinator, next CPU round
+- Rome Remastered battle GPU resets: safe-side fix a8afd660 on the agent's branch ... | ATN
+- ATN ~19:xx: "No more performance improvements on our side and the game's?" From ... | next CPU round
+- helper114 = helper113 + the own cut-off (05b79c7b): build, harness, stamp and ... | coordinator, final verification
+- ATN's in-game tests of the new Experimental rows (README lines, level B) Owner ... | ATN
+- ATN DECIDES: grass and banners into Rome Remastered's rays as Experimental ... | ATN
+- tools: compare_test.cpp zeroes uint vertex inputs (can't catch bone-index ... | coordinator, tools pass after the batch
+- Path-traced method sliders turned on from Reset default much heavier than RT/PT ... | ATN
+- Nsight shader profile of the bitmask pass in that harness (fetch vs ALU) for an ... | GPU ROUND 4 (g4_)
+- Author packages (tools/tw/testbin/cpu4_heapfix/: a_memfast_65_128 ... | coordinator, then ATN sends
+- Faster Render Lists for WH3 / Pharaoh / Shogun 2 (x64): equivalents FOUND ... | coordinator, after the Attila end bench
+- GRASS after the probe: part-draw cull (vtable +0x10c), burn / grid writers ... | next grass agent; phases 1-3 ATN after the probe
+- Thrones Grass Dump button: only when its grass port starts. Owner: that round | Thrones grass port round
+- Lean Reuse row: now saves only ~0.06 ms (RT_PROFILE) / 0.39 ms reuse (Nsight ... | ATN
+- RT_PATH_RATIO_FOLLOW as an Experimental add-on row (Half + RR the clear win ... | that agent, then ATN places the row
+- U2 step 3 (own light reservoir); record at bounce size at Half (VRAM); f16 ... | next ReSTIR round
+- Field-scene ray slowdown after merging unit clusters unexplained; fewer unit ... | coordinator
+- A32: under GPU Trace without REPLAYABLE the helper commits ~838 MB/s for ~15 s ... | Nsight round
+- ns_trace_run.py must end its "rescue" helper (one blocked the next job 7+ ... | Nsight tooling
+- Batched capture for 4_bones / dismember families (own mesh + rows shaders) ... | GPU ROUND 4
+- Resource upgrade 0.196 ms = ALL gtl resource-info lookups (OnPushDescriptors ... | CPU round (shared util, full build)
+- Attila point lights with point shadows: the bytecode differs from the brief: 16 ... | GPU ROUND 4
+- WH3 grass read-back without the wait: 8 of 78 traces have indirect grass (14-25 ... | coordinator (WH3 data run), then GPU ROUND 4+
+- J3 in game (one grass pixel's G-buffer read): next data run. A32: one Nsight ... | coordinator
+- Scorer: reflections / fog / water features, a faint-smoke reference; the smoke ... | next scorer round
+- DLSS RR 310.9 made paths boil (paths 2.19 -> 5.01 % rRMSE, noise 0.54 -> 4.13) ... | next RR round (ATN for any DLL update)
+- In game: SDR first start, SDR preset, SDR output for Troy, WH2, Rome ... | ATN
+- WARP ramp for the four new SDR presets. Owner: next TW round | next TW round
+- README New: lines for Troy, WH2, Rome Remastered, Shogun 2, WH3. Owner: release ... | release round
+- SNAPSHOT GAPS (non-TW): Ryse / Tales / Expeditions: no SDR first-start path, no ... | RYSE MERGE (rym_) / UE4 MERGE (uem_)
+- ATN 01:5x: ONE ADD-ON for Tales, Expeditions, Ryse AND Shogun 2 (DLSS + RT/PT / ... | coordinator
+- A page_dump_ryd_rys1.exe (PID 35256) is stuck in tools/tw/page_dump (built ... | ATN
+- Remove the DevKit symlink from Ryse's Bin64 before runs (it keeps fast dispatch ... | coordinator at the Ryse install (fresh backup)
+- Expeditions' unload crash (2026-10-27): a ReShade unload / reload 1 s after ... | UE4 MERGE round (uem_)
+- Expeditions' default Output scRGB -> Auto (as TW, so SDR first start works for ... | UE4 MERGE round (uem_)
+- ATN 02:3x (for later): per-game GitHub download links instead of the shared ... | release round
+- WARP ramp of the UE SDR encodes; Ryse's redundant renodx_trace_now poll; the ... | UE4 / Ryse merge rounds
+- ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH (do them all, several ... | coordinator
+- ATN 03:4x: go through HANDOFF: leftovers vs open, tick / trace / archive. ... | coordinator
+- ATN 03:3x: no time caps on rounds; night sound fine; no page-file change ... | coordinator
+- Decompile Ryse's 6,421 (cmd_Decompiler) and map the new families (tonemap / ... | RYSE MERGE (rym_)
+- Finish the UE inner-zlib carve over every plain entry (both games; hours in ... | UE SHADER CARVE uec_
+- Data runs (ATN allowed, scripted, fresh save backups): Tales G1 + G2 one ... | coordinator
+- In game (ATN's list): new player HDR off -> SDR preset + log; HDR on + restart ... | ATN (in game)
+- SHARED STEP owners (coordinator 01:2x): UE4 S1 cvars per-exe slot table, S2 the ... | UE4 MERGE (uem_)
+- ATN 21:2x: ONE Constantinople bench after ALL CPU and GPU rounds of this batch ... | coordinator, before the install
+- 128 torch lights' cost at night / burning city / WH3 / Pharaoh: a variant in ... | coordinator, end-of-batch bench
+- Rarer Objects needs a view with siege towers or ships (bench scene choice) ... | coordinator, end-of-batch bench
+- Bench variants ready: tools/tw/bench/variants/cpu4_round4.json + ... | coordinator, end-of-batch bench
+- Attila's Faster Render Lists row (Experimental, site 3) was never benched ... | coordinator, end-of-batch bench
+- GRASS: one Grass Dump from a real battle = bench probe variants/grass_dump.json ... | coordinator, end-of-batch bench
+- g2b_ bench variants g2b_clusters.json (g2b-base / g2b-blas / g2b-trunc8, scene ... | coordinator, end-of-batch bench
+- g2a_ bench variants g2a_torch.json + g2a_shadow_skip.json (copy ... | coordinator, end-of-batch bench
+- Bench variants g3b_reuse.json + g3b_round3b_plan.txt in the end-of-batch bench. ... | coordinator, end-of-batch bench
+- Bench variant g3a_capture.json (+ g3a_round3a_plan.txt; add-on ... | coordinator, end-of-batch bench
+- After everything: one A/B of ATN's CPU set rule against an affinity rule of the ... | the bench, ATN switches the rule
+- Bench variants: gpu_units_range.json, gpu_probe.json (answers c, k, h, j, b in ... | coordinator before the end bench
+- caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain ... | coordinator (shared script)
+- D9123DE1 + its MSAA / stencil builds (constant tone mapper ... | next data run or ATN's trace
+- render_pass_behavior / shader_injection_behavior suites: ATN 02:2x OK to ... | coordinator, tools pass
+- ATN tests (README lines): Skip the Game's Shadow Map Work off / on in cpl1's ... | ATN (look) / bench (numbers)
+- ATN DECIDES (data runs): mesh LOD part counts; the x64 shadow-pass skip (WH3 ... | ATN
+- ATN tests: Faster Render Lists off / on in cpl2's view (PresentMon 60 s, log ... | ATN (look) / bench
+- Rome Remastered IB-rewrite trace (whether Feral rewrites index buffers ... | coordinator, next Rome Remastered data run
+- Look-changing GPU savings (half-rate rays for grass / far soldiers, float16 ... | GPU round; ATN places the rows
+- ATN DECIDES: one cascade instead of two (after ATN's Shadows Medium A/B; ATN ... | ATN
+- Final verification: rebuild the main checkout's build / build32 (stale headers ... | coordinator
+- NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN ... | ATN
+
 ## ATN'S 2026-11-13 BATCH (day: ATN out ~11:00-19:00; agent runs allowed while ATN isn't playing)
 Order (ATN): Pharaoh v58 -> grass CPU -> open items -> skill -> Rome II plan -> Rome II. Added by ATN: water Soft + Steady
 rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mirror: memory project_rome2_batch.md.
