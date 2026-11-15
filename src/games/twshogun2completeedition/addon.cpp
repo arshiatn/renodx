@@ -162,6 +162,13 @@ void ApplyRecommendedPreset() {
   });
 }
 
+// SDR (monitors without HDR), as Attila's: Reset, Rendering Mode SDR (Reset has no video AutoHDR). Its button also sets
+// Output SDR; a first start on a display without Windows HDR takes it by itself (output_encoding's first_start_without_hdr).
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}});
+}
+
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 // Ray tracing (Experimental, ray_tracing.hpp): its settings (the DLSS addon's, ReShade.ini RayTraced* / PathTracing*),
@@ -693,6 +700,13 @@ void BuildRuntimeData() {
           .tint = 0xFFD23C,
       },
       new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::FULL_DOWNLOAD_NOTE,
+          .section = "General",
+          .tint = 0xFF5050,
+          .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
+      },
+      new renodx::utils::settings::Setting{
           .key = "peak_white_nits",
           .binding = &shader_injection.peak_white_nits,
           .default_value = 1000.f,
@@ -776,6 +790,19 @@ void BuildRuntimeData() {
           .tooltip = "All image settings back to their defaults (HDR Extended).\n"
                      "Keeps Peak, Paper White, UI and output.",
           .on_change = []() { ApplyResetPreset(); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "SDR (monitors without HDR)",
+          .section = "Presets",
+          .group = "preset-line-2",
+          .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it was\n"
+                     "HDR), no video AutoHDR. The game's and the UI's white are your monitor's own white.",
+          .tint = 0xFFC107,
+          .on_change = []() {
+            ApplySdrPreset();
+            renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
+          },
       },
 
       // Extended ////////////////////////////////////////////////////////////////////////////////////
@@ -1424,6 +1451,9 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
+    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset (as Attila's).
+    float saved_mode = 0.f;
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
@@ -1434,6 +1464,7 @@ void ConfigureAddon() {
           reshade::get_config_value(nullptr, "Shogun 2 DLSS", "HelperFrameGeneration", frame_generation);
           return (output == twattila::output_encoding::HDR10 || frame_generation) ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
     });
     settings.push_back(setting);
   }
@@ -1480,6 +1511,14 @@ void ConfigureAddon() {
           .group = "line_1",
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/totalwarshogun2completeedition/mods/3"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
       },
   });
 
