@@ -282,6 +282,9 @@ struct Bindings {
   // GT-VBGI (light_bounce_strength with RayTracedLightBounce 0); false: Global Illumination's methods are off and the rays'
   // (the Unreal games: the strength is the rays' alone).
   bool has_gtvbgi = true;
+  // false: the rays' and paths' methods of Shadows, Ambient Occlusion and Global Illumination named Experimental (no game
+  // run has shown them in this game yet; the Unreal games).
+  bool rays_tested = true;
   bool has_gi = true;      // Global Illumination's section; false: none, the rows it would hold kept hidden (Rome Remastered)
   bool every_row = true;   // false: a row this page lists that the game lacks is no mistake, no log line (Rome Remastered)
 };
@@ -498,6 +501,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   const auto always = [] { return true; };
   const auto upscaling = [b] { return feature_settings::Upscaling(*b.aa); };
   const auto scale_rows = [b] { return b.has_scale_rows && feature_settings::Upscaling(*b.aa); };
+  // A rays' method's name ("Ray-Traced (DXR)"), its "Experimental" in it where they are untested (rays_tested).
+  const auto rays_label = [&b](std::string label) {
+    if (!b.rays_tested) label.insert(label.size() - 1, ", Experimental");
+    return label;
+  };
   const auto below_100_rows = [b] { return (b.has_scale_rows || b.upscaling_mode != nullptr) && feature_settings::Upscaling(*b.aa); };
   const auto no_upscaler = [b] { return !feature_settings::Upscaling(*b.aa); };
   const auto dlss = [b] { return b.aa->method == 5.f; };
@@ -840,7 +848,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     std::vector<int> shadow_methods = {SHADOW_GAME};
     if (b.has_screen_space_shadows) shadow_methods.push_back(SHADOW_SCREEN);
     shadow_methods.push_back(SHADOW_RAYS);
-    const std::array<std::string, 3> shadow_labels = {"Game's Shadow Maps", "Bend Screen-Space", "Ray-Traced (DXR)"};
+    const std::array<std::string, 3> shadow_labels = {"Game's Shadow Maps", "Bend Screen-Space", rays_label("Ray-Traced (DXR)")};
     std::vector<std::string> shadow_places;
     for (const int method : shadow_methods) shadow_places.push_back(shadow_labels[method]);
     page.Add(MethodSlider(section, b.texts->shadow_tooltip, std::move(shadow_places),
@@ -1209,7 +1217,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (b.has_gtvbao) methods.push_back(AO_GTVBAO);
     methods.push_back(AO_RAYS);
     if (b.has_path_ambient) methods.push_back(AO_PATHS);
-    const std::array<std::string, 4> method_labels = {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)", b.texts->ao_paths_label};
+    const std::array<std::string, 4> method_labels = {"Game's SSAO", "GT-VBAO", rays_label("Ray-Traced (RTAO)"), rays_label(b.texts->ao_paths_label)};
     std::vector<std::string> labels;
     for (const int method : methods) labels.push_back(method_labels[method]);
     page.Add(MethodSlider(section, b.texts->ao_tooltip, std::move(labels),
@@ -1259,7 +1267,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     std::vector<int> gi_methods = {GI_OFF};
     if (b.has_gtvbgi) gi_methods.push_back(GI_GTVBGI);
     gi_methods.insert(gi_methods.end(), {GI_RAYS, GI_PATHS});
-    const std::array<std::string, 4> gi_labels = {"Off", "GT-VBGI", "Ray-Traced (One Bounce)", "Path-Traced (ReSTIR GI)"};
+    const std::array<std::string, 4> gi_labels = {"Off", "GT-VBGI", rays_label("Ray-Traced (One Bounce)"), rays_label("Path-Traced (ReSTIR GI)")};
     std::vector<std::string> gi_places;
     for (const int method : gi_methods) gi_places.push_back(gi_labels[method]);
     page.Add(MethodSlider(section,
@@ -1311,7 +1319,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto rays = reflections_are(REFLECTION_RAYS);
     if (b.ssr_hierarchical != nullptr) {
       std::vector<std::string> labels = {"Game's SSR", b.texts->reflections_middle_label};
-      if (b.has_reflections) labels.emplace_back(b.texts->reflections_rays_label);
+      if (b.has_reflections) labels.push_back(rays_label(b.texts->reflections_rays_label));
       page.Add(MethodSlider(section, b.texts->reflections_tooltip, std::move(labels), [b] { return ReflectionMethodOf(b); },
                             [](int method) { ChooseReflections(method); }));
     } else {
