@@ -721,8 +721,13 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [ ] Decompile Ryse's 6,421 (cmd_Decompiler) and map the new families (tonemap / post / HDR permutations first).
       Owner: RYSE MERGE round
     - [x] merged into "Data runs (Tales G1 + G2, Expeditions G1, Ryse R0)" (was: "Ryse runtime names + on-demand compiles in R0: r_ShadersLogC...")
-    - [ ] Finish the UE inner-zlib carve over every plain entry (both games; hours in pure Python: make it parallel /
-      faster first; NOT during a quiet window or the end bench). Owner: coordinator, after the TW install Owner (audit 11-15): UE SHADER CARVE uec_ (running): tick when uec_ reports.
+    - [x] UE carve DONE (uec_, ~05:3x; tools/nontw/shader_packs/report.md "UE carve finished"): 38 s / 50 s with 8
+      workers; Expeditions 54,722 unique (all 15,735 dumped included, 38,982 new + 5 DXIL libs), Tales 46,688 (its
+      tonemap / LUT / post / global shaders only in encrypted entries; ATN's dump has them); NO new tonemap / LUT / PQ /
+      BT.2020 permutation in either game; 74,078 new decompiled.
+    - [ ] Expeditions' unregistered fullscreen post candidates: the stencil / depth edge detect 0x30AD0356, 0x600BADCC,
+      0xBB1E5908, 0xC3FD465B (+ MSAA) against outline00 / 01, and the composite / max / 4-texture / depth-copy ones
+      (report.md): do any need HDR treatment (clamps, sRGB)? Owner: UE4 MERGE round (uem_) or its follow-up Owner (audit 11-15): UE SHADER CARVE uec_ (running): tick when uec_ reports.
   - [ ] Data runs (ATN allowed, scripted, fresh save backups): Tales G1 + G2 one session (Manual 03 / 04), Expeditions G1
     (Save Silanus 3m), Ryse R0 (auto-continue or chapter 3) + Nsight D3D11 capture try; after the merges + test hooks.
     Not while the TW end bench runs. Owner: coordinator
