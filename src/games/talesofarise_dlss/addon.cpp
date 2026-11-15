@@ -2411,7 +2411,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (!graphics.searched && !finder.Searching()) {
     graphics.searched = true;
     std::string details;
-    graphics.available = graphics.console.Start(&details);
+    graphics.available = graphics.console.Start(talesofarise::engine_cvars::UE_4_21, &details);
     graphics.status = (graphics.available ? "" : "Graphics presets unavailable: " + details + " (details in ReShade.log).");
     if (graphics.available) {
       renodx::utils::log::i("[Tales graphics] ", details, ".");

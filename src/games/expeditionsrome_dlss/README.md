@@ -957,3 +957,6 @@ v29 (2026-11-15 UE4 round, untested in game): the engine is UE 4.23 (the exe's b
 earlier notes and comments said 4.26; the read slots stay). Screen-space global illumination is one row,
 `r.SSGI.Quality` (Optional, Max preset 4, slider 1-4): this exe has no `r.SSGI.Enable` / `r.SSGI.HalfRes` (the two
 rows never resolved); its registration default is 0 (off), the renderer draws it above 0 and clamps the quality to 1-4.
+  The fast draw dispatch opt-in. The live cvars (engine_cvars.hpp, its UE_4_23 table: FindConsoleVariable 0xA0 + bool,
+  AsVariable 9 / 10, Ref getters 15 / 16), engine_scale, constant_readback, performance, native_state, code_patch and
+  constant_mirror are Tales of Arise's DLSS add-on's copies (one place for both games); log lines keep [Rome AA ...].

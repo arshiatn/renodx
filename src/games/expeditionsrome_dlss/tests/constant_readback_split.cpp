@@ -18,7 +18,7 @@
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 
-#include "../constant_readback.hpp"
+#include "../../talesofarise_dlss/constant_readback.hpp"
 
 namespace {
 
@@ -74,7 +74,7 @@ int main() {
         std::vector<std::byte>(sizes[0]), std::vector<std::byte>(sizes[1]),
     };
     const std::array<std::span<std::byte>, 2> destinations = {output[0], output[1]};
-    expeditionsrome::dlss::ConstantReadback readback;
+    talesofarise::dlss::ConstantReadback readback;
     const auto expect_contents = [&](const std::array<std::vector<std::byte>, 2>& expected,
                                       const std::string& label) {
       for (uint32_t slot = 0; slot < output.size(); ++slot) {

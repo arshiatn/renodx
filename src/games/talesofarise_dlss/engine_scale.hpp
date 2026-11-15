@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-// Live access to Unreal's r.ScreenPercentage (UE 4.26 / 4.21, monolithic exe). Its static
+// Live access to Unreal's r.ScreenPercentage (UE 4.21 / 4.23, monolithic exe). Its static
 // TAutoConsoleVariable<float> in the exe's data is {vtable, Target, Ref}: Target is the heap
 // FConsoleVariable<float> {vtable, FString Help, ...}, Ref its {game-thread, render-thread} value.
 // Only the exe image is scanned, never the heap:

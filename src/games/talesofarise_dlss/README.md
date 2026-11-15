@@ -718,3 +718,6 @@ size; then:
   are off (the lighting pass reads the rays' reflections; the captures fill the rest): no reflections traced twice.
 - v108 (untested in game): with Ray Reconstruction it is the only denoiser: the ray-traced bounce light's filter and
   the reflections' filter and accumulation step aside (Ray Reconstruction gets them as traced).
+- v109 (2026-11-15 UE4 round, untested in game): the fast draw dispatch opt-in; engine_cvars.hpp, engine_scale.hpp,
+  constant_readback.hpp, performance.hpp, native_state.hpp, code_patch.hpp and constant_mirror.hpp are shared with
+  Expeditions: Rome's DLSS add-on (engine_cvars: one Engine table per exe, UE_4_21 here); no change in this add-on.

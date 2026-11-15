@@ -19,7 +19,7 @@
 
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
-#include "./native_state.hpp"
+#include "../talesofarise_dlss/native_state.hpp"
 
 // Contact shadows (Experimental): Unreal's own. The game's sun light shader already has them (a short screen-space
 // march toward the light, 8 steps), but the game gives its sun a ContactShadowLength of 0. Before the sun's deferred
@@ -126,7 +126,7 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
     objects.uploaded_length = contact_length;
   }
   {
-    const ContextStateScope scope(context1.Get(), objects.private_state.Get());
+    const talesofarise::dlss::ContextStateScope scope(context1.Get(), objects.private_state.Get());
     ID3D11Buffer* game_light = objects.game_light.Get();
     ID3D11Buffer* settings = objects.settings.Get();
     ID3D11UnorderedAccessView* written = objects.written_uav.Get();

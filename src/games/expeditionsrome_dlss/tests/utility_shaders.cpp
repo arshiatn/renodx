@@ -30,7 +30,7 @@
 #include <DirectXPackedVector.h>
 #include <wrl/client.h>
 
-#include "../native_state.hpp"
+#include "../../talesofarise_dlss/native_state.hpp"
 
 namespace {
 
@@ -411,7 +411,7 @@ int wmain(int argc, wchar_t** argv) {
     context->End(predicate.Get());
     context->SetPredication(predicate.Get(), FALSE);
     {
-      expeditionsrome::dlss::ContextStateScope state_scope(context1.Get(), private_state.Get());
+      talesofarise::dlss::ContextStateScope state_scope(context1.Get(), private_state.Get());
       ComPtr<ID3D11ComputeShader> cleared_shader;
       context->CSGetShader(cleared_shader.GetAddressOf(), nullptr, nullptr);
       if (cleared_shader != nullptr) throw std::runtime_error("private state was not cleared");

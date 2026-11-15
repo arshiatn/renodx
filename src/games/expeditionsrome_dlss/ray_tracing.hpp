@@ -28,9 +28,9 @@
 #include "../talesofarise_dlss/matrix.hpp"
 #include "../twattila/dxbc.hpp"
 #include "../twattila/rt_core.hpp"
-#include "./constant_mirror.hpp"
+#include "../talesofarise_dlss/constant_mirror.hpp"
 #include "./contact_shadows.hpp"
-#include "./native_state.hpp"
+#include "../talesofarise_dlss/native_state.hpp"
 
 // Ray tracing (Experimental): Expeditions: Rome's scene through the Total War helper (twattila/rt_core.hpp;
 // renodx-tw-dlaa64.exe next to the addon, its own D3D12 device with DXR), in metres (Unreal's centimetres / 100).
@@ -225,7 +225,7 @@ inline void FullScreen(ID3D11DeviceContext1* context, ID3D11RenderTargetView* ta
                        std::span<ID3D11ShaderResourceView* const> views, std::span<ID3D11Buffer* const> constants = {},
                        std::span<const UINT> first_constants = {}, std::span<const UINT> constant_counts = {},
                        std::array<UINT, 2> size = {}) {
-  const ContextStateScope scope(context, state.private_state.Get());
+  const talesofarise::dlss::ContextStateScope scope(context, state.private_state.Get());
   if (size[0] == 0) size = state.render_size;
   const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(size[0]), .Height = static_cast<float>(size[1]), .MaxDepth = 1.f};
   context->OMSetRenderTargets(1, &target, nullptr);
@@ -328,7 +328,7 @@ void OnSunLit(Context& command, const void*) {
         .sizes = {bounce_size[0], bounce_size[1], state.render_size[0], state.render_size[1]},
         .settings = {BOUNCE_FRAMES, (state.resolved_frame + 1 == frame) ? 1.f : 0.f},
     };
-    const ContextStateScope scope(context1.Get(), state.private_state.Get());
+    const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
     context->UpdateSubresource(state.bounce_constants.Get(), 0, nullptr, &constants, 0, 0);
     const std::array<ID3D11ShaderResourceView*, 4> views = {state.traced.srv.Get(), bridge.rt_positions.srv.Get(),
                                                             state.resolved[previous].srv.Get(), state.resolved_positions[previous].srv.Get()};
@@ -393,10 +393,10 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   if (light_bytes < MIN_LIGHT_BYTES || light_bytes > MAX_LIGHT_BYTES || constant_counts[0] <= VIEW_WORLD_CAMERA_ORIGIN) return {};
   std::array<std::array<float, 4>, VIEW_WORLD_CAMERA_ORIGIN + 1> view = {};
   std::array<std::array<float, 4>, LIGHT_DIRECTION + 1> light = {};
-  constants::Watch(buffers[0].Get(), (first_constants[0] * 16) + static_cast<uint32_t>(sizeof(view)));
-  constants::Watch(buffers[1].Get(), light_first + static_cast<uint32_t>(sizeof(light)));
-  if (!constants::Read(buffers[0].Get(), uint64_t{first_constants[0]} * 16, std::as_writable_bytes(std::span(view)))
-      || !constants::Read(buffers[1].Get(), light_first, std::as_writable_bytes(std::span(light)))) {
+  talesofarise::dlss::constants::Watch(buffers[0].Get(), (first_constants[0] * 16) + static_cast<uint32_t>(sizeof(view)));
+  talesofarise::dlss::constants::Watch(buffers[1].Get(), light_first + static_cast<uint32_t>(sizeof(light)));
+  if (!talesofarise::dlss::constants::Read(buffers[0].Get(), uint64_t{first_constants[0]} * 16, std::as_writable_bytes(std::span(view)))
+      || !talesofarise::dlss::constants::Read(buffers[1].Get(), light_first, std::as_writable_bytes(std::span(light)))) {
     return {};
   }
   uint32_t shadowed_bits = 0;
@@ -463,7 +463,7 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   twattila::rt_scene::WriteSun(context, {direction[0] / direction_length, direction[1] / direction_length, direction[2] / direction_length});
   auto& bridge = twattila::dlaa_bridge::bridge;
   if (guides && bridge.guides) {
-    const ContextStateScope scope(context1.Get(), state.private_state.Get());
+    const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
     const std::array<UINT, 4> size = {render_size[0], render_size[1], 0, 0};
     context->UpdateSubresource(state.guides_constants.Get(), 0, nullptr, size.data(), 0, 0);
     const std::array<ID3D11ShaderResourceView*, 3> gbuffer = {inputs[GBUFFER_A].Get(), inputs[GBUFFER_B].Get(), inputs[GBUFFER_C].Get()};
