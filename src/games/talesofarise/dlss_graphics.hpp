@@ -51,6 +51,7 @@
 #include "../talesofarise_dlss/graphics_table.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/graphics_page.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "./hdr_only.hpp"
 #include "../talesofarise_dlss/constant_mirror.hpp"
@@ -2876,6 +2877,14 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                          .format = "%d",
                                          .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders) && rt_sliders.light_bounce == 2.f; },
                                      });
+  // One frame's GPU time of every pass (twattila/pass_timing.hpp, the add-on's first draw hooks), after the anti-aliasing.
+  settings->push_back(new Setting{
+      .value_type = SettingValueType::BUTTON,
+      .label = "Time Each Pass (One Frame)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "The GPU's time of every pass of the next frame into talesofarise_pass_timing.txt next to the game's exe.",
+      .on_change = [] { twattila::pass_timing::Request(); },
+  });
   renodx::utils::settings::section_tints.emplace_back(TOOLS_SECTION, twattila::graphics_page::TITLE_TINT);
 
   // Graphics 1 of 2's own section.
