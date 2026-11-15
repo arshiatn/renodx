@@ -27,6 +27,7 @@
 #include "../twattila/credits.hpp"
 #include "../talesofarise/hdr_only.hpp"
 #include "../talesofarise/test_hooks.hpp"
+#include "../twattila/device_loss.hpp"
 #include "../twattila/draw_dispatch.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/frame_generation.hpp"
@@ -562,23 +563,6 @@ void ConfigureAddon() {
   configured = true;
 }
 
-// A ResizeBuffers raises create_swapchain too, and its back buffers keep the upgrade the swapchain mod made at the swap
-// chain's creation: the output stays as decided then (another one's view formats failed the game's view creation).
-bool swapchain_resizing = false;
-
-void OnDestroySwapchain(reshade::api::swapchain*, bool resize) {
-  swapchain_resizing = resize;
-}
-
-// Output (twattila/output_encoding.hpp), decided for each new swap chain before the swapchain mod's create_swapchain
-// (registered after this).
-bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  if (!std::exchange(swapchain_resizing, false)) {
-    twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
-  }
-  return false;
-}
-
 // GT-VBAO's noise moves every frame (the game's TAA / DLSS settle it). The helper's frame generation and Reflex (the page's
 // rows), its frames SDR with the SDR output; Time Each Pass's frame.
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
@@ -615,8 +599,9 @@ bool AttachAddon() {
 
   ConfigureAddon();
 
-  reshade::register_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
-  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  // Before the swap chain mod: a removed device's chain let go, each new chain's output decided (a ResizeBuffers keeps
+  // the output decided at the chain's creation).
+  twattila::device_loss::Install();
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
 
@@ -636,6 +621,7 @@ bool AttachAddon() {
                                       sizeof(shader_injection), __fg_hdr10);
   twattila::reflex::Install();
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
+  twattila::device_loss::InstallLast();
 
   attached = true;
   return true;
@@ -644,13 +630,12 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
   twattila::reflex::Uninstall();
   twattila::frame_generation::Uninstall();
   // Last of the helper's users: the bridge ends with it.
   expeditionsrome::dlss_graphics::Uninstall();
-  reshade::unregister_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
-  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
 
