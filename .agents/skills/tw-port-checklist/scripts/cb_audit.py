@@ -90,8 +90,10 @@ def same_dots(text):
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 DECOMPILER = ROOT / 'bin/cmd_Decompiler-1.3.16'
+# The games whose dump folder is not dump_shader_<game>_pack/cso (Ryse's: 3Dmigoto's runtime dump, its csos at the top).
+DUMPS = {'twshogun2completeedition': 'dump_shader_shogun2_pack/cso', 'rysesonofrome': 'dump_shader_ryse'}
 for game in sys.argv[1:] or ['twattila']:
-    dump = DECOMPILER / ('dump_shader_shogun2_pack' if game == 'twshogun2completeedition' else f'dump_shader_{game}_pack') / 'cso'
+    dump = DECOMPILER / DUMPS.get(game, f'dump_shader_{game}_pack/cso')
     embeds = [root / f'{game}.include/embed' for root in (ROOT / 'build32', ROOT / 'build')]
     newest = sorted((e for e in embeds if e.exists()), key=lambda e: max((p.stat().st_mtime for p in e.glob('*.cso')), default=0))
     embed = newest[-1]
