@@ -165,6 +165,7 @@ float ao_strength = 1.f;
 float ao_thickness = 0.1f;
 float ao_directions = 1.f;
 float ao_quality = 1.f;
+float ao_auto_thickness = 0.f;
 uint32_t ao_frame = 0;
 talesofarise::dlss::constants::ViewMipBias applied_mip_bias;  // the one the constant mirror writes
 
@@ -2574,6 +2575,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       .ao_directions = static_cast<float>(ao_directions),
       .ao_quality = static_cast<float>(ao_quality),
       .ao_frame = static_cast<float>(ao_frame),
+      .ao_auto_thickness = ao_auto_thickness,
   });
   talesofarise::engine_hooks::Update();
 }
@@ -2796,6 +2798,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
       .thickness = &ao_thickness,
       .quality = &ao_quality,
       .directions = &ao_directions,
+      .auto_thickness = &ao_auto_thickness,
   });
   settings->insert(settings->end(), ambient_rows.begin(), ambient_rows.end());
   // One frame's GPU time of every pass (twattila/pass_timing.hpp, the add-on's first draw hooks; the page places it).

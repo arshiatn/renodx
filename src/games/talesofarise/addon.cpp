@@ -169,6 +169,7 @@ bool LoadPostFilters(reshade::api::command_list*) {
   shader_injection.ssao_directions = filters.ao_directions;
   shader_injection.ssao_quality = filters.ao_quality;
   shader_injection.ssao_frame = filters.ao_frame;
+  shader_injection.ssao_auto_thickness = filters.ao_auto_thickness;
   return true;
 }
 
