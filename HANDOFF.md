@@ -1228,6 +1228,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         Attila's shaders, Apache line in About). 750 patched .cso (~1.8 MB) in object_shadows/ + ground_ambient/;
         ru_d3d9_validate accepts all 750. Not added: "Replace Shadow Maps" (proof open). ru5_ started: FG + Reflex, P1
         pages, GT-VBAO without rays, then water reflections + ground GI.
+        ru5_ DONE (not built; clang-cl /Zs PASS): 35847418 FG + Reflex (frame_generation.hpp reused; HUD-less = the final
+        post's FP16 clone; shared twattila/reflex.hpp skips non-D3D11 swap chains: rebuild D3D11 games before release);
+        3032cc42 P1 pages (Simple / Advanced / Graphics 1 + 2 of 2); a934e61e "Screen-Space Ground Ambient Occlusion
+        (Experimental)" GT-VBAO without the helper (WARP PASS). ru6_ started 00:1x: water reflections (259 PS read
+        uniDefaultEnvMap once) + ground GI as Experimental rows. LEFT after: gated build fixes, H1 / H2 / H3 GPU, T-run,
+        Fable 5.2 High review of bridge.hpp / bridge_replay.hpp / ray_tracing.hpp / rt_core replay API / reflex.hpp.
       - [ ] sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (device_proxy target format) + S3
         (test_hooks runtime filter); R.U.S.E. adopts later. Owner: sh_
       - [ ] hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, WH2 FXAA, alpha, Pharaoh max,
