@@ -17,6 +17,7 @@
 #include <include/reshade.hpp>
 
 #include "../../mods/swapchain.hpp"
+#include "../../utils/device_proxy.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
@@ -38,6 +39,8 @@ struct Config {
   int (*hdr_encoding)(int setting) = nullptr;
   // The game's SDR preset: a player's first start (no look rows saved yet) on a display without HDR takes it. Null: none.
   void (*first_start_without_hdr)() = nullptr;
+  // The Rendering Mode row's key: a start whose first preset holds no value for it is a first start.
+  const char* first_start_key = "tonemapper";
   // The game's Recommended preset. After a first start without HDR, Auto switches between the two presets when Windows HDR
   // comes or goes, until the player changes a row (PRESET_SWITCH_KEY). Null: no switch.
   void (*recommended_preset)() = nullptr;
@@ -87,6 +90,9 @@ inline void Apply(int encoding) {
   if (encoding == SDR) {
     renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
     renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
+    // A D3D9 game's D3D11 proxy reads its own target (SetUseHDR10 sets it for the HDR outputs); unused without a proxy.
+    renodx::utils::device_proxy::SetTargetFormat(renodx::mods::swapchain::target_format);
+    renodx::utils::device_proxy::SetTargetColorSpace(renodx::mods::swapchain::target_color_space);
   } else {
     renodx::mods::swapchain::SetUseHDR10(encoding == HDR10);
   }
@@ -97,7 +103,7 @@ inline void Configure(const Config& game_config) {
   config = game_config;
   if (config.first_start_without_hdr != nullptr) {
     float saved_mode = 0.f;
-    first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
+    first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), config.first_start_key, saved_mode);
   }
   Apply(Encoding(config.setting, {}));
 }

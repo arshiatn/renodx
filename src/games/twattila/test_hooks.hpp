@@ -21,6 +21,7 @@
 
 #include <include/reshade.hpp>
 
+#include "../../utils/device_proxy.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/mutex.hpp"
 #include "../../utils/settings.hpp"
@@ -78,6 +79,12 @@ inline void Change(const std::string& key, float value) {
 }
 
 inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
+  // A D3D9 game behind the D3D11 proxy has a runtime for each device: only the proxy's shows the player's picture (the
+  // game's own one again if the proxy could not be made).
+  if (renodx::utils::device_proxy::UseProxyRequested() && !renodx::utils::device_proxy::device_proxy_creation_failed
+      && !renodx::utils::device_proxy::IsProxyDevice(runtime->get_device())) {
+    return;
+  }
   static bool hooks_file_removed = false;
   if (!hooks_file_removed) {
     std::error_code ignored;
