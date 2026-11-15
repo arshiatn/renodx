@@ -294,6 +294,12 @@ struct Bridge {
   // frame, depth and motion) or an unevaluated request's, waited for before the next request's signal or the next
   // writes into the shared textures (BeforeSharedWrites) instead of stalling the game's GPU right after the request.
   uint64_t deferred = 0;
+  // The last published set's handles in the helper, and whether a request has told it of the set since: it opens a set
+  // only within a request, closing the one it opened before, so an unread set's handles (its textures with them) would
+  // stay open there until it exits. Closed from here before the next set replaces an unread one.
+  std::array<uint64_t, 64> published_handles = {};
+  size_t published_count = 0;
+  bool published_read = false;
 };
 
 static Bridge bridge;
@@ -407,6 +413,9 @@ inline void StopSession() {
       CloseHandle(std::exchange(*handle, nullptr));
     }
   }
+  // Its handles went with it: none to close in a next helper.
+  bridge.published_count = 0;
+  bridge.published_read = false;
 }
 
 // The helper started (once; false: it cannot be), told the game's GPU (`device`'s) before it runs.
@@ -657,9 +666,29 @@ struct SharedSet {
   uint64_t fg_hudless = 0;
 };
 
-// `set` as the helper's next one. Field by field: the block also holds what the helper writes on its own threads at any
-// time (ready, its status lines, rt_device, ...), which a copy of the whole block would take back.
-inline void Publish(const SharedSet& set) {
+// Handles duplicated into the helper, closed there (their numbers belong to the helper, never to this process).
+inline void CloseInHelper(std::span<const uint64_t> handles) {
+  for (const uint64_t handle : handles) {
+    HANDLE local = nullptr;
+    if (DuplicateHandle(bridge.process, reinterpret_cast<HANDLE>(static_cast<uintptr_t>(handle)), GetCurrentProcess(), &local, 0, FALSE,
+                        DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE)) {
+      CloseHandle(local);
+    } else {
+      renodx::utils::log::w("[Total War] DLAA: a handle in the helper could not be closed.");
+    }
+  }
+}
+
+// `set` as the helper's next one, its handles `transferred` (an unread last set's closed first: Bridge::published_read).
+// Field by field: the block also holds what the helper writes on its own threads at any time (ready, its status lines,
+// rt_device, ...), which a copy of the whole block would take back.
+inline void Publish(const SharedSet& set, std::span<const uint64_t> transferred = {}) {
+  if (!bridge.published_read) {
+    CloseInHelper(std::span(bridge.published_handles.data(), bridge.published_count));
+  }
+  bridge.published_count = std::min(transferred.size(), bridge.published_handles.size());
+  std::copy_n(transferred.begin(), bridge.published_count, bridge.published_handles.begin());
+  bridge.published_read = false;
   auto& shared = *bridge.shared;
   shared.color = set.color;
   shared.depth = set.depth;
@@ -768,16 +797,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bool published = false;
   const auto rollback = [&](void*) {
     if (published) return;
-    for (size_t index = 0; index < transferred_count; ++index) {
-      HANDLE local = nullptr;
-      // The numeric handle belongs to the helper, never to this process.
-      if (DuplicateHandle(bridge.process, reinterpret_cast<HANDLE>(static_cast<uintptr_t>(transferred[index])),
-                          GetCurrentProcess(), &local, 0, FALSE, DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE)) {
-        CloseHandle(local);
-      } else {
-        renodx::utils::log::w("[Total War] DLAA: resource rollback could not close a helper handle.");
-      }
-    }
+    internal::CloseInHelper(std::span(transferred.data(), transferred_count));
     release_prepared();
   };
   const std::unique_ptr<void, decltype(rollback)> rollback_guard(&bridge, rollback);
@@ -940,7 +960,7 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
   bridge.shared->rt_flags = (bridge.details ? RT_DETAILS : 0u);
   bridge.shared->upscaler = upscaler;
   bridge.shared->fg_backend = fg_backend;
-  internal::Publish(shared);
+  internal::Publish(shared, std::span(transferred.data(), transferred_count));
   published = true;
   bridge.width = width;
   bridge.height = height;
@@ -989,6 +1009,7 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
   const bool steady = bridge.steady[kind] && kind != PRESENT_FRAME && recent;
   if (steady) bridge.watchdog.waited.store(bridge.value + 1);
   SetEvent(bridge.request);
+  bridge.published_read = true;
   if (steady) {
     if (HelperLost()) return false;
     bridge.pending = true;
