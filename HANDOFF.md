@@ -9,14 +9,14 @@ from (search its text). Tick here and on that line when ATN answers.
 - [ ] set the path-traced method sliders' Reset defaults to RT/PT's (paths 6.50 -> 2.82 ms), yes / no? (from: "Path-traced method sliders turned on from Reset default ...")
 - [ ] keep or remove the Lean ReSTIR Reuse row? Bench: Lean saves 0.09-0.16 ms more in game. (from: "Lean Reuse row: now saves only ~0.06 ms (RT_PROFILE) / 0.39 ...")
 - [ ] in game, do SDR first start / SDR preset / SDR output look right in Troy, WH2, Rome Remastered, Shogun 2? (from: "In game: SDR first start, SDR preset, SDR output for Troy ...")
-- [ ] end PID 35256 and delete page_dump_ry_rys1.exe / page_dump_ryd_rys1.exe in tools/tw/page_dump? (from: "A page_dump_ryd_rys1.exe (PID 35256) is stuck in ...")
+- [x] DONE 11-15 (ATN ended it 12:1x, the coordinator deleted both exes): end PID 35256 and delete page_dump_ry_rys1.exe / page_dump_ryd_rys1.exe in tools/tw/page_dump? (from: "A page_dump_ryd_rys1.exe (PID 35256) is stuck in ...")
 - [ ] Skip the Game's Shadow Map Work: let the end bench take the numbers (Time Each Pass, PresentMon) and you only check cut-outs / unit shadows? Bench done: CPU busy -1.8 / -2.3 ms, no fps change; only your look check left. (from: "ATN tests (README lines): Skip the Game's Shadow Map Work ...")
 - [ ] allow data runs for unit mesh LOD part counts and one WH3 stack capture for the x64 shadow-pass skip (with the x64 Faster Render Lists WPR runs)? (from: "ATN DECIDES (data runs): mesh LOD part counts; the x64 ...")
-- [ ] (when sending heapfix package) may we patch the x87 block over heapfix's bytes (+0x17f6515), and what about his disabled prefetch site? (from: "Author packages (tools/tw/testbin/cpu4_heapfix/ ... (the heapfix-package question merged there)")
-- [ ] Faster Render Lists + Rome II Skip the Shadow Maps: bench numbers enough, or do you want to look in game? (from: "ATN tests: Faster Render Lists off / on in cpl2's view ...")
+- [x] DONE 11-15 (settled by the replay: c = keep heapfix's x87fix (no frame-time gain), b = the prefetch site's proposal): (when sending heapfix package) may we patch the x87 block over heapfix's bytes (+0x17f6515), and what about his disabled prefetch site? (from: "Author packages (tools/tw/testbin/cpu4_heapfix/ ... (the heapfix-package question merged there)")
+- [x] DONE 11-15 (ATN 12:1x: same-result rows on by default (Faster Render Lists 356b7100); Rome II Skip the Shadow Maps changes pictures, see the open "Faster-with-a-look-risk list" box): Faster Render Lists + Rome II Skip the Shadow Maps: bench numbers enough, or do you want to look in game? (from: "ATN tests: Faster Render Lists off / on in cpl2's view ...")
 - [ ] one cascade instead of two under Rays Replace (after your Shadows Medium A/B), and which grass settings note text? (from: "ATN DECIDES: one cascade instead of two (after ATN's ...")
 - [ ] do swaying grass shadows still flicker with helper112 + RR? (if yes: Swaying Shadows Range 50 / Off-Screen Sway Off / RR off A/B) (from: "NEXT BATCH: swaying grass shadows still flicker "a bit" ...")
-- [ ] Batched Unit Capture on by default? (bit-exact; bench: -1 to -2 ms a frame, +1.2 fps in both views) (from: "ATN DECIDES: Batched Unit Capture (RayTracedBatchedUnits) on by default ...")
+- [x] DONE 11-15 (ATN 12:1x: everything faster with the same picture on by default: 356b7100): Batched Unit Capture on by default? (bit-exact; bench: -1 to -2 ms a frame, +1.2 fps in both views) (from: "ATN DECIDES: Batched Unit Capture (RayTracedBatchedUnits) on by default ...")
 - [ ] g2b trunc8 (8-bit cluster truncation, -0.2 ms, a look change): try it? (from: "ATN DECIDES: g2b trunc8 ...")
 - [ ] GPU grass placement (phases 1-3): go ahead? (probe: the game's grass update 1.2 ms on the CPU at maxed grass vs 0.02 ms on the GPU, bit-exact) (from: "GRASS after the probe: ...")
 Also waiting on ATN, newer than the audit: "In game (ATN's list): new player HDR off -> SDR preset" (SDR first start ->
@@ -25,6 +25,7 @@ HDR later, 24cdfb9c).
 ## OPEN (owners)
 Pointer index of every open box below (short title | owner, file order); the detailed line stays where it is.
 Rebuild it when boxes change; the boxes themselves are the record.
+
 
 
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
@@ -36,8 +37,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN DECIDES: grass and banners into Rome Remastered's rays as Experimental rows? ... | ATN
 - tools: compare_test.cpp zeroes uint vertex inputs (can't catch bone-index bugs); ... | coordinator, tools pass after the batch
 - Path-traced method sliders turned on from Reset default much heavier than RT/PT ... | ATN
-- Author packages (tools/tw/testbin/cpu4_heapfix/: a_memfast_65_128, b_loopfetch_a ... | ATN (merged from "ATN, when sending the heapfix package: ask
-- Faster Render Lists for WH3 / Pharaoh / Shogun 2 (x64): equivalents FOUND (cpu5b ... | ATN DECIDES (data runs) Owner (audit 11-15): coordinator, af
+- Author packages: zip READY 12:1x in ATN's Downloads (AttilaCPUPerfFix_7.0_notes_ ... | ATN (merged from "ATN, when sending the heapfix package: ask
 - GRASS after the probe: part-draw cull (vtable +0x10c), burn writers (the probe: ... | next grass agent
 - Thrones Grass Dump button: only when its grass port starts. Owner: that round | that round
 - Lean Reuse row: now saves only ~0.06 ms (RT_PROFILE) / 0.39 ms reuse (Nsight bas ... | ATN, then the ReSTIR follow-up)
@@ -53,7 +53,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - In game: SDR first start, SDR preset, SDR output for Troy, WH2, Rome Remastered, ... | ATN (look)
 - WARP ramp for the four new SDR presets. Owner: next TW round | next TW round
 - README New: lines for Troy, WH2, Rome Remastered, Shogun 2, WH3. Owner: release ... | release round
-- A page_dump_ryd_rys1.exe (PID 35256) is stuck in tools/tw/page_dump (built outsi ... | ATN ends it and deletes page_dump_ry_rys1
 - Remove the DevKit symlink from Ryse's Bin64 before runs (it keeps fast dispatch ... | coordinator at the install (fresh backup)
 - ATN 02:3x (for later): per-game GitHub download links instead of the shared rele ... | release round
 - WARP ramp of the UE SDR encodes; Ryse's redundant renodx_trace_now poll; the Exp ... | UE4 / Ryse merge rounds
@@ -79,8 +78,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - +265 MB VRAM for the bounce-size ReSTIR record. Owner: next ReSTIR round | next ReSTIR round
 - Shogun 2 terrain_detail not restored at detach (minor). Owner: next Shogun 2 rou ... | next Shogun 2 round
 - talesofarise_dlss/frame_generation.hpp detours have no uninstall. Owner: next UE ... | next UE round
-- ATN DECIDES: Batched Unit Capture (RayTracedBatchedUnits) on by default (bit-exa ... | ATN
 - ATN DECIDES: g2b trunc8 (8-bit cluster truncation: -0.2 ms more cluster build; a ... | ATN
+- Faster-with-a-look-risk list for ATN (numbers in the reply 12:1x): Lean ReSTIR R ... | ATN
+- WH3's x64 render-list WPR run: the game said "Unable to initialize SteamAPI" twi ... | ATN, then coordinator
 - In game (ATN's list): migration keeps the old DLSS values (log line once); no re ... | ATN (in game)
 - Port RayTracedBatchedUnits + RayTracedUnitsRange to Shogun 2 (SHARED STEP, after ... | GPU round after the install
 - Cosmetic: moved files keep "[Shogun 2 DLSS]" log tags; HLSL comments "(DLSS addo ... | coordinator, release round
@@ -96,7 +96,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - render_pass_behavior / shader_injection_behavior suites: ATN 02:2x OK to downloa ... | coordinator, tools pass
 - ATN tests (README lines): Skip the Game's Shadow Map Work off / on in cpl1's vie ... | ATN (look)
 - ATN DECIDES (data runs): mesh LOD part counts; the x64 shadow-pass skip (WH3 fir ... | ATN
-- ATN tests: Faster Render Lists off / on in cpl2's view (PresentMon 60 s, log "Fa ... | ATN (look) / end bench (numbers)
 - Rome Remastered IB-rewrite trace (whether Feral rewrites index buffers, b6ec6be6 ... | the next Rome Remastered data run (coordinator)
 - Look-changing GPU savings (half-rate rays for grass / far soldiers, float16 anim ... | GPU round after the end bench
 - ATN DECIDES: one cascade instead of two (after ATN's Shadows Medium A/B; ATN 15: ... | ATN
@@ -447,7 +446,8 @@ heading text are in HANDOFF_ARCHIVE.md)
   heapfix test exes ran inside the preset audit's quiet window: its starts 1_atn and 3_norays were INVALID (rerun asked).
   - [x] merged into "Final verification" (was: "Build both lines + tw_engine_code on the merged tree when th...")
   - (moved under "ONE Constantinople bench": Bench variants ready: tools/tw/bench/variants/cpu4_round4.js...)
-  - [ ] Author packages (tools/tw/testbin/cpu4_heapfix/: a_memfast_65_128, b_loopfetch_animation, c_x87_truncation
+  - [ ] Author packages: zip READY 12:1x in ATN's Downloads (AttilaCPUPerfFix_7.0_notes_2026-11-15.zip: README + b's
+    NOTE / patch, a's NOTE / patch, c's NOTE; no copies of his code) + a short Nexus message; ATN sends. (was: tools/tw/testbin/cpu4_heapfix/: a_memfast_65_128, b_loopfetch_animation, c_x87_truncation
     question; plus for_author_pf): bench numbers into the NOTEs, then ATN sends Owner (audit 11-15): coordinator (bench numbers into the NOTEs after the end bench), then ATN sends.
     Bench numbers 06:2x (END BENCH PART 1 line): b gains 0.15-0.62 ms in every round; c no gain; a worse in max CPU.
     NOTEs DONE 06:4x ("## In the replay" in a / b / c NOTE.md, each start's heapfix.log line checked: x87 1276 of 1277,
@@ -466,7 +466,7 @@ heading text are in HANDOFF_ARCHIVE.md)
     vector {cap, count, data} of 12-byte entries, +0x1c "has items"; header readers so far: push 0x176ced0, merge 0x178fd90,
     release 0x1810d30, clear 0x1731160; allocation candidates 0x17bd700 / 0x16c8ec0 unconfirmed; the whole-DLL reader census
     unfinished. ATN 00:1x YES: a fresh agent (cpu5b_) continues from these facts, items 1-3
-  - [ ] Faster Render Lists for WH3 / Pharaoh / Shogun 2 (x64): equivalents FOUND (cpu5b_): WH3 push 0x19042d8 flag
+  - [x] DONE 11-15 (WPR 11-15 (tools/tw/x64_render_lists, hot.txt): Pharaoh push 0x3103eb0 0 of 435,018 module samples, on none of 215,075 stacks; Shogun 2 push 0x1a7adb0 (empire.retail.x64.dll) 0 of 34,880 and none of 76,104 stacks: WON'T GET for both (not hot); WH3 not measured: its own box): Faster Render Lists for WH3 / Pharaoh / Shogun 2 (x64): equivalents FOUND (cpu5b_): WH3 push 0x19042d8 flag
     0x1904320 [r14+0x28]; Pharaoh 0x3103eb0 flag 0x3103ef8; Shogun 2 0x1a7adb0 flag 0x1a7afe9 [r15+0x30]; covered bytes
     movable, flags dead at the store. Two gaps: (a) which push is hot (no CPU profile: one WPR data run per game, ATN's
     OK), (b) engine_code.hpp has no x64 path (reuse rysesonofrome_dlss/engine_memory.hpp AllocateNearExe; x64 stub,
@@ -642,7 +642,7 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [x] SHARED STEP: twattila/test_hooks.hpp includes rt_scene.hpp (Attila's embedded shaders) but needs only
       rt_core.hpp. Owner: g3a_ (sent ~02:0x), then Ryse / UE4 test hooks in the merge rounds DONE: twattila/test_hooks.hpp's #ifndef RENODX_TEST_HOOKS_PROFILE guards the rt_scene include (ue4_ 6e8f661a, d50bfc2c); Ryse's hooks go with the RYSE MERGE round.
     - [x] merged into "ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH" (was: "RYSE MERGE ROUND (one add-on): rys_'s plan in its report: mo...")
-    - [ ] A page_dump_ryd_rys1.exe (PID 35256) is stuck in tools/tw/page_dump (built outside testbin; "Access denied",
+    - [x] DONE 11-15 (ATN ended it 12:1x, the coordinator deleted both exes): A page_dump_ryd_rys1.exe (PID 35256) is stuck in tools/tw/page_dump (built outside testbin; "Access denied",
       likely Bitdefender). Owner: ATN ends it and deletes page_dump_ry_rys1.exe / page_dump_ryd_rys1.exe there
     - [ ] Remove the DevKit symlink from Ryse's Bin64 before runs (it keeps fast dispatch off). Owner: coordinator at
       the install (fresh backup)
@@ -830,9 +830,21 @@ heading text are in HANDOFF_ARCHIVE.md)
       (atn), reuse 0.87 -> 0.61 / 1.07 -> 0.79; Lean on top: bounce -0.09 / -0.16 ms more (reuse 0.55 / 0.66). fps:
       CPU-bound, base spread 0.01-0.05 ms, the per-round "worse" flags are noise. For ATN's Lean row decision.
     - grass_dump (max, atn): the GRASS line under "ONE Constantinople bench" (grass_replay_N.txt / .json in the runs).
-    - [ ] ATN DECIDES: Batched Unit Capture (RayTracedBatchedUnits) on by default (bit-exact; -1 to -2 ms a frame in both
+    - [x] DONE 11-15 (ATN 12:1x rule: on by default, 356b7100): ATN DECIDES: Batched Unit Capture (RayTracedBatchedUnits) on by default (bit-exact; -1 to -2 ms a frame in both
       bench views). Owner: ATN
     - [ ] ATN DECIDES: g2b trunc8 (8-bit cluster truncation: -0.2 ms more cluster build; a look change). Owner: ATN
+    - [x] ATN 12:1x: "Default everything that makes it faster to on and the rest that could have lower quality, I will
+      decide": 356b7100 turns on Batched Unit Capture (shared rt_scene), Faster Render Lists (Attila, Thrones), WH1's
+      Skip the Game's Reflection Passes (bit-identical in its test part 14); none shipped to players before (merge-base
+      against v146 8dca9eef), so every player gets the new default; ATN's own ini keeps a saved Off. Faster Game CPU
+      Code was on already; Path Tracing SER stays off (no gain measured). Skills 53ef3773 carry the rule.
+    - [ ] Faster-with-a-look-risk list for ATN (numbers in the reply 12:1x): Lean ReSTIR Reuse, trunc8, Faster Smoke
+      Shadow Build, Terrain / Grass Without Waiting, Skip the Game's Shadow Map Work, Skip Trees in Shadow Maps, Skip the
+      Shadow Maps, Rome II's Skip the Shadow Maps, One Model per Place Out of View, Fast Leaf Shadows, SHaRC, WH3's
+      Faster Reflections, GPU grass phases 1-3. Owner: ATN
+    - [ ] WH3's x64 render-list WPR run: the game said "Unable to initialize SteamAPI" twice (Steam not elevated;
+      HKCU Valve ActiveProcess pointed at a dead pid); ATN restarts Steam, then one run (x64_run.ps1). Owner: ATN, then
+      coordinator
   - [x] SHOGUN 2 ONE ADD-ON MERGED d4c82679 (s2m_): _dlss folded in (pages HDR & Effects / Graphics 1 of 2 / 2 of 2;
     shared twattila/settings_pages.hpp for the page helpers; fast dispatch; hdr_link / dlss_jitter / in-process FG
     shaders 0x7A1E0D40-42 dropped; red note + log while the old _dlss file sits in the folder; README tells players to
@@ -1071,7 +1083,7 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [ ] ATN DECIDES (data runs): mesh LOD part counts; the x64 shadow-pass skip (WH3 first: one stack capture a frame
       while the sun's map is bound) Also the 8x pose hold's bone-matrix writer 0x17dab80 (only with a data run). Owner: ATN.
     - [x] merged into "Author packages" (was: "ATN, when sending the heapfix package: ask the author whethe...")
-    - [ ] ATN tests: Faster Render Lists off / on in cpl2's view (PresentMon 60 s, log "Faster Render Lists: on"); Rome II
+    - [x] DONE 11-15 (Faster Render Lists on by default, 356b7100; Rome II's Skip the Shadow Maps stays for ATN): ATN tests: Faster Render Lists off / on in cpl2's view (PresentMon 60 s, log "Faster Render Lists: on"); Rome II
       Skip the Shadow Maps in a forest battle (log "pass kind N draws only into the sun's map", shadows unchanged) Owner: ATN (look) / end bench (numbers).
   - [x] hfp_ agent: heapfix's whole test set + eqtest on every packaged variant; battle_draw_batching A/B (keep it on)
   - [x] GPU PERF ROUND MERGED 75773bfb (clean; every consumer rebuilt after the merge): b6ec6be6 (a) Rome Remastered
