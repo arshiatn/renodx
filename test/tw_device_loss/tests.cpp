@@ -541,6 +541,53 @@ static int Parent(const wchar_t* self) {
     Reset();
   }
 
+  // 3b. Ryse (its R0 ReShade.log, 2026-11-15): a multithreaded device (Flags 0) and, from IDXGIFactory::CreateSwapChain, a
+  // windowed blt chain of 3 RGBA8 buffers with ALLOW_MODE_SWITCH, fullscreen asked later (the swap chain mod fakes it).
+  // After a loss its request is upgraded as Attila's; its output from Ryse's hook: HDR10 with frame generation, else as set.
+  {
+    HWND window = MakeWindow(SW_SHOWNOACTIVATE);
+    mock::Device old_device;
+    ComPtr<ID3D11DeviceContext> old_context;
+    CHECK(MakeDevice(&old_device, &old_context));
+    loss::OnInitDevice(&old_device);
+    CHECK(!loss::devices[0].single_threaded);
+    auto desc = GameDesc(DXGI_SWAP_EFFECT_DISCARD);
+    desc.back_buffer_count = 3;
+    desc.present_flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    loss::BeforeSwapchainMod(reshade::api::device_api::d3d11, desc, window);
+    Remove(old_device.native.Get());
+    loss::BeforeSwapchainMod(reshade::api::device_api::d3d11, desc, window);
+    CHECK(loss::after_loss && !loss::keep_game_desc && loss::native_flip_window == nullptr);
+    CHECK(!loss::AfterSwapchainMod(reshade::api::device_api::d3d11, desc, window));
+    DestroyWindow(window);
+    Reset();
+
+    static bool frame_generation = false;
+    float ryse_encoding = -1.f;
+    const auto ryse_hook = [](int setting) {
+      return (setting == output::HDR10 || frame_generation) ? output::HDR10 : output::SCRGB;
+    };
+    // setting, Windows HDR on, frame generation: the output.
+    struct RyseRow {
+      int setting;
+      bool hdr;
+      bool frame_generation;
+      int encoding;
+    };
+    constexpr RyseRow RYSE_ROWS[] = {
+        {output::AUTO, true, false, output::SCRGB},   {output::AUTO, true, true, output::HDR10},   {output::AUTO, false, false, output::SDR},
+        {output::AUTO, false, true, output::SDR},     {output::SCRGB, true, false, output::SCRGB}, {output::SCRGB, true, true, output::HDR10},
+        {output::HDR10, true, false, output::HDR10},  {output::HDR10, false, true, output::SDR},   {output::SDR, true, true, output::SDR},
+    };
+    for (const auto& row : RYSE_ROWS) {
+      frame_generation = row.frame_generation;
+      output::Configure({.shader_encoding = &ryse_encoding, .setting = row.setting, .hdr_encoding = ryse_hook});
+      CHECK(output::Encoding(row.setting, {.known = true, .on = row.hdr}) == row.encoding);
+    }
+    frame_generation = false;
+    output::Configure({.shader_encoding = &encoding, .setting = output::SCRGB});
+  }
+
   // 4. Who asks a device for its removed reason, and the frame thread's place when frames stop.
   {
     mock::Device single_threaded;
