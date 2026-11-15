@@ -856,9 +856,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   - [ ] Data runs (ATN allowed, scripted, fresh save backups): Tales G1 + G2 one session (Manual 03 / 04), Expeditions G1
     (Save Silanus 3m), Ryse R0 (auto-continue or chapter 3) + Nsight D3D11 capture try; after the merges + test hooks.
     Not while the TW end bench runs. Owner: coordinator
-  - [ ] SDR first start: the look stays SDR when the player turns Windows HDR on later (Output Auto follows, the look
-    rows don't). Coordinator's suggestion: apply Recommended once when HDR appears on Auto while no look row was
-    changed since the first start (and SDR again if HDR goes). ATN DECIDES
+  - [ ] SDR first start -> HDR later: ATN 02:1x YES ("people with HDR must not get this preset every start"): apply
+    Recommended once when HDR appears on Auto while no look row changed since the first start's SDR preset (SDR again if
+    HDR goes, same rule); a first start on HDR is never touched; any player change ends it. Owner: sdr_ agent (shared
+    output_encoding, every TW game + Ryse; Shogun 2's wiring after s2m_)
+  - [x] ATN 02:1x: Tales G1 + G2 in one session OK; one shared helper for all games (future DXR / feature fixes once)
+  - [x] ATN 02:1x asked why not decrypt the encrypted packs: answered (no decryption = no circumvention of the games'
+    protection; the same bytecode comes at run time when the game creates it, and every permutation by switching each
+    setting during the data runs' dumps + UE's create-on-load cvars). Owner of the runtime census: the data runs
   - [ ] SHARED STEP owners (coordinator 01:2x): UE4 S1 cvars per-exe slot table, S2 the six duplicated headers, S4
     psycho_test31, S5 snapshot pieces, S6 page-dump drivers, S7 fast dispatch, S8 on-demand trace + test hooks, S12
     graphics-page table, S13 FG device-loss rules = UE4 IMPLEMENTATION agent ue4_ (owns src/games/talesofarise* +
