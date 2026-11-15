@@ -769,8 +769,28 @@ heading text are in HANDOFF_ARCHIVE.md)
     Checked clean: command_action_fast vs RunCallbacks, engine_code stubs by hand, OutputAutoPreset otherwise, Batched
     Unit Capture math, point-shadow rows, units range, sss pick, bridge fields, constant mirror sharing, engine_cvars.
     Not covered: HLSL bit-exactness (needs builds), parts of several per-game files (listed in the review).
-  - [ ] FIX ROUND rfx_ (started ~05:0x): all 13 review rows; edits during the bench, builds / suites / harness after
-    the quiet window; then stamp + install. Owner: rfx_, then coordinator
+  - [x] FIX ROUND MERGED bc7ba324 (rfx_; suites on its branch: tw_engine_code x86 PASS, tw_output_encoding x86 + amd64
+    PASS + own control, tw_helper_lifetime / tw_gpu_completion PASS, tw_rays_captures ALL PASSED, fg_bridge_test as
+    g3b2, HARNESS_DUMP 59 outputs equal over 10 scenes, forced per-BLAS fallback 0 differences, all_modes 178 / 179):
+    Shogun 2 beside an old _dlss file keeps its DLSS / scale / engine half out + migration carries global rows; WH1
+    grass_height and frame_trace Uninstall at detach; batched cluster BLASes take non-empty runs (GPU-read count,
+    per-BLAS fallback, RENODX_TW_TEST_CLUSTER_BLASES_APART); ReSTIR record invariant comment; rt_core index write
+    handlers D3D11 only; Output Auto: failed Windows HDR query = SDR out, no SDR preset, no decision; Thrones / Attila
+    AUTO_EXPOSURE_HEADROOM_DEFAULT 4 (protection-off presets write it); Two Shadow Cascades tooltip (restart / the game's
+    Shadows option); shadow_pass off-thread warning; sort + gather REVERTED (engine_code.hpp / tests byte-identical to
+    f8153d31^; Fable rows 4 and 13 obsolete). Merge conflict hdr_only.hpp: kept uem_'s HelperInstalled() notice (no
+    module listing left; rfx_'s 2 s limit dropped).
+    - [ ] release_rr's +30 MiB threshold is too tight (the base helper reaches 419 MiB too; fails 2 of 16 on base).
+      Owner: next harness round
+    - [ ] shadow_pass: (a) the row's next game run reads the new off-thread warning (if it fires: suspension-based 6-byte
+      patch); (b) relearning needs per-kind call counts over a moving battle. Owner: next Attila CPU / D3D11 round
+    - [ ] Two Shadow Cascades live rebuild (no restart). Owner: next D3D11 round
+    - [ ] +265 MB VRAM for the bounce-size ReSTIR record. Owner: next ReSTIR round
+    - [ ] Shogun 2 terrain_detail not restored at detach (minor). Owner: next Shogun 2 round
+    - [ ] talesofarise_dlss/frame_generation.hpp detours have no uninstall. Owner: next UE round
+  - [ ] FINAL VERIFICATION on bc7ba324 (rfx_ in its worktree: every suite, HARNESS_DUMP, page dumps incl. ry / ta / exr,
+    parity_check 0) + main checkout build + helper114 (coordinator, tools/tw/round_notes/final_build_1115.ps1); then
+    stamp + install all TW games, then END BENCH part 2. Owner: rfx_ / coordinator
   - [x] SHOGUN 2 ONE ADD-ON MERGED d4c82679 (s2m_): _dlss folded in (pages HDR & Effects / Graphics 1 of 2 / 2 of 2;
     shared twattila/settings_pages.hpp for the page helpers; fast dispatch; hdr_link / dlss_jitter / in-process FG
     shaders 0x7A1E0D40-42 dropped; red note + log while the old _dlss file sits in the folder; README tells players to
