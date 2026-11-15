@@ -1022,6 +1022,27 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [ ] ATN 18:5x: after the fix agent's 21 fixes, a second Fable 5.2 High review of THE FIX DIFF ONLY (coordinator
       recommends it: helper / threading fixes), then build all, stamp, install for ATN's Attila test. Nsight audit agent
       started (were last night's Nsight captures used for more wins?). Owner: coordinator
+    - [x] NSIGHT AUDIT 19:1x (ATN: "did we use last night's Nsight captures?"): harness captures only (11-14 / 11-15:
+      g3b reuse base / record / lean / a32, g4_ao x3, h110, rp_*, ser, cl_*, atn_true, wh3_true, smoke_*); no in-game
+      Nsight, no per-preset Nsight (per-preset numbers came from Time Each Pass / PresentMon / RT_PROFILE). ACTED: reuse
+      (record + Lean), WH3 reflections, smoke build, SER / cluster flags / GT-VBAO prefetch / hand-off hops rejected with
+      numbers. NEVER TURNED INTO A TASK: the four below + f16 reservoirs closed on the wrong number.
+      - [ ] Path tracing register limit (1.47-1.81 ms in game, 28.7 % occupancy, 85 % registers): fewer live registers
+        or surface / shading as two dispatches with the same math; estimate -0.15 to -0.45 ms; exact (prove with
+        HARNESS_DUMP as a833578d). Owner: next GPU round
+      - [ ] Attila reflections (1.07-1.16 ms, latency-bound, 88 % registers; hot TRACE_SURFACE + screen look-ups): the
+        register cut or earlier screen loads; estimate -0.10 to -0.25 ms; exact. Owner: next GPU round
+      - [ ] Two render-size RGBA32F position copies in rt_d3d12.hpp (kept_positions_ ~1386, ambient_positions_ ~4910):
+        one copy from a shader that reads the positions already, or one shared copy; estimate -0.03 to -0.08 ms; exact.
+        Owner: next GPU round
+      - [ ] REOPENED f16 reservoirs (32 -> 24 B, the record's reuse still L2-bound 93-97 %): estimate -0.05 to -0.15 ms;
+        look change, scored. The closed box judged it on harness RT_PROFILE 0.34 ms; its plan said Nsight (1.49 ms); in game
+        reuse 0.61 / 0.79 ms. Owner: next ReSTIR round (look-risk list for ATN)
+      - [ ] Record (full) reuse with radius 6 / 3 neighbours (radius 6 halved the pre-record pass 2.54 -> 1.40 ms; Lean +
+        3 neighbours + radius 6 scored better 2.18 -> 1.95 % rRMSE): estimate -0.20 to -0.35 ms; look change, scored.
+        Owner: next ReSTIR round (look-risk list for ATN)
+      - [ ] Radiance cache (under 0.23 ms; dependent loads, SM 3 %): at most -0.05 to -0.10 ms, picture unknown; low.
+        Owner: next GPU round (last)
     - [ ] ATN 17:3x "Start the review": Fable 5.2 High crash / freeze review workflow wf_73f86de5-728 (6 areas: locks,
       bridge, hooks, lifetime, non-TW, TW; each verified by a refuting agent). Then fixes one at a time, build all,
       install. Owner: coordinator
