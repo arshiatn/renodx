@@ -424,6 +424,8 @@ void ApplyDefaultLook(float rendering_mode) {
       {"vignette", 1.f},
       {"motion_blur",1.f},
       {"depth_of_field",1.f},
+      {"video_autohdr", 0.f},
+      {"video_dithering", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -713,6 +715,34 @@ void BuildRuntimeData() {
           .format = "%.2f",
           .is_enabled = IsAdvancedSettings,
           .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "video_autohdr",
+          .binding = &shader_injection.video_autohdr,
+          .default_value = 0.f,
+          .label = "Video AutoHDR",
+          .section = "Extra",
+          .tooltip = "Makes the bright parts of the game's (SDR) videos and loading screens brighter: only what is above\n"
+                     "mid gray, the brightest the most. 0 = off, 1 = video white reaches Peak.\n"
+                     "High values can show banding (see Video Dithering).",
+          .min = 0.f,
+          .max = 1.f,
+          .format = "%.2f",
+          .is_enabled = []() { return HasHDRScene() && IsHdrOutput(); },
+          .is_visible = IsPsychoMode,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "video_dithering",
+          .binding = &shader_injection.video_dithering,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Video Dithering",
+          .section = "Extra",
+          .tooltip = "Fine noise that hides banding in the brightened videos.\n"
+                     "Only with Video AutoHDR above 0.",
+          .labels = {"Off", "On"},
+          .is_enabled = []() { return HasHDRScene() && IsHdrOutput() && shader_injection.video_autohdr > 0.f; },
+          .is_visible = IsPsychoMode,
       },
   };
 }

@@ -15,8 +15,8 @@ struct ShaderInjectData {
   // Reuse padding without shifting existing injection offsets.
   float motion_blur;
   float depth_of_field;
-  float reserved_2;
-  float reserved_3;
+  float video_autohdr;    // AutoHDR on the videos and loading screens: 0 SDR, 1 video white at Peak
+  float video_dithering;  // 1: 1 code value of dither before the video AutoHDR
   float reserved_4;
 
   // PsychoV31 controls.

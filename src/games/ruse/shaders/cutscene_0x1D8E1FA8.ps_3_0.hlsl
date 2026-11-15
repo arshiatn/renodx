@@ -1,6 +1,6 @@
 // Planar video conversion, verified against the supplied CSO and assembly.
 // Preserve the game's limited-range YUV coefficients, chroma UVs, tint and fades.
-#include "../shared.h"
+#include "./ui.hlsli"
 
 float4 YDimensions : register(c0);
 float4 ChromaDimensions : register(c1);
@@ -15,7 +15,7 @@ struct PS_IN {
   float4 color : COLOR0;
 };
 
-float4 main(PS_IN i) : COLOR0 {
+float4 main(PS_IN i, float2 vpos : VPOS) : COLOR0 {
   half4 native_color = RuseDecodeVideo(i.texcoord.xy) * i.color;
-  return RuseScaleVideo(native_color);
+  return RuseScaleVideo(native_color, vpos);
 }
