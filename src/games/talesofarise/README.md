@@ -6,25 +6,34 @@ and the post-tonemap handling is the same.
 
 **One add-on** (UE4 merge round, 2026-11-15): the former DLSS add-on (`renodx-talesofarise_dlss.addon64`: DLAA / DLSS,
 the live render scale, the camera jitter, frame generation, ray tracing and the graphics settings) is part of this
-add-on (`dlss_graphics.hpp`, its history in `README_DLSS.md`; its shaders `0x7A1E0D*` and `rt_*.hlsli` here too, the
-shared hud-less copy `0x7A1E0D42` included from `talesofarise_dlss/`). `talesofarise_dlss/` holds the Unreal headers
-other games include, no add-on. Remove the old `renodx-talesofarise_dlss.addon64` from the game folder (the install
-tool renames it aside). The full-download note shows while `nvngx_dlss.dll` is found neither next to the add-on nor
-the game. `Arise-SDK.ini` (Arise-SDK's settings next to the game's exe; the graphics settings change most of them live) moved
+add-on (`dlss_graphics.hpp`, its history in `README_DLSS.md`; its shaders `0x7A1E0D*` and `rt_*.hlsli` here too).
+`talesofarise_dlss/` holds the Unreal headers other games include, no add-on. Remove the old
+`renodx-talesofarise_dlss.addon64` from the game folder (the install tool renames it aside). The full-download note
+shows while `renodx-tw-dlaa64.exe` is not next to the add-on. `Arise-SDK.ini` (Arise-SDK's settings next to the game's exe; the graphics settings change most of them live) moved
 here.
 
 Pages (Settings Mode, as Attila's): HDR & Effects (every HDR row: no Simple / Advanced any more), Graphics 1 of 2
-(`twattila/graphics_page.hpp`: Anti-Aliasing and Upscaling with the game's TAA and DLSS, its modes, preset and Ray
-Reconstruction, the Reset / No RT/PT / RT/PT presets, Shadows, Ambient Occlusion with GT-VBAO and Ambient Occlusion Halo,
+(`twattila/graphics_page.hpp`: Anti-Aliasing and Upscaling with the game's TAA, DLSS, FSR and XeSS, their modes, DLSS's
+preset and Ray Reconstruction, Frame Generation and Reflex, the Reset / No RT/PT / RT/PT presets, Shadows, Ambient Occlusion with GT-VBAO and Ambient Occlusion Halo,
 Global Illumination, Reflections; then Upscaling and Tools: Live Render Scale, Camera Jitter, Replace the Game's TAA
-Pass, Spark Trails Fix, Game's Sharpening, the in-process Frame Generation, Upscaling Details, the pixel, frame and ray
-traces), Graphics 2 of 2 (the live cvar table, `talesofarise_dlss/graphics_table.hpp`, with its presets, the three preset
+Pass, Spark Trails Fix, Game's Sharpening, Upscaling Details, the pixel, frame and ray traces), Graphics 2 of 2 (the live cvar table, `talesofarise_dlss/graphics_table.hpp`, with its presets, the three preset
 toggles, Shaders on load, Smooth sun movement and Day and night speed). No overlay any more. The overlay's `[Tales AA]`
 keys go into the page's once (`Migrate`, `[renodx] SettingsRevision 1`; a preset's own key is kept; preset E becomes K;
-the bounce light and path tracing become Light Bounce's rays and paths); frame generation, the preset toggles and the
-taste settings keep their `[Tales AA]` keys, the cvar choices `[Tales Graphics Values]`. Ray-traced effects need DLSS now
-(as on every page; sun shadows, AO and specular occlusion also ran with the game's TAA before); Path Tracing Bounces stops
+the bounce light and path tracing become Light Bounce's rays and paths; frame generation on: its multiplier, Reflex
+(+ Boost) and frame limit); the preset toggles and the taste settings keep their `[Tales AA]` keys, the cvar choices
+`[Tales Graphics Values]`. Ray-traced effects need an upscaler now (as on every page; sun shadows, AO and specular occlusion also ran with the game's TAA before); Path Tracing Bounces stops
 at 2 (Attila's measure: 3 and 4 looked as 2).
+
+Upscaling, Ray Reconstruction, frame generation and Reflex go through the TW helper (`renodx-tw-dlaa64.exe`,
+`twattila/dlaa_bridge.hpp`, `twattila/frame_generation.hpp`, `twattila/reflex.hpp`; `talesofarise_dlss/upscaling.hpp`
+holds what the bridge is asked for, shared with Expeditions: Rome), as in the Total War games: the in-process NGX
+(`ngx_backend.hpp`, `rr_d3d12.hpp`) and Streamline frame generation are gone (no NVIDIA DLL in the add-on, no
+`nvsdk_ngx` link; `talesofarise` left the root CMake NGX block). The input preparation (`0x7A1E0D01`) writes the helper's
+colour, motion and depth (1 - UE's reversed depth: the helper's runs forward); Ray Reconstruction's guides (`0x7A1E0D31`)
+go into the bridge's textures; FSR and XeSS get the forward projection. The ray tracing stays in-process for now (its own
+D3D12 device, `talesofarise_dlss/rt_shadows.hpp`, its outputs at the lighting pass's t41-t44): its port to the helper's
+`twattila/rt_scene.hpp` (as Expeditions' `ray_tracing.hpp`) is still open. Without the helper (the HDR-only download)
+Anti-Aliasing stays at the game's TAA and the rows show the full-download note.
 
 ## Rendering modes
 

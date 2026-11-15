@@ -19,7 +19,7 @@ becomes K; frame generation on: its multiplier, Reflex (+ Boost) and frame limit
 opacity micromaps start off here.
 
 Upscaling, Ray Reconstruction, frame generation and Reflex go through the TW helper (`renodx-tw-dlaa64.exe`,
-`twattila/dlaa_bridge.hpp`, `twattila/frame_generation.hpp`, `twattila/reflex.hpp`; `upscaling.hpp` holds what the
+`twattila/dlaa_bridge.hpp`, `twattila/frame_generation.hpp`, `twattila/reflex.hpp`; `talesofarise_dlss/upscaling.hpp` holds what the
 bridge is asked for), as in the Total War games: the in-process NGX and Streamline code is gone (no NVIDIA DLL in the
 add-on, no `nvsdk_ngx` link). The helper's DLSS has no inverted-depth flag, so the DLSS-inputs shader
 (`0xB69D8215.cs_5_0.hlsl`) writes 1 - depth. FSR and XeSS get the forward projection (Unreal's reverse-Z turned around).

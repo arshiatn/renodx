@@ -30,7 +30,9 @@
 #include "../twattila/credits.hpp"
 #include "../twattila/draw_dispatch.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/frame_generation.hpp"
 #include "../twattila/graphics_page.hpp"
+#include "../twattila/reflex.hpp"
 #include "../twattila/output_encoding.hpp"
 #include "./dlss_graphics.hpp"
 #include "./hdr_only.hpp"
@@ -748,10 +750,8 @@ void ConfigureAddon() {
   // The former DLSS add-on's [Tales AA] keys into the page's, once, before the settings load (settings::Use).
   talesofarise::dlss_graphics::Migrate();
   BuildRuntimeData();
-  // Without the full download's NVIDIA DLLs (the HDR-only snapshot: no nvngx_dlss.dll next to the add-on or the game),
-  // after Settings Mode.
-  settings.insert(settings.begin() + 1,
-                  talesofarise::hdr_only::FullDownloadNote([] { return talesofarise::dlss_graphics::dlss_library.folder.empty(); }));
+  // Without the helper (the HDR-only snapshot), after Settings Mode.
+  settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote());
   settings.insert(settings.begin() + 2, new renodx::utils::settings::Setting{
                                             .value_type = renodx::utils::settings::SettingValueType::TEXT,
                                             .label = "The game has no HDR option of its own: this add-on's Output makes it HDR.",
@@ -848,13 +848,6 @@ void ConfigureAddon() {
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = static_cast<int>(setting->GetValue()),
-        // The DLSS addon's frame generation takes no scRGB: Auto gives HDR10 with it.
-        .hdr_encoding = [](int output) {
-          if (output != twattila::output_encoding::AUTO) return output;
-          bool frame_generation = false;
-          reshade::get_config_value(nullptr, "Tales AA", "FrameGeneration", frame_generation);
-          return (frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB);
-        },
         .first_start_without_hdr = &ApplySdrPreset,
         .recommended_preset = &ApplyRecommendedPreset,
         .log_name = "[Tales]",
@@ -878,7 +871,7 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = twattila::credits::DLSS_ADDON,
+          .label = twattila::credits::HELPER,
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -925,9 +918,31 @@ bool OnCopyResource(reshade::api::command_list*, reshade::api::resource source, 
   return false;
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*,
+// The helper's frame generation and Reflex (the page's rows), its frames SDR with the SDR output.
+void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   frame_tonemapped.store(false, std::memory_order_relaxed);
+  const auto& sliders = talesofarise::dlss_graphics::aa_sliders;
+  const auto aa = twattila::feature_settings::AaSettings(sliders);
+  twattila::frame_generation::Update({
+      .multiplier = (twattila::feature_settings::Upscaling(sliders) && twattila::dlaa_bridge::HelperInstalled()) ? aa.frame_generation : 0u,
+      .reflex_boost = aa.reflex == 2,
+      .frame_limit = aa.frame_limit,
+      .preset = aa.frame_preset,
+      .hud_recomposition = aa.hud_recomposition,
+      .debug_view = aa.frame_debug_view,
+      .sdr_output = shader_injection.swap_chain_encoding == static_cast<float>(twattila::output_encoding::SDR),
+  });
+  twattila::reflex::Update(swapchain, aa.reflex, aa.frame_limit);
+}
+
+// The game's device is going away: frame generation's and Reflex's objects on it with it.
+void OnDestroyHelperDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  twattila::frame_generation::OnDestroyDevice(native);
+  twattila::reflex::OnDestroyDevice(native);
 }
 
 bool AttachAddon(HMODULE addon_module) {
@@ -949,9 +964,15 @@ bool AttachAddon(HMODULE addon_module) {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The fast draw dispatch, with the gate of view cloning's command-wide callback (resource upgrades).
   twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
-  // DLSS, frame generation, ray tracing and the graphics settings (the former DLSS add-on): after the shader mod, so its
-  // callbacks run after this part's on the same shaders, as when it loaded second.
+  // DLSS, ray tracing and the graphics settings (the former DLSS add-on): after the shader mod, so its callbacks run after
+  // this part's on the same shaders, as when it loaded second.
   talesofarise::dlss_graphics::Install(addon_module);
+  // Frame generation (the helper presents; HUD-less images through the swap chain shader, its constants at b13) and
+  // Reflex for the game's own presents.
+  twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
+                                      sizeof(shader_injection), __fg_hdr10);
+  twattila::reflex::Install();
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
 
   attached = true;
   return true;
@@ -960,6 +981,10 @@ bool AttachAddon(HMODULE addon_module) {
 void DetachAddon() {
   if (!attached) return;
 
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
+  twattila::reflex::Uninstall();
+  twattila::frame_generation::Uninstall();
+  // Last of the helper's users: the bridge ends with it.
   talesofarise::dlss_graphics::Uninstall();
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);

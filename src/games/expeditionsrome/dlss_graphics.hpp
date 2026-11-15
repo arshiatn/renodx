@@ -52,7 +52,7 @@
 #include "../talesofarise_dlss/performance.hpp"
 #include "./ray_tracing.hpp"
 #include "./temporal_capture.hpp"
-#include "./upscaling.hpp"
+#include "../talesofarise_dlss/upscaling.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/frame_generation.hpp"
 #include "../twattila/graphics_page.hpp"
@@ -780,7 +780,7 @@ inline bool Evaluate(Frame* frame, bool replace) {
 
   // The helper's bridge (upscaling.hpp: the swap chain's size, the TAA output's); none: the game's TAA.
   auto& bridge = twattila::dlaa_bridge::bridge;
-  if (!expeditionsrome::upscaling::PrepareBridge(device.Get())) {
+  if (!talesofarise::upscaling::PrepareBridge(device.Get())) {
     SetStatus(twattila::dlaa_bridge::HelperInstalled() ? "Stock TAA: the helper (renodx-tw-dlaa64.exe) is not ready"
                                                        : "Stock TAA: renodx-tw-dlaa64.exe is not next to the add-on (the full download)",
               frame->generation);
@@ -801,7 +801,7 @@ inline bool Evaluate(Frame* frame, bool replace) {
     const std::shared_lock lock(state.mutex);
     if (frame->generation != state.generation || frame->frame != state.frame || requested_mode.load() != frame->mode) return false;
   }
-  const auto use = expeditionsrome::upscaling::Use();
+  const auto use = talesofarise::upscaling::Use();
   const bool nvidia_model = use.upscaler == twattila::dlaa_bridge::UPSCALER_DLSS + 1;
   // UE's camera (row vectors, centimetres around the camera: the translated world): the view, and the projection without
   // its jitter with the depth turned forward as the bridge's is (1 - the device depth: z' = w - z; near 0, infinity 1).
@@ -1252,7 +1252,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
       const std::shared_lock lock(state.mutex);
       size = {state.width, state.height};
     }
-    expeditionsrome::upscaling::SetUse({
+    talesofarise::upscaling::SetUse({
         .ray_tracing = ray_tracing_installed,
         .guides = ray_tracing_installed && (rays.reflections || rays.path_tracing),
         .reflections = ray_tracing_installed && rays.reflections,

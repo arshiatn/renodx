@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Private input-preparation shader, not a game replacement registration. Expeditions: Rome's (0xB69D8215) with
-// Tales of Arise's (UE 4.21) TAA dilation: nearest depth among the diagonals 2 texels away.
+// Private input-preparation shader, not a game replacement registration: the helper's inputs (twattila/dlaa_bridge.hpp's
+// color, depth and motion, the render size at their top-left). Expeditions: Rome's (0xB69D8215) with Tales of Arise's
+// (UE 4.21) TAA dilation: nearest depth among the diagonals 2 texels away.
 Texture2D<float> SceneDepth : register(t0);
 Texture2D<float2> PackedVelocity : register(t1);
 Texture2D<float4> SceneColor : register(t2);
@@ -37,13 +38,13 @@ void main(uint3 dispatch_id : SV_DispatchThreadID) {
   const int2 pixel = int2(dispatch_id.xy);
   const int2 last_pixel = int2(Extent) - 1;
   if (CopyColor != 0) {
-    // Replacing TAA, NVIDIA writes the game's output: clean its input instead,
-    // as non-finite pixels would also stay in NVIDIA's history.
+    // Non-finite pixels would stay in the upscaler's history: cleaned.
     const float3 color = SceneColor.Load(int3(pixel, 0)).rgb;
     OutputColor[pixel] = float4(all(isfinite(color)) ? color : 0.f, 0.f);
   }
   const float center_depth = SceneDepth.Load(int3(pixel, 0));
-  OutputDepth[pixel] = (isfinite(center_depth) ? center_depth : 0.f);
+  // The helper's depth runs forward (Attila's: 0 near, 1 far); UE's is reversed (1 near, 0 at infinity).
+  OutputDepth[pixel] = 1.f - (isfinite(center_depth) ? center_depth : 0.f);
 
   // Match scene TAA's reverse-Z foreground dilation (2 texels in UE 4.21), including its diagonal tie order.
   const int2 top_left = clamp(pixel + int2(-2, -2), int2(0, 0), last_pixel);
@@ -94,7 +95,7 @@ void main(uint3 dispatch_id : SV_DispatchThreadID) {
     motion_pixels = float2(0.f, 0.f);
   }
 
-  // Spark trails fix: small bright particles have no motion vectors, so DLSS (preset L most) keeps them in its history
+  // Spark trails fix: small bright particles have no motion vectors, so the upscaler (DLSS preset L most) keeps them in its history
   // where they were. Where a particle adds more light than its background has (sparks, embers, flames; not smoke or
   // haze), and where one was last frame (its mask moved with the motion, x 3/4 a frame), the motion points off the
   // screen: DLSS finds no history there and shows this frame (NVIDIA's bias current color mask does nothing for

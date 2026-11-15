@@ -3,17 +3,18 @@
  * SPDX-License-Identifier: MIT
  */
 
-// DLSS Ray Reconstruction's guides from UE 4.21's G-buffer (copied at Bandai's lighting pass; the render size): the
+// DLSS Ray Reconstruction's guides (the helper's, twattila/dlaa_bridge.hpp) from UE 4.21's G-buffer (copied at Bandai's
+// lighting pass; the render size, at the bridge textures' top-left): the
 // diffuse albedo (base colour x (1 - metallic)), the specular albedo (F0 = lerp(0.08 x specular, base colour, metallic)
 // through Karis' analytical environment BRDF at the pixel's N.V), the world normal and the roughness. Sky and unlit
 // pixels (no normal): zero.
 Texture2D<float4> GBufferA : register(t0);  // world normal x 0.5 + 0.5
 Texture2D<float4> GBufferB : register(t1);  // metallic, specular, roughness, shading model
 Texture2D<float4> GBufferC : register(t2);  // base colour
-RWTexture2D<float4> DiffuseAlbedo : register(u0);
-RWTexture2D<float4> SpecularAlbedo : register(u1);
+RWTexture2D<unorm float4> DiffuseAlbedo : register(u0);
+RWTexture2D<unorm float4> SpecularAlbedo : register(u1);
 RWTexture2D<float4> Normals : register(u2);
-RWTexture2D<float> Roughness : register(u3);
+RWTexture2D<unorm float> Roughness : register(u3);
 
 cbuffer Guides : register(b0) {
   float4 world_to_view[3];  // View.TranslatedWorldToView's rows (a rotation for directions)

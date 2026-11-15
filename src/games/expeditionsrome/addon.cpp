@@ -440,13 +440,7 @@ void ConfigureAddon() {
   expeditionsrome::dlss_graphics::Migrate();
   BuildRuntimeData();
   // Without the helper (the HDR-only snapshot), after Settings Mode.
-  settings.insert(settings.begin() + 1, new renodx::utils::settings::Setting{
-                                            .value_type = renodx::utils::settings::SettingValueType::TEXT,
-                                            .label = twattila::credits::FULL_DOWNLOAD_NOTE,
-                                            .section = "General",
-                                            .tint = talesofarise::hdr_only::WARNING_TINT,
-                                            .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
-                                        });
+  settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote());
   settings.insert(settings.begin() + 2, new renodx::utils::settings::Setting{
                                             .value_type = renodx::utils::settings::SettingValueType::TEXT,
                                             .label = "The game has no HDR option of its own: this add-on's Output makes it HDR.",

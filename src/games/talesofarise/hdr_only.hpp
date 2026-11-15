@@ -14,22 +14,23 @@
 
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/credits.hpp"
+#include "../twattila/dlaa_bridge.hpp"
 
-// The Unreal add-ons' (Tales of Arise, Expeditions: Rome) shared rows: the red full-download notice while the full
-// download's files are absent (the HDR-only snapshot upstream ships), GT-VBAO's rows and the About line's buttons.
+// The Unreal add-ons' (Tales of Arise, Expeditions: Rome) shared rows: the red full-download notice while the helper is
+// absent (the HDR-only snapshot upstream ships), GT-VBAO's rows and the About line's buttons.
 namespace talesofarise::hdr_only {
 
 constexpr uint32_t WARNING_TINT = 0xFF5050;
 
-// Shown while `missing` says the full download's files are absent (read as the page draws).
-inline renodx::utils::settings::Setting* FullDownloadNote(std::function<bool()> missing) {
+// Shown while renodx-tw-dlaa64.exe is not next to the add-on (read as the page draws).
+inline renodx::utils::settings::Setting* FullDownloadNote() {
   return new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
-      .label = "DLSS, Frame Generation, ray tracing and the extra graphics settings need the full download from GitHub: "
-               "github.com/arshiatn/renodx/releases",
+      .label = twattila::credits::FULL_DOWNLOAD_NOTE,
       .section = "General",
       .tint = WARNING_TINT,
-      .is_visible = std::move(missing),
+      .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
   };
 }
 
