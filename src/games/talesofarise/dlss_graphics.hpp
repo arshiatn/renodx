@@ -2151,9 +2151,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         if (live.finder.phase() == talesofarise::engine_scale::Finder::Phase::FAILED) live.finder = {};
       }
     }
-    // The rays (rt_shadows.hpp) with DLSS on (rt_scene::SettingsOf); path tracing replaces the bounce light. An effect turned
-    // on tries again after a failed start.
-    const auto rays = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, light_bounce_strength);
+    // The rays (rt_shadows.hpp) with an upscaler on (rt_scene::SettingsOf; none without the helper); path tracing replaces the
+    // bounce light. An effect turned on tries again after a failed start.
+    const auto rays = upscaling ? twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, light_bounce_strength) : twattila::rt_scene::Settings{};
     bool turned_on = false;
     for (const auto& [effect, on] : std::to_array<std::pair<std::atomic_bool*, bool>>({
              {&talesofarise::rt_shadows::enabled, rays.sun_shadows},
