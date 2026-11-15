@@ -17,7 +17,9 @@
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <string>
+#include <system_error>
 
 #include <d3d9.h>
 #include <dxgi1_6.h>
@@ -30,6 +32,7 @@
 #include "../../mods/swapchain.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../../utils/trace.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../../utils/vtable.hpp"
 #include "../twattila/output_encoding.hpp"
@@ -48,6 +51,12 @@ static_assert(sizeof(ShaderInjectData) == 10 * 4 * sizeof(float), "Keep the DX9 
 ShaderInjectData frame_injection;
 bool frame_latched = false;
 float current_settings_mode = 0.f;
+
+// Frame Trace (a restart row: utils/trace.hpp's events stay registered while it is on): one host frame's binds,
+// constants, targets and draws into ReShade.log, from the button or a renodx_trace_now file next to the exe.
+bool frame_trace_enabled = false;
+bool frame_trace_requested = false;
+std::filesystem::path frame_trace_marker;
 
 // ReShade's DX9 Present callback runs before its DX9 overlay and the native
 // Present. The nested HDR proxy has already displayed the frame at that point.
@@ -308,6 +317,14 @@ void OnPresentFrame(
     return;
   }
   presenting_host = reinterpret_cast<IDirect3DDevice9*>(device->get_native());
+  if (frame_trace_enabled) {
+    std::error_code ignored;
+    if (frame_trace_requested || std::filesystem::remove(frame_trace_marker, ignored)) {
+      frame_trace_requested = false;
+      renodx::utils::trace::trace_scheduled_device = device;
+      reshade::log::message(reshade::log::level::info, "R.U.S.E.: frame trace scheduled.");
+    }
+  }
   native_gui_phase = false;
   skip_host_present = false;
   proxy_present_started = false;
@@ -835,6 +852,35 @@ void ConfigureAddon() {
     });
     settings.push_back(setting);
   }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "FrameTrace",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Frame Trace",
+        .section = "Output (Restart Required)",
+        .tooltip = "For testing: Trace One Frame writes one frame's draws, shaders and targets to ReShade.log.\n"
+                   "Off (default) costs nothing. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    frame_trace_enabled = (setting->GetValue() != 0.f);
+    if (frame_trace_enabled) {
+      std::wstring exe(32768, L'\0');
+      exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+      frame_trace_marker = std::filesystem::path(exe).parent_path() / L"renodx_trace_now";
+    }
+    settings.push_back(setting);
+    settings.push_back(new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "Trace One Frame",
+        .section = "Output (Restart Required)",
+        .on_change = []() { frame_trace_requested = true; },
+        .is_visible = []() { return frame_trace_enabled && IsAdvancedSettings(); },
+    });
+  }
 
   twattila::psycho35::InsertBefore(&settings, "Extra", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 
@@ -915,6 +961,10 @@ bool AttachAddon() {
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   frame_injection = shader_injection;
 
+  if (frame_trace_enabled) {
+    renodx::utils::trace::Use(DLL_PROCESS_ATTACH);
+  }
+
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &frame_injection);
 
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &frame_injection);
@@ -942,6 +992,10 @@ void DetachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &frame_injection);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &frame_injection);
+
+  if (frame_trace_enabled) {
+    renodx::utils::trace::Use(DLL_PROCESS_DETACH);
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
 
