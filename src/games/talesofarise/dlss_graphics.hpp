@@ -2080,7 +2080,10 @@ void OnDestroySwapchain(reshade::api::swapchain* swapchain, bool) {
   if (matching) Reset();
 }
 
+// The game's D3D11 device only: ray tracing's own D3D12 device, wrapped by ReShade without the Agility SDK, raises this
+// too when rt_shadows lets it go under its own lock, and rt_shadows::Release would lock again on that thread.
 void OnDestroyDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
   talesofarise::rt_shadows::Release();
   {
     const std::unique_lock lock(spark_motion.mutex);
