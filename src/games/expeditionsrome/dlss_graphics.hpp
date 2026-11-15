@@ -1250,7 +1250,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     ray_traced_bounce_strength = light_bounce_strength;
     // What the bridge serves this frame (upscaling.hpp); Ray Reconstruction with a ray-traced effect only.
     const auto& rays = ray_tracing_settings;
-    const bool any_rays = ray_tracing_installed && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections);
+    const bool any_rays = ray_tracing_installed
+                          && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.specular_occlusion);
     std::array<uint32_t, 2> size;
     {
       const std::shared_lock lock(state.mutex);
@@ -1258,8 +1259,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     }
     talesofarise::upscaling::SetUse({
         .ray_tracing = ray_tracing_installed,
-        .guides = ray_tracing_installed && (rays.reflections || rays.path_tracing),
-        .reflections = ray_tracing_installed && rays.reflections,
+        .guides = ray_tracing_installed && (rays.reflections || rays.specular_occlusion || rays.path_tracing),
+        .reflections = ray_tracing_installed && (rays.reflections || rays.specular_occlusion),
         .upscaler = upscaling ? requested_upscaler.load() + 1 : 0u,
         .ray_reconstruction = (any_rays && aa.ray_reconstruction) ? aa.ray_reconstruction_preset + 1 : 0u,
         .frame_format = twattila::frame_generation::Format(),
@@ -1739,10 +1740,9 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
   // the shader anti-aliasing (TW's) or object motion (Unreal's own motion vectors).
   twattila::feature_settings::AppendAa(settings, &aa_sliders, true, true);
   erase({"AntiAliasingQuality", "AntiAliasingExtraSharpness", "AntiAliasingTaaStrength", "AntiAliasingSharpening", "AntiAliasingObjectMotion"});
-  // The rays (ray_tracing.hpp: sun shadows, AO, the light bounce and its paths, reflections); not what this host doesn't
-  // apply (specular occlusion; the light bounce's resolution: its own half-size texels).
+  // The rays (ray_tracing.hpp: sun shadows, AO, the light bounce at its resolution and its paths, reflections, specular
+  // occlusion).
   twattila::rt_scene::AppendSettings(settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION, &light_bounce_strength);
-  erase({"RayTracedSpecularOcclusion", "RayTracedLightBounceResolution"});
   for (Setting* setting : *settings) {
     // The former overlay's AO range; leaf micromaps (the helper's opacity micromaps over the game's cut-out masks) as the
     // former add-on ran: off (no run of this game has shown them yet).
@@ -2055,7 +2055,7 @@ inline bool Install() {
   // Installed when an effect is on at launch (restart to turn the first one on) and the helper is there to trace it.
   ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled()
                           && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.light_bounce != 0.f
-                              || rt_sliders.reflections != 0.f);
+                              || rt_sliders.reflections != 0.f || rt_sliders.specular_occlusion != 0.f);
   if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Install();
   renodx::utils::command_action::Register(expeditionsrome::dlss::contact_shadows::OnLightRectangle, {
                                                                                                         .shader_hash = expeditionsrome::dlss::contact_shadows::LIGHT_RECTANGLE_SHADER,

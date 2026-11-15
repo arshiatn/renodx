@@ -44,9 +44,10 @@
 // constant_mirror.hpp): the G-buffer guides (0x7A1E0D44), the trace (the scene depth at t1, the sun's direction), then
 // the traced sun into the light attenuation (t8, 0x7A1E0D45: the darker of the game's and the traced) and the traced
 // ambient into the screen-space AO (t7, 0x7A1E0D46: the darker). The reflections replace the screen-space reflections'
-// draw (0x7A1E0D47 into its target; the reflection captures and the sky fill the rest), their light from the scene
+// draw (0x7A1E0D47 into its target; the reflection captures and the sky fill the rest, which Specular Occlusion keeps only
+// where the lobe is open, also over the game's own reflections), their light from the scene
 // colour the temporal pass receives (KeepColor). The light bounce (path traced when on) right after the sun's draw: the
-// scene colour then (direct sun light) is the prepared light (0x7A1E0D48, a texel per 2 x 2 pixels), the helper traces
+// scene colour then (direct sun light) is the prepared light (0x7A1E0D48, a texel per 2 x 2 pixels; 1 x 1 or 4 x 4 by Ray-Traced Light Bounce Resolution), the helper traces
 // the light arriving at each texel, resolved over frames (0x7A1E0D49) and added to the scene colour times the diffuse
 // colour (0x7A1E0D4A; Unreal's sky light and reflections follow in their own pass). Its shaders' code is kept from the
 // game's start: Install only when ray tracing is on at launch.
@@ -69,8 +70,8 @@ constexpr UINT MIN_LIGHT_BYTES = 144;
 constexpr UINT MAX_LIGHT_BYTES = 256;
 constexpr uint32_t LIGHT_RECTANGLE_SHADER = 0x7C21DA11;
 constexpr double CENTIMETRES = 100.0;
-// The light bounce: render pixels per texel (each way), the most frames its resolve averages.
-constexpr UINT BOUNCE_SCALE = 2;
+// The light bounce: the most frames its resolve averages (its texels: Ray-Traced Light Bounce Resolution's 1, 2 or 4
+// render pixels each way).
 constexpr float BOUNCE_FRAMES = 24.f;
 
 struct State {
@@ -89,6 +90,7 @@ struct State {
   ComPtr<ID3D11PixelShader> reflection;
   ComPtr<ID3D11BlendState> multiply_blue;
   ComPtr<ID3D11BlendState> min_red;
+  ComPtr<ID3D11BlendState> occlude_alpha;  // alpha only: a + (1 - a) x the shader's
   ComPtr<ID3D11Buffer> guides_constants;
   ComPtr<ID3D11Texture2D> attenuation_copy;
   ComPtr<ID3D11ShaderResourceView> attenuation_copy_srv;
@@ -185,6 +187,10 @@ inline bool PrepareDevice(ID3D11Device* device) {
   min_desc.RenderTarget[0] = {.BlendEnable = TRUE, .SrcBlend = D3D11_BLEND_ONE, .DestBlend = D3D11_BLEND_ONE,
                               .BlendOp = D3D11_BLEND_OP_MIN, .SrcBlendAlpha = D3D11_BLEND_ONE, .DestBlendAlpha = D3D11_BLEND_ONE,
                               .BlendOpAlpha = D3D11_BLEND_OP_MIN, .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED};
+  D3D11_BLEND_DESC occlude_desc = {};
+  occlude_desc.RenderTarget[0] = {.BlendEnable = TRUE, .SrcBlend = D3D11_BLEND_ZERO, .DestBlend = D3D11_BLEND_ONE, .BlendOp = D3D11_BLEND_OP_ADD,
+                                  .SrcBlendAlpha = D3D11_BLEND_INV_DEST_ALPHA, .DestBlendAlpha = D3D11_BLEND_ONE,
+                                  .BlendOpAlpha = D3D11_BLEND_OP_ADD, .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALPHA};
   const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC bounce_desc = {.ByteWidth = 96, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   state.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
@@ -199,6 +205,7 @@ inline bool PrepareDevice(ID3D11Device* device) {
                                                      state.reflection.ReleaseAndGetAddressOf()))
                  || FAILED(device->CreateBlendState(&multiply_desc, state.multiply_blue.ReleaseAndGetAddressOf()))
                  || FAILED(device->CreateBlendState(&min_desc, state.min_red.ReleaseAndGetAddressOf()))
+                 || FAILED(device->CreateBlendState(&occlude_desc, state.occlude_alpha.ReleaseAndGetAddressOf()))
                  || FAILED(device->CreateBuffer(&constants_desc, nullptr, state.guides_constants.ReleaseAndGetAddressOf()))
                  || FAILED(device->CreatePixelShader(__0x7A1E0D48.data(), __0x7A1E0D48.size(), nullptr, state.prepare.ReleaseAndGetAddressOf()))
                  || FAILED(device->CreateComputeShader(__0x7A1E0D49.data(), __0x7A1E0D49.size(), nullptr, state.resolve.ReleaseAndGetAddressOf()))
@@ -284,9 +291,17 @@ void OnSunLit(Context& command, const void*) {
     state.scene_views.erase(scene.Get());
     return;
   }
-  // The bounce's textures at the render size's (made again when it changes).
-  const std::array<UINT, 2> bounce_size = {(state.render_size[0] + BOUNCE_SCALE - 1) / BOUNCE_SCALE,
-                                           (state.render_size[1] + BOUNCE_SCALE - 1) / BOUNCE_SCALE};
+  uint64_t frame = 0;
+  float strength = 1.f;
+  UINT scale = 2;
+  {
+    const std::unique_lock lock(state.mutex);
+    frame = state.frame;
+    strength = state.bounce_strength;
+    scale = 1u << std::min(static_cast<UINT>(state.settings.light_bounce_resolution), 2u);
+  }
+  // The bounce's textures at the render size's and the resolution's (made again when either changes).
+  const std::array<UINT, 2> bounce_size = {(state.render_size[0] + scale - 1) / scale, (state.render_size[1] + scale - 1) / scale};
   if (state.bounce_size != bounce_size) {
     state.bounce_size = bounce_size;
     state.resolved_frame = UINT64_MAX;
@@ -302,18 +317,21 @@ void OnSunLit(Context& command, const void*) {
       return;
     }
   }
+  // The prepare's and the apply's constants (the buffer's whole 96 bytes: a constant buffer is written whole).
+  struct ApplyConstants {
+    std::array<uint32_t, 4> sizes;
+    std::array<float, 4> settings;
+    std::array<float, 16> padding;
+  };
+  const std::array<uint32_t, 4> sizes = {bounce_size[0], bounce_size[1], state.render_size[0], state.render_size[1]};
+  const ApplyConstants prepare_constants = {.sizes = sizes, .settings = {0.f, static_cast<float>(scale)}};
+  context->UpdateSubresource(state.bounce_constants.Get(), 0, nullptr, &prepare_constants, 0, 0);
   const std::array<ID3D11ShaderResourceView*, 1> scene_views = {scene_view.Get()};
-  FullScreen(context1.Get(), state.prepared_rtv.Get(), nullptr, state.prepare.Get(), scene_views, {}, {}, {}, bounce_size);
-  if (!twattila::rt_scene::internal::TraceLightBounce(context, state.prepared.texture.Get(), bounce_size[0], bounce_size[1], BOUNCE_SCALE,
+  const std::array<ID3D11Buffer*, 1> constant_buffers = {state.bounce_constants.Get()};
+  FullScreen(context1.Get(), state.prepared_rtv.Get(), nullptr, state.prepare.Get(), scene_views, constant_buffers, {}, {}, bounce_size);
+  if (!twattila::rt_scene::internal::TraceLightBounce(context, state.prepared.texture.Get(), bounce_size[0], bounce_size[1], scale,
                                             state.traced.texture.Get())) {
     return;
-  }
-  uint64_t frame = 0;
-  float strength = 1.f;
-  {
-    const std::unique_lock lock(state.mutex);
-    frame = state.frame;
-    strength = state.bounce_strength;
   }
   auto& bridge = twattila::dlaa_bridge::bridge;
   const uint32_t previous = state.resolved_index;
@@ -326,8 +344,8 @@ void OnSunLit(Context& command, const void*) {
     };
     const ResolveConstants constants = {
         .previous_view_projection = state.previous_view_projection,
-        .sizes = {bounce_size[0], bounce_size[1], state.render_size[0], state.render_size[1]},
-        .settings = {BOUNCE_FRAMES, (state.resolved_frame + 1 == frame) ? 1.f : 0.f},
+        .sizes = sizes,
+        .settings = {BOUNCE_FRAMES, (state.resolved_frame + 1 == frame) ? 1.f : 0.f, static_cast<float>(scale)},
     };
     const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
     context->UpdateSubresource(state.bounce_constants.Get(), 0, nullptr, &constants, 0, 0);
@@ -351,18 +369,10 @@ void OnSunLit(Context& command, const void*) {
     for (size_t index = 0; index < pointers.size(); ++index) gbuffer[index].Attach(pointers[index]);
   }
   if (!gbuffer[0] || !gbuffer[1] || !gbuffer[2]) return;
-  struct ApplyConstants {
-    std::array<uint32_t, 4> sizes;
-    std::array<float, 4> settings;
-  };
-  const ApplyConstants constants = {
-      .sizes = {bounce_size[0], bounce_size[1], state.render_size[0], state.render_size[1]},
-      .settings = {strength},
-  };
-  context->UpdateSubresource(state.bounce_constants.Get(), 0, nullptr, &constants, 0, 0);
+  const ApplyConstants apply_constants = {.sizes = sizes, .settings = {strength, static_cast<float>(scale)}};
+  context->UpdateSubresource(state.bounce_constants.Get(), 0, nullptr, &apply_constants, 0, 0);
   const std::array<ID3D11ShaderResourceView*, 6> views = {state.resolved[current].srv.Get(), state.resolved_positions[current].srv.Get(),
                                                           bridge.rt_positions.srv.Get(), gbuffer[0].Get(), gbuffer[1].Get(), gbuffer[2].Get()};
-  const std::array<ID3D11Buffer*, 1> constant_buffers = {state.bounce_constants.Get()};
   FullScreen(context1.Get(), target.Get(), state.add.Get(), state.apply.Get(), views, constant_buffers);
 }
 
@@ -539,22 +549,45 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   return {.post_callback = OnSunLit<Context>};
 };
 
-// The screen-space reflections' draw: the traced reflections into its target in its place (left out); the game's when
-// not traced this frame.
+// Specular Occlusion without the ray-traced reflections, right after the game's screen-space reflections' draw: their
+// target's alpha raised where the specular lobe is closed (0x7A1E0D47 with no reflections bound), so the reflection
+// captures and the sky fill less there.
+template <typename Context>
+void OnReflected(Context& command, const void*) {
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
+  ComPtr<ID3D11DeviceContext1> context1;
+  if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
+  auto* open = twattila::rt_scene::Reflections(context)[1];
+  ComPtr<ID3D11RenderTargetView> target;
+  context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+  if (open == nullptr || !target) return;
+  const std::array<ID3D11ShaderResourceView*, 2> views = {nullptr, open};
+  FullScreen(context1.Get(), target.Get(), state.occlude_alpha.Get(), state.reflection.Get(), views);
+}
+
+// The screen-space reflections' draw: the traced reflections into its target in its place (left out), with Specular
+// Occlusion on the captures' share; the game's when not traced this frame (Specular Occlusion alone: OnReflected).
 constexpr auto OnReflection = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
   if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
+  bool reflections = false;
+  bool occlusion = false;
   {
     const std::unique_lock lock(state.mutex);
-    if (!state.settings.reflections || state.failed || !state.private_state) return {};
+    if (state.failed || !state.private_state) return {};
+    reflections = state.settings.reflections;
+    occlusion = state.settings.specular_occlusion;
   }
-  auto* traced = twattila::rt_scene::Reflections(context)[0];
+  if (!reflections && !occlusion) return {};
+  if (!reflections) return {.post_callback = OnReflected<Context>};
+  const auto traced = twattila::rt_scene::Reflections(context);
   ComPtr<ID3D11RenderTargetView> target;
   context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
-  if (traced == nullptr || !target) return {};
-  const std::array<ID3D11ShaderResourceView*, 1> views = {traced};
+  if (traced[0] == nullptr || !target) return {};
+  const std::array<ID3D11ShaderResourceView*, 2> views = {traced[0], (occlusion ? traced[1] : nullptr)};
   FullScreen(context1.Get(), target.Get(), nullptr, state.reflection.Get(), views);
   return {.bypass = true};
 };
