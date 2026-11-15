@@ -48,6 +48,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -139,7 +140,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
-- npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe. Own ... | npu_
+- ATN DECIDES (Tales): Bend SSS instead of Bandai's contact shadows 0x95802ADA? GT ... | ATN
 - gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: g ... | gr_
 - Both D3D12 devices (Streamline FG + RR) removed at the same moment: every order ... | next helper round
 - Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device re ... | coordinator
@@ -164,14 +165,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - [P] ATN DECIDES R6 bloom: smoothing also in Rendering Mode SDR (Vanilla != game: ... | ATN
 - [P] ATN DECIDES Extended Saturation = RGB blend to grey, not OKLab chroma (WH2 : ... | ATN
 - PARTLY DONE 707b4b68 (Experimental off: ssao auto thickness, light bounce checke ... | non-TW parity round (Ryse)
-- Tales + Expeditions: device_loss not wired (no Install / InstallLast / Uninstall ... | non-TW parity round (UE)
-- Tales: no Bend SSS, no GT-VBGI (no ScreenSpaceShadows* / light_bounce_* keys; ta ... | non-TW parity round (Tales)
-- Expeditions: 14 unmapped TAA permutations (TEMPORAL_SHADERS has 6, dlss_graphics ... | non-TW parity round (Expeditions)
+- PARTLY DONE a0057296 (ssao auto thickness Experimental off; censuses T9 / T10 / ... | non-TW parity round (Tales)
+- PARTLY DONE a0057296 (4 mapped, 6 half-size-copy ones mapped but not bypassed, 4 ... | non-TW parity round (Expeditions)
 - All three: parity_check letters + tools/tw/parity ledgers (ryse / tales / expedi ... | non-TW parity round (coordinator part)
-- All three: cb_audit never run on the replaced shaders (ryse plan.md:167, tales p ... | non-TW parity round
 - ATN by eye: Hue Clip Ryse 80 (addon.cpp:87), Tales 70 (:67), Expeditions 70 (:63 ... | ATN
 - Release (all three): README entries (Tales last v71 at :369; Expeditions README_ ... | coordinator, release round
-- Shared copies: psycho_test31.hlsli (Tales / Expeditions 32 lines off twattila's, ... | shared-steps round
 - Never verified in game (all three): SDR first start / SDR preset / SDR output; t ... | coordinator (next game window + harness)
 - ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections (RayTracedReflectionF ... | ATN
 - Attila v118 / v119 "Left" list (archive 1878-1885, 3589): Light Bounce +1 ms wit ... | next Attila RT round
@@ -1308,7 +1306,12 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/families.txt); in-game check of every
         new row (Debug View / Scene Test, RT rows, Time Each Pass, test hooks + RENODX_TW_CVARS, half-res particles, LOD
         bias, auto thickness). Owner: next Ryse data run
-      - [ ] npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe. Owner: npu_
+      - [x] npu_ MERGED a0057296 01:2x (11 commits; built amd64; cb_audit.py conflict with npr_ resolved: list DUMPS +
+        Ryse, --embed): see the NON-TW SKILLS AUDIT boxes. npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe.
+      - [ ] ATN DECIDES (Tales): Bend SSS instead of Bandai's contact shadows 0x95802ADA? GT-VBGI instead of Bandai's own
+        SSGI? (double work: tools/nontw/tales/census/t13_double_work.txt; both need a UE port). AO temporal / edge /
+        denoise for Tales / Expeditions: not wanted per ATN's 00:0x "ignore Attila's own SSAO" (UE GT-VBAO leaves noise to
+        TAA / DLSS). Owner: ATN
       - [ ] gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: gr_
       - 23:4x ATN DONE PLAYING ("I am done with the game"): committed 38.8 GB, the gated builds started (d1_ first); gr_
         told GPU free; fx_ resumed for its harness checks on atn-mods (gpu_job.lock per job).
@@ -1410,12 +1413,12 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [x] DONE 11-16 (npr_, merged 707b4b68; not run in game): Ryse: SDR-encode WARP ramp of tonemap00, the gamma_correction code read, a Ryse table in test/tw_device_loss;
         the offline read of R0's traces (plan step 8: light list, smoke / foliage / water / fog families, cascade readers).
         Owner: non-TW parity round (Ryse)
-      - [ ] Tales + Expeditions: device_loss not wired (no Install / InstallLast / Uninstall; Decide straight from
+      - [x] DONE 11-16 (npu_, merged a0057296; not run in game): Tales + Expeditions: device_loss not wired (no Install / InstallLast / Uninstall; Decide straight from
         OnCreateSwapchain: Tales addon.cpp:735-738, Expeditions :564-567). Owner: non-TW parity round (UE)
-      - [ ] Tales: no Bend SSS, no GT-VBGI (no ScreenSpaceShadows* / light_bounce_* keys; tales.tsv T13); no AO temporal /
+      - [ ] PARTLY DONE a0057296 (ssao auto thickness Experimental off; censuses T9 / T10 / T11 / T12 / T15 written, T9 found + fixed a preset turning Motion Blur Off back on; LEFT: Bend SSS / GT-VBGI = ATN decides, landscape LOD bias needs sampler clones on 44 PS): Tales: no Bend SSS, no GT-VBGI (no ScreenSpaceShadows* / light_bounce_* keys; tales.tsv T13); no AO temporal /
         edge fix / denoise rows, no LOD bias trilinear (T12); the censuses T9 (25 menu settings), T10 (casters), T11 (scale)
         and T15 (shadow-map skip) not found. Owner: non-TW parity round (Tales)
-      - [ ] Expeditions: 14 unmapped TAA permutations (TEMPORAL_SHADERS has 6, dlss_graphics.hpp:110); the sg.* level
+      - [ ] PARTLY DONE a0057296 (4 mapped, 6 half-size-copy ones mapped but not bypassed, 4 DOF temporal never mapped, all level B; RayTracedSpecularOcclusion + RayTracedLightBounceResolution rows + a cbuffer over-read fix; ssao auto thickness; E7 WARP PASS; sg.* census; page text "Keep the game's own HDR setting off"; LEFT: E9 -d3d12 launch, the Low start, NEEDS A TRACE rows): Expeditions: 14 unmapped TAA permutations (TEMPORAL_SHADERS has 6, dlss_graphics.hpp:110); the sg.* level
         census (S10); the Low start never ran; rows missing: RayTracedSpecularOcclusion, RayTracedLightBounceResolution,
         ssao temporal / edge fix / denoise / auto thickness / resolution; E9 (-d3d12 launch), E7 (WARP of lut00's
         output-device branch); the page says "The game has no HDR option of its own" (addon.cpp:446) though
@@ -1424,12 +1427,12 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] All three: parity_check letters + tools/tw/parity ledgers (ryse / tales / expeditions .tsv from 00:4x list
         done items as DO NOW: refresh); dump_any.py letters ry / ta / exr; box "SHARED STEP owners" S6 (page-dump drivers)
         is done: tick it there. Owner: non-TW parity round (coordinator part)
-      - [ ] All three: cb_audit never run on the replaced shaders (ryse plan.md:167, tales plan.md:101); stability item 1
+      - [x] DONE 11-16 (npr_ 707b4b68 + npu_ a0057296: 0 constants lost in Tales 78 / Expeditions 24 / Ryse 20; ReShade.log facts in the READMEs): All three: cb_audit never run on the replaced shaders (ryse plan.md:167, tales plan.md:101); stability item 1
         (unmodded ReShade.log facts in a commit) missing. Owner: non-TW parity round
       - [ ] ATN by eye: Hue Clip Ryse 80 (addon.cpp:87), Tales 70 (:67), Expeditions 70 (:63). Owner: ATN
       - [ ] Release (all three): README entries (Tales last v71 at :369; Expeditions README_DLSS last v29 at :960; Ryse
         check); one-add-on release zips not built. Owner: coordinator, release round
-      - [ ] Shared copies: psycho_test31.hlsli (Tales / Expeditions 32 lines off twattila's, Ryse 2); ue_extended.hlsli
+      - [x] DONE 11-16 (npu_ b200df25: Tales / Expeditions include twattila's psycho_test31 + one ue_extended, byte-identical bytecode; npr_ 13d6906a Ryse): Shared copies: psycho_test31.hlsli (Tales / Expeditions 32 lines off twattila's, Ryse 2); ue_extended.hlsli
         twice (S3's de-dup dropped when S3 was answered). Owner: shared-steps round
       - [ ] Never verified in game (all three): SDR first start / SDR preset / SDR output; the HDR-only state (helper
         absent) only by page dumps; the fast dispatch replay oracle (no UE / Ryse trace converter, S9). Tales: DLSS frame
