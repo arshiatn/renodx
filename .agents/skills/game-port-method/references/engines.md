@@ -22,5 +22,5 @@ Expeditions' exe says `++UE4+Release-4.23-CL-0` (no 4.24+ cvars such as `r.SkyAt
 
 - Shaders come packed in `ShaderCache.pak`: there is no offline dump to read before a run, so level B means "seen in a runtime dump" (`dump_shader_ryse`), and level A needs a trace of that run.
 - The exe on disk is Steam-DRM encrypted: code offsets come from the image the DLSS add-on saves of its own process (`ryse_image.bin`), never from a decrypted exe.
-- Cvars go through the game's console, past its whitelist (`rysesonofrome_dlss`).
+- Cvars go through the game's console, past its whitelist (`rysesonofrome/graphics.hpp`).
 - In-place format upgrades lost clamps here: every new add-on uses view cloning (`use_resource_cloning`, `src/mods/swapchain_v1.hpp`); don't retrofit an old one.

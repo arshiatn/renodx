@@ -89,7 +89,7 @@ Non-TW games (Tales of Arise, Ryse, Expeditions: Rome and later ones) follow `ga
 **Shared code** (any file another game folder includes; the grep at the top lists who): build every addon that includes it, 32-bit too; a change in `talesofarise_dlss/ngx_backend.hpp` also rebuilds the helper. Attila, Rome II and Thrones are only meaningful from `build32`. After a shared edit:
 
 ```text
-cmake --build build --config Release --target renodx-ruse.addon64 renodx-twromeremastered.addon64 renodx-talesofarise.addon64 renodx-expeditionsrome.addon64 renodx-twtroy.addon64 renodx-twpharaohdynasties.addon64 renodx-twwarhammer.addon64 renodx-twwarhammer2.addon64 renodx-twwarhammer3.addon64 renodx-twshogun2completeedition.addon64 renodx-rysesonofrome.addon64 renodx-rysesonofrome_dlss.addon64 renodx-expeditionsrome_dlss.addon64 renodx-talesofarise_dlss.addon64
+cmake --build build --config Release --target renodx-ruse.addon64 renodx-twromeremastered.addon64 renodx-talesofarise.addon64 renodx-expeditionsrome.addon64 renodx-twtroy.addon64 renodx-twpharaohdynasties.addon64 renodx-twwarhammer.addon64 renodx-twwarhammer2.addon64 renodx-twwarhammer3.addon64 renodx-twshogun2completeedition.addon64 renodx-rysesonofrome.addon64 renodx-expeditionsrome_dlss.addon64 renodx-talesofarise_dlss.addon64
 cmake --build build32 --config Release --target renodx-twattila.addon32 renodx-twrome2.addon32 renodx-twthronesofbritannia.addon32
 ```
 
