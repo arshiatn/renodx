@@ -1,24 +1,32 @@
 // Part 6 (Divinity 2): the add-on's LUT builder t00 (PPComputeLUT 0x7016F292, cs_5_0) and LUT pass t01 (PPApplyLUT
 // 0xC5E7DE4B) on WARP, compiled by part6_divinity2.ps1 from this tree and from the commit before PsychoV35 with the
-// build's flags. part6_divinity2.exe <before_cso> <after_cso> [<the game's own cso folder>]
-// 1. Every mode that existed before (Off, Vanilla, Tweaked ACES, PsychoV30) and every SDR LUT (outputDevice 0, the
-//    inventory's) give the same LUT bits as before, sliders at their defaults and moved, PsychoV35's sliders moved too.
+// build's flags, against the game's own bytes of both. part6_divinity2.exe <before_cso> <after_cso> <the game's cso folder>
+// Every LUT is built from t00's constants as the R1b data run traced them (TracedConstants).
+// 1. Every mode that existed before (Off, Vanilla, Tweaked ACES, PsychoV30) on every traced HDR LUT (the city's, the
+//    menu's, the neutral one) and every mode on the inventory's SDR LUT give the same LUT bits as before, sliders at their
+//    defaults and moved, PsychoV35's sliders moved too.
 // 2. PsychoV35 (Rendering Mode 4) through the real chain (t00 -> 32^3 R10G10B10A2 LUT -> t01) and evaluated directly
 //    (part6_divinity2.hlsl), 64 colours x 48 exposures (0.18 x 2^-10 .. 2^13.5), Peak / Paper White 1000 / 203,
-//    2500 / 203, 4000 / 275: finite; every BT.2020 channel within Peak (+ 1.5 PQ codes through the 10-bit LUT); grey 0.18
-//    at 15 nits x Paper White / 203 (+-1 % direct, +-3 % through the LUT); grey never darker as it rises; the HDR LUT
-//    tagged alpha 0 (t01's fixed shaper domain), the SDR LUT alpha 1. Report: the LUT's error against the direct
-//    evaluation in 10-bit PQ codes (decides whether 32^3 is enough).
+//    2500 / 203, 4000 / 275 on the neutral HDR LUT: finite; every BT.2020 channel within Peak (+ 1.5 PQ codes through the
+//    10-bit LUT); grey 0.18 at 15 nits x Paper White / 203 (+-1 % direct, +-3 % through the LUT); grey never darker as it
+//    rises; the HDR LUT tagged alpha 0 (t01's fixed shaper domain), the SDR LUT alpha 1. Report: the LUT's error against
+//    the direct evaluation in 10-bit PQ codes. The city's LUT (ATN's grade): the same bounds, grey as its gain puts it.
 // 3. Control that must fail: PsychoV35 fed the game's own tone curve's output (a curve stacked on a curve) misses grey's
 //    15 nits; the grey check has to say so.
-// 4. Report: PsychoV35's hue (OkLab) against the SDR ACES stand-in where the stand-in reaches its clip, for fire, red, sky,
-//    green and 48 hues, Hue Clip 0 to 1: where Hue Clip Emulation's default comes from until the game's SDR LUT is traced.
-// 5. Report (with the game's folder): Off against the game's own t00 bytes, in 16-bit LUT units.
+// 4. Report: PsychoV35's hue (OkLab) against the game's SDR picture where it reaches its clip, for fire, red, sky, green
+//    and 48 hues, Hue Clip 0 to 1.
+// 5. Off against the game's own t00, bit for bit, on every traced cb0, and the inventory's SDR LUT in every mode (it stays
+//    stock). Control that must fail: the add-on fed the cb0 the test assumed before the trace (no luminance blend,
+//    highlight fix 1) differs from the game's LUT.
 // 6. Vanilla's Per-Channel Highlights (on by default): at Peak 600 (compressed) grey unchanged, within Peak, fire's core
 //    whiter above the knee; at Peak 2500 (expanded) the same bits as off. Part 1 runs Vanilla with it off: the
 //    brightest-channel shoulder keeps its bits.
 // 7. Exact Colour LUT (Experimental, off): off = t01's pixels as before; on = a modded LUT read at its texel centres
 //    (grey 15 nits through the LUT, interpolation error only); Off's LUT read as before either way.
+// 8. Hue Clip's reference (SdrReference) against the game's own SDR LUT: every texel within 1.5 8-bit sRGB codes. Control
+//    that must fail: the stand-in used before the trace (RenoDX's ACES at 0.02 / 48 nits alone) misses it.
+// 9. t01 against the game's own bytes, pixel for pixel, on the game's HDR (Off) and SDR LUTs, Off and PsychoV35, fade 0 and
+//    0.5. Control that must fail: the game's pass fed the SDR LUT's shaper domain for the HDR LUT differs.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -56,6 +64,7 @@ constexpr UINT EXPOSURES = 48;
 constexpr UINT GREY_ROW = 20;  // exposure 2^0: the scene's 0.18
 constexpr float SHAPER_LOW = 5.4931616e-6f;
 constexpr float SHAPER_HIGH = 1516.4874f;
+constexpr float SDR_REFERENCE_CODES = 1.5f;  // part 8's bound, 8-bit sRGB codes
 
 static ComPtr<ID3D11Device> device;
 static ComPtr<ID3D11DeviceContext> context;
@@ -93,25 +102,64 @@ static ComPtr<ID3D11Buffer> Constants(const void* data, size_t size) {
   return buffer;
 }
 
-// t00's _Globals (c0 - c32): identity grading, white balance identity, the game's captured 1000-nit TsParams for the
-// HDR LUT (vanilla.hlsli), 48 nits and sRGB for the SDR one.
-static std::array<Float4, 33> GameConstants(bool hdr) {
-  std::array<Float4, 33> c = {};
-  c[0] = {0.f, 1.f, 1.f, 1.f};  // ToneMapLuminanceApply, RedCorrectionScale, HighlightsFixAmount
-  for (int group = 0; group < 4; ++group) {
-    for (int control = 0; control < 4; ++control) c[1 + group * 5 + control] = {1.f, 1.f, 1.f, 1.f};  // sat, contrast, gamma, gain
-    c[1 + group * 5 + 4] = {0.f, 0.f, 0.f, 0.f};                                                       // offset
+// t00's _Globals (c0 - c32) as the R1b data run traced them (2026-11-16, Arx, the add-on's frame trace): c0
+// ToneMapLuminanceApply, RedCorrectionScale, HighlightsFixAmount (the same in every dispatch); c1 - c20
+// ColorCorrectionParams (global, shadows, midtones, highlights: saturation, contrast, gamma, gain, offset); c21 the
+// ranges; c22 - c25 white balance; c26 - c32 Params (tone scale, shaper domain c31.w / c32.x, HDR gamma, output device).
+enum class Frame {
+  CITY_HDR,       // the city's HDR LUT: ATN's grade (global saturation 1.1, gain 0.92), ACES 1.1 at 1e-4 / 1000 nits
+  MENU_HDR,       // the main menu's HDR LUT: its own grade, the same tone constants
+  INVENTORY_SDR,  // the inventory's SDR LUT (output device 0): no grade, ACES 1.1 at 0.02 / 48 nits, sRGB
+  NEUTRAL_HDR,    // the city's HDR LUT with the inventory's grade (identity): the colour checks' input
+};
+constexpr const char* FRAME_NAMES[] = {"city HDR", "menu HDR", "inventory SDR", "neutral HDR"};
+
+constexpr Float4 TRACED_C0 = {0.100000001f, 1.f, 0.600000024f, 1.f};
+
+static std::array<Float4, 33> TracedConstants(Frame frame) {
+  constexpr Float4 ONES = {1.f, 1.f, 1.f, 1.f};
+  constexpr Float4 ZEROS = {0.f, 0.f, 0.f, 0.f};
+  std::array<Float4, 33> c = {{
+      TRACED_C0,
+      {1.f, 1.f, 1.f, 1.10000002f}, ONES, ONES, {1.f, 1.f, 1.f, 0.920000017f}, ZEROS,
+      ONES, ONES, ONES, ONES, ZEROS,
+      ONES, ONES, ONES, ONES, ZEROS,
+      ONES, ONES, ONES, ONES, ZEROS,
+      {0.0900000036f, 0.5f, 0.f, 0.f},
+      {1.f, -2.56113708e-08f, 0.f, 0.f}, {-1.05937943e-08f, 1.f, 0.f, 0.f}, {0.f, 1.86264515e-09f, 1.f, 0.f}, {0.f, 0.f, 0.f, 1.f},
+      {-5.60050154f, -4.f, 0.f, -1.08505154f}, {0.681241274f, 1.f, 2.84051466f, 3.f}, {0.f, -4.f, -4.f, -3.15737653f},
+      {-0.485249996f, 1.84773254f, 1.84773254f, -0.332863092f}, {1.69534588f, 2.75812411f, 3.f, 3.f},
+      {3.f, 9.99999975e-05f, 1000.f, 5.49316155e-06f}, {1516.48743f, 0.999997973f, std::bit_cast<float>(1u), 0.f},
+  }};
+  switch (frame) {
+    case Frame::MENU_HDR:
+      c[1] = {0.898039222f, 1.f, 1.f, 1.10000002f};
+      c[2] = {1.f, 1.f, 1.f, 0.980000019f};
+      c[3] = {1.f, 1.f, 1.f, 0.939999998f};
+      c[4] = {1.f, 1.f, 1.f, 1.22000003f};
+      c[7] = {1.f, 1.f, 1.f, 1.5f};
+      c[13] = {1.f, 1.f, 1.f, 0.949999988f};
+      c[17] = {1.f, 1.f, 1.f, 1.5f};
+      c[19] = {1.f, 1.f, 1.f, 1.13999999f};
+      break;
+    case Frame::INVENTORY_SDR:
+      c[1] = ONES;
+      c[4] = ONES;
+      c[26] = {-2.70142221f, -1.69896996f, 0.f, -0.744727314f};
+      c[27] = {0.681241274f, 1.f, 1.21196759f, 1.68124127f};
+      c[28] = {0.f, -1.69896996f, -1.69896996f, -0.865895987f};
+      c[29] = {0.175761819f, 1.18672085f, 1.18672085f, 0.175761819f};
+      c[30] = {1.18672085f, 1.57124126f, 1.68124127f, 1.68124127f};
+      c[31] = {1.68124127f, 0.0199999996f, 48.f, 0.00198873784f};
+      c[32] = {16.2917404f, 1.f, 0.f, 0.f};
+      break;
+    case Frame::NEUTRAL_HDR:
+      c[1] = ONES;
+      c[4] = ONES;
+      break;
+    case Frame::CITY_HDR:
+      break;
   }
-  c[21] = {0.09f, 0.5f, 0.f, 0.f};
-  for (int row = 0; row < 4; ++row) c[22 + row][row] = 1.f;
-  const uint32_t output_device = hdr ? 1u : 0u;
-  c[26] = {-5.600501537f, -4.f, 0.f, -1.085051537f};
-  c[27] = {0.681241237f, 1.f, 2.840514660f, hdr ? 3.f : 1.681241237f};
-  c[28] = {0.f, -4.f, -4.f, -3.157376528f};
-  c[29] = {-0.4852499962f, 1.847732544f, 1.847732544f, -0.3328630924f};
-  c[30] = {1.695345879f, 2.758124113f, 3.f, 3.f};
-  c[31] = {3.f, hdr ? 0.0001f : 0.02f, hdr ? 1000.f : 48.f, SHAPER_LOW};
-  c[32] = {SHAPER_HIGH, 1.f, std::bit_cast<float>(output_device), 0.f};
   return c;
 }
 
@@ -191,10 +239,12 @@ static Lut BuildLut(ID3D11ComputeShader* shader, DXGI_FORMAT format, const std::
   return lut;
 }
 
+// t01's _Globals: Params = the shaper domain of the LUT's dispatch (t00's c31.w / c32.x), FadeValue.
 static std::vector<Float4> ApplyLut(ID3D11PixelShader* shader, const Lut& lut, ID3D11ShaderResourceView* base,
-                                    const dos2::ShaderInjectData& injection) {
+                                    const std::array<Float4, 33>& game, const dos2::ShaderInjectData& injection,
+                                    float fade = 0.f) {
   context->ClearState();
-  const Float4 globals = {SHAPER_LOW, SHAPER_HIGH, 0.f, 0.f};  // Params, FadeValue
+  const Float4 globals = {game[31][3], game[32][0], fade, 0.f};
   const auto globals_buffer = Constants(globals.data(), sizeof(globals));
   const auto injection_buffer = Constants(&injection, sizeof(injection));
   context->PSSetConstantBuffers(0, 1, globals_buffer.GetAddressOf());
@@ -232,7 +282,7 @@ static std::vector<Float4> ApplyLut(ID3D11PixelShader* shader, const Lut& lut, I
   return pixels;
 }
 
-// part6_divinity2.hlsl: two outputs per input (see its header).
+// part6_divinity2.hlsl: two outputs per input (see its header), with the traced c0.
 static std::vector<Float4> Direct(ID3D11ComputeShader* shader, const std::vector<Float4>& inputs, uint32_t mode,
                                   const dos2::ShaderInjectData& injection) {
   context->ClearState();
@@ -249,7 +299,8 @@ static std::vector<Float4> Direct(ID3D11ComputeShader* shader, const std::vector
   REQUIRE(SUCCEEDED(device->CreateBuffer(&output_desc, nullptr, &output_buffer)));
   ComPtr<ID3D11UnorderedAccessView> output_view;
   REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(output_buffer.Get(), nullptr, &output_view)));
-  const std::array<uint32_t, 4> direct = {mode, 0, 0, 0};
+  const std::array<uint32_t, 4> direct = {mode, std::bit_cast<uint32_t>(TRACED_C0[0]), std::bit_cast<uint32_t>(TRACED_C0[2]),
+                                          std::bit_cast<uint32_t>(TRACED_C0[3])};
   const auto direct_buffer = Constants(direct.data(), sizeof(direct));
   const auto injection_buffer = Constants(&injection, sizeof(injection));
   context->CSSetConstantBuffers(1, 1, direct_buffer.GetAddressOf());
@@ -308,6 +359,10 @@ static float NitsToPQ(float nits) {
   return std::pow((0.8359375f + 18.8515625f * y) / (1.f + 18.6875f * y), 78.84375f);
 }
 
+static float SrgbEncode(float linear) {
+  return linear <= 0.0031308f ? 12.92f * linear : 1.055f * std::pow(linear, 1.f / 2.4f) - 0.055f;
+}
+
 static float LuminanceBT2020(const Float4& c) { return 0.2627002120f * c[0] + 0.6779980715f * c[1] + 0.0593017165f * c[2]; }
 
 static Float3 OkLab(const Float3& c) {
@@ -323,64 +378,90 @@ static bool GreyOk(float nits, float expected, float tolerance) {
   return std::abs(nits / expected - 1.f) <= tolerance;
 }
 
+// The largest difference of two 16-bit UNORM LUTs, in 16-bit units.
+static int WorstDifference(const Lut& a, const Lut& b) {
+  int worst = 0;
+  for (size_t i = 0; i + 1 < a.bytes.size(); i += 2) {
+    worst = std::max(worst, std::abs((a.bytes[i] | (a.bytes[i + 1] << 8)) - (b.bytes[i] | (b.bytes[i + 1] << 8))));
+  }
+  return worst;
+}
+
 // 1. Bits ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static void TestBits(ID3D11ComputeShader* before, ID3D11ComputeShader* after) {
   int compared = 0;
-  for (const bool hdr : {true, false}) {
+  for (const Frame frame : {Frame::CITY_HDR, Frame::MENU_HDR, Frame::NEUTRAL_HDR, Frame::INVENTORY_SDR}) {
+    const bool hdr = (frame != Frame::INVENTORY_SDR);
     for (const float mode : {0.f, 1.f, 2.f, 3.f, 4.f}) {
       // PsychoV35's HDR LUT is new: only its SDR LUT (the stock path) must be unchanged.
       if (hdr && mode == 4.f) continue;
       for (const bool moved : {false, true}) {
         auto injection = Injection(mode);
         if (moved) MoveSliders(&injection);
-        const auto a = BuildLut(before, DXGI_FORMAT_R16G16B16A16_UNORM, GameConstants(hdr), injection);
-        const auto b = BuildLut(after, DXGI_FORMAT_R16G16B16A16_UNORM, GameConstants(hdr), injection);
+        const auto a = BuildLut(before, DXGI_FORMAT_R16G16B16A16_UNORM, TracedConstants(frame), injection);
+        const auto b = BuildLut(after, DXGI_FORMAT_R16G16B16A16_UNORM, TracedConstants(frame), injection);
         const bool same = (a.bytes == b.bytes);
-        if (!same) std::printf("1. %s LUT, mode %.0f, sliders %s: bits differ\n", hdr ? "HDR" : "SDR", mode, moved ? "moved" : "default");
+        if (!same) {
+          std::printf("1. %s LUT, mode %.0f, sliders %s: bits differ\n", FRAME_NAMES[static_cast<int>(frame)], mode,
+                      moved ? "moved" : "default");
+        }
         CHECK(same);
         ++compared;
       }
     }
   }
-  std::printf("1. %d LUTs compared with the commit before PsychoV35 (modes 0-3 HDR and SDR, mode 4 SDR)\n", compared);
+  std::printf("1. %d LUTs compared with the commit before PsychoV35 (modes 0-3 on the city / menu / neutral HDR LUTs, 0-4 on "
+              "the inventory's SDR LUT; traced cb0s)\n", compared);
 }
 
 // 2. / 3. PsychoV35 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct Display {
+struct V35Case {
   float peak;
   float paper_white;
   float mid_gray_option;  // v35_mid_gray: 0 the game's HDR curve, 1 its SDR picture
+  Frame frame;
 };
 
 static void TestPsychoV35(ID3D11ComputeShader* t00, ID3D11PixelShader* t01, ID3D11ComputeShader* direct_shader,
                           ID3D11ShaderResourceView* base, const std::vector<Float4>& ramp) {
-  for (const Display display : {Display{1000.f, 203.f, 0.f}, Display{2500.f, 203.f, 0.f}, Display{4000.f, 275.f, 0.f},
-                                Display{1000.f, 203.f, 1.f}}) {
+  for (const V35Case test : {V35Case{1000.f, 203.f, 0.f, Frame::NEUTRAL_HDR}, V35Case{2500.f, 203.f, 0.f, Frame::NEUTRAL_HDR},
+                             V35Case{4000.f, 275.f, 0.f, Frame::NEUTRAL_HDR}, V35Case{1000.f, 203.f, 1.f, Frame::NEUTRAL_HDR},
+                             V35Case{1000.f, 203.f, 0.f, Frame::CITY_HDR}}) {
     auto injection = Injection(4.f);
-    injection.peak_white_nits = display.peak;
-    injection.diffuse_white_nits = display.paper_white;
-    injection.v35_mid_gray = display.mid_gray_option;
-    const auto lut = BuildLut(t00, DXGI_FORMAT_R10G10B10A2_UNORM, GameConstants(true), injection);
+    injection.peak_white_nits = test.peak;
+    injection.diffuse_white_nits = test.paper_white;
+    injection.v35_mid_gray = test.mid_gray_option;
+    const auto game = TracedConstants(test.frame);
+    // The city's grade on its own: grey (saturation leaves it alone) goes in scaled by the global gain
+    // (ColorCorrectionParams[3].w; every region's own gain is 1). Colours are compared on the neutral LUT only.
+    const bool graded = (test.frame != Frame::NEUTRAL_HDR);
+    const float grey_gain = game[4][3];
+    const auto lut = BuildLut(t00, DXGI_FORMAT_R10G10B10A2_UNORM, game, injection);
     CHECK((std::bit_cast<uint32_t>(std::array<uint8_t, 4>{lut.bytes[0], lut.bytes[1], lut.bytes[2], lut.bytes[3]}) >> 30) == 0u);
-    const auto chain = ApplyLut(t01, lut, base, injection);
-    const auto direct = Direct(direct_shader, ramp, 0u, injection);
+    const auto chain = ApplyLut(t01, lut, base, game, injection);
+    std::vector<Float4> graded_ramp = ramp;
+    for (auto& texel : graded_ramp) {
+      for (int c = 0; c < 3; ++c) texel[c] *= grey_gain;
+    }
+    const auto direct = Direct(direct_shader, graded_ramp, 0u, injection);
     // The game's addressing: t00 writes texel i for the shaper's PQ i / 31, t01 samples the PQ code u straight (no
     // half-texel remap), so a sample reads the colour at PQ (32 u - 0.5) / 31. V35 evaluated at that colour separates the
     // LUT's interpolation error from this offset (the game's own, every mode, Off too).
-    std::vector<Float4> sampled_ramp = ramp;
+    std::vector<Float4> sampled_ramp = graded_ramp;
     const float shaper_scale = 10000.f / (SHAPER_HIGH - SHAPER_LOW);
     const float shaper_bias = -shaper_scale * SHAPER_LOW;
-    for (auto& texel : sampled_ramp) {
+    for (UINT i = 0; i < sampled_ramp.size(); ++i) {
       for (int c = 0; c < 3; ++c) {
-        const float u = NitsToPQ(texel[c] * shaper_scale + shaper_bias);
+        // The LUT is addressed by the scene colour before the grade.
+        const float u = NitsToPQ(ramp[i][c] * shaper_scale + shaper_bias);
         const float sampled = std::clamp((u * LUT_SIZE - 0.5f) / (LUT_SIZE - 1), 0.f, 1.f);
-        texel[c] = (PQToNits(sampled) - shaper_bias) / shaper_scale;
+        sampled_ramp[i][c] = (PQToNits(sampled) - shaper_bias) / shaper_scale * grey_gain;
       }
     }
     const auto direct_sampled = Direct(direct_shader, sampled_ramp, 0u, injection);
-    const float ceiling = PQToNits(NitsToPQ(display.peak) + 1.5f / 1023.f);
+    const float ceiling = PQToNits(NitsToPQ(test.peak) + 1.5f / 1023.f);
     int finite = 0, within_peak = 0, direct_within_peak = 0;
     float worst_codes = 0.f;
     std::vector<float> errors;
@@ -392,9 +473,9 @@ static void TestPsychoV35(ID3D11ComputeShader* t00, ID3D11PixelShader* t01, ID3D
       finite += (std::isfinite(nits[0]) && std::isfinite(nits[1]) && std::isfinite(nits[2]) && std::isfinite(exact[0]) &&
                  std::isfinite(exact[1]) && std::isfinite(exact[2]));
       within_peak += (std::max({nits[0], nits[1], nits[2]}) <= ceiling);
-      direct_within_peak += (std::max({exact[0], exact[1], exact[2]}) <= display.peak * 1.0001f);
+      direct_within_peak += (std::max({exact[0], exact[1], exact[2]}) <= test.peak * 1.0001f);
       // Inside the LUT's shaper domain only (above it the game clamps the scene too).
-      if (std::max({ramp[i][0], ramp[i][1], ramp[i][2]}) < SHAPER_HIGH) {
+      if (!graded && std::max({ramp[i][0], ramp[i][1], ramp[i][2]}) < SHAPER_HIGH) {
         for (int c = 0; c < 3; ++c) {
           const float codes = std::abs(chain[i][c] - NitsToPQ(std::max(exact_sampled[c], 0.f))) * 1023.f;
           worst_codes = std::max(worst_codes, codes);
@@ -406,15 +487,15 @@ static void TestPsychoV35(ID3D11ComputeShader* t00, ID3D11PixelShader* t01, ID3D
     CHECK(finite == static_cast<int>(chain.size()));
     CHECK(within_peak == static_cast<int>(chain.size()));
     CHECK(direct_within_peak == static_cast<int>(chain.size()));
-    // The HDR curve's mid gray is 15 nits at Paper White 203; the SDR picture's is the stand-in's 0.18 (shader's .w).
+    // The HDR curve's mid gray is 15 nits at Paper White 203; the SDR picture's is SdrReference's (shader's .w).
     const float mid_gray = direct[(GREY_ROW * COLOURS) * 2][3];
-    if (display.mid_gray_option == 0.f) CHECK(mid_gray == 15.f / 203.f);
-    const float expected = mid_gray * display.paper_white;
+    if (test.mid_gray_option == 0.f) CHECK(mid_gray == 15.f / 203.f);
+    const float expected = mid_gray * test.paper_white;
     const float grey_direct = LuminanceBT2020(direct[(GREY_ROW * COLOURS) * 2]);
     const float grey_sampled = LuminanceBT2020(direct_sampled[(GREY_ROW * COLOURS) * 2]);
     const Float4 grey_pixel = chain[GREY_ROW * COLOURS];
     const float grey_chain = LuminanceBT2020({PQToNits(grey_pixel[0]), PQToNits(grey_pixel[1]), PQToNits(grey_pixel[2]), 0.f});
-    CHECK(GreyOk(grey_direct, expected, 0.01f));
+    if (!graded) CHECK(GreyOk(grey_direct, expected, 0.01f));
     CHECK(GreyOk(grey_chain, grey_sampled, 0.03f));
     bool rising_direct = true, rising_chain = true;
     for (UINT y = 1; y < EXPOSURES; ++y) {
@@ -425,17 +506,24 @@ static void TestPsychoV35(ID3D11ComputeShader* t00, ID3D11PixelShader* t01, ID3D
     }
     CHECK(rising_direct);
     CHECK(rising_chain);
+    if (graded) {
+      std::printf("2. %s LUT (gain %.2f), Peak %.0f / Paper White %.0f: grey %.2f nits direct, %.2f through the LUT (%.2f at "
+                  "the colour the game's addressing samples); within Peak, finite, rising\n",
+                  FRAME_NAMES[static_cast<int>(test.frame)], grey_gain, test.peak, test.paper_white, grey_direct, grey_chain,
+                  grey_sampled);
+      continue;
+    }
     std::sort(errors.begin(), errors.end());
     std::sort(offset_errors.begin(), offset_errors.end());
     std::printf("2. Peak %.0f / Paper White %.0f, mid gray %s: grey %.2f nits direct (target %.2f), %.2f through the LUT\n"
                 "   (%.2f at the colour the game's addressing samples); LUT interpolation: median %.2f, 99%% %.2f, max %.2f\n"
                 "   10-bit PQ codes; with the addressing offset: median %.2f, 99%% %.2f\n",
-                display.peak, display.paper_white, display.mid_gray_option == 0.f ? "HDR" : "SDR", grey_direct, expected,
+                test.peak, test.paper_white, test.mid_gray_option == 0.f ? "HDR" : "SDR", grey_direct, expected,
                 grey_chain, grey_sampled, errors[errors.size() / 2], errors[errors.size() * 99 / 100], worst_codes,
                 offset_errors[offset_errors.size() / 2], offset_errors[offset_errors.size() * 99 / 100]);
   }
   // The SDR LUT (the inventory's, outputDevice 0) keeps the stock path and its alpha 1.
-  const auto sdr = BuildLut(t00, DXGI_FORMAT_R10G10B10A2_UNORM, GameConstants(false), Injection(4.f));
+  const auto sdr = BuildLut(t00, DXGI_FORMAT_R10G10B10A2_UNORM, TracedConstants(Frame::INVENTORY_SDR), Injection(4.f));
   CHECK((std::bit_cast<uint32_t>(std::array<uint8_t, 4>{sdr.bytes[0], sdr.bytes[1], sdr.bytes[2], sdr.bytes[3]}) >> 30) == 3u);
 
   // 3. The stacked chain must fail the grey check.
@@ -444,6 +532,31 @@ static void TestPsychoV35(ID3D11ComputeShader* t00, ID3D11PixelShader* t01, ID3D
   CHECK(!GreyOk(stacked_grey, 15.f, 0.01f));
   std::printf("3. stacked control (PsychoV35 on the game curve's output): grey %.2f nits, the grey check %s\n", stacked_grey,
               GreyOk(stacked_grey, 15.f, 0.01f) ? "PASSED IT (wrong)" : "rejects it");
+}
+
+// 5. Off against the game's own t00 ////////////////////////////////////////////////////////////////////////////////
+
+static void TestOffExact(ID3D11ComputeShader* game_t00, ID3D11ComputeShader* t00) {
+  int compared = 0;
+  for (const Frame frame : {Frame::CITY_HDR, Frame::MENU_HDR, Frame::NEUTRAL_HDR, Frame::INVENTORY_SDR}) {
+    const auto game = BuildLut(game_t00, DXGI_FORMAT_R16G16B16A16_UNORM, TracedConstants(frame), Injection(0.f));
+    for (const float mode : {0.f, 1.f, 2.f, 3.f, 4.f}) {
+      // An HDR LUT is the game's own in Off alone; the SDR LUT in every mode.
+      if (frame != Frame::INVENTORY_SDR && mode != 0.f) continue;
+      const int worst = WorstDifference(game, BuildLut(t00, DXGI_FORMAT_R16G16B16A16_UNORM, TracedConstants(frame), Injection(mode)));
+      if (worst != 0) std::printf("5. %s LUT, mode %.0f: %d of 65535 from the game's bytes\n", FRAME_NAMES[static_cast<int>(frame)], mode, worst);
+      CHECK(worst == 0);
+      ++compared;
+    }
+  }
+  auto assumed = TracedConstants(Frame::CITY_HDR);
+  assumed[0] = {0.f, 1.f, 1.f, 1.f};
+  const int control = WorstDifference(BuildLut(game_t00, DXGI_FORMAT_R16G16B16A16_UNORM, TracedConstants(Frame::CITY_HDR), Injection(0.f)),
+                                      BuildLut(t00, DXGI_FORMAT_R16G16B16A16_UNORM, assumed, Injection(0.f)));
+  CHECK(control > 0);
+  std::printf("5. Off = the game's own t00 bit for bit on %d LUTs (city / menu / neutral HDR, inventory SDR in every mode); "
+              "control: the pre-trace c0 gives %d of 65535 off the game's city LUT (%s)\n",
+              compared, control, control > 0 ? "caught" : "NOT CAUGHT");
 }
 
 // 6. Vanilla's per-channel shoulder /////////////////////////////////////////////////////////////////////////////////
@@ -457,8 +570,9 @@ static std::vector<Float4> VanillaChain(ID3D11ComputeShader* t00, ID3D11PixelSha
   auto injection = Injection(1.f);
   injection.peak_white_nits = peak;
   injection.vanilla_per_channel_shoulder = per_channel;
-  const auto lut = BuildLut(t00, DXGI_FORMAT_R10G10B10A2_UNORM, GameConstants(true), injection);
-  return ApplyLut(t01, lut, base, injection);
+  const auto game = TracedConstants(Frame::NEUTRAL_HDR);
+  const auto lut = BuildLut(t00, DXGI_FORMAT_R10G10B10A2_UNORM, game, injection);
+  return ApplyLut(t01, lut, base, game, injection);
 }
 
 static void TestVanillaShoulder(ID3D11ComputeShader* t00, ID3D11PixelShader* t01, ID3D11ShaderResourceView* base,
@@ -498,14 +612,15 @@ static void TestVanillaShoulder(ID3D11ComputeShader* t00, ID3D11PixelShader* t01
 // interpolation alone. Off's (the game's own) LUT is read as before either way.
 static void TestExactSampling(ID3D11ComputeShader* t00, ID3D11PixelShader* t01_before, ID3D11PixelShader* t01_after,
                               ID3D11ComputeShader* direct_shader, ID3D11ShaderResourceView* base, const std::vector<Float4>& ramp) {
+  const auto game = TracedConstants(Frame::NEUTRAL_HDR);
   for (const float mode : {0.f, 4.f}) {
     auto injection = Injection(mode);
-    const auto lut = BuildLut(t00, DXGI_FORMAT_R10G10B10A2_UNORM, GameConstants(true), injection);
-    CHECK(ApplyLut(t01_before, lut, base, injection) == ApplyLut(t01_after, lut, base, injection));
+    const auto lut = BuildLut(t00, DXGI_FORMAT_R10G10B10A2_UNORM, game, injection);
+    CHECK(ApplyLut(t01_before, lut, base, game, injection) == ApplyLut(t01_after, lut, base, game, injection));
     injection.exact_lut_sampling = 1.f;
-    const auto exact = ApplyLut(t01_after, lut, base, injection);
+    const auto exact = ApplyLut(t01_after, lut, base, game, injection);
     if (mode == 0.f) {
-      CHECK(exact == ApplyLut(t01_before, lut, base, injection));
+      CHECK(exact == ApplyLut(t01_before, lut, base, game, injection));
       continue;
     }
     const auto direct = Direct(direct_shader, ramp, 0u, injection);
@@ -524,10 +639,95 @@ static void TestExactSampling(ID3D11ComputeShader* t00, ID3D11PixelShader* t01_b
   }
 }
 
+// 8. Hue Clip's reference against the game's SDR LUT ///////////////////////////////////////////////////////////////
+
+// Every texel of the game's own SDR LUT (its t00 bytes, the inventory's traced cb0, 16-bit) against SdrReference at the
+// colour t00 builds the texel for (texel i: the shaper's PQ i / 31 over the SDR domain), in 8-bit sRGB codes. Mode 3 of
+// the direct shader is the stand-in used before the trace, which has to miss.
+static void TestSdrReference(ID3D11ComputeShader* game_t00, ID3D11ComputeShader* direct_shader) {
+  const auto game = TracedConstants(Frame::INVENTORY_SDR);
+  const auto lut = BuildLut(game_t00, DXGI_FORMAT_R16G16B16A16_UNORM, game, Injection(0.f));
+  const float low = game[31][3];
+  const float high = game[32][0];
+  const auto shaper = [&](UINT i) { return low + PQToNits(i / 31.f) / 10000.f * (high - low); };
+  std::vector<Float4> colours;
+  for (UINT z = 0; z < LUT_SIZE; ++z) {
+    for (UINT y = 0; y < LUT_SIZE; ++y) {
+      for (UINT x = 0; x < LUT_SIZE; ++x) colours.push_back({shaper(x), shaper(y), shaper(z), 1.f});
+    }
+  }
+  auto injection = Injection(4.f);
+  injection.v35_mid_gray = 1.f;
+  std::array<float, 2> worst = {};
+  float mid_gray = 0.f;
+  for (const uint32_t mode : {2u, 3u}) {
+    const auto out = Direct(direct_shader, colours, mode, injection);
+    std::vector<float> codes;
+    for (UINT i = 0; i < colours.size(); ++i) {
+      for (int c = 0; c < 3; ++c) {
+        const int texel = lut.bytes[i * 8 + c * 2] | (lut.bytes[i * 8 + c * 2 + 1] << 8);
+        codes.push_back(std::abs(texel / 65535.f - SrgbEncode(out[i * 2 + 1][c])) * 255.f);
+      }
+    }
+    std::sort(codes.begin(), codes.end());
+    worst[mode - 2u] = codes.back();
+    mid_gray = out[1][3];  // SdrReference's in both modes
+    std::printf("8. %s against the game's SDR LUT: median %.3f, 99%% %.3f, max %.3f 8-bit sRGB codes\n",
+                mode == 2u ? "SdrReference (Hue Clip's reference)" : "control: the pre-trace stand-in (RenoDX ACES alone)",
+                codes[codes.size() / 2], codes[codes.size() * 99 / 100], codes.back());
+  }
+  CHECK(worst[0] <= SDR_REFERENCE_CODES);
+  CHECK(worst[1] > SDR_REFERENCE_CODES);
+  std::printf("8. the SDR picture's mid gray: %.5f of white (%.2f nits at Paper White 203); the control %s\n", mid_gray,
+              mid_gray * 203.f, worst[1] > SDR_REFERENCE_CODES ? "misses (caught)" : "PASSED (wrong)");
+}
+
+// 9. t01 against the game's own bytes ///////////////////////////////////////////////////////////////////////////////
+
+static void TestT01Exact(ID3D11PixelShader* game_t01, ID3D11PixelShader* t01, ID3D11ComputeShader* game_t00,
+                         ID3D11ShaderResourceView* base) {
+  int compared = 0;
+  for (const Frame frame : {Frame::CITY_HDR, Frame::INVENTORY_SDR}) {
+    const auto game = TracedConstants(frame);
+    const auto lut = BuildLut(game_t00, DXGI_FORMAT_R10G10B10A2_UNORM, game, Injection(0.f));
+    for (const float mode : {0.f, 4.f}) {
+      for (const float fade : {0.f, 0.5f}) {
+        const bool same = (ApplyLut(game_t01, lut, base, game, Injection(mode), fade) == ApplyLut(t01, lut, base, game, Injection(mode), fade));
+        if (!same) std::printf("9. %s LUT, mode %.0f, fade %.1f: pixels differ\n", FRAME_NAMES[static_cast<int>(frame)], mode, fade);
+        CHECK(same);
+        ++compared;
+      }
+    }
+  }
+  const auto city = TracedConstants(Frame::CITY_HDR);
+  const auto lut = BuildLut(game_t00, DXGI_FORMAT_R10G10B10A2_UNORM, city, Injection(0.f));
+  const bool control = (ApplyLut(game_t01, lut, base, TracedConstants(Frame::INVENTORY_SDR), Injection(0.f)) ==
+                        ApplyLut(t01, lut, base, city, Injection(0.f)));
+  CHECK(!control);
+  std::printf("9. t01 = the game's own pass pixel for pixel on %d draws (its HDR and SDR LUTs, Off and PsychoV35, fade 0 / "
+              "0.5); control: the SDR shaper domain on the HDR LUT %s\n", compared, control ? "PASSED (wrong)" : "differs (caught)");
+  // The game's own chain (its t00 and t01) at the scene's 0.18, with its LUT addressing.
+  constexpr std::array<Frame, 3> GREY_FRAMES = {Frame::NEUTRAL_HDR, Frame::CITY_HDR, Frame::INVENTORY_SDR};
+  std::array<float, 3> grey = {};
+  for (size_t index = 0; index < GREY_FRAMES.size(); ++index) {
+    const auto game = TracedConstants(GREY_FRAMES[index]);
+    const auto game_lut = BuildLut(game_t00, DXGI_FORMAT_R10G10B10A2_UNORM, game, Injection(0.f));
+    const Float4 pixel = ApplyLut(game_t01, game_lut, base, game, Injection(0.f))[GREY_ROW * COLOURS];
+    if (GREY_FRAMES[index] == Frame::INVENTORY_SDR) {
+      const auto decode = [](float code) { return code <= 0.04045f ? code / 12.92f : std::pow((code + 0.055f) / 1.055f, 2.4f); };
+      grey[index] = 0.2126f * decode(pixel[0]) + 0.7152f * decode(pixel[1]) + 0.0722f * decode(pixel[2]);
+    } else {
+      grey[index] = LuminanceBT2020({PQToNits(pixel[0]), PQToNits(pixel[1]), PQToNits(pixel[2]), 0.f});
+    }
+  }
+  std::printf("9. the game's own chain at the scene's 0.18: HDR %.2f nits (no grade), %.2f (the city's grade); SDR %.4f of "
+              "white\n", grey[0], grey[1], grey[2]);
+}
+
 // 4. Hue report /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static void ReportHue(ID3D11ComputeShader* direct_shader, const std::vector<Float4>& ramp) {
-  std::printf("4. |hue difference| (OkLab degrees) of PsychoV35 against the SDR ACES stand-in where it reaches its clip:\n"
+  std::printf("4. |hue difference| (OkLab degrees) of PsychoV35 against the game's SDR picture where it reaches its clip:\n"
               "   Hue Clip   fire    red    sky  green  48 hues (mean)\n");
   float best_mean = 1e9f, best_strength = 0.f;
   for (const float strength : {0.f, 0.2f, 0.4f, 0.6f, 0.8f, 1.f}) {
@@ -556,13 +756,14 @@ static void ReportHue(ID3D11ComputeShader* direct_shader, const std::vector<Floa
     std::printf("   %8.0f %6.1f %6.1f %6.1f %6.1f %8.1f\n", strength * 100.f, differences[1], differences[2], differences[3],
                 differences[4], mean);
   }
-  std::printf("   closest to the stand-in on average: Hue Clip %.0f (level C until the game's SDR LUT is traced)\n", best_strength * 100.f);
+  std::printf("   closest to the game's SDR picture on average: Hue Clip %.0f\n", best_strength * 100.f);
 }
 
 int main(int argc, char** argv) {
-  REQUIRE(argc >= 3);
+  REQUIRE(argc >= 4);
   const std::filesystem::path before = argv[1];
   const std::filesystem::path after = argv[2];
+  const std::filesystem::path game_shaders = argv[3];
   const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, &device, nullptr, &context)));
   const char* vertex_source =
@@ -581,6 +782,8 @@ int main(int argc, char** argv) {
   const auto t01_before = LoadPixel(before / "t01.cso");
   const auto t01_after = LoadPixel(after / "t01.cso");
   const auto direct_shader = LoadCompute(after / "part6_direct.cso");
+  const auto game_t00 = LoadCompute(game_shaders / "0x7016F292.cs_5_0.cso");
+  const auto game_t01 = LoadPixel(game_shaders / "0xC5E7DE4B.ps_5_0.cso");
   const auto ramp = Ramp();
   const D3D11_TEXTURE2D_DESC base_desc = {COLOURS, EXPOSURES, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT,
                                           D3D11_BIND_SHADER_RESOURCE, 0, 0};
@@ -592,24 +795,12 @@ int main(int argc, char** argv) {
 
   TestBits(t00_before.Get(), t00_after.Get());
   TestPsychoV35(t00_after.Get(), t01_after.Get(), direct_shader.Get(), base.Get(), ramp);
+  ReportHue(direct_shader.Get(), ramp);
+  TestOffExact(game_t00.Get(), t00_after.Get());
   TestVanillaShoulder(t00_after.Get(), t01_after.Get(), base.Get(), ramp);
   TestExactSampling(t00_after.Get(), t01_before.Get(), t01_after.Get(), direct_shader.Get(), base.Get(), ramp);
-  ReportHue(direct_shader.Get(), ramp);
-  if (argc >= 4) {
-    // 5. Off against the game's own bytes (the decompile is not bit-exact by design: report only).
-    const auto game = LoadCompute(std::filesystem::path(argv[3]) / "0x7016F292.cs_5_0.cso");
-    for (const bool hdr : {true, false}) {
-      const auto a = BuildLut(game.Get(), DXGI_FORMAT_R16G16B16A16_UNORM, GameConstants(hdr), Injection(0.f));
-      const auto b = BuildLut(t00_after.Get(), DXGI_FORMAT_R16G16B16A16_UNORM, GameConstants(hdr), Injection(0.f));
-      int worst = 0;
-      for (size_t i = 0; i + 1 < a.bytes.size(); i += 2) {
-        const int x = a.bytes[i] | (a.bytes[i + 1] << 8);
-        const int y = b.bytes[i] | (b.bytes[i + 1] << 8);
-        worst = std::max(worst, std::abs(x - y));
-      }
-      std::printf("5. Off, %s LUT: the add-on's t00 against the game's own bytes: max %d of 65535\n", hdr ? "HDR" : "SDR", worst);
-    }
-  }
+  TestSdrReference(game_t00.Get(), direct_shader.Get());
+  TestT01Exact(game_t01.Get(), t01_after.Get(), game_t00.Get(), base.Get());
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
   return failures == 0 ? 0 : 1;
 }

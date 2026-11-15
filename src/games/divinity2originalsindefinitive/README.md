@@ -22,9 +22,13 @@ game's HDR off too). The PsychoV30 / Tweaked ACES presets stay until ATN decides
 PsychoV35 replaces everything after the game's white balance and regional
 grading (the untonemapped scene-linear point, `t00` before the former V30 call),
 like V30: no curve runs on another curve's output. It has no fire rows: Hue Clip
-Emulation (0-100, default 80) moves bright colours toward the hue an SDR ACES
-transform clips them to (RenoDX ACES at 0.02 / 48 nits stands in for the game's
-SDR LUT until its constants are traced).
+Emulation (0-100, default 80) moves bright colours toward the hue the game's own
+SDR picture clips them to. Its reference (`dos2_vanillaplus::SdrReference`) is
+the game's SDR output transform with the inventory's traced SDR LUT constants
+(ACES 1.1 at 0.02 / 48 nits, the highlight-fix LMT at 0.6, 10 % luminance tone
+scale): within 0.32 8-bit codes of the game's own SDR LUT (RenoDX ACES alone,
+the earlier stand-in, missed it by up to 137 codes). The SDR picture's mid gray
+is 0.0996 of white (Mid Gray "Game's SDR": 20.2 nits at Paper White 203).
 
 These are neutral scene-linear 0.18 inputs at the tone-mapping stage, with
 neutral user controls. Authored grading, exposure and other user adjustments
@@ -142,7 +146,22 @@ for the shaper's PQ i / 31, and the game's t01 samples the PQ code u straight,
 so every pixel reads the colour at PQ (32 u - 0.5) / 31: mid gray about 12.2
 nits where a mode places 15, in every mode including Off. **Exact Colour LUT
 (Experimental, off)** samples a modded LUT at its texel centres (grey 14.98 nits
-through the LUT); Off and the SDR LUT are read as the game reads them.
+through the LUT); Off and the SDR LUT are read as the game reads them. On the
+traced constants the game's own chain shows the scene's 0.18 at 11.2 nits in
+HDR (9.9 with the city's grade, gain 0.92) and at 0.100 of white in SDR.
+
+**Traced constants (R1b, 2026-11-16):** both LUT dispatches share c0
+(ToneMapLuminanceApply 0.1, RedCorrectionScale 1, HighlightsFixAmount 0.6 / 1);
+the HDR LUT is ACES 1.1 at 1e-4 / 1000 nits, the inventory's SDR LUT ACES 1.1
+at 0.02 / 48 nits (sRGB). `test/tw_psychov35/part6_divinity2.ps1 -GameShaders
+<the game's cso folder>` builds every LUT from them and fails when Off's t00 or
+t01 leaves the game's own bytes.
+
+**Orthographic sight (outlines02, 0x5C4137E2):** the orthographic camera's
+EoCSight_HDR ships an older build of the sight shader (50-nit fill, bonus area
+and outline, 100-nit sneak; the perspective pass has 240 / 300 / 300 / 240).
+Modded modes give it the perspective levels relative to UI brightness; Off keeps
+the game's. Not drawn in any traced frame yet (menu, city, inventory).
 
 ## Data runs and installing
 
