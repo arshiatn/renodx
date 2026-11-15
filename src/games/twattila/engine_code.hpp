@@ -616,26 +616,30 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       sites[3].at = match + LIST_PUSH_SITE;
       stubs[3] = stub;
     }
-    // The sort and its caller only at the Steam build's places, the caller calling that sort: SORT is only a prologue
-    // and the caller's bytes are those of seven alike, so a match elsewhere may be another list's sort with another
-    // comparator, which a radix sort by the raw value would get wrong.
-    if (build.sort_caller_rva != 0) {
-      uint8_t* sort = base + build.sort_rva;
-      uint8_t* caller = base + build.sort_caller_rva;
-      if (holds(sort, SORT) && holds(caller, SORT_CALLER) && target(caller + SORT_CALLER_SITE) == sort) {
-        sort_scratch = static_cast<uint8_t*>(VirtualAlloc(nullptr, SORT_SCRATCH_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-        if (sort_scratch != nullptr) {
-          uint8_t* stub = page + SORT_PAGE;
-          std::memcpy(stub, SORT_STUB.data(), SORT_STUB.size());
-          write32(stub + SORT_STUB_SCRATCH, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(sort_scratch)));
-          write32(stub + SORT_STUB_GAME, relative(stub + SORT_STUB_GAME + 4, sort));
-          sites[4].at = caller + SORT_CALLER_SITE;
-          stubs[4] = stub;
+    // The sort's caller: at the Steam build's place, else the one of the seven alike that calls the sort.
+    if (uint8_t* sort = (build.sort_caller_rva != 0 ? find(SORT, build.sort_rva) : nullptr); sort != nullptr) {
+      uint8_t* caller = nullptr;
+      if (holds(base + build.sort_caller_rva, SORT_CALLER) && target(base + build.sort_caller_rva + SORT_CALLER_SITE) == sort) {
+        caller = base + build.sort_caller_rva;
+      }
+      for (const std::string_view memory : sections.code) {
+        for (std::string_view rest = memory; caller == nullptr;) {
+          uint8_t* match = tw::engine_tweaks::FindPattern({rest}, SORT_CALLER);
+          if (match == nullptr) break;
+          if (target(match + SORT_CALLER_SITE) == sort) caller = match;
+          rest.remove_prefix(static_cast<size_t>(match - reinterpret_cast<const uint8_t*>(rest.data())) + 1);
         }
-      } else {
-        renodx::utils::log::w(std::format("[Total War] Faster Game CPU Code: render list sort left alone, the sort (+{:#x}) or its caller "
-                                          "(+{:#x}) not the expected bytes",
-                                          build.sort_rva, build.sort_caller_rva));
+      }
+      if (caller != nullptr) {
+        sort_scratch = static_cast<uint8_t*>(VirtualAlloc(nullptr, SORT_SCRATCH_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+      }
+      if (sort_scratch != nullptr) {
+        uint8_t* stub = page + SORT_PAGE;
+        std::memcpy(stub, SORT_STUB.data(), SORT_STUB.size());
+        write32(stub + SORT_STUB_SCRATCH, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(sort_scratch)));
+        write32(stub + SORT_STUB_GAME, relative(stub + SORT_STUB_GAME + 4, sort));
+        sites[4].at = caller + SORT_CALLER_SITE;
+        stubs[4] = stub;
       }
     }
     if (uint8_t* match = (build.gather_rva != 0 ? find(GATHER, build.gather_rva) : nullptr); match != nullptr) {
