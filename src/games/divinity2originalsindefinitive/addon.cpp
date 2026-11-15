@@ -744,6 +744,7 @@ bool initialized = false;
 
 constexpr uint32_t LUT_BUILDER_HASH = 0x7016F292;  // t00, PPComputeLUT (HDR and SDR LUTs)
 constexpr uint32_t SIGHT_HASH = 0xA3A4EC44;        // outlines00, EoCSight_HDR: binds PerView b12
+constexpr uint32_t ORTHO_SIGHT_HASH = 0x5C4137E2;  // outlines02, the orthographic camera's EoCSight_HDR
 
 // Each replaced shader's first use is logged once (the "applied" lines of a data run); a bit per custom shader.
 std::atomic_uint64_t applied_shaders = 0;
@@ -979,9 +980,12 @@ void ConfigureAddon() {
                           "device bits: 1.4e-45 = HDR)");
           break;
         case SIGHT_HASH:
+        case ORTHO_SIGHT_HASH:
           AppendConstants(cmd_list, false, 12, 15,
-                          "PerView b12 at EoCSight_HDR (c0-3 View, c4-7 Projection, c8-11 ViewProjection, c12 ViewPos, "
-                          "c13 ViewInfo: far, near, width, height, c14 ScaleAndBias)");
+                          std::string("PerView b12 at ") +
+                              (hash == SIGHT_HASH ? "EoCSight_HDR" : "the orthographic EoCSight_HDR") +
+                              " (c0-3 View, c4-7 Projection, c8-11 ViewProjection, c12 ViewPos, c13 ViewInfo: far, "
+                              "near, width, height, c14 ScaleAndBias)");
           break;
         default:
           break;
