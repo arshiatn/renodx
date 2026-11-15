@@ -116,6 +116,7 @@ void ApplyResetPreset() {
       {"bloom", 1.f},
       {"v35_mid_gray", 0.f},
       {"vanilla_per_channel_shoulder", 1.f},
+      {"exact_lut_sampling", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -670,6 +671,18 @@ renodx::utils::settings::Settings settings = {
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
+        .is_visible = IsAdvancedSettings,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "exact_lut_sampling",
+        .binding = &shader_injection.exact_lut_sampling,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Exact Colour LUT (Experimental)",
+        .section = "Extra",
+        .tooltip = "The game reads its colour LUT half a step off: mid gray about a fifth darker than the mode sets it.\n"
+                   "On: read exactly (Vanilla and Vanilla+ modes; brighter mid tones). Off: the game's own reading.",
+        .is_enabled = IsModded,
         .is_visible = IsAdvancedSettings,
     },
     // new renodx::utils::settings::Setting{

@@ -74,6 +74,9 @@ struct ShaderInjectData {
 
   // Vanilla: 1 each channel its own shoulder near Peak, 0 the brightest channel's for all (ratios kept).
   float vanilla_per_channel_shoulder;
+
+  // Experimental, 0 = off: t01 samples a modded LUT at its texel centres (the game's addressing is half a texel off).
+  float exact_lut_sampling;
 };
 
 #define SI shader_injection

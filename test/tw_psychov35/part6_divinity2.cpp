@@ -17,6 +17,8 @@
 // 6. Vanilla's Per-Channel Highlights (on by default): at Peak 600 (compressed) grey unchanged, within Peak, fire's core
 //    whiter above the knee; at Peak 2500 (expanded) the same bits as off. Part 1 runs Vanilla with it off: the
 //    brightest-channel shoulder keeps its bits.
+// 7. Exact Colour LUT (Experimental, off): off = t01's pixels as before; on = a modded LUT read at its texel centres
+//    (grey 15 nits through the LUT, interpolation error only); Off's LUT read as before either way.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -489,6 +491,39 @@ static void TestVanillaShoulder(ID3D11ComputeShader* t00, ID3D11PixelShader* t01
               whiter, compared, whiteness_off, whiteness_on);
 }
 
+// 7. Exact Colour LUT (Experimental) ////////////////////////////////////////////////////////////////////////////////
+
+// t01 with the row off gives the same pixels as before (V35's LUT and Off's); on, a modded LUT is read at its texel
+// centres: grey through the LUT within 3 % of the mode's 15 nits, and the LUT's error against the direct evaluation is
+// interpolation alone. Off's (the game's own) LUT is read as before either way.
+static void TestExactSampling(ID3D11ComputeShader* t00, ID3D11PixelShader* t01_before, ID3D11PixelShader* t01_after,
+                              ID3D11ComputeShader* direct_shader, ID3D11ShaderResourceView* base, const std::vector<Float4>& ramp) {
+  for (const float mode : {0.f, 4.f}) {
+    auto injection = Injection(mode);
+    const auto lut = BuildLut(t00, DXGI_FORMAT_R10G10B10A2_UNORM, GameConstants(true), injection);
+    CHECK(ApplyLut(t01_before, lut, base, injection) == ApplyLut(t01_after, lut, base, injection));
+    injection.exact_lut_sampling = 1.f;
+    const auto exact = ApplyLut(t01_after, lut, base, injection);
+    if (mode == 0.f) {
+      CHECK(exact == ApplyLut(t01_before, lut, base, injection));
+      continue;
+    }
+    const auto direct = Direct(direct_shader, ramp, 0u, injection);
+    std::vector<float> errors;
+    for (UINT i = 0; i < exact.size(); ++i) {
+      if (std::max({ramp[i][0], ramp[i][1], ramp[i][2]}) >= SHAPER_HIGH) continue;
+      for (int c = 0; c < 3; ++c) errors.push_back(std::abs(exact[i][c] - NitsToPQ(std::max(direct[i * 2][c], 0.f))) * 1023.f);
+    }
+    std::sort(errors.begin(), errors.end());
+    const Float4 grey = exact[GREY_ROW * COLOURS];
+    const float grey_nits = LuminanceBT2020({PQToNits(grey[0]), PQToNits(grey[1]), PQToNits(grey[2]), 0.f});
+    CHECK(GreyOk(grey_nits, 15.f, 0.03f));
+    std::printf("7. Exact Colour LUT, PsychoV35 1000 / 203: grey %.2f nits through the LUT (15.00 direct); LUT vs direct: "
+                "median %.2f, 99%% %.2f 10-bit PQ codes; off: the same pixels as before; Off's LUT unchanged\n",
+                grey_nits, errors[errors.size() / 2], errors[errors.size() * 99 / 100]);
+  }
+}
+
 // 4. Hue report /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static void ReportHue(ID3D11ComputeShader* direct_shader, const std::vector<Float4>& ramp) {
@@ -543,6 +578,7 @@ int main(int argc, char** argv) {
 
   const auto t00_before = LoadCompute(before / "t00.cso");
   const auto t00_after = LoadCompute(after / "t00.cso");
+  const auto t01_before = LoadPixel(before / "t01.cso");
   const auto t01_after = LoadPixel(after / "t01.cso");
   const auto direct_shader = LoadCompute(after / "part6_direct.cso");
   const auto ramp = Ramp();
@@ -557,6 +593,7 @@ int main(int argc, char** argv) {
   TestBits(t00_before.Get(), t00_after.Get());
   TestPsychoV35(t00_after.Get(), t01_after.Get(), direct_shader.Get(), base.Get(), ramp);
   TestVanillaShoulder(t00_after.Get(), t01_after.Get(), base.Get(), ramp);
+  TestExactSampling(t00_after.Get(), t01_before.Get(), t01_after.Get(), direct_shader.Get(), base.Get(), ramp);
   ReportHue(direct_shader.Get(), ramp);
   if (argc >= 4) {
     // 5. Off against the game's own bytes (the decompile is not bit-exact by design: report only).
