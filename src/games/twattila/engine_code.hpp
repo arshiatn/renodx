@@ -457,7 +457,7 @@ static std::array<Site, 6> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "render list sort"},
                                      {.name = "instance gather"}}};
 static uint8_t* page = nullptr;
-static uint8_t* sort_scratch = nullptr;  // never freed, as the page
+static uint8_t* sort_scratch = nullptr;  // freed at Uninstall once no thread is in its stub (the page stays)
 static bool prepared = false;
 static uint32_t found = 0;    // the sites found (bits by index)
 static uint32_t written = 0;  // the sites holding their jump
@@ -471,8 +471,8 @@ constexpr uint32_t MAX_FAILED_WRITES = 30;
 // every other thread of the process is suspended and none stands inside a changing site past its first byte (it would go
 // on in the middle of the jump). False: one did (or its position is unknown), nothing written. From the first suspension
 // to the last resume nothing allocates, logs or takes a lock: a suspended thread may hold it. A thread started after the
-// snapshot isn't held (as with Detours).
-inline bool PausedWrite(uint32_t patched) {
+// snapshot isn't held (as with Detours). `keep_out`: code no thread may stand in either (false otherwise).
+inline bool PausedWrite(uint32_t patched, std::span<const uint8_t> keep_out = {}) {
   const uint32_t changing = (patched ^ written) & found;
   std::vector<HANDLE> threads;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
@@ -503,6 +503,8 @@ inline bool PausedWrite(uint32_t patched) {
       const auto start = reinterpret_cast<uintptr_t>(sites[index].at);
       if ((changing >> index & 1) != 0 && context.Eip > start && context.Eip < start + SITE_SIZE) clear = false;
     }
+    const auto keep_out_start = reinterpret_cast<uintptr_t>(keep_out.data());
+    if (context.Eip >= keep_out_start && context.Eip < keep_out_start + keep_out.size()) clear = false;
   }
   if (clear) {
     for (size_t index = 0; index < sites.size(); ++index) {
@@ -528,6 +530,7 @@ inline bool PausedWrite(uint32_t patched) {
 inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   prepared = true;
   found = 0;
+  for (Site& site : sites) site.at = nullptr;  // again after Uninstall freed the sort's scratch
   auto* base = reinterpret_cast<uint8_t*>(module);
   const auto* headers = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
   const uint8_t* image_end = base + headers->OptionalHeader.SizeOfImage;
@@ -712,6 +715,20 @@ inline void Uninstall() {
     }
   }
   if (internal::written != 0) renodx::utils::log::w("[Total War] Faster Game CPU Code: left in at detach (a game thread kept running it)");
+  // With the game's bytes back nothing enters the sort's stub again: its scratch (8 MB of a 32-bit game's address space
+  // each load) is freed once no thread stands in the stub, and the next Update prepares anew (a new page).
+  if (internal::written != 0 || internal::sort_scratch == nullptr) return;
+  const std::span<const uint8_t> sort_stub(internal::page + internal::SORT_PAGE, internal::SORT_STUB.size());
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    if (internal::PausedWrite(0, sort_stub)) {
+      VirtualFree(internal::sort_scratch, 0, MEM_RELEASE);
+      internal::sort_scratch = nullptr;
+      internal::prepared = false;
+      return;
+    }
+    Sleep(1);
+  }
+  renodx::utils::log::w("[Total War] Faster Game CPU Code: the render list sort's scratch kept at detach (a game thread in its stub)");
 }
 
 #else

@@ -2,7 +2,8 @@
 // from disk and mapped twice (relocated, never loaded as a DLL: no DllMain, no imports), copy A as the game ships it,
 // copy B patched by engine_code (Prepare and Update, as the addon does it). Then each routine runs in both with the
 // same inputs and every register, the stack and the x87 state are compared:
-// 1. Each pattern exactly once in A; B differs from A in the 5-byte sites only; back to A's bytes after off.
+// 1. Each pattern exactly once in A; B differs from A in the 5-byte sites only; back to A's bytes after off; the
+//    sort's scratch freed at Uninstall.
 // 2. float to half (+0x169a220): all 2^32 floats (random other registers), eax ecx edx ebx esi edi ebp esp equal; then
 //    10 M random floats at 16 addresses (the pointer's high half shows in eax for the smallest values).
 // 3. The soldier draw's truncation (+0x17f6515, a block inside a function: entered with a fake frame, its end jumps back
@@ -1435,8 +1436,16 @@ int main(int argc, char** argv) {
   twattila::engine_code::Update(false);
   CHECK(ec::written == 0);
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
+  uint8_t* sort_scratch = ec::sort_scratch;
+  CHECK((sort_scratch != nullptr) == (build.sort_rva != 0));
   twattila::engine_code::Uninstall();
-  std::printf("off: the game's code back byte for byte\n");
+  // The sort's scratch freed (no thread in its stub), prepared again by the next Update.
+  if (sort_scratch != nullptr) {
+    MEMORY_BASIC_INFORMATION memory = {};
+    CHECK(VirtualQuery(sort_scratch, &memory, sizeof(memory)) != 0 && memory.State == MEM_FREE);
+    CHECK(ec::sort_scratch == nullptr && !ec::prepared);
+  }
+  std::printf("off: the game's code back byte for byte%s\n", (sort_scratch != nullptr ? ", the sort's scratch freed" : ""));
 
   // 7. With the Attila CPU Performance Fix's x87 fix the truncation block holds fisttp and nops for both fldcw (bytes
   // 23..26, 28 and 31..34 of the block, ATN's heapfix.log: 1277 of 1277 blocks, 165 by fisttp): that site is left
