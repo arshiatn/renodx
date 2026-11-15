@@ -933,6 +933,66 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [ ] ATN 17:3x "Start the review": Fable 5.2 High crash / freeze review workflow wf_73f86de5-728 (6 areas: locks,
       bridge, hooks, lifetime, non-TW, TW; each verified by a refuting agent). Then fixes one at a time, build all,
       install. Owner: coordinator
+      - DONE 17:45: 24 confirmed (21 unique: R7 = R2, R10 = R9, R20 = R17), 8 refuted; full text with scenarios and
+        fixes in tools/tw/round_notes/review_1115.json. Fixes one at a time by one agent, then build all, stamp, install.
+      - [ ] R1 [crash] A lost Ray Reconstruction device is destroyed with NGX D3D12 shutdown while Streamline is in use
+        (src/games/twattila/dlaa_helper/main.cpp:657; NVIDIA with Ray Reconstruction plus DLSS Frame Generation through the ).
+        Owner: review fix agent fx_
+      - [ ] R2 [crash] Ryse particle/light detours go in at a Present with no thread coordination while particle job threads
+        run the hooked functions (src/games/rysesonofrome/particle_counts.hpp:664; rysesonofrome). Owner: review fix agent fx_
+      - [ ] R3 [crash] device_loss watch thread can still be inside the add-on's code when ReShade unmaps the image (2 s
+        bounded stop, then FreeLibrary) (src/games/twattila/device_loss.hpp:516; twattila, twrome2, twthronesofbritannia,
+        twwarhammer, twwarhammer2, tw). Owner: review fix agent fx_
+      - [ ] R4 [crash] Frame generation's reshade_present uses the bridge's and its own objects without checking they belong
+        to the presenting device (src/games/twattila/frame_generation.hpp:198; twwarhammer3). Owner: review fix agent fx_
+      - [ ] R5 [crash] Tales / Expeditions run output_encoding::Decide at every create_swapchain, including ResizeBuffers,
+        while swapchain_v2 keeps the creation-time swap_chain_upgrade_info (src/games/talesofarise/addon.cpp:738;
+        talesofarise, expeditionsrome). Owner: review fix agent fx_
+      - [ ] R6 [crash] Tales: AddonInit throws on a game folder with characters outside the ANSI code page (path::string())
+        (src/games/talesofarise/dlss_graphics.hpp:3364; talesofarise). Owner: review fix agent fx_
+      - [ ] R8 [crash] WH3 reflections / traced_lights / sun_ao / game_gi caches are not tied to their device: after a GPU
+        reset with the old device still alive, objects from the removed device are bound on the new context
+        (src/games/twwarhammer3/addon.cpp:958; twwarhammer3). Owner: review fix agent fx_
+      - [ ] R9 [freeze] object_motion: pipeline-destroy callback re-locks state.mutex (shared_mutex) held across the motion
+        draw's D3D11 calls and releases (src/games/twattila/object_motion.hpp:1458; twattila). Owner: review fix agent fx_
+      - [ ] R11 [freeze] Tales: destroy_device handler re-locks rt_shadows' mutex when rt_shadows drops its own ReShade-
+        wrapped D3D12 device (self-deadlock) (src/games/talesofarise/dlss_graphics.hpp:2082; talesofarise). Owner: review fix
+        agent fx_
+      - [ ] R12 [gpu_reset] anti_aliasing::Update calls ID3D11Device::GetImmediateContext on a D3D12 device (vtable slot 40 =
+        ID3D12Device::SetStablePowerState) (src/games/twattila/anti_aliasing.hpp:1547; twwarhammer2). Owner: review fix agent
+        fx_
+      - [ ] R13 [wrong_output] Steady requests keep the 5 s answer budget while the helper reopens its idled scene / RR device
+        inside them (helper killed, all helper features off) (src/games/twattila/dlaa_bridge.hpp:605; Every game that ray-
+        traces through the helper and takes Prepare's ray_). Owner: review fix agent fx_
+      - [ ] R14 [wrong_output] The helper never replaces its own D3D11 device after a GPU reset, and every request branch is
+        gated on the fence that device opens (src/games/twattila/dlaa_helper/main.cpp:729; Any game where the same helper
+        outlives the removal of its D3D11 devic). Owner: review fix agent fx_
+      - [ ] R15 [wrong_output] Replacing or idling an FSR/XeSS upscaler or proxy frame generation joins its cold-start thread
+        on the helper's request thread (src/games/twattila/dlaa_helper/upscale_d3d12.hpp:352; Games using FSR or XeSS
+        upscaling, or FSR/XeSS frame generation, throu). Owner: review fix agent fx_
+      - [ ] R16 [wrong_output] Attila/Thrones grass and tree hook writes are neither restored nor kept at detach: every device
+        rebuild scales the already scaled values again (src/games/twattila/graphics_hooks.hpp:1349; twattila,
+        twthronesofbritannia). Owner: review fix agent fx_
+      - [ ] R17 [leak_or_growth] Expeditions ray tracing: scene_views keeps an SRV (and so the texture) of every scene colour
+        target ever seen (src/games/expeditionsrome/ray_tracing.hpp:282; expeditionsrome). Owner: review fix agent fx_
+      - [ ] R18 [leak_or_growth] A set published before the helper opened it leaves its duplicated handles, and so its shared
+        textures, open in the helper for the whole session (src/games/twattila/dlaa_bridge.hpp:941; Ryse with helper upscaling
+        below 100% render scale). Owner: review fix agent fx_
+      - [ ] R19 [leak_or_growth] Swap chain proxy passes are new'ed and erased without delete (per failed present, and at
+        every DestroySwapchainProxyItems) (src/mods/swapchain_v2.hpp:1254; All swapchain_v2 add-ons: one SwapchainProxyPass
+        object per back buffe). Owner: review fix agent fx_
+      - [ ] R21 [leak_or_growth] Shogun 2: each render scale or DLSS preset change abandons the game's existing NGX DLSS
+        feature without releasing it (src/games/twshogun2completeedition/game_dlss.hpp:354; twshogun2completeedition). Owner:
+        review fix agent fx_
+      - [ ] R22 [minor] One failed texture creation in Prepare turns the bridge off for the session, and the helper keeps the
+        previous set open (src/games/twattila/dlaa_bridge.hpp:921; Every game using the helper; most likely on 8-12 GB cards
+        at 4K with R). Owner: review fix agent fx_
+      - [ ] R23 [minor] Shogun 2 vfx_effects keeps destroyed buffers' handles and stores a write-map pointer without checking
+        size, so Identify can read up to 368 bytes past a smaller buffer reusing the address
+        (src/games/twshogun2completeedition/vfx_effects.hpp:189; twshogun2completeedition). Owner: review fix agent fx_
+      - [ ] R24 [minor] Pharaoh Dead Unit Detail: dead_units_installed is never reset, so an add-on re-attached in a retained
+        image never patches again; the 6-byte patch is also written without stopping threads
+        (src/games/twpharaohdynasties/addon.cpp:1853; twpharaohdynasties). Owner: review fix agent fx_
     - [ ] WH3's x64 render-list WPR run: the game said "Unable to initialize SteamAPI" twice (Steam not elevated;
       HKCU Valve ActiveProcess pointed at a dead pid); ATN restarts Steam, then one run (x64_run.ps1). Owner: ATN, then
       coordinator
