@@ -326,6 +326,15 @@ upscaler's output size while it upscales: the rays at the render size in its top
 the next trace. Without the helper (the HDR-only download) the AA mode stays Off (the game's TAA), the rows hidden, the
 download note shown; no wait. Not the same as before: the helper's DLSS measures exposure itself (the in-process path
 gave 1) and picks its model from the sizes (Custom below 100%).
+**Ray Tracing rows at Attila's parity** (all Experimental, off by default, their keys Attila's): the **RT/PT** button
+(Attila's values in this section's rows: sun shadows at 0.8° softness, ray-traced AO, the Light Bounce on and ray-traced
+with path tracing, 1 ray a texel, 50 m, 1 bounce, reflections with 1 sample, NRD; Ray Reconstruction F where DLSS runs
+without it), **No RT/PT (Recommended)** and **Reset**; the ray tracing denoiser (`RayTracingDenoiser`: built-in or NRD,
+with an AA mode on), Rays a Pixel (`RayTracingOutputResolution` with Match Output, and which effects take them), SHaRC,
+Lean ReSTIR reuse and SER for the paths, Log Details and Record Ray Tracing Profile (tw_rt_profile.csv). Without the
+helper the section shows its download note alone. Not yet: the Debug View (Ryse has no hook for it before the data run
+shows where its tone mapper's output is) and ray-traced specular occlusion (the game's tiled lighting reads only its
+screen-space reflections, t6: the occlusion needs its own pass merged into them).
 
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)

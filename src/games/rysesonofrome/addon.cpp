@@ -214,8 +214,67 @@ struct RtSliders {
   float range = 10.f;  // metres
   float path_tracing = 0.f;
   float bounces = 2.f;
+  // Attila's rows (twattila/graphics_page.hpp's keys; Experimental here).
+  float denoiser = 0.f;    // RayTracingDenoiser: built-in, NRD (with the helper's upscaler)
+  float sharc = 0.f;       // with path tracing
+  float reuse_lean = 0.f;  // with path tracing
+  float path_ser = 0.f;    // the paths' and reflections' rays
+  float output_rays = 0.f;  // Rays a Pixel: 1, Match Output, 2-8
+  float rays_shadows = 1.f;
+  float rays_ambient = 1.f;
+  float rays_reflections = 1.f;
+  float rays_paths = 1.f;
+  float debug_log = 0.f;
 } rt_sliders;
 bool ray_tracing_installed = false;
+constexpr uint32_t RAYS_TINT = 0x6BE0D8;
+
+// With a ray-traced effect on (the rows for all of them).
+bool AnyRays() {
+  return rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
+         || rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f;
+}
+
+// The Ray Tracing presets (Attila's RT/PT values in this section's keys): RT/PT writes RAYS_RESET, then RAYS_PRESET; No
+// RT/PT RAYS_OFF; Reset both.
+using PresetValues = std::vector<std::pair<std::string, float>>;
+const PresetValues RAYS_OFF = {
+    {"RayTracedSunShadows", 0.f}, {"RayTracedAmbientOcclusion", 0.f}, {"RayTracedReflections", 0.f},
+    {"RayTracedLightBounce", 0.f}, {"PathTracing", 0.f},
+};
+const PresetValues RAYS_PRESET = {
+    {"RayTracedSunShadows", 1.f},
+    {"RayTracedShadowSoftness", 0.8f},
+    {"RayTracedAmbientOcclusion", 1.f},
+    {"RayTracingDenoiser", 1.f},
+    {"light_bounce", 1.f},
+    {"RayTracedLightBounce", 1.f},
+    {"PathTracing", 1.f},
+    {"RayTracedLightBounceRays", 1.f},
+    {"RayTracedLightBounceRange", 50.f},
+    {"PathTracingBounces", 1.f},
+    {"RayTracedReflections", 1.f},
+    {"RayTracedReflectionSamples", 1.f},
+};
+const PresetValues RAYS_RESET = {
+    {"RayTracedShadowSoftness", 0.5f},
+    {"RayTracedAmbientRange", 2.f},
+    {"RayTracedAOQuarter", 0.f},
+    {"RayTracedReflectionSamples", 1.f},
+    {"RayTracedLightBounceRays", 4.f},
+    {"RayTracedLightBounceRange", 10.f},
+    {"PathTracingBounces", 2.f},
+    {"RayTracingDenoiser", 0.f},
+    {"RayTracedSharc", 0.f},
+    {"RayTracedReuseLean", 0.f},
+    {"RayTracedPathSer", 0.f},
+    {"RayTracingOutputResolution", 0.f},
+    {"RayTracingRaysShadows", 1.f},
+    {"RayTracingRaysAmbient", 1.f},
+    {"RayTracingRaysReflections", 1.f},
+    {"RayTracingRaysPaths", 1.f},
+    {"RayTracedDebugLog", 0.f},
+};
 
 void BuildRuntimeData() {
   custom_shaders = {
@@ -309,6 +368,39 @@ void BuildRuntimeData() {
   };
   custom_shaders[0x3BA5B162] = {.crc32 = 0x3BA5B162, .on_replace = keep_shader, .on_drawn = keep_color};
 
+  // Ray Tracing's preset buttons and Attila's rows (an off / on or a list, default 0 or as RAYS_RESET's), with the helper
+  // and a ray-traced effect on; `enabled`: when they act.
+  const auto ray_button = [](const std::string& label, const std::string& tooltip, std::function<void()> on_change) {
+    return new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = label,
+        .section = "Ray Tracing (Experimental)",
+        .group = "rays-presets",
+        .tooltip = tooltip,
+        .tint = RAYS_TINT,
+        .on_change = std::move(on_change),
+        .is_visible = twattila::dlaa_bridge::HelperInstalled,
+    };
+  };
+  const auto ray_choice = [](const std::string& key, float* binding, const std::string& label, std::vector<std::string> labels,
+                             const std::string& tooltip, std::function<bool()> enabled = [] { return true; }) {
+    const auto reset = std::ranges::find(RAYS_RESET, key, &PresetValues::value_type::first);
+    return new renodx::utils::settings::Setting{
+        .key = key,
+        .binding = binding,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = (reset != RAYS_RESET.end()) ? reset->second : 0.f,
+        .label = label,
+        .section = "Ray Tracing (Experimental)",
+        .tooltip = tooltip,
+        .labels = std::move(labels),
+        .is_enabled = [enabled] { return AnyRays() && enabled(); },
+        .is_visible = [] { return twattila::dlaa_bridge::HelperInstalled() && AnyRays(); },
+    };
+  };
+  const std::vector<std::string> off_on = {"Off", "On"};
+  const auto paths = [] { return (rt_sliders.light_bounce != 0.f || rt_sliders.reflections != 0.f) && rt_sliders.path_tracing != 0.f; };
+  const auto extra_rays = [] { return rt_sliders.output_rays != 0.f; };
   // 0-max slider (default 2), 1 = the game's.
   auto slider = [](const std::string& key, float* binding, const std::string& label, const std::string& section,
                    const std::string& tooltip, bool (*is_enabled)(), bool (*is_visible)(), float default_value = 1.f,
@@ -930,6 +1022,24 @@ void BuildRuntimeData() {
           .tint = WARNING_TINT,
           .is_visible = HelperAbsent,
       },
+      ray_button("RT/PT",
+                 "Every ray-traced effect and path tracing on, as ATN plays Attila; the rest of this section at its\n"
+                 "default (restart the game). Turns the Light Bounce on, and Ray Reconstruction where DLSS runs without it.",
+                 [] {
+                   renodx::utils::settings::UpdateSettings(RAYS_RESET);
+                   renodx::utils::settings::UpdateSettings(RAYS_PRESET);
+                   // Without Ray Reconstruction the rays have only the built-in denoisers (Attila's preset: F).
+                   if (twattila::dlaa_bridge::OnNvidia() && rysesonofrome::graphics::ray_reconstruction.load() == 0) {
+                     rysesonofrome::graphics::ray_reconstruction.store(4);
+                     reshade::set_config_value(nullptr, "Ryse AA", "RayReconstruction", 4);
+                   }
+                 }),
+      ray_button("No RT/PT (Recommended)", "Every ray-traced effect off, their sliders kept (restart the game).",
+                 [] { renodx::utils::settings::UpdateSettings(RAYS_OFF); }),
+      ray_button("Reset", "Every ray-traced effect off, this section's sliders at their defaults (restart the game).", [] {
+        renodx::utils::settings::UpdateSettings(RAYS_OFF);
+        renodx::utils::settings::UpdateSettings(RAYS_RESET);
+      }),
       new renodx::utils::settings::Setting{
           .key = "RayTracedSunShadows",
           .binding = &rt_sliders.sun_shadows,
@@ -940,6 +1050,7 @@ void BuildRuntimeData() {
           .tooltip = "Sun shadows from rays, with the game's: also where its shadow maps miss things.\n"
                      "Needs an RTX GPU and renodx-tw-dlaa64.exe next to the addon. Restart the game after turning on.",
           .labels = {"Off", "On"},
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedShadowSoftness",
@@ -952,6 +1063,7 @@ void BuildRuntimeData() {
           .max = 3.f,
           .format = "%.2f",
           .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedAmbientOcclusion",
@@ -963,6 +1075,7 @@ void BuildRuntimeData() {
           .tooltip = "Shade in corners and under things from rays, with the game's.\n"
                      "Restart the game after turning on.",
           .labels = {"Off", "On"},
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedAmbientRange",
@@ -975,6 +1088,7 @@ void BuildRuntimeData() {
           .max = 5.f,
           .format = "%.2f m",
           .is_enabled = [] { return rt_sliders.ambient_occlusion != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedAOQuarter",
@@ -986,6 +1100,7 @@ void BuildRuntimeData() {
           .tooltip = "Quarter: one pixel of each 2 x 2 traced a frame, in turn (DLSS smooths it). Faster.",
           .labels = {"Every pixel", "Quarter"},
           .is_enabled = [] { return rt_sliders.ambient_occlusion != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedReflections",
@@ -997,6 +1112,7 @@ void BuildRuntimeData() {
           .tooltip = "Reflections from rays in place of the screen-space ones: also what is off screen.\n"
                      "Restart the game after turning on.",
           .labels = {"Off", "On"},
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedReflectionSamples",
@@ -1010,6 +1126,7 @@ void BuildRuntimeData() {
           .max = 8.f,
           .format = "%d",
           .is_enabled = [] { return rt_sliders.reflections != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounce",
@@ -1021,6 +1138,7 @@ void BuildRuntimeData() {
           .tooltip = "The Light Bounce's light found with rays: no guessing behind what you see, light from farther.\n"
                      "Needs the Light Bounce on. Restart the game after turning on.",
           .labels = {"Off", "On"},
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounceRays",
@@ -1034,6 +1152,7 @@ void BuildRuntimeData() {
           .max = 16.f,
           .format = "%d",
           .is_enabled = [] { return rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounceRange",
@@ -1046,6 +1165,7 @@ void BuildRuntimeData() {
           .max = 50.f,
           .format = "%.0f m",
           .is_enabled = [] { return rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
           .key = "PathTracing",
@@ -1057,6 +1177,7 @@ void BuildRuntimeData() {
           .tooltip = "The Light Bounce's and the reflections' rays go on bouncing: lit by what the screen never saw.\n"
                      "Needs the Light Bounce or the reflections on. Heavy. Restart the game after turning on.",
           .labels = {"Off", "On"},
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
           .key = "PathTracingBounces",
@@ -1070,6 +1191,43 @@ void BuildRuntimeData() {
           .max = 4.f,
           .format = "%d",
           .is_enabled = [] { return rt_sliders.path_tracing != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
+      },
+      // Attila's (twattila/graphics_page.hpp's keys), with a ray-traced effect on.
+      ray_choice("RayTracedSharc", &rt_sliders.sharc, "SHaRC radiance cache (Experimental)", off_on,
+                 "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).", paths),
+      ray_choice("RayTracedReuseLean", &rt_sliders.reuse_lean, "Lean ReSTIR reuse (Experimental)", off_on,
+                 "A faster ReSTIR GI for path tracing: the same look in Attila's tests.", paths),
+      ray_choice("RayTracedPathSer", &rt_sliders.path_ser, "Path tracing SER (Experimental)", off_on,
+                 "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.",
+                 [] { return rt_sliders.light_bounce != 0.f || rt_sliders.reflections != 0.f; }),
+      ray_choice("RayTracingDenoiser", &rt_sliders.denoiser, "Ray tracing denoiser (Experimental)", {"Built-in", "NRD"},
+                 "Cleans the ray-traced shadows, AO, Light Bounce and reflections (with an AA mode on, without Ray Reconstruction).\n"
+                 "Built-in: the mod's own filters. NRD: NVIDIA's denoisers, steadier, uses more memory."),
+      ray_choice("RayTracingOutputResolution", &rt_sliders.output_rays, "Rays a pixel (Experimental)",
+                 {"1", "Match Output", "2", "3", "4", "5", "6", "7", "8"},
+                 "More rays for every rendered pixel, each from its own spot of it: less noise, finer shadow edges.\n"
+                 "The cost grows with the rays. Match Output: as many rays on screen as at 100% (up to 8 a pixel)."),
+      ray_choice("RayTracingRaysShadows", &rt_sliders.rays_shadows, "Rays a pixel: shadows", off_on,
+                 "The sun's shadows take the extra rays.", extra_rays),
+      ray_choice("RayTracingRaysAmbient", &rt_sliders.rays_ambient, "Rays a pixel: ray-traced AO", off_on,
+                 "Ray-traced AO takes the extra rays.", extra_rays),
+      ray_choice("RayTracingRaysReflections", &rt_sliders.rays_reflections, "Rays a pixel: reflections", off_on,
+                 "Ray-traced reflections take the extra rays.", extra_rays),
+      ray_choice("RayTracingRaysPaths", &rt_sliders.rays_paths, "Rays a pixel: Light Bounce", off_on,
+                 "The ray-traced and path-traced Light Bounce take the extra rays (up to 16 a texel). The heaviest.", extra_rays),
+      ray_choice("RayTracedDebugLog", &rt_sliders.debug_log, "Log details", off_on,
+                 "Ray tracing's numbers in the log every 10 s, for bug reports. Off: nothing of this runs."),
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Record ray tracing profile (30 s)",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "30 s of every frame's ray tracing costs into tw_rt_profile.csv and tw_rt_profile_helper.csv\n"
+                     "(next to the game's exe). Turn the effects on, press, then move the camera around.",
+          .on_change = [] {
+            if (ray_tracing_installed) twattila::rt_scene::StartProfile();
+          },
+          .is_visible = [] { return twattila::dlaa_bridge::HelperInstalled() && AnyRays(); },
       },
   };
   twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
@@ -1213,6 +1371,7 @@ void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swa
   shader_injection.ssao_frame = static_cast<float>((static_cast<uint32_t>(shader_injection.ssao_frame) + 1u) % 4096u);
   // What the helper serves this frame (graphics.hpp adds the upscaler and frame generation): the ray tracing, its guides
   // with the reflections or paths, Ray Reconstruction while a ray-traced effect is on.
+  const auto back_buffer = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
   rysesonofrome::upscaling::BridgeUse use;
   if (ray_tracing_installed) {
     const bool bounce = shader_injection.light_bounce > 0.f && (rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f);
@@ -1224,7 +1383,7 @@ void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swa
         .reflections = reflections,
         .ray_reconstruction = (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || bounce || reflections) ? 1u : 0u,
     };
-    rysesonofrome::ray_tracing::Update({
+    twattila::rt_scene::Settings rays = {
         .sun_shadows = rt_sliders.sun_shadows != 0.f,
         .ambient_occlusion = rt_sliders.ambient_occlusion != 0.f,
         .ambient_range = rt_sliders.ambient_range,
@@ -1237,7 +1396,26 @@ void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swa
         .path_bounces = static_cast<uint32_t>(rt_sliders.bounces),
         .reflections = reflections,
         .reflection_samples = static_cast<uint32_t>(rt_sliders.reflection_samples),
-    });
+    };
+    // Attila's rows. NRD reads the upscaler's motion and depth: with an AA mode on only (the helper's).
+    rays.path_ser = rt_sliders.path_ser != 0.f;
+    rays.sharc = path_tracing && rt_sliders.sharc != 0.f;
+    rays.reuse_lean = path_tracing && rt_sliders.reuse_lean != 0.f;
+    rays.nrd = rt_sliders.denoiser != 0.f && rysesonofrome::graphics::requested_mode.load() != rysesonofrome::graphics::AAMode::OFF;
+    rays.debug_log = rt_sliders.debug_log != 0.f;
+    // Rays a Pixel: Match Output, those of the output pixels a render pixel stands for (at most 8).
+    const auto render = rysesonofrome::ray_tracing::HOST.render_size();
+    const float scale = (render[0] != 0 && back_buffer.texture.width != 0)
+                            ? std::min(static_cast<float>(render[0]) / static_cast<float>(back_buffer.texture.width), 1.f)
+                            : 1.f;
+    const auto choice = static_cast<uint32_t>(std::clamp(rt_sliders.output_rays, 0.f, 8.f));
+    const auto density = (choice == 1) ? static_cast<uint32_t>(std::clamp(std::lround(1.f / (scale * scale)), 1l, 8l)) : std::clamp(choice, 1u, 8u);
+    const auto rays_of = [density](float on) { return (on != 0.f) ? density : 1u; };
+    rays.shadow_rays = rays_of(rt_sliders.rays_shadows);
+    rays.ambient_rays *= rays_of(rt_sliders.rays_ambient);
+    rays.reflection_samples *= rays_of(rt_sliders.rays_reflections);
+    rays.light_bounce_rays = std::min(rays.light_bounce_rays * rays_of(rt_sliders.rays_paths), 16u);
+    rysesonofrome::ray_tracing::Update(rays);
   }
   rysesonofrome::graphics::UpdateHelper(swapchain, use, !IsHdrOutput());
 #ifdef RYSE_UI_DRAW_LOG
@@ -1247,7 +1425,6 @@ void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swa
     ui_log = nullptr;
   }
 #endif
-  const auto back_buffer = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
   execution_skull_min_indices =
       static_cast<uint32_t>(3500.f * std::pow(static_cast<float>(back_buffer.texture.height) / 2160.f, 0.23f));
   if (GetForegroundWindow() != static_cast<HWND>(swapchain->get_hwnd())) return;
