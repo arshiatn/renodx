@@ -43,6 +43,7 @@
 #include "../../utils/vtable.hpp"
 #include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "./bridge.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -85,6 +86,46 @@ void OnLogResource(reshade::api::device* device, const reshade::api::resource_de
                                     desc.texture.levels, static_cast<uint32_t>(desc.texture.format), desc.texture.samples),
                   static_cast<uint32_t>(desc.heap), static_cast<uint32_t>(desc.usage), static_cast<uint32_t>(desc.flags))
           .c_str());
+}
+
+// The bridge's events (bridge.hpp), registered with the DLAA row: the INTZ depths, the bound target / depth / scene
+// texture, the game's constants and every draw (the jitter).
+void OnInitDepthResource(reshade::api::device*, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
+                         reshade::api::resource_usage, reshade::api::resource resource) {
+  if (desc.texture.format == reshade::api::format::intz) {
+    ruse::bridge::state.intz_depths.insert(resource.handle);
+  }
+}
+
+void OnBridgeBindTargets(reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view* targets,
+                         reshade::api::resource_view depth_stencil) {
+  auto& bridge = ruse::bridge::state;
+  bridge.depth_stencil = depth_stencil.handle;
+  bridge.render_target = (count > 0) ? targets[0].handle : 0u;
+  D3DSURFACE_DESC desc = {};
+  bridge.render_target_is_frame_sized =
+      bridge.render_target != 0u && SUCCEEDED(reinterpret_cast<IDirect3DSurface9*>(bridge.render_target)->GetDesc(&desc))
+      && desc.Width == back_buffer_width && desc.Height == back_buffer_height;
+}
+
+void OnBridgePushDescriptors(reshade::api::command_list*, reshade::api::shader_stage stages, reshade::api::pipeline_layout,
+                             uint32_t layout_param, const reshade::api::descriptor_table_update& update) {
+  // ReShade's D3D9 layout: parameter 1 the pixel samplers with their textures.
+  if (layout_param != 1 || update.binding != 0 || update.count == 0
+      || update.type != reshade::api::descriptor_type::sampler_with_resource_view) {
+    return;
+  }
+  ruse::bridge::state.pixel_texture_0 = static_cast<const reshade::api::sampler_with_resource_view*>(update.descriptors)[0].view.handle;
+}
+
+void OnBridgePushConstants(reshade::api::command_list*, reshade::api::shader_stage, reshade::api::pipeline_layout,
+                           uint32_t layout_param, uint32_t first, uint32_t count, const void* values) {
+  ruse::bridge::OnPushConstants(layout_param, first, count, values);
+}
+
+bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, int32_t, uint32_t) {
+  ruse::bridge::OnDraw(cmd_list);
+  return false;
 }
 
 bool OnCreateDepthResource(reshade::api::device* device, reshade::api::resource_desc& desc, reshade::api::subresource_data*,
@@ -462,6 +503,7 @@ void OnPresentFrame(
     return;
   }
   presenting_host = reinterpret_cast<IDirect3DDevice9*>(device->get_native());
+  ruse::bridge::OnPresent();
   if (frame_trace_enabled) {
     std::error_code ignored;
     if (frame_trace_requested || std::filesystem::remove(frame_trace_marker, ignored)) {
@@ -625,6 +667,13 @@ void BuildRuntimeData() {
   };
   for (auto& [hash, shader] : custom_shaders) {
     shader.on_draw = OnFrameShaderDraw;
+  }
+  // The bridge (bridge.hpp): the final post's HDRParam (c11.x) for the next frame's write-back.
+  for (const uint32_t post : {0x232EB5DFu, 0x2D5EFDE2u, 0x44550114u, 0x7E93D12Fu, 0xC3EBA3CAu, 0xFB692F37u, 0x0106B253u}) {
+    custom_shaders[post].on_draw = [](reshade::api::command_list* cmd_list) {
+      ruse::bridge::state.hdr_param = ruse::bridge::state.pixel_registers[44];
+      return OnFrameShaderDraw(cmd_list);
+    };
   }
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1061,6 +1110,39 @@ void ConfigureAddon() {
     readable_depth_enabled = (setting->GetValue() != 0.f);
     settings.push_back(setting);
   }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseDlaa",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "DLAA (Experimental)",
+        .section = "Output (Restart Required)",
+        .tooltip = "NVIDIA DLAA anti-aliasing. Needs the in-game anti-aliasing off and the DLAA helper beside the add-on.\n"
+                   "Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    ruse::bridge::state.enabled = (setting->GetValue() != 0.f) && twattila::dlaa_bridge::HelperInstalled();
+    readable_depth_enabled = readable_depth_enabled || ruse::bridge::state.enabled;
+    if (ruse::bridge::state.enabled) {
+      // The camera pass: its matrices (c0-c8) as it drew; the bloom's first pass: DLAA on the scene it reads.
+      custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list*) {
+                                      std::memcpy(ruse::bridge::state.camera.data(), ruse::bridge::state.pixel_registers.data(),
+                                                  sizeof(ruse::bridge::state.camera));
+                                      ruse::bridge::state.camera_valid = true;
+                                      return true;
+                                    }};
+      for (const uint32_t bloom : {0x41B68A24u, 0xF663E47Eu}) {
+        custom_shaders[bloom] = {.crc32 = bloom, .on_draw = [](reshade::api::command_list* cmd_list) {
+                                   ruse::bridge::Evaluate(cmd_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
+                                   return true;
+                                 }};
+      }
+    }
+  }
 
   twattila::psycho35::InsertBefore(&settings, "Extra", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 
@@ -1198,6 +1280,8 @@ bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_des
   if (api != reshade::api::device_api::d3d9) return false;
   back_buffer_width = desc.back_buffer.texture.width;
   back_buffer_height = desc.back_buffer.texture.height;
+  ruse::bridge::state.width = back_buffer_width;
+  ruse::bridge::state.height = back_buffer_height;
   twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
   renodx::utils::device_proxy::SetTargetFormat(renodx::mods::swapchain::target_format);
   renodx::utils::device_proxy::SetTargetColorSpace(renodx::mods::swapchain::target_color_space);
@@ -1235,6 +1319,13 @@ bool AttachAddon() {
   }
   if (readable_depth_enabled) {
     reshade::register_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
+    reshade::register_event<reshade::addon_event::init_resource>(OnInitDepthResource);
+  }
+  if (ruse::bridge::state.enabled) {
+    reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
+    reshade::register_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
+    reshade::register_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
+    reshade::register_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);
   }
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &frame_injection);
@@ -1261,6 +1352,11 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::reshade_present>(OnReShadePresent);
   reshade::unregister_event<reshade::addon_event::init_resource>(OnLogResource);
   reshade::unregister_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
+  reshade::unregister_event<reshade::addon_event::init_resource>(OnInitDepthResource);
+  reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
+  reshade::unregister_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
+  reshade::unregister_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
+  reshade::unregister_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);
   UninstallPresentHooks();
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &frame_injection);
