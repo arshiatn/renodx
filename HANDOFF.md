@@ -904,6 +904,17 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
       RR / FG through the helper: Tales' d3d12_device / rt_shadows / rr_d3d12 go). Owner: UE4 MERGE agent (after s2m_)
   - [x] ATN 02:2x: the x64 render-list data runs (WH3, Pharaoh, Shogun 2: one short WPR run each, our own Faster Render
     Lists, not the author's code) are OK. Owner: coordinator, after the Attila end bench
+  - [ ] ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH (do them all, several agents). Started ~03:50:
+    RYSE MERGE rym_ (one add-on, pages, helper route for DLSS / RR / FSR / XeSS / FG, RT rows, the 5,527 new shaders'
+    tonemap / post families) and UE4 MERGE uem_ (Expeditions then Tales: one add-on, pages, Auto default, helper route,
+    Tales' in-process D3D12 RT out, unload harness); the root CMake NGX block loses each game when its helper route lands
+    (an upstream snapshot can't link NGX). Then data runs (Tales G1 + G2, Expeditions G1, Ryse R0 with the shader-name
+    cvars), fixes, stamp, install. Owner: coordinator
+  - [ ] ATN 03:4x: go through HANDOFF: leftovers vs open, tick / trace / archive. HANDOFF AUDIT hfa_ (read-only,
+    tools/tw/round_notes/handoff_audit_1115.tsv), then the coordinator applies it (archive file for history). Owner:
+    hfa_, then coordinator
+  - [ ] ATN 03:3x: no time caps on rounds; night sound fine; no page-file change (system setting, ATN's). GPU ROUND 4 g4_
+    (no cap) + UE SHADER CARVE uec_ (both games' plain pak data, parallel, stops on the quiet lock) running
   - [ ] Full Attila package for all three (memory project_nontw_full_package.md); stamps + watermarks for every game.
     Owner: per-game rounds after the merges
   - [x] SHADER-PACK ROUND DONE (shp_, tools/nontw/shader_packs/report.md; read-only, nothing decrypted): RYSE COMPLETE
