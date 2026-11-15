@@ -950,14 +950,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         on failure, shared opt-in for other D3D11 games; check Tales / Expeditions logs for the same warning. AFTER fx_
         (it edits swapchain_v2.hpp for R19). The installed 11-11 Divinity 1 build can crash any start (ATN told).
         Owner: Divinity 1 implementer (d1_ resumed)
-      - [ ] D1 step 2: census of all 3192 shipped shaders (EngineShaders.pak 65 + Materials.pak 6792 .bshd, 67 DXBC in
-        EoCApp.exe, 8 run-time), tools/d1_census.py -> census.tsv + HDR-clamp list. Owner: d1_
-      - [ ] D1 steps 3-4: test/tw_divinity1 (7 checks, today's mode 1 the failing control); V35 (HableMidGray from the
-        live Params: mid grey 0.036-0.230 over 243 atmospheres) + Extended per-channel Neutwo, each ONCE on Base.Load
-        (0x30A1D40D:25), the game's grade after the curve (today: UC2 Extended -> grade -> UpgradeToneMap -> PsychoV30,
-        tonemappers.hlsli:140-142: stacked, ATN's warning). Owner: d1_
-      - [ ] D1 steps 5-7: page dump + parity_check + tw_install entry; Output SDR / Auto, presets, credits, device_loss,
-        fast dispatch; hooks, frame trace, pass timing, snapshot check. Owner: d1_
+      - [x] D1 STEPS 2-7 MERGED f850f93d (d1_, 8 commits): census 3192 (1497 PS, 1689 VS, 2 CS; 3188 decompiled,
+        tools/nontw/divinity1/census); test/tw_divinity1 (SDR = the game's bytes, mid grey / monotonic / Peak 1000 + 400
+        pass, mode 1 control fails, grade to 9.5e-7); HDR (Extended) mode 3 + HDR (PsychoV35) mode 4 once on Base.Load,
+        Hue Clip 70, no per-channel boosts; V30 / Pragmap kept; Output HDR10 / scRGB / SDR / Auto (Auto default), presets
+        (Recommended V35 bloom 0.25, Reset Extended, SDR, "PsychoV30 (earlier Recommended)"), first start SDR, About
+        (mods/80), device_loss, fast dispatch; frame trace + Time Each Pass + test hooks + applied lines; page dump
+        (tools/tw/page_dump dump_d1), parity_check 'd1' (open 169 = steps 10-12), tw_install 'divinity1' (no helper; prefix
+        'd1 ', stamped folder 'divinity1'); test/tw_d1_swapchain repro (flip chain with a bound / read / viewed back buffer:
+        E_ACCESSDENIED; unbind + Flush: S_OK). Built, not installed.
+      - [ ] D1 install: --first (add-on + DevKit are symlinks in Shipping today), DevKit aside, fresh backup. Owner:
+        coordinator (next install)
+      - [ ] ATN by eye (Divinity 1): Hue Clip 70 in Extended / V35. Owner: ATN
       - [ ] D1 steps 9-10 + Graphics 2 of 2: helper route at 100 % (DLAA / FSR / XeSS, b12 jitter, camera motion, FG,
         Reflex, RR guides); rt_core host (RT shadows into the PCSS mask, RT AO). Owner: d1_ after R1
       - [ ] D1 R1 run (after steps 1 + 7, ATN's OK, no DevKit): main-menu torches (fire values, point lights, run-time
@@ -978,10 +982,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         UAV, PPApplyLUT writes PQ, EoCSight_HDR / EoCFog_HDR / SMAA on PQ / CombineUI_HDR; no FP16, no velocity target;
         fps NOT valid (always-on-top window over the game); files restored 0 differ; ended by Stop-Process (two closes
         ignored).
-      - [ ] Divinity 2 D2-0..D2-6 (offline): census decompile + per-setting table; V35 + Hue Clip at t00:247, presets
-        (old presets + V30 kept until ATN decides); part 6 WARP ramps + stacked-chain control; per-channel shoulder
-        Experimental off; fast::Use, output_encoding, About / credits, EoCSight_HDR, frame trace + cb0 / b12, test_hooks;
-        page dump, parity check, tw_install entry. Owner: d2_ (resumed)
+      - [x] DIVINITY 2 ROUND 1 MERGED 0e7ce1ba (d2_, 9 commits): census 6,444 live decompiled (census_settings /
+        materials / scale.tsv: 829 shaders read the screen size); mode 4 "Vanilla+ (PsychoV35)" at t00:247, Hue Clip 80;
+        Recommended (V35, bloom 0.44) / Reset (Vanilla) / SDR (Off), old presets + V30 kept; Mid Gray row (game HDR 15
+        nits default / SDR picture 20.3); part 6 WARP PASS x86 + amd64 (18 old LUTs bit-equal, V35 grey 15.00, stacked
+        control 6.16 rejected, Off = game bytes); Vanilla Per-Channel Highlights on (acts only below the game's peak);
+        fast dispatch, About (mods/547, ACES notice); frame trace + PPComputeLUT cb0 / b12 + test hooks + applied lines;
+        page dump dump_d2 (61 rows), tw_install 'divinity2'; parity_check 'd2' 6b095e34. Built, not installed.
+      - [ ] ATN DECIDES (Divinity 2): "Exact Colour LUT (Experimental)", off: the game reads its colour LUT half a texel
+        off in every mode (grey 12.2 nits where a mode sets 15; on: 14.98) and it brightens mid tones of every modded
+        mode. Owner: ATN
+      - [ ] Divinity 2 SHARED STEP: output_encoding needs a game-owned-output flag (Apply must not change the swap chain
+        format / colour space: the game makes its own HDR10 chain) + the Rendering Mode key as a Config field (D2's key is
+        "tonemap_type"); until then no first-start SDR switch. Zips ship ACES_LICENSE + RENODX_LICENSE. Owner: coordinator
+        (shared-steps round after the fix merge)
+      - [ ] Divinity 2: the orthographic EoCSight_HDR 0x5C4137E2 (50-nit constants vs 300) needs a trace first. Owner:
+        d2_ after R1b
       - [ ] Divinity 2 later: D2-8b scene R11G11B10F -> RGBA16F (view cloning, Experimental off); D2-9 helper DLAA / FG /
         Reflex on the linear scene before PPApplyLUT; D2-11 RT host (RT sun into the R8 mask, shadow pass skipped under
         RT). Owner: d2_ after R1b
