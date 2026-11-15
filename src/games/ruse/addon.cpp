@@ -14,6 +14,7 @@
 #define DEBUG_LEVEL_0
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
@@ -21,8 +22,10 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <span>
 #include <system_error>
 #include <utility>
@@ -42,6 +45,7 @@
 #include "../../utils/trace.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../../utils/vtable.hpp"
+#include "../twattila/credits.hpp"
 #include "../twattila/frame_generation.hpp"
 #include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -205,7 +209,18 @@ bool OnCreateDepthResource(reshade::api::device* device, reshade::api::resource_
 // so it applies after a restart. The game's own value waits in ReShade.ini [RUSE Option.ini] for the row's return to
 // Game's; a value the menu wrote since replaces it.
 constexpr char GRAPHICS_2_SECTION[] = "Game Settings Above the Menu (Experimental, Restart Required)";
+// Graphics 1 of 2 (Attila's graphics_page sections, in this order): the rays' presets and tests, then one section a job.
+constexpr char RAYS_SECTION[] = "Ray Tracing (Experimental, Restart Required)";
 constexpr char AA_SECTION[] = "Anti-Aliasing and Upscaling";
+constexpr char SHADOWS_SECTION[] = "Shadows";
+constexpr char AO_SECTION[] = "Ambient Occlusion";
+constexpr std::array<std::string_view, 4> GRAPHICS_1_SECTIONS = {RAYS_SECTION, AA_SECTION, SHADOWS_SECTION, AO_SECTION};
+
+// The ray tracing presets (R.U.S.E. has no path tracing): RT/PT every ray-traced row on, No RT/PT every one off.
+const std::vector<std::pair<std::string, float>> RAYS_ON = {
+    {"RuseRayTracedGroundShadows", 1.f}, {"RuseRayTracedObjectShadows", 1.f}, {"RuseRayTracedGroundOcclusion", 1.f}};
+const std::vector<std::pair<std::string, float>> RAYS_OFF = {
+    {"RuseRayTracedGroundShadows", 0.f}, {"RuseRayTracedObjectShadows", 0.f}, {"RuseRayTracedGroundOcclusion", 0.f}};
 constexpr char OPTION_INI_CONFIG[] = "RUSE Option.ini";
 struct GameOption {
   std::vector<std::string> option_keys;  // [advanced_video]
@@ -775,7 +790,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .can_reset = false,
           .label = "Settings Mode",
-          .labels = {"Simple", "Advanced", "Graphics 2 of 2"},
+          .labels = {"Simple", "Advanced", "Graphics 1 of 2", "Graphics 2 of 2"},
           .is_global = true,
       },
       new renodx::utils::settings::Setting{
@@ -1183,18 +1198,50 @@ void ConfigureAddon() {
         .is_visible = []() { return frame_trace_enabled && IsAdvancedSettings(); },
     });
   }
+  // Graphics 1 of 2's ray tracing presets; the rays need the helper beside the add-on (its full download).
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::FULL_DOWNLOAD_NOTE,
+          .section = RAYS_SECTION,
+          .tint = 0xFF5050,
+          .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "RT/PT",
+          .section = RAYS_SECTION,
+          .group = "rays-presets",
+          .tooltip = "Every ray-traced effect on (restart the game).\n"
+                     "The rays need Anti-Aliasing: the game's becomes DLAA (FSR Native AA on AMD and Intel).",
+          .on_change = [] {
+            renodx::utils::settings::UpdateSettings(RAYS_ON);
+            if (auto* anti_aliasing = renodx::utils::settings::FindSetting("RuseAntiAliasing");
+                anti_aliasing != nullptr && anti_aliasing->GetValue() == 0.f) {
+              renodx::utils::settings::UpdateSetting("RuseAntiAliasing", twattila::dlaa_bridge::OnNvidia() ? 1.f : 2.f);
+            }
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "No RT/PT (Recommended)",
+          .section = RAYS_SECTION,
+          .group = "rays-presets",
+          .tooltip = "Every ray-traced effect off (restart the game).",
+          .on_change = [] { renodx::utils::settings::UpdateSettings(RAYS_OFF); },
+      },
+  });
   {
     auto* setting = new renodx::utils::settings::Setting{
         .key = "ReadableDepth",
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 0.f,
         .label = "Readable Scene Depth (Testing)",
-        .section = "Output (Restart Required)",
+        .section = RAYS_SECTION,
         .tooltip = "For testing: makes the game's depth readable for the upcoming anti-aliasing and shadows.\n"
                    "Needs the in-game anti-aliasing off. Off (default) changes nothing. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     readable_depth_enabled = (setting->GetValue() != 0.f);
@@ -1206,12 +1253,11 @@ void ConfigureAddon() {
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 0.f,
         .label = "Anti-Aliasing (Experimental)",
-        .section = "Output (Restart Required)",
+        .section = AA_SECTION,
         .tooltip = "NVIDIA DLAA, AMD FSR or Intel XeSS at native resolution instead of the game's anti-aliasing.\n"
                    "Needs the in-game anti-aliasing off and the helper beside the add-on. Restart after changing this setting.",
         .labels = {"Game's", "DLAA", "FSR Native AA", "XeSS Native AA"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
@@ -1237,12 +1283,11 @@ void ConfigureAddon() {
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 0.f,
         .label = "Anti-Aliasing GPU Sync (Experimental)",
-        .section = "Output (Restart Required)",
+        .section = AA_SECTION,
         .tooltip = "The GPU waits for the anti-aliasing instead of the CPU (faster when it works).\n"
                    "Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
@@ -1263,7 +1308,6 @@ void ConfigureAddon() {
                      "Needs Anti-Aliasing at DLAA, FSR or XeSS and a windowed or borderless game.",
           .labels = {"Off", "2x", "3x", "4x", "5x", "6x", "Dynamic"},
           .is_enabled = [] { return ruse::bridge::state.enabled; },
-          .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
           .key = "Reflex",
@@ -1275,7 +1319,6 @@ void ConfigureAddon() {
           .tooltip = "Less input lag on NVIDIA GPUs: each frame starts only as the GPU needs it.\n"
                      "Boost also keeps the GPU's clocks up. Always on with frame generation.",
           .labels = {"Off", "On", "On + Boost"},
-          .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
           .key = "FrameGenerationFrameLimit",
@@ -1290,7 +1333,6 @@ void ConfigureAddon() {
           .max = 240.f,
           .format = "%d fps",
           .is_enabled = [generating] { return generation_sliders.reflex != 0.f || generating(); },
-          .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
           .key = "FrameGenerationHudRecomposition",
@@ -1302,7 +1344,6 @@ void ConfigureAddon() {
           .tooltip = "Lays the HUD over the generated frames instead of warping it with the scene (no HUD smears).",
           .labels = {"Off", "On"},
           .is_enabled = generating,
-          .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
           .key = "FrameGenerationPreset",
@@ -1316,7 +1357,6 @@ void ConfigureAddon() {
                      "Applies after restarting the game.",
           .labels = {"Driver's", "A", "B", "C"},
           .is_enabled = generating,
-          .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
           .key = "FrameGenerationDebugView",
@@ -1329,7 +1369,6 @@ void ConfigureAddon() {
                      "HUD-less Image: the picture without the HUD. UI Layer: the HUD over the generated frames, in magenta.",
           .labels = {"Off", "HUD-less Image", "UI Layer"},
           .is_enabled = generating,
-          .is_visible = IsAdvancedSettings,
       },
   });
   {
@@ -1338,12 +1377,11 @@ void ConfigureAddon() {
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 0.f,
         .label = "Scene Replay (Testing)",
-        .section = "Output (Restart Required)",
+        .section = RAYS_SECTION,
         .tooltip = "For testing: draws the scene's geometry a second time for the upcoming ray-traced shadows (costs CPU time).\n"
                    "Needs the in-game anti-aliasing off. Off (default) changes nothing. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
@@ -1357,12 +1395,11 @@ void ConfigureAddon() {
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 0.f,
         .label = "Ray-Traced Ground Shadows (Experimental)",
-        .section = "Output (Restart Required)",
+        .section = SHADOWS_SECTION,
         .tooltip = "Ray-traced sun shadows on the ground, added to the game's (costs CPU and GPU time).\n"
                    "Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
@@ -1379,12 +1416,11 @@ void ConfigureAddon() {
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 0.f,
         .label = "Ray-Traced Object Shadows (Experimental)",
-        .section = "Output (Restart Required)",
+        .section = SHADOWS_SECTION,
         .tooltip = "Ray-traced sun shadows on buildings, units and trees, added to the game's (costs GPU time).\n"
                    "Moving units' shadows are a frame late. Needs Ray-Traced Ground Shadows. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
@@ -1402,12 +1438,11 @@ void ConfigureAddon() {
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 0.f,
         .label = "Ray-Traced Ground Ambient Occlusion (Experimental)",
-        .section = "Output (Restart Required)",
+        .section = AO_SECTION,
         .tooltip = "Ray-traced ambient occlusion on the ground: softly darker under buildings, units and trees (costs GPU time).\n"
                    "Needs Ray-Traced Ground Shadows. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
@@ -1425,13 +1460,12 @@ void ConfigureAddon() {
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 0.f,
         .label = "Screen-Space Ground Shadows (Experimental)",
-        .section = "Output (Restart Required)",
+        .section = SHADOWS_SECTION,
         .tooltip = "Bend Studio's screen-space sun shadows on the ground: hills and slopes shadow what lies behind them, added to\n"
                    "the game's (costs GPU time). Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off.\n"
                    "Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
@@ -1569,12 +1603,25 @@ void ConfigureAddon() {
       },
   });
 
-  // Settings Mode's pages: Simple and Advanced the HDR rows, Graphics 2 of 2 the game's settings; About on every page.
+  // Settings Mode's pages: Simple and Advanced the HDR rows (and the output's), Graphics 1 of 2 the add-on's graphics in
+  // their sections' order (each block above added its rows where its restart logic needed them: a stable sort keeps
+  // every other page's order), Graphics 2 of 2 the game's settings; About on every page.
+  const auto graphics_1_rank = [](const renodx::utils::settings::Setting* setting) {
+    if (setting->key == "SettingsMode") return -1;
+    return static_cast<int>(std::ranges::find(GRAPHICS_1_SECTIONS, setting->section) - GRAPHICS_1_SECTIONS.begin());
+  };
+  std::ranges::stable_sort(settings, std::less{}, graphics_1_rank);
   for (auto* setting : settings) {
     if (setting->key == "SettingsMode" || setting->section == "About") continue;
-    const bool game_settings = (setting->section == GRAPHICS_2_SECTION);
-    setting->is_visible = [game_settings, shown = setting->is_visible] {
-      return ((current_settings_mode == 2.f) == game_settings) && (shown == nullptr || shown());
+    float page = -1.f;
+    if (setting->section == GRAPHICS_2_SECTION) {
+      page = 3.f;
+    } else if (graphics_1_rank(setting) < static_cast<int>(GRAPHICS_1_SECTIONS.size())) {
+      page = 2.f;
+    }
+    setting->is_visible = [page, shown = setting->is_visible] {
+      const bool on_page = (page < 0.f ? current_settings_mode < 2.f : current_settings_mode == page);
+      return on_page && (shown == nullptr || shown());
     };
   }
 
