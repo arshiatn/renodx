@@ -38,6 +38,10 @@
 // RENODX_TW_SET=<seconds>:<key>=<value>[;<seconds>:<key>=<value>...] settings changed then, as their sliders would; a
 // button's label as the key presses it; the key "shot" takes a screenshot, the key "trace" writes renodx_trace_now next to
 // the exe (the frame traces' on-demand marker).
+// A game that restarts itself through Steam (Tales of Arise's SteamStub) doesn't inherit the launching shell's
+// environment: the same NAME=value lines in renodx_test_hooks.txt next to the exe set them for the process (and the helper
+// it starts). The first present deletes the file, so a stub process that relaunches leaves it for the game and the next
+// start runs without it.
 namespace twattila::test_hooks {
 
 namespace internal {
@@ -46,6 +50,8 @@ static bool clock_at_first_present = true;
 static std::atomic_uint64_t clock_start = 0;
 // The log lines' prefix.
 static const char* log_name = "[Total War]";
+static std::filesystem::path exe_folder;
+constexpr const wchar_t* HOOKS_FILE = L"renodx_test_hooks.txt";
 
 inline void Change(const std::string& key, float value) {
   bool found = false;
@@ -72,6 +78,12 @@ inline void Change(const std::string& key, float value) {
 }
 
 inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
+  static bool hooks_file_removed = false;
+  if (!hooks_file_removed) {
+    std::error_code ignored;
+    std::filesystem::remove(exe_folder / HOOKS_FILE, ignored);
+    hooks_file_removed = true;
+  }
   if (clock_at_first_present) {
     uint64_t not_started = 0;
     clock_start.compare_exchange_strong(not_started, GetTickCount64());
@@ -112,9 +124,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
       runtime->save_screenshot("auto");
       renodx::utils::log::i(std::format("{} Test: shot pressed.", log_name));
     } else if (key == "trace") {
-      std::wstring exe(32768, L'\0');
-      exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
-      std::ofstream(std::filesystem::path(exe).parent_path() / L"renodx_trace_now", std::ios::binary | std::ios::trunc);
+      std::ofstream(exe_folder / L"renodx_trace_now", std::ios::binary | std::ios::trunc);
       renodx::utils::log::i(std::format("{} Test: renodx_trace_now written.", log_name));
     } else {
       Change(key, std::strtof(changes.c_str() + equals + 1, nullptr));
@@ -136,6 +146,20 @@ inline void StartClock() {
 }
 
 inline void Install(renodx::utils::settings::Settings* settings, bool clock_at_first_present, const char* log_name = "[Total War]") {
+  std::wstring exe(32768, L'\0');
+  exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+  internal::exe_folder = std::filesystem::path(exe).parent_path();
+  if (std::ifstream file(internal::exe_folder / internal::HOOKS_FILE); file) {
+    int lines = 0;
+    for (std::string line; std::getline(file, line);) {
+      if (!line.empty() && line.back() == '\r') line.pop_back();
+      const size_t equals = line.find('=');
+      if (!line.starts_with("RENODX_TW_") || equals == std::string::npos) continue;
+      SetEnvironmentVariableA(line.substr(0, equals).c_str(), line.substr(equals + 1).c_str());
+      ++lines;
+    }
+    renodx::utils::log::i(std::format("{} Test: renodx_test_hooks.txt read ({} lines).", log_name, lines));
+  }
   if (GetEnvironmentVariableA("RENODX_TW_SHOT", nullptr, 0) == 0 && GetEnvironmentVariableA("RENODX_TW_PROFILE", nullptr, 0) == 0
       && GetEnvironmentVariableA("RENODX_TW_SET", nullptr, 0) == 0) {
     return;
