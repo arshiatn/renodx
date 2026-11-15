@@ -37,6 +37,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -3360,8 +3361,14 @@ inline bool Install(HMODULE module) {
   talesofarise::dlss::constants::Use(DLL_PROCESS_ATTACH);
   std::wstring module_path(32768, L'\0');
   module_path.resize(GetModuleFileNameW(module, module_path.data(), static_cast<DWORD>(module_path.size())));
-  // Ray tracing's Agility SDK (DXR 1.2) in the D3D12 folder next to the add-on.
-  talesofarise::rt_shadows::agility_folder = (std::filesystem::path(module_path).parent_path() / L"D3D12" / L"").string();
+  // Ray tracing's Agility SDK (DXR 1.2) in the D3D12 folder next to the add-on. Its factory takes a char path: a folder
+  // name outside the ANSI code page goes without it (the conversion throws std::system_error).
+  try {
+    talesofarise::rt_shadows::agility_folder = (std::filesystem::path(module_path).parent_path() / L"D3D12" / L"").string();
+  } catch (const std::system_error&) {
+    talesofarise::rt_shadows::agility_folder.clear();
+    renodx::utils::log::w("[Tales DLSS] The add-on's folder name has characters outside the system's code page: ray tracing without the Agility SDK (DXR 1.1).");
+  }
   // Engine hooks: installed now, while the game is still creating its device (no level runs yet).
   talesofarise::engine_hooks::Install();
   ApplyTasteSettings();
