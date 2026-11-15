@@ -3,6 +3,7 @@
 
 #include "./pragmap.hlsl"
 #include "../psycho_test30.hlsli"
+#include "../../twattila/psycho35.hlsli"
 
 // UC2 Extended tone and grading paths; native SDR is handled by the pixel shader.
 namespace divinity_tonemap {
@@ -156,6 +157,90 @@ float4 Apply(float3 scene_linear,
   }
   o0 = r0;
   return o0;
+}
+
+// The game's curve: Hable with the live A / B / D (Params.xyz; C 0.1, E 0.01, F 0.3) over Hable(W 11.2), unclamped.
+float3 Hable(float3 x, float4 params) {
+  return ApplyCurve(x, params.x, params.y, 0.1f, params.z, 0.01f, 0.3f)
+         / ApplyCurve(11.2f, params.x, params.y, 0.1f, params.z, 0.01f, 0.3f);
+}
+
+// HDR (Extended): UC2 Extended (Musa & DabVeed) on the scene: the game's Hable up to its knee (third derivative root),
+// its tangent there above it, per channel. Above 1 each channel rolls off to Peak on its own (Neutwo), as SDR clips
+// each channel: bright fire turns yellow / white at its core (Ryse fix32; a brightest-channel roll-off kept fire salmon).
+float3 ApplyExtendedOnScene(float3 scene, float4 params, float peak) {
+  float coeffs[6] = { params.x, params.y, 0.1f, params.z, 0.01f, 0.3f };
+  const float white_precompute = 1.f / ApplyCurve(11.2f, coeffs[0], coeffs[1], coeffs[2], coeffs[3], coeffs[4], coeffs[5]);
+  Uncharted2::Config::Uncharted2ExtendedConfig uc2_config =
+      Uncharted2::Config::CreateUncharted2ExtendedConfig(coeffs, white_precompute);
+  // No usable knee (odd curve constants): plain Hable, only the shoulder below adds HDR.
+  if (!(uc2_config.pivot_point > 0.f && Uncharted2::Derivative(uc2_config.pivot_point, coeffs[0], coeffs[1], coeffs[2],
+                                                                coeffs[3], coeffs[4], coeffs[5]) > 0.f)) {
+    uc2_config.pivot_point = 11.2f;
+  }
+  const float3 color = max(Uncharted2::ApplyExtended(scene, Hable(scene, params), uc2_config), 0.f);
+  const float shoulder = max(peak, 1.0001f) - 1.f;
+  const float3 over = max(color - 1.f, 0.f);
+  return min(color, 1.f)
+         + float3(renodx::tonemap::Neutwo(over.r, shoulder), renodx::tonemap::Neutwo(over.g, shoulder),
+                  renodx::tonemap::Neutwo(over.b, shoulder));
+}
+
+// The game's grade as the stock runs it after its curve, on gamma 2.2 values within 0 - 1: ColorMatrix (its last row
+// the alpha), then the selective colour (toward TargetColor near SourceColor, weight squared). A colour past 1 is
+// graded at its brightest channel's 1 and scaled back: the grade's colour, the curve's brightness (Ryse's colour chart
+// form). Below the stock's 0 clip a channel is 0, as in the game's UNORM target; out-of-gamut parts pass through.
+float4 GradeAfterCurve(float3 color, row_major float4x4 color_matrix, float3 source_color, float3 target_color) {
+  const float scale = max(renodx::math::Max(color), 1.f);
+  const float3 normalized = color / scale;
+  const float3 inside = saturate(normalized);
+  const float4 encoded = float4(pow(inside, 1.f / 2.2f), 1.f);
+  float4 graded = float4(dot(color_matrix._m00_m01_m02_m03, encoded), dot(color_matrix._m10_m11_m12_m13, encoded),
+                         dot(color_matrix._m20_m21_m22_m23, encoded), dot(color_matrix._m30_m31_m32_m33, encoded));
+  const float3 toward_target = clamp(target_color + graded.rgb, -1.f, 1.f) - graded.rgb;
+  const float weight = max(0.f, 1.f - length(graded.rgb - source_color));
+  graded.rgb = max(toward_target * (weight * weight) + graded.rgb, 0.f);
+  return float4((renodx::color::gamma::Decode(graded.rgb, 2.2f) + normalized - inside) * scale, graded.a);
+}
+
+// Within BT.2020 and Peak: past Peak, desaturate keeping luminance and hue; past it in luminance, Peak white (Ryse's).
+float3 LimitToPeak(float3 color, float peak) {
+  float3 color_bt2020 = max(renodx::color::bt2020::from::BT709(color), 0.f);
+  const float y = min(renodx::color::y::from::BT2020(color_bt2020), peak);
+  const float channel_max = renodx::math::Max(color_bt2020);
+  [branch]
+  if (channel_max > peak) {
+    color_bt2020 = y + (color_bt2020 - y) * saturate((peak - y) / (channel_max - y));
+  }
+  return renodx::color::bt709::from::BT2020(color_bt2020);
+}
+
+// HDR (Extended) and HDR (PsychoV35): the curve once on the scene, where the stock calls its Hable, then the game's
+// grade and fade. Fire and sky take their SDR hue through Hue Clip Emulation (toward the hue Hable clipped per channel
+// gives; no per-channel boosts). PsychoV35 sits on Hable's mid gray for the live A / B / D (0.036 - 0.230 over the
+// game's 243 atmospheres).
+float4 ApplyOnScene(float3 scene, float4 params, row_major float4x4 color_matrix, float3 source_color, float3 target_color,
+                    bool psycho35) {
+  const float peak = DIVINITY_PEAK;
+  const float hue_clip = (psycho35 ? SI.hue_clip : SI.ext_hue_clip);
+  float3 untonemapped = scene;
+  [branch]
+  if (hue_clip > 0.f) {
+    untonemapped = renodx::tonemap::psychov::HueTransfer(scene, saturate(Hable(scene, params)), hue_clip);
+  }
+  float3 tonemapped;
+  [branch]
+  if (psycho35) {
+    const float mid_gray = Hable(0.18f, params).x;
+    tonemapped = ApplyPsychoV35(untonemapped, peak, DIVINITY_SDR_OUTPUT, (mid_gray > 0.f) ? mid_gray : 0.18f);
+  } else {
+    tonemapped = ApplyExtendedOnScene(untonemapped, params, peak);
+  }
+  const float4 graded = GradeAfterCurve(tonemapped, color_matrix, source_color, target_color);
+  // The stock's fade lerps its gamma values toward black (alpha toward 1).
+  const float fade = saturate(params.w);
+  const float3 color = LimitToPeak(graded.rgb * pow(1.f - fade, 2.2f), peak);
+  return float4(renodx::color::gamma::EncodeSafe(color, 2.2f), lerp(saturate(graded.a), 1.f, fade));
 }
 
 }

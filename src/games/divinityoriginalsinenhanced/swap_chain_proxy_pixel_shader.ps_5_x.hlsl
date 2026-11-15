@@ -7,6 +7,9 @@ float4 main(float4 vpos: SV_POSITION, float2 uv: TEXCOORD0)
     : SV_TARGET {
   float3 x = t0.Sample(s0, uv).xyz;
 
+  // SDR output: gamma 2.2 as the game's, white = the display's.
+  if (DIVINITY_SDR_OUTPUT) return float4(saturate(x), 1.f);
+
   // Preserve signed BT.709 values while decoding the intermediate.
   x = renodx::color::gamma::DecodeSafe(x);  // game is gamma 2.2
 
