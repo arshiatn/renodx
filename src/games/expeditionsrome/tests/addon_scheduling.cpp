@@ -34,6 +34,8 @@
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
 #include "../addon.cpp"
+// The former DLSS add-on's code (one add-on since the UE4 merge round).
+using namespace expeditionsrome::dlss_graphics;  // NOLINT(google-build-using-namespace)
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif

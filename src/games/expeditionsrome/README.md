@@ -2,6 +2,11 @@
 
 The game has no HDR option; RenoDX outputs HDR10/scRGB through a swap chain proxy.
 
+**One add-on** (UE4 merge round, 2026-11-15): the former DLSS add-on (`renodx-expeditionsrome_dlss.addon64`: DLAA /
+DLSS, the live render scale, frame generation, the live graphics settings and ray tracing) is part of this add-on
+(`dlss_graphics.hpp`, its history in `README_DLSS.md`); its keys stay (`[Rome AA]`, `[Rome Graphics Values]`). Remove
+the old `renodx-expeditionsrome_dlss.addon64` from the game folder (the install tool renames it aside).
+
 Windows display scaling above 100%: "ExpeditionsRome-Win64-Shipping.exe" (`ExpeditionsRome\Binaries\Win64`) ->
 Properties -> Compatibility -> Change high DPI settings -> Override high DPI scaling behavior, scaled by Application.
 Without it the game renders at the scaled size (4K at 175%: 2194x1234), Unreal's buffers are rounded up to 4 pixels

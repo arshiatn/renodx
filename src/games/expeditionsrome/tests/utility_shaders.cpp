@@ -5,7 +5,7 @@
  * From an x64 VS developer prompt at the repository root (join these lines):
  * clang-cl /nologo /std:c++20 /EHsc /MTd /DWIN32=1 /D_WINDOWS /D_DEBUG
  *   /D_ITERATOR_DEBUG_LEVEL=0 /DNOMINMAX
- *   src/games/expeditionsrome_dlss/tests/utility_shaders.cpp
+ *   src/games/expeditionsrome/tests/utility_shaders.cpp
  *   /Fobuild/utility_shaders.obj /Febuild/utility_shaders.exe
  *   /link d3d11.lib dxgi.lib d3dcompiler.lib
  * Run build/utility_shaders.exe with the addon source folder as its argument.
@@ -135,7 +135,7 @@ void ExpectMotion(const std::array<uint16_t, 2>& actual, float x, float y, const
 
 int wmain(int argc, wchar_t** argv) {
   try {
-    const std::filesystem::path shader_folder = (argc > 1 ? argv[1] : L"D:/Dev/renodx/src/games/expeditionsrome_dlss");
+    const std::filesystem::path shader_folder = (argc > 1 ? argv[1] : L"D:/Dev/renodx/src/games/expeditionsrome");
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
     const bool debug_available = SUCCEEDED(D3D11CreateDevice(

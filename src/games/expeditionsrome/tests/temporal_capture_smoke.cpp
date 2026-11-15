@@ -5,10 +5,10 @@
  * From an x64 VS developer prompt at the repository root, after configuring
  * the addon target:
  * clang-cl /nologo /std:c++20 /EHsc /MTd /DWIN32=1 /D_WINDOWS /D_DEBUG
- *   /D_ITERATOR_DEBUG_LEVEL=0 /DNOMINMAX /Ibuild/expeditionsrome_dlss.include
+ *   /D_ITERATOR_DEBUG_LEVEL=0 /DNOMINMAX /Ibuild/expeditionsrome.include
  *   /Iexternal/Detours/include /Iexternal/json/include /Iexternal/frozen/include
  *   /Iexternal/gtl/include /Iexternal/reshade
- *   src/games/expeditionsrome_dlss/tests/temporal_capture_smoke.cpp
+ *   src/games/expeditionsrome/tests/temporal_capture_smoke.cpp
  *   /Fobuild/temporal_capture_smoke.obj /Febuild/temporal_capture_smoke.exe
  *   /link d3d11.lib dxgi.lib user32.lib
  * (Join the command lines above into one line.)

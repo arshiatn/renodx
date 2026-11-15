@@ -1,5 +1,10 @@
 {
   "$schema": "https://clshortfuse.github.io/renodx/renodx-metadata-schema.json",
   "id": "expeditionsrome",
-  "title": "Expeditions: Rome"
+  "title": "Expeditions: Rome",
+  "deploy": {
+    "game_exe": "ExpeditionsRome-Win64-Shipping.exe",
+    "api": "d3d11",
+    "architecture": ["x64"]
+  }
 }

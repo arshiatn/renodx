@@ -8,7 +8,7 @@
  * clang-cl /nologo /std:c++20 /MTd /D_DEBUG /D_ITERATOR_DEBUG_LEVEL=0 /DNOMINMAX ^
  *   /DRENODX_NGX_RUNTIME_PATH=L\"D:/Dev/renodx/external/DLSS/lib/Windows_x86_64/rel\" ^
  *   /I external/DLSS/include /I external/reshade ^
- *   src/games/expeditionsrome_dlss/tests/ngx_backend_smoke.cpp ^
+ *   src/games/expeditionsrome/tests/ngx_backend_smoke.cpp ^
  *   /Fo"%TEMP%/rome_ngx_backend_smoke.obj" /Fe"%TEMP%/rome_ngx_backend_smoke.exe" ^
  *   /link external/DLSS/lib/Windows_x86_64/x64/nvsdk_ngx_s_dbg_iterator0.lib ^
  *   d3d11.lib dxgi.lib advapi32.lib user32.lib

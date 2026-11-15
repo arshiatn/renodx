@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#define ImTextureID ImU64
+#pragma once
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -34,10 +34,8 @@
 #include <vector>
 
 #include "../../utils/command_action.hpp"
-#include "../../utils/command_action_fast.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
-#include "../../utils/state.hpp"
 #include "../talesofarise_dlss/code_patch.hpp"
 #include "../talesofarise_dlss/constant_mirror.hpp"
 #include "../talesofarise_dlss/constant_readback.hpp"
@@ -54,7 +52,12 @@
 
 static_assert(_ITERATOR_DEBUG_LEVEL == 0, "DLAA must match the shared STL layout of Release RenoDX addons");
 
-namespace {
+// The former DLSS add-on (renodx-expeditionsrome_dlss.addon64, one add-on with the HDR part since the UE4 merge round):
+// DLAA / DLSS at Unreal's TAA (in-process NGX), the live render scale and Halton jitter, frame generation, the live
+// graphics settings (engine cvars) and ray tracing (the Total War helper). The HDR part's AttachAddon calls Install
+// after its own attach (its mods::shader attached state and command_action, draw_dispatch the fast dispatch) and
+// Uninstall before its detach; the overlay keeps its own window and keys ([Rome AA], [Rome Graphics Values]).
+namespace expeditionsrome::dlss_graphics {
 
 using Microsoft::WRL::ComPtr;
 using Context = renodx::utils::command_action::CommandContext<renodx::utils::command_action::DispatchArguments>;
@@ -98,7 +101,7 @@ struct PresetSettings {
 // UE pads its render-size buffers to multiples of 4 (8 in later versions: switched to once seen). DLSS render sizes
 // are whole units of the output's aspect ratio in those multiples: the view fills its buffer and both axes get exactly
 // the same scale (no custom-scale shimmer; ATN, Shogun 2).
-std::atomic<uint32_t> buffer_multiple = 4;
+static std::atomic<uint32_t> buffer_multiple = 4;
 
 constexpr std::array<PresetSettings, 4> PRESETS = {{
     {.value = NVSDK_NGX_DLSS_Hint_Render_Preset_E, .label = "E (CNN, Fastest, Worst looking, not recommended)"},
@@ -150,7 +153,7 @@ struct Runtime {
   bool backend_failed = false;
 };
 
-struct State {
+static struct State {
   std::shared_mutex mutex;
   std::unique_ptr<Runtime> runtime = std::make_unique<Runtime>();
   reshade::api::device* device = nullptr;
@@ -172,23 +175,23 @@ struct State {
   uint64_t copied_per_frame = 0;
 } state;
 
-std::atomic<AAMode> requested_mode = AAMode::OFF;
-std::atomic<uint32_t> preset = NVSDK_NGX_DLSS_Hint_Render_Preset_L;
+static std::atomic<AAMode> requested_mode = AAMode::OFF;
+static std::atomic<uint32_t> preset = NVSDK_NGX_DLSS_Hint_Render_Preset_L;
 // nvngx_dlss.dll found at load (overlay warnings); the backend looks again when it starts.
-expeditionsrome::dlss::DlssLibrary dlss_library;
-bool advanced = false;  // overlay settings mode
+static expeditionsrome::dlss::DlssLibrary dlss_library;
+static bool advanced = false;  // overlay settings mode
 // Skip the stock TAA dispatch once constants are known before it (CPU copy trusted).
-std::atomic_bool replace_taa = true;
+static std::atomic_bool replace_taa = true;
 // Active input size the temporal pass last received (width | height << 32), even when
 // rejected, and how many temporal passes were seen.
-std::atomic<uint64_t> seen_input = 0;
-std::atomic<uint64_t> seen_frames = 0;
+static std::atomic<uint64_t> seen_input = 0;
+static std::atomic<uint64_t> seen_frames = 0;
 // Present (+1) at which the Advanced overlay was last drawn; timings are measured only then.
-std::atomic<uint64_t> overlay_frame = 0;
+static std::atomic<uint64_t> overlay_frame = 0;
 
 // Why NVIDIA's history restarted, and UE's jitter pattern length (frames until its first
 // offset repeats); NVIDIA wants at least 8 * (output / input)^2.
-struct Diagnostics {
+static struct Diagnostics {
   std::atomic<uint64_t> camera_cuts = 0;
   std::atomic<uint64_t> skipped_frames = 0;
   std::atomic<uint64_t> restarts = 0;
@@ -196,7 +199,7 @@ struct Diagnostics {
   uint32_t jitter_frames = 0;
   std::atomic<uint32_t> jitter_phases = 0;
 } diagnostics;
-bool attached = false;
+static bool attached = false;
 
 // UE 4.23 keeps the jitter position in a signed byte (FSceneViewState +0x4AA, loaded with movsx). Past 128 positions
 // (8 * (output / input)^2: below 25% scale) it turns negative and Halton(position + 1 <= 0) is 0, so the jitter stops
@@ -207,7 +210,7 @@ constexpr std::array<std::string_view, 2> JITTER_POSITION_LOADS = {
     "CC 0F BE 81 ?? ?? 00 00 C3",                  // FSceneViewState::GetCurrentTemporalAASampleIndex
 };
 constexpr size_t SIGNED_LOAD_OPCODE = 2;  // 0F BE (movsx) -> 0F B6 (movzx)
-std::array<talesofarise::code_patch::CodePatch, JITTER_POSITION_LOADS.size()> jitter_position_patches;
+static std::array<talesofarise::code_patch::CodePatch, JITTER_POSITION_LOADS.size()> jitter_position_patches;
 
 // DLAA / DLSS use NVIDIA's jitter (as Tales): Halton (2, 3) over the whole pixel, 8 * (output / input)^2 positions (8
 // for DLAA), any length. UE's own: Halton only while it upscales and at most 255 positions (below 18% it repeats
@@ -221,7 +224,7 @@ constexpr std::string_view JITTER_STORE =
     "F3 0F 11 BF ?? ?? 00 00 48 8D 9F ?? ?? 00 00 F3 44 0F 11 87 ?? ?? 00 00 F3 0F 58 FF";
 constexpr size_t JITTER_STORE_SIZE = 8;  // movss [rdi + disp32], xmm7
 constexpr size_t JUMP_SIZE = 5;          // jmp rel32
-struct HaltonJitter {
+static struct HaltonJitter {
   talesofarise::code_patch::CodePatch patch;  // the jump into the block
   float* sample = nullptr;                       // x, y in input pixels
   uint32_t positions = 0;
@@ -230,7 +233,7 @@ struct HaltonJitter {
 
 // Live render scale (engine_scale.hpp): the AA mode's percentage is written into
 // r.ScreenPercentage; Off or disabling puts the game's own value back.
-struct LiveScale {
+static struct LiveScale {
   talesofarise::engine_scale::Finder finder;
   bool enabled = true;
   float custom = 50.f;
@@ -451,14 +454,14 @@ constexpr auto OUTPUT_SCALING = [] {
   }
   return scaling;
 }();
-bool effects_at_output = true;
+static bool effects_at_output = true;
 // DLSS Frame Generation (Experimental, Tales' frame_generation.hpp): set at launch (config FrameGeneration).
-bool frame_generation = false;
+static bool frame_generation = false;
 // Ray tracing (Experimental, ray_tracing.hpp): its settings (config RayTraced*, PathTracing*), installed when an effect
 // is on at launch.
-twattila::rt_scene::Settings ray_tracing_settings;
-float ray_traced_bounce_strength = 1.f;
-bool ray_tracing_installed = false;
+static twattila::rt_scene::Settings ray_tracing_settings;
+static float ray_traced_bounce_strength = 1.f;
+static bool ray_tracing_installed = false;
 
 // UE 4.23's View rows frame generation reads (Tales' 4.21 rows + 4: ClipToWorld came before them).
 constexpr uint32_t VIEW_VIEW_TO_CLIP_NO_AA = 32;
@@ -472,7 +475,7 @@ constexpr std::array<uint32_t, 10> TONEMAPPER_SHADERS = {0x316D5B96u, 0x70CBF75E
                                                          0xA77C9003u, 0xB176941Cu, 0xAAAEB4F0u, 0x2501C25Fu, 0x37FDFDF2u};
 
 // Frame generation's inputs from this frame's DLSS evaluation, submitted at present.
-struct FrameGenerationFrame {
+static struct FrameGenerationFrame {
   std::shared_mutex mutex;
   talesofarise::frame_generation::Inputs inputs;
   uint64_t frame = UINT64_MAX;
@@ -500,7 +503,7 @@ struct GraphicsEntry {
   float game_value = 0.f;
   float written = 0.f;
 };
-struct Graphics {
+static struct Graphics {
   talesofarise::engine_cvars::Console console;
   bool searched = false;
   bool available = false;
@@ -508,7 +511,7 @@ struct Graphics {
   std::array<GraphicsEntry, GRAPHICS_SETTINGS.size()> entries;
 } graphics;
 // "game" for the game's own value (not a number: it reads back as unset).
-void SaveChoice(const GraphicsEntry& entry) {
+inline void SaveChoice(const GraphicsEntry& entry) {
   const std::string value = (entry.choice == 0 ? std::string("game") : std::format("{:g}", entry.choices[entry.choice - 1]));
   reshade::set_config_value(nullptr, GRAPHICS_SECTION, entry.key.c_str(), value.c_str());
 }
@@ -520,20 +523,19 @@ void SaveChoice(const GraphicsEntry& entry) {
 // Sharpest) and no minimum; otherwise the game's values.
 constexpr std::array<const wchar_t*, 2> TEXTURE_LOD_BIAS_CVARS = {L"r.ViewTextureMipBias.Offset", L"r.ViewTextureMipBias.Min"};
 constexpr float LOWEST_MIP_BIAS = -16.f;  // D3D11's lowest; no minimum in practice
-struct TextureLodBias {
+static struct TextureLodBias {
   std::array<talesofarise::engine_cvars::Cvar, TEXTURE_LOD_BIAS_CVARS.size()> cvars;
   std::array<float, TEXTURE_LOD_BIAS_CVARS.size()> game_values = {};
   bool controlling = false;
   int choice = 2;  // 0 off (the game's), 1 matched, 2 sharper, 3 sharpest; Present thread (the overlay runs in it)
 } texture_lod_bias;
-void RestoreTextureLodBias() {
+inline void RestoreTextureLodBias() {
   if (!texture_lod_bias.controlling) return;
   for (size_t index = 0; index < TEXTURE_LOD_BIAS_CVARS.size(); ++index) {
     texture_lod_bias.cvars[index].Set(texture_lod_bias.game_values[index]);
   }
   texture_lod_bias.controlling = false;
 }
-bool registered = false;
 
 struct Frame {
   std::unique_ptr<Runtime> runtime;
@@ -580,7 +582,7 @@ struct Frame {
   }
 };
 
-void SetStatus(std::string_view message, uint64_t generation = UINT64_MAX) {
+inline void SetStatus(std::string_view message, uint64_t generation = UINT64_MAX) {
   bool changed = false;
   {
     const std::unique_lock lock(state.mutex);
@@ -595,7 +597,7 @@ void SetStatus(std::string_view message, uint64_t generation = UINT64_MAX) {
 
 // `keep_nvidia`: AA mode changes keep NVIDIA's runtime initialized (initializing takes over a
 // second); it re-creates its feature for a new size or mode by itself.
-void Reset(bool keep_nvidia = false) {
+inline void Reset(bool keep_nvidia = false) {
   std::unique_ptr<Runtime> retired;
   {
     const std::unique_lock lock(state.mutex);
@@ -617,7 +619,7 @@ void Reset(bool keep_nvidia = false) {
   // NGX teardown is outside the module lock, just like evaluation.
 }
 
-void FinishFrame(Context&, const void* data) {
+inline void FinishFrame(Context&, const void* data) {
   auto* frame = const_cast<Frame*>(static_cast<const Frame*>(data));
   auto& runtime = *frame->runtime;
   runtime.constant_readback.Cancel();
@@ -644,7 +646,7 @@ void FinishFrame(Context&, const void* data) {
 
 // Validation, NVIDIA evaluation and commit. `replace`: before the stock dispatch, which is
 // skipped on success, NVIDIA writing the game's output; otherwise after it, merged with its alpha.
-bool Evaluate(Frame* frame, bool replace) {
+inline bool Evaluate(Frame* frame, bool replace) {
   auto& runtime = *frame->runtime;
   auto* context = frame->context.Get();
   if (frame->sample_cpu) frame->evaluation_started = std::chrono::steady_clock::now();
@@ -954,7 +956,7 @@ bool Evaluate(Frame* frame, bool replace) {
   return true;
 }
 
-void EvaluateFrame(Context&, const void* data) {
+inline void EvaluateFrame(Context&, const void* data) {
   if (requested_mode.load() == AAMode::OFF) return;
   auto* frame = const_cast<Frame*>(static_cast<const Frame*>(data));
   {
@@ -1156,7 +1158,7 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
   return {.post_callback = EvaluateFrame, .post_data = data, .finalize_callback = FinishFrame};
 };
 
-void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
+inline void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   if (swapchain->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   const auto desc = swapchain->get_device()->get_resource_desc(swapchain->get_back_buffer(0));
   Reset();
@@ -1181,7 +1183,7 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   state.height = desc.texture.height;
 }
 
-void OnDestroySwapchain(reshade::api::swapchain* swapchain, bool) {
+inline void OnDestroySwapchain(reshade::api::swapchain* swapchain, bool) {
   bool matching;
   {
     const std::unique_lock lock(state.mutex);
@@ -1198,7 +1200,7 @@ void OnDestroySwapchain(reshade::api::swapchain* swapchain, bool) {
   }
 }
 
-void OnDestroyDevice(reshade::api::device* device) {
+inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() == reshade::api::device_api::d3d11) {
     expeditionsrome::dlss::contact_shadows::Release(reinterpret_cast<ID3D11Device*>(device->get_native()));
     if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Release(device);
@@ -1214,7 +1216,7 @@ void OnDestroyDevice(reshade::api::device* device) {
   }
 }
 
-void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   // Debug: also renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt).
   talesofarise::frame_trace::OnPresent();
@@ -1519,7 +1521,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
 }
 
-void OnOverlay(reshade::api::effect_runtime*) {
+inline void OnOverlay(reshade::api::effect_runtime*) {
   // Timings are only shown (and measured) in Advanced.
   if (advanced) {
     const std::shared_lock lock(state.mutex);
@@ -1919,16 +1921,8 @@ constexpr auto OnTonemapper = []<typename Context>(Context&) -> renodx::utils::c
   }};
 };
 
-}  // namespace
-
-extern "C" __declspec(dllexport) const char* NAME = "RenoDX Expeditions: Rome DLAA / DLSS (experimental)";
-extern "C" __declspec(dllexport) const char* DESCRIPTION = "Native DLAA, DLSS Ultra Quality/Quality/Balanced/Performance/Ultra Performance and custom 1-100% scaling with live render scale and preset choice, and graphics settings beyond the game's menu. Independent of HDR, with stock TAA fallback.";
-
-extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
-  if (!registered) {
-    if (!reshade::register_addon(module)) return false;
-    registered = true;
-  }
+// `module`: this add-on (frame generation's files beside it).
+inline bool Install(HMODULE module) {
   if (attached) return true;
   // Settings apply at launch, without opening the overlay.
   int saved_mode = 0;
@@ -2106,16 +2100,12 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   }
   talesofarise::dlss::constants::log_tag = "[Rome AA constants]";
   talesofarise::dlss::constants::Use(DLL_PROCESS_ATTACH);
-  renodx::utils::state::Use(DLL_PROCESS_ATTACH);
-  renodx::utils::command_action::Use(DLL_PROCESS_ATTACH);
-  // The fast draw dispatch alone: every callback here has a shader hash (ray tracing gates rt_core's own).
-  renodx::utils::command_action::fast::Use(DLL_PROCESS_ATTACH);
   attached = true;
   renodx::utils::log::i("[Rome DLAA] Native DLAA and DLSS Ultra Quality/Quality/Balanced/Performance/Ultra Performance/Custom 1-100% (all six Ultra/Fast compute hashes; exact/4/8-pixel allocations). Live render scale; preset choice; graphics settings. Runtime NVIDIA scale limits; exact CB readbacks and asynchronous phase timings; Release-compatible shared ABI.");
   return true;
 }
 
-extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
+inline void Uninstall() {
   if (attached) {
     renodx::utils::command_action::Unregister(OnCommand);
     renodx::utils::command_action::Unregister(OnTonemapper);
@@ -2123,9 +2113,6 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     renodx::utils::command_action::Unregister(expeditionsrome::dlss::contact_shadows::OnLightRectangle);
     if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Uninstall();
     talesofarise::frame_trace::Stop();
-    renodx::utils::command_action::fast::Use(DLL_PROCESS_DETACH);
-    renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
-    renodx::utils::state::Use(DLL_PROCESS_DETACH);
     talesofarise::dlss::constants::Use(DLL_PROCESS_DETACH);
     reshade::unregister_overlay("Rome DLAA (experimental)", OnOverlay);
     reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
@@ -2146,20 +2133,6 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     attached = false;
   }
   twattila::dlaa_bridge::Shutdown();
-  if (registered) {
-    reshade::unregister_addon(module);
-    registered = false;
-  }
 }
 
-BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved) {
-  if (reason == DLL_PROCESS_ATTACH) {
-    registered = reshade::register_addon(module);
-    return registered ? TRUE : FALSE;
-  }
-  if (reason == DLL_PROCESS_DETACH && reserved == nullptr && registered) {
-    reshade::unregister_addon(module);
-    registered = false;
-  }
-  return TRUE;
-}
+}  // namespace expeditionsrome::dlss_graphics

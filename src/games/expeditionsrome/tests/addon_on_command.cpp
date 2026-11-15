@@ -5,10 +5,10 @@
  * From an x64 VS developer prompt at the repository root, after configuring
  * the addon target (join the compiler lines into one command):
  * clang-cl /nologo /std:c++20 /EHsc /MTd /DWIN32=1 /D_WINDOWS /D_DEBUG
- *   /D_ITERATOR_DEBUG_LEVEL=0 /DNOMINMAX /Ibuild/expeditionsrome_dlss.include
+ *   /D_ITERATOR_DEBUG_LEVEL=0 /DNOMINMAX /Ibuild/expeditionsrome.include
  *   /Iexternal/Detours/include /Iexternal/json/include /Iexternal/frozen/include
  *   /Iexternal/gtl/include /Iexternal/DLSS/include /Iexternal/reshade
- *   src/games/expeditionsrome_dlss/tests/addon_on_command.cpp
+ *   src/games/expeditionsrome/tests/addon_on_command.cpp
  *   /Fobuild/addon_on_command.obj /Febuild/addon_on_command.exe
  *   /link d3d11.lib dxgi.lib user32.lib advapi32.lib
  *   external/DLSS/lib/Windows_x86_64/x64/nvsdk_ngx_s_dbg_iterator0.lib
@@ -44,6 +44,8 @@
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
 #include "../addon.cpp"
+// The former DLSS add-on's code (one add-on since the UE4 merge round).
+using namespace expeditionsrome::dlss_graphics;  // NOLINT(google-build-using-namespace)
 
 namespace mock {
 using namespace reshade::api;

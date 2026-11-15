@@ -26,6 +26,7 @@
 #include "../talesofarise/test_hooks.hpp"
 #include "../twattila/draw_dispatch.hpp"
 #include "../twattila/output_encoding.hpp"
+#include "./dlss_graphics.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -462,8 +463,14 @@ void ConfigureAddon() {
   if (configured) return;
 
   BuildRuntimeData();
-  // Without the DLSS add-on (the HDR-only snapshot), after Settings Mode.
-  settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote(L"renodx-expeditionsrome_dlss.addon64"));
+  // Without the helper (the HDR-only snapshot), after Settings Mode.
+  settings.insert(settings.begin() + 1, new renodx::utils::settings::Setting{
+                                            .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                                            .label = twattila::credits::FULL_DOWNLOAD_NOTE,
+                                            .section = "General",
+                                            .tint = talesofarise::hdr_only::WARNING_TINT,
+                                            .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
+                                        });
 
   // Shaders cb
   renodx::mods::shader::expected_constant_buffer_space = 50;
@@ -588,7 +595,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const res
   shader_injection.ssao_frame = std::fmod(shader_injection.ssao_frame + 1.f, 64.f);
 }
 
-bool AttachAddon() {
+bool AttachAddon(HMODULE addon_module) {
   if (attached) return true;
 
   ConfigureAddon();
@@ -604,6 +611,9 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The fast draw dispatch, with the gate of view cloning's command-wide callback (resource upgrades).
   twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
+  // DLSS, graphics and ray tracing (the former DLSS add-on): after the shader mod, so its callbacks run after this part's
+  // on the same shaders, as when it loaded second.
+  expeditionsrome::dlss_graphics::Install(addon_module);
 
   attached = true;
   return true;
@@ -612,6 +622,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  expeditionsrome::dlss_graphics::Uninstall();
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
@@ -633,7 +644,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
     addon_registered = true;
   }
 
-  return AttachAddon();
+  return AttachAddon(addon_module);
 }
 
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE) {
