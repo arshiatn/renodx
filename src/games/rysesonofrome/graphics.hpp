@@ -415,6 +415,11 @@ struct GameConsole {
   const int* restricted = nullptr;
   std::string details;  // where, or why not; for the log
 } game_console;  // Present thread (the overlay runs in it)
+// Test runs: RENODX_TW_CVARS=<name>=<value>[;<name>=<value>...] (the shell's, or a line of renodx_test_hooks.txt, which
+// twattila::test_hooks reads into the environment) sets those console variables once the game draws its world, through
+// the console as the quality options do (system.cfg's lines are read before the cvars exist: "Unknown command"); then
+// the quality options take them as the game's own. E.g. sys_spec=1 (Low), r_ShadersLogCacheMisses=1.
+bool test_cvars_set = false;  // Present thread
 // The vegetation groups' sprite distance (StatInstGroup update +0x16EB00) is x the render width / 1024, or x
 // e_ForceDetailLevelForScreenRes / 1024 when that is set (0: the current width). DLSS below the display width moved
 // trees to their sprites (which cast no shadows) sooner: shadows ended closer at every smaller scale. While the addon
@@ -500,7 +505,7 @@ struct QualityOption {
 };
 // Cvars that read back unchanged are refused (e.g. e_DecalsRange, flags 0x800000; left out). Past the engine's caps
 // (the camera's far plane, LOD 0, the tessellation factor 64, every texture resident) higher factors change nothing.
-std::array<QualityOption, 32> quality_options = {{
+std::array<QualityOption, 33> quality_options = {{
     {.label = "Graphics preset (in-game)",
      .key = "EngineQuality",
      .tooltip = "The game's own graphics preset. Its menu goes up to High; Very High is the engine's highest.",
@@ -928,6 +933,19 @@ std::array<QualityOption, 32> quality_options = {{
      .absolute = true,
      .experimental = true,
      .atn_choice = 1},
+    // "Enables (1) or disables (0) rendering of particles in half resolution" (0 at Very High, flags 0x30080: the console
+    // takes it); r_ParticlesHalfResForce (every effect) is one of the refused 0x800000 cvars.
+    {.label = "Half-resolution particles",
+     .key = "ParticlesHalfRes",
+     .tooltip = "The effects the game made for it (smoke, dust, fog) drawn at half resolution: faster where they fill the\n"
+                "screen, softer. Not proven in game; may change nothing.",
+     .choices = "In-game setting (full resolution)\0" "Half\0",
+     .choice_count = 2,
+     .preset_choices = {0, 0, 0, 0},
+     .values = {0.f, 1.f},
+     .absolute = true,
+     .experimental = true,
+     .cvars = {{.name = "r_ParticlesHalfRes", .is_float = false, .absolute = true, .values = {0.f, 1.f}, .from_choice = 1}}},
     // No cvars: particle_counts.hpp sets the limit (SetLightLimit), OnLightingDispatch swaps the lighting shader.
     {.label = "Light limit",
      .key = "LightLimit",
@@ -1070,9 +1088,13 @@ struct BiasedSampler {
   reshade::api::sampler_desc desc;  // the game's
   reshade::api::sampler clone = {0};
   float clone_bias = 0.f;
+  bool trilinear = false;  // a wrapping trilinear sampler: biased with lod_bias_all_textures only
 };
 renodx::utils::data::ParallelFlatHashMap<uint64_t, BiasedSampler, std::shared_mutex> biased_samplers;
 std::atomic<float> texture_lod_bias = 0.f;  // 0: none
+// Texture LOD Bias on All Textures (Experimental; the page's AntiAliasingTextureLodBiasTrilinear row, as Attila's): the
+// game's wrapping trilinear samplers biased too. 1: on.
+float lod_bias_all_textures = 0.f;
 int texture_lod_bias_choice = 2;  // Present thread (the overlay runs in it): 0 off, 1 matched, 2 sharper, 3 sharpest
 thread_local bool creating_clone = false;  // the clone's own init_sampler
 // While DLSS / DLAA runs (AA mode not Off), renderer statics written directly (FindIntCvar; the game's values come
@@ -1335,11 +1357,16 @@ bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, u
   return false;
 }
 
-// Texture LOD bias (biased_samplers): the game's anisotropic samplers.
+// Texture LOD bias (biased_samplers): the game's anisotropic samplers and its wrapping trilinear ones.
 void OnInitSampler(reshade::api::device* device, const reshade::api::sampler_desc& desc, reshade::api::sampler sampler) {
   if (creating_clone || device->get_api() != reshade::api::device_api::d3d11) return;
-  if (desc.filter != reshade::api::filter_mode::anisotropic && desc.filter != reshade::api::filter_mode::min_mag_anisotropic_mip_point) return;
-  biased_samplers.insert_or_assign(sampler.handle, BiasedSampler{.desc = desc});
+  const bool trilinear = desc.filter == reshade::api::filter_mode::min_mag_mip_linear && desc.address_u == reshade::api::texture_address_mode::wrap
+                         && desc.address_v == reshade::api::texture_address_mode::wrap;
+  if (!trilinear && desc.filter != reshade::api::filter_mode::anisotropic
+      && desc.filter != reshade::api::filter_mode::min_mag_anisotropic_mip_point) {
+    return;
+  }
+  biased_samplers.insert_or_assign(sampler.handle, BiasedSampler{.desc = desc, .trilinear = trilinear});
 }
 
 void OnDestroySampler(reshade::api::device* device, reshade::api::sampler sampler) {
@@ -1370,13 +1397,15 @@ void OnPushDescriptors(reshade::api::command_list* cmd_list, reshade::api::shade
     bound[index] = reinterpret_cast<ID3D11SamplerState*>(samplers[index].handle);
     reshade::api::sampler_desc desc = {};
     reshade::api::sampler clone = {0};
+    bool trilinear = false;
     const bool biased = biased_samplers.if_contains(samplers[index].handle, [&](const auto& entry) {
       desc = entry.second.desc;
+      trilinear = entry.second.trilinear;
       if (entry.second.clone_bias == bias) {
         clone = entry.second.clone;
       }
     });
-    if (!biased) continue;
+    if (!biased || (trilinear && lod_bias_all_textures == 0.f)) continue;
     if (clone.handle == 0u) {
       desc.mip_lod_bias += bias;
       creating_clone = true;
@@ -2850,6 +2879,26 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         renodx::utils::log::i("[Ryse DLSS] ", language.cvar, ": ", (current != nullptr ? current : "(none)"), " -> ", wanted);
       }
       language.applied = true;
+    }
+  }
+
+  if (void* console = ((game_draws && !test_cvars_set) ? FindGameConsole() : nullptr); console != nullptr) {
+    test_cvars_set = true;
+    std::array<char, 4096> value = {};
+    const DWORD length = GetEnvironmentVariableA("RENODX_TW_CVARS", value.data(), static_cast<DWORD>(value.size()));
+    for (const auto part : std::views::split(std::string_view(value.data(), (length < value.size() ? length : 0)), ';')) {
+      const std::string_view pair(part.begin(), part.end());
+      const size_t equals = pair.find('=');
+      if (equals == std::string_view::npos) continue;
+      const std::string name(pair.substr(0, equals));
+      void* cvar = GetGameCvar(console, name.c_str());
+      if (cvar == nullptr) {
+        renodx::utils::log::w("[Ryse DLSS] Test: no console variable ", name);
+        continue;
+      }
+      (*reinterpret_cast<void (***)(void*, const char*)>(cvar))[CVAR_SET_STRING / sizeof(void*)](cvar, std::string(pair.substr(equals + 1)).c_str());
+      const char* now = (*reinterpret_cast<const char* (***)(void*)>(cvar))[CVAR_GET_STRING / sizeof(void*)](cvar);
+      renodx::utils::log::i("[Ryse DLSS] Test: ", name, " = ", (now != nullptr ? now : "(none)"));
     }
   }
 

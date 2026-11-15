@@ -91,6 +91,14 @@ struct ShaderInjectData {
   float v35_highlight_saturation;
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
+
+  // Light Bounce, Attila's rows (appended; light_bounce.hpp, read on the CPU).
+  float light_bounce_temporal;        // 1: the last frames' bounce kept (the noise moving every frame)
+  float light_bounce_checkerboard;    // 1: with temporal, half the texels traced each frame
+  float light_bounce_backface;        // 1: light from a surface's back side rejected
+  float light_bounce_auto_thickness;  // 1: each occluder as thick as it is wide
+  // GT-VBAO's Auto Thickness (appended; ssdo_bitmask.hlsli): 1 on.
+  float ssao_auto_thickness;
 };
 
 #define SI  shader_injection
