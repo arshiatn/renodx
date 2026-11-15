@@ -24,7 +24,10 @@ void main(
   r0.xyz = Base.Load(r0.xyz).xyz;
   float3 scene_linear = r0.xyz;
   [branch]
-  if (HDR == 1.f) {
+  if (TONEMAP_MODE >= TONEMAP_EXTENDED) {
+    o0 = divinity_tonemap::ApplyOnScene(scene_linear, Params, ColorMatrix, SourceColor, TargetColor,
+                                        TONEMAP_MODE == TONEMAP_PSYCHO35);
+  } else if (HDR == 1.f) {
     o0 = divinity_tonemap::Apply(scene_linear, Params, ColorMatrix, SourceColor, TargetColor,
                                TONEMAP_MODE == TONEMAP_PRAGMAP);
   } else {

@@ -6,7 +6,7 @@ struct ShaderInjectData {
   float diffuse_white_nits;
   float graphics_white_nits;
   float swap_chain_encoding;
-  float tonemap_type; // 0 = SDR, 1 = UC2 Extended / PsychoV30, 2 = UC2 Extended / Pragmap.
+  float tonemap_type; // 0 = SDR, 1 = UC2 Extended / PsychoV30, 2 = UC2 Extended / Pragmap, 3 = Extended, 4 = PsychoV35.
 
   float vignette;
   float bloom;
@@ -42,6 +42,8 @@ struct ShaderInjectData {
   float v35_highlight_saturation;
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
+
+  float ext_hue_clip;              // HDR (Extended)'s Hue Clip Emulation, 0 - 1
 };
 
 #define SI shader_injection
@@ -49,9 +51,15 @@ struct ShaderInjectData {
 #define TONEMAP_SDR 0.f
 #define TONEMAP_PSYCHO 1.f
 #define TONEMAP_PRAGMAP 2.f
+// Each on the scene once, at the stock curve's place, the game's grade after it (shaders/tonemappers.hlsli ApplyOnScene).
+#define TONEMAP_EXTENDED 3.f
+#define TONEMAP_PSYCHO35 4.f
 #define TONEMAP_MODE (SI.tonemap_type)
 #define HDR (TONEMAP_MODE == TONEMAP_SDR ? 0.f : 1.f)
 #define HDR_PEAK (SI.peak_white_nits / SI.diffuse_white_nits)
+// Output SDR: the HDR modes fitted into an SDR display (Peak 1, BT.709).
+#define DIVINITY_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
+#define DIVINITY_PEAK (DIVINITY_SDR_OUTPUT ? 1.f : max(HDR_PEAK, 1.f))
 #define HDR_INTSCALING (SI.diffuse_white_nits / SI.graphics_white_nits)
 
 // PsychoV30 receives linear BT.709, uses the exposed grading controls, and

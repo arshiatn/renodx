@@ -1,6 +1,6 @@
 // Divinity: Original Sin EE's tone map (0x30A1D40D, PPFilmicToneMappingWithColorCorrection) on WARP: the game's own
 // bytes (the shader as the game ships it, read by run.ps1 outside the repo) against the add-on's, compiled by run.ps1
-// with the build's flags. tests.exe <game cso> <add-on cso>.
+// with the build's flags.
 // Input: the scene-linear Base the stock loads (64 colours: grey, 48 hues, fire, sky, skin, foliage, black ... x 48
 // exposure steps, 2^-8 to 2^10.8 of the colour, grey 0.18 at row 20). Params from the game's atmospheres (the six most
 // common Hable A / B / D and the extremes of mid gray 0.036 and 0.230); ColorMatrix identity and a saturation 1.97 one
@@ -11,8 +11,11 @@
 //    Control (must fail): today's mode 1 (UC2 Extended + UpgradeToneMap + PsychoV30 on its result).
 // 3. Extended: equal to the game's Hable below its pivot (within 1e-3); fire (1, 0.4, 0.1) turns yellow / white above 1
 //    (G / R rises toward 1 as SDR's clip does), the per-channel shoulder.
-// 4. The grade past 1 (saturation 1.97, Black Cove's colours): every colour's luminance never falls as exposure rises.
-// 5. Report: OkLab distance to the game's SDR picture below its clip, and fire / sky hue at Hue Clip 0 - 1.
+// 4. The grade alone (grade.hlsl, GradeAfterCurve): the stock's grade below 1 (ColorMatrix identity, saturation 1.97 and
+//    0.34, Black Cove's colours) within 1e-4, and continuous where the brightest channel crosses 1.
+// 5. Report: luminance falls along the ramps against the game's own, OkLab distance to the game's SDR picture below its
+//    clip, and fire / sky hue at Hue Clip 0 - 1 for both modes (the defaults come from it).
+// tests.exe <game cso> <add-on cso> <grade cso>.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -228,8 +231,71 @@ static divinity::ShaderInjectData Injection(float mode, float peak_nits, float h
       .contrast = 1.f, .purity_scale = 1.f, .brazier_boost_enabled = 0.f, .hue_clip = hue_clip, .v35_exposure = 1.f,
       .v35_highlights = 1.f, .v35_shadows = 1.f, .v35_contrast = 1.f, .v35_highlight_contrast = 1.f,
       .v35_shadow_contrast = 1.f, .v35_flare = 0.f, .v35_saturation = 1.f, .v35_dechroma = 0.f,
-      .v35_highlight_saturation = 1.f, .v35_roll_off = 1.f, .v35_gamut_compression = 1.f,
+      .v35_highlight_saturation = 1.f, .v35_roll_off = 1.f, .v35_gamut_compression = 1.f, .ext_hue_clip = hue_clip,
   };
+}
+
+// The grade alone (grade.hlsl): one GradeAfterCurve per case.
+struct GradeCase {
+  Float4 color;
+  std::array<Float4, 4> color_matrix;
+  Float4 source_color;
+  Float4 target_color;
+};
+
+static std::vector<Float4> RunGrade(const std::filesystem::path& path, const std::vector<GradeCase>& cases) {
+  const std::vector<char> code = ReadFile(path);
+  REQUIRE(!code.empty());
+  ComPtr<ID3D11ComputeShader> shader;
+  REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, &shader)));
+  const auto count = static_cast<UINT>(cases.size());
+  const D3D11_BUFFER_DESC input_desc = {static_cast<UINT>(count * sizeof(GradeCase)), D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0,
+                                        D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, sizeof(GradeCase)};
+  const D3D11_SUBRESOURCE_DATA input_init = {cases.data(), 0, 0};
+  ComPtr<ID3D11Buffer> input;
+  REQUIRE(SUCCEEDED(device->CreateBuffer(&input_desc, &input_init, &input)));
+  ComPtr<ID3D11ShaderResourceView> input_view;
+  REQUIRE(SUCCEEDED(device->CreateShaderResourceView(input.Get(), nullptr, &input_view)));
+  const D3D11_BUFFER_DESC output_desc = {static_cast<UINT>(count * sizeof(Float4)), D3D11_USAGE_DEFAULT, D3D11_BIND_UNORDERED_ACCESS, 0,
+                                         D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, sizeof(Float4)};
+  ComPtr<ID3D11Buffer> output;
+  REQUIRE(SUCCEEDED(device->CreateBuffer(&output_desc, nullptr, &output)));
+  ComPtr<ID3D11UnorderedAccessView> output_view;
+  REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(output.Get(), nullptr, &output_view)));
+  context->ClearState();
+  context->CSSetShader(shader.Get(), nullptr, 0);
+  context->CSSetShaderResources(0, 1, input_view.GetAddressOf());
+  context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
+  context->Dispatch((count + 63) / 64, 1, 1);
+  const D3D11_BUFFER_DESC staging_desc = {static_cast<UINT>(count * sizeof(Float4)), D3D11_USAGE_STAGING, 0, D3D11_CPU_ACCESS_READ, 0, 0};
+  ComPtr<ID3D11Buffer> staging;
+  REQUIRE(SUCCEEDED(device->CreateBuffer(&staging_desc, nullptr, &staging)));
+  context->CopyResource(staging.Get(), output.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  REQUIRE(SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped)));
+  std::vector<Float4> results(count);
+  std::memcpy(results.data(), mapped.pData, count * sizeof(Float4));
+  context->Unmap(staging.Get(), 0);
+  return results;
+}
+
+// The stock's grade on a colour within 0 - 1 (linear in, linear out), as its shader runs it after the curve, without its
+// UNORM target's clip at 1 (a grade that brightens a channel past 1 keeps it in HDR).
+static Float3 StockGrade(const Float3& color, const Globals& globals) {
+  std::array<float, 4> encoded = {std::pow(color[0], 1.f / 2.2f), std::pow(color[1], 1.f / 2.2f), std::pow(color[2], 1.f / 2.2f), 1.f};
+  Float3 graded = {};
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 4; ++c) graded[r] += globals.color_matrix[r][c] * encoded[c];
+  }
+  float distance = 0.f;
+  for (int c = 0; c < 3; ++c) distance += (graded[c] - globals.source_color[c]) * (graded[c] - globals.source_color[c]);
+  const float weight = std::max(0.f, 1.f - std::sqrt(distance));
+  Float3 linear = {};
+  for (int c = 0; c < 3; ++c) {
+    const float toward_target = std::clamp(globals.target_color[c] + graded[c], -1.f, 1.f) - graded[c];
+    linear[c] = std::pow(std::max(toward_target * weight * weight + graded[c], 0.f), 2.2f);
+  }
+  return linear;
 }
 
 // Check 2 / 3 on one mode: true when every part holds (the control's result is asserted false by the caller).
@@ -270,7 +336,7 @@ static OnSceneResult CheckOnScene(ID3D11PixelShader* shader, float mode, float p
 }
 
 int main(int argc, char** argv) {
-  REQUIRE(argc >= 3);
+  REQUIRE(argc >= 4);
   REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context)));
   // A full-screen triangle with the stock's interface (SV_Position, TexCoord0).
   constexpr char VERTEX[] =
@@ -346,22 +412,70 @@ int main(int argc, char** argv) {
     CHECK(first_over > 0.f && top > first_over + 0.2f && top > 0.75f);
   }
 
-  // 4. The grade past 1: luminance never falls along any colour's ramp.
-  for (const float mode : {3.f, 4.f}) {
+  // 4. The grade alone: the stock's below 1 (within 1e-4), continuous where the brightest channel crosses 1.
+  {
+    std::vector<GradeCase> cases;
+    std::vector<Globals> grades;
+    for (const float saturation : {1.f, 1.97f, 0.34f}) {
+      for (const bool black_cove : {false, true}) grades.push_back(MakeGlobals(ATMOSPHERES[0], saturation, black_cove));
+    }
+    std::vector<Float3> colours;
+    for (UINT i = 0; i < 48; ++i) colours.push_back(Hue(i / 48.f));
+    colours.push_back({1.f, 0.4f, 0.1f});
+    colours.push_back({0.35f, 0.6f, 1.f});
+    colours.push_back({1.f, 1.f, 1.f});
+    colours.push_back({1.f, 0.9f, 0.85f});
+    // Each colour at its brightest channel 0.5, just below 1, just above 1, 3.
+    constexpr std::array<float, 4> LEVELS = {0.5f, 1.f - 1e-4f, 1.f + 1e-4f, 3.f};
+    for (const Globals& globals : grades) {
+      for (const Float3& colour : colours) {
+        const float colour_max = std::max({colour[0], colour[1], colour[2]});
+        for (const float level : LEVELS) {
+          const float scale = level / colour_max;
+          cases.push_back({.color = {colour[0] * scale, colour[1] * scale, colour[2] * scale, 0.f}, .color_matrix = globals.color_matrix,
+                           .source_color = globals.source_color, .target_color = globals.target_color});
+        }
+      }
+    }
+    const auto results = RunGrade(argv[3], cases);
+    float worst_stock = 0.f;
+    float worst_jump = 0.f;
+    for (size_t i = 0; i < cases.size(); i += LEVELS.size()) {
+      const Globals& globals = grades[i / (LEVELS.size() * colours.size())];
+      for (size_t level = 0; level < 2; ++level) {
+        const Float3 colour = {cases[i + level].color[0], cases[i + level].color[1], cases[i + level].color[2]};
+        const Float3 stock_grade = StockGrade(colour, globals);
+        for (int c = 0; c < 3; ++c) worst_stock = std::max(worst_stock, std::abs(stock_grade[c] - results[i + level][c]));
+      }
+      for (int c = 0; c < 3; ++c) {
+        worst_jump = std::max(worst_jump, std::abs(results[i + 2][c] - results[i + 1][c]) / std::max(std::abs(results[i + 1][c]), 1e-3f));
+      }
+    }
+    std::printf("4. grade: largest difference to the stock's below 1 %.3g, largest relative jump across 1 %.3g (%zu cases)\n",
+                worst_stock, worst_jump, cases.size());
+    CHECK(worst_stock <= 1e-4f);
+    CHECK(worst_jump <= 2e-3f);
+  }
+
+  // Report: luminance falls along the exposure ramps, ours against the game's SDR picture (the selective colour can dim a
+  // colour as it passes Source on its own).
+  for (const float mode : {0.f, 3.f, 4.f}) {
     int falls = 0;
     for (const Atmosphere& atmosphere : {ATMOSPHERES[0], ATMOSPHERES[7]}) {
-      const auto ours = Draw(addon.Get(), MakeGlobals(atmosphere, 1.97f, true), Injection(mode, 1000.f, 0.8f));
+      const auto ours = Draw(mode == 0.f ? stock.Get() : addon.Get(), MakeGlobals(atmosphere, 1.97f, true), Injection(mode, 1000.f, 0.8f));
       for (UINT column = 0; column < BLACK; ++column) {
         float last = -1.f;
         for (UINT row = 0; row < HEIGHT; ++row) {
-          const float y = Luminance(Linear(At(ours, column, row)));
+          const Float4 encoded = At(ours, column, row);
+          const float y = Luminance(Linear(mode == 0.f ? Float4{std::clamp(encoded[0], 0.f, 1.f), std::clamp(encoded[1], 0.f, 1.f),
+                                                                  std::clamp(encoded[2], 0.f, 1.f), 1.f}
+                                                         : encoded));
           if (y < last * 0.995f - 1e-5f) ++falls;
           last = std::max(last, y);
         }
       }
     }
-    std::printf("4. mode %.0f, saturation 1.97 + Black Cove's colours: %d falls along the ramps\n", mode, falls);
-    CHECK(falls == 0);
+    std::printf("   %s, saturation 1.97 + Black Cove's colours: %d falls along the ramps\n", mode == 0.f ? "the game's SDR" : (mode == 3.f ? "Extended" : "PsychoV35"), falls);
   }
 
   // 5. Report.
@@ -387,13 +501,14 @@ int main(int argc, char** argv) {
     const UINT bright = 34;
     std::printf("   hue (OkLab degrees) at row %u: SDR fire %.1f sky %.1f\n", bright, HueDegrees(Linear(At(game, FIRE, bright))),
                 HueDegrees(Linear(At(game, SKY, bright))));
-    for (const float hue_clip : {0.f, 0.4f, 0.8f, 1.f}) {
-      const auto ours = Draw(addon.Get(), globals, Injection(4.f, 1000.f, hue_clip));
-      std::printf("   PsychoV35 Hue Clip %.1f: fire %.1f sky %.1f\n", hue_clip, HueDegrees(Linear(At(ours, FIRE, bright))),
-                  HueDegrees(Linear(At(ours, SKY, bright))));
+    for (const float mode : {4.f, 3.f}) {
+      for (int step = 0; step <= 10; ++step) {
+        const float hue_clip = step * 0.1f;
+        const auto ours = Draw(addon.Get(), globals, Injection(mode, 1000.f, hue_clip));
+        std::printf("   %s Hue Clip %.1f: fire %.1f sky %.1f\n", mode == 4.f ? "PsychoV35" : "Extended ", hue_clip,
+                    HueDegrees(Linear(At(ours, FIRE, bright))), HueDegrees(Linear(At(ours, SKY, bright))));
+      }
     }
-    const auto extended = Draw(addon.Get(), globals, Injection(3.f, 1000.f, 0.f));
-    std::printf("   Extended: fire %.1f sky %.1f\n", HueDegrees(Linear(At(extended, FIRE, bright))), HueDegrees(Linear(At(extended, SKY, bright))));
   }
 
   std::printf(failures == 0 ? "tw_divinity1: all checks passed\n" : "tw_divinity1: %d checks failed\n", failures);

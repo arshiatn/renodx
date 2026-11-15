@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -26,6 +27,7 @@
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
 const std::string build_date = __DATE__;
@@ -64,8 +66,23 @@ bool ShowPragmapSettings() {
   return IsAdvancedSettings() && IsPragmap();
 }
 
+bool ShowExtendedSettings() {
+  return IsAdvancedSettings() && shader_injection.tonemap_type == TONEMAP_EXTENDED;
+}
+
+bool ShowPsychoV35Settings() {
+  return IsAdvancedSettings() && shader_injection.tonemap_type == TONEMAP_PSYCHO35;
+}
+
+// Hue Clip Emulation's default for both modes (test/tw_divinity1's hue report: fire closest to the game's SDR picture).
+constexpr float HUE_CLIP_DEFAULT = 70.f;
+
+// A saved value outside the modes (an old build's) becomes the default mode.
 float NormalizeTonemapMode(float value) {
-  if (value == TONEMAP_SDR || value == TONEMAP_PRAGMAP) return value;
+  if (value == TONEMAP_SDR || value == TONEMAP_PSYCHO || value == TONEMAP_PRAGMAP || value == TONEMAP_EXTENDED
+      || value == TONEMAP_PSYCHO35) {
+    return value;
+  }
   return TONEMAP_PSYCHO;
 }
 
@@ -512,10 +529,28 @@ renodx::utils::settings::Settings settings = {
         .can_reset = true,
         .label = "Rendering Mode",
         .section = "General",
-        .tooltip = "Choose native SDR, UC2 Extended / PsychoV30, or UC2 Extended / Pragmap.",
+        .tooltip = "SDR (Native): the game's own picture.\n"
+                   "HDR (Extended): the game's curve, extended past white.\n"
+                   "HDR (PsychoV35): Musa's PsychoV35 on the game's mid gray.",
         .labels = {"SDR (Native)",
                    "HDR (UC2 Extended / PsychoV30)",
-                   "HDR (UC2 Extended / Pragmap)"},
+                   "HDR (UC2 Extended / Pragmap)",
+                   "HDR (Extended)",
+                   "HDR (PsychoV35)"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "ext_hue_clip",
+        .binding = &shader_injection.ext_hue_clip,
+        .default_value = HUE_CLIP_DEFAULT,
+        .label = "Hue Clip Emulation",
+        .section = "Extended",
+        .tooltip = std::format("Bright colors take the hue SDR clips them to: fire more orange / yellow, sky more cyan.\n"
+                               "0 = off. Default {:.0f}: the closest to the SDR picture.",
+                               HUE_CLIP_DEFAULT),
+        .max = 100.f,
+        .is_enabled = ShowExtendedSettings,
+        .parse = [](float value) { return value * 0.01f; },
+        .is_visible = ShowExtendedSettings,
     },
 
     // Presets //////////////////////////////////////////////////////////////////////////////////////
@@ -906,6 +941,9 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
 
         reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
 
+        twattila::psycho35::InsertBefore(&settings, "PsychoV30",
+                                         twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
+
         initialized = true;
       }
 
@@ -920,7 +958,6 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   }
 
   renodx::utils::settings::Use(fdw_reason, &settings, nullptr);
-  // Preserve SDR/Pragmap selections; migrate previous Psycho ID 3 to default ID 1.
   if (fdw_reason == DLL_PROCESS_ATTACH) {
     const float mode = NormalizeTonemapMode(shader_injection.tonemap_type);
     if (mode != shader_injection.tonemap_type) {
