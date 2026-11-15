@@ -683,6 +683,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         0x6A057F66 (clamps HDR at 1), tiled lighting CS 0x488BF732 / 0xCDB59F36, SSDO 0x06EE6A8E / 0xA65B60AF /
         0xC17645D2 -> GT-VBAO, classic SSAO 0x4FB1027A + blur 0x3453A92B, 14 sun shadow masks -> PCSS, 0x44D3DE7F in
         game; half-res shadows trace first. Owner: next Ryse round (after R0)
+    - [x] UE4 MERGED 727a6f2c (uem_, 15 commits; all add-ons + build32 built 06:2x, unload harness PASS 0 problems for
+      Tales (no ini; RT + RR + FG ini) and Expeditions, control 160 problems): Expeditions and Tales one add-on each
+      (Graphics 1 of 2 / 2 of 2, [<Game> AA] migration tests PASS, every old HDR key kept, DLSS / RR / FSR / XeSS / FG /
+      Reflex through the helper, Attila's RT tools at parity, Time Each Pass, no rays without the helper); shared
+      graphics_page flags (has_screen_space_shadows / has_gtvbgi / rays_tested), hdr_only::AmbientOcclusionRows /
+      FullDownloadNote, talesofarise_dlss/upscaling.hpp shared; Tales Output default Auto (hdr_encoding hook gone, FG
+      scRGB via fg_hdr10). CMake NGX block deleted in the merge (no add-on links NGX). Skills / tools lose the _dlss targets.
+      - [ ] Tales' rays still run in process (rt_shadows.hpp on its own D3D12 device): move to the helper (rt_scene host
+        like Expeditions' ray_tracing.hpp: scene from the depth prepass, sun from the lighting pass, outputs t40-t44,
+        bounce resolve); until then rt_scene-only rows hidden, no Upscaling Debug View. Owner: next UE round
+      - [ ] ATN DECIDES: Tales' rays now need an upscaler on (before: also with the game's TAA); Path Tracing Bounces
+        capped at 2 in both games (was 1..4); RT/PT preset = Attila's values (RR F, range 50, softness 0.8, bounces 1;
+        preset E -> K on migration), by eye. Owner: ATN
+      - [ ] Dead files: talesofarise_dlss/rr_d3d12.hpp (no user), ngx_backend.hpp, 0x7A1E0D42.ps_5_0.hlsl (folder has no
+        target): delete or keep. Owner: coordinator, release round
+      - [ ] Expeditions left: the three max(0) carve materials (G1 data run), micromaps start off, no Bend SSS / GT-VBGI,
+        NRD default, RT AO range minimum 0.5, no pre-exposure to the helper, expeditionsrome/tests not compiled, debug
+        views. Owner: next UE round (after G1)
+      - [ ] Data runs (helper DLAA / DLSS Quality, RR, FG 2x, Tales' in-process RT together; ReShade.log status lines,
+        talesofarise_pass_timing.txt, HDR-only start; Expeditions' five carve materials' first-draw lines): Tales G1 + G2,
+        Expeditions G1. Owner: coordinator (non-TW data runs)
+      - [ ] tw_install.py entries for Tales / Expeditions (one add-on, old _dlss renamed aside): dry run. Owner:
+        coordinator at the non-TW install
     (merged from "RYSE MERGE ROUND (one add-on): rys_'s plan in its report: mo...": RYSE MERGE ROUND (one add-on):
     rys_'s plan in its report: move _dlss files + 0x52594501-06 / 0x7A1E0D40-42 shaders into rysesonofrome, the DLSS
     addon.cpp as a header, Graphics 1 of 2 (AA / DLSS / FG / RT presets + RT rows) and 2 of 2 (32 game settings +
