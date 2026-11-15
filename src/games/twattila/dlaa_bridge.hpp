@@ -300,6 +300,11 @@ struct Bridge {
   std::array<uint64_t, 64> published_handles = {};
   size_t published_count = 0;
   bool published_read = false;
+  // Prepare's textures that could not be made (short of video memory, likely), tried again at another size or device, or
+  // once `texture_retry_ms` (GetTickCount64) passed: the session's failures so far and the size that failed.
+  uint32_t texture_failures = 0;
+  uint64_t texture_retry_ms = 0;
+  std::array<UINT, 2> texture_failed_size = {};
 };
 
 static Bridge bridge;
@@ -721,6 +726,25 @@ inline void Publish(const SharedSet& set, std::span<const uint64_t> transferred 
   ++shared.generation;
 }
 
+// An empty set for the helper, read at once: the last set's handles and what it opened of them go there (DLSS's feature
+// too, the rest with its idle release). Nothing when the last set was empty or the helper is gone.
+inline void PublishEmptySet() {
+  if (bridge.shared == nullptr || bridge.shared->color == 0 || bridge.watchdog.failed.load()
+      || WaitForSingleObject(bridge.process, 0) == WAIT_OBJECT_0) {
+    return;
+  }
+  auto& shared = *bridge.shared;
+  shared.rt_request = 0;
+  shared.fg_request = 0;
+  shared.ray_reconstruction = 0;
+  shared.value = 0;
+  bridge.value = 0;
+  Publish({});
+  ResetEvent(bridge.done);
+  SetEvent(bridge.request);
+  Answer(20000);
+}
+
 }  // namespace internal
 
 // The shared objects for `width` x `height` on `device` (with Ray Reconstruction's guides when `guides`, ray tracing's
@@ -746,6 +770,10 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
       && bridge.fg_backend == fg_backend && bridge.rr_extra == rr_extra
       && (!bridge.fence || bridge.fence->GetCompletedValue() != UINT64_MAX)) {
     return true;
+  }
+  if (bridge.texture_failures != 0 && bridge.device == device && bridge.texture_failed_size == std::array{width, height}
+      && GetTickCount64() < bridge.texture_retry_ms) {
+    return false;
   }
   // The helper done with the last request before `shared` changes (a steady one can have opened a lost scene again: the
   // opening's time); the new objects' first requests wait for answers.
@@ -932,19 +960,33 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
                     && SUCCEEDED(device->CreateFence(0, D3D11_FENCE_FLAG_SHARED, IID_PPV_ARGS(bridge.fence.GetAddressOf())))
                     && SUCCEEDED(bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &fence_handle));
   // A helper that ended meanwhile (a start that failed: nothing can be duplicated into it) is said as that, with its own
-  // status and log, and what it was given went with it: nothing to close there.
-  const auto fail = [&](const char* status) {
-    if (WaitForSingleObject(bridge.process, 0) != WAIT_OBJECT_0) return internal::Fail(status);
-    transferred_count = 0;
-    bridge.watchdog.failed.store(true);
-    internal::HelperLost();
+  // status and log, and what it was given went with it: nothing to close there. Otherwise its last set goes there too (it
+  // would keep the set's textures for the session), and textures that could not be made are tried again at another size or
+  // in TEXTURE_RETRY_MS, TEXTURE_RETRIES times a session (Bridge::texture_failures).
+  constexpr uint32_t TEXTURE_RETRIES = 3;
+  constexpr uint64_t TEXTURE_RETRY_MS = 30000;
+  const auto fail = [&](const char* status, bool retryable) {
+    if (WaitForSingleObject(bridge.process, 0) == WAIT_OBJECT_0) {
+      transferred_count = 0;
+      bridge.watchdog.failed.store(true);
+      internal::HelperLost();
+      return false;
+    }
+    internal::PublishEmptySet();
+    if (!retryable || bridge.texture_failures == TEXTURE_RETRIES) return internal::Fail(status);
+    ++bridge.texture_failures;
+    bridge.texture_retry_ms = GetTickCount64() + TEXTURE_RETRY_MS;
+    bridge.texture_failed_size = {width, height};
+    bridge.status = std::format("{} Tried again at the next resize or in 30 s ({} of {}).", status,
+                                bridge.texture_failures, TEXTURE_RETRIES);
+    renodx::utils::log::w("[Total War] ", bridge.status);
     return false;
   };
-  if (!made) return fail("DLAA: the shared textures could not be made.");
+  if (!made) return fail("DLAA: the shared textures could not be made.", true);
   bridge.rt_light_tile_row = (ray_tracing ? height : 0u);
   shared.rt_light_tile_row = bridge.rt_light_tile_row;
   shared.fence = transfer(fence_handle);
-  if (shared.fence == 0) return fail("DLAA: could not transfer the shared fence.");
+  if (shared.fence == 0) return fail("DLAA: could not transfer the shared fence.", false);
   // A second handle of the fence stays here for the recovery (without one nothing frees this set if the helper stops).
   HANDLE recovery = nullptr;
   if (FAILED(bridge.fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &recovery))) {
@@ -1434,21 +1476,13 @@ inline void Release(bool tell_helper = false) {
   bridge.ray_tracing = false;
   bridge.reflections = false;
   bridge.hit_distance_written = false;
-  if (!tell_helper) {
+  if (tell_helper) {
+    // Also after a failure on this side: a helper still running would keep the last set's textures for the session.
+    internal::PublishEmptySet();
+  } else {
     bridge.rt_atlas = {};
     bridge.device.Reset();
   }
-  if (!tell_helper || bridge.failed) return;
-  auto& shared = *bridge.shared;
-  shared.rt_request = 0;
-  shared.fg_request = 0;
-  shared.ray_reconstruction = 0;
-  shared.value = 0;
-  bridge.value = 0;
-  internal::Publish({});
-  ResetEvent(bridge.done);
-  SetEvent(bridge.request);
-  internal::Answer(20000);
 }
 
 // The addon's unload (AddonUninit, after its users of the bridge are unregistered; never DllMain: it waits for the
@@ -1473,6 +1507,9 @@ inline void Shutdown() {
   bridge.started = false;
   bridge.failed = false;
   bridge.watchdog.failed.store(false);
+  bridge.texture_failures = 0;
+  bridge.texture_retry_ms = 0;
+  bridge.texture_failed_size = {};
 }
 
 }  // namespace twattila::dlaa_bridge

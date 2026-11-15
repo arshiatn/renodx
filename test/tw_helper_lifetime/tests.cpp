@@ -340,9 +340,11 @@ int main(int argc, char** argv) {
     Check(transfer_calls == failure, "reached requested transfer failure");
     Check(GetProcessHandleCount(bridge.process, &helper_after), "helper handles after rollback");
     Check(helper_before == helper_after, "remote handles rolled back without leak");
-    Check(bridge.shared->generation == 321 && bridge.shared->color == 654 && bridge.shared->fence == 0 && bridge.shared->rt_positions == 0
+    // The helper's last set (here its numbers only) goes too: an empty set, which it read.
+    Check(bridge.shared->generation == 322 && bridge.shared->color == 0 && bridge.shared->fence == 0 && bridge.shared->rt_positions == 0
           && bridge.width == 0 && !bridge.color.texture && !bridge.fence && bridge.watchdog.recovery == nullptr,
-          "partial resources discarded without publication");
+          "partial resources discarded, the helper's last set replaced by an empty one");
+    Check(bridge.failed == (failure == 26u), "a texture's failure is tried again, the fence's turns the bridge off");
     bridge_api::Shutdown();
     CheckClosed();
   }
@@ -532,5 +534,32 @@ int main(int argc, char** argv) {
     CheckClosed();
     std::printf("PASS: %s: both sets' waits freed by the recovery process, logged once\n", test.name);
   }
+
+  // Textures that could not be made: tried again at another size or after 30 s, three times a session, a line each. Last:
+  // a 32-bit process may find no room afterwards for a later case's 512 MB ray tracing texture.
+  StartReady(game, "start texture retry test");
+  {
+    const unsigned warnings_before_retry = warnings.load();
+    const auto fail_texture = [&](UINT size) {
+      fail_transfer_at = 1;
+      transfer_calls = 0;
+      const bool prepared = bridge_api::Prepare(device, size, size);
+      fail_transfer_at = 0;
+      return prepared;
+    };
+    Check(!fail_texture(16) && !bridge.failed && bridge.texture_failures == 1, "a texture that cannot be shared: tried again later");
+    Check(!fail_texture(16) && transfer_calls == 0 && bridge.texture_failures == 1, "the same size waits");
+    bridge.texture_retry_ms = GetTickCount64();
+    Check(bridge_api::Prepare(device, 16, 16) && bridge.width == 16, "the same size again after the wait");
+    Check(bridge_api::Prepare(device, 32, 32), "a set the next failure frees in the helper");
+    Check(!fail_texture(48) && bridge.texture_failures == 2 && bridge.shared->color == 0, "the next size tried, the helper's set freed");
+    Check(!fail_texture(64) && bridge.texture_failures == 3 && !bridge.failed, "the third try");
+    Check(!fail_texture(80) && bridge.texture_failures == 3 && bridge.failed, "then off for the session");
+    Check(warnings.load() == warnings_before_retry + 4, "one line for each failure");
+  }
+  bridge_api::Shutdown();
+  CheckClosed();
+  Check(bridge.texture_failures == 0, "a new session tries again");
+  std::puts("PASS: textures that could not be made are tried again three times a session, the helper's last set freed each time");
   return 0;
 }
