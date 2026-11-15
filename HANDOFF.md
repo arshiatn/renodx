@@ -22,7 +22,7 @@ HDR later, 24cdfb9c).
 ## OPEN (owners)
 Pointer index of every open box below (short title | owner, file order); the detailed line stays where it is.
 Rebuild it when boxes change; the boxes themselves are the record.
-- END BENCH (94 starts, tools/tw/bench/end_of_batch_1115.md) after g4_ | coordinator
+- END BENCH part 2 (sets 3-8: g2a_torch .. grass_dump, end_of_batch_1115_run2.ps1) after the merges | coordinator
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace ... | coordinator (D: WH3 data run; E)
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not ... | coordinator, next CPU round
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN ... | ATN
@@ -439,6 +439,7 @@ heading text are in HANDOFF_ARCHIVE.md)
   - (moved under "ONE Constantinople bench": Bench variants ready: tools/tw/bench/variants/cpu4_round4.js...)
   - [ ] Author packages (tools/tw/testbin/cpu4_heapfix/: a_memfast_65_128, b_loopfetch_animation, c_x87_truncation
     question; plus for_author_pf): bench numbers into the NOTEs, then ATN sends Owner (audit 11-15): coordinator (bench numbers into the NOTEs after the end bench), then ATN sends.
+    Bench numbers 06:2x (END BENCH PART 1 line): b gains 0.15-0.62 ms in every round; c no gain; a worse in max CPU.
     (merged from "ATN, when sending the heapfix package: ask the author whethe...": ATN, when sending the heapfix
     package: ask the author whether we may patch the x87 block over heapfix's bytes (+0x17f6515) and about his disabled
     prefetch site in the animation pack loop)
@@ -660,6 +661,25 @@ heading text are in HANDOFF_ARCHIVE.md)
     Tales' in-process D3D12 RT out, unload harness); the root CMake NGX block loses each game when its helper route lands
     (an upstream snapshot can't link NGX). Then data runs (Tales G1 + G2, Expeditions G1, Ryse R0 with the shader-name
     cvars), fixes, stamp, install. Owner: coordinator
+    - [x] RYSE MERGED 8374d2d0 (rym_, 5 commits, built 06:17: 4,492,288 B, 0 errors): one add-on (graphics.hpp from the
+      old _dlss addon.cpp), Settings Mode pages + SettingsAdvanced (migrated once), helper route (ngx_backend.hpp and
+      Streamline FG gone; TAA hook -> shared bridge; twattila frame_generation / reflex), 7 new [Ryse AA] keys, 11 RT keys
+      at Attila's parity (Experimental off), rt_specular_merge into t6; HDR-only state hides AA / FG / RT rows; key compare
+      132 -> 151 keyed rows, every old key kept. Skills + build_shared.ps1 / drw_verify.py lose rysesonofrome_dlss.
+      - [ ] R0 data run: helper DLSS / FSR / XeSS / RR on Ryse's TAA inputs (depth flip, motion, jitter sign,
+        AutoExposure vs exposure 1, 0x3BA5B162 order, FG HUD-less image, Debug View hook). Owner: coordinator (R0)
+      - [ ] tw_install.py's Ryse entry (helper + rename aside of the old _dlss add-on by exact name; rym_ patched it,
+        .bak_rym): dry run. Owner: coordinator at the install
+      - [ ] tools/ingame/deploy.py:30 (_dlss zip entry) and tools/ryse/fg_camera_check.py (removed camera math):
+        obsolete, update or retire. Owner: coordinator, release round
+      - [ ] ATN DECIDES: Ryse's helper DLSS presets L/M get the sqrt feed (Attila's dark-tone fix) or stay linear; the
+        helper's AutoExposure where Ryse gave exposure 1. Owner: ATN after R0
+      - [ ] WARP check of rt_specular_merge; switch to twattila/settings_pages.hpp once it drops the lighting_settings
+        dependency; the DevKit symlink in Bin64. Owner: next Ryse round
+      - [ ] Port the new shader families (tools/nontw/ryse/rym_shaders: families.tsv): tonemap 0xC3970136 wrapper, TAA
+        0x6A057F66 (clamps HDR at 1), tiled lighting CS 0x488BF732 / 0xCDB59F36, SSDO 0x06EE6A8E / 0xA65B60AF /
+        0xC17645D2 -> GT-VBAO, classic SSAO 0x4FB1027A + blur 0x3453A92B, 14 sun shadow masks -> PCSS, 0x44D3DE7F in
+        game; half-res shadows trace first. Owner: next Ryse round (after R0)
     (merged from "RYSE MERGE ROUND (one add-on): rys_'s plan in its report: mo...": RYSE MERGE ROUND (one add-on):
     rys_'s plan in its report: move _dlss files + 0x52594501-06 / 0x7A1E0D40-42 shaders into rysesonofrome, the DLSS
     addon.cpp as a header, Graphics 1 of 2 (AA / DLSS / FG / RT presets + RT rows) and 2 of 2 (32 game settings +
@@ -698,9 +718,21 @@ heading text are in HANDOFF_ARCHIVE.md)
       Point Light Shadows applied: ps X"); Half + RR moving past torches with the follow row; a battle with 4-bone /
       dismember units under Batched Unit Capture
     - [ ] Real GT-VBAO savings need per-sample math changes (look change): visual A/B, ATN DECIDES. Owner: later
-  - [ ] END BENCH STARTED 03:28 (tools/tw/bench/end_of_batch_1115_run.ps1, log end_of_batch_1115_run.log): cpu4, cpu5,
-    g2a_torch, g2a_shadow, g2b_clusters, g4_capture (in place of g3a_capture), g3b_reuse, grass_dump; ~94 starts / ~6 h;
-    one quiet window (rym_ / uem_ edit without building meanwhile). Owner: coordinator reads every summary.txt after
+  - [x] END BENCH PART 1 (03:28-06:15, end_of_batch_1115_run.log): cpu4 (36 starts) + cpu5 (11 of 12) all VALID.
+    summary.txt said "no frames in the window" for every start: bench_summary.py's fromisoformat failed on PresentMon's
+    hour without a leading zero before 10:00 ("4:28:41"); FIXED, re-summarized into runs\<batch>\summary_fixed.txt.
+    cpu5 atn's 4th start: CPU Set Setter's rule never applied ("CPU set first seen never") -> exit 2 stopped the session
+    before set 3; constantinople_bench.ps1 now retries such a start once (code 3), part 2's script runs on past a failed set.
+    VERDICTS (median vs P per round, ms; spread = P-to-P):
+    - sort (f8153d31): cpu +0.15 / -0.34, maxcpu -0.56 / -0.37, atn -0.01 / +0.13; worse beyond the spread in 2 scenes
+      -> REVERT (pre-set rule; also removes the Fable review's radix scan-fallback row). Owner: rfx_ (sent 06:2x)
+    - gather (8f5e263f, on top of sort): against sort cpu +2.41 / +0.34, maxcpu +0.14 / +0.47 -> REVERT. Owner: rfx_
+    - loopanim (author package b): better in all 6 rounds (cpu -0.22 / -0.37, maxcpu -0.62 / -0.29, atn -0.18 / -0.15;
+      atn "better in every round") -> into the package's NOTE
+    - x87keep (c): cpu +0.37 / -0.47, maxcpu -0.31 / -0.43, atn -0.14 / +0.15: noise -> the package says "no gain
+      measured"; memfast128 (a): maxcpu +0.41 / +0.46 (worse) -> "worse in the max-CPU scene"
+    - Faster Render Lists (cpu5, Experimental off): better median in all 5 rounds (cpu -0.10 / -0.30, maxcpu -0.10 /
+      -0.73, atn -0.14), not a look change. ATN PLACES THE ROW (default on / presets / stays Experimental)
   - [x] FABLE 5.2 HIGH REVIEW DONE (fdfb307e..47aed531, read-only; tools/tw/round_notes/fable_review_1115.tsv, 13 rows):
     no crash-class defect on the default path. CONFIRMED: (1) Shogun 2's merged add-on attaches fully beside an old
     _dlss file (double DLSS / scale hooks if a player unzips over an old install); (2) WH1 grass_height never
