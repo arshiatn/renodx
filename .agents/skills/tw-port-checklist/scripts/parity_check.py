@@ -19,7 +19,7 @@ Statuses: HAVE, DONE, AS ATTILA (Attila lacks it too), WON'T GET (needs its proo
 Exit 1 if any game has an open line.
 
 usage:
-  python -I parity_check.py --tools <maintainer's tools/tw folder> --tree <repo checkout> [--games a th r2 t w w1 w2 p rr s2]
+  python -I parity_check.py --tools <maintainer's tools/tw folder> --tree <repo checkout> [--games a th r2 t w w1 w2 p rr s2 | d1]
                             [--dump-tag <tag>] [--tag <tag>] [--bin <folder holding cmd_Decompiler-1.3.16>]
                             [--scale <letter>=<scale census .tsv> ...] [--fxc <fxc.exe>] [--out <report.txt>]
 
@@ -55,7 +55,10 @@ GAMES = {  # letter: (ledger name, game folder, decompiler pack folder)
     'p': ('pharaoh', 'twpharaohdynasties', 'dump_shader_twpharaohdynasties_pack'),
     'rr': ('romeremastered', 'twromeremastered', 'dump_shader_twromeremastered_pack'),
     's2': ('shogun2', 'twshogun2completeedition', 'dump_shader_shogun2_pack'),
+    'd1': ('divinity1', 'divinityoriginalsinenhanced', 'dump_shader_divinity1_pack'),
 }
+# Checked only when named (--games d1): not Total War games, their ledgers held to Attila's page all the same.
+NOT_TOTAL_WAR = ('d1',)
 SETTLED = ('HAVE', 'DONE', 'AS ATTILA', "WON'T GET")
 WAITING = ('NEEDS A TRACE', 'SHARED STEP')
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -254,7 +257,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--tools', required=True)
     parser.add_argument('--tree', required=True)
-    parser.add_argument('--games', nargs='+', default=list(GAMES))
+    parser.add_argument('--games', nargs='+', default=[letter for letter in GAMES if letter not in NOT_TOTAL_WAR])
     parser.add_argument('--dump-tag')
     parser.add_argument('--tag', default='parity')
     parser.add_argument('--bin')
