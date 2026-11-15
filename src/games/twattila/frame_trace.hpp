@@ -584,6 +584,21 @@ inline void Install(Options options = {}) {
   internal::state.folder = std::filesystem::path(exe).parent_path();
 }
 
+// At the addon's end: the events Install (FrameTraceReads) and a frame being traced registered.
+inline void Uninstall() {
+  internal::state.tracing.store(false);
+  internal::state.next_frame.store(false);
+  internal::UseEvents(false);
+  const bool reads = [] {
+    const std::lock_guard lock(internal::state.mutex);
+    return std::exchange(internal::state.reads, false);
+  }();
+  if (reads) {
+    reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
+    reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
+  }
+}
+
 // Whether a trace is still to come this run (FrameTrace, the marker).
 inline bool Wanted() {
   const std::lock_guard lock(internal::state.mutex);
