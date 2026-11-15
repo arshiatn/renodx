@@ -23,9 +23,9 @@
 #include "../../utils/log.hpp"
 #include "../twrome2/engine_tweaks.hpp"
 
-// Faster Game CPU Code: three of Attila's hot routines in empire.retail.dll and the render lists' sort, each replaced by
-// code with the same results (test/tw_engine_code runs the game's code and this one side by side: every register, the
-// stack, the x87 state); Faster Render Lists (its own row): a fifth site the same way.
+// Faster Game CPU Code: three of Attila's hot routines in empire.retail.dll, each replaced by code with the same results
+// (test/tw_engine_code runs the game's code and this one side by side: every register, the stack, the x87 state); Faster
+// Render Lists (its own row): a fourth site the same way.
 // Each is found by its exact bytes: code another mod changed (the Attila CPU Performance Fix patches 1277 x87 blocks,
 // the first one below among them) or another build is left alone. A jump into the addon's own code page replaces the
 // first instruction(s) of each; the page is never freed (a thread can still be in it after the game's bytes are back).
@@ -229,139 +229,6 @@ constexpr std::array<uint8_t, 19> LIST_PUSH_STUB = {
     0xE9, 0x00, 0x00, 0x00, 0x00,  // jmp back
 };
 
-// 5. The render lists' sort (+0x17b9217, a call in 0x17b91f0: the draw jobs merge one kind of render list, then sort it;
-// part of the 1.5 ms of workers a frame in std::sort in cpl2's recording, ~3.5 ms with maxed grass): std::sort<uint32_t>
-// (+0xda6b0, MSVC's introsort, std::less). Plain 4-byte values: equal values are identical, so every correct sort leaves
-// the same array. The call goes to a stub with an LSD radix sort (8-bit digits; a digit every value shares is skipped)
-// in one of 8 scratch slots; fewer than 128 values (where the game's is as fast), more than 262144 or every slot in use:
-// a jump to the game's sort, the same stack. The stub keeps ebx, esi, edi, ebp and esp as a cdecl callee; eax, ecx and
-// edx differ from the game's (the caller sets eax after the call and reads neither).
-constexpr uint32_t SORT_RVA = 0xda6b0;
-constexpr std::string_view SORT =
-    "83 EC 0C 53 55 8B 6C 24 1C 8B C5 56 8B 74 24 1C 2B C6 C1 F8 02 57 83 F8 20 7E 72 8B 4C 24 2C 8B 7C 24 28 85 FF 0F "
-    "8E A7 00 00 00 51 55 8D 44 24 1C 56 50 E8";
-// The merge-then-sort function: the same bytes for seven kinds of list (each its own sort), this one calls SORT.
-constexpr uint32_t SORT_CALLER_RVA = 0x17b91f0;
-constexpr std::string_view SORT_CALLER =
-    "8B 4C 24 04 56 E8 ?? ?? ?? ?? 8B 4C 24 08 E8 ?? ?? ?? ?? 8B 70 04 85 F6 74 15 8B 50 08 FF 74 24 08 56 8D 0C B2 51 "
-    "52 E8 ?? ?? ?? ?? 83 C4 10 8B C6 5E C2 04 00";
-constexpr size_t SORT_CALLER_SITE = 39;  // call std::sort<uint32_t>
-constexpr size_t SORT_SLOTS = 8;
-constexpr size_t SORT_SLOT_SIZE = 0x101000;                           // 4 x 256 counts, then 262144 values
-constexpr size_t SORT_SCRATCH_SIZE = 0x40 + SORT_SLOTS * SORT_SLOT_SIZE;  // the slots' mask, then the slots
-constexpr size_t SORT_STUB_SCRATCH = 0x1b;
-constexpr size_t SORT_STUB_GAME = 0x32;
-constexpr std::array<uint8_t, 0x148> SORT_STUB = {
-    0x8B, 0x44, 0x24, 0x08,                          // mov eax, dword ptr [esp + 8]         last
-    0x2B, 0x44, 0x24, 0x04,                          // sub eax, dword ptr [esp + 4]         - first
-    0x3D, 0x00, 0x02, 0x00, 0x00,                    // cmp eax, 0x200                       fewer than 128 values
-    0x72, 0x22,                                      // jb game
-    0x3D, 0x00, 0x00, 0x10, 0x00,                    // cmp eax, 0x100000                    more than 262144
-    0x77, 0x1B,                                      // ja game
-    0x53,                                            // push ebx
-    0x56,                                            // push esi
-    0x57,                                            // push edi
-    0x55,                                            // push ebp
-    0xBF, 0x00, 0x00, 0x00, 0x00,                    // mov edi, the scratch block
-    0x31, 0xC9,                                      // xor ecx, ecx
-    0xF0, 0x0F, 0xAB, 0x0F,                          // acquire: lock bts dword ptr [edi], ecx   a free slot
-    0x73, 0x0F,                                      // jae got
-    0x41,                                            // inc ecx
-    0x83, 0xF9, 0x08,                                // cmp ecx, 8
-    0x72, 0xF4,                                      // jb acquire
-    0x5D,                                            // pop ebp
-    0x5F,                                            // pop edi
-    0x5E,                                            // pop esi
-    0x5B,                                            // pop ebx
-    0xE9, 0x00, 0x00, 0x00, 0x00,                    // game: jmp the game's sort
-    0x83, 0xEC, 0x18,                                // got: sub esp, 0x18
-    0x89, 0x7C, 0x24, 0x14,                          // mov dword ptr [esp + 0x14], edi      the scratch block
-    0x89, 0x4C, 0x24, 0x10,                          // mov dword ptr [esp + 0x10], ecx      the slot
-    0x69, 0xC9, 0x00, 0x10, 0x10, 0x00,              // imul ecx, ecx, 0x101000
-    0x8D, 0x7C, 0x0F, 0x40,                          // lea edi, [edi + ecx + 0x40]          its counts
-    0x8B, 0x74, 0x24, 0x2C,                          // mov esi, dword ptr [esp + 0x2c]      first
-    0x8B, 0x6C, 0x24, 0x30,                          // mov ebp, dword ptr [esp + 0x30]      last
-    0x89, 0xE8,                                      // mov eax, ebp
-    0x29, 0xF0,                                      // sub eax, esi
-    0xC1, 0xE8, 0x02,                                // shr eax, 2
-    0x89, 0x44, 0x24, 0x0C,                          // mov dword ptr [esp + 0xc], eax       n
-    0x8D, 0x87, 0x00, 0x10, 0x00, 0x00,              // lea eax, [edi + 0x1000]
-    0x89, 0x44, 0x24, 0x04,                          // mov dword ptr [esp + 4], eax         to: the slot's buffer
-    0x89, 0x34, 0x24,                                // mov dword ptr [esp], esi             from: the list
-    0xC7, 0x44, 0x24, 0x08, 0x00, 0x00, 0x00, 0x00,  // mov dword ptr [esp + 8], 0           the digit's shift
-    0x89, 0xFA,                                      // mov edx, edi
-    0xB9, 0x00, 0x04, 0x00, 0x00,                    // mov ecx, 0x400
-    0x31, 0xC0,                                      // xor eax, eax
-    0xF3, 0xAB,                                      // rep stosd                            counts cleared
-    0x89, 0xD7,                                      // mov edi, edx
-    0x89, 0xF1,                                      // mov ecx, esi
-    0x8B, 0x01,                                      // histogram: mov eax, dword ptr [ecx]  every digit's count
-    0x0F, 0xB6, 0xD0,                                // movzx edx, al
-    0xFF, 0x04, 0x97,                                // inc dword ptr [edi + edx*4]
-    0x0F, 0xB6, 0xD4,                                // movzx edx, ah
-    0xFF, 0x84, 0x97, 0x00, 0x04, 0x00, 0x00,        // inc dword ptr [edi + edx*4 + 0x400]
-    0xC1, 0xE8, 0x10,                                // shr eax, 0x10
-    0x0F, 0xB6, 0xD0,                                // movzx edx, al
-    0xFF, 0x84, 0x97, 0x00, 0x08, 0x00, 0x00,        // inc dword ptr [edi + edx*4 + 0x800]
-    0x0F, 0xB6, 0xD4,                                // movzx edx, ah
-    0xFF, 0x84, 0x97, 0x00, 0x0C, 0x00, 0x00,        // inc dword ptr [edi + edx*4 + 0xc00]
-    0x83, 0xC1, 0x04,                                // add ecx, 4
-    0x39, 0xE9,                                      // cmp ecx, ebp
-    0x72, 0xD0,                                      // jb histogram
-    0x8B, 0x34, 0x24,                                // pass: mov esi, dword ptr [esp]
-    0x8B, 0x4C, 0x24, 0x08,                          // mov ecx, dword ptr [esp + 8]
-    0x8B, 0x06,                                      // mov eax, dword ptr [esi]
-    0xD3, 0xE8,                                      // shr eax, cl
-    0x0F, 0xB6, 0xC0,                                // movzx eax, al
-    0x8B, 0x54, 0x24, 0x0C,                          // mov edx, dword ptr [esp + 0xc]
-    0x39, 0x14, 0x87,                                // cmp dword ptr [edi + eax*4], edx     every value has this digit
-    0x74, 0x48,                                      // je next
-    0x8B, 0x5C, 0x24, 0x04,                          // mov ebx, dword ptr [esp + 4]
-    0x31, 0xD2,                                      // xor edx, edx
-    0x8B, 0x04, 0x97,                                // prefix: mov eax, dword ptr [edi + edx*4]  a count becomes
-    0x89, 0x1C, 0x97,                                // mov dword ptr [edi + edx*4], ebx       where its values go
-    0x8D, 0x1C, 0x83,                                // lea ebx, [ebx + eax*4]
-    0x42,                                            // inc edx
-    0x81, 0xFA, 0x00, 0x01, 0x00, 0x00,              // cmp edx, 0x100
-    0x72, 0xEE,                                      // jb prefix
-    0x8B, 0x6C, 0x24, 0x0C,                          // mov ebp, dword ptr [esp + 0xc]
-    0x8D, 0x2C, 0xAE,                                // lea ebp, [esi + ebp*4]
-    0x8B, 0x06,                                      // scatter: mov eax, dword ptr [esi]
-    0x89, 0xC2,                                      // mov edx, eax
-    0xD3, 0xEA,                                      // shr edx, cl
-    0x0F, 0xB6, 0xD2,                                // movzx edx, dl
-    0x8B, 0x1C, 0x97,                                // mov ebx, dword ptr [edi + edx*4]
-    0x89, 0x03,                                      // mov dword ptr [ebx], eax
-    0x83, 0xC3, 0x04,                                // add ebx, 4
-    0x89, 0x1C, 0x97,                                // mov dword ptr [edi + edx*4], ebx
-    0x83, 0xC6, 0x04,                                // add esi, 4
-    0x39, 0xEE,                                      // cmp esi, ebp
-    0x72, 0xE5,                                      // jb scatter
-    0x8B, 0x04, 0x24,                                // mov eax, dword ptr [esp]             from and to swapped
-    0x8B, 0x54, 0x24, 0x04,                          // mov edx, dword ptr [esp + 4]
-    0x89, 0x14, 0x24,                                // mov dword ptr [esp], edx
-    0x89, 0x44, 0x24, 0x04,                          // mov dword ptr [esp + 4], eax
-    0x81, 0xC7, 0x00, 0x04, 0x00, 0x00,              // next: add edi, 0x400
-    0x83, 0x44, 0x24, 0x08, 0x08,                    // add dword ptr [esp + 8], 8
-    0x83, 0x7C, 0x24, 0x08, 0x20,                    // cmp dword ptr [esp + 8], 0x20
-    0x72, 0x8F,                                      // jb pass
-    0x8B, 0x34, 0x24,                                // mov esi, dword ptr [esp]
-    0x8B, 0x7C, 0x24, 0x2C,                          // mov edi, dword ptr [esp + 0x2c]
-    0x39, 0xFE,                                      // cmp esi, edi
-    0x74, 0x06,                                      // je release
-    0x8B, 0x4C, 0x24, 0x0C,                          // mov ecx, dword ptr [esp + 0xc]
-    0xF3, 0xA5,                                      // rep movsd                            back into the list
-    0x8B, 0x44, 0x24, 0x14,                          // release: mov eax, dword ptr [esp + 0x14]
-    0x8B, 0x4C, 0x24, 0x10,                          // mov ecx, dword ptr [esp + 0x10]
-    0xF0, 0x0F, 0xB3, 0x08,                          // lock btr dword ptr [eax], ecx
-    0x83, 0xC4, 0x18,                                // add esp, 0x18
-    0x5D,                                            // pop ebp
-    0x5F,                                            // pop edi
-    0x5E,                                            // pop esi
-    0x5B,                                            // pop ebx
-    0xC3,                                            // ret
-};
-
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half and fmod the
 // same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots (control word 0x20,
 // float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the same steps; the CRT's
@@ -381,8 +248,8 @@ constexpr std::string_view ROME2_TRUNCATION =
     "D9 6C 24 28 DB 5C 24 24 D9 6C 24 18 58 0F B7 44 24 20 66 0F 6E C0 0F 5B C0 F3 0F 11 84 24";
 constexpr std::array<uint8_t, 44> ROME2_TRUNCATION_STUB = TruncationStub(0x18, 0x28, 0x20, 0x24);
 
-// What differs between the games' builds. Thrones' render list push, its sort and the sort's caller the same bytes;
-// Rome II has neither function (list_push_rva, sort_caller_rva 0: not looked for).
+// What differs between the games' builds. Thrones' render list push the same bytes; Rome II has no such function
+// (list_push_rva 0: not looked for).
 struct Build {
   uint32_t truncation_rva;
   std::string_view truncation;
@@ -391,13 +258,10 @@ struct Build {
   uint32_t fmod_rva;
   std::string_view fmod_matherr;
   uint32_t list_push_rva;
-  uint32_t sort_rva;
-  uint32_t sort_caller_rva;
 };
-constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, SORT_RVA, SORT_CALLER_RVA};
-constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9,
-                                 0x220850, 0x182cf80};
-constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0};
+constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA};
+constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9};
+constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0};
 constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
 // Where each stub sits in the page.
@@ -405,15 +269,14 @@ constexpr size_t TRUNCATION_PAGE = 0x000;
 constexpr size_t HALF_PAGE = 0x040;
 constexpr size_t FMOD_PAGE = 0x180;
 constexpr size_t LIST_PUSH_PAGE = 0x240;
-constexpr size_t SORT_PAGE = 0x280;
 constexpr size_t PAGE_SIZE = 0x1000;
 
 // Which sites each row writes (bits by `sites` index).
-constexpr uint32_t CPU_CODE_SITES = 0b10111;  // Faster Game CPU Code
-constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
+constexpr uint32_t CPU_CODE_SITES = 0b0111;  // Faster Game CPU Code
+constexpr uint32_t LIST_SITES = 0b1000;      // Faster Render Lists
 
 // The first instruction (or two, whole) of each site: 5 bytes that become a jump into the page (the render list push's:
-// a 4-byte instruction and the first byte of the next, both run by its stub), or a call that calls the page instead.
+// a 4-byte instruction and the first byte of the next, both run by its stub).
 constexpr size_t SITE_SIZE = 5;
 
 struct Site {
@@ -423,13 +286,9 @@ struct Site {
   std::array<uint8_t, SITE_SIZE> jump = {};
 };
 
-static std::array<Site, 5> sites = {{{.name = "soldier draw rounding"},
-                                     {.name = "half floats"},
-                                     {.name = "fmod"},
-                                     {.name = "render list pushes"},
-                                     {.name = "render list sort"}}};
+static std::array<Site, 4> sites = {
+    {{.name = "soldier draw rounding"}, {.name = "half floats"}, {.name = "fmod"}, {.name = "render list pushes"}}};
 static uint8_t* page = nullptr;
-static uint8_t* sort_scratch = nullptr;  // never freed, as the page
 static bool prepared = false;
 static uint32_t found = 0;    // the sites found (bits by index)
 static uint32_t written = 0;  // the sites holding their jump
@@ -533,7 +392,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   };
 
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-  std::array<uint8_t*, 5> stubs = {};
+  std::array<uint8_t*, 4> stubs = {};
   if (page != nullptr) {
     if (uint8_t* match = find(build.truncation, build.truncation_rva); match != nullptr) {
       uint8_t* stub = page + TRUNCATION_PAGE;
@@ -588,48 +447,21 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       sites[3].at = match + LIST_PUSH_SITE;
       stubs[3] = stub;
     }
-    // The sort's caller: at the Steam build's place, else the one of the seven alike that calls the sort.
-    if (uint8_t* sort = (build.sort_caller_rva != 0 ? find(SORT, build.sort_rva) : nullptr); sort != nullptr) {
-      uint8_t* caller = nullptr;
-      if (holds(base + build.sort_caller_rva, SORT_CALLER) && target(base + build.sort_caller_rva + SORT_CALLER_SITE) == sort) {
-        caller = base + build.sort_caller_rva;
-      }
-      for (const std::string_view memory : sections.code) {
-        for (std::string_view rest = memory; caller == nullptr;) {
-          uint8_t* match = tw::engine_tweaks::FindPattern({rest}, SORT_CALLER);
-          if (match == nullptr) break;
-          if (target(match + SORT_CALLER_SITE) == sort) caller = match;
-          rest.remove_prefix(static_cast<size_t>(match - reinterpret_cast<const uint8_t*>(rest.data())) + 1);
-        }
-      }
-      if (caller != nullptr) {
-        sort_scratch = static_cast<uint8_t*>(VirtualAlloc(nullptr, SORT_SCRATCH_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-      }
-      if (sort_scratch != nullptr) {
-        uint8_t* stub = page + SORT_PAGE;
-        std::memcpy(stub, SORT_STUB.data(), SORT_STUB.size());
-        write32(stub + SORT_STUB_SCRATCH, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(sort_scratch)));
-        write32(stub + SORT_STUB_GAME, relative(stub + SORT_STUB_GAME + 4, sort));
-        sites[4].at = caller + SORT_CALLER_SITE;
-        stubs[4] = stub;
-      }
-    }
     DWORD protection;
     VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
     FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
   }
   std::string faster;
   std::string left;
-  const uint32_t looked_for = 0b00111u | (build.list_push_rva != 0 ? 0b01000u : 0u) | (build.sort_caller_rva != 0 ? 0b10000u : 0u);
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
-    if ((looked_for >> index & 1) == 0) continue;
+    if ((LIST_SITES >> index & 1) != 0 && build.list_push_rva == 0) continue;
     std::string& names = (site.at != nullptr ? faster : left);
     names += std::format("{}{}", names.empty() ? "" : ", ", site.name);
     if (site.at == nullptr) continue;
     found |= 1u << index;
     std::memcpy(site.game.data(), site.at, SITE_SIZE);
-    site.jump[0] = (site.game[0] == 0xE8 ? 0xE8 : 0xE9);  // a call (the sort's) calls the stub
+    site.jump[0] = 0xE9;
     write32(site.jump.data() + 1, relative(site.at + SITE_SIZE, stubs[index]));
   }
   renodx::utils::log::i("[Total War] Faster Game CPU Code: ", (faster.empty() ? "nothing" : faster), " faster",
