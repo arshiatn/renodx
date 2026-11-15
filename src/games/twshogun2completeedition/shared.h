@@ -78,7 +78,7 @@ struct ShaderInjectData {
   // passes' viewports; 1: full size).
   float render_scale_x;
   float render_scale_y;
-  // The DLSS addon's Ambient Occlusion (ReShade.ini [Shogun 2 DLSS]).
+  // Graphics 1 of 2's Ambient Occlusion (the DLSS add-on's [Shogun 2 DLSS] rows until it became part of this one).
   float ssao_mode;       // 0 the game's ambient occlusion, 1 visibility bitmask
   float ssao_strength;   // visibility bitmask: an exponent
   float ssao_radius;     // visibility bitmask: x 2 m

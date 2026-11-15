@@ -1,4 +1,4 @@
-// Shogun 2's engine tweaks: twshogun2::tweak_objects::Find (src/games/twshogun2completeedition_dlss/tweak_objects.hpp) on the
+// Shogun 2's engine tweaks: twshogun2::tweak_objects::Find (src/games/twshogun2completeedition/tweak_objects.hpp) on the
 // game's engine DLL (empire.retail.x64.dll mapped as an image resource: only read, nothing of it runs; its static
 // initializers have not run, so the values themselves are 0 and the defaults are in their constructors' code).
 // 1. Every tweak in tools\shogun2\pkg_1114\s2_tweaks_1114.txt (s2_tweaks.py, capstone: name, value RVA, default bits) found at
@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "src/games/twattila/engine_tests.hpp"
-#include "src/games/twshogun2completeedition_dlss/tweak_objects.hpp"
+#include "src/games/twshogun2completeedition/tweak_objects.hpp"
 
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (false)
 
