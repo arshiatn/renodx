@@ -134,7 +134,7 @@ void OnBridgePushConstants(reshade::api::command_list*, reshade::api::shader_sta
 bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t, uint32_t first_index, int32_t vertex_offset,
                          uint32_t) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return false;
-  if (ruse::ray_tracing::state.ground && ruse::bridge::IsSceneDraw()) {
+  if ((ruse::ray_tracing::state.ground || ruse::ray_tracing::state.bend) && ruse::bridge::IsSceneDraw()) {
     ruse::ray_tracing::OnSceneDraw(cmd_list);
   }
   ruse::bridge::OnDraw(cmd_list);
@@ -1268,6 +1268,26 @@ void ConfigureAddon() {
       }
     }
   }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseScreenSpaceGroundShadows",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Screen-Space Ground Shadows (Experimental)",
+        .section = "Output (Restart Required)",
+        .tooltip = "Bend Studio's screen-space sun shadows on the ground: hills and slopes shadow what lies behind them, added to\n"
+                   "the game's (costs GPU time). Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off.\n"
+                   "Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The ground's depth and its mask as the ray-traced ground shadows have them, the march on the bridge's device.
+    ruse::ray_tracing::state.bend = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
+    readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.bend;
+  }
   if (ruse::bridge::state.enabled || ruse::replay::state.enabled) {
     // The camera pass: its matrices (c0-c8) as it drew (the bridge's motion, the replay's placements).
     custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list*) {
@@ -1362,7 +1382,8 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
-                   "and PsychoV35.",
+                   "and PsychoV35.\n"
+                   "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -1482,6 +1503,8 @@ bool AttachAddon() {
   }
   if (ruse::ray_tracing::state.ground) {
     twattila::rt_scene::InstallReplayedScene(ruse::ray_tracing::HOST);
+  }
+  if (ruse::ray_tracing::state.ground || ruse::ray_tracing::state.bend) {
     reshade::register_event<reshade::addon_event::copy_texture_region>(ruse::ray_tracing::OnCopyTextureRegion);
     reshade::register_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
   }

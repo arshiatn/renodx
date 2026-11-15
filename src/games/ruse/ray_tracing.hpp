@@ -40,6 +40,8 @@
 // main depth (kept at the bloom) goes into this frame's view over the ground's and the rays start from both; the object
 // shaders (patched_shaders.h) read the traced visibility at s15 by screen position, a white texel when untraced. The
 // ground's ambient occlusion (AO) comes from the same trace: the terrain shaders read it at s14 into their ambient.
+// Screen-space ground shadows (G2): Bend Studio's march (Attila's sss_setup / sss_bend) over the same depth, into the
+// same visibility by minimum, with the rays or alone.
 namespace ruse::ray_tracing {
 
 // The rays' ambient range in world units: 2 m if a unit is a centimetre (eye heights near 67,000 on the B0 trace; the
@@ -52,6 +54,7 @@ struct State {
   bool ground = false;  // the Ray-Traced Ground Shadows row (restart; with the anti-aliasing's helper)
   bool objects = false;  // the Ray-Traced Object Shadows row (restart; with the ground's)
   bool ambient = false;  // the Ray-Traced Ground Ambient Occlusion row (restart; with the ground's)
+  bool bend = false;  // the Screen-Space Ground Shadows row (restart; with the anti-aliasing's bridge)
   bool failed = false;
   // This frame's pre-pass (the camera pass's target and depth), where its copy went (an IDirect3DTexture9), the sun.
   uint32_t camera_frame = UINT32_MAX;
@@ -87,8 +90,54 @@ struct State {
   bridge::SharedTexture occlusion;
   ComPtr<ID3D11UnorderedAccessView> occlusion_uav;
   uint32_t occlusion_frame = UINT32_MAX;
+  // G2: sss_setup's dispatch list (camera_VS_PS b0, lighting_VS_PS b1, sss_settings b2), sss_bend's eight indirect
+  // dispatches (b3 each one's index) into the occlusion, ground_bend's minimum into the visibility.
+  struct Bend {
+    ComPtr<ID3D11ComputeShader> setup;
+    ComPtr<ID3D11ComputeShader> march;
+    ComPtr<ID3D11ComputeShader> combine;
+    ComPtr<ID3D11Buffer> camera;
+    ComPtr<ID3D11Buffer> lighting;
+    ComPtr<ID3D11Buffer> settings;
+    std::array<ComPtr<ID3D11Buffer>, 8> dispatches;
+    ComPtr<ID3D11Buffer> arguments;
+    ComPtr<ID3D11UnorderedAccessView> arguments_uav;
+    ComPtr<ID3D11Buffer> parameters;
+    ComPtr<ID3D11UnorderedAccessView> parameters_uav;
+    ComPtr<ID3D11ShaderResourceView> parameters_srv;
+    ComPtr<ID3D11Texture2D> occlusion;
+    ComPtr<ID3D11UnorderedAccessView> occlusion_uav;
+    ComPtr<ID3D11ShaderResourceView> occlusion_srv;
+    ComPtr<ID3D11SamplerState> border;
+  } bend_objects;
 };
 inline State state;
+
+// sss.hlsli's sss_settings (Attila's screen_space_shadows.hpp ShaderSettings): Attila's defaults, no extras.
+struct BendSettings {
+  float width = 0.f;
+  float height = 0.f;
+  float inverse_width = 0.f;
+  float inverse_height = 0.f;
+  float thickness = 0.005f;
+  float samples = 240.f;
+  float contrast = 4.f;
+  float edge_threshold = 0.02f;
+  float hard_samples = 4.f;
+  float fade_samples = 8.f;
+  float ignore_edges = 0.f;
+  float precision_offset = 0.f;
+  float sample_along_ray = 0.f;
+  float softness = 0.f;
+  float debug_view = 0.f;
+  float mirror_edges = 0.f;
+  float sun_direction = 0.f;  // lighting_VS_PS's float the sun's travel direction starts at
+  float render_width = 0.f;
+  float render_height = 0.f;
+  float foliage_light = 0.f;
+  float foliage_bit = 0.f;
+  std::array<float, 3> padding = {};
+};
 
 inline const twattila::rt_scene::Host HOST = {
     .render_size = [] { return std::array<UINT, 2>{bridge::state.width, bridge::state.height}; },
@@ -118,13 +167,13 @@ inline bool OnCopyTextureRegion(reshade::api::command_list*, reshade::api::resou
   return false;
 }
 
-// The trace (once a frame) and the visibility into the ground mask, before the main pass draws with it; true when the
-// shared visibility holds this frame's.
-inline bool TraceGround(reshade::api::command_list* cmd_list) {
+// The ground's sun shadows once a frame (the rays, Bend's march or both) into the ground mask, before the main pass draws
+// with it; true when the shared visibility holds this frame's.
+inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   auto& bridge = bridge::state;
   auto* proxy_reshade = renodx::utils::device_proxy::proxy_device_reshade;
-  if (state.failed || !bridge.ready || bridge.failed || proxy_reshade == nullptr || state.proxy_queue == nullptr || !bridge.camera_valid
-      || !bridge.intz_depths.contains(state.prepass_depth)) {
+  if (state.failed || !bridge.ready || bridge.failed || proxy_reshade == nullptr || (state.ground && state.proxy_queue == nullptr)
+      || !bridge.camera_valid || !bridge.intz_depths.contains(state.prepass_depth)) {
     return false;
   }
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
@@ -142,6 +191,82 @@ inline bool TraceGround(reshade::api::command_list* cmd_list) {
                       && SUCCEEDED(proxy->CreateUnorderedAccessView(state.visibility.proxy.Get(), nullptr, state.visibility_uav.ReleaseAndGetAddressOf()))
                       && SUCCEEDED(proxy->CreateShaderResourceView(bridge.depth.proxy.Get(), nullptr, state.depth_view.ReleaseAndGetAddressOf()))
                       && SUCCEEDED(proxy->CreateComputeShader(__rt_ground_copy.data(), __rt_ground_copy.size(), nullptr, state.copy.ReleaseAndGetAddressOf()));
+    if (made && state.bend) {
+      auto& bend = state.bend_objects;
+      const auto compute = [proxy](std::span<const uint8_t> code, ComPtr<ID3D11ComputeShader>* shader) {
+        return SUCCEEDED(proxy->CreateComputeShader(code.data(), code.size(), nullptr, shader->ReleaseAndGetAddressOf()));
+      };
+      const auto constants = [proxy](UINT size, ComPtr<ID3D11Buffer>* buffer) {
+        const D3D11_BUFFER_DESC desc = {.ByteWidth = size, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        return SUCCEEDED(proxy->CreateBuffer(&desc, nullptr, buffer->ReleaseAndGetAddressOf()));
+      };
+      const D3D11_BUFFER_DESC arguments_desc = {
+          .ByteWidth = 8 * 12,
+          .Usage = D3D11_USAGE_DEFAULT,
+          .BindFlags = D3D11_BIND_UNORDERED_ACCESS,
+          .MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS | D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS,
+      };
+      const D3D11_UNORDERED_ACCESS_VIEW_DESC arguments_view = {
+          .Format = DXGI_FORMAT_R32_TYPELESS,
+          .ViewDimension = D3D11_UAV_DIMENSION_BUFFER,
+          .Buffer = {.FirstElement = 0, .NumElements = 8 * 3, .Flags = D3D11_BUFFER_UAV_FLAG_RAW},
+      };
+      const D3D11_BUFFER_DESC parameters_desc = {
+          .ByteWidth = 9 * 16,
+          .Usage = D3D11_USAGE_DEFAULT,
+          .BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE,
+          .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED,
+          .StructureByteStride = 16,
+      };
+      const D3D11_TEXTURE2D_DESC occlusion_desc = {
+          .Width = bridge.width,
+          .Height = bridge.height,
+          .MipLevels = 1,
+          .ArraySize = 1,
+          .Format = DXGI_FORMAT_R8_UNORM,
+          .SampleDesc = {.Count = 1},
+          .Usage = D3D11_USAGE_DEFAULT,
+          .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS,
+      };
+      // Off screen: the far depth (Bend reads past the edges on purpose).
+      const D3D11_SAMPLER_DESC border_desc = {
+          .Filter = D3D11_FILTER_MIN_MAG_MIP_POINT,
+          .AddressU = D3D11_TEXTURE_ADDRESS_BORDER,
+          .AddressV = D3D11_TEXTURE_ADDRESS_BORDER,
+          .AddressW = D3D11_TEXTURE_ADDRESS_BORDER,
+          .ComparisonFunc = D3D11_COMPARISON_NEVER,
+          .BorderColor = {1.f, 1.f, 1.f, 1.f},
+          .MaxLOD = D3D11_FLOAT32_MAX,
+      };
+      made = compute(__sss_setup, &bend.setup) && compute(__sss_bend, &bend.march) && compute(__ground_bend, &bend.combine)
+             && constants(13 * 16, &bend.camera) && constants(4 * 16, &bend.lighting) && constants(sizeof(BendSettings), &bend.settings)
+             && SUCCEEDED(proxy->CreateBuffer(&arguments_desc, nullptr, bend.arguments.ReleaseAndGetAddressOf()))
+             && SUCCEEDED(proxy->CreateUnorderedAccessView(bend.arguments.Get(), &arguments_view, bend.arguments_uav.ReleaseAndGetAddressOf()))
+             && SUCCEEDED(proxy->CreateBuffer(&parameters_desc, nullptr, bend.parameters.ReleaseAndGetAddressOf()))
+             && SUCCEEDED(proxy->CreateUnorderedAccessView(bend.parameters.Get(), nullptr, bend.parameters_uav.ReleaseAndGetAddressOf()))
+             && SUCCEEDED(proxy->CreateShaderResourceView(bend.parameters.Get(), nullptr, bend.parameters_srv.ReleaseAndGetAddressOf()))
+             && SUCCEEDED(proxy->CreateTexture2D(&occlusion_desc, nullptr, bend.occlusion.ReleaseAndGetAddressOf()))
+             && SUCCEEDED(proxy->CreateUnorderedAccessView(bend.occlusion.Get(), nullptr, bend.occlusion_uav.ReleaseAndGetAddressOf()))
+             && SUCCEEDED(proxy->CreateShaderResourceView(bend.occlusion.Get(), nullptr, bend.occlusion_srv.ReleaseAndGetAddressOf()))
+             && SUCCEEDED(proxy->CreateSamplerState(&border_desc, bend.border.ReleaseAndGetAddressOf()));
+      for (UINT index = 0; made && index < bend.dispatches.size(); ++index) {
+        const std::array<UINT, 4> value = {index, 0, 0, 0};
+        const D3D11_BUFFER_DESC desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        const D3D11_SUBRESOURCE_DATA data = {.pSysMem = value.data()};
+        made = SUCCEEDED(proxy->CreateBuffer(&desc, &data, bend.dispatches[index].ReleaseAndGetAddressOf()));
+      }
+      if (made) {
+        const BendSettings settings = {
+            .width = static_cast<float>(bridge.width),
+            .height = static_cast<float>(bridge.height),
+            .inverse_width = 1.f / static_cast<float>(bridge.width),
+            .inverse_height = 1.f / static_cast<float>(bridge.height),
+            .render_width = static_cast<float>(bridge.width),
+            .render_height = static_cast<float>(bridge.height),
+        };
+        context->UpdateSubresource(bend.settings.Get(), 0, nullptr, &settings, 0, 0);
+      }
+    }
     if (made && state.ambient) {
       made = bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.occlusion,
                                 D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS)
@@ -175,7 +300,7 @@ inline bool TraceGround(reshade::api::command_list* cmd_list) {
     if (!made) {
       state.shadows.Reset();
       state.kept_depth.Reset();
-      reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Ray-traced ground shadows: their objects weren't made: off");
+      reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Ground shadows: their objects weren't made: off");
       return false;
     }
     state.failed = false;
@@ -275,33 +400,85 @@ inline bool TraceGround(reshade::api::command_list* cmd_list) {
     start_depth = state.start_depth_view.Get();
   }
 
-  twattila::rt_scene::WriteSun(context.Get(), state.toward_sun);
-  replay::CaptureScene(state.proxy_queue->get_immediate_command_list(), view_projection);
-  if (!twattila::rt_scene::Trace(context.Get(), start_depth, camera)) return false;
-  const auto [visibility, occlusion] = twattila::rt_scene::Visibilities();
-  if (visibility == nullptr) return false;
-  // The helper's R8 results into the textures the D3D9 device shares (R32F).
-  const auto copy = [&](ID3D11ShaderResourceView* source, ID3D11UnorderedAccessView* destination) {
+  // G1: the rays (and the ambient's); without them (Bend alone, or no trace this frame) the visibility starts at 1.
+  bool traced = false;
+  if (state.ground) {
+    twattila::rt_scene::WriteSun(context.Get(), state.toward_sun);
+    replay::CaptureScene(state.proxy_queue->get_immediate_command_list(), view_projection);
+    traced = twattila::rt_scene::Trace(context.Get(), start_depth, camera);
+  }
+  const auto [visibility, occlusion] = (traced ? twattila::rt_scene::Visibilities() : std::array<ID3D11ShaderResourceView*, 2>{});
+  if (visibility == nullptr && !state.bend) return false;
+  // 8 x 8 groups over the bridge's size: `shader` from `source` into `destination` (the helper's R8 results into the
+  // textures the D3D9 device shares, R32F; Bend's occlusion into the visibility).
+  const auto run = [&](ID3D11ComputeShader* shader, ID3D11ShaderResourceView* source, ID3D11UnorderedAccessView* destination) {
+    context->CSSetShader(shader, nullptr, 0);
     context->CSSetShaderResources(0, 1, &source);
     context->CSSetUnorderedAccessViews(0, 1, &destination, nullptr);
     context->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
   };
-  context->CSSetShader(state.copy.Get(), nullptr, 0);
-  copy(visibility, state.visibility_uav.Get());
+  if (visibility != nullptr) {
+    run(state.copy.Get(), visibility, state.visibility_uav.Get());
+  } else {
+    constexpr std::array<FLOAT, 4> LIT = {1.f, 1.f, 1.f, 1.f};
+    context->ClearUnorderedAccessViewFloat(state.visibility_uav.Get(), LIT.data());
+  }
   if (state.ambient && occlusion != nullptr) {
-    copy(occlusion, state.occlusion_uav.Get());
+    run(state.copy.Get(), occlusion, state.occlusion_uav.Get());
     state.occlusion_frame = bridge.frame;
   }
-  ID3D11ShaderResourceView* no_view = nullptr;
-  ID3D11UnorderedAccessView* no_output = nullptr;
-  context->CSSetShaderResources(0, 1, &no_view);
-  context->CSSetUnorderedAccessViews(0, 1, &no_output, nullptr);
+  constexpr std::array<ID3D11ShaderResourceView*, 2> NO_VIEWS = {};
+  constexpr std::array<ID3D11UnorderedAccessView*, 2> NO_OUTPUTS = {};
+  constexpr std::array<ID3D11Buffer*, 4> NO_CONSTANTS = {};
+  // G2: Bend's dispatch list for this camera and sun (camera_VS_PS: the projection's depth at infinity in _m22 / _m23,
+  // the view-projection, both read as column-major: our rows as they are), its march over the rays' start depth.
+  if (state.bend) {
+    auto& bend = state.bend_objects;
+    // A perspective view-projection's depth row is a x its w row + b: a, the depth at infinity, from the w row's largest.
+    size_t axis = 0;
+    for (size_t column = 1; column < 3; ++column) {
+      if (std::abs(view_projection[12 + column]) > std::abs(view_projection[12 + axis])) axis = column;
+    }
+    std::array<float, 13 * 4> camera_registers = {};
+    camera_registers[(5 * 4) + 10] = static_cast<float>(view_projection[8 + axis] / view_projection[12 + axis]);
+    camera_registers[(5 * 4) + 14] = 1.f;
+    for (size_t index = 0; index < 16; ++index) camera_registers[(9 * 4) + index] = static_cast<float>(view_projection[index]);
+    const std::array<float, 16> lighting = {-state.toward_sun[0], -state.toward_sun[1], -state.toward_sun[2], 0.f};
+    context->UpdateSubresource(bend.camera.Get(), 0, nullptr, camera_registers.data(), 0, 0);
+    context->UpdateSubresource(bend.lighting.Get(), 0, nullptr, lighting.data(), 0, 0);
+    constexpr std::array<FLOAT, 4> NONE = {};
+    context->ClearUnorderedAccessViewFloat(bend.occlusion_uav.Get(), NONE.data());
+    const std::array<ID3D11UnorderedAccessView*, 2> list = {bend.arguments_uav.Get(), bend.parameters_uav.Get()};
+    const std::array<ID3D11Buffer*, 3> list_constants = {bend.camera.Get(), bend.lighting.Get(), bend.settings.Get()};
+    context->CSSetShader(bend.setup.Get(), nullptr, 0);
+    context->CSSetUnorderedAccessViews(0, 2, list.data(), nullptr);
+    context->CSSetConstantBuffers(0, 3, list_constants.data());
+    context->Dispatch(1, 1, 1);
+    context->CSSetUnorderedAccessViews(0, 2, NO_OUTPUTS.data(), nullptr);
+    const std::array<ID3D11ShaderResourceView*, 2> march_inputs = {start_depth, bend.parameters_srv.Get()};
+    ID3D11UnorderedAccessView* march_output = bend.occlusion_uav.Get();
+    context->CSSetShader(bend.march.Get(), nullptr, 0);
+    context->CSSetShaderResources(0, 2, march_inputs.data());
+    context->CSSetUnorderedAccessViews(0, 1, &march_output, nullptr);
+    context->CSSetSamplers(0, 1, bend.border.GetAddressOf());
+    for (UINT index = 0; index < bend.dispatches.size(); ++index) {
+      context->CSSetConstantBuffers(3, 1, bend.dispatches[index].GetAddressOf());
+      context->DispatchIndirect(bend.arguments.Get(), index * 12);
+    }
+    context->CSSetShaderResources(0, 2, NO_VIEWS.data());
+    run(bend.combine.Get(), bend.occlusion_srv.Get(), state.visibility_uav.Get());
+    ID3D11SamplerState* no_sampler = nullptr;
+    context->CSSetSamplers(0, 1, &no_sampler);
+    context->CSSetConstantBuffers(0, 4, NO_CONSTANTS.data());
+  }
+  context->CSSetShaderResources(0, 1, NO_VIEWS.data());
+  context->CSSetUnorderedAccessViews(0, 1, NO_OUTPUTS.data(), nullptr);
   context->CSSetShader(nullptr, nullptr, 0);
   bridge::WaitProxy(proxy, context.Get());
 
   const std::array<IDirect3DSurface9*, 1> mask_target = {mask_surface.Get()};
-  const std::array<IDirect3DBaseTexture9*, 1> traced = {state.visibility.host.Get()};
-  bridge::DrawQuad(host, mask_target, state.shadows.Get(), traced, {},
+  const std::array<IDirect3DBaseTexture9*, 1> shaded = {state.visibility.host.Get()};
+  bridge::DrawQuad(host, mask_target, state.shadows.Get(), shaded, {},
                    {{D3DRS_ALPHABLENDENABLE, TRUE}, {D3DRS_SEPARATEALPHABLENDENABLE, FALSE}, {D3DRS_BLENDOP, D3DBLENDOP_MIN},
                     {D3DRS_SRCBLEND, D3DBLEND_ONE}, {D3DRS_DESTBLEND, D3DBLEND_ONE}, {D3DRS_COLORWRITEENABLE, D3DCOLORWRITEENABLE_RED}});
   return true;
@@ -375,7 +552,7 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
   }
   if (state.mask_frame != bridge.frame || state.traced_frame == bridge.frame || bridge.depth_stencil == state.prepass_depth) return;
   state.traced_frame = bridge.frame;
-  if (TraceGround(cmd_list)) {
+  if (ShadeGround(cmd_list)) {
     BindTraced(host, true);
   }
 }
@@ -405,6 +582,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.kept_frame = UINT32_MAX;
     state.occlusion = {};
     state.occlusion_uav.Reset();
+    state.bend_objects = {};
   } else if (device->get_api() == reshade::api::device_api::d3d9) {
     state.depth_copy.Reset();
     state.shadows.Reset();
