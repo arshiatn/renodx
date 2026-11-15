@@ -43,7 +43,9 @@
 #include "./ray_tracing.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/device_loss.hpp"
 #include "../twattila/draw_dispatch.hpp"
+#include "../twattila/output_encoding.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -1501,42 +1503,6 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   }
 }
 
-// Output: 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2).
-void SetOutputEncoding(int encoding) {
-  // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
-  if (bool frame_generation = false; encoding == 1 && reshade::get_config_value(nullptr, "Ryse AA", "FrameGeneration", frame_generation)
-                                     && frame_generation) {
-    encoding = 0;
-  }
-  shader_injection.swap_chain_encoding = static_cast<float>(encoding);
-  if (encoding == 2) {
-    renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
-    renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
-  } else {
-    renodx::mods::swapchain::SetUseHDR10(encoding == 0);
-  }
-}
-
-// Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
-// before the swapchain mod's create_swapchain (registered after this).
-bool auto_output_pending = false;
-// No saved settings at the add-on's start (ConfigureAddon).
-bool first_start = false;
-
-bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  if (!auto_output_pending) return false;
-  auto_output_pending = false;
-  const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
-  const auto path = renodx::utils::platform::GetPathInfo(monitor);
-  const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
-  SetOutputEncoding(windows_hdr ? 1 : 2);
-  if (first_start && !windows_hdr) {
-    ApplySdrPreset();
-    reshade::log::message(reshade::log::level::info, "[Ryse] First start without Windows HDR: the SDR preset.");
-  }
-  return false;
-}
-
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Ryse: Son of Rome by ATN";
 
@@ -1616,12 +1582,22 @@ void ConfigureAddon() {
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    const int value = static_cast<int>(setting->GetValue());
-    auto_output_pending = (value == 3);
     // No settings saved yet: a player's first start. On a display without HDR it starts with the SDR preset.
     float saved_mode = 0.f;
-    first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
-    SetOutputEncoding(auto_output_pending ? 1 : value);
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
+    // Decided at each new swap chain (device_loss's create_swapchain, before the swap chain mod's), Auto by Windows HDR
+    // for the game's display.
+    twattila::output_encoding::Configure({
+        .shader_encoding = &shader_injection.swap_chain_encoding,
+        .setting = static_cast<int>(setting->GetValue()),
+        .hdr_encoding = [](int output) {
+          // The DLSS addon's frame generation takes no scRGB: HDR10 with it. Auto's HDR is scRGB.
+          bool frame_generation = false;
+          reshade::get_config_value(nullptr, "Ryse AA", "FrameGeneration", frame_generation);
+          return (output == twattila::output_encoding::HDR10 || frame_generation) ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
+        },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+    });
     settings.push_back(setting);
   }
 
@@ -1695,7 +1671,8 @@ bool AttachAddon() {
 
   ConfigureAddon();
 
-  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  // Before the swap chain mod: a removed device's chain let go, each new chain's output decided.
+  twattila::device_loss::Install();
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
@@ -1724,6 +1701,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::draw>(back_buffer_fix::OnDraw);
   reshade::register_event<reshade::addon_event::draw_indexed>(back_buffer_fix::OnDrawIndexed);
   reshade::register_event<reshade::addon_event::destroy_device>(back_buffer_fix::OnDestroyDevice);
+  twattila::device_loss::InstallLast();
 
   attached = true;
   return true;
@@ -1732,7 +1710,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
-  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresentHotkeys);
   reshade::unregister_event<reshade::addon_event::init_pipeline>(OnInitPipelineHighlights);

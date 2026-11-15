@@ -2299,7 +2299,6 @@ constexpr auto OnLightingDispatch = []<typename Context>(Context& command) -> co
     context->CSGetShader(game_draw_shaders.game_lighting.GetAddressOf(), nullptr, nullptr);
     context->CSSetShader(game_draw_shaders.tiled_lights.Get(), nullptr, 0);
     return {
-        .replay = true,
         .post_callback = [](Context& dispatched, const void*) {
           const auto context = ImmediateContext(dispatched.cmd_list);
           if (!context) return;
@@ -2307,6 +2306,7 @@ constexpr auto OnLightingDispatch = []<typename Context>(Context& command) -> co
           context->CSSetShader(game_draw_shaders.game_lighting.Get(), nullptr, 0);
           game_draw_shaders.game_lighting.Reset();
         },
+        .replay = true,
     };
   }
 };
