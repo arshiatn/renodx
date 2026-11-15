@@ -285,6 +285,18 @@ fix53 (ATN's batch 5, untested in game; the helper GPU-tested): helper22 (in the
 (compared with Embark Studios' kajiya, MIT / Apache 2.0, not copied: a light switched on or off shows within 3
 frames), the partitioned TLAS fixed and on again.
 
+fix54 (draft, 2026-11-15, not stamped, built only, not run in game; DLSS add-on v116 draft): the fast draw dispatch
+(both add-ons opted in; off while the DevKit or an older partner build is loaded, the log says so); one constant mirror
+for both add-ons (cross_addon, its events once); a red full-download note on General and Ray Tracing while
+renodx-tw-dlaa64.exe is missing, a GitHub (Downloads) button; an **SDR (monitors without HDR)** preset, applied on a
+first start with Output Auto on a display without Windows HDR; ray tracing installs only with the helper beside the
+add-on; the output decided at each new swap chain and GPU resets handled as in the Total War add-ons (device_loss).
+Builds against bridge v31. The release must carry, from one commit: both add-ons, renodx-tw-dlaa64.exe built from the
+same commit (no older helper: the shipped helper22 speaks bridge v11), D3D12\D3D12Core.dll with AGILITY_SDK_LICENSE.txt
+(the helper's ray tracing), nvngx_dlss.dll (DLSS; 310.5 or newer for presets M / L), for frame generation Streamline
+2.14.16 (sl.interposer.dll, sl.common.dll, sl.dlss_g.dll, sl.reflex.dll, sl.pcl.dll) with nvngx_dlssg.dll, the licence
+files (RENODX_LICENSE.txt, NVIDIA's, Agility SDK's).
+
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
 
