@@ -1036,8 +1036,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         2 needs the same with "tonemap_type"); S2 output_encoding Apply calls utils::device_proxy::SetTargetFormat /
         SetTargetColorSpace for proxy games (R.U.S.E. does it itself until then); S3 a runtime filter in
         twattila/test_hooks.hpp (only the D3D11 proxy's runtime). Owner: shared-steps round (after the fix merge)
-      - [ ] ATN DECIDES (R.U.S.E.): Rendering Mode default (still V31 Full Replacement as shipped, it flattens each map's
-        contrast): V35 (Recommended) or Extended (Reset)?; keep R.U.S.E.'s own V31 rows or move to Attila's 15 v31_* rows
+      - [ ] ATN 20:4x: V35 = Recommended AND the default Rendering Mode (Reset stays Extended): ru_ makes it. ATN also asks
+        to DOUBLE-CHECK RT / PT for R.U.S.E. (WON'T GET was argued from stream output / ProcessVertices only): ru_ studies a
+        D3D9 draw replay on the proxy's D3D11 device, the RTX Remix (dxvk-remix) route, forward-renderer shadow / AO
+        placement, and what the B0 trace must answer. Owner: ru_ (resumed 20:4x)
+      - [ ] ATN DECIDES (R.U.S.E.): keep R.U.S.E.'s own V31 rows or move to Attila's 15 v31_* rows
         (saved V31 looks would change)?; Hue Clip by eye (100). Experimental rows built, never run: Extended, Video AutoHDR,
         Wait for Each Frame Copy, the four Graphics 2 of 2 rows. Owner: ATN
       - [x] DONE in 8e80afae: R.U.S.E. U1-U7 (offline): U1 V35 contrast = the map's Gamma (postprocess.hlsli:161) + Extended (per-channel
