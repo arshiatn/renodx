@@ -23,7 +23,7 @@
 
 // Contact shadows (Experimental): Unreal's own. The game's sun light shader already has them (a short screen-space
 // march toward the light, 8 steps), but the game gives its sun a ContactShadowLength of 0. Before the sun's deferred
-// light draw (the light rectangle vs 0x7C21DA11 with a light's constants at ps b1, UE 4.26 FDeferredLightUniformStruct),
+// light draw (the light rectangle vs 0x7C21DA11 with a light's constants at ps b1, UE 4.23 FDeferredLightUniformStruct),
 // those constants are copied with the length set (cs 0x7A1E0D43) and the copy is bound for the draw; the game's binding
 // comes back after it. The copy runs in the addon's own context state.
 namespace expeditionsrome::dlss::contact_shadows {
@@ -34,7 +34,7 @@ using Microsoft::WRL::ComPtr;
 inline std::atomic<float> length = 0.f;
 // The ray-traced sun shadows went into this draw's light attenuation (ray_tracing.hpp, just before): none of these.
 inline std::atomic<bool> ray_traced = false;
-// OnLightRectangle's vertex shader. UE 4.26 draws only directional lights as a rectangle; spot and point lights are
+// OnLightRectangle's vertex shader. UE 4.23 draws only directional lights as a rectangle; spot and point lights are
 // geometry with other shaders.
 constexpr uint32_t LIGHT_RECTANGLE_SHADER = 0x7C21DA11;
 

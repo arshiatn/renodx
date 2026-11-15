@@ -197,7 +197,7 @@ struct Diagnostics {
 } diagnostics;
 bool attached = false;
 
-// UE 4.26 keeps the jitter position in a signed byte (FSceneViewState +0x4AA, loaded with movsx). Past 128 positions
+// UE 4.23 keeps the jitter position in a signed byte (FSceneViewState +0x4AA, loaded with movsx). Past 128 positions
 // (8 * (output / input)^2: below 25% scale) it turns negative and Halton(position + 1 <= 0) is 0, so the jitter stops
 // for 127 of every 256 frames: DLSS pulses blurry/sharp. Loaded unsigned (movsx -> movzx), the pattern is right up to
 // UE's cap of 255 positions (below 18% it repeats early). Applied while the addon is loaded.
@@ -390,13 +390,12 @@ constexpr auto GRAPHICS_SETTINGS = std::to_array<GraphicsSetting>({
      "-100: ambient occlusion at its highest quality even where a level asks for less (100: the level's own)."},
     {OPTIONAL_GROUP, L"r.LensFlareQuality", "Lens flare quality", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 3.f},
      "3: higher quality (bokeh-shaped) lens flares; the game uses 2."},
-    // UE 4.26's screen-space global illumination (off in the game): light bouncing off what is on screen.
-    {OPTIONAL_GROUP, L"r.SSGI.Enable", "Screen-space global illumination", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 1.f},
-     "1: light bounces off nearby surfaces onto others (Unreal's own, screen-space). Brighter shade, slower."},
-    {OPTIONAL_GROUP, L"r.SSGI.Quality", "Screen-space global illumination quality", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 4.f},
-     "Rays per pixel of the global illumination (1-4; 4: least noise)."},
-    {OPTIONAL_GROUP, L"r.SSGI.HalfRes", "Screen-space global illumination at half resolution", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 0.f},
-     "0: the global illumination at full resolution (sharper, slower)."},
+    // UE 4.23's screen-space global illumination: one cvar (no r.SSGI.Enable / HalfRes in this exe). Registered with 0
+    // (off, the game's); the renderer draws it while the value is above 0 and clamps the quality to 1..4.
+    {OPTIONAL_GROUP, L"r.SSGI.Quality", "Screen-space global illumination", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 4.f},
+     "Light bounces off nearby surfaces onto others (Unreal's own, screen-space). Brighter shade, slower.\n"
+     "1-4: rays per pixel (4: least noise).",
+     {1.f, KEEP}},
     // In no preset (a load-time trade-off, not quality): read when an area's shaders load.
     {"Loading", L"r.CreateShadersOnLoad", "Shaders on load", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 1.f},
      "1: creates all of an area's shaders while it loads, instead of the first time an effect or material appears on\n"
@@ -460,7 +459,7 @@ twattila::rt_scene::Settings ray_tracing_settings;
 float ray_traced_bounce_strength = 1.f;
 bool ray_tracing_installed = false;
 
-// UE 4.26's View rows frame generation reads (Tales' 4.21 rows + 4: ClipToWorld came before them).
+// UE 4.23's View rows frame generation reads (Tales' 4.21 rows + 4: ClipToWorld came before them).
 constexpr uint32_t VIEW_VIEW_TO_CLIP_NO_AA = 32;
 constexpr uint32_t VIEW_FORWARD = 56;
 constexpr uint32_t VIEW_UP = 57;
@@ -513,7 +512,7 @@ void SaveChoice(const GraphicsEntry& entry) {
   reshade::set_config_value(nullptr, GRAPHICS_SECTION, entry.key.c_str(), value.c_str());
 }
 
-// Texture LOD bias below 100% (DLSS section). With temporal upscaling UE 4.26 biases material textures (599 of the
+// Texture LOD bias below 100% (DLSS section). With temporal upscaling UE 4.23 biases material textures (599 of the
 // game's pixel shaders sample with View.MaterialTextureMipBias) by max(log2(scale) + r.ViewTextureMipBias.Offset,
 // r.ViewTextureMipBias.Min), read every frame (PreVisibilityFrameSetup); the game's -0.3 and -1 leave textures blurrier
 // than NVIDIA's log2(scale) - 1 below ~57%. While DLSS renders below 100%: offset 0 / -1 / -2 (Matched / Sharper /

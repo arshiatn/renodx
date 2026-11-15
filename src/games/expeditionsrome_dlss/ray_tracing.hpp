@@ -34,7 +34,7 @@
 
 // Ray tracing (Experimental): Expeditions: Rome's scene through the Total War helper (twattila/rt_core.hpp;
 // renodx-tw-dlaa64.exe next to the addon, its own D3D12 device with DXR), in metres (Unreal's centimetres / 100).
-// The scene: Unreal 4.26's depth prepass into the scene depth (no target, depth written; the shadow maps' and custom
+// The scene: Unreal 4.23's depth prepass into the scene depth (no target, depth written; the shadow maps' and custom
 // depth's buffers stay out), streamed out through the game's own vertex shaders (those with bone indices, ATTRIBUTE3
 // uint4, or a vertex buffer compute writes, the skin cache's: every frame). Alpha-tested materials (rt_core's
 // SceneCoverage: a prepass pixel shader that discards and samples t0 at a texture coordinate, its alpha the mask) stream
@@ -58,7 +58,7 @@ constexpr uint32_t REFLECTION_SHADER = 0xE36ED33E;
 
 namespace internal {
 
-// Unreal 4.26's View: WorldToClip (rows 4-7), WorldCameraOrigin (63).
+// Unreal 4.23's View: WorldToClip (rows 4-7), WorldCameraOrigin (63).
 constexpr uint32_t VIEW_WORLD_TO_CLIP = 4;
 constexpr uint32_t VIEW_WORLD_CAMERA_ORIGIN = 63;
 // FDeferredLightUniformStruct: ShadowedBits (c2.x), the direction toward the light (c5.xyz); bound 144 - 256 bytes.

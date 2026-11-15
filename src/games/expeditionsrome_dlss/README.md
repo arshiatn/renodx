@@ -75,7 +75,7 @@ this exe (`engine_cvars.hpp`, `GRAPHICS_SETTINGS` in `addon.cpp`, 47 settings).
 
 - Cvars by name through the engine's console manager: the singleton all 1722
   `FindConsoleVariable` sites load (`48 8B 0D .. 48 8B 01 48 8D 15 .. 41 B0 ..
-  FF 90 A0 00 00 00`: UE 4.26 passes `bTrackFrequentCalls`, slot 0xA0 instead of
+  FF 90 A0 00 00 00`: UE 4.23 passes `bTrackFrequentCalls`, slot 0xA0 instead of
   4.21's 0x90). Value layout read from this exe's cvar vtables: `AsVariableInt`
   / `AsVariableFloat` slots 9 / 10 (`lea rax, [rcx+0x38]`), FConsoleVariableRef
   `GetInt` / `GetFloat` slots 15 / 16 (MainValue at 0x40, the global's pointer
@@ -167,7 +167,7 @@ this exe (`engine_cvars.hpp`, `GRAPHICS_SETTINGS` in `addon.cpp`, 47 settings).
   folder used. For a release: put NVIDIA's production `nvngx_dlss.dll`
   (`lib/Windows_x86_64/rel` of the DLSS SDK) next to the addon. Wine test of the
   lookup order passed.
-- **Texture LOD bias** (v14): with temporal upscaling UE 4.26 biases material
+- **Texture LOD bias** (v14): with temporal upscaling UE 4.23 biases material
   textures itself (`View.MaterialTextureMipBias`, `cb0[137].y` in 599 of the
   game's pixel shaders): max(log2(scale) + `r.ViewTextureMipBias.Offset`,
   `r.ViewTextureMipBias.Min`), computed every frame in PreVisibilityFrameSetup
@@ -176,7 +176,7 @@ this exe (`engine_cvars.hpp`, `GRAPHICS_SETTINGS` in `addon.cpp`, 47 settings).
   renders below 100% the addon writes Offset 0 / -1 / -2 (Matched / Sharper /
   Sharpest) and Min -16; Off, DLAA, Custom 100% and unload put the game's values
   back. Advanced shows the bias in use. Saved as `[Rome AA] TextureLodBias`.
-- **Blur/sharp pulsing at low scales**: UE 4.26 picks its TAAU jitter pattern
+- **Blur/sharp pulsing at low scales**: UE 4.23 picks its TAAU jitter pattern
   length as 8 × (output/input)², NVIDIA's own formula, but caps it at 255
   positions, and keeps the position in a signed byte (`FSceneViewState`
   +0x4AA, loaded with `movsx`). Past 128 positions (below 25%) the position
@@ -253,7 +253,7 @@ warning says how it was found (or what was seen) with exe offsets.
   back. More than 20 such rewrites in about 600 frames pauses it (retried after 3 s).
 - 60 temporal passes after a write: no change in the input width pauses it
   ("no effect", retried); a different width than expected is only noted (engine limits).
-- Wine test with UE 4.26-like statics in the test exe (GCC puts all
+- Wine test with UE 4.23-like statics in the test exe (GCC puts all
   initializers in one function, with decoys at the same value on both sides):
   found by help text; by name when the help differs; by name when two help
   texts match; moved link refused; implausible value; nothing found when the
@@ -876,9 +876,9 @@ v21 (ATN's batch): section headings as Ryse's DLSS overlay: DLSS lavender (its s
 Advanced green.
 
 v22 (ATN's batch, untested in game): the missing global illumination, from the engine itself: Optional (changes the
-look) offers UE 4.26's screen-space global illumination (r.SSGI.Enable 1, off in the game), its quality (r.SSGI.Quality
+look) offers UE 4.23's screen-space global illumination (r.SSGI.Enable 1, off in the game), its quality (r.SSGI.Quality
 1-4) and full resolution (r.SSGI.HalfRes 0); in no preset. Screen-space reflections were already there (r.SSR.Quality,
-r.SSR.MaxRoughness). Contact shadows have no engine switch in 4.26 (a per-light setting); a screen-space shadows pass of
+r.SSR.MaxRoughness). Contact shadows have no engine switch in 4.23 (a per-light setting); a screen-space shadows pass of
 the addon's own is a follow-up.
 
 v23 (ATN's batch, untested in game): **Frame generation (Experimental)** with DLAA / DLSS. NVIDIA's DLSS Frame Generation + Reflex through Streamline, Tales of Arise's (talesofarise_dlss/frame_generation.hpp,
@@ -890,7 +890,7 @@ Setup as Tales': copy `sl.interposer.dll`, `sl.common.dll`, `sl.dlss_g.dll`, `sl
 restart)** and restart the game; modes 2x-6x, Dynamic, Off (Reflex only), Reflex Boost. RTX 40 or newer, hardware
 GPU scheduling, HDR10 or SDR output (no scRGB). The stand-in path is GPU-tested with fg_test (CreateSwapChain and, FG_HWND=1,
 CreateSwapChainForHwnd); untested in this game. Camera from UE
-4.26's View (Tales' 4.21 rows + 4: ViewToClipNoAA 32, ViewForward / Up / Right 56-58, WorldCameraOrigin 63,
+4.23's View (Tales' 4.21 rows + 4: ViewToClipNoAA 32, ViewForward / Up / Right 56-58, WorldCameraOrigin 63,
 ClipToPrevClip 118; reversed infinite depth, far = UE's world size). The HUD-less image after the tonemapper's ten
 permutations (the HDR addon's t00-t09, through its swap chain shader); at sizes other than the back buffer's (DLSS
 before the upscale) none: frame generation then runs without it.
@@ -902,7 +902,7 @@ in Graphics (Off, 0.1-10% of the screen; Max preset 3%, Game's own Off). Unreal'
 light's constants (ps b1, FDeferredLightUniformStruct, c1.z the length; positive: a share of the screen) are copied with
 the length set (cs 0x7A1E0D43 in the addon's own context state, then CopyResource) and the copy is bound for the draw;
 the game's binding comes back after it (contact_shadows.hpp). Only draws with that vertex shader and 144-256 bytes at
-ps b1 (UE 4.26 draws only directional lights as a rectangle; the other passes with it bind the View there). Works at
+ps b1 (UE 4.23 draws only directional lights as a rectangle; the other passes with it bind the View there). Works at
 DLSS below 100% (the march is in the render's own pixels). In game at 10%: shadows behind feet on the planks, under
 a bag and in the grass; Off unchanged. The one-frame trace (`renodx_trace_now` next to the exe) also saves each traced
 shader's bytecode to `tales_frame_trace_shaders` (when the DevKit keeps it).
@@ -921,7 +921,7 @@ v25: frame generation's frame rate limit, resize fix (frame_generation.hpp, shar
 v26 (ATN's batch 3, untested in game; the helper GPU-tested): **Ray tracing (Experimental)**, a tree under the Contact
 shadows slider. Needs an RTX GPU and the Total War helper (renodx-tw-dlaa64.exe, D3D12\D3D12Core.dll) next to the
 addon; restart the game after turning on the first effect (ray_tracing.hpp, twattila/rt_core.hpp).
-- The scene: Unreal 4.26's depth prepass into the scene depth, streamed out through the game's own vertex shaders (the
+- The scene: Unreal 4.23's depth prepass into the scene depth, streamed out through the game's own vertex shaders (the
   shadow maps' and custom depth's other depth buffers stay out), in metres. Alpha-tested materials (a prepass pixel
   shader that discards and samples t0 at a texture coordinate: foliage, cloth, fences) stream out their UV too and are
   alpha-tested in the rays against t0's alpha; masks read another way (tiled) stay out. Characters (bone indices, or
@@ -952,3 +952,8 @@ frames), the partitioned TLAS fixed and on again.
 AddonUninit now shuts down the shared helper bridge after unregistering its users. The watcher exits before module unload; child process and IPC ownership are released. Shutdown drains outstanding GPU fence generations, with ordered CPU fence recovery only after confirmed helper exit. Failed launches clean up partial ownership and existing IPC sessions are not overwritten.
 
 Offline checks: x86/x64 production-header tests cover process/thread cleanup, failure injection, 20 reloads with stable handle counts, and three interleaved D3D11/D3D12 WARP fence generations under normal completion and forced shutdown. No game was launched. Manually check helper-enabled unload/reload and device recreation, then repeat the reported battle. The original battle freeze is not proven fixed; unexpected mid-run helper failures remain audit F7.
+
+v29 (2026-11-15 UE4 round, untested in game): the engine is UE 4.23 (the exe's build string `++UE4+Release-4.23-CL-0`;
+earlier notes and comments said 4.26; the read slots stay). Screen-space global illumination is one row,
+`r.SSGI.Quality` (Optional, Max preset 4, slider 1-4): this exe has no `r.SSGI.Enable` / `r.SSGI.HalfRes` (the two
+rows never resolved); its registration default is 0 (off), the renderer draws it above 0 and clamps the quality to 1-4.

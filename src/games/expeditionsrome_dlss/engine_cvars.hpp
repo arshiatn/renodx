@@ -19,7 +19,7 @@
 #include <optional>
 #include <string>
 
-// The game's (UE 4.26) console variables by name, through the engine's own lookup. Every
+// The game's (UE 4.23) console variables by name, through the engine's own lookup. Every
 // IConsoleManager::Get().FindConsoleVariable(TEXT("..."), bTrackFrequentCalls) site loads the manager's singleton
 // and calls its slot 0xA0:
 //   mov rcx, [rip + singleton]; mov rax, [rcx]; lea rdx, [rip + name]; mov r8b, track; call [rax + 0xA0]
