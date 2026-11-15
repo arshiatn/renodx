@@ -345,6 +345,9 @@ one frame's GPU time per pass and shader into `ryse_pass_timing.txt` next to the
 `renodx_test_hooks.txt` next to the exe), clock from the first present; PROFILE is Record Ray Tracing Profile; SET's
 `trace` key writes the `renodx_trace_now` file the present already polls for (the one-frame trace). Only the renodx page's
 keys are reachable (the `[Ryse AA]` / `[Ryse Game Settings]` rows are drawn by `graphics.hpp`, not settings).
+`RENODX_TW_CVARS=<name>=<value>[;...]` (shell or that file) sets console variables once the game draws its world, through
+the console (system.cfg's lines come before the cvars exist), each logged: `sys_spec=1` for a Low run,
+`r_ShadersLogCacheMisses=1`; the quality options then take them as the game's.
 **Ray tracing**: the **Debug View** (Sun Shadows, Ambient Occlusion, Light Bounce, Reflections, Specular Occlusion, All;
 saved as its row's item, All = rt_core's 9) drawn over tonemap00's output (its RGBA16F target at the render size) by
 rt_core's `DrawDebugView`, tonemap00's on_drawn set only with the ray tracing installed (no replayed draw otherwise), and

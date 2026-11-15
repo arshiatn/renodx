@@ -415,6 +415,11 @@ struct GameConsole {
   const int* restricted = nullptr;
   std::string details;  // where, or why not; for the log
 } game_console;  // Present thread (the overlay runs in it)
+// Test runs: RENODX_TW_CVARS=<name>=<value>[;<name>=<value>...] (the shell's, or a line of renodx_test_hooks.txt, which
+// twattila::test_hooks reads into the environment) sets those console variables once the game draws its world, through
+// the console as the quality options do (system.cfg's lines are read before the cvars exist: "Unknown command"); then
+// the quality options take them as the game's own. E.g. sys_spec=1 (Low), r_ShadersLogCacheMisses=1.
+bool test_cvars_set = false;  // Present thread
 // The vegetation groups' sprite distance (StatInstGroup update +0x16EB00) is x the render width / 1024, or x
 // e_ForceDetailLevelForScreenRes / 1024 when that is set (0: the current width). DLSS below the display width moved
 // trees to their sprites (which cast no shadows) sooner: shadows ended closer at every smaller scale. While the addon
@@ -2874,6 +2879,26 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         renodx::utils::log::i("[Ryse DLSS] ", language.cvar, ": ", (current != nullptr ? current : "(none)"), " -> ", wanted);
       }
       language.applied = true;
+    }
+  }
+
+  if (void* console = ((game_draws && !test_cvars_set) ? FindGameConsole() : nullptr); console != nullptr) {
+    test_cvars_set = true;
+    std::array<char, 4096> value = {};
+    const DWORD length = GetEnvironmentVariableA("RENODX_TW_CVARS", value.data(), static_cast<DWORD>(value.size()));
+    for (const auto part : std::views::split(std::string_view(value.data(), (length < value.size() ? length : 0)), ';')) {
+      const std::string_view pair(part.begin(), part.end());
+      const size_t equals = pair.find('=');
+      if (equals == std::string_view::npos) continue;
+      const std::string name(pair.substr(0, equals));
+      void* cvar = GetGameCvar(console, name.c_str());
+      if (cvar == nullptr) {
+        renodx::utils::log::w("[Ryse DLSS] Test: no console variable ", name);
+        continue;
+      }
+      (*reinterpret_cast<void (***)(void*, const char*)>(cvar))[CVAR_SET_STRING / sizeof(void*)](cvar, std::string(pair.substr(equals + 1)).c_str());
+      const char* now = (*reinterpret_cast<const char* (***)(void*)>(cvar))[CVAR_GET_STRING / sizeof(void*)](cvar);
+      renodx::utils::log::i("[Ryse DLSS] Test: ", name, " = ", (now != nullptr ? now : "(none)"));
     }
   }
 
