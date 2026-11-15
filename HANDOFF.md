@@ -47,6 +47,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -125,7 +126,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R.U.S.E. T-run (one agent data run, ATN's OK): W1 resource log (pools, formats, ... | coordinator (next game window)
 - R.U.S.E. U1 run (after ReShade + the stamped add-on are installed on D:): Frame ... | coordinator (next game window)
 - R.U.S.E. open ledger rows: Time Each Pass (D3D9 timestamp queries, optional); th ... | ru_ / release round
-- SHARED STEPS from R.U.S.E.: S1 output_encoding's first-start key as a Config fie ... | shared-steps round (after the fix merge)
 - ATN DECIDES (R.U.S.E.): keep R.U.S.E.'s own V31 rows or move to Attila's 15 v31_ ... | ATN
 - R.U.S.E. C2: 15 marker / map-interface draws pre-undo the post grade (authored c ... | ru_
 - R.U.S.E. U8 / U1 run: ReShade + the stamped add-on into D:\...\R.U.S.E (coordina ... | coordinator (next game window, ATN's OK)
@@ -134,7 +134,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 ... | coordinator
 - d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div ... | d1_
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
-- sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (devi ... | sh_
+- Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
 - hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, W ... | hb_
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
@@ -1186,7 +1186,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         off: PresentMon A/B + loading screens. Owner: coordinator (next game window)
       - [ ] R.U.S.E. open ledger rows: Time Each Pass (D3D9 timestamp queries, optional); the HDR-only snapshot check
         (release round). Owner: ru_ / release round
-      - [ ] SHARED STEPS from R.U.S.E.: S1 output_encoding's first-start key as a Config field ("rendering_mode"; Divinity
+      - [x] DONE c04da639 (sh_): SHARED STEPS from R.U.S.E.: S1 output_encoding's first-start key as a Config field ("rendering_mode"; Divinity
         2 needs the same with "tonemap_type"); S2 output_encoding Apply calls utils::device_proxy::SetTargetFormat /
         SetTargetColorSpace for proxy games (R.U.S.E. does it itself until then); S3 a runtime filter in
         twattila/test_hooks.hpp (only the D3D11 proxy's runtime). Owner: shared-steps round (after the fix merge)
@@ -1264,8 +1264,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (Experimental)" GT-VBAO without the helper (WARP PASS). ru6_ started 00:1x: water reflections (259 PS read
         uniDefaultEnvMap once) + ground GI as Experimental rows. LEFT after: gated build fixes, H1 / H2 / H3 GPU, T-run,
         Fable 5.2 High review of bridge.hpp / bridge_replay.hpp / ray_tracing.hpp / rt_core replay API / reflex.hpp.
-      - [ ] sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (device_proxy target format) + S3
-        (test_hooks runtime filter); R.U.S.E. adopts later. Owner: sh_
+      - [x] sh_ MERGED c04da639 01:1x: S1 Config::first_start_key (default "tonemapper", every game unchanged); S2 Apply's
+        SDR branch sets the proxy's target format / colour space; S3 test hooks answer only on the D3D11 proxy's runtime;
+        tw_output_encoding x86 + amd64 ALL PASS (+ FirstStartKeys, ProxyTarget), new test/tw_test_hooks PASS. Divinity 2
+        has nothing to adopt; the "tonemap_type" override is Divinity 1's (sent to d1_); R.U.S.E. adoption sent to ru6_.
+        sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (device_proxy target format) + S3
+        (test_hooks runtime filter); R.U.S.E. adopts later.
+      - [ ] Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own SetTargetFormat lines) and
+        Divinity 1 (`.first_start_key = "tonemap_type"`, drop the override at addon.cpp:989-993); in-game check of S2 SDR
+        output through the R.U.S.E. proxy and S3 SET / SHOT. Owner: ru6_ / d1_, then the R.U.S.E. T-run
       - [ ] hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, WH2 FXAA, alpha, Pharaoh max,
         DOF blurs Attila / Thrones / WH1). Owner: hb_
       - [ ] ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 first, TW table driver, Ryse, Div2,
