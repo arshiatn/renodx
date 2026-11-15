@@ -65,6 +65,12 @@ struct State {
   ComPtr<ID3D11UnorderedAccessView> kept_color_uav;
   ComPtr<ID3D11Texture2D> reflections_copy;
   ComPtr<ID3D11ShaderResourceView> reflections_copy_srv;
+  // Specular occlusion without the traced reflections: merged into the game's screen-space ones (rt_specular_merge).
+  ComPtr<ID3D11ComputeShader> specular_merge;
+  ComPtr<ID3D11SamplerState> linear_sampler;
+  ComPtr<ID3D11Texture2D> merged;
+  ComPtr<ID3D11UnorderedAccessView> merged_uav;
+  ComPtr<ID3D11ShaderResourceView> merged_srv;
   // The lighting's screen-space reflections (t6) while the traced ones are bound in their place, and whether they were
   // at its last dispatch (the next screen-space trace is left out then).
   ComPtr<ID3D11ShaderResourceView> game_reflections;
@@ -74,8 +80,8 @@ struct State {
 };
 static State state;
 
-// `texture` as an RGBA16F texture of `size` with `uav` or `srv` (null: none), made again when the size changes; false:
-// it could not be made.
+// `texture` as an RGBA16F texture of `size` with `uav` and / or `srv` (null: none), made again when the size changes;
+// false: it could not be made.
 inline bool EnsureTexture(ID3D11Device* device, const std::array<UINT, 2>& size, ComPtr<ID3D11Texture2D>* texture,
                           ComPtr<ID3D11UnorderedAccessView>* uav, ComPtr<ID3D11ShaderResourceView>* srv) {
   D3D11_TEXTURE2D_DESC desc = {};
@@ -92,7 +98,7 @@ inline bool EnsureTexture(ID3D11Device* device, const std::array<UINT, 2>& size,
       .Format = DXGI_FORMAT_R16G16B16A16_FLOAT,
       .SampleDesc = {.Count = 1},
       .Usage = D3D11_USAGE_DEFAULT,
-      .BindFlags = (uav != nullptr) ? UINT{D3D11_BIND_UNORDERED_ACCESS} : UINT{D3D11_BIND_SHADER_RESOURCE},
+      .BindFlags = ((uav != nullptr) ? UINT{D3D11_BIND_UNORDERED_ACCESS} : 0u) | ((srv != nullptr) ? UINT{D3D11_BIND_SHADER_RESOURCE} : 0u),
   };
   if (FAILED(device->CreateTexture2D(&desc, nullptr, texture->GetAddressOf()))
       || (uav != nullptr && FAILED(device->CreateUnorderedAccessView(texture->Get(), nullptr, uav->GetAddressOf())))
@@ -229,12 +235,25 @@ inline bool Trace(ID3D11DeviceContext* context) {
     state.positions.Reset();
     state.guides.Reset();
     state.color.Reset();
+    state.specular_merge.Reset();
+    state.linear_sampler.Reset();
+    const D3D11_SAMPLER_DESC sampler_desc = {
+        .Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+        .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+        .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+        .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+        .ComparisonFunc = D3D11_COMPARISON_NEVER,
+        .MaxLOD = D3D11_FLOAT32_MAX,
+    };
     state.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
                    || FAILED(device1->CreateDeviceContextState(0, &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr,
                                                                state.private_state.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__0x52C5E004.data(), __0x52C5E004.size(), nullptr, state.positions.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__0x52C5E005.data(), __0x52C5E005.size(), nullptr, state.guides.GetAddressOf()))
-                   || FAILED(device->CreateComputeShader(__0x52C5E006.data(), __0x52C5E006.size(), nullptr, state.color.GetAddressOf()));
+                   || FAILED(device->CreateComputeShader(__0x52C5E006.data(), __0x52C5E006.size(), nullptr, state.color.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__rt_specular_merge.data(), __rt_specular_merge.size(), nullptr,
+                                                         state.specular_merge.GetAddressOf()))
+                   || FAILED(device->CreateSamplerState(&sampler_desc, state.linear_sampler.GetAddressOf()));
   }
   if (state.failed) return false;
   auto& bridge = twattila::dlaa_bridge::bridge;
@@ -280,30 +299,49 @@ inline bool Trace(ID3D11DeviceContext* context) {
 }
 
 // At the tiled lighting's dispatch, after Trace: the traced reflections in place of its screen-space ones (t6: the same
-// lerp over the probes, reflected light by the share of rays that met something); the game's put back after the
-// dispatch (RestoreReflections).
+// lerp over the probes, reflected light by the share of rays that met something); without them the traced specular
+// occlusion merged into the screen-space ones (rt_specular_merge: the probes' share times it). The game's put back after
+// the dispatch (RestoreReflections).
 inline void BindReflections(ID3D11DeviceContext* context) {
   auto& state = internal::state;
-  ID3D11ShaderResourceView* traced = twattila::rt_scene::Reflections(context)[0];
+  const auto traced = twattila::rt_scene::Reflections(context);
   const std::unique_lock lock(state.mutex);
-  state.reflecting = traced != nullptr && state.settings.reflections;
-  if (!state.reflecting) return;
-  // A bridge bigger than the render (the helper upscales): its top-left alone.
+  state.reflecting = traced[0] != nullptr && state.settings.reflections;
+  const bool occluding = !state.reflecting && traced[1] != nullptr && state.settings.specular_occlusion && state.specular_merge;
+  ComPtr<ID3D11DeviceContext1> context1;
+  if ((!state.reflecting && !occluding) || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
+  ComPtr<ID3D11ShaderResourceView> game;
+  context->CSGetShaderResources(6, 1, game.GetAddressOf());
+  ID3D11ShaderResourceView* bound = traced[0];
   const auto& bridge = twattila::dlaa_bridge::bridge;
-  if (bridge.width != state.render_size[0] || bridge.height != state.render_size[1]) {
+  if (occluding) {
+    if (!internal::EnsureTexture(state.device.Get(), state.render_size, &state.merged, &state.merged_uav, &state.merged_srv)) return;
+    {
+      const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
+      ID3D11ShaderResourceView* inputs[] = {game.Get(), traced[1]};
+      ID3D11UnorderedAccessView* outputs[] = {state.merged_uav.Get()};
+      ID3D11SamplerState* samplers[] = {state.linear_sampler.Get()};
+      context->CSSetShader(state.specular_merge.Get(), nullptr, 0);
+      context->CSSetShaderResources(0, 2, inputs);
+      context->CSSetUnorderedAccessViews(0, 1, outputs, nullptr);
+      context->CSSetSamplers(0, 1, samplers);
+      context->Dispatch((state.render_size[0] + 7) / 8, (state.render_size[1] + 7) / 8, 1);
+    }
+    bound = state.merged_srv.Get();
+  } else if (bridge.width != state.render_size[0] || bridge.height != state.render_size[1]) {
+    // A bridge bigger than the render (the helper upscales): its top-left alone.
     ComPtr<ID3D11Resource> resource;
-    traced->GetResource(resource.GetAddressOf());
+    bound->GetResource(resource.GetAddressOf());
     if (!internal::EnsureTexture(state.device.Get(), state.render_size, &state.reflections_copy, nullptr, &state.reflections_copy_srv)) {
       state.reflecting = false;
       return;
     }
     const D3D11_BOX box = {.right = state.render_size[0], .bottom = state.render_size[1], .back = 1};
     context->CopySubresourceRegion(state.reflections_copy.Get(), 0, 0, 0, 0, resource.Get(), 0, &box);
-    traced = state.reflections_copy_srv.Get();
+    bound = state.reflections_copy_srv.Get();
   }
-  state.game_reflections.Reset();
-  context->CSGetShaderResources(6, 1, state.game_reflections.GetAddressOf());
-  context->CSSetShaderResources(6, 1, &traced);
+  state.game_reflections = game;
+  context->CSSetShaderResources(6, 1, &bound);
   state.reflections_bound = true;
 }
 
@@ -392,6 +430,11 @@ inline void Release() {
   state.kept_color_uav.Reset();
   state.reflections_copy.Reset();
   state.reflections_copy_srv.Reset();
+  state.specular_merge.Reset();
+  state.linear_sampler.Reset();
+  state.merged.Reset();
+  state.merged_uav.Reset();
+  state.merged_srv.Reset();
   state.game_reflections.Reset();
   state.reflections_bound = false;
   state.reflecting = false;

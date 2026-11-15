@@ -209,6 +209,7 @@ struct RtSliders {
   float ambient_quarter = 0.f;
   float reflections = 0.f;
   float reflection_samples = 1.f;
+  float specular_occlusion = 0.f;  // without the traced reflections: merged into the game's screen-space ones
   float light_bounce = 0.f;
   float rays = 4.f;
   float range = 10.f;  // metres
@@ -229,10 +230,10 @@ struct RtSliders {
 bool ray_tracing_installed = false;
 constexpr uint32_t RAYS_TINT = 0x6BE0D8;
 
-// With a ray-traced effect on (the rows for all of them).
+// With a ray-traced effect on (the rows for all of them; at launch: the ray tracing installed).
 bool AnyRays() {
   return rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
-         || rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f;
+         || rt_sliders.specular_occlusion != 0.f || rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f;
 }
 
 // The Ray Tracing presets (Attila's RT/PT values in this section's keys): RT/PT writes RAYS_RESET, then RAYS_PRESET; No
@@ -240,7 +241,7 @@ bool AnyRays() {
 using PresetValues = std::vector<std::pair<std::string, float>>;
 const PresetValues RAYS_OFF = {
     {"RayTracedSunShadows", 0.f}, {"RayTracedAmbientOcclusion", 0.f}, {"RayTracedReflections", 0.f},
-    {"RayTracedLightBounce", 0.f}, {"PathTracing", 0.f},
+    {"RayTracedSpecularOcclusion", 0.f}, {"RayTracedLightBounce", 0.f}, {"PathTracing", 0.f},
 };
 const PresetValues RAYS_PRESET = {
     {"RayTracedSunShadows", 1.f},
@@ -255,6 +256,7 @@ const PresetValues RAYS_PRESET = {
     {"PathTracingBounces", 1.f},
     {"RayTracedReflections", 1.f},
     {"RayTracedReflectionSamples", 1.f},
+    {"RayTracedSpecularOcclusion", 1.f},
 };
 const PresetValues RAYS_RESET = {
     {"RayTracedShadowSoftness", 0.5f},
@@ -1129,6 +1131,19 @@ void BuildRuntimeData() {
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
       new renodx::utils::settings::Setting{
+          .key = "RayTracedSpecularOcclusion",
+          .binding = &rt_sliders.specular_occlusion,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Ray-Traced Specular Occlusion (restart)",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "The sky's and the probes' reflection taken off shiny surfaces where something stands over them\n"
+                     "(doorways, under roofs). With the screen-space reflections; the ray-traced ones have it already.\n"
+                     "Restart the game after turning on.",
+          .labels = {"Off", "On"},
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
+      },
+      new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounce",
           .binding = &rt_sliders.light_bounce,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
@@ -1377,11 +1392,14 @@ void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swa
     const bool bounce = shader_injection.light_bounce > 0.f && (rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f);
     const bool reflections = rt_sliders.reflections != 0.f;
     const bool path_tracing = (bounce || reflections) && rt_sliders.path_tracing != 0.f;
+    const bool specular_occlusion = rt_sliders.specular_occlusion != 0.f;
+    // The specular occlusion comes with the reflections' trace (their textures and guides).
     use = {
         .ray_tracing = true,
-        .guides = reflections || path_tracing,
-        .reflections = reflections,
-        .ray_reconstruction = (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || bounce || reflections) ? 1u : 0u,
+        .guides = reflections || specular_occlusion || path_tracing,
+        .reflections = reflections || specular_occlusion,
+        .ray_reconstruction =
+            (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || bounce || reflections || specular_occlusion) ? 1u : 0u,
     };
     twattila::rt_scene::Settings rays = {
         .sun_shadows = rt_sliders.sun_shadows != 0.f,
@@ -1395,6 +1413,7 @@ void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swa
         .path_tracing = path_tracing,
         .path_bounces = static_cast<uint32_t>(rt_sliders.bounces),
         .reflections = reflections,
+        .specular_occlusion = specular_occlusion,
         .reflection_samples = static_cast<uint32_t>(rt_sliders.reflection_samples),
     };
     // Attila's rows. NRD reads the upscaler's motion and depth: with an AA mode on only (the helper's).
@@ -1949,9 +1968,7 @@ bool AttachAddon() {
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   // Ray tracing on at launch: its scene's shaders kept from the start, the Light Bounce's trace through rays. Without the
   // helper nothing could be traced: the scene capture stays out (the game's own lighting, as with the rows off).
-  ray_tracing_installed = (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
-                           || rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f)
-                          && !HelperAbsent();
+  ray_tracing_installed = AnyRays() && !HelperAbsent();
   if (ray_tracing_installed) {
     rysesonofrome::ray_tracing::Install();
     rysesonofrome::light_bounce::ray_traced_trace = twattila::rt_scene::internal::TraceLightBounce;

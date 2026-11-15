@@ -331,10 +331,12 @@ gave 1) and picks its model from the sizes (Custom below 100%).
 with path tracing, 1 ray a texel, 50 m, 1 bounce, reflections with 1 sample, NRD; Ray Reconstruction F where DLSS runs
 without it), **No RT/PT (Recommended)** and **Reset**; the ray tracing denoiser (`RayTracingDenoiser`: built-in or NRD,
 with an AA mode on), Rays a Pixel (`RayTracingOutputResolution` with Match Output, and which effects take them), SHaRC,
-Lean ReSTIR reuse and SER for the paths, Log Details and Record Ray Tracing Profile (tw_rt_profile.csv). Without the
-helper the section shows its download note alone. Not yet: the Debug View (Ryse has no hook for it before the data run
-shows where its tone mapper's output is) and ray-traced specular occlusion (the game's tiled lighting reads only its
-screen-space reflections, t6: the occlusion needs its own pass merged into them).
+Lean ReSTIR reuse and SER for the paths, Log Details and Record Ray Tracing Profile (tw_rt_profile.csv), and ray-traced
+specular occlusion (`RayTracedSpecularOcclusion`, restart): the game's tiled lighting lerps its probes' reflection to its
+screen-space reflections (t6) by their alpha, so without the traced reflections `rt_specular_merge` writes a t6 whose
+lerp gives the probes times the occlusion (alpha 1 - occlusion x (1 - alpha), colour x alpha / that); with them the
+rays already stand in for the probes where they meet something. Without the helper the section shows its download note
+alone. Not yet: the Debug View (Ryse has no hook for it before the data run shows where its tone mapper's output is).
 
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
