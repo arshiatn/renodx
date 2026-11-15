@@ -1315,8 +1315,8 @@ float lod_bias_trilinear_row = 0.f;  // twattila/texture_lod_bias.hpp SetWrappin
 // draw's rounding at its own stack slots, float to half and fmod the same bytes; test/tw_engine_code with this game's DLL:
 // every register and the x87 state the game's). Experimental, off until a game run.
 float engine_code_row = 0.f;
-// Faster Render Lists (Experimental, off; graphics_page.hpp): engine_code.hpp's render list push site.
-float render_lists_row = 0.f;
+// Faster Render Lists (on by default; graphics_page.hpp): engine_code.hpp's render list push site.
+float render_lists_row = 1.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
 renodx::utils::settings::Setting* graphics_status = nullptr;
@@ -2007,8 +2007,8 @@ void ConfigureAddon() {
           .key = "FasterRenderLists",
           .binding = &render_lists_row,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Faster Render Lists (Experimental)",
+          .default_value = 1.f,
+          .label = "Faster Render Lists",
           .section = "Graphics (Experimental)",
           .tooltip = "The game's draw lists stop rewriting a flag every CPU core reads for each item they take:\n"
                      "less waiting between the cores in big battles. Same results.",

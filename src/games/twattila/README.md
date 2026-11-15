@@ -63,6 +63,13 @@ not at ATN's settings now get the same. All level B (WARP against the game's dum
   - Point lights' MSAA builds: the game's MSAA leaves no rays and no render scale. Won't get.
   - Parity table: `tools/tw/attila_gaps/parity_1114.md`.
 
+## v162 (2026-11-15, end-of-batch bench defaults; not stamped yet)
+
+- **Batched Unit Capture** and **Faster Render Lists** are on by default and no longer Experimental. End-of-batch
+  Constantinople bench at 4K: Batched Unit Capture -1.0 to -2.1 ms a frame (+1.1 to +1.3 fps), the same picture
+  (bit-exact on the hardware harness); Faster Render Lists -0.10 to -0.73 ms, the same results. A saved Off stays Off
+  (Reset or a preset turns Batched Unit Capture on; Faster Render Lists stays outside the presets).
+
 ## Dev, whole-frame check's code items (2026-11-14 afternoon; built only, not stamped, not installed, not run in game)
 
 - New: **Two Shadow Cascades Under Rays (Experimental, off)**, under Shadows' More Options with ray-traced shadows. The

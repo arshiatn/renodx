@@ -119,7 +119,7 @@ CDCF1ADD, the VFX brightness rows, the cloth and campaign-tree casters and the r
   else binds their targets. The half-size depth (gbufferdepth 865B80D7) is the particles' and the alpha composition's too.
   Under the rays' AO the game's SSAO is no double work (the rays' AO multiplies it, "on top of the game's SSAO"); under the
   rays' reflections the march and its blurs were already left out, the depth and the mip chains (42 passes) were not.
-- **Skip the Game's Reflection Passes (Experimental, off; Reflections, with Ray-Traced)**: those 42 passes left out while
+- **Skip the Game's Reflection Passes (on by default; Reflections, with Ray-Traced)**: those 42 passes left out while
   the rays' reflections are bound. The resolve reads neither the march's hits nor the light mips then (test part 14: its
   texels bit-identical whatever they hold; without the rays it writes what the game's 6B80E35B does).
 - **Rays' AO Alone (Experimental, off; Ambient Occlusion, with Ray-Traced)**: Warhammer III's way: the game's SSAO left out

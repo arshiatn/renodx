@@ -333,11 +333,11 @@ constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHAD
 constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADERS = {{{.hash = 0x122F218C}}};
 // Ray tracing's (twattila/rt_scene.hpp); here for the hooks BuildRuntimeData sets (the water row at F2CCEF86).
 twattila::rt_scene::Sliders rt_sliders;
-// Skip the Game's Reflection Passes (Experimental, off): under the rays' reflections the resolve's replacement (ssr00) reads
+// Skip the Game's Reflection Passes (on by default): under the rays' reflections the resolve's replacement (ssr00) reads
 // neither the march's hits (t5) nor the scene's light mips (t6), and nothing else reads them or the hierarchical depth
 // (tools/tw/wh1/reader_census_wh1.txt, ATN's 34 frames): those passes go with the march (test part 14). Decided at the depth's
 // copy, the first of them, for the frame.
-float rays_skip_reflection_passes_row = 0.f;
+float rays_skip_reflection_passes_row = 1.f;
 bool reflection_passes_skipped = false;
 // Rays' AO Alone (Experimental, off; Warhammer III's way): the rays' AO in place of the game's SSAO, not on top of it. The SSAO's
 // one reader is the sun draws' t_ssao red (the census; rt_ambient_combine multiplies the rays' in): while the rays feed it (this
@@ -2234,8 +2234,8 @@ void ConfigureAddon() {
       .key = "RayTracedSkipGameReflections",
       .binding = &rays_skip_reflection_passes_row,
       .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-      .default_value = 0.f,
-      .label = "Skip the Game's Reflection Passes (Experimental)",
+      .default_value = 1.f,
+      .label = "Skip the Game's Reflection Passes",
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "Leaves out the game's screen-space reflection passes the rays' reflections replace: the same picture,\n"
                  "a little faster.",

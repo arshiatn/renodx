@@ -150,7 +150,7 @@ struct Settings {
   // Units Ray Tracing Range (Experimental; older helpers ignore it): units farther than these metres are out of the scene
   // (0: all in).
   float units_range = 0.f;
-  // Batched Unit Capture (Experimental; SceneShader::batch_compute, Host::flushes_unit_captures): units' compact draws streamed
+  // Batched Unit Capture (on by default; SceneShader::batch_compute, Host::flushes_unit_captures): units' compact draws streamed
   // as their mesh once and a point an instance, their positions made by one compute pass (FlushBatch) instead of a stream
   // output of every corner at each draw. The same positions.
   bool batched_units = false;

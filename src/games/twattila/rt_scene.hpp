@@ -94,7 +94,7 @@ struct Sliders {
   float grass_shadow_range = 0.f;  // metres (0: everywhere)
   float grass_range = 0.f;         // metres (0: everywhere; placed grass, Attila)
   float units_range = 0.f;         // metres (0: everywhere; compact unit draws)
-  float batched_units = 0.f;       // Batched Unit Capture (games whose scene shaders have batch versions)
+  float batched_units = 1.f;       // Batched Unit Capture (games whose scene shaders have batch versions)
   float path_ser = 0.f;
   float sharc = 0.f;
   float reuse_lean = 0.f;
@@ -2200,8 +2200,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .key = "RayTracedBatchedUnits",
           .binding = &sliders->batched_units,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Batched Unit Capture (Experimental)",
+          .default_value = 1.f,
+          .label = "Batched Unit Capture",
           .section = section,
           .tooltip = "Soldiers' and horses' shapes for the ray tracing gathered in one pass after they are drawn:\n"
                      "the same shadows, less graphics card time in battles.",

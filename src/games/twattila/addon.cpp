@@ -1267,8 +1267,8 @@ float lod_bias_trilinear_row = 0.f;
 // Faster Game CPU Code (graphics_page.hpp, twattila/engine_code.hpp): on by default, every routine proven to give the game's
 // results (test/tw_engine_code).
 float engine_code_row = 1.f;
-// Faster Render Lists (Experimental, off; graphics_page.hpp): engine_code.hpp's render list push site.
-float render_lists_row = 0.f;
+// Faster Render Lists (on by default; graphics_page.hpp): engine_code.hpp's render list push site.
+float render_lists_row = 1.f;
 
 constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
@@ -1297,7 +1297,7 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x46C616F0, .capture_shader = __rt_capture_leaf_sm3, .rows_shader = __motion_record_tree, .foliage = true},
     {.hash = 0x5B880546, .capture_shader = __rt_capture_leaf_sm41, .rows_shader = __motion_record_tree, .foliage = true},
     {.hash = 0xCABCB9D1, .capture_shader = __rt_capture_leaf_sm5, .rows_shader = __motion_record_tree, .foliage = true},
-    // Batched Unit Capture (Experimental): the units' compact draws (weightedcommon vs30_main: 2 bones a vertex; main_4_bones: 4;
+    // Batched Unit Capture (on by default): the units' compact draws (weightedcommon vs30_main: 2 bones a vertex; main_4_bones: 4;
     // each with or without dismemberment) streamed as their mesh and rows, their corners their capture version's own code in one
     // pass (test/tw_rays_captures B).
     {.hash = 0x5F9CD405, .capture_shader = __rt_capture_unit_sm3, .cut_out_shader = __rt_capture_unit_cut_out_sm3, .dynamic = true,
@@ -1841,8 +1841,8 @@ void ConfigureAddon() {
           .key = "FasterRenderLists",
           .binding = &render_lists_row,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Faster Render Lists (Experimental)",
+          .default_value = 1.f,
+          .label = "Faster Render Lists",
           .section = "Graphics (Experimental)",
           .tooltip = "The game's draw lists stop rewriting a flag every CPU core reads for each item they take:\n"
                      "less waiting between the cores in big battles. Same results.",
