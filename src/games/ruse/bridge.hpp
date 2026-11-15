@@ -223,6 +223,18 @@ inline bool PrepareHelper(ID3D11Device* proxy) {
                                         false, state.upscaler, twattila::dlaa_bridge::FG_BACKEND_AUTO);
 }
 
+// A perspective view-projection's projection from its rows (acting on column vectors, a unit view: P00 x right, P11 x up,
+// A x forward + B, forward): P00, P11, A and B (depth = A + B / view z), the rows' lengths.
+inline std::array<float, 4> ProjectionTerms(std::span<const double, 16> view_projection) {
+  const auto length = [&](size_t row) {
+    const double* values = view_projection.data() + (row * 4);
+    return std::sqrt((values[0] * values[0]) + (values[1] * values[1]) + (values[2] * values[2]));
+  };
+  const double depth_scale = length(2) / std::max(length(3), 1e-30);
+  return {static_cast<float>(length(0)), static_cast<float>(length(1)), static_cast<float>(depth_scale),
+          static_cast<float>(view_projection[11] - (depth_scale * view_projection[15]))};
+}
+
 // This frame's camera from the camera pass's inverse view-projection (c4-c7, rows acting on column vectors): the
 // view-projection (its inverse in doubles, Gauss-Jordan) and the eye, where it sends w to 0 (the inverse's third column).
 // False: singular.
@@ -257,30 +269,42 @@ inline bool CurrentCamera(std::array<double, 16>* view_projection, std::array<do
   return true;
 }
 
-// Lazily, on the first evaluation: the shaders, the shared textures and the helper's (Prepare starts the helper).
-inline bool Ready(IDirect3DDevice9* host, std::span<const uint8_t> quad, std::span<const uint8_t> prepare,
-                  std::span<const uint8_t> writeback) {
-  if (state.ready || state.failed) return state.ready;
-  state.failed = true;
+// The D3D9 passes' shaders and the shared textures, once (the ground's ambient occlusion without rays uses them without the
+// helper: ray_tracing.hpp).
+inline bool MakeObjects(IDirect3DDevice9* host, std::span<const uint8_t> quad, std::span<const uint8_t> prepare,
+                        std::span<const uint8_t> writeback) {
+  if (state.output.host) return true;
   auto* proxy_reshade = renodx::utils::device_proxy::proxy_device_reshade;
   ComPtr<IDirect3DDevice9Ex> host_ex;
   if (proxy_reshade == nullptr || FAILED(host->QueryInterface(IID_PPV_ARGS(host_ex.GetAddressOf())))) return false;
   auto* proxy = reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native());
   constexpr std::array<D3DVERTEXELEMENT9, 2> LAYOUT = {
       {{0, 0, D3DDECLTYPE_FLOAT2, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_POSITION, 0}, D3DDECL_END()}};
-  const bool made = SUCCEEDED(host->CreateVertexShader(reinterpret_cast<const DWORD*>(quad.data()), state.quad.GetAddressOf()))
-                    && SUCCEEDED(host->CreatePixelShader(reinterpret_cast<const DWORD*>(prepare.data()), state.prepare.GetAddressOf()))
-                    && SUCCEEDED(host->CreatePixelShader(reinterpret_cast<const DWORD*>(writeback.data()), state.writeback.GetAddressOf()))
-                    && SUCCEEDED(host->CreateVertexDeclaration(LAYOUT.data(), state.quad_layout.GetAddressOf()))
+  const bool made = SUCCEEDED(host->CreateVertexShader(reinterpret_cast<const DWORD*>(quad.data()), state.quad.ReleaseAndGetAddressOf()))
+                    && SUCCEEDED(host->CreatePixelShader(reinterpret_cast<const DWORD*>(prepare.data()), state.prepare.ReleaseAndGetAddressOf()))
+                    && SUCCEEDED(host->CreatePixelShader(reinterpret_cast<const DWORD*>(writeback.data()), state.writeback.ReleaseAndGetAddressOf()))
+                    && SUCCEEDED(host->CreateVertexDeclaration(LAYOUT.data(), state.quad_layout.ReleaseAndGetAddressOf()))
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.color)
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.depth)
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16_FLOAT, D3DFMT_G16R16F, &state.motion)
-                    && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.output)
-                    && PrepareHelper(proxy);
-  if (!made) {
+                    && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.output);
+  if (!made) state.output = {};
+  return made;
+}
+
+// Lazily, on the first evaluation: the shaders, the shared textures and the helper's (Prepare starts the helper).
+inline bool Ready(IDirect3DDevice9* host, std::span<const uint8_t> quad, std::span<const uint8_t> prepare,
+                  std::span<const uint8_t> writeback) {
+  if (state.ready || state.failed) return state.ready;
+  state.failed = true;
+  if (!MakeObjects(host, quad, prepare, writeback)
+      || !PrepareHelper(reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native()))) {
     reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Anti-aliasing: the bridge didn't start (helper missing?): off");
     return false;
   }
+  ComPtr<IDirect3DDevice9Ex> host_ex;
+  host->QueryInterface(IID_PPV_ARGS(host_ex.GetAddressOf()));
+  auto* proxy = reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native());
   if (state.gpu_sync) {
     try {
       state.host_fence = std::make_unique<renodx::utils::gpu_fence::Fence>(host_ex.Get());
@@ -344,17 +368,15 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   context->CopyResource(helper.motion.texture.Get(), state.motion.proxy.Get());
   // FSR and XeSS take near, far and the field of view from a row-vector projection: the camera pass's view-projection
   // (rows P00 x view.x, P11 x view.y, P22 x view.z + P23, view.z: a unit view) holds them as its rows' lengths.
-  const auto length = [&](int row) {
-    const float* values = state.camera.data() + (row * 4);
-    return std::sqrt((values[0] * values[0]) + (values[1] * values[1]) + (values[2] * values[2]));
-  };
-  const float z_scale = length(2) / std::max(length(3), 1e-6f);
+  std::array<double, 16> previous_view_projection = {};
+  std::ranges::copy(std::span(state.camera).first<16>(), previous_view_projection.begin());
+  const auto [p00, p11, z_scale, z_offset] = ProjectionTerms(previous_view_projection);
   std::array<float, 16> view_to_clip = {};
-  view_to_clip[0] = length(0);
-  view_to_clip[5] = length(1);
+  view_to_clip[0] = p00;
+  view_to_clip[5] = p11;
   view_to_clip[10] = z_scale;
   view_to_clip[11] = 1.f;
-  view_to_clip[14] = state.camera[11] - (z_scale * state.camera[15]);
+  view_to_clip[14] = z_offset;
   const bool reset = state.reset;
   const bool evaluated = twattila::dlaa_bridge::Evaluate(context.Get(), state.width, state.height, state.jitter[0], state.jitter[1],
                                                          reset, 0u, nullptr, &view_to_clip);
@@ -385,7 +407,7 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
         inputs.camera[slot + axis] = static_cast<float>(values[axis] / row_length);
       }
     }
-    inputs.near_plane = (z_scale != 0.f ? -view_to_clip[14] / z_scale : 0.f);
+    inputs.near_plane = (z_scale != 0.f ? -z_offset / z_scale : 0.f);
     inputs.far_plane = (z_scale != 1.f ? z_scale * inputs.near_plane / (z_scale - 1.f) : 0.f);
     state.generation_frame = state.frame;
   }

@@ -41,12 +41,18 @@
 // shaders (patched_shaders.h) read the traced visibility at s15 by screen position, a white texel when untraced. The
 // ground's ambient occlusion (AO) comes from the same trace: the terrain shaders read it at s14 into their ambient.
 // Screen-space ground shadows (G2): Bend Studio's march (Attila's sss_setup / sss_bend) over the same depth, into the
-// same visibility by minimum, with the rays or alone.
+// same visibility by minimum, with the rays or alone. The ground's ambient occlusion without rays: GT-VBAO
+// (ground_vbao.cs_5_0) over the same depth into the same occlusion texture, without the helper too (the bridge's
+// shared textures alone: MakeObjects).
 namespace ruse::ray_tracing {
 
 // The rays' ambient range in world units: 2 m if a unit is a centimetre (eye heights near 67,000 on the B0 trace; the
 // T-run checks).
 constexpr float AMBIENT_RANGE = 200.f;
+// GT-VBAO's radius and its samples' thickness, world units (the hollows and slopes of terrain: ten times the rays'; the
+// T-run checks).
+constexpr float VBAO_RADIUS = 2000.f;
+constexpr float VBAO_THICKNESS = 500.f;
 
 using Microsoft::WRL::ComPtr;
 
@@ -55,6 +61,7 @@ struct State {
   bool objects = false;  // the Ray-Traced Object Shadows row (restart; with the ground's)
   bool ambient = false;  // the Ray-Traced Ground Ambient Occlusion row (restart; with the ground's)
   bool bend = false;  // the Screen-Space Ground Shadows row (restart; with the anti-aliasing's bridge)
+  bool vbao = false;  // the Screen-Space Ground Ambient Occlusion row (restart; no helper needed)
   bool failed = false;
   // This frame's pre-pass (the camera pass's target and depth), where its copy went (an IDirect3DTexture9), the sun.
   uint32_t camera_frame = UINT32_MAX;
@@ -90,6 +97,8 @@ struct State {
   bridge::SharedTexture occlusion;
   ComPtr<ID3D11UnorderedAccessView> occlusion_uav;
   uint32_t occlusion_frame = UINT32_MAX;
+  ComPtr<ID3D11ComputeShader> vbao_shader;
+  ComPtr<ID3D11Buffer> vbao_settings;  // ground_vbao's: projection, size, radius / thickness / noise frame
   // G2: sss_setup's dispatch list (camera_VS_PS b0, lighting_VS_PS b1, sss_settings b2), sss_bend's eight indirect
   // dispatches (b3 each one's index) into the occlusion, ground_bend's minimum into the visibility.
   struct Bend {
@@ -172,11 +181,15 @@ inline bool OnCopyTextureRegion(reshade::api::command_list*, reshade::api::resou
 inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   auto& bridge = bridge::state;
   auto* proxy_reshade = renodx::utils::device_proxy::proxy_device_reshade;
-  if (state.failed || !bridge.ready || bridge.failed || proxy_reshade == nullptr || (state.ground && state.proxy_queue == nullptr)
+  if (state.failed || bridge.failed || proxy_reshade == nullptr || (state.ground && state.proxy_queue == nullptr)
       || !bridge.camera_valid || !bridge.intz_depths.contains(state.prepass_depth)) {
     return false;
   }
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
+  // The anti-aliasing's bridge once it runs; without it (GT-VBAO alone) its shared textures and passes only.
+  if (!bridge.ready && (bridge.enabled || !state.vbao || !bridge::MakeObjects(host, __bridge_quad, __bridge_prepare, __bridge_writeback))) {
+    return false;
+  }
   auto* proxy = reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native());
   ComPtr<ID3D11DeviceContext> context;
   proxy->GetImmediateContext(context.GetAddressOf());
@@ -267,7 +280,12 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
         context->UpdateSubresource(bend.settings.Get(), 0, nullptr, &settings, 0, 0);
       }
     }
-    if (made && state.ambient) {
+    if (made && state.vbao) {
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = 12 * sizeof(float), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      made = SUCCEEDED(proxy->CreateComputeShader(__ground_vbao.data(), __ground_vbao.size(), nullptr, state.vbao_shader.ReleaseAndGetAddressOf()))
+             && SUCCEEDED(proxy->CreateBuffer(&desc, nullptr, state.vbao_settings.ReleaseAndGetAddressOf()));
+    }
+    if (made && (state.ambient || state.vbao)) {
       made = bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.occlusion,
                                 D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS)
              && SUCCEEDED(proxy->CreateUnorderedAccessView(state.occlusion.proxy.Get(), nullptr, state.occlusion_uav.ReleaseAndGetAddressOf()));
@@ -383,7 +401,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     traced = twattila::rt_scene::Trace(context.Get(), start_depth, camera);
   }
   const auto [visibility, occlusion] = (traced ? twattila::rt_scene::Visibilities() : std::array<ID3D11ShaderResourceView*, 2>{});
-  if (visibility == nullptr && !state.bend) return false;
+  if (visibility == nullptr && !state.bend && !state.vbao) return false;
   // 8 x 8 groups over the bridge's size: `shader` from `source` into `destination` (the helper's R8 results into the
   // textures the D3D9 device shares, R32F; Bend's occlusion into the visibility).
   const auto run = [&](ID3D11ComputeShader* shader, ID3D11ShaderResourceView* source, ID3D11UnorderedAccessView* destination) {
@@ -400,6 +418,23 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   }
   if (state.ambient && occlusion != nullptr) {
     run(state.copy.Get(), occlusion, state.occlusion_uav.Get());
+    state.occlusion_frame = bridge.frame;
+  }
+  // GT-VBAO where the rays' ambient occlusion didn't run this frame; its noise still without the upscaler (no frames to
+  // settle it).
+  if (state.vbao && state.occlusion_frame != bridge.frame) {
+    const auto [p00, p11, depth_scale, depth_offset] = bridge::ProjectionTerms(view_projection);
+    const std::array<float, 12> settings = {
+        p00, p11, depth_scale, depth_offset,
+        static_cast<float>(bridge.width), static_cast<float>(bridge.height), 1.f / static_cast<float>(bridge.width),
+        1.f / static_cast<float>(bridge.height),
+        VBAO_RADIUS, VBAO_THICKNESS, static_cast<float>(bridge.enabled ? (bridge.frame % 64u) : 0u), 0.f,
+    };
+    context->UpdateSubresource(state.vbao_settings.Get(), 0, nullptr, settings.data(), 0, 0);
+    context->CSSetConstantBuffers(0, 1, state.vbao_settings.GetAddressOf());
+    run(state.vbao_shader.Get(), start_depth, state.occlusion_uav.Get());
+    ID3D11Buffer* no_settings = nullptr;
+    context->CSSetConstantBuffers(0, 1, &no_settings);
     state.occlusion_frame = bridge.frame;
   }
   constexpr std::array<ID3D11ShaderResourceView*, 2> NO_VIEWS = {};
@@ -451,11 +486,13 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   context->CSSetShader(nullptr, nullptr, 0);
   bridge::WaitProxy(proxy, context.Get());
 
-  const std::array<IDirect3DSurface9*, 1> mask_target = {mask_surface.Get()};
-  const std::array<IDirect3DBaseTexture9*, 1> shaded = {state.visibility.host.Get()};
-  bridge::DrawQuad(host, mask_target, state.shadows.Get(), shaded, {},
-                   {{D3DRS_ALPHABLENDENABLE, TRUE}, {D3DRS_SEPARATEALPHABLENDENABLE, FALSE}, {D3DRS_BLENDOP, D3DBLENDOP_MIN},
-                    {D3DRS_SRCBLEND, D3DBLEND_ONE}, {D3DRS_DESTBLEND, D3DBLEND_ONE}, {D3DRS_COLORWRITEENABLE, D3DCOLORWRITEENABLE_RED}});
+  if (state.ground || state.bend) {
+    const std::array<IDirect3DSurface9*, 1> mask_target = {mask_surface.Get()};
+    const std::array<IDirect3DBaseTexture9*, 1> shaded = {state.visibility.host.Get()};
+    bridge::DrawQuad(host, mask_target, state.shadows.Get(), shaded, {},
+                     {{D3DRS_ALPHABLENDENABLE, TRUE}, {D3DRS_SEPARATEALPHABLENDENABLE, FALSE}, {D3DRS_BLENDOP, D3DBLENDOP_MIN},
+                      {D3DRS_SRCBLEND, D3DBLEND_ONE}, {D3DRS_DESTBLEND, D3DBLEND_ONE}, {D3DRS_COLORWRITEENABLE, D3DCOLORWRITEENABLE_RED}});
+  }
   return true;
 }
 
@@ -474,7 +511,7 @@ inline void BindTraced(IDirect3DDevice9* host, bool traced) {
   if (state.objects) {
     bind(15, traced ? state.visibility.host.Get() : state.unshadowed.Get());
   }
-  if (state.ambient) {
+  if (state.ambient || state.vbao) {
     bind(14, (traced && state.occlusion_frame == bridge::state.frame) ? state.occlusion.host.Get() : state.unshadowed.Get());
   }
 }
@@ -513,7 +550,7 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
   }
   // The patched shaders' textures white from each frame's first scene draw until a trace.
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
-  if ((state.objects || state.ambient) && state.bound_frame != bridge.frame) {
+  if ((state.objects || state.ambient || state.vbao) && state.bound_frame != bridge.frame) {
     state.bound_frame = bridge.frame;
     if (state.unshadowed == nullptr) {
       ComPtr<IDirect3DSurface9> texel;
@@ -557,6 +594,8 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.kept_frame = UINT32_MAX;
     state.occlusion = {};
     state.occlusion_uav.Reset();
+    state.vbao_shader.Reset();
+    state.vbao_settings.Reset();
     state.bend_objects = {};
   } else if (device->get_api() == reshade::api::device_api::d3d9) {
     state.depth_copy.Reset();

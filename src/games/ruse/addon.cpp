@@ -155,7 +155,7 @@ bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_co
   if (ruse::bridge::state.post_surface) {
     ruse::bridge::KeepHudless(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()));
   }
-  if ((ruse::ray_tracing::state.ground || ruse::ray_tracing::state.bend) && ruse::bridge::IsSceneDraw()) {
+  if ((ruse::ray_tracing::state.ground || ruse::ray_tracing::state.bend || ruse::ray_tracing::state.vbao) && ruse::bridge::IsSceneDraw()) {
     ruse::ray_tracing::OnSceneDraw(cmd_list);
   }
   ruse::bridge::OnDraw(cmd_list);
@@ -1473,7 +1473,32 @@ void ConfigureAddon() {
     ruse::ray_tracing::state.bend = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
     readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.bend;
   }
-  if (ruse::bridge::state.enabled || ruse::replay::state.enabled) {
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseScreenSpaceGroundOcclusion",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Screen-Space Ground Ambient Occlusion (Experimental)",
+        .section = AO_SECTION,
+        .tooltip = "GT-VBAO ambient occlusion on the ground: softly darker in hollows and at the foot of slopes (costs GPU time).\n"
+                   "Works without the helper; the ray-traced ground ambient occlusion replaces it where it runs.\n"
+                   "Needs the in-game anti-aliasing off. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The ground's depth as the ground shadows have it, GT-VBAO on the proxy's device into the terrain shaders' ambient
+    // (the ray-traced ambient occlusion's shaders and texture).
+    ruse::ray_tracing::state.vbao = setting->GetValue() != 0.f;
+    readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.vbao;
+    if (ruse::ray_tracing::state.vbao) {
+      for (const auto& [hash, code] : ruse::ray_tracing::GROUND_AMBIENT_SHADERS) {
+        custom_shaders[hash] = {.crc32 = hash, .code = code};
+      }
+    }
+  }
+  if (ruse::bridge::state.enabled || ruse::replay::state.enabled || ruse::ray_tracing::state.vbao) {
     // The camera pass: its matrices (c0-c8) as it drew (the bridge's motion, the replay's placements).
     custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list*) {
                                     std::memcpy(ruse::bridge::state.camera.data(), ruse::bridge::state.pixel_registers.data(),
@@ -1679,7 +1704,7 @@ bool AttachAddon() {
     reshade::register_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
     reshade::register_event<reshade::addon_event::init_resource>(OnInitDepthResource);
   }
-  if (ruse::bridge::state.enabled || ruse::replay::state.enabled) {
+  if (ruse::bridge::state.enabled || ruse::replay::state.enabled || ruse::ray_tracing::state.vbao) {
     reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
     reshade::register_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
     reshade::register_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
@@ -1702,7 +1727,7 @@ bool AttachAddon() {
   if (ruse::ray_tracing::state.ground) {
     twattila::rt_scene::InstallReplayedScene(ruse::ray_tracing::HOST);
   }
-  if (ruse::ray_tracing::state.ground || ruse::ray_tracing::state.bend) {
+  if (ruse::ray_tracing::state.ground || ruse::ray_tracing::state.bend || ruse::ray_tracing::state.vbao) {
     reshade::register_event<reshade::addon_event::copy_texture_region>(ruse::ray_tracing::OnCopyTextureRegion);
     reshade::register_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
   }
