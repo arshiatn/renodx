@@ -28,6 +28,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -80,6 +81,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - talesofarise_dlss/frame_generation.hpp detours have no uninstall. Owner: next UE ... | next UE round
 - ATN DECIDES: g2b trunc8 (8-bit cluster truncation: -0.2 ms more cluster build; a ... | ATN
 - Faster-with-a-look-risk list for ATN (numbers in the reply 12:1x): Lean ReSTIR R ... | ATN
+- Non-TW data runs (ATN 12:2x "Sure, go ahead"): Tales G1 + G2 (agent started 12:2 ... | coordinator
 - WH3's x64 render-list WPR run: the game said "Unable to initialize SteamAPI" twi ... | ATN, then coordinator
 - In game (ATN's list): migration keeps the old DLSS values (log line once); no re ... | ATN (in game)
 - Port RayTracedBatchedUnits + RayTracedUnitsRange to Shogun 2 (SHARED STEP, after ... | GPU round after the install
@@ -842,6 +844,16 @@ heading text are in HANDOFF_ARCHIVE.md)
       Shadow Build, Terrain / Grass Without Waiting, Skip the Game's Shadow Map Work, Skip Trees in Shadow Maps, Skip the
       Shadow Maps, Rome II's Skip the Shadow Maps, One Model per Place Out of View, Fast Leaf Shadows, SHaRC, WH3's
       Faster Reflections, GPU grass phases 1-3. Owner: ATN
+    - [x] INSTALLED 12:10-12:11 (tw_install.py --helper 114 --install; fresh backups 20261115_121015 / _121136, hashes
+      checked, ATN's files unchanged) on 356b7100 + ad641275, every add-on rebuilt 12:05-12:07: Attila v162, WH3 v61,
+      Pharaoh v69, Rome II r5, Thrones r6, WH2 v52, Shogun 2 v75, Troy v56, WH1 r7, Rome Remastered v13 (helper114 keeps
+      each game's earlier stamp); FIRST stamped installs (--first): Ryse fix55, Tales v72, Expeditions v29 (helper114,
+      NVIDIA 310.9.16, Agility D3D12Core, FSR / XeSS / OMM DLLs; old 0- / 1-prefixed add-ons .retired-20261115_121136,
+      DevKit .aside-20261115_121136, Expeditions' symlink .symlink-20261115_121136). Their 8 watermarks each survive in
+      the binaries (scan 8 / 8). Not run in game. Author zip in ATN's Downloads (+ timing program, bench tables, the
+      one-line x87 bench patch).
+    - [ ] Non-TW data runs (ATN 12:2x "Sure, go ahead"): Tales G1 + G2 (agent started 12:2x, tools/nontw/tales/g1g2),
+      then Expeditions G1, then Ryse R0, one at a time. Owner: coordinator
     - [ ] WH3's x64 render-list WPR run: the game said "Unable to initialize SteamAPI" twice (Steam not elevated;
       HKCU Valve ActiveProcess pointed at a dead pid); ATN restarts Steam, then one run (x64_run.ps1). Owner: ATN, then
       coordinator
