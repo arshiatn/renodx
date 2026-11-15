@@ -129,10 +129,9 @@ void main(
     float2 texcoord = g_screen_size.zw * (g_vpos_texel_offset + v0.xy);
     float4 scene_sample =
         g_hdr_rgb_texture.SampleLevel(g_hdr_rgb_texture_sampler_s, texcoord, 0);
-    float3 scene_color = max(scene_sample.xyz, 0.f.xxx);
 
     // What stock fed the fit, before the lift is added.
-    float3 exposed = scene_color * exposure_scale;
+    float3 exposed = max(scene_sample.xyz, 0.f.xxx) * exposure_scale;
 
     // Stock's 0.6275 / 0.6075 are 2.51*0.25 and 2.43*0.25, so its black level is just
     // the curve at the lift. That is why black always lands on exactly 0.
@@ -140,7 +139,8 @@ void main(
 
     // Stock crossfades the tone-mapped result back toward the raw scene. Saturated
     // because it mixes two different domains - extrapolating past [0,1] is meaningless
-    // and the upgraded float target has no clamp to catch it.
+    // and the upgraded float target has no clamp to catch it. As stock, the raw scene
+    // goes in unclipped and the result is clipped at 0 after the crossfade (its UNORM write).
     float bypass_mix = saturate(post_processing_strength);
 
     if (hdr_mode == 1)
@@ -181,7 +181,7 @@ void main(
       float graded_alpha =
           max(PharaohAcesFit(scene_sample.w * exposure_scale + curve_lift) - black_offset, 0.f);
 
-      o0.xyz = lerp(graded, scene_color, bypass_mix);
+      o0.xyz = max(lerp(graded, scene_sample.xyz, bypass_mix), 0.f.xxx);
       o0.w = lerp(graded_alpha, scene_sample.w, bypass_mix);
       return;
     }
@@ -217,11 +217,11 @@ void main(
     [branch]
     if (HDR >= 3.5f && SI.hue_clip > 0.f) {
       handoff = renodx::tonemap::psychov::HueTransfer(
-          handoff, saturate(lerp(saturate(PharaohAcesFit(exposed + curve_lift)) - black_offset, scene_color, bypass_mix)),
+          handoff, saturate(lerp(saturate(PharaohAcesFit(exposed + curve_lift)) - black_offset, scene_sample.xyz, bypass_mix)),
           SI.hue_clip);
     }
 
-    o0.xyz = lerp(handoff, scene_color, bypass_mix);
+    o0.xyz = max(lerp(handoff, scene_sample.xyz, bypass_mix), 0.f.xxx);
     o0.w = scene_sample.w;
     return;
   }
