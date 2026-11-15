@@ -297,6 +297,47 @@ same commit (no older helper: the shipped helper22 speaks bridge v11), D3D12\D3D
 2.14.16 (sl.interposer.dll, sl.common.dll, sl.dlss_g.dll, sl.reflex.dll, sl.pcl.dll) with nvngx_dlssg.dll, the licence
 files (RENODX_LICENSE.txt, NVIDIA's, Agility SDK's).
 
+fix55 (draft, 2026-11-15, rym_ merge round, built only, not run in game): **one add-on** (ATN's decision): the DLSS
+add-on (`rysesonofrome_dlss`, v116 draft) moved into this folder: its addon.cpp is `graphics.hpp`
+(`rysesonofrome::graphics`, Install after this add-on's attach, Uninstall before its detach, so every event and
+command_action callback keeps the order the two add-ons had by name), its headers and shaders (0x52594501-06,
+0x7A1E0D40-42) beside this add-on's; its notes in `README_DLSS.md`. The `renodx-rysesonofrome_dlss.addon64` target is
+gone (and from step 3 this target no longer links NGX). Settings keep their keys and sections: the HDR rows in the renodx
+section, the anti-aliasing / frame generation keys in `[Ryse AA]`, the game settings in `[Ryse Game Settings]`. An old
+`renodx-rysesonofrome_dlss.addon64` next to this one would run everything twice: the install renames it aside
+(`tools/tw/install/tw_install.py`, `.retired-<time>`). Pages as the Total War add-ons': **Settings Mode** is HDR & Effects
+/ Graphics 1 of 2 / Graphics 2 of 2; Graphics 1 of 2 holds Anti-Aliasing and Upscaling (DLSS, frame generation, Reflex,
+their status, with Advanced the diagnostics and debug buttons: the overlay's top half), Ambient Occlusion, Contact
+Shadows, Light Bounce and Ray Tracing; Graphics 2 of 2 the game's settings above its High with their presets, the
+Experimental ones and Audio. The DLSS overlay's own tab is gone. Simple / Advanced is its own row, Options
+(`SettingsAdvanced`, every page): a saved Advanced (Settings Mode's 1, or the overlay's `[Ryse AA] SettingsMode` 1)
+moves there once, and Settings Mode starts on HDR & Effects.
+**Helper route** (as the Total War games and Shogun 2): the AA modes run in renodx-tw-dlaa64.exe beside the add-on
+(`twattila/dlaa_bridge.hpp`, `upscaling.hpp`) in place of the in-process NGX D3D11 path (`ngx_backend.hpp` gone): the
+preparation pass's colour, depth (turned to 0 near) and motion go into the bridge (`upscale_inputs`), the helper's DLSS /
+DLAA, FSR or XeSS (`[Ryse AA] Upscaler`) evaluates, its result comes back (`upscale_output`, Shogun 2's) for the copy and
+the post pass as before. Ray Reconstruction (Experimental, `[Ryse AA] RayReconstruction`, off by default) from the ray
+tracing's guides while a ray-traced effect is on, the colour's square root as Attila's. Frame generation is the helper's
+(`twattila/frame_generation.hpp`; DLSS, FSR or XeSS, `FrameGenerationMethod` Auto; HUD recomposition, its preset, Reflex
+through `twattila/reflex.hpp`) in place of Streamline in process, Tales' keys kept (FrameGeneration,
+FrameGenerationMultiplier, ReflexBoost, FrameGenerationFrameLimit); it starts without a restart. The bridge is the
+upscaler's output size while it upscales: the rays at the render size in its top-left (`ray_tracing.hpp`
+`depth_at_render_size`, the traced reflections copied out for the lighting), the kept HDR scene in its own texture until
+the next trace. Without the helper (the HDR-only download) the AA mode stays Off (the game's TAA), the rows hidden, the
+download note shown; no wait. Not the same as before: the helper's DLSS measures exposure itself (the in-process path
+gave 1) and picks its model from the sizes (Custom below 100%).
+**Ray Tracing rows at Attila's parity** (all Experimental, off by default, their keys Attila's): the **RT/PT** button
+(Attila's values in this section's rows: sun shadows at 0.8° softness, ray-traced AO, the Light Bounce on and ray-traced
+with path tracing, 1 ray a texel, 50 m, 1 bounce, reflections with 1 sample, NRD; Ray Reconstruction F where DLSS runs
+without it), **No RT/PT (Recommended)** and **Reset**; the ray tracing denoiser (`RayTracingDenoiser`: built-in or NRD,
+with an AA mode on), Rays a Pixel (`RayTracingOutputResolution` with Match Output, and which effects take them), SHaRC,
+Lean ReSTIR reuse and SER for the paths, Log Details and Record Ray Tracing Profile (tw_rt_profile.csv), and ray-traced
+specular occlusion (`RayTracedSpecularOcclusion`, restart): the game's tiled lighting lerps its probes' reflection to its
+screen-space reflections (t6) by their alpha, so without the traced reflections `rt_specular_merge` writes a t6 whose
+lerp gives the probes times the occlusion (alpha 1 - occlusion x (1 - alpha), colour x alpha / that); with them the
+rays already stand in for the probes where they meet something. Without the helper the section shows its download note
+alone. Not yet: the Debug View (Ryse has no hook for it before the data run shows where its tone mapper's output is).
+
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
 

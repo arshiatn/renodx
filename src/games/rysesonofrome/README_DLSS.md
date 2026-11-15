@@ -1,7 +1,8 @@
 # Ryse: Son of Rome — DLAA / DLSS
 
-Separate addon, independent of the HDR addon (`rysesonofrome`). Build target: `renodx-rysesonofrome_dlss.addon64`
-(CMake links NVIDIA's NGX library for `expeditionsrome_dlss` and `rysesonofrome_dlss`).
+Part of the one Ryse add-on since the rym_ merge round (2026-11-15): `graphics.hpp` in `rysesonofrome`, built into
+`renodx-rysesonofrome.addon64` (CMake links NVIDIA's NGX library for it). Until then a separate add-on,
+`renodx-rysesonofrome_dlss.addon64`; the notes below keep that name for its history.
 
 ## How it works
 

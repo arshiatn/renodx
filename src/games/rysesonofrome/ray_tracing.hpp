@@ -18,7 +18,8 @@
 #include <embed/shaders.h>
 
 #include "../../utils/directx.hpp"
-#include "../rysesonofrome_dlss/constant_mirror.hpp"
+#include "./constant_mirror.hpp"
+#include "./upscaling.hpp"
 #include "../talesofarise_dlss/matrix.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
 #include "../twattila/rt_core.hpp"
@@ -28,15 +29,17 @@
 // targets and the depth, depth written, unblended; too many vertex shader permutations to list; alpha-tested ones with
 // their UV) streamed out through its own vertex shader (those with bone inputs every frame); the camera they were drawn with is VS PER_FRAME (b2, a
 // range of a bigger buffer: rows c0-c3 the jittered view-projection, c6 the camera), read from the game's uploads
-// (rysesonofrome_dlss/constant_mirror.hpp). Before the tiled lighting (cs 0x897232B5: t0 linear depth, b0 its
+// (constant_mirror.hpp). Before the tiled lighting (cs 0x897232B5: t0 linear depth, b0 its
 // PER_BATCH: the far plane's corners from the camera, the camera, the sun) each pixel's world position and the sun go
 // to the helper (0x52C5E004), with the G-buffer guides when the reflections or paths want them (0x52C5E005), and the
 // frame is traced. The sun's visibility then goes into the sun's shadow mask with the contact shadows, the ambient
 // visibility into the lighting's directional occlusion (contact_shadows.hpp), the traced reflections take the
 // screen-space ones' place at the lighting (t6; their trace, ps 0xE0B7E115, left out), the Light Bounce's trace goes
 // through rays (light_bounce.hpp; path traced when on). The game's HDR scene at the end of the frame is the helper's
-// last frame's colour (KeepColor, 0x52C5E006). Its scene shaders' code is kept from the game's start: Install only when
-// ray tracing is on at launch.
+// last frame's colour (KeepColor, 0x52C5E006; kept apart, the bridge's colour is the upscaler's input after it). The
+// bridge (upscaling.hpp) is the upscaler's output size while the helper upscales: the rays at the render size, its
+// textures' top-left. Its scene shaders' code is kept from the game's start: Install only when ray tracing is on at
+// launch.
 namespace rysesonofrome::ray_tracing {
 
 using Microsoft::WRL::ComPtr;
@@ -50,11 +53,24 @@ struct State {
   twattila::rt_scene::Settings settings;  // the addon's (Update)
   uint64_t frame = 0;
   uint64_t guides_frame = UINT64_MAX;  // the frame the guides were written in
+  std::array<UINT, 2> render_size = {};  // the G-buffer's depth's, last seen
   ComPtr<ID3D11Device> device;
   ComPtr<ID3DDeviceContextState> private_state;
   ComPtr<ID3D11ComputeShader> positions;
   ComPtr<ID3D11ComputeShader> guides;
   ComPtr<ID3D11ComputeShader> color;
+  // KeepColor's (RGBA16F at the render size), into the bridge's colour before the next trace; the traced reflections'
+  // top-left at the render size while the bridge is bigger (the lighting samples t6 over the whole texture).
+  ComPtr<ID3D11Texture2D> kept_color;
+  ComPtr<ID3D11UnorderedAccessView> kept_color_uav;
+  ComPtr<ID3D11Texture2D> reflections_copy;
+  ComPtr<ID3D11ShaderResourceView> reflections_copy_srv;
+  // Specular occlusion without the traced reflections: merged into the game's screen-space ones (rt_specular_merge).
+  ComPtr<ID3D11ComputeShader> specular_merge;
+  ComPtr<ID3D11SamplerState> linear_sampler;
+  ComPtr<ID3D11Texture2D> merged;
+  ComPtr<ID3D11UnorderedAccessView> merged_uav;
+  ComPtr<ID3D11ShaderResourceView> merged_srv;
   // The lighting's screen-space reflections (t6) while the traced ones are bound in their place, and whether they were
   // at its last dispatch (the next screen-space trace is left out then).
   ComPtr<ID3D11ShaderResourceView> game_reflections;
@@ -64,8 +80,37 @@ struct State {
 };
 static State state;
 
-// An opaque G-buffer draw (three RGBA16F targets and the depth, depth written, unblended): the bridge prepared at the
-// depth's size, its pixel shader's alpha test (rt_core's SceneCoverage: leaves against their diffuse alpha), its vertex
+// `texture` as an RGBA16F texture of `size` with `uav` and / or `srv` (null: none), made again when the size changes;
+// false: it could not be made.
+inline bool EnsureTexture(ID3D11Device* device, const std::array<UINT, 2>& size, ComPtr<ID3D11Texture2D>* texture,
+                          ComPtr<ID3D11UnorderedAccessView>* uav, ComPtr<ID3D11ShaderResourceView>* srv) {
+  D3D11_TEXTURE2D_DESC desc = {};
+  if (*texture) (*texture)->GetDesc(&desc);
+  if (*texture && desc.Width == size[0] && desc.Height == size[1]) return true;
+  texture->Reset();
+  if (uav != nullptr) uav->Reset();
+  if (srv != nullptr) srv->Reset();
+  desc = {
+      .Width = size[0],
+      .Height = size[1],
+      .MipLevels = 1,
+      .ArraySize = 1,
+      .Format = DXGI_FORMAT_R16G16B16A16_FLOAT,
+      .SampleDesc = {.Count = 1},
+      .Usage = D3D11_USAGE_DEFAULT,
+      .BindFlags = ((uav != nullptr) ? UINT{D3D11_BIND_UNORDERED_ACCESS} : 0u) | ((srv != nullptr) ? UINT{D3D11_BIND_SHADER_RESOURCE} : 0u),
+  };
+  if (FAILED(device->CreateTexture2D(&desc, nullptr, texture->GetAddressOf()))
+      || (uav != nullptr && FAILED(device->CreateUnorderedAccessView(texture->Get(), nullptr, uav->GetAddressOf())))
+      || (srv != nullptr && FAILED(device->CreateShaderResourceView(texture->Get(), nullptr, srv->GetAddressOf())))) {
+    texture->Reset();
+    return false;
+  }
+  return true;
+}
+
+// An opaque G-buffer draw (three RGBA16F targets and the depth, depth written, unblended): the bridge prepared for the
+// depth's size (upscaling.hpp; the render size), its pixel shader's alpha test (rt_core's SceneCoverage: leaves against their diffuse alpha), its vertex
 // shader skinned or not.
 inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShader* shader) {
   std::array<ID3D11RenderTargetView*, 4> targets = {};
@@ -103,15 +148,11 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   depth_texture->GetDesc(&depth_texture_desc);
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  bool reflections = false;
-  bool guides = false;
   {
     const std::unique_lock lock(state.mutex);
-    reflections = state.settings.reflections;
-    guides = reflections || state.settings.path_tracing;
+    state.render_size = {depth_texture_desc.Width, depth_texture_desc.Height};
   }
-  if (!twattila::dlaa_bridge::Prepare(device.Get(), depth_texture_desc.Width, depth_texture_desc.Height, guides, true,
-                                      DXGI_FORMAT_UNKNOWN, reflections)
+  if (!upscaling::PrepareBridge(device.Get(), depth_texture_desc.Width, depth_texture_desc.Height)
       || !twattila::rt_scene::SceneCoverage(native, shader)) {
     return false;
   }
@@ -148,13 +189,17 @@ inline bool CaptureCamera(ID3D11DeviceContext* native, twattila::rt_scene::Camer
 }  // namespace internal
 
 inline const twattila::rt_scene::Host HOST = {
-    .render_size = [] { return std::array<UINT, 2>{twattila::dlaa_bridge::bridge.width, twattila::dlaa_bridge::bridge.height}; },
+    .render_size = [] {
+      const std::unique_lock lock(internal::state.mutex);
+      return internal::state.render_size;
+    },
     .guides_written = [] {
       const std::unique_lock lock(internal::state.mutex);
       return internal::state.guides_frame == internal::state.frame;
     },
     .capture_camera = internal::CaptureCamera,
     .scene_draw = internal::SceneDraw,
+    .depth_at_render_size = true,
 };
 
 // Before the tiled lighting's dispatch (its bindings set): the pixels' world positions and the sun to the helper, the
@@ -166,12 +211,14 @@ inline bool Trace(ID3D11DeviceContext* context) {
     return false;
   }
   twattila::rt_scene::Camera camera;
-  bool guides = false;
+  std::array<UINT, 2> size;
+  bool keep_color = false;
   {
     const std::unique_lock lock(state.mutex);
     if (!state.camera_found) return false;
     camera = state.camera;
-    guides = state.settings.reflections || state.settings.path_tracing;
+    size = state.render_size;
+    keep_color = (state.settings.reflections || state.settings.path_tracing) && state.kept_color;
   }
   ComPtr<ID3D11ShaderResourceView> depth;
   ComPtr<ID3D11Buffer> per_batch;
@@ -188,20 +235,34 @@ inline bool Trace(ID3D11DeviceContext* context) {
     state.positions.Reset();
     state.guides.Reset();
     state.color.Reset();
+    state.specular_merge.Reset();
+    state.linear_sampler.Reset();
+    const D3D11_SAMPLER_DESC sampler_desc = {
+        .Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+        .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+        .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+        .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+        .ComparisonFunc = D3D11_COMPARISON_NEVER,
+        .MaxLOD = D3D11_FLOAT32_MAX,
+    };
     state.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
                    || FAILED(device1->CreateDeviceContextState(0, &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr,
                                                                state.private_state.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__0x52C5E004.data(), __0x52C5E004.size(), nullptr, state.positions.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__0x52C5E005.data(), __0x52C5E005.size(), nullptr, state.guides.GetAddressOf()))
-                   || FAILED(device->CreateComputeShader(__0x52C5E006.data(), __0x52C5E006.size(), nullptr, state.color.GetAddressOf()));
+                   || FAILED(device->CreateComputeShader(__0x52C5E006.data(), __0x52C5E006.size(), nullptr, state.color.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__rt_specular_merge.data(), __rt_specular_merge.size(), nullptr,
+                                                         state.specular_merge.GetAddressOf()))
+                   || FAILED(device->CreateSamplerState(&sampler_desc, state.linear_sampler.GetAddressOf()));
   }
   if (state.failed) return false;
   auto& bridge = twattila::dlaa_bridge::bridge;
   std::array<ComPtr<ID3D11ShaderResourceView>, 3> gbuffer;
-  if (guides && bridge.guides) {
+  if (upscaling::CurrentUse().guides && bridge.guides) {
     for (UINT index = 0; index < gbuffer.size(); ++index) context->CSGetShaderResources(1 + index, 1, gbuffer[index].GetAddressOf());
   }
   const bool write_guides = gbuffer[0] && gbuffer[1] && gbuffer[2];
+  twattila::dlaa_bridge::BeforeSharedWrites(context);
   {
     const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
     ID3D11ShaderResourceView* inputs[] = {depth.Get()};
@@ -211,7 +272,7 @@ inline bool Trace(ID3D11DeviceContext* context) {
     context->CSSetShaderResources(0, 1, inputs);
     context->CSSetUnorderedAccessViews(0, 2, outputs, nullptr);
     context->CSSetConstantBuffers(0, 1, constants);
-    context->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+    context->Dispatch((size[0] + 7) / 8, (size[1] + 7) / 8, 1);
     if (write_guides) {
       ID3D11ShaderResourceView* views[] = {gbuffer[0].Get(), gbuffer[1].Get(), gbuffer[2].Get()};
       ID3D11UnorderedAccessView* written[] = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(), bridge.normals.uav.Get(),
@@ -219,8 +280,16 @@ inline bool Trace(ID3D11DeviceContext* context) {
       context->CSSetShader(state.guides.Get(), nullptr, 0);
       context->CSSetShaderResources(0, 3, views);
       context->CSSetUnorderedAccessViews(0, 4, written, nullptr);
-      context->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+      context->Dispatch((size[0] + 7) / 8, (size[1] + 7) / 8, 1);
     }
+  }
+  // Last frame's light (KeepColor) where the helper's rays read it; the upscaler's input takes that texture after.
+  D3D11_TEXTURE2D_DESC kept = {};
+  if (keep_color) state.kept_color->GetDesc(&kept);
+  if (keep_color && bridge.color.texture && kept.Width == size[0] && kept.Height == size[1]) {
+    const D3D11_BOX box = {.right = size[0], .bottom = size[1], .back = 1};
+    context->CopySubresourceRegion(bridge.color.texture.Get(), 0, 0, 0, 0, state.kept_color.Get(), 0, &box);
+    bridge.color_square_root = false;
   }
   if (write_guides) {
     const std::unique_lock lock(state.mutex);
@@ -230,17 +299,49 @@ inline bool Trace(ID3D11DeviceContext* context) {
 }
 
 // At the tiled lighting's dispatch, after Trace: the traced reflections in place of its screen-space ones (t6: the same
-// lerp over the probes, reflected light by the share of rays that met something); the game's put back after the
-// dispatch (RestoreReflections).
+// lerp over the probes, reflected light by the share of rays that met something); without them the traced specular
+// occlusion merged into the screen-space ones (rt_specular_merge: the probes' share times it). The game's put back after
+// the dispatch (RestoreReflections).
 inline void BindReflections(ID3D11DeviceContext* context) {
   auto& state = internal::state;
-  ID3D11ShaderResourceView* traced = twattila::rt_scene::Reflections(context)[0];
+  const auto traced = twattila::rt_scene::Reflections(context);
   const std::unique_lock lock(state.mutex);
-  state.reflecting = traced != nullptr && state.settings.reflections;
-  if (!state.reflecting) return;
-  state.game_reflections.Reset();
-  context->CSGetShaderResources(6, 1, state.game_reflections.GetAddressOf());
-  context->CSSetShaderResources(6, 1, &traced);
+  state.reflecting = traced[0] != nullptr && state.settings.reflections;
+  const bool occluding = !state.reflecting && traced[1] != nullptr && state.settings.specular_occlusion && state.specular_merge;
+  ComPtr<ID3D11DeviceContext1> context1;
+  if ((!state.reflecting && !occluding) || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
+  ComPtr<ID3D11ShaderResourceView> game;
+  context->CSGetShaderResources(6, 1, game.GetAddressOf());
+  ID3D11ShaderResourceView* bound = traced[0];
+  const auto& bridge = twattila::dlaa_bridge::bridge;
+  if (occluding) {
+    if (!internal::EnsureTexture(state.device.Get(), state.render_size, &state.merged, &state.merged_uav, &state.merged_srv)) return;
+    {
+      const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
+      ID3D11ShaderResourceView* inputs[] = {game.Get(), traced[1]};
+      ID3D11UnorderedAccessView* outputs[] = {state.merged_uav.Get()};
+      ID3D11SamplerState* samplers[] = {state.linear_sampler.Get()};
+      context->CSSetShader(state.specular_merge.Get(), nullptr, 0);
+      context->CSSetShaderResources(0, 2, inputs);
+      context->CSSetUnorderedAccessViews(0, 1, outputs, nullptr);
+      context->CSSetSamplers(0, 1, samplers);
+      context->Dispatch((state.render_size[0] + 7) / 8, (state.render_size[1] + 7) / 8, 1);
+    }
+    bound = state.merged_srv.Get();
+  } else if (bridge.width != state.render_size[0] || bridge.height != state.render_size[1]) {
+    // A bridge bigger than the render (the helper upscales): its top-left alone.
+    ComPtr<ID3D11Resource> resource;
+    bound->GetResource(resource.GetAddressOf());
+    if (!internal::EnsureTexture(state.device.Get(), state.render_size, &state.reflections_copy, nullptr, &state.reflections_copy_srv)) {
+      state.reflecting = false;
+      return;
+    }
+    const D3D11_BOX box = {.right = state.render_size[0], .bottom = state.render_size[1], .back = 1};
+    context->CopySubresourceRegion(state.reflections_copy.Get(), 0, 0, 0, 0, resource.Get(), 0, &box);
+    bound = state.reflections_copy_srv.Get();
+  }
+  state.game_reflections = game;
+  context->CSSetShaderResources(6, 1, &bound);
   state.reflections_bound = true;
 }
 
@@ -262,35 +363,39 @@ inline bool OnReflectionTrace() {
 }
 
 // After the game copies its HDR scene into an R11G11B10 target at the render size (ps 0x3BA5B162; its last such copy in
-// a frame is the scene before post, which the next frame's screen-space reflections read): the helper's colour, last
-// frame's light for the next frame's reflections and paths.
+// a frame is the scene before post, which the next frame's screen-space reflections read): kept, last frame's light for
+// the next frame's reflections and paths (Trace puts it in the bridge's colour).
 inline void KeepColor(ID3D11DeviceContext* context) {
   auto& state = internal::state;
+  std::array<UINT, 2> size;
   {
     const std::unique_lock lock(state.mutex);
     if (!(state.settings.reflections || state.settings.path_tracing) || state.failed || !state.color) return;
+    size = state.render_size;
   }
-  auto& bridge = twattila::dlaa_bridge::bridge;
   ComPtr<ID3D11DeviceContext1> context1;
   ComPtr<ID3D11RenderTargetView> target;
   ComPtr<ID3D11ShaderResourceView> scene;
   context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
   context->PSGetShaderResources(0, 1, scene.GetAddressOf());
-  if (!bridge.color.uav || !target || !scene || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
+  if (!target || !scene || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
   ComPtr<ID3D11Resource> target_resource;
   target->GetResource(target_resource.GetAddressOf());
   ComPtr<ID3D11Texture2D> target_texture;
   D3D11_TEXTURE2D_DESC desc = {};
   if (FAILED(target_resource.As(&target_texture))) return;
   target_texture->GetDesc(&desc);
-  if (desc.Format != DXGI_FORMAT_R11G11B10_FLOAT || desc.Width != bridge.width || desc.Height != bridge.height) return;
+  if (desc.Format != DXGI_FORMAT_R11G11B10_FLOAT || desc.Width != size[0] || desc.Height != size[1]
+      || !internal::EnsureTexture(state.device.Get(), size, &state.kept_color, &state.kept_color_uav, nullptr)) {
+    return;
+  }
   const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
   ID3D11ShaderResourceView* inputs[] = {scene.Get()};
-  ID3D11UnorderedAccessView* outputs[] = {bridge.color.uav.Get()};
+  ID3D11UnorderedAccessView* outputs[] = {state.kept_color_uav.Get()};
   context->CSSetShader(state.color.Get(), nullptr, 0);
   context->CSSetShaderResources(0, 1, inputs);
   context->CSSetUnorderedAccessViews(0, 1, outputs, nullptr);
-  context->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+  context->Dispatch((size[0] + 7) / 8, (size[1] + 7) / 8, 1);
 }
 
 // Every present: the settings and a new frame.
@@ -313,7 +418,7 @@ inline void Uninstall() {
   rysesonofrome::dlss::constants::Use(DLL_PROCESS_DETACH);
 }
 
-// The game's device is going away: the addon's objects on it with it.
+// The game's device is going away: the addon's objects on it with it (the bridge's after: graphics.hpp).
 inline void Release() {
   auto& state = internal::state;
   state.device.Reset();
@@ -321,11 +426,19 @@ inline void Release() {
   state.positions.Reset();
   state.guides.Reset();
   state.color.Reset();
+  state.kept_color.Reset();
+  state.kept_color_uav.Reset();
+  state.reflections_copy.Reset();
+  state.reflections_copy_srv.Reset();
+  state.specular_merge.Reset();
+  state.linear_sampler.Reset();
+  state.merged.Reset();
+  state.merged_uav.Reset();
+  state.merged_srv.Reset();
   state.game_reflections.Reset();
   state.reflections_bound = false;
   state.reflecting = false;
   state.failed = false;
-  twattila::dlaa_bridge::Release();
 }
 
 }  // namespace rysesonofrome::ray_tracing
