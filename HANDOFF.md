@@ -684,6 +684,26 @@ heading text are in HANDOFF_ARCHIVE.md)
     probe lines stay open for a later bench); 128-light night / Rarer Objects need other scenes (open)
   - [ ] END BENCH: after g4_ merges and while no agent builds (the merge agents wait on the quiet lock); Fable review in
     parallel (read-only). Owner: coordinator
+  - [x] SHOGUN 2 ONE ADD-ON MERGED d4c82679 (s2m_): _dlss folded in (pages HDR & Effects / Graphics 1 of 2 / 2 of 2;
+    shared twattila/settings_pages.hpp for the page helpers; fast dispatch; hdr_link / dlss_jitter / in-process FG
+    shaders 0x7A1E0D40-42 dropped; red note + log while the old _dlss file sits in the folder; README tells players to
+    delete it); key compare 196 keys 0 unexplained; [Shogun 2 DLSS] values migrated once into the presets
+    (SettingsRevision 1; s2m_migrate 4 / 4); parity_check s2 exit 0; suites PASS; tw_install.py retires the old file
+    (renamed .retired-<time>). Not run in game.
+    - [ ] Install dry run (python -I tw_install.py --helper <N> shogun2=<tag>) must print "Retired ...
+      renodx-twshogun2completeedition_dlss.addon64". Owner: coordinator at the install
+    - [ ] In game (ATN's list): migration keeps the old DLSS values (log line once); no red note after install; the
+      game's DLSS (scale / preset / jitter / motion / LOD bias) as before without hdr_link; helper DLSS / FSR / XeSS / RR;
+      FG + Reflex + limit (HDR10 while FG); RT / PT rows after restart; helper exe removed = no crash, note shows; old
+      Advanced players open on Graphics 1 of 2
+    - [x] SDR-to-HDR switch hashes the DLSS rows too (any changed row ends the automatic switching, as in every one-add-on
+      TW game): kept, consistent with "any change ends it"
+    - [ ] Port RayTracedBatchedUnits + RayTracedUnitsRange to Shogun 2 (SHARED STEP, after ATN's Attila test; Shogun's host
+      has no rt_scene table). Owner: GPU round after the install
+    - [ ] Cosmetic: moved files keep "[Shogun 2 DLSS]" log tags; HLSL comments "(DLSS addon)"; Custom render scale row has
+      no reset icon. Owner: coordinator, release round
+    - [ ] game-port-method SKILL.md ~line 108 says Ryse / Tales / Expeditions don't opt into fast dispatch (they do now);
+      rysesonofrome_dlss/dlss_capture.hpp names the old Shogun folder. Owner: rym_ / uem_ (skill line: coordinator)
   - [x] ATN 03:4x: go through HANDOFF: leftovers vs open, tick / trace / archive. DONE 05:0x (merge of hfx_: 7115 ->
     1035 lines, 82 open, verify OK, HANDOFF_ARCHIVE.md). Was: HANDOFF AUDIT hfa_ (read-only,
     tools/tw/round_notes/handoff_audit_1115.tsv), then the coordinator applies it (archive file for history). Owner:
