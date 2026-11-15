@@ -27,6 +27,10 @@
 #include "../talesofarise_dlss/post_filters.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/draw_dispatch.hpp"
+#include "../twattila/output_encoding.hpp"
+#include "./hdr_only.hpp"
+#include "./test_hooks.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -112,6 +116,12 @@ void ApplyResetPreset() {
       {"video_dithering", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+}
+
+// SDR: the game's own tonemapper and look; the game's and the UI's white are the monitor's own.
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}});
 }
 
 // Set once the tone mapper (or a pass after it) has drawn this frame; the next present starts a new frame.
@@ -404,6 +414,19 @@ void BuildRuntimeData() {
           .tooltip = "Resets image controls to their defaults (HDR UE Extended).\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() { ApplyResetPreset(); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "SDR (monitors without HDR)",
+          .section = "Presets",
+          .group = "preset-line-2",
+          .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it was\n"
+                     "HDR), no video AutoHDR. The game's and the UI's white are your monitor's own white.",
+          .tint = 0xFFC107,
+          .on_change = []() {
+            ApplySdrPreset();
+            renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
+          },
       },
       // UE Extended ////////////////////////////////////////////////////////////////////////////////////
       new renodx::utils::settings::Setting{
@@ -709,35 +732,10 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   }
 }
 
-// Output: 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2).
-void SetOutputEncoding(int encoding) {
-  shader_injection.swap_chain_encoding = static_cast<float>(encoding);
-  if (encoding == 2) {
-    renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
-    renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;
-  } else {
-    renodx::mods::swapchain::SetUseHDR10(encoding == 0);
-  }
-}
-
-// Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
-// before the swapchain mod's create_swapchain (registered after this).
-bool auto_output_pending = false;
-
+// Output (twattila/output_encoding.hpp), decided for each new swap chain before the swapchain mod's create_swapchain
+// (registered after this): Auto follows Windows HDR for the game's display.
 bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  if (!auto_output_pending) return false;
-  auto_output_pending = false;
-  const HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(hwnd), MONITOR_DEFAULTTOPRIMARY);
-  const auto path = renodx::utils::platform::GetPathInfo(monitor);
-  const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
-  // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
-  bool frame_generation = false;
-  reshade::get_config_value(nullptr, "Tales AA", "FrameGeneration", frame_generation);
-  if (windows_hdr) {
-    SetOutputEncoding(frame_generation ? 0 : 1);
-  } else {
-    SetOutputEncoding(2);
-  }
+  twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
   return false;
 }
 
@@ -750,6 +748,8 @@ void ConfigureAddon() {
   if (configured) return;
 
   BuildRuntimeData();
+  // Without the DLSS add-on (the HDR-only snapshot), after Settings Mode.
+  settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote(L"renodx-talesofarise_dlss.addon64"));
   shader_injection.filter_scale = 1.f;
   shader_injection.game_sharpening = 1.f;
 
@@ -833,9 +833,21 @@ void ConfigureAddon() {
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    const int value = static_cast<int>(setting->GetValue());
-    auto_output_pending = (value == 3);
-    SetOutputEncoding(auto_output_pending ? 1 : value);
+    // No settings saved yet: a player's first start. On a display without HDR (Auto) it starts with the SDR preset.
+    float saved_mode = 0.f;
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
+    twattila::output_encoding::Configure({
+        .shader_encoding = &shader_injection.swap_chain_encoding,
+        .setting = static_cast<int>(setting->GetValue()),
+        // The DLSS addon's frame generation takes no scRGB: Auto gives HDR10 with it.
+        .hdr_encoding = [](int output) {
+          if (output != twattila::output_encoding::AUTO) return output;
+          bool frame_generation = false;
+          reshade::get_config_value(nullptr, "Tales AA", "FrameGeneration", frame_generation);
+          return (frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB);
+        },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+    });
     settings.push_back(setting);
   }
 
@@ -864,23 +876,9 @@ void ConfigureAddon() {
           .section = "About",
           .is_visible = IsAdvancedSettings,
       },
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-          .label = "ATN's Ko-fi",
-          .section = "About",
-          .group = "line_1",
-          .tint = 0xFF5A16,
-          .on_change = []() { renodx::utils::platform::LaunchURL("https://ko-fi.com/atnthegreat"); },
-      },
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-          .label = "NexusMods (For RenoDX + DLSS)",
-          .section = "About",
-          .group = "line_1",
-          .tint = 0xFF2196F3,
-          .on_change = []() { renodx::utils::platform::LaunchURL("https://nexusmods.com/talesofarise/mods/444"); },
-      },
   });
+  const auto buttons = talesofarise::hdr_only::AboutButtons("https://nexusmods.com/talesofarise/mods/444");
+  settings.insert(settings.end(), buttons.begin(), buttons.end());
 
   configured = true;
 }
@@ -929,9 +927,13 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::present>(OnPresent);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  // Scripted runs (RENODX_TW_SET / SHOT / PROFILE, twattila/test_hooks.hpp): nothing without them.
+  twattila::test_hooks::Install(&settings, true, "[Tales]");
   talesofarise::post_filters::Use(DLL_PROCESS_ATTACH);
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  // The fast draw dispatch, with the gate of view cloning's command-wide callback (resource upgrades).
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
 
   attached = true;
   return true;
@@ -946,8 +948,10 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::copy_resource>(OnCopyResource);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
 
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
+  twattila::test_hooks::Uninstall();
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
   talesofarise::post_filters::Use(DLL_PROCESS_DETACH);
 

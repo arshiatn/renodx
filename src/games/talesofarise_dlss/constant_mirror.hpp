@@ -30,6 +30,9 @@
 // and keeps checking it without waiting.
 namespace talesofarise::dlss::constants {
 
+// The add-on's log prefix for the constants' lines (here and constant_readback.hpp); set before Use.
+inline const char* log_tag = "[Tales AA constants]";
+
 // Texture mip bias for DLSS upscaling (UE 4.21 biases material textures only for its own temporal upscaling): mapped
 // uploads whose ViewSizeAndInvSize is the main view's get MaterialTextureMipBias (.x) before the GPU reads them.
 struct ViewMipBias {
@@ -235,7 +238,7 @@ inline void Watch(ID3D11Buffer* buffer, uint32_t needed_bytes) {
       if (value != 0 && needed == (value >> 40)) return;
       if (entry.compare_exchange_weak(value, (needed << 40) | key)) {
         internal::watching.store(true, std::memory_order_relaxed);
-        renodx::utils::log::i("[Tales AA constants] Copying uploads of ", desc.ByteWidth, "-byte constant buffers (usage ",
+        renodx::utils::log::i(log_tag, " Copying uploads of ", desc.ByteWidth, "-byte constant buffers (usage ",
                               static_cast<uint32_t>(desc.Usage), ", CPU access ", renodx::utils::log::AsHex(desc.CPUAccessFlags),
                               "), first ", needed, " bytes.");
         return;

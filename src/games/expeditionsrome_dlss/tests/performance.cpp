@@ -18,12 +18,12 @@
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 
-#include "../performance.hpp"
+#include "../../talesofarise_dlss/performance.hpp"
 
 namespace {
 
-using expeditionsrome::dlss::Performance;
-using expeditionsrome::dlss::PerformanceStatistics;
+using talesofarise::dlss::Performance;
+using talesofarise::dlss::PerformanceStatistics;
 using Microsoft::WRL::ComPtr;
 
 }  // namespace
@@ -36,7 +36,7 @@ int main() {
     const auto expect = [](bool condition, const std::string& label) {
       if (!condition) throw std::runtime_error(label);
     };
-    PerformanceStatistics statistics;
+    talesofarise::dlss::PerformanceStatistics statistics;
     expect(statistics.GpuSample(1000, {0, 1, 10, 12, 20, 23, 30, 34}, false), "first deterministic GPU sample");
     expect(statistics.GpuSample(1000, {10, 13, 30, 35, 50, 57, 70, 79}, false), "second deterministic GPU sample");
     expect(statistics.summary.gpu_samples == 2
