@@ -21,6 +21,7 @@
 #include <mutex>
 #include <cmath>
 #include <string>
+#include <utility>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -874,6 +875,15 @@ void ClearGameSsao(reshade::api::command_list* cmd_list) {
   if (output) native->ClearUnorderedAccessViewFloat(output.Get(), open.data());
 }
 
+// Whether `native`'s device is another than `*own_device` (by identity only), which it becomes: a GPU reset's new device
+// drawing while the old one is still alive (WH3 makes its new swap chain first: device_loss.hpp). Nothing made on the old
+// device may be bound on the new one's context: the caller lets go of what it made.
+bool DeviceChanged(ID3D11DeviceContext* native, ID3D11Device** own_device) {
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  return std::exchange(*own_device, device.Get()) != device.Get();
+}
+
 // The game's reflection pass (fx_environment_specular_light): off, nothing of this runs and the game's bytes do. Our copy of its resolve
 // (shaders/reflection00) runs in its place with the rays' reflections or specular occlusion, with the march on all surfaces, or with the
 // march at one to one; under the rays' reflections the march and its blurs are left out. Water's rays leave from the water (0ED84C3D
@@ -953,6 +963,37 @@ bool fog_learn_logged = false;
 // The fog's light draw wrote the sun texture's fog texels since the last march; they hold a fog's numbers.
 bool fog_learned = false;
 bool fog_in_sun_texels = false;
+ID3D11Device* own_device = nullptr;  // what the objects above were made on (DeviceChanged)
+
+void OnDestroyDevice(reshade::api::device*) {
+  main_depth.Reset();
+  for (Copy* copy : {&resolve, &march, &depth_full, &blur_x_full, &blur_y_full}) copy->shader.Reset();
+  game_shader.Reset();
+  flags_buffer.Reset();
+  share_buffer.Reset();
+  mip_down.shader.Reset();
+  mip_blur_x.shader.Reset();
+  mip_blur_y.shader.Reset();
+  depth_step.shader.Reset();
+  gi_relevance.shader.Reset();
+  shadow_blur.shader.Reset();
+  game_b10.Reset();
+  frame_light.Reset();
+  fog_learn.shader.Reset();
+  fog_light.Reset();
+  fog_light_resource = nullptr;
+  fog_learn_constants.Reset();
+  fog_learned = false;
+  fog_in_sun_texels = false;
+}
+
+// At the start of each hook that can be the first of a frame to make or bind the objects above (the pass's later hooks
+// follow OnHierarchicalDepth's or OnMarch's on the same device).
+void KeepToDevice(ID3D11DeviceContext* native) {
+  if (DeviceChanged(native, &own_device)) {
+    OnDestroyDevice(nullptr);
+  }
+}
 
 // The copy in the game's place until SwapBack.
 bool Swap(ID3D11DeviceContext* native, Copy* copy) {
@@ -988,6 +1029,7 @@ bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return true;
+  KeepToDevice(native);
   if (RaysOn()) native->CSGetShaderResources(0, 1, main_depth.ReleaseAndGetAddressOf());
   if (effects) {
     Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> target_view;
@@ -1034,6 +1076,7 @@ constexpr auto OnFogLight = []<typename Context>(Context& command) -> renodx::ut
     renodx::utils::directx::TryNativeFromReShadeProxy(&native);
     auto& bridge = twattila::dlaa_bridge::bridge;
     if (native == nullptr || !bridge.rt_sun.uav || !bridge.rt_positions.srv) return;
+    KeepToDevice(native);
     FogLearnConstants constants = {.fog_strength = shader_injection.fog_strength};
     {
       auto& runtime = twattila::rt_scene::internal::runtime;
@@ -1132,6 +1175,7 @@ bool OnMarch(reshade::api::command_list* cmd_list) {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return true;
+  KeepToDevice(native);
   const bool all_surfaces = all_surfaces_row != 0.f && rt_sliders.reflections == 0.f;
   if (all_surfaces || one_to_one) pass = Pass::OURS;
   bool water_rays = false;
@@ -1251,7 +1295,10 @@ bool OnScaleFix(reshade::api::command_list* cmd_list, Copy* copy) {
   if (twattila::frame_history::effect_share.load(std::memory_order_relaxed) >= 1.f) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-  if (native != nullptr) Swap(native, copy);
+  if (native != nullptr) {
+    KeepToDevice(native);
+    Swap(native, copy);
+  }
   return true;
 }
 
@@ -1296,28 +1343,6 @@ void OnResolved(reshade::api::command_list* cmd_list) {
   if (RaysOn()) twattila::rt_scene::BindReflections(cmd_list, true, false);
 }
 
-void OnDestroyDevice(reshade::api::device*) {
-  main_depth.Reset();
-  for (Copy* copy : {&resolve, &march, &depth_full, &blur_x_full, &blur_y_full}) copy->shader.Reset();
-  game_shader.Reset();
-  flags_buffer.Reset();
-  share_buffer.Reset();
-  mip_down.shader.Reset();
-  mip_blur_x.shader.Reset();
-  mip_blur_y.shader.Reset();
-  depth_step.shader.Reset();
-  gi_relevance.shader.Reset();
-  shadow_blur.shader.Reset();
-  game_b10.Reset();
-  frame_light.Reset();
-  fog_learn.shader.Reset();
-  fog_light.Reset();
-  fog_light_resource = nullptr;
-  fog_learn_constants.Reset();
-  fog_learned = false;
-  fog_in_sun_texels = false;
-}
-
 }  // namespace reflections
 
 // Point light shadows and fog shadows from rays: 8 light PS (fx_pointlight*: linear and smooth falloff, with and without the point
@@ -1345,6 +1370,14 @@ Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;
 Microsoft::WRL::ComPtr<ID3D11Buffer> fog_strength_buffer;  // b8: the slider minus 1
 float fog_strength_written = 1.f;
 Microsoft::WRL::ComPtr<ID3D11Buffer> game_b8;
+ID3D11Device* own_device = nullptr;  // what `ours` and fog_strength_buffer were made on (DeviceChanged)
+
+void OnDestroyDevice(reshade::api::device*) {
+  for (auto& shader : ours) shader.Reset();
+  game_shader.Reset();
+  fog_strength_buffer.Reset();
+  game_b8.Reset();
+}
 
 // Registered after rt_scene's hooks, so run after them: their texture is bound by now, or isn't this frame.
 constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
@@ -1385,6 +1418,9 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
     }
   }
   if (native == nullptr) return {};
+  if (DeviceChanged(native, &own_device)) {
+    OnDestroyDevice(nullptr);
+  }
   if (index == SUN_MASK) {
     if (rays_replace_maps_row == 0.f || !twattila::frame_history::MainViewport(native) || !twattila::rt_scene::SunShadowsTraced()) return {};
   } else {
@@ -1432,13 +1468,6 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
     }
   }};
 };
-
-void OnDestroyDevice(reshade::api::device*) {
-  for (auto& shader : ours) shader.Reset();
-  game_shader.Reset();
-  fog_strength_buffer.Reset();
-  game_b8.Reset();
-}
 
 }  // namespace traced_lights
 
@@ -3239,6 +3268,7 @@ namespace sun_ao {
 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> game_view;  // the sun draw's, before anything of ours replaced it
 Microsoft::WRL::ComPtr<ID3D11Buffer> game_constants;
 Microsoft::WRL::ComPtr<ID3D11Buffer> one_to_one;
+ID3D11Device* own_device = nullptr;  // what one_to_one was made on (DeviceChanged)
 
 void OnDestroyDevice(reshade::api::device*) {
   game_view.Reset();
@@ -3267,6 +3297,10 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
     }
   }
   if (!replaced) return {};
+  // Only the buffer: game_view is this draw's, kept by OnSunDrawGuides.
+  if (DeviceChanged(native, &own_device)) {
+    one_to_one.Reset();
+  }
   if (!one_to_one) {
     constexpr std::array<float, 4> OVERSCANS = {1.f, 1.f, 0.f, 0.f};
     const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(OVERSCANS), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
