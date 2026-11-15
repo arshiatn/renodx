@@ -22,7 +22,9 @@
 #include "../../utils/settings.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/credits.hpp"
+#include "../talesofarise/hdr_only.hpp"
 #include "../twattila/draw_dispatch.hpp"
+#include "../twattila/output_encoding.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -83,6 +85,12 @@ void ApplyResetPreset() {
       {"volumetric_fog", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+}
+
+// SDR: the game's own tonemapper and look; the game's and the UI's white are the monitor's own.
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}});
 }
 
 // Moves the bound render targets to their 16-bit clones (hot swap), so the HDR frame
@@ -266,6 +274,19 @@ void BuildRuntimeData() {
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() { ApplyResetPreset(); },
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "SDR (monitors without HDR)",
+          .section = "Presets",
+          .group = "preset-line-2",
+          .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it was\n"
+                     "HDR). The game's and the UI's white are your monitor's own white.",
+          .tint = 0xFFC107,
+          .on_change = []() {
+            ApplySdrPreset();
+            renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
+          },
+      },
       // UE Extended ////////////////////////////////////////////////////////////////////////////////////
       slider("ext_exposure", &shader_injection.ext_exposure, "Exposure", "UE Extended", "", IsExtendedMode,
              IsExtendedMode),
@@ -437,6 +458,8 @@ void ConfigureAddon() {
   if (configured) return;
 
   BuildRuntimeData();
+  // Without the DLSS add-on (the HDR-only snapshot), after Settings Mode.
+  settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote(L"renodx-expeditionsrome_dlss.addon64"));
 
   // Shaders cb
   renodx::mods::shader::expected_constant_buffer_space = 50;
@@ -498,18 +521,28 @@ void ConfigureAddon() {
         .default_value = 1.f,
         .label = "Output",
         .section = "Output (Restart Required)",
-        .tooltip = "HDR10: 10-bit.\nscRGB: 16-bit.\nFrame generation always uses HDR10.",
-        .labels = {"HDR10", "scRGB"},
+        .tooltip = "HDR10: 10-bit. scRGB: 16-bit (default). HDR frame generation always uses HDR10.\n"
+                   "SDR: displays without HDR (all fixes and options stay). Auto: scRGB with Windows HDR on, else SDR.",
+        .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
-    bool frame_generation = false;
-    reshade::get_config_value(nullptr, "Rome AA", "FrameGeneration", frame_generation);
-    const auto value = frame_generation ? 0.f : setting->GetValue();
-    shader_injection.swap_chain_encoding = value;
-    renodx::mods::swapchain::SetUseHDR10(value == 0);
+    // No settings saved yet: a player's first start. On a display without HDR (Auto) it starts with the SDR preset.
+    float saved_mode = 0.f;
+    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
+    twattila::output_encoding::Configure({
+        .shader_encoding = &shader_injection.swap_chain_encoding,
+        .setting = static_cast<int>(setting->GetValue()),
+        // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
+        .hdr_encoding = [](int output) {
+          bool frame_generation = false;
+          reshade::get_config_value(nullptr, "Rome AA", "FrameGeneration", frame_generation);
+          if (frame_generation || output == twattila::output_encoding::HDR10) return twattila::output_encoding::HDR10;
+          return twattila::output_encoding::SCRGB;
+        },
+        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+    });
     settings.push_back(setting);
   }
 
@@ -532,8 +565,18 @@ void ConfigureAddon() {
       .section = "About",
       .is_visible = IsAdvancedSettings,
   });
+  // No NexusMods page known for this game's mod yet.
+  const auto buttons = talesofarise::hdr_only::AboutButtons("");
+  settings.insert(settings.end(), buttons.begin(), buttons.end());
 
   configured = true;
+}
+
+// Output (twattila/output_encoding.hpp), decided for each new swap chain before the swapchain mod's create_swapchain
+// (registered after this).
+bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
+  twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
+  return false;
 }
 
 // GT-VBAO's noise moves every frame (the game's TAA / DLSS settle it).
@@ -547,6 +590,7 @@ bool AttachAddon() {
 
   ConfigureAddon();
 
+  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
 
@@ -563,6 +607,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
 
