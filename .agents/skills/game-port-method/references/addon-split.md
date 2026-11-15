@@ -1,6 +1,6 @@
 # One add-on or two
 
-Ryse, Tales of Arise and Expeditions: Rome still ship two add-ons (Shogun 2 one since 2026-11-15, below): the HDR add-on (`<game>`) and `<game>_dlss` (DLSS, frame generation, ray tracing, graphics rows in its own overlay; the maintainer wants graphics options and DLSS presets there, and the HDR add-on reads the shader options it needs from `ReShade.ini`). Decide a merge from measured numbers, not from this list. Facts as of 2026-11-15, read in `src/utils` and the four games' `addon.cpp`.
+Since 2026-11-15 Shogun 2, Ryse, Tales of Arise and Expeditions: Rome are one add-on each, like the other TW games: the maintainer chose one add-on (DLSS on Graphics 1 of 2, the higher graphics settings on Graphics 2 of 2, the HDR-only snapshot still working). Before that each shipped the HDR add-on (`<game>`) and `<game>_dlss` (DLSS, frame generation, ray tracing, graphics rows in its own overlay). The facts below (as of 2026-11-15, before the merges) stay for a game that would split again; a new game starts as one add-on.
 
 ## What two cost
 

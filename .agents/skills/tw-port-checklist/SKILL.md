@@ -82,14 +82,14 @@ Non-TW games (Tales of Arise, Ryse, Expeditions: Rome and later ones) follow `ga
 
 - `twattila/rt_core.hpp` through a host's `scene_draw` and `main_view` (Ryse, Expeditions); the helper and `dlaa_bridge` (Ryse, Expeditions, and Shogun 2, a TW game with its own host); `psycho35_settings.hpp` and `credits.hpp` in every HDR addon.
 - The other way: `talesofarise_dlss/` (NGX, frame generation, pixel trace) is included by Attila and the helper, so a change there rebuilds both.
-- Ryse, Tales and Expeditions have two addons each (Shogun 2 one since 2026-11-15; `game-port-method`'s [addon-split.md](../game-port-method/references/addon-split.md)), their own trace header (`talesofarise_dlss/frame_trace.hpp`) and tool folders beside `tools/tw` (`toa`, `ryse`, `exr`, `expeditions`, `shogun2`, `ingame`).
+- Ryse, Tales and Expeditions are one addon each since 2026-11-15, like Shogun 2 (`game-port-method`'s [addon-split.md](../game-port-method/references/addon-split.md)); `talesofarise_dlss/` stays as a header folder (no addon of its own); they keep their own trace header (`talesofarise_dlss/frame_trace.hpp`) and tool folders beside `tools/tw` (`toa`, `ryse`, `exr`, `expeditions`, `shogun2`, `ingame`).
 
 ## Checks by kind of change
 
 **Shared code** (any file another game folder includes; the grep at the top lists who): build every addon that includes it, 32-bit too; a change in `talesofarise_dlss/ngx_backend.hpp` also rebuilds the helper. Attila, Rome II and Thrones are only meaningful from `build32`. After a shared edit:
 
 ```text
-cmake --build build --config Release --target renodx-ruse.addon64 renodx-twromeremastered.addon64 renodx-talesofarise.addon64 renodx-expeditionsrome.addon64 renodx-twtroy.addon64 renodx-twpharaohdynasties.addon64 renodx-twwarhammer.addon64 renodx-twwarhammer2.addon64 renodx-twwarhammer3.addon64 renodx-twshogun2completeedition.addon64 renodx-rysesonofrome.addon64 renodx-expeditionsrome_dlss.addon64 renodx-talesofarise_dlss.addon64
+cmake --build build --config Release --target renodx-ruse.addon64 renodx-twromeremastered.addon64 renodx-talesofarise.addon64 renodx-expeditionsrome.addon64 renodx-twtroy.addon64 renodx-twpharaohdynasties.addon64 renodx-twwarhammer.addon64 renodx-twwarhammer2.addon64 renodx-twwarhammer3.addon64 renodx-twshogun2completeedition.addon64 renodx-rysesonofrome.addon64
 cmake --build build32 --config Release --target renodx-twattila.addon32 renodx-twrome2.addon32 renodx-twthronesofbritannia.addon32
 ```
 
