@@ -19,7 +19,7 @@ from (search its text). Tick here and on that line when ATN answers.
 - [x] DONE 11-15 (ATN 12:1x: everything faster with the same picture on by default: 356b7100): Batched Unit Capture on by default? (bit-exact; bench: -1 to -2 ms a frame, +1.2 fps in both views) (from: "ATN DECIDES: Batched Unit Capture (RayTracedBatchedUnits) on by default ...")
 - [ ] g2b trunc8 (8-bit cluster truncation, -0.2 ms, a look change): try it? (from: "ATN DECIDES: g2b trunc8 ...")
 - [ ] GPU grass placement (phases 1-3): go ahead? (probe: the game's grass update 1.2 ms on the CPU at maxed grass vs 0.02 ms on the GPU, bit-exact) (from: "GRASS after the probe: ...")
-- [ ] R.U.S.E.: RT shadows for objects too this round (+2,000 replayed depth draws, CPU cost unknown until the T-run), or
+- [x] DONE 20:5x (ATN: "ray traced shadows for objects should join the RUSE round too"): R.U.S.E.: RT shadows for objects too this round (+2,000 replayed depth draws, CPU cost unknown until the T-run), or
   ground RT shadows / AO / GI / water reflections first? Path tracing can't work (forward renderer). (from: "R.U.S.E. not
   this round")
 - [ ] HDR audit 20:3x look changes (R1 shoulders, R2 Shogun 2 light, R3 gamma 2.0, R5 legacy hue, R6 bloom, Extended
@@ -30,6 +30,7 @@ HDR later, 24cdfb9c).
 ## OPEN (owners)
 Pointer index of every open box below (short title | owner, file order); the detailed line stays where it is.
 Rebuild it when boxes change; the boxes themselves are the record.
+
 
 
 
@@ -112,7 +113,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN at the end (Divinity 2): mid grey row's default; old presets / V30 keep or d ... | ATN
 - R.U.S.E. whole package in ONE implementation round, plan.md 10b order, all Exper ... | ru_ (implementation round)
 - R.U.S.E. T-run (one agent data run, ATN's OK): W1 resource log (pools, formats, ... | coordinator (next game window)
-- R.U.S.E. not this round (ru_'s plan): O1 RT shadows for objects (needs +2,000 re ... | ATN
 - R.U.S.E. U1 run (after ReShade + the stamped add-on are installed on D:): Frame ... | coordinator (next game window)
 - R.U.S.E. open ledger rows: Time Each Pass (D3D9 timestamp queries, optional); th ... | ru_ / release round
 - SHARED STEPS from R.U.S.E.: S1 output_encoding's first-start key as a Config fie ... | shared-steps round (after the fix merge)
@@ -122,6 +122,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R.U.S.E. D3D9 bridge Fable 5.2 High review when ru_ finishes it (ATN asked). Own ... | coordinator
 - ATN at the end (R.U.S.E.): Extended replacing V31 Native Tone or beside it; Hue ... | ATN
 - ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 ... | coordinator
+- d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div ... | d1_
+- ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_
+- sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (devi ... | sh_
+- hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, W ... | hb_
+- ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
+- npr_: Ryse parity boxes (NON-TW SKILLS AUDIT section). Owner: npr_ | npr_
+- npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe. Own ... | npu_
+- gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: g ... | gr_
+- Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device re ... | coordinator
 - REVIEWS + FIXES MERGED 8ee4ab2f 20:5x (left: GPU harness after ATN's game, build ... | coordinator
 - [B] R4 Peak / Paper White can reach 0.8 (Peak min 400, Paper White max 500): cla ... | HDR bug round (after the fix merge)
 - [B] R4 Peak not 1 on Output SDR (Attila does it): WH2 shared.h:157, WH3 :156, Ph ... | HDR bug round
@@ -1139,7 +1148,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] R.U.S.E. T-run (one agent data run, ATN's OK): W1 resource log (pools, formats, samples), an AA-off frame
         (INTZ), small vs big battle draw counts, PresentMon CPU / GPU, is uniSunView the sun's projection alone
         (off-screen casters), MainRTDivider, Option.ini 8192 / 4x kept? Owner: coordinator (next game window)
-      - [ ] R.U.S.E. not this round (ru_'s plan): O1 RT shadows for objects (needs +2,000 replayed depth draws or last
+      - [x] ANSWERED 20:5x (ATN: objects join the round; sent to ru_; PT stays impossible): R.U.S.E. not this round (ru_'s plan): O1 RT shadows for objects (needs +2,000 replayed depth draws or last
         frame's depth; objects keep the game's maps, 8192 via Graphics 2 of 2); path tracing (forward renderer: no depth +
         materials per pixel before shading). ATN wanted "everything": ATN DECIDES whether O1 joins the round. Owner: ATN
       - [x] OBSOLETE (answered by the 20:08 trace + plan.md 10): (was) R.U.S.E. D3D9 bridge B0 trace (next game run: Frame Trace at the menu + in battle, in-game AA off and on:
@@ -1190,6 +1199,26 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [ ] ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 (the planners run them, one at
       a time through gpu_job.lock, no start after 19:30); from 20:00 ATN plays 4-6 h: OFFLINE ONLY until ATN says done.
       Owner: coordinator
+    NIGHT ROUNDS 2026-11-15 from 21:0x (ATN 20:5x: "can we go and do the stuff from handoff now? (If you need seperate
+    agents, go ahead)"). Common rules: tools/tw/round_notes/night_rounds_brief_1115.md; builds only through
+    tools/tw/round_notes/gated_build.ps1 (one build at a time via tools\tw\build_job.lock, waits while Committed Bytes
+    > 45 GB: MHR running, 8.7 GB RAM free at 20:5x). Agents commit on their branches; the coordinator merges one at a
+    time, then the GPU harness, build all, stamp, install.
+      - [ ] d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div1 R4 peak clamp + R13 tests. Owner: d1_
+      - [ ] ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + R4 SDR gamut + R13 final post
+        test; H1 / H2 / T-run LEFT for after the game. Owner: ru_
+      - [ ] sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (device_proxy target format) + S3
+        (test_hooks runtime filter); R.U.S.E. adopts later. Owner: sh_
+      - [ ] hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, WH2 FXAA, alpha, Pharaoh max,
+        DOF blurs Attila / Thrones / WH1). Owner: hb_
+      - [ ] ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 first, TW table driver, Ryse, Div2,
+        Rome R, Tales / Expeditions). Owner: ht_
+      - [ ] npr_: Ryse parity boxes (NON-TW SKILLS AUDIT section). Owner: npr_
+      - [ ] npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe. Owner: npu_
+      - [ ] gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: gr_
+      - [ ] Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device removal with FG on, FG device
+        loss, fg_bridge_test), quiet tw_device_loss, gr_, ru_ H1 / H2, build all, stamp, install (dry run, fresh backups).
+        Owner: coordinator
     - [ ] REVIEWS + FIXES MERGED 8ee4ab2f 20:5x (left: GPU harness after ATN's game, build all, stamp, install): ATN 18:5x: after the fix agent's 21 fixes, a second Fable 5.2 High review of THE FIX DIFF ONLY (coordinator
       recommends it: helper / threading fixes), then build all, stamp, install for ATN's Attila test. Nsight audit agent
       started (were last night's Nsight captures used for more wins?). Owner: coordinator
