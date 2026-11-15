@@ -47,8 +47,8 @@
 // draw (0x7A1E0D47 into its target; the reflection captures and the sky fill the rest, which Specular Occlusion keeps only
 // where the lobe is open, also over the game's own reflections), their light from the scene
 // colour the temporal pass receives (KeepColor). The light bounce (path traced when on) right after the sun's draw: the
-// scene colour then (direct sun light) is the prepared light (0x7A1E0D48, a texel per 2 x 2 pixels; 1 x 1 or 4 x 4 by Ray-Traced Light Bounce Resolution), the helper traces
-// the light arriving at each texel, resolved over frames (0x7A1E0D49) and added to the scene colour times the diffuse
+// scene colour then (direct sun light) is the prepared light (0x7A1E0D48, a texel per 2 x 2 pixels; 1 x 1 or 4 x 4 by
+// Ray-Traced Light Bounce Resolution), the helper traces the light arriving at each texel, resolved over frames (0x7A1E0D49) and added to the scene colour times the diffuse
 // colour (0x7A1E0D4A; Unreal's sky light and reflections follow in their own pass). Its shaders' code is kept from the
 // game's start: Install only when ray tracing is on at launch.
 namespace expeditionsrome::dlss::ray_tracing {
@@ -324,7 +324,7 @@ void OnSunLit(Context& command, const void*) {
     std::array<float, 16> padding;
   };
   const std::array<uint32_t, 4> sizes = {bounce_size[0], bounce_size[1], state.render_size[0], state.render_size[1]};
-  const ApplyConstants prepare_constants = {.sizes = sizes, .settings = {0.f, static_cast<float>(scale)}};
+  const ApplyConstants prepare_constants = {.sizes = sizes, .settings = {0.f, static_cast<float>(scale)}, .padding = {}};
   context->UpdateSubresource(state.bounce_constants.Get(), 0, nullptr, &prepare_constants, 0, 0);
   const std::array<ID3D11ShaderResourceView*, 1> scene_views = {scene_view.Get()};
   const std::array<ID3D11Buffer*, 1> constant_buffers = {state.bounce_constants.Get()};
@@ -369,7 +369,7 @@ void OnSunLit(Context& command, const void*) {
     for (size_t index = 0; index < pointers.size(); ++index) gbuffer[index].Attach(pointers[index]);
   }
   if (!gbuffer[0] || !gbuffer[1] || !gbuffer[2]) return;
-  const ApplyConstants apply_constants = {.sizes = sizes, .settings = {strength, static_cast<float>(scale)}};
+  const ApplyConstants apply_constants = {.sizes = sizes, .settings = {strength, static_cast<float>(scale)}, .padding = {}};
   context->UpdateSubresource(state.bounce_constants.Get(), 0, nullptr, &apply_constants, 0, 0);
   const std::array<ID3D11ShaderResourceView*, 6> views = {state.resolved[current].srv.Get(), state.resolved_positions[current].srv.Get(),
                                                           bridge.rt_positions.srv.Get(), gbuffer[0].Get(), gbuffer[1].Get(), gbuffer[2].Get()};
