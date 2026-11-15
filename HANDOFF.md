@@ -19,6 +19,8 @@ from (search its text). Tick here and on that line when ATN answers.
 - [x] DONE 11-15 (ATN 12:1x: everything faster with the same picture on by default: 356b7100): Batched Unit Capture on by default? (bit-exact; bench: -1 to -2 ms a frame, +1.2 fps in both views) (from: "ATN DECIDES: Batched Unit Capture (RayTracedBatchedUnits) on by default ...")
 - [ ] g2b trunc8 (8-bit cluster truncation, -0.2 ms, a look change): try it? (from: "ATN DECIDES: g2b trunc8 ...")
 - [ ] GPU grass placement (phases 1-3): go ahead? (probe: the game's grass update 1.2 ms on the CPU at maxed grass vs 0.02 ms on the GPU, bit-exact) (from: "GRASS after the probe: ...")
+- [ ] HDR audit 20:3x look changes (R1 shoulders, R2 Shogun 2 light, R3 gamma 2.0, R5 legacy hue, R6 bloom, Extended
+  Saturation, Div1 mode 1): which become Experimental rows? (from: "HDR AUDIT FINDINGS")
 Also waiting on ATN, newer than the audit: "In game (ATN's list): new player HDR off -> SDR preset" (SDR first start ->
 HDR later, 24cdfb9c).
 
@@ -1081,13 +1083,62 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [ ] ATN 18:5x: after the fix agent's 21 fixes, a second Fable 5.2 High review of THE FIX DIFF ONLY (coordinator
       recommends it: helper / threading fixes), then build all, stamp, install for ATN's Attila test. Nsight audit agent
       started (were last night's Nsight captures used for more wins?). Owner: coordinator
-    - [ ] ATN 20:1x: HDR audit of all our add-ons against four notes from another RenoDX modder (maintainers' review
+    - [x] DONE 20:3x (audit agent, read-only at 3c750922; findings below, rule numbers = hdr-review-rules.md): ATN 20:1x: HDR audit of all our add-ons against four notes from another RenoDX modder (maintainers' review
       rules from ShortFuse / Musa: Downloads\3 skills from\ SKILL.md "tonemap-reviewer-rules", SKILL (1).md
       "shader-settings", lesson.md + lessons-hdr-path.md, Arkham City): LUT bridges without UpgradeToneMap, no clip at
       white in redone adds, gamma, PsychoV call contract (peak clamp, gamut mode per output), no hue settings after
       PsychoV, bloom unclipped, every reader of an upgraded target, 8-bit targets in the chain, MSAA halves, NaN order,
       Vanilla-exact tests with a failing mutant, switch / area variants, skipped swap chains. Audit agent running; findings
       become boxes (look changes: ATN). Owner: coordinator
+      HDR AUDIT FINDINGS (all 15 add-ons break at least one rule; [B] = pure bug, [P] = changes the picture):
+      - [ ] [B] R4 Peak / Paper White can reach 0.8 (Peak min 400, Paper White max 500): clamp max(peak, paper white) in
+        Attila shared.h:149, Div1 shared.h:59, Div2 t00_0x7016F292:221 + shared.h:84. Owner: HDR bug round (after the fix merge)
+      - [ ] [B] R4 Peak not 1 on Output SDR (Attila does it): WH2 shared.h:157, WH3 :156, Pharaoh :156, Troy :150 (SDR
+        display + Recommended clips per channel in the proxy). Owner: HDR bug round
+      - [ ] [B] R4 V30 / V31 gamut mode on SDR output: V30 macros always pass mode 1 (Attila / Rome II / Thrones / WH1 /
+        WH2 / WH3 / Pharaoh / Troy shared.h, Rome R :126-130, Div1 :70-73); V31 takes the slider, never BT.709 on SDR
+        (hdr_to_screen.hlsli of Rome II / Thrones / WH1 :17, WH2 :83, WH3 t00:170, Pharaoh :84, Troy :81, Rome R
+        resolve.hlsli:83, RUSE shared.h:70). Legacy modes only. Owner: HDR bug round
+      - [ ] [B] R4 Shogun 2: Peak not pre-corrected for ApplyGameGamma after PsychoV (tonemap.hlsli:415 / :419 -> :443),
+        LimitToPeak (:461) clips the top. Owner: HDR bug round
+      - [ ] [B] R4 WH2 fxaa00_0xCE9EA4E8:221 max(0) strips PsychoV's BT.2020 channels when FXAA is on. Owner: HDR bug round
+      - [ ] [B] R7 game DOF blurs clip every tap (mov_sat), not replaced: Attila A27C3A75 / B35968DC / CS C9D036B1 /
+        83A1A82D, Thrones A27C3A75 / B35968DC, WH1 0228529B / 4044871E (Rome II replaced its dof01-05); first a trace that
+        the chain draws. Expeditions 0x93E43D26 / 0x07E055CF / 0x1F128822 max(0, x+c) stock (draw after the tone map?).
+        Owner: HDR bug round (trace part: next data run per game)
+      - [ ] [B] R7 alpha unclamped: Thrones tone_mapper.hlsli:71, WH1 :52 (Attila saturates). Owner: HDR bug round
+      - [ ] [B] R7 no reader inventory for Shogun 2's broad upgrade (addon.cpp:2576-2594), Div1's every-RGBA8 upgrade
+        (addon.cpp:957-965), Tales' stock FXAA 0x8533AF0C / SMAA. Owner: HDR bug round (inventory from traces)
+      - [ ] [B] R10 unproven 8-bit links (never traced): Pharaoh FXAA 0xA6756C1F, WH2 dof00/01 C337D8E3 / 91B4F89A,
+        Shogun 2 dofblur02_0x6531CCC3 (unorm). Owner: next data run per game
+      - [ ] [B] R12 Pharaoh t00_0x976C1C74:132 max(0) before the bypass lerp (:224). Owner: HDR bug round
+      - [ ] [B] R13 Vanilla-exact tests with a failing control (only Div1 0x30A1D40D has one): TW tone mappers /
+        hdr_to_screen / bloom / lens flare, Shogun 2 tonemap00/01 first (rewritten from source), Ryse (ledger DO NOW),
+        Tales / Expeditions (no harness source to re-run their WARP claim), Div1 bloom / god rays / UI / AA, Div2 t01 /
+        bloom00 / ui00 (t00 report-only), Rome R, RUSE. Owner: HDR test round (after the fix merge)
+      - [ ] [B] R14 variants not replaced (traces decide if they draw): Attila / Thrones D9123DE1, 83192B6F + MSAA 7104ADE8
+        / 94EE9A57 / 787D82F2; hdr_lenseflare Attila / Thrones 169B6370, Rome II 172DE8D6, WH1 D0FA2C68; WH1 50DEBCD2 /
+        77B6E6A2 (UI portraits); WH2 ~10 (sprite 1C42B26B draws); WH3 10217D55 / stereo 427A5478; Troy 7 + MSAA; Pharaoh
+        ~13; Ryse HDRFinalPass 0xC3970136 + TAA 0x6A057F66; Tales (rests on ATN's dump). Owner: next data run per game,
+        then the HDR bug round
+      - [ ] [P] ATN DECIDES R1 Div1 mode 1 "UC2 Extended / PsychoV30" = UpgradeToneMap then PsychoV30 (tonemappers.hlsli
+        :141-143) + preset "PsychoV30 (earlier Recommended)": ATN said keep the old ones, decide at the end. Owner: ATN
+      - [ ] [P] ATN DECIDES R1 shoulders not identity below their start: Neutwo from 0 (grade below white moves with Peak:
+        1000/203 -> 0.18 = 0.177, 0.5 = 0.45, 1 = 0.71) in Attila / Rome II / Thrones / WH1 / Troy / Pharaoh / Rome R /
+        Div1 Pragmap (Troy t00:147 + Pharaoh t00:171 comment "SDR exactly below white" is false); hard max(m,1) knee
+        (kink at white) in WH2 / WH3 / Ryse / Tales / Expeditions / Div1 GradeAfterCurve. Fix = an Experimental row.
+        Owner: ATN
+      - [ ] [P] ATN DECIDES R2 Shogun 2 pointlight01_0x57139F8D:258 saturate after HDR Firelight (low-quality lights).
+        Owner: ATN
+      - [ ] [P] ATN DECIDES R3 Attila + Thrones HDR show the gamma-2.0 picture as linear (no 2.2 emulation; Shogun 2
+        emulates it). Owner: ATN
+      - [ ] [P] ATN DECIDES R5 hue settings after PsychoV in legacy V30 / V31 modes (all TW games, Rome R, Shogun 2, Ryse
+        + Fire Hue, Tales, Div2 ApplyFireColor): V35 is fine everywhere. Owner: ATN
+      - [ ] [P] ATN DECIDES R6 bloom: smoothing also in Rendering Mode SDR (Vanilla != game: Attila, Rome II, Thrones,
+        WH1-3, Troy, Pharaoh); log shoulder on the bloom cap (Attila, Rome R); Troy / Pharaoh glow mask reads the linear
+        handoff; Recommended lowers bloom (Attila 0.35, Rome R 0.05, Div1 0.25, Div2 0.44). Owner: ATN
+      - [ ] [P] ATN DECIDES Extended Saturation = RGB blend to grey, not OKLab chroma (WH2 :33, WH3 t00:287, Pharaoh :61).
+        Owner: ATN
     - [x] ATN 20:2x "Yes, with credit": DONE fb2cc981 game-port-method/references/hdr-review-rules.md (credited:
       ShortFuse, Musa; notes by boostedwarr), linked from SKILL.md + README; skills zip in Downloads rebuilt.
     - [x] NON-TW SKILLS AUDIT 19:5x (ATN: "have Ryse, Tales, Expeditions done everything from the skills?"): all three
