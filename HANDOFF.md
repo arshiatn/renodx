@@ -1038,6 +1038,15 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [ ] ATN 18:5x: after the fix agent's 21 fixes, a second Fable 5.2 High review of THE FIX DIFF ONLY (coordinator
       recommends it: helper / threading fixes), then build all, stamp, install for ATN's Attila test. Nsight audit agent
       started (were last night's Nsight captures used for more wins?). Owner: coordinator
+    - [ ] ATN 20:1x: HDR audit of all our add-ons against four notes from another RenoDX modder (maintainers' review
+      rules from ShortFuse / Musa: Downloads\3 skills from\ SKILL.md "tonemap-reviewer-rules", SKILL (1).md
+      "shader-settings", lesson.md + lessons-hdr-path.md, Arkham City): LUT bridges without UpgradeToneMap, no clip at
+      white in redone adds, gamma, PsychoV call contract (peak clamp, gamut mode per output), no hue settings after
+      PsychoV, bloom unclipped, every reader of an upgraded target, 8-bit targets in the chain, MSAA halves, NaN order,
+      Vanilla-exact tests with a failing mutant, switch / area variants, skipped swap chains. Audit agent running; findings
+      become boxes (look changes: ATN). Owner: coordinator
+    - [ ] ATN DECIDES: adopt rules from those notes into our skills (credit ShortFuse / Musa / the note's author)? Owner:
+      ATN
     - [x] NON-TW SKILLS AUDIT 19:5x (ATN: "have Ryse, Tales, Expeditions done everything from the skills?"): all three
       pass one add-on / pages / Reset + RT/PT + No RT/PT / V35 / SDR preset / Output + first start / per-channel Extended /
       About / fast dispatch / frame trace / helper114 / tw_install / registry / helper-absent page dumps. GAPS below; one
