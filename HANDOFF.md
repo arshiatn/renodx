@@ -916,6 +916,15 @@ heading text are in HANDOFF_ARCHIVE.md)
           scene_draw host had it: Expeditions, Ryse, Rome Remastered, Shogun 2. Skills f99e871c.
         - [x] 17:37 Expeditions v32 + Ryse fix56 built (acf3d270) and INSTALLED (tw_install.py, helper114 kept, ATN's
           files unchanged); re-check runs started ~17:40 (Expeditions rays on at launch; Ryse s8 rays + RR, 4 shots).
+        - [x] FIX CONFIRMED in game 17:38-17:54 (expeditions/g1/run_epic_173834): Expeditions v32 with rays on at launch ran
+          ~9.5 min of rays (RR active, Ray tracing ready), all 7 segments, normal exit, no dump; ATN's 20 files OK, saves
+          unchanged. Menu fps rays on / off: DLAA 22.9 / 83.1, DLSS Performance 79.5 / 150.1, Performance + FG 136.4 /
+          221.1.
+        - [ ] Expeditions rays-on DLAA 22.9 fps with GPU busy 9.31 ms (frame 43.7 ms): a stall, not GPU work (helper
+          wait? RR at native?); read that run's pass timing + helper log. Owner: next UE round
+        - [ ] Ryse s8b re-check (rays + RR black scene?) NOT RUN: the lock went to the Divinity 1 data run; how-to in the
+          agent's note: run.ps1 -Tag s8b_dlssq_rt_rr (s8's -Ini), drive by hand with keys.ps1 / act.ps1 (Esc to the top
+          first); drive.ps1's "level loaded after 155 s" was its 150 s timeout. Owner: coordinator, next allowed game window
         - [ ] The rest (Rome Remastered, Shogun 2 and every add-on on the shared code) on the review-fix commit: build all,
           stamp, install. Owner: coordinator after the review fixes
       - [ ] Expeditions save load: the main menu takes no SendInput keys; the save scene (carve materials 93E43D26,
