@@ -1370,7 +1370,9 @@ void OnPresent(
   check_after_present = true;
 }
 
-// First draw on the immediate context after Present.
+// First draw on the immediate context after Present. The draw events stay registered: they are the one point after
+// Present and before the game's next draw on that context (finish_present is not proven to come after the unbind with
+// frame generation's swap chain in between), and every other draw returns at the first atomic load.
 void CheckBound(reshade::api::command_list* cmd_list) {
   if (!check_after_present.load()) return;
   auto* device = cmd_list->get_device();
