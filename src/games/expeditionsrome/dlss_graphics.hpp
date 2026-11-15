@@ -57,6 +57,7 @@
 #include "../twattila/frame_generation.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/lighting_settings.hpp"
+#include "../twattila/pass_timing.hpp"
 
 // The former DLSS add-on (renodx-expeditionsrome_dlss.addon64, one add-on with the HDR part since the UE4 merge round):
 // DLAA / DLSS (with Ray Reconstruction), FSR or XeSS at Unreal's TAA, frame generation and the ray tracing, all through
@@ -165,8 +166,10 @@ static std::atomic<uint32_t> preset = 12u;  // NVSDK_NGX_DLSS_Hint_Render_Preset
 // The page's upscaler (dlaa_bridge::UPSCALER_*) and its name.
 static std::atomic<uint32_t> requested_upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;
 constexpr std::array<const char*, 3> UPSCALER_NAMES = {"DLSS", "FSR", "XeSS"};
-// Skip the stock TAA dispatch once constants are known before it (CPU copy trusted).
+// Skip the stock TAA dispatch once constants are known before it (CPU copy trusted); not with the Upscaling Debug View
+// (the merge draws it).
 static std::atomic_bool replace_taa = true;
+static std::atomic_bool upscaling_debug_view = false;  // Motion Vectors
 // Active input size the temporal pass last received (width | height << 32), even when
 // rejected, and how many temporal passes were seen.
 static std::atomic<uint64_t> seen_input = 0;
@@ -829,7 +832,8 @@ inline bool Evaluate(Frame* frame, bool replace) {
       uint32_t height;
       std::array<float, 2> pixel_jitter;
       uint32_t copy_color;
-      std::array<uint32_t, 3> padding;
+      uint32_t debug_view;  // the merge's (0xA3450ADB): 1 the Upscaling Debug View
+      std::array<uint32_t, 2> padding;
     } constants = {
         .width = frame->render_width,
         .height = frame->render_height,
@@ -837,6 +841,7 @@ inline bool Evaluate(Frame* frame, bool replace) {
                              ? std::array<float, 2>{frame->taa[26][0], frame->taa[26][1]}
                              : std::array<float, 2>{}),
         .copy_color = 1u,
+        .debug_view = upscaling_debug_view.load() ? 1u : 0u,
     };
     static_assert(sizeof(constants) == 96);
     std::memcpy(constants.clip_to_previous.data(), frame->view[118].data(), 64);
@@ -867,11 +872,13 @@ inline bool Evaluate(Frame* frame, bool replace) {
       const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = frame->width, .bottom = frame->height, .back = 1};
       context->CopySubresourceRegion(frame->target.Get(), 0, 0, 0, 0, bridge.output.texture.Get(), 0, &region);
     } else if (evaluated) {
-      // After the stock dispatch: its alpha, and its RGB where the upscaler's is not finite.
-      ID3D11ShaderResourceView* merge_inputs[] = {bridge.output.srv.Get(), frame->target_srv.Get()};
+      // After the stock dispatch: its alpha, and its RGB where the upscaler's is not finite (the Upscaling Debug View:
+      // the motion and colour the upscaler got instead).
+      ID3D11ShaderResourceView* merge_inputs[] = {bridge.output.srv.Get(), frame->target_srv.Get(), bridge.motion.srv.Get(), bridge.color.srv.Get()};
       ID3D11UnorderedAccessView* merge_outputs[] = {runtime.merged.uav.Get()};
       context->CSSetShader(runtime.merge_shader.Get(), nullptr, 0);
-      context->CSSetShaderResources(0, 2, merge_inputs);
+      context->CSSetConstantBuffers(0, 1, buffers);
+      context->CSSetShaderResources(0, 4, merge_inputs);
       context->CSSetUnorderedAccessViews(0, 1, merge_outputs, nullptr);
       context->Dispatch((frame->width + 7) / 8, (frame->height + 7) / 8, 1);
       context->CopyResource(frame->target.Get(), runtime.merged.resource.Get());
@@ -1223,7 +1230,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     live.custom = std::clamp(std::round(aa_sliders.render_scale), 1.f, 100.f);
     texture_lod_bias.choice = std::clamp(static_cast<int>(aa_sliders.texture_lod_bias), 0, 3);
     effects_at_output = aa_sliders.effects_at_output != 0.f;
-    replace_taa.store(replace_taa_row != 0.f);
+    upscaling_debug_view.store(aa_sliders.debug_view != 0.f);
+    replace_taa.store(replace_taa_row != 0.f && aa_sliders.debug_view == 0.f);
     expeditionsrome::dlss::contact_shadows::length.store(std::clamp(contact_shadows_row, 0.f, 10.f) / 100.f);
     // On again: a stopped or failed live scale is retried.
     if (const bool enabled = live_scale_row != 0.f; enabled != live.enabled) {
@@ -1723,11 +1731,10 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
     });
   };
   // The upscalers with their modes, DLSS's preset and Ray Reconstruction, Texture LOD Bias, Effects at Output Resolution,
-  // the helper's frame generation and Reflex; not the shader anti-aliasing (TW's), object motion (Unreal's own motion
-  // vectors) or the Upscaling Debug View (no view of it here).
+  // the helper's frame generation and Reflex, the Upscaling Debug View (the motion alone: the merge's, 0xA3450ADB); not
+  // the shader anti-aliasing (TW's) or object motion (Unreal's own motion vectors).
   twattila::feature_settings::AppendAa(settings, &aa_sliders, true, true);
-  erase({"AntiAliasingQuality", "AntiAliasingExtraSharpness", "AntiAliasingTaaStrength", "AntiAliasingSharpening", "AntiAliasingObjectMotion",
-         "AntiAliasingDebugView"});
+  erase({"AntiAliasingQuality", "AntiAliasingExtraSharpness", "AntiAliasingTaaStrength", "AntiAliasingSharpening", "AntiAliasingObjectMotion"});
   // The rays (ray_tracing.hpp: sun shadows, AO, the light bounce and its paths, reflections); not what this host doesn't
   // apply (specular occlusion; the light bounce's resolution: its own half-size texels).
   twattila::rt_scene::AppendSettings(settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION, &light_bounce_strength);
@@ -1737,7 +1744,16 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
     // former add-on ran: off (no run of this game has shown them yet).
     if (setting->key == "RayTracedAORange") setting->default_value = 2.f;
     if (setting->key == "RayTracedLeafMicromaps" || setting->key == "RayTracedGpuMicromaps") setting->default_value = 0.f;
+    if (setting->key == "AntiAliasingDebugView") setting->labels = {"Off", "Motion Vectors"};
   }
+  // One frame's GPU time of every pass (twattila/pass_timing.hpp, the add-on's first draw hooks).
+  settings->push_back(new Setting{
+      .value_type = SettingValueType::BUTTON,
+      .label = "Time Each Pass (One Frame)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "The GPU's time of every pass of the next frame into expeditionsrome_pass_timing.txt next to the game's exe.",
+      .on_change = [] { twattila::pass_timing::Request(); },
+  });
   settings->push_back(new Setting{
       .key = "light_bounce_strength",
       .binding = &light_bounce_strength,
@@ -1762,7 +1778,12 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
                                             .rays_multiply_maps = true,
                                             .has_screen_space_shadows = false,
                                             .has_gtvbgi = false,
+                                            .rays_tested = false,
                                             .every_row = false});
+  // The Upscaling Debug View's one view (the page's tooltip names Total War's object motion too).
+  for (Setting* setting : *settings) {
+    if (setting->key == "AntiAliasingDebugView") setting->tooltip = "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).";
+  }
   renodx::utils::settings::section_tints.emplace_back(TOOLS_SECTION, twattila::graphics_page::TITLE_TINT);
 
   // Graphics 1 of 2's own section.
@@ -1974,11 +1995,14 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
   }
 }
 
-// After the tonemapper's draw (the output size, before the UI): frame generation's HUD-less image from its target with
-// the frame's inputs (twattila/frame_generation.hpp KeepFrame: the helper presents).
+// After the tonemapper's draw (the output size, before the UI): the ray tracing's Debug View over its target
+// (rt_scene::OnTonemapDrawn, as the Total War games' tone mapper hooks), then frame generation's HUD-less image from it
+// with the frame's inputs (twattila/frame_generation.hpp KeepFrame: the helper presents).
 constexpr auto OnTonemapper = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (!twattila::frame_generation::Wanted()) return {};
+  if (!ray_tracing_installed && !twattila::frame_generation::Wanted()) return {};
   return {.post_callback = [](Context& command, const void*) {
+    if (ray_tracing_installed) twattila::rt_scene::OnTonemapDrawn(command.cmd_list);
+    if (!twattila::frame_generation::Wanted()) return;
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
     renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     if (context == nullptr || context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
@@ -2082,7 +2106,8 @@ inline bool Install() {
   } else {
     renodx::utils::log::w("[Rome DLAA jitter] The jitter store was not found (", halton_jitter.patch.details, "): the game's jitter.");
   }
-  // Frame generation's HUD-less image (the HDR part installs twattila/frame_generation.hpp with its swap chain shader).
+  // The ray tracing's Debug View and frame generation's HUD-less image (the HDR part installs twattila/frame_generation.hpp
+  // with its swap chain shader).
   for (const uint32_t shader_hash : TONEMAPPER_SHADERS) {
     renodx::utils::command_action::Register(OnTonemapper, {
                                                               .shader_hash = shader_hash,

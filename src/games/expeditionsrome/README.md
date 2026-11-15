@@ -26,6 +26,12 @@ add-on, no `nvsdk_ngx` link). The helper's DLSS has no inverted-depth flag, so t
 Without the helper next to the add-on (the HDR-only download) the add-on is HDR alone: the upscaling and ray tracing rows
 show the full-download note, Anti-Aliasing stays at the game's TAA, nothing waits.
 
+Tools as Attila's: the Upscaling Debug View (Motion Vectors: the merge shader `0xA3450ADB.cs_5_0.hlsl` draws the motion
+and colour the upscaler got, before the tonemapper; it turns Replace the Game's TAA Pass off while shown), the Ray Tracing
+Debug View and Scene test (drawn over the tonemapper's output, `twattila::rt_scene::OnTonemapDrawn`), Record Ray Tracing
+Profile, Time Each Pass (`twattila/pass_timing.hpp`, `expeditionsrome_pass_timing.txt`). The rays' and paths' methods
+read Experimental (no game run has shown them here yet).
+
 Windows display scaling above 100%: "ExpeditionsRome-Win64-Shipping.exe" (`ExpeditionsRome\Binaries\Win64`) ->
 Properties -> Compatibility -> Change high DPI settings -> Override high DPI scaling behavior, scaled by Application.
 Without it the game renders at the scaled size (4K at 175%: 2194x1234), Unreal's buffers are rounded up to 4 pixels
