@@ -2792,6 +2792,14 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
       .directions = &ao_directions,
   });
   settings->insert(settings->end(), ambient_rows.begin(), ambient_rows.end());
+  // One frame's GPU time of every pass (twattila/pass_timing.hpp, the add-on's first draw hooks; the page places it).
+  settings->push_back(new Setting{
+      .value_type = SettingValueType::BUTTON,
+      .label = "Time Each Pass (One Frame)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "The GPU's time of every pass of the next frame into talesofarise_pass_timing.txt next to the game's exe.",
+      .on_change = [] { twattila::pass_timing::Request(); },
+  });
   settings->push_back(new Setting{
       .key = "light_bounce_strength",
       .binding = &light_bounce_strength,
@@ -2877,14 +2885,6 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                          .format = "%d",
                                          .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders) && rt_sliders.light_bounce == 2.f; },
                                      });
-  // One frame's GPU time of every pass (twattila/pass_timing.hpp, the add-on's first draw hooks), after the anti-aliasing.
-  settings->push_back(new Setting{
-      .value_type = SettingValueType::BUTTON,
-      .label = "Time Each Pass (One Frame)",
-      .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "The GPU's time of every pass of the next frame into talesofarise_pass_timing.txt next to the game's exe.",
-      .on_change = [] { twattila::pass_timing::Request(); },
-  });
   renodx::utils::settings::section_tints.emplace_back(TOOLS_SECTION, twattila::graphics_page::TITLE_TINT);
 
   // Graphics 1 of 2's own section.
