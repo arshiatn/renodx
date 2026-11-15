@@ -25,6 +25,7 @@
 #include <mutex>
 #include <span>
 #include <string>
+#include <thread>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -45,6 +46,7 @@
 #include "./dxbc.hpp"
 #include "./frame_history.hpp"
 #include "./frame_trace.hpp"
+#include "./nvapi.hpp"
 
 // Ray tracing through the DLAA helper, the part any D3D11 game can use (rt_scene.hpp adds the Total War games' passes and
 // settings; Ryse, Expeditions and Shogun 2 use this alone): DXR runs in the 64-bit helper (dlaa_bridge.h v4-v8,
@@ -148,6 +150,10 @@ struct Settings {
   // Units Ray Tracing Range (Experimental; older helpers ignore it): units farther than these metres are out of the scene
   // (0: all in).
   float units_range = 0.f;
+  // Batched Unit Capture (Experimental; SceneShader::batch_compute, Host::flushes_unit_captures): units' compact draws streamed
+  // as their mesh once and a point an instance, their positions made by one compute pass (FlushBatch) instead of a stream
+  // output of every corner at each draw. The same positions.
+  bool batched_units = false;
   // Smoke BLAS Fast Build (Experimental, with Smoke Shadows; helper113, bridge RT_SCENE_SMOKE_FAST_BUILD): the smoke's BLAS
   // built faster each frame, its particles met in another order.
   bool smoke_fast_build = false;
@@ -345,6 +351,14 @@ struct SceneShader {
   // A dynamic draw captured even when one with its key was this frame: its own transform lies outside the key (Rome
   // Remastered: one object buffer at VS b7 written again for each draw). False: one capture a key a frame.
   bool every_draw = false;
+  // Batched Unit Capture (Settings::batched_units): a compact draw's mesh streamed once (`batch_mesh_shader`: `batch_mesh_texels`
+  // TEXCOORDs a vertex) and its instances as points (`batch_rows_shader`: TEXCOORD0-3, as rows_shader's), its corners made from
+  // both by `batch_compute` (rt_batch_unit.hlsli: the capture version's own code) at FlushBatch, its VS t0 (the bones) as the draw
+  // had it. Empty: captured at its draw.
+  std::span<const uint8_t> batch_mesh_shader;
+  UINT batch_mesh_texels = 2;
+  std::span<const uint8_t> batch_rows_shader;
+  std::span<const uint8_t> batch_compute;
 };
 
 // The main view's camera as ray tracing needs it: its view-projection and inverse (rows acting on column vectors; with
@@ -417,6 +431,9 @@ struct Host {
   // relative_inverse, no division by w (Rome Remastered: near 1 m, far 25 km; the inverse's w row cancels to metres of noise
   // at a kilometre in floats). False: the inverse view-projection.
   bool clip_relative = false;
+  // Whether the host calls FlushUnitCaptures before the game writes the bones its unit draws read again (Attila's PackAnimations
+  // hook): Batched Unit Capture makes their corners later than the draw. Null: never batched.
+  bool (*flushes_unit_captures)() = nullptr;
 };
 
 namespace internal {
@@ -482,6 +499,22 @@ constexpr uint32_t MAX_SET_BUILDS = 16;
 constexpr uint64_t CORNER_FRAMES = 30;
 // Record Ray Tracing Profile's length.
 constexpr uint64_t PROFILE_MS = 30000;
+// Batched Unit Capture: the streamed meshes' texels, rows' instances and draws a flush holds at most (FlushBatch first when a
+// draw finds them full), the corners one turn of its compute makes before they are copied into `captured` (a draw with more is
+// captured at its draw).
+constexpr UINT BATCH_MESHES = 1u << 21;
+constexpr UINT BATCH_MESH_TEXELS = 4;  // SceneShader::batch_mesh_texels at most
+constexpr UINT BATCH_ROWS = 1u << 18;
+constexpr UINT BATCH_DRAWS = 4096;
+constexpr UINT BATCH_OUTPUT_TEXELS = 1u << 22;
+// The placed draws' rows and Batched Unit Capture's: four texels a point (rows 0-2, the record).
+constexpr std::array<D3D11_SO_DECLARATION_ENTRY, 4> ROWS_OUTPUT = {{
+    {.SemanticName = "TEXCOORD", .SemanticIndex = 0, .ComponentCount = 4},
+    {.SemanticName = "TEXCOORD", .SemanticIndex = 1, .ComponentCount = 4},
+    {.SemanticName = "TEXCOORD", .SemanticIndex = 2, .ComponentCount = 4},
+    {.SemanticName = "TEXCOORD", .SemanticIndex = 3, .ComponentCount = 4},
+}};
+constexpr UINT ROWS_STRIDE = 64;
 
 // The lit particles' stream output, made at the first draw from the particle vertex shader's own code, apart from ray
 // tracing's objects (smoke_map.hpp reads it with RT off). Three float4 a particle: centre and age, colour and opacity, size
@@ -593,6 +626,32 @@ struct DeviceObjects {
   };
   std::array<Timing, 4> timings;
   uint32_t timing_next = 0;
+  // Batched Unit Capture (made at its first draw, Capture): the scene shaders' batch versions (as the scene shaders; null: none),
+  // the streamed meshes and rows, the flush's draw table, its corners, its constants (rt_batch_unit.hlsli's b3, the game's
+  // variant_animation_size at b2).
+  struct BatchShaders {
+    ComPtr<ID3D11VertexShader> mesh_shader;
+    ComPtr<ID3D11GeometryShader> mesh_output;
+    ComPtr<ID3D11VertexShader> rows_shader;
+    ComPtr<ID3D11GeometryShader> rows_output;
+    ComPtr<ID3D11ComputeShader> compute;
+  };
+  std::vector<BatchShaders> batch_shaders;
+  bool batch_tried = false;
+  bool batch_made = false;
+  ComPtr<ID3D11Buffer> batch_meshes;
+  ComPtr<ID3D11ShaderResourceView> batch_meshes_srv;
+  ComPtr<ID3D11Buffer> batch_rows;
+  ComPtr<ID3D11ShaderResourceView> batch_rows_srv;
+  ComPtr<ID3D11Buffer> batch_draws;
+  ComPtr<ID3D11ShaderResourceView> batch_draws_srv;
+  ComPtr<ID3D11Buffer> batch_output;
+  ComPtr<ID3D11UnorderedAccessView> batch_output_uav;
+  ComPtr<ID3D11Buffer> batch_run;
+  ComPtr<ID3D11Buffer> batch_width;
+  // NVIDIA's UAV overlap around a flush's dispatches (they write apart; null: none).
+  int(__cdecl* uav_overlap_begin)(IUnknown* context, uint32_t wait_flags) = nullptr;
+  int(__cdecl* uav_overlap_end)(IUnknown* context) = nullptr;
 };
 
 // The addon's own ray tracing cost since the last report (Update, every 10 s; ATN 2026-10-28: "RT shadows destroy the
@@ -772,6 +831,26 @@ struct Runtime {
   uint32_t tree_corners = 0;
   uint32_t set_builds = 0;
   uint32_t compact_state = 0;  // the helper's CompactState as last seen
+  // Batched Unit Capture: the compact draws streamed since the last flush, their meshes' vertices and rows' instances so far,
+  // the thread of their draws (the immediate context's) and the flush's draw table (rt_batch_unit.hlsli's t4).
+  struct BatchDraw {
+    uint32_t mesh_first = 0;  // in the streamed meshes' texels
+    uint32_t vertices = 0;
+    uint32_t rows_first = 0;
+    uint32_t instances = 0;
+    uint32_t captured_first = 0;
+    size_t shader = 0;  // its place in the scene shaders
+    ComPtr<ID3D11ShaderResourceView> animation_map;
+    ID3D11Resource* animation_texture = nullptr;  // compared only
+    float animation_width = 0.f;
+    bool stale = false;  // the game wrote its bones since the draw (OnBatchTextureWritten)
+  };
+  std::vector<BatchDraw> batch_draws;
+  uint32_t batch_mesh_texels = 0;
+  uint32_t batch_instances = 0;
+  std::thread::id batch_thread;
+  std::vector<std::array<uint32_t, 8>> batch_table;
+  bool batch_logged = false;
   // Smoke Shadows: the particles streamed out since frame particles_frame began (the lit particles come after its
   // trace: the next one takes them).
   uint32_t particles = 0;
@@ -921,6 +1000,8 @@ static float leaf_cutoff = 0.f;  // the scene shaders' SceneShader::alpha_cutoff
 static std::atomic_bool active = false;
 // A cluster mesh holds one of the game's index buffers (runtime.index_buffer_sets not empty): else OnIndexWrite returns.
 static std::atomic_bool index_buffers_held = false;
+// Batched unit draws wait for their flush (runtime.batch_draws not empty): else FlushUnitCaptures and OnBatchTextureWritten return.
+static std::atomic_bool batch_pending = false;
 
 inline float RangeScale() {
   return (frame_history::campaign_frames.load(std::memory_order_relaxed) != 0 ? host.campaign_metre : 1.f);
@@ -945,6 +1026,11 @@ inline bool GrassMet() {
   return runtime.settings.sun_shadows || runtime.settings.ambient_occlusion || runtime.settings.path_ambient;
 }
 
+// A scene shader has a batch version (Batched Unit Capture's row shown, its texture-write events registered).
+inline bool BatchInScene() {
+  return std::ranges::any_of(scene_shaders, [](const SceneShader& shader) { return !shader.batch_compute.empty(); });
+}
+
 // The immediate context under ReShade's command list (null: another API, a deferred context). ReShade's command list hands
 // out the game's own context, which is no proxy: that answer is kept per thread while the pointer stays (the proxy
 // lookup, a failed QueryInterface, was asked again at every captured draw); a proxy is looked up every call.
@@ -965,6 +1051,9 @@ inline bool PrepareDevice(ID3D11Device* device) {
   if (objects.device.Get() == device) return static_cast<bool>(objects.constants);
   objects = {};
   objects.device = device;
+  runtime.batch_draws.clear();
+  runtime.batch_mesh_texels = 0;
+  runtime.batch_instances = 0;
   const D3D11_SO_DECLARATION_ENTRY output = {.SemanticName = "TEXCOORD", .SemanticIndex = 0, .ComponentCount = 4};
   constexpr UINT STRIDE = 16;
   const auto compute = [&](std::span<const uint8_t> code, ComPtr<ID3D11ComputeShader>* shader) {
@@ -1003,14 +1092,6 @@ inline bool PrepareDevice(ID3D11Device* device) {
   const D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE};
   const D3D11_DEPTH_STENCIL_DESC depth_desc = {.DepthEnable = FALSE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO,
                                                .DepthFunc = D3D11_COMPARISON_ALWAYS};
-  // The placed draws' rows: four texels a point (rows 0-2, the record).
-  const std::array<D3D11_SO_DECLARATION_ENTRY, 4> rows_output = {{
-      {.SemanticName = "TEXCOORD", .SemanticIndex = 0, .ComponentCount = 4},
-      {.SemanticName = "TEXCOORD", .SemanticIndex = 1, .ComponentCount = 4},
-      {.SemanticName = "TEXCOORD", .SemanticIndex = 2, .ComponentCount = 4},
-      {.SemanticName = "TEXCOORD", .SemanticIndex = 3, .ComponentCount = 4},
-  }};
-  constexpr UINT ROWS_STRIDE = 64;
   // The game's own shaders get their stream output at their first capture (game_outputs).
   bool made = std::ranges::all_of(scene_shaders, [&](const SceneShader& shader) {
     auto& vertex_shader = objects.capture_shaders.emplace_back();
@@ -1028,8 +1109,8 @@ inline bool PrepareDevice(ID3D11Device* device) {
                                                                       geometry_output.GetAddressOf())))
            && (shader.faded_rows_shader.empty()
             || (SUCCEEDED(device->CreateVertexShader(shader.faded_rows_shader.data(), shader.faded_rows_shader.size(), nullptr, faded_rows_shader.GetAddressOf()))
-                && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.faded_rows_shader.data(), shader.faded_rows_shader.size(), rows_output.data(),
-                                                                          static_cast<UINT>(rows_output.size()), &ROWS_STRIDE, 1,
+                && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.faded_rows_shader.data(), shader.faded_rows_shader.size(), ROWS_OUTPUT.data(),
+                                                                          static_cast<UINT>(ROWS_OUTPUT.size()), &ROWS_STRIDE, 1,
                                                                           D3D11_SO_NO_RASTERIZED_STREAM, nullptr, faded_rows_output.GetAddressOf()))))
            && (shader.cut_out_shader.empty()
             || (SUCCEEDED(device->CreateVertexShader(shader.cut_out_shader.data(), shader.cut_out_shader.size(), nullptr, cut_out_shader.GetAddressOf()))
@@ -1043,8 +1124,8 @@ inline bool PrepareDevice(ID3D11Device* device) {
                                                                           stream_output.GetAddressOf()))))
            && (shader.rows_shader.empty()
                || (SUCCEEDED(device->CreateVertexShader(shader.rows_shader.data(), shader.rows_shader.size(), nullptr, rows_shader.GetAddressOf()))
-                   && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.rows_shader.data(), shader.rows_shader.size(), rows_output.data(),
-                                                                             static_cast<UINT>(rows_output.size()), &ROWS_STRIDE, 1,
+                   && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(shader.rows_shader.data(), shader.rows_shader.size(), ROWS_OUTPUT.data(),
+                                                                             static_cast<UINT>(ROWS_OUTPUT.size()), &ROWS_STRIDE, 1,
                                                                              D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
                                                                              rows_output_shader.GetAddressOf()))));
   });
@@ -1305,6 +1386,104 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
     runtime.set_ticks += ended.QuadPart - started.QuadPart;
     return set;
   });
+}
+
+// Batched Unit Capture: the corners of the batched draws streamed since the last flush made (their SceneShader::batch_compute
+// over their meshes and rows, a dispatch a run of draws on one animation texture, under NVIDIA's UAV overlap) and copied to
+// their places in `captured`, in turns of BATCH_OUTPUT_TEXELS. Before the trace, before the game writes their bones again
+// (FlushUnitCaptures) and when a draw finds the streamed room full. The game's compute bindings it changes put back.
+// runtime.mutex held.
+inline void FlushBatch(ID3D11DeviceContext* native) {
+  auto& draws = runtime.batch_draws;
+  batch_pending.store(false, std::memory_order_relaxed);
+  if (draws.empty()) return;
+  auto& objects = runtime.objects;
+  ComPtr<ID3D11ComputeShader> game_shader;
+  std::array<ID3D11ShaderResourceView*, 5> game_views = {};
+  ID3D11UnorderedAccessView* game_uav = nullptr;
+  std::array<ID3D11Buffer*, 2> game_constants = {};
+  native->CSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
+  native->CSGetShaderResources(0, static_cast<UINT>(game_views.size()), game_views.data());
+  native->CSGetUnorderedAccessViews(0, 1, &game_uav);
+  native->CSGetConstantBuffers(2, static_cast<UINT>(game_constants.size()), game_constants.data());
+  const std::array<ID3D11ShaderResourceView*, 3> batch_views = {objects.batch_meshes_srv.Get(), objects.batch_rows_srv.Get(),
+                                                                objects.batch_draws_srv.Get()};
+  const std::array<ID3D11Buffer*, 2> batch_constants = {objects.batch_width.Get(), objects.batch_run.Get()};
+  auto& table = runtime.batch_table;
+  for (size_t first = 0; first < draws.size();) {
+    // A turn: the draws whose corners fit the output, in runs of one shader, animation texture and width (a dispatch each).
+    table.clear();
+    size_t end = first;
+    uint32_t texels = 0;
+    uint32_t run_first = 0;
+    uint32_t run_groups = 0;
+    std::vector<std::array<uint32_t, 3>> runs;  // the table's first draw, draws, groups
+    for (; end < draws.size() && texels + (draws[end].vertices * draws[end].instances) <= BATCH_OUTPUT_TEXELS; ++end) {
+      const auto& draw = draws[end];
+      if (end != first && (draw.shader != draws[end - 1].shader || draw.animation_map != draws[end - 1].animation_map
+                           || draw.animation_width != draws[end - 1].animation_width)) {
+        runs.push_back({run_first, static_cast<uint32_t>(table.size()) - run_first, run_groups});
+        run_first = static_cast<uint32_t>(table.size());
+        run_groups = 0;
+      }
+      table.push_back({draw.mesh_first, draw.vertices, draw.rows_first, draw.instances, texels, run_groups, draw.stale ? 1u : 0u, 0u});
+      run_groups += ((draw.vertices * draw.instances) + 63) / 64;
+      texels += draw.vertices * draw.instances;
+    }
+    runs.push_back({run_first, static_cast<uint32_t>(table.size()) - run_first, run_groups});
+    const D3D11_BOX table_bytes = {.left = 0, .top = 0, .front = 0, .right = static_cast<UINT>(table.size() * sizeof(table[0])), .bottom = 1, .back = 1};
+    native->UpdateSubresource(objects.batch_draws.Get(), 0, &table_bytes, table.data(), 0, 0);
+    native->CSSetShaderResources(2, static_cast<UINT>(batch_views.size()), batch_views.data());
+    native->CSSetUnorderedAccessViews(0, 1, objects.batch_output_uav.GetAddressOf(), nullptr);
+    native->CSSetConstantBuffers(2, static_cast<UINT>(batch_constants.size()), batch_constants.data());
+    if (objects.uav_overlap_begin != nullptr) objects.uav_overlap_begin(native, 0);
+    for (const auto& [run_draw, run_draws, groups] : runs) {
+      const auto& draw = draws[first + run_draw];
+      const std::array<float, 4> width = {0.f, 0.f, draw.animation_width, 0.f};
+      const std::array<uint32_t, 4> run = {run_draw, run_draws, groups, std::bit_cast<uint32_t>(draw.animation_width)};
+      native->UpdateSubresource(objects.batch_width.Get(), 0, nullptr, width.data(), 0, 0);
+      native->UpdateSubresource(objects.batch_run.Get(), 0, nullptr, run.data(), 0, 0);
+      native->CSSetShader(objects.batch_shaders[draw.shader].compute.Get(), nullptr, 0);
+      native->CSSetShaderResources(0, 1, draw.animation_map.GetAddressOf());
+      native->Dispatch(std::min(groups, 65535u), (groups + 65534) / 65535, 1);
+    }
+    if (objects.uav_overlap_end != nullptr) objects.uav_overlap_end(native);
+    ID3D11UnorderedAccessView* no_uav = nullptr;
+    native->CSSetUnorderedAccessViews(0, 1, &no_uav, nullptr);
+    // Into `captured`, a copy a stretch of draws whose places follow each other there.
+    for (size_t copied = first; copied < end;) {
+      size_t next = copied + 1;
+      while (next < end && draws[next].captured_first == draws[next - 1].captured_first + (draws[next - 1].vertices * draws[next - 1].instances)) ++next;
+      const uint32_t from = table[copied - first][4];
+      const uint32_t to = table[next - 1 - first][4] + (draws[next - 1].vertices * draws[next - 1].instances);
+      const D3D11_BOX stretch = {.left = from * 16, .top = 0, .front = 0, .right = to * 16, .bottom = 1, .back = 1};
+      native->CopySubresourceRegion(objects.captured.Get(), 0, draws[copied].captured_first * 16, 0, 0, objects.batch_output.Get(), 0, &stretch);
+      copied = next;
+    }
+    first = end;
+  }
+  native->CSSetShader(game_shader.Get(), nullptr, 0);
+  native->CSSetShaderResources(0, static_cast<UINT>(game_views.size()), game_views.data());
+  constexpr UINT KEEP_COUNT = UINT_MAX;
+  native->CSSetUnorderedAccessViews(0, 1, &game_uav, &KEEP_COUNT);
+  native->CSSetConstantBuffers(2, static_cast<UINT>(game_constants.size()), game_constants.data());
+  for (auto* view : game_views) {
+    if (view != nullptr) view->Release();
+  }
+  if (game_uav != nullptr) game_uav->Release();
+  for (auto* buffer : game_constants) {
+    if (buffer != nullptr) buffer->Release();
+  }
+  if (frame_trace::Tracing()) {
+    frame_trace::Mark(std::format("ray tracing: {} batched unit draws' corners made", draws.size()));
+  }
+  if (!runtime.batch_logged) {
+    runtime.batch_logged = true;
+    renodx::utils::log::i(std::format("[Total War] Ray tracing: Batched Unit Capture applied: {} unit draws' corners made in one pass.", draws.size()));
+  }
+  draws.clear();
+  runtime.batch_mesh_texels = 0;
+  runtime.batch_instances = 0;
 }
 
 // After a scene draw of the main view: a draw not yet in the scene is drawn once more into the stream-output buffer.
@@ -1873,6 +2052,87 @@ void Capture(Context& command, const SceneShader& shader) {
   if (joined != nullptr && foliage && runtime.slices.back() != slice) {
     joined = nullptr;
   }
+  // Batched Unit Capture: a unit's compact draw streamed as its mesh once and its instances (their corners at FlushBatch), its bones
+  // (VS t0) and their texture's width kept with it; the batch's objects made at its first draw. A draw finding the streamed room
+  // full flushes it first.
+  const UINT block_vertices = block_texels / draw_instances;
+  ComPtr<ID3D11ShaderResourceView> animation_map;
+  ComPtr<ID3D11Resource> animation_resource;
+  float animation_width = 0.f;
+  if (compact && !cut_out && runtime.settings.batched_units && !shader.batch_compute.empty() && host.flushes_unit_captures != nullptr
+      && host.flushes_unit_captures() && block_texels <= BATCH_OUTPUT_TEXELS && block_vertices * shader.batch_mesh_texels <= BATCH_MESHES
+      && draw_instances <= BATCH_ROWS && shader.batch_mesh_texels <= BATCH_MESH_TEXELS) {
+    if (!objects.batch_tried) {
+      objects.batch_tried = true;
+      const auto buffer = [&](UINT bytes, UINT bind, UINT misc, ComPtr<ID3D11Buffer>* made) {
+        const D3D11_BUFFER_DESC desc = {.ByteWidth = bytes, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = bind, .MiscFlags = misc};
+        return SUCCEEDED(device->CreateBuffer(&desc, nullptr, made->GetAddressOf()));
+      };
+      const auto view = [&](ID3D11Buffer* resource, DXGI_FORMAT format, UINT elements, ComPtr<ID3D11ShaderResourceView>* made) {
+        D3D11_SHADER_RESOURCE_VIEW_DESC desc = {.Format = format, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
+        desc.Buffer.NumElements = elements;
+        return SUCCEEDED(device->CreateShaderResourceView(resource, &desc, made->GetAddressOf()));
+      };
+      D3D11_UNORDERED_ACCESS_VIEW_DESC output_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_UAV_DIMENSION_BUFFER};
+      output_desc.Buffer = {.FirstElement = 0, .NumElements = BATCH_OUTPUT_TEXELS * 4, .Flags = D3D11_BUFFER_UAV_FLAG_RAW};
+      objects.batch_made = buffer(BATCH_MESHES * 16, D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE, 0, &objects.batch_meshes)
+                           && view(objects.batch_meshes.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, BATCH_MESHES, &objects.batch_meshes_srv)
+                           && buffer(BATCH_ROWS * ROWS_STRIDE, D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE, 0, &objects.batch_rows)
+                           && view(objects.batch_rows.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, BATCH_ROWS * 4, &objects.batch_rows_srv)
+                           && buffer(BATCH_DRAWS * 32, D3D11_BIND_SHADER_RESOURCE, 0, &objects.batch_draws)
+                           && view(objects.batch_draws.Get(), DXGI_FORMAT_R32G32B32A32_UINT, BATCH_DRAWS * 2, &objects.batch_draws_srv)
+                           && buffer(BATCH_OUTPUT_TEXELS * 16, D3D11_BIND_UNORDERED_ACCESS, D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS, &objects.batch_output)
+                           && SUCCEEDED(device->CreateUnorderedAccessView(objects.batch_output.Get(), &output_desc, objects.batch_output_uav.GetAddressOf()))
+                           && buffer(16, D3D11_BIND_CONSTANT_BUFFER, 0, &objects.batch_run) && buffer(16, D3D11_BIND_CONSTANT_BUFFER, 0, &objects.batch_width);
+      constexpr std::array<D3D11_SO_DECLARATION_ENTRY, BATCH_MESH_TEXELS> MESH_OUTPUT = {{
+          {.SemanticName = "TEXCOORD", .SemanticIndex = 0, .ComponentCount = 4},
+          {.SemanticName = "TEXCOORD", .SemanticIndex = 1, .ComponentCount = 4},
+          {.SemanticName = "TEXCOORD", .SemanticIndex = 2, .ComponentCount = 4},
+          {.SemanticName = "TEXCOORD", .SemanticIndex = 3, .ComponentCount = 4},
+      }};
+      for (const SceneShader& listed : scene_shaders) {
+        auto& batch = objects.batch_shaders.emplace_back();
+        const UINT mesh_stride = listed.batch_mesh_texels * 16;
+        if (listed.batch_compute.empty() || listed.batch_mesh_texels > BATCH_MESH_TEXELS
+            || FAILED(device->CreateVertexShader(listed.batch_mesh_shader.data(), listed.batch_mesh_shader.size(), nullptr, batch.mesh_shader.GetAddressOf()))
+            || FAILED(device->CreateGeometryShaderWithStreamOutput(listed.batch_mesh_shader.data(), listed.batch_mesh_shader.size(), MESH_OUTPUT.data(),
+                                                                   listed.batch_mesh_texels, &mesh_stride, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                                                                   batch.mesh_output.GetAddressOf()))
+            || FAILED(device->CreateVertexShader(listed.batch_rows_shader.data(), listed.batch_rows_shader.size(), nullptr, batch.rows_shader.GetAddressOf()))
+            || FAILED(device->CreateGeometryShaderWithStreamOutput(listed.batch_rows_shader.data(), listed.batch_rows_shader.size(), ROWS_OUTPUT.data(),
+                                                                   static_cast<UINT>(ROWS_OUTPUT.size()), &ROWS_STRIDE, 1, D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                                                                   batch.rows_output.GetAddressOf()))
+            || FAILED(device->CreateComputeShader(listed.batch_compute.data(), listed.batch_compute.size(), nullptr, batch.compute.GetAddressOf()))) {
+          batch = {};
+        }
+      }
+      objects.uav_overlap_begin = reinterpret_cast<decltype(objects.uav_overlap_begin)>(nvapi::Function(0xBA08208A));
+      objects.uav_overlap_end = reinterpret_cast<decltype(objects.uav_overlap_end)>(nvapi::Function(0x2216A357));
+      if (objects.uav_overlap_begin == nullptr || objects.uav_overlap_end == nullptr) {
+        objects.uav_overlap_begin = nullptr;
+        objects.uav_overlap_end = nullptr;
+      }
+      renodx::utils::log::i(std::format("[Total War] Ray tracing: Batched Unit Capture's objects {} ({} of its scene shaders batched, UAV overlap {}).",
+                                        objects.batch_made ? "made" : "NOT made: its units captured at their draws",
+                                        std::ranges::count_if(objects.batch_shaders, [](const auto& batch) { return static_cast<bool>(batch.compute); }),
+                                        objects.uav_overlap_begin != nullptr ? "on" : "unavailable"));
+    }
+    native->VSGetShaderResources(0, 1, animation_map.GetAddressOf());
+    if (ComPtr<ID3D11Texture2D> animation_texture; animation_map) {
+      animation_map->GetResource(animation_resource.GetAddressOf());
+      if (SUCCEEDED(animation_resource.As(&animation_texture))) {
+        D3D11_TEXTURE2D_DESC animation_desc = {};
+        animation_texture->GetDesc(&animation_desc);
+        animation_width = static_cast<float>(animation_desc.Width);
+      }
+    }
+  }
+  const bool batched = animation_width != 0.f && objects.batch_made && listed_index < objects.batch_shaders.size()
+                       && objects.batch_shaders[listed_index].compute;
+  if (batched && (runtime.batch_draws.size() == BATCH_DRAWS || runtime.batch_mesh_texels + (block_vertices * shader.batch_mesh_texels) > BATCH_MESHES
+                  || runtime.batch_instances + draw_instances > BATCH_ROWS)) {
+    FlushBatch(native);
+  }
   ID3D11VertexShader* capture_vertex_shader = nullptr;
   ID3D11GeometryShader* stream_output = nullptr;
   // Host::scene_draw's capture version, in clip space as the game's; a SceneShader::cascade_world cascade draw's, into its
@@ -1988,9 +2248,11 @@ void Capture(Context& command, const SceneShader& shader) {
     const std::array<ID3D11Buffer*, 2> targets = {shader.tessellated ? objects.tessellated.Get() : objects.captured.Get(), objects.captured_uv.Get()};
     const std::array<UINT, 2> stream_offsets = {shader.tessellated ? (runtime.tessellated_draws == 0 ? 0u : UINT_MAX) : (next_vertex * 16),
                                                 next_vertex * 8};
-    if (!clip_space || own_capture) native->VSSetShader(capture_vertex_shader, nullptr, 0);
-    native->GSSetShader(stream_output, nullptr, 0);
-    native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
+    if (!batched) {
+      if (!clip_space || own_capture) native->VSSetShader(capture_vertex_shader, nullptr, 0);
+      native->GSSetShader(stream_output, nullptr, 0);
+      native->SOSetTargets(clip_uv ? 2 : 1, targets.data(), stream_offsets.data());
+    }
     // A capture version turned to the sun reads rt_sun (a geometry capture at its geometry shader, the game's view there put back
     // after); the game's shadow vertex shader (a cascade draw) turns its cards to the sun itself, and its t0 stays as the game set it
     // for the next draw.
@@ -2063,7 +2325,22 @@ void Capture(Context& command, const SceneShader& shader) {
         // back).
         native->IASetIndexBuffer(runtime.cluster_meshes.at(set_key).remap.Get(), DXGI_FORMAT_R32_UINT, 0);
         native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
-        native->DrawIndexedInstanced(block_texels / draw_instances, draw_instances, 0, arguments.vertex_offset, arguments.first_instance);
+        if (batched) {
+          // Batched: the first instance's block vertices, then a point an instance (its first block vertex) for its rows.
+          const auto& batch = objects.batch_shaders[listed_index];
+          const UINT mesh_offset = runtime.batch_mesh_texels * 16;
+          const UINT rows_offset = runtime.batch_instances * ROWS_STRIDE;
+          native->VSSetShader(batch.mesh_shader.Get(), nullptr, 0);
+          native->GSSetShader(batch.mesh_output.Get(), nullptr, 0);
+          native->SOSetTargets(1, objects.batch_meshes.GetAddressOf(), &mesh_offset);
+          native->DrawIndexedInstanced(block_vertices, 1, 0, arguments.vertex_offset, arguments.first_instance);
+          native->VSSetShader(batch.rows_shader.Get(), nullptr, 0);
+          native->GSSetShader(batch.rows_output.Get(), nullptr, 0);
+          native->SOSetTargets(1, objects.batch_rows.GetAddressOf(), &rows_offset);
+          native->DrawIndexedInstanced(1, draw_instances, 0, arguments.vertex_offset, arguments.first_instance);
+        } else {
+          native->DrawIndexedInstanced(block_vertices, draw_instances, 0, arguments.vertex_offset, arguments.first_instance);
+        }
         native->IASetIndexBuffer(compact_indices.Get(), index_format, index_offset);
         native->IASetPrimitiveTopology(topology);
       } else {
@@ -2265,6 +2542,15 @@ void Capture(Context& command, const SceneShader& shader) {
   }
   if (compact) {
     add_blocks();
+    if (batched) {
+      runtime.batch_draws.push_back({.mesh_first = runtime.batch_mesh_texels, .vertices = block_vertices, .rows_first = runtime.batch_instances,
+                                     .instances = draw_instances, .captured_first = next_vertex, .shader = listed_index, .animation_map = animation_map,
+                                     .animation_texture = animation_resource.Get(), .animation_width = animation_width});
+      runtime.batch_mesh_texels += block_vertices * shader.batch_mesh_texels;
+      runtime.batch_instances += draw_instances;
+      runtime.batch_thread = std::this_thread::get_id();
+      batch_pending.store(true, std::memory_order_relaxed);
+    }
   } else if (joined != nullptr) {
     joined->vertex_count += vertex_count;
   } else {
@@ -2727,6 +3013,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       }
     }
   }
+  // Batched Unit Capture: the corners still to make, before rt_vertices reads them.
+  FlushBatch(native);
   // The world-space part goes after the clip-space vertices in the vertex texture (rt_vertices); what points at it follows.
   const UINT world_first = runtime.captured_vertices;
   if (runtime.world_vertices != WORLD_BASE) {
@@ -3234,6 +3522,27 @@ inline void OnIndexWrite(reshade::api::resource dest, uint64_t offset, uint64_t 
       mesh->second.rewritten_frame = std::max<uint64_t>(runtime.frame, 1);
     }
   }
+}
+
+// The game writes a texture (any thread, after its Map): a batched draw's bones there are another soldier's from now on, its
+// corners left out this frame (FlushBatch).
+inline void OnBatchTextureWritten(uint64_t resource) {
+  if (!batch_pending.load(std::memory_order_relaxed)) return;
+  const std::unique_lock lock(runtime.mutex);
+  for (auto& draw : runtime.batch_draws) {
+    if (reinterpret_cast<uint64_t>(draw.animation_texture) == resource) draw.stale = true;
+  }
+}
+
+inline void OnBatchMapTexture(reshade::api::device*, reshade::api::resource resource, uint32_t, const reshade::api::subresource_box*,
+                              reshade::api::map_access access, reshade::api::subresource_data*) {
+  if (access != reshade::api::map_access::read_only) OnBatchTextureWritten(resource.handle);
+}
+
+inline bool OnBatchUpdateTexture(reshade::api::device*, const reshade::api::subresource_data&, reshade::api::resource resource, uint32_t,
+                                 const reshade::api::subresource_box*) {
+  OnBatchTextureWritten(resource.handle);
+  return false;
 }
 
 inline bool OnUpdateIndices(reshade::api::device*, const void*, reshade::api::resource dest, uint64_t offset, uint64_t size) {
@@ -3846,6 +4155,11 @@ inline void Update(const Settings& settings) {
   runtime.compact.clear();
   runtime.new_sets.clear();
   runtime.new_set_bytes = 0;
+  // Batched unit draws of a frame without a trace: nothing reads their corners.
+  runtime.batch_draws.clear();
+  runtime.batch_mesh_texels = 0;
+  runtime.batch_instances = 0;
+  internal::batch_pending.store(false, std::memory_order_relaxed);
   std::swap(runtime.lights_last, runtime.lights_drawn);
   runtime.lights_drawn.clear();
   // Host::keep_placed: as long as there's room. Then the oldest meshes go, here and in the helper by the one number it's sent.
@@ -3926,6 +4240,19 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   if (!internal::active.load(std::memory_order_relaxed)) return false;
   internal::Trace(native, depth, camera);
   return internal::runtime.traced_frame == internal::runtime.frame;
+}
+
+// Batched Unit Capture: before the game writes the bones its unit draws read again (Host::flushes_unit_captures: Attila's
+// PackAnimations hook), the batched draws so far get their corners while their bones are still there. Only on the thread of
+// those draws (the immediate context's).
+inline void FlushUnitCaptures() {
+  if (!internal::batch_pending.load(std::memory_order_relaxed)) return;
+  auto& runtime = internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  if (!runtime.objects.device || runtime.batch_thread != std::this_thread::get_id()) return;
+  ComPtr<ID3D11DeviceContext> native;
+  runtime.objects.device->GetImmediateContext(native.GetAddressOf());
+  internal::FlushBatch(native.Get());
 }
 
 // The sun's direction for the next trace (toward the sun, world space, unit length), where the game's lighting buffers
@@ -4076,6 +4403,10 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   reshade::register_event<reshade::addon_event::update_buffer_region_command>(internal::OnUpdateIndicesCommand);
   reshade::register_event<reshade::addon_event::copy_buffer_region>(internal::OnCopyIndices);
   reshade::register_event<reshade::addon_event::copy_resource>(internal::OnCopyIndexBuffer);
+  if (internal::BatchInScene()) {
+    reshade::register_event<reshade::addon_event::map_texture_region>(internal::OnBatchMapTexture);
+    reshade::register_event<reshade::addon_event::update_texture_region>(internal::OnBatchUpdateTexture);
+  }
   for (const SceneShader& shader : shaders) {
     renodx::utils::command_action::Register(
         OnSceneDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW | (shader.indirect ? renodx::utils::command_action::COMMAND_TYPE_INDIRECT : 0u)}, &shader);
@@ -4096,6 +4427,10 @@ inline void UninstallScene() {
   reshade::unregister_event<reshade::addon_event::update_buffer_region_command>(internal::OnUpdateIndicesCommand);
   reshade::unregister_event<reshade::addon_event::copy_buffer_region>(internal::OnCopyIndices);
   reshade::unregister_event<reshade::addon_event::copy_resource>(internal::OnCopyIndexBuffer);
+  if (internal::BatchInScene()) {
+    reshade::unregister_event<reshade::addon_event::map_texture_region>(internal::OnBatchMapTexture);
+    reshade::unregister_event<reshade::addon_event::update_texture_region>(internal::OnBatchUpdateTexture);
+  }
   renodx::utils::command_action::Unregister(OnSceneDraw);
   renodx::utils::command_action::fast::ClearGate(OnAnyDraw);
   renodx::utils::command_action::Unregister(OnAnyDraw);
@@ -4112,6 +4447,9 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   if (internal::runtime.particle_stream.device.Get() == native) internal::runtime.particle_stream = {};
   if (internal::runtime.objects.device.Get() == native) {
     internal::runtime.objects = {};
+    internal::runtime.batch_draws.clear();
+    internal::runtime.batch_mesh_texels = 0;
+    internal::runtime.batch_instances = 0;
     // The game's mask textures held for their slices, and the atlas the slices are in (as when ray tracing goes off).
     internal::runtime.atlas_slices.clear();
     dlaa_bridge::bridge.rt_atlas = {};
