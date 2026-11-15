@@ -36,6 +36,8 @@ rows on by default and in RT/PT; Attila PT GI angle brightness; unit LOD CPU. Mi
     Smallest step: the terrain_count_later pattern (NaN room, size = probe count x 9/8) for a non-compact indirect capture.
 - [ ] Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace shows a soldier shadow pass), D (WH3
   cross-pass unit capture key), B (trim per-unit capture work), E (TBB grain test rows). Owner (audit 11-15): coordinator. A1 DONE 19581888; B partly by Batched Unit Capture dd44b703 (2 families); D: WH3 unit geometry in FrameTraceReads 5d570f20 (17efac2b) needs the next WH3 data-run trace; E (TBB grain rows) = SHARED STEP coordinator, rows after the end bench.
+  (merged from "Unit round D (WH3 cross-pass unit capture key) and E (TBB gr...": Unit round D (WH3 cross-pass unit
+  capture key) and E (TBB grain rows), line 37: owner PARITY ROUND 2 WH3)
   - [x] A1 19581888: index 16 = 0 while rt_scene::CastersSkipped() (the next frame's sun-map casters skipped), the game's
     10000 back the frame it ends; index 16 = entity_display_shadow_max_shadow_distance read by the soldiers' shadow record
     (+0x441eb0 / +0x441f49, bytes read). test/tw_unit_shadows x86 + amd64 PASS. Later run: the shadow pack mark's count.
@@ -570,6 +572,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   detours 1.2 ms, (4) the render thread's 12 ms unnamed tail (research), (5) Capture 0.9 + DrawObjectMotion 0.63 (after the
   redesign). CPU perf agent (cpu_) started on 1-4, Attila first, then Rome II / Thrones. ATN's A/B list: Small Soldiers as
   Sprites, game Shadows Medium + Two Shadow Cascades, Lean Reuse, Light Bounce Half, pause Wallpaper Engine (3.0 ms GPU). Owner (audit 11-15): next CPU round. DONE: (1) 05522f9b Skip the Game's Shadow Map Work, (2) f158b659, (4) tools/tw/perf_plan/render_thread_tail.md (438c060f). Left: (3) add-on worker detours 1.2 ms, (5) Capture 0.9 + DrawObjectMotion 0.63 ms after 63d17575: re-time at cpl2 on the merged build (Time Each Pass) in the end bench, then decide.
+  (ATN's A/B items have own lines: Lean Reuse row, Skip the Game's Shadow Map Work tests, Faster Render Lists tests, one
+  cascade instead of two.)
 - [x] SHARED STEP MERGED b435a0e6 (fast-forward; built only): torch rows from PT in Thrones / Rome II / WH1 / WH2 / Troy /
   Pharaoh (its particle lights too) / WH3 / Shogun 2 (overlay); sprite soldiers through a GS capture (WH1, Troy, WH2,
   Pharaoh; rt_core SceneShader::capture_geometry_shader; tw_rays_captures WARP 5 pairs PASS); tessellated rigid WH1
@@ -670,8 +674,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [ ] Nsight shader profile of the bitmask pass in that harness (fetch vs ALU) for an exact rewrite. Owner: GPU ROUND 4
   - [x] ATN 23:5x YES: 128 torch lights in RT/PT taken (603ca343 = e606e8ef; the default also becomes 128 in the 8 games
     calling SetRaysPresetDefaults; all TW add-ons built)
-  - [ ] 128 torch lights' cost at night / burning city / WH3 / Pharaoh: a variant in the end-of-batch bench Owner: coordinator, end-of-batch bench (torch-128 night / burning-city variant; WH3 / Pharaoh numbers from their data runs).
-  - [ ] Rarer Objects needs a view with siege towers or ships (bench scene choice) Owner: coordinator, end-of-batch bench.
+  - (moved under "ONE Constantinople bench": 128 torch lights' cost at night / burning city / WH3 / Phara...)
+  - (moved under "ONE Constantinople bench": Rarer Objects needs a view with siege towers or ships (bench...)
   Was: EVERY-PRESET GPU AUDIT (pre_, started ~22:15, ATN "go for it"): Attila's inventory of presets + Experimental rows
   (RT shadows, SSS, AO, reflections, particles, fog, bounce); one measurement session at the bench view (Reset, non-RT,
   RT shadows, RT/PT, Path Tracing, RT/PT + chosen quality rows: Time Each Pass, PresentMon, screenshot each); per-preset
@@ -682,12 +686,13 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   545 -> 45 us at 16384 values; 8 MB address space) and 6 (instance gather prefetch 0x182c990: cold 0.661 -> 0.340 ms),
   both proven identical (tw_engine_code parts 9-10), on by default inside the existing row; not run in game. The agent's
   heapfix test exes ran inside the preset audit's quiet window: its starts 1_atn and 3_norays were INVALID (rerun asked).
-  - [ ] Build both lines + tw_engine_code on the merged tree when the quiet lock is free (coordinator)
-  - [ ] Bench variants ready: tools/tw/bench/variants/cpu4_round4.json + cpu4_round4_plan.txt (P, sort, gather, x87keep,
-    loopanim, memfast128; ~2.1 h for 3 scenes): in the single end-of-batch bench. If sort or gather is worse than P beyond
-    the spread: take that site out of CPU_CODE_SITES Owner: coordinator, end-of-batch bench.
+  - [x] merged into "Final verification" (was: "Build both lines + tw_engine_code on the merged tree when th...")
+  - (moved under "ONE Constantinople bench": Bench variants ready: tools/tw/bench/variants/cpu4_round4.js...)
   - [ ] Author packages (tools/tw/testbin/cpu4_heapfix/: a_memfast_65_128, b_loopfetch_animation, c_x87_truncation
     question; plus for_author_pf): bench numbers into the NOTEs, then ATN sends Owner (audit 11-15): coordinator (bench numbers into the NOTEs after the end bench), then ATN sends.
+    (merged from "ATN, when sending the heapfix package: ask the author whethe...": ATN, when sending the heapfix
+    package: ask the author whether we may patch the x87 block over heapfix's bytes (+0x17f6515) and about his disabled
+    prefetch site in the animation pack loop)
   - [x] Render-list headers 64 B apart: WON'T (cpu5b_, report tools/tw/round_notes/cpu5b_report.md): the header vector
     is a generic std::vector<std::vector<Item>> whose grow / copy / destroy (0x175de30 / 0x18fc430 / 0x173c260) and x12
     indexing are shared with unrelated vectors: not separable by a byte patch. cpu5b_ also stopped once on a safety
@@ -703,26 +708,21 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     movable, flags dead at the store. Two gaps: (a) which push is hot (no CPU profile: one WPR data run per game, ATN's
     OK), (b) engine_code.hpp has no x64 path (reuse rysesonofrome_dlss/engine_memory.hpp AllocateNearExe; x64 stub,
     safe 5-byte write, 3 Experimental rows, 64-bit tw_engine_code part). Owner: ATN DECIDES (data runs) Owner (audit 11-15): coordinator, after the Attila end bench (ATN 02:2x OK for the x64 render-list WPR data runs): one WPR data run each WH3 / Pharaoh / Shogun 2, then the x64 path in engine_code.hpp; also owns the x64 engine_memory shared step.
-  - [ ] Attila's Faster Render Lists row (Experimental, site 3) was never benched: variant cpu5_render_lists.json (P vs
-    P + FasterRenderLists) in the end-of-batch bench; check the runner's multi-key "set" syntax first. Owner: coordinator
+  - (moved under "ONE Constantinople bench": Attila's Faster Render Lists row (Experimental, site 3) was...)
   - DROPPED with proof: the 8x pose hold (0x49aad0 is simulation, not pose); next only with a data run (the bone-matrix
     writer behind 0x17dab80), ATN DECIDES
 - [x] ATN 21:2x: Attila's number_of_threads set to 16 (ATN's preferences.script.txt 559f4696 -> 432ba846; fresh backup
   tools/tw/attila_prefs_backup_20261114_211544); CPU Set rule 0-15 stays; the parallel sort is dropped
 - [x] ROUNDS MERGED ~00:40 (7e668fe7 grass phase 0, 610d6654 GPU 2B, 9afd0c8d GPU 2A; CPU 5b research only). Attila
   build32 built on the merged tree; tw_screen_space_shadows rerun on it (coordinator). Open items with owners:
-  - [ ] GRASS: one Grass Dump from a real battle = bench probe variants/grass_dump.json (scenes max, atn; it points at
-    the grass worktree's build: repoint it at the merged build), then grass_replay.py on its files (12 points, design.md
-    section 8). Owner: coordinator, end-of-batch bench
+  - (moved under "ONE Constantinople bench": GRASS: one Grass Dump from a real battle = bench probe varia...)
   - [ ] GRASS after the probe: part-draw cull (vtable +0x10c), burn / grid writers (dump 1 vs 2), frustum entry +0x8c if
     needed, AMD / Intel self-test (phase 1). Owner: next grass agent; phases 1-3: ATN DECIDES after the probe
   - [x] test/tw_scrub_lods Bias() uses 0x37810101, the game's is 0x37810183 (one line, no shipped effect). Owner: GPU
     ROUND 3 DONE: 15111de1 (in dd44b703): Bias() = 0x37810183.
   - [ ] Thrones Grass Dump button: only when its grass port starts. Owner: that round
-  - [ ] g2b_ bench variants g2b_clusters.json (g2b-base / g2b-blas / g2b-trunc8, scene max): end-of-batch bench. g2b-trunc8
-    is a look change (8-bit truncation): fps only, ATN DECIDES. Owner: coordinator
-  - [ ] g2a_ bench variants g2a_torch.json + g2a_shadow_skip.json (copy attila_pass_timing.txt after each start, read with
-    tools/tw/preset_audit/g2a_tep_gaps.py); their add-ons in testbin/g2a_bench. Owner: coordinator
+  - (moved under "ONE Constantinople bench": g2b_ bench variants g2b_clusters.json (g2b-base / g2b-blas /...)
+  - (moved under "ONE Constantinople bench": g2a_ bench variants g2a_torch.json + g2a_shadow_skip.json (c...)
   - [x] GPU ROUND 3B MERGED (g3b_, a833578d + 0c4335ff; final helper build\tw_dlaa_helper_g3b2 3C9DB0234740, not
     installed): (e) surface record: byte-identical in 32 modes (NRD modes nondeterministic in the base too), 4K bounce
     1.39 -> 1.02 ms, reuse 0.74 -> 0.34, Nsight reuse 2.52 -> 1.49 ms, frame 8.00 -> 7.16; +265 MB VRAM at 4K while reuse
@@ -730,9 +730,12 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     (settles in 10 frames, not 32), Half no RR 11.92 -> 8.44, Full no RR WORSE 5.12 -> 5.68. NOT TAKEN: merging opaque
     unit draws (units -0.23 ms but field rays +3 ms), f16 reservoirs (reuse already 0.34 ms). all_modes 179/179,
     fg_bridge_test 0 failed, helper suites PASS x86 + amd64.
-    - [ ] Rebuild every add-on using dlaa_bridge.h (x86 + amd64) on the merged tree. Owner: coordinator, before the bench
+    - [x] merged into "Final verification" (was: "Rebuild every add-on using dlaa_bridge.h (x86 + amd64) on th...")
     - [ ] Lean Reuse row: now saves only ~0.06 ms (RT_PROFILE) / 0.39 ms reuse (Nsight base clocks), its look scored as
       no change: keep or remove? Bench variant g3b_reuse.json gives the in-game number. Owner: ATN
+      (merged from "(f) Lean = 3 neighbours + radius 6: 0.96 -> 0.85 ms, rRMSE 2...": (f) Lean = 3 neighbours + radius
+      6: 0.96 -> 0.85 ms, rRMSE 2.18 -> 1.95 % (better): after ATN's Lean verdict (A3). Owner: ATN, then the ReSTIR
+      follow-up)
     - [ ] RT_PATH_RATIO_FOLLOW as an Experimental add-on row (Half + RR the clear win; maybe only with RR or Half and
       below, since Full without RR scores worse). Owner: next add-on round; ATN places the row Owner (audit 11-15): in progress, NOT merged: d22bc4a9 "Torch Shadows Follow the Camera row (Experimental, off)" on worktree-agent-a3aa080e775bbd8bf: that agent merges + builds, then ATN places the row.
     - [ ] U2 step 3 (own light reservoir); record at bounce size at Half (VRAM); f16 relative hits need a two-set record.
@@ -742,8 +745,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [ ] A32: under GPU Trace without REPLAYABLE the helper commits ~838 MB/s for ~15 s (private 13 GB peak, system
       Committed 30 -> 48.5 GB): a test switch that serialises requests but keeps the shared fence, to split the two
       halves. Watch the 55 GB abort rule in any such run. Owner: Nsight round
+      (from the J3 / A32 line: one Nsight run without REPLAYABLE (coordinator's OK, offline harness).)
     - [ ] ns_trace_run.py must end its "rescue" helper (one blocked the next job 7+ minutes). Owner: Nsight tooling
-    - [ ] Bench variants g3b_reuse.json + g3b_round3b_plan.txt in the end-of-batch bench. Owner: coordinator
+    - (moved under "ONE Constantinople bench": Bench variants g3b_reuse.json + g3b_round3b_plan.txt in the...)
   - [x] f16 reservoirs (look change, scored) only if (e) leaves the reuse pass above ~0.4 ms. Owner: after (e) OBSOLETE: (e) left the reuse pass at 0.34 ms, under the 0.4 ms bar (f16 reservoirs NOT TAKEN); see the GPU ROUND 3B MERGED line.
   - [x] GPU ROUND 3A MERGED dd44b703 (g3a_): Batched Unit Capture row (RayTracedBatchedUnits, Experimental off, Attila
     only: needs the pack hook; families 5F9CD405 / A691CFF4): bit-exact (WARP case B + 58,650,000 floats on the 5090),
@@ -751,7 +755,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     consumer: only the new (hidden) row. test_hooks include change NOT committed (ue4_'s macro took its place).
     - [ ] Batched capture for 4_bones / dismember families (own mesh + rows shaders); bind `captured` as a UAV to drop the
       0.18 ms copy. Owner: GPU ROUND 4
-    - [ ] Bench variant g3a_capture.json (+ g3a_round3a_plan.txt; add-on testbin\g3a_bench\capture). Owner: coordinator
+    - (moved under "ONE Constantinople bench": Bench variant g3a_capture.json (+ g3a_round3a_plan.txt; add-...)
   - [ ] Resource upgrade 0.196 ms = ALL gtl resource-info lookups (OnPushDescriptors 0.031 exclusive): split by caller
     from the cpl2 pickles, then push_descriptors in the drw_ replay; a cache needs its own uuid'd shared block + epoch in
     every writer (swapchain_v1:900 writes directly). Owner: CPU round (shared util, full build)
@@ -766,8 +770,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     instance a frame, sieges 6.5 M); plan (b): room from last frame's probe x 9/8 NaN-filled, GPU copy of the instance
     count into the capture draw's own arguments, DrawInstancedIndirect into SO, overflow drops (never stalls). Needs a
     trace with the 5 argument words + ByteWidth. Owner: WH3 data run (coordinator), then GPU ROUND 4+
+    (Same work as the 11-13 Grass round's unboxed "NOT DONE: d1 without the lag" note and (d) of the NEXT GPU ROUND
+    list.)
   - [ ] J3 in game (one grass pixel's G-buffer read): next data run. A32: one Nsight run without REPLAYABLE (coordinator's
     OK, offline harness). Owner: coordinator
+    (Its A32 part merged into the A32 line above.)
   - [ ] Scorer: reflections / fog / water features, a faint-smoke reference; the smoke feature (tools/tw/quality/g2b)
     into the shared scorer. Owner: next scorer round
   - [ ] DLSS RR 310.9 made paths boil (paths 2.19 -> 5.01 % rRMSE, noise 0.54 -> 4.13): check its guide inputs before any
@@ -871,12 +878,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     the same commit, Agility, NVIDIA set, Streamline 2.14.16). Not run in game.
     - [x] SHARED STEP: twattila/test_hooks.hpp includes rt_scene.hpp (Attila's embedded shaders) but needs only
       rt_core.hpp. Owner: g3a_ (sent ~02:0x), then Ryse / UE4 test hooks in the merge rounds DONE: twattila/test_hooks.hpp's #ifndef RENODX_TEST_HOOKS_PROFILE guards the rt_scene include (ue4_ 6e8f661a, d50bfc2c); Ryse's hooks go with the RYSE MERGE round.
-    - [ ] RYSE MERGE ROUND (one add-on): rys_'s plan in its report: move _dlss files + 0x52594501-06 / 0x7A1E0D40-42
-      shaders into rysesonofrome, the DLSS addon.cpp as a header, Graphics 1 of 2 (AA / DLSS / FG / RT presets + RT
-      rows) and 2 of 2 (32 game settings + presets, Experimental, Audio) via graphics_page, ini sections [Ryse AA] /
-      [Ryse Game Settings] kept, the _dlss target removed from the loader list (ATN's one-add-on decision), then helper
-      upscaler / RR / FSR / XeSS / FG via rt_core (Shogun 2's HelperUpscaler model), Debug View after R0, page dump,
-      tw_device_loss Ryse table, SDR WARP ramp. Owner: RYSE MERGE agent (after s2m_ shows the TW pattern)
+    - [x] merged into "ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH" (was: "RYSE MERGE ROUND (one add-on): rys_'s plan in its report: mo...")
     - [ ] A page_dump_ryd_rys1.exe (PID 35256) is stuck in tools/tw/page_dump (built outside testbin; "Access denied",
       likely Bitdefender). Owner: ATN ends it and deletes page_dump_ry_rys1.exe / page_dump_ryd_rys1.exe there
     - [ ] Remove the DevKit symlink from Ryse's Bin64 before runs (it keeps fast dispatch off). Owner: coordinator at
@@ -900,9 +902,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [x] output_encoding's log lines say "[Total War]" in non-TW games: a log-name parameter. Owner: sdr_ (sent) DONE: MERGED 24cdfb9c (sdr_): output_encoding log_name, log names [Ryse] / [Tales] / [Rome].
     - [ ] WARP ramp of the UE SDR encodes; Ryse's redundant renodx_trace_now poll; the Expeditions tests' include paths
       (no build target). Owner: UE4 / Ryse merge rounds
-    - [ ] UE4 MERGE ROUND (one add-on each, Expeditions first): ue4_'s plan in its report (move _dlss files, shared UE
-      headers to talesofarise/ with Ryse's includes, Graphics 1 of 2 / 2 of 2 via graphics_page, ini sections kept, RT /
-      RR / FG through the helper: Tales' d3d12_device / rt_shadows / rr_d3d12 go). Owner: UE4 MERGE agent (after s2m_)
+    - [x] merged into "ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH" (was: "UE4 MERGE ROUND (one add-on each, Expeditions first): ue4_'s...")
   - [x] ATN 02:2x: the x64 render-list data runs (WH3, Pharaoh, Shogun 2: one short WPR run each, our own Faster Render
     Lists, not the author's code) are OK. Owner: coordinator, after the Attila end bench
   - [ ] ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH (do them all, several agents). Started ~03:50:
@@ -911,13 +911,25 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     Tales' in-process D3D12 RT out, unload harness); the root CMake NGX block loses each game when its helper route lands
     (an upstream snapshot can't link NGX). Then data runs (Tales G1 + G2, Expeditions G1, Ryse R0 with the shader-name
     cvars), fixes, stamp, install. Owner: coordinator
+    (merged from "RYSE MERGE ROUND (one add-on): rys_'s plan in its report: mo...": RYSE MERGE ROUND (one add-on):
+    rys_'s plan in its report: move _dlss files + 0x52594501-06 / 0x7A1E0D40-42 shaders into rysesonofrome, the DLSS
+    addon.cpp as a header, Graphics 1 of 2 (AA / DLSS / FG / RT presets + RT rows) and 2 of 2 (32 game settings +
+    presets, Experimental, Audio) via graphics_page, ini sections [Ryse AA] / [Ryse Game Settings] kept, the _dlss
+    target removed from the loader list (ATN's one-add-on decision), then helper upscaler / RR / FSR / XeSS / FG via
+    rt_core (Shogun 2's HelperUpscaler model), Debug View after R0, page dump, tw_device_loss Ryse table, SDR WARP ramp.
+    Owner: RYSE MERGE agent (after s2m_ shows the TW pattern))
+    (merged from "UE4 MERGE ROUND (one add-on each, Expeditions first): ue4_'s...": UE4 MERGE ROUND (one add-on each,
+    Expeditions first): ue4_'s plan in its report (move _dlss files, shared UE headers to talesofarise/ with Ryse's
+    includes, Graphics 1 of 2 / 2 of 2 via graphics_page, ini sections kept, RT / RR / FG through the helper: Tales'
+    d3d12_device / rt_shadows / rr_d3d12 go). Owner: UE4 MERGE agent (after s2m_))
+    (merged from "Full Attila package for all three (memory project_nontw_full...": Full Attila package for all three
+    (memory project_nontw_full_package.md); stamps + watermarks for every game. Owner: per-game rounds after the merges)
   - [ ] ATN 03:4x: go through HANDOFF: leftovers vs open, tick / trace / archive. HANDOFF AUDIT hfa_ (read-only,
     tools/tw/round_notes/handoff_audit_1115.tsv), then the coordinator applies it (archive file for history). Owner:
     hfa_, then coordinator Owner (audit 11-15): coordinator (hfa_ DONE: the TSV; applied by the hfx_ round with HANDOFF_ARCHIVE.md).
   - [ ] ATN 03:3x: no time caps on rounds; night sound fine; no page-file change (system setting, ATN's). GPU ROUND 4 g4_
     (no cap) + UE SHADER CARVE uec_ (both games' plain pak data, parallel, stops on the quiet lock) running Owner (audit 11-15): coordinator: tick when g4_ and uec_ report (their work has own lines).
-  - [ ] Full Attila package for all three (memory project_nontw_full_package.md); stamps + watermarks for every game.
-    Owner: per-game rounds after the merges
+  - [x] merged into "ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH" (was: "Full Attila package for all three (memory project_nontw_full...")
   - [x] SHADER-PACK ROUND DONE (shp_, tools/nontw/shader_packs/report.md; read-only, nothing decrypted): RYSE COMPLETE
     OFFLINE: Engine\ShaderCache.pak + _FastLoad\ShaderCacheStartup.pak store their CPCK data plain (only zip headers
     encrypted), LZSS-compressed entries -> 6,421 unique DXBC (ps 5,015, vs 1,271, ds 98, hs 32, cs 4, gs 1), 5,527 NOT
@@ -927,14 +939,15 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     NOT in the create-on-load dump.
     - [ ] Decompile Ryse's 6,421 (cmd_Decompiler) and map the new families (tonemap / post / HDR permutations first).
       Owner: RYSE MERGE round
-    - [ ] Ryse runtime names + on-demand compiles in R0: r_ShadersLogCacheMisses 1, one r_LogShaders frame per level,
-      e_PrecacheLevel + e_AutoPrecacheTexturesAndShaders, the 9 levels from the menu (set through the add-on). Owner:
-      coordinator's R0
+    - [x] merged into "Data runs (Tales G1 + G2, Expeditions G1, Ryse R0)" (was: "Ryse runtime names + on-demand compiles in R0: r_ShadersLogC...")
     - [ ] Finish the UE inner-zlib carve over every plain entry (both games; hours in pure Python: make it parallel /
       faster first; NOT during a quiet window or the end bench). Owner: coordinator, after the TW install Owner (audit 11-15): UE SHADER CARVE uec_ (running): tick when uec_ reports.
   - [ ] Data runs (ATN allowed, scripted, fresh save backups): Tales G1 + G2 one session (Manual 03 / 04), Expeditions G1
     (Save Silanus 3m), Ryse R0 (auto-continue or chapter 3) + Nsight D3D11 capture try; after the merges + test hooks.
     Not while the TW end bench runs. Owner: coordinator
+    (merged from "Ryse runtime names + on-demand compiles in R0: r_ShadersLogC...": Ryse runtime names + on-demand
+    compiles in R0: r_ShadersLogCacheMisses 1, one r_LogShaders frame per level, e_PrecacheLevel +
+    e_AutoPrecacheTexturesAndShaders, the 9 levels from the menu (set through the add-on). Owner: coordinator's R0)
   - [x] SDR first start -> HDR later MERGED 24cdfb9c (sdr_; ATN 02:1x YES): output_encoding keeps one global ini key
     OutputAutoPreset ("sdr <hash>" / "hdr <hash>" / "off"; FNV-1a of every non-global numeric row as the next start reads
     them); first start Windows HDR off -> SDR preset (now SAVED to the ini), on -> "off" forever, no answer -> next start
@@ -967,6 +980,27 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     feedback_fable_review_end.md); the TW batch's end review stays (ATN asked for it)
 - [ ] ATN 21:2x: ONE Constantinople bench after ALL CPU and GPU rounds of this batch (not after each): every round's
   candidates as variants against heapfix P, then the CPU set vs affinity A/B. Owner: coordinator, before the install
+  - [ ] 128 torch lights' cost at night / burning city / WH3 / Pharaoh: a variant in the end-of-batch bench Owner: coordinator, end-of-batch bench (torch-128 night / burning-city variant; WH3 / Pharaoh numbers from their data runs).
+  - [ ] Rarer Objects needs a view with siege towers or ships (bench scene choice) Owner: coordinator, end-of-batch bench.
+  - [ ] Bench variants ready: tools/tw/bench/variants/cpu4_round4.json + cpu4_round4_plan.txt (P, sort, gather, x87keep,
+    loopanim, memfast128; ~2.1 h for 3 scenes): in the single end-of-batch bench. If sort or gather is worse than P beyond
+    the spread: take that site out of CPU_CODE_SITES Owner: coordinator, end-of-batch bench.
+  - [ ] Attila's Faster Render Lists row (Experimental, site 3) was never benched: variant cpu5_render_lists.json (P vs
+    P + FasterRenderLists) in the end-of-batch bench; check the runner's multi-key "set" syntax first. Owner: coordinator
+  - [ ] GRASS: one Grass Dump from a real battle = bench probe variants/grass_dump.json (scenes max, atn; it points at
+    the grass worktree's build: repoint it at the merged build), then grass_replay.py on its files (12 points, design.md
+    section 8). Owner: coordinator, end-of-batch bench
+  - [ ] g2b_ bench variants g2b_clusters.json (g2b-base / g2b-blas / g2b-trunc8, scene max): end-of-batch bench. g2b-trunc8
+    is a look change (8-bit truncation): fps only, ATN DECIDES. Owner: coordinator
+  - [ ] g2a_ bench variants g2a_torch.json + g2a_shadow_skip.json (copy attila_pass_timing.txt after each start, read with
+    tools/tw/preset_audit/g2a_tep_gaps.py); their add-ons in testbin/g2a_bench. Owner: coordinator
+  - [ ] Bench variants g3b_reuse.json + g3b_round3b_plan.txt in the end-of-batch bench. Owner: coordinator
+  - [ ] Bench variant g3a_capture.json (+ g3a_round3a_plan.txt; add-on testbin\g3a_bench\capture). Owner: coordinator
+  - [ ] After everything: one A/B of ATN's CPU set rule against an affinity rule of the same 16 CPUs (ATN switches the
+    rule; we measure). Owner: the bench, ATN's OK at the time
+  - [ ] Bench variants: gpu_units_range.json, gpu_probe.json (answers c, k, h, j, b in game), gpu_reuse.json; plan
+    tools/tw/bench/gpu_bench_plan.md. The bench must copy tw_rt_profile.csv, tw_rt_profile_helper.csv and
+    attila_pass_timing.txt out after each start (it doesn't yet). Owner: coordinator before the end-of-batch bench
     - [ ] caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
       so parity_check settles Rome Remastered's casters itself. Owner: coordinator, after parity round 2 (shared script)
 - Was: SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
@@ -1046,8 +1080,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     backup, ATN's choice) DONE: number_of_threads 16 (preferences 559f4696 -> 432ba846, backup attila_prefs_backup_20261114_211544); rule 0-15 stays.
   - Was: When the 16-thread batch ends: TELL ATN the verdict right away; if 16 threads is slower than today's 8-core
     numbers, ATN switches the rule back to the 8 V-cache cores (one thread a core)
-  - [ ] After everything: one A/B of ATN's CPU set rule against an affinity rule of the same 16 CPUs (ATN switches the
-    rule; we measure). Owner: the bench, ATN's OK at the time
+  - (moved under "ONE Constantinople bench": After everything: one A/B of ATN's CPU set rule against an a...)
 - [x] ATN 19:xx: (1) a 16-thread test: ATN sets CPU Set Setter's Attila rule to the V-cache CCD's 16 logical CPUs (now 8
   cores), then CPU-bound P with number_of_threads 8 / 12 / 16, and P vs B4 vs B8 (sort threads) at the best count in the
   three scenes. hfp_ agent preparing (variants, tests, runner); NOT started until ATN confirms the rule. (2) The same siege
@@ -1102,8 +1135,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [x] the animation pack loop 0x182e080: read its loop DONE: read in CPU ROUND 4: author package testbin/cpu4_heapfix/b_loopfetch_animation (c2cd9e90).
     - [ ] ATN DECIDES (data runs): mesh LOD part counts; the x64 shadow-pass skip (WH3 first: one stack capture a frame
       while the sun's map is bound) Also the 8x pose hold's bone-matrix writer 0x17dab80 (only with a data run). Owner: ATN.
-    - [ ] ATN, when sending the heapfix package: ask the author whether we may patch the x87 block over heapfix's bytes
-      (+0x17f6515) and about his disabled prefetch site in the animation pack loop
+    - [x] merged into "Author packages" (was: "ATN, when sending the heapfix package: ask the author whethe...")
     - [ ] ATN tests: Faster Render Lists off / on in cpl2's view (PresentMon 60 s, log "Faster Render Lists: on"); Rome II
       Skip the Shadow Maps in a forest battle (log "pass kind N draws only into the sun's map", shadows unchanged) Owner: ATN (look) / end bench (numbers).
   - [x] hfp_ agent: heapfix's whole test set + eqtest on every packaged variant; battle_draw_batching A/B (keep it on)
@@ -1114,11 +1146,8 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     flag RT_UNIT 2048 + Shared::rt_units_range in v7's padding, VERSION 31; 4K harness clusters / scene+trace ms: off
     2.10 / 4.55, 200 m 1.07 / 3.49, 100 m 0.66 / 3.04, 50 m 0.47 / 2.81; row 0 byte-identical; all_modes 179 / 179,
     fg_bridge_test OK); fb93c061 pass split + light_order in tw_rt_profile.csv. Helper built only (gpu1 1710ACC85B2B).
-    - [ ] (f) Lean = 3 neighbours + radius 6: 0.96 -> 0.85 ms, rRMSE 2.18 -> 1.95 % (better): after ATN's Lean verdict
-      (A3). Owner: ATN, then the ReSTIR follow-up
-    - [ ] Bench variants: gpu_units_range.json, gpu_probe.json (answers c, k, h, j, b in game), gpu_reuse.json; plan
-      tools/tw/bench/gpu_bench_plan.md. The bench must copy tw_rt_profile.csv, tw_rt_profile_helper.csv and
-      attila_pass_timing.txt out after each start (it doesn't yet). Owner: coordinator before the end-of-batch bench
+    - [x] merged into "Lean Reuse row" (was: "(f) Lean = 3 neighbours + radius 6: 0.96 -> 0.85 ms, rRMSE 2...")
+    - (moved under "ONE Constantinople bench": Bench variants: gpu_units_range.json, gpu_probe.json (answer...)
     - [x] Not done, owner NEXT GPU ROUND: (d) WH3 grass read-back without the wait (terrain_count_later pattern);
       (e) per-texel surface record and (g) f16 reservoirs / torch U2 history (after the Lean verdict); (i) per-draw
       leftovers after 63d17575; (l) J2 / J3 / A32, the helper's commit under Nsight (J9 answered: no change); (m) the
@@ -1154,7 +1183,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     ReShade.ini (twattila reads none of them; other games' add-ons do, their inis stay). Owner: coordinator, AFTER the hfp_
     batch (its runs restore their own ini backups); fresh backup, edit, hash noted
   - [x] HAGS: stays on (ATN: FG and MFG need it); no measurement, never suggest it off
-  - [ ] Unit round D (WH3 cross-pass unit capture key) and E (TBB grain rows), line 37: owner PARITY ROUND 2 WH3
+  - [x] merged into "Unit round" (was: "Unit round D (WH3 cross-pass unit capture key) and E (TBB gr...")
 - [x] ATN 14:2x: the lessons of the last 16 h into the skill (tools/tw/round_notes/lessons_1114.md, 24 lines): SKILL.md
   "Nothing dropped" rule (every open line of a report = a checkbox with an owner; SHARED STEP; parity gate), Finishing a
   round + release.md 5 / 7 / 8 (Fable at the end, parity, reports read to the end), rows in testing / helper-fg-stability /
@@ -1182,6 +1211,10 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   - [x] Thrones 2, WH1 2: the open lines in report_1114.md DONE: aa3468a9: parity_check th w1 exit 0.
   - [ ] Final verification: rebuild the main checkout's build / build32 (stale headers: Attila, WH1, Rome Remastered), then
     parity_check at the merged HEAD exits 0 before stamping
+    (merged from "Build both lines + tw_engine_code on the merged tree when th...": Build both lines + tw_engine_code on
+    the merged tree when the quiet lock is free (coordinator))
+    (merged from "Rebuild every add-on using dlaa_bridge.h (x86 + amd64) on th...": Rebuild every add-on using
+    dlaa_bridge.h (x86 + amd64) on the merged tree. Owner: coordinator, before the bench)
 - [x] Ryse / Tales of Arise / Expeditions: Rome: old builds; their own planning round with the whole current method. ATN
   picks the time (tonight / tomorrow, or Monday after the Ultra reset). Not started. OBSOLETE: superseded: plans done (TALES / RYSE / EXPEDITIONS PLAN DONE); see "ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH".
 - [x] Rome Remastered parity round MERGED c0a61b2d (table tools/tw/romeremastered/parity_1114.md: 47 features, 13 have / 3 do
