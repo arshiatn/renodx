@@ -124,6 +124,12 @@ void ApplySdrPreset() {
   renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}});
 }
 
+// The Recommended button; Output Auto takes it once when Windows HDR comes on after a first start without HDR.
+void ApplyRecommendedPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 3.f}, {"video_highlights", 0.25f}, {"motion_blur", 0.f}, {"film_grain", 0.f}});
+}
+
 // Set once the tone mapper (or a pass after it) has drawn this frame; the next present starts a new frame.
 std::atomic<bool> frame_tonemapped = false;
 
@@ -400,11 +406,7 @@ void BuildRuntimeData() {
           .group = "preset-line-1",
           .tooltip = "Recommended look: HDR (PsychoV35), Video AutoHDR 0.25, Motion Blur and Film Grain 0.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
-          .on_change = []() {
-            ApplyResetPreset();
-            renodx::utils::settings::UpdateSettings(
-                {{"tonemapper", 3.f}, {"video_highlights", 0.25f}, {"motion_blur", 0.f}, {"film_grain", 0.f}});
-          },
+          .on_change = []() { ApplyRecommendedPreset(); },
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
@@ -833,9 +835,6 @@ void ConfigureAddon() {
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    // No settings saved yet: a player's first start. On a display without HDR (Auto) it starts with the SDR preset.
-    float saved_mode = 0.f;
-    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = static_cast<int>(setting->GetValue()),
@@ -846,7 +845,9 @@ void ConfigureAddon() {
           reshade::get_config_value(nullptr, "Tales AA", "FrameGeneration", frame_generation);
           return (frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB);
         },
-        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+        .first_start_without_hdr = &ApplySdrPreset,
+        .recommended_preset = &ApplyRecommendedPreset,
+        .log_name = "[Tales]",
     });
     settings.push_back(setting);
   }

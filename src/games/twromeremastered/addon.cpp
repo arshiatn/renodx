@@ -1956,13 +1956,11 @@ void ConfigureAddon() {
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     // Decided again for each new swap chain (device_loss's create_swapchain, before the swapchain mod's): Auto follows
     // Windows HDR as before (scRGB, else SDR).
-    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset (as Attila's).
-    float saved_mode = 0.f;
-    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = static_cast<int>(setting->GetValue()),
-        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+        .first_start_without_hdr = &ApplySdrPreset,
+        .recommended_preset = &ApplyPsychoRecommended,
     });
     settings.push_back(setting);
   }

@@ -170,6 +170,12 @@ void ApplySdrPreset() {
   ApplyHDRPreset(0.f, 1.f, 1.00f, 1.f, 0.f, 2.f, 1.f, 1.f, 1.f, 1.f, 0.f, 1.f, 0.15f);
 }
 
+// Recommended: no VFX boost (right for any peak); Output Auto takes it once when Windows HDR comes on after a first start
+// without HDR.
+void ApplyRecommendedPreset() {
+  ApplyHDRPreset(3.f, 1.f, 1.00f, 0.35f, 0.f, 2.f, 1.f, 1.f, 1.f, 2.f, 0.2f);
+}
+
 #define UpgradeRTVReplaceShader(value)                                                                \
   {                                                                                                   \
       value,                                                                                          \
@@ -387,9 +393,7 @@ void BuildRuntimeData() {
         .label = "Recommended: no VFX boost",
         .group = "preset-line-1",
         .tooltip = "Resets all image tuning to HDR defaults while preserving Peak, Paper White, UI brightness, Settings Mode, and output encoding.",
-        .on_change = []() {
-          ApplyHDRPreset(3.f, 1.f, 1.00f, 0.35f, 0.f, 2.f, 1.f, 1.f, 1.f, 2.f, 0.2f);
-        },
+        .on_change = []() { ApplyRecommendedPreset(); },
     },
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
@@ -1984,14 +1988,12 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
-    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset.
-    float saved_mode = 0.f;
-    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
         .hdr_encoding = [](int output) { return (output == twattila::output_encoding::SCRGB) ? twattila::output_encoding::SCRGB : twattila::output_encoding::HDR10; },
-        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+        .first_start_without_hdr = &ApplySdrPreset,
+        .recommended_preset = &ApplyRecommendedPreset,
     });
     settings.push_back(setting);
   }
