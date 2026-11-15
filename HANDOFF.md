@@ -987,9 +987,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         RT). Owner: d2_ after R1b
       - [ ] Divinity 2 R1b (trace build): both cb0s (HDR / SDR LUT), PerView b12, per-mode shots, valid frame times, the
         inventory / character sheet with ATN's key. Owner: coordinator (next game window)
-      - [ ] ATN DECIDES (Divinity 2): mid grey at 15 nits (HDR) or the SDR picture's; ATN's inventory / character-sheet
-        key; keep the old presets + V30 mode; per-channel shoulder on or off by default; Nexus URL; does Script Extender
-        load as DXGI.dll too? Owner: ATN
+      - [x] ATN ANSWERED 18:5x (Divinity 2): mid grey BOTH as a row (ATN decides later); "i" is the inventory key; keep the
+        old presets + V30; per-channel shoulder ON by default; Nexus divinityoriginalsin2definitiveedition/mods/547; Script
+        Extender installs as DXGI.dll in DefEd\bin (ReShade can't be dxgi.dll there: d2_ writes the rule). Sent to d2_.
+      - [ ] ATN at the end (Divinity 2): mid grey row's default; old presets / V30 keep or drop. Owner: ATN
       - [x] R.U.S.E. PLAN DONE 18:4x (ru_): tools/nontw/ruse/plan.md + ruse.tsv, census\ (all 1,803 shipped shaders:
         1,528 ps_3_0 + 275 vs_3_0 from ZZ_Win.dat's shadercachev02.shc, decompiled, families), scripts\, u0\. U0 runs
         18:04-18:10 + 18:26-18:29 (plain game, no ReShade on D:): D3D9, battle 158 fps (VSync cap), GPU busy 3.4 ms;
@@ -1007,12 +1008,20 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] R.U.S.E. U8 / U1 run: ReShade + the stamped add-on into D:\...\R.U.S.E (coordinator, fresh backup), trace build,
         starts: ATN's settings, proxy waits off, ShaderQuality 1 / 2, UseHDR off, Option.ini above the menu's max; ATN
         loads the save and quits by hand. Owner: coordinator (next game window, ATN's OK)
-      - [ ] ATN DECIDES (R.U.S.E.): V35 with each map's own contrast (Gamma)?; Extended replacing V31 Native Tone (or added
-        beside it)?; a D3D9 bridge for DLAA / DLSS (XL) or HDR + graphics only?; the Nexus URL; who installs ReShade on D:?;
-        which values above the menu's maximum; Hue Clip by eye (100 now). Owner: ATN
+      - [x] ATN ANSWERED 18:5x (R.U.S.E.): V35 with each map's contrast YES; Extended added beside the V31 modes (ATN asked
+        what it is: the game's own response with a per-channel roll-off instead of its clip); D3D9 bridge GO, then a Fable
+        5.2 High review of it, and the plan answers whether RT / PT and the whole package can work through it; Nexus
+        ruse/mods/6; ReShade on D: by the coordinator (the C: copy is an empty stub: no old ini); values above the menu's
+        maximum: everything the engine reads, coordinator / ru_ decide. Sent to ru_.
+      - [ ] R.U.S.E. D3D9 bridge Fable 5.2 High review when ru_ finishes it (ATN asked). Owner: coordinator
+      - [ ] ATN at the end (R.U.S.E.): Extended replacing V31 Native Tone or beside it; Hue Clip by eye (100 now). Owner: ATN
+      - [x] Divinity 1 Nexus divinityoriginalsinenhancededition/mods/80 (sent to d1_).
     - [ ] ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 (the planners run them, one at
       a time through gpu_job.lock, no start after 19:30); from 20:00 ATN plays 4-6 h: OFFLINE ONLY until ATN says done.
       Owner: coordinator
+    - [ ] ATN 18:5x: after the fix agent's 21 fixes, a second Fable 5.2 High review of THE FIX DIFF ONLY (coordinator
+      recommends it: helper / threading fixes), then build all, stamp, install for ATN's Attila test. Nsight audit agent
+      started (were last night's Nsight captures used for more wins?). Owner: coordinator
     - [ ] ATN 17:3x "Start the review": Fable 5.2 High crash / freeze review workflow wf_73f86de5-728 (6 areas: locks,
       bridge, hooks, lifetime, non-TW, TW; each verified by a refuting agent). Then fixes one at a time, build all,
       install. Owner: coordinator
