@@ -891,14 +891,16 @@ void ReuseTexel(uint2 id) {
   }
   if (lights_mode == LIGHTS_RATIO_MODE) {
     // The shadow ratio's sums (the lights' light here, shadowed by the picked one's ray, and unshadowed) kept over frames at
-    // the surface last frame's texel showed.
+    // the surface last frame's texel showed; while the camera moves only a few (each frame's read of the nearest texel
+    // smears the history: at Half a moving view trailed by 2.3 times the still one's error, the scorer's torch feature).
     const uint written = ((lights_in_bounce & LIGHTS_RATIO_SET) != 0u) ? 1u : 0u;
     float4 kept = 0.f;
     uint2 previous_pixel;
     if ((lights_in_bounce & LIGHTS_RATIO_VALID) != 0u && SeenLastFrame(position.xyz, previous_pixel)) {
       kept = light_ratio[1u - written][min(previous_pixel / bounce_scale, uint2(bounce_width, bounce_height) - 1u)];
     }
-    const float frames = min(kept.z + 1.f, RATIO_FRAMES);
+    const float most_frames = ((lights_in_bounce & LIGHTS_RATIO_FOLLOW) != 0u) ? RATIO_FRAMES_MOVING / (float)min(bounce_scale, 2u) : RATIO_FRAMES;
+    const float frames = min(kept.z + 1.f, most_frames);
     light_ratio[written][id] = float4(lerp(kept.xy, float2(lit ? total : 0.f, total), 1.f / frames), frames, position.w);
   }
 #else

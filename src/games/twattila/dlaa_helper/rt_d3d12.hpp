@@ -1539,6 +1539,25 @@ class RtScene12 {
         if (lights_mode != 0 && (requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) {
           list->SetComputeRoot32BitConstant(ROOT_SETTINGS, std::bit_cast<uint32_t>(std::clamp(shared.rt_light_size, 0.f, 2.f)), 8);
         }
+        // Their ratio's history shorter while the camera moves (RT_PATH_RATIO_FOLLOW): its registers changed since the last
+        // paths' beyond a jitter, which adds a multiple of the w row to the x and y rows (what is left over a row's length:
+        // radians turned, metres moved; the w row has none).
+        const bool ratio_follows = ratio_written && version >= 31 && (requested & dlaa_bridge::RT_PATH_RATIO_FOLLOW) != 0 && [&] {
+          const float* w_row = shared.rt_view_projection + 12;
+          const float w_length = (w_row[0] * w_row[0]) + (w_row[1] * w_row[1]) + (w_row[2] * w_row[2]);
+          for (const size_t row : {size_t{0}, size_t{1}, size_t{3}}) {
+            const float* now = shared.rt_view_projection + (row * 4);
+            const float* before = previous_view_projection_.data() + (row * 4);
+            std::array<float, 4> change = {now[0] - before[0], now[1] - before[1], now[2] - before[2], now[3] - before[3]};
+            const float jitter = (row != 3 && w_length > 0.f) ? ((change[0] * w_row[0]) + (change[1] * w_row[1]) + (change[2] * w_row[2])) / w_length : 0.f;
+            for (size_t index = 0; index < change.size(); ++index) change[index] -= jitter * w_row[index];
+            const float length = std::sqrt((now[0] * now[0]) + (now[1] * now[1]) + (now[2] * now[2]));
+            if (length <= 0.f) continue;
+            const float turned = std::sqrt((change[0] * change[0]) + (change[1] * change[1]) + (change[2] * change[2])) / length;
+            if (turned > 1e-5f || std::abs(change[3]) / length > 1e-3f) return true;
+          }
+          return false;
+        }();
         PathConstants constants = {
             .bounce_width = render_pixels ? width : shared.rt_bounce_width,
             .bounce_height = render_pixels ? height : shared.rt_bounce_height,
@@ -1554,7 +1573,8 @@ class RtScene12 {
             // Torch and Fire Light in the Light Bounce: ReuseTexel shades the lights' samples (the paths with ReSTIR GI), or
             // keeps their shadow ratio (ratio_written below).
             .lights_in_bounce = lights_mode | ((ratio_written && ratio_parity_ != 0) ? 16u : 0u)
-                                | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u),
+                                | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u)
+                                | (ratio_follows ? 64u : 0u),
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
