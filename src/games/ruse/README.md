@@ -18,6 +18,13 @@ Output: HDR10, scRGB, SDR or Auto (default: scRGB with Windows HDR on, else SDR;
 SDR output keeps the game's picture (Peak, Paper White and UI at the back buffer's 203-nit white) in a 10-bit gamma
 2.2 chain; a first start without Windows HDR takes the SDR preset.
 
+Settings Mode's third page, **Graphics 2 of 2** (2026-11-15, Experimental, built only): Shadow Map Size, Sprite
+Resolution, Sprite Anti-Aliasing and Detail Distance write the game's own `Option.ini` ([advanced_video]: ShadowRTSize,
+ImposteurTextureSize, ImposteurRTAA / ImposteurShadowRTAA, LevelBuild_*) above its menu, at each start (the game reads
+the file at start and writes it only when its options menu applies); Game's gives the game's own value back. The file
+is found beside the steamclient64.dll the game loaded. Output also holds Wait for Each Frame Copy (the proxy's two GPU
+idle waits, On as shipped) and Frame Trace.
+
 Both Psycho modes retain the game's colour grading and each shader variant's
 bloom, vignette and directional blur. Native no-bloom variants remain without
 bloom. Existing processing and shared Psycho controls are unchanged. Extended
