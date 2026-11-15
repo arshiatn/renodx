@@ -60,7 +60,7 @@ float3 VanillaAP1ToHDR10(float3 color_ap1, float paper_white, float peak_nits) {
       dot(float3(-0.00501333317f, -0.0252900254f, 1.03030288f), color_ap1));
   // Native output at final Contrast 1 / Brightness 1, before PQ encoding.
   float3 native_nits = min(max(color_bt2020, 0.f) * dos2_vanilla::REFERENCE_PEAK_NITS, 65504.f);
-  return dos2_vanilla::Calibrate(native_nits, paper_white, peak_nits);
+  return dos2_vanilla::Calibrate(native_nits, paper_white, peak_nits, SI.vanilla_per_channel_shoulder != 0.f);
 }
 
 [numthreads(32, 32, 1)]

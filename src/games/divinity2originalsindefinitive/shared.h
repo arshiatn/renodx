@@ -71,6 +71,9 @@ struct ShaderInjectData {
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
   float v35_mid_gray;              // 0 the game's HDR curve (15 nits at Paper White 203), 1 its SDR picture's
+
+  // Vanilla: 1 each channel its own shoulder near Peak, 0 the brightest channel's for all (ratios kept).
+  float vanilla_per_channel_shoulder;
 };
 
 #define SI shader_injection

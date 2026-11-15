@@ -101,6 +101,7 @@ void ApplyResetPreset() {
       {"vanilla_fire_color_hue", 0.75f},
       {"bloom", 1.f},
       {"v35_mid_gray", 0.f},
+      {"vanilla_per_channel_shoulder", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -486,6 +487,17 @@ renodx::utils::settings::Settings settings = {
         .min = 0.0f,
         .max = 2.0f,
         .format = "%.2f",
+        .is_visible = ShowACESSettings,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "vanilla_per_channel_shoulder",
+        .binding = &shader_injection.vanilla_per_channel_shoulder,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 1.f,
+        .label = "Per-Channel Highlights",
+        .section = "Vanilla",
+        .tooltip = "Peak below 1000 nits (at Paper White 203): each colour rolls off on its own, so fire cores turn\n"
+                   "orange / white as in SDR. Off = all colours together (fire stays saturated).",
         .is_visible = ShowACESSettings,
     },
 

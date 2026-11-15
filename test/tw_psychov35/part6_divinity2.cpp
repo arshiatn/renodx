@@ -14,6 +14,9 @@
 // 4. Report: PsychoV35's hue (OkLab) against the SDR ACES stand-in where the stand-in reaches its clip, for fire, red, sky,
 //    green and 48 hues, Hue Clip 0 to 1: where Hue Clip Emulation's default comes from until the game's SDR LUT is traced.
 // 5. Report (with the game's folder): Off against the game's own t00 bytes, in 16-bit LUT units.
+// 6. Vanilla's Per-Channel Highlights (on by default): at Peak 600 (compressed) grey unchanged, within Peak, fire's core
+//    whiter above the knee; at Peak 2500 (expanded) the same bits as off. Part 1 runs Vanilla with it off: the
+//    brightest-channel shoulder keeps its bits.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -441,6 +444,51 @@ static void TestPsychoV35(ID3D11ComputeShader* t00, ID3D11PixelShader* t01, ID3D
               GreyOk(stacked_grey, 15.f, 0.01f) ? "PASSED IT (wrong)" : "rejects it");
 }
 
+// 6. Vanilla's per-channel shoulder /////////////////////////////////////////////////////////////////////////////////
+
+// Vanilla (Rendering Mode 1) through the chain, Per-Channel Highlights on and off. Peak 600 / Paper White 203 (the native
+// 1000 compressed): grey (below the knee) the same, every channel within Peak, the fire column's core whiter (smallest /
+// largest channel) with it on wherever the largest channel is above the knee inside the shaper domain. Peak 2500 (an
+// expansion): the same bits on and off (no per-channel boost).
+static std::vector<Float4> VanillaChain(ID3D11ComputeShader* t00, ID3D11PixelShader* t01, ID3D11ShaderResourceView* base,
+                                        float peak, float per_channel) {
+  auto injection = Injection(1.f);
+  injection.peak_white_nits = peak;
+  injection.vanilla_per_channel_shoulder = per_channel;
+  const auto lut = BuildLut(t00, DXGI_FORMAT_R10G10B10A2_UNORM, GameConstants(true), injection);
+  return ApplyLut(t01, lut, base, injection);
+}
+
+static void TestVanillaShoulder(ID3D11ComputeShader* t00, ID3D11PixelShader* t01, ID3D11ShaderResourceView* base,
+                                const std::vector<Float4>& ramp) {
+  CHECK(VanillaChain(t00, t01, base, 2500.f, 0.f) == VanillaChain(t00, t01, base, 2500.f, 1.f));
+  const std::array<std::vector<Float4>, 2> outputs = {VanillaChain(t00, t01, base, 600.f, 0.f),
+                                                      VanillaChain(t00, t01, base, 600.f, 1.f)};
+  const float ceiling = PQToNits(NitsToPQ(600.f) + 1.5f / 1023.f);
+  int within_peak = 0, whiter = 0, compared = 0;
+  float whiteness_off = 0.f, whiteness_on = 0.f;
+  for (UINT i = 0; i < outputs[1].size(); ++i) {
+    within_peak += (std::max({PQToNits(outputs[1][i][0]), PQToNits(outputs[1][i][1]), PQToNits(outputs[1][i][2])}) <= ceiling);
+  }
+  for (UINT y = 0; y < EXPOSURES; ++y) {
+    const UINT i = y * COLOURS + 1;  // fire
+    if (std::max({ramp[i][0], ramp[i][1], ramp[i][2]}) >= SHAPER_HIGH) continue;
+    const Float3 off = {PQToNits(outputs[0][i][0]), PQToNits(outputs[0][i][1]), PQToNits(outputs[0][i][2])};
+    const Float3 on = {PQToNits(outputs[1][i][0]), PQToNits(outputs[1][i][1]), PQToNits(outputs[1][i][2])};
+    if (std::max({off[0], off[1], off[2]}) < 120.f) continue;  // the knee: ToneMap(1) = 107 nits
+    whiteness_off = std::min({off[0], off[1], off[2]}) / std::max({off[0], off[1], off[2]});
+    whiteness_on = std::min({on[0], on[1], on[2]}) / std::max({on[0], on[1], on[2]});
+    whiter += (whiteness_on >= whiteness_off);
+    ++compared;
+  }
+  CHECK(within_peak == static_cast<int>(outputs[1].size()));
+  CHECK(compared > 0 && whiter == compared);
+  CHECK(std::memcmp(&outputs[0][GREY_ROW * COLOURS], &outputs[1][GREY_ROW * COLOURS], sizeof(Float4)) == 0);
+  std::printf("6. Vanilla, Peak 600: fire above the knee whiter with Per-Channel Highlights in %d of %d exposures "
+              "(brightest: smallest / largest channel %.3f off, %.3f on); grey unchanged; Peak 2500 the same bits\n",
+              whiter, compared, whiteness_off, whiteness_on);
+}
+
 // 4. Hue report /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static void ReportHue(ID3D11ComputeShader* direct_shader, const std::vector<Float4>& ramp) {
@@ -508,6 +556,7 @@ int main(int argc, char** argv) {
 
   TestBits(t00_before.Get(), t00_after.Get());
   TestPsychoV35(t00_after.Get(), t01_after.Get(), direct_shader.Get(), base.Get(), ramp);
+  TestVanillaShoulder(t00_after.Get(), t01_after.Get(), base.Get(), ramp);
   ReportHue(direct_shader.Get(), ramp);
   if (argc >= 4) {
     // 5. Off against the game's own bytes (the decompile is not bit-exact by design: report only).

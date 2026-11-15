@@ -42,6 +42,13 @@ At Paper White 203 / Peak 1000, in-range native values are unchanged. Higher
 peaks now brighten highlights again. Raising paper white also scales scene
 brightness intentionally.
 
+**Per-Channel Highlights** (Vanilla, on by default): when Peak is below the
+scaled native peak (1000 x Paper White / 203), each channel gets its own
+shoulder and ceiling, so bright fire's red rolls off before its green and the
+core turns orange / white as the SDR clip does. Expansions (Peak above it) keep
+the channel ratios either way: no per-channel boost. Off = the earlier
+brightest-channel shoulder, bit for bit.
+
 The captured spline, luminance/per-channel blend, native colour processing,
 black normalization and output matrix are retained. The baseline curve comes
 from the supplied September 29 captures with native brightness/contrast 1.
