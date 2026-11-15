@@ -435,12 +435,16 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   const bool guides = talesofarise::upscaling::Guides();
   if (!PrepareDevice(device.Get()) || !talesofarise::upscaling::PrepareBridge(device.Get())) return {};
   uint64_t frame = 0;
+  // The scene colour's views of the last render size: each holds its texture, which Unreal makes again at a new size
+  // (let go after the lock: the game's texture may go with its last view).
+  std::unordered_map<ID3D11Resource*, ComPtr<ID3D11ShaderResourceView>> dropped_scene_views;
   {
     const std::unique_lock lock(state.mutex);
     state.scene_depth = depth_resource.Get();
     if (state.render_size != render_size) {
       state.render_size = render_size;
       state.targets.clear();
+      dropped_scene_views.swap(state.scene_views);
     }
     frame = state.frame;
   }
