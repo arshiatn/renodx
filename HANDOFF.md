@@ -1045,8 +1045,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       PsychoV, bloom unclipped, every reader of an upgraded target, 8-bit targets in the chain, MSAA halves, NaN order,
       Vanilla-exact tests with a failing mutant, switch / area variants, skipped swap chains. Audit agent running; findings
       become boxes (look changes: ATN). Owner: coordinator
-    - [ ] ATN DECIDES: adopt rules from those notes into our skills (credit ShortFuse / Musa / the note's author)? Owner:
-      ATN
+    - [x] ATN 20:2x "Yes, with credit": DONE fb2cc981 game-port-method/references/hdr-review-rules.md (credited:
+      ShortFuse, Musa; notes by boostedwarr), linked from SKILL.md + README; skills zip in Downloads rebuilt.
     - [x] NON-TW SKILLS AUDIT 19:5x (ATN: "have Ryse, Tales, Expeditions done everything from the skills?"): all three
       pass one add-on / pages / Reset + RT/PT + No RT/PT / V35 / SDR preset / Output + first start / per-channel Extended /
       About / fast dispatch / frame trace / helper114 / tw_install / registry / helper-absent page dumps. GAPS below; one
