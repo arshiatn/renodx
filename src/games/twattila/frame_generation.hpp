@@ -202,6 +202,11 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     native->GetDevice(context_device.GetAddressOf());
     if (ComPtr<ID3D11Device5> context_device5;
         bridge.device && (FAILED(context_device.As(&context_device5)) || context_device5 != bridge.device)) {
+      // The helper lost or failed: no Prepare takes this device and no request comes to hide the window, which went with
+      // the helper anyway (Reflex and Format() see frame generation off).
+      if (bridge.failed || bridge.watchdog.failed.load() || dlaa_bridge::FrameGenerationFailed()) {
+        state.presenting = false;
+      }
       return;
     }
     if (ComPtr<ID3D11Device> objects_device = objects.device; objects_device && objects_device != context_device) {
