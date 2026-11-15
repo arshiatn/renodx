@@ -1038,6 +1038,31 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [ ] ATN 18:5x: after the fix agent's 21 fixes, a second Fable 5.2 High review of THE FIX DIFF ONLY (coordinator
       recommends it: helper / threading fixes), then build all, stamp, install for ATN's Attila test. Nsight audit agent
       started (were last night's Nsight captures used for more wins?). Owner: coordinator
+    - [x] CLEANUP AUDIT 19:4x (ATN: "anything else lost last night?"): of 154 open boxes before the cleanup 42 still open,
+      9 merged (7 into open lines, 2 into Final verification, ticked today), 78 ticked in step 1 (all 88 cited hashes
+      exist; ~30 spot-checked OK; 13 OBSOLETE reasons hold), 25 ticked since with evidence, 0 gone; the archive has no
+      "- [ ]" boxes. Really lost: 1 ATN question; doubtful: the boxes below (from the archive / ticked lines).
+      - [ ] ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections (RayTracedReflectionFog, Experimental, default 0) in
+        the RT/PT preset now that Water Reflections are on by default (archive :1202, "ATN'S 2026-11-12 THIRD LIST").
+        Owner: ATN
+      - [ ] Attila v118 / v119 "Left" list (archive 1878-1885, 3589): Light Bounce +1 ms with Far Tree Shadows (a BLAS of
+        its own for the cards?); an off-screen grass bank brighter (lit without grass shadows); ContactShade not seen on
+        bodies. Check against today's build first. Owner: next Attila RT round
+      - [ ] ATN A/B tests named in the "No more performance improvements" box without their own box: Small Soldiers as
+        Sprites, Light Bounce Half, pausing Wallpaper Engine. Owner: ATN (in game)
+      - [ ] Attila 10-29 / 10-30 archive items: river noise while moving (RR / reflections) (archive 3788); the first trace
+        request's Close fails on the debug layer (GPU bakes) (archive 3822). Re-check on today's helper. Owner: next
+        Attila RT round / harness
+      - [ ] Rome Remastered input bug: ATN watches input after a long session (ticked line HANDOFF :1414 had no ATN box).
+        Owner: ATN (in game)
+      - [ ] Astra review: the tester's first freeze still unexplained (archive 1344): check against today's 21 review
+        findings. Owner: coordinator
+      - [ ] WH3 v40 / batch 6 "Not done" (archive 1270, 1315-1331; wh3_v40 / wh3_batch6 reports): Shadow Map Size 2048 /
+        1024, the 800F7F7F half-copy bypass (0.10 ms), C0ED2883 / 1405BFB4 motion, the tent's black spot (item 15 waits
+        for ATN). Owner: next WH3 round (+ ATN for the tent)
+      - [ ] Pharaoh below 100 %: p2ph_scale_census.txt still has 8 BUG (B) rows (shroud decals 61C823A0 / 8852FBD3, SSR
+        apply DE4F92CD, particles 3F1B86E1, ...) and 5 of 9 sun draws differ at 33 % with the game's contact shadows on
+        (archive 852, v61). Owner: next Pharaoh round
     - [x] NSIGHT AUDIT 19:1x (ATN: "did we use last night's Nsight captures?"): harness captures only (11-14 / 11-15:
       g3b reuse base / record / lean / a32, g4_ao x3, h110, rp_*, ser, cl_*, atn_true, wh3_true, smoke_*); no in-game
       Nsight, no per-preset Nsight (per-preset numbers came from Time Each Pass / PresentMon / RT_PROFILE). ACTED: reuse
