@@ -108,3 +108,10 @@ The format is `game-port-method`'s. TW additions:
 | A finder that found 0 looked like "this game has none" (Troy's 167 tweaks) | A suite asserts each game's finder hit count (`test/tw_troy_tweaks`); 0 is a failure |
 | A restore deleted every replay outside a name list (the maintainer's WH3 `2.replay`) | `game-port-method`'s backup rule; `wh3_common.ps1` marks the run's start and end; never delete the maintainer's replays or saves |
 | The quiet lock (`game-port-method`) | The bench refuses starts while a `tools/tw/testbin` process or a build tool runs |
+| PresentMon's `CPUStartDateTime` has no leading zero before 10:00: every summary said "no frames in the window" | `bench_summary.py` pads the hour; the run's data was fine |
+| CPU Set Setter's rule not applied yet when a start begins ("first seen never") stopped a whole bench session | `constantinople_bench.ps1` retries that start once (Run-One code 3, the failed folder in `failed\`); a session script doesn't stop between sets |
+| heapfix.log is appended across sessions: a first-match check read an older session's line | Read the last match |
+| A relative exe path in a Python subprocess (run from bash) failed with WinError 2; bash mangles `variants\` paths of a .ps1's arguments | Absolute Windows paths; run .ps1 scripts from PowerShell |
+| `wpr -start CPU -start GPU` wrote 16 GB for 47 s (Shogun 2) and its xperf text 70 GB | CPU alone where the question is the CPU; delete dumps after reading them |
+| A Grass Dump stalls frames; the game writes grass burn during a battle (256-269 records in 35 s), never the grid | Grass dumps run last in a bench; a GPU grass pass re-reads the burn bytes each update |
+| WH3 said "Unable to initialize SteamAPI" twice with Steam not elevated (2026-11-15) | The maintainer restarts Steam; don't retry a third time |
