@@ -42,8 +42,10 @@
 #include "../../utils/trace.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../../utils/vtable.hpp"
+#include "../twattila/frame_generation.hpp"
 #include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "../twattila/reflex.hpp"
 #include "./bridge.hpp"
 #include "./bridge_replay.hpp"
 #include "./ray_tracing.hpp"
@@ -75,6 +77,18 @@ std::filesystem::path frame_trace_marker;
 bool readable_depth_enabled = false;
 uint32_t back_buffer_width = 0;
 uint32_t back_buffer_height = 0;
+
+// Frame generation through the helper (bridge.hpp's HUD-less image, twattila/frame_generation.hpp) and Reflex on the
+// proxy's device (twattila/reflex.hpp): Attila's rows. The game's D3D9Ex queue one frame deep while either paces it.
+struct GenerationSliders {
+  float frame_generation = 0.f;  // off, 2x-6x, Dynamic
+  float reflex = 0.f;            // off, on, on + boost
+  float frame_limit = 0.f;       // rendered frames per second (0: none)
+  float hud_recomposition = 1.f;
+  float preset = 0.f;            // the driver's, A, B, C
+  float debug_view = 0.f;        // off, the HUD-less image, the UI layer
+} generation_sliders;
+UINT host_frame_latency = 3u;  // IDirect3DDevice9Ex's default
 
 void OnLogResource(reshade::api::device* device, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
                    reshade::api::resource_usage, reshade::api::resource resource) {
@@ -134,6 +148,9 @@ void OnBridgePushConstants(reshade::api::command_list*, reshade::api::shader_sta
 bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t, uint32_t first_index, int32_t vertex_offset,
                          uint32_t) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return false;
+  if (ruse::bridge::state.post_surface) {
+    ruse::bridge::KeepHudless(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()));
+  }
   if ((ruse::ray_tracing::state.ground || ruse::ray_tracing::state.bend) && ruse::bridge::IsSceneDraw()) {
     ruse::ray_tracing::OnSceneDraw(cmd_list);
   }
@@ -142,6 +159,28 @@ bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_co
     ruse::replay::Record(cmd_list, index_count, first_index, vertex_offset);
   }
   return false;
+}
+
+// Frame generation: the UI's first draw when it isn't indexed (the HUD-less image before it).
+bool OnBridgeDraw(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
+  if (cmd_list->get_device()->get_api() == reshade::api::device_api::d3d9 && ruse::bridge::state.post_surface) {
+    ruse::bridge::KeepHudless(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()));
+  }
+  return false;
+}
+
+// The proxy's device going: frame generation's and Reflex's objects on it with it; the game's: the next one starts at
+// its default frame latency.
+void OnDestroyGenerationDevice(reshade::api::device* device) {
+  if (device->get_api() == reshade::api::device_api::d3d9) {
+    host_frame_latency = 3u;
+    return;
+  }
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  twattila::frame_generation::OnDestroyDevice(native);
+  twattila::reflex::OnDestroyDevice(native);
 }
 
 bool OnCreateDepthResource(reshade::api::device* device, reshade::api::resource_desc& desc, reshade::api::subresource_data*,
@@ -166,6 +205,7 @@ bool OnCreateDepthResource(reshade::api::device* device, reshade::api::resource_
 // so it applies after a restart. The game's own value waits in ReShade.ini [RUSE Option.ini] for the row's return to
 // Game's; a value the menu wrote since replaces it.
 constexpr char GRAPHICS_2_SECTION[] = "Game Settings Above the Menu (Experimental, Restart Required)";
+constexpr char AA_SECTION[] = "Anti-Aliasing and Upscaling";
 constexpr char OPTION_INI_CONFIG[] = "RUSE Option.ini";
 struct GameOption {
   std::vector<std::string> option_keys;  // [advanced_video]
@@ -502,6 +542,10 @@ void OnPresentFrame(
     if (presenting_host != nullptr && renodx::utils::device_proxy::IsProxyDevice(device)) {
       ruse::ray_tracing::state.proxy_queue = queue;
       proxy_present_started = true;
+      twattila::reflex::Update(swapchain, static_cast<uint32_t>(generation_sliders.reflex), static_cast<uint32_t>(generation_sliders.frame_limit));
+      auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
+      renodx::utils::directx::TryNativeFromReShadeProxy(&context);
+      ruse::bridge::KeepFrame(context);
       if (proxy_present_slot.installed_address == nullptr) {
         proxy_present_slot = {
             .object = reinterpret_cast<IDXGISwapChain*>(swapchain->get_native()),
@@ -520,7 +564,28 @@ void OnPresentFrame(
     return;
   }
   presenting_host = reinterpret_cast<IDirect3DDevice9*>(device->get_native());
-  ruse::bridge::OnPresent();
+  ruse::bridge::OnPresent(presenting_host);
+  const float multiplier = generation_sliders.frame_generation;
+  twattila::frame_generation::Update({
+      // 2-6 frames shown per rendered frame, 1 Dynamic, 0 off (twattila/feature_settings.hpp AaSettings).
+      .multiplier = (!ruse::bridge::state.enabled ? 0u
+                     : multiplier >= 6.f          ? 1u
+                     : multiplier >= 1.f          ? static_cast<uint32_t>(multiplier) + 1u
+                                                  : 0u),
+      .reflex_boost = generation_sliders.reflex == 2.f,
+      .frame_limit = static_cast<uint32_t>(generation_sliders.frame_limit),
+      .preset = static_cast<uint32_t>(generation_sliders.preset),
+      .hud_recomposition = generation_sliders.hud_recomposition != 0.f,
+      .debug_view = static_cast<uint32_t>(generation_sliders.debug_view),
+      .sdr_output = shader_injection.swap_chain_encoding == static_cast<float>(twattila::output_encoding::SDR),
+  });
+  if (const UINT latency = ((generation_sliders.reflex != 0.f || twattila::frame_generation::Wanted()) ? 1u : 3u);
+      latency != host_frame_latency) {
+    host_frame_latency = latency;
+    if (Microsoft::WRL::ComPtr<IDirect3DDevice9Ex> host_ex; SUCCEEDED(presenting_host->QueryInterface(IID_PPV_ARGS(host_ex.GetAddressOf())))) {
+      host_ex->SetMaximumFrameLatency(latency);
+    }
+  }
   if (ruse::ray_tracing::state.ground) {
     ruse::ray_tracing::OnPresent();
   }
@@ -691,10 +756,12 @@ void BuildRuntimeData() {
   for (auto& [hash, shader] : custom_shaders) {
     shader.on_draw = OnFrameShaderDraw;
   }
-  // The bridge (bridge.hpp): the final post's HDRParam (c11.x) for the next frame's write-back.
+  // The bridge (bridge.hpp): the final post's HDRParam (c11.x) for the next frame's write-back, its target for frame
+  // generation's HUD-less image.
   for (const uint32_t post : {0x232EB5DFu, 0x2D5EFDE2u, 0x44550114u, 0x7E93D12Fu, 0xC3EBA3CAu, 0xFB692F37u, 0x0106B253u}) {
     custom_shaders[post].on_draw = [](reshade::api::command_list* cmd_list) {
       ruse::bridge::state.hdr_param = ruse::bridge::state.pixel_registers[44];
+      ruse::bridge::OnFinalPost(cmd_list);
       return OnFrameShaderDraw(cmd_list);
     };
   }
@@ -1181,6 +1248,90 @@ void ConfigureAddon() {
     settings.push_back(setting);
     ruse::bridge::state.gpu_sync = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
   }
+  // Frame generation and Reflex (live): Attila's rows and keys.
+  const auto generating = [] { return ruse::bridge::state.enabled && generation_sliders.frame_generation != 0.f; };
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .key = "FrameGeneration",
+          .binding = &generation_sliders.frame_generation,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Frame Generation (Experimental)",
+          .section = AA_SECTION,
+          .tooltip = "Frames shown per rendered frame. Turn the game's VSync off.\n"
+                     "NVIDIA DLSS Frame Generation (2x: RTX 40 or newer; 3x to 6x and Dynamic: RTX 50), else AMD's or Intel's.\n"
+                     "Needs Anti-Aliasing at DLAA, FSR or XeSS and a windowed or borderless game.",
+          .labels = {"Off", "2x", "3x", "4x", "5x", "6x", "Dynamic"},
+          .is_enabled = [] { return ruse::bridge::state.enabled; },
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "Reflex",
+          .binding = &generation_sliders.reflex,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "NVIDIA Reflex",
+          .section = AA_SECTION,
+          .tooltip = "Less input lag on NVIDIA GPUs: each frame starts only as the GPU needs it.\n"
+                     "Boost also keeps the GPU's clocks up. Always on with frame generation.",
+          .labels = {"Off", "On", "On + Boost"},
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FrameGenerationFrameLimit",
+          .binding = &generation_sliders.frame_limit,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Frame Rate Limit",
+          .section = AA_SECTION,
+          .tooltip = "Caps the rendered frame rate with NVIDIA Reflex (frame generation multiplies it).\n"
+                     "Needs Reflex or frame generation on. 0: off.",
+          .min = 0.f,
+          .max = 240.f,
+          .format = "%d fps",
+          .is_enabled = [generating] { return generation_sliders.reflex != 0.f || generating(); },
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FrameGenerationHudRecomposition",
+          .binding = &generation_sliders.hud_recomposition,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "HUD Recomposition",
+          .section = AA_SECTION,
+          .tooltip = "Lays the HUD over the generated frames instead of warping it with the scene (no HUD smears).",
+          .labels = {"Off", "On"},
+          .is_enabled = generating,
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FrameGenerationPreset",
+          .binding = &generation_sliders.preset,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Frame Generation Preset",
+          .section = AA_SECTION,
+          .tooltip = "NVIDIA's frame generation presets. Driver's: HUD Recomposition as set above.\n"
+                     "A: HUD recomposition off. B: on. C (Lite): lighter, lower quality.\n"
+                     "Applies after restarting the game.",
+          .labels = {"Driver's", "A", "B", "C"},
+          .is_enabled = generating,
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FrameGenerationDebugView",
+          .binding = &generation_sliders.debug_view,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Frame Generation Debug View",
+          .section = AA_SECTION,
+          .tooltip = "What frame generation gets, shown while the ReShade menu is closed.\n"
+                     "HUD-less Image: the picture without the HUD. UI Layer: the HUD over the generated frames, in magenta.",
+          .labels = {"Off", "HUD-less Image", "UI Layer"},
+          .is_enabled = generating,
+          .is_visible = IsAdvancedSettings,
+      },
+  });
   {
     auto* setting = new renodx::utils::settings::Setting{
         .key = "RuseSceneReplay",
@@ -1511,6 +1662,15 @@ bool AttachAddon() {
   if (ruse::bridge::state.gpu_sync) {
     renodx::utils::gpu_fence::Use(DLL_PROCESS_ATTACH);
   }
+  // Frame generation (the helper presents; the HUD-less image through the proxy's swap chain shader, the frame's
+  // controls at b13) with the bridge; Reflex on the proxy's presents.
+  if (ruse::bridge::state.enabled) {
+    reshade::register_event<reshade::addon_event::draw>(OnBridgeDraw);
+    twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &frame_injection,
+                                        sizeof(frame_injection), __fg_hdr10);
+  }
+  twattila::reflex::Install();
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyGenerationDevice);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &frame_injection);
 
@@ -1556,6 +1716,12 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
   if (ruse::bridge::state.gpu_sync) {
     renodx::utils::gpu_fence::Use(DLL_PROCESS_DETACH);
+  }
+  reshade::unregister_event<reshade::addon_event::draw>(OnBridgeDraw);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyGenerationDevice);
+  twattila::reflex::Uninstall();
+  if (ruse::bridge::state.enabled) {
+    twattila::frame_generation::Uninstall();
   }
   UninstallPresentHooks();
 

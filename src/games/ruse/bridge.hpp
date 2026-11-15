@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <format>
 #include <initializer_list>
 #include <memory>
 #include <span>
@@ -28,6 +29,7 @@
 #include "../../utils/device_proxy.hpp"
 #include "../../utils/gpu_fence.hpp"
 #include "../twattila/dlaa_bridge.hpp"
+#include "../twattila/frame_generation.hpp"
 
 // R.U.S.E.'s D3D9 bridge (tools/nontw/ruse/plan.md 10b W2, W3, D2-D5): DLAA, FSR or XeSS (native) through the TW helper
 // on the DX11 proxy's device. The game's D3D9Ex device (the swap chain mod's upgrade) and the proxy share four textures
@@ -37,6 +39,9 @@
 // game's encoding.
 // The scene draws (back-buffer-sized target, an INTZ depth) get the jitter in their camera registers c0-c3. Each side
 // waits for the other's writes on the CPU, or (the GPU Sync row) on the GPU through utils/gpu_fence's shared fences.
+// Frame generation (twattila/frame_generation.hpp, the helper presents): the final post's target (the back buffer's FP16
+// clone) copied before the first draw after it (the UI's) into a fifth shared texture, the HUD-less image the proxy draws
+// through its swap chain shader at its present; the frame's inputs are the upscaler's.
 namespace ruse::bridge {
 
 using Microsoft::WRL::ComPtr;
@@ -78,6 +83,15 @@ struct State {
   SharedTexture depth;
   SharedTexture motion;
   SharedTexture output;
+  // Frame generation: the final post's target until its HUD-less image is copied (at the next draw or the present), the
+  // copy (made with the first), the frames it and Evaluate's inputs are of, and whether the proxy's present takes them.
+  ComPtr<IDirect3DSurface9> post_surface;
+  SharedTexture hudless;
+  bool hudless_failed = false;
+  uint32_t hudless_frame = UINT32_MAX;
+  twattila::frame_generation::Inputs generation_inputs;
+  uint32_t generation_frame = UINT32_MAX;
+  bool generation_ready = false;
   ComPtr<IDirect3DVertexShader9> quad;
   ComPtr<IDirect3DPixelShader9> prepare;
   ComPtr<IDirect3DPixelShader9> writeback;
@@ -201,6 +215,48 @@ inline void DrawQuad(IDirect3DDevice9* host, std::span<IDirect3DSurface9* const>
   host->SetViewport(&saved_viewport);
 }
 
+// The helper's set on the proxy's device (the first starts the helper), frame generation's frames in the format its
+// present saw (none while it is off) and its backend the helper's choice; again each evaluation (made again when the
+// format changes).
+inline bool PrepareHelper(ID3D11Device* proxy) {
+  return twattila::dlaa_bridge::Prepare(proxy, state.width, state.height, false, state.ray_tracing, twattila::frame_generation::Format(),
+                                        false, state.upscaler, twattila::dlaa_bridge::FG_BACKEND_AUTO);
+}
+
+// This frame's camera from the camera pass's inverse view-projection (c4-c7, rows acting on column vectors): the
+// view-projection (its inverse in doubles, Gauss-Jordan) and the eye, where it sends w to 0 (the inverse's third column).
+// False: singular.
+inline bool CurrentCamera(std::array<double, 16>* view_projection, std::array<double, 3>* eye) {
+  const float* inverse = state.camera.data() + 16;
+  std::array<std::array<double, 8>, 4> rows = {};
+  for (int row = 0; row < 4; ++row) {
+    for (int column = 0; column < 4; ++column) rows[row][column] = inverse[(row * 4) + column];
+    rows[row][4 + row] = 1.0;
+  }
+  for (int column = 0; column < 4; ++column) {
+    int pivot = column;
+    for (int row = column + 1; row < 4; ++row) {
+      if (std::abs(rows[row][column]) > std::abs(rows[pivot][column])) pivot = row;
+    }
+    if (std::abs(rows[pivot][column]) < 1e-300) return false;
+    std::swap(rows[column], rows[pivot]);
+    const double scale = rows[column][column];
+    for (double& value : rows[column]) value /= scale;
+    for (int row = 0; row < 4; ++row) {
+      if (row == column) continue;
+      const double factor = rows[row][column];
+      for (int other = 0; other < 8; ++other) rows[row][other] -= factor * rows[column][other];
+    }
+  }
+  for (int row = 0; row < 4; ++row) {
+    for (int column = 0; column < 4; ++column) (*view_projection)[(row * 4) + column] = rows[row][4 + column];
+  }
+  const double eye_w = inverse[14];
+  if (std::abs(eye_w) < 1e-30) return false;
+  *eye = {inverse[2] / eye_w, inverse[6] / eye_w, inverse[10] / eye_w};
+  return true;
+}
+
 // Lazily, on the first evaluation: the shaders, the shared textures and the helper's (Prepare starts the helper).
 inline bool Ready(IDirect3DDevice9* host, std::span<const uint8_t> quad, std::span<const uint8_t> prepare,
                   std::span<const uint8_t> writeback) {
@@ -220,8 +276,7 @@ inline bool Ready(IDirect3DDevice9* host, std::span<const uint8_t> quad, std::sp
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.depth)
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16_FLOAT, D3DFMT_G16R16F, &state.motion)
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.output)
-                    && twattila::dlaa_bridge::Prepare(proxy, state.width, state.height, false, state.ray_tracing, DXGI_FORMAT_UNKNOWN,
-                                                      false, state.upscaler);
+                    && PrepareHelper(proxy);
   if (!made) {
     reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Anti-aliasing: the bridge didn't start (helper missing?): off");
     return false;
@@ -262,6 +317,7 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   auto* proxy = reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native());
   ComPtr<ID3D11DeviceContext> context;
   proxy->GetImmediateContext(context.GetAddressOf());
+  if (!PrepareHelper(proxy)) return;
   // W3: the destination's GPU waits for the source's writes (GPU Sync), else the CPU for the source's queue.
   const auto hand_over = [](auto* source, renodx::utils::gpu_fence::Fence* fence, auto* destination) {
     if (fence == nullptr) return false;
@@ -299,10 +355,40 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   view_to_clip[10] = z_scale;
   view_to_clip[11] = 1.f;
   view_to_clip[14] = state.camera[11] - (z_scale * state.camera[15]);
+  const bool reset = state.reset;
   const bool evaluated = twattila::dlaa_bridge::Evaluate(context.Get(), state.width, state.height, state.jitter[0], state.jitter[1],
-                                                         state.reset, 0u, nullptr, &view_to_clip);
+                                                         reset, 0u, nullptr, &view_to_clip);
   state.reset = !evaluated;
   if (!evaluated) return;
+  // Frame generation's inputs (the helper's row vectors: the registers' transposes, without the jitter): this frame's
+  // view-projection and last frame's (c0-c3), the camera's axes from the view-projection's rows (P00 x right, P11 x up,
+  // the w row forward), near and far from the projection's depth (a + b / z: 0 at near, 1 at far).
+  std::array<double, 16> view_projection = {};
+  std::array<double, 3> eye = {};
+  if (twattila::frame_generation::Wanted() && CurrentCamera(&view_projection, &eye)) {
+    auto& inputs = state.generation_inputs;
+    inputs = {.width = state.width, .height = state.height, .jitter_x = state.jitter[0], .jitter_y = state.jitter[1], .reset = reset,
+              .view_to_clip = view_to_clip};
+    for (size_t row = 0; row < 4; ++row) {
+      for (size_t column = 0; column < 4; ++column) {
+        inputs.view_projection[(column * 4) + row] = static_cast<float>(view_projection[(row * 4) + column]);
+        inputs.previous_view_projection[(column * 4) + row] = state.camera[(row * 4) + column];
+      }
+    }
+    for (size_t axis = 0; axis < 3; ++axis) {
+      inputs.camera[axis] = static_cast<float>(eye[axis]);
+    }
+    for (const auto [row, slot] : {std::pair{0, 3}, std::pair{1, 6}, std::pair{3, 9}}) {
+      const double* values = view_projection.data() + (row * 4);
+      const double row_length = std::max(std::sqrt((values[0] * values[0]) + (values[1] * values[1]) + (values[2] * values[2])), 1e-30);
+      for (int axis = 0; axis < 3; ++axis) {
+        inputs.camera[slot + axis] = static_cast<float>(values[axis] / row_length);
+      }
+    }
+    inputs.near_plane = (z_scale != 0.f ? -view_to_clip[14] / z_scale : 0.f);
+    inputs.far_plane = (z_scale != 1.f ? z_scale * inputs.near_plane / (z_scale - 1.f) : 0.f);
+    state.generation_frame = state.frame;
+  }
   context->CopyResource(state.output.proxy.Get(), helper.output.texture.Get());
   if (!hand_over(context.Get(), state.proxy_fence.get(), host_ex.Get())) WaitProxy(proxy, context.Get());
 
@@ -370,6 +456,10 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   state.depth = {};
   state.motion = {};
   state.output = {};
+  state.post_surface.Reset();
+  state.hudless = {};
+  state.hudless_failed = false;
+  state.generation_ready = false;
   state.quad.Reset();
   state.prepare.Reset();
   state.writeback.Reset();
@@ -388,7 +478,51 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   }
 }
 
-inline void OnPresent() {
+// The final post's draw (frame generation on): its target, the back buffer's clone the swap chain mod binds in the
+// game's back buffer's place, as the device holds it.
+inline void OnFinalPost(reshade::api::command_list* cmd_list) {
+  if (!state.ready || state.hudless_failed || !twattila::frame_generation::Wanted()) return;
+  state.post_surface.Reset();
+  reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native())->GetRenderTarget(0, state.post_surface.GetAddressOf());
+}
+
+// The first draw after the final post (the UI's), or the present: the post's picture into the shared HUD-less texture
+// (made with the first copy, the clone's FP16 format: the proxy's swap chain shader reads it as it reads the clone).
+inline void KeepHudless(IDirect3DDevice9* host) {
+  const ComPtr<IDirect3DSurface9> source = std::move(state.post_surface);
+  if (!source) return;
+  if (!state.hudless.host) {
+    D3DSURFACE_DESC desc = {};
+    ComPtr<IDirect3DDevice9Ex> host_ex;
+    auto* proxy = reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native());
+    if (FAILED(source->GetDesc(&desc)) || desc.Format != D3DFMT_A16B16G16R16F || desc.Width != state.width || desc.Height != state.height
+        || FAILED(host->QueryInterface(IID_PPV_ARGS(host_ex.GetAddressOf())))
+        || !MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.hudless)) {
+      state.hudless = {};
+      state.hudless_failed = true;
+      reshade::log::message(reshade::log::level::warning,
+                            std::format("[R.U.S.E.] Frame generation: no HUD-less image (the back buffer's copy is {}x{}, format {})",
+                                        desc.Width, desc.Height, static_cast<uint32_t>(desc.Format))
+                                .c_str());
+      return;
+    }
+  }
+  if (SUCCEEDED(host->StretchRect(source.Get(), nullptr, state.hudless.host_surface.Get(), nullptr, D3DTEXF_NONE))) {
+    state.hudless_frame = state.frame;
+  }
+}
+
+// The proxy's present (its frame is the game's last; its D3D9 work done: the proxy's copy waited for it): the HUD-less
+// image and the inputs to frame generation when both are that frame's.
+inline void KeepFrame(ID3D11DeviceContext* context) {
+  if (!std::exchange(state.generation_ready, false)) return;
+  twattila::frame_generation::KeepFrame(context, state.hudless.proxy.Get(), state.generation_inputs);
+}
+
+// The game's present, before the proxy's: a HUD-less image still waiting is the whole frame (no UI drawn).
+inline void OnPresent(IDirect3DDevice9* host) {
+  KeepHudless(host);
+  state.generation_ready = state.hudless_frame == state.frame && state.generation_frame == state.frame;
   state.in_scene = false;
   ++state.frame;
   state.jitter = {Halton((state.frame % 8) + 1, 2) - 0.5f, Halton((state.frame % 8) + 1, 3) - 0.5f};

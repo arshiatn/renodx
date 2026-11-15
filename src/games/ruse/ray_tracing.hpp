@@ -316,36 +316,11 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   bridge::DrawQuad(host, depth_target, state.depth_copy.Get(), depth_source, {});
   bridge::WaitHost(host);
 
-  // The camera: the camera pass's inverse view-projection (rows acting on column vectors), its inverse in doubles
-  // (Gauss-Jordan), the eye where the view-projection sends w to 0 (the inverse's third column).
+  // The camera: the camera pass's inverse view-projection (rows acting on column vectors) and its inverse.
   const float* inverse = bridge.camera.data() + 16;
-  std::array<std::array<double, 8>, 4> rows = {};
-  for (int row = 0; row < 4; ++row) {
-    for (int column = 0; column < 4; ++column) rows[row][column] = inverse[(row * 4) + column];
-    rows[row][4 + row] = 1.0;
-  }
-  for (int column = 0; column < 4; ++column) {
-    int pivot = column;
-    for (int row = column + 1; row < 4; ++row) {
-      if (std::abs(rows[row][column]) > std::abs(rows[pivot][column])) pivot = row;
-    }
-    if (std::abs(rows[pivot][column]) < 1e-300) return false;
-    std::swap(rows[column], rows[pivot]);
-    const double scale = rows[column][column];
-    for (double& value : rows[column]) value /= scale;
-    for (int row = 0; row < 4; ++row) {
-      if (row == column) continue;
-      const double factor = rows[row][column];
-      for (int other = 0; other < 8; ++other) rows[row][other] -= factor * rows[column][other];
-    }
-  }
   std::array<double, 16> view_projection = {};
-  for (int row = 0; row < 4; ++row) {
-    for (int column = 0; column < 4; ++column) view_projection[(row * 4) + column] = rows[row][4 + column];
-  }
-  const double eye_w = inverse[14];
-  if (std::abs(eye_w) < 1e-30) return false;
-  const std::array<double, 3> eye = {inverse[2] / eye_w, inverse[6] / eye_w, inverse[10] / eye_w};
+  std::array<double, 3> eye = {};
+  if (!bridge::CurrentCamera(&view_projection, &eye)) return false;
   twattila::rt_scene::Camera camera = {};
   for (size_t index = 0; index < 16; ++index) {
     camera.view_projection[index] = static_cast<float>(view_projection[index]);

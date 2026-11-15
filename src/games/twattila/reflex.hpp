@@ -81,16 +81,19 @@ inline void Mark(uint32_t type) {
   state.set_latency_marker(state.device.Get(), &params);
 }
 
-// Before the game's present: its frame submitted, the present starting.
-inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*,
+// Before the game's present: its frame submitted, the present starting. D3D11 swap chains only: a D3D9 game presenting
+// through RenoDX's DX11 proxy (R.U.S.E.) has two presents a frame, and the proxy's is the device Reflex runs on.
+inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  if (swapchain->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   const std::unique_lock lock(state.mutex);
   Mark(RENDERSUBMIT_END);
   Mark(PRESENT_START);
 }
 
 // After it: the next frame waits in Reflex's sleep until the GPU will need it, then starts.
-inline void OnFinishPresent(reshade::api::command_queue*, reshade::api::swapchain*) {
+inline void OnFinishPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain) {
+  if (swapchain->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   std::unique_lock lock(state.mutex);
   if (!state.running || state.sleep == nullptr) return;
   Mark(PRESENT_END);
