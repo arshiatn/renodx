@@ -684,8 +684,28 @@ heading text are in HANDOFF_ARCHIVE.md)
       Streamline FG gone; TAA hook -> shared bridge; twattila frame_generation / reflex), 7 new [Ryse AA] keys, 11 RT keys
       at Attila's parity (Experimental off), rt_specular_merge into t6; HDR-only state hides AA / FG / RT rows; key compare
       132 -> 151 keyed rows, every old key kept. Skills + build_shared.ps1 / drw_verify.py lose rysesonofrome_dlss.
-      - [ ] R0 data run: helper DLSS / FSR / XeSS / RR on Ryse's TAA inputs (depth flip, motion, jitter sign,
-        AutoExposure vs exposure 1, 0x3BA5B162 order, FG HUD-less image, Debug View hook). Owner: coordinator (R0)
+      - [x] R0 data run DONE 16:51-17:29 (tools/nontw/ryse/r0, 10 starts through steam.exe -applaunch 302510; Ryse.exe
+        started alone exits: DRM), chapter 1 checkpoint (Continue; held on the "Press Space to deflect" prompt, jitter
+        frozen). 4K fps avg / 1 % low: ATN's ini (DLSS Custom 85 %, preset L) 65.2 / 60.5, DLAA 52.4 / 49.5, DLSS Quality
+        88.6 / 80.3, FSR Quality 101.8 / 92.8 ("FSR 3.1.6 active"), XeSS Quality 95.3 / 86.7 ("XeSS-SR 2.0.2 active"),
+        game TAA native 80.5 / 72.8, DLSS Quality + FG 2x 152.0 presented (by the helper; PresentMon filtered to Ryse.exe
+        saw nothing). Replaced shaders hit 11-14 of 20; never hit 0x37ABF6CF, 0x910E0E0C, 0xC1F889A4, 0xC3A469C1,
+        0xCC6DF78E; unreplaced variant 0x292F2865 (half-res shadow) in every start. NVIDIA overlay: Autoexposure ON,
+        exposure scale 1.0. Screenshots s1-s7 normal. ATN's 4 files restored + hash OK, saves unchanged, installs unchanged,
+        no crash dump. s8 (rays + RR): the menu keys landed on Campaign > Timeline, ATN loaded the checkpoint by hand; rays
+        started 17:25:10 after the PresentMon window (no valid fps); no crash; ONE screenshot 10 s after RR began: BLACK
+        scene, HUD only. s9 Nsight: ngfx-capture's default answer KILLED STEAM (ATN restarts it), Ryse exit 53 (DRM), ngfx
+        won't intercept ReShade's dxgi.dll: WON'T GET.
+      - [ ] Ryse: rays + Ray Reconstruction gave a black scene (s8 view/2.jpg, one shot): RR D3D12 output or the
+        composite; offline / harness first. Owner: next Ryse round (coordinator)
+      - [ ] Ryse: cvars from the ini (system.cfg is read before the cvars exist: every line "Unknown command"): a
+        [Ryse Debug] Cvars= key or test hooks through the console hook, for Low / Medium, AA modes, supersampling and
+        r_ShadersLogCacheMisses / r_LogShaders runs (spec 3 + 4 not run). Owner: next Ryse round
+      - [ ] Ryse: helper round trip 2.5 (DLSS Quality) to 4.7 ms (DLAA) a frame against 0.25 game TAA, FSR 1.0, XeSS 1.6;
+        DLAA 52 fps vs native TAA 80: profile the wait. Owner: next Ryse round
+      - [ ] Ryse FG 2x pacing: frames presented in pairs 0.15 ms apart, shown 2.7-9.3 ms, p99 15.4 ms. Owner: next
+        Ryse round
+      - [ ] Ryse: port 0x292F2865 (half-res shadow, every start). Owner: next Ryse round (with the families box)
       - [ ] tw_install.py's Ryse entry (helper + rename aside of the old _dlss add-on by exact name; rym_ patched it,
         .bak_rym): dry run. Owner: coordinator at the install
       - [ ] tools/ingame/deploy.py:30 (_dlss zip entry) and tools/ryse/fg_camera_check.py (removed camera math):
