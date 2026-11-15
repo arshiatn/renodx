@@ -1229,6 +1229,9 @@ inline void OnPresent(
     return;
   }
 
+  // No proxy shader for this device's API (the back buffers got no clone target): nothing to draw.
+  if (data->swap_chain_proxy_pixel_shader.empty()) return;
+
   const auto back_buffer_handle = swapchain->get_current_back_buffer().handle;
   auto pass_pointer = data->swapchain_proxy_passes.find(back_buffer_handle);
   renodx::utils::draw::SwapchainProxyPass* proxy_pass = nullptr;
