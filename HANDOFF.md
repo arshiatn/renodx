@@ -698,11 +698,21 @@ heading text are in HANDOFF_ARCHIVE.md)
       Point Light Shadows applied: ps X"); Half + RR moving past torches with the follow row; a battle with 4-bone /
       dismember units under Batched Unit Capture
     - [ ] Real GT-VBAO savings need per-sample math changes (look change): visual A/B, ATN DECIDES. Owner: later
-  - [ ] END BENCH STARTED ~06:1x (tools/tw/bench/end_of_batch_1115_run.ps1, log end_of_batch_1115_run.log): cpu4, cpu5,
+  - [ ] END BENCH STARTED 03:28 (tools/tw/bench/end_of_batch_1115_run.ps1, log end_of_batch_1115_run.log): cpu4, cpu5,
     g2a_torch, g2a_shadow, g2b_clusters, g4_capture (in place of g3a_capture), g3b_reuse, grass_dump; ~94 starts / ~6 h;
     one quiet window (rym_ / uem_ edit without building meanwhile). Owner: coordinator reads every summary.txt after
-  - [ ] FABLE 5.2 HIGH REVIEW of the TW batch fdfb307e..47aed531 (ATN asked; read-only during the bench; findings ->
-    tools/tw/round_notes/fable_review_1115.tsv), then a fix round, then suites, stamp, install. Owner: coordinator
+  - [x] FABLE 5.2 HIGH REVIEW DONE (fdfb307e..47aed531, read-only; tools/tw/round_notes/fable_review_1115.tsv, 13 rows):
+    no crash-class defect on the default path. CONFIRMED: (1) Shogun 2's merged add-on attaches fully beside an old
+    _dlss file (double DLSS / scale hooks if a player unzips over an old install); (2) WH1 grass_height never
+    uninstalled (stale callbacks after an add-on reload). PLAUSIBLE / LOW: radix sort site's whole-image scan fallback;
+    batched cluster BLASes with empty runs; ReSTIR surface record if a mode traces a subset; OnIndexWrite without an API
+    check; OutputAutoPreset on a first start with no Windows answer; Thrones headroom 2 vs 4; 8 MB scratch never freed;
+    Tales' notice enumerating modules every frame; shadow_pass hook quiescence; Two Shadow Cascades after RT-off.
+    Checked clean: command_action_fast vs RunCallbacks, engine_code stubs by hand, OutputAutoPreset otherwise, Batched
+    Unit Capture math, point-shadow rows, units range, sss pick, bridge fields, constant mirror sharing, engine_cvars.
+    Not covered: HLSL bit-exactness (needs builds), parts of several per-game files (listed in the review).
+  - [ ] FIX ROUND rfx_ (started ~05:0x): all 13 review rows; edits during the bench, builds / suites / harness after
+    the quiet window; then stamp + install. Owner: rfx_, then coordinator
   - [x] SHOGUN 2 ONE ADD-ON MERGED d4c82679 (s2m_): _dlss folded in (pages HDR & Effects / Graphics 1 of 2 / 2 of 2;
     shared twattila/settings_pages.hpp for the page helpers; fast dispatch; hdr_link / dlss_jitter / in-process FG
     shaders 0x7A1E0D40-42 dropped; red note + log while the old _dlss file sits in the folder; README tells players to
