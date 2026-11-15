@@ -45,6 +45,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -135,8 +136,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (devi ... | sh_
 - hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, W ... | hb_
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
-- Ryse: skip the game's shadow maps under RT Shadows Only (ATN 00:0x rejected npr_ ... | rys_ (started 00:1x)
-- Ryse: path-traced GI / AO (ATN 00:1x: "PT GI/AO is probably doable. You need to ... | rys_ (after the shadow-map item)
+- Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
 - npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe. Own ... | npu_
 - gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: g ... | gr_
@@ -1274,9 +1274,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         WON'T GET. Ryse rows not run in game.
       - [x] ATN ANSWERED 00:0x: no ssao temporal / edge / denoise port ("ignore Attila's own SSAO, we don't need it");
         exposure cap: explained (not needed: geometric-mean metering). (was) ATN DECIDES (Ryse): an ssao temporal / edge / denoise port (M) and an optional exposure cap in EDAD119F.
-      - [ ] Ryse: skip the game's shadow maps under RT Shadows Only (ATN 00:0x rejected npr_'s WON'T GET: "There must be a
-        way"): readers per pass from R0, design, Experimental row, Time Each Pass hooks. Owner: rys_ (started 00:1x)
-      - [ ] Ryse: path-traced GI / AO (ATN 00:1x: "PT GI/AO is probably doable. You need to double check"; npr_ wrote WON'T
+      - [x] MERGED c1aa521c 01:0x (rys_, built, WARP PASS): Ryse: skip the game's shadow maps under RT Shadows Only (ATN 00:0x rejected npr_'s WON'T GET: "There must be a
+        way"): readers per pass from R0, design, Experimental row, Time Each Pass hooks. Real readers: mask passes
+        sunshadow00-04, hair strands, fog volumes (the rest only have the maps bound); 16384 map = torch / fire pool,
+        stays. "Skip the Game's Sun Shadow Maps (Experimental)": Off / Past the Near Ones (72-80 % of sun caster draws) /
+        All; RT/PT + Reset = Off. test/tw_ryse_shadow_skip PASS.
+      - [x] MERGED c1aa521c (rys_): npr_'s WON'T GET was wrong (the tiled lighting cs takes diffuse ambient only from the
+        probe cube array t34): "Path-Traced Ambient (Experimental)" off + Own Sky Rays + Steady Bounce Light rows; black
+        1x1 cube at t34 while the paths bring the sky, rt_probe_sky from the widest probe; RT AO off under it.
+        test/tw_ryse_path_ambient PASS. Ryse: path-traced GI / AO (ATN 00:1x: "PT GI/AO is probably doable. You need to double check"; npr_ wrote WON'T
         GET for PathAmbient / SkyApart / KeptCube: the tiled lighting cs keeps the game's ambient): find where ambient /
         indirect enters, Experimental rows if possible. Owner: rys_ (after the shadow-map item)
       - [x] CHECKED 00:13 (read-only): our scripts never write profiles (lsx_set.py = graphicSettings.lsx only); the GAME
@@ -1285,6 +1291,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         again, so the next start may fail the same way. Debug profile kept. Divinity 2 profile oddity (ATN 00:1x): R1 could load 6Party not ATN THE GREAT; R1b the reverse,
         "Debug_Client_Profile_2" blocks; did our scripts (lsx_set.py, settings restores) touch playerprofiles? Restore from
         the fresh backup, never delete profiles. Owner: d2 R1b agent (running 00:0x, gpu_job.lock)
+      - [ ] Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps Off / Past the Near Ones / All;
+        look: hair fringe in shade, fog-volume shafts, casters behind the camera; Path-Traced Ambient brightness / colour
+        vs the game, interiors, skin. Then ATN decides both defaults. Follow-ups: hair reading the rays, cascade casters
+        into the RT scene (All loses nothing off screen). Owner: next Ryse data run / ATN
       - [ ] Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/families.txt); in-game check of every
         new row (Debug View / Scene Test, RT rows, Time Each Pass, test hooks + RENODX_TW_CVARS, half-res particles, LOD
         bias, auto thickness). Owner: next Ryse data run
