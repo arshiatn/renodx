@@ -153,7 +153,8 @@ inline void Decide(const WindowsHdr& windows_hdr) {
       renodx::utils::settings::WriteGlobalString(PRESET_SWITCH_KEY, state_of(side));
     };
     if (state.empty()) {
-      if (!decided.has_value() && first_start && encoding == SDR) {
+      // Only Windows HDR known off: without an answer the output falls to SDR for the chain, the look waits for one.
+      if (!decided.has_value() && first_start && windows_hdr.known && !windows_hdr.on) {
         apply(config.first_start_without_hdr, "sdr");
         renodx::utils::log::i(config.log_name, " Output Auto: first start without Windows HDR, the SDR preset applied.");
       } else if (!decided.has_value() && first_start && windows_hdr.known) {
