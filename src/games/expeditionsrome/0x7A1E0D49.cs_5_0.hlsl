@@ -53,7 +53,7 @@ void main(uint3 id : SV_DispatchThreadID) {
       }
     }
   }
-  const float frames = (weights > 1e-3f) ? min(kept.a / weights + 1.f, settings.x) : 1.f;
+  const float frames = (weights > 1.0003477e-3f) ? min(kept.a / weights + 1.f, settings.x) : 1.f;
   const float3 previous = (weights > 1e-3f) ? kept.rgb / weights : current;
   resolved[id.xy] = float4(lerp(previous, all(isfinite(current)) ? current : previous, 1.f / frames), frames);
 }

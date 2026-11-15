@@ -49,7 +49,7 @@ float RyseSunShadowPcss(Texture2D shadow_map, SamplerComparisonState comparison,
   const float zeta = length(depth_row * to_unit);
   float2 map_size;
   shadow_map.GetDimensions(map_size.x, map_size.y);
-  return PcssShadow(shadow_map, comparison, tc, map_size, 1.f / max(sigma * map_size.x, 1e-20f), 1.f / max(zeta, 1e-20f),
+  return PcssShadow(shadow_map, comparison, tc, map_size, 1.f / max(sigma * map_size.x, 1.0001075e-20f), 1.f / max(zeta, 1e-20f),
                     tan(radians(0.5f * SI.sun_shadow_softness)), RYSE_PCSS_MAX_TEXELS, PcssRotation(pixel, SI.ssao_frame));
 }
 

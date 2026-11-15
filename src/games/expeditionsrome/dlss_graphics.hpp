@@ -652,15 +652,15 @@ inline bool Evaluate(Frame* frame, bool replace) {
       || taa[23] != std::array<float, 4>{0, 0, width, height}
       || taa[24][0] != 0 || taa[24][1] != 0
       || !std::isfinite(taa[26][2]) || !std::isfinite(taa[26][3])
-      || std::abs(taa[26][2] - render_width / width) > .001f
+      || std::abs(taa[26][2] - render_width / width) > 0.0010002436f
       || std::abs(taa[26][3] - width / render_width) > .001f
       || !std::isfinite(taa[26][0]) || !std::isfinite(taa[26][1])
       || std::abs(taa[26][0]) > 1 || std::abs(taa[26][1]) > 1
       || !std::isfinite(view[129][1]) || view[129][1] <= 0
       || !std::isfinite(view[129][2]) || !std::isfinite(view[122][0]) || !std::isfinite(view[122][1])
-      || std::abs(view[129][1] * view[129][2] - 1.f) > .001f
+      || std::abs(view[129][1] * view[129][2] - 1.f) > 0.0010000403f
       || std::abs(view[122][0] * render_width / 2 - taa[26][0]) > .001f
-      || std::abs(-view[122][1] * render_height / 2 - taa[26][1]) > .001f) {
+      || std::abs(-view[122][1] * render_height / 2 - taa[26][1]) > 0.0010002838f) {
     SetStatus("Stock TAA: unsupported temporal view layout", frame->generation);
     return false;
   }
@@ -1232,7 +1232,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     effects_at_output = aa_sliders.effects_at_output != 0.f;
     upscaling_debug_view.store(aa_sliders.debug_view != 0.f);
     replace_taa.store(replace_taa_row != 0.f && aa_sliders.debug_view == 0.f);
-    expeditionsrome::dlss::contact_shadows::length.store(std::clamp(contact_shadows_row, 0.f, 10.f) / 100.f);
+    expeditionsrome::dlss::contact_shadows::length.store(std::clamp(contact_shadows_row, 0.f, 10.001993f) / 100.f);
     // On again: a stopped or failed live scale is retried.
     if (const bool enabled = live_scale_row != 0.f; enabled != live.enabled) {
       live.enabled = enabled;

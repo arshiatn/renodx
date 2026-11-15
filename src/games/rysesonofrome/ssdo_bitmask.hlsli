@@ -35,7 +35,7 @@ float4 RyseBitmaskOcclusion(float2 uv, uint2 pixel, float3 normal, Texture2D<flo
   const float radius = SI.ssao_radius;
   // The radius in uv at the pixel's depth (camera space x / y move by uv x ViewSpaceParams.xy per metre of depth), and
   // in depth texels.
-  const float2 radius_texels = radius / max(depth, 1e-3f) / abs(view_space_params.xy) * depth_size;
+  const float2 radius_texels = radius / max(depth, 1.0003091e-3f) / abs(view_space_params.xy) * depth_size;
   const float radius_pixels = min(radius_texels.x, radius_texels.y);
   // The sky and pixels whose radius is under a texel: nothing to sample.
   if (!(depth < 0.999f * far) || radius_pixels < 1.f || !(dot(normal, normal) > 1e-6f)) return 0.f;

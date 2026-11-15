@@ -903,7 +903,7 @@ bool Evaluate(Frame* frame, bool replace) {
       || render_width > frame->source_width || render_height > frame->source_height
       || std::floor(render_width) != render_width || std::floor(render_height) != render_height
       || !std::isfinite(view_size[2]) || !std::isfinite(view_size[3])
-      || std::abs(view_size[2] * render_width - 1.f) > .001f || std::abs(view_size[3] * render_height - 1.f) > .001f
+      || std::abs(view_size[2] * render_width - 1.f) > 0.0010000911f || std::abs(view_size[3] * render_height - 1.f) > .001f
       || !std::isfinite(pixel_jitter[0]) || !std::isfinite(pixel_jitter[1])
       || std::abs(pixel_jitter[0]) > 1 || std::abs(pixel_jitter[1]) > 1) {
     SetStatus("Game TAA: unsupported temporal view layout", frame->generation);
@@ -2166,12 +2166,12 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       turned_on |= !effect->exchange(on) && on;
     }
     if (turned_on) talesofarise::rt_shadows::Retry();
-    talesofarise::rt_shadows::sun_softness.store(std::clamp(rays.sun_softness, 0.f, 3.f));
+    talesofarise::rt_shadows::sun_softness.store(std::clamp(rays.sun_softness, 0.f, 3.0004132f));
     talesofarise::rt_shadows::character_shadows.store(character_shadows_row != 0.f);
-    talesofarise::rt_shadows::ambient_range.store(std::clamp(rays.ambient_range, 0.5f, 10.f) * 100.f);
+    talesofarise::rt_shadows::ambient_range.store(std::clamp(rays.ambient_range, 0.5f, 10.001733f) * 100.f);
     talesofarise::rt_shadows::ambient_rays.store(std::clamp(rays.ambient_rays, 1u, 8u));
     talesofarise::rt_shadows::bounce_strength.store(std::clamp(light_bounce_strength, 0.f, 4.f));
-    talesofarise::rt_shadows::bounce_range.store(std::clamp(rays.light_bounce_range, 1.f, 50.f) * 100.f);
+    talesofarise::rt_shadows::bounce_range.store(std::clamp(rays.light_bounce_range, 1.f, 50.012573f) * 100.f);
     talesofarise::rt_shadows::bounce_rays.store(std::clamp(rays.light_bounce_rays, 1u, 8u));
     talesofarise::rt_shadows::path_bounces.store(rays.path_bounces);
     talesofarise::rt_shadows::path_samples.store(static_cast<uint32_t>(std::clamp(path_samples_row, 1.f, 4.f)));

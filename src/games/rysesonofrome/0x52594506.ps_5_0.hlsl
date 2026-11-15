@@ -59,7 +59,7 @@ float4 main(float4 position : SV_Position0, float4 uv : TEXCOORD0, float4 view_r
   const float game_length = PS_NearFarClipDist.y * depth * 1.5;
   // The game's fade of rays toward the camera (with its ray length): those never reach the far plane.
   const float facing = saturate(0.5 + dot(view_direction, reflected * game_length));
-  if (facing < 0.01 || depth == 1) return 0;
+  if (facing < 0.010001922 || depth == 1) return 0;
 
   const float3 origin = depth * view_ray.xyz + g_WorldViewPos.xyz;
   const float3 ray = reflected * (game_length * LengthScale);

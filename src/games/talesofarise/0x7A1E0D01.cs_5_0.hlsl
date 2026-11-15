@@ -85,7 +85,7 @@ void main(uint3 dispatch_id : SV_DispatchThreadID) {
                                  + current_ndc.y * ClipToPrevious[1]
                                  + camera_depth * ClipToPrevious[2]
                                  + ClipToPrevious[3];
-    if (all(isfinite(previous_clip)) && abs(previous_clip.w) > 1.e-6f) {
+    if (all(isfinite(previous_clip)) && abs(previous_clip.w) > 9.999947e-7f) {
       motion_pixels = (previous_clip.xy / previous_clip.w - current_ndc) * ndc_to_pixels;
     }
   }

@@ -32,7 +32,7 @@ float UeBitmaskAmbientOcclusion(float2 screen_position, float3 normal, uint2 pix
       UeAoDepth(depth_texture.SampleLevel(depth_sampler, screen_position * depth_scale + depth_offset, 0).x, device_z_to_depth);
   const float radius = 100.f * SI.ssao_radius;
   // The radius in screen units at the pixel's depth, and in depth texels.
-  const float2 radius_screen = radius * projection / max(depth, 1e-3f);
+  const float2 radius_screen = radius * projection / max(depth, 1.0002607e-3f);
   uint2 depth_size;
   depth_texture.GetDimensions(depth_size.x, depth_size.y);
   const float2 radius_texels = radius_screen * abs(depth_scale) * depth_size;

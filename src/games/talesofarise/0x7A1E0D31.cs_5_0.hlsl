@@ -31,7 +31,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3 base_colour = GBufferC.Load(pixel).rgb;
   float3 normal = encoded * 2.f - 1.f;
   const float normal_length = length(normal);
-  if (!(normal_length > 0.1f)) {
+  if (!(normal_length > 0.099986546f)) {
     DiffuseAlbedo[id.xy] = 0.f;
     SpecularAlbedo[id.xy] = 0.f;
     Normals[id.xy] = 0.f;

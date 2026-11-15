@@ -45,7 +45,7 @@ float4 main(float4 sv_position : SV_Position) : SV_Target {
       weights += weight;
     }
   }
-  if (weights <= 1e-4f) return 0.f;
+  if (weights <= 1.0001435e-4f) return 0.f;
   const float3 diffuse = gbuffer_c.Load(int3(pixel, 0)).rgb * (1.f - surface.r);
   return float4(light / weights * diffuse * settings.x, 0.f);
 }

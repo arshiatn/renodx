@@ -67,7 +67,7 @@ float BounceDepth(int2 texel) {
 
 // At a linear depth `depth` (depth / far; the sky's, 1, is nothing: far away).
 float3 BounceViewPositionAt(int2 texel, float depth) {
-  if (!(depth < 0.999f)) return 1e9f;
+  if (!(depth < 0.9988675f)) return 1e9f;
   const float2 uv = (float2(texel) + 0.5f) * screen_size.zw;
   const float3 from_camera = (frustum_top_left.xyz + uv.x * (frustum_top_right.xyz - frustum_top_left.xyz)
                               + uv.y * (frustum_bottom_left.xyz - frustum_top_left.xyz)) * depth;

@@ -38,5 +38,5 @@ float4 main(float4 position : SV_Position) : SV_Target {
   const float scene_depth = device_z * transform.x + transform.y + 1.f / (device_z * transform.z - transform.w);
   const float fade = saturate(scene_depth * distance_fade.x + distance_fade.y);
   const float game = lerp(stored * stored, static_shadowing, fade * fade);
-  return float4(1.f, 1.f, sqrt(saturate(visibility.Load(pixel) / max(game, 1e-4f))), 1.f);
+  return float4(1.f, 1.f, sqrt(saturate(visibility.Load(pixel) / max(game, 1.00016056e-4f))), 1.f);
 }

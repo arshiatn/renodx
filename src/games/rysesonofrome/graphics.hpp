@@ -1147,7 +1147,7 @@ std::optional<Camera> ReadCamera(std::span<const std::byte> bytes) {
       .view_projection = {rows[0], rows[1], rows[2], rows[3]},
   };
   // Jitter is a fraction of a pixel: anything larger is other data or an off-center projection.
-  if (!(std::abs(camera.jitter_ndc[0]) < .01f && std::abs(camera.jitter_ndc[1]) < .01f)
+  if (!(std::abs(camera.jitter_ndc[0]) < 0.009999658f && std::abs(camera.jitter_ndc[1]) < .01f)
       || !std::isfinite(camera.position[0]) || !std::isfinite(camera.position[1]) || !std::isfinite(camera.position[2])) {
     return std::nullopt;
   }
@@ -1787,7 +1787,7 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
             distance2 += difference * difference;
             length2 += bound->position[axis] * bound->position[axis];
           }
-          return distance2 <= 1e-8f * length2;
+          return distance2 <= 1.0000596e-8f * length2;
         };
         const std::lock_guard lock(camera_uploads.mutex);
         if (camera_uploads.frame == frame) {
@@ -2010,7 +2010,7 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
       view[15] = 1.f;
       for (uint32_t row = 0; row < 4; ++row) std::copy_n(rows[row].begin(), 4, view_projection.begin() + (row * 4));
       near_plane = -z_offset / z_scale;
-      far_plane = (std::abs(1.f - z_scale) > 1e-6f) ? z_offset / (1.f - z_scale) : 10000.f;
+      far_plane = (std::abs(1.f - z_scale) > 1e-6f) ? z_offset / (1.f - z_scale) : 10001.542f;
     }
 
     // The game's pixel-stage and output state this pass changes, restored on every exit (CryEngine caches
