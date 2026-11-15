@@ -43,6 +43,7 @@
 #include "./ray_tracing.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/draw_dispatch.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -1646,6 +1647,8 @@ bool AttachAddon() {
   }
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  // The fast draw dispatch with the resource upgrades' gate (the swap chain mod's view cloning registers them).
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
   reshade::register_event<reshade::addon_event::present>(OnPresentHotkeys);
   reshade::register_event<reshade::addon_event::init_pipeline>(OnInitPipelineHighlights);
 
@@ -1685,6 +1688,7 @@ void DetachAddon() {
     rysesonofrome::light_bounce::ray_traced_trace = nullptr;
     rysesonofrome::ray_tracing::Uninstall();
   }
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
