@@ -7,21 +7,25 @@ from (search its text). Tick here and on that line when ATN answers.
 - [ ] test the shared-step rows (torch from PT, GS sprite soldiers, tessellated rigid, own cut-off, Faster Smoke Build) from the README test lines, or let the bench take the numbers first? (from: "ATN's in-game tests of the new Experimental rows (README ...")
 - [ ] grass and banners into Rome Remastered's rays as Experimental rows (off)? (from: "ATN DECIDES: grass and banners into Rome Remastered's rays ...")
 - [ ] set the path-traced method sliders' Reset defaults to RT/PT's (paths 6.50 -> 2.82 ms), yes / no? (from: "Path-traced method sliders turned on from Reset default ...")
-- [ ] keep or remove the Lean ReSTIR Reuse row? (from: "Lean Reuse row: now saves only ~0.06 ms (RT_PROFILE) / 0.39 ...")
+- [ ] keep or remove the Lean ReSTIR Reuse row? Bench: Lean saves 0.09-0.16 ms more in game. (from: "Lean Reuse row: now saves only ~0.06 ms (RT_PROFILE) / 0.39 ...")
 - [ ] in game, do SDR first start / SDR preset / SDR output look right in Troy, WH2, Rome Remastered, Shogun 2? (from: "In game: SDR first start, SDR preset, SDR output for Troy ...")
 - [ ] end PID 35256 and delete page_dump_ry_rys1.exe / page_dump_ryd_rys1.exe in tools/tw/page_dump? (from: "A page_dump_ryd_rys1.exe (PID 35256) is stuck in ...")
-- [ ] Skip the Game's Shadow Map Work: let the end bench take the numbers (Time Each Pass, PresentMon) and you only check cut-outs / unit shadows? (from: "ATN tests (README lines): Skip the Game's Shadow Map Work ...")
+- [ ] Skip the Game's Shadow Map Work: let the end bench take the numbers (Time Each Pass, PresentMon) and you only check cut-outs / unit shadows? Bench done: CPU busy -1.8 / -2.3 ms, no fps change; only your look check left. (from: "ATN tests (README lines): Skip the Game's Shadow Map Work ...")
 - [ ] allow data runs for unit mesh LOD part counts and one WH3 stack capture for the x64 shadow-pass skip (with the x64 Faster Render Lists WPR runs)? (from: "ATN DECIDES (data runs): mesh LOD part counts; the x64 ...")
 - [ ] (when sending heapfix package) may we patch the x87 block over heapfix's bytes (+0x17f6515), and what about his disabled prefetch site? (from: "Author packages (tools/tw/testbin/cpu4_heapfix/ ... (the heapfix-package question merged there)")
 - [ ] Faster Render Lists + Rome II Skip the Shadow Maps: bench numbers enough, or do you want to look in game? (from: "ATN tests: Faster Render Lists off / on in cpl2's view ...")
 - [ ] one cascade instead of two under Rays Replace (after your Shadows Medium A/B), and which grass settings note text? (from: "ATN DECIDES: one cascade instead of two (after ATN's ...")
 - [ ] do swaying grass shadows still flicker with helper112 + RR? (if yes: Swaying Shadows Range 50 / Off-Screen Sway Off / RR off A/B) (from: "NEXT BATCH: swaying grass shadows still flicker "a bit" ...")
+- [ ] Batched Unit Capture on by default? (bit-exact; bench: -1 to -2 ms a frame, +1.2 fps in both views) (from: "ATN DECIDES: Batched Unit Capture (RayTracedBatchedUnits) on by default ...")
+- [ ] g2b trunc8 (8-bit cluster truncation, -0.2 ms, a look change): try it? (from: "ATN DECIDES: g2b trunc8 ...")
+- [ ] GPU grass placement (phases 1-3): go ahead? (probe: the game's grass update 1.2 ms on the CPU at maxed grass vs 0.02 ms on the GPU, bit-exact) (from: "GRASS after the probe: ...")
 Also waiting on ATN, newer than the audit: "In game (ATN's list): new player HDR off -> SDR preset" (SDR first start ->
 HDR later, 24cdfb9c).
 
 ## OPEN (owners)
 Pointer index of every open box below (short title | owner, file order); the detailed line stays where it is.
 Rebuild it when boxes change; the boxes themselves are the record.
+
 
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
@@ -34,7 +38,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Path-traced method sliders turned on from Reset default much heavier than RT/PT ... | ATN
 - Author packages (tools/tw/testbin/cpu4_heapfix/: a_memfast_65_128, b_loopfetch_a ... | ATN (merged from "ATN, when sending the heapfix package: ask
 - Faster Render Lists for WH3 / Pharaoh / Shogun 2 (x64): equivalents FOUND (cpu5b ... | ATN DECIDES (data runs) Owner (audit 11-15): coordinator, af
-- GRASS after the probe: part-draw cull (vtable +0x10c), burn / grid writers (dump ... | next grass agent
+- GRASS after the probe: part-draw cull (vtable +0x10c), burn writers (the probe: ... | next grass agent
 - Thrones Grass Dump button: only when its grass port starts. Owner: that round | that round
 - Lean Reuse row: now saves only ~0.06 ms (RT_PROFILE) / 0.39 ms reuse (Nsight bas ... | ATN, then the ReSTIR follow-up)
 - U2 step 3 (own light reservoir); record at bounce size at Half (VRAM); f16 relat ... | next ReSTIR round
@@ -75,7 +79,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - +265 MB VRAM for the bounce-size ReSTIR record. Owner: next ReSTIR round | next ReSTIR round
 - Shogun 2 terrain_detail not restored at detach (minor). Owner: next Shogun 2 rou ... | next Shogun 2 round
 - talesofarise_dlss/frame_generation.hpp detours have no uninstall. Owner: next UE ... | next UE round
-- END BENCH PART 2 (end_of_batch_1115_run2.ps1: g2a_torch, g2a_shadow, g2b_cluster ... | coordinator
+- ATN DECIDES: Batched Unit Capture (RayTracedBatchedUnits) on by default (bit-exa ... | ATN
+- ATN DECIDES: g2b trunc8 (8-bit cluster truncation: -0.2 ms more cluster build; a ... | ATN
 - In game (ATN's list): migration keeps the old DLSS values (log line once); no re ... | ATN (in game)
 - Port RayTracedBatchedUnits + RayTracedUnitsRange to Shogun 2 (SHARED STEP, after ... | GPU round after the install
 - Cosmetic: moved files keep "[Shogun 2 DLSS]" log tags; HLSL comments "(DLSS addo ... | coordinator, release round
@@ -85,15 +90,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN 21:2x: ONE Constantinople bench after ALL CPU and GPU rounds of this batch ( ... | coordinator, before the install
 - 128 torch lights' cost at night / burning city / WH3 / Pharaoh: a variant in the ... | coordinator, end-of-batch bench (torch-128 night / burning-c
 - Rarer Objects needs a view with siege towers or ships (bench scene choice) Owner ... | coordinator, end-of-batch bench
-- GRASS: one Grass Dump from a real battle = bench probe variants/grass_dump.json ... | coordinator, end-of-batch bench
-- g2b_ bench variants g2b_clusters.json (g2b-base / g2b-blas / g2b-trunc8, scene m ... | coordinator
-- g2a_ bench variants g2a_torch.json + g2a_shadow_skip.json (copy attila_pass_timi ... | coordinator
-- Bench variants g3b_reuse.json + g3b_round3b_plan.txt in the end-of-batch bench. ... | coordinator
 - After everything: one A/B of ATN's CPU set rule against an affinity rule of the ... | the bench, ATN's OK at the time
 - caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain ent ... | coordinator, after parity round 2 (shared script)
 - D9123DE1 + its MSAA / stencil builds (constant tone mapper "with_bloom_and_gamma ... | the next data run or ATN's trace
 - render_pass_behavior / shader_injection_behavior suites: ATN 02:2x OK to downloa ... | coordinator, tools pass
-- ATN tests (README lines): Skip the Game's Shadow Map Work off / on in cpl1's vie ... | ATN (look) / end bench (numbers)
+- ATN tests (README lines): Skip the Game's Shadow Map Work off / on in cpl1's vie ... | ATN (look)
 - ATN DECIDES (data runs): mesh LOD part counts; the x64 shadow-pass skip (WH3 fir ... | ATN
 - ATN tests: Faster Render Lists off / on in cpl2's view (PresentMon 60 s, log "Fa ... | ATN (look) / end bench (numbers)
 - Rome Remastered IB-rewrite trace (whether Feral rewrites index buffers, b6ec6be6 ... | the next Rome Remastered data run (coordinator)
@@ -478,7 +479,7 @@ heading text are in HANDOFF_ARCHIVE.md)
 - [x] ROUNDS MERGED ~00:40 (7e668fe7 grass phase 0, 610d6654 GPU 2B, 9afd0c8d GPU 2A; CPU 5b research only). Attila
   build32 built on the merged tree; tw_screen_space_shadows rerun on it (coordinator). Open items with owners:
   - (moved under "ONE Constantinople bench": GRASS: one Grass Dump from a real battle = bench probe varia...)
-  - [ ] GRASS after the probe: part-draw cull (vtable +0x10c), burn / grid writers (dump 1 vs 2), frustum entry +0x8c if
+  - [ ] GRASS after the probe: part-draw cull (vtable +0x10c), burn writers (the probe: only burn changes, 256-269 records in 35 s, grid static: a GPU pass needs the records' burn each update or the writer hooked), frustum entry +0x8c if
     needed, AMD / Intel self-test (phase 1). Owner: next grass agent; phases 1-3: ATN DECIDES after the probe
   - [x] test/tw_scrub_lods Bias() uses 0x37810101, the game's is 0x37810183 (one line, no shipped effect). Owner: GPU
     ROUND 3 DONE: 15111de1 (in dd44b703): Bias() = 0x37810183.
@@ -494,7 +495,7 @@ heading text are in HANDOFF_ARCHIVE.md)
     fg_bridge_test 0 failed, helper suites PASS x86 + amd64.
     - [x] merged into "Final verification" (was: "Rebuild every add-on using dlaa_bridge.h (x86 + amd64) on th...")
     - [ ] Lean Reuse row: now saves only ~0.06 ms (RT_PROFILE) / 0.39 ms reuse (Nsight base clocks), its look scored as
-      no change: keep or remove? Bench variant g3b_reuse.json gives the in-game number. Owner: ATN
+      no change: keep or remove? Bench variant g3b_reuse.json gives the in-game number. In game (END BENCH PART 2): Lean -0.09 (max) / -0.16 ms (atn) of the bounce on top of the record. Owner: ATN
       (merged from "(f) Lean = 3 neighbours + radius 6: 0.96 -> 0.85 ms, rRMSE 2...": (f) Lean = 3 neighbours + radius
       6: 0.96 -> 0.85 ms, rRMSE 2.18 -> 1.95 % (better): after ATN's Lean verdict (A3). Owner: ATN, then the ReSTIR
       follow-up)
@@ -502,7 +503,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       below, since Full without RR scores worse). Owner: next add-on round; ATN places the row Owner (audit 11-15): in progress, NOT merged: d22bc4a9 "Torch Shadows Follow the Camera row (Experimental, off)" on worktree-agent-a3aa080e775bbd8bf: that agent merges + builds, then ATN places the row.
     - [ ] U2 step 3 (own light reservoir); record at bounce size at Half (VRAM); f16 relative hits need a two-set record.
       Owner: next ReSTIR round
-    - [ ] Field-scene ray slowdown after merging unit clusters unexplained; fewer unit triangles or the trunc8 bench next.
+    - [ ] Field-scene ray slowdown after merging unit clusters unexplained; fewer unit triangles or the trunc8 bench next. trunc8 bench (END BENCH PART 2): cluster build 1.95 -> 1.58 ms, scene 3.68 -> 3.32 (look change, ATN DECIDES); the slowdown itself still unexplained.
       Owner: coordinator
     - [ ] A32: under GPU Trace without REPLAYABLE the helper commits ~838 MB/s for ~15 s (private 13 GB peak, system
       Committed 30 -> 48.5 GB): a test switch that serialises requests but keeps the shared fence, to split the two
@@ -809,8 +810,29 @@ heading text are in HANDOFF_ARCHIVE.md)
     backups): Attila v161, WH3 v60, Pharaoh v68, Rome II r4, Thrones r5, WH2 v51, Shogun 2 v74 (old _dlss add-on
     .retired-20261115_080042), Troy v55, WH1 r6, Rome Remastered v12, all with helper114; Agility SDK D3D12Core.dll
     copied to the 8 games that lacked it. Not run in game.
-  - [ ] END BENCH PART 2 (end_of_batch_1115_run2.ps1: g2a_torch, g2a_shadow, g2b_clusters, g4_capture, g3b_reuse,
-    grass_dump; ~46 starts, ~3 h) on the installed v161 + helper114, then the verdicts here. Owner: coordinator
+  - [x] END BENCH PART 2 (08:03-10:45, end_of_batch_1115_run2.log; installed v161 + helper114, each set's test add-ons /
+    helpers): 6 sets, 46 starts, all VALID, no CPU-set retry. Per set (tools/tw/bench/runs/<set>_<scene>_<time>/summary.txt):
+    - g2a_torch (atn, CPU-bound): Time Each Pass "lights" off 0.48 / base 2.79 / pick 1.12 ms, PresentMon GPU busy 17.3 /
+      19.5 / 17.85 ms: the torch pick (7fd71432, in v161) cuts the Torch and Fire Shadows row from +2.3 to +0.64 ms GPU
+      (harness said ~+0.2: the march stays). Frame: base = off; pick round 1 +2.8 ms (that start's CPU busy +2.7), round 2
+      +0.03: one noisy start, not the shader.
+    - g2a_shadow (atn, max): skipwork CPU busy -1.8 (atn) / -2.3 ms (max), skipmaps -1.3 / -1.7; GPU waits for the CPU
+      (g2a_tep_gaps.py) 3.8 -> 1.1 / 1.8 ms (atn), 5.4 -> 1.5 / 1.0 (max); frame unchanged (atn -0.25 / +0.01 ms, spread
+      0.30; max +0.0..+0.3, the control): the CPU time saved turns into CPU wait (another limit in these views). Row stays
+      as it is (Experimental); left: ATN's look check. max base "units" kind 9.54 / 9.62 ms.
+    - g2b_clusters (max): helper cluster build base 1.95 -> blas (g2b2, in helper114) 1.78 -> trunc8 1.58 ms, scene 3.68
+      -> 3.52 -> 3.32 ms; fps spread 0.74 ms: no fps verdict. trunc8 (8-bit truncation) is a look change: ATN DECIDES.
+    - g4_capture (max, atn): Batched Unit Capture on: median -2.06 / -1.93 ms (max), -1.14 / -1.01 (atn), fps +1.1 / +1.3
+      and +1.3 / +1.2, GPU busy -1.7 / -2.2 and -2.0 / -1.8 ms, "units" kind 9.68 / 9.49 -> 7.05 / 6.87 ms; better beyond
+      the spread in every round in both scenes; the proof line in the on starts only (3 / 1 unit draws' corners in one
+      pass). Bit-exact in the harness: a default-on candidate, ATN DECIDES.
+    - g3b_reuse (max, atn): the per-texel record (a833578d, in helper114): bounce 2.85 -> 2.63 ms (max), 2.76 -> 2.52
+      (atn), reuse 0.87 -> 0.61 / 1.07 -> 0.79; Lean on top: bounce -0.09 / -0.16 ms more (reuse 0.55 / 0.66). fps:
+      CPU-bound, base spread 0.01-0.05 ms, the per-round "worse" flags are noise. For ATN's Lean row decision.
+    - grass_dump (max, atn): the GRASS line under "ONE Constantinople bench" (grass_replay_N.txt / .json in the runs).
+    - [ ] ATN DECIDES: Batched Unit Capture (RayTracedBatchedUnits) on by default (bit-exact; -1 to -2 ms a frame in both
+      bench views). Owner: ATN
+    - [ ] ATN DECIDES: g2b trunc8 (8-bit cluster truncation: -0.2 ms more cluster build; a look change). Owner: ATN
   - [x] SHOGUN 2 ONE ADD-ON MERGED d4c82679 (s2m_): _dlss folded in (pages HDR & Effects / Graphics 1 of 2 / 2 of 2;
     shared twattila/settings_pages.hpp for the page helpers; fast dispatch; hdr_link / dlss_jitter / in-process FG
     shaders 0x7A1E0D40-42 dropped; red note + log while the old _dlss file sits in the folder; README tells players to
@@ -900,14 +922,14 @@ heading text are in HANDOFF_ARCHIVE.md)
     the spread: take that site out of CPU_CODE_SITES Owner: coordinator, end-of-batch bench.
   - [x] DONE 11-15 (END BENCH PART 1 cpu5: better median in 5 / 5 rounds): Attila's Faster Render Lists row (Experimental, site 3) was never benched: variant cpu5_render_lists.json (P vs
     P + FasterRenderLists) in the end-of-batch bench; check the runner's multi-key "set" syntax first. Owner: coordinator
-  - [ ] GRASS: one Grass Dump from a real battle = bench probe variants/grass_dump.json (scenes max, atn; it points at
+  - [x] DONE 11-15 (END BENCH PART 2 grass_dump on v161, replay + GPU on all 4 dumps: 1365 nodes, 363,404 records (6.2 MB, 6.9 padded), grid 1 MB; workers x87 0xa001f / MXCSR 0x1fa0; cell loop / DrawScrub bytes = the file past the hooks' jumps; DrawScrub bit-exact: atn 8,213 / 8,213 both dumps, max 57,288 and 57,344 of 57,366, the rest one burn step (1 / 255) newer in the game than the dumped record (burn written in battle); hook LOD = replay in all; rows = DrawScrub's part 3x4 (all 229,464 / 32,852), TEXCOORD4 = burn (+ bias), no part culled; draw camera = the scrub's; one part draw RVA 0x17f36a0 (45 parts); no LOD attachments; visits max 105 cells / 57,366 calls, atn 18 / 8,213; no-frustum mode 1 +94,648 / +7,624 parts; dump 1 vs 2: 256-269 records' burn changed (8 nodes), grid unchanged; the game's grass update 1.25 / 1.19 ms (max), 0.25 / 0.24 (atn) on the CPU vs the GPU's mode 0 0.020 / 0.011 ms (bit-exact to the replay), mode 1 0.042 / 0.012 ms): GRASS: one Grass Dump from a real battle = bench probe variants/grass_dump.json (scenes max, atn; it points at
     the grass worktree's build: repoint it at the merged build), then grass_replay.py on its files (12 points, design.md
     section 8). Owner: coordinator, end-of-batch bench
-  - [ ] g2b_ bench variants g2b_clusters.json (g2b-base / g2b-blas / g2b-trunc8, scene max): end-of-batch bench. g2b-trunc8
+  - [x] DONE 11-15 (END BENCH PART 2: blas 1.95 -> 1.78 ms cluster build, trunc8 1.58 (ATN DECIDES)): g2b_ bench variants g2b_clusters.json (g2b-base / g2b-blas / g2b-trunc8, scene max): end-of-batch bench. g2b-trunc8
     is a look change (8-bit truncation): fps only, ATN DECIDES. Owner: coordinator
-  - [ ] g2a_ bench variants g2a_torch.json + g2a_shadow_skip.json (copy attila_pass_timing.txt after each start, read with
+  - [x] DONE 11-15 (END BENCH PART 2: pick +2.3 -> +0.64 ms GPU; skipwork CPU busy -1.8 / -2.3 ms, fps unchanged): g2a_ bench variants g2a_torch.json + g2a_shadow_skip.json (copy attila_pass_timing.txt after each start, read with
     tools/tw/preset_audit/g2a_tep_gaps.py); their add-ons in testbin/g2a_bench. Owner: coordinator
-  - [ ] Bench variants g3b_reuse.json + g3b_round3b_plan.txt in the end-of-batch bench. Owner: coordinator
+  - [x] DONE 11-15 (END BENCH PART 2: record bounce -0.22 / -0.24 ms, Lean -0.09 / -0.16 more): Bench variants g3b_reuse.json + g3b_round3b_plan.txt in the end-of-batch bench. Owner: coordinator
   - [x] DONE 11-15 (superseded by g4_capture.json (part 2)): Bench variant g3a_capture.json (+ g3a_round3a_plan.txt; add-on testbin\g3a_bench\capture). Owner: coordinator
   - [ ] After everything: one A/B of ATN's CPU set rule against an affinity rule of the same 16 CPUs (ATN switches the
     rule; we measure). Owner: the bench, ATN's OK at the time
@@ -1029,7 +1051,7 @@ heading text are in HANDOFF_ARCHIVE.md)
     - DROPPED with numbers: U3 heapfix-aware (heapfix's form already drops both fldcw; <= 0.1 ms on heapfix's bytes); U5
       (heapfix's loopfetch has a prefetch site there, disabled by its author: a note for the author package)
     - [ ] ATN tests (README lines): Skip the Game's Shadow Map Work off / on in cpl1's view, Time Each Pass x3 + PresentMon
-      30 s, cut-outs and unit shadows; G1 grass maxed against the previous build Owner: ATN (look) / end bench (numbers).
+      30 s, cut-outs and unit shadows; G1 grass maxed against the previous build. Numbers (END BENCH PART 2 g2a_shadow): CPU busy -1.8 / -2.3 ms, frame unchanged. Owner: ATN (look).
   - [x] CPU PERF ROUND 3 MERGED 438c060f (one conflict: Attila's torch row floats, moved to graphics_page by the shared
     step, dropped; x86 three + 8 x64 TW add-ons rebuilt after the merge): the 15 x64 consumers built (5e1aa6ee), Thrones'
     page +1 row; Faster Render Lists (Experimental, off, Attila + Thrones: the push writes its shared "has items" byte only
