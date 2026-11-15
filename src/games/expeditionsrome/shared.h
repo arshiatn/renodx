@@ -57,6 +57,8 @@ struct ShaderInjectData {
   float v35_highlight_saturation;
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
+
+  float ssao_auto_thickness;  // GT-VBAO: 1 each occluder as thick as it is wide (ssao_thickness the least)
 };
 
 #define SI  shader_injection

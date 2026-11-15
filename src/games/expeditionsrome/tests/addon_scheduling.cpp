@@ -78,11 +78,15 @@ int main() {
     state.claimed_frame = UINT64_MAX;
     state.completed = 0;
     Context command = {};
-    for (const uint32_t hash : {0x29C140B2u, 0x201C3D3Du, 0xCCB4A156u, 0xD8C07EEEu, 0x4B43383Du, 0xB266ECB6u}) {
+    for (const uint32_t hash : {0x29C140B2u, 0x201C3D3Du, 0xCCB4A156u, 0xD8C07EEEu, 0x4B43383Du, 0xB266ECB6u,
+                                0xE91209D0u, 0x71C87DBCu, 0x90BED7D1u, 0xBC7F1717u, 0x0BFD441Fu, 0x2D45E8A9u,
+                                0x38C84ED8u, 0x43330B16u, 0x7E46ACA4u, 0x87970FD3u}) {
       expect(std::ranges::find(TEMPORAL_SHADERS, hash) != TEMPORAL_SHADERS.end(),
-             "production registration recognizes all six temporal compute contracts");
+             "production registration recognizes all sixteen temporal compute contracts");
     }
-    expect(TEMPORAL_SHADERS.size() == 6
+    expect(HALF_COPY_TEMPORAL_SHADERS.size() == 6 && HALF_COPY_TEMPORAL_SHADERS.front() == 0x0BFD441Fu,
+           "the half-size-copy permutations keep their stock pass");
+    expect(TEMPORAL_SHADERS.size() == 16
                && std::ranges::find(TEMPORAL_SHADERS, 0xC0DEC0DEu) == TEMPORAL_SHADERS.end(),
            "production temporal mapping keeps unknown shader hashes excluded");
 

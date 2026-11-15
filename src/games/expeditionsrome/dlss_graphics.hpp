@@ -106,9 +106,17 @@ constexpr std::array<ModeSettings, 8> AA_MODES = {{
 static std::atomic<uint32_t> buffer_multiple = 4;
 
 // UE reuses 29C140B2/201C3D3D with reduced inputs at high screen percentages.
-// A shader hash identifies the compute contract, not the active render scale.
-constexpr std::array<uint32_t, 6> TEMPORAL_SHADERS = {
-    0x29C140B2u, 0x201C3D3Du, 0xCCB4A156u, 0xD8C07EEEu, 0x4B43383Du, 0xB266ECB6u};
+// A shader hash identifies the compute contract, not the active render scale. From the seventh on (seen in the shader
+// dump only, never in a frame) they read and write what the first six do: four without the upsample filter's kernel width
+// (E91209D0 with it), then six that also store a half-size copy of their result in u1 (Unreal's TAA downsampling, motion
+// blur off with compute post-processing): their stock pass always runs, its u1 kept, and the upscaler is merged over its
+// u0 (skipping it would leave u1 old). Not here: the depth of field's four temporal passes (census:
+// tools/nontw/expeditions/census/census_taa.txt).
+constexpr std::array<uint32_t, 16> TEMPORAL_SHADERS = {
+    0x29C140B2u, 0x201C3D3Du, 0xCCB4A156u, 0xD8C07EEEu, 0x4B43383Du, 0xB266ECB6u,
+    0xE91209D0u, 0x71C87DBCu, 0x90BED7D1u, 0xBC7F1717u,
+    0x0BFD441Fu, 0x2D45E8A9u, 0x38C84ED8u, 0x43330B16u, 0x7E46ACA4u, 0x87970FD3u};
+constexpr auto HALF_COPY_TEMPORAL_SHADERS = std::span(TEMPORAL_SHADERS).subspan(10);
 
 struct Texture {
   ComPtr<ID3D11Texture2D> resource;
@@ -1140,7 +1148,8 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
   frame->measuring = overlay != 0 && frame->frame + 1 - overlay < 120;
   frame->sample_cpu = frame->measuring && runtime.last_frame != UINT64_MAX;
   if (frame->sample_cpu) runtime.performance.Begin(frame->context.Get());
-  if (frame->from_mirror && replace_taa.load()) {
+  const bool half_copy = std::ranges::find(HALF_COPY_TEMPORAL_SHADERS, frame->temporal_shader_hash) != HALF_COPY_TEMPORAL_SHADERS.end();
+  if (frame->from_mirror && replace_taa.load() && !half_copy) {
     // Constants are known before the dispatch: the upscaler replaces the stock pass (~0 ms "stock TAA").
     runtime.performance.Mark(frame->context.Get());
     const bool replaced = Evaluate(frame.get(), true);
@@ -1246,7 +1255,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     ray_traced_bounce_strength = light_bounce_strength;
     // What the bridge serves this frame (upscaling.hpp); Ray Reconstruction with a ray-traced effect only.
     const auto& rays = ray_tracing_settings;
-    const bool any_rays = ray_tracing_installed && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections);
+    const bool any_rays = ray_tracing_installed
+                          && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.specular_occlusion);
     std::array<uint32_t, 2> size;
     {
       const std::shared_lock lock(state.mutex);
@@ -1254,8 +1264,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     }
     talesofarise::upscaling::SetUse({
         .ray_tracing = ray_tracing_installed,
-        .guides = ray_tracing_installed && (rays.reflections || rays.path_tracing),
-        .reflections = ray_tracing_installed && rays.reflections,
+        .guides = ray_tracing_installed && (rays.reflections || rays.specular_occlusion || rays.path_tracing),
+        .reflections = ray_tracing_installed && (rays.reflections || rays.specular_occlusion),
         .upscaler = upscaling ? requested_upscaler.load() + 1 : 0u,
         .ray_reconstruction = (any_rays && aa.ray_reconstruction) ? aa.ray_reconstruction_preset + 1 : 0u,
         .frame_format = twattila::frame_generation::Format(),
@@ -1735,10 +1745,9 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
   // the shader anti-aliasing (TW's) or object motion (Unreal's own motion vectors).
   twattila::feature_settings::AppendAa(settings, &aa_sliders, true, true);
   erase({"AntiAliasingQuality", "AntiAliasingExtraSharpness", "AntiAliasingTaaStrength", "AntiAliasingSharpening", "AntiAliasingObjectMotion"});
-  // The rays (ray_tracing.hpp: sun shadows, AO, the light bounce and its paths, reflections); not what this host doesn't
-  // apply (specular occlusion; the light bounce's resolution: its own half-size texels).
+  // The rays (ray_tracing.hpp: sun shadows, AO, the light bounce at its resolution and its paths, reflections, specular
+  // occlusion).
   twattila::rt_scene::AppendSettings(settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION, &light_bounce_strength);
-  erase({"RayTracedSpecularOcclusion", "RayTracedLightBounceResolution"});
   for (Setting* setting : *settings) {
     // The former overlay's AO range; leaf micromaps (the helper's opacity micromaps over the game's cut-out masks) as the
     // former add-on ran: off (no run of this game has shown them yet).
@@ -2051,7 +2060,7 @@ inline bool Install() {
   // Installed when an effect is on at launch (restart to turn the first one on) and the helper is there to trace it.
   ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled()
                           && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.light_bounce != 0.f
-                              || rt_sliders.reflections != 0.f);
+                              || rt_sliders.reflections != 0.f || rt_sliders.specular_occlusion != 0.f);
   if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Install();
   renodx::utils::command_action::Register(expeditionsrome::dlss::contact_shadows::OnLightRectangle, {
                                                                                                         .shader_hash = expeditionsrome::dlss::contact_shadows::LIGHT_RECTANGLE_SHADER,
@@ -2117,7 +2126,7 @@ inline bool Install() {
   talesofarise::dlss::constants::log_tag = "[Rome AA constants]";
   talesofarise::dlss::constants::Use(DLL_PROCESS_ATTACH);
   attached = true;
-  renodx::utils::log::i("[Rome DLAA] The helper's DLAA / DLSS, FSR and XeSS at the game's TAA (all six Ultra/Fast compute hashes; exact/4/8-pixel allocations), frame generation, Ray Reconstruction; live render scale; graphics settings.");
+  renodx::utils::log::i("[Rome DLAA] The helper's DLAA / DLSS, FSR and XeSS at the game's TAA (sixteen Ultra/Fast compute hashes; exact/4/8-pixel allocations), frame generation, Ray Reconstruction; live render scale; graphics settings.");
   return true;
 }
 

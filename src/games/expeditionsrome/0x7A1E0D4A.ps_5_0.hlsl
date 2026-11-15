@@ -7,7 +7,7 @@
 // to the scene colour right after the sun's deferred light draw (additive blend, RGB). Each lit render pixel gathers
 // the resolved bounce texels around it (3 x 3, weighted by distance, by how near their surface lies to its plane and by
 // their normals), times its diffuse colour (base colour x (1 - metallic)) and the strength.
-Texture2D<float4> resolved : register(t0);            // the light arriving per bounce texel (2 x 2 render pixels)
+Texture2D<float4> resolved : register(t0);            // the light arriving per bounce texel (scale x scale render pixels)
 Texture2D<float4> resolved_positions : register(t1);  // their surfaces (metres; w: distance, 0 the sky)
 Texture2D<float4> positions : register(t2);           // the render pixels' (the helper's)
 Texture2D<float4> gbuffer_a : register(t3);           // world normal x 0.5 + 0.5
@@ -16,7 +16,7 @@ Texture2D<float4> gbuffer_c : register(t5);           // base colour (linear)
 
 cbuffer apply : register(b0) {
   uint4 sizes;      // xy the bounce texels, zw the render size
-  float4 settings;  // x the strength
+  float4 settings;  // x the strength, y the render pixels per bounce texel each way (1, 2 or 4)
 };
 
 float4 main(float4 sv_position : SV_Position) : SV_Target {
@@ -25,7 +25,8 @@ float4 main(float4 sv_position : SV_Position) : SV_Target {
   const float4 position = positions.Load(int3(pixel, 0));
   if ((uint(round(surface.a * 255.f)) & 15u) == 0u || position.w <= 0.f) return 0.f;
   const float3 normal = normalize(gbuffer_a.Load(int3(pixel, 0)).xyz * 2.f - 1.f);
-  const float2 centre = (float2(pixel) + .5f) * .5f - .5f;
+  const int scale = int(settings.y);
+  const float2 centre = (float2(pixel) + .5f) / float(scale) - .5f;
   const int2 base = int2(round(centre));
   float3 light = 0.f;
   float weights = 0.f;
@@ -39,7 +40,7 @@ float4 main(float4 sv_position : SV_Position) : SV_Target {
       if (there.w <= 0.f) continue;
       const float2 offset = float2(at) - centre;
       const float plane = abs(dot(normal, there.xyz - position.xyz)) / max(.01f * position.w, .02f);
-      const float3 there_normal = gbuffer_a.Load(int3(min(at * 2 + 1, int2(sizes.zw) - 1), 0)).xyz * 2.f - 1.f;
+      const float3 there_normal = gbuffer_a.Load(int3(min(at * scale + (scale >> 1), int2(sizes.zw) - 1), 0)).xyz * 2.f - 1.f;
       const float weight = exp(-dot(offset, offset)) * exp(-plane * plane) * pow(saturate(dot(normal, normalize(there_normal))), 8.f);
       light += resolved.Load(int3(at, 0)).rgb * weight;
       weights += weight;
