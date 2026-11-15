@@ -9,6 +9,7 @@
 // 2. Extended (3) and PsychoV35 (4) run once on the scene: grey 0.18 lands on the game's own mid gray (Hable(0.18) /
 //    Hable(W) for the live A / B / D) within 1%; the grey ramp never gets darker; finite; BT.2020 within Peak.
 //    Control (must fail): today's mode 1 (UC2 Extended + UpgradeToneMap + PsychoV30 on its result).
+//    Output SDR (2b): both modes within BT.709 0 - 1, grey still on the game's mid gray.
 // 3. Extended: equal to the game's Hable below its pivot (within 1e-3); fire (1, 0.4, 0.1) turns yellow / white above 1
 //    (G / R rises toward 1 as SDR's clip does), the per-channel shoulder.
 // 4. The grade alone (grade.hlsl, GradeAfterCurve): the stock's grade below 1 (ColorMatrix identity, saturation 1.97 and
@@ -222,9 +223,10 @@ static Globals MakeGlobals(const Atmosphere& atmosphere, float saturation, bool 
   return globals;
 }
 
-static divinity::ShaderInjectData Injection(float mode, float peak_nits, float hue_clip) {
+// Output: 0 HDR10 (the proxy's HDR path), 2 SDR.
+static divinity::ShaderInjectData Injection(float mode, float peak_nits, float hue_clip, float output = 0.f) {
   return {
-      .peak_white_nits = peak_nits, .diffuse_white_nits = 203.f, .graphics_white_nits = 203.f, .swap_chain_encoding = 0.f,
+      .peak_white_nits = peak_nits, .diffuse_white_nits = 203.f, .graphics_white_nits = 203.f, .swap_chain_encoding = output,
       .tonemap_type = mode, .vignette = 1.f, .bloom = 1.f, .godrays = 1.f, .ui = 1.f, .firehighlightmultiplier = 0.5f,
       .candlehighlightmultiplier = 1.f, .candlehighlightmultiplierpsycho = 1.f, .player_light_intensity = 1.f,
       .local_light_intensity = 1.f, .exposure = 1.f, .highlights = 1.f, .shadows = 1.f, .cone_response_exponent = 1.f,
@@ -391,6 +393,27 @@ int main(int argc, char** argv) {
     CHECK(extended.mid_gray && extended.monotonic && extended.finite && extended.within_peak && extended.hable_below_pivot);
     CHECK(psycho35.mid_gray && psycho35.monotonic && psycho35.finite && psycho35.within_peak);
     CHECK(!(control.mid_gray && control.hable_below_pivot));
+  }
+
+  // 2b. Output SDR: both modes fitted into BT.709 within 1 (Peak 1), grey still on the game's mid gray, finite.
+  for (const float mode : {3.f, 4.f}) {
+    bool inside = true;
+    bool mid_gray = true;
+    for (const Atmosphere& atmosphere : ATMOSPHERES) {
+      // The game's grade itself can leave BT.709 (a saturation matrix past 1: the stock's UNORM target, here the proxy's
+      // SDR encode, clips it): the curves alone are checked.
+      const auto plain = Draw(addon.Get(), MakeGlobals(atmosphere, 1.f, false), Injection(mode, 1000.f, 0.7f, 2.f));
+      for (const Float4& texel : plain) {
+        const Float3 linear = Linear(texel);
+        for (const float channel : linear) {
+          if (!std::isfinite(channel) || channel < -2e-3f || channel > 1.002f) inside = false;
+        }
+      }
+      const double expected = Hable(0.18, atmosphere);
+      if (std::abs(Luminance(Linear(At(plain, GREY, GREY_ROW))) - expected) > 0.01 * expected) mid_gray = false;
+    }
+    std::printf("2b. Output SDR, mode %.0f: BT.709 within 0 - 1 %d, grey on mid gray %d\n", mode, inside, mid_gray);
+    CHECK(inside && mid_gray);
   }
 
   // 3. Extended's fire: G / R rises toward 1 above the clip.

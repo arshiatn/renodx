@@ -26,7 +26,12 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/credits.hpp"
+#include "../twattila/device_loss.hpp"
+#include "../twattila/draw_dispatch.hpp"
+#include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
@@ -35,7 +40,7 @@ const std::string build_time = __TIME__;
 
 namespace {
 
-ShaderInjectData shader_injection = {.tonemap_type = TONEMAP_PSYCHO, .purity_scale = 1.f};
+ShaderInjectData shader_injection = {.tonemap_type = TONEMAP_EXTENDED, .purity_scale = 1.f};
 float current_settings_mode = 0.f;
 
 bool IsAdvancedSettings() {
@@ -83,7 +88,46 @@ float NormalizeTonemapMode(float value) {
       || value == TONEMAP_PSYCHO35) {
     return value;
   }
-  return TONEMAP_PSYCHO;
+  return TONEMAP_EXTENDED;
+}
+
+// Peak / Paper White / UI, Settings Mode and output are kept.
+void ApplyResetPreset() {
+  renodx::utils::settings::UpdateSettings({
+      {"tonemap_type", TONEMAP_EXTENDED},
+      {"ext_hue_clip", HUE_CLIP_DEFAULT},
+      {"exposure", 1.f},
+      {"highlights", 1.f},
+      {"purity_scale", 1.f},
+      {"shadows", 1.f},
+      {"contrast", 1.f},
+      {"cone_response_exponent", 1.f},
+      {"firehighlightmultiplier", 0.5f},
+      {"candlehighlightmultiplier", 1.f},
+      {"legacy_brazier_boost_enabled", 0.f},
+      {"candlehighlightmultiplierpsycho", 1.f},
+      {"bloom", 1.f},
+      {"vignette", 1.f},
+      {"godrays", 1.f},
+      {"ui", 1.f},
+      {"playerLightIntensity", 1.f},
+      {"playerLightRadius", 1.f},
+  });
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+}
+
+// The game's own picture. The SDR button also sets Output SDR; a first start on a display without HDR gets it through
+// Output Auto.
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemap_type", TONEMAP_SDR}});
+}
+
+// The Recommended button (PsychoV35, the bloom of ATN's earlier Recommended); Output Auto takes it once when Windows HDR
+// comes on after a first start without HDR.
+void ApplyRecommendedPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemap_type", TONEMAP_PSYCHO35}, {"bloom", 0.25f}});
 }
 
 // Frame capture //////////////////////////////////////////////////////////////////////////
@@ -556,74 +600,47 @@ renodx::utils::settings::Settings settings = {
     // Presets //////////////////////////////////////////////////////////////////////////////////////
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-        .label = "Default",
+        .label = "Recommended",
         .section = "Presets",
         .group = "preset-buttons-0",
+        .tooltip = "HDR (PsychoV35) with less bloom.\nPeak, Paper White, UI, Settings Mode and Output are kept.",
+        .on_change = []() { ApplyRecommendedPreset(); },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "Reset",
+        .section = "Presets",
+        .group = "preset-buttons-0",
+        .tooltip = "Every image setting at its default (HDR Extended).\nPeak, Paper White, UI, Settings Mode and Output are kept.",
+        .on_change = []() { ApplyResetPreset(); },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .section = "Presets",
+        .group = "preset-buttons-0",
+        .tooltip = "The game's own picture and Output SDR (restart the game if it was HDR).\n"
+                   "Peak, Paper White, UI and Settings Mode are kept.",
+        .tint = 0xFFC107,
         .on_change = []() {
-            // General
-            renodx::utils::settings::UpdateSetting("tonemap_type", TONEMAP_PSYCHO);
-
-            // Psycho V30
-            renodx::utils::settings::UpdateSetting("exposure", 1.00f);
-            renodx::utils::settings::UpdateSetting("highlights", 1.00f);
-            renodx::utils::settings::UpdateSetting("purity_scale", 1.00f);
-            renodx::utils::settings::UpdateSetting("shadows", 1.00f);
-            renodx::utils::settings::UpdateSetting("contrast", 1.00f);
-            renodx::utils::settings::UpdateSetting("cone_response_exponent", 1.00f);
-
-            // Pragmap controls
-            renodx::utils::settings::UpdateSetting("firehighlightmultiplier", 0.50f);
-            renodx::utils::settings::UpdateSetting("candlehighlightmultiplier", 1.00f);
-
-            // Extra for Psycho preset only
-            renodx::utils::settings::UpdateSetting("legacy_brazier_boost_enabled", 0.f);
-            renodx::utils::settings::UpdateSetting("candlehighlightmultiplierpsycho", 1.00f);
-
-            // Extra
-            renodx::utils::settings::UpdateSetting("bloom", 1.00f);
-            renodx::utils::settings::UpdateSetting("vignette", 1.00f);
-            renodx::utils::settings::UpdateSetting("godrays", 1.00f);
-
-            // Game-Specific Settings
-            renodx::utils::settings::UpdateSetting("ui", 1.00f);
-            renodx::utils::settings::UpdateSetting("playerLightIntensity", 1.00f);
-            renodx::utils::settings::UpdateSetting("playerLightRadius", 1.00f);
+          ApplySdrPreset();
+          renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", static_cast<float>(twattila::output_encoding::SDR)}});
         },
     },
-        new renodx::utils::settings::Setting{
+    new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-        .label = "Recommended Setting",
+        .label = "PsychoV30 (earlier Recommended)",
         .section = "Presets",
-        .group = "preset-buttons-0",
+        .group = "preset-buttons-1",
+        .tooltip = "HDR (UC2 Extended / PsychoV30) with less bloom, the brazier and candle boosts.",
         .on_change = []() {
-            // General
-            renodx::utils::settings::UpdateSetting("tonemap_type", TONEMAP_PSYCHO);
-
-            // Psycho V30
-            renodx::utils::settings::UpdateSetting("exposure", 1.00f);
-            renodx::utils::settings::UpdateSetting("highlights", 1.00f);
-            renodx::utils::settings::UpdateSetting("purity_scale", 1.00f);
-            renodx::utils::settings::UpdateSetting("shadows", 1.00f);
-            renodx::utils::settings::UpdateSetting("contrast", 1.00f);
-            renodx::utils::settings::UpdateSetting("cone_response_exponent", 1.00f);
-
-            // Pragmap controls
-            renodx::utils::settings::UpdateSetting("firehighlightmultiplier", 0.50f);
-            renodx::utils::settings::UpdateSetting("candlehighlightmultiplier", 1.00f);
-
-            // Extra for Psycho preset only
-            renodx::utils::settings::UpdateSetting("legacy_brazier_boost_enabled", 2.f);
-            renodx::utils::settings::UpdateSetting("candlehighlightmultiplierpsycho", 2.5f);
-
-            // Extra
-            renodx::utils::settings::UpdateSetting("bloom", 0.25f);
-            renodx::utils::settings::UpdateSetting("vignette", 1.00f);
-            renodx::utils::settings::UpdateSetting("godrays", 1.00f);
-
-            // Game-Specific Settings
-            renodx::utils::settings::UpdateSetting("ui", 1.00f);
-            renodx::utils::settings::UpdateSetting("playerLightIntensity", 1.00f);
-            renodx::utils::settings::UpdateSetting("playerLightRadius", 1.00f);
+          ApplyResetPreset();
+          renodx::utils::settings::UpdateSettings({
+              {"tonemap_type", TONEMAP_PSYCHO},
+              {"legacy_brazier_boost_enabled", 2.f},
+              {"candlehighlightmultiplierpsycho", 2.5f},
+              {"bloom", 0.25f},
+          });
         },
     },
     // PsychoV30 //////////////////////////////////////////////////////////////////////////////////////
@@ -840,11 +857,7 @@ renodx::utils::settings::Settings settings = {
 
 };
 
-bool initialized = false;
-
-}  // namespace
-
-// DllMain //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+bool configured = false;
 
 void OnInitSwapchain(reshade::api::swapchain* swapchain, bool resize) {
   auto peak = renodx::utils::swapchain::GetPeakNits(swapchain);
@@ -862,6 +875,114 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool resize) {
   }
 }
 
+void ConfigureAddon() {
+  if (configured) return;
+
+  // Shaders cb
+  renodx::mods::shader::expected_constant_buffer_space = 50;
+  renodx::mods::shader::expected_constant_buffer_index = 10;
+
+  // Swapchain cb
+  renodx::mods::swapchain::expected_constant_buffer_index = 10;
+  renodx::mods::swapchain::expected_constant_buffer_space = 50;
+
+  // Swapchain upgrade settings
+  renodx::mods::swapchain::use_resource_cloning = true;
+  renodx::mods::swapchain::force_borderless = false;
+  renodx::mods::swapchain::prevent_full_screen = true;
+
+  // Proxy Shaders
+  renodx::mods::swapchain::swap_chain_proxy_shaders = {
+      {
+          reshade::api::device_api::d3d11,
+          {
+              .vertex_shader = __swap_chain_proxy_vertex_shader_dx11,
+              .pixel_shader = __swap_chain_proxy_pixel_shader_dx11,
+          },
+      },
+  };
+
+  // Resource Upgrades
+  renodx::mods::swapchain::resource_upgrade_infos.push_back({
+      .old_format = reshade::api::format::r8g8b8a8_unorm,
+      .new_format = reshade::api::format::r16g16b16a16_float,
+      .ignore_size = true,
+      .use_resource_view_cloning = true,
+      .use_resource_view_hot_swap = true,
+      .aspect_ratio = renodx::mods::swapchain::SwapChainUpgradeTarget::ANY,
+      .usage_include = reshade::api::resource_usage::render_target,
+  });
+
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "SwapChainEncoding",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = static_cast<float>(twattila::output_encoding::AUTO),
+        .label = "Output",
+        .section = "Output (Restart Required)",
+        .tooltip = "Auto: scRGB with Windows HDR on, else SDR (default).\n"
+                   "HDR10: 10-bit. scRGB: 16-bit. SDR: displays without HDR.",
+        .labels = {"HDR10", "scRGB", "SDR", "Auto"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    // Decided at each new swap chain (device_loss's create_swapchain, before the swap chain mod's), Auto by Windows HDR
+    // for the game's display.
+    twattila::output_encoding::Configure({
+        .shader_encoding = &shader_injection.swap_chain_encoding,
+        .setting = static_cast<int>(setting->GetValue()),
+        .first_start_without_hdr = &ApplySdrPreset,
+        .recommended_preset = &ApplyRecommendedPreset,
+        .log_name = "[Divinity]",
+    });
+    // A first start is one without a saved Rendering Mode: this add-on's key is tonemap_type (Configure looks for the
+    // other add-ons' tonemapper).
+    float saved_mode = 0.f;
+    twattila::output_encoding::first_start =
+        !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemap_type", saved_mode);
+    settings.push_back(setting);
+  }
+
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "RenoDX by ShortFuse. PsychoV30, PsychoV35 and Hue Clip Emulation: Musa's. UC2 Extended by Musa and "
+                   "DabVeed. Divinity: Original Sin Enhanced Edition by ATN.",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "Build Date: " + build_date + " - " + build_time,
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "ATN's Ko-fi",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0xFF5A16,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://ko-fi.com/atnthegreat"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
+      },
+  });
+
+  twattila::psycho35::InsertBefore(&settings, "PsychoV30",
+                                   twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
+
+  configured = true;
+}
+
+}  // namespace
+
+// DllMain //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Divinity: Original Sin Enhanced Edition by ATN";
 
@@ -869,109 +990,36 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
-
-      if (!initialized) {
-        // Shaders cb
-        renodx::mods::shader::expected_constant_buffer_space = 50;
-        renodx::mods::shader::expected_constant_buffer_index = 10;
-
-        // Swapchain cb
-        renodx::mods::swapchain::expected_constant_buffer_index = 10;
-        renodx::mods::swapchain::expected_constant_buffer_space = 50;
-        
-        // Swapchain upgrade settings
-        renodx::mods::swapchain::use_resource_cloning = true;
-        renodx::mods::swapchain::force_borderless = false;
-        renodx::mods::swapchain::prevent_full_screen = true;
-        
-        // Proxy Shaders
-        renodx::mods::swapchain::swap_chain_proxy_shaders = {
-            {
-                reshade::api::device_api::d3d11,
-                {
-                    .vertex_shader = __swap_chain_proxy_vertex_shader_dx11,
-                    .pixel_shader = __swap_chain_proxy_pixel_shader_dx11,
-                },
-            },
-        };   
-
-         // Resource Upgrades
-        #if RENODX_MODS_SWAPCHAIN_VERSION == 2
-            renodx::mods::swapchain::resource_upgrade_infos.push_back({
-        #else
-            renodx::mods::swapchain::swap_chain_upgrade_targets.push_back({
-        #endif
-            .old_format = reshade::api::format::r8g8b8a8_unorm,
-            .new_format = reshade::api::format::r16g16b16a16_float,
-            .ignore_size = true,
-            .use_resource_view_cloning = true, //TODO: needed?
-            .use_resource_view_hot_swap = true,
-            .aspect_ratio = renodx::mods::swapchain::SwapChainUpgradeTarget::ANY,
-            .usage_include = reshade::api::resource_usage::render_target,
-        });
-
-        // Appended Settings (HDR10)
-        {
-            auto* setting = new renodx::utils::settings::Setting{
-                .key = "SwapChainEncoding",
-                .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-                .default_value = 1.f,
-                .label = "Output",
-                .section = "Output (Restart Required)",
-                .tooltip = "HDR10: 10bit, enough quality (banding?).\nscRGB: 16bit, overkill quality.",
-                .labels = {"HDR10", "scRGB"},
-                .is_global = true,
-            };
-            renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-            auto v = setting->GetValue();
-            shader_injection.swap_chain_encoding = v;
-            renodx::mods::swapchain::SetUseHDR10(v == 0);
-            settings.push_back(setting);
-        }
-
-        // Appended Settings (About)
-        {
-            auto* s1 = new renodx::utils::settings::Setting{
-                .value_type = renodx::utils::settings::SettingValueType::TEXT,
-                .label = "Build Date: " + build_date + " - " + build_time,
-                .section = "About",
-            };
-            settings.push_back(s1);
-        }
-
-        reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
-
-        twattila::psycho35::InsertBefore(&settings, "PsychoV30",
-                                         twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
-
-        initialized = true;
+      ConfigureAddon();
+      // Before the swap chain mod: a removed device's chain let go, each new chain's output decided.
+      twattila::device_loss::Install();
+      reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
+      renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+      if (const float mode = NormalizeTonemapMode(shader_injection.tonemap_type); mode != shader_injection.tonemap_type) {
+        renodx::utils::settings::UpdateSetting("tonemap_type", mode);
       }
-
+      renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
+      renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+      // The fast draw dispatch with the resource upgrades' gate (the swap chain mod's view cloning registers them).
+      twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
+      // Frame capture: after RenoDX, which drops these copies.
+      reshade::register_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
+      reshade::register_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
+      reshade::register_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
+      twattila::device_loss::InstallLast();
       break;
     case DLL_PROCESS_DETACH:
+      twattila::device_loss::Uninstall();
       reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
       reshade::unregister_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
       reshade::unregister_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
       reshade::unregister_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
+      twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
+      renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
+      renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
+      renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
       reshade::unregister_addon(h_module);
       break;
-  }
-
-  renodx::utils::settings::Use(fdw_reason, &settings, nullptr);
-  if (fdw_reason == DLL_PROCESS_ATTACH) {
-    const float mode = NormalizeTonemapMode(shader_injection.tonemap_type);
-    if (mode != shader_injection.tonemap_type) {
-      renodx::utils::settings::UpdateSetting("tonemap_type", mode);
-    }
-  }
-  renodx::mods::swapchain::Use(fdw_reason, &shader_injection);
-  renodx::mods::shader::Use(fdw_reason, custom_shaders, &shader_injection);
-
-  // Frame capture: after RenoDX, which drops these copies.
-  if (fdw_reason == DLL_PROCESS_ATTACH) {
-    reshade::register_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
-    reshade::register_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
-    reshade::register_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
   }
 
   return TRUE;

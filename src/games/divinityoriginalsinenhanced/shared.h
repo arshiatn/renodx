@@ -60,7 +60,8 @@ struct ShaderInjectData {
 // Output SDR: the HDR modes fitted into an SDR display (Peak 1, BT.709).
 #define DIVINITY_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
 #define DIVINITY_PEAK (DIVINITY_SDR_OUTPUT ? 1.f : max(HDR_PEAK, 1.f))
-#define HDR_INTSCALING (SI.diffuse_white_nits / SI.graphics_white_nits)
+// Scene white over UI white; SDR output: both the display's white.
+#define HDR_INTSCALING (DIVINITY_SDR_OUTPUT ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)
 
 // PsychoV30 receives linear BT.709, uses the exposed grading controls, and
 // returns linear BT.709 (possibly signed for its BT.2020 target volume).
