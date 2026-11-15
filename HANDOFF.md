@@ -664,8 +664,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
   - [x] Bend torches' remaining +2.3 ms: g2a_ 7fd71432 (the pick in turns, bit-exact; 4K light draws 3.198 -> 1.050 ms at
     8 lights, 3.847 -> 1.154 at 32; NaN score now left out); expected in game ~+0.2 ms (variant g2a_torch.json)
   - [x] SSSR pyramid: 0.127 ms in all, a single-pass downsample saves <= 0.05 ms: NOT BUILT (the rest is march + resolve)
-  - [ ] GT-VBAO ~1.1, GT-VBGI ~1.0 ms: a --time mode timing each ao_pass / ao_filter dispatch at 4K first. Owner: GPU
-    ROUND 3
+  - [x] GT-VBAO timed (g3a_ao_time, 4K 5090, Recommended 3/4 res): ao_pass 1.61 ms = bitmask 1.462 (90 %) + depth
+    0.041 + resolve 0.038 + denoise 0.027 + upsample 0.046; nothing cuttable bit-exact outside the bitmask
+    - [ ] Nsight shader profile of the bitmask pass in that harness (fetch vs ALU) for an exact rewrite. Owner: GPU ROUND 4
   - [x] ATN 23:5x YES: 128 torch lights in RT/PT taken (603ca343 = e606e8ef; the default also becomes 128 in the 8 games
     calling SetRaysPresetDefaults; all TW add-ons built)
   - [ ] 128 torch lights' cost at night / burning city / WH3 / Pharaoh: a variant in the end-of-batch bench
@@ -743,14 +744,27 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [ ] ns_trace_run.py must end its "rescue" helper (one blocked the next job 7+ minutes). Owner: Nsight tooling
     - [ ] Bench variants g3b_reuse.json + g3b_round3b_plan.txt in the end-of-batch bench. Owner: coordinator
   - [ ] f16 reservoirs (look change, scored) only if (e) leaves the reuse pass above ~0.4 ms. Owner: after (e)
-  - [ ] Resource upgrade 0.196 ms a frame (GetResourceViewClone per pushed view): a module-local clone cache against a
-    shared epoch; skipped no-handler casters ~0.17 ms (skip before the event fires). Owner: GPU ROUND 3 (D3D11 side)
-  - [ ] Attila point lights with point shadows (32 non-MSAA enable_point_shadows builds): visibility multiply + ALWAYS
-    comparison sampler at s5 (Pharaoh pattern); skipping the game's point-shadow rendering needs a trace. Owner: GPU
-    ROUND 3 (D3D11 side)
-  - [ ] WH3 grass read-back without the wait: grass indirect-draw counts per frame from an existing WH3 trace first; then
-    (a) helper cluster boundaries per instance (SHARED STEP g2b side) or (b) compact capture with GPU argument copies.
-    Owner: GPU ROUND 3
+  - [x] GPU ROUND 3A MERGED dd44b703 (g3a_): Batched Unit Capture row (RayTracedBatchedUnits, Experimental off, Attila
+    only: needs the pack hook; families 5F9CD405 / A691CFF4): bit-exact (WARP case B + 58,650,000 floats on the 5090),
+    14.66 M corners 3.203 -> 2.627 ms (flush 0.44, copy ~0.18); tw_scrub_lods bias 0x37810183. Page dumps of every rt_core
+    consumer: only the new (hidden) row. test_hooks include change NOT committed (ue4_'s macro took its place).
+    - [ ] Batched capture for 4_bones / dismember families (own mesh + rows shaders); bind `captured` as a UAV to drop the
+      0.18 ms copy. Owner: GPU ROUND 4
+    - [ ] Bench variant g3a_capture.json (+ g3a_round3a_plan.txt; add-on testbin\g3a_bench\capture). Owner: coordinator
+  - [ ] Resource upgrade 0.196 ms = ALL gtl resource-info lookups (OnPushDescriptors 0.031 exclusive): split by caller
+    from the cpl2 pickles, then push_descriptors in the drw_ replay; a cache needs its own uuid'd shared block + epoch in
+    every writer (swapchain_v1:900 writes directly). Owner: CPU round (shared util, full build)
+  - [x] Skipped no-handler casters: under today's fast dispatch only 0.042 / 0.029 ms (cpl2 / cpl1): no exact early
+    skip exists below that; NO CHANGE (the game issuing the casters is the real cost: Skip rows)
+  - [ ] Attila point lights with point shadows: the bytecode differs from the brief: 16 "...falloffshadow" builds read
+    the shadow map at t4 (2D array); gather_4_1 = plain gather4 at s4 + ALU compare, gather_5_0 = gather4_c at s4 +
+    blocker gather4 at s5. Plan (g3a report): patch all 32 like the existing 8 (visibility multiply behind a shader
+    flag), register in InstallPointLights, row on binds a 1x1 lit array at t4 + ALWAYS comparison sampler at s4, WARP
+    proof (off = game bytes; on + visibility 1 = no shadow; control). Owner: GPU ROUND 4
+  - [ ] WH3 grass read-back without the wait: 8 of 78 traces have indirect grass (14-25 draws, max 13.94 M index x
+    instance a frame, sieges 6.5 M); plan (b): room from last frame's probe x 9/8 NaN-filled, GPU copy of the instance
+    count into the capture draw's own arguments, DrawInstancedIndirect into SO, overflow drops (never stalls). Needs a
+    trace with the 5 argument words + ByteWidth. Owner: WH3 data run (coordinator), then GPU ROUND 4+
   - [ ] J3 in game (one grass pixel's G-buffer read): next data run. A32: one Nsight run without REPLAYABLE (coordinator's
     OK, offline harness). Owner: coordinator
   - [ ] Scorer: reflections / fog / water features, a faint-smoke reference; the smoke feature (tools/tw/quality/g2b)
