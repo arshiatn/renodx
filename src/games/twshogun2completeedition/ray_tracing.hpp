@@ -26,7 +26,7 @@
 
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
-#include "../expeditionsrome_dlss/constant_mirror.hpp"
+#include "../talesofarise_dlss/constant_mirror.hpp"
 #include "../talesofarise_dlss/matrix.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
 #include "../twattila/light_bounce.hpp"
@@ -42,7 +42,7 @@
 // unblended; leaves alpha-tested against their diffuse alpha: rt_core's SceneCoverage), streamed out through the game's
 // own vertex shaders (those with bone inputs every frame). The camera: camera_VS_PS (view_projection c10-c13 as
 // uploaded, jittered as the scene was drawn; the position c0; the render size g_viewport_dimensions c38) from the
-// game's uploads (expeditionsrome_dlss/constant_mirror.hpp). At the frame's first sun light draw (sunlight00-03, the
+// game's uploads (talesofarise_dlss/constant_mirror.hpp). At the frame's first sun light draw (sunlight00-03, the
 // addon's): rt_sun from its lighting_VS_PS (the sun from c0, its colour c1, the ambient cube c3-c8: the trace's sun, the
 // paths' sun and sky), the G-buffer guides when the reflections or paths want them (rt_guides) and the trace (its
 // readable depth); the traced sun and ambient visibility at t40 / t41 for those draws (shaders/rt_sun.hlsli: the darker
@@ -257,9 +257,9 @@ static State state;
 
 // The main view's camera last uploaded in `buffer` (camera_VS_PS); false: none yet.
 inline bool Camera(ID3D11Buffer* buffer, twattila::rt_scene::Camera* camera) {
-  expeditionsrome::dlss::constants::Watch(buffer, CAMERA_ROWS * 16);
+  talesofarise::dlss::constants::Watch(buffer, CAMERA_ROWS * 16);
   std::array<std::array<float, 4>, CAMERA_ROWS> rows = {};
-  if (!expeditionsrome::dlss::constants::Read(buffer, 0, std::as_writable_bytes(std::span(rows)))) return false;
+  if (!talesofarise::dlss::constants::Read(buffer, 0, std::as_writable_bytes(std::span(rows)))) return false;
   std::array<float, 16> view_projection = {};
   for (size_t row = 0; row < 4; ++row) std::copy_n(rows[CAMERA_VIEW_PROJECTION + row].begin(), 4, view_projection.begin() + (row * 4));
   *camera = {
@@ -549,9 +549,9 @@ constexpr auto OnPointLightDraw = []<typename Context>(Context& command) -> reno
   if (native == nullptr) return {};
   ComPtr<ID3D11Buffer> point_light;
   native->PSGetConstantBuffers(2, 1, point_light.GetAddressOf());
-  if (point_light) expeditionsrome::dlss::constants::Watch(point_light.Get(), 32);
+  if (point_light) talesofarise::dlss::constants::Watch(point_light.Get(), 32);
   if (std::array<std::array<float, 4>, 2> rows = {};
-      point_light && expeditionsrome::dlss::constants::Read(point_light.Get(), 0, std::as_writable_bytes(std::span(rows)))) {
+      point_light && talesofarise::dlss::constants::Read(point_light.Get(), 0, std::as_writable_bytes(std::span(rows)))) {
     twattila::rt_scene::AddLocalLight({.light = {rows[0][0], rows[0][1], rows[0][2], rows[1][3]}, .colour = {rows[1][0], rows[1][1], rows[1][2], 0.f}});
   }
   if (!twattila::rt_scene::BindLocalLights(native)) return {};
@@ -824,7 +824,7 @@ inline void OnSeaDraw(reshade::api::command_list* cmd_list, bool bind) {
   ComPtr<ID3D11Buffer> ocean;
   if (bind) native->VSGetConstantBuffers(1, 1, ocean.GetAddressOf());
   std::array<float, 4> plane = {};
-  if (ocean && expeditionsrome::dlss::constants::Read(ocean.Get(), 16, std::as_writable_bytes(std::span(plane)))) {
+  if (ocean && talesofarise::dlss::constants::Read(ocean.Get(), 16, std::as_writable_bytes(std::span(plane)))) {
     const float length = std::sqrt((plane[0] * plane[0]) + (plane[1] * plane[1]) + (plane[2] * plane[2]));
     const float up = (plane[1] < 0.f) ? -length : length;
     if (length > 0.f && std::abs(plane[1]) > 0.9f * length) {
@@ -927,7 +927,8 @@ inline bool smoke_shadows_installed = false;
 
 // `smoke_shadows`: rt_scene.hpp's InstallSmokeShadows' steps on rt_core's statics (off: no particle hook, as before).
 inline void Install(bool casters_out_of_view, bool smoke_shadows) {
-  expeditionsrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
+  talesofarise::dlss::constants::log_tag = "[Shogun 2 constants]";
+  talesofarise::dlss::constants::Use(DLL_PROCESS_ATTACH);
   twattila::rt_scene::InstallScene(casters_out_of_view ? std::span<const twattila::rt_scene::SceneShader>(SCENE_SHADERS)
                                                        : std::span<const twattila::rt_scene::SceneShader>(),
                                    HOST);
@@ -974,7 +975,7 @@ inline void Uninstall() {
   twattila::light_bounce::SetRayTracedTrace(nullptr);
   twattila::rt_scene::internal::sun_colour = 0;
   twattila::rt_scene::UninstallScene();
-  expeditionsrome::dlss::constants::Use(DLL_PROCESS_DETACH);
+  talesofarise::dlss::constants::Use(DLL_PROCESS_DETACH);
 }
 
 // After the tone mapper (tonemap00 / 01): ray tracing's Debug View over its output (bridge-size RGBA16F only).
