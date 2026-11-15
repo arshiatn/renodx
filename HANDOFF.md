@@ -1014,7 +1014,33 @@ heading text are in HANDOFF_ARCHIVE.md)
         the unmodded game ("ChangeMode failure"); menu ignores keys, battle camera keys work. Psycho: V35 at the right
         place but keeps slope 1 while each map grades Brightness * rgb * luma^(Gamma-1) (Gamma 1.0-1.6 over 87 maps):
         25-60 % flatter.
-      - [ ] R.U.S.E. U1-U7 (offline): U1 V35 contrast = the map's Gamma (postprocess.hlsli:161) + Extended (per-channel
+      - [x] R.U.S.E. ROUND MERGED 8e80afae (ru_, 10 commits): U2 part 6 WARP on the real postprocess.hlsli PASS; U1 V35
+        after each map's own response (slope = Gamma exactly, markers keep their colour; contrast_scale drifted saturated
+        colours, not taken), Extended as mode 4, Reset = Extended; U3 Output HDR10 / scRGB / SDR / Auto, first start SDR,
+        SDR preset, proxy SDR branch; U4 About (ruse/mods/6) + "Turn on the in-game HDR setting."; U5 12 more UI / video /
+        loading replacements (SM3 interpreter: 0 difference), Video AutoHDR off + dithering; U6 Frame Trace + Trace One
+        Frame, "Wait for Each Frame Copy (Experimental)" on; U7 parity 'ru' (open 2), page dump dump_ru, tw_install
+        'ruse'; U9 Graphics 2 of 2: Shadow Map Size 4096 / 8192, Sprite Resolution 4096 / 8192, Sprite AA 8.5, Detail
+        Distance 2x / 4x (Option.ini written each start, game's values kept, "Game's" restores byte for byte). Built only.
+        D3D9 bridge (plan 4c): DLAA / DLSS / FSR / XeSS yes, FG + Reflex after DLAA, AO / GI Experimental, RT / PT WON'T
+        GET (no stream output, pure hardware device: no ProcessVertices); the device is D3D9Ex already.
+      - [ ] R.U.S.E. D3D9 bridge B0 trace (next game run: Frame Trace at the menu + in battle, in-game AA off and on:
+        depth MSAA / INTZ, motion target, camera pass 0x88292FC6 constants c0-c8, final post samplers), then B1-B4, then
+        the Fable 5.2 High review (ATN). Owner: coordinator (run) then ru_
+      - [ ] R.U.S.E. U1 run (after ReShade + the stamped add-on are installed on D:): Frame Trace menu + battle; every
+        Rendering Mode by eye; Graphics 2 of 2 at 8192 / 4x (does the game keep and use them?); Wait for Each Frame Copy
+        off: PresentMon A/B + loading screens. Owner: coordinator (next game window)
+      - [ ] R.U.S.E. open ledger rows: Time Each Pass (D3D9 timestamp queries, optional); the HDR-only snapshot check
+        (release round). Owner: ru_ / release round
+      - [ ] SHARED STEPS from R.U.S.E.: S1 output_encoding's first-start key as a Config field ("rendering_mode"; Divinity
+        2 needs the same with "tonemap_type"); S2 output_encoding Apply calls utils::device_proxy::SetTargetFormat /
+        SetTargetColorSpace for proxy games (R.U.S.E. does it itself until then); S3 a runtime filter in
+        twattila/test_hooks.hpp (only the D3D11 proxy's runtime). Owner: shared-steps round (after the fix merge)
+      - [ ] ATN DECIDES (R.U.S.E.): Rendering Mode default (still V31 Full Replacement as shipped, it flattens each map's
+        contrast): V35 (Recommended) or Extended (Reset)?; keep R.U.S.E.'s own V31 rows or move to Attila's 15 v31_* rows
+        (saved V31 looks would change)?; Hue Clip by eye (100). Experimental rows built, never run: Extended, Video AutoHDR,
+        Wait for Each Frame Copy, the four Graphics 2 of 2 rows. Owner: ATN
+      - [x] DONE in 8e80afae: R.U.S.E. U1-U7 (offline): U1 V35 contrast = the map's Gamma (postprocess.hlsli:161) + Extended (per-channel
         roll-off) as a mode; U2 test/tw_psychov35 part 6 (WARP: grey, slope, highlights, hue, C2 markers, ps_3_0 slots);
         U3 Output SDR / Auto + first start + SDR preset (coordinator owns the shared S1 / S2); U4 About / Ko-fi / fast::Use;
         U5 the 20 unreplaced UI / video / loading shaders (C1), Video AutoHDR Experimental; U6 D3D9 one-frame trace +
