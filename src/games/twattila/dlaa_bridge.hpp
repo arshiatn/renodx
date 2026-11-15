@@ -282,6 +282,7 @@ struct Bridge {
   // the helper's work (~0.25 ms of the game's frame): the game's GPU waits for the helper's next value at once and the
   // answer is read with the next request (`pending`).
   std::array<bool, REQUEST_KINDS> steady = {};
+  std::array<uint64_t, REQUEST_KINDS> requested_ms = {};  // each kind's last request (GetTickCount64)
   bool pending = false;
   RequestKind pending_kind = EVALUATE;
   // The game's thread waiting for the helper's answers so far (QueryPerformanceCounter ticks; the ray tracing profile).
@@ -717,8 +718,9 @@ inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool g
       && (!bridge.fence || bridge.fence->GetCompletedValue() != UINT64_MAX)) {
     return true;
   }
-  // The helper done with the last request before `shared` changes; the new objects' first requests wait for answers.
-  if (bridge.pending && !internal::Answer()) return false;
+  // The helper done with the last request before `shared` changes (a steady one can have opened a lost scene again: the
+  // opening's time); the new objects' first requests wait for answers.
+  if (bridge.pending && !internal::Answer(20000)) return false;
   internal::RetireFence(false);
   const auto release_prepared = [&] {
     bridge.steady = {};
@@ -979,7 +981,12 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
   shared.value = bridge.value;
   fill(&shared);
   ResetEvent(bridge.done);
-  const bool steady = bridge.steady[kind] && kind != PRESENT_FRAME;
+  // A kind not asked for in STEADY_GAP_MS may find its device let go in the helper (after 10 s without its requests:
+  // main.cpp's IDLE_RELEASE) and made again inside this request: waited for then, with an opening's time.
+  constexpr uint64_t STEADY_GAP_MS = 8000;
+  const uint64_t now_ms = GetTickCount64();
+  const bool recent = now_ms - std::exchange(bridge.requested_ms[kind], now_ms) < STEADY_GAP_MS;
+  const bool steady = bridge.steady[kind] && kind != PRESENT_FRAME && recent;
   if (steady) bridge.watchdog.waited.store(bridge.value + 1);
   SetEvent(bridge.request);
   if (steady) {
