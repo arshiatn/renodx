@@ -500,7 +500,7 @@ struct QualityOption {
 };
 // Cvars that read back unchanged are refused (e.g. e_DecalsRange, flags 0x800000; left out). Past the engine's caps
 // (the camera's far plane, LOD 0, the tessellation factor 64, every texture resident) higher factors change nothing.
-std::array<QualityOption, 32> quality_options = {{
+std::array<QualityOption, 33> quality_options = {{
     {.label = "Graphics preset (in-game)",
      .key = "EngineQuality",
      .tooltip = "The game's own graphics preset. Its menu goes up to High; Very High is the engine's highest.",
@@ -928,6 +928,19 @@ std::array<QualityOption, 32> quality_options = {{
      .absolute = true,
      .experimental = true,
      .atn_choice = 1},
+    // "Enables (1) or disables (0) rendering of particles in half resolution" (0 at Very High, flags 0x30080: the console
+    // takes it); r_ParticlesHalfResForce (every effect) is one of the refused 0x800000 cvars.
+    {.label = "Half-resolution particles",
+     .key = "ParticlesHalfRes",
+     .tooltip = "The effects the game made for it (smoke, dust, fog) drawn at half resolution: faster where they fill the\n"
+                "screen, softer. Not proven in game; may change nothing.",
+     .choices = "In-game setting (full resolution)\0" "Half\0",
+     .choice_count = 2,
+     .preset_choices = {0, 0, 0, 0},
+     .values = {0.f, 1.f},
+     .absolute = true,
+     .experimental = true,
+     .cvars = {{.name = "r_ParticlesHalfRes", .is_float = false, .absolute = true, .values = {0.f, 1.f}, .from_choice = 1}}},
     // No cvars: particle_counts.hpp sets the limit (SetLightLimit), OnLightingDispatch swaps the lighting shader.
     {.label = "Light limit",
      .key = "LightLimit",
@@ -1070,9 +1083,13 @@ struct BiasedSampler {
   reshade::api::sampler_desc desc;  // the game's
   reshade::api::sampler clone = {0};
   float clone_bias = 0.f;
+  bool trilinear = false;  // a wrapping trilinear sampler: biased with lod_bias_all_textures only
 };
 renodx::utils::data::ParallelFlatHashMap<uint64_t, BiasedSampler, std::shared_mutex> biased_samplers;
 std::atomic<float> texture_lod_bias = 0.f;  // 0: none
+// Texture LOD Bias on All Textures (Experimental; the page's AntiAliasingTextureLodBiasTrilinear row, as Attila's): the
+// game's wrapping trilinear samplers biased too. 1: on.
+float lod_bias_all_textures = 0.f;
 int texture_lod_bias_choice = 2;  // Present thread (the overlay runs in it): 0 off, 1 matched, 2 sharper, 3 sharpest
 thread_local bool creating_clone = false;  // the clone's own init_sampler
 // While DLSS / DLAA runs (AA mode not Off), renderer statics written directly (FindIntCvar; the game's values come
@@ -1335,11 +1352,16 @@ bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, u
   return false;
 }
 
-// Texture LOD bias (biased_samplers): the game's anisotropic samplers.
+// Texture LOD bias (biased_samplers): the game's anisotropic samplers and its wrapping trilinear ones.
 void OnInitSampler(reshade::api::device* device, const reshade::api::sampler_desc& desc, reshade::api::sampler sampler) {
   if (creating_clone || device->get_api() != reshade::api::device_api::d3d11) return;
-  if (desc.filter != reshade::api::filter_mode::anisotropic && desc.filter != reshade::api::filter_mode::min_mag_anisotropic_mip_point) return;
-  biased_samplers.insert_or_assign(sampler.handle, BiasedSampler{.desc = desc});
+  const bool trilinear = desc.filter == reshade::api::filter_mode::min_mag_mip_linear && desc.address_u == reshade::api::texture_address_mode::wrap
+                         && desc.address_v == reshade::api::texture_address_mode::wrap;
+  if (!trilinear && desc.filter != reshade::api::filter_mode::anisotropic
+      && desc.filter != reshade::api::filter_mode::min_mag_anisotropic_mip_point) {
+    return;
+  }
+  biased_samplers.insert_or_assign(sampler.handle, BiasedSampler{.desc = desc, .trilinear = trilinear});
 }
 
 void OnDestroySampler(reshade::api::device* device, reshade::api::sampler sampler) {
@@ -1370,13 +1392,15 @@ void OnPushDescriptors(reshade::api::command_list* cmd_list, reshade::api::shade
     bound[index] = reinterpret_cast<ID3D11SamplerState*>(samplers[index].handle);
     reshade::api::sampler_desc desc = {};
     reshade::api::sampler clone = {0};
+    bool trilinear = false;
     const bool biased = biased_samplers.if_contains(samplers[index].handle, [&](const auto& entry) {
       desc = entry.second.desc;
+      trilinear = entry.second.trilinear;
       if (entry.second.clone_bias == bias) {
         clone = entry.second.clone;
       }
     });
-    if (!biased) continue;
+    if (!biased || (trilinear && lod_bias_all_textures == 0.f)) continue;
     if (clone.handle == 0u) {
       desc.mip_lod_bias += bias;
       creating_clone = true;

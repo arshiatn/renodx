@@ -58,6 +58,11 @@ float4 RyseBitmaskOcclusion(float2 uv, uint2 pixel, float3 normal, Texture2D<flo
     const float slice_jitter = frac(noises.z + 0.618034f * slice);
     // The slice's direction on screen: a short step along it projected, scaled to the radius.
     const float2 step_uv = (RyseAoUv(position + slice_info.direction * (0.01f * depth), view_space_params) - uv) * (radius / (0.01f * depth));
+    // Auto Thickness (SI.ssao_auto_thickness, as Attila's bitmask_ssao.hlsli): each side's occluder, the slice's random
+    // scale.
+    BitmaskOccluder occluder_minus = {position, position};
+    BitmaskOccluder occluder_plus = {position, position};
+    const float occluder_scale = exp2(2.f * frac(noises.z + 0.5f + 0.754877666f * slice) - 1.f);
     uint occluded = 0u;
     // Until every sector is covered (nothing farther can change it).
     [loop]
@@ -72,11 +77,29 @@ float4 RyseBitmaskOcclusion(float2 uv, uint2 pixel, float3 normal, Texture2D<flo
         if (any(sample_uv != saturate(sample_uv))) continue;
         const float sample_depth = depth_texture.SampleLevel(depth_sampler, sample_uv, 0).x * far;
         const float3 sample_position = RyseAoPosition(sample_uv, sample_depth, view_space_params);
+        float sample_thickness = thickness;
+        BitmaskOccluder occluder = occluder_minus;
+        if (side > 0) occluder = occluder_plus;
+        [branch]
+        if (SI.ssao_auto_thickness != 0.f) {
+          sample_thickness = BitmaskOccluderThickness(occluder, sample_position, view, thickness, occluder_scale);
+          if (side > 0) {
+            occluder_plus = occluder;
+          } else {
+            occluder_minus = occluder;
+          }
+        }
         const float3 delta = sample_position - position;
         const float delta_length = length(delta);
         if (!(delta_length > 1e-4f) || delta_length > radius) continue;
-        // Its thickness along its own camera ray.
-        const float3 back = normalize(delta + normalize(sample_position) * thickness);
+        // Its thickness along its own camera ray (Auto Thickness: its occluder's).
+        float3 back;
+        [branch]
+        if (SI.ssao_auto_thickness != 0.f) {
+          back = BitmaskOccluderBack(occluder, delta, position, view, sample_thickness);
+        } else {
+          back = normalize(delta + normalize(sample_position) * thickness);
+        }
         const uint covered = BitmaskSectors(delta / delta_length, back, view, side, slice_info, slice_jitter);
         // The direction toward the occluders, by the share each sample is the first to cover (as SSDO's weights).
         toward_occluders += (delta / delta_length) * countbits(covered & ~occluded);
