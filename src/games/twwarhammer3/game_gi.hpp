@@ -53,6 +53,8 @@ static std::atomic_bool sky_logged = false;
 // The probes' rays' constants without the hits' light, the game's own while ours are bound.
 static Microsoft::WRL::ComPtr<ID3D11Buffer> probe_constants;
 static UINT probe_constants_bytes = 0;
+// Their device, by identity only: a GPU reset's new device can draw while the old one is still alive (device_loss.hpp).
+static ID3D11Device* probe_constants_device = nullptr;
 static Microsoft::WRL::ComPtr<ID3D11Buffer> no_power;
 static Microsoft::WRL::ComPtr<ID3D11Buffer> game_probe_constants;
 // The game's lighting buffers with their open maps (buffer_writes.hpp).
@@ -126,11 +128,11 @@ inline void SkyOnlyProbeConstants(ID3D11DeviceContext* native) {
   D3D11_BUFFER_DESC desc = {};
   game_constants->GetDesc(&desc);
   if (desc.ByteWidth < IRRADIANCE_POWER_OFFSET + sizeof(float)) return;
-  if (probe_constants_bytes != desc.ByteWidth) {
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  if (probe_constants_bytes != desc.ByteWidth || probe_constants_device != device.Get()) {
     probe_constants.Reset();
     probe_constants_bytes = 0;
-    Microsoft::WRL::ComPtr<ID3D11Device> device;
-    native->GetDevice(device.GetAddressOf());
     const D3D11_BUFFER_DESC copy = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
     constexpr std::array<float, 4> ZEROS = {};
     const D3D11_BUFFER_DESC zeros = {.ByteWidth = sizeof(ZEROS), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
@@ -141,6 +143,7 @@ inline void SkyOnlyProbeConstants(ID3D11DeviceContext* native) {
       return;
     }
     probe_constants_bytes = desc.ByteWidth;
+    probe_constants_device = device.Get();
   }
   // A constant buffer takes no update of a part: the game's whole, then the one float from a buffer of zeros.
   native->CopyResource(probe_constants.Get(), game_constants.Get());
@@ -182,6 +185,7 @@ static void OnProbeRaysDone(reshade::api::command_list* cmd_list) {
 static void OnDestroyDevice(reshade::api::device*) {
   probe_constants.Reset();
   probe_constants_bytes = 0;
+  probe_constants_device = nullptr;
   no_power.Reset();
   game_probe_constants.Reset();
 }

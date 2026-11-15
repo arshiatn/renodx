@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cmath>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <deps/imgui/imgui.h>
@@ -732,10 +733,20 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   }
 }
 
+// A ResizeBuffers raises create_swapchain too, and its back buffers keep the upgrade the swapchain mod made at the swap
+// chain's creation: the output stays as decided then (another one's view formats failed the game's view creation).
+static bool swapchain_resizing = false;
+
+void OnDestroySwapchain(reshade::api::swapchain*, bool resize) {
+  swapchain_resizing = resize;
+}
+
 // Output (twattila/output_encoding.hpp), decided for each new swap chain before the swapchain mod's create_swapchain
 // (registered after this): Auto follows Windows HDR for the game's display.
 bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
+  if (!std::exchange(swapchain_resizing, false)) {
+    twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
+  }
   return false;
 }
 
@@ -953,6 +964,7 @@ bool AttachAddon(HMODULE addon_module) {
 
   ConfigureAddon();
 
+  reshade::register_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
   reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBindRenderTargetsAndDepthStencil);
@@ -989,6 +1001,7 @@ void DetachAddon() {
   twattila::frame_generation::Uninstall();
   // Last of the helper's users: the bridge ends with it.
   talesofarise::dlss_graphics::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBindRenderTargetsAndDepthStencil);

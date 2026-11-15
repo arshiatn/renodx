@@ -6,6 +6,7 @@
 #pragma once
 
 #include <d3d11_1.h>
+#include <d3d11_4.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -193,6 +194,24 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
       objects.target_srv.Reset();
     }
     auto& bridge = dlaa_bridge::bridge;
+    // A GPU reset's new device can present before the old one is destroyed (WH3's order, device_loss.hpp): the bridge's
+    // objects and fence stay the old device's until its next Prepare, so nothing goes to the helper from this context
+    // (presenting kept: the request after that Prepare hides the window if it should). The pass's objects are made again
+    // on this device (DrawHudless).
+    ComPtr<ID3D11Device> context_device;
+    native->GetDevice(context_device.GetAddressOf());
+    if (ComPtr<ID3D11Device5> context_device5;
+        bridge.device && (FAILED(context_device.As(&context_device5)) || context_device5 != bridge.device)) {
+      // The helper lost or failed: no Prepare takes this device and no request comes to hide the window, which went with
+      // the helper anyway (Reflex and Format() see frame generation off).
+      if (bridge.failed || bridge.watchdog.failed.load() || dlaa_bridge::FrameGenerationFailed()) {
+        state.presenting = false;
+      }
+      return;
+    }
+    if (ComPtr<ID3D11Device> objects_device = objects.device; objects_device && objects_device != context_device) {
+      objects = {};
+    }
     // ReShade's menu open: the game's frames only (generated ones warped the menu, ATN 2026-10-28). Textures that no longer
     // fit (the size changed, no DLSS frame yet) too: the window hidden, not frozen on its last frame.
     const bool fits = bridge.fg_frame && bridge.fg_format == state.format && bridge.width == back_desc.Width && bridge.height == back_desc.Height;

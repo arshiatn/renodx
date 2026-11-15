@@ -509,13 +509,18 @@ static DWORD WINAPI WatchLoop(void* stop) {
 
 // Before the addon can go; a device's last destroy or the addon's detach, whichever comes first. The wait is bounded:
 // under the loader's lock (the addon's detach) a thread told to stop is out of this code at once but cannot finish
-// ending until the detach returns, and waiting for that would hang the game's quit. Such a thread keeps its handles.
+// ending until the detach returns, and waiting for that would hang the game's quit. Such a thread keeps its handles, and
+// the image stays loaded for the process: it may still be inside a stall dump (seconds of this code), and ReShade frees
+// the addon right after the last device's destroy.
 static void StopWatch() {
   if (watch_thread == nullptr) return;
   SetEvent(watch_stop);
   if (WaitForSingleObject(watch_thread, WATCH_STOP_MS) == WAIT_OBJECT_0) {
     CloseHandle(watch_thread);
     CloseHandle(watch_stop);
+  } else {
+    HMODULE pinned = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&WatchLoop), &pinned);
   }
   watch_thread = nullptr;
 }

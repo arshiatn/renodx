@@ -209,11 +209,11 @@ struct Params {
 };
 
 struct State {
-  bool searched = false;  // Present thread
+  bool searched = false;  // device creation
   std::vector<renodx::utils::detour::Function> hooks;
   std::string details;  // where, or why not
-  bool buffers_searched = false;  // device creation
   std::vector<renodx::utils::detour::Function> buffer_hooks;
+  bool pool_searched = false;  // Present thread
 };
 static State state;
 static ContainerSpawn original_container_spawn = nullptr;
@@ -509,11 +509,13 @@ inline void OnParticleBuffers(void* renderer) {
 
 }  // namespace internal
 
-// Render device creation (the game's code runs: decrypted), before the renderer's render thread init.
-inline void HookParticleBuffers() {
+// Render device creation (the game's code runs: decrypted), before the game starts its systems and the renderer's render
+// thread init. CALLER_GUARANTEES_QUIESCENCE stops no other thread: the hooks go in before any particle thread or render
+// job runs the functions they patch.
+inline void Install() {
   auto& state = internal::state;
-  if (state.buffers_searched) return;
-  state.buffers_searched = true;
+  if (state.searched) return;
+  state.searched = true;
   std::string cvar_at;
   std::string buffers_at;
   const uint8_t* cvar_code = engine_memory::FindPattern(internal::VERTEX_POOL_CVAR_CODE, &cvar_at);
@@ -533,30 +535,21 @@ inline void HookParticleBuffers() {
     }
   }
   renodx::utils::log::i("[Ryse DLSS] Particle vertices: ", details);
-}
-
-// Present thread, once the game runs (its code is decrypted then).
-inline void Install() {
-  auto& state = internal::state;
-  if (state.searched) return;
-  state.searched = true;
   std::string found_at;
   std::string light_found_at;
   std::string light_list_at;
   std::string cull_info_at;
   std::string alloc_at;
-  std::string pool_at;
   std::string vertex_alloc_at;
   uint8_t* code = engine_memory::FindPattern(internal::CONTAINER_SPAWN_CODE, &found_at);
   uint8_t* light_code = engine_memory::FindPattern(internal::PARTICLE_LIGHT_CODE, &light_found_at);
   uint8_t* light_list_code = engine_memory::FindPattern(internal::LIGHT_LIST_CODE, &light_list_at);
   const uint8_t* cull_info_code = engine_memory::FindPattern(internal::CULL_INFO_CODE, &cull_info_at);
   uint8_t* alloc_code = engine_memory::FindPattern(internal::PARTICLE_ALLOC_CODE, &alloc_at);
-  const uint8_t* pool_code = engine_memory::FindPattern(internal::PARTICLE_POOL_CODE, &pool_at);
   uint8_t* vertex_alloc_code = engine_memory::FindPattern(internal::VERTEX_ALLOC_CODE, &vertex_alloc_at);
   state.details = std::format("container spawn {}, particle light {}, light list {}, cull info {}, particle allocation {}, "
-                              "particle pool {}, vertex allocation {}",
-                              found_at, light_found_at, light_list_at, cull_info_at, alloc_at, pool_at, vertex_alloc_at);
+                              "vertex allocation {}",
+                              found_at, light_found_at, light_list_at, cull_info_at, alloc_at, vertex_alloc_at);
   // Without the light hook more particles would blink lights: both or none.
   if (code != nullptr && light_code != nullptr) {
     internal::original_container_spawn = reinterpret_cast<internal::ContainerSpawn>(code);
@@ -640,24 +633,10 @@ inline void Install() {
     internal::original_vertex_alloc = reinterpret_cast<internal::VertexAlloc>(vertex_alloc_code);
     state.hooks.push_back(renodx::utils::detour::Function(&internal::original_vertex_alloc, &internal::OnVertexAlloc, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE));
   }
-  // The pool is made with the particle system, before any level: its block size and count as the getter makes them.
-  if (alloc_code != nullptr && pool_code != nullptr) {
-    int32_t pool_offset;
-    std::memcpy(&pool_offset, pool_code + 3, sizeof(pool_offset));
-    uint8_t* pool = const_cast<uint8_t*>(pool_code) + internal::RIP_LEA_SIZE + pool_offset;
-    const uint32_t block_size = *reinterpret_cast<const uint32_t*>(pool + internal::POOL_BLOCK_SIZE);
-    const uint32_t blocks = *reinterpret_cast<const uint32_t*>(pool + internal::POOL_BLOCKS);
-    if (block_size == 0x100 && blocks > 0 && reinterpret_cast<uintptr_t>(pool) % MEMORY_ALLOCATION_ALIGNMENT == 0) {
-      {
-        const std::unique_lock lock(internal::particle_pool.mutex);
-        internal::particle_pool.pool = pool;
-      }
-      internal::GrowParticlePool();
-      internal::original_particle_alloc = reinterpret_cast<internal::ParticleAlloc>(alloc_code);
-      state.hooks.push_back(renodx::utils::detour::Function(&internal::original_particle_alloc, &internal::OnParticleAlloc, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE));
-    }
-    state.details += std::format(" ({} blocks of {} bytes{})", blocks, block_size,
-                                 (internal::particle_pool.pool != nullptr ? "" : ": not as expected, not grown"));
+  // Counts only: it needs no pool.
+  if (alloc_code != nullptr) {
+    internal::original_particle_alloc = reinterpret_cast<internal::ParticleAlloc>(alloc_code);
+    state.hooks.push_back(renodx::utils::detour::Function(&internal::original_particle_alloc, &internal::OnParticleAlloc, renodx::utils::detour::ThreadPolicy::CALLER_GUARANTEES_QUIESCENCE));
   }
   if (!state.hooks.empty()) {
     try {
@@ -670,8 +649,37 @@ inline void Install() {
   renodx::utils::log::i("[Ryse DLSS] Particle counts: ", state.details);
 }
 
-// Present thread: the particle pool's size in times the game's (1-16), grown once the pool is known (Install); never
-// shrunk.
+// Present thread, once the game draws its world. The pool is made with the particle system, before any level: its block
+// size and count as the getter makes them, then grown to the option's size.
+inline void FindParticlePool() {
+  auto& state = internal::state;
+  if (state.pool_searched) return;
+  state.pool_searched = true;
+  std::string pool_at;
+  const uint8_t* pool_code = engine_memory::FindPattern(internal::PARTICLE_POOL_CODE, &pool_at);
+  std::string pool_details = std::format("particle pool {}", pool_at);
+  if (pool_code != nullptr) {
+    int32_t pool_offset;
+    std::memcpy(&pool_offset, pool_code + 3, sizeof(pool_offset));
+    uint8_t* pool = const_cast<uint8_t*>(pool_code) + internal::RIP_LEA_SIZE + pool_offset;
+    const uint32_t block_size = *reinterpret_cast<const uint32_t*>(pool + internal::POOL_BLOCK_SIZE);
+    const uint32_t blocks = *reinterpret_cast<const uint32_t*>(pool + internal::POOL_BLOCKS);
+    const bool expected = block_size == 0x100 && blocks > 0 && reinterpret_cast<uintptr_t>(pool) % MEMORY_ALLOCATION_ALIGNMENT == 0;
+    if (expected) {
+      {
+        const std::unique_lock lock(internal::particle_pool.mutex);
+        internal::particle_pool.pool = pool;
+      }
+      internal::GrowParticlePool();
+    }
+    pool_details += std::format(" ({} blocks of {} bytes{})", blocks, block_size, (expected ? "" : ": not as expected, not grown"));
+  }
+  state.details += ", " + pool_details;
+  renodx::utils::log::i("[Ryse DLSS] Particle pool: ", pool_details);
+}
+
+// Present thread: the particle pool's size in times the game's (1-16), grown once the pool is known (FindParticlePool);
+// never shrunk.
 inline void SetParticleMemory(uint32_t times) {
   {
     const std::unique_lock lock(internal::particle_pool.mutex);

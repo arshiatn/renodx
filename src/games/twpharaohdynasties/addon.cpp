@@ -2968,6 +2968,10 @@ void ConfigureAddon() {
 bool AttachAddon() {
   if (attached) return true;
 
+  // Failed native-hook removal can retain this DLL across host unload/reload: its detach restored the game's code.
+  graphics_found = false;
+  dead_units_installed = false;
+
   ConfigureAddon();
 
   twattila::device_loss::Install();

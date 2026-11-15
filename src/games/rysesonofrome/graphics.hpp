@@ -2615,10 +2615,11 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   state.display_height = desc.texture.height;
 }
 
-// The game's render device: its particle vertex buffers are made after it (particle_counts.hpp).
+// The game's render device: its particle vertex buffers are made after it, its particle threads start later
+// (particle_counts.hpp).
 void OnInitDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
-  rysesonofrome::particle_counts::HookParticleBuffers();
+  rysesonofrome::particle_counts::Install();
   if (save_attack_patterns.load()) {
     std::wstring exe(32768, L'\0');
     exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
@@ -2802,8 +2803,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
 
   // Options the addon applies itself: screen-space reflections (the item, for the render thread: OnReflectionDraw) and
-  // particles (the pool's size; the factors, for the threads that start emitters; the hooks once the game draws its
-  // world). Particle memory off: the particle options back to the in-game setting, saved.
+  // particles (the pool's size, found once the game draws its world; the factors, for the threads that start emitters).
+  // Particle memory off: the particle options back to the in-game setting, saved.
   const bool game_draws = taa_frame.load(std::memory_order_relaxed) != UINT64_MAX;
   const bool particle_memory = ParticleMemoryChoice() != 0;
   for (auto& option : quality_options) {
@@ -2827,7 +2828,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     }
   }
   if (game_draws) {
-    rysesonofrome::particle_counts::Install();
+    rysesonofrome::particle_counts::FindParticlePool();
   }
   // The attack patterns were saved at this start: not again at the next one.
   if (save_attack_patterns.load() && rysesonofrome::attack_patterns::Saved() != 0) {

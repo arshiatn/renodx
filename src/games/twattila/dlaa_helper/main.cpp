@@ -218,7 +218,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     CloseHandle(clusters);
   }
 
-  // A device on the game's GPU.
+  // A device on the game's GPU (again after a GPU reset removed it: every request waits and signals on it).
   ComPtr<IDXGIFactory4> factory;
   ComPtr<IDXGIAdapter1> adapter;
   ComPtr<ID3D11Device> device;
@@ -228,11 +228,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   ComPtr<ID3D11Device1> device1;
   ComPtr<ID3D11Device5> device5;
   ComPtr<ID3D11DeviceContext4> context4;
+  const auto make_device = [&] {
+    return SUCCEEDED(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, LEVELS, 2, D3D11_SDK_VERSION,
+                                       device.ReleaseAndGetAddressOf(), nullptr, context.ReleaseAndGetAddressOf()))
+           && SUCCEEDED(device.As(&device1)) && SUCCEEDED(device.As(&device5)) && SUCCEEDED(context.As(&context4));
+  };
   if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf())))
-      || FAILED(factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(adapter.GetAddressOf())))
-      || FAILED(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, LEVELS, 2, D3D11_SDK_VERSION,
-                                  device.GetAddressOf(), nullptr, context.GetAddressOf()))
-      || FAILED(device.As(&device1)) || FAILED(device.As(&device5)) || FAILED(context.As(&context4))) {
+      || FAILED(factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(adapter.GetAddressOf()))) || !make_device()) {
     set_status("DLAA helper: no D3D11.4 device on the game's GPU");
     return 1;
   }
@@ -306,6 +308,28 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   auto proxy_generation = std::make_unique<twattila::dlaa_helper::ProxyFrameGeneration12>();
   uint32_t generation_backend = twattila::dlaa_bridge::FG_BACKEND_DLSS;
   std::array<bool, 3> generation_refused = {};  // backends Auto no longer tries
+  // FSR's and XeSS's objects replaced while they still make their context or chain on their own thread (a cold start can
+  // pass the answer's budget: upscale_d3d12.hpp): kept until that is done, as stalled_scene, then freed with a request or an
+  // idle wake, so no request waits for it. A GPU reset's: freed at once (its making on the removed device ends soon; kept, the
+  // device would refuse the new ones: MakeOwnDevice).
+  std::vector<std::unique_ptr<twattila::dlaa_helper::Upscaler12>> parked_upscalers;
+  std::vector<std::unique_ptr<twattila::dlaa_helper::ProxyFrameGeneration12>> parked_generations;
+  const auto free_parked = [&] {
+    std::erase_if(parked_upscalers, [](const auto& parked) { return !parked->Making() || parked->Lost(); });
+    std::erase_if(parked_generations, [](const auto& parked) { return !parked->Making() || parked->Lost(); });
+  };
+  const auto new_upscaler = [&] {
+    if (upscaler->Making() && !upscaler->Lost()) {
+      parked_upscalers.push_back(std::move(upscaler));
+    }
+    upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+  };
+  const auto new_proxy_generation = [&] {
+    if (proxy_generation->Making() && !proxy_generation->Lost()) {
+      parked_generations.push_back(std::move(proxy_generation));
+    }
+    proxy_generation = std::make_unique<twattila::dlaa_helper::ProxyFrameGeneration12>();
+  };
   DXGI_ADAPTER_DESC1 adapter_description = {};
   adapter->GetDesc1(&adapter_description);
   // RENODX_TW_FAKE_VENDOR (tests): another's GPU, as in the addon.
@@ -466,6 +490,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       ReShadeLogMessage(nullptr, 0, ("[TW DLAA helper] " + reconstruction_refusal).c_str());
     }
   };
+  // Streamline stopped, then Ray Reconstruction's object made again: NGX's shutdown in its destructor while Streamline runs
+  // crashes Streamline's next evaluation (2026-11-03, fg_bridge_test), and kept, it would hold its device (removed: no new one
+  // could be made, MakeOwnDevice). Streamline's stop ends NGX, not per device: Ray Reconstruction starts again after it.
+  const auto stop_streamline = [&] {
+    generation->Shutdown();
+    generation = std::make_unique<twattila::dlaa_helper::FrameGeneration12>();
+    streamline_used = false;
+    reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
+  };
   const auto generation_status = [&] {
     return (generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS) ? generation->Status().c_str() : proxy_generation->Status().c_str();
   };
@@ -487,13 +520,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const bool streamline_lost = generation->Lost();
     if (streamline_lost) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed frame generation's device: Streamline started again.");
-      generation->Shutdown();
-      generation = std::make_unique<twattila::dlaa_helper::FrameGeneration12>();
-      // Streamline's stop ended NGX, not per device: Ray Reconstruction starts it again after Streamline's start (below). Its
-      // object stays unreleased: NGX's shutdown then would crash Streamline's next evaluation.
-      reconstruction->Close();
-      reconstruction.release();
-      reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
+      stop_streamline();
     }
     // The player's choice alone (DLSS only on NVIDIA's GPUs, else as Auto), or Auto's order.
     const bool nvidia = adapter_description.VendorId == 0x10DE;
@@ -513,9 +540,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     for (size_t index = 0; index < count && !generation_open; ++index) {
       const uint32_t backend = order[index];
       if (generation_refused[backend]) continue;
-      // Another backend's window and swap chain gone first; its memory with them.
+      // Another backend's window and swap chain gone first; its memory with them (FSR's or XeSS's chain still being made:
+      // parked, FreeResources would wait for it here).
       if (generation_resources && generation_backend != backend) {
-        free_generation();
+        if (generation_backend != FG_BACKEND_DLSS && proxy_generation->Making()) {
+          new_proxy_generation();
+        } else {
+          free_generation();
+        }
       }
       generation_backend = backend;
       if (backend == FG_BACKEND_DLSS) {
@@ -524,7 +556,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       } else {
         if (proxy_generation->Lost() || proxy_generation->Backend() != backend) {
           if (proxy_generation->Lost()) ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed frame generation's device: a new one.");
-          proxy_generation = std::make_unique<twattila::dlaa_helper::ProxyFrameGeneration12>();
+          new_proxy_generation();
         }
         generation_open = proxy_generation->Initialize(adapter.Get(), folder, backend) && proxy_generation->Open(*shared);
       }
@@ -591,13 +623,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       }
     }
     if (upscaler_live && now - upscale_used > IDLE_RELEASE) {
-      logged_release("[TW DLAA helper] FSR / XeSS off for 10 s: their memory released",
-                     [&] { upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>(); });
+      logged_release("[TW DLAA helper] FSR / XeSS off for 10 s: their memory released", new_upscaler);
       upscaler_tried = false;
       upscaler_open = false;
       upscaler_live = false;
     }
-    if (generation_resources && now - fg_used > IDLE_RELEASE) {
+    // FSR's or XeSS's chain still being made: let go at a later wake, once made (FreeResources would wait for it here).
+    const bool generation_making = generation_backend != twattila::dlaa_bridge::FG_BACKEND_DLSS && proxy_generation->Making();
+    if (generation_resources && now - fg_used > IDLE_RELEASE && !generation_making) {
       logged_release("[TW DLAA helper] Frame generation off for 10 s: its memory released", free_generation);
       generation_resources = false;
     }
@@ -638,6 +671,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       log_removed_devices();
       publish_fence();
       release_idle();
+      free_parked();
     }
     return woken;
   };
@@ -645,21 +679,56 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   while (next_request() == WAIT_OBJECT_0) {
     log_removed_devices();
     last_request = std::chrono::steady_clock::now();
+    // A GPU reset removed the D3D11 device every request waits and signals on: a new one, this set's fence opened again on
+    // it (its handles stay open: set_handles; the textures with the next DLSS request). None: the helper ends, which the
+    // addon's watcher reports (else every request would pass unanswered for good).
+    if (FAILED(device->GetDeviceRemovedReason())) {
+      backend.Reset();
+      super_resolution_ran = false;
+      super_resolution_opened = false;
+      color.Reset();
+      depth.Reset();
+      motion.Reset();
+      output.Reset();
+      fence.Reset();
+      context4.Reset();
+      device5.Reset();
+      device1.Reset();
+      context.Reset();
+      device.Reset();
+      if (!make_device()) {
+        LogWithTime("[TW DLAA helper] A GPU reset removed its D3D11 device and no new one could be made: the helper ends.");
+        break;
+      }
+      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed its D3D11 device: a new one.");
+      if (shared->generation == opened_generation && shared->color != 0
+          && FAILED(device5->OpenSharedFence(reinterpret_cast<HANDLE>(shared->fence), IID_PPV_ARGS(fence.GetAddressOf())))) {
+        fence.Reset();
+      }
+    }
     // The stalled scene's work is done, or its device removed since (held, it would refuse the new devices below).
     const bool scene_resumes = stalled_scene && stalled_scene->Idle();
     if (scene_resumes) {
       stalled_scene.reset();
     }
+    free_parked();
     // A GPU reset removed one's device: it goes at once, whatever the set (no new device can be made while it is held:
     // MakeOwnDevice), a new one on this set (a new set usually follows: the shared fence reads all ones, dlaa_bridge::Prepare).
     if (reconstruction->Lost()) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed Ray Reconstruction's device: a new one.");
-      reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
-      if (reconstruction_open && shared->generation == opened_generation) open_reconstruction();
+      const bool same_set = shared->generation == opened_generation;
+      const bool restart_streamline = streamline_used && generation_open && generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS && same_set;
+      if (streamline_used) {
+        stop_streamline();
+      } else {
+        reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
+      }
+      if (restart_streamline) open_generation();
+      if (reconstruction_open && same_set) open_reconstruction();
     }
     if (upscaler->Lost()) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed FSR's / XeSS's device: a new one.");
-      upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+      new_upscaler();
       upscaler_tried = false;
     }
     if (shared->generation != opened_generation) {
@@ -871,7 +940,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       upscale_used = now;
       if (!upscaler_tried) {
         upscaler_tried = true;
-        if (upscaler->Backend() != shared->upscaler) upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+        if (upscaler->Backend() != shared->upscaler) new_upscaler();
         upscaler_live = true;
         upscaler_open = upscaler->Initialize(adapter.Get(), folder, shared->upscaler)
                         && upscaler->Open({shared->color, shared->depth, shared->motion, shared->output}, shared->fence);
@@ -970,8 +1039,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   }
   rt_work.changed.notify_all();
   rt_worker.join();
-  // The game and its window are gone: nothing to wait for on FSR's or XeSS's swap chain.
+  // The game and its window are gone: nothing to wait for on FSR's or XeSS's swap chain, nor for a parked one's making.
   proxy_generation.release();
+  for (auto& parked : parked_upscalers) {
+    parked.release();
+  }
+  for (auto& parked : parked_generations) {
+    parked.release();
+  }
   // Its work can only finish with the game's GPU, which is gone: no wait for it.
   stalled_scene.release();
   return 0;
