@@ -58,6 +58,7 @@ struct State {
   bool jitter_written = false;
   bool reset = true;
   uint32_t frame = 0;
+  uint32_t depth_frame = UINT32_MAX;  // the frame whose main depth `depth` holds (Evaluate's prepare pass)
   UINT width = 0;
   UINT height = 0;
   std::array<float, 2> jitter = {};  // pixels, x right, y down
@@ -278,6 +279,7 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   const std::array<IDirect3DBaseTexture9*, 2> sources = {scene, depth.Get()};
   DrawQuad(host, inputs, state.prepare.Get(), sources, constants);
   if (!hand_over(host_ex.Get(), state.host_fence.get(), context.Get())) WaitHost(host);
+  state.depth_frame = state.frame;
 
   auto& helper = twattila::dlaa_bridge::bridge;
   twattila::dlaa_bridge::BeforeSharedWrites(context.Get());

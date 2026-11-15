@@ -1,7 +1,7 @@
 #ifndef SRC_RUSE_SHARED_H_
 #define SRC_RUSE_SHARED_H_
 
-// Multiple of 4 floats: DX9 reads it as float4 registers (c200-c209, see SM3 below).
+// Multiple of 4 floats: DX9 reads it as float4 registers (c200-c210, see SM3 below).
 struct ShaderInjectData {
   float peak_white_nits;
   float diffuse_white_nits;
@@ -52,6 +52,12 @@ struct ShaderInjectData {
   float reserved_7;
   float reserved_8;
   float reserved_9;
+
+  // c210: the ray-traced sun visibility's texel (1 / size, then half of it): the object shaders read it by VPOS (O1).
+  float rays_texel_x;
+  float rays_texel_y;
+  float rays_half_texel_x;
+  float rays_half_texel_y;
 };
 
 #define SI shader_injection
@@ -79,13 +85,13 @@ struct ShaderInjectData {
 #ifndef __cplusplus
 #if (__SHADER_TARGET_MAJOR == 3)
 // DX9 (the game's shaders): no constant buffers. The addon writes the struct into
-// c200-c209 (constant_buffer_offset = 200 * 4). High registers: the game uses the low ones.
-float4 shader_injection_registers[10] : register(c200);
+// c200-c210 (constant_buffer_offset = 200 * 4). High registers: the game uses the low ones.
+float4 shader_injection_registers[11] : register(c200);
 static const ShaderInjectData shader_injection = {
   shader_injection_registers[0], shader_injection_registers[1], shader_injection_registers[2],
   shader_injection_registers[3], shader_injection_registers[4], shader_injection_registers[5],
   shader_injection_registers[6], shader_injection_registers[7], shader_injection_registers[8],
-  shader_injection_registers[9]
+  shader_injection_registers[9], shader_injection_registers[10]
 };
 #elif ((__SHADER_TARGET_MAJOR == 5 && __SHADER_TARGET_MINOR >= 1) || __SHADER_TARGET_MAJOR >= 6)
 cbuffer shader_injection : register(b13, space50) {

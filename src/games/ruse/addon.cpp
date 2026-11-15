@@ -55,7 +55,7 @@ constexpr char BUILD_TIME[] = __TIME__;
 namespace {
 
 ShaderInjectData shader_injection;
-static_assert(sizeof(ShaderInjectData) == 10 * 4 * sizeof(float), "Keep the DX9 c200-c209 injection layout in sync.");
+static_assert(sizeof(ShaderInjectData) == 11 * 4 * sizeof(float), "Keep the DX9 c200-c210 injection layout in sync.");
 // Capture controls once for all replaced draws in a host frame. Presentation
 // uses a fixed nit reference, so UI changes cannot rescale an older scene frame.
 ShaderInjectData frame_injection;
@@ -1158,6 +1158,7 @@ void ConfigureAddon() {
       for (const uint32_t bloom : {0x41B68A24u, 0xF663E47Eu}) {
         custom_shaders[bloom] = {.crc32 = bloom, .on_draw = [](reshade::api::command_list* cmd_list) {
                                    ruse::bridge::Evaluate(cmd_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
+                                   ruse::ray_tracing::KeepObjectDepth(cmd_list);
                                    return true;
                                  }};
       }
@@ -1220,6 +1221,29 @@ void ConfigureAddon() {
     ruse::replay::state.rays = ruse::ray_tracing::state.ground;
     ruse::replay::state.enabled = ruse::replay::state.enabled || ruse::ray_tracing::state.ground;
     readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.ground;
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseRayTracedObjectShadows",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Ray-Traced Object Shadows (Experimental)",
+        .section = "Output (Restart Required)",
+        .tooltip = "Ray-traced sun shadows on buildings, units and trees, added to the game's (costs GPU time).\n"
+                   "Moving units' shadows are a frame late. Needs Ray-Traced Ground Shadows. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The object shaders with the rays' visibility in their shadow (each proved the game's with it at 1).
+    ruse::ray_tracing::state.objects = ruse::ray_tracing::state.ground && setting->GetValue() != 0.f;
+    if (ruse::ray_tracing::state.objects) {
+      for (const auto& [hash, code] : ruse::ray_tracing::OBJECT_SHADOW_SHADERS) {
+        custom_shaders[hash] = {.crc32 = hash, .code = code};
+      }
+    }
   }
   if (ruse::bridge::state.enabled || ruse::replay::state.enabled) {
     // The camera pass: its matrices (c0-c8) as it drew (the bridge's motion, the replay's placements).
@@ -1370,6 +1394,10 @@ bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_des
   back_buffer_height = desc.back_buffer.texture.height;
   ruse::bridge::state.width = back_buffer_width;
   ruse::bridge::state.height = back_buffer_height;
+  shader_injection.rays_texel_x = 1.f / static_cast<float>(std::max(back_buffer_width, 1u));
+  shader_injection.rays_texel_y = 1.f / static_cast<float>(std::max(back_buffer_height, 1u));
+  shader_injection.rays_half_texel_x = 0.5f * shader_injection.rays_texel_x;
+  shader_injection.rays_half_texel_y = 0.5f * shader_injection.rays_texel_y;
   twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
   renodx::utils::device_proxy::SetTargetFormat(renodx::mods::swapchain::target_format);
   renodx::utils::device_proxy::SetTargetColorSpace(renodx::mods::swapchain::target_color_space);
