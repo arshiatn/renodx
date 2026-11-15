@@ -46,6 +46,7 @@
 #include "../twattila/psycho35_settings.hpp"
 #include "./bridge.hpp"
 #include "./bridge_replay.hpp"
+#include "./ray_tracing.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -133,6 +134,9 @@ void OnBridgePushConstants(reshade::api::command_list*, reshade::api::shader_sta
 bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t, uint32_t first_index, int32_t vertex_offset,
                          uint32_t) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return false;
+  if (ruse::ray_tracing::state.ground && ruse::bridge::IsSceneDraw()) {
+    ruse::ray_tracing::OnSceneDraw(cmd_list);
+  }
   ruse::bridge::OnDraw(cmd_list);
   if (ruse::replay::state.enabled && ruse::bridge::IsSceneDraw()) {
     ruse::replay::Record(cmd_list, index_count, first_index, vertex_offset);
@@ -490,12 +494,13 @@ bool OnFrameShaderDraw(reshade::api::command_list* cmd_list) {
 }
 
 void OnPresentFrame(
-    reshade::api::command_queue*, reshade::api::swapchain* swapchain,
+    reshade::api::command_queue* queue, reshade::api::swapchain* swapchain,
     const reshade::api::rect*, const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   auto* device = swapchain->get_device();
   // The nested DX11 proxy Present must not start a new host frame.
   if (device->get_api() != reshade::api::device_api::d3d9) {
     if (presenting_host != nullptr && renodx::utils::device_proxy::IsProxyDevice(device)) {
+      ruse::ray_tracing::state.proxy_queue = queue;
       proxy_present_started = true;
       if (proxy_present_slot.installed_address == nullptr) {
         proxy_present_slot = {
@@ -516,6 +521,9 @@ void OnPresentFrame(
   }
   presenting_host = reinterpret_cast<IDirect3DDevice9*>(device->get_native());
   ruse::bridge::OnPresent();
+  if (ruse::ray_tracing::state.ground) {
+    ruse::ray_tracing::OnPresent();
+  }
   if (frame_trace_enabled) {
     std::error_code ignored;
     if (frame_trace_requested || std::filesystem::remove(frame_trace_marker, ignored)) {
@@ -1191,12 +1199,35 @@ void ConfigureAddon() {
     ruse::replay::state.log_next = ruse::replay::state.enabled;
     readable_depth_enabled = readable_depth_enabled || ruse::replay::state.enabled;
   }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseRayTracedGroundShadows",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Ray-Traced Ground Shadows (Experimental)",
+        .section = "Output (Restart Required)",
+        .tooltip = "Ray-traced sun shadows on the ground, added to the game's (costs CPU and GPU time).\n"
+                   "Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The rays trace the scene the replay captured, in the helper the anti-aliasing starts.
+    ruse::ray_tracing::state.ground = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
+    ruse::bridge::state.ray_tracing = ruse::ray_tracing::state.ground;
+    ruse::replay::state.rays = ruse::ray_tracing::state.ground;
+    ruse::replay::state.enabled = ruse::replay::state.enabled || ruse::ray_tracing::state.ground;
+    readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.ground;
+  }
   if (ruse::bridge::state.enabled || ruse::replay::state.enabled) {
     // The camera pass: its matrices (c0-c8) as it drew (the bridge's motion, the replay's placements).
     custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list*) {
                                     std::memcpy(ruse::bridge::state.camera.data(), ruse::bridge::state.pixel_registers.data(),
                                                 sizeof(ruse::bridge::state.camera));
                                     ruse::bridge::state.camera_valid = true;
+                                    ruse::ray_tracing::OnCameraPass();
                                     return true;
                                   }};
   }
@@ -1398,6 +1429,11 @@ bool AttachAddon() {
     reshade::register_event<reshade::addon_event::bind_pipeline_states>(ruse::replay::OnBindPipelineStates);
     reshade::register_event<reshade::addon_event::destroy_device>(ruse::replay::OnDestroyDevice);
   }
+  if (ruse::ray_tracing::state.ground) {
+    twattila::rt_scene::InstallReplayedScene(ruse::ray_tracing::HOST);
+    reshade::register_event<reshade::addon_event::copy_texture_region>(ruse::ray_tracing::OnCopyTextureRegion);
+    reshade::register_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
+  }
   if (ruse::bridge::state.gpu_sync) {
     renodx::utils::gpu_fence::Use(DLL_PROCESS_ATTACH);
   }
@@ -1442,6 +1478,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::bind_index_buffer>(ruse::replay::OnBindIndexBuffer);
   reshade::unregister_event<reshade::addon_event::bind_pipeline_states>(ruse::replay::OnBindPipelineStates);
   reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::replay::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::copy_texture_region>(ruse::ray_tracing::OnCopyTextureRegion);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
   if (ruse::bridge::state.gpu_sync) {
     renodx::utils::gpu_fence::Use(DLL_PROCESS_DETACH);
   }

@@ -51,6 +51,7 @@ struct State {
   bool enabled = false;  // the Anti-Aliasing row (restart)
   uint32_t upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;
   bool gpu_sync = false;  // the GPU Sync row (restart): gpu_fence's attached before the game's device
+  bool ray_tracing = false;  // the helper started with its ray tracing (ray_tracing.hpp's row, restart)
   bool failed = false;   // a step failed for good: no jitter, the game's picture
   bool ready = false;
   bool in_scene = false;  // between the first scene draw and the bloom
@@ -96,7 +97,7 @@ inline float Halton(uint32_t index, uint32_t base) {
 }
 
 inline bool MakeShared(ID3D11Device* proxy, IDirect3DDevice9Ex* host, DXGI_FORMAT proxy_format, D3DFORMAT host_format,
-                       SharedTexture* texture) {
+                       SharedTexture* texture, UINT bind_flags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET) {
   const D3D11_TEXTURE2D_DESC desc = {
       .Width = state.width,
       .Height = state.height,
@@ -105,7 +106,7 @@ inline bool MakeShared(ID3D11Device* proxy, IDirect3DDevice9Ex* host, DXGI_FORMA
       .Format = proxy_format,
       .SampleDesc = {.Count = 1},
       .Usage = D3D11_USAGE_DEFAULT,
-      .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+      .BindFlags = bind_flags,
       .MiscFlags = D3D11_RESOURCE_MISC_SHARED,
   };
   ComPtr<IDXGIResource> resource;
@@ -138,10 +139,13 @@ inline void WaitProxy(ID3D11Device* proxy, ID3D11DeviceContext* context) {
   }
 }
 
-// One full-screen D3D9 pass (W2): the game's state kept as ReShade's own D3D9 passes keep it (a state block plus the
-// targets, depth and viewport, which it doesn't hold).
+// One full-screen D3D9 pass (W2) over the first target's size: the game's state kept as ReShade's own D3D9 passes keep it
+// (a state block plus the targets, depth and viewport, which it doesn't hold); `states` after the pass's own (a blend).
 inline void DrawQuad(IDirect3DDevice9* host, std::span<IDirect3DSurface9* const> targets, IDirect3DPixelShader9* shader,
-                     std::span<IDirect3DBaseTexture9* const> textures, std::span<const float> pixel_constants) {
+                     std::span<IDirect3DBaseTexture9* const> textures, std::span<const float> pixel_constants,
+                     std::initializer_list<std::pair<D3DRENDERSTATETYPE, DWORD>> states = {}) {
+  D3DSURFACE_DESC target_desc = {};
+  if (targets.empty() || FAILED(targets[0]->GetDesc(&target_desc))) return;
   ComPtr<IDirect3DStateBlock9> saved;
   if (FAILED(host->CreateStateBlock(D3DSBT_ALL, saved.GetAddressOf()))) return;
   saved->Capture();
@@ -158,13 +162,16 @@ inline void DrawQuad(IDirect3DDevice9* host, std::span<IDirect3DSurface9* const>
     host->SetRenderTarget(i, (i < targets.size()) ? targets[i] : nullptr);
   }
   host->SetDepthStencilSurface(nullptr);
-  const D3DVIEWPORT9 viewport = {.X = 0, .Y = 0, .Width = state.width, .Height = state.height, .MinZ = 0.f, .MaxZ = 1.f};
+  const D3DVIEWPORT9 viewport = {.X = 0, .Y = 0, .Width = target_desc.Width, .Height = target_desc.Height, .MinZ = 0.f, .MaxZ = 1.f};
   host->SetViewport(&viewport);
   for (const auto [render_state, value] : std::initializer_list<std::pair<D3DRENDERSTATETYPE, DWORD>>{
            {D3DRS_ZENABLE, FALSE}, {D3DRS_ZWRITEENABLE, FALSE}, {D3DRS_ALPHABLENDENABLE, FALSE}, {D3DRS_ALPHATESTENABLE, FALSE},
            {D3DRS_CULLMODE, D3DCULL_NONE}, {D3DRS_STENCILENABLE, FALSE}, {D3DRS_SCISSORTESTENABLE, FALSE},
            {D3DRS_SRGBWRITEENABLE, FALSE}, {D3DRS_COLORWRITEENABLE, 0xF}, {D3DRS_COLORWRITEENABLE1, 0xF},
            {D3DRS_COLORWRITEENABLE2, 0xF}}) {
+    host->SetRenderState(render_state, value);
+  }
+  for (const auto [render_state, value] : states) {
     host->SetRenderState(render_state, value);
   }
   for (DWORD i = 0; i < textures.size(); ++i) {
@@ -176,7 +183,7 @@ inline void DrawQuad(IDirect3DDevice9* host, std::span<IDirect3DSurface9* const>
     host->SetSamplerState(i, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
     host->SetSamplerState(i, D3DSAMP_SRGBTEXTURE, FALSE);
   }
-  const std::array<float, 4> half_pixel = {-1.f / static_cast<float>(state.width), 1.f / static_cast<float>(state.height), 0.f, 0.f};
+  const std::array<float, 4> half_pixel = {-1.f / static_cast<float>(target_desc.Width), 1.f / static_cast<float>(target_desc.Height), 0.f, 0.f};
   host->SetVertexShader(state.quad.Get());
   host->SetVertexShaderConstantF(0, half_pixel.data(), 1);
   host->SetPixelShader(shader);
@@ -212,8 +219,8 @@ inline bool Ready(IDirect3DDevice9* host, std::span<const uint8_t> quad, std::sp
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.depth)
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16_FLOAT, D3DFMT_G16R16F, &state.motion)
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.output)
-                    && twattila::dlaa_bridge::Prepare(proxy, state.width, state.height, false, false, DXGI_FORMAT_UNKNOWN, false,
-                                                      state.upscaler);
+                    && twattila::dlaa_bridge::Prepare(proxy, state.width, state.height, false, state.ray_tracing, DXGI_FORMAT_UNKNOWN,
+                                                      false, state.upscaler);
   if (!made) {
     reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Anti-aliasing: the bridge didn't start (helper missing?): off");
     return false;
