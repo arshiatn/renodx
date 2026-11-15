@@ -823,9 +823,27 @@ void ConfigureAddon() {
   // Do not upgrade the native packed 10-bit scene targets: that broad rule
   // produces a black scene in R.U.S.E. The proxy still supplies FP16 output.
   // DX9 shared-resource handoff has no keyed mutex. Finish each GPU side's
-  // transfer before the other side reads/reuses it during loading transitions.
-  renodx::mods::swapchain::device_proxy_wait_idle_source = true;
-  renodx::mods::swapchain::device_proxy_wait_idle_destination = true;
+  // transfer before the other side reads/reuses it during loading transitions
+  // (a restart row: off is an A/B for the U1 run, the Present guard fixed that corruption later).
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "ProxyGpuWaits",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 1.f,
+        .label = "Wait for Each Frame Copy (Experimental)",
+        .section = "Output (Restart Required)",
+        .tooltip = "On (default): each frame's copy to the HDR output waits for the GPU.\n"
+                   "Off: may be faster; turn it back on if loading screens show garbage.\n"
+                   "Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    renodx::mods::swapchain::device_proxy_wait_idle_source = (setting->GetValue() != 0.f);
+    renodx::mods::swapchain::device_proxy_wait_idle_destination = (setting->GetValue() != 0.f);
+    settings.push_back(setting);
+  }
 
   // Output (twattila/output_encoding.hpp): decided for each new DX9 swap chain (OnCreateSwapchain).
   {
