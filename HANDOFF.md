@@ -649,7 +649,7 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [x] merged into "ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH" (was: "RYSE MERGE ROUND (one add-on): rys_'s plan in its report: mo...")
     - [x] DONE 11-15 (ATN ended it 12:1x, the coordinator deleted both exes): A page_dump_ryd_rys1.exe (PID 35256) is stuck in tools/tw/page_dump (built outside testbin; "Access denied",
       likely Bitdefender). Owner: ATN ends it and deletes page_dump_ry_rys1.exe / page_dump_ryd_rys1.exe there
-    - [ ] Remove the DevKit symlink from Ryse's Bin64 before runs (it keeps fast dispatch off). Owner: coordinator at
+    - [x] DONE 12:11 (install, .aside-20261115_121136): Remove the DevKit symlink from Ryse's Bin64 before runs (it keeps fast dispatch off). Owner: coordinator at
       the install (fresh backup)
   - [x] UE4 OFFLINE ROUND MERGED d50bfc2c (ue4_): Expeditions 4.23 labels + r.SSGI.Quality (exe default 0, clamp
     1..4); fast dispatch opt-in in all four (tw_draw_dispatch PASS); one engine_cvars (UE_4_21 / UE_4_23 tables),
@@ -710,7 +710,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] Ryse FG 2x pacing: frames presented in pairs 0.15 ms apart, shown 2.7-9.3 ms, p99 15.4 ms. Owner: next
         Ryse round
       - [ ] Ryse: port 0x292F2865 (half-res shadow, every start). Owner: next Ryse round (with the families box)
-      - [ ] tw_install.py's Ryse entry (helper + rename aside of the old _dlss add-on by exact name; rym_ patched it,
+      - [x] DONE (installs 12:10 / 13:5x / 17:37 used it): tw_install.py's Ryse entry (helper + rename aside of the old _dlss add-on by exact name; rym_ patched it,
         .bak_rym): dry run. Owner: coordinator at the install
       - [ ] tools/ingame/deploy.py:30 (_dlss zip entry) and tools/ryse/fg_camera_check.py (removed camera math):
         obsolete, update or retire. Owner: coordinator, release round
@@ -743,7 +743,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [x] merged into the older "Data runs (ATN allowed, scripted, fresh save backups)" line: Data runs (helper DLAA / DLSS Quality, RR, FG 2x, Tales' in-process RT together; ReShade.log status lines,
         talesofarise_pass_timing.txt, HDR-only start; Expeditions' five carve materials' first-draw lines): Tales G1 + G2,
         Expeditions G1. Owner: coordinator (non-TW data runs)
-      - [ ] tw_install.py entries for Tales / Expeditions (one add-on, old _dlss renamed aside): dry run. Owner:
+      - [x] DONE (installs used them): tw_install.py entries for Tales / Expeditions (one add-on, old _dlss renamed aside): dry run. Owner:
         coordinator at the non-TW install
     (merged from "RYSE MERGE ROUND (one add-on): rys_'s plan in its report: mo...": RYSE MERGE ROUND (one add-on):
     rys_'s plan in its report: move _dlss files + 0x52594501-06 / 0x7A1E0D40-42 shaders into rysesonofrome, the DLSS
@@ -826,7 +826,7 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [ ] Two Shadow Cascades live rebuild (no restart). Owner: next D3D11 round
     - [ ] +265 MB VRAM for the bounce-size ReSTIR record. Owner: next ReSTIR round
     - [ ] Shogun 2 terrain_detail not restored at detach (minor). Owner: next Shogun 2 round
-    - [ ] talesofarise_dlss/frame_generation.hpp detours have no uninstall. Owner: next UE round
+    - [x] OBSOLETE (Fable review 11-15: no add-on includes it; goes with the Dead files box): talesofarise_dlss/frame_generation.hpp detours have no uninstall. Owner: next UE round
   - [x] FINAL VERIFICATION bc7ba324 (rfx_): builds exit 0; tw_engine_code x86 PASS (3 DLLs), tw_output_encoding 5 / 5
     x86 + amd64, tw_helper_lifetime / tw_gpu_completion / tw_screen_space_shadows x86 + amd64 PASS, tw_rays_captures ALL
     PASSED, fg_bridge_test PASS (7 phases), all_modes 178 / 179 (rr_ao_reblur_release: the same flaky +30 MiB sets check,
@@ -879,7 +879,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       DevKit .aside-20261115_121136, Expeditions' symlink .symlink-20261115_121136). Their 8 watermarks each survive in
       the binaries (scan 8 / 8). Not run in game. Author zip in ATN's Downloads (+ timing program, bench tables, the
       one-line x87 bench patch).
-    - [ ] Non-TW data runs (ATN 12:2x "Sure, go ahead"): Tales G1 + G2 (agent started 12:2x, tools/nontw/tales/g1g2),
+    - [x] DONE 11-15 (Tales G1 + G2, Expeditions G1 + v32 recheck, Ryse R0 + s8b): Non-TW data runs (ATN 12:2x "Sure, go ahead"): Tales G1 + G2 (agent started 12:2x, tools/nontw/tales/g1g2),
       then Expeditions G1, then Ryse R0, one at a time. Owner: coordinator
       - Tales try 1 (12:24 / 12:30): SteamStub relaunches the exe through steam.exe, the launching shell's RENODX_TW_SET
         never arrived (no "[Tales] Test:" line); no save loaded, nothing measured; ATN's files restored, hashes OK, no save
@@ -1038,6 +1038,52 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [ ] ATN 18:5x: after the fix agent's 21 fixes, a second Fable 5.2 High review of THE FIX DIFF ONLY (coordinator
       recommends it: helper / threading fixes), then build all, stamp, install for ATN's Attila test. Nsight audit agent
       started (were last night's Nsight captures used for more wins?). Owner: coordinator
+    - [x] NON-TW SKILLS AUDIT 19:5x (ATN: "have Ryse, Tales, Expeditions done everything from the skills?"): all three
+      pass one add-on / pages / Reset + RT/PT + No RT/PT / V35 / SDR preset / Output + first start / per-channel Extended /
+      About / fast dispatch / frame trace / helper114 / tw_install / registry / helper-absent page dumps. GAPS below; one
+      NON-TW PARITY ROUND (an implementer per game, after the fix merge: R2 / R5 / R6 / R11 / R17 touch these games).
+      - [ ] Ryse: Time Each Pass (no pass_timing; no button in page_ry_fin). Owner: non-TW parity round (Ryse)
+      - [ ] Ryse: twattila/test_hooks (SET / SHOT / PROFILE) beside the renodx_trace_now poll (graphics.hpp:2650). Owner:
+        non-TW parity round (Ryse), with the cvars-from-ini box
+      - [ ] Ryse: ray-tracing Debug View + Scene Test rows + rt_scene::OnTonemapDrawn; README.md:339 "Not yet: the Debug
+        View". Owner: non-TW parity round (Ryse)
+      - [ ] Ryse: RT rows missing in page_ry_fin (ryse.tsv DO NOW): RayTracedAORays, PathSkyApart, PathKeptCube,
+        PathAmbient, ReflectionReuse, LightBounceResolution, AoReblur; the RT/PT preset is a hand list (addon.cpp:239-260),
+        not graphics_page::RAYS_PRESET (shaders-ui.md rule). Owner: non-TW parity round (Ryse)
+      - [ ] Ryse: rows missing (ledger DO NOW): ssao temporal / edge fix / denoise / auto thickness / resolution; light
+        bounce temporal / checkerboard / backface / auto thickness; LOD bias on all textures; Modded Auto Exposure; the VFX
+        rows; r_ParticlesHalfRes. Owner: non-TW parity round (Ryse)
+      - [ ] Ryse: tooltips name Attila / ATN (addon.cpp:1028 "as ATN plays Attila", :1215 "in Attila's tests"); its own
+        FULL_DOWNLOAD_NOTE (addon.cpp:188) lacks FSR / XeSS (twattila/credits.hpp:12 has them). Owner: non-TW parity round
+      - [ ] Ryse: SDR-encode WARP ramp of tonemap00, the gamma_correction code read, a Ryse table in test/tw_device_loss;
+        the offline read of R0's traces (plan step 8: light list, smoke / foliage / water / fog families, cascade readers).
+        Owner: non-TW parity round (Ryse)
+      - [ ] Tales + Expeditions: device_loss not wired (no Install / InstallLast / Uninstall; Decide straight from
+        OnCreateSwapchain: Tales addon.cpp:735-738, Expeditions :564-567). Owner: non-TW parity round (UE)
+      - [ ] Tales: no Bend SSS, no GT-VBGI (no ScreenSpaceShadows* / light_bounce_* keys; tales.tsv T13); no AO temporal /
+        edge fix / denoise rows, no LOD bias trilinear (T12); the censuses T9 (25 menu settings), T10 (casters), T11 (scale)
+        and T15 (shadow-map skip) not found. Owner: non-TW parity round (Tales)
+      - [ ] Expeditions: 14 unmapped TAA permutations (TEMPORAL_SHADERS has 6, dlss_graphics.hpp:110); the sg.* level
+        census (S10); the Low start never ran; rows missing: RayTracedSpecularOcclusion, RayTracedLightBounceResolution,
+        ssao temporal / edge fix / denoise / auto thickness / resolution; E9 (-d3d12 launch), E7 (WARP of lut00's
+        output-device branch); the page says "The game has no HDR option of its own" (addon.cpp:446) though
+        bUseHDRDisplayOutput exists: say the game's HDR stays off (ATN); stale comment addon.cpp:552. Owner: non-TW parity
+        round (Expeditions)
+      - [ ] All three: parity_check letters + tools/tw/parity ledgers (ryse / tales / expeditions .tsv from 00:4x list
+        done items as DO NOW: refresh); dump_any.py letters ry / ta / exr; box "SHARED STEP owners" S6 (page-dump drivers)
+        is done: tick it there. Owner: non-TW parity round (coordinator part)
+      - [ ] All three: cb_audit never run on the replaced shaders (ryse plan.md:167, tales plan.md:101); stability item 1
+        (unmodded ReShade.log facts in a commit) missing. Owner: non-TW parity round
+      - [ ] ATN by eye: Hue Clip Ryse 80 (addon.cpp:87), Tales 70 (:67), Expeditions 70 (:63). Owner: ATN
+      - [ ] Release (all three): README entries (Tales last v71 at :369; Expeditions README_DLSS last v29 at :960; Ryse
+        check); one-add-on release zips not built. Owner: coordinator, release round
+      - [ ] Shared copies: psycho_test31.hlsli (Tales / Expeditions 32 lines off twattila's, Ryse 2); ue_extended.hlsli
+        twice (S3's de-dup dropped when S3 was answered). Owner: shared-steps round
+      - [ ] Never verified in game (all three): SDR first start / SDR preset / SDR output; the HDR-only state (helper
+        absent) only by page dumps; the fast dispatch replay oracle (no UE / Ryse trace converter, S9). Tales: DLSS frame
+        generation never ran (G1 / G2 had no Streamline). Expeditions: rays only in the menu, no save scene. Ryse: unload
+        harness never ran; every RT / AO / Light Bounce row untested in game. Owner: coordinator (next game window +
+        harness)
     - [x] CLEANUP AUDIT 19:4x (ATN: "anything else lost last night?"): of 154 open boxes before the cleanup 42 still open,
       9 merged (7 into open lines, 2 into Final verification, ticked today), 78 ticked in step 1 (all 88 cited hashes
       exist; ~30 spot-checked OK; 13 OBSOLETE reasons hold), 25 ticked since with evidence, 0 gone; the archive has no
@@ -1218,7 +1264,7 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [x] DONE 11-15 (uem_ 89b01a72 logs their first draw; the check moved to "Expeditions left" (G1 data run)): Expeditions' unregistered fullscreen post candidates: the stencil / depth edge detect 0x30AD0356, 0x600BADCC,
       0xBB1E5908, 0xC3FD465B (+ MSAA) against outline00 / 01, and the composite / max / 4-texture / depth-copy ones
       (report.md): do any need HDR treatment (clamps, sRGB)? Owner: UE4 MERGE round (uem_) or its follow-up Owner (audit 11-15): UE SHADER CARVE uec_ (running): tick when uec_ reports.
-  - [ ] Data runs (ATN allowed, scripted, fresh save backups): Tales G1 + G2 one session (Manual 03 / 04), Expeditions G1
+  - [x] DONE 11-15 (all three ran; leftovers in the per-game boxes): Data runs (ATN allowed, scripted, fresh save backups): Tales G1 + G2 one session (Manual 03 / 04), Expeditions G1
     (Save Silanus 3m), Ryse R0 (auto-continue or chapter 3) + Nsight D3D11 capture try; after the merges + test hooks.
     Not while the TW end bench runs. Owner: coordinator
     (merged from "Ryse runtime names + on-demand compiles in R0: r_ShadersLogC...": Ryse runtime names + on-demand
