@@ -8,6 +8,15 @@
 #define RENODX_MODS_SWAPCHAIN_VERSION 2
 #define DEBUG_LEVEL_0
 
+#include <d3d11.h>
+#include <wrl/client.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <format>
+#include <string>
+
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
 
@@ -15,8 +24,10 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../talesofarise_dlss/frame_trace.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/draw_dispatch.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -718,7 +729,66 @@ renodx::utils::settings::Settings settings = {
 
 bool initialized = false;
 
+constexpr uint32_t LUT_BUILDER_HASH = 0x7016F292;  // t00, PPComputeLUT (HDR and SDR LUTs)
+constexpr uint32_t SIGHT_HASH = 0xA3A4EC44;        // outlines00, EoCSight_HDR: binds PerView b12
+
+// Each replaced shader's first use is logged once (the "applied" lines of a data run); a bit per custom shader.
+std::atomic_uint64_t applied_shaders = 0;
+
+// The traced frame (frame_trace: renodx_trace_now next to the exe, RENODX_TW_SET's "trace" or the Advanced button) also
+// gets a constant buffer's registers, read through a staging copy (that frame only).
+void AppendConstants(reshade::api::command_list* cmd_list, bool compute, UINT slot, UINT registers, const std::string& label) {
+  auto* context = talesofarise::frame_trace::internal::NativeContext(cmd_list);
+  if (context == nullptr) return;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> buffer;
+  if (compute) {
+    context->CSGetConstantBuffers(slot, 1, &buffer);
+  } else {
+    context->PSGetConstantBuffers(slot, 1, &buffer);
+  }
+  if (buffer == nullptr) {
+    talesofarise::frame_trace::internal::Append(label + ": not bound");
+    return;
+  }
+  D3D11_BUFFER_DESC desc = {};
+  buffer->GetDesc(&desc);
+  desc.Usage = D3D11_USAGE_STAGING;
+  desc.BindFlags = 0;
+  desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  desc.MiscFlags = 0;
+  desc.StructureByteStride = 0;
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  context->GetDevice(&device);
+  Microsoft::WRL::ComPtr<ID3D11Buffer> staging;
+  if (FAILED(device->CreateBuffer(&desc, nullptr, &staging))) return;
+  context->CopyResource(staging.Get(), buffer.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return;
+  const auto* values = static_cast<const float*>(mapped.pData);
+  std::string line = label + ":";
+  for (UINT c = 0; c < std::min(registers, desc.ByteWidth / 16u); ++c) {
+    line += std::format(" c{}=({:.9g} {:.9g} {:.9g} {:.9g})", c, values[c * 4], values[c * 4 + 1], values[c * 4 + 2], values[c * 4 + 3]);
+  }
+  context->Unmap(staging.Get(), 0);
+  talesofarise::frame_trace::internal::Append(line);
+}
+
+void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
+               uint32_t, const reshade::api::rect*) {
+  talesofarise::frame_trace::OnPresent();
+}
+
 }  // namespace
+
+namespace divinity2::test_hooks {
+// RENODX_TW_PROFILE has nothing to record here (no ray-tracing scene).
+inline void StartProfile() {
+  renodx::utils::log::w("[Divinity 2] Test: RENODX_TW_PROFILE: no profile in this add-on.");
+}
+}  // namespace divinity2::test_hooks
+
+#define RENODX_TEST_HOOKS_PROFILE divinity2::test_hooks::StartProfile
+#include "../twattila/test_hooks.hpp"
 
 // DllMain //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -811,6 +881,15 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
 
         settings.insert(settings.end(), {
             new renodx::utils::settings::Setting{
+                .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+                .label = "Trace One Frame",
+                .section = "Debug",
+                .tooltip = "Writes the next frame's draws, their formats and the colour LUT's settings to\n"
+                           "tales_frame_trace.txt next to the game's exe.",
+                .on_change = []() { talesofarise::frame_trace::Request(); },
+                .is_visible = IsAdvancedSettings,
+            },
+            new renodx::utils::settings::Setting{
                 .value_type = renodx::utils::settings::SettingValueType::TEXT,
                 .label = "RenoDX, PsychoV30, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
                          "PsychoV30 and PsychoV35.",
@@ -872,13 +951,48 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
                 .is_visible = ShowPsychoV35Settings,
             }});
 
+        // Each replaced shader's first use goes to the log; on a traced frame the LUT builder's constants (both LUTs)
+        // and the view's (at the sight pass) go to the trace.
+        uint32_t shader_index = 0;
+        for (auto& [hash, shader] : custom_shaders) {
+          const uint64_t bit = uint64_t{1} << shader_index++;
+          shader.on_draw = [hash, bit](reshade::api::command_list* cmd_list) {
+            if ((applied_shaders.load(std::memory_order_relaxed) & bit) == 0 && (applied_shaders.fetch_or(bit) & bit) == 0) {
+              renodx::utils::log::i(std::format("[Divinity 2] Replaced shader 0x{:08X} applied (Rendering Mode {:.0f}).", hash,
+                                                shader_injection.tonemap_type));
+            }
+            if (!talesofarise::frame_trace::internal::state.tracing.load(std::memory_order_relaxed)) return true;
+            switch (hash) {
+              case LUT_BUILDER_HASH:
+                AppendConstants(cmd_list, true, 0, 33,
+                                "PPComputeLUT cb0 (c0 luminance apply / red / highlights fix, c1-20 grading, c21 ranges, c22-25 "
+                                "white balance, c26-32 Params: TsParams, c31.zw / c32.x shaper, c32.y HDR gamma, c32.z output "
+                                "device bits: 1.4e-45 = HDR)");
+                break;
+              case SIGHT_HASH:
+                AppendConstants(cmd_list, false, 12, 15,
+                                "PerView b12 at EoCSight_HDR (c0-3 View, c4-7 Projection, c8-11 ViewProjection, c12 ViewPos, "
+                                "c13 ViewInfo: far, near, width, height, c14 ScaleAndBias)");
+                break;
+              default:
+                break;
+            }
+            return true;
+          };
+        }
+
         reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
+        reshade::register_event<reshade::addon_event::present>(OnPresent);
+        twattila::test_hooks::Install(&settings, true, "[Divinity 2]");
 
         initialized = true;
       }
 
       break;
     case DLL_PROCESS_DETACH:
+      twattila::test_hooks::Uninstall();
+      reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+      talesofarise::frame_trace::Stop();
       reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
       reshade::unregister_addon(h_module);
       break;
