@@ -310,21 +310,22 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   std::array<bool, 3> generation_refused = {};  // backends Auto no longer tries
   // FSR's and XeSS's objects replaced while they still make their context or chain on their own thread (a cold start can
   // pass the answer's budget: upscale_d3d12.hpp): kept until that is done, as stalled_scene, then freed with a request or an
-  // idle wake, so no request waits for it.
+  // idle wake, so no request waits for it. A GPU reset's: freed at once (its making on the removed device ends soon; kept, the
+  // device would refuse the new ones: MakeOwnDevice).
   std::vector<std::unique_ptr<twattila::dlaa_helper::Upscaler12>> parked_upscalers;
   std::vector<std::unique_ptr<twattila::dlaa_helper::ProxyFrameGeneration12>> parked_generations;
   const auto free_parked = [&] {
-    std::erase_if(parked_upscalers, [](const auto& parked) { return !parked->Making(); });
-    std::erase_if(parked_generations, [](const auto& parked) { return !parked->Making(); });
+    std::erase_if(parked_upscalers, [](const auto& parked) { return !parked->Making() || parked->Lost(); });
+    std::erase_if(parked_generations, [](const auto& parked) { return !parked->Making() || parked->Lost(); });
   };
   const auto new_upscaler = [&] {
-    if (upscaler->Making()) {
+    if (upscaler->Making() && !upscaler->Lost()) {
       parked_upscalers.push_back(std::move(upscaler));
     }
     upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
   };
   const auto new_proxy_generation = [&] {
-    if (proxy_generation->Making()) {
+    if (proxy_generation->Making() && !proxy_generation->Lost()) {
       parked_generations.push_back(std::move(proxy_generation));
     }
     proxy_generation = std::make_unique<twattila::dlaa_helper::ProxyFrameGeneration12>();
