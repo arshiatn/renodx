@@ -890,11 +890,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         one thread): add-on RVAs 0x162D4B -> 0x125B37 -> 0xC1685 -> 0xC6698 -> a D3D11 create -> ReShade -> add-on
         callback near 0xC0864 throws, right after RT installs (stamped 13:48 add-on; the 13:44 PDB does not match).
         Owner: coordinator (now)
+        - CAUSE FOUND + FIXED acf3d270 (not built): CaptureDraw held rt_core's runtime.mutex across its stream-output
+          DrawIndexedInstanced (vtable 0xa0); D3D11 deleted a released shader at that draw, ReShade fired destroy_pipeline
+          on the thread, OnDestroyPipeline locked runtime.mutex again. pixel_coverage now has its own shared_mutex. Every
+          scene_draw host had it: Expeditions, Ryse, Rome Remastered, Shogun 2. Skills f99e871c.
+        - [ ] Build all (shared rt_core change: both build lines), stamp, install Expeditions / Ryse / Rome Remastered /
+          Shogun 2 (+ the rest on the same commit), then Expeditions G1 again with rays on at launch. Owner: coordinator
+          after Ryse R0
       - [ ] Expeditions save load: the main menu takes no SendInput keys; the save scene (carve materials 93E43D26,
         07E055CF, 1F128822, 630E166D, A7FF9EDD first-draw lines, RT on vs off) still needs a way in. Owner: ATN decides
         (foreground fix / a mouse click), then coordinator
       - [ ] Expeditions unreplaced post into 8-bit f90 targets before the tonemapper: A45907DE (1920x1080), 2491478D
         (960x540), D9414A76 (3840x2160 + depth); B25C9978, FF9ECC89 (target unknown): clamp check. Owner: next UE round
+    - [ ] ATN 17:0x: "Add new/fixes to the skill then Start the whole package planning for Divinity 1, Divinity2 and
+      R.U.S.E." (PsychoV35 position: never on top of UpgradeToneMap / UC2 Extended; Divinity 2's at its Psycho's place).
+      Skills f99e871c. Planners d1_ / d2_ / ru_ started ~17:05 (brief tools/tw/round_notes/nontw2_plan_brief_1115.md,
+      plans to tools/nontw/divinity1 | divinity2 | ruse/plan.md). Owner: coordinator
+    - [ ] ATN 17:3x "Start the review": Fable 5.2 High crash / freeze review workflow wf_73f86de5-728 (6 areas: locks,
+      bridge, hooks, lifetime, non-TW, TW; each verified by a refuting agent). Then fixes one at a time, build all,
+      install. Owner: coordinator
     - [ ] WH3's x64 render-list WPR run: the game said "Unable to initialize SteamAPI" twice (Steam not elevated;
       HKCU Valve ActiveProcess pointed at a dead pid); ATN restarts Steam, then one run (x64_run.ps1). Owner: ATN, then
       coordinator
