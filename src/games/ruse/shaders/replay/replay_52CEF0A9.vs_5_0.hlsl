@@ -1,0 +1,29 @@
+// R.U.S.E.'s vertex shader 0x52CEF0A9 for the D3D11 replay (bridge_replay.hpp), transpiled from the game's vs_3_0 by
+// tools/nontw/ruse/scripts/ru_vs_transpile.py (proved against it as vs_3_0 on random and traced constants).
+#if __SHADER_TARGET_MAJOR >= 4
+cbuffer GameVertexConstants : register(b0) { float4 c[256]; };
+// The integer vertex formats ReShade reports come in normalized: scale / bias give the game's values back.
+cbuffer InputConversion : register(b1) { float4 input_scale[16]; float4 input_bias[16]; };
+#define POSITION_OUT SV_Position
+#else
+float4 c[CONSTANTS] : register(c0);
+#define POSITION_OUT POSITION
+#endif
+static const float4 c2_def = float4(1, -1, -0.5, 0.5);
+static const float4 c3_def = float4(5, -5, 0, 0);
+struct Input {
+  float4 v0 : POSITION0;
+};
+
+float4 main(Input input) : POSITION_OUT {
+#if __SHADER_TARGET_MAJOR >= 4
+  const float4 v0 = input.v0 * input_scale[0] + input_bias[0];
+#else
+  const float4 v0 = input.v0;
+#endif
+  int4 a0 = 0;
+  float4 o0 = 0;
+  o0.xy = ((c[1] + v0)).xy;
+  o0.zw = (c2_def.xxxx).zw;
+  return o0;
+}
