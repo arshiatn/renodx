@@ -879,6 +879,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         sl.* 2.14.16 + NVIDIA's licence in the zips, or a README line. Owner: coordinator, release round
       - [ ] Tales: G2's camp save has no torch / night / indoor view; the in-process RT has no torch rows yet (Tales' rays to
         the helper box). The NVIDIA DLSS on-screen indicator shows in every shot (ATN's driver setting). Owner: next UE round
+      - [x] Expeditions G1 ran 16:14-16:35 (tools/nontw/expeditions/g1, two starts): start 1 (rays on at launch)
+        CRASHED in the main menu ~9 s after "Ray tracing ready" (run_epic_161410, crash_29648.dmp); start 2 (rays off)
+        ran the timeline in the MAIN MENU (the UE menu ignored SendInput Up / Down / Enter / Tab / Space: save not loaded).
+        PresentMon 4K menu: DLAA 83.1 fps (GPU busy 8.14 ms), DLSS Performance 150.1, Performance + FG 2x 221.1 (DLSS-G
+        "FG v2", HUD recomposed), DLAA + FG 2x 138.5, game TAA 135.9. DLSS dispatch 4.20 ms of a 12.28 ms DLAA frame.
+        Migration "6 values of [Rome AA] taken over", preset L, "GPU wait removed", no errors; ATN's 20 files restored +
+        hash OK, no save changed, installed files unchanged. Low (sg=0) start not run.
+      - [ ] Expeditions RT crash: 0xC0000409 from std::_Throw_Cpp_error (std::system_error, a std::mutex locked twice on
+        one thread): add-on RVAs 0x162D4B -> 0x125B37 -> 0xC1685 -> 0xC6698 -> a D3D11 create -> ReShade -> add-on
+        callback near 0xC0864 throws, right after RT installs (stamped 13:48 add-on; the 13:44 PDB does not match).
+        Owner: coordinator (now)
+      - [ ] Expeditions save load: the main menu takes no SendInput keys; the save scene (carve materials 93E43D26,
+        07E055CF, 1F128822, 630E166D, A7FF9EDD first-draw lines, RT on vs off) still needs a way in. Owner: ATN decides
+        (foreground fix / a mouse click), then coordinator
+      - [ ] Expeditions unreplaced post into 8-bit f90 targets before the tonemapper: A45907DE (1920x1080), 2491478D
+        (960x540), D9414A76 (3840x2160 + depth); B25C9978, FF9ECC89 (target unknown): clamp check. Owner: next UE round
     - [ ] WH3's x64 render-list WPR run: the game said "Unable to initialize SteamAPI" twice (Steam not elevated;
       HKCU Valve ActiveProcess pointed at a dead pid); ATN restarts Steam, then one run (x64_run.ps1). Owner: ATN, then
       coordinator
