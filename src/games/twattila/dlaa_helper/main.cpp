@@ -489,13 +489,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       ReShadeLogMessage(nullptr, 0, ("[TW DLAA helper] " + reconstruction_refusal).c_str());
     }
   };
-  // Once Streamline ran, the old object stays unreleased: NGX's shutdown in its destructor, also of another device, crashes
-  // Streamline's next evaluation (2026-11-03, fg_bridge_test).
-  const auto new_reconstruction = [&] {
-    if (streamline_used) {
-      reconstruction->Close();
-      reconstruction.release();
-    }
+  // Streamline stopped, then Ray Reconstruction's object made again: NGX's shutdown in its destructor while Streamline runs
+  // crashes Streamline's next evaluation (2026-11-03, fg_bridge_test), and kept, it would hold its device (removed: no new one
+  // could be made, MakeOwnDevice). Streamline's stop ends NGX, not per device: Ray Reconstruction starts again after it.
+  const auto stop_streamline = [&] {
+    generation->Shutdown();
+    generation = std::make_unique<twattila::dlaa_helper::FrameGeneration12>();
+    streamline_used = false;
     reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
   };
   const auto generation_status = [&] {
@@ -519,10 +519,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const bool streamline_lost = generation->Lost();
     if (streamline_lost) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed frame generation's device: Streamline started again.");
-      generation->Shutdown();
-      generation = std::make_unique<twattila::dlaa_helper::FrameGeneration12>();
-      // Streamline's stop ended NGX, not per device: Ray Reconstruction starts it again after Streamline's start (below).
-      new_reconstruction();
+      stop_streamline();
     }
     // The player's choice alone (DLSS only on NVIDIA's GPUs, else as Auto), or Auto's order.
     const bool nvidia = adapter_description.VendorId == 0x10DE;
@@ -718,8 +715,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     // MakeOwnDevice), a new one on this set (a new set usually follows: the shared fence reads all ones, dlaa_bridge::Prepare).
     if (reconstruction->Lost()) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed Ray Reconstruction's device: a new one.");
-      new_reconstruction();
-      if (reconstruction_open && shared->generation == opened_generation) open_reconstruction();
+      const bool same_set = shared->generation == opened_generation;
+      const bool restart_streamline = streamline_used && generation_open && generation_backend == twattila::dlaa_bridge::FG_BACKEND_DLSS && same_set;
+      if (streamline_used) {
+        stop_streamline();
+      } else {
+        reconstruction = std::make_unique<twattila::dlaa_helper::RayReconstruction12>();
+      }
+      if (restart_streamline) open_generation();
+      if (reconstruction_open && same_set) open_reconstruction();
     }
     if (upscaler->Lost()) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed FSR's / XeSS's device: a new one.");
