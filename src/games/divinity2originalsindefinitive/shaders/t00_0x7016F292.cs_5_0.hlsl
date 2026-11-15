@@ -19,6 +19,7 @@ RWTexture3D<unorm float4> LUT : register(u0);
 #define cmp -
 #include "../shared.h"
 #include "../psycho_test30.hlsli"
+#include "../../twattila/psycho35.hlsli"
 #include "./vanilla.hlsli"
 #include "./vanillaplus.hlsli"
 
@@ -77,6 +78,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID, uint group_index : SV_GroupInde
   bool use_aces_fixed = (SI.tonemap_type == 1.f) && is_hdr;
   bool use_aces_tweaked = (SI.tonemap_type == 2.f) && is_hdr;
   bool use_psycho = (SI.tonemap_type == 3.f) && is_hdr;
+  bool use_psycho35 = (SI.tonemap_type == 4.f) && is_hdr;
 
   // The condition depends only on uniform constant-buffer values. Every
   // thread in a Tweaked ACES group reaches the barrier before any return.
@@ -213,13 +215,29 @@ void main(uint3 vThreadID : SV_DispatchThreadID, uint group_index : SV_GroupInde
 
   // Native white balance and regional grading above are common to all modes.
   // Vanilla+ replaces the complete native rendering transform below them.
-  if (use_aces_tweaked || use_psycho) {
+  if (use_aces_tweaked || use_psycho || use_psycho35) {
     const float diffuse_white_nits = max(SI.diffuse_white_nits, 0.0001f);
     const float peak_white_nits = DOS2_PEAK_NITS;
     const float relative_peak = peak_white_nits / diffuse_white_nits;
 
     // custom user Grading (in BT.709 space)
     float3 graded_bt709 = renodx::color::bt709::from::AP1(r0.xyz);
+
+    // PsychoV35 alone on the untonemapped graded colour, as V30 below. Hue Clip Emulation replaces the fire rows:
+    // bright colours take the hue an SDR ACES transform clips them to (the game's SDR LUT constants are not known
+    // yet: RenoDX's ACES at 0.02 / 48 nits stands in for them).
+    if (use_psycho35) {
+      [branch]
+      if (SI.hue_clip > 0.f) {
+        graded_bt709 = renodx::tonemap::psychov::HueTransfer(
+            graded_bt709, saturate(renodx::tonemap::aces::RRTAndODT(graded_bt709, 0.02f, 48.f) / 48.f), SI.hue_clip);
+      }
+      float3 psycho35_bt2020 = renodx::color::bt2020::from::BT709(
+          ApplyPsychoV35(graded_bt709, relative_peak, false, DOS2_GRAY_OUTPUT));
+      LUT[vThreadID.xyz] = float4(
+          renodx::color::pq::EncodeSafe(psycho35_bt2020, diffuse_white_nits), DOS2_HDR_LUT_ALPHA);
+      return;
+    }
 
     // Apply user colorgrading with the sliders and etc. It needs to be in bt709
     if (use_aces_tweaked &&

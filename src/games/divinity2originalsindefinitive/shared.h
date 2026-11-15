@@ -55,12 +55,27 @@ struct ShaderInjectData {
   // Independent Vanilla fire colours, disabled by default.
   float vanilla_fire_color_strength;
   float vanilla_fire_color_hue;
+
+  // PsychoV35 (Rendering Mode 4): Musa's (twattila/psycho35.hlsli) with its own sliders, appended.
+  float hue_clip;                  // Hue Clip Emulation, 0 - 1
+  float v35_exposure;
+  float v35_highlights;
+  float v35_shadows;
+  float v35_contrast;
+  float v35_highlight_contrast;    // above mid gray, 1 V35's own
+  float v35_shadow_contrast;       // below mid gray, 1 V35's own
+  float v35_flare;                 // 0 none, deeper blacks above it
+  float v35_saturation;
+  float v35_dechroma;              // 0 none, bright colours toward white above it
+  float v35_highlight_saturation;
+  float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
+  float v35_gamut_compression;     // 0 none (the display clips), 1 full
 };
 
 #define SI shader_injection
 #define DOS2_PEAK_NITS clamp(SI.peak_white_nits, 1.f, 10000.f)
 #define HDR_PEAK (DOS2_PEAK_NITS / max(SI.diffuse_white_nits, 0.0001f))
-#define DOS2_CORRECT_HDR (SI.tonemap_type != 0.f )  //FIXED ACES OR TWEAKED ACES OR PSYCHO 
+#define DOS2_CORRECT_HDR (SI.tonemap_type != 0.f )  // Vanilla, Tweaked ACES, PsychoV30 or PsychoV35
 
 //This is for t01/t00 otherwise contrast slider still makes some differences.
 //Traced them via devkit in the cbuffer of t00 and t01.

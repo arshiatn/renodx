@@ -16,6 +16,7 @@
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
 const std::string build_date = __DATE__;
@@ -42,6 +43,10 @@ bool IsPsychoV30() {
   return shader_injection.tonemap_type == 3.f;
 }
 
+bool IsPsychoV35() {
+  return shader_injection.tonemap_type == 4.f;
+}
+
 bool IsModded() {
   return shader_injection.tonemap_type != 0;
 }
@@ -56,6 +61,47 @@ bool ShowACEStweakedSettings() {
 
 bool ShowPsychoSettings() {
   return IsAdvancedSettings() && IsPsychoV30();
+}
+
+bool ShowPsychoV35Settings() {
+  return IsAdvancedSettings() && IsPsychoV35();
+}
+
+// Hue Clip Emulation's default: 80 as the other per-channel ACES games until test/tw_psychov35 part 6's hue report
+// and ATN's eye give D2's own.
+constexpr float HUE_CLIP_DEFAULT = 80.f;
+
+// Every image control at its default and Rendering Mode Vanilla; Peak, Paper White, UI, Settings Mode and Output kept.
+void ApplyResetPreset() {
+  renodx::utils::settings::UpdateSettings({
+      {"tonemap_type", 1.f},
+      {"aces_exposure", 1.f},
+      {"aces_contrast", 1.f},
+      {"aces_highlights", 1.f},
+      {"aces_shadows", 1.f},
+      {"aces_saturation", 1.f},
+      {"aces_highlight_saturation", 1.f},
+      {"aces_tweaked_exposure", 1.f},
+      {"aces_tweaked_contrast", 1.f},
+      {"aces_tweaked_highlights", 1.f},
+      {"aces_tweaked_shadows", 1.f},
+      {"aces_tweaked_saturation", 1.f},
+      {"aces_tweaked_highlight_saturation", 1.f},
+      {"exposure", 1.f},
+      {"highlights", 1.f},
+      {"shadows", 1.f},
+      {"contrast", 1.f},
+      {"saturation", 1.f},
+      {"cone_response_exponent", 1.f},
+      {"fire_color_strength", 0.45f},
+      {"fire_color_hue", 0.65f},
+      {"aces_tweaked_fire_color_strength", 0.25f},
+      {"aces_tweaked_fire_color_hue", 0.60f},
+      {"vanilla_fire_color_strength", 0.f},
+      {"vanilla_fire_color_hue", 0.75f},
+      {"bloom", 1.f},
+  });
+  renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
 
@@ -200,11 +246,44 @@ renodx::utils::settings::Settings settings = {
         .label = "Rendering Mode",
         .section = "General",
         .tooltip = "Off uses the game's HDR. Vanilla follows the native look with adjustable HDR brightness. Vanilla+ modes change the rendering.",
-        .labels = {"Off", "Vanilla", "Vanilla+ (Tweaked ACES)","Vanilla+ (PsychoV30)"},
+        .labels = {"Off", "Vanilla", "Vanilla+ (Tweaked ACES)", "Vanilla+ (PsychoV30)", "Vanilla+ (PsychoV35)"},
     },
 
         // Presets //////////////////////////////////////////////////////////////////////////////////////
-    // Neutral reference keeps the user's existing personal presets available.
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "Recommended",
+        .section = "Presets",
+        .group = "preset-buttons-0",
+        .tooltip = "Recommended look: Vanilla+ (PsychoV35), Bloom 0.44.\n"
+                   "Peak, Paper White, UI, Settings Mode and Output are kept.",
+        .on_change = []() {
+          ApplyResetPreset();
+          renodx::utils::settings::UpdateSettings({{"tonemap_type", 4.f}, {"bloom", 0.44f}});
+        },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "Reset",
+        .section = "Presets",
+        .group = "preset-buttons-0",
+        .tooltip = "Every image setting at its default (Rendering Mode Vanilla).\n"
+                   "Peak, Paper White, UI, Settings Mode and Output are kept.",
+        .on_change = []() { ApplyResetPreset(); },
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "SDR (monitors without HDR)",
+        .section = "Presets",
+        .group = "preset-buttons-0",
+        .tooltip = "For SDR monitors: Rendering Mode Off (the game's own picture).\n"
+                   "Turn HDR off in the game's graphics options too.",
+        .tint = 0xFFC107,
+        .on_change = []() {
+          ApplyResetPreset();
+          renodx::utils::settings::UpdateSettings({{"tonemap_type", 0.f}});
+        },
+    },
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
         .label = "Recommended (PsychoV30)",
@@ -259,52 +338,6 @@ renodx::utils::settings::Settings settings = {
             renodx::utils::settings::UpdateSetting("bloom", 0.44f);
         },
     },
-    new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-        .label = "Default everything",
-        .section = "Presets",
-        .group = "preset-buttons-3",
-        .on_change = []() {
-            // General
-            // renodx::utils::settings::UpdateSetting("tonemap_type", 1.f);
-
-            // Fixed ACES
-            renodx::utils::settings::UpdateSetting("aces_exposure", 1.00f);
-            renodx::utils::settings::UpdateSetting("aces_contrast", 1.00f);
-            renodx::utils::settings::UpdateSetting("aces_highlights", 1.00f);
-            renodx::utils::settings::UpdateSetting("aces_shadows", 1.00f);
-            renodx::utils::settings::UpdateSetting("aces_saturation", 1.00f);
-            renodx::utils::settings::UpdateSetting("aces_highlight_saturation", 1.00f);
-
-            // Tweaked ACES
-            renodx::utils::settings::UpdateSetting("aces_tweaked_exposure", 1.00f);
-            renodx::utils::settings::UpdateSetting("aces_tweaked_contrast", 1.00f);
-            renodx::utils::settings::UpdateSetting("aces_tweaked_highlights", 1.00f);
-            renodx::utils::settings::UpdateSetting("aces_tweaked_shadows", 1.00f);
-            renodx::utils::settings::UpdateSetting("aces_tweaked_saturation", 1.00f);
-            renodx::utils::settings::UpdateSetting("aces_tweaked_highlight_saturation", 1.00f);
-
-            // Psycho V30
-            renodx::utils::settings::UpdateSetting("exposure", 1.00f);
-            renodx::utils::settings::UpdateSetting("highlights", 1.00f);
-            renodx::utils::settings::UpdateSetting("shadows", 1.00f);
-            renodx::utils::settings::UpdateSetting("contrast", 1.00f);
-            renodx::utils::settings::UpdateSetting("saturation", 1.00f);
-            renodx::utils::settings::UpdateSetting("cone_response_exponent", 1.00f);
-
-            // Reset all three independent warm-highlight corrections.
-            renodx::utils::settings::UpdateSetting("fire_color_strength", 0.45f);
-            renodx::utils::settings::UpdateSetting("fire_color_hue", 0.65f);
-            renodx::utils::settings::UpdateSetting("aces_tweaked_fire_color_strength", 0.25f);
-            renodx::utils::settings::UpdateSetting("aces_tweaked_fire_color_hue", 0.60f);
-            renodx::utils::settings::UpdateSetting("vanilla_fire_color_strength", 0.f);
-            renodx::utils::settings::UpdateSetting("vanilla_fire_color_hue", 0.75f);
-
-            // Extra
-            renodx::utils::settings::UpdateSetting("bloom", 1.0f);
-        },
-    },
-    
     // PsychoV30 //////////////////////////////////////////////////////////////////////////////////////
     new renodx::utils::settings::Setting{
         .key = "exposure",
@@ -789,6 +822,9 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
             };
             settings.push_back(s1);
         }
+
+        twattila::psycho35::InsertBefore(
+            &settings, "Psycho V30", twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
 
         reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
 

@@ -13,6 +13,18 @@ together. Do not combine these shaders with the previous addon binary.
 | Vanilla | Captured native curve and native colour processing, with fixed reference brightness/contrast | About 15 nits |
 | Vanilla+ (Tweaked ACES) | Full RenoDX ACES after the game's white balance and regional colour grading | Calibrated to about 15 nits |
 | Vanilla+ (PsychoV30) | PsychoV30 after the same game grading | About 15 nits |
+| Vanilla+ (PsychoV35) | Musa's PsychoV35 (`twattila/psycho35.hlsli`) after the same game grading, Hue Clip Emulation before it | About 15 nits |
+
+Presets: **Recommended** = PsychoV35 with Bloom 0.44; **Reset** = every image
+control at its default (Vanilla); **SDR (monitors without HDR)** = Off (turn the
+game's HDR off too). The PsychoV30 / Tweaked ACES presets stay until ATN decides.
+
+PsychoV35 replaces everything after the game's white balance and regional
+grading (the untonemapped scene-linear point, `t00` before the former V30 call),
+like V30: no curve runs on another curve's output. It has no fire rows: Hue Clip
+Emulation (0-100, default 80) moves bright colours toward the hue an SDR ACES
+transform clips them to (RenoDX ACES at 0.02 / 48 nits stands in for the game's
+SDR LUT until its constants are traced).
 
 These are neutral scene-linear 0.18 inputs at the tone-mapping stage, with
 neutral user controls. Authored grading, exposure and other user adjustments
