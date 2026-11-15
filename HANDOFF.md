@@ -40,6 +40,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -128,7 +129,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (devi ... | sh_
 - hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, W ... | hb_
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
-- ATN DECIDES (Ryse): an ssao temporal / edge / denoise port (M) and an optional e ... | ATN
+- Ryse: skip the game's shadow maps under RT Shadows Only (ATN 00:0x rejected npr_ ... | rys_ (started 00:1x)
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
 - npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe. Own ... | npu_
 - gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: g ... | gr_
@@ -1238,7 +1239,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         cb_audit DUMPS table; README fix57 draft). RT/PT: PathAmbient / SkyApart / KeptCube WON'T GET (tiled lighting cs
         keeps the game's ambient); skipping the shadow pass WON'T GET (cascades bound for forward draws); gamma_correction
         WON'T GET. Ryse rows not run in game.
-      - [ ] ATN DECIDES (Ryse): an ssao temporal / edge / denoise port (M) and an optional exposure cap in EDAD119F. Owner: ATN
+      - [x] ATN ANSWERED 00:0x: no ssao temporal / edge / denoise port ("ignore Attila's own SSAO, we don't need it");
+        exposure cap: explained (not needed: geometric-mean metering). (was) ATN DECIDES (Ryse): an ssao temporal / edge / denoise port (M) and an optional exposure cap in EDAD119F.
+      - [ ] Ryse: skip the game's shadow maps under RT Shadows Only (ATN 00:0x rejected npr_'s WON'T GET: "There must be a
+        way"): readers per pass from R0, design, Experimental row, Time Each Pass hooks. Owner: rys_ (started 00:1x)
       - [ ] Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/families.txt); in-game check of every
         new row (Debug View / Scene Test, RT rows, Time Each Pass, test hooks + RENODX_TW_CVARS, half-res particles, LOD
         bias, auto thickness). Owner: next Ryse data run
