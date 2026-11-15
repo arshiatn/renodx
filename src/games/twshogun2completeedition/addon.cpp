@@ -449,6 +449,7 @@ std::atomic_bool ao_filter_on = false;  // a row on with GT-VBAO (present thread
 // renodx-twshogun2completeedition_dlss.addon64 (the DLSS add-on, part of this one now) still next to this one: it would
 // hook the game's DLSS a second time.
 bool old_dlss_addon_found = false;
+bool game_hooks_attached = false;  // the game's DLSS, render scale and engine values (AttachAddon)
 
 // The AO filter at the sun light draws: their AO at gbuffer_slot - 2 (t_ssao: t5, the campaign map's t7), the G-buffer depth at
 // gbuffer_slot + 3 (t10, t12) and camera_VS_PS at b0, read from the game's bytes (camera_position at 0, view_projection at 160,
@@ -1089,7 +1090,8 @@ void BuildRuntimeData() {
       },
       twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
                                     [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
-      twattila::graphics_page::Note("Delete renodx-twshogun2completeedition_dlss.addon64 from the game folder: its DLSS options are part of this add-on now.",
+      twattila::graphics_page::Note("Delete renodx-twshogun2completeedition_dlss.addon64 from the game folder: its DLSS options are part of this add-on now.\n"
+                                    "Until then this add-on's DLSS, render scale and game options stay off (restart the game after deleting it).",
                                     "General", twattila::graphics_page::WARNING_TINT, [] { return old_dlss_addon_found; }),
       new renodx::utils::settings::Setting{
           .key = "peak_white_nits",
@@ -2785,75 +2787,80 @@ bool AttachAddon() {
   // Light Bounce (twattila/light_bounce.hpp): the sun light draws (ray_tracing.hpp's, replaced here).
   twattila::light_bounce::Install(twshogun2::ray_tracing::SUN_DRAWS);
 
-  // The game's DLSS, render scale and engine values (the DLSS add-on's until it became part of this one): after all of
-  // the above, as when that add-on loaded after this one (its present and draw callbacks ran after these).
-  // Again when a new device attaches the addon in the same image (frame generation keeps it loaded).
-  engine_options.clear();
-  for (auto& test : EngineTests()) engine_options.push_back(&test.option);
-  ApplyGameRows();
-  twshogun2::game_dlss::SetEvaluateCallback([](ID3D11DeviceContext* context, NVSDK_NGX_D3D11_DLSS_Eval_Params* eval) {
-    // RENODX_TW_SET's seconds count from the first DLSS evaluation (twattila/test_hooks.hpp).
-    twattila::test_hooks::StartClock();
-    if (const std::array<uint32_t, 2> size = {eval->InRenderSubrectDimensions.Width, eval->InRenderSubrectDimensions.Height};
-        size != evaluated_size) {
-      evaluated_size = size;
-      const auto display = twshogun2::game_dlss::DisplaySize();
-      renodx::utils::log::i(std::format("[Shogun 2 DLSS] Evaluating {}x{} -> {}x{}, jitter ({:.4f}, {:.4f})", size[0], size[1], display[0],
-                                        display[1], eval->InJitterOffsetX, eval->InJitterOffsetY));
+  // Not with the old DLSS add-on in the folder: both would hook the game's DLSS, scale its viewports and patch its
+  // engine values (the page's note says so; at the next start without it).
+  game_hooks_attached = !old_dlss_addon_found;
+  if (game_hooks_attached) {
+    // The game's DLSS, render scale and engine values (the DLSS add-on's until it became part of this one): after all of
+    // the above, as when that add-on loaded after this one (its present and draw callbacks ran after these).
+    // Again when a new device attaches the addon in the same image (frame generation keeps it loaded).
+    engine_options.clear();
+    for (auto& test : EngineTests()) engine_options.push_back(&test.option);
+    ApplyGameRows();
+    twshogun2::game_dlss::SetEvaluateCallback([](ID3D11DeviceContext* context, NVSDK_NGX_D3D11_DLSS_Eval_Params* eval) {
+      // RENODX_TW_SET's seconds count from the first DLSS evaluation (twattila/test_hooks.hpp).
+      twattila::test_hooks::StartClock();
+      if (const std::array<uint32_t, 2> size = {eval->InRenderSubrectDimensions.Width, eval->InRenderSubrectDimensions.Height};
+          size != evaluated_size) {
+        evaluated_size = size;
+        const auto display = twshogun2::game_dlss::DisplaySize();
+        renodx::utils::log::i(std::format("[Shogun 2 DLSS] Evaluating {}x{} -> {}x{}, jitter ({:.4f}, {:.4f})", size[0], size[1], display[0],
+                                          display[1], eval->InJitterOffsetX, eval->InJitterOffsetY));
+      }
+      twshogun2::render_scale::EndScaling();
+      twattila::texture_lod_bias::SetBias(0.f);
+      twshogun2::object_velocity::OnEvaluate(context, eval);
+      twshogun2::frame_trace::OnEvaluate(context, *eval);
+      dlss_jitter_x.store(eval->InJitterOffsetX, std::memory_order_relaxed);
+      dlss_jitter_y.store(eval->InJitterOffsetY, std::memory_order_relaxed);
+      // The helper's upscaler in place of the game's DLSS, frame generation's inputs (false: the game's).
+      if (!helper_evaluates.load(std::memory_order_relaxed)) return false;
+      twshogun2::upscaling::UpscaleRequest request = {
+          .context = context,
+          .color = eval->Feature.pInColor,
+          .depth = eval->pInDepth,
+          .motion = eval->pInMotionVectors,
+          .output = eval->Feature.pInOutput,
+          .render_width = eval->InRenderSubrectDimensions.Width,
+          .render_height = eval->InRenderSubrectDimensions.Height,
+          .jitter_x = eval->InJitterOffsetX,
+          .jitter_y = eval->InJitterOffsetY,
+          .motion_scale_x = eval->InMVScaleX,
+          .motion_scale_y = eval->InMVScaleY,
+          .reset = eval->InReset != 0,
+          .preset = twshogun2::game_dlss::Preset(),
+      };
+      request.camera = twshogun2::render_scale::MainCamera(&request.constants);
+      return twshogun2::upscaling::Evaluate(request, ray_tracing_installed && twshogun2::ray_tracing::GuidesWritten());
+    });
+    renodx::utils::log::i(std::format(
+        "[Shogun 2 DLSS] Options: render scale {} ({}% custom), preset {}, texture LOD bias {}, jitter {}, object motion {}, "
+        "upscaler {} RR {}, frame generation {} method {} Reflex {} limit {}, particle resolution {}, shadow map {}, grass {} model {} "
+        "unit {} / {} / {} terrain {}",
+        aa_sliders.dlss_mode, aa_sliders.render_scale, aa_sliders.preset, aa_sliders.texture_lod_bias, aa_sliders.jitter, aa_sliders.object_motion,
+        aa_sliders.method, aa_sliders.ray_reconstruction, aa_sliders.frame_generation, aa_sliders.frame_backend, aa_sliders.reflex,
+        aa_sliders.frame_limit, graphics_rows.particle_resolution, graphics_rows.shadow_map_resolution, graphics_rows.grass_distance,
+        graphics_rows.model_detail, graphics_rows.unit_detail, graphics_rows.unit_animation, graphics_rows.unit_variety, graphics_rows.terrain_detail));
+    for (const auto& shader : SUN_SHADERS) {
+      renodx::utils::command_action::Register(
+          OnSunDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &shader);
     }
-    twshogun2::render_scale::EndScaling();
-    twattila::texture_lod_bias::SetBias(0.f);
-    twshogun2::object_velocity::OnEvaluate(context, eval);
-    twshogun2::frame_trace::OnEvaluate(context, *eval);
-    dlss_jitter_x.store(eval->InJitterOffsetX, std::memory_order_relaxed);
-    dlss_jitter_y.store(eval->InJitterOffsetY, std::memory_order_relaxed);
-    // The helper's upscaler in place of the game's DLSS, frame generation's inputs (false: the game's).
-    if (!helper_evaluates.load(std::memory_order_relaxed)) return false;
-    twshogun2::upscaling::UpscaleRequest request = {
-        .context = context,
-        .color = eval->Feature.pInColor,
-        .depth = eval->pInDepth,
-        .motion = eval->pInMotionVectors,
-        .output = eval->Feature.pInOutput,
-        .render_width = eval->InRenderSubrectDimensions.Width,
-        .render_height = eval->InRenderSubrectDimensions.Height,
-        .jitter_x = eval->InJitterOffsetX,
-        .jitter_y = eval->InJitterOffsetY,
-        .motion_scale_x = eval->InMVScaleX,
-        .motion_scale_y = eval->InMVScaleY,
-        .reset = eval->InReset != 0,
-        .preset = twshogun2::game_dlss::Preset(),
-    };
-    request.camera = twshogun2::render_scale::MainCamera(&request.constants);
-    return twshogun2::upscaling::Evaluate(request, ray_tracing_installed && twshogun2::ray_tracing::GuidesWritten());
-  });
-  renodx::utils::log::i(std::format(
-      "[Shogun 2 DLSS] Options: render scale {} ({}% custom), preset {}, texture LOD bias {}, jitter {}, object motion {}, "
-      "upscaler {} RR {}, frame generation {} method {} Reflex {} limit {}, particle resolution {}, shadow map {}, grass {} model {} "
-      "unit {} / {} / {} terrain {}",
-      aa_sliders.dlss_mode, aa_sliders.render_scale, aa_sliders.preset, aa_sliders.texture_lod_bias, aa_sliders.jitter, aa_sliders.object_motion,
-      aa_sliders.method, aa_sliders.ray_reconstruction, aa_sliders.frame_generation, aa_sliders.frame_backend, aa_sliders.reflex,
-      aa_sliders.frame_limit, graphics_rows.particle_resolution, graphics_rows.shadow_map_resolution, graphics_rows.grass_distance,
-      graphics_rows.model_detail, graphics_rows.unit_detail, graphics_rows.unit_animation, graphics_rows.unit_variety, graphics_rows.terrain_detail));
-  for (const auto& shader : SUN_SHADERS) {
-    renodx::utils::command_action::Register(
-        OnSunDraw, {.shader_hash = shader.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &shader);
+    twshogun2::object_velocity::Install();
+    reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
+    reshade::register_event<reshade::addon_event::present>(OnDlssPresent);
+    reshade::register_event<reshade::addon_event::bind_viewports>(twshogun2::render_scale::OnBindViewports);
+    // After render_scale's (it decides the main view).
+    twattila::texture_lod_bias::SetMainView(&twshogun2::render_scale::MainView);
+    reshade::register_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
+    reshade::register_event<reshade::addon_event::bind_scissor_rects>(twshogun2::render_scale::OnBindScissorRects);
+    reshade::register_event<reshade::addon_event::map_buffer_region>(twshogun2::render_scale::OnMapBufferRegion);
+    reshade::register_event<reshade::addon_event::unmap_buffer_region>(twshogun2::render_scale::OnUnmapBufferRegion);
+    reshade::register_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
+    reshade::register_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
+    reshade::register_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
+    reshade::register_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
+    reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::object_velocity::OnDestroyDevice);
   }
-  twshogun2::object_velocity::Install();
-  reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
-  reshade::register_event<reshade::addon_event::present>(OnDlssPresent);
-  reshade::register_event<reshade::addon_event::bind_viewports>(twshogun2::render_scale::OnBindViewports);
-  // After render_scale's (it decides the main view).
-  twattila::texture_lod_bias::SetMainView(&twshogun2::render_scale::MainView);
-  reshade::register_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
-  reshade::register_event<reshade::addon_event::bind_scissor_rects>(twshogun2::render_scale::OnBindScissorRects);
-  reshade::register_event<reshade::addon_event::map_buffer_region>(twshogun2::render_scale::OnMapBufferRegion);
-  reshade::register_event<reshade::addon_event::unmap_buffer_region>(twshogun2::render_scale::OnUnmapBufferRegion);
-  reshade::register_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
-  reshade::register_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
-  reshade::register_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
-  reshade::register_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
-  reshade::register_event<reshade::addon_event::destroy_device>(twshogun2::object_velocity::OnDestroyDevice);
   twattila::test_hooks::Install(&settings, false, "[Shogun 2]");
 
   reshade::register_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
@@ -2868,32 +2875,34 @@ void DetachAddon() {
 
   twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
-  // The game's DLSS, render scale and engine values.
   twattila::test_hooks::Uninstall();
-  twshogun2::frame_trace::Stop();
-  renodx::utils::command_action::Unregister(OnSunDraw);
-  reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
-  reshade::unregister_event<reshade::addon_event::present>(OnDlssPresent);
-  reshade::unregister_event<reshade::addon_event::bind_viewports>(twshogun2::render_scale::OnBindViewports);
-  reshade::unregister_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
-  reshade::unregister_event<reshade::addon_event::bind_scissor_rects>(twshogun2::render_scale::OnBindScissorRects);
-  reshade::unregister_event<reshade::addon_event::map_buffer_region>(twshogun2::render_scale::OnMapBufferRegion);
-  reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(twshogun2::render_scale::OnUnmapBufferRegion);
-  reshade::unregister_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
-  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
-  reshade::unregister_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
-  reshade::unregister_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
-  twattila::texture_lod_bias::Shutdown();
-  twshogun2::game_dlss::SetEvaluateCallback(nullptr);
-  twshogun2::object_velocity::Uninstall();
-  reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::object_velocity::OnDestroyDevice);
-  twshogun2::game_dlss::Uninstall();
-  twshogun2::grass_distance::Uninstall();
-  twshogun2::model_detail::Uninstall();
-  twshogun2::unit_detail::Uninstall();
-  twshogun2::shadow_resolution::Uninstall();
-  twshogun2::particle_resolution::Apply(1.f);
-  tw::engine_tweaks::Uninstall(engine_options);
+  if (game_hooks_attached) {
+    // The game's DLSS, render scale and engine values.
+    twshogun2::frame_trace::Stop();
+    renodx::utils::command_action::Unregister(OnSunDraw);
+    reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
+    reshade::unregister_event<reshade::addon_event::present>(OnDlssPresent);
+    reshade::unregister_event<reshade::addon_event::bind_viewports>(twshogun2::render_scale::OnBindViewports);
+    reshade::unregister_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
+    reshade::unregister_event<reshade::addon_event::bind_scissor_rects>(twshogun2::render_scale::OnBindScissorRects);
+    reshade::unregister_event<reshade::addon_event::map_buffer_region>(twshogun2::render_scale::OnMapBufferRegion);
+    reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(twshogun2::render_scale::OnUnmapBufferRegion);
+    reshade::unregister_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
+    reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
+    reshade::unregister_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
+    reshade::unregister_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
+    twattila::texture_lod_bias::Shutdown();
+    twshogun2::game_dlss::SetEvaluateCallback(nullptr);
+    twshogun2::object_velocity::Uninstall();
+    reshade::unregister_event<reshade::addon_event::destroy_device>(twshogun2::object_velocity::OnDestroyDevice);
+    twshogun2::game_dlss::Uninstall();
+    twshogun2::grass_distance::Uninstall();
+    twshogun2::model_detail::Uninstall();
+    twshogun2::unit_detail::Uninstall();
+    twshogun2::shadow_resolution::Uninstall();
+    twshogun2::particle_resolution::Apply(1.f);
+    tw::engine_tweaks::Uninstall(engine_options);
+  }
 
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::map_buffer_region>(twshogun2::vfx_effects::OnMapBufferRegion);
@@ -2938,14 +2947,14 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
   }
 
   // The DLSS add-on (part of this one now) still next to it would hook the game's DLSS a second time: the page and the
-  // log say so.
+  // log say so, and AttachAddon leaves that half out.
   std::wstring path(MAX_PATH, L'\0');
   path.resize(GetModuleFileNameW(addon_module, path.data(), MAX_PATH));
   std::error_code error;
   old_dlss_addon_found = std::filesystem::exists(std::filesystem::path(path).replace_filename(L"renodx-twshogun2completeedition_dlss.addon64"), error);
   if (old_dlss_addon_found) {
     renodx::utils::log::w("[Shogun 2] renodx-twshogun2completeedition_dlss.addon64 is still in the game folder: delete it (its DLSS options "
-                          "are part of this add-on now).");
+                          "are part of this add-on now). Until then this add-on's DLSS, render scale and engine values stay off.");
   }
   return AttachAddon();
 }
