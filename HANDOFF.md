@@ -1027,6 +1027,27 @@ heading text are in HANDOFF_ARCHIVE.md)
       install. Owner: coordinator
       - DONE 17:45: 24 confirmed (21 unique: R7 = R2, R10 = R9, R20 = R17), 8 refuted; full text with scenarios and
         fixes in tools/tw/round_notes/review_1115.json. Fixes one at a time by one agent, then build all, stamp, install.
+      - fx_ DONE 19:0x: branch worktree-agent-a415dd24277bcc54b (base 355eee64, 19 commits, tip ec99db49, NOT merged):
+        R1 791a2123, R2 746f0548, R3 c346cf04, R4 2d941d68, R5 6dec7afa, R6 038a216a, R8 79a834a9, R9 4957c9af, R11
+        4fffa624, R12 f35d6d5f, R13 d312c48c, R14 0883c7c6, R15 80802e0b, R16 a4a9371d, R17 70490b09, R18 75680deb, R19
+        6f836836, R23 54e09a90, R24 ec99db49. Both build lines + helper built; x86 / amd64 PASS: tw_fg_initialization,
+        tw_game_gi, tw_helper_lifetime, tw_gpu_completion, tw_output_encoding, tw_scrub_lods, tw_unit_pack_rounds.
+        Second Fable 5.2 High review of the fix diff running (wf_b2c7ad87-41e); merge after it. The R boxes below are
+        ticked at the merge.
+      - [ ] R21 skipped (Shogun 2 NGX feature release): needs the game's static NVSDK_NGX_D3D11_ReleaseFeature by pattern
+        (the DLL image, tools/shogun2/sx.py) + an in-game check. Owner: next Shogun 2 round
+      - [ ] R22 skipped (a failed Prepare texture turns the bridge off for the session): a retry changes what players see
+        (DLSS comes back after a VRAM failure); freeing the helper's old set from Prepare's fail path needs Release's request
+        sequence. ATN decides whether DLSS may come back after a VRAM failure. Owner: ATN, then coordinator
+      - [ ] test/tw_native_hook_lifetime does not compile (x86 / amd64): graphics_hooks.hpp includes rt_core.hpp ->
+        embed/shaders.h, run.ps1 has no twattila include path (before these fixes). Owner: next test round
+      - [ ] test/tw_device_loss "limit, front" case failed once per arch while builds ran (window focus): rerun quiet.
+        Owner: coordinator before the install
+      - [ ] fx_ notes: R1 the kept lost RR object holds its removed D3D12 device (RR / RT / FSR devices may be refused until
+        restart instead of a helper crash); R2 Ryse patterns now searched at device creation: check the next Ryse log; R5 a
+        Windows HDR toggle mid-game applies at a new swap chain only (as TW); R15 open_generation's backend switch still
+        frees the old proxy's resources inside a waited request; harness modes (removal, switching_removal, release_*,
+        leaf_storm) + fg_bridge_test not run for the helper commits. Owner: coordinator (harness before the install)
       - [ ] R1 [crash] A lost Ray Reconstruction device is destroyed with NGX D3D12 shutdown while Streamline is in use
         (src/games/twattila/dlaa_helper/main.cpp:657; NVIDIA with Ray Reconstruction plus DLSS Frame Generation through the ).
         Owner: review fix agent fx_
