@@ -166,6 +166,21 @@ void ApplyResetPreset() {
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
 
+// The game's own picture (Rendering Mode SDR); the button also sets Output SDR, a first start on a display without HDR
+// gets it through Output Auto.
+void ApplySdrPreset() {
+  ApplyResetPreset();
+  renodx::utils::settings::UpdateSettings({{"tonemapper", 0.f}});
+}
+
+// This add-on alone (the upstream snapshot): the helper, the DLSS add-on and the NVIDIA files come with the full download.
+constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
+constexpr uint32_t WARNING_TINT = 0xFF5050;
+
+bool HelperAbsent() {
+  return !twattila::dlaa_bridge::HelperInstalled();
+}
+
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
@@ -315,6 +330,13 @@ void BuildRuntimeData() {
           .section = "General",
       },
       new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = FULL_DOWNLOAD_NOTE,
+          .section = "General",
+          .tint = WARNING_TINT,
+          .is_visible = HelperAbsent,
+      },
+      new renodx::utils::settings::Setting{
           .key = "peak_white_nits",
           .binding = &shader_injection.peak_white_nits,
           .default_value = 1000.f,
@@ -420,6 +442,19 @@ void BuildRuntimeData() {
           .tooltip = "Resets image controls to their defaults (HDR Extended).\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() { ApplyResetPreset(); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "SDR (monitors without HDR)",
+          .section = "Presets",
+          .group = "preset-line-2",
+          .tooltip = "For SDR monitors: Rendering Mode SDR (the game's own picture) and Output SDR (restart the game if it\n"
+                     "was HDR). Peak, Paper White, UI brightness and Settings Mode are kept.",
+          .tint = 0xFFC107,
+          .on_change = []() {
+            ApplySdrPreset();
+            renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", 2.f}});
+          },
       },
       // Extended ////////////////////////////////////////////////////////////////////////////////////
       slider("ext_exposure", &shader_injection.ext_exposure, "Exposure", "Extended", "", IsExtendedMode,
@@ -861,6 +896,13 @@ void BuildRuntimeData() {
           .is_enabled = [] { return shader_injection.light_bounce > 0.f; },
       },
       // Ray tracing (ray_tracing.hpp): through renodx-tw-dlaa64.exe; on at launch only (restart).
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = FULL_DOWNLOAD_NOTE,
+          .section = "Ray Tracing (Experimental)",
+          .tint = WARNING_TINT,
+          .is_visible = HelperAbsent,
+      },
       new renodx::utils::settings::Setting{
           .key = "RayTracedSunShadows",
           .binding = &rt_sliders.sun_shadows,
@@ -1478,6 +1520,8 @@ void SetOutputEncoding(int encoding) {
 // Output Auto: scRGB with Windows HDR on for the game's display (or unknown), else SDR. Set at the first swap chain,
 // before the swapchain mod's create_swapchain (registered after this).
 bool auto_output_pending = false;
+// No saved settings at the add-on's start (ConfigureAddon).
+bool first_start = false;
 
 bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
   if (!auto_output_pending) return false;
@@ -1486,6 +1530,10 @@ bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, 
   const auto path = renodx::utils::platform::GetPathInfo(monitor);
   const bool windows_hdr = !path.has_value() || renodx::utils::swapchain::GetHDREnabled(path.value());
   SetOutputEncoding(windows_hdr ? 1 : 2);
+  if (first_start && !windows_hdr) {
+    ApplySdrPreset();
+    reshade::log::message(reshade::log::level::info, "[Ryse] First start without Windows HDR: the SDR preset.");
+  }
   return false;
 }
 
@@ -1570,6 +1618,9 @@ void ConfigureAddon() {
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
     auto_output_pending = (value == 3);
+    // No settings saved yet: a player's first start. On a display without HDR it starts with the SDR preset.
+    float saved_mode = 0.f;
+    first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     SetOutputEncoding(auto_output_pending ? 1 : value);
     settings.push_back(setting);
   }
@@ -1613,6 +1664,14 @@ void ConfigureAddon() {
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/rysesonofrome/mods/59"); },
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
+      },
   });
 
   // Section titles: one colour (as Attila's), Output and About their own.
@@ -1640,9 +1699,11 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
-  // Ray tracing on at launch: its scene's shaders kept from the start, the Light Bounce's trace through rays.
-  ray_tracing_installed = rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
-                          || rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f;
+  // Ray tracing on at launch: its scene's shaders kept from the start, the Light Bounce's trace through rays. Without the
+  // helper nothing could be traced: the scene capture stays out (the game's own lighting, as with the rows off).
+  ray_tracing_installed = (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
+                           || rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f)
+                          && !HelperAbsent();
   if (ray_tracing_installed) {
     rysesonofrome::ray_tracing::Install();
     rysesonofrome::light_bounce::ray_traced_trace = twattila::rt_scene::internal::TraceLightBounce;
