@@ -13,7 +13,9 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -26,13 +28,19 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/draw_dispatch.hpp"
+#include "../twattila/frame_trace.hpp"
 #include "../twattila/output_encoding.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/psycho35_settings.hpp"
+// Scripted runs' RENODX_TW_PROFILE records the Total War ray-traced scene, which this add-on lacks.
+#define RENODX_TEST_HOOKS_PROFILE ([] { renodx::utils::log::w("[Divinity] Test: RENODX_TW_PROFILE: no profile in this add-on."); })
+#include "../twattila/test_hooks.hpp"
 #include "./shared.h"
 
 const std::string build_date = __DATE__;
@@ -484,6 +492,10 @@ void OnDestroyDevice(reshade::api::device*) {
 
 }  // namespace frame_capture
 
+// The 3D view drew this frame (the tone mapper ran): the frame trace's FrameTrace count.
+std::atomic_bool tonemap_drawn = false;
+
+// Each replaced pass's first draw is logged once: a run counts by these "applied" lines.
 #define UpgradeRTVReplaceShader(value)                                                                \
   {                                                                                                   \
       value,                                                                                          \
@@ -491,6 +503,14 @@ void OnDestroyDevice(reshade::api::device*) {
           .crc32 = value,                                                                             \
           .code = __##value,                                                                          \
           .on_draw = [](auto* cmd_list) {                                                             \
+            static std::atomic_bool applied = false;                                                  \
+            if (!applied.load(std::memory_order_relaxed) && !applied.exchange(true)) {                \
+              renodx::utils::log::i(std::format("[Divinity] Applied 0x{:08X} (Rendering Mode {}, output {}).", \
+                                                value, shader_injection.tonemap_type, shader_injection.swap_chain_encoding)); \
+            }                                                                                         \
+            if constexpr (value == 0x30A1D40D) {                                                      \
+              tonemap_drawn.store(true, std::memory_order_relaxed);                                   \
+            }                                                                                         \
             auto rtvs = renodx::utils::swapchain::GetRenderTargets(cmd_list);                         \
             bool changed = false;                                                                     \
             for (auto rtv : rtvs) {                                                                   \
@@ -854,10 +874,41 @@ renodx::utils::settings::Settings settings = {
         .is_enabled = IsHDR,
         .is_visible = ShowHDRSettings,
     },
-
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "Trace One Frame",
+        .section = "Tools",
+        .group = "tools",
+        .tooltip = "Writes tw_frame_trace.txt next to the game's exe about a second later, for bug reports.",
+        .on_change = []() {
+          // FrameTrace's on-demand marker (frame_trace.hpp looks for it every 60 presents).
+          std::wstring exe(32768, L'\0');
+          exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+          std::ofstream(std::filesystem::path(exe).parent_path() / L"renodx_trace_now", std::ios::binary | std::ios::trunc);
+          renodx::utils::log::i("[Divinity] Trace One Frame: renodx_trace_now written.");
+        },
+        .is_visible = IsAdvancedSettings,
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "Time Each Pass (One Frame)",
+        .section = "Tools",
+        .group = "tools",
+        .tooltip = "The GPU's time of every pass of the next frame into divinity_pass_timing.txt next to the game's exe.",
+        .on_change = []() { twattila::pass_timing::Request(); },
+        .is_visible = IsAdvancedSettings,
+    },
 };
 
 bool configured = false;
+
+// Time Each Pass's frame, and the frame trace's (renodx_trace_now next to the exe; FrameTrace=1 in ReShade.ini's
+// [renodx]: 600 frames of the 3D view in).
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*,
+               const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  twattila::pass_timing::OnPresent(queue, "divinity");
+  twattila::frame_trace::OnPresent(false, tonemap_drawn.exchange(false, std::memory_order_relaxed));
+}
 
 void OnInitSwapchain(reshade::api::swapchain* swapchain, bool resize) {
   auto peak = renodx::utils::swapchain::GetPeakNits(swapchain);
@@ -1000,14 +1051,30 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
+      // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
+      twattila::pass_timing::Install();
       ConfigureAddon();
+      // Constants once each for the tone mapper, the exposure, the shadow filter, the sun, fog, SSAO and bloom's combine
+      // (b0-b13: the frame b13, the view b12; the camera fields are Attila's b0 registers, not this game's); blends of fire,
+      // candles and the UI combine.
+      twattila::frame_trace::Install({
+          .value_hashes = {0x30A1D40D, 0x4E112ABA, 0x8F114E47, 0xCCCB7253, 0xEDA7F8A1, 0x385DCF3C, 0x88B0D842},
+          .value_slots = 14,
+          .value_floats = 64,
+          .on_demand = true,
+          .at_100 = true,
+          .blend_hashes = {0xED93F883, 0x93AEBB93, 0x20163A55},
+      });
       // Before the swap chain mod: a removed device's chain let go, each new chain's output decided.
       twattila::device_loss::Install();
       reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
+      reshade::register_event<reshade::addon_event::present>(OnPresent);
       renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
       if (const float mode = NormalizeTonemapMode(shader_injection.tonemap_type); mode != shader_injection.tonemap_type) {
         renodx::utils::settings::UpdateSetting("tonemap_type", mode);
       }
+      // Scripted runs (RENODX_TW_SET / SHOT, renodx_test_hooks.txt next to the exe): nothing without them.
+      twattila::test_hooks::Install(&settings, true, "[Divinity]");
       renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
       renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
       // The fast draw dispatch with the resource upgrades' gate (the swap chain mod's view cloning registers them).
@@ -1021,13 +1088,17 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
     case DLL_PROCESS_DETACH:
       twattila::device_loss::Uninstall();
       reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
+      reshade::unregister_event<reshade::addon_event::present>(OnPresent);
       reshade::unregister_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
       reshade::unregister_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
       reshade::unregister_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
       twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
       renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
       renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
+      twattila::test_hooks::Uninstall();
       renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
+      twattila::frame_trace::Uninstall();
+      twattila::pass_timing::Uninstall();
       reshade::unregister_addon(h_module);
       break;
   }
