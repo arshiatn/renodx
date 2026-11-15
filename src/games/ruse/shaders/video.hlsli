@@ -27,13 +27,4 @@ float4 RuseDecodeVideo(float2 texcoord) {
   return r1;
 }
 
-float4 RuseScaleVideo(float4 color) {
-  if (SI.peak_white_nits > 0.f && SI.diffuse_white_nits > 0.f && SI.ui_draw > 0.5f) {
-    // Restore native UNORM clipping before scaling the final video draw.
-    color = saturate(color);
-    color.rgb *= SI.video_scale;
-  }
-  return color;
-}
-
 #endif  // RUSE_VIDEO_HLSLI_

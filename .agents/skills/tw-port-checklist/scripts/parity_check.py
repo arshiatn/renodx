@@ -19,7 +19,7 @@ Statuses: HAVE, DONE, AS ATTILA (Attila lacks it too), WON'T GET (needs its proo
 Exit 1 if any game has an open line.
 
 usage:
-  python -I parity_check.py --tools <maintainer's tools/tw folder> --tree <repo checkout> [--games a th r2 t w w1 w2 p rr s2 | d1 d2]
+  python -I parity_check.py --tools <maintainer's tools/tw folder> --tree <repo checkout> [--games a th r2 t w w1 w2 p rr s2 | d1 d2 ru]
                             [--dump-tag <tag>] [--tag <tag>] [--bin <folder holding cmd_Decompiler-1.3.16>]
                             [--scale <letter>=<scale census .tsv> ...] [--fxc <fxc.exe>] [--out <report.txt>]
 
@@ -57,9 +57,11 @@ GAMES = {  # letter: (ledger name, game folder, decompiler pack folder)
     's2': ('shogun2', 'twshogun2completeedition', 'dump_shader_shogun2_pack'),
     'd1': ('divinity1', 'divinityoriginalsinenhanced', 'dump_shader_divinity1_pack'),
     'd2': ('divinity2', 'divinity2originalsindefinitive', 'dump_shader_divinity2_pack'),
+    # R.U.S.E. (D3D9; no cmd_Decompiler dump: its shaders are in its own census, tools/nontw/ruse/census).
+    'ru': ('ruse', 'ruse', None),
 }
-# Checked only when named (--games d1 d2): not Total War games, their ledgers held to Attila's page all the same.
-NOT_TOTAL_WAR = ('d1', 'd2')
+# Checked only when named (--games d1 d2 ru): not Total War games, their ledgers held to Attila's page all the same.
+NOT_TOTAL_WAR = ('d1', 'd2', 'ru')
 SETTLED = ('HAVE', 'DONE', 'AS ATTILA', "WON'T GET")
 WAITING = ('NEEDS A TRACE', 'SHARED STEP')
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -95,6 +97,8 @@ def read_ledger(path):
 def census(args, letter, tools):
     """{vs hash: verdict} of caster_census.py --whole-dump for the game, and the census's summary line."""
     _, folder, pack = GAMES[letter]
+    if pack is None:  # a D3D9 game: no casters to hold (no stream-output capture there)
+        return {}, 'none (D3D9: no D3D11 casters)'
     root = os.path.join(args.bin, 'cmd_Decompiler-1.3.16')
     dump = os.path.join(root, pack)
     if not os.path.isdir(dump):

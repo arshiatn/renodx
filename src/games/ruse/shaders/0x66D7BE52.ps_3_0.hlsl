@@ -1,5 +1,5 @@
 // Planar cutscene video with the native background/fade blend, from CSO/ASM.
-#include "../shared.h"
+#include "./ui.hlsli"
 
 float4 BackgroundColor : register(c0);
 float4 YDimensions : register(c1);
@@ -10,8 +10,8 @@ sampler2D VTexture : register(s2);
 
 #include "video.hlsli"
 
-float4 main(float2 texcoord : TEXCOORD0) : COLOR0 {
+float4 main(float2 texcoord : TEXCOORD0, float2 vpos : VPOS) : COLOR0 {
   float4 video = RuseDecodeVideo(texcoord);
   half4 native_color = BackgroundColor.w * (video - BackgroundColor) + BackgroundColor;
-  return RuseScaleVideo(native_color);
+  return RuseScaleVideo(native_color, vpos);
 }

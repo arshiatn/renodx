@@ -11,7 +11,19 @@ HDR presentation proxy.
 | SDR | Original scene response and clipped highlights, scaled by Paper White. |
 | PsychoV31 - Native Tone | Applies PsychoV31 after the game's gamma/brightness response. The Faithful to SDR preset selects this mode. |
 | PsychoV31 - Full Replacement | Replaces that gamma/brightness response with PsychoV31. Same response and grey calibration as the preceding build's last V31 mode. Default. |
-| PsychoV35 | Recommended (2026-11-12). Musa's custom PsychoV35 (`twattila/psycho_test35.hlsli`, shared with Attila and WH3) with its own sliders (`v35_*`) and **Hue Clip Emulation** (`twattila/psycho35.hlsli`, `psycho35_settings.hpp`), anchored as Full Replacement; Hue Clip Emulation (default 100) toward the game's response and its per-channel clip. Injection now c200 - c209 (10 registers). V35 builds for the game's SM3 shaders: on SM3 its failed pixels are black at once (as after ApplyPsychoV35 elsewhere). Hue Clip default from test/tw_psychov35 part 5 (WARP): its kind of stock curve on the scene, PsychoV35 right after, the OkLab hue error against the per-channel SDR clip where it clips; not measured on this game's own chain (the clip alone). Built only, not run in game. |
+| PsychoV35 | Recommended (2026-11-12). Musa's custom PsychoV35 (`twattila/psycho_test35.hlsli`, shared with Attila and WH3) with its own sliders (`v35_*`) and **Hue Clip Emulation** (`twattila/psycho35.hlsli`, `psycho35_settings.hpp`), in place of the game's clip at 1, after the map's Brightness / Gamma response (2026-11-15: the map's own contrast, test/tw_psychov35 part 6: slope = Gamma, the 15 pre-inverted markers at their authored colour); Hue Clip Emulation (default 100) toward the clip's hue. Injection now c200 - c209 (10 registers). V35 builds for the game's SM3 shaders: on SM3 its failed pixels are black at once (as after ApplyPsychoV35 elsewhere). Built only, not run in game. |
+| Extended | 2026-11-15, beside the V31 modes (ATN decides). The SDR picture up to Paper White (the map's response kept), each channel above it rolled off to Peak (Ryse fix32's Neutwo shoulder) instead of the clip. Reset selects it. Built only, not run in game. |
+
+Output: HDR10, scRGB, SDR or Auto (default: scRGB with Windows HDR on, else SDR; `twattila/output_encoding.hpp`).
+SDR output keeps the game's picture (Peak, Paper White and UI at the back buffer's 203-nit white) in a 10-bit gamma
+2.2 chain; a first start without Windows HDR takes the SDR preset.
+
+Settings Mode's third page, **Graphics 2 of 2** (2026-11-15, Experimental, built only): Shadow Map Size, Sprite
+Resolution, Sprite Anti-Aliasing and Detail Distance write the game's own `Option.ini` ([advanced_video]: ShadowRTSize,
+ImposteurTextureSize, ImposteurRTAA / ImposteurShadowRTAA, LevelBuild_*) above its menu, at each start (the game reads
+the file at start and writes it only when its options menu applies); Game's gives the game's own value back. The file
+is found beside the steamclient64.dll the game loaded. Output also holds Wait for Each Frame Copy (the proxy's two GPU
+idle waits, On as shipped) and Frame Trace.
 
 Both Psycho modes retain the game's colour grading and each shader variant's
 bloom, vignette and directional blur. Native no-bloom variants remain without
@@ -133,6 +145,16 @@ and video gains are captured once per host frame. If another video pass is
 found, or this pass renders offscreen in a different cutscene, its final
 composition pass still needs to be identified.
 
+2026-11-15, the shader census (every shader the game ships: 1,528 ps_3_0 + 275 vs_3_0 in ZZ_Win.dat's one cache,
+tools/nontw/ruse/census): 12 more UI / video replacements the dump never saw, from the census decompiles: ScaleForm
+`ui_0x085908AD`; interface `ui_0x46F14A5E`, `0x784A47D1`, `0x838AD0F0`, `0xA81CB0EB`, `0x1DC54AF9` and the two text
+effects `0xD7D77018`, `0xF576DA4E`; video `video_0xDFC86010` and the three loading screens `0xE916600D`, `0x149B8C4E`,
+`0xA0ACB571`. Each one's native function, recompiled, has the game's register table and the game's result on random
+inputs (tools/nontw/ruse/scripts/ru_c1_verify.ps1, an SM3 interpreter: 0 difference; the 13 older UI / video ones
+too). Not replaced: the three ScaleForm multiply variants (`0xFF00EE6B`, `0xC10B1348`, `0xAC151ECB`: their colour is
+a factor on what lies under them) and five plain copies whose target is unknown. Video AutoHDR (Extra, default off)
+and Video Dithering act on every video and loading-screen draw.
+
 ## Automatic loading-screen fix
 
 The confirmed native DX9 ReShade GUI block is now automatic; there is no
@@ -173,8 +195,8 @@ cmake --build --preset clang-x64-debug --target ruse
 
 Install `renodx-ruse.addon64`, keeping one R.U.S.E. addon in the game directory,
 and restart. Check that `embed/0x1D8E1FA8.h`, `embed/0x66D7BE52.h`, all seven
-postprocess headers and all four DOF headers are generated. There are now 25
-game shader replacements.
+postprocess headers and all four DOF headers are generated. There are now 37
+game shader replacements (2026-11-15: the 12 census ones).
 
 - Check loading before and after opening/closing the proxy overlay.
 - During video, compare Paper White 100, 203 and 400 with Peak at least 400.

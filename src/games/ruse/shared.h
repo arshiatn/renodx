@@ -8,15 +8,15 @@ struct ShaderInjectData {
   float graphics_white_nits;
   float swap_chain_encoding;
 
-  float hdr;  // 0 SDR, 1 PsychoV31 Native Tone, 2 PsychoV31 Full Replacement, 3 PsychoV35 (Full Replacement).
+  float hdr;  // 0 SDR, 1 PsychoV31 Native Tone, 2 PsychoV31 Full Replacement, 3 PsychoV35 (after the response), 4 Extended.
   float bloom;
   float vignette;
 
   // Reuse padding without shifting existing injection offsets.
   float motion_blur;
   float depth_of_field;
-  float reserved_2;
-  float reserved_3;
+  float video_autohdr;    // AutoHDR on the videos and loading screens: 0 SDR, 1 video white at Peak
+  float video_dithering;  // 1: 1 code value of dither before the video AutoHDR
   float reserved_4;
 
   // PsychoV31 controls.

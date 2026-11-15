@@ -9,6 +9,9 @@ SamplerState s0 : register(s0);
 float4 main(float4 vpos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
   float3 x = t0.Sample(s0, uv).xyz;
 
+  // SDR (a display without HDR): the back buffer as the game would show it, its whites at the display's (addon.cpp).
+  if (SI.swap_chain_encoding == 2.f) return float4(saturate(x), 1.f);
+
   // Signed: PsychoV uses signed BT.709 to represent BT.2020.
   x = renodx::color::gamma::DecodeSafe(x);
 

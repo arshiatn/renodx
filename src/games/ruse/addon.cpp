@@ -14,10 +14,18 @@
 #define DEBUG_LEVEL_0
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <iterator>
 #include <string>
+#include <system_error>
+#include <utility>
+#include <vector>
 
 #include <d3d9.h>
 #include <dxgi1_6.h>
@@ -28,9 +36,12 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../../utils/trace.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../../utils/vtable.hpp"
+#include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
@@ -46,6 +57,112 @@ static_assert(sizeof(ShaderInjectData) == 10 * 4 * sizeof(float), "Keep the DX9 
 ShaderInjectData frame_injection;
 bool frame_latched = false;
 float current_settings_mode = 0.f;
+
+// Frame Trace (a restart row: utils/trace.hpp's events stay registered while it is on): one host frame's binds,
+// constants, targets and draws into ReShade.log, from the button or a renodx_trace_now file next to the exe.
+bool frame_trace_enabled = false;
+bool frame_trace_requested = false;
+std::filesystem::path frame_trace_marker;
+
+// Graphics 2 of 2 (ATN Q7): values the game reads from its Option.ini ([advanced_video]: the ClusterLoadSaverOptions
+// list) above what its menu sets. The game reads the file at start and writes it only when its options menu applies
+// (SaveCommandName) or the file fails to load (ForceSaveIfNotOk): a row writes the file when it changes and at each start,
+// so it applies after a restart. The game's own value waits in ReShade.ini [RUSE Option.ini] for the row's return to
+// Game's; a value the menu wrote since replaces it.
+constexpr char GRAPHICS_2_SECTION[] = "Game Settings Above the Menu (Experimental, Restart Required)";
+constexpr char OPTION_INI_CONFIG[] = "RUSE Option.ini";
+struct GameOption {
+  std::vector<std::string> option_keys;  // [advanced_video]
+  std::vector<float> values;             // one per label after Game's
+  bool factors = false;                  // the values scale the game's own
+};
+std::vector<std::pair<renodx::utils::settings::Setting*, GameOption>> game_options;
+
+void ApplyGameOption(const GameOption& option, int choice) {
+  // LocalSaveDir: Steam's userdata\<user>\21970\local beside the steamclient64.dll the game loaded (the newest of its users).
+  static const std::filesystem::path OPTION_INI = [] {
+    std::filesystem::path newest;
+    std::wstring module;
+    if (HMODULE steam = GetModuleHandleW(L"steamclient64.dll"); steam != nullptr) {
+      module.resize(MAX_PATH);
+      module.resize(GetModuleFileNameW(steam, module.data(), MAX_PATH));
+    }
+    std::error_code error;
+    std::filesystem::file_time_type newest_time;
+    const auto users = std::filesystem::path(module).parent_path() / L"userdata";
+    for (const auto& user : std::filesystem::directory_iterator(users, error)) {
+      auto candidate = user.path() / L"21970" / L"local" / L"Option.ini";
+      const auto time = std::filesystem::last_write_time(candidate, error);
+      if (error) {
+        error.clear();
+        continue;
+      }
+      if (newest.empty() || time > newest_time) {
+        newest = std::move(candidate);
+        newest_time = time;
+      }
+    }
+    if (newest.empty()) {
+      reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Option.ini not found (Steam's userdata): Graphics 2 of 2 does nothing");
+    }
+    return newest;
+  }();
+  if (OPTION_INI.empty()) return;
+  std::string text;
+  {
+    std::ifstream file(OPTION_INI, std::ios::binary);
+    text.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+  }
+  const size_t section = text.find("[advanced_video]");
+  if (section == std::string::npos) return;
+  const size_t section_end = std::min(text.find("\n[", section), text.size());
+  bool changed = false;
+  for (const std::string& name : option.option_keys) {
+    const std::string needle = "\t" + name + " = ";
+    const size_t at = text.find(needle, section);
+    if (at == std::string::npos || at > section_end) continue;  // only values the game wrote
+    const size_t value_at = at + needle.size();
+    const size_t value_end = std::min(text.find_first_of("\r\n", value_at), text.size());
+    const std::string current_text = text.substr(value_at, value_end - value_at);
+    float game = 0.f;
+    std::from_chars(current_text.data(), current_text.data() + current_text.size(), game);
+    const std::string game_key = name + ".Game";
+    const std::string written_key = name + ".Written";
+    // Still the value this add-on wrote: the game's own is the one kept; else the menu's new value is the game's.
+    char written_text[32] = "";
+    size_t written_size = sizeof(written_text) - 1;
+    if (reshade::get_config_value(nullptr, OPTION_INI_CONFIG, written_key.c_str(), written_text, &written_size)
+        && current_text == written_text) {
+      reshade::get_config_value(nullptr, OPTION_INI_CONFIG, game_key.c_str(), game);
+    }
+    float wanted = game;
+    if (choice > 0 && choice <= static_cast<int>(option.values.size())) {
+      wanted = (option.factors ? game * option.values[choice - 1] : option.values[choice - 1]);
+    }
+    const std::string wanted_text = std::format("{:g}", wanted);
+    if (wanted == game) {
+      reshade::set_config_value(nullptr, OPTION_INI_CONFIG, game_key.c_str(), static_cast<const char*>(nullptr));
+      reshade::set_config_value(nullptr, OPTION_INI_CONFIG, written_key.c_str(), static_cast<const char*>(nullptr));
+    } else {
+      reshade::set_config_value(nullptr, OPTION_INI_CONFIG, game_key.c_str(), game);
+      reshade::set_config_value(nullptr, OPTION_INI_CONFIG, written_key.c_str(), wanted_text.c_str());
+    }
+    if (wanted_text == current_text) continue;
+    text.replace(value_at, value_end - value_at, wanted_text);
+    changed = true;
+    reshade::log::message(reshade::log::level::info,
+                          std::format("[R.U.S.E.] Option.ini {} {} -> {}", name, current_text, wanted_text).c_str());
+  }
+  if (!changed) return;
+  auto temporary = OPTION_INI;
+  temporary += L".renodx";
+  {
+    std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+    file.write(text.data(), static_cast<std::streamsize>(text.size()));
+    if (!file) return;
+  }
+  MoveFileExW(temporary.c_str(), OPTION_INI.c_str(), MOVEFILE_REPLACE_EXISTING);
+}
 
 // ReShade's DX9 Present callback runs before its DX9 overlay and the native
 // Present. The nested HDR proxy has already displayed the frame at that point.
@@ -228,11 +345,11 @@ void OnAfterProxyPresent(
 }
 
 bool IsAdvancedSettings() {
-  return current_settings_mode >= 1.f;
+  return current_settings_mode == 1.f;
 }
 
 bool HasHDRScene() {
-  return shader_injection.hdr >= 1.f && shader_injection.hdr <= 3.f;
+  return shader_injection.hdr >= 1.f && shader_injection.hdr <= 4.f;
 }
 
 // Every HDR mode's rows (Extra).
@@ -248,17 +365,30 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 3.f && IsAdvancedSettings();
 }
 
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != static_cast<float>(twattila::output_encoding::SDR);
+}
+
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, the clip alone).
 constexpr float HUE_CLIP_DEFAULT = 100.f;
+
+// The controls a host frame draws with. SDR output: Peak, Paper White and UI all the display's white (the back buffer's
+// 203-nit reference), so the game's picture reaches the display as it is.
+void LatchFrameInjection() {
+  frame_injection = shader_injection;
+  if (!IsHdrOutput()) {
+    frame_injection.peak_white_nits = RUSE_REFERENCE_WHITE;
+    frame_injection.diffuse_white_nits = RUSE_REFERENCE_WHITE;
+    frame_injection.graphics_white_nits = RUSE_REFERENCE_WHITE;
+  }
+  frame_injection.ui_scale = std::pow(std::max(frame_injection.graphics_white_nits, 1.f) / RUSE_REFERENCE_WHITE, 1.f / 2.2f);
+  frame_injection.video_scale = std::pow(std::max(frame_injection.diffuse_white_nits, 1.f) / RUSE_REFERENCE_WHITE, 1.f / 2.2f);
+}
 
 bool OnFrameShaderDraw(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return true;
   if (!frame_latched) {
-    frame_injection = shader_injection;
-    frame_injection.ui_scale = std::pow(
-        std::max(frame_injection.graphics_white_nits, 1.f) / RUSE_REFERENCE_WHITE, 1.f / 2.2f);
-    frame_injection.video_scale = std::pow(
-        std::max(frame_injection.diffuse_white_nits, 1.f) / RUSE_REFERENCE_WHITE, 1.f / 2.2f);
+    LatchFrameInjection();
     frame_latched = true;
   }
   // UI and video shaders can also draw into offscreen textures. Scale only
@@ -293,6 +423,14 @@ void OnPresentFrame(
     return;
   }
   presenting_host = reinterpret_cast<IDirect3DDevice9*>(device->get_native());
+  if (frame_trace_enabled) {
+    std::error_code ignored;
+    if (frame_trace_requested || std::filesystem::remove(frame_trace_marker, ignored)) {
+      frame_trace_requested = false;
+      renodx::utils::trace::trace_scheduled_device = device;
+      reshade::log::message(reshade::log::level::info, "R.U.S.E.: frame trace scheduled.");
+    }
+  }
   native_gui_phase = false;
   skip_host_present = false;
   proxy_present_started = false;
@@ -384,15 +522,16 @@ void OnPresentFrame(
   }
   if (!frame_latched) {
     // Screens without any known replacement still update output controls.
-    frame_injection = shader_injection;
+    LatchFrameInjection();
   }
   frame_latched = false;
 }
 
-void ApplyResetPreset() {
+// Reset (Extended) and SDR: every look control at its default.
+void ApplyDefaultLook(float rendering_mode) {
   // Display/output settings and the independent Motion Blur/DOF controls are preserved.
   renodx::utils::settings::UpdateSettings({
-      {"rendering_mode", 1.f},
+      {"rendering_mode", rendering_mode},
 
       // PsychoV31
       {"exposure", 1.f},
@@ -408,6 +547,8 @@ void ApplyResetPreset() {
       {"vignette", 1.f},
       {"motion_blur",1.f},
       {"depth_of_field",1.f},
+      {"video_autohdr", 0.f},
+      {"video_dithering", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -456,7 +597,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .can_reset = false,
           .label = "Settings Mode",
-          .labels = {"Simple", "Advanced"},
+          .labels = {"Simple", "Advanced", "Graphics 2 of 2"},
           .is_global = true,
       },
       new renodx::utils::settings::Setting{
@@ -469,7 +610,7 @@ void BuildRuntimeData() {
           .tooltip = "Target highlight peak in nits. The final HDR composite is limited to this value.",
           .min = 400.f,
           .max = 10000.f,
-          .is_visible = HasHDRScene,
+          .is_visible = []() { return HasHDRScene() && IsHdrOutput(); },
       },
       new renodx::utils::settings::Setting{
           .key = "diffuse_white_nits",
@@ -480,6 +621,7 @@ void BuildRuntimeData() {
           .tooltip = "Brightness of the scene and cutscene video in nits.",
           .min = 1.f,
           .max = 500.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           .key = "graphics_white_nits",
@@ -490,6 +632,7 @@ void BuildRuntimeData() {
           .tooltip = "Brightness of UI and HUD in nits.",
           .min = 1.f,
           .max = 500.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           // Settings loading clamps the former V31 index 3 to Full Replacement (2).
@@ -503,19 +646,30 @@ void BuildRuntimeData() {
                      "SDR: the game's original picture (no tonemapper, highlights clip).\n"
                      "PsychoV31 - Native Tone: applies PsychoV31 after the game's gamma/brightness response.\n"
                      "PsychoV31 - Full Replacement: PsychoV31 replaces that response.\n"
-                     "PsychoV35: Musa's PsychoV35 replaces it, with Hue Clip Emulation (Recommended).\n"
+                     "PsychoV35: Musa's PsychoV35 after the map's own gamma/brightness, with Hue Clip Emulation (Recommended).\n"
+                     "Extended: the game's picture up to Paper White, its clipped highlights rolled off to Peak.\n"
                      "All HDR modes retain the game's colour grading, bloom and vignette.",
-          .labels = {"SDR", "HDR (PsychoV31 - Native Tone)", "HDR (PsychoV31 - Full Replacement)", "HDR (PsychoV35)"},
+          .labels = {"SDR", "HDR (PsychoV31 - Native Tone)", "HDR (PsychoV31 - Full Replacement)", "HDR (PsychoV35)", "HDR (Extended)"},
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
           .label = "Reset (Faithful to SDR)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Resets Psycho controls, Bloom and Vignette; selects PsychoV31 - Native Tone.\n"
+          .tooltip = "Resets Psycho controls, Bloom and Vignette; selects HDR (Extended).\n"
                      "Peak, Paper White, UI, output, Motion Blur and Depth of Field are preserved.",
           .on_change = []() {
-            ApplyResetPreset();
+            ApplyDefaultLook(4.f);
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "SDR",
+          .section = "Presets",
+          .group = "preset-line-1",
+          .tooltip = "For displays without HDR: selects SDR with every look control at its default.",
+          .on_change = []() {
+            ApplyDefaultLook(0.f);
           },
       },
       new renodx::utils::settings::Setting{
@@ -685,6 +839,34 @@ void BuildRuntimeData() {
           .is_enabled = IsAdvancedSettings,
           .is_visible = IsAdvancedSettings,
       },
+      new renodx::utils::settings::Setting{
+          .key = "video_autohdr",
+          .binding = &shader_injection.video_autohdr,
+          .default_value = 0.f,
+          .label = "Video AutoHDR",
+          .section = "Extra",
+          .tooltip = "Makes the bright parts of the game's (SDR) videos and loading screens brighter: only what is above\n"
+                     "mid gray, the brightest the most. 0 = off, 1 = video white reaches Peak.\n"
+                     "High values can show banding (see Video Dithering).",
+          .min = 0.f,
+          .max = 1.f,
+          .format = "%.2f",
+          .is_enabled = []() { return HasHDRScene() && IsHdrOutput(); },
+          .is_visible = IsPsychoMode,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "video_dithering",
+          .binding = &shader_injection.video_dithering,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 1.f,
+          .label = "Video Dithering",
+          .section = "Extra",
+          .tooltip = "Fine noise that hides banding in the brightened videos.\n"
+                     "Only with Video AutoHDR above 0.",
+          .labels = {"Off", "On"},
+          .is_enabled = []() { return HasHDRScene() && IsHdrOutput() && shader_injection.video_autohdr > 0.f; },
+          .is_visible = IsPsychoMode,
+      },
   };
 }
 
@@ -747,52 +929,229 @@ void ConfigureAddon() {
   // Do not upgrade the native packed 10-bit scene targets: that broad rule
   // produces a black scene in R.U.S.E. The proxy still supplies FP16 output.
   // DX9 shared-resource handoff has no keyed mutex. Finish each GPU side's
-  // transfer before the other side reads/reuses it during loading transitions.
-  renodx::mods::swapchain::device_proxy_wait_idle_source = true;
-  renodx::mods::swapchain::device_proxy_wait_idle_destination = true;
-
-  // Appended Settings (HDR10)
+  // transfer before the other side reads/reuses it during loading transitions
+  // (a restart row: off is an A/B for the U1 run, the Present guard fixed that corruption later).
   {
     auto* setting = new renodx::utils::settings::Setting{
-        .key = "SwapChainEncoding",
+        .key = "ProxyGpuWaits",
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 1.f,
-        .label = "Output",
+        .label = "Wait for Each Frame Copy (Experimental)",
         .section = "Output (Restart Required)",
-        .tooltip = "HDR10: PQ / BT.2020 output.\nscRGB: floating-point linear output.\nRestart after changing this setting.",
-        .labels = {"HDR10", "scRGB"},
+        .tooltip = "On (default): each frame's copy to the HDR output waits for the GPU.\n"
+                   "Off: may be faster; turn it back on if loading screens show garbage.\n"
+                   "Restart after changing this setting.",
+        .labels = {"Off", "On"},
         .is_global = true,
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    const auto value = setting->GetValue();
-    shader_injection.swap_chain_encoding = value;
-    renodx::mods::swapchain::SetUseHDR10(value == 0);
+    renodx::mods::swapchain::device_proxy_wait_idle_source = (setting->GetValue() != 0.f);
+    renodx::mods::swapchain::device_proxy_wait_idle_destination = (setting->GetValue() != 0.f);
     settings.push_back(setting);
+  }
+
+  // Output (twattila/output_encoding.hpp): decided for each new DX9 swap chain (OnCreateSwapchain).
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "SwapChainEncoding",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = static_cast<float>(twattila::output_encoding::AUTO),
+        .label = "Output",
+        .section = "Output (Restart Required)",
+        .tooltip = "HDR10: 10-bit. scRGB: 16-bit.\n"
+                   "SDR: displays without HDR. Auto (default): scRGB with Windows HDR on, else SDR.\n"
+                   "Restart after changing this setting.",
+        .labels = {"HDR10", "scRGB", "SDR", "Auto"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    twattila::output_encoding::Configure({
+        .shader_encoding = &shader_injection.swap_chain_encoding,
+        .setting = static_cast<int>(setting->GetValue()),
+        .first_start_without_hdr = []() { ApplyDefaultLook(0.f); },
+        .recommended_preset = &ApplyPsychoRecommended,
+        .log_name = "[R.U.S.E.]",
+    });
+    settings.push_back(setting);
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "FrameTrace",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Frame Trace",
+        .section = "Output (Restart Required)",
+        .tooltip = "For testing: Trace One Frame writes one frame's draws, shaders and targets to ReShade.log.\n"
+                   "Off (default) costs nothing. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    frame_trace_enabled = (setting->GetValue() != 0.f);
+    if (frame_trace_enabled) {
+      std::wstring exe(32768, L'\0');
+      exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+      frame_trace_marker = std::filesystem::path(exe).parent_path() / L"renodx_trace_now";
+    }
+    settings.push_back(setting);
+    settings.push_back(new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "Trace One Frame",
+        .section = "Output (Restart Required)",
+        .on_change = []() { frame_trace_requested = true; },
+        .is_visible = []() { return frame_trace_enabled && IsAdvancedSettings(); },
+    });
   }
 
   twattila::psycho35::InsertBefore(&settings, "Extra", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 
-  // Appended Settings (About)
+  // Graphics 2 of 2: Option.ini values above the game's menu (ApplyGameOption).
   settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::TEXT,
+      .label = "These change the game's own settings file. They apply after a restart.",
+      .section = GRAPHICS_2_SECTION,
+  });
+  for (auto [setting, option] : {
+           std::pair{
+               new renodx::utils::settings::Setting{
+                   .key = "GraphicsShadowMapSize",
+                   .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                   .default_value = 0.f,
+                   .label = "Shadow Map Size",
+                   .section = GRAPHICS_2_SECTION,
+                   .tooltip = "Sharper sun shadows. More video memory.",
+                   .labels = {"Game's", "4096", "8192"},
+                   .is_global = true,
+               },
+               GameOption{.option_keys = {"ShadowRTSize"}, .values = {4096.f, 8192.f}},
+           },
+           std::pair{
+               new renodx::utils::settings::Setting{
+                   .key = "GraphicsSpriteResolution",
+                   .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                   .default_value = 0.f,
+                   .label = "Sprite Resolution",
+                   .section = GRAPHICS_2_SECTION,
+                   .tooltip = "Sharper distant objects drawn as sprites. More video memory.",
+                   .labels = {"Game's", "4096", "8192"},
+                   .is_global = true,
+               },
+               GameOption{.option_keys = {"ImposteurTextureSize"}, .values = {4096.f, 8192.f}},
+           },
+           std::pair{
+               new renodx::utils::settings::Setting{
+                   .key = "GraphicsSpriteAntiAliasing",
+                   .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                   .default_value = 0.f,
+                   .label = "Sprite Anti-Aliasing",
+                   .section = GRAPHICS_2_SECTION,
+                   .tooltip = "Smoother edges on distant objects drawn as sprites and their shadows,\n"
+                              "at the game's highest scene anti-aliasing (8.5).",
+                   .labels = {"Game's", "8.5"},
+                   .is_global = true,
+               },
+               GameOption{.option_keys = {"ImposteurRTAA", "ImposteurShadowRTAA"}, .values = {8.5f}},
+           },
+           std::pair{
+               new renodx::utils::settings::Setting{
+                   .key = "GraphicsDetailDistance",
+                   .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                   .default_value = 0.f,
+                   .label = "Detail Distance",
+                   .section = GRAPHICS_2_SECTION,
+                   .tooltip = "Buildings and objects keep their detailed versions farther away.\n"
+                              "Costs CPU and GPU time.",
+                   .labels = {"Game's", "2x", "4x"},
+                   .is_global = true,
+               },
+               GameOption{.option_keys = {"LevelBuild_High", "LevelBuild_Mid", "LevelBuild_Low", "LevelBuild_VeryLow"},
+                          .values = {2.f, 4.f},
+                          .factors = true},
+           },
+       }) {
+    setting->on_change_value = [option](float, float current) { ApplyGameOption(option, static_cast<int>(current)); };
+    settings.push_back(setting);
+    game_options.emplace_back(setting, std::move(option));
+  }
+
+  // The game's own setting the mod needs, first on General.
+  settings.insert(settings.begin() + 1, new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
       .label = "Turn on the in-game HDR setting.",
-      .section = "About",
-  });
-  settings.push_back(new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::TEXT,
-      .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
-               "and PsychoV35.",
-      .section = "About",
-  });
-  settings.push_back(new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::TEXT,
-      .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
-      .section = "About",
-      .is_visible = IsAdvancedSettings,
+      .section = "General",
   });
 
+  // Appended Settings (About)
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
+                   "and PsychoV35.",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
+          .section = "About",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "ATN's Ko-fi",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0xFF5A16,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://ko-fi.com/atnthegreat"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "NexusMods",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x2196F3,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/ruse/mods/6"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
+      },
+  });
+
+  // Settings Mode's pages: Simple and Advanced the HDR rows, Graphics 2 of 2 the game's settings; About on every page.
+  for (auto* setting : settings) {
+    if (setting->key == "SettingsMode" || setting->section == "About") continue;
+    const bool game_settings = (setting->section == GRAPHICS_2_SECTION);
+    setting->is_visible = [game_settings, shown = setting->is_visible] {
+      return ((current_settings_mode == 2.f) == game_settings) && (shown == nullptr || shown());
+    };
+  }
+
   configured = true;
+}
+
+// The game's DX9 swap chain, before the swapchain mod's create_swapchain (registered after this) and its DX11 proxy.
+// output_encoding hands an SDR target to the swapchain mod alone (shared step S2): the proxy takes it from here.
+bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_desc&, void* hwnd) {
+  if (api != reshade::api::device_api::d3d9) return false;
+  twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
+  renodx::utils::device_proxy::SetTargetFormat(renodx::mods::swapchain::target_format);
+  renodx::utils::device_proxy::SetTargetColorSpace(renodx::mods::swapchain::target_color_space);
+  // Graphics 2 of 2 at each start, for the next one (the game read Option.ini before making its device).
+  static bool game_options_written = false;
+  if (!game_options_written) {
+    game_options_written = true;
+    for (const auto& [setting, option] : game_options) {
+      ApplyGameOption(option, static_cast<int>(setting->GetValue()));
+    }
+  }
+  return false;
 }
 
 bool AttachAddon() {
@@ -800,6 +1159,7 @@ bool AttachAddon() {
 
   ConfigureAddon();
 
+  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_swapchain>(OnDestroyGameSwapchain);
   reshade::register_event<reshade::addon_event::present>(OnPresentFrame);
@@ -810,6 +1170,10 @@ bool AttachAddon() {
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   frame_injection = shader_injection;
+
+  if (frame_trace_enabled) {
+    renodx::utils::trace::Use(DLL_PROCESS_ATTACH);
+  }
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &frame_injection);
 
@@ -824,6 +1188,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_swapchain>(OnDestroyGameSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresentFrame);
@@ -837,6 +1202,10 @@ void DetachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &frame_injection);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &frame_injection);
+
+  if (frame_trace_enabled) {
+    renodx::utils::trace::Use(DLL_PROCESS_DETACH);
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
 
