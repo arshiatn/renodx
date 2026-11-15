@@ -13,6 +13,19 @@ tool renames it aside). The full-download note shows while `nvngx_dlss.dll` is f
 the game. `Arise-SDK.ini` (Arise-SDK's settings next to the game's exe; the graphics settings change most of them live) moved
 here.
 
+Pages (Settings Mode, as Attila's): HDR & Effects (every HDR row: no Simple / Advanced any more), Graphics 1 of 2
+(`twattila/graphics_page.hpp`: Anti-Aliasing and Upscaling with the game's TAA and DLSS, its modes, preset and Ray
+Reconstruction, the Reset / No RT/PT / RT/PT presets, Shadows, Ambient Occlusion with GT-VBAO and Ambient Occlusion Halo,
+Global Illumination, Reflections; then Upscaling and Tools: Live Render Scale, Camera Jitter, Replace the Game's TAA
+Pass, Spark Trails Fix, Game's Sharpening, the in-process Frame Generation, Upscaling Details, the pixel, frame and ray
+traces), Graphics 2 of 2 (the live cvar table, `talesofarise_dlss/graphics_table.hpp`, with its presets, the three preset
+toggles, Shaders on load, Smooth sun movement and Day and night speed). No overlay any more. The overlay's `[Tales AA]`
+keys go into the page's once (`Migrate`, `[renodx] SettingsRevision 1`; a preset's own key is kept; preset E becomes K;
+the bounce light and path tracing become Light Bounce's rays and paths); frame generation, the preset toggles and the
+taste settings keep their `[Tales AA]` keys, the cvar choices `[Tales Graphics Values]`. Ray-traced effects need DLSS now
+(as on every page; sun shadows, AO and specular occlusion also ran with the game's TAA before); Path Tracing Bounces stops
+at 2 (Attila's measure: 3 and 4 looked as 2).
+
 ## Rendering modes
 
 | Mode | What it does |

@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -28,6 +29,8 @@
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/draw_dispatch.hpp"
+#include "../twattila/feature_settings.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/output_encoding.hpp"
 #include "./dlss_graphics.hpp"
 #include "./hdr_only.hpp"
@@ -42,24 +45,20 @@ namespace {
 ShaderInjectData shader_injection;
 float current_settings_mode = 0.f;
 
-bool IsAdvancedSettings() {
-  return current_settings_mode >= 1.f;
-}
-
 bool IsHDRMode() {
   return shader_injection.hdr >= 1.f;
 }
 
 bool IsExtendedMode() {
-  return shader_injection.hdr == 1.f && IsAdvancedSettings();
+  return shader_injection.hdr == 1.f;
 }
 
 bool IsPsychoMode() {
-  return shader_injection.hdr == 2.f && IsAdvancedSettings();
+  return shader_injection.hdr == 2.f;
 }
 
 bool IsPsychoV35Mode() {
-  return shader_injection.hdr == 3.f && IsAdvancedSettings();
+  return shader_injection.hdr == 3.f;
 }
 
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
@@ -322,7 +321,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .can_reset = false,
           .label = "Settings Mode",
-          .labels = {"Simple", "Advanced"},
+          .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
           .is_global = true,
       },
       new renodx::utils::settings::Setting{
@@ -623,25 +622,25 @@ void BuildRuntimeData() {
 
       // Post Processing ////////////////////////////////////////////////////////////////////////////
       slider("bloom", &shader_injection.bloom, "Bloom", "Post Processing", "Bloom multiplier (incl. lens dirt). Needs in-game Bloom on.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode, [] { return true; }),
       slider("motion_blur", &shader_injection.motion_blur, "Motion Blur", "Post Processing",
              "Motion blur strength (blur length) multiplier, SDR and HDR. Needs in-game Motion Blur on; 0 turns it off.",
-             [] { return true; }, IsAdvancedSettings),
+             [] { return true; }, [] { return true; }),
       slider("chromatic_aberration", &shader_injection.chromatic_aberration, "Chromatic Aberration", "Post Processing",
-             "Multiplier on the game's chromatic aberration (cutscenes).", IsHDRMode, IsAdvancedSettings),
+             "Multiplier on the game's chromatic aberration (cutscenes).", IsHDRMode, [] { return true; }),
       slider("vignette", &shader_injection.vignette, "Vignette", "Post Processing", "Vignette multiplier.", IsHDRMode,
-             IsAdvancedSettings),
+             [] { return true; }),
       slider("film_grain", &shader_injection.film_grain, "Film Grain", "Post Processing",
-             "Multiplier on the game's film grain (cutscenes).", IsHDRMode, IsAdvancedSettings),
+             "Multiplier on the game's film grain (cutscenes).", IsHDRMode, [] { return true; }),
       slider("sharpening", &shader_injection.sharpening, "Sharpening", "Post Processing",
              "Multiplier on the tonemapper's sharpening, which the game only turns on in some scenes (normal\n"
              "gameplay has none, with or without DLSS). The sharpening before DLAA / DLSS is the DLSS addon's.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode, [] { return true; }),
       // Bandai's passes (ATN), SDR and HDR.
       slider("painterly", &shader_injection.painterly, "Painterly Filter", "Post Processing",
-             "Strength of the game's painterly (brush-like) filter. 0 = off.", [] { return true; }, IsAdvancedSettings, 1.f),
+             "Strength of the game's painterly (brush-like) filter. 0 = off.", [] { return true; }, [] { return true; }, 1.f),
       slider("outlines", &shader_injection.outlines, "Outlines", "Post Processing",
-             "Strength of the characters' outlines. 0 = off.", [] { return true; }, IsAdvancedSettings),
+             "Strength of the characters' outlines. 0 = off.", [] { return true; }, [] { return true; }),
 
       // Extra /////////////////////////////////////////////////////////////////////////////////////
       new renodx::utils::settings::Setting{
@@ -655,10 +654,9 @@ void BuildRuntimeData() {
           .tooltip = "Smooths the blocky edges of the sun's haze.\n"
                      "Soft: mild, in every direction. Along Sun Rays: along the rays, sharper edges.",
           .labels = {"Off", "Soft", "Along Sun Rays"},
-          .is_visible = IsAdvancedSettings,
       },
       slider("sun_haze", &shader_injection.sun_haze, "Sun Haze", "Extra",
-             "Strength of the sunlit haze and light shafts in the air.", [] { return true; }, IsAdvancedSettings),
+             "Strength of the sunlit haze and light shafts in the air.", [] { return true; }, [] { return true; }),
       new renodx::utils::settings::Setting{
           .key = "sun_shadow_smoothing",
           .binding = &shader_injection.sun_shadow_smoothing,
@@ -669,17 +667,16 @@ void BuildRuntimeData() {
           .tooltip = "Smooths blocky sun shadow edges when the DLSS addon's Sun shadow distance is above the game's.\n"
                      "Sharp to Sharpest: harder edges. Off: the game's.",
           .labels = {"Off", "Smooth", "Sharp", "Sharper", "Sharpest"},
-          .is_visible = IsAdvancedSettings,
       },
       slider("sun_shadow_edge", &shader_injection.sun_shadow_edge, "Thin Sun Shadow Edges", "Extra",
              "When the DLSS addon's Sun shadow distance is above the game's, keeps the soft edge of sun shadows\n"
              "thin (less halo) and still smooth. 0 = off, 1 = as thin as at the game's distance, 2 = thinner.\n"
              "Default 0.22.",
-             [] { return true; }, IsAdvancedSettings, 2.f, 0.22f),
+             [] { return true; }, [] { return true; }, 2.f, 0.22f),
       slider("shadow_edge_color", &shader_injection.shadow_edge_color, "Shadow Edge Color", "Extra",
              "How much of the game's edge color fills the soft edges of sun shadows.\n"
              "0 = none: the shadow tint shows there as a colored fringe. Higher: cleaner edges. Default 5.",
-             [] { return true; }, IsAdvancedSettings, 10.f, 5.f),
+             [] { return true; }, [] { return true; }, 10.f, 5.f),
       new renodx::utils::settings::Setting{
           .key = "video_highlights",
           .binding = &shader_injection.video_highlights,
@@ -693,7 +690,6 @@ void BuildRuntimeData() {
           .max = 1.f,
           .format = "%.2f",
           .is_enabled = [] { return IsHDRMode() && IsHdrOutput(); },
-          .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
           .key = "video_dithering",
@@ -706,7 +702,6 @@ void BuildRuntimeData() {
                      "Only with Video AutoHDR above 0.",
           .labels = {"Off", "On"},
           .is_enabled = [] { return IsHDRMode() && IsHdrOutput() && shader_injection.video_highlights > 0.f; },
-          .is_visible = IsAdvancedSettings,
       },
   };
   twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
@@ -750,11 +745,24 @@ namespace {
 void ConfigureAddon() {
   if (configured) return;
 
+  // The former DLSS add-on's [Tales AA] keys into the page's, once, before the settings load (settings::Use).
+  talesofarise::dlss_graphics::Migrate();
   BuildRuntimeData();
   // Without the full download's NVIDIA DLLs (the HDR-only snapshot: no nvngx_dlss.dll next to the add-on or the game),
   // after Settings Mode.
   settings.insert(settings.begin() + 1,
                   talesofarise::hdr_only::FullDownloadNote([] { return talesofarise::dlss_graphics::dlss_library.folder.empty(); }));
+  settings.insert(settings.begin() + 2, new renodx::utils::settings::Setting{
+                                            .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                                            .label = "The game has no HDR option of its own: this add-on's Output makes it HDR.",
+                                            .section = "General",
+                                        });
+  // Section titles: one colour, Graphics 2 of 2's pink, the page's its own; then the page (Graphics 1 and 2 of 2).
+  const std::vector<std::string> engine_sections = talesofarise::dlss_graphics::EngineSections();
+  twattila::feature_settings::SetTints({"General", "Presets", "UE Extended", "PsychoV35", "PsychoV31", "Post Processing", "Extra",
+                                        "Output (Restart Required)", "About"},
+                                       engine_sections);
+  talesofarise::dlss_graphics::AppendPage(&settings);
   shader_injection.filter_scale = 1.f;
   shader_injection.game_sharpening = 1.f;
 
@@ -835,7 +843,6 @@ void ConfigureAddon() {
                    "HDR10: 10-bit. scRGB: 16-bit. SDR: displays without HDR (all fixes and options stay).",
         .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     twattila::output_encoding::Configure({
@@ -878,11 +885,15 @@ void ConfigureAddon() {
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
           .section = "About",
-          .is_visible = IsAdvancedSettings,
       },
   });
   const auto buttons = talesofarise::hdr_only::AboutButtons("https://nexusmods.com/talesofarise/mods/444");
   settings.insert(settings.end(), buttons.begin(), buttons.end());
+
+  // Settings Mode's pages: HDR & Effects, Graphics 1 of 2 (graphics_page.hpp and the upscaling tools), Graphics 2 of 2.
+  std::vector<std::string> graphics_sections = twattila::graphics_page::Sections();
+  graphics_sections.push_back(talesofarise::dlss_graphics::TOOLS_SECTION);
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, graphics_sections);
 
   configured = true;
 }
