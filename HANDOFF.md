@@ -874,8 +874,20 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     Lists, not the author's code) are OK. Owner: coordinator, after the Attila end bench
   - [ ] Full Attila package for all three (memory project_nontw_full_package.md); stamps + watermarks for every game.
     Owner: per-game rounds after the merges
-  - [ ] SHADER-PACK round: read the shipped packs where not encrypted (DXBC / DXIL in UE paks' unencrypted entries,
-    Ryse's USER\Shaders\Cache *.fxcb names), else a runtime "create every shader" dump in the data run. Owner: shp_
+  - [x] SHADER-PACK ROUND DONE (shp_, tools/nontw/shader_packs/report.md; read-only, nothing decrypted): RYSE COMPLETE
+    OFFLINE: Engine\ShaderCache.pak + _FastLoad\ShaderCacheStartup.pak store their CPCK data plain (only zip headers
+    encrypted), LZSS-compressed entries -> 6,421 unique DXBC (ps 5,015, vs 1,271, ds 98, hs 32, cs 4, gs 1), 5,527 NOT
+    in the dumps, all 894 dumped ones included -> tools/nontw/shader_packs/ryse/cso. Names: exact for 92, families for
+    the rest (entries.tsv keeps name_crc). UE: pak indexes AES-encrypted (not read); plain entry data walked
+    (Expeditions 43.2 GB plain, Tales 76.4 GB plain); a partial carve of Expeditions' pakchunk0_s5 found 552 SM5 shaders
+    NOT in the create-on-load dump.
+    - [ ] Decompile Ryse's 6,421 (cmd_Decompiler) and map the new families (tonemap / post / HDR permutations first).
+      Owner: RYSE MERGE round
+    - [ ] Ryse runtime names + on-demand compiles in R0: r_ShadersLogCacheMisses 1, one r_LogShaders frame per level,
+      e_PrecacheLevel + e_AutoPrecacheTexturesAndShaders, the 9 levels from the menu (set through the add-on). Owner:
+      coordinator's R0
+    - [ ] Finish the UE inner-zlib carve over every plain entry (both games; hours in pure Python: make it parallel /
+      faster first; NOT during a quiet window or the end bench). Owner: coordinator, after the TW install
   - [ ] Data runs (ATN allowed, scripted, fresh save backups): Tales G1 + G2 one session (Manual 03 / 04), Expeditions G1
     (Save Silanus 3m), Ryse R0 (auto-continue or chapter 3) + Nsight D3D11 capture try; after the merges + test hooks.
     Not while the TW end bench runs. Owner: coordinator
