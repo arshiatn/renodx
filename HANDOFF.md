@@ -854,6 +854,12 @@ heading text are in HANDOFF_ARCHIVE.md)
       one-line x87 bench patch).
     - [ ] Non-TW data runs (ATN 12:2x "Sure, go ahead"): Tales G1 + G2 (agent started 12:2x, tools/nontw/tales/g1g2),
       then Expeditions G1, then Ryse R0, one at a time. Owner: coordinator
+      - Tales try 1 (12:24 / 12:30): SteamStub relaunches the exe through steam.exe, the launching shell's RENODX_TW_SET
+        never arrived (no "[Tales] Test:" line); no save loaded, nothing measured; ATN's files restored, hashes OK, no save
+        changed. The first start's log: migration "8 values of [Tales AA] taken over (SettingsRevision 1)", scRGB, DLSS
+        Quality preset L through the helper, AA constants matched 30 readbacks, no ERROR. Fix f4d95f6c (shared
+        test_hooks.hpp: renodx_test_hooks.txt next to the exe, deleted at the first present); Tales v73 + Expeditions v30
+        installed 12:41 (stamped, ATN's files unchanged); the Tales agent resumed with the file.
     - [ ] WH3's x64 render-list WPR run: the game said "Unable to initialize SteamAPI" twice (Steam not elevated;
       HKCU Valve ActiveProcess pointed at a dead pid); ATN restarts Steam, then one run (x64_run.ps1). Owner: ATN, then
       coordinator
