@@ -936,6 +936,34 @@ heading text are in HANDOFF_ARCHIVE.md)
       R.U.S.E." (PsychoV35 position: never on top of UpgradeToneMap / UC2 Extended; Divinity 2's at its Psycho's place).
       Skills f99e871c. Planners d1_ / d2_ / ru_ started ~17:05 (brief tools/tw/round_notes/nontw2_plan_brief_1115.md,
       plans to tools/nontw/divinity1 | divinity2 | ruse/plan.md). Owner: coordinator
+      - [x] DIVINITY 1 PLAN DONE 18:2x (d1_): tools/nontw/divinity1/plan.md + divinity1.tsv (84 rows: 49 DO NOW, 10 HAVE,
+        12 NEEDS A TRACE, 8 WON'T GET, 1 SHARED STEP), names.tsv (3192 hashes), atmospheres.tsv (243 scenes), tools/.
+        R0 ran 17:54-18:04 (installed 11-11 build, DevKit snapshots of the Cyseal beach: 684 / 606 draws, pass order +
+        formats; tone-map input R11G11B10F, mean 0.225, max 9.3; GPU busy 3.0 ms, 120 fps cap); retry 18:10 crashed 20 s in
+        with no input; ATN's files restored 0 differ both times.
+      - [ ] D1 step 1 (TOP, S): the start crash: the game recreates its swap chain 2-4 times a start (and at window-mode
+        changes); swapchain_v2.hpp:633-639 makes each FLIP_DISCARD x2; the old chain lingers ("IDXGISwapChain0 reference
+        count inconsistent (1)"), the game's BufferCount 1 path gets E_ACCESSDENIED, EoCApp+0xF7C532 reads null +0x18.
+        WARP repro test/tw_d1_swapchain (control must fail), unbind + Flush at destroy, fall back to the game's swap effect
+        on failure, shared opt-in for other D3D11 games; check Tales / Expeditions logs for the same warning. AFTER fx_
+        (it edits swapchain_v2.hpp for R19). The installed 11-11 Divinity 1 build can crash any start (ATN told).
+        Owner: Divinity 1 implementer (d1_ resumed)
+      - [ ] D1 step 2: census of all 3192 shipped shaders (EngineShaders.pak 65 + Materials.pak 6792 .bshd, 67 DXBC in
+        EoCApp.exe, 8 run-time), tools/d1_census.py -> census.tsv + HDR-clamp list. Owner: d1_
+      - [ ] D1 steps 3-4: test/tw_divinity1 (7 checks, today's mode 1 the failing control); V35 (HableMidGray from the
+        live Params: mid grey 0.036-0.230 over 243 atmospheres) + Extended per-channel Neutwo, each ONCE on Base.Load
+        (0x30A1D40D:25), the game's grade after the curve (today: UC2 Extended -> grade -> UpgradeToneMap -> PsychoV30,
+        tonemappers.hlsli:140-142: stacked, ATN's warning). Owner: d1_
+      - [ ] D1 steps 5-7: page dump + parity_check + tw_install entry; Output SDR / Auto, presets, credits, device_loss,
+        fast dispatch; hooks, frame trace, pass timing, snapshot check. Owner: d1_
+      - [ ] D1 steps 9-10 + Graphics 2 of 2: helper route at 100 % (DLAA / FSR / XeSS, b12 jitter, camera motion, FG,
+        Reflex, RR guides); rt_core host (RT shadows into the PCSS mask, RT AO). Owner: d1_ after R1
+      - [ ] D1 R1 run (after steps 1 + 7, ATN's OK, no DevKit): main-menu torches (fire values, point lights, run-time
+        shader dump), beach Params / ColorMatrix vs atmospheres.tsv, b12, mode shots, timing, window-mode path with the
+        fix; optional SSREnabled 1, FIREEXAMPLE save. Owner: coordinator (next game window)
+      - [ ] ATN DECIDES (Divinity 1): modes 3 / 4 and keep legacy V30 / Pragmap?; bench save; seen start crashes before?;
+        below 100 % render scale; fire boosts in V35 / Extended; may rows write graphicSettings.lsx?; Pragmap's author
+        (credits); is the "mod invalid" dialog at every start expected? Owner: ATN
     - [ ] ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 (the planners run them, one at
       a time through gpu_job.lock, no start after 19:30); from 20:00 ATN plays 4-6 h: OFFLINE ONLY until ATN says done.
       Owner: coordinator
