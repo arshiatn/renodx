@@ -21,6 +21,7 @@
 #include <cstring>
 #include <span>
 #include <format>
+#include <functional>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
@@ -55,14 +56,15 @@ constexpr char BUILD_TIME[] = __TIME__;
 namespace {
 
 ShaderInjectData shader_injection;
-float current_settings_mode = 0.f;
+float current_settings_mode = 0.f;  // the page: 0 HDR & Effects, 1 Graphics 1 of 2, 2 Graphics 2 of 2
+float advanced_settings = 0.f;
 // Hotkeys (OnPresentHotkeys), not saved: the HUD shaders also draw the menus.
 std::atomic_bool hud_hidden = false;
 std::atomic_bool execution_highlights_hidden = false;
 std::atomic_bool execution_skull_hidden = false;
 
 bool IsAdvancedSettings() {
-  return current_settings_mode >= 1.f;
+  return advanced_settings >= 1.f;
 }
 
 bool IsHDRMode() {
@@ -185,6 +187,11 @@ void ApplyRecommendedPreset() {
 // This add-on alone (the upstream snapshot): the helper, the DLSS add-on and the NVIDIA files come with the full download.
 constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
 constexpr uint32_t WARNING_TINT = 0xFF5050;
+// Settings Mode's pages: their sections (the Total War add-ons' names; the rest is HDR & Effects).
+const std::string AA_SECTION = "Anti-Aliasing and Upscaling";
+const std::array<std::string, 5> GRAPHICS_1_SECTIONS = {AA_SECTION, "Ambient Occlusion", "Contact Shadows", "Light Bounce",
+                                                        "Ray Tracing (Experimental)"};
+const std::array<std::string, 3> GRAPHICS_2_SECTIONS = {"Graphics", "Graphics (Experimental)", "Audio"};
 
 bool HelperAbsent() {
   return !twattila::dlaa_bridge::HelperInstalled();
@@ -329,6 +336,20 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .can_reset = false,
           .label = "Settings Mode",
+          .tooltip = "HDR & Effects: the picture. Graphics 1 of 2: anti-aliasing, DLSS, frame generation, shadows, ambient\n"
+                     "occlusion, Light Bounce and ray tracing. Graphics 2 of 2: the game's settings above its High.",
+          .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
+          .is_global = true,
+      },
+      // Simple / Advanced, once Settings Mode's own (until the one add-on; ConfigureAddon moves a saved Advanced here once).
+      new renodx::utils::settings::Setting{
+          .key = "SettingsAdvanced",
+          .binding = &advanced_settings,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .can_reset = false,
+          .label = "Options",
+          .tooltip = "Advanced: every slider, the output and the diagnostics.",
           .labels = {"Simple", "Advanced"},
           .is_global = true,
       },
@@ -1664,7 +1685,66 @@ void ConfigureAddon() {
       {"Contact Shadows", 0x7EE08A},
       {"Output (Restart Required)", 0xFF7FAF},
       {"About", 0xE6C27A},
+      {AA_SECTION, 0xB39DDB},
+      {"Graphics", 0xFF7FAF},
+      {"Graphics (Experimental)", 0xFF7FAF},
+      {"Audio", 0x7EE08A},
   };
+
+  // Graphics 1 of 2 and 2 of 2 (graphics.hpp; once the DLSS add-on's overlay, which still writes its own ReShade.ini
+  // keys: [Ryse AA], [Ryse Game Settings]), before About.
+  const auto custom_row = [](const std::string& label, const std::string& section, std::function<void()> draw) {
+    return new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+        .label = label,
+        .section = section,
+        .on_draw = [draw = std::move(draw)] {
+          draw();
+          return false;
+        },
+    };
+  };
+  const auto about = std::ranges::find(settings, std::string("About"), &renodx::utils::settings::Setting::section);
+  settings.insert(about, {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = FULL_DOWNLOAD_NOTE,
+          .section = AA_SECTION,
+          .tint = WARNING_TINT,
+          .is_visible = HelperAbsent,
+      },
+      custom_row("##Anti-Aliasing", AA_SECTION, [] { rysesonofrome::graphics::DrawAntiAliasing(IsAdvancedSettings()); }),
+      custom_row("##Graphics", "Graphics", [] { rysesonofrome::graphics::DrawGameSettings(false, IsAdvancedSettings()); }),
+      custom_row("##Graphics (Experimental)", "Graphics (Experimental)",
+                 [] { rysesonofrome::graphics::DrawGameSettings(true, IsAdvancedSettings()); }),
+      custom_row("##Audio", "Audio", [] { rysesonofrome::graphics::DrawAudio(IsAdvancedSettings()); }),
+  });
+
+  // Settings Mode's pages (as the Total War add-ons'; About and the two mode rows on every page).
+  for (auto* setting : settings) {
+    if (setting->key == "SettingsMode" || setting->key == "SettingsAdvanced" || setting->section == "About") continue;
+    int page = 0;
+    if (std::ranges::find(GRAPHICS_1_SECTIONS, setting->section) != GRAPHICS_1_SECTIONS.end()) {
+      page = 1;
+    } else if (std::ranges::find(GRAPHICS_2_SECTIONS, setting->section) != GRAPHICS_2_SECTIONS.end()) {
+      page = 2;
+    }
+    setting->is_visible = [page, shown = setting->is_visible] {
+      return static_cast<int>(current_settings_mode) == page && (shown == nullptr || shown());
+    };
+  }
+
+  // Simple / Advanced was Settings Mode's (renodx) and the DLSS add-on's own ([Ryse AA] SettingsMode) until the one
+  // add-on: either one's Advanced becomes SettingsAdvanced, once, and Settings Mode starts on HDR & Effects.
+  const char* global = renodx::utils::settings::global_name.c_str();
+  if (float saved = 0.f; !reshade::get_config_value(nullptr, global, "SettingsAdvanced", saved)) {
+    float mode = 0.f;
+    int overlay_mode = 0;
+    const bool advanced = (reshade::get_config_value(nullptr, global, "SettingsMode", mode) && mode == 1.f)
+                          || (reshade::get_config_value(nullptr, "Ryse AA", "SettingsMode", overlay_mode) && overlay_mode == 1);
+    reshade::set_config_value(nullptr, global, "SettingsAdvanced", advanced ? 1 : 0);
+    if (mode == 1.f) reshade::set_config_value(nullptr, global, "SettingsMode", 0);
+  }
 
   configured = true;
 }

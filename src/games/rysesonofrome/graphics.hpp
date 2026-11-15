@@ -313,7 +313,6 @@ struct State {
 std::atomic<AAMode> requested_mode = AAMode::OFF;
 std::atomic<uint32_t> preset = NVSDK_NGX_DLSS_Hint_Render_Preset_M;  // L looks the same in Ryse and costs more
 rysesonofrome::dlss::DlssLibrary dlss_library;
-bool advanced = false;
 // DLSS Frame Generation (Experimental, Tales' frame_generation.hpp): set at launch (config FrameGeneration).
 bool frame_generation = false;
 // The addon's own jitter (JITTER_SETUP, JITTER_APPLY), or the game's (stops in slow motion and pauses).
@@ -3210,27 +3209,16 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   postaamode.store(control.last_seen);
 }
 
-void OnOverlay(reshade::api::effect_runtime*) {
+// Graphics 1 of 2's Anti-Aliasing and Upscaling (the renodx page draws it; once the DLSS add-on's overlay, its own
+// Settings mode now the page's): DLSS, frame generation and their status; with Advanced the diagnostics and the
+// debug buttons.
+inline void DrawAntiAliasing(bool advanced) {
   if (advanced) {
     const std::shared_lock lock(state.mutex);
     overlay_frame.store(state.frame + 1);
     rysesonofrome::particle_counts::KeepCounting();
   }
-  // Section headings (ATN): DLSS lavender, Graphics pink, the rest green (the HDR addon's titles).
-  const auto heading = [](const char* label, ImU32 color) {
-    ImGui::PushStyleColor(ImGuiCol_Text, color);
-    ImGui::SeparatorText(label);
-    ImGui::PopStyleColor();
-  };
   constexpr ImU32 DLSS_COLOR = IM_COL32(0xB3, 0x9D, 0xDB, 0xFF);
-  constexpr ImU32 GRAPHICS_COLOR = IM_COL32(0xFF, 0x7F, 0xAF, 0xFF);
-  constexpr ImU32 OTHER_COLOR = IM_COL32(0x7E, 0xE0, 0x8A, 0xFF);
-  if (int settings_mode = (advanced ? 1 : 0);
-      ImGui::Combo("Settings mode", &settings_mode, "Simple\0Advanced (For debugging and extra information)\0")) {
-    advanced = settings_mode == 1;
-    reshade::set_config_value(nullptr, "Ryse AA", "SettingsMode", settings_mode);
-  }
-  heading("DLSS", DLSS_COLOR);
   ImGui::PushStyleColor(ImGuiCol_Text, DLSS_COLOR);
   auto mode = requested_mode.load();
   if (ImGui::BeginCombo("AA mode", AA_MODES[static_cast<size_t>(mode)].label)) {
@@ -3374,150 +3362,6 @@ void OnOverlay(reshade::api::effect_runtime*) {
                        version[0], version[1], version[2], rysesonofrome::dlss::MINIMUM_RUNTIME_VERSION[0],
                        rysesonofrome::dlss::MINIMUM_RUNTIME_VERSION[1]);
   }
-
-  heading("Graphics", GRAPHICS_COLOR);
-  ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.75f, 0.2f, 1.f));
-  ImGui::TextWrapped("Game settings above the game's High. Most apply at once; some need a level load (e.g. texture "
-                     "streaming) and detail can take a few seconds to stream in. Nx: N times the in-game preset's value.");
-  ImGui::TextWrapped("Heaviest: Screen-space reflections (GPU) and Detail distance (CPU and GPU) at their higher settings.");
-  ImGui::PopStyleColor();
-  // A button that sets every option to the choice `pick` gives it, saved.
-  // preset: -1 Reset, a GRAPHICS_PRESETS index, or GRAPHICS_PRESETS.size() for MAXED OUT.
-  const auto preset_button = [](const char* label, const char* tooltip, int preset) {
-    if (ImGui::Button(label)) {
-      for (auto& option : quality_options) {
-        if (option.experimental || option.audio) continue;
-        int choice = option.choice_count - 1;
-        if (preset < 0) {
-          choice = option.default_choice;
-        } else if (preset < static_cast<int>(GRAPHICS_PRESETS.size())) {
-          choice = option.preset_choices[preset];
-        }
-        option.choice = choice;
-        reshade::set_config_value(nullptr, "Ryse Game Settings", option.key, option.choice);
-      }
-    }
-    if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip("%s", tooltip);
-    }
-  };
-  preset_button("Reset", "Every option back to the in-game setting.", -1);
-  for (int preset = 0; preset < static_cast<int>(GRAPHICS_PRESETS.size()); ++preset) {
-    ImGui::SameLine();
-    preset_button(GRAPHICS_PRESETS[preset].name, GRAPHICS_PRESETS[preset].tooltip, preset);
-  }
-  ImGui::SameLine();
-  preset_button("MAXED OUT", "Every option at its highest (distances and details 64x), Experimental ones excepted.",
-                static_cast<int>(GRAPHICS_PRESETS.size()));
-  const bool world_seen = taa_frame.load(std::memory_order_relaxed) != UINT64_MAX;
-  // A slider over the option's items, showing the current one (as RenoDX's labelled settings); in Advanced, its cvars.
-  const auto option_slider = [&](QualityOption& option, bool locked) {
-    ImGui::BeginDisabled(locked);
-    if (option.highlighted) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.75f, 0.2f, 1.f));
-    if (ImGui::SliderInt(option.label, &option.choice, 0, option.choice_count - 1, ChoiceName(option, option.choice),
-                         ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
-      reshade::set_config_value(nullptr, "Ryse Game Settings", option.key, option.choice);
-    }
-    if (option.highlighted) ImGui::PopStyleColor();
-    ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-      ImGui::SetTooltip("%s", option.tooltip);
-    }
-    if (!advanced || option.cvars.empty()) return;
-    std::string values;
-    for (const auto& entry : option.cvars) {
-      std::string value = "in-game";
-      if (entry.looked_up && entry.cvar == nullptr) {
-        value = "not found";
-      } else if (entry.reverts >= CVAR_REFUSED_REVERTS) {
-        value = "refused (the game puts its value back)";
-      } else if (entry.set) {
-        value = std::format("{:g} -> {:g}", entry.game_value, entry.set_value);
-      } else if (!world_seen) {
-        value = "waiting for the game's world";
-      }
-      values += std::format("{}{}: {}", (values.empty() ? "" : ", "), entry.name, value);
-    }
-    ImGui::TextWrapped("%s", values.c_str());
-  };
-  for (const bool experimental : {false, true}) {
-    if (experimental) {
-      heading("Graphics (Experimental)", GRAPHICS_COLOR);
-      ImGui::TextWrapped("Experimental: the presets above leave these alone; only the buttons below change them.");
-      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.75f, 0.2f, 1.f));
-      ImGui::TextWrapped("Can be heavy and may not work. The on / off switches are features the game shipped off and "
-                         "may crash it: turn them off if something goes wrong. Particles blinking or missing: lower the "
-                         "particle sliders.");
-      ImGui::PopStyleColor();
-      // Sets every Experimental option to its first item or to ATN's setting (atn_choice), saved.
-      const auto experimental_button = [](const char* label, const char* tooltip, bool atn) {
-        if (ImGui::Button(label)) {
-          for (auto& option : quality_options) {
-            if (!option.experimental) continue;
-            option.choice = (atn ? option.atn_choice : option.default_choice);
-            reshade::set_config_value(nullptr, "Ryse Game Settings", option.key, option.choice);
-          }
-        }
-        if (ImGui::IsItemHovered()) {
-          ImGui::SetTooltip("%s", tooltip);
-        }
-      };
-      experimental_button("Reset##Experimental", "Every Experimental option back to the in-game setting (off), Light limit 512.",
-                          false);
-      ImGui::SameLine();
-      experimental_button("ATN's setting", "Every switch on (high quality shadows: extra cascades), Particle memory 16x, "
-                                           "particles: fire 2x, sparks 8x, smoke and dust 1.5x, blood 3x, other 1.5x, Light limit 512.",
-                          true);
-    }
-    const bool particle_memory = ParticleMemoryChoice() != 0;
-    for (auto& option : quality_options) {
-      if (option.experimental != experimental || option.audio) continue;
-      // The particle sliders need Particle memory (OnPresent keeps them at the in-game setting without it).
-      const bool locked = !particle_memory && std::ranges::any_of(PARTICLE_OPTIONS, [&](const ParticleOption& particle) {
-        return particle.key == option.key;
-      });
-      option_slider(option, locked);
-    }
-  }
-  if (!world_seen) {
-    ImGui::TextWrapped("They apply once the game draws its world with its Temporal Anti-Aliasing on.");
-  }
-  heading("Audio", OTHER_COLOR);
-  for (auto& language : language_choices) {
-    if (ImGui::SliderInt(language.label, &language.choice, 0, static_cast<int>(LANGUAGE_NAMES.size()) - 1,
-                         LANGUAGE_LABELS[language.choice], ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
-      reshade::set_config_value(nullptr, "Ryse Game Settings", language.key, language.choice);
-      language.applied = false;
-    }
-    if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip("%s", language.tooltip);
-    }
-  }
-  for (auto& option : quality_options) {
-    if (option.audio) {
-      option_slider(option, false);
-    }
-  }
-  heading("About", OTHER_COLOR);
-  // Tinted as RenoDX tints a setting (the theme's button colours at the tint's hue): the same as the HDR addon's.
-  const auto link_button = [](const char* label, const ImColor& tint, const char* url) {
-    float hue = 0.f;
-    float saturation = 0.f;
-    float value = 0.f;
-    ImGui::ColorConvertRGBtoHSV(tint.Value.x, tint.Value.y, tint.Value.z, hue, saturation, value);
-    for (const auto style : {ImGuiCol_Button, ImGuiCol_ButtonHovered, ImGuiCol_ButtonActive}) {
-      ImVec4 color = ImGui::GetStyleColorVec4(style);
-      float style_hue = 0.f;
-      ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, style_hue, saturation, value);
-      ImGui::ColorConvertHSVtoRGB(hue, saturation, value, color.x, color.y, color.z);
-      ImGui::PushStyleColor(style, color);
-    }
-    if (ImGui::Button(label)) renodx::utils::platform::LaunchURL(url);
-    ImGui::PopStyleColor(3);
-  };
-  link_button("ATN's Ko-fi", ImColor(0xFF, 0x5A, 0x16), "https://ko-fi.com/atnthegreat");
-  ImGui::SameLine();
-  link_button("NexusMods (For RenoDX + DLSS)", ImColor(0x21, 0x96, 0xF3), "https://www.nexusmods.com/rysesonofrome/mods/59");
   if (!advanced) return;
 
   ImGui::Separator();
@@ -3795,6 +3639,136 @@ void OnOverlay(reshade::api::effect_runtime*) {
   }
 }
 
+// A game setting's row: a slider over its items, showing the current one (as RenoDX's labelled settings), disabled
+// while `locked`; with Advanced its cvars.
+inline void OptionSlider(QualityOption* option, bool locked, bool advanced) {
+  const bool world_seen = taa_frame.load(std::memory_order_relaxed) != UINT64_MAX;
+  ImGui::BeginDisabled(locked);
+  if (option->highlighted) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.75f, 0.2f, 1.f));
+  if (ImGui::SliderInt(option->label, &option->choice, 0, option->choice_count - 1, ChoiceName(*option, option->choice),
+                       ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
+    reshade::set_config_value(nullptr, "Ryse Game Settings", option->key, option->choice);
+  }
+  if (option->highlighted) ImGui::PopStyleColor();
+  ImGui::EndDisabled();
+  if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+    ImGui::SetTooltip("%s", option->tooltip);
+  }
+  if (!advanced || option->cvars.empty()) return;
+  std::string values;
+  for (const auto& entry : option->cvars) {
+    std::string value = "in-game";
+    if (entry.looked_up && entry.cvar == nullptr) {
+      value = "not found";
+    } else if (entry.reverts >= CVAR_REFUSED_REVERTS) {
+      value = "refused (the game puts its value back)";
+    } else if (entry.set) {
+      value = std::format("{:g} -> {:g}", entry.game_value, entry.set_value);
+    } else if (!world_seen) {
+      value = "waiting for the game's world";
+    }
+    values += std::format("{}{}: {}", (values.empty() ? "" : ", "), entry.name, value);
+  }
+  ImGui::TextWrapped("%s", values.c_str());
+}
+
+// Graphics 2 of 2 (the renodx page draws it; once the DLSS add-on's overlay): the game's settings above its High and
+// their presets, or (`experimental`) the Experimental ones and their buttons.
+inline void DrawGameSettings(bool experimental, bool advanced) {
+  if (experimental) {
+    ImGui::TextWrapped("Experimental: the presets above leave these alone; only the buttons below change them.");
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.75f, 0.2f, 1.f));
+    ImGui::TextWrapped("Can be heavy and may not work. The on / off switches are features the game shipped off and "
+                       "may crash it: turn them off if something goes wrong. Particles blinking or missing: lower the "
+                       "particle sliders.");
+    ImGui::PopStyleColor();
+    // Sets every Experimental option to its first item or to ATN's setting (atn_choice), saved.
+    const auto experimental_button = [](const char* label, const char* tooltip, bool atn) {
+      if (ImGui::Button(label)) {
+        for (auto& option : quality_options) {
+          if (!option.experimental) continue;
+          option.choice = (atn ? option.atn_choice : option.default_choice);
+          reshade::set_config_value(nullptr, "Ryse Game Settings", option.key, option.choice);
+        }
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tooltip);
+      }
+    };
+    experimental_button("Reset##Experimental", "Every Experimental option back to the in-game setting (off), Light limit 512.",
+                        false);
+    ImGui::SameLine();
+    experimental_button("ATN's setting", "Every switch on (high quality shadows: extra cascades), Particle memory 16x, "
+                                         "particles: fire 2x, sparks 8x, smoke and dust 1.5x, blood 3x, other 1.5x, Light limit 512.",
+                        true);
+  } else {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.75f, 0.2f, 1.f));
+    ImGui::TextWrapped("Game settings above the game's High. Most apply at once; some need a level load (e.g. texture "
+                       "streaming) and detail can take a few seconds to stream in. Nx: N times the in-game preset's value.");
+    ImGui::TextWrapped("Heaviest: Screen-space reflections (GPU) and Detail distance (CPU and GPU) at their higher settings.");
+    ImGui::PopStyleColor();
+    // A button that sets every option to the choice `pick` gives it, saved.
+    // preset: -1 Reset, a GRAPHICS_PRESETS index, or GRAPHICS_PRESETS.size() for MAXED OUT.
+    const auto preset_button = [](const char* label, const char* tooltip, int preset) {
+      if (ImGui::Button(label)) {
+        for (auto& option : quality_options) {
+          if (option.experimental || option.audio) continue;
+          int choice = option.choice_count - 1;
+          if (preset < 0) {
+            choice = option.default_choice;
+          } else if (preset < static_cast<int>(GRAPHICS_PRESETS.size())) {
+            choice = option.preset_choices[preset];
+          }
+          option.choice = choice;
+          reshade::set_config_value(nullptr, "Ryse Game Settings", option.key, option.choice);
+        }
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tooltip);
+      }
+    };
+    preset_button("Reset", "Every option back to the in-game setting.", -1);
+    for (int preset = 0; preset < static_cast<int>(GRAPHICS_PRESETS.size()); ++preset) {
+      ImGui::SameLine();
+      preset_button(GRAPHICS_PRESETS[preset].name, GRAPHICS_PRESETS[preset].tooltip, preset);
+    }
+    ImGui::SameLine();
+    preset_button("MAXED OUT", "Every option at its highest (distances and details 64x), Experimental ones excepted.",
+                  static_cast<int>(GRAPHICS_PRESETS.size()));
+  }
+  const bool particle_memory = ParticleMemoryChoice() != 0;
+  for (auto& option : quality_options) {
+    if (option.experimental != experimental || option.audio) continue;
+    // The particle sliders need Particle memory (OnPresent keeps them at the in-game setting without it).
+    const bool locked = !particle_memory && std::ranges::any_of(PARTICLE_OPTIONS, [&](const ParticleOption& particle) {
+      return particle.key == option.key;
+    });
+    OptionSlider(&option, locked, advanced);
+  }
+  if (experimental && taa_frame.load(std::memory_order_relaxed) == UINT64_MAX) {
+    ImGui::TextWrapped("They apply once the game draws its world with its Temporal Anti-Aliasing on.");
+  }
+}
+
+// Graphics 2 of 2's Audio (once the DLSS add-on's overlay): the voice and text languages, the game's sound mixing.
+inline void DrawAudio(bool advanced) {
+  for (auto& language : language_choices) {
+    if (ImGui::SliderInt(language.label, &language.choice, 0, static_cast<int>(LANGUAGE_NAMES.size()) - 1,
+                         LANGUAGE_LABELS[language.choice], ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
+      reshade::set_config_value(nullptr, "Ryse Game Settings", language.key, language.choice);
+      language.applied = false;
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", language.tooltip);
+    }
+  }
+  for (auto& option : quality_options) {
+    if (option.audio) {
+      OptionSlider(&option, false, advanced);
+    }
+  }
+}
+
 // After the HDR part's attach (mods::shader::Use has attached state and command_action, draw_dispatch::Use the fast
 // dispatch, device_loss::InstallLast its last handlers): `module` is the add-on's, for frame generation's folder.
 inline void Install(HMODULE module) {
@@ -3808,7 +3782,6 @@ inline void Install(HMODULE module) {
                                  && std::ranges::find(PRESETS, saved_preset, &PresetSettings::value) != PRESETS.end()) {
     preset.store(saved_preset);
   }
-  if (int settings_mode = 0; reshade::get_config_value(nullptr, "Ryse AA", "SettingsMode", settings_mode)) advanced = settings_mode == 1;
   if (bool value = true; reshade::get_config_value(nullptr, "Ryse AA", "OwnJitter", value)) own_jitter.store(value);
   if (bool value = false; reshade::get_config_value(nullptr, "Ryse AA", "SaveAttackPatterns", value)) {
     save_attack_patterns.store(value);
@@ -3855,7 +3828,6 @@ inline void Install(HMODULE module) {
   reshade::register_event<reshade::addon_event::init_sampler>(OnInitSampler);
   reshade::register_event<reshade::addon_event::destroy_sampler>(OnDestroySampler);
   reshade::register_event<reshade::addon_event::push_descriptors>(OnPushDescriptors);
-  reshade::register_overlay("Ryse DLSS", OnOverlay);
   command_action::Register(OnTaaDraw, {.shader_hash = TAA_SHADER, .command_types = command_action::COMMAND_TYPE_DIRECT_DRAW});
   for (const uint32_t shader_hash : {SMAA_EDGES_SHADER, SMAA_WEIGHTS_SHADER, SMAA_BLEND_SHADER}) {
     command_action::Register(OnSmaaDraw, {.shader_hash = shader_hash, .command_types = command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -3881,7 +3853,6 @@ inline void Uninstall() {
   command_action::Unregister(OnReflectionDraw);
   command_action::Unregister(OnLightingDispatch);
   rysesonofrome::dlss::constants::Use(DLL_PROCESS_DETACH);
-  reshade::unregister_overlay("Ryse DLSS", OnOverlay);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);

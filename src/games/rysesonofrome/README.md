@@ -305,7 +305,13 @@ command_action callback keeps the order the two add-ons had by name), its header
 gone; this target links NGX (CMake's NGX block). Settings keep their keys and sections: the HDR rows in the renodx
 section, the anti-aliasing / frame generation keys in `[Ryse AA]`, the game settings in `[Ryse Game Settings]`. An old
 `renodx-rysesonofrome_dlss.addon64` next to this one would run everything twice: the install renames it aside
-(`tools/tw/install/tw_install.py`, `.retired-<time>`).
+(`tools/tw/install/tw_install.py`, `.retired-<time>`). Pages as the Total War add-ons': **Settings Mode** is HDR & Effects
+/ Graphics 1 of 2 / Graphics 2 of 2; Graphics 1 of 2 holds Anti-Aliasing and Upscaling (DLSS, frame generation, Reflex,
+their status, with Advanced the diagnostics and debug buttons: the overlay's top half), Ambient Occlusion, Contact
+Shadows, Light Bounce and Ray Tracing; Graphics 2 of 2 the game's settings above its High with their presets, the
+Experimental ones and Audio. The DLSS overlay's own tab is gone. Simple / Advanced is its own row, Options
+(`SettingsAdvanced`, every page): a saved Advanced (Settings Mode's 1, or the overlay's `[Ryse AA] SettingsMode` 1)
+moves there once, and Settings Mode starts on HDR & Effects.
 
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
