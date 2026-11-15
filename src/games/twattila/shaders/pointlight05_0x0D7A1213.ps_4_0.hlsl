@@ -1,6 +1,8 @@
 // 0x0D7A1213 (pointlightlinearfalloff skinlm highdef): deferred point lights, instanced (the light's position
 // and reach per instance: POSITION2, v3). Ray tracing: x the light's traced visibility
 // (twattila/rt_scene.hpp InstallPointLights; rt_local_lights.hlsli).
+// Its temporaries precise and each x * y + z a mad: the game's instructions, bit for bit on WARP
+// (tools/tw/testbin/g4_point_shadows; fxc reassociated the skinlm ones before).
 #include "../render_scale.hlsli"
 #include "../rt_local_lights.hlsli"
 
@@ -70,16 +72,16 @@ void main(
   float4 v3 : POSITION2,
   out float4 o0 : SV_Target0)
 {
-  float4 r0,r1,r2,r3,r4,r5;
+  precise float4 r0,r1,r2,r3,r4,r5;
   uint4 bitmask, uiDest;
   float4 fDest;
 
   r0.xy = g_vpos_texel_offset + v0.xy;
-  r0.zw = r0.xy * g_screen_size.zw + -g_viewport_offset_scale.xy;
+  r0.zw = mad(r0.xy, g_screen_size.zw, -g_viewport_offset_scale.xy);
   r0.xy = g_screen_size.zw * r0.xy;
   r0.zw = r0.zw / g_viewport_offset_scale.zw;
   // Below 100% the view fills its share of the target (view_share.hpp patches the game's own).
-  r1.xy = (r0.zw / DrawRenderShare()) * float2(2,-2) + float2(-1,1);
+  r1.xy = mad((r0.zw / DrawRenderShare()), float2(2,-2), float2(-1,1));
   r2.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.xy, r0.y).xyzw;
   r1.z = r2.x;
   r1.w = 1;
@@ -100,14 +102,14 @@ void main(
   r0.z = 1 + -r0.z;
   r1.xyz = r1.xyz * r0.www;
   r3.xyzw = gbuffer_channel_1_sampler.SampleLevel(gbuffer_channel_1_sampler_s, r0.xy, r0.y).xyzw;
-  r3.xyz = r3.xyz * float3(2,2,2) + float3(-1,-1,-1);
-  r0.w = r3.w * 63 + 1.60000002;
+  r3.xyz = mad(r3.xyz, float3(2,2,2), float3(-1,-1,-1));
+  r0.w = mad(r3.w, 63, 1.60000002);
   r1.w = dot(r3.xyz, r3.xyz);
   r1.w = rsqrt(r1.w);
   r3.xyz = r3.xyz * r1.www;
   r1.w = dot(r1.xyz, r3.xyz);
   r1.w = r1.w + r1.w;
-  r4.xyz = r3.xyz * -r1.www + r1.xyz;
+  r4.xyz = mad(r3.xyz, -r1.www, r1.xyz);
   r1.x = dot(r3.xyz, -r1.xyz);
   r1.y = dot(r4.xyz, -r2.xyz);
   r1.y = max(0, r1.y);
@@ -121,27 +123,27 @@ void main(
   r0.y = max(0, r1.x);
   r0.x = r0.x * r0.y;
   r0.xyw = v2.xyz * r0.xxx;
-  r1.yzw = r1.xxx * float3(0.800000012,0.899999976,0.300000012) + float3(0.300000012,0.5,0.300000012);
+  r1.yzw = mad(r1.xxx, float3(0.800000012,0.899999976,0.300000012), float3(0.300000012,0.5,0.300000012));
   r1.yzw = saturate(float3(0.694444418,0.694444418,0.444444448) * r1.yzw);
-  r2.w = r1.x * r1.y + 0.300000012;
+  r2.w = mad(r1.x, r1.y, 0.300000012);
   r2.w = saturate(1 + -r2.w);
   r3.xzw = float3(0.800000012,0.699999988,0.200000003) * r1.zzz;
   r4.xyz = r3.xzw * r2.www;
-  r3.xzw = -r3.xzw * r2.www + float3(1,1,1);
-  r4.xyz = r1.xxx * r1.yyy + r4.xyz;
-  r1.y = -r1.x * r1.y + 1;
+  r3.xzw = mad(-r3.xzw, r2.www, float3(1,1,1));
+  r4.xyz = mad(r1.xxx, r1.yyy, r4.xyz);
+  r1.y = mad(-r1.x, r1.y, 1);
   r5.xyz = float3(0.600000024,0.200000003,0.100000001) * r1.www;
   r1.yzw = r5.xyz * r1.yyy;
-  r1.yzw = r1.yzw * r3.xzw + r4.xyz;
+  r1.yzw = mad(r1.yzw, r3.xzw, r4.xyz);
   r1.yzw = r1.yzw + -r1.xxx;
-  r1.xyz = saturate(r3.yyy * r1.yzw + r1.xxx);
+  r1.xyz = saturate(mad(r3.yyy, r1.yzw, r1.xxx));
   r1.xyz = r2.xyz * r1.xyz;
   r1.xyz = v2.xyz * r1.xyz;
   r1.w = cmp(0 < g_hdr_on);
   r1.w = r1.w ? 0.00400000019 : 1;
   r1.xyz = r1.xyz * r1.www;
   r1.xyz = float3(0.899999976,0.899999976,0.899999976) * r1.xyz;
-  r0.xyw = r0.xyw * r1.www + r1.xyz;
+  r0.xyw = mad(r0.xyw, r1.www, r1.xyz);
   o0.xyz = r0.zzz * r0.xyw;
   o0.w = 1;
   o0.xyz *= RtLocalLightVisibility(int2(v0.xy), v3.xyz);
