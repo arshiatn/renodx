@@ -1540,11 +1540,16 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   internal::scaling.store(scaled);
   frame_history::effect_share.store(((scaled && settings.effects_at_output) ? render_scale : 1.f), std::memory_order_relaxed);
   {
-    // The patched shaders' render scale (view_share.hpp): render / display.
-    auto* device = reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native());
-    renodx::utils::directx::TryNativeFromReShadeProxy(&device);
+    // The patched shaders' render scale (view_share.hpp): render / display. Not on a D3D12 device (WH1's and WH2's DX12
+    // modes): ID3D11Device's GetImmediateContext through its pointer calls ID3D12Device's SetStablePowerState.
     ComPtr<ID3D11DeviceContext> context;
-    if (device != nullptr) device->GetImmediateContext(context.GetAddressOf());
+    if (auto* game_device = swapchain->get_device(); game_device->get_api() == reshade::api::device_api::d3d11) {
+      auto* device = reinterpret_cast<ID3D11Device*>(game_device->get_native());
+      renodx::utils::directx::TryNativeFromReShadeProxy(&device);
+      if (device != nullptr) {
+        device->GetImmediateContext(context.GetAddressOf());
+      }
+    }
     view_share::Update(context.Get(), scaled, render, {display.texture.width, display.texture.height});
   }
   frame_history::render_width.store(scaled ? runtime.render_width : 0u);
