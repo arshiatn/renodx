@@ -22,6 +22,13 @@
 //    4's WH3 (1.00); WH2's own t00 (curve 6: its anchored handoff, at burns 0.1, 0.3 and 0.5) too (1.00); WH1's tone
 //    mappers (curve 7: Attila's engine Hue Clip without the highlight limit, the stock whiteout off and 0 to 10); Pharaoh's
 //    t00 (curve 8: its lift, black and mid-gray handoff at burn 0.2 and 0).
+// R.U.S.E.'s final post (ruse/shaders/postprocess00_0x232EB5DF, D3D9 ps_3_0 in the game, compiled here as ps_5_0 /Gec from
+// the same source) runs in parts 3 and 4 too (no SDR output: the add-on has none yet), at the median map's grade, and:
+// 6. Grey and slope: an input ramp around the grey the game's SDR response puts at 0.18 (its display light is
+//    Brightness^2.2 X^Gamma, X the decoded graded scene), at the menu's, the median map's and the steepest map's Gamma /
+//    Brightness and HDRParam 1, 2, 4: every mode lands grey at 0.18 of Paper White; the SDR slope at grey is Gamma; the
+//    HDR modes' slopes printed against it (V35 also with its Contrast at Gamma). Markers (the 15 scene draws that undo the
+//    post's grade in advance, census C2): the SDR result is their authored colour; the HDR modes' shift printed.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -56,6 +63,9 @@ namespace wh3 {
 namespace rome2 {
 #include "src/games/twrome2/shared.h"
 }  // namespace rome2
+namespace ruse {
+#include "src/games/ruse/shared.h"
+}  // namespace ruse
 
 using Microsoft::WRL::ComPtr;
 using Float3 = std::array<float, 3>;
@@ -71,6 +81,8 @@ constexpr UINT HEIGHT = 48;
 static ComPtr<ID3D11Device> device;
 static ComPtr<ID3D11DeviceContext> context;
 static ComPtr<ID3D11VertexShader> full_screen;
+// R.U.S.E.'s post reads TEXCOORD0 (vignette), TEXCOORD1 (scene) and TEXCOORD2 (camera motion, 0 here).
+static ComPtr<ID3D11VertexShader> ruse_full_screen;
 static ComPtr<ID3D11SamplerState> linear_clamp;
 
 struct Shader {
@@ -173,7 +185,7 @@ static std::vector<uint8_t> Bytes(const T& value) {
   return bytes;
 }
 
-static std::vector<Float4> Draw(const Shader& shader, const Bindings& bindings) {
+static std::vector<Float4> Draw(const Shader& shader, const Bindings& bindings, ID3D11VertexShader* vertex_shader = nullptr) {
   context->ClearState();
   D3D11_SHADER_DESC desc = {};
   shader.reflection->GetDesc(&desc);
@@ -227,7 +239,7 @@ static std::vector<Float4> Draw(const Shader& shader, const Bindings& bindings) 
   context->RSSetViewports(1, &viewport);
   context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
   context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-  context->VSSetShader(full_screen.Get(), nullptr, 0);
+  context->VSSetShader((vertex_shader != nullptr ? vertex_shader : full_screen.Get()), nullptr, 0);
   context->PSSetShader(shader.pixel.Get(), nullptr, 0);
   context->Draw(3, 0);
   D3D11_TEXTURE2D_DESC staging_desc = target_desc;
@@ -761,6 +773,7 @@ struct Chain {
   const Shader* curves;  // hue_curves.hlsl (part 5)
   const Pair* rome2_tone_mapper;  // part 4
   const Pair* rome2_hdr_to_screen;
+  const Shader* ruse_post;  // parts 3, 4 and 6
 };
 
 // Linear BT.709 in units of the UI's white (x graphics nits = nits) of PsychoV35's (or the SDR mode's) output.
@@ -820,6 +833,83 @@ static std::vector<Float3> RunRome2(const Chain& chain, const std::vector<Float4
   second.injection = Bytes(si);
   std::vector<Float3> linear;
   for (const auto& o : Draw(chain.rome2_hdr_to_screen->after, second)) linear.push_back(Decode(o, 2.2f));
+  return linear;
+}
+
+// R.U.S.E.'s per-map grade (TPostProcess, tools/nontw/ruse/map_postprocess.tsv): its response is
+// Brightness * rgb * luma^(Gamma - 1) on the gamma-encoded scene.
+struct RuseGrade {
+  const char* name;
+  float gamma;
+  float brightness;
+};
+constexpr RuseGrade RUSE_MENU_GRADE = {"R.U.S.E. menu (Gamma 1, Brightness 1)", 1.f, 1.f};
+constexpr RuseGrade RUSE_MEDIAN_GRADE = {"R.U.S.E. median map (Gamma 1.25, Brightness 1.33)", 1.25f, 1.33f};
+constexpr RuseGrade RUSE_STEEPEST_GRADE = {"R.U.S.E. m03_italie HQ (Gamma 1.6, Brightness 2)", 1.6f, 2.f};
+
+static ruse::ShaderInjectData RuseInjection(float mode) {
+  ruse::ShaderInjectData si = {};
+  si.peak_white_nits = 1000.f;
+  si.diffuse_white_nits = 203.f;
+  si.graphics_white_nits = 203.f;
+  si.swap_chain_encoding = 1.f;
+  si.hdr = mode;
+  si.bloom = 1.f;
+  si.vignette = 1.f;
+  si.motion_blur = 1.f;
+  si.depth_of_field = 1.f;
+  si.exposure = 1.f;
+  si.highlights = 1.f;
+  si.shadows = 1.f;
+  si.contrast = 1.f;
+  si.saturation = 1.f;
+  si.cone_response_exponent = 1.f;
+  si.hue_shift = 2.f;
+  si.hue_clip = 1.f;
+  si.v35_exposure = 1.f;
+  si.v35_highlights = 1.f;
+  si.v35_shadows = 1.f;
+  si.v35_contrast = 1.f;
+  si.v35_highlight_contrast = 1.f;
+  si.v35_shadow_contrast = 1.f;
+  si.v35_saturation = 1.f;
+  si.v35_highlight_saturation = 1.f;
+  si.v35_roll_off = 1.f;
+  si.v35_gamut_compression = 1.f;
+  return si;
+}
+
+// R.U.S.E.'s post, `scene`: the light the game's SDR picture shows with Gamma = Brightness = 1 (linear BT.709, the decoded
+// graded scene). The game keeps it gamma-encoded in a 10-bit target divided by HDRParam.x: at least `hdr_param` here, more
+// where the scene needs it. No motion, bloom, vignette or tint. Linear BT.709 out in units of 203 nits (the proxy's white).
+static std::vector<Float3> RunRuse(const Shader& post, const std::vector<Float4>& scene, const RuseGrade& grade, float hdr_param,
+                                   const ruse::ShaderInjectData& si) {
+  std::vector<Float4> graded;
+  float highest = hdr_param;
+  for (const auto& s : scene) {
+    Float4 g = {0.f, 0.f, 0.f, 1.f};
+    for (int c = 0; c < 3; ++c) {
+      g[c] = std::copysign(std::pow(std::abs(s[c]), 1.f / 2.2f), s[c]);
+      highest = std::max(highest, g[c]);
+    }
+    graded.push_back(g);
+  }
+  for (auto& g : graded) {
+    for (int c = 0; c < 3; ++c) g[c] /= highest;
+  }
+  Bindings bindings;
+  bindings.views["PrincipalMap"] = Texture2D(WIDTH, HEIGHT, graded);
+  bindings.views["DownSizeMap"] = Texture2D(1, 1, {Float4{0.f, 0.f, 0.f, 1.f}});
+  // The ShadowMap target's .yz: camera + object motion, 128 / 255 none.
+  bindings.views["ShadowMap"] = Texture2D(1, 1, {Float4{1.f, 128.f / 255.f, 128.f / 255.f, 1.f}});
+  // PostProcess[11] registers: NoiseLevel, OverlayColor, MinVignettage, VignettageExtent, BloomFactor, Gamma, Brightness,
+  // SkyBrightness, Desaturation, DominantColor, DominantColorProp.
+  bindings.words["PostProcess"] = F({0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, grade.gamma, 0, 0, 0,
+                                     grade.brightness, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  bindings.words["PrincipalMap_HDRParam"] = F({highest, 1.f / highest});
+  bindings.injection = Bytes(si);
+  std::vector<Float3> linear;
+  for (const auto& o : Draw(post, bindings, ruse_full_screen.Get())) linear.push_back(Decode(o, 2.2f));
   return linear;
 }
 
@@ -917,6 +1007,26 @@ static void TestPsychoV35(const Chain& chain) {
       // WH3's Output SDR: Peak, Paper White and UI all the display's white (shared.h's OutputShaderInjection).
       CheckRamp((std::string("WH3 ") + settings).c_str(), RunWh3(chain, Scene(columns, -8.f, 20.f / 47.f, Wh3White(0.3f)), w, 0.3f),
                 peak, 203.f, sdr, fit, monotonic, &failures_in_ramp);
+      if (sdr) continue;  // R.U.S.E. has no SDR output (its proxy is HDR10 / scRGB)
+      auto r = RuseInjection(3.f);
+      r.peak_white_nits = peak;
+      r.swap_chain_encoding = encoding;
+      r.v35_exposure = s[0];
+      r.v35_highlights = s[1];
+      r.v35_shadows = s[2];
+      r.v35_contrast = s[3];
+      r.v35_saturation = s[4];
+      r.v35_roll_off = s[5];
+      r.v35_gamut_compression = s[6];
+      r.hue_clip = s[7];
+      r.v35_highlight_contrast = e[0];
+      r.v35_shadow_contrast = e[1];
+      r.v35_flare = e[2];
+      r.v35_dechroma = e[3];
+      r.v35_highlight_saturation = e[4];
+      CheckRamp((std::string("RUSE ") + settings).c_str(),
+                RunRuse(*chain.ruse_post, Scene(columns, -8.f, 20.f / 47.f, 1.f), RUSE_MEDIAN_GRADE, 1.f, r), peak, 203.f, false, fit,
+                monotonic, &failures_in_ramp);
     }
   }
   CHECK(failures_in_ramp == 0);
@@ -953,6 +1063,13 @@ static void ReportHue(const Chain& chain) {
        }},
       {"Rome II", [&](float mode, float hue_clip) { return RunRome2(chain, Scene(columns, first_stop, stops_per_row, 1.f), mode, hue_clip); }},
   };
+  for (const RuseGrade& grade : {RUSE_MENU_GRADE, RUSE_MEDIAN_GRADE}) {
+    games.push_back({grade.name, [&, grade](float mode, float hue_clip) {
+                       auto si = RuseInjection(mode);
+                       si.hue_clip = hue_clip;
+                       return RunRuse(*chain.ruse_post, Scene(columns, first_stop, stops_per_row, 1.f), grade, 1.f, si);
+                     }});
+  }
   for (const float burn : {0.1f, 0.5f}) {
     games.push_back({burn == 0.1f ? "WH3 burn 0.1" : "WH3 burn 0.5", [&, burn](float mode, float hue_clip) {
                        auto si = Wh3Injection(mode, 1.f);
@@ -1044,6 +1161,86 @@ static void ReportHue(const Chain& chain) {
   }
 }
 
+// 6. R.U.S.E.'s grey, slope and markers ///////////////////////////////////////////////////////////////////////////
+
+struct RuseMode {
+  const char* name;
+  float hdr;
+  bool v35_contrast_at_gamma;
+};
+const std::vector<RuseMode> RUSE_MODES = {
+    {"SDR", 0.f, false}, {"V31 Native Tone", 1.f, false}, {"V31 Full Replacement", 2.f, false}, {"V35", 3.f, false},
+    {"V35 Contrast = Gamma", 3.f, true}};
+
+static std::vector<Float3> RunRuseMode(const Shader& post, const std::vector<Float4>& scene, const RuseGrade& grade, float hdr_param,
+                                       const RuseMode& mode) {
+  auto si = RuseInjection(mode.hdr);
+  if (mode.v35_contrast_at_gamma) si.v35_contrast = grade.gamma;
+  return RunRuse(post, scene, grade, hdr_param, si);
+}
+
+static void TestRuse(const Shader& post) {
+  // Every column grey; row 24 the decoded scene X where the game's SDR light Brightness^2.2 X^Gamma is 0.18, the rows
+  // 1/12 stop apart (+-2 stops).
+  constexpr UINT GREY_ROW = 24;
+  constexpr float STOPS_PER_ROW = 1.f / 12.f;
+  float worst_v35_at_gamma = 0.f;
+  for (const RuseGrade& grade : {RUSE_MENU_GRADE, RUSE_MEDIAN_GRADE, RUSE_STEEPEST_GRADE}) {
+    const float grey_input = std::pow(0.18f / std::pow(grade.brightness, 2.2f), 1.f / grade.gamma);
+    std::vector<Float4> scene(WIDTH * HEIGHT);
+    for (UINT y = 0; y < HEIGHT; ++y) {
+      const float x = grey_input * std::exp2(STOPS_PER_ROW * (static_cast<float>(y) - GREY_ROW));
+      for (UINT column = 0; column < WIDTH; ++column) scene[y * WIDTH + column] = {x, x, x, 1.f};
+    }
+    for (const float hdr_param : {1.f, 2.f, 4.f}) {
+      std::printf("6. %s, HDRParam %.0f: grey (x Paper White) and slope at grey (stops out per stop in)\n", grade.name, hdr_param);
+      for (const RuseMode& mode : RUSE_MODES) {
+        const auto out = RunRuseMode(post, scene, grade, hdr_param, mode);
+        const float grey = Luminance(out[GREY_ROW * WIDTH]);
+        const float slope = std::log2(Luminance(out[(GREY_ROW + 1) * WIDTH]) / Luminance(out[(GREY_ROW - 1) * WIDTH])) / (2.f * STOPS_PER_ROW);
+        std::printf("   %-22s grey %.4f slope %.3f (the game's %.3f)\n", mode.name, grey, slope, grade.gamma);
+        CHECK(std::abs(grey - 0.18f) <= 0.18f * 0.02f);
+        if (mode.hdr == 0.f) CHECK(std::abs(slope - grade.gamma) <= 0.01f);
+        if (mode.v35_contrast_at_gamma) worst_v35_at_gamma = std::max(worst_v35_at_gamma, std::abs(slope - grade.gamma) / grade.gamma);
+      }
+    }
+  }
+  std::printf("6. V35 with Contrast = Gamma: slope at grey within %.1f%% of the game's in every case\n", 100.f * worst_v35_at_gamma);
+
+  // Markers: authored (display-encoded) colours the 15 pre-inverted draws (0829620B ...) write as
+  // x = (c / Brightness) * luma(c / Brightness)^(1 / Gamma - 1), which the post's response returns to c.
+  const std::vector<std::pair<const char*, Float3>> markers = {
+      {"red team", {0.75f, 0.12f, 0.1f}}, {"blue team", {0.12f, 0.3f, 0.85f}}, {"selection yellow", {1.f, 0.85f, 0.2f}},
+      {"green", {0.25f, 0.75f, 0.2f}},    {"white", {1.f, 1.f, 1.f}},          {"light grey", {0.8f, 0.8f, 0.8f}},
+      {"grey", {0.5f, 0.5f, 0.5f}},       {"dark blue", {0.05f, 0.1f, 0.3f}}};
+  for (const RuseGrade& grade : {RUSE_MENU_GRADE, RUSE_MEDIAN_GRADE, RUSE_STEEPEST_GRADE}) {
+    std::vector<Float4> scene(WIDTH * HEIGHT, Float4{0.f, 0.f, 0.f, 1.f});
+    for (UINT i = 0; i < WIDTH * HEIGHT; ++i) {
+      const Float3& c = markers[(i % WIDTH) % markers.size()].second;
+      const float luma = (0.299f * c[0] + 0.587f * c[1] + 0.114f * c[2]) / grade.brightness;
+      const float scale = std::pow(luma, 1.f / grade.gamma - 1.f) / grade.brightness;
+      for (int channel = 0; channel < 3; ++channel) scene[i][channel] = std::pow(c[channel] * scale, 2.2f);
+    }
+    std::printf("6. Markers, %s: the HDR modes against the authored colour (SDR's): Y ratio, OkLab distance x 100\n", grade.name);
+    const auto sdr = RunRuseMode(post, scene, grade, 1.f, RUSE_MODES[0]);
+    for (size_t m = 0; m < markers.size(); ++m) {
+      const Float3& c = markers[m].second;
+      for (int channel = 0; channel < 3; ++channel) CHECK(std::abs(sdr[m][channel] - std::pow(c[channel], 2.2f)) <= 2e-3f);
+    }
+    for (size_t mode = 1; mode < RUSE_MODES.size(); ++mode) {
+      const auto hdr = RunRuseMode(post, scene, grade, 1.f, RUSE_MODES[mode]);
+      std::printf("   %-22s", RUSE_MODES[mode].name);
+      for (size_t m = 0; m < markers.size(); ++m) {
+        const Float3 a = OkLab(sdr[m]);
+        const Float3 b = OkLab(hdr[m]);
+        std::printf(" %s %.2f %.1f%s", markers[m].first, Luminance(hdr[m]) / Luminance(sdr[m]),
+                    100.f * std::sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2])),
+                    m + 1 < markers.size() ? "," : "\n");
+      }
+    }
+  }
+}
+
 int main(int argc, char** argv) {
   REQUIRE(argc >= 3);
   const std::filesystem::path before = argv[1];
@@ -1057,6 +1254,15 @@ int main(int argc, char** argv) {
   ComPtr<ID3DBlob> vertex_code;
   REQUIRE(SUCCEEDED(D3DCompile(vertex_source, std::strlen(vertex_source), nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0, &vertex_code, nullptr)));
   REQUIRE(SUCCEEDED(device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, &full_screen)));
+  const char* ruse_vertex_source =
+      "struct O { float2 uv0 : TEXCOORD0; float2 uv1 : TEXCOORD1; float2 motion : TEXCOORD2; float4 position : SV_Position; };"
+      "O main(uint id : SV_VertexID) { O o; o.uv0 = float2((id << 1) & 2, id & 2); o.uv1 = o.uv0; o.motion = 0;"
+      "o.position = float4(o.uv0 * float2(2, -2) + float2(-1, 1), 0, 1); return o; }";
+  ComPtr<ID3DBlob> ruse_vertex_code;
+  REQUIRE(SUCCEEDED(D3DCompile(ruse_vertex_source, std::strlen(ruse_vertex_source), nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0,
+                               &ruse_vertex_code, nullptr)));
+  REQUIRE(SUCCEEDED(device->CreateVertexShader(ruse_vertex_code->GetBufferPointer(), ruse_vertex_code->GetBufferSize(), nullptr,
+                                               &ruse_full_screen)));
   const D3D11_SAMPLER_DESC sampler_desc = {D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE_ADDRESS_CLAMP,
                                            D3D11_TEXTURE_ADDRESS_CLAMP, 0, 1, D3D11_COMPARISON_NEVER, {}, 0, D3D11_FLOAT32_MAX};
   REQUIRE(SUCCEEDED(device->CreateSamplerState(&sampler_desc, &linear_clamp)));
@@ -1072,9 +1278,11 @@ int main(int argc, char** argv) {
     TestHueClip(after);
   }
   const Shader curves = LoadPixelShader(after / "hue_curves.cso");
-  const Chain chain = {&shaders["a_t00"], &shaders["a_t01"], &shaders["w_t00"], &curves, &shaders["r_t00"], &shaders["r_t01"]};
+  const Shader ruse_post = LoadPixelShader(after / "ruse_post.cso");
+  const Chain chain = {&shaders["a_t00"], &shaders["a_t01"], &shaders["w_t00"], &curves, &shaders["r_t00"], &shaders["r_t01"], &ruse_post};
   if (!report_only) TestPsychoV35(chain);
   ReportHue(chain);
+  if (!report_only) TestRuse(ruse_post);
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
   return failures == 0 ? 0 : 1;
 }

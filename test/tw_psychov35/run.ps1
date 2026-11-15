@@ -2,17 +2,23 @@
 # tree and from d3d6425b (the commit before them) with the build's flags: Attila's t00 - t10 and WH3's t00. Every other
 # mode must give the same bits as d3d6425b; Hue Clip and PsychoV35 are checked on their own (tests.cpp's header).
 # -AllShaders also compiles every shader of both add-ons on both sides and lists the ones whose bytes changed; -ReportOnly
-# runs part 4 alone.
+# runs part 4 alone. R.U.S.E.'s post (parts 3, 4, 6) is compiled from this tree alone, as ps_5_0 /Gec; its 25 D3D9
+# replacements are compiled as ps_3_0 with their instruction slots listed.
+# -OutDir: where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\.
 # Run as x86 and amd64.
-param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [switch]$AllShaders, [switch]$ReportOnly, [string]$Before = 'd3d6425b')
+param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [switch]$AllShaders, [switch]$ReportOnly, [string]$Before = 'd3d6425b',
+      [string]$OutDir = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_psychov35'
-$testBuild = Join-Path $repairRoot "build\tw_psychov35_test_$Architecture"
+$testBuild = if ($OutDir) { Join-Path $OutDir "tw_psychov35_$Architecture" } else { Join-Path $repairRoot "build\tw_psychov35_test_$Architecture" }
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 
-$fxc = (Select-String -LiteralPath (Join-Path $repairRoot 'build32\CMakeCache.txt') -Pattern '^FXC_BIN:FILEPATH=(.*)$').Matches[0].Groups[1].Value
-$dxc = (Select-String -LiteralPath (Join-Path $repairRoot 'build32\CMakeCache.txt') -Pattern '^DXC_BIN:FILEPATH=(.*)$').Matches[0].Groups[1].Value
+# The compilers the build found (build32's, else build's).
+$cache = Join-Path $repairRoot 'build32\CMakeCache.txt'
+if (-not (Test-Path -LiteralPath $cache)) { $cache = Join-Path $repairRoot 'build\CMakeCache.txt' }
+$fxc = (Select-String -LiteralPath $cache -Pattern '^FXC_BIN:FILEPATH=(.*)$').Matches[0].Groups[1].Value
+$dxc = (Select-String -LiteralPath $cache -Pattern '^DXC_BIN:FILEPATH=(.*)$').Matches[0].Groups[1].Value
 $beforeTree = Join-Path $testBuild 'before'
 if (Test-Path -LiteralPath $beforeTree) { Remove-Item -LiteralPath $beforeTree -Recurse -Force -Confirm:$false }
 New-Item -ItemType Directory -Force -Path $beforeTree | Out-Null
@@ -109,6 +115,21 @@ foreach ($game in @('twattila')) {
 & $fxc (Join-Path $testRoot 'hue_curves.hlsl') /T ps_5_0 /D __SHADER_TARGET_MAJOR=5 /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /E main `
     /I (Join-Path $repairRoot 'src\games\twattila') /Fo (Join-Path $afterShaders 'hue_curves.cso') 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'fxc failed: hue_curves.hlsl' }
+# R.U.S.E.'s post as ps_5_0 (the build's flags; /Gec takes its D3D9 sampler2D / COLOR syntax).
+& $fxc (Join-Path $repairRoot 'src\games\ruse\shaders\postprocess00_0x232EB5DF.ps_3_0.hlsl') /T ps_5_0 /D __SHADER_TARGET_MAJOR=5 `
+    /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /E main /Fo (Join-Path $afterShaders 'ruse_post.cso') 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'fxc failed: R.U.S.E. post' }
+# R.U.S.E.'s replacements as the game runs them (ps_3_0, the build's flags): instruction slots.
+$slots = foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repairRoot 'src\games\ruse\shaders') -Filter '*.ps_3_0.hlsl') {
+  $listing = Join-Path $testBuild 'ruse_slots.asm'
+  & $fxc $file.FullName /T ps_3_0 /D __SHADER_TARGET_MAJOR=3 /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /E main `
+      /Fc $listing /Fo (Join-Path $testBuild 'ruse_slots.cso') 2>$null | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "fxc failed: $($file.Name)" }
+  $count = [int](Select-String -LiteralPath $listing -Pattern 'approximately (\d+) instruction slots used').Matches[0].Groups[1].Value
+  "$($file.Name -replace '\.ps_3_0\.hlsl$', '') $count"
+}
+# ps_3_0 guarantees 512 slots; the posts need the caps' 32768 (every D3D9 GPU of the last decade), as v1.00's (1,635) did.
+Write-Host "6. R.U.S.E. ps_3_0 instruction slots: $($slots -join ', ')"
 
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation
