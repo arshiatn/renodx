@@ -4,8 +4,18 @@ The game has no HDR option; RenoDX outputs HDR10/scRGB through a swap chain prox
 
 **One add-on** (UE4 merge round, 2026-11-15): the former DLSS add-on (`renodx-expeditionsrome_dlss.addon64`: DLAA /
 DLSS, the live render scale, frame generation, the live graphics settings and ray tracing) is part of this add-on
-(`dlss_graphics.hpp`, its history in `README_DLSS.md`); its keys stay (`[Rome AA]`, `[Rome Graphics Values]`). Remove
-the old `renodx-expeditionsrome_dlss.addon64` from the game folder (the install tool renames it aside).
+(`dlss_graphics.hpp`, its history in `README_DLSS.md`). Remove the old `renodx-expeditionsrome_dlss.addon64` from the
+game folder (the install tool renames it aside).
+
+Pages (Settings Mode, as Attila's): HDR & Effects (every HDR row: no Simple / Advanced any more), Graphics 1 of 2
+(`twattila/graphics_page.hpp`: Anti-Aliasing and Upscaling with DLSS and its modes, the Reset / No RT/PT / RT/PT presets,
+Shadows, Ambient Occlusion with GT-VBAO, Global Illumination, Reflections, Ray Tracing Extra Options; then Upscaling and
+Tools: Live Render Scale, Replace the Game's TAA Pass, the in-process frame generation, DLSS Details, Trace One Frame,
+Capture Upscaling Inputs), Graphics 2 of 2 (the live cvar table, `talesofarise_dlss/graphics_table.hpp`, with its presets
+and Contact Shadows under Shadow quality). The overlay's `[Rome AA]` keys go into the page's once (`Migrate`,
+`[renodx] SettingsRevision 1`; a preset's own key is kept; preset E becomes K); frame generation's stay in `[Rome AA]`,
+the cvar choices in `[Rome Graphics Values]`. Output's default is Auto. Ray-traced effects need DLSS now (as on every
+page); leaf opacity micromaps start off here.
 
 Windows display scaling above 100%: "ExpeditionsRome-Win64-Shipping.exe" (`ExpeditionsRome\Binaries\Win64`) ->
 Properties -> Compatibility -> Change high DPI settings -> Override high DPI scaling behavior, scaled by Application.

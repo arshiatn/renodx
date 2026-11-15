@@ -23,6 +23,9 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <functional>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -36,6 +39,7 @@
 #include "../../utils/command_action.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
+#include "../../utils/settings.hpp"
 #include "../talesofarise_dlss/code_patch.hpp"
 #include "../talesofarise_dlss/constant_mirror.hpp"
 #include "../talesofarise_dlss/constant_readback.hpp"
@@ -46,9 +50,13 @@
 #include "./ngx_backend.hpp"
 #include "../talesofarise_dlss/frame_generation.hpp"
 #include "../talesofarise_dlss/frame_trace.hpp"
+#include "../talesofarise_dlss/graphics_table.hpp"
 #include "../talesofarise_dlss/performance.hpp"
 #include "./ray_tracing.hpp"
 #include "./temporal_capture.hpp"
+#include "../twattila/feature_settings.hpp"
+#include "../twattila/graphics_page.hpp"
+#include "../twattila/lighting_settings.hpp"
 
 static_assert(_ITERATOR_DEBUG_LEVEL == 0, "DLAA must match the shared STL layout of Release RenoDX addons");
 
@@ -93,27 +101,10 @@ constexpr std::array<ModeSettings, 8> AA_MODES = {{
     {.label = "DLSS Ultra Quality (77%)", .name = "DLSS Ultra Quality", .minimum_scale = .74f, .maximum_scale = .80f, .backend = expeditionsrome::dlss::Mode::DLSS_ULTRA_QUALITY, .live_percentage = 77},
 }};
 
-struct PresetSettings {
-  uint32_t value;
-  const char* label;
-};
-
 // UE pads its render-size buffers to multiples of 4 (8 in later versions: switched to once seen). DLSS render sizes
 // are whole units of the output's aspect ratio in those multiples: the view fills its buffer and both axes get exactly
 // the same scale (no custom-scale shimmer; ATN, Shogun 2).
 static std::atomic<uint32_t> buffer_multiple = 4;
-
-constexpr std::array<PresetSettings, 4> PRESETS = {{
-    {.value = NVSDK_NGX_DLSS_Hint_Render_Preset_E, .label = "E (CNN, Fastest, Worst looking, not recommended)"},
-    {.value = NVSDK_NGX_DLSS_Hint_Render_Preset_K, .label = "K (Transformer 1, Slower but better than E)"},
-    {.value = NVSDK_NGX_DLSS_Hint_Render_Preset_M, .label = "M (Transformer 2, Slower than E, recommended for HDR)"},
-    {.value = NVSDK_NGX_DLSS_Hint_Render_Preset_L, .label = "L (Transformer 2, Slowest, best looking, recommended for HDR)"},
-}};
-
-// Menu order; AAMode values stay as saved in ReShade.ini.
-constexpr std::array<AAMode, 8> MENU_ORDER = {
-    AAMode::OFF, AAMode::DLAA, AAMode::DLSS_ULTRA_QUALITY, AAMode::DLSS_QUALITY, AAMode::DLSS_BALANCED,
-    AAMode::DLSS_PERFORMANCE, AAMode::DLSS_ULTRA_PERFORMANCE, AAMode::DLSS_CUSTOM};
 
 // UE reuses 29C140B2/201C3D3D with reduced inputs at high screen percentages.
 // A shader hash identifies the compute contract, not the active render scale.
@@ -179,14 +170,13 @@ static std::atomic<AAMode> requested_mode = AAMode::OFF;
 static std::atomic<uint32_t> preset = NVSDK_NGX_DLSS_Hint_Render_Preset_L;
 // nvngx_dlss.dll found at load (overlay warnings); the backend looks again when it starts.
 static expeditionsrome::dlss::DlssLibrary dlss_library;
-static bool advanced = false;  // overlay settings mode
 // Skip the stock TAA dispatch once constants are known before it (CPU copy trusted).
 static std::atomic_bool replace_taa = true;
 // Active input size the temporal pass last received (width | height << 32), even when
 // rejected, and how many temporal passes were seen.
 static std::atomic<uint64_t> seen_input = 0;
 static std::atomic<uint64_t> seen_frames = 0;
-// Present (+1) at which the Advanced overlay was last drawn; timings are measured only then.
+// Present (+1) at which DLSS Details (the page) was last drawn; timings are measured only then.
 static std::atomic<uint64_t> overlay_frame = 0;
 
 // Why NVIDIA's history restarted, and UE's jitter pattern length (frames until its first
@@ -255,20 +245,10 @@ constexpr uint32_t MAX_LIVE_RETRIES = 5;
 // Graphics presets: engine settings written live (engine_cvars.hpp) while a preset is chosen; "Game's own" puts the
 // game's values back. A preset only raises quality: higher-is-better settings take the larger of the game's value
 // and the preset's, lower-is-better ones (LOD scales, thresholds, cell sizes) the smaller. KEEP: the game's value.
-enum class Better : uint8_t { HIGHER,
-                              LOWER,
-                              EXACT };
-constexpr float KEEP = std::numeric_limits<float>::quiet_NaN();
-struct GraphicsSetting {
-  const char* group;
-  const wchar_t* name;
-  const char* label;
-  Better better;
-  // High, Ultra, Extreme, Insane; then one extra choice offered only in the setting's own list.
-  std::array<float, 5> values;
-  const char* tooltip = nullptr;  // shown above the cvar name
-  std::array<float, 2> more_extras = {KEEP, KEEP};  // further choices offered only in the setting's own list
-};
+// Each setting's values: High, Ultra, Extreme, Insane; then one extra choice offered only in the setting's own list.
+using talesofarise::graphics_table::Better;
+using talesofarise::graphics_table::KEEP;
+using GraphicsSetting = talesofarise::graphics_table::Setting;
 constexpr std::array<const char*, 6> GRAPHICS_PRESETS = {"Game's own", "High", "Ultra", "Extreme", "Insane", "Max"};
 constexpr size_t INSANE_PRESET = 4;
 // Every setting at its best choice: the highest (the lowest where lower is better), the optional ones' values.
@@ -314,40 +294,40 @@ constexpr auto GRAPHICS_SETTINGS = std::to_array<GraphicsSetting>({
     // Unreal adds a 4-texel border per side (limit 16376). In Tales of Arise (UE 4.21), shadow resolutions above 8192
     // or texels per pixel 4, written live, crashed the game (a null shadow atlas), so no choice goes above 8192 / 3
     // here either.
-    {"Shadows", L"r.Shadow.MaxResolution", "Light shadow resolution (point / spot)", Better::HIGHER, {4096.f, 4096.f, 8192.f, 8192.f, KEEP},
+    {"Shadow quality", L"r.Shadow.MaxResolution", "Light shadow resolution (point / spot)", Better::HIGHER, {4096.f, 4096.f, 8192.f, 8192.f, KEEP},
      "Shadow sharpness of point and spot lights."},
-    {"Shadows", L"r.ShadowQuality", "Shadow filtering quality", Better::HIGHER, {KEEP, 4.f, 5.f, 5.f, KEEP},
+    {"Shadow quality", L"r.ShadowQuality", "Shadow filtering quality", Better::HIGHER, {KEEP, 4.f, 5.f, 5.f, KEEP},
      "Smoothing of shadow edges."},
-    {"Shadows", L"r.Shadow.CSM.MaxCascades", "Sun shadow cascades", Better::HIGHER, {3.f, 4.f, 4.f, 4.f, KEEP},
+    {"Shadow quality", L"r.Shadow.CSM.MaxCascades", "Sun shadow cascades", Better::HIGHER, {3.f, 4.f, 4.f, 4.f, KEEP},
      "Layers of the sun's shadow: more of them keep shadows sharp at every distance."},
-    {"Shadows", L"r.Shadow.MaxCSMResolution", "Sun shadow resolution", Better::HIGHER, {4096.f, 4096.f, 4096.f, 4096.f, KEEP},
+    {"Shadow quality", L"r.Shadow.MaxCSMResolution", "Sun shadow resolution", Better::HIGHER, {4096.f, 4096.f, 4096.f, 4096.f, KEEP},
      "Unreal puts all sun shadow cascades into one 8192 x 8192 texture and does not draw a cascade that does not fit\n"
      "(its shadows vanish). So the resolution is limited by the cascade count: up to 4 cascades 4096, up to 9\n"
      "cascades 2730, up to 16 cascades 2048."},
     // The engine clamps it to 2.
-    {"Shadows", L"r.Shadow.DistanceScale", "Sun shadow distance", Better::HIGHER, {KEEP, 1.25f, 1.5f, 2.f, KEEP},
+    {"Shadow quality", L"r.Shadow.DistanceScale", "Sun shadow distance", Better::HIGHER, {KEEP, 1.25f, 1.5f, 2.f, KEEP},
      "How far the sun's shadows reach."},
-    {"Shadows", L"r.Shadow.RadiusThreshold", "Shadows of small objects", Better::LOWER, {.02f, .01f, .005f, .001f, KEEP},
+    {"Shadow quality", L"r.Shadow.RadiusThreshold", "Shadows of small objects", Better::LOWER, {.02f, .01f, .005f, .001f, KEEP},
      "How small an object can be and still cast a shadow (smaller: more of them)."},
-    {"Shadows", L"r.Shadow.CSM.TransitionScale", "Sun shadow cascade blending", Better::HIGHER, {KEEP, 1.5f, 2.f, 2.f, KEEP},
+    {"Shadow quality", L"r.Shadow.CSM.TransitionScale", "Sun shadow cascade blending", Better::HIGHER, {KEEP, 1.5f, 2.f, 2.f, KEEP},
      "Smoother change between the sun shadow's layers."},
-    {"Shadows", L"r.Shadow.PreShadowResolutionFactor", "Pre-shadow resolution", Better::HIGHER, {KEEP, 1.f, 1.f, 1.f, KEEP},
+    {"Shadow quality", L"r.Shadow.PreShadowResolutionFactor", "Pre-shadow resolution", Better::HIGHER, {KEEP, 1.f, 1.f, 1.f, KEEP},
      "Sharpness of moving objects' shadows on the scenery."},
-    {"Shadows", L"r.Shadow.TexelsPerPixel", "Object shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
+    {"Shadow quality", L"r.Shadow.TexelsPerPixel", "Object shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
      "Shadow sharpness of single objects such as characters."},
-    {"Shadows", L"r.Shadow.TexelsPerPixelSpotlight", "Spot light shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
+    {"Shadow quality", L"r.Shadow.TexelsPerPixelSpotlight", "Spot light shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
      "Shadow sharpness from spot lights."},
-    {"Shadows", L"r.Shadow.TexelsPerPixelPointlight", "Point light shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
+    {"Shadow quality", L"r.Shadow.TexelsPerPixelPointlight", "Point light shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
      "Shadow sharpness from point lights such as torches."},
-    {"Shadows", L"r.Shadow.TexelsPerPixelRectlight", "Rect light shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
+    {"Shadow quality", L"r.Shadow.TexelsPerPixelRectlight", "Rect light shadow resolution", Better::HIGHER, {KEEP, KEEP, 2.f, 3.f, KEEP},
      "Shadow sharpness from area lights."},
-    {"Shadows", L"r.CapsuleShadowsFullResolution", "Character soft shadows at full resolution", Better::HIGHER, {KEEP, 1.f, 1.f, 1.f, KEEP},
+    {"Shadow quality", L"r.CapsuleShadowsFullResolution", "Character soft shadows at full resolution", Better::HIGHER, {KEEP, 1.f, 1.f, 1.f, KEEP},
      "1: the soft shadows under characters at full resolution (the game: half)."},
-    {"Shadows", L"r.DFFullResolution", "Distance field shadows at full resolution", Better::HIGHER, {KEEP, KEEP, 1.f, 1.f, KEEP},
+    {"Shadow quality", L"r.DFFullResolution", "Distance field shadows at full resolution", Better::HIGHER, {KEEP, KEEP, 1.f, 1.f, KEEP},
      "1: distance field shadows (far objects) at full resolution (the game: half)."},
-    {"Shadows", L"r.Shadow.MinResolution", "Distant object shadow resolution", Better::HIGHER, {KEEP, KEEP, KEEP, KEEP, 64.f},
+    {"Shadow quality", L"r.Shadow.MinResolution", "Distant object shadow resolution", Better::HIGHER, {KEEP, KEEP, KEEP, KEEP, 64.f},
      "Least resolution of distant objects' shadows."},
-    {"Shadows", L"r.Shadow.FadeResolution", "Distant object shadow fade", Better::LOWER, {KEEP, KEEP, KEEP, KEEP, 32.f},
+    {"Shadow quality", L"r.Shadow.FadeResolution", "Distant object shadow fade", Better::LOWER, {KEEP, KEEP, KEEP, KEEP, 32.f},
      "Resolution at which distant objects' shadows fade out (smaller: later)."},
     {"Lighting and reflections", L"r.AmbientOcclusionLevels", "Ambient occlusion levels", Better::HIGHER, {KEEP, KEEP, 3.f, 3.f, KEEP},
      "Detail levels of the ambient occlusion (shading in corners); 3 is the most."},
@@ -371,11 +351,11 @@ constexpr auto GRAPHICS_SETTINGS = std::to_array<GraphicsSetting>({
     {"Fog and effects", L"r.VolumetricFog", "Volumetric fog", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 0.f},
      "0: off, much faster. The game's normal height fog stays; volumetric fog and its light shafts go."},
     {"Fog and effects", L"r.VolumetricFog.GridPixelSize", "Volumetric fog cell size (larger: faster)", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 12.f},
-     "Pixels per fog cell. Larger: faster, blockier fog.", {16.f, KEEP}},
+     "Pixels per fog cell. Larger: faster, blockier fog.", {16.f, KEEP, KEEP}},
     {"Fog and effects", L"r.VolumetricFog.GridSizeZ", "Volumetric fog depth slices (fewer: faster)", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 96.f},
-     "Fog slices into the distance. Fewer: faster, less fog detail in depth.", {64.f, KEEP}},
+     "Fog slices into the distance. Fewer: faster, less fog detail in depth.", {64.f, KEEP, KEEP}},
     {"Fog and effects", L"r.VolumetricFog.HistoryMissSupersampleCount", "Volumetric fog samples on camera moves (fewer: faster)", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 2.f},
-     "Samples for fog the camera just revealed. Fewer: faster, noisier fog while turning.", {1.f, KEEP}},
+     "Samples for fog the camera just revealed. Fewer: faster, noisier fog while turning.", {1.f, KEEP, KEEP}},
     {"Fog and effects", L"r.LightShaftDownSampleFactor", "Light shaft resolution divisor", Better::LOWER, {KEEP, KEEP, 1.f, 1.f, KEEP},
      "Light shafts' resolution divisor (1: full resolution)."},
     {"Fog and effects", L"r.MotionBlurQuality", "Motion blur quality", Better::HIGHER, {KEEP, 4.f, 4.f, 4.f, KEEP},
@@ -399,14 +379,14 @@ constexpr auto GRAPHICS_SETTINGS = std::to_array<GraphicsSetting>({
     {OPTIONAL_GROUP, L"r.SSGI.Quality", "Screen-space global illumination", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 4.f},
      "Light bounces off nearby surfaces onto others (Unreal's own, screen-space). Brighter shade, slower.\n"
      "1-4: rays per pixel (4: least noise).",
-     {1.f, KEEP}},
+     {1.f, KEEP, KEEP}},
     // In no preset (a load-time trade-off, not quality): read when an area's shaders load.
     {"Loading", L"r.CreateShadersOnLoad", "Shaders on load", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 1.f},
      "1: creates all of an area's shaders while it loads, instead of the first time an effect or material appears on\n"
      "screen. Fewer stutters when something new shows up for the first time (the typical DirectX 11 hitching).\n"
      "Loading takes a bit longer and uses a bit more memory. Applies to areas loaded afterwards: load a save after\n"
      "changing it. 0: the engine's default (also overrides an Engine.ini line).",
-     {0.f, KEEP}},
+     {0.f, KEEP, KEEP}},
 });
 // Unreal puts all sun shadow cascades into one 8192 x 8192 atlas (1 << (GMaxTextureMipCount - 1), at most 14 mips;
 // read from the exe) and does not draw a cascade that does not fit: the sun's resolution is limited to what its
@@ -462,6 +442,16 @@ static bool frame_generation = false;
 static twattila::rt_scene::Settings ray_tracing_settings;
 static float ray_traced_bounce_strength = 1.f;
 static bool ray_tracing_installed = false;
+// The page's rows (AppendPage): DLSS's (feature_settings::AppendAa), the rays' (rt_scene::AppendSettings), the rays' light
+// bounce strength and this game's own; OnPresent reads them into the state above.
+static twattila::feature_settings::AaSliders aa_sliders;
+static twattila::rt_scene::Sliders rt_sliders;
+static float light_bounce_strength = 1.f;
+static float live_scale_row = 1.f;
+static float replace_taa_row = 1.f;
+static float contact_shadows_row = 0.f;  // percent of the screen
+// No Bend shadows in this game (graphics_page.hpp Bindings::has_screen_space_shadows false).
+static twattila::feature_settings::SssSliders no_screen_space_shadows;
 
 // UE 4.23's View rows frame generation reads (Tales' 4.21 rows + 4: ClipToWorld came before them).
 constexpr uint32_t VIEW_VIEW_TO_CLIP_NO_AA = 32;
@@ -489,32 +479,17 @@ static struct FrameGenerationFrame {
 constexpr size_t VOLUMETRIC_FOG_CELL = SettingIndex(L"r.VolumetricFog.GridPixelSize");
 // Each setting's own choice (a slider, as Ryse's options): 0 the game's value, else one of its choices (its distinct
 // preset values and extras, with steps between them); the preset buttons set every choice. Saved per setting in
-// ReShade.ini, section GRAPHICS_SECTION, key the cvar name, by value (SaveChoice): steps move the indexes. (The old
+// ReShade.ini, section GRAPHICS_SECTION, key the cvar name, by value (graphics_table::SaveChoice): steps move the indexes. (The old
 // "Rome Graphics Settings" section held indexes.)
 constexpr const char* GRAPHICS_SECTION = "Rome Graphics Values";
 
-struct GraphicsEntry {
-  talesofarise::engine_cvars::Cvar cvar;
-  std::string details;  // int / float and the game's value at the search, or why it is unusable
-  std::string key;      // the cvar name
-  std::vector<float> choices;
-  int choice = 0;
-  bool controlling = false;
-  float game_value = 0.f;
-  float written = 0.f;
-};
 static struct Graphics {
   talesofarise::engine_cvars::Console console;
   bool searched = false;
   bool available = false;
   std::string status = "Searching the game's settings...";
-  std::array<GraphicsEntry, GRAPHICS_SETTINGS.size()> entries;
+  std::array<talesofarise::graphics_table::Entry, GRAPHICS_SETTINGS.size()> entries;
 } graphics;
-// "game" for the game's own value (not a number: it reads back as unset).
-inline void SaveChoice(const GraphicsEntry& entry) {
-  const std::string value = (entry.choice == 0 ? std::string("game") : std::format("{:g}", entry.choices[entry.choice - 1]));
-  reshade::set_config_value(nullptr, GRAPHICS_SECTION, entry.key.c_str(), value.c_str());
-}
 
 // Texture LOD bias below 100% (DLSS section). With temporal upscaling UE 4.23 biases material textures (599 of the
 // game's pixel shaders sample with View.MaterialTextureMipBias) by max(log2(scale) + r.ViewTextureMipBias.Offset,
@@ -1220,6 +1195,30 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   // Debug: also renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt).
   talesofarise::frame_trace::OnPresent();
+  // The page's rows (Upscaling Mode: DLAA, Ultra Quality, Quality, Balanced, Performance, Ultra Performance, Custom).
+  {
+    constexpr std::array<AAMode, 7> UPSCALING_MODES = {AAMode::DLAA, AAMode::DLSS_ULTRA_QUALITY, AAMode::DLSS_QUALITY, AAMode::DLSS_BALANCED,
+                                                       AAMode::DLSS_PERFORMANCE, AAMode::DLSS_ULTRA_PERFORMANCE, AAMode::DLSS_CUSTOM};
+    const AAMode mode = (aa_sliders.method == 5.f ? UPSCALING_MODES[static_cast<size_t>(std::clamp(aa_sliders.dlss_mode, 0.f, 6.f))] : AAMode::OFF);
+    if (requested_mode.exchange(mode) != mode && mode != AAMode::OFF) expeditionsrome::dlss::temporal_capture::Reset();
+    preset.store(twattila::feature_settings::AaSettings(aa_sliders).dlaa_preset);
+    live.custom = std::clamp(std::round(aa_sliders.render_scale), 1.f, 100.f);
+    texture_lod_bias.choice = std::clamp(static_cast<int>(aa_sliders.texture_lod_bias), 0, 3);
+    effects_at_output = aa_sliders.effects_at_output != 0.f;
+    replace_taa.store(replace_taa_row != 0.f);
+    expeditionsrome::dlss::contact_shadows::length.store(std::clamp(contact_shadows_row, 0.f, 10.f) / 100.f);
+    // On again: a stopped or failed live scale is retried.
+    if (const bool enabled = live_scale_row != 0.f; enabled != live.enabled) {
+      live.enabled = enabled;
+      if (enabled) {
+        live.problem.clear();
+        live.retries = 0;
+        if (live.finder.phase() == talesofarise::engine_scale::Finder::Phase::FAILED) live.finder = {};
+      }
+    }
+    ray_tracing_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, light_bounce_strength);
+    ray_traced_bounce_strength = light_bounce_strength;
+  }
   if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Update(ray_tracing_settings, ray_traced_bounce_strength);
   if (talesofarise::frame_generation::Presenting()) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
@@ -1521,386 +1520,451 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
   }
 }
 
-inline void OnOverlay(reshade::api::effect_runtime*) {
-  // Timings are only shown (and measured) in Advanced.
-  if (advanced) {
-    const std::shared_lock lock(state.mutex);
-    overlay_frame.store(state.frame + 1);
-  }
+// The Anti-Aliasing section's status lines (graphics_page.hpp Bindings::upscaler_status): DLSS's, the live render scale's,
+// and what the game's settings or NVIDIA's files need.
+inline std::string UpscalerStatus() {
   using Phase = talesofarise::engine_scale::Finder::Phase;
-  if (int settings_mode = (advanced ? 1 : 0); ImGui::Combo("Settings mode", &settings_mode, "Simple\0Advanced\0")) {
-    advanced = settings_mode == 1;
-    reshade::set_config_value(nullptr, "Rome AA", "SettingsMode", settings_mode);
-  }
-  // Section headings (ATN, as Ryse's): DLSS lavender (its settings too), Graphics pink, the rest green.
-  const auto heading = [](const char* label, ImU32 color) {
-    ImGui::PushStyleColor(ImGuiCol_Text, color);
-    ImGui::SeparatorText(label);
-    ImGui::PopStyleColor();
-  };
-  constexpr ImU32 DLSS_COLOR = IM_COL32(0xB3, 0x9D, 0xDB, 0xFF);
-  constexpr ImU32 GRAPHICS_COLOR = IM_COL32(0xFF, 0x7F, 0xAF, 0xFF);
-  constexpr ImU32 OTHER_COLOR = IM_COL32(0x7E, 0xE0, 0x8A, 0xFF);
-  heading("DLSS", DLSS_COLOR);
-  ImGui::PushStyleColor(ImGuiCol_Text, DLSS_COLOR);
-  auto mode = requested_mode.load();
-  if (ImGui::BeginCombo("AA mode", AA_MODES[static_cast<size_t>(mode)].label)) {
-    for (const AAMode option : MENU_ORDER) {
-      if (ImGui::Selectable(AA_MODES[static_cast<size_t>(option)].label, option == mode)) {
-        mode = option;
-        requested_mode.store(mode);
-        reshade::set_config_value(nullptr, "Rome AA", "Mode", static_cast<int>(mode));
-        if (mode != AAMode::OFF) expeditionsrome::dlss::temporal_capture::Reset();
-      }
-    }
-    ImGui::EndCombo();
-  }
-  if (live.enabled && mode == AAMode::DLSS_CUSTOM
-      && ImGui::SliderFloat("Render scale", &live.custom, 1.f, 100.f, "%.0f%%")) {
-    live.custom = std::clamp(std::round(live.custom), 1.f, 100.f);
-    reshade::set_config_value(nullptr, "Rome AA", "CustomScale", live.custom);
-  }
-  const auto selected_preset = std::ranges::find(PRESETS, preset.load(), &PresetSettings::value);
-  if (ImGui::BeginCombo("DLSS preset", selected_preset != PRESETS.end() ? selected_preset->label : PRESETS.back().label)) {
-    for (const auto& option : PRESETS) {
-      if (ImGui::Selectable(option.label, option.value == preset.load())) {
-        preset.store(option.value);
-        reshade::set_config_value(nullptr, "Rome AA", "Preset", option.value);
-      }
-    }
-    ImGui::EndCombo();
-  }
-  const bool lod_bias_found = texture_lod_bias.cvars[0].values[0] != nullptr && texture_lod_bias.cvars[1].values[0] != nullptr;
-  ImGui::BeginDisabled(graphics.searched && !lod_bias_found);
-  if (ImGui::Combo("Texture LOD bias", &texture_lod_bias.choice,
-                   "Off (the game's own)\0"
-                   "Matched (as sharp as at your output resolution)\0"
-                   "Sharper (one step sharper; NVIDIA's recommendation)\0"
-                   "Sharpest (two steps sharper; can shimmer)\0")) {
-    reshade::set_config_value(nullptr, "Rome AA", "TextureLodBias", texture_lod_bias.choice);
-  }
-  ImGui::EndDisabled();
-  if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-    // The bias each choice gives at the current mode's scale (the game's: its own offset and minimum).
-    std::string example;
-    const float percentage = (mode == AAMode::DLSS_CUSTOM ? live.custom : AA_MODES[static_cast<size_t>(mode)].live_percentage);
-    if (lod_bias_found && percentage > 0.f && percentage < 100.f) {
-      const float matched = std::log2(percentage / 100.f);
-      const auto& game = (texture_lod_bias.controlling
-                              ? texture_lod_bias.game_values
-                              : std::array<float, 2>{texture_lod_bias.cvars[0].Get(), texture_lod_bias.cvars[1].Get()});
-      example = std::format("\n\nAt {:g}% (bias, lower = sharper): Off {:.1f}, Matched {:.1f}, Sharper {:.1f}, Sharpest {:.1f}.",
-                            percentage, std::max(matched + game[0], game[1]), matched, matched - 1.f, matched - 2.f);
-    }
-    ImGui::SetTooltip("How sharp textures are while DLSS renders below 100%%. The game renders fewer pixels and picks\n"
-                      "blurrier texture levels to match them (at most one step blurrier than your output resolution).\n"
-                      "Matched: textures as sharp as at your output resolution.\n"
-                      "Sharper / Sharpest: one / two steps sharper than that (more detail, can shimmer).\n"
-                      "DLAA and Off are not affected.%s%s",
-                      example.c_str(), (graphics.searched && !lod_bias_found) ? "\n\nUnavailable: r.ViewTextureMipBias.* not found." : "");
-  }
-  if (ImGui::Checkbox("Effects at output resolution (Recommended)", &effects_at_output)) {
-    reshade::set_config_value(nullptr, "Rome AA", "EffectsAtOutputResolution", effects_at_output);
-  }
-  if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("Recommended (default): looks better, can cost some performance.\n"
-                      "While DLSS renders below 100%%, volumetric fog, light shafts, skin and the shadows of characters,\n"
-                      "objects and lamps keep the detail they have at 100%%.");
-  }
-  talesofarise::frame_generation::DrawSettings("Rome AA", &frame_generation);
-  if (bool replace = replace_taa.load(); ImGui::Checkbox("Replace the game's TAA pass (faster)", &replace)) {
-    replace_taa.store(replace);
-    reshade::set_config_value(nullptr, "Rome AA", "ReplaceTAA", replace);
-  }
-
   std::string status;
-  std::string constants;
-  uint64_t copied_per_frame;
   uint64_t completed;
   std::array<uint32_t, 4> extents;
-  uint32_t temporal_shader_hash;
-  talesofarise::dlss::PerformanceSummary performance;
   {
     const std::shared_lock lock(state.mutex);
     status = state.status;
-    constants = state.constants;
-    copied_per_frame = state.copied_per_frame;
     completed = state.completed;
     extents = {state.render_width, state.render_height, state.width, state.height};
-    temporal_shader_hash = state.temporal_shader_hash;
-    performance = state.performance;
   }
-  std::string live_status;
+  std::string text = status;
   if (!live.enabled) {
-    live_status = "Live render scale off: set Screen Percentage in the game's menu.";
+    text += "\nLive render scale off: set Screen Percentage in the game's menu.";
   } else if (!live.problem.empty()) {
-    live_status = (live.retries < MAX_LIVE_RETRIES
-                       ? "Live render scale paused: " + live.problem + ". The game's own value is back for now; retrying in a few seconds."
-                       : "Live render scale stopped: " + live.problem + ". The game's own value was put back; untick and tick live render scale (Advanced) to retry.");
+    text += (live.retries < MAX_LIVE_RETRIES
+                 ? "\nLive render scale paused: " + live.problem + ". The game's own value is back for now; retrying in a few seconds."
+                 : "\nLive render scale stopped: " + live.problem + ". The game's own value was put back; turn Live Render Scale off and on to retry.");
   } else if (live.finder.phase() == Phase::FAILED) {
-    live_status = "Live render scale unavailable: " + live.finder.status() + " (details in ReShade.log).";
+    text += "\nLive render scale unavailable: " + live.finder.status() + " (details in ReShade.log).";
   } else if (live.finder.phase() != Phase::FOUND) {
-    live_status = live.finder.status() + "...";
+    text += "\n" + live.finder.status() + "...";
   } else {
-    live_status = std::format("Render scale {:g}%{}{}", live.finder.Get().value_or(0),
-                              live.controlling ? std::format(" (the game's own: {:g}%)", live.game_value) : std::string(" (the game's own)"),
-                              live.note.empty() ? std::string() : "; " + live.note);
+    text += std::format("\nRender scale {:g}%{}{}", live.finder.Get().value_or(0),
+                        live.controlling ? std::format(" (the game's own: {:g}%)", live.game_value) : std::string(" (the game's own)"),
+                        live.note.empty() ? std::string() : "; " + live.note);
   }
-  ImGui::Separator();
-  ImGui::TextWrapped("%s", status.c_str());
-  ImGui::TextWrapped("%s", live_status.c_str());
   if (completed != 0 && status.find("active") != std::string::npos) {
-    ImGui::Text("Input %ux%u -> output %ux%u", extents[0], extents[1], extents[2], extents[3]);
+    text += std::format("\nInput {}x{} -> output {}x{}", extents[0], extents[1], extents[2], extents[3]);
   }
-  const uint32_t phases = diagnostics.jitter_phases.load();
-  const auto recommended = static_cast<uint32_t>(std::ceil(
-      8.0 * std::pow(static_cast<double>(extents[2]) / std::max(extents[0], 1u), 2)));
   // NVIDIA wants 8 * (output / input)^2 positions: UE's pattern has them down to 25% (signed position) or, with the
-  // jitter fix, 18% (its cap of 255).
+  // jitter fix, 18% (its cap of 255); NVIDIA's Halton (the jitter store's patch) any length.
+  const auto mode = requested_mode.load();
   const bool jitter_fixed = std::ranges::all_of(jitter_position_patches, &talesofarise::code_patch::CodePatch::applied);
   const float lowest_scale = (jitter_fixed ? 18.f : 25.f);
-  if (!halton_jitter.patch.applied && (mode == AAMode::DLSS_CUSTOM && live.enabled && live.custom < lowest_scale)
-      || (completed != 0 && extents[2] != 0
-          && static_cast<float>(extents[0]) / static_cast<float>(extents[2]) < lowest_scale / 100.f - .005f)) {
-    ImGui::TextWrapped("Below %.0f%%, the game's (UE's) jitter pattern gets too short for DLSS: the image can pulse blurry/sharp.",
-                       lowest_scale);
+  if (!halton_jitter.patch.applied
+      && ((mode == AAMode::DLSS_CUSTOM && live.enabled && live.custom < lowest_scale)
+          || (completed != 0 && extents[2] != 0 && static_cast<float>(extents[0]) / static_cast<float>(extents[2]) < lowest_scale / 100.f - .005f))) {
+    text += std::format("\nBelow {:.0f}%, the game's (UE's) jitter pattern gets too short for DLSS: the image can pulse blurry/sharp.", lowest_scale);
   }
   if (mode != AAMode::OFF && status.starts_with("Stock TAA")) {
-    ImGui::TextWrapped("In the game's graphics settings, keep Anti-Aliasing on Fast or Ultra and Temporal Upscaling on.");
+    text += "\nIn the game's graphics settings, keep Anti-Aliasing on Fast or Ultra and Temporal Upscaling on.";
   }
   const auto& version = dlss_library.version;
-  const bool old_library = version[0] != 0
-                           && std::array<uint32_t, 2>{version[0], version[1]} < expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION;
   if (dlss_library.folder.empty()) {
-    ImGui::TextWrapped("nvngx_dlss.dll is missing: download the latest nvngx_dlss.dll and put it next to this addon (the game's Binaries\\Win64 folder), then restart the game.");
-  } else if (old_library) {
-    ImGui::TextWrapped("nvngx_dlss.dll %u.%u.%u is older than %u.%u: presets M and L are not available, NVIDIA uses its default. Download the latest nvngx_dlss.dll.",
-                       version[0], version[1], version[2], expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION[0],
-                       expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION[1]);
+    text += "\nnvngx_dlss.dll is missing: put the latest nvngx_dlss.dll next to this add-on (the game's Binaries\\Win64 folder), then restart the game.";
+  } else if (version[0] != 0 && std::array<uint32_t, 2>{version[0], version[1]} < expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION) {
+    text += std::format("\nnvngx_dlss.dll {}.{}.{} is older than {}.{}: presets M and L are not available, NVIDIA uses its default.",
+                        version[0], version[1], version[2], expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION[0],
+                        expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION[1]);
   }
+  if (ray_tracing_installed) text += "\n" + twattila::rt_scene::Status();
+  return text;
+}
 
-  ImGui::PopStyleColor();
-  heading("Graphics", GRAPHICS_COLOR);
-  ImGui::TextUnformatted("Applied live; a preset never lowers the game's own settings.");
-  // Not a cvar (contact_shadows.hpp): only Game's own (off) and Max set it.
-  const auto set_contact_shadows = [](float contact_length) {
-    expeditionsrome::dlss::contact_shadows::length.store(contact_length);
-    reshade::set_config_value(nullptr, "Rome AA", "ContactShadows", contact_length);
-  };
-  for (size_t preset_index = 0; preset_index < GRAPHICS_PRESETS.size(); ++preset_index) {
-    if (preset_index != 0) ImGui::SameLine();
-    if (ImGui::Button(GRAPHICS_PRESETS[preset_index])) {
-      // Every setting but shaders on load gets the preset's value (KEEP: the game's), so none keeps an older choice.
-      for (size_t index = 0; index < GRAPHICS_SETTINGS.size(); ++index) {
-        const auto& setting = GRAPHICS_SETTINGS[index];
-        if (std::wstring_view(setting.name) == NO_PRESET_SETTING) continue;
-        auto& entry = graphics.entries[index];
-        float value = KEEP;
-        if (preset_index == MAX_PRESET && !entry.choices.empty()) {
-          switch (setting.better) {
-            case Better::HIGHER:
-              value = entry.choices.back();
-              break;
-            case Better::LOWER:
-              value = entry.choices.front();
-              break;
-            case Better::EXACT:
-              // Insane's value, else the optional ones' extra; the others (cheaper volumetric fog) the game's.
-              value = setting.values[INSANE_PRESET - 1];
-              if (std::isnan(value) && std::string_view(setting.group) == OPTIONAL_GROUP) {
-                value = setting.values[INSANE_PRESET];
-              }
-              break;
-          }
-        } else if (preset_index != 0) {
-          value = setting.values[preset_index - 1];
-        }
-        const auto found = std::ranges::find(entry.choices, value);
-        entry.choice = (found == entry.choices.end() ? 0 : static_cast<int>(found - entry.choices.begin()) + 1);
-        SaveChoice(entry);
-      }
-      if (preset_index == 0) {
-        set_contact_shadows(0.f);
-      } else if (preset_index == MAX_PRESET) {
-        set_contact_shadows(CONTACT_SHADOWS_MAX);
-      }
+// The former overlay's keys ([Rome AA]: the DLSS add-on's until the UE4 merge round) in the page's, once (SettingsRevision 1),
+// each into every preset without one of its own; before the settings are loaded. Settings Mode's Advanced (1) is HDR &
+// Effects (0) again: its 1 is Graphics 1 of 2 now. [Rome AA]'s frame generation keys stay where they are (its own row).
+inline void Migrate() {
+  const std::string& global = renodx::utils::settings::global_name;
+  if (int revision = 0; reshade::get_config_value(nullptr, global.c_str(), "SettingsRevision", revision) && revision >= 1) return;
+  std::vector<std::pair<std::string, float>> values;
+  const auto read = [](const char* key, float* value) { return reshade::get_config_value(nullptr, "Rome AA", key, *value); };
+  // AAMode (as saved): the page's Anti-Aliasing and Upscaling Mode (DLAA, Ultra Quality, Quality, Balanced, Performance,
+  // Ultra Performance, Custom).
+  if (float mode = 0.f; read("Mode", &mode) && mode >= 0.f && mode < static_cast<float>(AA_MODES.size())) {
+    constexpr std::array<float, 8> UPSCALING_MODES = {0.f, 0.f, 2.f, 3.f, 4.f, 6.f, 5.f, 1.f};
+    values.emplace_back("AntiAliasing", (mode != 0.f ? 5.f : 0.f));
+    values.emplace_back("AntiAliasingDlssMode", UPSCALING_MODES[static_cast<size_t>(mode)]);
+  }
+  // NVSDK_NGX_DLSS_Hint_Render_Preset E (5, gone: K, the next model), K (11), L (12), M (13): the page's K, M, L.
+  if (float ngx_preset = 0.f; read("Preset", &ngx_preset)) {
+    values.emplace_back("AntiAliasingDlaaPreset", (ngx_preset == 12.f ? 2.f : (ngx_preset == 13.f ? 1.f : 0.f)));
+  }
+  for (const auto& [old_key, new_key] : std::to_array<std::pair<const char*, const char*>>({
+           {"CustomScale", "AntiAliasingRenderScale"},
+           {"TextureLodBias", "AntiAliasingTextureLodBias"},
+           {"EffectsAtOutputResolution", "AntiAliasingEffectsAtOutput"},
+           {"LiveScale", "LiveScale"},
+           {"ReplaceTAA", "ReplaceTAA"},
+           {"RayTracedSunShadows", "RayTracedSunShadows"},
+           {"RayTracedShadowSoftness", "RayTracedShadowSoftness"},
+           {"RayTracedAmbientOcclusion", "RayTracedAmbientOcclusion"},
+           {"RayTracedAmbientRange", "RayTracedAORange"},
+           {"RayTracedAOQuarter", "RayTracedAOQuarter"},
+           {"RayTracedLightBounceStrength", "light_bounce_strength"},
+           {"RayTracedLightBounceRays", "RayTracedLightBounceRays"},
+           {"RayTracedLightBounceRange", "RayTracedLightBounceRange"},
+           {"RayTracedReflections", "RayTracedReflections"},
+           {"RayTracedReflectionSamples", "RayTracedReflectionSamples"},
+           {"PathTracingBounces", "PathTracingBounces"},
+       })) {
+    if (float value = 0.f; read(old_key, &value) && std::isfinite(value)) values.emplace_back(new_key, value);
+  }
+  // A share of the screen: the row's percent.
+  if (float length = 0.f; read("ContactShadows", &length) && std::isfinite(length)) values.emplace_back("ContactShadowsLength", length * 100.f);
+  // The light bounce through rays (1), path traced (2: Path tracing with it on).
+  if (float bounce = 0.f; read("RayTracedLightBounce", &bounce)) {
+    float paths = 0.f;
+    read("PathTracing", &paths);
+    values.emplace_back("RayTracedLightBounce", (bounce == 0.f ? 0.f : (paths != 0.f ? 2.f : 1.f)));
+  }
+  for (const char* preset : {"-preset1", "-preset2", "-preset3"}) {
+    const std::string section = global + preset;
+    for (const auto& [key, value] : values) {
+      if (float saved = 0.f; reshade::get_config_value(nullptr, section.c_str(), key.c_str(), saved)) continue;
+      reshade::set_config_value(nullptr, section.c_str(), key.c_str(), value);
     }
   }
-  if (!graphics.status.empty()) ImGui::TextWrapped("%s", graphics.status.c_str());
-  ImGui::TextWrapped("Some settings apply after loading a new area, anisotropic filtering to textures loaded afterwards. Insane and Max are very heavy and use a lot of VRAM. Max puts every setting at its highest, the optional ones too. Every preset keeps the game's volumetric fog: turning it off or lowering it is the biggest saving. Shaders on load is in no preset.");
-  if (float percent = expeditionsrome::dlss::contact_shadows::length.load() * 100.f;
-      ImGui::SliderFloat("Contact shadows (Experimental)", &percent, 0.f, 10.f, (percent > 0.f ? "%.1f%% of the screen" : "Off"),
-                         ImGuiSliderFlags_AlwaysClamp)) {
-    set_contact_shadows(percent / 100.f);
+  if (float settings_mode = 0.f; reshade::get_config_value(nullptr, global.c_str(), "SettingsMode", settings_mode) && settings_mode == 1.f) {
+    reshade::set_config_value(nullptr, global.c_str(), "SettingsMode", 0);
   }
-  if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("Unreal's own short sun shadows where things meet the ground and in small gaps (screen-space).\n"
-                      "Longer: shadows reach farther from contact points; can show halos at the screen's edges.\n"
-                      "Off while ray-traced sun shadows are on. Max preset: %.0f%%.", CONTACT_SHADOWS_MAX * 100.f);
+  reshade::set_config_value(nullptr, global.c_str(), "SettingsRevision", 1);
+  renodx::utils::log::i("[Rome] Settings: ", values.size(), " values of [Rome AA] taken over by the page (SettingsRevision 1).");
+}
+
+// This game's page texts (graphics_page.hpp Texts): the game's TAA stays on for DLSS; the rays' sun shadows and AO with the
+// game's (the darker of both).
+constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
+    .aa_labels = {"Game's TAA", "", "", "", "", "DLSS", "", ""},
+    .aa_tooltip = "Game's TAA: the game's own temporal anti-aliasing.\n"
+                  "DLSS: NVIDIA's (RTX), the best, in place of the game's TAA; it also sets the game's render scale.\n"
+                  "Every ray-traced effect needs it. Needs nvngx_dlss.dll in the game folder.",
+    .in_game_aa_note = "In-game Anti-Aliasing must be Fast or Ultra with Temporal Upscaling on for DLSS.",
+    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its shadows, AO and reflections.\n"
+                     "The rest at its default.",
+    .no_rays_tooltip = "No ray tracing: the game's shadows, ambient occlusion and reflections. The rest of this page at its default.",
+    .rays_tooltip = "Ray-traced shadows, ambient occlusion and reflections, path-traced Global Illumination at my settings. The\n"
+                    "rest of this page at its default. Needs DLSS (Anti-Aliasing above). Restart the game after turning ray\n"
+                    "tracing on.",
+    .shadow_tooltip = "Game's Shadow Maps: the original. DXR: ray-traced sun shadows with the game's (the darker of both): also\n"
+                      "where its shadow maps miss things or end. Needs DLSS. Restart the game after turning it on.",
+    .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game ambient occlusion on.\n"
+                  "Game's SSAO: the original. GT-VBAO: contact shading that lets light pass behind thin things (grass,\n"
+                  "poles, characters) instead of dark halos.\n"
+                  "RTAO: from rays through the scene, with the game's. Needs DLSS. Restart the game after turning it on.",
+    .gi_tooltip_end = "\nRestart the game after turning it on.",
+    .effects_at_output_tooltip = "While DLSS renders below 100%, volumetric fog, light shafts, skin and the shadows of characters,\n"
+                                 "objects and lamps keep the detail they have at 100%. Looks better, can cost some performance.",
+    .dlss_preset_tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest and heaviest (default).\n"
+                           "A preset forced in the NVIDIA app or NVIDIA Profile Inspector overrides this one.",
+    .reflections_tooltip = "Reflections on water, metal and wet ground. Need in-game Screen Space Reflections on.\n"
+                           "Game's SSR: the original. DXR: from rays, also what is off screen. Needs DLSS. Restart the game\n"
+                           "after turning it on.",
+};
+// The page's anti-aliasing: the game's TAA, DLSS.
+constexpr std::array<int, 2> AA_METHODS = {0, 5};
+// Graphics 1 of 2's own section after graphics_page's: the live render scale, the TAA pass, frame generation, the details
+// and the tools.
+inline const std::string TOOLS_SECTION = "Upscaling and Tools";
+inline const std::string GRAPHICS_PRESETS_SECTION = "Graphics Presets";
+
+// Graphics 2 of 2's sections: the presets', then each group's (GRAPHICS_SETTINGS' order).
+inline std::vector<std::string> EngineSections() {
+  std::vector<std::string> sections = {GRAPHICS_PRESETS_SECTION};
+  for (const auto& setting : GRAPHICS_SETTINGS) {
+    if (std::ranges::find(sections, setting.group) == sections.end()) sections.emplace_back(setting.group);
   }
-  if (ImGui::TreeNode("Ray tracing (Experimental)")) {
-    auto& ray_tracing = ray_tracing_settings;
-    const auto checkbox = [](const char* label, const char* key, bool* value, const char* tooltip) {
-      if (ImGui::Checkbox(label, value)) reshade::set_config_value(nullptr, "Rome AA", key, *value);
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
-    };
-    const auto slider = [](const char* label, const char* key, float* value, float min, float max, const char* format, const char* tooltip) {
-      if (ImGui::SliderFloat(label, value, min, max, format, ImGuiSliderFlags_AlwaysClamp)) {
-        reshade::set_config_value(nullptr, "Rome AA", key, *value);
+  return sections;
+}
+
+// The page's rows (HDR part's ConfigureAddon, after its own rows): Graphics 1 of 2 (graphics_page.hpp with
+// feature_settings::AppendAa's and rt_scene::AppendSettings' rows, then TOOLS_SECTION), Graphics 2 of 2
+// (GRAPHICS_SETTINGS, EngineSections); `ssao_mode` GT-VBAO's (the HDR part's). After feature_settings::SetTints.
+inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings, float* ssao_mode) {
+  using renodx::utils::settings::Setting;
+  using renodx::utils::settings::SettingValueType;
+  const auto upscaling = [] { return twattila::feature_settings::Upscaling(aa_sliders); };
+  const auto erase = [settings](std::initializer_list<std::string_view> keys) {
+    std::erase_if(*settings, [keys](Setting* setting) {
+      if (std::ranges::find(keys, setting->key) == keys.end()) return false;
+      delete setting;
+      return true;
+    });
+  };
+  // DLSS with its modes, preset, Texture LOD Bias and Effects at Output Resolution; not the shader anti-aliasing (TW's),
+  // object motion (Unreal's own motion vectors), the helper's frame generation and Reflex (this game's own frame generation
+  // row below).
+  twattila::feature_settings::AppendAa(settings, &aa_sliders, true);
+  erase({"AntiAliasingQuality", "AntiAliasingExtraSharpness", "AntiAliasingTaaStrength", "AntiAliasingSharpening", "AntiAliasingObjectMotion",
+         "AntiAliasingDebugView", "FrameGeneration", "Reflex", "FrameGenerationFrameLimit", "FrameGenerationHudRecomposition",
+         "FrameGenerationPreset", "FrameGenerationDebugView"});
+  // The rays (ray_tracing.hpp: sun shadows, AO, the light bounce and its paths, reflections); not what this host doesn't
+  // apply (specular occlusion; the light bounce's resolution: its own half-size texels).
+  twattila::rt_scene::AppendSettings(settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION, &light_bounce_strength);
+  erase({"RayTracedSpecularOcclusion", "RayTracedLightBounceResolution"});
+  for (Setting* setting : *settings) {
+    // The former overlay's AO range; leaf micromaps (the helper's opacity micromaps over the game's cut-out masks) as the
+    // former add-on ran: off (no run of this game has shown them yet).
+    if (setting->key == "RayTracedAORange") setting->default_value = 2.f;
+    if (setting->key == "RayTracedLeafMicromaps" || setting->key == "RayTracedGpuMicromaps") setting->default_value = 0.f;
+  }
+  settings->push_back(new Setting{
+      .key = "light_bounce_strength",
+      .binding = &light_bounce_strength,
+      .default_value = 1.f,
+      .label = "Strength",
+      .section = twattila::lighting_settings::GI_SECTION,
+      .tooltip = "How much bounced light is added.",
+      .max = 2.f,
+      .format = "%.2f",
+  });
+  twattila::graphics_page::Apply(settings, {.aa = &aa_sliders,
+                                            .sss = &no_screen_space_shadows,
+                                            .rt = &rt_sliders,
+                                            .ssao_mode = ssao_mode,
+                                            .light_bounce_strength = &light_bounce_strength,
+                                            .texts = &PAGE_TEXTS,
+                                            .aa_methods = AA_METHODS,
+                                            .upscaler_status = &UpscalerStatus,
+                                            .has_foliage_light = false,
+                                            .has_path_ambient = false,
+                                            .rays_replace_ao = false,
+                                            .rays_multiply_maps = true,
+                                            .has_screen_space_shadows = false,
+                                            .has_gtvbgi = false,
+                                            .every_row = false});
+  renodx::utils::settings::section_tints.emplace_back(TOOLS_SECTION, twattila::graphics_page::TITLE_TINT);
+
+  // Graphics 1 of 2's own section.
+  settings->insert(settings->end(), {
+      new Setting{
+          .key = "LiveScale",
+          .binding = &live_scale_row,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Live Render Scale",
+          .section = TOOLS_SECTION,
+          .tooltip = "DLSS sets the game's render scale (Screen Percentage) from the Upscaling Mode, at once: DLAA 100%, Ultra\n"
+                     "Quality 77%, Quality 66.66%, Balanced 58%, Performance 50%, Ultra Performance 33.33%, Custom its row.\n"
+                     "Off: set Screen Percentage in the game's menu (it stops at 50%). The game's Anti-Aliasing Off puts its\n"
+                     "own value back.",
+          .is_visible = upscaling,
+      },
+      new Setting{
+          .key = "ReplaceTAA",
+          .binding = &replace_taa_row,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Replace the Game's TAA Pass (Faster)",
+          .section = TOOLS_SECTION,
+          .tooltip = "DLSS writes straight into the game's TAA output and the game's TAA pass is skipped. Off: the game's TAA\n"
+                     "runs first and DLSS is merged with its alpha.",
+          .is_visible = upscaling,
+      },
+      // The in-process frame generation (talesofarise_dlss/frame_generation.hpp), its own keys in [Rome AA].
+      new Setting{
+          .value_type = SettingValueType::CUSTOM,
+          .label = "Frame Generation",
+          .section = TOOLS_SECTION,
+          .on_draw = [] {
+            talesofarise::frame_generation::DrawSettings("Rome AA", &frame_generation);
+            return false;
+          },
+          .is_visible = upscaling,
+      },
+      // What DLSS did (the timings measured only while this is drawn).
+      new Setting{
+          .value_type = SettingValueType::CUSTOM,
+          .label = "DLSS Details",
+          .section = TOOLS_SECTION,
+          .on_draw = [] {
+            {
+              const std::shared_lock lock(state.mutex);
+              overlay_frame.store(state.frame + 1);
+            }
+            uint64_t completed;
+            uint32_t temporal_shader_hash;
+            uint64_t copied_per_frame;
+            std::string constants;
+            talesofarise::dlss::PerformanceSummary performance;
+            std::array<uint32_t, 4> extents;
+            {
+              const std::shared_lock lock(state.mutex);
+              completed = state.completed;
+              temporal_shader_hash = state.temporal_shader_hash;
+              copied_per_frame = state.copied_per_frame;
+              constants = state.constants;
+              performance = state.performance;
+              extents = {state.render_width, state.render_height, state.width, state.height};
+            }
+            const auto& version = dlss_library.version;
+            if (!dlss_library.folder.empty()) {
+              ImGui::TextWrapped("nvngx_dlss.dll %u.%u.%u %s (%s). An override in the NVIDIA app or Profile Inspector can load another version; the DLSS indicator shows the one in use.",
+                                 version[0], version[1], version[2], dlss_library.place,
+                                 reinterpret_cast<const char*>(std::filesystem::path(dlss_library.folder).u8string().c_str()));
+            }
+            ImGui::Text("Successful AA frames: %llu", static_cast<unsigned long long>(completed));
+            if (completed != 0) {
+              const uint32_t phases = diagnostics.jitter_phases.load();
+              const auto recommended = static_cast<uint32_t>(std::ceil(8.0 * std::pow(static_cast<double>(extents[2]) / std::max(extents[0], 1u), 2)));
+              const bool jitter_fixed = std::ranges::all_of(jitter_position_patches, &talesofarise::code_patch::CodePatch::applied);
+              ImGui::Text("Temporal shader: 0x%08X", temporal_shader_hash);
+              if (texture_lod_bias.controlling) {
+                ImGui::Text("Texture LOD bias: log2(render scale) %+g (the game's: %+g, at least %g)", texture_lod_bias.cvars[0].Get(),
+                            texture_lod_bias.game_values[0], texture_lod_bias.game_values[1]);
+              }
+              ImGui::Text("Jitter pattern: %s (NVIDIA recommends %u or more); %s", phases != 0 ? std::to_string(phases).c_str() : "measuring",
+                          recommended,
+                          (halton_jitter.patch.applied ? "NVIDIA's Halton (2, 3)"
+                                                       : (jitter_fixed ? "the game's, position fix on" : "the game's (correct down to 25%)")));
+              ImGui::Text("NVIDIA history resets: camera cuts %llu, skipped frames %llu, restarts %llu",
+                          static_cast<unsigned long long>(diagnostics.camera_cuts.load()),
+                          static_cast<unsigned long long>(diagnostics.skipped_frames.load()),
+                          static_cast<unsigned long long>(diagnostics.restarts.load()));
+            }
+            if (!constants.empty()) {
+              ImGui::TextWrapped("Constants: %s", constants.c_str());
+              ImGui::Text("CPU copy uploads: %.1f KB/frame", static_cast<double>(copied_per_frame) / 1024);
+            }
+            if (performance.cpu_samples != 0) {
+              ImGui::Text("CPU constants (queue + wait): %.3f ms", performance.cpu_readback_ms);
+              ImGui::Text("CPU addon submission: %.3f ms", performance.cpu_evaluate_ms);
+              if (performance.gpu_samples != 0) {
+                ImGui::Text("GPU stock TAA: %.3f ms", performance.gpu_ms[0]);
+                ImGui::Text("GPU input preparation: %.3f ms", performance.gpu_ms[1]);
+                ImGui::Text("GPU NVIDIA evaluation: %.3f ms", performance.gpu_ms[2]);
+                ImGui::Text("GPU merge + copy (none when replacing): %.3f ms", performance.gpu_ms[3]);
+              }
+              ImGui::TextWrapped("Averages since choosing this mode, measured only while this is shown. CPU and GPU times overlap.");
+            }
+            return false;
+          },
+          .is_visible = upscaling,
+      },
+      new Setting{
+          .value_type = SettingValueType::BUTTON,
+          .label = "Trace One Frame",
+          .section = TOOLS_SECTION,
+          .tooltip = "Writes tales_frame_trace.txt next to the game's exe about a second later, for bug reports.",
+          .on_change = [] {
+            // talesofarise_dlss/frame_trace.hpp looks for this marker at its presents.
+            std::wstring exe(32768, L'\0');
+            exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+            std::ofstream(std::filesystem::path(exe).parent_path() / L"renodx_trace_now", std::ios::binary | std::ios::trunc);
+            renodx::utils::log::i("[Rome] Trace One Frame: renodx_trace_now written.");
+          },
+      },
+      new Setting{
+          .value_type = SettingValueType::CUSTOM,
+          .label = "Capture Upscaling Inputs",
+          .section = TOOLS_SECTION,
+          .on_draw = [] {
+            if (ImGui::Button("Capture Upscaling Inputs (15 Seconds)")) expeditionsrome::dlss::temporal_capture::QueueCapture();
+            if (ImGui::IsItemHovered()) {
+              ImGui::SetTooltip("Diagnostics: keep the game's TAA on, then capture at fixed Screen Percentage / Temporal Upscaling settings.");
+            }
+            ImGui::TextWrapped("%s", expeditionsrome::dlss::temporal_capture::Snapshot().c_str());
+            return false;
+          },
+          .is_visible = [] { return aa_sliders.method == 0.f; },
+      },
+  });
+
+  // Graphics 2 of 2: the presets (every setting but shaders on load gets the preset's value, KEEP: the game's, so none keeps
+  // an older choice; contact shadows only in Game's own and Max), then each group's settings in its own section with their
+  // saved choices.
+  talesofarise::graphics_table::Prepare(GRAPHICS_SECTION, GRAPHICS_SETTINGS, graphics.entries);
+  const auto apply_preset = [](size_t preset_index) {
+    for (size_t index = 0; index < GRAPHICS_SETTINGS.size(); ++index) {
+      const auto& setting = GRAPHICS_SETTINGS[index];
+      if (std::wstring_view(setting.name) == NO_PRESET_SETTING) continue;
+      auto& entry = graphics.entries[index];
+      float value = KEEP;
+      if (preset_index == MAX_PRESET && !entry.choices.empty()) {
+        switch (setting.better) {
+          case Better::HIGHER:
+            value = entry.choices.back();
+            break;
+          case Better::LOWER:
+            value = entry.choices.front();
+            break;
+          case Better::EXACT:
+            // Insane's value, else the optional ones' extra; the others (cheaper volumetric fog) the game's.
+            value = setting.values[INSANE_PRESET - 1];
+            if (std::isnan(value) && std::string_view(setting.group) == OPTIONAL_GROUP) value = setting.values[INSANE_PRESET];
+            break;
+        }
+      } else if (preset_index != 0) {
+        value = setting.values[preset_index - 1];
       }
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
-    };
-    const auto count = [](const char* label, const char* key, uint32_t* value, int max, const char* tooltip) {
-      if (int shown = static_cast<int>(*value); ImGui::SliderInt(label, &shown, 1, max, "%d", ImGuiSliderFlags_AlwaysClamp)) {
-        *value = static_cast<uint32_t>(shown);
-        reshade::set_config_value(nullptr, "Rome AA", key, *value);
-      }
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tooltip);
-    };
-    ImGui::TextWrapped("Needs an RTX GPU and renodx-tw-dlaa64.exe next to this addon. Restart the game after turning on the first effect.");
-    checkbox("Ray-traced sun shadows", "RayTracedSunShadows", &ray_tracing.sun_shadows,
-             "Sun shadows from rays, with the game's: also where its shadow maps miss things or end.");
-    ImGui::BeginDisabled(!ray_tracing.sun_shadows);
-    slider("Shadow softness", "RayTracedShadowSoftness", &ray_tracing.sun_softness, 0.f, 3.f, "%.2f",
-           "The sun's size in degrees: shadows softer away from what casts them. 0: sharp.");
-    ImGui::EndDisabled();
-    checkbox("Ray-traced ambient occlusion", "RayTracedAmbientOcclusion", &ray_tracing.ambient_occlusion,
-             "Shade in corners and under things from rays, with the game's.");
-    ImGui::BeginDisabled(!ray_tracing.ambient_occlusion);
-    slider("Ambient occlusion range", "RayTracedAmbientRange", &ray_tracing.ambient_range, .25f, 5.f, "%.2f m",
-           "How far its rays look for what shades a point.");
-    checkbox("Ambient occlusion at a quarter rate", "RayTracedAOQuarter", &ray_tracing.ambient_quarter,
-             "One pixel of each 2 x 2 traced a frame, in turn: a quarter of the rays (DLSS smooths it). Faster.");
-    ImGui::EndDisabled();
-    checkbox("Ray-traced light bounce", "RayTracedLightBounce", &ray_tracing.light_bounce,
-             "Sunlight bouncing off what it hits onto what is near: lit ground brightens walls and shade.");
-    ImGui::BeginDisabled(!ray_tracing.light_bounce);
-    slider("Light bounce strength", "RayTracedLightBounceStrength", &ray_traced_bounce_strength, 0.f, 2.f, "%.2f",
-           "How much bounced light is added.");
-    count("Light bounce rays", "RayTracedLightBounceRays", &ray_tracing.light_bounce_rays, 16, "Rays per texel: less noise, heavier.");
-    slider("Light bounce range", "RayTracedLightBounceRange", &ray_tracing.light_bounce_range, 1.f, 50.f, "%.0f m",
-           "How far its rays look for light.");
-    ImGui::EndDisabled();
-    checkbox("Ray-traced reflections", "RayTracedReflections", &ray_tracing.reflections,
-             "Reflections from rays in place of the screen-space ones: also what is off screen.\n"
-             "Needs the game's screen-space reflections on.");
-    ImGui::BeginDisabled(!ray_tracing.reflections);
-    count("Reflection samples", "RayTracedReflectionSamples", &ray_tracing.reflection_samples, 8,
-          "Rays per pixel on rough surfaces: less noise, heavier.");
-    ImGui::EndDisabled();
-    ImGui::BeginDisabled(!ray_tracing.light_bounce && !ray_tracing.reflections);
-    checkbox("Path tracing", "PathTracing", &ray_tracing.path_tracing,
-             "The light bounce's and the reflections' rays go on bouncing: lit by what the screen never saw. Heavy.");
-    ImGui::BeginDisabled(!ray_tracing.path_tracing);
-    count("Path tracing bounces", "PathTracingBounces", &ray_tracing.path_bounces, 4, "Bounces past the first. More: brighter shade, heavier.");
-    ImGui::EndDisabled();
-    ImGui::EndDisabled();
-    if (ray_tracing_installed) ImGui::TextWrapped("%s", twattila::rt_scene::Status().c_str());
-    ImGui::TreePop();
+      const auto found = std::ranges::find(entry.choices, value);
+      entry.choice = (found == entry.choices.end() ? 0 : static_cast<int>(found - entry.choices.begin()) + 1);
+      talesofarise::graphics_table::SaveChoice(GRAPHICS_SECTION, entry);
+    }
+    if (preset_index == 0) {
+      renodx::utils::settings::UpdateSettings({{"ContactShadowsLength", 0.f}});
+    } else if (preset_index == MAX_PRESET) {
+      renodx::utils::settings::UpdateSettings({{"ContactShadowsLength", CONTACT_SHADOWS_MAX * 100.f}});
+    }
+  };
+  settings->push_back(new Setting{.value_type = SettingValueType::TEXT,
+                                  .label = "Applied live; a preset never lowers the game's own settings.",
+                                  .section = GRAPHICS_PRESETS_SECTION});
+  for (size_t preset_index = 0; preset_index < GRAPHICS_PRESETS.size(); ++preset_index) {
+    settings->push_back(new Setting{
+        .value_type = SettingValueType::BUTTON,
+        .label = GRAPHICS_PRESETS[preset_index],
+        .section = GRAPHICS_PRESETS_SECTION,
+        .group = "graphics-presets",
+        .on_change = [apply_preset, preset_index] { apply_preset(preset_index); },
+    });
   }
-  const auto& volumetric_fog = graphics.entries[VOLUMETRIC_FOG].cvar;
-  const bool fog_off = volumetric_fog.values[0] != nullptr && volumetric_fog.Get() == 0.f;
-  const char* open_group = nullptr;
-  bool group_open = false;
+  settings->insert(settings->end(), {
+      new Setting{.value_type = SettingValueType::TEXT,
+                  .label = "Some settings apply after loading a new area, anisotropic filtering to textures loaded afterwards. Insane and "
+                           "Max are very heavy and use a lot of VRAM. Max puts every setting at its highest, the optional ones too. "
+                           "Every preset keeps the game's volumetric fog: turning it off or lowering it is the biggest saving. Shaders "
+                           "on load is in no preset.",
+                  .section = GRAPHICS_PRESETS_SECTION},
+      new Setting{.value_type = SettingValueType::CUSTOM,
+                  .section = GRAPHICS_PRESETS_SECTION,
+                  .on_draw = [] {
+                    if (!graphics.status.empty()) ImGui::TextWrapped("%s", graphics.status.c_str());
+                    return false;
+                  }},
+  });
+  const auto fog_off = [] {
+    const auto& volumetric_fog = graphics.entries[VOLUMETRIC_FOG].cvar;
+    return volumetric_fog.values[0] != nullptr && volumetric_fog.Get() == 0.f;
+  };
   for (size_t index = 0; index < GRAPHICS_SETTINGS.size(); ++index) {
     const auto& setting = GRAPHICS_SETTINGS[index];
-    auto& entry = graphics.entries[index];
-    if (open_group == nullptr || std::string_view(open_group) != setting.group) {
-      open_group = setting.group;
-      group_open = ImGui::CollapsingHeader(setting.group);
-    }
-    if (!group_open) continue;
-    const bool usable = entry.cvar.values[0] != nullptr;
-    const float game_value = (entry.controlling ? entry.game_value : (usable ? entry.cvar.Get() : 0.f));
-    const std::string game_label = (usable ? std::format("Game's ({:g})", game_value) : std::string("Game's"));
-    ImGui::BeginDisabled(!usable || (fog_off && std::wstring_view(setting.name).starts_with(L"r.VolumetricFog.")));
-    const auto choice_label = [&](int choice) {
-      if (choice == 0) return game_label;
-      return std::format("{:g}", entry.choices[choice - 1]);
-    };
-    // A slider over the choices, showing the current one (as RenoDX's labelled settings).
-    if (ImGui::SliderInt(setting.label, &entry.choice, 0, static_cast<int>(entry.choices.size()), choice_label(entry.choice).c_str(),
-                         ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
-      SaveChoice(entry);
-    }
-    ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-      ImGui::SetTooltip("%s%s%s%s", (setting.tooltip != nullptr ? setting.tooltip : ""), (setting.tooltip != nullptr ? "\n\n" : ""),
-                        entry.key.c_str(),
-                        (usable ? (entry.controlling ? std::format(": now {:g}", entry.cvar.Get()) : std::string(": the game's"))
-                                : std::string(": not found in this version of the game"))
-                            .c_str());
+    const bool fog_cell = std::wstring_view(setting.name).starts_with(L"r.VolumetricFog.");
+    settings->push_back(talesofarise::graphics_table::Row(setting, &graphics.entries[index], GRAPHICS_SECTION, setting.group,
+                                                          fog_cell ? std::function<bool()>(fog_off) : std::function<bool()>()));
+    // Not a cvar (contact_shadows.hpp): after the shadows' settings.
+    if (index + 1 < GRAPHICS_SETTINGS.size() && std::string_view(setting.group) == "Shadow quality"
+        && std::string_view(GRAPHICS_SETTINGS[index + 1].group) != "Shadow quality") {
+      settings->push_back(new Setting{
+          .key = "ContactShadowsLength",
+          .binding = &contact_shadows_row,
+          .default_value = 0.f,
+          .label = "Contact Shadows (Experimental)",
+          .section = "Shadow quality",
+          .tooltip = "Unreal's own short sun shadows where things meet the ground and in small gaps (screen-space), a share\n"
+                     "of the screen. Longer: shadows reach farther from contact points; can show halos at the screen's\n"
+                     "edges. 0: off. Off while ray-traced sun shadows are on. Max preset: 3%.",
+          .max = 10.f,
+          .format = "%.1f%%",
+      });
     }
   }
-  if (!advanced) return;
-
-  heading("Advanced", OTHER_COLOR);
-  if (ImGui::Checkbox("Set the game's render scale from the AA mode (live)", &live.enabled)) {
-    reshade::set_config_value(nullptr, "Rome AA", "LiveScale", live.enabled);
-    if (live.enabled) {
-      live.problem.clear();
-      live.retries = 0;
-      if (live.finder.phase() == Phase::FAILED) live.finder = {};
-    }
-  }
-  ImGui::TextWrapped("Live: DLAA 100%%, Ultra Quality 77%%, Quality 66.66%%, Balanced 58%%, Performance 50%%, Ultra Performance 33.33%%, Custom its slider; AA Off puts the game's own value back. Off: set Screen Percentage in the game's menu (it stops at 50%%).");
-  ImGui::TextWrapped("Custom follows the game's actual 1-100%% input scale; 100%% uses DLAA. Below 33%% is beyond NVIDIA's modes. Changing scale resets NVIDIA history.");
-  ImGui::TextWrapped("Presets: E is the last CNN model, K the first transformer, M and L the second; L is the sharpest and heaviest. NVIDIA's defaults: K for DLAA/Quality/Balanced, M for Performance, L for Ultra Performance. A preset forced in the NVIDIA app or NVIDIA Profile Inspector overrides this one.");
-  ImGui::TextWrapped("Ultra Quality (77%%) is not an NVIDIA mode: it runs NVIDIA's Quality model at 77%%.");
-  ImGui::TextWrapped("Both low/high-scale Ultra and Fast TAAU compute variants are recognized. Below 100%%, Temporal Upscaling OFF still uses stock AA; that pixel-shader path is not supported yet.");
-  ImGui::TextWrapped("Replacing skips the game's TAA/TAAU dispatch and NVIDIA writes straight into its output, once the CPU copy of the constants is trusted. Off, or while the GPU readback is still in use, stock TAA runs first and DLSS is merged with its alpha.");
-  ImGui::TextWrapped("Constants come from a CPU copy of the game's uploads once it matched %u exact GPU readbacks in a row; it stays checked against GPU copies without waiting, and any mismatch returns to the waiting readback.", talesofarise::dlss::ConstantReadback::TRUST_AFTER);
-  ImGui::Separator();
-  if (!dlss_library.folder.empty()) {
-    ImGui::TextWrapped("nvngx_dlss.dll %u.%u.%u %s (%s). An override in the NVIDIA app or Profile Inspector can load another version; the DLSS indicator shows the one in use.",
-                       version[0], version[1], version[2], dlss_library.place,
-                       reinterpret_cast<const char*>(std::filesystem::path(dlss_library.folder).u8string().c_str()));
-  }
-  ImGui::Text("Successful AA frames: %llu", static_cast<unsigned long long>(completed));
-  if (completed != 0) {
-    ImGui::Text("Temporal shader: 0x%08X", temporal_shader_hash);
-    if (texture_lod_bias.controlling) {
-      ImGui::Text("Texture LOD bias: log2(render scale) %+g (the game's: %+g, at least %g)", texture_lod_bias.cvars[0].Get(),
-                  texture_lod_bias.game_values[0], texture_lod_bias.game_values[1]);
-    }
-    ImGui::Text("Jitter pattern: %s (NVIDIA recommends %u or more); %s",
-                phases != 0 ? std::to_string(phases).c_str() : "measuring", recommended,
-                (halton_jitter.patch.applied ? "NVIDIA's Halton (2, 3)"
-                                             : (jitter_fixed ? "the game's, position fix on" : "the game's (correct down to 25%)")));
-    ImGui::Text("NVIDIA history resets: camera cuts %llu, skipped frames %llu, restarts %llu",
-                static_cast<unsigned long long>(diagnostics.camera_cuts.load()),
-                static_cast<unsigned long long>(diagnostics.skipped_frames.load()),
-                static_cast<unsigned long long>(diagnostics.restarts.load()));
-  }
-  if (!constants.empty()) {
-    ImGui::TextWrapped("Constants: %s", constants.c_str());
-    ImGui::Text("CPU copy uploads: %.1f KB/frame", static_cast<double>(copied_per_frame) / 1024);
-  }
-  if (performance.cpu_samples != 0) {
-    ImGui::Separator();
-    ImGui::Text("CPU constants (queue + wait): %.3f ms", performance.cpu_readback_ms);
-    ImGui::Text("CPU addon submission: %.3f ms", performance.cpu_evaluate_ms);
-    if (performance.gpu_samples != 0) {
-      ImGui::Text("GPU stock TAA: %.3f ms", performance.gpu_ms[0]);
-      ImGui::Text("GPU input preparation: %.3f ms", performance.gpu_ms[1]);
-      ImGui::Text("GPU NVIDIA evaluation: %.3f ms", performance.gpu_ms[2]);
-      ImGui::Text("GPU merge + copy (none when replacing): %.3f ms", performance.gpu_ms[3]);
-    } else {
-      ImGui::TextUnformatted("GPU timing samples pending or unavailable; AA is unaffected.");
-    }
-    ImGui::Text("Timing samples: CPU %llu / GPU %llu; skipped %llu / rejected %llu",
-                static_cast<unsigned long long>(performance.cpu_samples), static_cast<unsigned long long>(performance.gpu_samples),
-                static_cast<unsigned long long>(performance.dropped), static_cast<unsigned long long>(performance.rejected));
-    ImGui::TextWrapped("Averages since selecting this AA mode, measured only while Advanced is open. CPU and GPU times overlap: do not add them together. Compare FPS with this overlay closed too.");
-  }
-  ImGui::Separator();
-  ImGui::BeginDisabled(mode != AAMode::OFF);
-  if (ImGui::Button("Capture upscaling inputs (15 seconds)")) {
-    expeditionsrome::dlss::temporal_capture::QueueCapture();
-  }
-  ImGui::EndDisabled();
-  ImGui::TextWrapped("Diagnostic capture only: choose AA Off, keep TAA on, then capture at fixed Screen Percentage / Temporal Upscaling settings. Capturing does not enable DLSS.");
-  ImGui::TextWrapped("%s", expeditionsrome::dlss::temporal_capture::Snapshot().c_str());
 }
 
 // After the tonemapper's draw: frame generation's hudless colour from its target (at the output size only).
@@ -1924,50 +1988,6 @@ constexpr auto OnTonemapper = []<typename Context>(Context&) -> renodx::utils::c
 // `module`: this add-on (frame generation's files beside it).
 inline bool Install(HMODULE module) {
   if (attached) return true;
-  // Settings apply at launch, without opening the overlay.
-  int saved_mode = 0;
-  if (reshade::get_config_value(nullptr, "Rome AA", "Mode", saved_mode)
-      && saved_mode >= 0 && static_cast<size_t>(saved_mode) < AA_MODES.size()) {
-    requested_mode.store(static_cast<AAMode>(saved_mode));
-  }
-  reshade::get_config_value(nullptr, "Rome AA", "LiveScale", live.enabled);
-  if (int choice = 2; reshade::get_config_value(nullptr, "Rome AA", "TextureLodBias", choice)) {
-    texture_lod_bias.choice = std::clamp(choice, 0, 3);
-  }
-  for (size_t index = 0; index < GRAPHICS_SETTINGS.size(); ++index) {
-    const auto& setting = GRAPHICS_SETTINGS[index];
-    auto& entry = graphics.entries[index];
-    entry.key = std::filesystem::path(setting.name).string();
-    for (const auto& values : {std::span<const float>(setting.values), std::span<const float>(setting.more_extras)}) {
-      for (const float value : values) {
-        if (!std::isnan(value) && std::ranges::find(entry.choices, value) == entry.choices.end()) entry.choices.push_back(value);
-      }
-    }
-    std::ranges::sort(entry.choices);
-    // The slider's steps between neighbouring choices: every whole number across small gaps (cascades 6 -> 10), the
-    // 1-2-5 numbers across gaps of more than 2x (draw distance 3 -> 10: 5).
-    std::vector<float> steps;
-    for (size_t choice = 0; choice + 1 < entry.choices.size(); ++choice) {
-      const float low = entry.choices[choice];
-      const float high = entry.choices[choice + 1];
-      if (low == std::round(low) && high == std::round(high) && high - low <= 4.f && low <= 10.f) {
-        for (float value = low + 1.f; value < high; ++value) steps.push_back(value);
-      } else if (low > 0.f && high > low * 2.f) {
-        for (float decade = std::pow(10.f, std::floor(std::log10(low))); decade < high; decade *= 10.f) {
-          for (const float digit : {1.f, 2.f, 5.f}) {
-            if (const float value = decade * digit; value > low * 1.001f && value < high * .999f) steps.push_back(value);
-          }
-        }
-      }
-    }
-    entry.choices.insert(entry.choices.end(), steps.begin(), steps.end());
-    std::ranges::sort(entry.choices);
-    // The saved value's nearest choice ("game" does not read as a number: the game's value).
-    if (float saved = 0.f; !entry.choices.empty() && reshade::get_config_value(nullptr, GRAPHICS_SECTION, entry.key.c_str(), saved)) {
-      const auto nearest = std::ranges::min_element(entry.choices, {}, [saved](float choice) { return std::abs(choice - saved); });
-      entry.choice = static_cast<int>(nearest - entry.choices.begin()) + 1;
-    }
-  }
   dlss_library = expeditionsrome::dlss::FindDlssLibrary();
   if (dlss_library.folder.empty()) {
     renodx::utils::log::w("[Rome DLAA] nvngx_dlss.dll not found next to the addon or the game.");
@@ -1975,25 +1995,11 @@ inline bool Install(HMODULE module) {
     renodx::utils::log::i("[Rome DLAA] nvngx_dlss.dll ", dlss_library.version[0], ".", dlss_library.version[1], ".",
                           dlss_library.version[2], " ", dlss_library.place, ".");
   }
-  if (uint32_t saved_preset = 0; reshade::get_config_value(nullptr, "Rome AA", "Preset", saved_preset)
-                                 && std::ranges::find(PRESETS, saved_preset, &PresetSettings::value) != PRESETS.end()) {
-    preset.store(saved_preset);
-  }
-  if (int settings_mode = 0; reshade::get_config_value(nullptr, "Rome AA", "SettingsMode", settings_mode)) advanced = settings_mode == 1;
-  if (bool replace = true; reshade::get_config_value(nullptr, "Rome AA", "ReplaceTAA", replace)) replace_taa.store(replace);
-  reshade::get_config_value(nullptr, "Rome AA", "EffectsAtOutputResolution", effects_at_output);
-  if (float contact_length = 0.f; reshade::get_config_value(nullptr, "Rome AA", "ContactShadows", contact_length)) {
-    expeditionsrome::dlss::contact_shadows::length.store(std::isfinite(contact_length) ? std::clamp(contact_length, 0.f, .1f) : 0.f);
-  }
-  if (reshade::get_config_value(nullptr, "Rome AA", "CustomScale", live.custom)) {
-    live.custom = std::isfinite(live.custom) ? std::clamp(std::round(live.custom), 1.f, 100.f) : 50.f;
-  }
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
   reshade::register_event<reshade::addon_event::present>(expeditionsrome::dlss::temporal_capture::OnPresent);
-  reshade::register_overlay("Rome DLAA (experimental)", OnOverlay);
   for (const uint32_t shader_hash : TEMPORAL_SHADERS) {
     renodx::utils::command_action::Register(OnCommand, {
                                                            .shader_hash = shader_hash,
@@ -2007,31 +2013,10 @@ inline bool Install(HMODULE module) {
                                                                                                                                         : renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW),
                                                                                                 });
   }
-  {
-    auto& ray_tracing = ray_tracing_settings;
-    reshade::get_config_value(nullptr, "Rome AA", "RayTracedSunShadows", ray_tracing.sun_shadows);
-    reshade::get_config_value(nullptr, "Rome AA", "RayTracedShadowSoftness", ray_tracing.sun_softness);
-    reshade::get_config_value(nullptr, "Rome AA", "RayTracedAmbientOcclusion", ray_tracing.ambient_occlusion);
-    reshade::get_config_value(nullptr, "Rome AA", "RayTracedAmbientRange", ray_tracing.ambient_range);
-    reshade::get_config_value(nullptr, "Rome AA", "RayTracedAOQuarter", ray_tracing.ambient_quarter);
-    reshade::get_config_value(nullptr, "Rome AA", "RayTracedLightBounce", ray_tracing.light_bounce);
-    reshade::get_config_value(nullptr, "Rome AA", "RayTracedLightBounceStrength", ray_traced_bounce_strength);
-    reshade::get_config_value(nullptr, "Rome AA", "RayTracedLightBounceRays", ray_tracing.light_bounce_rays);
-    reshade::get_config_value(nullptr, "Rome AA", "RayTracedLightBounceRange", ray_tracing.light_bounce_range);
-    reshade::get_config_value(nullptr, "Rome AA", "RayTracedReflections", ray_tracing.reflections);
-    reshade::get_config_value(nullptr, "Rome AA", "RayTracedReflectionSamples", ray_tracing.reflection_samples);
-    reshade::get_config_value(nullptr, "Rome AA", "PathTracing", ray_tracing.path_tracing);
-    reshade::get_config_value(nullptr, "Rome AA", "PathTracingBounces", ray_tracing.path_bounces);
-    ray_tracing.sun_softness = std::isfinite(ray_tracing.sun_softness) ? std::clamp(ray_tracing.sun_softness, 0.f, 3.f) : .5f;
-    ray_tracing.ambient_range = std::isfinite(ray_tracing.ambient_range) ? std::clamp(ray_tracing.ambient_range, .25f, 5.f) : 2.f;
-    ray_tracing.reflection_samples = std::clamp(ray_tracing.reflection_samples, 1u, 8u);
-    ray_tracing.path_bounces = std::clamp(ray_tracing.path_bounces, 1u, 4u);
-    ray_tracing.light_bounce_rays = std::clamp(ray_tracing.light_bounce_rays, 1u, 16u);
-    ray_tracing.light_bounce_range = std::isfinite(ray_tracing.light_bounce_range) ? std::clamp(ray_tracing.light_bounce_range, 1.f, 50.f) : 10.f;
-    ray_traced_bounce_strength = std::isfinite(ray_traced_bounce_strength) ? std::clamp(ray_traced_bounce_strength, 0.f, 2.f) : 1.f;
-    ray_tracing_installed = ray_tracing.sun_shadows || ray_tracing.ambient_occlusion || ray_tracing.light_bounce || ray_tracing.reflections;
-    if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Install();
-  }
+  // Installed when an effect is on at launch (restart to turn the first one on).
+  ray_tracing_installed = rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.light_bounce != 0.f
+                          || rt_sliders.reflections != 0.f;
+  if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Install();
   renodx::utils::command_action::Register(expeditionsrome::dlss::contact_shadows::OnLightRectangle, {
                                                                                                         .shader_hash = expeditionsrome::dlss::contact_shadows::LIGHT_RECTANGLE_SHADER,
                                                                                                         .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
@@ -2114,7 +2099,6 @@ inline void Uninstall() {
     if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Uninstall();
     talesofarise::frame_trace::Stop();
     talesofarise::dlss::constants::Use(DLL_PROCESS_DETACH);
-    reshade::unregister_overlay("Rome DLAA (experimental)", OnOverlay);
     reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
     reshade::unregister_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
     reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);

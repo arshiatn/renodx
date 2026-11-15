@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -25,6 +26,8 @@
 #include "../talesofarise/hdr_only.hpp"
 #include "../talesofarise/test_hooks.hpp"
 #include "../twattila/draw_dispatch.hpp"
+#include "../twattila/feature_settings.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/output_encoding.hpp"
 #include "./dlss_graphics.hpp"
 #include "./shared.h"
@@ -37,24 +40,20 @@ namespace {
 ShaderInjectData shader_injection;
 float current_settings_mode = 0.f;
 
-bool IsAdvancedSettings() {
-  return current_settings_mode >= 1.f;
-}
-
 bool IsHDRMode() {
   return shader_injection.hdr >= 1.f;
 }
 
 bool IsExtendedMode() {
-  return shader_injection.hdr == 1.f && IsAdvancedSettings();
+  return shader_injection.hdr == 1.f;
 }
 
 bool IsPsychoMode() {
-  return shader_injection.hdr == 2.f && IsAdvancedSettings();
+  return shader_injection.hdr == 2.f;
 }
 
 bool IsPsychoV35Mode() {
-  return shader_injection.hdr == 3.f && IsAdvancedSettings();
+  return shader_injection.hdr == 3.f;
 }
 
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
@@ -175,7 +174,7 @@ void BuildRuntimeData() {
 
   // 0-2 slider, 1 = default.
   auto slider = [](const std::string& key, float* binding, const std::string& label, const std::string& section,
-                   const std::string& tooltip, bool (*is_enabled)(), bool (*is_visible)()) {
+                   const std::string& tooltip, bool (*is_enabled)(), bool (*is_visible)() = [] { return true; }) {
     return new renodx::utils::settings::Setting{
         .key = key,
         .binding = binding,
@@ -199,7 +198,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .can_reset = false,
           .label = "Settings Mode",
-          .labels = {"Simple", "Advanced"},
+          .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
           .is_global = true,
       },
       new renodx::utils::settings::Setting{
@@ -338,19 +337,19 @@ void BuildRuntimeData() {
 
       // Extra (HDR only) /////////////////////////////////////////////////////////////////////////
       slider("bloom", &shader_injection.bloom, "Bloom", "Extra", "Bloom multiplier (incl. lens dirt). Probably needs in-game Post Processing on.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
       slider("vignette", &shader_injection.vignette, "Vignette", "Extra", "Vignette multiplier. Probably needs in-game Post Processing on.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
       slider("godrays", &shader_injection.godrays, "Godrays", "Extra", "Light shaft multiplier. Probably needs in-game Post Processing on.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
       slider("volumetric_fog", &shader_injection.volumetric_fog, "Volumetric Fog (experimental)", "Extra",
              "Volumetric fog multiplier, 0 = off. Fog on translucent objects (particles, glass) stays\n"
              "unchanged, and the fog's cost remains: Engine.ini r.VolumetricFog=0 is the cheaper off.\n"
              "Only shadows High/Ultra should have volumetric fog on.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
       slider("sharpening", &shader_injection.sharpening, "Sharpening", "Extra",
              "Multiplier on the game's sharpening (CAS pass and tonemapper). Default is 1.0. Recommendation: 0",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
 
       // Extra (Probably not used): engine features in the shader dump that the game doesn't seem to use (ATN). ///
       // Ambient Occlusion: GT-VBAO in the game's last AO level (talesofarise/ue_bitmask_ao.hlsli). ////////////////
@@ -423,10 +422,10 @@ void BuildRuntimeData() {
       },
 
       slider("film_grain", &shader_injection.film_grain, "Film Grain", "Extra (Probably not used)",
-             "Multiplier on the game's film grain (where the game uses it).", IsHDRMode, IsAdvancedSettings),
+             "Multiplier on the game's film grain (where the game uses it).", IsHDRMode),
       slider("chromatic_aberration", &shader_injection.chromatic_aberration, "Chromatic Aberration",
              "Extra (Probably not used)", "Multiplier on the game's chromatic aberration (where the game uses it).",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
   };
   twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 }
@@ -462,6 +461,8 @@ namespace {
 void ConfigureAddon() {
   if (configured) return;
 
+  // The former DLSS add-on's [Rome AA] keys into the page's, once, before the settings load (settings::Use).
+  expeditionsrome::dlss_graphics::Migrate();
   BuildRuntimeData();
   // Without the helper (the HDR-only snapshot), after Settings Mode.
   settings.insert(settings.begin() + 1, new renodx::utils::settings::Setting{
@@ -471,6 +472,17 @@ void ConfigureAddon() {
                                             .tint = talesofarise::hdr_only::WARNING_TINT,
                                             .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
                                         });
+  settings.insert(settings.begin() + 2, new renodx::utils::settings::Setting{
+                                            .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                                            .label = "The game has no HDR option of its own: this add-on's Output makes it HDR.",
+                                            .section = "General",
+                                        });
+  // Section titles: one colour, Graphics 2 of 2's pink, the page's its own; then the page (Graphics 1 and 2 of 2).
+  const std::vector<std::string> engine_sections = expeditionsrome::dlss_graphics::EngineSections();
+  twattila::feature_settings::SetTints({"General", "Presets", "UE Extended", "PsychoV35", "PsychoV31", "Extra", "Extra (Probably not used)",
+                                        "Output (Restart Required)", "About"},
+                                       engine_sections);
+  expeditionsrome::dlss_graphics::AppendPage(&settings, &shader_injection.ssao_mode);
 
   // Shaders cb
   renodx::mods::shader::expected_constant_buffer_space = 50;
@@ -529,14 +541,13 @@ void ConfigureAddon() {
     auto* setting = new renodx::utils::settings::Setting{
         .key = "SwapChainEncoding",
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = 1.f,
+        .default_value = 3.f,
         .label = "Output",
         .section = "Output (Restart Required)",
-        .tooltip = "HDR10: 10-bit. scRGB: 16-bit (default). HDR frame generation always uses HDR10.\n"
-                   "SDR: displays without HDR (all fixes and options stay). Auto: scRGB with Windows HDR on, else SDR.",
+        .tooltip = "HDR10: 10-bit. scRGB: 16-bit. HDR frame generation always uses HDR10.\n"
+                   "SDR: displays without HDR (all fixes and options stay). Auto (default): scRGB with Windows HDR on, else SDR.",
         .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     twattila::output_encoding::Configure({
@@ -573,11 +584,15 @@ void ConfigureAddon() {
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
       .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
       .section = "About",
-      .is_visible = IsAdvancedSettings,
   });
   // No NexusMods page known for this game's mod yet.
   const auto buttons = talesofarise::hdr_only::AboutButtons("https://www.nexusmods.com/expeditionsrome/mods/2");
   settings.insert(settings.end(), buttons.begin(), buttons.end());
+
+  // Settings Mode's pages: HDR & Effects, Graphics 1 of 2 (graphics_page.hpp and the upscaling tools), Graphics 2 of 2.
+  std::vector<std::string> graphics_sections = twattila::graphics_page::Sections();
+  graphics_sections.push_back(expeditionsrome::dlss_graphics::TOOLS_SECTION);
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, graphics_sections);
 
   configured = true;
 }
