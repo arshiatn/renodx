@@ -223,6 +223,11 @@ class ProxyFrameGeneration12 {
       failure_.clear();
       started_ = std::format(" (started in {:.1f} s)", make_seconds_);
     }
+    static const long test_removal_at = TestRemovalAt(L"RENODX_TW_TEST_FG_DEVICE_REMOVAL");
+    static long test_presents = 0;
+    if (++test_presents == test_removal_at) {
+      if (ComPtr<ID3D12Device5> device5; SUCCEEDED(device_.As(&device5))) device5->RemoveDevice();
+    }
     const bool sdr = shared->fg_sdr != 0;
     if (window_.Stale(game_window) || !chain_ || chain_width_ != width_ || chain_height_ != height_ || chain_format_ != format_ || chain_sdr_ != sdr) {
       window_.Hide();

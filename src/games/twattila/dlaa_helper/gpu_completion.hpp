@@ -6,13 +6,23 @@
 
 #include <windows.h>
 
-#include <cstdint>
-#ifdef RENODX_TW_TEST_GPU_WAITS
 #include <array>
+#include <cstdint>
+#include <cwchar>
+#ifdef RENODX_TW_TEST_GPU_WAITS
 #include <cstdlib>
 #endif
 
 namespace twattila::dlaa_helper {
+
+// The test harnesses' device losses: `variable`=<n> (0: none) removes a device at the n-th call its owner counts, as a
+// GPU hang removes it (main.cpp makes a new one). RENODX_TW_TEST_DEVICE_REMOVAL: Ray Reconstruction's evaluations;
+// RENODX_TW_TEST_FG_DEVICE_REMOVAL: frame generation's presents (Streamline's or FSR's / XeSS's).
+inline long TestRemovalAt(const wchar_t* variable) {
+  std::array<wchar_t, 16> value = {};
+  if (GetEnvironmentVariableW(variable, value.data(), static_cast<DWORD>(value.size())) == 0) return 0;
+  return std::wcstol(value.data(), nullptr, 10);
+}
 
 #ifdef RENODX_TW_TEST_GPU_WAITS
 // A test build of the helper only (build.ps1 run with CL=-DRENODX_TW_TEST_GPU_WAITS, never shipped): `variable`=<n> in
