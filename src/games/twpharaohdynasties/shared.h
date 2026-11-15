@@ -158,14 +158,14 @@ struct ShaderInjectData {
 #define HDR_STOPS log2(HDR_MAXEXPECTED / HDR_PEAK)
 
 // PsychoV30 keeps a fixed 1.0 exposure, 0.18 input/output anchors, full target
-// gamut projection, BT.2020 target volume, and automatic compression. The
+// gamut projection, BT.2020 target volume (BT.709 on Output SDR), and automatic compression. The
 // compatibility-only parameters between purity and cone response stay neutral.
 // Last: highlight hue shift (SI.hue_shift).
 #define ApplyPsychoV30(color)                                               \
   renodx_custom::tonemap::psycho30::psychotm_test30(                             \
       (color), HDR_PEAK,  SI.exposure, SI.highlights, SI.shadows, SI.contrast,            \
       SI.saturation, 1.f, 100.f, 1.f, 1.f, 0, SI.cone_response_exponent,       \
-      0.18f, 0.18f, 1.f, 1, 1.f, 0.f, SI.hue_shift)
+      0.18f, 0.18f, 1.f, ((SI.swap_chain_encoding == 2.f) ? 0 : 1), 1.f, 0.f, SI.hue_shift)
 
 
 // // For the modded auto exposure
