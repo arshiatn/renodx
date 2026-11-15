@@ -363,9 +363,9 @@ void BuildRuntimeData() {
                                            .history = (temporal ? 0.95f : 0.f),
                                            .frame = (temporal ? shader_injection.ssao_frame : 0.f),
                                            .bounces = shader_injection.light_bounce_multi,
-                                           .checkerboard = (temporal && !traced && shader_injection.light_bounce_checkerboard != 0.f) ? 1.f : 0.f,
-                                           .backface = (shader_injection.light_bounce_backface != 0.f) ? 1.f : 0.f,
-                                           .auto_thickness = (shader_injection.light_bounce_auto_thickness != 0.f) ? 1.f : 0.f,
+                                           .checkerboard = ((temporal && !traced && shader_injection.light_bounce_checkerboard != 0.f) ? 1.f : 0.f),
+                                           .backface = ((shader_injection.light_bounce_backface != 0.f) ? 1.f : 0.f),
+                                           .auto_thickness = ((shader_injection.light_bounce_auto_thickness != 0.f) ? 1.f : 0.f),
                                        },
                                        shader_injection.light_bounce_denoise != 0.f);
   };
@@ -1571,7 +1571,7 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
     rays.nrd = rt_sliders.denoiser != 0.f && rysesonofrome::graphics::requested_mode.load() != rysesonofrome::graphics::AAMode::OFF;
     rays.ao_reblur = rt_sliders.ao_reblur != 0.f;
     rays.debug_view = static_cast<uint32_t>(rt_sliders.debug_view);
-    rays.scene_test = (rt_sliders.debug_view != 0.f) ? static_cast<uint32_t>(rt_sliders.scene_test) : 0u;
+    rays.scene_test = ((rt_sliders.debug_view != 0.f) ? static_cast<uint32_t>(rt_sliders.scene_test) : 0u);
     rays.debug_log = rt_sliders.debug_log != 0.f;
     // Rays a Pixel: Match Output, those of the output pixels a render pixel stands for (at most 8).
     const auto render = rysesonofrome::ray_tracing::HOST.render_size();
