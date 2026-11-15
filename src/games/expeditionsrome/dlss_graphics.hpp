@@ -106,13 +106,17 @@ constexpr std::array<ModeSettings, 8> AA_MODES = {{
 static std::atomic<uint32_t> buffer_multiple = 4;
 
 // UE reuses 29C140B2/201C3D3D with reduced inputs at high screen percentages.
-// A shader hash identifies the compute contract, not the active render scale. The last four (seen in the shader dump
-// only, never in a frame) read and write what the first six do, without the upsample filter's kernel width (E91209D0
-// with it). Not here: the six that also write a half-size copy of the result to u1 (skipping them would leave it old)
-// and the depth of field's four temporal passes (census: tools/nontw/expeditions/census/census_taa.txt).
-constexpr std::array<uint32_t, 10> TEMPORAL_SHADERS = {
+// A shader hash identifies the compute contract, not the active render scale. From the seventh on (seen in the shader
+// dump only, never in a frame) they read and write what the first six do: four without the upsample filter's kernel width
+// (E91209D0 with it), then six that also store a half-size copy of their result in u1 (Unreal's TAA downsampling, motion
+// blur off with compute post-processing): their stock pass always runs, its u1 kept, and the upscaler is merged over its
+// u0 (skipping it would leave u1 old). Not here: the depth of field's four temporal passes (census:
+// tools/nontw/expeditions/census/census_taa.txt).
+constexpr std::array<uint32_t, 16> TEMPORAL_SHADERS = {
     0x29C140B2u, 0x201C3D3Du, 0xCCB4A156u, 0xD8C07EEEu, 0x4B43383Du, 0xB266ECB6u,
-    0xE91209D0u, 0x71C87DBCu, 0x90BED7D1u, 0xBC7F1717u};
+    0xE91209D0u, 0x71C87DBCu, 0x90BED7D1u, 0xBC7F1717u,
+    0x0BFD441Fu, 0x2D45E8A9u, 0x38C84ED8u, 0x43330B16u, 0x7E46ACA4u, 0x87970FD3u};
+constexpr auto HALF_COPY_TEMPORAL_SHADERS = std::span(TEMPORAL_SHADERS).subspan(10);
 
 struct Texture {
   ComPtr<ID3D11Texture2D> resource;
@@ -1144,7 +1148,8 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
   frame->measuring = overlay != 0 && frame->frame + 1 - overlay < 120;
   frame->sample_cpu = frame->measuring && runtime.last_frame != UINT64_MAX;
   if (frame->sample_cpu) runtime.performance.Begin(frame->context.Get());
-  if (frame->from_mirror && replace_taa.load()) {
+  const bool half_copy = std::ranges::find(HALF_COPY_TEMPORAL_SHADERS, frame->temporal_shader_hash) != HALF_COPY_TEMPORAL_SHADERS.end();
+  if (frame->from_mirror && replace_taa.load() && !half_copy) {
     // Constants are known before the dispatch: the upscaler replaces the stock pass (~0 ms "stock TAA").
     runtime.performance.Mark(frame->context.Get());
     const bool replaced = Evaluate(frame.get(), true);
@@ -2121,7 +2126,7 @@ inline bool Install() {
   talesofarise::dlss::constants::log_tag = "[Rome AA constants]";
   talesofarise::dlss::constants::Use(DLL_PROCESS_ATTACH);
   attached = true;
-  renodx::utils::log::i("[Rome DLAA] The helper's DLAA / DLSS, FSR and XeSS at the game's TAA (ten Ultra/Fast compute hashes; exact/4/8-pixel allocations), frame generation, Ray Reconstruction; live render scale; graphics settings.");
+  renodx::utils::log::i("[Rome DLAA] The helper's DLAA / DLSS, FSR and XeSS at the game's TAA (sixteen Ultra/Fast compute hashes; exact/4/8-pixel allocations), frame generation, Ray Reconstruction; live render scale; graphics settings.");
   return true;
 }
 
