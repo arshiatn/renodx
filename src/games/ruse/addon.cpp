@@ -44,6 +44,7 @@
 #include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./bridge.hpp"
+#include "./bridge_replay.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -122,10 +123,17 @@ void OnBridgePushDescriptors(reshade::api::command_list*, reshade::api::shader_s
 void OnBridgePushConstants(reshade::api::command_list*, reshade::api::shader_stage, reshade::api::pipeline_layout,
                            uint32_t layout_param, uint32_t first, uint32_t count, const void* values) {
   ruse::bridge::OnPushConstants(layout_param, first, count, values);
+  if (ruse::replay::state.enabled) {
+    ruse::replay::OnPushConstants(layout_param, first, count, values);
+  }
 }
 
-bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, int32_t, uint32_t) {
+bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t, uint32_t first_index, int32_t vertex_offset,
+                         uint32_t) {
   ruse::bridge::OnDraw(cmd_list);
+  if (ruse::replay::state.enabled && ruse::bridge::IsSceneDraw()) {
+    ruse::replay::Record(cmd_list, index_count, first_index, vertex_offset);
+  }
   return false;
 }
 
@@ -511,8 +519,10 @@ void OnPresentFrame(
       frame_trace_requested = false;
       renodx::utils::trace::trace_scheduled_device = device;
       reshade::log::message(reshade::log::level::info, "R.U.S.E.: frame trace scheduled.");
+      ruse::replay::state.log_next = true;
     }
   }
+  ruse::replay::Replay();
   native_gui_phase = false;
   skip_host_present = false;
   proxy_present_started = false;
@@ -1164,6 +1174,25 @@ void ConfigureAddon() {
     settings.push_back(setting);
     ruse::bridge::state.gpu_sync = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
   }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseSceneReplay",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Scene Replay (Testing)",
+        .section = "Output (Restart Required)",
+        .tooltip = "For testing: draws the scene's geometry a second time for the upcoming ray-traced shadows (costs CPU time).\n"
+                   "Needs the in-game anti-aliasing off. Off (default) changes nothing. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    ruse::replay::state.enabled = setting->GetValue() != 0.f;
+    ruse::replay::state.log_next = ruse::replay::state.enabled;
+    readable_depth_enabled = readable_depth_enabled || ruse::replay::state.enabled;
+  }
 
   twattila::psycho35::InsertBefore(&settings, "Extra", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 
@@ -1342,12 +1371,25 @@ bool AttachAddon() {
     reshade::register_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
     reshade::register_event<reshade::addon_event::init_resource>(OnInitDepthResource);
   }
-  if (ruse::bridge::state.enabled) {
+  if (ruse::bridge::state.enabled || ruse::replay::state.enabled) {
     reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
     reshade::register_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
     reshade::register_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
     reshade::register_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);
     reshade::register_event<reshade::addon_event::destroy_device>(ruse::bridge::OnDestroyDevice);
+  }
+  if (ruse::replay::state.enabled) {
+    // Before the game's device: ReShade hooks the buffers' Lock / Unlock once an add-on asks for map / unmap.
+    reshade::register_event<reshade::addon_event::map_buffer_region>(ruse::replay::OnMapBuffer);
+    reshade::register_event<reshade::addon_event::unmap_buffer_region>(ruse::replay::OnUnmapBuffer);
+    reshade::register_event<reshade::addon_event::destroy_resource>(ruse::replay::OnDestroyResource);
+    reshade::register_event<reshade::addon_event::init_pipeline>(ruse::replay::OnInitPipeline);
+    reshade::register_event<reshade::addon_event::destroy_pipeline>(ruse::replay::OnDestroyPipeline);
+    reshade::register_event<reshade::addon_event::bind_pipeline>(ruse::replay::OnBindPipeline);
+    reshade::register_event<reshade::addon_event::bind_vertex_buffers>(ruse::replay::OnBindVertexBuffers);
+    reshade::register_event<reshade::addon_event::bind_index_buffer>(ruse::replay::OnBindIndexBuffer);
+    reshade::register_event<reshade::addon_event::bind_pipeline_states>(ruse::replay::OnBindPipelineStates);
+    reshade::register_event<reshade::addon_event::destroy_device>(ruse::replay::OnDestroyDevice);
   }
   if (ruse::bridge::state.gpu_sync) {
     renodx::utils::gpu_fence::Use(DLL_PROCESS_ATTACH);
@@ -1383,6 +1425,16 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
   reshade::unregister_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);
   reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::bridge::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::map_buffer_region>(ruse::replay::OnMapBuffer);
+  reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(ruse::replay::OnUnmapBuffer);
+  reshade::unregister_event<reshade::addon_event::destroy_resource>(ruse::replay::OnDestroyResource);
+  reshade::unregister_event<reshade::addon_event::init_pipeline>(ruse::replay::OnInitPipeline);
+  reshade::unregister_event<reshade::addon_event::destroy_pipeline>(ruse::replay::OnDestroyPipeline);
+  reshade::unregister_event<reshade::addon_event::bind_pipeline>(ruse::replay::OnBindPipeline);
+  reshade::unregister_event<reshade::addon_event::bind_vertex_buffers>(ruse::replay::OnBindVertexBuffers);
+  reshade::unregister_event<reshade::addon_event::bind_index_buffer>(ruse::replay::OnBindIndexBuffer);
+  reshade::unregister_event<reshade::addon_event::bind_pipeline_states>(ruse::replay::OnBindPipelineStates);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::replay::OnDestroyDevice);
   if (ruse::bridge::state.gpu_sync) {
     renodx::utils::gpu_fence::Use(DLL_PROCESS_DETACH);
   }

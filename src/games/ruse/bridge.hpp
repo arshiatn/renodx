@@ -302,11 +302,16 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   DrawQuad(host, target, state.writeback.Get(), result, constants);
 }
 
+// The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth.
+inline bool IsSceneDraw() {
+  return state.render_target_is_frame_sized && state.intz_depths.contains(state.depth_stencil);
+}
+
 // D3: the scene draws' camera (c0-c3, row-major MVP: clip_i = row_i . position) moved by the jitter: rows 0 and 1 +=
 // offset x row 3 (clip.xy += offset x clip.w), the game's values back on every other draw.
 inline void OnDraw(reshade::api::command_list* cmd_list) {
   if (!state.enabled || state.failed) return;
-  const bool scene_draw = state.render_target_is_frame_sized && state.intz_depths.contains(state.depth_stencil);
+  const bool scene_draw = IsSceneDraw();
   if (scene_draw) {
     state.in_scene = true;
     state.scene_depth = state.depth_stencil;
