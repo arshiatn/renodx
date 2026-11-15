@@ -19,6 +19,9 @@ from (search its text). Tick here and on that line when ATN answers.
 - [x] DONE 11-15 (ATN 12:1x: everything faster with the same picture on by default: 356b7100): Batched Unit Capture on by default? (bit-exact; bench: -1 to -2 ms a frame, +1.2 fps in both views) (from: "ATN DECIDES: Batched Unit Capture (RayTracedBatchedUnits) on by default ...")
 - [ ] g2b trunc8 (8-bit cluster truncation, -0.2 ms, a look change): try it? (from: "ATN DECIDES: g2b trunc8 ...")
 - [ ] GPU grass placement (phases 1-3): go ahead? (probe: the game's grass update 1.2 ms on the CPU at maxed grass vs 0.02 ms on the GPU, bit-exact) (from: "GRASS after the probe: ...")
+- [ ] R.U.S.E.: RT shadows for objects too this round (+2,000 replayed depth draws, CPU cost unknown until the T-run), or
+  ground RT shadows / AO / GI / water reflections first? Path tracing can't work (forward renderer). (from: "R.U.S.E. not
+  this round")
 - [ ] HDR audit 20:3x look changes (R1 shoulders, R2 Shogun 2 light, R3 gamma 2.0, R5 legacy hue, R6 bloom, Extended
   Saturation, Div1 mode 1): which become Experimental rows? (from: "HDR AUDIT FINDINGS")
 Also waiting on ATN, newer than the audit: "In game (ATN's list): new player HDR off -> SDR preset" (SDR first start ->
@@ -27,6 +30,7 @@ HDR later, 24cdfb9c).
 ## OPEN (owners)
 Pointer index of every open box below (short title | owner, file order); the detailed line stays where it is.
 Rebuild it when boxes change; the boxes themselves are the record.
+
 
 
 
@@ -105,8 +109,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Divinity 2 later: D2-8b scene R11G11B10F -> RGBA16F (view cloning, Experimental ... | d2_ after R1b
 - Divinity 2 R1b (trace build): both cb0s (HDR / SDR LUT), PerView b12, per-mode s ... | coordinator (next game window)
 - ATN at the end (Divinity 2): mid grey row's default; old presets / V30 keep or d ... | ATN
-- R.U.S.E. whole package in ONE implementation round (bridge + Bend + draw replay ... | ru_
-- (was) R.U.S.E. D3D9 bridge B0 trace (next game run: Frame Trace at the menu + in ... | coordinator (run) then ru_
+- R.U.S.E. whole package in ONE implementation round, plan.md 10b order, all Exper ... | ru_ (implementation round)
+- R.U.S.E. T-run (one agent data run, ATN's OK): W1 resource log (pools, formats, ... | coordinator (next game window)
+- R.U.S.E. not this round (ru_'s plan): O1 RT shadows for objects (needs +2,000 re ... | ATN
 - R.U.S.E. U1 run (after ReShade + the stamped add-on are installed on D:): Frame ... | coordinator (next game window)
 - R.U.S.E. open ledger rows: Time Each Pass (D3D9 timestamp queries, optional); th ... | ru_ / release round
 - SHARED STEPS from R.U.S.E.: S1 output_encoding's first-start key as a Config fie ... | shared-steps round (after the fix merge)
@@ -1140,9 +1145,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         d3d9.dll + ReShade.ini (FrameTrace=1) in D:\...\R.U.S.E, add-on stamped "ruse u1" (af1acced, tw_install --first);
         two one-frame traces (tools/nontw/ruse/u1_trace_200820); clean exit, no dump, Option.ini unchanged. ru_ reads them
         and writes ONE whole-package plan (ATN 20:0x: "plan and do everything ... from the beginning", after the reviews).
-      - [ ] R.U.S.E. whole package in ONE implementation round (bridge + Bend + draw replay + RT shadows + AO / GI / PT
-        where the trace allows + pages), after the review fixes merge. Owner: ru_
-      - [ ] (was) R.U.S.E. D3D9 bridge B0 trace (next game run: Frame Trace at the menu + in battle, in-game AA off and on:
+      - [x] R.U.S.E. B0 ANSWERED + WHOLE-PACKAGE PLAN DONE 20:4x (ru_, offline, no commits): tools/nontw/ruse/plan.md
+        section 10 (scripts ru_trace_passes.py / ru_trace_vs.py). Battle frame (AA on): 3,855-3,948 indexed draws, 0
+        instanced; shadow map 2048 1,512 draws; ground pre-pass 4K 33 (own depth 34450ee0, BGRA8 .x = ground sun shadow,
+        .yz motion -> StretchRect 54712ec0, read by VPOS); main lit 4K MSAA 2,121 (objects 1,434, terrain 484, water 34);
+        main depth 361219b8; post s0 = resolve 382ebdc0; map events fire (only 2 ring buffers a frame, scene meshes
+        static); 393 skinned draws (64 bones); camera c0-c8, world ~3.8e5 (capture camera-relative).
+      - [ ] R.U.S.E. whole package in ONE implementation round, plan.md 10b order, all Experimental until the T-run:
+        W1-W3 (resource log, own D3D9 passes on the proxy's shared textures, D3D9Ex fence) -> D1-D6 (INTZ depth, DLAA row
+        writes MainRTAA off, depth-aware camera motion, jitter via VS c0-c3, DLAA back into 382ebdc0, FSR / XeSS, DLSS
+        <100% only if MainRTDivider is a render scale) -> A1-A5 draw replay (mirror buffers at unmap, 275 VS -> vs_5_0
+        stream output proved by the SM3 interpreter, ~1,500 object draws + 32 terrain patches) -> G1 RT sun shadows into
+        54712ec0.x (no PS edits) -> G2 Bend (terrain self-shadow) -> ground AO (110 terrain PS) -> RT water reflections
+        (94 PS) + one-bounce ground GI -> FG (HUD-less = back buffer before the first UI draw) + Reflex -> P1 pages +
+        tw_install with helper. Tests H1 (D3D9Ex + D3D11 GPU harness), H2 (helper on synthetic frames), H3 (replay on the
+        trace's constants), interpreter per generated shader. Stop rules: D4 DLAA passes H1 + H2 before the replay; the
+        T-run's replay CPU cost decides default on / Experimental. Size XL+. After the review fixes merge, then the Fable
+        5.2 High bridge review (ATN). Owner: ru_ (implementation round)
+      - [ ] R.U.S.E. T-run (one agent data run, ATN's OK): W1 resource log (pools, formats, samples), an AA-off frame
+        (INTZ), small vs big battle draw counts, PresentMon CPU / GPU, is uniSunView the sun's projection alone
+        (off-screen casters), MainRTDivider, Option.ini 8192 / 4x kept? Owner: coordinator (next game window)
+      - [ ] R.U.S.E. not this round (ru_'s plan): O1 RT shadows for objects (needs +2,000 replayed depth draws or last
+        frame's depth; objects keep the game's maps, 8192 via Graphics 2 of 2); path tracing (forward renderer: no depth +
+        materials per pixel before shading). ATN wanted "everything": ATN DECIDES whether O1 joins the round. Owner: ATN
+      - [x] OBSOLETE (answered by the 20:08 trace + plan.md 10): (was) R.U.S.E. D3D9 bridge B0 trace (next game run: Frame Trace at the menu + in battle, in-game AA off and on:
         depth MSAA / INTZ, motion target, camera pass 0x88292FC6 constants c0-c8, final post samplers), then B1-B4, then
         the Fable 5.2 High review (ATN). Owner: coordinator (run) then ru_
       - [ ] R.U.S.E. U1 run (after ReShade + the stamped add-on are installed on D:): Frame Trace menu + battle; every
