@@ -969,6 +969,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         graphicSettings.lsx; Pragmap credit not needed; the "mod invalid" dialog is expected (mods not installed). Sent to
         d1_.
       - [ ] ATN at the end (Divinity 1): drop or keep the legacy V30 / Pragmap modes. Owner: ATN
+      - [x] DIVINITY 2 PLAN DONE 18:4x (d2_): tools/nontw/divinity2/plan.md + divinity2.tsv (~88 rows), scripts,
+        shader_dump, engine_shaders, r1/run_r1_181317. Psycho: no stacking; every modded mode branches at scene-linear AP1
+        after the white balance + ColorCorrectAll (PPComputeLUT.shd:65; t00:124-211); V35 goes where V30 is called
+        (t00:247), Tales' point (lut00:259). Census: 7,187 distinct shaders (7,119 in the LZ4 packs, 6,376 live; 68 in
+        EoCApp.exe's UI renderer); R1's city 155 + menu 110 all in it. R1 18:13-18:26 (installed build, DevKit snapshots,
+        ATN loaded a 6Party Arx save and saved once: kept): R11G11B10F scene, PPComputeLUT once into a 32^3 R10G10B10A2
+        UAV, PPApplyLUT writes PQ, EoCSight_HDR / EoCFog_HDR / SMAA on PQ / CombineUI_HDR; no FP16, no velocity target;
+        fps NOT valid (always-on-top window over the game); files restored 0 differ; ended by Stop-Process (two closes
+        ignored).
+      - [ ] Divinity 2 D2-0..D2-6 (offline): census decompile + per-setting table; V35 + Hue Clip at t00:247, presets
+        (old presets + V30 kept until ATN decides); part 6 WARP ramps + stacked-chain control; per-channel shoulder
+        Experimental off; fast::Use, output_encoding, About / credits, EoCSight_HDR, frame trace + cb0 / b12, test_hooks;
+        page dump, parity check, tw_install entry. Owner: d2_ (resumed)
+      - [ ] Divinity 2 later: D2-8b scene R11G11B10F -> RGBA16F (view cloning, Experimental off); D2-9 helper DLAA / FG /
+        Reflex on the linear scene before PPApplyLUT; D2-11 RT host (RT sun into the R8 mask, shadow pass skipped under
+        RT). Owner: d2_ after R1b
+      - [ ] Divinity 2 R1b (trace build): both cb0s (HDR / SDR LUT), PerView b12, per-mode shots, valid frame times, the
+        inventory / character sheet with ATN's key. Owner: coordinator (next game window)
+      - [ ] ATN DECIDES (Divinity 2): mid grey at 15 nits (HDR) or the SDR picture's; ATN's inventory / character-sheet
+        key; keep the old presets + V30 mode; per-channel shoulder on or off by default; Nexus URL; does Script Extender
+        load as DXGI.dll too? Owner: ATN
       - [x] R.U.S.E. PLAN DONE 18:4x (ru_): tools/nontw/ruse/plan.md + ruse.tsv, census\ (all 1,803 shipped shaders:
         1,528 ps_3_0 + 275 vs_3_0 from ZZ_Win.dat's shadercachev02.shc, decompiled, families), scripts\, u0\. U0 runs
         18:04-18:10 + 18:26-18:29 (plain game, no ReShade on D:): D3D9, battle 158 fps (VSync cap), GPU busy 3.4 ms;
