@@ -115,3 +115,6 @@ The format is `game-port-method`'s. TW additions:
 | `wpr -start CPU -start GPU` wrote 16 GB for 47 s (Shogun 2) and its xperf text 70 GB | CPU alone where the question is the CPU; delete dumps after reading them |
 | A Grass Dump stalls frames; the game writes grass burn during a battle (256-269 records in 35 s), never the grid | Grass dumps run last in a bench; a GPU grass pass re-reads the burn bytes each update |
 | WH3 said "Unable to initialize SteamAPI" twice with Steam not elevated (2026-11-15) | The maintainer restarts Steam; don't retry a third time |
+| Expeditions' Unreal main menu took no SendInput keys (Up / Down / Enter / Tab / Space; 2026-11-15): the whole run measured the menu, no save loaded | Bring the window to the front first and screenshot after each key; a menu that stays deaf is a question for the maintainer (a mouse click), not a guess |
+| The game process wrote `ReShade.log1`: a short device-probe instance had `ReShade.log` (Expeditions) | Read both logs; a run's "applied" lines may be only in `ReShade.log1` |
+| DLSS Frame Generation ran as FSR FG in 11 of 13 folders: no `sl.interposer.dll` (Streamline 2.14.16) beside the helper (Tales, 2026-11-15) | `tw_install.py` writes `ngx_dlls.STREAMLINE` where missing; the FG status line names DLSS-G ("FG v2") or FSR |

@@ -103,6 +103,7 @@ The maintainer's in-game hours are the cost to avoid. Every check that can run o
 The TW helper (`renodx-tw-dlaa64.exe`, `src/games/twattila/dlaa_helper/`) also serves non-TW add-ons (Ryse, Expeditions: Rome, Shogun 2) through `twattila/dlaa_bridge.h`. Its internals are in `tw-port-checklist`'s `helper-fg-stability.md`.
 
 - **Newest only**: every add-on on the bridge builds against today's `dlaa_bridge.h` and ships with the helper built from the same commit, never an older copy. An add-on built against an older bridge is rebuilt and shipped with the matching helper.
+- **Locks and ReShade's events**: ReShade fires `destroy_pipeline` / `destroy_resource` from inside later D3D11 calls (a draw, a flush, a Release), on the calling thread. A lock held across any D3D11 call is never taken by a destroy callback; give the callback's map its own small lock (`rt_core`'s `pixel_coverage_mutex`, Expeditions' first rays crashed on this). Rays on at launch belong in every first data run of a `scene_draw` host.
 - **Ray Reconstruction in a D3D11 game goes through NGX D3D12** (`twattila/dlaa_helper/rr_d3d12.hpp` in the helper; Tales' in-process `talesofarise_dlss/rr_d3d12.hpp` is unused since its helper route): NVIDIA's D3D11 RR followed by a GPU wait (or a shared-fence wait) gave black output or an access violation in nvwgf2umx. D3D11 Super Resolution is fine.
 
 ## The fast draw dispatch
