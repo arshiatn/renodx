@@ -12,24 +12,31 @@
 
 #include <include/reshade.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <initializer_list>
+#include <memory>
 #include <span>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
 #include "../../utils/device_proxy.hpp"
+#include "../../utils/gpu_fence.hpp"
 #include "../twattila/dlaa_bridge.hpp"
 
-// R.U.S.E.'s D3D9 bridge (tools/nontw/ruse/plan.md 10b W2, W3, D2-D4): DLAA through the TW helper on the DX11 proxy's
-// device. The game's D3D9Ex device (the swap chain mod's upgrade) and the proxy share four textures (D3D11 makes them
-// with a KMT handle, D3D9Ex opens it). Each frame, before the bloom reads the resolved main target: one D3D9 pass writes
-// the scene as light, the INTZ depth and the camera's motion into them; the proxy copies them into the helper's
-// textures, DLAA runs, and a second D3D9 pass writes the result back into the resolved target in the game's encoding.
-// The scene draws (back-buffer-sized target, an INTZ depth) get the jitter in their camera registers c0-c3. CPU waits on
-// both sides (D3D9 has no fences the proxy shares yet).
+// R.U.S.E.'s D3D9 bridge (tools/nontw/ruse/plan.md 10b W2, W3, D2-D5): DLAA, FSR or XeSS (native) through the TW helper
+// on the DX11 proxy's device. The game's D3D9Ex device (the swap chain mod's upgrade) and the proxy share four textures
+// (D3D11 makes them with a KMT handle, D3D9Ex opens it). Each frame, before the bloom reads the resolved main target: one
+// D3D9 pass writes the scene as light, the INTZ depth and the camera's motion into them; the proxy copies them into the
+// helper's textures, the upscaler runs, and a second D3D9 pass writes the result back into the resolved target in the
+// game's encoding.
+// The scene draws (back-buffer-sized target, an INTZ depth) get the jitter in their camera registers c0-c3. Each side
+// waits for the other's writes on the CPU, or (the GPU Sync row) on the GPU through utils/gpu_fence's shared fences.
 namespace ruse::bridge {
 
 using Microsoft::WRL::ComPtr;
@@ -41,7 +48,9 @@ struct SharedTexture {
 };
 
 struct State {
-  bool enabled = false;  // the DLAA row (restart)
+  bool enabled = false;  // the Anti-Aliasing row (restart)
+  uint32_t upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;
+  bool gpu_sync = false;  // the GPU Sync row (restart): gpu_fence's attached before the game's device
   bool failed = false;   // a step failed for good: no jitter, the game's picture
   bool ready = false;
   bool in_scene = false;  // between the first scene draw and the bloom
@@ -62,6 +71,7 @@ struct State {
   uint64_t pixel_texture_0 = 0;  // the pixel shader's s0 as last bound
   bool render_target_is_frame_sized = false;
   std::unordered_set<uint64_t> intz_depths;
+  reshade::api::device* host_device = nullptr;  // the game's D3D9 device (its INTZ depths' maker)
   SharedTexture color;
   SharedTexture depth;
   SharedTexture motion;
@@ -70,6 +80,9 @@ struct State {
   ComPtr<IDirect3DPixelShader9> prepare;
   ComPtr<IDirect3DPixelShader9> writeback;
   ComPtr<IDirect3DVertexDeclaration9> quad_layout;
+  // GPU Sync: D3D9 signals, D3D11 waits (`host_fence`, a KMT fence of the game's D3D9Ex device), and back (`proxy_fence`).
+  std::unique_ptr<renodx::utils::gpu_fence::Fence> host_fence;
+  std::unique_ptr<renodx::utils::gpu_fence::Fence> proxy_fence;
 };
 inline State state;
 
@@ -199,18 +212,30 @@ inline bool Ready(IDirect3DDevice9* host, std::span<const uint8_t> quad, std::sp
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.depth)
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16_FLOAT, D3DFMT_G16R16F, &state.motion)
                     && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.output)
-                    && twattila::dlaa_bridge::Prepare(proxy, state.width, state.height);
+                    && twattila::dlaa_bridge::Prepare(proxy, state.width, state.height, false, false, DXGI_FORMAT_UNKNOWN, false,
+                                                      state.upscaler);
   if (!made) {
-    reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] DLAA: the bridge didn't start (helper missing?): off");
+    reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Anti-aliasing: the bridge didn't start (helper missing?): off");
     return false;
+  }
+  if (state.gpu_sync) {
+    try {
+      state.host_fence = std::make_unique<renodx::utils::gpu_fence::Fence>(host_ex.Get());
+      state.proxy_fence = std::make_unique<renodx::utils::gpu_fence::Fence>(proxy);
+    } catch (const std::exception& error) {
+      reshade::log::message(reshade::log::level::warning,
+                            (std::string("[R.U.S.E.] Anti-aliasing: no GPU sync (") + error.what() + "): the CPU waits").c_str());
+      state.host_fence.reset();
+      state.proxy_fence.reset();
+    }
   }
   state.failed = false;
   state.ready = true;
   return true;
 }
 
-// D4, before the bloom draw: the resolved main target (the bloom's s0) through DLAA and back; any failure leaves the
-// game's picture.
+// D4, before the bloom draw: the resolved main target (the bloom's s0) through the upscaler and back; any failure leaves
+// the game's picture.
 inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8_t> quad, std::span<const uint8_t> prepare,
                      std::span<const uint8_t> writeback) {
   state.in_scene = false;
@@ -220,10 +245,22 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   auto* scene = reinterpret_cast<IDirect3DTexture9*>(state.pixel_texture_0);
   ComPtr<IDirect3DTexture9> depth;
   ComPtr<IDirect3DSurface9> scene_surface;
+  ComPtr<IDirect3DDevice9Ex> host_ex;
   if (FAILED(reinterpret_cast<IDirect3DSurface9*>(state.scene_depth)->GetContainer(IID_PPV_ARGS(depth.GetAddressOf())))
-      || FAILED(scene->GetSurfaceLevel(0, scene_surface.GetAddressOf()))) {
+      || FAILED(scene->GetSurfaceLevel(0, scene_surface.GetAddressOf()))
+      || FAILED(host->QueryInterface(IID_PPV_ARGS(host_ex.GetAddressOf())))) {
     return;
   }
+  auto* proxy = reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native());
+  ComPtr<ID3D11DeviceContext> context;
+  proxy->GetImmediateContext(context.GetAddressOf());
+  // W3: the destination's GPU waits for the source's writes (GPU Sync), else the CPU for the source's queue.
+  const auto hand_over = [](auto* source, renodx::utils::gpu_fence::Fence* fence, auto* destination) {
+    if (fence == nullptr) return false;
+    const uint64_t value = renodx::utils::gpu_fence::QueueSignal(source, fence);
+    return value != renodx::utils::gpu_fence::NO_SIGNAL && renodx::utils::gpu_fence::QueueWait(destination, fence, value);
+  };
+
   std::array<float, 40> constants = {};
   std::memcpy(constants.data(), state.camera.data(), sizeof(state.camera));
   constants[36] = static_cast<float>(state.width);
@@ -233,21 +270,32 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
                                                     state.motion.host_surface.Get()};
   const std::array<IDirect3DBaseTexture9*, 2> sources = {scene, depth.Get()};
   DrawQuad(host, inputs, state.prepare.Get(), sources, constants);
-  WaitHost(host);
+  if (!hand_over(host_ex.Get(), state.host_fence.get(), context.Get())) WaitHost(host);
 
-  auto* proxy = reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native());
-  ComPtr<ID3D11DeviceContext> context;
-  proxy->GetImmediateContext(context.GetAddressOf());
   auto& helper = twattila::dlaa_bridge::bridge;
+  twattila::dlaa_bridge::BeforeSharedWrites(context.Get());
   context->CopyResource(helper.color.texture.Get(), state.color.proxy.Get());
   context->CopyResource(helper.depth.texture.Get(), state.depth.proxy.Get());
   context->CopyResource(helper.motion.texture.Get(), state.motion.proxy.Get());
+  // FSR and XeSS take near, far and the field of view from a row-vector projection: the camera pass's view-projection
+  // (rows P00 x view.x, P11 x view.y, P22 x view.z + P23, view.z: a unit view) holds them as its rows' lengths.
+  const auto length = [&](int row) {
+    const float* values = state.camera.data() + (row * 4);
+    return std::sqrt((values[0] * values[0]) + (values[1] * values[1]) + (values[2] * values[2]));
+  };
+  const float z_scale = length(2) / std::max(length(3), 1e-6f);
+  std::array<float, 16> view_to_clip = {};
+  view_to_clip[0] = length(0);
+  view_to_clip[5] = length(1);
+  view_to_clip[10] = z_scale;
+  view_to_clip[11] = 1.f;
+  view_to_clip[14] = state.camera[11] - (z_scale * state.camera[15]);
   const bool evaluated = twattila::dlaa_bridge::Evaluate(context.Get(), state.width, state.height, state.jitter[0], state.jitter[1],
-                                                         state.reset, 0u);
+                                                         state.reset, 0u, nullptr, &view_to_clip);
   state.reset = !evaluated;
   if (!evaluated) return;
   context->CopyResource(state.output.proxy.Get(), helper.output.texture.Get());
-  WaitProxy(proxy, context.Get());
+  if (!hand_over(context.Get(), state.proxy_fence.get(), host_ex.Get())) WaitProxy(proxy, context.Get());
 
   const std::array<IDirect3DSurface9*, 1> target = {scene_surface.Get()};
   const std::array<IDirect3DBaseTexture9*, 1> result = {state.output.host.Get()};
@@ -294,6 +342,35 @@ inline void OnPushConstants(uint32_t layout_param, uint32_t first, uint32_t coun
   const auto* floats = static_cast<const float*>(values);
   for (uint32_t i = 0; i < count && first + i < registers.size(); ++i) {
     registers[first + i] = floats[i];
+  }
+}
+
+// The game's D3D9 device (its INTZ depths with it) or the proxy's D3D11 device going: the bridge's objects go too; Ready
+// makes them again with the next ones, the helper's set with the proxy's.
+inline void OnDestroyDevice(reshade::api::device* device) {
+  const bool proxy = device->get_api() == reshade::api::device_api::d3d11;
+  if (!proxy && device != state.host_device) return;
+  state.host_fence.reset();
+  state.proxy_fence.reset();
+  state.color = {};
+  state.depth = {};
+  state.motion = {};
+  state.output = {};
+  state.quad.Reset();
+  state.prepare.Reset();
+  state.writeback.Reset();
+  state.quad_layout.Reset();
+  state.ready = false;
+  state.failed = false;
+  state.reset = true;
+  state.camera_valid = false;
+  state.pixel_texture_0 = 0;
+  state.scene_depth = 0;
+  if (proxy) {
+    twattila::dlaa_bridge::Release();
+  } else {
+    state.intz_depths.clear();
+    state.host_device = nullptr;
   }
 }
 

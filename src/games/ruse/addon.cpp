@@ -88,12 +88,13 @@ void OnLogResource(reshade::api::device* device, const reshade::api::resource_de
           .c_str());
 }
 
-// The bridge's events (bridge.hpp), registered with the DLAA row: the INTZ depths, the bound target / depth / scene
+// The bridge's events (bridge.hpp), registered with the Anti-Aliasing row: the INTZ depths, the bound target / depth / scene
 // texture, the game's constants and every draw (the jitter).
-void OnInitDepthResource(reshade::api::device*, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
+void OnInitDepthResource(reshade::api::device* device, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
                          reshade::api::resource_usage, reshade::api::resource resource) {
   if (desc.texture.format == reshade::api::format::intz) {
     ruse::bridge::state.intz_depths.insert(resource.handle);
+    ruse::bridge::state.host_device = device;
   }
 }
 
@@ -1112,23 +1113,26 @@ void ConfigureAddon() {
   }
   {
     auto* setting = new renodx::utils::settings::Setting{
-        .key = "RuseDlaa",
+        .key = "RuseAntiAliasing",
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 0.f,
-        .label = "DLAA (Experimental)",
+        .label = "Anti-Aliasing (Experimental)",
         .section = "Output (Restart Required)",
-        .tooltip = "NVIDIA DLAA anti-aliasing. Needs the in-game anti-aliasing off and the DLAA helper beside the add-on.\n"
-                   "Restart after changing this setting.",
-        .labels = {"Off", "On"},
+        .tooltip = "NVIDIA DLAA, AMD FSR or Intel XeSS at native resolution instead of the game's anti-aliasing.\n"
+                   "Needs the in-game anti-aliasing off and the helper beside the add-on. Restart after changing this setting.",
+        .labels = {"Game's", "DLAA", "FSR Native AA", "XeSS Native AA"},
         .is_global = true,
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
-    ruse::bridge::state.enabled = (setting->GetValue() != 0.f) && twattila::dlaa_bridge::HelperInstalled();
+    const int choice = static_cast<int>(setting->GetValue());
+    ruse::bridge::state.enabled = choice != 0 && twattila::dlaa_bridge::HelperInstalled();
+    ruse::bridge::state.upscaler = (choice == 2) ? twattila::dlaa_bridge::UPSCALER_FSR
+                                                 : ((choice == 3) ? twattila::dlaa_bridge::UPSCALER_XESS : twattila::dlaa_bridge::UPSCALER_DLSS);
     readable_depth_enabled = readable_depth_enabled || ruse::bridge::state.enabled;
     if (ruse::bridge::state.enabled) {
-      // The camera pass: its matrices (c0-c8) as it drew; the bloom's first pass: DLAA on the scene it reads.
+      // The camera pass: its matrices (c0-c8) as it drew; the bloom's first pass: the upscaler on the scene it reads.
       custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list*) {
                                       std::memcpy(ruse::bridge::state.camera.data(), ruse::bridge::state.pixel_registers.data(),
                                                   sizeof(ruse::bridge::state.camera));
@@ -1142,6 +1146,23 @@ void ConfigureAddon() {
                                  }};
       }
     }
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseAntiAliasingGpuSync",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Anti-Aliasing GPU Sync (Experimental)",
+        .section = "Output (Restart Required)",
+        .tooltip = "The GPU waits for the anti-aliasing instead of the CPU (faster when it works).\n"
+                   "Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    ruse::bridge::state.gpu_sync = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
   }
 
   twattila::psycho35::InsertBefore(&settings, "Extra", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
@@ -1326,6 +1347,10 @@ bool AttachAddon() {
     reshade::register_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
     reshade::register_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
     reshade::register_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);
+    reshade::register_event<reshade::addon_event::destroy_device>(ruse::bridge::OnDestroyDevice);
+  }
+  if (ruse::bridge::state.gpu_sync) {
+    renodx::utils::gpu_fence::Use(DLL_PROCESS_ATTACH);
   }
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &frame_injection);
@@ -1357,6 +1382,10 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
   reshade::unregister_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
   reshade::unregister_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::bridge::OnDestroyDevice);
+  if (ruse::bridge::state.gpu_sync) {
+    renodx::utils::gpu_fence::Use(DLL_PROCESS_DETACH);
+  }
   UninstallPresentHooks();
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &frame_injection);
@@ -1386,6 +1415,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
 
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE) {
   DetachAddon();
+  twattila::dlaa_bridge::Shutdown();
   if (addon_registered) {
     reshade::unregister_addon(addon_module);
     addon_registered = false;
