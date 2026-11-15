@@ -823,8 +823,7 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     - [x] ATN: hue by eye; ONE add-on
     - [x] ATN: full package as Attila (FSR / XeSS / FSR FG through the helper; Bend SSS rows as in Attila)
     - [x] ATN: plain stamped copies; Nsight through Steam OK
-    - [ ] The game's own HDR toggle: coordinator default = the add-on keeps the game's HDR off and says so on the page
-      (one HDR path). ATN may object
+    - [x] ATN 02:2x: the game's own HDR toggle stays OFF (the add-on says so on the page). Owner of the row: UE4 merge
   - [ ] ATN 01:5x: ONE ADD-ON for Tales, Expeditions, Ryse AND Shogun 2 (DLSS + RT/PT / no-RT presets on Graphics 1 of 2,
     the game's higher graphics on Graphics 2 of 2, TW page structure; the HDR-only snapshot still works: graphics rows
     in the add-on, DLSS with NVIDIA's DLL, rays / FG / RR / FSR / XeSS with the helper). Owners: Shogun 2 = MERGE agent
@@ -849,6 +848,26 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
       likely Bitdefender). Owner: ATN ends it and deletes page_dump_ry_rys1.exe / page_dump_ryd_rys1.exe there
     - [ ] Remove the DevKit symlink from Ryse's Bin64 before runs (it keeps fast dispatch off). Owner: coordinator at
       the install (fresh backup)
+  - [x] UE4 OFFLINE ROUND MERGED d50bfc2c (ue4_): Expeditions 4.23 labels + r.SSGI.Quality (exe default 0, clamp
+    1..4); fast dispatch opt-in in all four (tw_draw_dispatch PASS); one engine_cvars (UE_4_21 / UE_4_23 tables),
+    Expeditions' 7 duplicate headers removed; HDR-only pieces (talesofarise/hdr_only.hpp: note + Ko-fi / Nexus / GitHub)
+    + output_encoding (Auto / SDR / first start; Expeditions gained SDR output EXR_SDR_OUTPUT, default still scRGB); test
+    hooks via twattila/test_hooks.hpp's RENODX_TEST_HOOKS_PROFILE + "trace" key. Not run in game.
+    - [ ] Expeditions' unload crash (2026-10-27): a ReShade unload / reload 1 s after start (UE's probe device), not exit;
+      likely a stale HDR-module record in cross_addon after the HDR add-on was freed. The ONE-ADD-ON merge removes the
+      cross-add-on link; verify with tools\nontw\ue4_unload's harness on the merged add-on (+ device events). Owner:
+      UE4 merge round
+    - [ ] Expeditions' default Output scRGB -> Auto (as TW, so SDR first start works for everyone). Owner: UE4 merge
+      round (the "same as TW" decision)
+    - [ ] Expeditions NexusMods URL unknown (no Nexus button). Owner: ATN
+    - [ ] output_encoding's log lines say "[Total War]" in non-TW games: a log-name parameter. Owner: sdr_ (sent)
+    - [ ] WARP ramp of the UE SDR encodes; Ryse's redundant renodx_trace_now poll; the Expeditions tests' include paths
+      (no build target). Owner: UE4 / Ryse merge rounds
+    - [ ] UE4 MERGE ROUND (one add-on each, Expeditions first): ue4_'s plan in its report (move _dlss files, shared UE
+      headers to talesofarise/ with Ryse's includes, Graphics 1 of 2 / 2 of 2 via graphics_page, ini sections kept, RT /
+      RR / FG through the helper: Tales' d3d12_device / rt_shadows / rr_d3d12 go). Owner: UE4 MERGE agent (after s2m_)
+  - [x] ATN 02:2x: the x64 render-list data runs (WH3, Pharaoh, Shogun 2: one short WPR run each, our own Faster Render
+    Lists, not the author's code) are OK. Owner: coordinator, after the Attila end bench
   - [ ] Full Attila package for all three (memory project_nontw_full_package.md); stamps + watermarks for every game.
     Owner: per-game rounds after the merges
   - [ ] SHADER-PACK round: read the shipped packs where not encrypted (DXBC / DXIL in UE paks' unencrypted entries,
@@ -938,7 +957,9 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     opted in; (5) style + a skill row. Suite gaps: null hook, two modules, threads, epoch inside a frame.
   - [x] drw_ agent fixed 1-5 + the suite gaps; merged
   - [x] rt_scene::OnAnyDraw gated (0122d5c7)
-  - [ ] render_pass_behavior / shader_injection_behavior suites need ReShade 6.7.3's DLL (a download): ATN DECIDES
+  - [ ] render_pass_behavior / shader_injection_behavior suites: ATN 02:2x OK to download, but ATN plays on ReShade
+    6.8.0 (the repo's SDK submodule is 6.7.3): run them against ATN's installed 6.8.0 DLLs (32-bit from Attila's folder,
+    64-bit from a 64-bit game's folder; copies into testbin, no download). Owner: coordinator, tools pass
   - [ ] The agent started 6 amd64 replay builds early while quiet_run.lock existed (the hfp_ A/B window): every hfp_ start
     was checked for compilers and the A-to-A spreads stayed small; the 16-thread run re-measures P anyway
 - [ ] ATN ~19:3x RULE SET (CPU Set Setter: a CPU SET, not affinity, of the first 16 logical CPUs = V-cache CCD with SMT):
