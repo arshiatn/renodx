@@ -371,7 +371,9 @@ float4 HdrToScreen(float3 hdr_linear_colour, float3 bloom, float tone_mapper_bri
     return float4(renodx::color::gamma::EncodeSafe(colour), 1.f);
   }
 
-  const float peak = SHOGUN_PEAK;
+  // The tone mappers' Peak before ApplyGameGamma (its tangent above 1), so the gamma lands their top on Peak instead
+  // of past it, where LimitToPeak would clip it.
+  const float peak = 1.f + (SHOGUN_PEAK - 1.f) / (2.2f * g_inv_gamma_output);
   const float white_clip = g_tone_mapping_film_white_clip;
   const float mid_gray = FilmToneMap(float3(0.18f, 0.18f, 0.18f), white_clip).x;
   const float eps = 0.18f / 1024.f;

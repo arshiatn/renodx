@@ -1,5 +1,7 @@
 // ---- Created with 3Dmigoto v1.3.16 on Fri Sep 18 22:06:59 2026
 
+#include "../shared.h"
+
 cbuffer camera : register(b0)
 {
   float3 camera_position : packoffset(c0);
@@ -50,6 +52,7 @@ void main(
 
   r0.xy = g_screen_size.zw * v0.xy;
   r1.xyzw = t_initial_texture.SampleLevel(s_default_s, r0.xy, 0).xyzw;
+  const float4 centre = r1;
   r1.xyz = max(r1.xyz, 0.f.xxx);
   r2.xyz = t_initial_texture.Gather(s_default_s, r0.xy).xyz;
   r2.xyz = max(r2.xyz, 0.f.xxx);
@@ -218,9 +221,14 @@ void main(
     r3.x = r0.w ? r0.x : r2.x;
     r3.y = r0.w ? r2.y : r0.y;
     o0.xyzw = t_initial_texture.SampleLevel(s_default_s, r3.xy, 0).xyzw;
-    o0.xyz = max(o0.xyz, 0.f.xxx);
   } else {
-    o0.xyzw = r1.xyzw;
+    o0.xyzw = centre;
+  }
+  // SDR: clipped at 0 as the game's 8-bit target. HDR: PsychoV's wide-gamut channels (negative in BT.709) kept;
+  // only the edge search above reads them clipped.
+  [branch]
+  if (HDR < 0.5f) {
+    o0.xyz = max(o0.xyz, 0.f.xxx);
   }
 
   //fix the negative nits

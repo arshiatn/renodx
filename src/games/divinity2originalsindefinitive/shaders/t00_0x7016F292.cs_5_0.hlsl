@@ -208,7 +208,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID, uint group_index : SV_GroupInde
   if (use_aces_tweaked || use_psycho || use_psycho35) {
     const float diffuse_white_nits = max(SI.diffuse_white_nits, 0.0001f);
     const float peak_white_nits = DOS2_PEAK_NITS;
-    const float relative_peak = peak_white_nits / diffuse_white_nits;
+    const float relative_peak = max(peak_white_nits / diffuse_white_nits, 1.f);  // Paper White can be set above Peak
 
     // custom user Grading (in BT.709 space)
     float3 graded_bt709 = renodx::color::bt709::from::AP1(r0.xyz);

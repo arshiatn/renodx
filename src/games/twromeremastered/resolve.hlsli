@@ -80,7 +80,9 @@ float3 ApplyExtendedPeakShoulder(float3 color)
 // of the target gamut is brought back.
 float3 ApplyPsychoV31(float3 color)
 {
-  const int target_gamut = int(SI.v31_gamut_compression_mode);
+  // SDR output: BT.709 (the proxy clips per channel).
+  const int target_gamut = ((SI.swap_chain_encoding == 2.f) ? renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT709
+                                                          : int(SI.v31_gamut_compression_mode));
   const float compression = 1.f + 0.5f * SI.v31_roll_off * SI.v31_roll_off;
   float3 result = renodx::tonemap::psychov::custom_psychotm_test31(
       color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
