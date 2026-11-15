@@ -1392,7 +1392,8 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
 
 // Batched Unit Capture: the corners of the batched draws streamed since the last flush made (their SceneShader::batch_compute
 // over their meshes and rows, a dispatch a run of draws on one animation texture, under NVIDIA's UAV overlap) and copied to
-// their places in `captured`, in turns of BATCH_OUTPUT_TEXELS. Before the trace, before the game writes their bones again
+// their places in `captured`, in turns of BATCH_OUTPUT_TEXELS (not written there directly: D3D11 refuses a buffer that is both
+// stream output and UAV, E_INVALIDARG on WARP and NVIDIA). Before the trace, before the game writes their bones again
 // (FlushUnitCaptures) and when a draw finds the streamed room full. The game's compute bindings it changes put back.
 // runtime.mutex held.
 inline void FlushBatch(ID3D11DeviceContext* native) {

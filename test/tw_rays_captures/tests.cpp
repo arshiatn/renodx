@@ -29,14 +29,17 @@
 //   G2 the game's chain at factor 1 streams out the capture's triangles, patch for patch, each corner within 1e-6 (the domain
 //      shader's 0.2 / 0.8 Phong blend at a corner);
 //   G3 CONTROL: at factor 4 with the corners' normals apart the chain's triangles leave the capture's plane.
-// B. Batched Unit Capture (twattila/rt_core.hpp: Capture's batched draws, FlushBatch), Attila's main units 5F9CD405 (shader model 3)
-//   and A691CFF4 (4.1) with their capture versions rt_capture_unit_sm3 / sm41 (build32's twattila.include\embed): 3 draws as the game
-//   draws them (VB0 stride 28: POSITION0 R16G16B16A16_FLOAT, POSITION1-5 R8G8B8A8_UNORM but POSITION3 R16G16_FLOAT; VB1 stride 120 an
+// B. Batched Unit Capture (twattila/rt_core.hpp: Capture's batched draws, FlushBatch), Attila's units: main 5F9CD405 (shader model 3)
+//   and A691CFF4 (4.1), dismember DAC80ECC / EA1AEB0E, 4 bones 0ECFE74C / 372628AB, 4 bones dismember C2AA8FDA / 31B66A15 with their
+//   capture versions rt_capture_unit_* (build32's twattila.include\embed): 3 draws as the game draws them (VB0 stride 28:
+//   POSITION0 R16G16B16A16_FLOAT, POSITION1-5 R8G8B8A8_UNORM but POSITION3 R16G16_FLOAT; the 4-bone ones' stride 32, POSITION0-6,
+//   their R16G16_FLOAT POSITION4: the formats level B, from the shaders' float2 input and the main units'; VB1 stride 120 an
 //   instance: TEXCOORD0-6 R32G32B32A32_FLOAT, TEXCOORD7 R32G32_FLOAT; the input layout made for the game's shader), each through its
 //   mesh's remap indices as points, its own base vertex and first instance, two animation textures 512 wide, the second draw's place
 //   in `captured` 100 texels past the first's end, the third's right after the second's:
-//   B1 the batched corners (rt_batch_unit_mesh + rt_batch_unit_rows streamed at the draws, rt_batch_unit_sm3 / sm41 over them in
-//      FlushBatch's runs, copied into `captured`) are the per-draw stream output's bit for bit, w 1;
+//   B1 the batched corners (rt_batch_unit_mesh + rt_batch_unit_rows, the 4-bone ones' rt_batch_unit_4_bones_mesh + _rows, streamed
+//      at the draws, the family's rt_batch_unit_* compute over them in FlushBatch's runs, copied into `captured`) are the per-draw
+//      stream output's bit for bit, w 1;
 //   B2 the second draw marked stale, and the third drawn with a width of 256 at b2: their corners NaN, the first's still bit for bit;
 //   B3 CONTROL: the first draw's animation texture written again after the draws, before the flush: its corners differ.
 // tests.exe <dump root: the folder holding dump_shader_<game>_pack\cso> <build root: the folder holding <game>.include\embed>
@@ -518,6 +521,9 @@ struct BatchedFamily {
   const char* game_vs;  // the dump's (its input layout)
   const char* capture;  // the add-on's built shaders
   const char* compute;
+  // vs30_main's (POSITION0-5, 2 bones a vertex) or main_4_bones' (POSITION0-6: POSITION2 three weights): their mesh and rows
+  // shaders, the mesh's texels a vertex.
+  bool four_bones = false;
 };
 
 static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& dump_root, const std::string& build32_root) {
@@ -525,30 +531,32 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
   const auto game_vs = Load(dump_root + "\\dump_shader_twattila_pack\\cso\\" + family.game_vs + ".cso");
   const std::string built = build32_root + "\\twattila.include\\embed\\";
   const auto capture = Load(built + family.capture + ".cso");
-  const auto mesh = Load(built + "rt_batch_unit_mesh.cso");
-  const auto rows = Load(built + "rt_batch_unit_rows.cso");
+  const char* mesh_name = family.four_bones ? "rt_batch_unit_4_bones_mesh" : "rt_batch_unit_mesh";
+  const char* rows_name = family.four_bones ? "rt_batch_unit_4_bones_rows" : "rt_batch_unit_rows";
+  const auto mesh = Load(built + mesh_name + ".cso");
+  const auto rows = Load(built + rows_name + ".cso");
   const auto compute = Load(built + family.compute + ".cso");
-  std::printf("B %s: vs %s; %s, rt_batch_unit_mesh, rt_batch_unit_rows, %s\n", family.name, family.game_vs, family.capture, family.compute);
+  std::printf("B %s: vs %s; %s, %s, %s, %s\n", family.name, family.game_vs, family.capture, mesh_name, rows_name, family.compute);
   if (game_vs.empty() || capture.empty() || mesh.empty() || rows.empty() || compute.empty()) {
     std::printf("  MISSING a shader's bytes\n");
     return false;
   }
-  const std::array<D3D11_INPUT_ELEMENT_DESC, 14> layout = {{
-      {"POSITION", 0, DXGI_FORMAT_R16G16B16A16_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-      {"POSITION", 1, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0},
-      {"POSITION", 2, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
-      {"POSITION", 3, DXGI_FORMAT_R16G16_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
-      {"POSITION", 4, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
-      {"POSITION", 5, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
-      {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-      {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-      {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-      {"TEXCOORD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 48, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-      {"TEXCOORD", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 64, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-      {"TEXCOORD", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 80, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-      {"TEXCOORD", 6, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 96, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-      {"TEXCOORD", 7, DXGI_FORMAT_R32G32_FLOAT, 1, 112, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-  }};
+  // VB0: POSITION0 R16G16B16A16_FLOAT, then R8G8B8A8_UNORM but the UV (vs30_main's POSITION3, main_4_bones' POSITION4)
+  // R16G16_FLOAT, as the shaders' float2 input; main_4_bones has one more (POSITION2, the weights).
+  const UINT vertex_positions = family.four_bones ? 7 : 6;
+  const UINT uv_position = family.four_bones ? 4 : 3;
+  const UINT vertex_stride = 8 + ((vertex_positions - 1) * 4);
+  const UINT texels_a_vertex = family.four_bones ? 3 : 2;
+  std::vector<D3D11_INPUT_ELEMENT_DESC> layout;
+  for (UINT position = 0; position < vertex_positions; ++position) {
+    const DXGI_FORMAT format = (position == 0) ? DXGI_FORMAT_R16G16B16A16_FLOAT
+                                               : ((position == uv_position) ? DXGI_FORMAT_R16G16_FLOAT : DXGI_FORMAT_R8G8B8A8_UNORM);
+    layout.push_back({"POSITION", position, format, 0, (position == 0) ? 0 : (4 + (position * 4)), D3D11_INPUT_PER_VERTEX_DATA, 0});
+  }
+  for (UINT texcoord = 0; texcoord < 8; ++texcoord) {
+    layout.push_back({"TEXCOORD", texcoord, (texcoord == 7) ? DXGI_FORMAT_R32G32_FLOAT : DXGI_FORMAT_R32G32B32A32_FLOAT, 1, texcoord * 16,
+                      D3D11_INPUT_PER_INSTANCE_DATA, 1});
+  }
   ComPtr<ID3D11InputLayout> input_layout;
   if (FAILED(device->CreateInputLayout(layout.data(), UINT(layout.size()), game_vs.data(), game_vs.size(), input_layout.GetAddressOf()))) {
     std::printf("  no input layout for the game's shader\n");
@@ -571,15 +579,15 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
   constexpr UINT INSTANCES = 128;
   constexpr UINT ANIMATION_WIDTH = 512;
   constexpr UINT ANIMATION_HEIGHT = 32;
-  std::vector<uint8_t> vertex_data(size_t{VERTICES} * 28);
+  std::vector<uint8_t> vertex_data(size_t{VERTICES} * vertex_stride);
   for (UINT v = 0; v < VERTICES; ++v) {
-    uint8_t* vertex = &vertex_data[size_t{v} * 28];
+    uint8_t* vertex = &vertex_data[size_t{v} * vertex_stride];
     const std::array<uint16_t, 4> position = {uint16_t(HalfBits(Range(-1.f, 1.f))), uint16_t(HalfBits(Range(-0.2f, 1.9f))),
                                               uint16_t(HalfBits(Range(-1.f, 1.f))), uint16_t(HalfBits(1.f))};
     std::memcpy(vertex, position.data(), 8);
-    for (size_t byte = 8; byte < 28; ++byte) vertex[byte] = uint8_t(rng() & 0xFFu);
+    for (size_t byte = 8; byte < vertex_stride; ++byte) vertex[byte] = uint8_t(rng() & 0xFFu);
     const std::array<uint16_t, 2> uv = {uint16_t(HalfBits(Range(0.f, 1.f))), uint16_t(HalfBits(Range(0.f, 1.f)))};
-    std::memcpy(vertex + 16, uv.data(), 4);
+    std::memcpy(vertex + 4 + (uv_position * 4), uv.data(), 4);
   }
   std::vector<float> instance_data(size_t{INSTANCES} * 30);
   for (UINT i = 0; i < INSTANCES; ++i) {
@@ -628,17 +636,18 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
   ComPtr<ID3D11GeometryShader> capture_gs, mesh_gs, rows_gs;
   ComPtr<ID3D11ComputeShader> batch_cs;
   const D3D11_SO_DECLARATION_ENTRY world_entry = {0, "TEXCOORD", 0, 0, 4, 0};
-  const std::array<D3D11_SO_DECLARATION_ENTRY, 2> mesh_entries = {{{0, "TEXCOORD", 0, 0, 4, 0}, {0, "TEXCOORD", 1, 0, 4, 0}}};
+  const std::array<D3D11_SO_DECLARATION_ENTRY, 3> mesh_entries = {
+      {{0, "TEXCOORD", 0, 0, 4, 0}, {0, "TEXCOORD", 1, 0, 4, 0}, {0, "TEXCOORD", 2, 0, 4, 0}}};
   const std::array<D3D11_SO_DECLARATION_ENTRY, 4> rows_entries = {
       {{0, "TEXCOORD", 0, 0, 4, 0}, {0, "TEXCOORD", 1, 0, 4, 0}, {0, "TEXCOORD", 2, 0, 4, 0}, {0, "TEXCOORD", 3, 0, 4, 0}}};
   constexpr UINT WORLD_STRIDE = 16;
-  constexpr UINT MESH_STRIDE = 32;
+  const UINT mesh_stride = texels_a_vertex * 16;
   constexpr UINT ROWS_STRIDE = 64;
   made = made && SUCCEEDED(device->CreateVertexShader(capture.data(), capture.size(), nullptr, capture_vs.GetAddressOf()))
          && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(capture.data(), capture.size(), &world_entry, 1, &WORLD_STRIDE, 1,
                                                                    D3D11_SO_NO_RASTERIZED_STREAM, nullptr, capture_gs.GetAddressOf()))
          && SUCCEEDED(device->CreateVertexShader(mesh.data(), mesh.size(), nullptr, mesh_vs.GetAddressOf()))
-         && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(mesh.data(), mesh.size(), mesh_entries.data(), 2, &MESH_STRIDE, 1,
+         && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(mesh.data(), mesh.size(), mesh_entries.data(), texels_a_vertex, &mesh_stride, 1,
                                                                    D3D11_SO_NO_RASTERIZED_STREAM, nullptr, mesh_gs.GetAddressOf()))
          && SUCCEEDED(device->CreateVertexShader(rows.data(), rows.size(), nullptr, rows_vs.GetAddressOf()))
          && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(rows.data(), rows.size(), rows_entries.data(), 4, &ROWS_STRIDE, 1,
@@ -666,9 +675,9 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
   // The game's state at a unit draw, then the add-on's draw through the remap indices (rt_core.hpp Capture).
   const auto game_state = [&](size_t d, ID3D11Buffer* size) {
     const std::array<ID3D11Buffer*, 2> buffers = {vertex_buffer.Get(), instance_buffer.Get()};
-    constexpr std::array<UINT, 2> STRIDES = {28, 120};
+    const std::array<UINT, 2> strides = {vertex_stride, 120};
     constexpr std::array<UINT, 2> OFFSETS = {0, 0};
-    context->IASetVertexBuffers(0, 2, buffers.data(), STRIDES.data(), OFFSETS.data());
+    context->IASetVertexBuffers(0, 2, buffers.data(), strides.data(), OFFSETS.data());
     context->IASetInputLayout(input_layout.Get());
     context->IASetIndexBuffer(remaps[d].Get(), DXGI_FORMAT_R32_UINT, 0);
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
@@ -703,8 +712,8 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
     };
     D3D11_UNORDERED_ACCESS_VIEW_DESC output_desc = {DXGI_FORMAT_R32_TYPELESS, D3D11_UAV_DIMENSION_BUFFER};
     output_desc.Buffer = {0, TEXELS * 4, D3D11_BUFFER_UAV_FLAG_RAW};
-    if (!make_buffer(nullptr, VERTICES * 32, D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE, 0, &meshes)
-        || !view(meshes.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, VERTICES * 2, &meshes_view)
+    if (!make_buffer(nullptr, VERTICES * mesh_stride, D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE, 0, &meshes)
+        || !view(meshes.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, VERTICES * texels_a_vertex, &meshes_view)
         || !make_buffer(nullptr, INSTANCES * 64, D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE, 0, &rows_buffer)
         || !view(rows_buffer.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, INSTANCES * 4, &rows_view)
         || !make_buffer(nullptr, UINT(DRAWS.size()) * 32, D3D11_BIND_SHADER_RESOURCE, 0, &table_buffer)
@@ -731,7 +740,7 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
       context->SOSetTargets(1, rows_buffer.GetAddressOf(), &rows_offset);
       context->DrawIndexedInstanced(1, DRAWS[d].instances, 0, int(DRAWS[d].base_vertex), DRAWS[d].first_instance);
       table.push_back({mesh_texels, DRAWS[d].vertices, instances, DRAWS[d].instances, 0, 0, (stale_second && d == 1) ? 1u : 0u, 0});
-      mesh_texels += DRAWS[d].vertices * 2;
+      mesh_texels += DRAWS[d].vertices * texels_a_vertex;
       instances += DRAWS[d].instances;
     }
     context->SOSetTargets(0, nullptr, nullptr);
@@ -950,8 +959,17 @@ int main(int argc, char** argv) {
                          root, build32_root)
         && all;
   all = CheckTerrain(root, build32_root) && all;
-  for (const BatchedFamily& family : {BatchedFamily{"Attila main units sm3", "0x5F9CD405.vs_4_0", "rt_capture_unit_sm3", "rt_batch_unit_sm3"},
-                                      BatchedFamily{"Attila main units sm4.1", "0xA691CFF4.vs_4_1", "rt_capture_unit_sm41", "rt_batch_unit_sm41"}}) {
+  for (const BatchedFamily& family : {
+           BatchedFamily{"Attila main units sm3", "0x5F9CD405.vs_4_0", "rt_capture_unit_sm3", "rt_batch_unit_sm3"},
+           BatchedFamily{"Attila main units sm4.1", "0xA691CFF4.vs_4_1", "rt_capture_unit_sm41", "rt_batch_unit_sm41"},
+           BatchedFamily{"Attila dismember units sm3", "0xDAC80ECC.vs_4_0", "rt_capture_unit_dismember_sm3", "rt_batch_unit_dismember_sm3"},
+           BatchedFamily{"Attila dismember units sm4.1", "0xEA1AEB0E.vs_4_1", "rt_capture_unit_dismember_sm41", "rt_batch_unit_dismember_sm41"},
+           BatchedFamily{"Attila 4-bone units sm3", "0x0ECFE74C.vs_4_0", "rt_capture_unit_4_bones_sm3", "rt_batch_unit_4_bones_sm3", true},
+           BatchedFamily{"Attila 4-bone units sm4.1", "0x372628AB.vs_4_1", "rt_capture_unit_4_bones_sm41", "rt_batch_unit_4_bones_sm41", true},
+           BatchedFamily{"Attila 4-bone dismember units sm3", "0xC2AA8FDA.vs_4_0", "rt_capture_unit_4_bones_dismember_sm3",
+                         "rt_batch_unit_4_bones_dismember_sm3", true},
+           BatchedFamily{"Attila 4-bone dismember units sm4.1", "0x31B66A15.vs_4_1", "rt_capture_unit_4_bones_dismember_sm41",
+                         "rt_batch_unit_4_bones_dismember_sm41", true}}) {
     all = CheckBatchedUnits(family, root, build32_root) && all;
   }
   std::printf("%s\n", all ? "ALL PASSED" : "SOME FAILED");
