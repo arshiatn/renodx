@@ -2022,7 +2022,8 @@ void ConfigureAddon() {
           .label = "Two Shadow Cascades Under Rays (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "With ray-traced shadows: the game prepares 2 shadow cascades, as at Shadows Medium, instead of 4.\n"
-                     "The rays shadow instead; faster in forests. Applies after a restart.",
+                     "The rays shadow instead; faster in forests. On, off and the rays' shadows off apply after a restart\n"
+                     "or a change of the game's Shadows option.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

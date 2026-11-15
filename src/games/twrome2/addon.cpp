@@ -2158,7 +2158,7 @@ void ConfigureAddon() {
           .label = "Two Shadow Cascades Under Rays (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "With Skip the Shadow Maps: the game prepares 2 shadow cascades, as at its lower Shadows settings, instead\n"
-                     "of 3 or 4. The rays shadow instead; less CPU time. Applies after a restart.",
+                     "of 3 or 4. The rays shadow instead; less CPU time. On, off and the rays' shadows off apply after a restart.",
           .labels = {"Off", "On"},
       },
   });

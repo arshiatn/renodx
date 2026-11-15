@@ -2738,7 +2738,7 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "With ray-traced shadows: the game prepares 3 shadow cascades, as at Shadows Medium, instead of 4,\n"
                      "and its shadows end nearer. The rays shadow instead; less CPU time with many objects.\n"
-                     "Applies after a restart or after changing the game's Shadows option.",
+                     "On, off and the rays' shadows off apply after a restart or after changing the game's Shadows option.",
           .labels = {"Off", "On"},
       },
       graphics_status,
