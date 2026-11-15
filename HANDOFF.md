@@ -1036,7 +1036,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         2 needs the same with "tonemap_type"); S2 output_encoding Apply calls utils::device_proxy::SetTargetFormat /
         SetTargetColorSpace for proxy games (R.U.S.E. does it itself until then); S3 a runtime filter in
         twattila/test_hooks.hpp (only the D3D11 proxy's runtime). Owner: shared-steps round (after the fix merge)
-      - [ ] ATN 20:4x: V35 = Recommended AND the default Rendering Mode (Reset stays Extended): ru_ makes it. ATN also asks
+      - [x] ATN 20:4x: V35 = Recommended AND the default Rendering Mode (Reset stays Extended): DONE 995f08fc (merged).
+        RT / PT RE-CHECK DONE (plan.md 4c "RT / PT: the routes"): WON'T GET was wrong; one route, XL, the trace decides:
+        a D3D9 draw replay on the proxy's D3D11 device (VB / IB via ReShade's Lock / Unlock map events in RESHADE_ADDON=2
+        builds, the 275 vs_3_0 recompiled to vs_5_0 with stream output and proven by the SM3 interpreter, 52 skinned VS
+        with a 64-bone palette, terrain plain VB geometry, imposters out) into rt_core's clip-space host; RTX Remix's
+        runtime does not fit (a whole renderer). NEW: the ground has a screen-space sun mask (pre-pass 0x8588D239 writes
+        ShadowMap.x; 110 terrain + 94 water PS read it by VPOS): RT sun shadows or Bend can replace .x with no PS edits.
+        Order: DLAA (B0-B4) -> Bend into the ground mask -> route a for RT sun shadows (Experimental) if B0 shows map /
+        unmap firing and under ~2,000 scene draws in a big battle -> PT / GI / reflections later. ATN also asks
         to DOUBLE-CHECK RT / PT for R.U.S.E. (WON'T GET was argued from stream output / ProcessVertices only): ru_ studies a
         D3D9 draw replay on the proxy's D3D11 device, the RTX Remix (dxvk-remix) route, forward-renderer shadow / AO
         placement, and what the B0 trace must answer. Owner: ru_ (resumed 20:4x)
