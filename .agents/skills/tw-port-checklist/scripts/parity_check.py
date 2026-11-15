@@ -19,7 +19,7 @@ Statuses: HAVE, DONE, AS ATTILA (Attila lacks it too), WON'T GET (needs its proo
 Exit 1 if any game has an open line.
 
 usage:
-  python -I parity_check.py --tools <maintainer's tools/tw folder> --tree <repo checkout> [--games a th r2 t w w1 w2 p rr s2 | d1]
+  python -I parity_check.py --tools <maintainer's tools/tw folder> --tree <repo checkout> [--games a th r2 t w w1 w2 p rr s2 | d1 d2]
                             [--dump-tag <tag>] [--tag <tag>] [--bin <folder holding cmd_Decompiler-1.3.16>]
                             [--scale <letter>=<scale census .tsv> ...] [--fxc <fxc.exe>] [--out <report.txt>]
 
@@ -56,9 +56,10 @@ GAMES = {  # letter: (ledger name, game folder, decompiler pack folder)
     'rr': ('romeremastered', 'twromeremastered', 'dump_shader_twromeremastered_pack'),
     's2': ('shogun2', 'twshogun2completeedition', 'dump_shader_shogun2_pack'),
     'd1': ('divinity1', 'divinityoriginalsinenhanced', 'dump_shader_divinity1_pack'),
+    'd2': ('divinity2', 'divinity2originalsindefinitive', 'dump_shader_divinity2_pack'),
 }
-# Checked only when named (--games d1): not Total War games, their ledgers held to Attila's page all the same.
-NOT_TOTAL_WAR = ('d1',)
+# Checked only when named (--games d1 d2): not Total War games, their ledgers held to Attila's page all the same.
+NOT_TOTAL_WAR = ('d1', 'd2')
 SETTLED = ('HAVE', 'DONE', 'AS ATTILA', "WON'T GET")
 WAITING = ('NEEDS A TRACE', 'SHARED STEP')
 HERE = os.path.dirname(os.path.abspath(__file__))
