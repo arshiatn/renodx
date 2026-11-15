@@ -347,6 +347,8 @@ class Upscaler12 {
   [[nodiscard]] bool Lost() const { return FAILED(RemovedReason()); }
   [[nodiscard]] uint32_t Backend() const { return backend_; }
   [[nodiscard]] const std::string& Status() const { return status_; }
+  // Its context still being made on its own thread: the destructor would wait for it.
+  [[nodiscard]] bool Making() const { return making_.load(); }
 
   ~Upscaler12() {
     if (maker_.joinable()) maker_.join();

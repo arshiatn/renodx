@@ -526,6 +526,8 @@ class ProxyFrameGeneration12 {
 
   [[nodiscard]] uint32_t Backend() const { return backend_; }
   [[nodiscard]] const std::string& Status() const { return status_; }
+  // Its chain still being made on its own thread: FreeResources and the destructor would wait for it.
+  [[nodiscard]] bool Making() const { return making_.load(); }
   // Shared::fg_presented: the frames it last presented per rendered frame, the most it presents here (FSR: one generated frame).
   [[nodiscard]] uint32_t Presented() const {
     return presented_ | ((backend_ == dlaa_bridge::FG_BACKEND_XESS ? std::min(xefg_most_ + 1u, 255u) : 2u) << 8);

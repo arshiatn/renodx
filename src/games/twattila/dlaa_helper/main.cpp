@@ -308,6 +308,21 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   auto proxy_generation = std::make_unique<twattila::dlaa_helper::ProxyFrameGeneration12>();
   uint32_t generation_backend = twattila::dlaa_bridge::FG_BACKEND_DLSS;
   std::array<bool, 3> generation_refused = {};  // backends Auto no longer tries
+  // FSR's and XeSS's objects replaced while they still make their context or chain on their own thread (a cold start can
+  // pass the answer's budget: upscale_d3d12.hpp): kept until that is done, as stalled_scene, then freed with a request or an
+  // idle wake, so no request waits for it.
+  std::vector<std::unique_ptr<twattila::dlaa_helper::Upscaler12>> parked_upscalers;
+  std::vector<std::unique_ptr<twattila::dlaa_helper::ProxyFrameGeneration12>> parked_generations;
+  const auto free_parked = [&] {
+    std::erase_if(parked_upscalers, [](const auto& parked) { return !parked->Making(); });
+    std::erase_if(parked_generations, [](const auto& parked) { return !parked->Making(); });
+  };
+  const auto new_upscaler = [&] {
+    if (upscaler->Making()) {
+      parked_upscalers.push_back(std::move(upscaler));
+    }
+    upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+  };
   DXGI_ADAPTER_DESC1 adapter_description = {};
   adapter->GetDesc1(&adapter_description);
   // RENODX_TW_FAKE_VENDOR (tests): another's GPU, as in the addon.
@@ -532,6 +547,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       } else {
         if (proxy_generation->Lost() || proxy_generation->Backend() != backend) {
           if (proxy_generation->Lost()) ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed frame generation's device: a new one.");
+          if (proxy_generation->Making()) {
+            parked_generations.push_back(std::move(proxy_generation));
+          }
           proxy_generation = std::make_unique<twattila::dlaa_helper::ProxyFrameGeneration12>();
         }
         generation_open = proxy_generation->Initialize(adapter.Get(), folder, backend) && proxy_generation->Open(*shared);
@@ -599,13 +617,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       }
     }
     if (upscaler_live && now - upscale_used > IDLE_RELEASE) {
-      logged_release("[TW DLAA helper] FSR / XeSS off for 10 s: their memory released",
-                     [&] { upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>(); });
+      logged_release("[TW DLAA helper] FSR / XeSS off for 10 s: their memory released", new_upscaler);
       upscaler_tried = false;
       upscaler_open = false;
       upscaler_live = false;
     }
-    if (generation_resources && now - fg_used > IDLE_RELEASE) {
+    // FSR's or XeSS's chain still being made: let go at a later wake, once made (FreeResources would wait for it here).
+    const bool generation_making = generation_backend != twattila::dlaa_bridge::FG_BACKEND_DLSS && proxy_generation->Making();
+    if (generation_resources && now - fg_used > IDLE_RELEASE && !generation_making) {
       logged_release("[TW DLAA helper] Frame generation off for 10 s: its memory released", free_generation);
       generation_resources = false;
     }
@@ -646,6 +665,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       log_removed_devices();
       publish_fence();
       release_idle();
+      free_parked();
     }
     return woken;
   };
@@ -685,6 +705,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     if (scene_resumes) {
       stalled_scene.reset();
     }
+    free_parked();
     // A GPU reset removed one's device: it goes at once, whatever the set (no new device can be made while it is held:
     // MakeOwnDevice), a new one on this set (a new set usually follows: the shared fence reads all ones, dlaa_bridge::Prepare).
     if (reconstruction->Lost()) {
@@ -694,7 +715,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
     if (upscaler->Lost()) {
       ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed FSR's / XeSS's device: a new one.");
-      upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+      new_upscaler();
       upscaler_tried = false;
     }
     if (shared->generation != opened_generation) {
@@ -906,7 +927,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       upscale_used = now;
       if (!upscaler_tried) {
         upscaler_tried = true;
-        if (upscaler->Backend() != shared->upscaler) upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
+        if (upscaler->Backend() != shared->upscaler) new_upscaler();
         upscaler_live = true;
         upscaler_open = upscaler->Initialize(adapter.Get(), folder, shared->upscaler)
                         && upscaler->Open({shared->color, shared->depth, shared->motion, shared->output}, shared->fence);
@@ -1005,8 +1026,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   }
   rt_work.changed.notify_all();
   rt_worker.join();
-  // The game and its window are gone: nothing to wait for on FSR's or XeSS's swap chain.
+  // The game and its window are gone: nothing to wait for on FSR's or XeSS's swap chain, nor for a parked one's making.
   proxy_generation.release();
+  for (auto& parked : parked_upscalers) {
+    parked.release();
+  }
+  for (auto& parked : parked_generations) {
+    parked.release();
+  }
   // Its work can only finish with the game's GPU, which is gone: no wait for it.
   stalled_scene.release();
   return 0;
