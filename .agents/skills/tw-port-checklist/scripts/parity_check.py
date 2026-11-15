@@ -55,6 +55,8 @@ GAMES = {  # letter: (ledger name, game folder, decompiler pack folder)
     'p': ('pharaoh', 'twpharaohdynasties', 'dump_shader_twpharaohdynasties_pack'),
     'rr': ('romeremastered', 'twromeremastered', 'dump_shader_twromeremastered_pack'),
     's2': ('shogun2', 'twshogun2completeedition', 'dump_shader_shogun2_pack'),
+    # Not a TW game: R.U.S.E. (D3D9; no cmd_Decompiler dump: its shaders are in its own census, tools/nontw/ruse/census).
+    'ru': ('ruse', 'ruse', None),
 }
 SETTLED = ('HAVE', 'DONE', 'AS ATTILA', "WON'T GET")
 WAITING = ('NEEDS A TRACE', 'SHARED STEP')
@@ -91,6 +93,8 @@ def read_ledger(path):
 def census(args, letter, tools):
     """{vs hash: verdict} of caster_census.py --whole-dump for the game, and the census's summary line."""
     _, folder, pack = GAMES[letter]
+    if pack is None:  # a D3D9 game: no casters to hold (no stream-output capture there)
+        return {}, 'none (D3D9: no D3D11 casters)'
     root = os.path.join(args.bin, 'cmd_Decompiler-1.3.16')
     dump = os.path.join(root, pack)
     if not os.path.isdir(dump):
