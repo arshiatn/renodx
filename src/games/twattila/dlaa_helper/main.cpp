@@ -323,6 +323,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
     upscaler = std::make_unique<twattila::dlaa_helper::Upscaler12>();
   };
+  const auto new_proxy_generation = [&] {
+    if (proxy_generation->Making()) {
+      parked_generations.push_back(std::move(proxy_generation));
+    }
+    proxy_generation = std::make_unique<twattila::dlaa_helper::ProxyFrameGeneration12>();
+  };
   DXGI_ADAPTER_DESC1 adapter_description = {};
   adapter->GetDesc1(&adapter_description);
   // RENODX_TW_FAKE_VENDOR (tests): another's GPU, as in the addon.
@@ -536,9 +542,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     for (size_t index = 0; index < count && !generation_open; ++index) {
       const uint32_t backend = order[index];
       if (generation_refused[backend]) continue;
-      // Another backend's window and swap chain gone first; its memory with them.
+      // Another backend's window and swap chain gone first; its memory with them (FSR's or XeSS's chain still being made:
+      // parked, FreeResources would wait for it here).
       if (generation_resources && generation_backend != backend) {
-        free_generation();
+        if (generation_backend != FG_BACKEND_DLSS && proxy_generation->Making()) {
+          new_proxy_generation();
+        } else {
+          free_generation();
+        }
       }
       generation_backend = backend;
       if (backend == FG_BACKEND_DLSS) {
@@ -547,10 +558,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       } else {
         if (proxy_generation->Lost() || proxy_generation->Backend() != backend) {
           if (proxy_generation->Lost()) ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed frame generation's device: a new one.");
-          if (proxy_generation->Making()) {
-            parked_generations.push_back(std::move(proxy_generation));
-          }
-          proxy_generation = std::make_unique<twattila::dlaa_helper::ProxyFrameGeneration12>();
+          new_proxy_generation();
         }
         generation_open = proxy_generation->Initialize(adapter.Get(), folder, backend) && proxy_generation->Open(*shared);
       }
