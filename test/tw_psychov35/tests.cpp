@@ -1248,6 +1248,31 @@ static void TestRuse(const Shader& post) {
                     m + 1 < markers.size() ? "," : "\n");
       }
     }
+    // HDR audit R4: V31 on SDR output targets BT.709 (that chain's gamut): every channel inside 0..1, and the BT.2020
+    // target (HDR output at the same Peak) gives other colours, or the switch did nothing.
+    for (const float mode : {1.f, 2.f}) {
+      auto sdr_output = RuseInjection(mode);
+      sdr_output.swap_chain_encoding = 2.f;
+      sdr_output.peak_white_nits = sdr_output.diffuse_white_nits = sdr_output.graphics_white_nits = 203.f;
+      auto hdr_output = sdr_output;
+      hdr_output.swap_chain_encoding = 1.f;
+      const auto bt709 = RunRuse(post, scene, grade, 1.f, sdr_output);
+      const auto bt2020 = RunRuse(post, scene, grade, 1.f, hdr_output);
+      float lowest = 1.f;
+      float highest = 0.f;
+      float moved = 0.f;
+      for (size_t m = 0; m < markers.size(); ++m) {
+        for (int channel = 0; channel < 3; ++channel) {
+          lowest = std::min(lowest, bt709[m][channel]);
+          highest = std::max(highest, bt709[m][channel]);
+          moved = std::max(moved, std::abs(bt709[m][channel] - bt2020[m][channel]));
+        }
+      }
+      std::printf("   V31 mode %.0f, SDR output: channels %.4f .. %.4f, largest change against the BT.2020 target %.4f\n", mode, lowest,
+                  highest, moved);
+      CHECK(lowest >= -1e-4f && highest <= 1.f + 1e-3f);
+      CHECK(moved > 1e-4f);
+    }
   }
 }
 

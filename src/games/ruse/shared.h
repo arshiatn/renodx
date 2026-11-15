@@ -60,15 +60,18 @@ struct ShaderInjectData {
 
 // Native Tone uses 0.18 -> 0.18. Full Replacement supplies the same decoded native
 // neutral-ramp anchor as the supplied V31 mode. Preserve customtest31 defaults:
-// compression 1.5, no flare, BT.709 source cage, BT.2020 target. Contrast x cone = cone power.
-// Hue weights: 1 bisector, 2 response hue; the default remains 2.
+// compression 1.5, no flare, BT.709 source cage, BT.2020 target (BT.709 on SDR output: its chain is BT.709).
+// Contrast x cone = cone power. Hue weights: 1 bisector, 2 response hue; the default remains 2.
 #define RUSE_V31_HIGHLIGHT_SOURCE_WEIGHT saturate((2.f - SI.hue_shift) / max(SI.hue_shift, 0.0001f))
-#define ApplyPsychoV31Reference(color, anchor_in)                                                  \
-  renodx::tonemap::psychov::custom_psychotm_test31(                                                \
-      (color), HDR_PEAK, SI.exposure, SI.highlights, SI.shadows,                                   \
-      SI.contrast * SI.cone_response_exponent, 0.f, 1.f, 1.f, SI.saturation, 1.f, 0.f,             \
-      (anchor_in), 0.18f, 0.f, 1.f, renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020, \
-      1.5f, 1.f, 0.5f * (1.f + RUSE_V31_HIGHLIGHT_SOURCE_WEIGHT), RUSE_V31_HIGHLIGHT_SOURCE_WEIGHT,  \
+#define RUSE_V31_TARGET_GAMUT                                                                   \
+  ((SI.swap_chain_encoding == 2.f) ? renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT709 \
+                                   : renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020)
+#define ApplyPsychoV31Reference(color, anchor_in)                                                 \
+  renodx::tonemap::psychov::custom_psychotm_test31(                                               \
+      (color), HDR_PEAK, SI.exposure, SI.highlights, SI.shadows,                                  \
+      SI.contrast * SI.cone_response_exponent, 0.f, 1.f, 1.f, SI.saturation, 1.f, 0.f,            \
+      (anchor_in), 0.18f, 0.f, 1.f, RUSE_V31_TARGET_GAMUT,                                        \
+      1.5f, 1.f, 0.5f * (1.f + RUSE_V31_HIGHLIGHT_SOURCE_WEIGHT), RUSE_V31_HIGHLIGHT_SOURCE_WEIGHT, \
       renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 1.f)
 
 #define HDR SI.hdr
