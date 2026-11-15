@@ -1207,6 +1207,10 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div1 R4 peak clamp + R13 tests. Owner: d1_
       - [ ] ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + R4 SDR gamut + R13 final post
         test; H1 / H2 / T-run LEFT for after the game. Owner: ru_
+        20:5x on branch ruse-whole-package (not built): 01029a12 R4 V31 gamut BT.709 on SDR; 618a347a R13 final post
+        Vanilla exact on the SM3 interpreter (7/7, 7.8e-9; controls fail; found + fixed the vignette saturate); eaa334e1
+        W1 resource log + D1 "Readable Scene Depth (Testing)" (INTZ). O1 = last frame's depth reprojected (plan.md 11).
+        Sent back to write W2..P1 + H1-H3 now (it had stopped at the build gate).
       - [ ] sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (device_proxy target format) + S3
         (test_hooks runtime filter); R.U.S.E. adopts later. Owner: sh_
       - [ ] hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, WH2 FXAA, alpha, Pharaoh max,
