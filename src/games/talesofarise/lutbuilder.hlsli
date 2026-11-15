@@ -13,7 +13,7 @@
 // Both: sRGB-on-2.2 display emulation (GammaSafe), gamma 2.2 encoded.
 
 #include "./shared.h"
-#include "./psycho_test31.hlsli"
+#include "../twattila/psycho_test31.hlsli"
 #include "../twattila/psycho35.hlsli"
 #include "./ue_extended.hlsli"
 
