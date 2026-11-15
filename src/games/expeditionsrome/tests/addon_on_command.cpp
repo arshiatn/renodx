@@ -11,7 +11,6 @@
  *   src/games/expeditionsrome/tests/addon_on_command.cpp
  *   /Fobuild/addon_on_command.obj /Febuild/addon_on_command.exe
  *   /link d3d11.lib dxgi.lib user32.lib advapi32.lib
- *   external/DLSS/lib/Windows_x86_64/x64/nvsdk_ngx_s_dbg_iterator0.lib
  * Run: build\addon_on_command.exe
  * No game launch, ReShade registration, or NVIDIA initialization.
  */
@@ -372,7 +371,7 @@ int main() {
         expect(frame->temporal_shader_hash == test.hash
                    && frame->source_width == allocated[0] && frame->source_height == allocated[1],
                std::string(test.label) + ": actual resource capture keeps hash and allocated extent");
-        // Do not initialize a private pipeline or NGX in this adapter test.
+        // Do not initialize a private pipeline or the helper in this adapter test (no helper: the bridge's Prepare stops).
         // Prefill stable runtime identity only after proving the actual pre-gate
         // accepted and queued the candidate (its fatal latch is clear on entry).
         auto& runtime = *frame->runtime;
@@ -384,7 +383,6 @@ int main() {
         runtime.mode = test.mode;
         runtime.temporal_shader_hash = test.hash;
         runtime.temporal_upscaling = active != OUTPUT;
-        runtime.backend_failed = true;
         result.post_callback(command, result.post_data);
         expect(frame->values_validated == test.validated && !frame->committed,
                std::string(test.label) + ": actual post-callback validates dimensions without SDK or commit");
@@ -393,8 +391,8 @@ int main() {
                      && frame->temporal_upscaling == (active != OUTPUT),
                  std::string(test.label) + ": preparation convention follows active size, never shader identity");
         }
-        expect(!runtime.private_state && !runtime.prepare_shader && !runtime.output.resource,
-               std::string(test.label) + ": private pipeline and NVIDIA remain uninitialized");
+        expect(!runtime.private_state && !runtime.prepare_shader && !runtime.merged.resource,
+               std::string(test.label) + ": private pipeline and the helper remain uninitialized");
         result.finalize_callback(command, result.post_data);
         expect(state.runtime.get() == original_runtime
                    && state.claimed_frame == (test.validated ? state.frame : UINT64_MAX),

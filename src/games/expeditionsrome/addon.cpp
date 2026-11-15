@@ -28,8 +28,10 @@
 #include "../talesofarise/test_hooks.hpp"
 #include "../twattila/draw_dispatch.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/frame_generation.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/output_encoding.hpp"
+#include "../twattila/reflex.hpp"
 #include "./dlss_graphics.hpp"
 #include "./shared.h"
 
@@ -585,13 +587,8 @@ void ConfigureAddon() {
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = static_cast<int>(setting->GetValue()),
-        // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
-        .hdr_encoding = [](int output) {
-          bool frame_generation = false;
-          reshade::get_config_value(nullptr, "Rome AA", "FrameGeneration", frame_generation);
-          if (frame_generation || output == twattila::output_encoding::HDR10) return twattila::output_encoding::HDR10;
-          return twattila::output_encoding::SCRGB;
-        },
+        // The helper's frame generation takes scRGB too (its frames converted to HDR10: fg_hdr10), as Attila's.
+        .hdr_encoding = [](int output) { return (output == twattila::output_encoding::HDR10) ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB; },
         .first_start_without_hdr = &ApplySdrPreset,
         .recommended_preset = &ApplyRecommendedPreset,
         .log_name = "[Rome]",
@@ -605,7 +602,7 @@ void ConfigureAddon() {
                "and PsychoV35. UE Extended by Marat.",
       .section = "About",
   });
-  for (const char* line : {twattila::credits::ACES, twattila::credits::HELPER, twattila::credits::DLSS_ADDON}) {
+  for (const char* line : {twattila::credits::ACES, twattila::credits::HELPER}) {
     settings.push_back(new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::TEXT,
         .label = line,
@@ -636,13 +633,35 @@ bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, 
   return false;
 }
 
-// GT-VBAO's noise moves every frame (the game's TAA / DLSS settle it).
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
+// GT-VBAO's noise moves every frame (the game's TAA / DLSS settle it). The helper's frame generation and Reflex (the page's
+// rows), its frames SDR with the SDR output.
+void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
   shader_injection.ssao_frame = std::fmod(shader_injection.ssao_frame + 1.f, 64.f);
+  const auto& sliders = expeditionsrome::dlss_graphics::aa_sliders;
+  const auto aa = twattila::feature_settings::AaSettings(sliders);
+  twattila::frame_generation::Update({
+      .multiplier = (twattila::feature_settings::Upscaling(sliders) && twattila::dlaa_bridge::HelperInstalled()) ? aa.frame_generation : 0u,
+      .reflex_boost = aa.reflex == 2,
+      .frame_limit = aa.frame_limit,
+      .preset = aa.frame_preset,
+      .hud_recomposition = aa.hud_recomposition,
+      .debug_view = aa.frame_debug_view,
+      .sdr_output = shader_injection.swap_chain_encoding == static_cast<float>(twattila::output_encoding::SDR),
+  });
+  twattila::reflex::Update(swapchain, aa.reflex, aa.frame_limit);
 }
 
-bool AttachAddon(HMODULE addon_module) {
+// The game's device is going away: frame generation's and Reflex's objects on it with it.
+void OnDestroyHelperDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  twattila::frame_generation::OnDestroyDevice(native);
+  twattila::reflex::OnDestroyDevice(native);
+}
+
+bool AttachAddon() {
   if (attached) return true;
 
   ConfigureAddon();
@@ -660,7 +679,13 @@ bool AttachAddon(HMODULE addon_module) {
   twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
   // DLSS, graphics and ray tracing (the former DLSS add-on): after the shader mod, so its callbacks run after this part's
   // on the same shaders, as when it loaded second.
-  expeditionsrome::dlss_graphics::Install(addon_module);
+  expeditionsrome::dlss_graphics::Install();
+  // Frame generation (the helper presents; HUD-less images through the swap chain shader, its constants at b13) and
+  // Reflex for the game's own presents.
+  twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
+                                      sizeof(shader_injection), __fg_hdr10);
+  twattila::reflex::Install();
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
 
   attached = true;
   return true;
@@ -669,6 +694,10 @@ bool AttachAddon(HMODULE addon_module) {
 void DetachAddon() {
   if (!attached) return;
 
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
+  twattila::reflex::Uninstall();
+  twattila::frame_generation::Uninstall();
+  // Last of the helper's users: the bridge ends with it.
   expeditionsrome::dlss_graphics::Uninstall();
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
@@ -691,7 +720,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
     addon_registered = true;
   }
 
-  return AttachAddon(addon_module);
+  return AttachAddon();
 }
 
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE) {

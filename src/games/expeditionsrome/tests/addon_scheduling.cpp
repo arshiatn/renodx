@@ -119,8 +119,7 @@ int main() {
       frame->runtime->temporal_shader_hash = layout.temporal_shader_hash;
       frame->runtime->temporal_upscaling = layout.render != layout.output;
       // A valid candidate reaches the real post-validation branch but stops
-      // before NVIDIA submission or private pipeline/texture initialization.
-      frame->runtime->backend_failed = true;
+      // before the helper (none: the bridge's Prepare stops) or private texture initialization.
       state.claimed_frame = frame->frame;
 
       std::array<std::array<float, 4>, 27> taa = {};

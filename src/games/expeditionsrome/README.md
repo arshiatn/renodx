@@ -8,14 +8,23 @@ DLSS, the live render scale, frame generation, the live graphics settings and ra
 game folder (the install tool renames it aside).
 
 Pages (Settings Mode, as Attila's): HDR & Effects (every HDR row: no Simple / Advanced any more), Graphics 1 of 2
-(`twattila/graphics_page.hpp`: Anti-Aliasing and Upscaling with DLSS and its modes, the Reset / No RT/PT / RT/PT presets,
-Shadows, Ambient Occlusion with GT-VBAO, Global Illumination, Reflections, Ray Tracing Extra Options; then Upscaling and
-Tools: Live Render Scale, Replace the Game's TAA Pass, the in-process frame generation, DLSS Details, Trace One Frame,
-Capture Upscaling Inputs), Graphics 2 of 2 (the live cvar table, `talesofarise_dlss/graphics_table.hpp`, with its presets
-and Contact Shadows under Shadow quality). The overlay's `[Rome AA]` keys go into the page's once (`Migrate`,
-`[renodx] SettingsRevision 1`; a preset's own key is kept; preset E becomes K); frame generation's stay in `[Rome AA]`,
-the cvar choices in `[Rome Graphics Values]`. Output's default is Auto. Ray-traced effects need DLSS now (as on every
-page); leaf opacity micromaps start off here.
+(`twattila/graphics_page.hpp`: Anti-Aliasing and Upscaling with DLSS, FSR and XeSS and their modes, Ray Reconstruction,
+Frame Generation and Reflex, the Reset / No RT/PT / RT/PT presets, Shadows, Ambient Occlusion with GT-VBAO, Global
+Illumination, Reflections, Ray Tracing Extra Options; then Upscaling and Tools: Live Render Scale, Replace the Game's TAA
+Pass, Upscaling Details, Trace One Frame, Capture Upscaling Inputs), Graphics 2 of 2 (the live cvar table,
+`talesofarise_dlss/graphics_table.hpp`, with its presets and Contact Shadows under Shadow quality). The overlay's
+`[Rome AA]` keys go into the page's once (`Migrate`, `[renodx] SettingsRevision 1`; a preset's own key is kept; preset E
+becomes K; frame generation on: its multiplier, Reflex (+ Boost) and frame limit), the cvar choices stay in
+`[Rome Graphics Values]`. Output's default is Auto. Ray-traced effects need an upscaler now (as on every page); leaf
+opacity micromaps start off here.
+
+Upscaling, Ray Reconstruction, frame generation and Reflex go through the TW helper (`renodx-tw-dlaa64.exe`,
+`twattila/dlaa_bridge.hpp`, `twattila/frame_generation.hpp`, `twattila/reflex.hpp`; `upscaling.hpp` holds what the
+bridge is asked for), as in the Total War games: the in-process NGX and Streamline code is gone (no NVIDIA DLL in the
+add-on, no `nvsdk_ngx` link). The helper's DLSS has no inverted-depth flag, so the DLSS-inputs shader
+(`0xB69D8215.cs_5_0.hlsl`) writes 1 - depth. FSR and XeSS get the forward projection (Unreal's reverse-Z turned around).
+Without the helper next to the add-on (the HDR-only download) the add-on is HDR alone: the upscaling and ray tracing rows
+show the full-download note, Anti-Aliasing stays at the game's TAA, nothing waits.
 
 Windows display scaling above 100%: "ExpeditionsRome-Win64-Shipping.exe" (`ExpeditionsRome\Binaries\Win64`) ->
 Properties -> Compatibility -> Change high DPI settings -> Override high DPI scaling behavior, scaled by Application.

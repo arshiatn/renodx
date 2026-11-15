@@ -1,5 +1,9 @@
 # Expeditions: Rome — experimental DLAA / DLSS
 
+History of the former DLSS add-on. Since the UE4 merge round (2026-11-15) it is part of `renodx-expeditionsrome.addon64`
+and upscaling / frame generation go through the TW helper: the in-process NGX and Streamline setup below (`nvngx_dlss.dll`,
+the `sl.*.dll` files, `ngx_backend.hpp`, `tests/ngx_backend_smoke.cpp`) is gone; see `README.md`.
+
 Separate DX11/x64 AA addon. The `expeditionsrome` HDR folder and the user's
 other HDR copy are not changed. This supports **native-resolution DLAA** and
 experimental **DLSS Ultra Quality, Quality, Balanced, Performance, Ultra

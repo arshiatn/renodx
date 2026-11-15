@@ -31,6 +31,7 @@
 #include "../talesofarise_dlss/constant_mirror.hpp"
 #include "./contact_shadows.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
+#include "./upscaling.hpp"
 
 // Ray tracing (Experimental): Expeditions: Rome's scene through the Total War helper (twattila/rt_core.hpp;
 // renodx-tw-dlaa64.exe next to the addon, its own D3D12 device with DXR), in metres (Unreal's centimetres / 100).
@@ -429,12 +430,10 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   }
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
-  const bool guides = settings.reflections || settings.path_tracing;
-  if (!PrepareDevice(device.Get())
-      || !twattila::dlaa_bridge::Prepare(device.Get(), depth_desc.Width, depth_desc.Height, guides, true, DXGI_FORMAT_UNKNOWN,
-                                         settings.reflections)) {
-    return {};
-  }
+  // The bridge as the upscaler and frame generation ask for it (upscaling.hpp: the swap chain's size); the guides for the
+  // reflections, the paths and Ray Reconstruction.
+  const bool guides = expeditionsrome::upscaling::Guides();
+  if (!PrepareDevice(device.Get()) || !expeditionsrome::upscaling::PrepareBridge(device.Get())) return {};
   uint64_t frame = 0;
   {
     const std::unique_lock lock(state.mutex);

@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Private input-preparation shader, not a game replacement registration.
+// Private input-preparation shader, not a game replacement registration: the helper's inputs (twattila/dlaa_bridge.hpp's
+// color, depth and motion, the render size at their top-left).
 Texture2D<float> SceneDepth : register(t0);
 Texture2D<float2> PackedVelocity : register(t1);
 Texture2D<float4> SceneColor : register(t2);
@@ -26,13 +27,13 @@ void main(uint3 dispatch_id : SV_DispatchThreadID) {
   const int2 pixel = int2(dispatch_id.xy);
   const int2 last_pixel = int2(Extent) - 1;
   if (CopyColor != 0) {
-    // Replacing TAA, NVIDIA writes the game's output: clean its input instead,
-    // as non-finite pixels would also stay in NVIDIA's history.
+    // Non-finite pixels would stay in the upscaler's history: cleaned.
     const float3 color = SceneColor.Load(int3(pixel, 0)).rgb;
     OutputColor[pixel] = float4(all(isfinite(color)) ? color : 0.f, 0.f);
   }
   const float center_depth = SceneDepth.Load(int3(pixel, 0));
-  OutputDepth[pixel] = (isfinite(center_depth) ? center_depth : 0.f);
+  // The helper's depth runs forward (Attila's: 0 near, 1 far); UE's is reversed (1 near, 0 at infinity).
+  OutputDepth[pixel] = 1.f - (isfinite(center_depth) ? center_depth : 0.f);
 
   // Match scene TAA's reverse-Z foreground dilation, including its diagonal tie order.
   const int2 top_left = clamp(pixel + int2(-1, -1), int2(0, 0), last_pixel);

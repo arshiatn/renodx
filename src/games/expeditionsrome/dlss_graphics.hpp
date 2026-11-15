@@ -47,24 +47,23 @@
 #include "../talesofarise_dlss/engine_cvars.hpp"
 #include "../talesofarise_dlss/engine_scale.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
-#include "./ngx_backend.hpp"
-#include "../talesofarise_dlss/frame_generation.hpp"
 #include "../talesofarise_dlss/frame_trace.hpp"
 #include "../talesofarise_dlss/graphics_table.hpp"
 #include "../talesofarise_dlss/performance.hpp"
 #include "./ray_tracing.hpp"
 #include "./temporal_capture.hpp"
+#include "./upscaling.hpp"
 #include "../twattila/feature_settings.hpp"
+#include "../twattila/frame_generation.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/lighting_settings.hpp"
 
-static_assert(_ITERATOR_DEBUG_LEVEL == 0, "DLAA must match the shared STL layout of Release RenoDX addons");
-
 // The former DLSS add-on (renodx-expeditionsrome_dlss.addon64, one add-on with the HDR part since the UE4 merge round):
-// DLAA / DLSS at Unreal's TAA (in-process NGX), the live render scale and Halton jitter, frame generation, the live
-// graphics settings (engine cvars) and ray tracing (the Total War helper). The HDR part's AttachAddon calls Install
+// DLAA / DLSS (with Ray Reconstruction), FSR or XeSS at Unreal's TAA, frame generation and the ray tracing, all through
+// the Total War helper (upscaling.hpp: renodx-tw-dlaa64.exe next to the add-on; without it the game's TAA), the live
+// render scale and Halton jitter, the live graphics settings (engine cvars). The HDR part's AttachAddon calls Install
 // after its own attach (its mods::shader attached state and command_action, draw_dispatch the fast dispatch) and
-// Uninstall before its detach; the overlay keeps its own window and keys ([Rome AA], [Rome Graphics Values]).
+// Uninstall before its detach; the rows are the page's (AppendPage).
 namespace expeditionsrome::dlss_graphics {
 
 using Microsoft::WRL::ComPtr;
@@ -84,21 +83,20 @@ struct ModeSettings {
   const char* name;
   float minimum_scale;
   float maximum_scale;
-  expeditionsrome::dlss::Mode backend;
   float live_percentage = 0;  // live render scale; Custom uses its slider
 };
 
 constexpr std::array<ModeSettings, 8> AA_MODES = {{
-    {.label = "Off (game TAA)", .name = "Off", .minimum_scale = 0, .maximum_scale = 0, .backend = expeditionsrome::dlss::Mode::DLAA},
-    {.label = "DLAA (100%)", .name = "DLAA", .minimum_scale = 1, .maximum_scale = 1, .backend = expeditionsrome::dlss::Mode::DLAA, .live_percentage = 100},
+    {.label = "Off (game TAA)", .name = "Off", .minimum_scale = 0, .maximum_scale = 0},
+    {.label = "Native AA (100%)", .name = "Native AA", .minimum_scale = 1, .maximum_scale = 1, .live_percentage = 100},
     // Live: UE renders ceil(size * percentage / 100); 66.66 and 33.33 give exactly 2560x1440 and 1280x720 at 4K.
-    {.label = "DLSS Quality (~67%)", .name = "DLSS Quality", .minimum_scale = .64f, .maximum_scale = .70f, .backend = expeditionsrome::dlss::Mode::DLSS_QUALITY, .live_percentage = 66.66f},
-    {.label = "DLSS Balanced (~58%)", .name = "DLSS Balanced", .minimum_scale = .56f, .maximum_scale = .60f, .backend = expeditionsrome::dlss::Mode::DLSS_BALANCED, .live_percentage = 58},
-    {.label = "DLSS Performance (50%)", .name = "DLSS Performance", .minimum_scale = .50f, .maximum_scale = .52f, .backend = expeditionsrome::dlss::Mode::DLSS_PERFORMANCE, .live_percentage = 50},
-    {.label = "DLSS Custom (1-100%)", .name = "DLSS Custom", .minimum_scale = .01f, .maximum_scale = 1, .backend = expeditionsrome::dlss::Mode::DLSS_CUSTOM},
-    {.label = "DLSS Ultra Performance (~33%)", .name = "DLSS Ultra Performance", .minimum_scale = .32f, .maximum_scale = .35f, .backend = expeditionsrome::dlss::Mode::DLSS_ULTRA_PERFORMANCE, .live_percentage = 33.33f},
-    // Not an NVIDIA SDK mode: the common 77%, created on NVIDIA's Quality model.
-    {.label = "DLSS Ultra Quality (77%)", .name = "DLSS Ultra Quality", .minimum_scale = .74f, .maximum_scale = .80f, .backend = expeditionsrome::dlss::Mode::DLSS_ULTRA_QUALITY, .live_percentage = 77},
+    {.label = "Quality (~67%)", .name = "Quality", .minimum_scale = .64f, .maximum_scale = .70f, .live_percentage = 66.66f},
+    {.label = "Balanced (~58%)", .name = "Balanced", .minimum_scale = .56f, .maximum_scale = .60f, .live_percentage = 58},
+    {.label = "Performance (50%)", .name = "Performance", .minimum_scale = .50f, .maximum_scale = .52f, .live_percentage = 50},
+    {.label = "Custom (1-100%)", .name = "Custom", .minimum_scale = .01f, .maximum_scale = 1},
+    {.label = "Ultra Performance (~33%)", .name = "Ultra Performance", .minimum_scale = .32f, .maximum_scale = .35f, .live_percentage = 33.33f},
+    // Not an NVIDIA SDK mode: the common 77%.
+    {.label = "Ultra Quality (77%)", .name = "Ultra Quality", .minimum_scale = .74f, .maximum_scale = .80f, .live_percentage = 77},
 }};
 
 // UE pads its render-size buffers to multiples of 4 (8 in later versions: switched to once seen). DLSS render sizes
@@ -117,8 +115,9 @@ struct Texture {
   ComPtr<ID3D11UnorderedAccessView> uav;
 };
 
+// The helper's inputs are the bridge's textures (the prepare shader writes them); its output merged with stock TAA's alpha
+// when not replacing (`merged`).
 struct Runtime {
-  expeditionsrome::dlss::Backend backend;
   talesofarise::dlss::ConstantReadback constant_readback;
   talesofarise::dlss::Performance performance;
   ComPtr<ID3D11Device> device;
@@ -126,10 +125,6 @@ struct Runtime {
   ComPtr<ID3D11ComputeShader> prepare_shader;
   ComPtr<ID3D11ComputeShader> merge_shader;
   ComPtr<ID3D11Buffer> prepare_constants;
-  Texture depth;
-  Texture motion;
-  Texture color;   // replacing: cleaned input; NVIDIA writes the game's output
-  Texture output;  // otherwise: NVIDIA's output, merged with stock TAA's alpha
   Texture merged;
   std::array<Texture, 2> target_views;
   uint32_t next_target_view = 0;
@@ -141,7 +136,6 @@ struct Runtime {
   bool temporal_upscaling = false;
   uint32_t temporal_shader_hash = 0;
   uint64_t last_frame = UINT64_MAX;
-  bool backend_failed = false;
 };
 
 static struct State {
@@ -167,16 +161,17 @@ static struct State {
 } state;
 
 static std::atomic<AAMode> requested_mode = AAMode::OFF;
-static std::atomic<uint32_t> preset = NVSDK_NGX_DLSS_Hint_Render_Preset_L;
-// nvngx_dlss.dll found at load (overlay warnings); the backend looks again when it starts.
-static expeditionsrome::dlss::DlssLibrary dlss_library;
+static std::atomic<uint32_t> preset = 12u;  // NVSDK_NGX_DLSS_Hint_Render_Preset L
+// The page's upscaler (dlaa_bridge::UPSCALER_*) and its name.
+static std::atomic<uint32_t> requested_upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;
+constexpr std::array<const char*, 3> UPSCALER_NAMES = {"DLSS", "FSR", "XeSS"};
 // Skip the stock TAA dispatch once constants are known before it (CPU copy trusted).
 static std::atomic_bool replace_taa = true;
 // Active input size the temporal pass last received (width | height << 32), even when
 // rejected, and how many temporal passes were seen.
 static std::atomic<uint64_t> seen_input = 0;
 static std::atomic<uint64_t> seen_frames = 0;
-// Present (+1) at which DLSS Details (the page) was last drawn; timings are measured only then.
+// Present (+1) at which Upscaling Details (the page) was last drawn; timings are measured only then.
 static std::atomic<uint64_t> overlay_frame = 0;
 
 // Why NVIDIA's history restarted, and UE's jitter pattern length (frames until its first
@@ -435,8 +430,6 @@ constexpr auto OUTPUT_SCALING = [] {
   return scaling;
 }();
 static bool effects_at_output = true;
-// DLSS Frame Generation (Experimental, Tales' frame_generation.hpp): set at launch (config FrameGeneration).
-static bool frame_generation = false;
 // Ray tracing (Experimental, ray_tracing.hpp): its settings (config RayTraced*, PathTracing*), installed when an effect
 // is on at launch.
 static twattila::rt_scene::Settings ray_tracing_settings;
@@ -453,22 +446,30 @@ static float contact_shadows_row = 0.f;  // percent of the screen
 // No Bend shadows in this game (graphics_page.hpp Bindings::has_screen_space_shadows false).
 static twattila::feature_settings::SssSliders no_screen_space_shadows;
 
-// UE 4.23's View rows frame generation reads (Tales' 4.21 rows + 4: ClipToWorld came before them).
+// UE 4.23's View rows the upscalers and frame generation read (Tales' 4.21 rows + 4: ClipToWorld came before them):
+// TranslatedWorldToView, ViewToClipNoAA, the camera's axes, TranslatedWorldCameraOrigin, PreViewTranslation.
+constexpr uint32_t VIEW_TRANSLATED_WORLD_TO_VIEW = 12;
 constexpr uint32_t VIEW_VIEW_TO_CLIP_NO_AA = 32;
 constexpr uint32_t VIEW_FORWARD = 56;
 constexpr uint32_t VIEW_UP = 57;
 constexpr uint32_t VIEW_RIGHT = 58;
-constexpr uint32_t VIEW_WORLD_CAMERA_ORIGIN = 63;
-constexpr uint32_t VIEW_CLIP_TO_PREV_CLIP = 118;
+constexpr uint32_t VIEW_TRANSLATED_CAMERA_ORIGIN = 64;
+constexpr uint32_t VIEW_PRE_VIEW_TRANSLATION = 66;
+// UE's world size (centimetres): frame generation's far plane (the projection's is at infinity).
+constexpr float FAR_PLANE = 2097152.f;
 // The tonemapper's permutations (the HDR addon's t00-t09): frame generation's hudless colour after them.
 constexpr std::array<uint32_t, 10> TONEMAPPER_SHADERS = {0x316D5B96u, 0x70CBF75Eu, 0x3BAE1754u, 0xC4ABB3CCu, 0x3D18E77Bu,
                                                          0xA77C9003u, 0xB176941Cu, 0xAAAEB4F0u, 0x2501C25Fu, 0x37FDFDF2u};
 
-// Frame generation's inputs from this frame's DLSS evaluation, submitted at present.
+// Frame generation's inputs from this frame's upscaling (KeepFrame after the tone mapper), around the camera (UE's
+// translated world); the last frame's view-projection and translation (its camera's step moves it).
 static struct FrameGenerationFrame {
   std::shared_mutex mutex;
-  talesofarise::frame_generation::Inputs inputs;
+  twattila::frame_generation::Inputs inputs;
   uint64_t frame = UINT64_MAX;
+  std::array<float, 16> previous_view_projection = {};
+  std::array<float, 3> previous_translation = {};
+  bool previous_kept = false;
 } frame_generation_frame;
 // Volume textures: D3D11 allows at most 2048 per side (Tales crashed creating a 3840-wide one: its divisors were scaled
 // at the 720p startup window and the game sized the volume from the full output). The fog grid is render width / cell
@@ -557,6 +558,13 @@ struct Frame {
   }
 };
 
+// The mode as the upscaler calls it (DLSS at 100%: DLAA).
+inline std::string ModeName(AAMode mode) {
+  const uint32_t upscaler = std::min<uint32_t>(requested_upscaler.load(), UPSCALER_NAMES.size() - 1);
+  if (mode == AAMode::DLAA && upscaler == twattila::dlaa_bridge::UPSCALER_DLSS) return "DLAA";
+  return std::string(UPSCALER_NAMES[upscaler]) + " " + AA_MODES[static_cast<size_t>(mode)].name;
+}
+
 inline void SetStatus(std::string_view message, uint64_t generation = UINT64_MAX) {
   bool changed = false;
   {
@@ -570,9 +578,7 @@ inline void SetStatus(std::string_view message, uint64_t generation = UINT64_MAX
   }
 }
 
-// `keep_nvidia`: AA mode changes keep NVIDIA's runtime initialized (initializing takes over a
-// second); it re-creates its feature for a new size or mode by itself.
-inline void Reset(bool keep_nvidia = false) {
+inline void Reset() {
   std::unique_ptr<Runtime> retired;
   {
     const std::unique_lock lock(state.mutex);
@@ -589,9 +595,7 @@ inline void Reset(bool keep_nvidia = false) {
     diagnostics.restarts.store(0);
     retired = std::move(state.runtime);
     state.runtime = std::make_unique<Runtime>();
-    if (keep_nvidia && retired && !retired->backend.Failed()) state.runtime->backend = std::move(retired->backend);
   }
-  // NGX teardown is outside the module lock, just like evaluation.
 }
 
 inline void FinishFrame(Context&, const void* data) {
@@ -619,8 +623,8 @@ inline void FinishFrame(Context&, const void* data) {
   delete static_cast<const Frame*>(data);
 }
 
-// Validation, NVIDIA evaluation and commit. `replace`: before the stock dispatch, which is
-// skipped on success, NVIDIA writing the game's output; otherwise after it, merged with its alpha.
+// Validation, the helper's evaluation and commit. `replace`: before the stock dispatch, which is skipped on success, the
+// upscaled frame copied into the game's output; otherwise after it, merged with its alpha.
 inline bool Evaluate(Frame* frame, bool replace) {
   auto& runtime = *frame->runtime;
   auto* context = frame->context.Get();
@@ -670,8 +674,7 @@ inline bool Evaluate(Frame* frame, bool replace) {
       || render_width / width < mode.minimum_scale || render_width / width > mode.maximum_scale
       || render_height / height < mode.minimum_scale || render_height / height > mode.maximum_scale
       || std::abs(render_width / width - render_height / height) > std::max(2.f / width, 2.f / height)) {
-    SetStatus(std::string("Stock TAA: unsupported scale/layout for ") + mode.label
-                  + "; keep Fast or Ultra TAA and Temporal Upscaling ON below 100%",
+    SetStatus("Stock TAA: unsupported scale/layout for " + ModeName(frame->mode) + "; keep Fast or Ultra TAA and Temporal Upscaling ON below 100%",
               frame->generation);
     return false;
   }
@@ -732,12 +735,9 @@ inline bool Evaluate(Frame* frame, bool replace) {
     frame->evaluation_started = {};
     diagnostics.jitter_frames = 0;
     diagnostics.jitter_phases.store(0);
-    // NVIDIA stays initialized (a failed one is retried); its feature follows size and mode.
-    auto backend = std::move(runtime.backend);
     auto constant_readback = std::move(runtime.constant_readback);
     auto performance = std::move(runtime.performance);
     runtime = Runtime{};
-    if (!backend.Failed()) runtime.backend = std::move(backend);
     runtime.constant_readback = std::move(constant_readback);
     runtime.performance = std::move(performance);
     runtime.device = device;
@@ -766,11 +766,6 @@ inline bool Evaluate(Frame* frame, bool replace) {
       SetStatus("Stock TAA: input constant-buffer allocation failed", frame->generation);
       return false;
     }
-    if (!create_texture(&runtime.depth, DXGI_FORMAT_R32_FLOAT, frame->render_width, frame->render_height)
-        || !create_texture(&runtime.motion, DXGI_FORMAT_R16G16_FLOAT, frame->render_width, frame->render_height)) {
-      SetStatus("Stock TAA: private texture allocation failed", frame->generation);
-      return false;
-    }
     runtime.width = frame->width;
     runtime.height = frame->height;
     runtime.render_width = frame->render_width;
@@ -780,27 +775,51 @@ inline bool Evaluate(Frame* frame, bool replace) {
     runtime.temporal_shader_hash = frame->temporal_shader_hash;
   }
 
-  if (runtime.backend_failed) {
-    SetStatus(std::string("Stock TAA: ") + runtime.backend.Status(), frame->generation);
+  // The helper's bridge (upscaling.hpp: the swap chain's size, the TAA output's); none: the game's TAA.
+  auto& bridge = twattila::dlaa_bridge::bridge;
+  if (!expeditionsrome::upscaling::PrepareBridge(device.Get())) {
+    SetStatus(twattila::dlaa_bridge::HelperInstalled() ? "Stock TAA: the helper (renodx-tw-dlaa64.exe) is not ready"
+                                                       : "Stock TAA: renodx-tw-dlaa64.exe is not next to the add-on (the full download)",
+              frame->generation);
     return false;
   }
-  if (replace ? !runtime.color.resource : !runtime.merged.resource) {
-    if (!(replace ? create_texture(&runtime.color, DXGI_FORMAT_R16G16B16A16_FLOAT, frame->render_width, frame->render_height)
-                  : create_texture(&runtime.output, DXGI_FORMAT_R16G16B16A16_FLOAT, frame->width, frame->height)
-                        && create_texture(&runtime.merged, DXGI_FORMAT_R16G16B16A16_FLOAT, frame->width, frame->height))) {
-      runtime.color = {};
-      runtime.merged = {};
-      SetStatus("Stock TAA: private texture allocation failed", frame->generation);
-      return false;
-    }
+  if (bridge.width != frame->width || bridge.height != frame->height) {
+    SetStatus("Stock TAA: the helper's size is not the TAA output's", frame->generation);
+    return false;
+  }
+  if (!replace && !runtime.merged.resource && !create_texture(&runtime.merged, DXGI_FORMAT_R16G16B16A16_FLOAT, frame->width, frame->height)) {
+    runtime.merged = {};
+    SetStatus("Stock TAA: private texture allocation failed", frame->generation);
+    return false;
   }
   {
-    // Commit only for the current frame and mode. When replacing, NVIDIA writes the
-    // game's output; a failure lets the stock dispatch run (and overwrite it) instead.
+    // Commit only for the current frame and mode. When replacing, the upscaled frame goes into the game's output; a
+    // failure lets the stock dispatch run instead.
     const std::shared_lock lock(state.mutex);
     if (frame->generation != state.generation || frame->frame != state.frame || requested_mode.load() != frame->mode) return false;
   }
+  const auto use = expeditionsrome::upscaling::Use();
+  const bool nvidia_model = use.upscaler == twattila::dlaa_bridge::UPSCALER_DLSS + 1;
+  // UE's camera (row vectors, centimetres around the camera: the translated world): the view, and the projection without
+  // its jitter with the depth turned forward as the bridge's is (1 - the device depth: z' = w - z; near 0, infinity 1).
+  std::array<float, 16> world_to_view = {};
+  std::array<float, 16> view_to_clip = {};
+  for (size_t row = 0; row < 4; ++row) {
+    std::memcpy(&world_to_view[row * 4], frame->view[VIEW_TRANSLATED_WORLD_TO_VIEW + row].data(), 16);
+    std::memcpy(&view_to_clip[row * 4], frame->view[VIEW_VIEW_TO_CLIP_NO_AA + row].data(), 16);
+    view_to_clip[(row * 4) + 2] = view_to_clip[(row * 4) + 3] - view_to_clip[(row * 4) + 2];
+  }
+  const bool camera_cut = std::bit_cast<uint32_t>(frame->taa[0][2]) != 0;
+  const bool restart = runtime.last_frame == UINT64_MAX;
+  const bool skipped = !restart && frame->frame != runtime.last_frame + 1;
+  const bool reset = camera_cut || restart || skipped;
+  // Ray Reconstruction with a ray-traced effect whose G-buffer guides the sun draw wrote this frame (ray_tracing.hpp).
+  const bool reconstruct = nvidia_model && use.ray_reconstruction != 0 && bridge.guides && ray_tracing_installed
+                           && expeditionsrome::dlss::ray_tracing::HOST.guides_written();
+  // The scene's light as it is (linear, before the tone mapper): no square root for any model.
+  bridge.color_square_root = false;
   bool evaluated = false;
+  twattila::dlaa_bridge::BeforeSharedWrites(context);
   {
     talesofarise::dlss::ContextStateScope restore(context, runtime.private_state.Get());
     runtime.performance.Mark(context);
@@ -817,99 +836,97 @@ inline bool Evaluate(Frame* frame, bool replace) {
         .pixel_jitter = (frame->temporal_upscaling
                              ? std::array<float, 2>{frame->taa[26][0], frame->taa[26][1]}
                              : std::array<float, 2>{}),
-        .copy_color = (replace ? 1u : 0u),
+        .copy_color = 1u,
     };
     static_assert(sizeof(constants) == 96);
     std::memcpy(constants.clip_to_previous.data(), frame->view[118].data(), 64);
     context->UpdateSubresource(runtime.prepare_constants.Get(), 0, nullptr, &constants, 0, 0);
     ID3D11Buffer* buffers[] = {runtime.prepare_constants.Get()};
-    ID3D11ShaderResourceView* prep_inputs[] = {frame->inputs[1].Get(), frame->inputs[2].Get(), replace ? frame->inputs[0].Get() : nullptr};
-    ID3D11UnorderedAccessView* prep_outputs[] = {runtime.depth.uav.Get(), runtime.motion.uav.Get(), replace ? runtime.color.uav.Get() : nullptr};
+    ID3D11ShaderResourceView* prep_inputs[] = {frame->inputs[1].Get(), frame->inputs[2].Get(), frame->inputs[0].Get()};
+    ID3D11UnorderedAccessView* prep_outputs[] = {bridge.depth.uav.Get(), bridge.motion.uav.Get(), bridge.color.uav.Get()};
     context->CSSetShader(runtime.prepare_shader.Get(), nullptr, 0);
     context->CSSetConstantBuffers(0, 1, buffers);
     context->CSSetShaderResources(0, 3, prep_inputs);
     context->CSSetUnorderedAccessViews(0, 3, prep_outputs, nullptr);
     context->Dispatch((frame->render_width + 7) / 8, (frame->render_height + 7) / 8, 1);
     runtime.performance.Mark(context);
-    // NVIDIA reads these outputs next (cheaper than ClearState).
-    constexpr std::array<ID3D11ShaderResourceView*, 3> NO_INPUTS = {};
-    constexpr std::array<ID3D11UnorderedAccessView*, 3> NO_OUTPUTS = {};
-    context->CSSetShaderResources(0, 3, NO_INPUTS.data());
-    context->CSSetUnorderedAccessViews(0, 3, NO_OUTPUTS.data(), nullptr);
-
-    const bool camera_cut = std::bit_cast<uint32_t>(frame->taa[0][2]) != 0;
-    const bool restart = runtime.last_frame == UINT64_MAX;
-    const bool skipped = !restart && frame->frame != runtime.last_frame + 1;
+    context->ClearState();
     if (camera_cut) ++diagnostics.camera_cuts;
     if (restart) ++diagnostics.restarts;
     if (skipped) ++diagnostics.skipped_frames;
     runtime.performance.Mark(context);
-    evaluated = runtime.backend.Evaluate(context, {
-                                                      .color = (replace ? runtime.color.resource.Get() : frame->resources[0].Get()),
-                                                      .depth = runtime.depth.resource.Get(),
-                                                      .motion_vectors = runtime.motion.resource.Get(),
-                                                      .output = (replace ? frame->target.Get() : runtime.output.resource.Get()),
-                                                      .width = frame->render_width,
-                                                      .height = frame->render_height,
-                                                      .jitter_x = frame->taa[26][0],
-                                                      .jitter_y = frame->taa[26][1],
-                                                      .pre_exposure = frame->view[129][1],
-                                                      .reset = camera_cut || restart || skipped,
-                                                      .output_width = frame->width,
-                                                      .output_height = frame->height,
-                                                      .mode = mode.backend,
-                                                      .preset = preset.load(),
-                                                  });
+    const twattila::dlaa_bridge::RayReconstruction reconstruction = {.preset = (use.ray_reconstruction != 0) ? use.ray_reconstruction - 1 : 0u,
+                                                                     .world_to_view = world_to_view,
+                                                                     .view_to_clip = view_to_clip};
+    evaluated = twattila::dlaa_bridge::Evaluate(context, frame->render_width, frame->render_height, frame->taa[26][0], frame->taa[26][1],
+                                                reset, preset.load(), reconstruct ? &reconstruction : nullptr,
+                                                nvidia_model ? nullptr : &view_to_clip);
     runtime.performance.Mark(context);
-    if (evaluated && talesofarise::frame_generation::Presenting()) {
-      const auto& view = frame->view;
-      const auto vector = [&](uint32_t row) { return std::array<float, 3>{view[row][0], view[row][1], view[row][2]}; };
-      talesofarise::frame_generation::Inputs inputs = {
-          .depth = runtime.depth.resource,
-          .motion = runtime.motion.resource,
-          .render_width = frame->render_width,
-          .render_height = frame->render_height,
-          .jitter = {frame->taa[26][0], frame->taa[26][1]},
-          .reset = camera_cut || restart || skipped,
-          .camera = {
-              .position = vector(VIEW_WORLD_CAMERA_ORIGIN),
-              .right = vector(VIEW_RIGHT),
-              .up = vector(VIEW_UP),
-              .forward = vector(VIEW_FORWARD),
-              // UE's reversed infinite projection: its near plane at [14]; as far, UE's world size (centimetres).
-              .near_plane = view[VIEW_VIEW_TO_CLIP_NO_AA + 3][2],
-              .far_plane = 2097152.f,
-          },
-      };
-      for (size_t row = 0; row < 4; ++row) {
-        std::memcpy(&inputs.camera.view_to_clip[row * 4], view[VIEW_VIEW_TO_CLIP_NO_AA + row].data(), 16);
-        std::memcpy(&inputs.camera.clip_to_previous_clip[row * 4], view[VIEW_CLIP_TO_PREV_CLIP + row].data(), 16);
-      }
-      const std::unique_lock lock(frame_generation_frame.mutex);
-      frame_generation_frame.inputs = std::move(inputs);
-      frame_generation_frame.frame = frame->frame;
-    }
-    if (evaluated && !replace) {
-      // After the stock dispatch: its alpha, and its RGB where NVIDIA's is not finite.
-      context->ClearState();
-      runtime.performance.Mark(context);
-      ID3D11ShaderResourceView* merge_inputs[] = {runtime.output.srv.Get(), frame->target_srv.Get()};
+    if (evaluated && replace) {
+      // Replacing: the upscaled frame is the TAA output (its alpha the helper's, as NVIDIA's was).
+      const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = frame->width, .bottom = frame->height, .back = 1};
+      context->CopySubresourceRegion(frame->target.Get(), 0, 0, 0, 0, bridge.output.texture.Get(), 0, &region);
+    } else if (evaluated) {
+      // After the stock dispatch: its alpha, and its RGB where the upscaler's is not finite.
+      ID3D11ShaderResourceView* merge_inputs[] = {bridge.output.srv.Get(), frame->target_srv.Get()};
       ID3D11UnorderedAccessView* merge_outputs[] = {runtime.merged.uav.Get()};
       context->CSSetShader(runtime.merge_shader.Get(), nullptr, 0);
       context->CSSetShaderResources(0, 2, merge_inputs);
       context->CSSetUnorderedAccessViews(0, 1, merge_outputs, nullptr);
       context->Dispatch((frame->width + 7) / 8, (frame->height + 7) / 8, 1);
       context->CopyResource(frame->target.Get(), runtime.merged.resource.Get());
-    } else if (evaluated) {
-      runtime.performance.Mark(context);
     }
   }
   runtime.performance.End(context);
   if (!evaluated) {
-    runtime.backend_failed = runtime.backend.Failed();
     runtime.last_frame = UINT64_MAX;
-    SetStatus(std::string("Stock TAA: ") + runtime.backend.Status(), frame->generation);
+    SetStatus(std::string("Stock TAA: ") + (bridge.shared != nullptr ? bridge.shared->status : "no answer from the helper"), frame->generation);
     return false;
+  }
+  if (twattila::frame_generation::Wanted()) {
+    // Frame generation's camera around this frame's camera; the last frame's moved by the camera's step (a point here is
+    // that much further around the last camera: its row 3 += step x rows 0-2).
+    std::array<float, 16> view_projection = {};
+    for (size_t row = 0; row < 4; ++row) {
+      for (size_t column = 0; column < 4; ++column) {
+        for (size_t k = 0; k < 4; ++k) view_projection[(row * 4) + column] += world_to_view[(row * 4) + k] * view_to_clip[(k * 4) + column];
+      }
+    }
+    const auto& translation = frame->view[VIEW_PRE_VIEW_TRANSLATION];
+    const auto vector = [&](uint32_t row) { return std::array<float, 3>{frame->view[row][0], frame->view[row][1], frame->view[row][2]}; };
+    const auto position = vector(VIEW_TRANSLATED_CAMERA_ORIGIN);
+    const auto right = vector(VIEW_RIGHT);
+    const auto up = vector(VIEW_UP);
+    const auto forward = vector(VIEW_FORWARD);
+    const std::unique_lock lock(frame_generation_frame.mutex);
+    auto& kept = frame_generation_frame;
+    std::array<float, 16> previous = view_projection;
+    if (!reset && kept.previous_kept) {
+      previous = kept.previous_view_projection;
+      const std::array<float, 3> step = {kept.previous_translation[0] - translation[0], kept.previous_translation[1] - translation[1],
+                                         kept.previous_translation[2] - translation[2]};
+      for (size_t column = 0; column < 4; ++column) {
+        previous[12 + column] += (step[0] * previous[column]) + (step[1] * previous[4 + column]) + (step[2] * previous[8 + column]);
+      }
+    }
+    kept.inputs = {
+        .width = frame->render_width,
+        .height = frame->render_height,
+        .jitter_x = frame->taa[26][0],
+        .jitter_y = frame->taa[26][1],
+        .reset = reset,
+        .view_to_clip = view_to_clip,
+        .view_projection = view_projection,
+        .previous_view_projection = previous,
+        .camera = {position[0], position[1], position[2], right[0], right[1], right[2], up[0], up[1], up[2], forward[0], forward[1], forward[2]},
+        // UE's reversed infinite projection: its near plane at [14].
+        .near_plane = frame->view[VIEW_VIEW_TO_CLIP_NO_AA + 3][2],
+        .far_plane = FAR_PLANE,
+    };
+    kept.frame = frame->frame;
+    kept.previous_view_projection = view_projection;
+    kept.previous_translation = {translation[0], translation[1], translation[2]};
+    kept.previous_kept = true;
   }
   frame->committed = true;
   runtime.last_frame = frame->frame;
@@ -922,7 +939,7 @@ inline bool Evaluate(Frame* frame, bool replace) {
       state.temporal_shader_hash = frame->temporal_shader_hash;
     }
   }
-  SetStatus(std::string(mode.name) + " active — "
+  SetStatus(ModeName(frame->mode) + " active — "
                 + (frame->render_width == frame->width && frame->render_height == frame->height
                        ? "native resolution"
                        : "reduced-resolution input")
@@ -972,7 +989,7 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
     mode_changed = state.last_mode != mode;
     state.last_mode = mode;
   }
-  if (mode_changed) Reset(true);
+  if (mode_changed) Reset();
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
@@ -1001,10 +1018,6 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
     frame->frame = state.frame;
     frame->generation = state.generation;
     frame->runtime = std::move(state.runtime);
-  }
-  if (frame->runtime->backend_failed) {
-    SetStatus(std::string("Stock TAA: ") + frame->runtime->backend.Status(), frame->generation);
-    return {};
   }
   if (command.arguments.group_count_x != (frame->width + 7) / 8
       || command.arguments.group_count_y != (frame->height + 7) / 8 || command.arguments.group_count_z != 1) {
@@ -1115,13 +1128,13 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
     if (state.generation != frame->generation || state.frame != frame->frame || state.claimed_frame == state.frame) return {};
     state.claimed_frame = state.frame;
   }
-  // Timings only while the overlay is open, and not for one-time shader/NGX initialization.
+  // Timings only while Upscaling Details is drawn, and not for the first frame of a mode or size.
   const uint64_t overlay = overlay_frame.load();
   frame->measuring = overlay != 0 && frame->frame + 1 - overlay < 120;
   frame->sample_cpu = frame->measuring && runtime.last_frame != UINT64_MAX;
   if (frame->sample_cpu) runtime.performance.Begin(frame->context.Get());
   if (frame->from_mirror && replace_taa.load()) {
-    // Constants are known before the dispatch: DLSS replaces the stock pass (~0 ms "stock TAA").
+    // Constants are known before the dispatch: the upscaler replaces the stock pass (~0 ms "stock TAA").
     runtime.performance.Mark(frame->context.Get());
     const bool replaced = Evaluate(frame.get(), true);
     auto* data = frame.release();
@@ -1199,9 +1212,14 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
   {
     constexpr std::array<AAMode, 7> UPSCALING_MODES = {AAMode::DLAA, AAMode::DLSS_ULTRA_QUALITY, AAMode::DLSS_QUALITY, AAMode::DLSS_BALANCED,
                                                        AAMode::DLSS_PERFORMANCE, AAMode::DLSS_ULTRA_PERFORMANCE, AAMode::DLSS_CUSTOM};
-    const AAMode mode = (aa_sliders.method == 5.f ? UPSCALING_MODES[static_cast<size_t>(std::clamp(aa_sliders.dlss_mode, 0.f, 6.f))] : AAMode::OFF);
+    // Without the helper (the HDR-only download) the game's TAA, its own render scale.
+    const bool upscaling = twattila::feature_settings::Upscaling(aa_sliders) && twattila::dlaa_bridge::HelperInstalled();
+    const AAMode mode = (upscaling ? UPSCALING_MODES[static_cast<size_t>(std::clamp(aa_sliders.dlss_mode, 0.f, 6.f))] : AAMode::OFF);
     if (requested_mode.exchange(mode) != mode && mode != AAMode::OFF) expeditionsrome::dlss::temporal_capture::Reset();
-    preset.store(twattila::feature_settings::AaSettings(aa_sliders).dlaa_preset);
+    const auto aa = twattila::feature_settings::AaSettings(aa_sliders);
+    requested_upscaler.store(aa_sliders.method == 7.f ? twattila::dlaa_bridge::UPSCALER_XESS
+                                                      : (aa_sliders.method == 6.f ? twattila::dlaa_bridge::UPSCALER_FSR : twattila::dlaa_bridge::UPSCALER_DLSS));
+    preset.store(aa.dlaa_preset);
     live.custom = std::clamp(std::round(aa_sliders.render_scale), 1.f, 100.f);
     texture_lod_bias.choice = std::clamp(static_cast<int>(aa_sliders.texture_lod_bias), 0, 3);
     effects_at_output = aa_sliders.effects_at_output != 0.f;
@@ -1218,23 +1236,27 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     }
     ray_tracing_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, light_bounce_strength);
     ray_traced_bounce_strength = light_bounce_strength;
-  }
-  if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Update(ray_tracing_settings, ray_traced_bounce_strength);
-  if (talesofarise::frame_generation::Presenting()) {
-    auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
-    renodx::utils::directx::TryNativeFromReShadeProxy(&context);
-    uint64_t frame;
+    // What the bridge serves this frame (upscaling.hpp); Ray Reconstruction with a ray-traced effect only.
+    const auto& rays = ray_tracing_settings;
+    const bool any_rays = ray_tracing_installed && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections);
+    std::array<uint32_t, 2> size;
     {
       const std::shared_lock lock(state.mutex);
-      frame = state.frame;
+      size = {state.width, state.height};
     }
-    talesofarise::frame_generation::Inputs inputs;
-    {
-      const std::shared_lock lock(frame_generation_frame.mutex);
-      if (frame_generation_frame.frame == frame) inputs = frame_generation_frame.inputs;
-    }
-    talesofarise::frame_generation::Submit(context, inputs, frame);
+    expeditionsrome::upscaling::SetUse({
+        .ray_tracing = ray_tracing_installed,
+        .guides = ray_tracing_installed && (rays.reflections || rays.path_tracing),
+        .reflections = ray_tracing_installed && rays.reflections,
+        .upscaler = upscaling ? requested_upscaler.load() + 1 : 0u,
+        .ray_reconstruction = (any_rays && aa.ray_reconstruction) ? aa.ray_reconstruction_preset + 1 : 0u,
+        .frame_format = twattila::frame_generation::Format(),
+        .frame_backend = aa.frame_backend,
+        .width = size[0],
+        .height = size[1],
+    });
   }
+  if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Update(ray_tracing_settings, ray_traced_bounce_strength);
   const auto mode = requested_mode.load();
   bool changed;
   bool missed;
@@ -1255,19 +1277,15 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     state.copied_per_frame = copied - state.copied_bytes;
     state.copied_bytes = copied;
   }
-  if (changed) {
-    // AA Off frees NVIDIA's memory.
-    Reset(mode != AAMode::OFF);
-  }
+  if (changed) Reset();
   if (mode == AAMode::OFF) {
     SetStatus("Off — original game TAA");
   } else if (missed || changed) {
     // Do not leave an old "active" label up when this view no longer matches.
     std::shared_lock lock(state.mutex);
-    if (state.status.starts_with("DLAA active") || state.status.starts_with("DLSS ") || changed) {
+    if (state.status.find(" active") != std::string::npos || changed) {
       lock.unlock();
-      SetStatus(std::string("Stock TAA: waiting for ") + AA_MODES[static_cast<size_t>(mode)].label
-                + "; keep Fast or Ultra TAA and Temporal Upscaling ON below 100%");
+      SetStatus("Stock TAA: waiting for " + ModeName(mode) + "; keep Fast or Ultra TAA and Temporal Upscaling ON below 100%");
     }
   }
 
@@ -1560,18 +1578,13 @@ inline std::string UpscalerStatus() {
   if (!halton_jitter.patch.applied
       && ((mode == AAMode::DLSS_CUSTOM && live.enabled && live.custom < lowest_scale)
           || (completed != 0 && extents[2] != 0 && static_cast<float>(extents[0]) / static_cast<float>(extents[2]) < lowest_scale / 100.f - .005f))) {
-    text += std::format("\nBelow {:.0f}%, the game's (UE's) jitter pattern gets too short for DLSS: the image can pulse blurry/sharp.", lowest_scale);
+    text += std::format("\nBelow {:.0f}%, the game's (UE's) jitter pattern gets too short for the upscaler: the image can pulse blurry/sharp.", lowest_scale);
   }
   if (mode != AAMode::OFF && status.starts_with("Stock TAA")) {
     text += "\nIn the game's graphics settings, keep Anti-Aliasing on Fast or Ultra and Temporal Upscaling on.";
   }
-  const auto& version = dlss_library.version;
-  if (dlss_library.folder.empty()) {
-    text += "\nnvngx_dlss.dll is missing: put the latest nvngx_dlss.dll next to this add-on (the game's Binaries\\Win64 folder), then restart the game.";
-  } else if (version[0] != 0 && std::array<uint32_t, 2>{version[0], version[1]} < expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION) {
-    text += std::format("\nnvngx_dlss.dll {}.{}.{} is older than {}.{}: presets M and L are not available, NVIDIA uses its default.",
-                        version[0], version[1], version[2], expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION[0],
-                        expeditionsrome::dlss::MINIMUM_RUNTIME_VERSION[1]);
+  if (const auto& shared = twattila::dlaa_bridge::bridge.shared; shared != nullptr && shared->status[0] != '\0') {
+    text += std::string("\nHelper: ") + shared->status;
   }
   if (ray_tracing_installed) text += "\n" + twattila::rt_scene::Status();
   return text;
@@ -1579,7 +1592,7 @@ inline std::string UpscalerStatus() {
 
 // The former overlay's keys ([Rome AA]: the DLSS add-on's until the UE4 merge round) in the page's, once (SettingsRevision 1),
 // each into every preset without one of its own; before the settings are loaded. Settings Mode's Advanced (1) is HDR &
-// Effects (0) again: its 1 is Graphics 1 of 2 now. [Rome AA]'s frame generation keys stay where they are (its own row).
+// Effects (0) again: its 1 is Graphics 1 of 2 now.
 inline void Migrate() {
   const std::string& global = renodx::utils::settings::global_name;
   if (int revision = 0; reshade::get_config_value(nullptr, global.c_str(), "SettingsRevision", revision) && revision >= 1) return;
@@ -1624,6 +1637,18 @@ inline void Migrate() {
     read("PathTracing", &paths);
     values.emplace_back("RayTracedLightBounce", (bounce == 0.f ? 0.f : (paths != 0.f ? 2.f : 1.f)));
   }
+  // The in-process frame generation's (talesofarise_dlss/frame_generation.hpp, Reflex always on with it) into the helper's
+  // rows: its multiplier 2-6 (0 Dynamic, 1 Reflex alone) as the page's 2x-6x (1-5, Dynamic 6), its boost as Reflex's.
+  if (float generation = 0.f; read("FrameGeneration", &generation)) {
+    float multiplier = 2.f;
+    float boost = 0.f;
+    read("FrameGenerationMultiplier", &multiplier);
+    read("ReflexBoost", &boost);
+    const bool on = generation != 0.f;
+    values.emplace_back("FrameGeneration", (!on || multiplier == 1.f) ? 0.f : (multiplier == 0.f ? 6.f : std::clamp(multiplier, 2.f, 6.f) - 1.f));
+    values.emplace_back("Reflex", on ? (boost != 0.f ? 2.f : 1.f) : 0.f);
+  }
+  if (float limit = 0.f; read("FrameGenerationFrameLimit", &limit) && std::isfinite(limit)) values.emplace_back("FrameGenerationFrameLimit", limit);
   for (const char* preset : {"-preset1", "-preset2", "-preset3"}) {
     const std::string section = global + preset;
     for (const auto& [key, value] : values) {
@@ -1641,36 +1666,36 @@ inline void Migrate() {
 // This game's page texts (graphics_page.hpp Texts): the game's TAA stays on for DLSS; the rays' sun shadows and AO with the
 // game's (the darker of both).
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
-    .aa_labels = {"Game's TAA", "", "", "", "", "DLSS", "", ""},
+    .aa_labels = {"Game's TAA", "", "", "", "", "DLSS", "FSR", "XeSS"},
     .aa_tooltip = "Game's TAA: the game's own temporal anti-aliasing.\n"
-                  "DLSS: NVIDIA's (RTX), the best, in place of the game's TAA; it also sets the game's render scale.\n"
-                  "Every ray-traced effect needs it. Needs nvngx_dlss.dll in the game folder.",
-    .in_game_aa_note = "In-game Anti-Aliasing must be Fast or Ultra with Temporal Upscaling on for DLSS.",
+                  "In its place, also setting the game's render scale: DLSS: NVIDIA's (RTX), the best. FSR: AMD's, FSR 4 on\n"
+                  "Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
+                  "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
+    .in_game_aa_note = "In-game Anti-Aliasing must be Fast or Ultra with Temporal Upscaling on for DLSS, FSR and XeSS.",
     .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its shadows, AO and reflections.\n"
                      "The rest at its default.",
     .no_rays_tooltip = "No ray tracing: the game's shadows, ambient occlusion and reflections. The rest of this page at its default.",
     .rays_tooltip = "Ray-traced shadows, ambient occlusion and reflections, path-traced Global Illumination at my settings. The\n"
-                    "rest of this page at its default. Needs DLSS (Anti-Aliasing above). Restart the game after turning ray\n"
-                    "tracing on.",
+                    "rest of this page at its default. Needs an upscaler (Anti-Aliasing above); on NVIDIA also turns DLSS Ray\n"
+                    "Reconstruction on. Restart the game after turning ray tracing on.",
     .shadow_tooltip = "Game's Shadow Maps: the original. DXR: ray-traced sun shadows with the game's (the darker of both): also\n"
-                      "where its shadow maps miss things or end. Needs DLSS. Restart the game after turning it on.",
+                      "where its shadow maps miss things or end. Needs an upscaler. Restart the game after turning it on.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game ambient occlusion on.\n"
                   "Game's SSAO: the original. GT-VBAO: contact shading that lets light pass behind thin things (grass,\n"
                   "poles, characters) instead of dark halos.\n"
-                  "RTAO: from rays through the scene, with the game's. Needs DLSS. Restart the game after turning it on.",
+                  "RTAO: from rays through the scene, with the game's. Needs an upscaler. Restart the game after turning it on.",
     .gi_tooltip_end = "\nRestart the game after turning it on.",
-    .effects_at_output_tooltip = "While DLSS renders below 100%, volumetric fog, light shafts, skin and the shadows of characters,\n"
+    .effects_at_output_tooltip = "While the upscaler renders below 100%, volumetric fog, light shafts, skin and the shadows of characters,\n"
                                  "objects and lamps keep the detail they have at 100%. Looks better, can cost some performance.",
     .dlss_preset_tooltip = "NVIDIA's models: K the first transformer, M the second, L the sharpest and heaviest (default).\n"
                            "A preset forced in the NVIDIA app or NVIDIA Profile Inspector overrides this one.",
     .reflections_tooltip = "Reflections on water, metal and wet ground. Need in-game Screen Space Reflections on.\n"
-                           "Game's SSR: the original. DXR: from rays, also what is off screen. Needs DLSS. Restart the game\n"
+                           "Game's SSR: the original. DXR: from rays, also what is off screen. Needs an upscaler. Restart the game\n"
                            "after turning it on.",
 };
-// The page's anti-aliasing: the game's TAA, DLSS.
-constexpr std::array<int, 2> AA_METHODS = {0, 5};
-// Graphics 1 of 2's own section after graphics_page's: the live render scale, the TAA pass, frame generation, the details
-// and the tools.
+// The page's anti-aliasing: the game's TAA, DLSS, FSR, XeSS.
+constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
+// Graphics 1 of 2's own section after graphics_page's: the live render scale, the TAA pass, the details and the tools.
 inline const std::string TOOLS_SECTION = "Upscaling and Tools";
 inline const std::string GRAPHICS_PRESETS_SECTION = "Graphics Presets";
 
@@ -1697,13 +1722,12 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
       return true;
     });
   };
-  // DLSS with its modes, preset, Texture LOD Bias and Effects at Output Resolution; not the shader anti-aliasing (TW's),
-  // object motion (Unreal's own motion vectors), the helper's frame generation and Reflex (this game's own frame generation
-  // row below).
-  twattila::feature_settings::AppendAa(settings, &aa_sliders, true);
+  // The upscalers with their modes, DLSS's preset and Ray Reconstruction, Texture LOD Bias, Effects at Output Resolution,
+  // the helper's frame generation and Reflex; not the shader anti-aliasing (TW's), object motion (Unreal's own motion
+  // vectors) or the Upscaling Debug View (no view of it here).
+  twattila::feature_settings::AppendAa(settings, &aa_sliders, true, true);
   erase({"AntiAliasingQuality", "AntiAliasingExtraSharpness", "AntiAliasingTaaStrength", "AntiAliasingSharpening", "AntiAliasingObjectMotion",
-         "AntiAliasingDebugView", "FrameGeneration", "Reflex", "FrameGenerationFrameLimit", "FrameGenerationHudRecomposition",
-         "FrameGenerationPreset", "FrameGenerationDebugView"});
+         "AntiAliasingDebugView"});
   // The rays (ray_tracing.hpp: sun shadows, AO, the light bounce and its paths, reflections); not what this host doesn't
   // apply (specular occlusion; the light bounce's resolution: its own half-size texels).
   twattila::rt_scene::AppendSettings(settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION, &light_bounce_strength);
@@ -1767,21 +1791,10 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
                      "runs first and DLSS is merged with its alpha.",
           .is_visible = upscaling,
       },
-      // The in-process frame generation (talesofarise_dlss/frame_generation.hpp), its own keys in [Rome AA].
+      // What the upscaler did (the timings measured only while this is drawn).
       new Setting{
           .value_type = SettingValueType::CUSTOM,
-          .label = "Frame Generation",
-          .section = TOOLS_SECTION,
-          .on_draw = [] {
-            talesofarise::frame_generation::DrawSettings("Rome AA", &frame_generation);
-            return false;
-          },
-          .is_visible = upscaling,
-      },
-      // What DLSS did (the timings measured only while this is drawn).
-      new Setting{
-          .value_type = SettingValueType::CUSTOM,
-          .label = "DLSS Details",
+          .label = "Upscaling Details",
           .section = TOOLS_SECTION,
           .on_draw = [] {
             {
@@ -1803,13 +1816,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
               performance = state.performance;
               extents = {state.render_width, state.render_height, state.width, state.height};
             }
-            const auto& version = dlss_library.version;
-            if (!dlss_library.folder.empty()) {
-              ImGui::TextWrapped("nvngx_dlss.dll %u.%u.%u %s (%s). An override in the NVIDIA app or Profile Inspector can load another version; the DLSS indicator shows the one in use.",
-                                 version[0], version[1], version[2], dlss_library.place,
-                                 reinterpret_cast<const char*>(std::filesystem::path(dlss_library.folder).u8string().c_str()));
-            }
-            ImGui::Text("Successful AA frames: %llu", static_cast<unsigned long long>(completed));
+            ImGui::Text("Successful upscaled frames: %llu", static_cast<unsigned long long>(completed));
             if (completed != 0) {
               const uint32_t phases = diagnostics.jitter_phases.load();
               const auto recommended = static_cast<uint32_t>(std::ceil(8.0 * std::pow(static_cast<double>(extents[2]) / std::max(extents[0], 1u), 2)));
@@ -1838,7 +1845,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
               if (performance.gpu_samples != 0) {
                 ImGui::Text("GPU stock TAA: %.3f ms", performance.gpu_ms[0]);
                 ImGui::Text("GPU input preparation: %.3f ms", performance.gpu_ms[1]);
-                ImGui::Text("GPU NVIDIA evaluation: %.3f ms", performance.gpu_ms[2]);
+                ImGui::Text("GPU helper evaluation: %.3f ms", performance.gpu_ms[2]);
                 ImGui::Text("GPU merge + copy (none when replacing): %.3f ms", performance.gpu_ms[3]);
               }
               ImGui::TextWrapped("Averages since choosing this mode, measured only while this is shown. CPU and GPU times overlap.");
@@ -1967,34 +1974,38 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
   }
 }
 
-// After the tonemapper's draw: frame generation's hudless colour from its target (at the output size only).
+// After the tonemapper's draw (the output size, before the UI): frame generation's HUD-less image from its target with
+// the frame's inputs (twattila/frame_generation.hpp KeepFrame: the helper presents).
 constexpr auto OnTonemapper = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (!talesofarise::frame_generation::Presenting()) return {};
+  if (!twattila::frame_generation::Wanted()) return {};
   return {.post_callback = [](Context& command, const void*) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
     renodx::utils::directx::TryNativeFromReShadeProxy(&context);
-    if (context == nullptr) return;
-    ComPtr<ID3D11RenderTargetView> target;
-    context->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+    if (context == nullptr || context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
+    ComPtr<ID3D11RenderTargetView> target_view;
+    context->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+    if (!target_view) return;
+    ComPtr<ID3D11Resource> resource;
+    target_view->GetResource(resource.GetAddressOf());
+    ComPtr<ID3D11Texture2D> target;
+    if (FAILED(resource.As(&target))) return;
     uint64_t frame;
     {
       const std::shared_lock lock(state.mutex);
       frame = state.frame;
     }
-    talesofarise::frame_generation::DrawHudless(context, target.Get(), frame);
+    twattila::frame_generation::Inputs inputs;
+    {
+      const std::shared_lock lock(frame_generation_frame.mutex);
+      if (frame_generation_frame.frame != frame) return;
+      inputs = frame_generation_frame.inputs;
+    }
+    twattila::frame_generation::KeepFrame(context, target.Get(), inputs);
   }};
 };
 
-// `module`: this add-on (frame generation's files beside it).
-inline bool Install(HMODULE module) {
+inline bool Install() {
   if (attached) return true;
-  dlss_library = expeditionsrome::dlss::FindDlssLibrary();
-  if (dlss_library.folder.empty()) {
-    renodx::utils::log::w("[Rome DLAA] nvngx_dlss.dll not found next to the addon or the game.");
-  } else {
-    renodx::utils::log::i("[Rome DLAA] nvngx_dlss.dll ", dlss_library.version[0], ".", dlss_library.version[1], ".",
-                          dlss_library.version[2], " ", dlss_library.place, ".");
-  }
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
@@ -2013,9 +2024,10 @@ inline bool Install(HMODULE module) {
                                                                                                                                         : renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW),
                                                                                                 });
   }
-  // Installed when an effect is on at launch (restart to turn the first one on).
-  ray_tracing_installed = rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.light_bounce != 0.f
-                          || rt_sliders.reflections != 0.f;
+  // Installed when an effect is on at launch (restart to turn the first one on) and the helper is there to trace it.
+  ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled()
+                          && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.light_bounce != 0.f
+                              || rt_sliders.reflections != 0.f);
   if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Install();
   renodx::utils::command_action::Register(expeditionsrome::dlss::contact_shadows::OnLightRectangle, {
                                                                                                         .shader_hash = expeditionsrome::dlss::contact_shadows::LIGHT_RECTANGLE_SHADER,
@@ -2070,23 +2082,17 @@ inline bool Install(HMODULE module) {
   } else {
     renodx::utils::log::w("[Rome DLAA jitter] The jitter store was not found (", halton_jitter.patch.details, "): the game's jitter.");
   }
-  // Frame generation takes over the game's swap chain, which it makes after its device.
-  talesofarise::frame_generation::LoadSettings("Rome AA", &frame_generation);
-  if (frame_generation) {
-    std::wstring module_path(32768, L'\0');
-    module_path.resize(GetModuleFileNameW(module, module_path.data(), static_cast<DWORD>(module_path.size())));
-    talesofarise::frame_generation::Install(std::filesystem::path(module_path).parent_path(), "Expeditions");
-    for (const uint32_t shader_hash : TONEMAPPER_SHADERS) {
-      renodx::utils::command_action::Register(OnTonemapper, {
-                                                                .shader_hash = shader_hash,
-                                                                .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
-                                                            });
-    }
+  // Frame generation's HUD-less image (the HDR part installs twattila/frame_generation.hpp with its swap chain shader).
+  for (const uint32_t shader_hash : TONEMAPPER_SHADERS) {
+    renodx::utils::command_action::Register(OnTonemapper, {
+                                                              .shader_hash = shader_hash,
+                                                              .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
+                                                          });
   }
   talesofarise::dlss::constants::log_tag = "[Rome AA constants]";
   talesofarise::dlss::constants::Use(DLL_PROCESS_ATTACH);
   attached = true;
-  renodx::utils::log::i("[Rome DLAA] Native DLAA and DLSS Ultra Quality/Quality/Balanced/Performance/Ultra Performance/Custom 1-100% (all six Ultra/Fast compute hashes; exact/4/8-pixel allocations). Live render scale; preset choice; graphics settings. Runtime NVIDIA scale limits; exact CB readbacks and asynchronous phase timings; Release-compatible shared ABI.");
+  renodx::utils::log::i("[Rome DLAA] The helper's DLAA / DLSS, FSR and XeSS at the game's TAA (all six Ultra/Fast compute hashes; exact/4/8-pixel allocations), frame generation, Ray Reconstruction; live render scale; graphics settings.");
   return true;
 }
 
