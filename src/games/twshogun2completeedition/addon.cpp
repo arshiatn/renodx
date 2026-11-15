@@ -2683,20 +2683,22 @@ void ConfigureAddon() {
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, {twattila::graphics_page::AA_SECTION, RAYS_SECTION});
 
   // The DLSS add-on's saved settings (ReShade.ini [Shogun 2 DLSS], until it became part of this add-on), once: each of
-  // its keys this page has, into every preset that lacks it (they held for every preset); then SettingsRevision 1. Its
-  // section stays as it is.
+  // its keys this page has, into every preset that lacks it (they held for every preset), a global row's into the
+  // add-on's own section if it lacks it; then SettingsRevision 1. Its section stays as it is.
   const std::string& global = renodx::utils::settings::global_name;
   if (int revision = 0; !reshade::get_config_value(nullptr, global.c_str(), "SettingsRevision", revision) || revision < 1) {
     int copied = 0;
     for (const auto* setting : settings) {
-      if (setting->key.empty() || setting->is_global) continue;
+      if (setting->key.empty()) continue;
       std::array<char, 64> value = {};
       size_t size = value.size();
       if (!reshade::get_config_value(nullptr, "Shogun 2 DLSS", setting->key.c_str(), value.data(), &size)) continue;
-      for (const char* preset : {"-preset1", "-preset2", "-preset3"}) {
+      const std::vector<std::string> sections = (setting->is_global ? std::vector{global}
+                                                                    : std::vector{global + "-preset1", global + "-preset2", global + "-preset3"});
+      for (const auto& section : sections) {
         size_t saved = 0;
-        if (reshade::get_config_value(nullptr, (global + preset).c_str(), setting->key.c_str(), nullptr, &saved)) continue;
-        reshade::set_config_value(nullptr, (global + preset).c_str(), setting->key.c_str(), static_cast<const char*>(value.data()));
+        if (reshade::get_config_value(nullptr, section.c_str(), setting->key.c_str(), nullptr, &saved)) continue;
+        reshade::set_config_value(nullptr, section.c_str(), setting->key.c_str(), static_cast<const char*>(value.data()));
       }
       ++copied;
     }
