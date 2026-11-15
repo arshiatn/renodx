@@ -991,7 +991,9 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
   }
   if (bridge.pending) {
     const RequestKind last = bridge.pending_kind;
-    if (!Answer()) return false;
+    // A steady request may still open a device in the helper (a lost or failed scene made again, a stalled one resumed):
+    // an opening's time, as Prepare's. Normally the answer is already there.
+    if (!Answer(20000)) return false;
     bridge.steady[last] = shared.evaluated != 0 && shared.done_value == shared.value + 1;
   }
   if (bridge.deferred != 0) context4->Wait(bridge.fence.Get(), std::exchange(bridge.deferred, 0));
@@ -1390,7 +1392,7 @@ inline std::string FrameGenerationStatus() {
 // anti-aliasing took over: an empty set for the helper (its handles and DLSS's feature go at once, the rest with its idle
 // release); the device and the leaves' atlas stay for a quick return, its meshes still point there (rt_scene frees it).
 inline void Release(bool tell_helper = false) {
-  if (tell_helper && bridge.pending) internal::Answer();
+  if (tell_helper && bridge.pending) internal::Answer(20000);
   internal::RetireFence(!tell_helper);
   bridge.color = {};
   bridge.depth = {};
