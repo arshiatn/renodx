@@ -389,15 +389,24 @@ struct State {
   MakeView make_view = nullptr;  // the host's
   uint64_t frame = 0;           // the last view's
   DeviceObjects objects;
-  // In-draw: the vertex shaders' outputs (as Shaders::shaders), the game's pixel shaders that can follow one (by their
-  // pipeline handle: the shader), the draw in progress.
-  std::vector<DrawSignature> draw_signatures;
-  std::unordered_map<uint64_t, GamePixelShader> pixel_shaders;
-  InDraw in_draw;
+  InDraw in_draw;  // the in-draw draw in progress
   UavOverlap uav_overlap;
 };
 
 static State state;
+
+// In-draw: the vertex shaders' outputs (as Shaders::shaders) and the game's pixel shaders that can follow one (by their
+// pipeline handle: the shader). Their own lock, never held across a D3D11 call or a release: the pipeline callbacks
+// (OnInitPipeline inside utils::pipeline's map lock, OnDestroyPipeline also inside D3D11 calls and releases made under
+// state.mutex, when D3D11 destroys a game shader) take only this one.
+struct PixelShaders {
+  std::shared_mutex mutex;
+  std::vector<DrawSignature> draw_signatures;
+  std::unordered_map<uint64_t, GamePixelShader> shaders;
+};
+
+static PixelShaders pixel_shaders;
+
 // The host draws motion this frame (else the moving draws return at once).
 static std::atomic_bool active = false;
 static std::atomic_bool targets_kept = false;
@@ -706,26 +715,42 @@ bool DrawObjectMotion(Context& command, bool* draw_again) {
   ID3D11PixelShader* const game_pixel_shader = GameBinding(bound_pixel_shader, state.in_draw.our_pixel_shader, state.in_draw.pixel_shader);
   ComPtr<ID3D11PixelShader> drawn_pixel_shader;
   if (in_draw) {
-    const auto game = state.pixel_shaders.find(reinterpret_cast<uint64_t>(game_pixel_shader));
-    if (game == state.pixel_shaders.end() || game_targets[dxbc::MOTION_TARGET] != nullptr
-        || game_targets[dxbc::MOTION_DEPTH_TARGET] != nullptr) {
+    const uint64_t game_key = reinterpret_cast<uint64_t>(game_pixel_shader);
+    bool follows = false;
+    bool patched_known = false;
+    uint32_t motion_register = 0;
+    std::vector<uint8_t> game_code;  // without a patched copy for this register yet
+    {
+      const std::shared_lock pixel_lock(pixel_shaders.mutex);
+      if (const auto game = pixel_shaders.shaders.find(game_key); game != pixel_shaders.shaders.end()) {
+        follows = true;
+        motion_register = pixel_shaders.draw_signatures[index].motion_register;
+        const auto& patched = game->second.patched;
+        const auto known = std::ranges::find(patched, motion_register, &std::pair<uint32_t, ComPtr<ID3D11PixelShader>>::first);
+        patched_known = known != patched.end();
+        if (patched_known) {
+          drawn_pixel_shader = known->second;
+        } else {
+          game_code = game->second.code;
+        }
+      }
+    }
+    if (!follows || game_targets[dxbc::MOTION_TARGET] != nullptr || game_targets[dxbc::MOTION_DEPTH_TARGET] != nullptr) {
       release_targets();
       *draw_again = true;
       return false;
     }
-    const uint32_t motion_register = state.draw_signatures[index].motion_register;
-    auto& patched = game->second.patched;
-    auto known = std::ranges::find(patched, motion_register, &std::pair<uint32_t, ComPtr<ID3D11PixelShader>>::first);
-    if (known == patched.end()) {
-      const std::vector<uint8_t> code = dxbc::AddMotionTargets(game->second.code, motion_register);
-      ComPtr<ID3D11PixelShader> created;
-      if (!code.empty() && FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, created.GetAddressOf()))) {
+    if (!patched_known) {
+      const std::vector<uint8_t> code = dxbc::AddMotionTargets(game_code, motion_register);
+      if (!code.empty() && FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, drawn_pixel_shader.GetAddressOf()))) {
         renodx::utils::log::w("[Total War] Object motion: a patched pixel shader was refused (its draws drawn again).");
-        created.Reset();
+        drawn_pixel_shader.Reset();
       }
-      known = patched.insert(patched.end(), {motion_register, std::move(created)});
+      const std::unique_lock pixel_lock(pixel_shaders.mutex);
+      if (const auto game = pixel_shaders.shaders.find(game_key); game != pixel_shaders.shaders.end()) {
+        game->second.patched.emplace_back(motion_register, drawn_pixel_shader);
+      }
     }
-    drawn_pixel_shader = known->second;
     if (!drawn_pixel_shader) {
       release_targets();
       *draw_again = true;
@@ -1438,8 +1463,9 @@ inline void OnInitPipeline(renodx::utils::pipeline::PipelineInfo* info, uint32_t
     const auto same_name = [](std::string_view a, std::string_view b) {
       return std::ranges::equal(a, b, [](char x, char y) { return (x | 0x20) == (y | 0x20); });
     };
-    const std::unique_lock lock(state.mutex);
-    const bool follows = std::ranges::any_of(state.draw_signatures, [&](const DrawSignature& signature) {
+    GamePixelShader replaced;  // a stale entry of the handle: its patched copies released after the lock
+    const std::unique_lock lock(pixel_shaders.mutex);
+    const bool follows = std::ranges::any_of(pixel_shaders.draw_signatures, [&](const DrawSignature& signature) {
       return signature.motion_register != 0 && std::ranges::all_of(inputs, [&](const auto& input) {
                const auto& [element, reg] = input;
                return std::ranges::any_of(signature.outputs, [&](const DrawOutput& output) {
@@ -1449,14 +1475,18 @@ inline void OnInitPipeline(renodx::utils::pipeline::PipelineInfo* info, uint32_t
              });
     });
     if (follows) {
-      state.pixel_shaders[info->pipeline.handle] = {.code = {code.begin(), code.end()}};
+      replaced = std::exchange(pixel_shaders.shaders[info->pipeline.handle], GamePixelShader{.code = {code.begin(), code.end()}});
     }
   }
 }
 
 inline void OnDestroyPipeline(const renodx::utils::pipeline::PipelineInfo& info) {
-  const std::unique_lock lock(state.mutex);
-  state.pixel_shaders.erase(info.pipeline.handle);
+  // Its patched copies released after the lock (a release can raise this callback again).
+  decltype(pixel_shaders.shaders)::node_type erased;
+  {
+    const std::unique_lock lock(pixel_shaders.mutex);
+    erased = pixel_shaders.shaders.extract(info.pipeline.handle);
+  }
 }
 
 // The game's compute bindings the records' recordings change (the shader, b0, t0, t14-t15 and u0-u5), put back after them.
@@ -1740,7 +1770,10 @@ inline void Install(const Shaders& shaders, MakeView make_view) {
     const std::unique_lock lock(internal::state.mutex);
     internal::state.shaders = shaders;
     internal::state.make_view = make_view;
-    internal::state.draw_signatures = std::move(signatures);
+  }
+  {
+    const std::unique_lock lock(internal::pixel_shaders.mutex);
+    internal::pixel_shaders.draw_signatures = std::move(signatures);
   }
   for (const auto& shader : shaders.shaders) {
     renodx::utils::command_action::Register(
@@ -1780,12 +1813,16 @@ inline void Uninstall() {
   SetActive(false);
   internal::targets_kept.store(false, std::memory_order_relaxed);
   internal::bindings_kept.store(false, std::memory_order_relaxed);
+  decltype(internal::pixel_shaders.shaders) released_shaders;  // released after pixel_shaders' lock
+  {
+    const std::unique_lock pixel_lock(internal::pixel_shaders.mutex);
+    internal::pixel_shaders.draw_signatures.clear();
+    released_shaders.swap(internal::pixel_shaders.shaders);
+  }
   const std::unique_lock lock(internal::state.mutex);
   internal::state.shaders = {};
   internal::state.make_view = nullptr;
   internal::state.objects = {};
-  internal::state.draw_signatures.clear();
-  internal::state.pixel_shaders.clear();
   internal::state.in_draw = {};
 }
 
@@ -1803,7 +1840,12 @@ inline void OnDestroyDevice(ID3D11Device* device) {
   if (objects_device || (!internal::state.objects.device && !internal::targets_kept.load(std::memory_order_relaxed)
                          && !internal::bindings_kept.load(std::memory_order_relaxed))) {
     internal::state.in_draw = {};
-    for (auto& [pipeline, shader] : internal::state.pixel_shaders) shader.patched.clear();
+    std::vector<decltype(internal::GamePixelShader::patched)> released_patched;  // released after pixel_shaders' lock
+    const std::unique_lock pixel_lock(internal::pixel_shaders.mutex);
+    for (auto& [pipeline, shader] : internal::pixel_shaders.shaders) {
+      released_patched.push_back(std::move(shader.patched));
+      shader.patched.clear();
+    }
   }
 }
 
