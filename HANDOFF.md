@@ -1225,6 +1225,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         shared file); cfce94eb G1 "Ray-Traced Ground Shadows (Experimental)" (needs DLAA / FSR / XeSS on); bcd378c3
         utils/trace.hpp prints the first register (shared file). T-run checks for G1: sun sign, world units, acne, mask
         size, CPU waits. ru4_ started: O1, ground AO, G2 Bend, then water reflections + ground GI. Part 5: FG + Reflex + P1.
+        ru4_ DONE (not built): 10868c65 O1 "Ray-Traced Object Shadows" (3 instructions into the game's bytecode, 642 / 644
+        object PS SAME at visibility 1; s15; last frame's depth reprojected); 03158598 "Ray-Traced Ground Ambient
+        Occlusion" (108 / 112 terrain PS; s14; 200 units = cm assumed); 3972cacf "Screen-Space Ground Shadows" (Bend via
+        Attila's shaders, Apache line in About). 750 patched .cso (~1.8 MB) in object_shadows/ + ground_ambient/;
+        ru_d3d9_validate accepts all 750. Not added: "Replace Shadow Maps" (proof open). ru5_ started: FG + Reflex, P1
+        pages, GT-VBAO without rays, then water reflections + ground GI.
       - [ ] sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (device_proxy target format) + S3
         (test_hooks runtime filter); R.U.S.E. adopts later. Owner: sh_
       - [ ] hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, WH2 FXAA, alpha, Pharaoh max,
