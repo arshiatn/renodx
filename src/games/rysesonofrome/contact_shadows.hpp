@@ -117,18 +117,18 @@ inline bool Create(ID3D11Device* device) {
 
 // Before the tiled lighting's dispatch (its bindings set): the contact shadows (and the ray-traced sun's,
 // `sun_visibility`: 1 lit, at the depth's size; null: none) into the sun's shadow mask, the ray-traced ambient
-// (`ambient_visibility`: 1 open; null: none) into its directional occlusion.
-inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings, ID3D11ShaderResourceView* sun_visibility = nullptr,
+// (`ambient_visibility`: 1 open; null: none) into its directional occlusion. True: the ray-traced sun's went in.
+inline bool Apply(reshade::api::command_list* cmd_list, const Settings& settings, ID3D11ShaderResourceView* sun_visibility = nullptr,
                   ID3D11ShaderResourceView* ambient_visibility = nullptr) {
   using internal::objects;
   if ((settings.strength <= 0.f && sun_visibility == nullptr && ambient_visibility == nullptr)
       || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) {
-    return;
+    return false;
   }
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
-  if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return;
+  if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return false;
   ComPtr<ID3D11ShaderResourceView> depth;
   ComPtr<ID3D11ShaderResourceView> mask_view;
   ComPtr<ID3D11ShaderResourceView> occlusion_view;
@@ -139,19 +139,19 @@ inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings
   if (ambient_visibility != nullptr) context->CSGetShaderResources(5, 1, occlusion_view.GetAddressOf());
   context->CSGetShaderResources(32, 1, lights.GetAddressOf());
   context->CSGetConstantBuffers(0, 1, camera.GetAddressOf());
-  if (!depth || !mask_view || !lights || !camera) return;
+  if (!depth || !mask_view || !lights || !camera) return false;
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
-  if (!internal::Create(device.Get())) return;
+  if (!internal::Create(device.Get())) return false;
 
   // The mask's slice 0 as a target (made again when the game's mask changes).
   ComPtr<ID3D11Resource> mask;
   mask_view->GetResource(mask.GetAddressOf());
   ComPtr<ID3D11Texture2D> mask_texture;
-  if (FAILED(mask.As(&mask_texture))) return;
+  if (FAILED(mask.As(&mask_texture))) return false;
   D3D11_TEXTURE2D_DESC mask_desc = {};
   mask_texture->GetDesc(&mask_desc);
-  if ((mask_desc.BindFlags & D3D11_BIND_RENDER_TARGET) == 0) return;
+  if ((mask_desc.BindFlags & D3D11_BIND_RENDER_TARGET) == 0) return false;
   if (objects.mask != mask) {
     D3D11_SHADER_RESOURCE_VIEW_DESC mask_view_desc = {};
     mask_view->GetDesc(&mask_view_desc);
@@ -161,7 +161,7 @@ inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings
     };
     target_desc.Texture2DArray = {.MipSlice = 0, .FirstArraySlice = 0, .ArraySize = 1};
     objects.mask_target.Reset();
-    if (FAILED(device->CreateRenderTargetView(mask.Get(), &target_desc, objects.mask_target.GetAddressOf()))) return;
+    if (FAILED(device->CreateRenderTargetView(mask.Get(), &target_desc, objects.mask_target.GetAddressOf()))) return false;
     objects.mask = mask;
   }
   // The directional occlusion as a target, at the mask's size (made again when it changes).
@@ -226,6 +226,7 @@ inline void Apply(reshade::api::command_list* cmd_list, const Settings& settings
   context->OMSetBlendState(objects.max_blend.Get(), nullptr, 0xFFFFFFFF);
   context->OMSetRenderTargets(2, targets, nullptr);
   context->Draw(3, 0);
+  return sun_visibility != nullptr;
 }
 
 // The game's device is going away: the addon's objects on it with it.
