@@ -30,6 +30,7 @@
 #include "../twattila/draw_dispatch.hpp"
 #include "../twattila/output_encoding.hpp"
 #include "./hdr_only.hpp"
+#include "./test_hooks.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -926,6 +927,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::present>(OnPresent);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  // Scripted runs (RENODX_TW_SET / SHOT / PROFILE, twattila/test_hooks.hpp): nothing without them.
+  twattila::test_hooks::Install(&settings, true, "[Tales]");
   talesofarise::post_filters::Use(DLL_PROCESS_ATTACH);
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
@@ -948,6 +951,7 @@ void DetachAddon() {
   twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
+  twattila::test_hooks::Uninstall();
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
   talesofarise::post_filters::Use(DLL_PROCESS_DETACH);
 

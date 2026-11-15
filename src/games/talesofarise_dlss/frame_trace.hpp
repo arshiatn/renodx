@@ -334,9 +334,14 @@ inline std::string Status() {
   return internal::state.status;
 }
 
-// Present: ends a traced frame (writes the file), starts a requested one.
+// Present: ends a traced frame (writes the file), starts a requested one. renodx_trace_now next to the exe (a data run,
+// or RENODX_TW_SET's "trace" key) asks for the next frame: looked for each 60 presents, removed.
 inline void OnPresent() {
   auto& state = internal::state;
+  if (static uint32_t presents = 0; ++presents % 60 == 0
+                                    && DeleteFileW((internal::ExecutableFolder() / L"renodx_trace_now").c_str()) != 0) {
+    Request();
+  }
   if (state.tracing.exchange(false)) {
     internal::UseEvents(false);
     const auto path = internal::ExecutableFolder() / L"tales_frame_trace.txt";

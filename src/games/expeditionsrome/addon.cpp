@@ -23,6 +23,7 @@
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/credits.hpp"
 #include "../talesofarise/hdr_only.hpp"
+#include "../talesofarise/test_hooks.hpp"
 #include "../twattila/draw_dispatch.hpp"
 #include "../twattila/output_encoding.hpp"
 #include "./shared.h"
@@ -595,6 +596,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::present>(OnPresent);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  // Scripted runs (RENODX_TW_SET / SHOT / PROFILE, twattila/test_hooks.hpp): nothing without them.
+  twattila::test_hooks::Install(&settings, true, "[Rome]");
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The fast draw dispatch, with the gate of view cloning's command-wide callback (resource upgrades).
@@ -614,6 +617,7 @@ void DetachAddon() {
   twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
+  twattila::test_hooks::Uninstall();
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
 
   attached = false;

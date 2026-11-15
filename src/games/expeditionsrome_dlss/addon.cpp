@@ -1216,13 +1216,7 @@ void OnDestroyDevice(reshade::api::device* device) {
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  // Debug: renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt;
-  // checked each second, the file removed).
-  if (static uint32_t presents = 0; ++presents % 60 == 0) {
-    if (DeleteFileW((talesofarise::frame_trace::internal::ExecutableFolder() / L"renodx_trace_now").c_str()) != 0) {
-      talesofarise::frame_trace::Request();
-    }
-  }
+  // Debug: also renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt).
   talesofarise::frame_trace::OnPresent();
   if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Update(ray_tracing_settings, ray_traced_bounce_strength);
   if (talesofarise::frame_generation::Presenting()) {

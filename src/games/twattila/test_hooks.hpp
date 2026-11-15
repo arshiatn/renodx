@@ -12,7 +12,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -22,20 +24,28 @@
 #include "../../utils/log.hpp"
 #include "../../utils/mutex.hpp"
 #include "../../utils/settings.hpp"
+// RENODX_TW_PROFILE's action: Record Ray Tracing Profile, unless the add-on (one without the Total War ray-tracing
+// scene) defines its own before including this.
+#ifndef RENODX_TEST_HOOKS_PROFILE
 #include "./rt_scene.hpp"
+#define RENODX_TEST_HOOKS_PROFILE twattila::rt_scene::StartProfile
+#endif
 
 // Tests without input, that many seconds after the clock started (Attila: the first present; a game that passes
 // clock_at_first_present = false: StartClock):
 // RENODX_TW_SHOT=<seconds>[,<count>[,<gap>]] ReShade screenshots (its save path, "auto"; by default a second 5 s later),
 // RENODX_TW_PROFILE=<seconds> Record Ray Tracing Profile,
 // RENODX_TW_SET=<seconds>:<key>=<value>[;<seconds>:<key>=<value>...] settings changed then, as their sliders would; a
-// button's label as the key presses it; the key "shot" takes a screenshot.
+// button's label as the key presses it; the key "shot" takes a screenshot, the key "trace" writes renodx_trace_now next to
+// the exe (the frame traces' on-demand marker).
 namespace twattila::test_hooks {
 
 namespace internal {
 static renodx::utils::settings::Settings* settings = nullptr;
 static bool clock_at_first_present = true;
 static std::atomic_uint64_t clock_start = 0;
+// The log lines' prefix.
+static const char* log_name = "[Total War]";
 
 inline void Change(const std::string& key, float value) {
   bool found = false;
@@ -45,7 +55,7 @@ inline void Change(const std::string& key, float value) {
     found = true;
     if (button) {
       setting->on_change();
-      renodx::utils::log::i(std::format("[Total War] Test: {} pressed.", key));
+      renodx::utils::log::i(std::format("{} Test: {} pressed.", log_name, key));
       continue;
     }
     const float previous = setting->GetValue();
@@ -56,9 +66,9 @@ inline void Change(const std::string& key, float value) {
       setting->Write();
       setting->on_change_value(previous, setting->GetValue());
     }
-    renodx::utils::log::i(std::format("[Total War] Test: {} set to {}{}.", key, setting->GetValue(), (setting->binding == nullptr ? " (it has no binding)" : "")));
+    renodx::utils::log::i(std::format("{} Test: {} set to {}{}.", log_name, key, setting->GetValue(), (setting->binding == nullptr ? " (it has no binding)" : "")));
   }
-  if (!found) renodx::utils::log::w(std::format("[Total War] Test: no setting {}, nothing changed.", key));
+  if (!found) renodx::utils::log::w(std::format("{} Test: no setting {}, nothing changed.", log_name, key));
 }
 
 inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
@@ -91,7 +101,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
   static bool profiled = false;
   const uint64_t now = GetTickCount64();
   if (profile_ms != 0 && !profiled && now >= started + profile_ms) {
-    rt_scene::StartProfile();
+    RENODX_TEST_HOOKS_PROFILE();
     profiled = true;
   }
   for (size_t colon = changes.find(':'), equals = changes.find('=');
@@ -100,7 +110,12 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
        colon = changes.find(':'), equals = changes.find('=')) {
     if (const std::string key = changes.substr(colon + 1, equals - colon - 1); key == "shot") {
       runtime->save_screenshot("auto");
-      renodx::utils::log::i("[Total War] Test: shot pressed.");
+      renodx::utils::log::i(std::format("{} Test: shot pressed.", log_name));
+    } else if (key == "trace") {
+      std::wstring exe(32768, L'\0');
+      exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+      std::ofstream(std::filesystem::path(exe).parent_path() / L"renodx_trace_now", std::ios::binary | std::ios::trunc);
+      renodx::utils::log::i(std::format("{} Test: renodx_trace_now written.", log_name));
     } else {
       Change(key, std::strtof(changes.c_str() + equals + 1, nullptr));
     }
@@ -110,7 +125,7 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
   if (shot_ms == 0 || taken >= shot_count || now < started + shot_ms + (taken * shot_gap_ms)) return;
   runtime->save_screenshot("auto");
   ++taken;
-  renodx::utils::log::i(std::format("[Total War] Test: screenshot {}.", taken));
+  renodx::utils::log::i(std::format("{} Test: screenshot {}.", log_name, taken));
 }
 }  // namespace internal
 
@@ -120,13 +135,14 @@ inline void StartClock() {
   internal::clock_start.compare_exchange_strong(not_started, GetTickCount64());
 }
 
-inline void Install(renodx::utils::settings::Settings* settings, bool clock_at_first_present) {
+inline void Install(renodx::utils::settings::Settings* settings, bool clock_at_first_present, const char* log_name = "[Total War]") {
   if (GetEnvironmentVariableA("RENODX_TW_SHOT", nullptr, 0) == 0 && GetEnvironmentVariableA("RENODX_TW_PROFILE", nullptr, 0) == 0
       && GetEnvironmentVariableA("RENODX_TW_SET", nullptr, 0) == 0) {
     return;
   }
   internal::settings = settings;
   internal::clock_at_first_present = clock_at_first_present;
+  internal::log_name = log_name;
   reshade::register_event<reshade::addon_event::reshade_present>(internal::OnReshadePresent);
 }
 
