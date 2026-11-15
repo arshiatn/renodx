@@ -149,7 +149,9 @@ inline void Release() {
 // draws into the skipped ones are left out.
 inline void Install(renodx::mods::shader::CustomShaders* shaders) {
   for (const auto& [hash, kind] : internal::MASK_PASSES) {
-    (*shaders)[hash].on_draw = [kind](reshade::api::command_list* cmd_list) {
+    const auto pass = shaders->find(hash);
+    if (pass == shaders->end()) continue;
+    pass->second.on_draw = [kind](reshade::api::command_list* cmd_list) {
       auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
       renodx::utils::directx::TryNativeFromReShadeProxy(&context);
       ComPtr<ID3D11ShaderResourceView> view;
