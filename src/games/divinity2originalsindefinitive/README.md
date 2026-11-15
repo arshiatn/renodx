@@ -163,6 +163,13 @@ and outline, 100-nit sneak; the perspective pass has 240 / 300 / 300 / 240).
 Modded modes give it the perspective levels relative to UI brightness; Off keeps
 the game's. Not drawn in any traced frame yet (menu, city, inventory).
 
+**Higher Precision Scene (Experimental, off, Output section, restart):** the
+game's back-buffer-shaped R11G11B10_FLOAT render targets (the scene through
+lighting, forward passes, bloom and PPApplyLUT's input) are created as RGBA16F
+with cloned views. It turns resource cloning on, so the back buffer also goes
+through the swap chain proxy. Not run in game yet: check alpha readers, copies
+and the inventory.
+
 ## Data runs and installing
 
 - **Trace One Frame** (Advanced, Debug), `renodx_trace_now` next to the exe or
