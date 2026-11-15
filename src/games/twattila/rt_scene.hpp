@@ -12,6 +12,7 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -105,7 +106,8 @@ struct Sliders {
   float light_ratio_follow = 0.f;  // with light_ratio: its row in graphics_page.hpp, next to light_ratio's
   float light_count = 0.f;  // Torch and Fire Shadow Lights: 32, 64, 128
   float light_range = 0.f;  // metres (0: any distance)
-  float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
+  float game_point_shadows = 0.f;  // Rays Replace Point Light Shadows (games that InstallPointShadowLights)
+  float ambient_occlusion = 0.f;  // off, on (Attila: in place of the game's and GT-VBAO)
   float ambient_range = 6.f;       // metres
   float ambient_rays = 2.f;
   float ambient_quarter = 0.f;     // 1: a quarter of the rays (faster)
@@ -999,10 +1001,37 @@ inline bool OnUpdateLightConstants(reshade::api::device*, const void* data, resh
 }
 
 // The game's device is going away: its readback buffers with it, and the light buffers watched.
+// Rays Replace Point Light Shadows (InstallPointShadowLights): our builds of the game's point-shadowed light shaders (made at
+// their first draw), the lit stand-in for its point shadow map (a 1 x 1 array, FLT_MAX: farther than any reference depth) and
+// its samplers (point clamp: the 1 x 1 map's texel at any offset; ALWAYS for gather 5.0's comparisons).
+constexpr size_t POINT_SHADOW_LIGHT_COUNT = 32;
+static bool point_shadow_lights_installed = false;
+static std::array<std::span<const uint8_t>, POINT_SHADOW_LIGHT_COUNT> point_shadow_codes = {};
+struct PointShadowObjects {
+  ComPtr<ID3D11Device> device;
+  std::array<ComPtr<ID3D11PixelShader>, POINT_SHADOW_LIGHT_COUNT> shaders = {};
+  ComPtr<ID3D11ShaderResourceView> lit_map;
+  ComPtr<ID3D11SamplerState> point_clamp;
+  ComPtr<ID3D11SamplerState> always;
+};
+static PointShadowObjects point_shadow_objects;
+// The game's bindings a replaced draw changed, put back after it (the draw's thread's).
+struct PointShadowKept {
+  ComPtr<ID3D11PixelShader> shader;
+  ComPtr<ID3D11ShaderResourceView> map;
+  ComPtr<ID3D11SamplerState> sampler;
+  ComPtr<ID3D11SamplerState> comparison;
+};
+static thread_local PointShadowKept point_shadow_kept;
+static std::atomic_bool point_shadows_applied = false;
+
 inline void OnDestroyPointLightDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   if (point_light_readback.device.Get() == reinterpret_cast<ID3D11Device*>(device->get_native())) {
     point_light_readback = {};
+  }
+  if (point_shadow_objects.device.Get() == reinterpret_cast<ID3D11Device*>(device->get_native())) {
+    point_shadow_objects = {};
   }
   const std::unique_lock lock(light_upload_mutex);
   for (auto& upload : light_uploads) {
@@ -1052,6 +1081,10 @@ struct LightInstances {
 };
 // Attila's and the other games' point lights.
 inline constexpr LightInstances POINT_LIGHTS = {};
+namespace internal {
+// The point-shadowed light draws' (InstallPointShadowLights): POINT_LIGHTS' layout, read only while their row is on.
+static LightInstances point_shadow_instances = {};
+}  // namespace internal
 
 // A point light draw (the addon's replaced light shaders with rt_local_lights.hlsli): its instances copied for the next
 // traces; this frame's traced lights' bits and positions bound (put back after). Without rays tracing them, the
@@ -1354,6 +1387,144 @@ inline void InstallPointLights(std::span<const uint32_t> shader_hashes, UINT lig
   }
 }
 
+// The game's point light builds with its point light shadows on (dx11_enable_point_shadows_*: Cutscene Point Light Shadows;
+// gather 4.1 at shader model 4.1, gather 5.0 at 5; the MSAA ones left out: DLAA has none), Attila's and Thrones' (the same
+// bytes; names.tsv, drawn in no trace: level B). The shadowed ones read the game's point shadow map (a 2D array, its cube's
+// faces) at `map_slot`: gather 4.1 gathers it and compares in code (`sampler_slot`), gather 5.0 searches its blockers at
+// `sampler_slot` and compares at `comparison_slot`. Their replacements: twattila/shaders/pointlight08-39, in this order.
+struct PointShadowLight {
+  uint32_t hash = 0;
+  UINT map_slot = UINT_MAX;  // UINT_MAX: the build's unshadowed lights
+  UINT sampler_slot = UINT_MAX;
+  UINT comparison_slot = UINT_MAX;
+};
+inline constexpr std::array<PointShadowLight, internal::POINT_SHADOW_LIGHT_COUNT> POINT_SHADOW_LIGHT_SHADERS = {{
+    // Gather 4.1: linear falloff (skinlm, slm; high, low definition), then shadowed, then smooth falloff the same.
+    {.hash = 0xF59F5A63}, {.hash = 0x80A99678}, {.hash = 0xC15B836C}, {.hash = 0xC499C463},
+    {.hash = 0x448E583F, .map_slot = 4, .sampler_slot = 4}, {.hash = 0x3DD3CC25, .map_slot = 4, .sampler_slot = 4},
+    {.hash = 0x2F02F050, .map_slot = 5, .sampler_slot = 5}, {.hash = 0xEA5A7C4F, .map_slot = 5, .sampler_slot = 5},
+    {.hash = 0xE521F992}, {.hash = 0x27D78FB0}, {.hash = 0xD0F7E8B9}, {.hash = 0xA932AFD8},
+    {.hash = 0x42375E7D, .map_slot = 4, .sampler_slot = 4}, {.hash = 0x0CF2D4D9, .map_slot = 4, .sampler_slot = 4},
+    {.hash = 0x181545DF, .map_slot = 5, .sampler_slot = 5}, {.hash = 0xA7D5B0B1, .map_slot = 5, .sampler_slot = 5},
+    // Gather 5.0, the same order.
+    {.hash = 0x43CA2116}, {.hash = 0xBB678513}, {.hash = 0x463D51CA}, {.hash = 0x194C988B},
+    {.hash = 0x507F23D6, .map_slot = 4, .sampler_slot = 5, .comparison_slot = 4},
+    {.hash = 0x819D9051, .map_slot = 4, .sampler_slot = 5, .comparison_slot = 4},
+    {.hash = 0xD18997A5, .map_slot = 5, .sampler_slot = 6, .comparison_slot = 5},
+    {.hash = 0xB5C224DF, .map_slot = 5, .sampler_slot = 6, .comparison_slot = 5},
+    {.hash = 0x2CDF370B}, {.hash = 0xA2EDBD29}, {.hash = 0xD17728DD}, {.hash = 0x490DFC4B},
+    {.hash = 0xC1FE2079, .map_slot = 4, .sampler_slot = 5, .comparison_slot = 4},
+    {.hash = 0x134C5AA8, .map_slot = 4, .sampler_slot = 5, .comparison_slot = 4},
+    {.hash = 0xE48A600D, .map_slot = 5, .sampler_slot = 6, .comparison_slot = 5},
+    {.hash = 0x5C3798EA, .map_slot = 5, .sampler_slot = 6, .comparison_slot = 5},
+}};
+
+// A point-shadowed light draw with the traced lights bound at t42 (OnPointLightDraw, registered before, bound them: the row on
+// and something traced or screen-space shadowed): our build of its shader in place of the game's, its point shadow map lit
+// (the 1 x 1 stand-in, its samplers), so the traced visibility alone shadows it; the game's put back after. Otherwise the
+// game's bytes draw.
+constexpr auto OnPointShadowLightDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  const auto& light = command.template GetCallbackData<PointShadowLight>();
+  if (*internal::point_shadow_instances.enabled == 0.f) return {};
+  auto* native = internal::NativeContext(command.cmd_list);
+  if (native == nullptr) return {};
+  ComPtr<ID3D11ShaderResourceView> mask;
+  native->PSGetShaderResources(42, 1, mask.GetAddressOf());
+  if (!mask) return {};
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& objects = internal::point_shadow_objects;
+  if (objects.device != device) {
+    objects = {.device = device};
+    const float lit_depth = FLT_MAX;
+    const D3D11_TEXTURE2D_DESC map_desc = {.Width = 1, .Height = 1, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
+                                           .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    const D3D11_SUBRESOURCE_DATA map_data = {.pSysMem = &lit_depth, .SysMemPitch = sizeof(lit_depth)};
+    D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = DXGI_FORMAT_R32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY};
+    view_desc.Texture2DArray = {.MostDetailedMip = 0, .MipLevels = 1, .FirstArraySlice = 0, .ArraySize = 1};
+    const D3D11_SAMPLER_DESC point_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .MaxLOD = D3D11_FLOAT32_MAX};
+    D3D11_SAMPLER_DESC always_desc = point_desc;
+    always_desc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT;
+    always_desc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
+    ComPtr<ID3D11Texture2D> map;
+    if (FAILED(device->CreateTexture2D(&map_desc, &map_data, map.GetAddressOf()))
+        || FAILED(device->CreateShaderResourceView(map.Get(), &view_desc, objects.lit_map.GetAddressOf()))
+        || FAILED(device->CreateSamplerState(&point_desc, objects.point_clamp.GetAddressOf()))
+        || FAILED(device->CreateSamplerState(&always_desc, objects.always.GetAddressOf()))) {
+      objects.lit_map.Reset();
+      return {};
+    }
+  }
+  const size_t index = &light - POINT_SHADOW_LIGHT_SHADERS.data();
+  auto& shader = objects.shaders[index];
+  const auto code = internal::point_shadow_codes[index];
+  if (!objects.lit_map || (!shader && FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader.GetAddressOf())))) return {};
+  auto& kept = internal::point_shadow_kept;
+  native->PSGetShader(kept.shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
+  if (light.map_slot != UINT_MAX) {
+    native->PSGetShaderResources(light.map_slot, 1, kept.map.ReleaseAndGetAddressOf());
+    native->PSGetSamplers(light.sampler_slot, 1, kept.sampler.ReleaseAndGetAddressOf());
+    native->PSSetShaderResources(light.map_slot, 1, objects.lit_map.GetAddressOf());
+    native->PSSetSamplers(light.sampler_slot, 1, objects.point_clamp.GetAddressOf());
+    if (light.comparison_slot != UINT_MAX) {
+      native->PSGetSamplers(light.comparison_slot, 1, kept.comparison.ReleaseAndGetAddressOf());
+      native->PSSetSamplers(light.comparison_slot, 1, objects.always.GetAddressOf());
+    }
+  }
+  native->PSSetShader(shader.Get(), nullptr, 0);
+  if (!internal::point_shadows_applied.exchange(true, std::memory_order_relaxed)) {
+    renodx::utils::log::i(std::format("[Total War] Rays Replace Point Light Shadows applied: ps {:08X}.", light.hash));
+  }
+  // In finalize: a later callback's bypass skips post callbacks.
+  return {.post_data = &light, .finalize_callback = [](Context& post, const void* data) {
+            const auto& drawn = *static_cast<const PointShadowLight*>(data);
+            auto& game = internal::point_shadow_kept;
+            auto* post_native = internal::NativeContext(post.cmd_list);
+            if (post_native != nullptr) {
+              post_native->PSSetShader(game.shader.Get(), nullptr, 0);
+              if (drawn.map_slot != UINT_MAX) {
+                post_native->PSSetShaderResources(drawn.map_slot, 1, game.map.GetAddressOf());
+                post_native->PSSetSamplers(drawn.sampler_slot, 1, game.sampler.GetAddressOf());
+                if (drawn.comparison_slot != UINT_MAX) post_native->PSSetSamplers(drawn.comparison_slot, 1, game.comparison.GetAddressOf());
+              }
+            }
+            game = {};
+          }};
+};
+
+// Our builds of POINT_SHADOW_LIGHT_SHADERS out of the game's custom shaders (renodx::mods::shader::CustomShaders, before its
+// Use; a template: not every includer has mods::shader): they never replace the game's at creation, OnPointShadowLightDraw
+// puts them in at a traced draw.
+inline void TakePointShadowLightCodes(auto* custom_shaders) {
+  for (size_t index = 0; index < POINT_SHADOW_LIGHT_SHADERS.size(); ++index) {
+    if (const auto entry = custom_shaders->find(POINT_SHADOW_LIGHT_SHADERS[index].hash); entry != custom_shaders->end()) {
+      internal::point_shadow_codes[index] = entry->second.code;
+      custom_shaders->erase(entry);
+    }
+  }
+}
+
+// Rays Replace Point Light Shadows (Experimental, `row`): the point-shadowed light draws (POINT_SHADOW_LIGHT_SHADERS) read for
+// the traced lights and drawn by our builds (TakePointShadowLightCodes' first) while traced. After InstallPointLights (its hook
+// runs first at their draws). Its row shown.
+inline void InstallPointShadowLights(const float* row) {
+  if (std::ranges::any_of(internal::point_shadow_codes, [](std::span<const uint8_t> code) { return code.empty(); })) {
+    renodx::utils::log::w("[Total War] Rays Replace Point Light Shadows: not installed, a point light build missing.");
+    return;
+  }
+  internal::point_shadow_lights_installed = true;
+  internal::point_shadow_instances = {.enabled = row};
+  std::array<uint32_t, internal::POINT_SHADOW_LIGHT_COUNT> hashes = {};
+  std::ranges::transform(POINT_SHADOW_LIGHT_SHADERS, hashes.begin(), &PointShadowLight::hash);
+  InstallPointLights(hashes, internal::NO_LIGHT_CONSTANTS, &internal::point_shadow_instances);
+  for (const PointShadowLight& light : POINT_SHADOW_LIGHT_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnPointShadowLightDraw, {.shader_hash = light.hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &light);
+  }
+}
+
 // Attila's and Thrones' battle fog (shaders/battlefog00, shader model 3; the MSAA one left out: DLAA has none).
 constexpr std::array<uint32_t, 1> FOG_SHADERS = {0xA6A0F887};
 
@@ -1634,6 +1805,10 @@ inline void Uninstall() {
     }
     reshade::unregister_event<reshade::addon_event::destroy_device>(internal::OnDestroyPointLightDevice);
   }
+  if (std::exchange(internal::point_shadow_lights_installed, false)) {
+    renodx::utils::command_action::Unregister(OnPointShadowLightDraw);
+    internal::point_shadow_objects = {};
+  }
   renodx::utils::command_action::Unregister(OnCutOutShadowDraw);
   UninstallScene();
 }
@@ -1781,6 +1956,19 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .format = "%.0f m",
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::point_lights_installed; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedGamePointShadows",
+          .binding = &sliders->game_point_shadows,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Rays Replace Point Light Shadows (Experimental)",
+          .section = section,
+          .tooltip = "Where the game casts its own torch and fire shadows (cutscenes with Cutscene Point Light Shadows),\n"
+                     "the ray-traced ones take their place.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
+          .is_visible = [] { return internal::point_shadow_lights_installed; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightGlow",

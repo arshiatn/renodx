@@ -914,6 +914,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedLightSteady", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedLightCount", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedLightRange", .section = section, .shown = more_lights});
+    page.Take({.match = "RayTracedGamePointShadows", .section = section, .shown = more_lights, .only_some_games = true});
     if (b.lights_in_bounce != nullptr && b.light_ratio != nullptr) {
       const auto more_path_lights = [b, more_lights] { return more_lights() && GiMethodOf(b) == GI_PATHS; };
       page.Add(new Setting{

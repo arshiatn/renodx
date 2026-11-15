@@ -255,6 +255,8 @@ void BuildRuntimeData() {
   UpgradeRTVReplaceShader(0x6E20B0EF),   //t18 constant tone mapper
       __ALL_CUSTOM_SHADERS,
   };
+  // The point lights with the game's point light shadows (Attila's pointlight08-39): the game's bytes but at a traced draw.
+  twattila::rt_scene::TakePointShadowLightCodes(&custom_shaders);
   // The reflections' pass (environment_specular_light, Attila's shaders): the ray-traced reflections, else the
   // hierarchical march's pyramid and resolve (rt_scene.hpp, ssr_hiz.hpp); their Shader Model 4 / 4.1 builds (ssr02-05) too.
   // The game's MSAA builds (ssr06, ssr07) have neither.
@@ -2371,8 +2373,10 @@ bool AttachAddon() {
     renodx::utils::command_action::Register(
         OnCampaignDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   }
-  // The point lights' ray-traced shadows (their light shaders replaced: shaders/pointlight*).
+  // The point lights' ray-traced shadows (their light shaders replaced: shaders/pointlight00-07), and with the game's point
+  // light shadows (pointlight08-39, after them: their hook reads what InstallPointLights' bound).
   twattila::rt_scene::InstallPointLights(twattila::rt_scene::POINT_LIGHT_SHADERS);
+  twattila::rt_scene::InstallPointShadowLights(&rt_sliders.game_point_shadows);
   // The battle fog's ray-traced shadows (its shader replaced: shaders/battlefog00).
   twattila::rt_scene::InstallFogShadows(twattila::rt_scene::FOG_SHADERS);
   // Smoke's ray-traced shadows and the smoke map (Attila's particle vertex shader and lit pixel shaders, the same bytes here).
