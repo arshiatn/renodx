@@ -1,6 +1,8 @@
 // 0xB8F368CF (pointlightlinearfalloff slm lowdef): deferred point lights, instanced (the light's position
 // and reach per instance: POSITION2, v3). Ray tracing: x the light's traced visibility
 // (twattila/rt_scene.hpp InstallPointLights; rt_local_lights.hlsli).
+// Its temporaries precise and each x * y + z a mad: the game's instructions, bit for bit on WARP
+// (tools/tw/testbin/g4_point_shadows; fxc reassociated the skinlm ones before).
 #include "../render_scale.hlsli"
 #include "../rt_local_lights.hlsli"
 
@@ -72,7 +74,7 @@ void main(
   float4 v3 : POSITION2,
   out float4 o0 : SV_Target0)
 {
-  float4 r0,r1,r2,r3,r4,r5,r6;
+  precise float4 r0,r1,r2,r3,r4,r5,r6;
   uint4 bitmask, uiDest;
   float4 fDest;
 
@@ -83,16 +85,16 @@ void main(
   r3.xyzw = gbuffer_channel_3_sampler.SampleLevel(gbuffer_channel_3_sampler_s, r0.zw, r0.w).xyzw;
   r4.xyzw = gbuffer_channel_4_sampler.SampleLevel(gbuffer_channel_4_sampler_s, r0.zw, r0.w).yzxw;
   r2.xyz = r2.xyz * r2.xyz;
-  r1.xyz = r1.xyz * float3(2,2,2) + float3(-1,-1,-1);
+  r1.xyz = mad(r1.xyz, float3(2,2,2), float3(-1,-1,-1));
   r3.w = dot(r1.xyz, r1.xyz);
   r3.w = rsqrt(r3.w);
   r1.xyz = r3.www * r1.xyz;
   // The AO blur draws its whole target below 100% (view_share.hpp RegionRead::whole).
   r5.xyzw = s_ssao.Sample(s_ssao_s, r0.zw / DrawRenderShare()).xyzw;
-  r0.xy = r0.xy * g_screen_size.zw + -g_viewport_offset_scale.xy;
+  r0.xy = mad(r0.xy, g_screen_size.zw, -g_viewport_offset_scale.xy);
   r0.xy = r0.xy / g_viewport_offset_scale.zw;
   // Below 100% the view fills its share of the target (view_share.hpp patches the game's own).
-  r4.xy = (r0.xy / DrawRenderShare()) * float2(2,-2) + float2(-1,1);
+  r4.xy = mad((r0.xy / DrawRenderShare()), float2(2,-2), float2(-1,1));
   r4.w = 1;
   r0.x = dot(r4.xyzw, inv_view_projection._m00_m10_m20_m30);
   r0.y = dot(r4.xyzw, inv_view_projection._m01_m11_m21_m31);
@@ -119,35 +121,35 @@ void main(
     r4.w = 1 + -r1.w;
     r6.x = dot(r0.xyz, r1.xyz);
     r6.x = r6.x + r6.x;
-    r1.xyz = r1.xyz * -r6.xxx + r0.xyz;
+    r1.xyz = mad(r1.xyz, -r6.xxx, r0.xyz);
     r1.x = dot(-r4.xyz, r1.xyz);
     r1.x = max(-1, r1.x);
     r1.x = min(1, r1.x);
     r1.y = 1 + -abs(r1.x);
     r1.y = sqrt(r1.y);
-    r1.z = abs(r1.x) * -0.0187292993 + 0.0742610022;
-    r1.z = r1.z * abs(r1.x) + -0.212114394;
-    r1.z = r1.z * abs(r1.x) + 1.57072878;
+    r1.z = mad(abs(r1.x), -0.0187292993, 0.0742610022);
+    r1.z = mad(r1.z, abs(r1.x), -0.212114394);
+    r1.z = mad(r1.z, abs(r1.x), 1.57072878);
     r6.x = r1.z * r1.y;
-    r6.x = r6.x * -2 + 3.14159274;
+    r6.x = mad(r6.x, -2, 3.14159274);
     r1.x = cmp(r1.x < -r1.x);
     r1.x = r1.x ? r6.x : 0;
-    r1.x = r1.z * r1.y + r1.x;
+    r1.x = mad(r1.z, r1.y, r1.x);
     r1.y = r1.w * r1.w;
     r1.z = r3.w ? 0.995899975 : -0.000100016594;
-    r1.y = r1.y * r1.z + r5.y;
-    r1.y = r1.y * 0.5 + 0.5;
-    r1.y = r1.y * 2 + -1;
-    r1.z = -r1.y * r1.y + 1;
+    r1.y = mad(r1.y, r1.z, r5.y);
+    r1.y = mad(r1.y, 0.5, 0.5);
+    r1.y = mad(r1.y, 2, -1);
+    r1.z = mad(-r1.y, r1.y, 1);
     r1.z = max(0.00100000005, r1.z);
     r1.z = log2(r1.z);
     r1.w = 4.95061684 * r1.z;
-    r1.z = r1.z * 0.346573591 + 4.54688501;
+    r1.z = mad(r1.z, 0.346573591, 4.54688501);
     r3.w = cmp(0 < r1.y);
     r1.y = cmp(r1.y < 0);
     r1.y = (int)-r3.w + (int)r1.y;
     r1.y = (int)r1.y;
-    r1.w = r1.z * r1.z + -r1.w;
+    r1.w = mad(r1.z, r1.z, -r1.w);
     r1.w = sqrt(r1.w);
     r1.z = r1.w + -r1.z;
     r1.z = max(0, r1.z);
@@ -161,7 +163,7 @@ void main(
     r1.xy = r1.xz * r1.yy;
     r1.zw = float2(0.707106769,0.707106769) * r1.xy;
     r1.zw = r1.zw * r1.zw;
-    r6.xyzw = r1.zzww * float4(0.140012279,0.140012279,0.140012279,0.140012279) + float4(1.27323949,1,1.27323949,1);
+    r6.xyzw = mad(r1.zzww, float4(0.140012279,0.140012279,0.140012279,0.140012279), float4(1.27323949,1,1.27323949,1));
     r6.xy = r6.xz / r6.yw;
     r1.zw = r6.xy * -r1.zw;
     r6.xy = cmp(float2(0,0) < r1.xy);
@@ -172,16 +174,16 @@ void main(
     r1.yz = exp2(r1.yz);
     r1.yz = float2(1,1) + -r1.yz;
     r1.yz = sqrt(r1.yz);
-    r1.x = r1.x * r1.y + 1;
+    r1.x = mad(r1.x, r1.y, 1);
     r1.x = 0.5 * r1.x;
     r1.y = (int)-r6.y;
-    r1.y = r1.y * r1.z + 1;
-    r1.x = r1.y * 0.5 + -r1.x;
+    r1.y = mad(r1.y, r1.z, 1);
+    r1.x = mad(r1.y, 0.5, -r1.x);
     r1.y = min(1, r5.w);
     r1.zw = float2(1.57079637,1.53938043) * r4.ww;
     r1.z = sin(r1.z);
     r1.y = -1 + r1.y;
-    r1.y = r1.z * r1.y + 1;
+    r1.y = mad(r1.z, r1.y, 1);
     r0.x = dot(-r4.xyz, r0.xyz);
     r0.x = max(0, r0.x);
     r0.x = log2(r0.x);
@@ -193,7 +195,7 @@ void main(
     r0.z = saturate(60 * r2.w);
     r0.x = r0.x * r0.y;
     r0.y = r0.z + -r2.w;
-    r0.x = r0.x * r0.y + r2.w;
+    r0.x = mad(r0.x, r0.y, r2.w);
     r0.y = abs(r1.x) * r1.y;
     r0.xyz = r0.yyy * r0.xxx;
   } else {
@@ -207,7 +209,7 @@ void main(
   r2.xyz = v2.xyz * r2.xyz;
   r0.xyz = r2.xyz * r0.xyz;
   r0.xyz = r0.xyz * r5.yyy;
-  r0.xyz = r1.xyz * v2.xyz + r0.xyz;
+  r0.xyz = mad(r1.xyz, v2.xyz, r0.xyz);
   r0.xyz = r0.www * r0.xyz;
   r0.w = 1;
   o0.xyzw = saturate(r5.xxxx * r0.xyzw);

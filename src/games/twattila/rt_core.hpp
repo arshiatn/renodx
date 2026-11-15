@@ -173,6 +173,8 @@ struct Settings {
   // bounce's ratio; at most 32 lights). Both Experimental, off.
   bool lights_in_bounce = false;
   bool light_ratio = false;
+  // With light_ratio (bridge RT_PATH_RATIO_FOLLOW): the ratio's history shorter while the camera moves. Experimental, off.
+  bool light_ratio_follow = false;
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
@@ -1390,7 +1392,8 @@ inline void PrepareClusterSet(ID3D11DeviceContext* native, uint64_t set_key, ID3
 
 // Batched Unit Capture: the corners of the batched draws streamed since the last flush made (their SceneShader::batch_compute
 // over their meshes and rows, a dispatch a run of draws on one animation texture, under NVIDIA's UAV overlap) and copied to
-// their places in `captured`, in turns of BATCH_OUTPUT_TEXELS. Before the trace, before the game writes their bones again
+// their places in `captured`, in turns of BATCH_OUTPUT_TEXELS (not written there directly: D3D11 refuses a buffer that is both
+// stream output and UAV, E_INVALIDARG on WARP and NVIDIA). Before the trace, before the game writes their bones again
 // (FlushUnitCaptures) and when a draw finds the streamed room full. The game's compute bindings it changes put back.
 // runtime.mutex held.
 inline void FlushBatch(ID3D11DeviceContext* native) {
@@ -3380,6 +3383,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
                                                      | (runtime.settings.reuse_lean ? dlaa_bridge::RT_PATH_REUSE_LEAN : 0u)
                                                      | ((runtime.lights_in_bounce != 0) ? dlaa_bridge::RT_PATH_LIGHTS_IN_BOUNCE : 0u)
                                                      | ((runtime.lights_in_bounce == 3) ? dlaa_bridge::RT_PATH_LIGHT_RATIO : 0u)
+                                                     | ((runtime.lights_in_bounce == 3 && runtime.settings.light_ratio_follow) ? dlaa_bridge::RT_PATH_RATIO_FOLLOW : 0u)
                                                      | (dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u))
                                                   : ((dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u)
                                                      | (runtime.settings.reflections ? dlaa_bridge::RT_PATH_CACHE_FILL : 0u)),

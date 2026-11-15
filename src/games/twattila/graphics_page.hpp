@@ -877,6 +877,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedLightSteady", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedLightCount", .section = section, .shown = more_lights});
     page.Take({.match = "RayTracedLightRange", .section = section, .shown = more_lights});
+    page.Take({.match = "RayTracedGamePointShadows", .section = section, .shown = more_lights, .only_some_games = true});
     if (b.lights_in_bounce != nullptr && b.light_ratio != nullptr) {
       const auto more_path_lights = [b, more_lights] { return more_lights() && GiMethodOf(b) == GI_PATHS; };
       page.Add(new Setting{
@@ -902,6 +903,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                      "rays: faster with many fires. Softer shadows that follow moving units a little later; 32 fires at most.",
           .labels = {"Off", "On"},
           .is_visible = more_path_lights,
+      });
+      page.Add(new Setting{
+          .key = "RayTracedLightRatioFollow",
+          .binding = &b.rt->light_ratio_follow,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Torch Shadows Follow the Camera (Experimental)",
+          .section = section,
+          .tooltip = "Those torch and fire shadows trail less behind a moving camera. Best at Half resolution and with\n"
+                     "Ray Reconstruction; at Full resolution without it a little noisier.",
+          .labels = {"Off", "On"},
+          .is_visible = [b, more_path_lights] { return more_path_lights() && *b.light_ratio != 0.f; },
       });
     }
     page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays,

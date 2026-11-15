@@ -1,8 +1,41 @@
 // Batched Unit Capture (rt_core.hpp FlushBatch): a run of batched unit draws on one animation texture, their corners as
 // their per-draw stream output would have written them (instance after instance, each its mesh's vertices in its remap
 // order), into the output at each draw's place. A group is 64 corners of one draw.
-// The includer defines RT_BATCH_MESH_TEXELS (float4s a streamed vertex) and RtBatchWorld (the capture version's world
-// position from them and an instance's 4 rows), its bones at t0 and the width at b2 as its draws had them.
+// The includer includes its capture version (main renamed: its GameMain, bones at t0 and the width at b2 as its draws had
+// them) and defines RT_BATCH_MESH_TEXELS (float4s a streamed vertex): 2 for vs30_main's (POSITION0-1: the place, two bones'
+// weight and indices; rt_batch_unit_mesh), 3 for main_4_bones' (POSITION0-2: the place, four bones' indices, three weights;
+// rt_batch_unit_4_bones_mesh). The rows are TEXCOORD0-2 and TEXCOORD3.x in both (rt_batch_unit_rows, _4_bones_rows).
+
+// The capture version's world position from a streamed vertex and an instance's 4 rows: GameMain with identity rows (the
+// world position comes out as the clip position, as in its main), the inputs its position doesn't read 0.
+float4 RtBatchWorld(float4 mesh[RT_BATCH_MESH_TEXELS], float4 rows[4])
+{
+  float4 o0 = 0;
+  float4 o1 = 0;
+  float4 o2 = 0;
+  float4 o3 = 0;
+  float4 o4 = 0;
+  float4 o5 = 0;
+  float4 o6 = 0;
+  float4 o7 = 0;
+  float4 o8 = 0;
+  float4 o9 = 0;
+  float4 o10 = 0;
+  uint4 p10 = 0;
+  float4 o11 = 0;
+  motion_rows[0] = float4(1, 0, 0, 0);
+  motion_rows[1] = float4(0, 1, 0, 0);
+  motion_rows[2] = float4(0, 0, 1, 0);
+  motion_rows[3] = float4(0, 0, 0, 1);
+#if RT_BATCH_MESH_TEXELS == 3
+  GameMain(mesh[0], mesh[1], mesh[2], 0, 0, 0, 0, rows[0], rows[1], rows[2], float4(rows[3].x, 0, 0, 0), 0, 0, 0, 0, 0, o0, o1, o2, o3,
+           o4, o5, o6, o7, o8, o9, o10, p10, o11);
+#else
+  GameMain(mesh[0], mesh[1], 0, 0, 0, 0, rows[0], rows[1], rows[2], float4(rows[3].x, 0, 0, 0), 0, 0, 0, 0, 0, o0, o1, o2, o3, o4, o5,
+           o6, o7, o8, o9, o10, p10, o11);
+#endif
+  return o0;
+}
 
 Buffer<float4> rt_batch_meshes : register(t2);  // RT_BATCH_MESH_TEXELS a vertex
 Buffer<float4> rt_batch_rows : register(t3);    // 4 an instance: TEXCOORD0-2, then (bone base, its draw's animation width)
