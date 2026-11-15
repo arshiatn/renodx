@@ -779,13 +779,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     dump_shaders_Expeditions_rome (16,983); paks untouched; code offsets only from tales_image.bin (SteamStub). Nsight:
     no GPU Trace (the game is D3D11); rt_tests exe yes. Game runs: G1 data run (outside-city save), G2 data run (camp
     save + 30 s WPR), G3 feature run, G4 ATN's look list. UE4 SHARED STEP candidates S1-S11 in the plan.
-    - [ ] ATN: which save is outside the city / the camp (SaveData_005 or _000, both 2026-10-17)?
-    - [ ] ATN: OK to install plain stamped copies (DevKit + symlinks out, NVIDIA 310.9.16 set + D3D12 / Streamline in)?
-    - [ ] ATN: RT route: keep Tales' in-process D3D12 RT or move it to the helper + rt_core as Expeditions?
-    - [ ] ATN: HDR add-on alone: AO halo default "Reduced" or the game's?
-    - [ ] ATN: one add-on now or after the replay numbers (plan: fast-dispatch opt-in first, keep two until numbers)?
-    - [ ] ATN: re-measure Hue Clip / V35 hue on Tales' own chain? Steam offline or Cloud off for agent runs; G1 + G2 in
-      one session?
+    - [x] ATN 01:5x: saves = Manual 03 (Sandinus Ravine, outside, 10/12/2026 15:30) and Manual 04 (Mosgul camp, 10/17/2026
+      00:15); probably SaveData_004 / _005 by their times (the run confirms in the load menu); scripts may load them
+    - [x] ATN: full package = plain stamped copies (DevKit + symlinks out, NVIDIA set + D3D12 / Streamline in)
+    - [x] RT route: the shared helper + rt_core (coordinator's suggestion, ATN asked: the TW stability fixes come along);
+      Tales' in-process D3D12 RT goes
+    - [x] AO halo default question gone: ONE add-on (the row lives in it)
+    - [x] ATN: ONE add-on (DLSS + presets on Graphics 1 of 2, higher graphics on 2 of 2, like TW)
+    - [x] ATN: hue by eye, no measuring; G1 + G2 in one session fine; no Steam setting changes, saves backed up
     - [x] addon-split.md fixed: Tales DLSS registers draw / dispatch only while a trace runs
   - [x] RYSE PLAN DONE: tools/nontw/ryse/plan.md + ryse.tsv (~75 rows; both add-ons build at HEAD; the tree is HDR fix53 +
     DLSS v115, never run in game). Top gaps: shipped helper22 / bridge v11 vs HEAD bridge v31 / helper 113 (+ Agility);
@@ -798,12 +799,14 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     Trace (D3D11); a D3D11 frame capture untried. Runs: R0 data run, R1 split bench (one add-on or two), R2 features +
     ATN's look list. Shared x64 step proposed: engine_memory.hpp near-exe memory + atomic code patch + FindPattern (third
     copy in the repo) for the TW x64 CPU detours.
-    - [ ] ATN: bench scene (chapter 1 from Chapter Select, or a checkpoint you keep)?
-    - [ ] ATN: RR route: the helper as upscaler or in-process D3D12 RR only?
-    - [ ] ATN: may an agent decode the game's own run-time shader cache (USER\Shaders\Cache\D3D11\*.fxcb) for names?
-    - [ ] ATN: one try of Nsight's D3D11 frame capture during R0?
-    - [ ] ATN: R0 / R1 / R2 permission; may the agent switch the game's menu settings in R0 (fresh backups)?
-    - [ ] ATN: merge after R1's numbers? Hue settings for Ryse's V35? Stamps / watermarks for Ryse releases as for TW?
+    - [x] ATN 01:5x: the auto-continue save (chapter 1, tutorial pauses; chapter 3 has none); scripts may load it
+    - [x] ATN: full package as Attila: RR / FSR / XeSS / FG through the helper
+    - [x] ATN: read the shipped shader packs / caches where possible (unencrypted data + the game's own caches; no
+      decryption): SHADER-PACK round
+    - [x] ATN: Nsight on all three (D3D11 frame debugger / profiler on the game; GPU Trace on the helper)
+    - [x] ATN: runs allowed (few, scripted, fresh backups); R1 split bench DROPPED (one add-on decided); menu settings as
+      the TW rule (fresh backup)
+    - [x] ATN: ONE add-on; hue by eye; stamps + watermarks for every game
     - [x] addon-split.md fixed: Ryse's HDR add-on registers draw / draw_indexed always, its DLSS add-on only while tracing
   - [x] EXPEDITIONS PLAN DONE: tools/nontw/expeditions/plan.md + expeditions.tsv (both add-ons build at HEAD). The engine
     is UE 4.23 (build string ++UE4+Release-4.23-CL-0), not 4.26: skill engines.md + memory fixed, add-on comments in E1.
@@ -816,12 +819,27 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     Shaders: dump_shaders_Expeditions_rome\all_shaders_ (15,735 CSOs, r.CreateShadersOnLoad=1). Nsight GPU Trace looks
     possible (64-bit, no DRM wrapper, launch through Steam -applaunch 987840). Runs: G1 data run (menu + battle save,
     traces, PresentMon split numbers), G2 only if permutations stay unmapped, G3 ATN's look list. Steps E1-E11 offline.
-    - [ ] ATN: which save is a battle start (Save Silanus 3m / Autosave Silanus 2m / 1m, 2026-10-27), or will you make
-      one? May an agent load it by script in G1?
-    - [ ] ATN: hue defaults / Recommended look for Expeditions; keep two add-ons + fast dispatch until G1's numbers?
-    - [ ] ATN: FSR / XeSS / FSR FG through the helper or not at all? Bend SSS or UE's contact shadows only?
-    - [ ] ATN: install plain stamped copies instead of symlinks? The game's own HDR toggle: block (page line) or support?
-      Nsight through Steam OK?
+    - [x] ATN 01:5x: "Save Silanus 3m" (start of the game, on the ship; no battle yet); scripts may load it
+    - [x] ATN: hue by eye; ONE add-on
+    - [x] ATN: full package as Attila (FSR / XeSS / FSR FG through the helper; Bend SSS rows as in Attila)
+    - [x] ATN: plain stamped copies; Nsight through Steam OK
+    - [ ] The game's own HDR toggle: coordinator default = the add-on keeps the game's HDR off and says so on the page
+      (one HDR path). ATN may object
+  - [ ] ATN 01:5x: ONE ADD-ON for Tales, Expeditions, Ryse AND Shogun 2 (DLSS + RT/PT / no-RT presets on Graphics 1 of 2,
+    the game's higher graphics on Graphics 2 of 2, TW page structure; the HDR-only snapshot still works: graphics rows
+    in the add-on, DLSS with NVIDIA's DLL, rays / FG / RR / FSR / XeSS with the helper). Owners: Shogun 2 = MERGE agent
+    s2m_ (TW batch, before the Fable review); Tales + Expeditions = ue4_ after its offline steps, then a UE4 MERGE round;
+    Ryse = rys_ after its offline steps, then a RYSE MERGE round
+  - [ ] Full Attila package for all three (memory project_nontw_full_package.md); stamps + watermarks for every game.
+    Owner: per-game rounds after the merges
+  - [ ] SHADER-PACK round: read the shipped packs where not encrypted (DXBC / DXIL in UE paks' unencrypted entries,
+    Ryse's USER\Shaders\Cache *.fxcb names), else a runtime "create every shader" dump in the data run. Owner: shp_
+  - [ ] Data runs (ATN allowed, scripted, fresh save backups): Tales G1 + G2 one session (Manual 03 / 04), Expeditions G1
+    (Save Silanus 3m), Ryse R0 (auto-continue or chapter 3) + Nsight D3D11 capture try; after the merges + test hooks.
+    Not while the TW end bench runs. Owner: coordinator
+  - [ ] SDR first start: the look stays SDR when the player turns Windows HDR on later (Output Auto follows, the look
+    rows don't). Coordinator's suggestion: apply Recommended once when HDR appears on Auto while no look row was
+    changed since the first start (and SDR again if HDR goes). ATN DECIDES
   - [ ] SHARED STEP owners (coordinator 01:2x): UE4 S1 cvars per-exe slot table, S2 the six duplicated headers, S4
     psycho_test31, S5 snapshot pieces, S6 page-dump drivers, S7 fast dispatch, S8 on-demand trace + test hooks, S12
     graphics-page table, S13 FG device-loss rules = UE4 IMPLEMENTATION agent ue4_ (owns src/games/talesofarise* +
