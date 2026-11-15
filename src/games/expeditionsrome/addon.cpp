@@ -567,7 +567,7 @@ void ConfigureAddon() {
       .is_visible = IsAdvancedSettings,
   });
   // No NexusMods page known for this game's mod yet.
-  const auto buttons = talesofarise::hdr_only::AboutButtons("");
+  const auto buttons = talesofarise::hdr_only::AboutButtons("https://www.nexusmods.com/expeditionsrome/mods/2");
   settings.insert(settings.end(), buttons.begin(), buttons.end());
 
   configured = true;

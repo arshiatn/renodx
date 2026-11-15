@@ -859,7 +859,11 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
       UE4 merge round
     - [ ] Expeditions' default Output scRGB -> Auto (as TW, so SDR first start works for everyone). Owner: UE4 merge
       round (the "same as TW" decision)
-    - [ ] Expeditions NexusMods URL unknown (no Nexus button). Owner: ATN
+    - [x] Expeditions NexusMods URL from ATN 02:3x: https://www.nexusmods.com/expeditionsrome/mods/2 (About button)
+  - [ ] ATN 02:3x (for later): per-game GitHub download links instead of the shared releases page. Checked: GitHub's
+    filtered list works (releases?q=attila&expanded=true showed only Attila's 8 releases). Plan: each add-on's GitHub
+    button + FULL_DOWNLOAD_NOTE text use github.com/arshiatn/renodx/releases?q=<its tag prefix>&expanded=true (one
+    constant per game; the release titles / tags must keep the game's name). Owner: release round
     - [ ] output_encoding's log lines say "[Total War]" in non-TW games: a log-name parameter. Owner: sdr_ (sent)
     - [ ] WARP ramp of the UE SDR encodes; Ryse's redundant renodx_trace_now poll; the Expeditions tests' include paths
       (no build target). Owner: UE4 / Ryse merge rounds
