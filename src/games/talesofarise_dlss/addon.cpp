@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "../../utils/command_action.hpp"
+#include "../../utils/command_action_fast.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
@@ -3480,6 +3481,8 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   talesofarise::post_filters::Use(DLL_PROCESS_ATTACH);
   renodx::utils::state::Use(DLL_PROCESS_ATTACH);
   renodx::utils::command_action::Use(DLL_PROCESS_ATTACH);
+  // The fast draw dispatch alone: every callback here has a shader hash.
+  renodx::utils::command_action::fast::Use(DLL_PROCESS_ATTACH);
   std::wstring module_path(32768, L'\0');
   module_path.resize(GetModuleFileNameW(module, module_path.data(), static_cast<DWORD>(module_path.size())));
   // Ray tracing's Agility SDK (DXR 1.2) in the D3D12 folder next to the add-on.
@@ -3512,6 +3515,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     renodx::utils::command_action::Unregister(OnLightingDraw);
     renodx::utils::command_action::Unregister(OnDepthPrepass);
     renodx::utils::command_action::Unregister(OnSunShadowMask);
+    renodx::utils::command_action::fast::Use(DLL_PROCESS_DETACH);
     renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);
     talesofarise::dlss::constants::Use(DLL_PROCESS_DETACH);

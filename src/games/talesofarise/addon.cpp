@@ -27,6 +27,7 @@
 #include "../talesofarise_dlss/post_filters.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/draw_dispatch.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -932,6 +933,8 @@ bool AttachAddon() {
   talesofarise::post_filters::Use(DLL_PROCESS_ATTACH);
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  // The fast draw dispatch, with the gate of view cloning's command-wide callback (resource upgrades).
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
 
   attached = true;
   return true;
@@ -946,6 +949,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::copy_resource>(OnCopyResource);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
 
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);

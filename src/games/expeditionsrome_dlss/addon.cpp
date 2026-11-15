@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "../../utils/command_action.hpp"
+#include "../../utils/command_action_fast.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/state.hpp"
@@ -2112,6 +2113,8 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   expeditionsrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
   renodx::utils::state::Use(DLL_PROCESS_ATTACH);
   renodx::utils::command_action::Use(DLL_PROCESS_ATTACH);
+  // The fast draw dispatch alone: every callback here has a shader hash (ray tracing gates rt_core's own).
+  renodx::utils::command_action::fast::Use(DLL_PROCESS_ATTACH);
   attached = true;
   renodx::utils::log::i("[Rome DLAA] Native DLAA and DLSS Ultra Quality/Quality/Balanced/Performance/Ultra Performance/Custom 1-100% (all six Ultra/Fast compute hashes; exact/4/8-pixel allocations). Live render scale; preset choice; graphics settings. Runtime NVIDIA scale limits; exact CB readbacks and asynchronous phase timings; Release-compatible shared ABI.");
   return true;
@@ -2125,6 +2128,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     renodx::utils::command_action::Unregister(expeditionsrome::dlss::contact_shadows::OnLightRectangle);
     if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Uninstall();
     talesofarise::frame_trace::Stop();
+    renodx::utils::command_action::fast::Use(DLL_PROCESS_DETACH);
     renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);
     expeditionsrome::dlss::constants::Use(DLL_PROCESS_DETACH);
