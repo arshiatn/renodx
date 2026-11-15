@@ -145,8 +145,8 @@ struct ShaderInjectData {
 #define SI shader_injection
 // SDR output (displays without HDR): the display's white is the game's and the UI's.
 #define ATTILA_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
-// Peak relative to Paper White.
-#define HDR_PEAK (ATTILA_SDR_OUTPUT ? 1.f : SI.peak_white_nits / SI.diffuse_white_nits)
+// Peak relative to Paper White, at least 1 (Paper White can be set above Peak).
+#define HDR_PEAK (ATTILA_SDR_OUTPUT ? 1.f : max(SI.peak_white_nits / SI.diffuse_white_nits, 1.f))
 // Paper White relative to UI.
 #define ATTILA_PAPER_WHITE (ATTILA_SDR_OUTPUT ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)
 
