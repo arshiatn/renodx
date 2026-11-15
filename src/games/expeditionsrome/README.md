@@ -77,6 +77,15 @@ UE4 caches D3D state, so the swap chain proxy restores it after its draw
 (`swapchain_proxy_revert_state`). Without that, UI-only frames such as the
 options menu lose alpha blending.
 
+## Device and swap chain (ReShade.log of the 2026-11-15 data run)
+
+64-bit. Three probe devices first (`D3D11CreateDevice` Flags 0x21 = single-threaded + BGRA, feature level 11_0; the
+third on the Microsoft Basic Render Driver, skipped), the add-on loaded and unloaded with each; then the game's device:
+Flags 0x20 (BGRA, not single-threaded), 11_0. One swap chain (`IDXGIFactory::CreateSwapChain`): flip discard (SwapEffect
+4), 2 buffers, R10G10B10A2_UNORM at the display size, windowed, Flags 0x802 (mode switch, tearing). No exclusive
+fullscreen (only `SetFullscreenState(FALSE)` at exit). After a GPU reset (`twattila/device_loss.hpp`) a blt request for
+the same window is the game's fallback and stays as the game asked (SDR until a restart).
+
 ## Verification and remaining limits
 
 2026-10-09 full dump (`all_shaders_`, 15,735 shaders): 10 tonemapper permutations (were 2) and 5 CombineLUTs
