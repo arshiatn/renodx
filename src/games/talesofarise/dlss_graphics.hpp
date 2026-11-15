@@ -724,6 +724,8 @@ bool effects_at_output = true;
 constexpr size_t VOLUMETRIC_FOG = SettingIndex(L"r.VolumetricFog");
 // Off while the ray-traced reflections run (rt_shadows.hpp ReflectingRecently): they replace it.
 constexpr size_t SSR_QUALITY = SettingIndex(L"r.SSR.Quality");
+// The game's menu Motion Blur sets r.MotionBlurQuality 0 (off) or 4 (exe 0xE6C370): a preset raises it only while on.
+constexpr size_t MOTION_BLUR_QUALITY = SettingIndex(L"r.MotionBlurQuality");
 // Shaders on load: a checkbox above Smooth sun movement (ATN), not in the Loading list: ticked 1, unticked 0.
 constexpr size_t SHADERS_ON_LOAD = SettingIndex(NO_PRESET_SETTING);
 // Volume textures: D3D11 allows at most 2048 per side. Cloud shadows / cloud ray march at divisor 1 made a 3840x2160x40
@@ -2516,7 +2518,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     float desired = (std::isnan(preset_value) ? entry.game_value : preset_value);
     if (setting.better == Better::HIGHER) desired = std::max(entry.game_value, desired);
     if (setting.better == Better::LOWER) desired = std::min(entry.game_value, desired);
-    if (replaced) desired = 0.f;
+    if (replaced || (index == MOTION_BLUR_QUALITY && entry.game_value == 0.f)) desired = 0.f;
     switch (scaling) {
       case OutputScaling::CELL_OR_DIVISOR:
         desired = std::max(1.f, std::round(desired * render_scale));
