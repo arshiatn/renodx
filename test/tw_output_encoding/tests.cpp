@@ -1,6 +1,7 @@
 // Output Auto's preset switch (twattila/output_encoding.hpp): a first start without Windows HDR takes the SDR preset, the
 // Recommended preset once when Windows HDR comes on, the SDR preset again when it goes, and nothing after a row changed;
 // a first start with Windows HDR on is never given a preset, nor one whose display query failed (SDR out, no SDR preset).
+// Also the first start's key (tonemapper unless the game names its own) and the D3D11 proxy's target beside each output.
 // A fake ReShade.ini, the real settings code, restarts between steps. `control`: the first start with Windows HDR on leaves no "off" mark; its sequence must then fail.
 #include <windows.h>
 
@@ -74,7 +75,7 @@ constexpr output::WindowsHdr NO_ANSWER = {.known = false, .on = true};  // no di
 constexpr output::WindowsHdr QUERY_FAILED = {.known = false, .on = false};
 
 // A game start: the addon loads its rows from the ini (settings::Use's order) and configures the output.
-static void Start(int output_setting = output::AUTO) {
+static void Start(int output_setting = output::AUTO, const char* first_start_key = output::Config{}.first_start_key) {
   output::decided.reset();
   output::first_start = false;
   for (auto* row : rows) row->Set(row->default_value);
@@ -84,8 +85,15 @@ static void Start(int output_setting = output::AUTO) {
       .shader_encoding = &shader_encoding,
       .setting = output_setting,
       .first_start_without_hdr = &SdrPreset,
+      .first_start_key = first_start_key,
       .recommended_preset = &RecommendedPreset,
   });
+}
+
+// What a D3D9 game's D3D11 proxy would present (utils::device_proxy's target, beside the swapchain mod's).
+static bool ProxyTarget(reshade::api::format format, reshade::api::color_space color_space) {
+  return renodx::utils::device_proxy::target_format == format && renodx::utils::device_proxy::target_color_space == color_space
+         && renodx::mods::swapchain::target_format == format && renodx::mods::swapchain::target_color_space == color_space;
 }
 
 static void Fresh() {
@@ -114,6 +122,7 @@ static int SdrFirstStart() {
   CHECK(output::first_start);
   output::Decide(HDR_OFF);
   CHECK(shader_encoding == static_cast<float>(output::SDR));
+  CHECK(ProxyTarget(reshade::api::format::r10g10b10a2_unorm, reshade::api::color_space::srgb_nonlinear));
   CHECK(sdr_applied == 1 && recommended_applied == 0);
   CHECK(tonemapper == 0.f && Saved("tonemapper") == "0");
   CHECK(State().starts_with("sdr "));
@@ -126,6 +135,7 @@ static int SdrFirstStart() {
   CHECK(!output::first_start);
   output::Decide(HDR_ON);
   CHECK(shader_encoding == static_cast<float>(output::SCRGB));
+  CHECK(ProxyTarget(reshade::api::format::r16g16b16a16_float, reshade::api::color_space::extended_srgb_linear));
   CHECK(recommended_applied == 1 && sdr_applied == 1);
   CHECK(tonemapper == 3.f && Saved("tonemapper") == "3" && Saved("bloom") == "0.35");
   CHECK(State().starts_with("hdr "));
@@ -233,6 +243,7 @@ static int OtherStarts() {
   Start(output::HDR10);
   output::Decide(HDR_ON);
   CHECK(recommended_applied == 0 && State().empty());
+  CHECK(ProxyTarget(reshade::api::format::r10g10b10a2_unorm, reshade::api::color_space::hdr10_st2084));
 
   // Windows gave no answer at the first start (HDR assumed): no decision yet, the next first start decides.
   Fresh();
@@ -267,6 +278,34 @@ static int OtherStarts() {
   return 0;
 }
 
+static int FirstStartKeys() {
+  // The default key stays the Total War add-ons' tonemapper: another add-on's Rendering Mode row is no saved look.
+  Fresh();
+  ini[{settings::global_name + "-preset1", "rendering_mode"}] = "3";
+  Start();
+  CHECK(output::first_start);
+  ini[{settings::global_name + "-preset1", "tonemapper"}] = "2";
+  Start();
+  CHECK(!output::first_start);
+
+  // A game whose Rendering Mode row has its own key (R.U.S.E.'s rendering_mode): only that row's saved value counts.
+  Fresh();
+  ini[{settings::global_name + "-preset1", "tonemapper"}] = "2";
+  Start(output::AUTO, "rendering_mode");
+  CHECK(output::first_start);
+  output::Decide(HDR_OFF);
+  CHECK(sdr_applied == 1 && State().starts_with("sdr "));
+
+  Fresh();
+  ini[{settings::global_name + "-preset1", "rendering_mode"}] = "3";
+  Start(output::AUTO, "rendering_mode");
+  CHECK(!output::first_start);
+  output::Decide(HDR_OFF);
+  CHECK(sdr_applied == 0 && recommended_applied == 0 && State().empty());
+  std::printf("PASS first-start key: tonemapper by default, a game's own key (rendering_mode)\n");
+  return 0;
+}
+
 int main(int argc, char** argv) {
   control = (argc > 1 && std::strcmp(argv[1], "control") == 0);
   settings::settings = &rows;
@@ -275,7 +314,7 @@ int main(int argc, char** argv) {
     std::printf("control: %s\n", (result == 0) ? "passed (the test cannot see the missing mark)" : "failed as it must");
     return result;
   }
-  if (SdrFirstStart() != 0 || HdrFirstStart() != 0 || PlayerChanged() != 0 || OtherStarts() != 0) return 1;
+  if (SdrFirstStart() != 0 || HdrFirstStart() != 0 || PlayerChanged() != 0 || OtherStarts() != 0 || FirstStartKeys() != 0) return 1;
   std::printf("ALL PASS\n");
   return 0;
 }
