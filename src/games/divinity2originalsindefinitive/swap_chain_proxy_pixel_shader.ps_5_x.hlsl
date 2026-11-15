@@ -46,8 +46,8 @@ float4 main(float4 vpos: SV_POSITION, float2 uv: TEXCOORD0)
   //   x /= SI.graphics_white_nits;
   // }
 
-  //scRGB
-    x *= SI.diffuse_white_nits / 8000.f;
+  // scRGB: 1.0 = 80 nits (the game writes absolute PQ, decoded to nits above).
+  x /= 80.f;
   
   return float4(x, 1.0);
 }

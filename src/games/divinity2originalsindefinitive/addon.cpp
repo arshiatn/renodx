@@ -15,7 +15,10 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../twattila/credits.hpp"
+#include "../twattila/draw_dispatch.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
@@ -118,26 +121,6 @@ bool ShowACESFireHue() {
 bool ShowVanillaFireHue() {
   return ShowACESSettings() && shader_injection.vanilla_fire_color_strength > 0.f;
 }
-
-#define UpgradeRTVReplaceShader(value)                                                                \
-  {                                                                                                   \
-      value,                                                                                          \
-      {                                                                                               \
-          .crc32 = value,                                                                             \
-          .code = __##value,                                                                          \
-          .on_draw = [](auto* cmd_list) {                                                             \
-            auto rtvs = renodx::utils::swapchain::GetRenderTargets(cmd_list);                         \
-            bool changed = false;                                                                     \
-            for (auto rtv : rtvs) {                                                                   \
-              changed = renodx::mods::swapchain::ActivateCloneHotSwap(cmd_list->get_device(), rtv);   \
-            }                                                                                         \
-            if (changed) {                                                                            \
-              renodx::mods::swapchain::FlushDescriptors(cmd_list);                                    \
-              renodx::mods::swapchain::RewriteRenderTargets(cmd_list, rtvs.size(), rtvs.data(), {0}); \
-            }                                                                                         \
-            return true; },                                                                           \
-      },                                                                                              \
-  }
 
 renodx::mods::shader::CustomShaders custom_shaders = {
     __ALL_CUSTOM_SHADERS
@@ -638,7 +621,7 @@ renodx::utils::settings::Settings settings = {
         .binding = &shader_injection.aces_tweaked_fire_color_hue,
         .default_value = 0.60f,
         .label = "Fire Hue: Red to Yellow",
-        .section = "Highlight Colours (Tweaked ACES)",
+        .section = "Highlight Colours (For Tweaked ACES)",
         .tooltip = "Target hue: 0 = red, 1 = yellow. White highlights remain white; the selected peak limits the available colour change.",
         .min = 0.00f,
         .max = 1.00f,
@@ -759,7 +742,7 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool resize) {
 }
 
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
-extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Divinity: Original Sin 2 Definitive Edition by ATN"; //TODO: change me!
+extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX for Divinity: Original Sin 2 Definitive Edition by ATN";
 
 BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
@@ -826,15 +809,51 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
             settings.push_back(setting);
         }
 
-        // Appended Settings (About)
-        {
-            auto* s1 = new renodx::utils::settings::Setting{
+        settings.insert(settings.end(), {
+            new renodx::utils::settings::Setting{
+                .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                .label = "RenoDX, PsychoV30, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
+                         "PsychoV30 and PsychoV35.",
+                .section = "About",
+            },
+            new renodx::utils::settings::Setting{
+                .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                .label = twattila::credits::ACES,
+                .section = "About",
+            },
+            new renodx::utils::settings::Setting{
                 .value_type = renodx::utils::settings::SettingValueType::TEXT,
                 .label = "Build Date: " + build_date + " - " + build_time,
                 .section = "About",
-            };
-            settings.push_back(s1);
-        }
+                .is_visible = IsAdvancedSettings,
+            },
+            new renodx::utils::settings::Setting{
+                .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+                .label = "ATN's Ko-fi",
+                .section = "About",
+                .group = "about-buttons",
+                .tint = 0xFF5A16,
+                .on_change = []() { renodx::utils::platform::LaunchURL("https://ko-fi.com/atnthegreat"); },
+            },
+            new renodx::utils::settings::Setting{
+                .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+                .label = "NexusMods",
+                .section = "About",
+                .group = "about-buttons",
+                .tint = 0x2196F3,
+                .on_change = []() {
+                  renodx::utils::platform::LaunchURL("https://www.nexusmods.com/divinityoriginalsin2definitiveedition/mods/547");
+                },
+            },
+            new renodx::utils::settings::Setting{
+                .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+                .label = "GitHub (Downloads)",
+                .section = "About",
+                .group = "about-buttons",
+                .tint = 0x6E7681,
+                .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
+            },
+        });
 
         twattila::psycho35::InsertBefore(
             &settings, "Psycho V30", twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
@@ -867,7 +886,15 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
 
   renodx::utils::settings::Use(fdw_reason, &settings, nullptr);
   renodx::mods::swapchain::Use(fdw_reason, &shader_injection);
+  // The fast draw dispatch with the resource upgrades' gate: attached after mods::shader (command_action), detached
+  // before it.
+  if (fdw_reason == DLL_PROCESS_DETACH) {
+    twattila::draw_dispatch::Use(fdw_reason);
+  }
   renodx::mods::shader::Use(fdw_reason, custom_shaders, &shader_injection);
+  if (fdw_reason == DLL_PROCESS_ATTACH) {
+    twattila::draw_dispatch::Use(fdw_reason);
+  }
 
   return TRUE;
 }
