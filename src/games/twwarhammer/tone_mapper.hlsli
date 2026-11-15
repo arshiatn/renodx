@@ -49,7 +49,7 @@ float4 ToneMapperHdr(float4 scene_sample, float4 bloom_sample, float2 black_whit
   float3 graded_proxy = ApplyWarhammerSCurve(curve_input);
   float3 graded_hdr = renodx::math::DivideSafe(graded_proxy, curve_scale.xxx, graded_proxy);
 
-  return float4(graded_hdr, scene_sample.w);
+  return float4(graded_hdr, saturate(scene_sample.w));  // UNORM clamp lost to the FP16 upgrade
 }
 
 #endif  // SRC_TWWARHAMMER_TONE_MAPPER_HLSLI_
