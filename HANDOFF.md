@@ -696,8 +696,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         started 17:25:10 after the PresentMon window (no valid fps); no crash; ONE screenshot 10 s after RR began: BLACK
         scene, HUD only. s9 Nsight: ngfx-capture's default answer KILLED STEAM (ATN restarts it), Ryse exit 53 (DRM), ngfx
         won't intercept ReShade's dxgi.dll: WON'T GET.
-      - [ ] Ryse: rays + Ray Reconstruction gave a black scene (s8 view/2.jpg, one shot): RR D3D12 output or the
-        composite; offline / harness first. Owner: next Ryse round (coordinator)
+      - [x] Ryse rays + RR black scene: NOT black (s8b 18:30-18:35, fix56 + helper114, run_s8b_dlssq_rt_rr_183030): ATN
+        loaded the checkpoint, 6 shots 16-66 s after RR began all normal (Colosseum, lit); RR preset 6, 2560 x 1440 ->
+        3840 x 2160; DLSS Quality + rays + RR 76.1 fps (GPU busy 6.95, CPU busy 9.50 ms) vs 88.6 without rays; no
+        device-lost lines, files restored, no dump. s8's black shot was the first frames.
+      - [ ] Ryse rays + RR in motion (s8b sat on the tutorial pause: still camera): a moving-camera look in R2.
+        Owner: next Ryse round (R2)
       - [ ] Ryse: cvars from the ini (system.cfg is read before the cvars exist: every line "Unknown command"): a
         [Ryse Debug] Cvars= key or test hooks through the console hook, for Low / Medium, AA modes, supersampling and
         r_ShadersLogCacheMisses / r_LogShaders runs (spec 3 + 4 not run). Owner: next Ryse round
@@ -922,9 +926,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           221.1.
         - [ ] Expeditions rays-on DLAA 22.9 fps with GPU busy 9.31 ms (frame 43.7 ms): a stall, not GPU work (helper
           wait? RR at native?); read that run's pass timing + helper log. Owner: next UE round
-        - [ ] Ryse s8b re-check (rays + RR black scene?) NOT RUN: the lock went to the Divinity 1 data run; how-to in the
-          agent's note: run.ps1 -Tag s8b_dlssq_rt_rr (s8's -Ini), drive by hand with keys.ps1 / act.ps1 (Esc to the top
-          first); drive.ps1's "level loaded after 155 s" was its 150 s timeout. Owner: coordinator, next allowed game window
+        - [x] Ryse s8b re-check RAN 18:30-18:35 (ATN loaded the checkpoint): not black (see the Ryse R0 boxes).
         - [ ] The rest (Rome Remastered, Shogun 2 and every add-on on the shared code) on the review-fix commit: build all,
           stamp, install. Owner: coordinator after the review fixes
       - [ ] Expeditions save load: the main menu takes no SendInput keys; the save scene (carve materials 93E43D26,
