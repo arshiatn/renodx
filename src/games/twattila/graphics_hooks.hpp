@@ -27,8 +27,10 @@
 #include <limits>
 #include <mutex>
 #include <shared_mutex>
+#include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -259,7 +261,36 @@ struct ModelLods {
   uint32_t count = 0;
   std::array<float, MAX_MODEL_LODS> game = {};       // the game's distances squared
   std::array<uint32_t, MAX_MODEL_LODS> written = {};  // the scaled ones the addon wrote
+  std::array<uintptr_t, MAX_MODEL_LODS> addresses = {};  // where (kept at detach: KeptValues)
 };
+
+// The game's LOD distances and scrub values under the addon's, kept for the process at detach in a named section, as
+// engine_tweaks keeps its values: Attila's GPU reset order (device_loss.hpp) unloads this image with the old device and
+// loads a new one, which took the scaled values for the game's and scaled them again with each device. Added to, never
+// emptied: an image that scaled nothing leaves what the one before kept. A live value that still holds what an earlier
+// image wrote at its address has that image's game value.
+struct KeptValue {
+  uint64_t address = 0;
+  uint32_t game = 0;  // the value's bits
+  uint32_t written = 0;
+};
+struct KeptValues {
+  uint32_t count = 0;
+  std::array<KeptValue, 16384> values;
+};
+
+inline std::wstring KeptValuesName() {
+  return std::format(L"Local\\RenoDX_TW_GraphicsHookValues_{}", GetCurrentProcessId());
+}
+
+// What earlier images kept (read before the hooks go in, read-only after), by address.
+static std::unordered_map<uint64_t, KeptValue> earlier_values;
+
+// The game's value for `bits` read at `address`: an earlier image's kept one while the value holds what it wrote.
+inline uint32_t GameValue(uintptr_t address, uint32_t bits) {
+  const auto found = earlier_values.find(address);
+  return (found != earlier_values.end() && found->second.written == bits) ? found->second.game : bits;
+}
 
 // The scrub's cells and bias as the game set them and as the addon wrote them.
 struct ScrubValues {
@@ -797,9 +828,10 @@ static uint8_t* ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
       for (uint32_t index = 0; index < count; ++index) {
         uint32_t bits;
         std::memcpy(&bits, entries[index] + 0x38, sizeof(bits));
+        lods->addresses[index] = reinterpret_cast<uintptr_t>(entries[index] + 0x38);
         // Anything but the addon's last value is the game's (its setup again, or a new model at the same address).
         if (count_changed || bits != lods->written[index]) {
-          lods->game[index] = std::bit_cast<float>(bits);
+          lods->game[index] = std::bit_cast<float>(GameValue(lods->addresses[index], bits));
         }
         lods->written[index] = scaled(lods->game[index]);
         if (lods->written[index] != bits) {
@@ -960,8 +992,12 @@ static void __fastcall OnScrubUpdate(uint8_t* scrub, void* unused_edx) {
   std::memcpy(&bias, scrub + SCRUB_BIAS, sizeof(bias));
   auto& known = scrub_values;
   // Anything but the addon's last value is the game's (a new battle's scrub, or the game set it again).
-  if (scrub != known.scrub || cells != known.written_cells) known.game_cells = cells;
-  if (scrub != known.scrub || bias != known.written_bias) known.game_bias = bias;
+  if (scrub != known.scrub || cells != known.written_cells) {
+    known.game_cells = std::bit_cast<int32_t>(GameValue(reinterpret_cast<uintptr_t>(scrub + SCRUB_CELLS), std::bit_cast<uint32_t>(cells)));
+  }
+  if (scrub != known.scrub || bias != known.written_bias) {
+    known.game_bias = std::bit_cast<float>(GameValue(reinterpret_cast<uintptr_t>(scrub + SCRUB_BIAS), std::bit_cast<uint32_t>(bias)));
+  }
   known.scrub = scrub;
   known.written_cells = static_cast<int32_t>(std::lround(static_cast<float>(known.game_cells) * scale));
   known.written_bias = known.game_bias * scale / grass_density.load(std::memory_order_relaxed);
@@ -1293,6 +1329,19 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
       missing += std::format("{}dead units", missing.empty() ? "" : ", ");
     }
     if (!rome2) {
+      // What earlier images of the addon kept (KeptValues), before any hook reads it; restored at 1x too.
+      if (const HANDLE section = OpenFileMappingW(FILE_MAP_READ, FALSE, internal::KeptValuesName().c_str()); section != nullptr) {
+        if (const auto* kept = static_cast<const internal::KeptValues*>(MapViewOfFile(section, FILE_MAP_READ, 0, 0, 0)); kept != nullptr) {
+          for (const auto& value : std::span(kept->values.data(), std::min<size_t>(kept->count, kept->values.size()))) {
+            internal::earlier_values[value.address] = value;
+          }
+          UnmapViewOfFile(kept);
+        }
+        CloseHandle(section);
+      }
+      if (!internal::earlier_values.empty()) {
+        internal::models_scaled.store(true, std::memory_order_relaxed);
+      }
       add(internal::DRAW_TREE, reinterpret_cast<void**>(&internal::original_draw_tree),
           reinterpret_cast<void*>(&internal::OnDrawTree), "trees");
       add(internal::DRAW_SCRUB, reinterpret_cast<void**>(&internal::original_draw_scrub),
@@ -1345,7 +1394,8 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
   }
 }
 
-// Addon detach: the hooks removed.
+// Addon detach: the hooks removed. The game's values under what they wrote stay in the game's objects (some may be freed
+// by now: nothing is written back), kept for the next image (KeptValues).
 inline void Uninstall() {
   internal::hooks_active.store(false, std::memory_order_relaxed);
   if (internal::grass_dump.state.load() != internal::DUMP_IDLE) {
@@ -1358,6 +1408,36 @@ inline void Uninstall() {
     internal::hook_lifetime.Uninstall(&internal::hooks);
   } catch (const std::exception& error) {
     renodx::utils::log::e("[Total War] Graphics hooks could not be removed; addon retained until process exit: ", error.what());
+  }
+  std::unordered_map<uint64_t, internal::KeptValue> kept_values = internal::earlier_values;
+  internal::scaled_models.for_each([&](const auto& entry) {
+    const auto& [model, lods] = entry;
+    for (uint32_t index = 0; index < lods.count; ++index) {
+      kept_values[lods.addresses[index]] = {.address = lods.addresses[index], .game = std::bit_cast<uint32_t>(lods.game[index]), .written = lods.written[index]};
+    }
+  });
+  if (const auto& known = internal::scrub_values; known.scrub != nullptr) {
+    const auto cells = reinterpret_cast<uintptr_t>(known.scrub + internal::SCRUB_CELLS);
+    const auto bias = reinterpret_cast<uintptr_t>(known.scrub + internal::SCRUB_BIAS);
+    kept_values[cells] = {.address = cells, .game = std::bit_cast<uint32_t>(known.game_cells), .written = std::bit_cast<uint32_t>(known.written_cells)};
+    kept_values[bias] = {.address = bias, .game = std::bit_cast<uint32_t>(known.game_bias), .written = std::bit_cast<uint32_t>(known.written_bias)};
+  }
+  if (kept_values.empty()) return;
+  const HANDLE section = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(internal::KeptValues),
+                                            internal::KeptValuesName().c_str());
+  const bool section_held = section != nullptr && GetLastError() == ERROR_ALREADY_EXISTS;
+  if (auto* kept = (section != nullptr ? static_cast<internal::KeptValues*>(MapViewOfFile(section, FILE_MAP_WRITE, 0, 0, 0)) : nullptr);
+      kept != nullptr) {
+    kept->count = 0;
+    for (const auto& [address, value] : kept_values) {
+      if (kept->count == kept->values.size()) break;
+      kept->values[kept->count++] = value;
+    }
+    UnmapViewOfFile(kept);
+  }
+  // The section's first handle stays open to the process's end: the section outlives this image.
+  if (section_held) {
+    CloseHandle(section);
   }
 }
 
