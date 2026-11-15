@@ -109,3 +109,13 @@ Tales of Arise; Attila's twattila/bitmask.hlsli primitives) with the game's inte
 place for a screen position comes from the interpolants' derivatives (works below 100% render scale). Noise moves every
 frame (present), settled by the game's AO blur and TAA / DLSS. GT-VBGI, screen-space shadows and reflections are not in
 (the passes for them are not identified in the dump yet).
+
+2026-11-15 shipped-shader carve (tools/nontw/shader_packs, uec_ round): no tonemapper, CombineLUTs or HDR permutation
+beyond the registered ones. 14 unregistered fullscreen post shaders no dump has shown drawn: the editor's selection
+outline (0x30AD0356, 0x600BADCC, 0xBB1E5908, 0xC3FD465B: stencil edges, gamma 2.2 round trip) and editor primitive
+composite (0x13FA738D and its MSAA 0x4F6C822B / 0x50E9A3AE / 0xDED86114) are editor-only in UE 4.23 shipping builds;
+the depth copy 0x76C3BF2B writes no colour. Three post materials read the scene and end in UE's max(0, x + c), which
+clips signed HDR colours after the tonemapper as outline00 / 01 did before their fix (0x93E43D26; 0x07E055CF and its
+viewport-clamped twin 0x1F128822: a luminance high-pass); 0x630E166D / 0xA7FF9EDD write a factor from depth and a mask
+(no scene read). Those five stay stock and log their first draw with the target's format (8-bit: after the tonemapper,
+they need outline00's treatment; 16-bit: before it, the clip is harmless).

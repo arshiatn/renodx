@@ -9,6 +9,7 @@
 #define RENODX_MODS_SWAPCHAIN_VERSION 2
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -137,6 +138,30 @@ bool ActivateRenderTargetClones(reshade::api::command_list* cmd_list) {
       },                                          \
   }
 
+// Post-process materials of the game's paks that no dump has shown drawn (the shader carve, 2026-11-15): stock. The first
+// draw of each logs its target's format, for the next data run: 8-bit, after the tonemapper, where their max(0, x) clips
+// the signed HDR colours as outline00 / 01's did before their fix; 16-bit, before it (the clip harmless).
+template <uint32_t HASH>
+bool LogFirstDraw(reshade::api::command_list* cmd_list) {
+  static std::atomic_flag logged;
+  if (!logged.test_and_set()) {
+    const auto& targets = renodx::utils::swapchain::GetRenderTargets(cmd_list);
+    const auto format = (targets.empty() || targets[0].handle == 0) ? reshade::api::format::unknown
+                                                                     : cmd_list->get_device()->get_resource_view_desc(targets[0]).format;
+    renodx::utils::log::i("[Rome] Post material ", renodx::utils::log::AsHex(HASH), " drawn: target format ", static_cast<uint32_t>(format), ".");
+  }
+  return true;
+}
+
+#define LoggedShader(value)                \
+  {                                        \
+      value,                               \
+      {                                    \
+          .crc32 = value,                  \
+          .on_draw = &LogFirstDraw<value>, \
+      },                                   \
+  }
+
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
@@ -170,6 +195,13 @@ void BuildRuntimeData() {
       CustomShaderEntry(0xBCD37CAF),         // fog08 (height + volumetric fog, directional)
       CustomShaderEntry(0x31A1C68C),         // ao00 (ambient occlusion, last level: GT-VBAO)
       CustomShaderEntry(0xBD381E21),         // ao01
+      // The carve's: scene colour (or its high-pass, viewport-clamped twin) through UE's max(0, x + c); depth and a mask
+      // into a factor (no scene read). Its editor-only selection outlines and editor primitive composites are left out.
+      LoggedShader(0x93E43D26),
+      LoggedShader(0x07E055CF),
+      LoggedShader(0x1F128822),
+      LoggedShader(0x630E166D),
+      LoggedShader(0xA7FF9EDD),
   };
 
   // 0-2 slider, 1 = default.
