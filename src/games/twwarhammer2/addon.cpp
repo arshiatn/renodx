@@ -2379,6 +2379,14 @@ void ConfigureAddon() {
           .tint = 0x2196F3,
           .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/totalwarwarhammer2/mods/67"); },
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
+      },
   });
 
   // Section titles and Settings Mode's pages as Attila's (twattila/feature_settings.hpp).
