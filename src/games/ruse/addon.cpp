@@ -14,12 +14,18 @@
 #define DEBUG_LEVEL_0
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <format>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <system_error>
+#include <utility>
+#include <vector>
 
 #include <d3d9.h>
 #include <dxgi1_6.h>
@@ -57,6 +63,106 @@ float current_settings_mode = 0.f;
 bool frame_trace_enabled = false;
 bool frame_trace_requested = false;
 std::filesystem::path frame_trace_marker;
+
+// Graphics 2 of 2 (ATN Q7): values the game reads from its Option.ini ([advanced_video]: the ClusterLoadSaverOptions
+// list) above what its menu sets. The game reads the file at start and writes it only when its options menu applies
+// (SaveCommandName) or the file fails to load (ForceSaveIfNotOk): a row writes the file when it changes and at each start,
+// so it applies after a restart. The game's own value waits in ReShade.ini [RUSE Option.ini] for the row's return to
+// Game's; a value the menu wrote since replaces it.
+constexpr char GRAPHICS_2_SECTION[] = "Game Settings Above the Menu (Experimental, Restart Required)";
+constexpr char OPTION_INI_CONFIG[] = "RUSE Option.ini";
+struct GameOption {
+  std::vector<std::string> option_keys;  // [advanced_video]
+  std::vector<float> values;             // one per label after Game's
+  bool factors = false;                  // the values scale the game's own
+};
+std::vector<std::pair<renodx::utils::settings::Setting*, GameOption>> game_options;
+
+void ApplyGameOption(const GameOption& option, int choice) {
+  // LocalSaveDir: Steam's userdata\<user>\21970\local beside the steamclient64.dll the game loaded (the newest of its users).
+  static const std::filesystem::path OPTION_INI = [] {
+    std::filesystem::path newest;
+    std::wstring module;
+    if (HMODULE steam = GetModuleHandleW(L"steamclient64.dll"); steam != nullptr) {
+      module.resize(MAX_PATH);
+      module.resize(GetModuleFileNameW(steam, module.data(), MAX_PATH));
+    }
+    std::error_code error;
+    std::filesystem::file_time_type newest_time;
+    const auto users = std::filesystem::path(module).parent_path() / L"userdata";
+    for (const auto& user : std::filesystem::directory_iterator(users, error)) {
+      auto candidate = user.path() / L"21970" / L"local" / L"Option.ini";
+      const auto time = std::filesystem::last_write_time(candidate, error);
+      if (error) {
+        error.clear();
+        continue;
+      }
+      if (newest.empty() || time > newest_time) {
+        newest = std::move(candidate);
+        newest_time = time;
+      }
+    }
+    if (newest.empty()) {
+      reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Option.ini not found (Steam's userdata): Graphics 2 of 2 does nothing");
+    }
+    return newest;
+  }();
+  if (OPTION_INI.empty()) return;
+  std::string text;
+  {
+    std::ifstream file(OPTION_INI, std::ios::binary);
+    text.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+  }
+  const size_t section = text.find("[advanced_video]");
+  if (section == std::string::npos) return;
+  const size_t section_end = std::min(text.find("\n[", section), text.size());
+  bool changed = false;
+  for (const std::string& name : option.option_keys) {
+    const std::string needle = "\t" + name + " = ";
+    const size_t at = text.find(needle, section);
+    if (at == std::string::npos || at > section_end) continue;  // only values the game wrote
+    const size_t value_at = at + needle.size();
+    const size_t value_end = std::min(text.find_first_of("\r\n", value_at), text.size());
+    const std::string current_text = text.substr(value_at, value_end - value_at);
+    float game = 0.f;
+    std::from_chars(current_text.data(), current_text.data() + current_text.size(), game);
+    const std::string game_key = name + ".Game";
+    const std::string written_key = name + ".Written";
+    // Still the value this add-on wrote: the game's own is the one kept; else the menu's new value is the game's.
+    char written_text[32] = "";
+    size_t written_size = sizeof(written_text) - 1;
+    if (reshade::get_config_value(nullptr, OPTION_INI_CONFIG, written_key.c_str(), written_text, &written_size)
+        && current_text == written_text) {
+      reshade::get_config_value(nullptr, OPTION_INI_CONFIG, game_key.c_str(), game);
+    }
+    float wanted = game;
+    if (choice > 0 && choice <= static_cast<int>(option.values.size())) {
+      wanted = (option.factors ? game * option.values[choice - 1] : option.values[choice - 1]);
+    }
+    const std::string wanted_text = std::format("{:g}", wanted);
+    if (wanted == game) {
+      reshade::set_config_value(nullptr, OPTION_INI_CONFIG, game_key.c_str(), static_cast<const char*>(nullptr));
+      reshade::set_config_value(nullptr, OPTION_INI_CONFIG, written_key.c_str(), static_cast<const char*>(nullptr));
+    } else {
+      reshade::set_config_value(nullptr, OPTION_INI_CONFIG, game_key.c_str(), game);
+      reshade::set_config_value(nullptr, OPTION_INI_CONFIG, written_key.c_str(), wanted_text.c_str());
+    }
+    if (wanted_text == current_text) continue;
+    text.replace(value_at, value_end - value_at, wanted_text);
+    changed = true;
+    reshade::log::message(reshade::log::level::info,
+                          std::format("[R.U.S.E.] Option.ini {} {} -> {}", name, current_text, wanted_text).c_str());
+  }
+  if (!changed) return;
+  auto temporary = OPTION_INI;
+  temporary += L".renodx";
+  {
+    std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+    file.write(text.data(), static_cast<std::streamsize>(text.size()));
+    if (!file) return;
+  }
+  MoveFileExW(temporary.c_str(), OPTION_INI.c_str(), MOVEFILE_REPLACE_EXISTING);
+}
 
 // ReShade's DX9 Present callback runs before its DX9 overlay and the native
 // Present. The nested HDR proxy has already displayed the frame at that point.
@@ -239,7 +345,7 @@ void OnAfterProxyPresent(
 }
 
 bool IsAdvancedSettings() {
-  return current_settings_mode >= 1.f;
+  return current_settings_mode == 1.f;
 }
 
 bool HasHDRScene() {
@@ -491,7 +597,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .can_reset = false,
           .label = "Settings Mode",
-          .labels = {"Simple", "Advanced"},
+          .labels = {"Simple", "Advanced", "Graphics 2 of 2"},
           .is_global = true,
       },
       new renodx::utils::settings::Setting{
@@ -902,6 +1008,75 @@ void ConfigureAddon() {
 
   twattila::psycho35::InsertBefore(&settings, "Extra", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 
+  // Graphics 2 of 2: Option.ini values above the game's menu (ApplyGameOption).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::TEXT,
+      .label = "These change the game's own settings file. They apply after a restart.",
+      .section = GRAPHICS_2_SECTION,
+  });
+  for (auto [setting, option] : {
+           std::pair{
+               new renodx::utils::settings::Setting{
+                   .key = "GraphicsShadowMapSize",
+                   .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                   .default_value = 0.f,
+                   .label = "Shadow Map Size",
+                   .section = GRAPHICS_2_SECTION,
+                   .tooltip = "Sharper sun shadows. More video memory.",
+                   .labels = {"Game's", "4096", "8192"},
+                   .is_global = true,
+               },
+               GameOption{.option_keys = {"ShadowRTSize"}, .values = {4096.f, 8192.f}},
+           },
+           std::pair{
+               new renodx::utils::settings::Setting{
+                   .key = "GraphicsSpriteResolution",
+                   .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                   .default_value = 0.f,
+                   .label = "Sprite Resolution",
+                   .section = GRAPHICS_2_SECTION,
+                   .tooltip = "Sharper distant objects drawn as sprites. More video memory.",
+                   .labels = {"Game's", "4096", "8192"},
+                   .is_global = true,
+               },
+               GameOption{.option_keys = {"ImposteurTextureSize"}, .values = {4096.f, 8192.f}},
+           },
+           std::pair{
+               new renodx::utils::settings::Setting{
+                   .key = "GraphicsSpriteAntiAliasing",
+                   .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                   .default_value = 0.f,
+                   .label = "Sprite Anti-Aliasing",
+                   .section = GRAPHICS_2_SECTION,
+                   .tooltip = "Smoother edges on distant objects drawn as sprites and their shadows,\n"
+                              "at the game's highest scene anti-aliasing (8.5).",
+                   .labels = {"Game's", "8.5"},
+                   .is_global = true,
+               },
+               GameOption{.option_keys = {"ImposteurRTAA", "ImposteurShadowRTAA"}, .values = {8.5f}},
+           },
+           std::pair{
+               new renodx::utils::settings::Setting{
+                   .key = "GraphicsDetailDistance",
+                   .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                   .default_value = 0.f,
+                   .label = "Detail Distance",
+                   .section = GRAPHICS_2_SECTION,
+                   .tooltip = "Buildings and objects keep their detailed versions farther away.\n"
+                              "Costs CPU and GPU time.",
+                   .labels = {"Game's", "2x", "4x"},
+                   .is_global = true,
+               },
+               GameOption{.option_keys = {"LevelBuild_High", "LevelBuild_Mid", "LevelBuild_Low", "LevelBuild_VeryLow"},
+                          .values = {2.f, 4.f},
+                          .factors = true},
+           },
+       }) {
+    setting->on_change_value = [option](float, float current) { ApplyGameOption(option, static_cast<int>(current)); };
+    settings.push_back(setting);
+    game_options.emplace_back(setting, std::move(option));
+  }
+
   // The game's own setting the mod needs, first on General.
   settings.insert(settings.begin() + 1, new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
@@ -949,6 +1124,15 @@ void ConfigureAddon() {
       },
   });
 
+  // Settings Mode's pages: Simple and Advanced the HDR rows, Graphics 2 of 2 the game's settings; About on every page.
+  for (auto* setting : settings) {
+    if (setting->key == "SettingsMode" || setting->section == "About") continue;
+    const bool game_settings = (setting->section == GRAPHICS_2_SECTION);
+    setting->is_visible = [game_settings, shown = setting->is_visible] {
+      return ((current_settings_mode == 2.f) == game_settings) && (shown == nullptr || shown());
+    };
+  }
+
   configured = true;
 }
 
@@ -959,6 +1143,14 @@ bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_des
   twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
   renodx::utils::device_proxy::SetTargetFormat(renodx::mods::swapchain::target_format);
   renodx::utils::device_proxy::SetTargetColorSpace(renodx::mods::swapchain::target_color_space);
+  // Graphics 2 of 2 at each start, for the next one (the game read Option.ini before making its device).
+  static bool game_options_written = false;
+  if (!game_options_written) {
+    game_options_written = true;
+    for (const auto& [setting, option] : game_options) {
+      ApplyGameOption(option, static_cast<int>(setting->GetValue()));
+    }
+  }
   return false;
 }
 
