@@ -137,6 +137,25 @@ This update preserves that version's SDR handling and t01 routing. UI
 composition and bloom shaders are unchanged. t01's FadeValue at c0.z remains
 live; c0.w is still unused.
 
+**LUT addressing (2026-11-15, test/tw_psychov35 part 6):** t00 writes texel i
+for the shaper's PQ i / 31, and the game's t01 samples the PQ code u straight,
+so every pixel reads the colour at PQ (32 u - 0.5) / 31: mid gray about 12.2
+nits where a mode places 15, in every mode including Off. **Exact Colour LUT
+(Experimental, off)** samples a modded LUT at its texel centres (grey 14.98 nits
+through the LUT); Off and the SDR LUT are read as the game reads them.
+
+## Data runs and installing
+
+- **Trace One Frame** (Advanced, Debug), `renodx_trace_now` next to the exe or
+  `RENODX_TW_SET`'s `trace` key: `tales_frame_trace.txt` next to `EoCApp.exe`
+  with every draw / dispatch, their formats, PPComputeLUT's cb0 (each LUT, HDR
+  and the inventory's SDR) and PerView b12 at the sight pass.
+- `RENODX_TW_SET` / `RENODX_TW_SHOT` (or `renodx_test_hooks.txt` next to the exe)
+  set rows and take screenshots in scripted runs.
+- ReShade: `dxgi.dll` in `DefEd\bin` today. Norbyte's Script Extender installs
+  as `DXGI.dll` there too: where it is present, ReShade goes in as `d3d11.dll`
+  (the game is D3D11), never over the Extender.
+
 ## Compare in game
 
 1. Choose the relevant **Neutral** preset to reset its grading and bloom.

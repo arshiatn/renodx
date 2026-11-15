@@ -827,177 +827,181 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool resize) {
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX for Divinity: Original Sin 2 Definitive Edition by ATN";
 
+// Settings, shader data and the swap chain mod's options, before any ReShade event (the page dump driver calls it too).
+void ConfigureAddon() {
+  // Shaders cb
+  renodx::mods::shader::expected_constant_buffer_space = 50;
+  renodx::mods::shader::expected_constant_buffer_index = 10;
+
+  // Swapchain cb
+  renodx::mods::swapchain::expected_constant_buffer_index = 10;
+  renodx::mods::swapchain::expected_constant_buffer_space = 50;
+  
+  // Swapchain upgrade settings
+  renodx::mods::swapchain::use_resource_cloning = false;
+  renodx::mods::swapchain::force_borderless = false;
+  renodx::mods::swapchain::prevent_full_screen = false;
+  
+  // Proxy Shaders
+  renodx::mods::swapchain::swap_chain_proxy_shaders = {
+      {
+          reshade::api::device_api::d3d11,
+          {
+              .vertex_shader = __swap_chain_proxy_vertex_shader_dx11,
+              .pixel_shader = __swap_chain_proxy_pixel_shader_dx11,
+          },
+      },
+  };
+
+  // // Resource Upgrades
+  // #if RENODX_MODS_SWAPCHAIN_VERSION == 2
+  //     renodx::mods::swapchain::resource_upgrade_infos.push_back({
+  // #else
+  //     renodx::mods::swapchain::swap_chain_upgrade_targets.push_back({
+  // #endif
+  //     .old_format = reshade::api::format::r10g10b10a2_unorm,
+  //     .new_format = reshade::api::format::r16g16b16a16_float,
+  //     .ignore_size = true,
+  //     .use_resource_view_cloning = true, //TODO: needed?
+  //     .aspect_ratio = renodx::mods::swapchain::SwapChainUpgradeTarget::BACK_BUFFER,
+  //     .usage_include = reshade::api::resource_usage::render_target,
+  // });
+
+  // Appended Settings (HDR10)
+  {
+      auto* setting = new renodx::utils::settings::Setting{
+          .key = "SwapChainEncoding",
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Output",
+          .section = "Output (Restart Required)",
+          // .tooltip = "HDR10: 10bit, enough quality (banding?).\nscRGB: 16bit, overkill quality.",
+          // .labels = {"HDR10", "scRGB"},
+          .tooltip = "HDR10: 10bit",
+          .labels = {"HDR10"},
+          .is_global = true,
+      };
+      renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+      auto v = setting->GetValue();
+      shader_injection.swap_chain_encoding = v;
+      renodx::mods::swapchain::SetUseHDR10(v == 0);
+      settings.push_back(setting);
+  }
+
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Trace One Frame",
+          .section = "Debug",
+          .tooltip = "Writes the next frame's draws, their formats and the colour LUT's settings to\n"
+                     "tales_frame_trace.txt next to the game's exe.",
+          .on_change = []() { talesofarise::frame_trace::Request(); },
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "RenoDX, PsychoV30, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
+                   "PsychoV30 and PsychoV35.",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::ACES,
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "Build Date: " + build_date + " - " + build_time,
+          .section = "About",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "ATN's Ko-fi",
+          .section = "About",
+          .group = "about-buttons",
+          .tint = 0xFF5A16,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://ko-fi.com/atnthegreat"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "NexusMods",
+          .section = "About",
+          .group = "about-buttons",
+          .tint = 0x2196F3,
+          .on_change = []() {
+            renodx::utils::platform::LaunchURL("https://www.nexusmods.com/divinityoriginalsin2definitiveedition/mods/547");
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "about-buttons",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
+      },
+  });
+
+  twattila::psycho35::InsertBefore(
+      &settings, "Psycho V30", twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
+  twattila::psycho35::InsertBefore(
+      &settings, "Psycho V30",
+      {new renodx::utils::settings::Setting{
+          .key = "v35_mid_gray",
+          .binding = &shader_injection.v35_mid_gray,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Mid Gray",
+          .section = "PsychoV35",
+          .tooltip = "How bright mid gray is: as in the game's HDR (default) or as in its SDR picture (a little brighter).",
+          .labels = {"Game's HDR", "Game's SDR"},
+          .is_enabled = ShowPsychoV35Settings,
+          .is_visible = ShowPsychoV35Settings,
+      }});
+
+  // Each replaced shader's first use goes to the log; on a traced frame the LUT builder's constants (both LUTs)
+  // and the view's (at the sight pass) go to the trace.
+  uint32_t shader_index = 0;
+  for (auto& [hash, shader] : custom_shaders) {
+    const uint64_t bit = uint64_t{1} << shader_index++;
+    shader.on_draw = [hash, bit](reshade::api::command_list* cmd_list) {
+      if ((applied_shaders.load(std::memory_order_relaxed) & bit) == 0 && (applied_shaders.fetch_or(bit) & bit) == 0) {
+        renodx::utils::log::i(std::format("[Divinity 2] Replaced shader 0x{:08X} applied (Rendering Mode {:.0f}).", hash,
+                                          shader_injection.tonemap_type));
+      }
+      if (!talesofarise::frame_trace::internal::state.tracing.load(std::memory_order_relaxed)) return true;
+      switch (hash) {
+        case LUT_BUILDER_HASH:
+          AppendConstants(cmd_list, true, 0, 33,
+                          "PPComputeLUT cb0 (c0 luminance apply / red / highlights fix, c1-20 grading, c21 ranges, c22-25 "
+                          "white balance, c26-32 Params: TsParams, c31.zw / c32.x shaper, c32.y HDR gamma, c32.z output "
+                          "device bits: 1.4e-45 = HDR)");
+          break;
+        case SIGHT_HASH:
+          AppendConstants(cmd_list, false, 12, 15,
+                          "PerView b12 at EoCSight_HDR (c0-3 View, c4-7 Projection, c8-11 ViewProjection, c12 ViewPos, "
+                          "c13 ViewInfo: far, near, width, height, c14 ScaleAndBias)");
+          break;
+        default:
+          break;
+      }
+      return true;
+    };
+  }
+
+}
+
 BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
 
       if (!initialized) {
-        // Shaders cb
-        renodx::mods::shader::expected_constant_buffer_space = 50;
-        renodx::mods::shader::expected_constant_buffer_index = 10;
-
-        // Swapchain cb
-        renodx::mods::swapchain::expected_constant_buffer_index = 10;
-        renodx::mods::swapchain::expected_constant_buffer_space = 50;
-        
-        // Swapchain upgrade settings
-        renodx::mods::swapchain::use_resource_cloning = false;
-        renodx::mods::swapchain::force_borderless = false;
-        renodx::mods::swapchain::prevent_full_screen = false;
-        
-        // Proxy Shaders
-        renodx::mods::swapchain::swap_chain_proxy_shaders = {
-            {
-                reshade::api::device_api::d3d11,
-                {
-                    .vertex_shader = __swap_chain_proxy_vertex_shader_dx11,
-                    .pixel_shader = __swap_chain_proxy_pixel_shader_dx11,
-                },
-            },
-        };
-
-        // // Resource Upgrades
-        // #if RENODX_MODS_SWAPCHAIN_VERSION == 2
-        //     renodx::mods::swapchain::resource_upgrade_infos.push_back({
-        // #else
-        //     renodx::mods::swapchain::swap_chain_upgrade_targets.push_back({
-        // #endif
-        //     .old_format = reshade::api::format::r10g10b10a2_unorm,
-        //     .new_format = reshade::api::format::r16g16b16a16_float,
-        //     .ignore_size = true,
-        //     .use_resource_view_cloning = true, //TODO: needed?
-        //     .aspect_ratio = renodx::mods::swapchain::SwapChainUpgradeTarget::BACK_BUFFER,
-        //     .usage_include = reshade::api::resource_usage::render_target,
-        // });
-
-        // Appended Settings (HDR10)
-        {
-            auto* setting = new renodx::utils::settings::Setting{
-                .key = "SwapChainEncoding",
-                .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-                .default_value = 0.f,
-                .label = "Output",
-                .section = "Output (Restart Required)",
-                // .tooltip = "HDR10: 10bit, enough quality (banding?).\nscRGB: 16bit, overkill quality.",
-                // .labels = {"HDR10", "scRGB"},
-                .tooltip = "HDR10: 10bit",
-                .labels = {"HDR10"},
-                .is_global = true,
-            };
-            renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-            auto v = setting->GetValue();
-            shader_injection.swap_chain_encoding = v;
-            renodx::mods::swapchain::SetUseHDR10(v == 0);
-            settings.push_back(setting);
-        }
-
-        settings.insert(settings.end(), {
-            new renodx::utils::settings::Setting{
-                .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-                .label = "Trace One Frame",
-                .section = "Debug",
-                .tooltip = "Writes the next frame's draws, their formats and the colour LUT's settings to\n"
-                           "tales_frame_trace.txt next to the game's exe.",
-                .on_change = []() { talesofarise::frame_trace::Request(); },
-                .is_visible = IsAdvancedSettings,
-            },
-            new renodx::utils::settings::Setting{
-                .value_type = renodx::utils::settings::SettingValueType::TEXT,
-                .label = "RenoDX, PsychoV30, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                         "PsychoV30 and PsychoV35.",
-                .section = "About",
-            },
-            new renodx::utils::settings::Setting{
-                .value_type = renodx::utils::settings::SettingValueType::TEXT,
-                .label = twattila::credits::ACES,
-                .section = "About",
-            },
-            new renodx::utils::settings::Setting{
-                .value_type = renodx::utils::settings::SettingValueType::TEXT,
-                .label = "Build Date: " + build_date + " - " + build_time,
-                .section = "About",
-                .is_visible = IsAdvancedSettings,
-            },
-            new renodx::utils::settings::Setting{
-                .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-                .label = "ATN's Ko-fi",
-                .section = "About",
-                .group = "about-buttons",
-                .tint = 0xFF5A16,
-                .on_change = []() { renodx::utils::platform::LaunchURL("https://ko-fi.com/atnthegreat"); },
-            },
-            new renodx::utils::settings::Setting{
-                .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-                .label = "NexusMods",
-                .section = "About",
-                .group = "about-buttons",
-                .tint = 0x2196F3,
-                .on_change = []() {
-                  renodx::utils::platform::LaunchURL("https://www.nexusmods.com/divinityoriginalsin2definitiveedition/mods/547");
-                },
-            },
-            new renodx::utils::settings::Setting{
-                .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-                .label = "GitHub (Downloads)",
-                .section = "About",
-                .group = "about-buttons",
-                .tint = 0x6E7681,
-                .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
-            },
-        });
-
-        twattila::psycho35::InsertBefore(
-            &settings, "Psycho V30", twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
-        twattila::psycho35::InsertBefore(
-            &settings, "Psycho V30",
-            {new renodx::utils::settings::Setting{
-                .key = "v35_mid_gray",
-                .binding = &shader_injection.v35_mid_gray,
-                .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-                .default_value = 0.f,
-                .label = "Mid Gray",
-                .section = "PsychoV35",
-                .tooltip = "How bright mid gray is: as in the game's HDR (default) or as in its SDR picture (a little brighter).",
-                .labels = {"Game's HDR", "Game's SDR"},
-                .is_enabled = ShowPsychoV35Settings,
-                .is_visible = ShowPsychoV35Settings,
-            }});
-
-        // Each replaced shader's first use goes to the log; on a traced frame the LUT builder's constants (both LUTs)
-        // and the view's (at the sight pass) go to the trace.
-        uint32_t shader_index = 0;
-        for (auto& [hash, shader] : custom_shaders) {
-          const uint64_t bit = uint64_t{1} << shader_index++;
-          shader.on_draw = [hash, bit](reshade::api::command_list* cmd_list) {
-            if ((applied_shaders.load(std::memory_order_relaxed) & bit) == 0 && (applied_shaders.fetch_or(bit) & bit) == 0) {
-              renodx::utils::log::i(std::format("[Divinity 2] Replaced shader 0x{:08X} applied (Rendering Mode {:.0f}).", hash,
-                                                shader_injection.tonemap_type));
-            }
-            if (!talesofarise::frame_trace::internal::state.tracing.load(std::memory_order_relaxed)) return true;
-            switch (hash) {
-              case LUT_BUILDER_HASH:
-                AppendConstants(cmd_list, true, 0, 33,
-                                "PPComputeLUT cb0 (c0 luminance apply / red / highlights fix, c1-20 grading, c21 ranges, c22-25 "
-                                "white balance, c26-32 Params: TsParams, c31.zw / c32.x shaper, c32.y HDR gamma, c32.z output "
-                                "device bits: 1.4e-45 = HDR)");
-                break;
-              case SIGHT_HASH:
-                AppendConstants(cmd_list, false, 12, 15,
-                                "PerView b12 at EoCSight_HDR (c0-3 View, c4-7 Projection, c8-11 ViewProjection, c12 ViewPos, "
-                                "c13 ViewInfo: far, near, width, height, c14 ScaleAndBias)");
-                break;
-              default:
-                break;
-            }
-            return true;
-          };
-        }
-
+        ConfigureAddon();
         reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
         reshade::register_event<reshade::addon_event::present>(OnPresent);
         twattila::test_hooks::Install(&settings, true, "[Divinity 2]");
-
         initialized = true;
       }
 
