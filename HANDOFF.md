@@ -682,8 +682,27 @@ heading text are in HANDOFF_ARCHIVE.md)
     ~6 h (shorter 57 / 3.6 h, shortest 35 / 2.2 h). Coordinator: full plan (no time cap per ATN); cpu5 + grass_dump use
     ATN's installed helper; the older gpu_units_range / gpu_probe sets skipped (g3b2 answers gpu_reuse; units_range /
     probe lines stay open for a later bench); 128-light night / Rarer Objects need other scenes (open)
-  - [ ] END BENCH: after g4_ merges and while no agent builds (the merge agents wait on the quiet lock); Fable review in
-    parallel (read-only). Owner: coordinator
+  - [x] GPU ROUND 4 MERGED (g4_; d22bc4a9 / 507f71cc / f407205a / 1bd9908a): "Torch Shadows Follow the Camera"
+    (RayTracedLightRatioFollow, Experimental off, shared graphics_page: Attila, Rome II, Thrones, Troy, Pharaoh, WH1, WH2,
+    WH3); Batched Unit Capture for dismember / 4-bone / 4-bone dismember units (58,650,000 floats equal per family,
+    capture 1.56-1.84 -> 0.60-0.84 ms in the harness); "Rays Replace Point Light Shadows" (RayTracedGamePointShadows,
+    Experimental off, Attila + Thrones, 32 builds, WARP P1-P4 0 apart); FIX: Attila's pointlight00-07 replacements were
+    not the game's bits (skinlm 1,305 / 1,301 / 212 / 206 values apart, fxc reassociation): now bit-exact. `captured` as a
+    UAV impossible (SO + UAV binding refused). GT-VBAO bitmask: ALU / issue-bound (98 registers); the exact prefetch
+    rewrite is slower (1.483 -> 1.544 ms): not taken. tw_rays_captures ALL PASSED. Attila build32 rebuilt on the merge.
+    - [ ] Wire RayTracedLightRatioFollow into Shogun 2 (its own rows). Owner: next Shogun 2 round
+    - [ ] Skip the game's point-shadow casters under the row (shadow_pointlight VS 7DF3D76D / AD71694F, rigid 8B138A6A,
+      billboard 6B379EC6); Rome II's point-shadow builds (64 unique non-MSAA, 96 with MSAA; f407205a's message says 48:
+      wrong). Owner: next D3D11 round
+    - [ ] In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows + the new row (log "Rays Replace
+      Point Light Shadows applied: ps X"); Half + RR moving past torches with the follow row; a battle with 4-bone /
+      dismember units under Batched Unit Capture
+    - [ ] Real GT-VBAO savings need per-sample math changes (look change): visual A/B, ATN DECIDES. Owner: later
+  - [ ] END BENCH STARTED ~06:1x (tools/tw/bench/end_of_batch_1115_run.ps1, log end_of_batch_1115_run.log): cpu4, cpu5,
+    g2a_torch, g2a_shadow, g2b_clusters, g4_capture (in place of g3a_capture), g3b_reuse, grass_dump; ~94 starts / ~6 h;
+    one quiet window (rym_ / uem_ edit without building meanwhile). Owner: coordinator reads every summary.txt after
+  - [ ] FABLE 5.2 HIGH REVIEW of the TW batch fdfb307e..47aed531 (ATN asked; read-only during the bench; findings ->
+    tools/tw/round_notes/fable_review_1115.tsv), then a fix round, then suites, stamp, install. Owner: coordinator
   - [x] SHOGUN 2 ONE ADD-ON MERGED d4c82679 (s2m_): _dlss folded in (pages HDR & Effects / Graphics 1 of 2 / 2 of 2;
     shared twattila/settings_pages.hpp for the page helpers; fast dispatch; hdr_link / dlss_jitter / in-process FG
     shaders 0x7A1E0D40-42 dropped; red note + log while the old _dlss file sits in the folder; README tells players to
