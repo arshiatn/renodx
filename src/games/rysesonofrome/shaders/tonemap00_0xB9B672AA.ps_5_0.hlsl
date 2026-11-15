@@ -8,7 +8,7 @@
 // sun shafts and the chart. sRGB-on-2.2 display emulation, gamma 2.2 encoded out. HDR: the shaft
 // value past 1 (stock saturate) as light, rolled off below Peak.
 #include "../shared.h"
-#include "../psycho_test31.hlsli"
+#include "../../twattila/psycho_test31.hlsli"
 #include "../../twattila/psycho35.hlsli"
 #include "../uncharted2extended.hlsli"
 
