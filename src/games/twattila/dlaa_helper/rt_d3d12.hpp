@@ -924,6 +924,7 @@ class RtScene12 {
     specular_meta_history_.Reset();
     reuse_samples_ = {};
     reuse_data_ = {};
+    reuse_surface_ = {};
     own_sky_ = {};
     light_ratio_ = {};
     reflect_samples_ = {};
@@ -1538,6 +1539,25 @@ class RtScene12 {
         if (lights_mode != 0 && (requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) {
           list->SetComputeRoot32BitConstant(ROOT_SETTINGS, std::bit_cast<uint32_t>(std::clamp(shared.rt_light_size, 0.f, 2.f)), 8);
         }
+        // Their ratio's history shorter while the camera moves (RT_PATH_RATIO_FOLLOW): its registers changed since the last
+        // paths' beyond a jitter, which adds a multiple of the w row to the x and y rows (what is left over a row's length:
+        // radians turned, metres moved; the w row has none).
+        const bool ratio_follows = ratio_written && version >= 31 && (requested & dlaa_bridge::RT_PATH_RATIO_FOLLOW) != 0 && [&] {
+          const float* w_row = shared.rt_view_projection + 12;
+          const float w_length = (w_row[0] * w_row[0]) + (w_row[1] * w_row[1]) + (w_row[2] * w_row[2]);
+          for (const size_t row : {size_t{0}, size_t{1}, size_t{3}}) {
+            const float* now = shared.rt_view_projection + (row * 4);
+            const float* before = previous_view_projection_.data() + (row * 4);
+            std::array<float, 4> change = {now[0] - before[0], now[1] - before[1], now[2] - before[2], now[3] - before[3]};
+            const float jitter = (row != 3 && w_length > 0.f) ? ((change[0] * w_row[0]) + (change[1] * w_row[1]) + (change[2] * w_row[2])) / w_length : 0.f;
+            for (size_t index = 0; index < change.size(); ++index) change[index] -= jitter * w_row[index];
+            const float length = std::sqrt((now[0] * now[0]) + (now[1] * now[1]) + (now[2] * now[2]));
+            if (length <= 0.f) continue;
+            const float turned = std::sqrt((change[0] * change[0]) + (change[1] * change[1]) + (change[2] * change[2])) / length;
+            if (turned > 1e-5f || std::abs(change[3]) / length > 1e-3f) return true;
+          }
+          return false;
+        }();
         PathConstants constants = {
             .bounce_width = render_pixels ? width : shared.rt_bounce_width,
             .bounce_height = render_pixels ? height : shared.rt_bounce_height,
@@ -1553,7 +1573,8 @@ class RtScene12 {
             // Torch and Fire Light in the Light Bounce: ReuseTexel shades the lights' samples (the paths with ReSTIR GI), or
             // keeps their shadow ratio (ratio_written below).
             .lights_in_bounce = lights_mode | ((ratio_written && ratio_parity_ != 0) ? 16u : 0u)
-                                | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u),
+                                | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u)
+                                | (ratio_follows ? 64u : 0u),
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -2007,7 +2028,9 @@ class RtScene12 {
     NRD_AMBIENT_SIGNAL,
     OWN_SKY,  // u54-u55 (helpers 107 on): Path-Traced Ambient's own sky at the bounce texels, two sets
     LIGHT_RATIO = OWN_SKY + 2,  // u56-u57 (helpers 111 on): Torch and Fire Shadows from the Light Bounce's ratio, two sets
-    DESCRIPTOR_COUNT = LIGHT_RATIO + 2,
+    SURFACE_ORIGIN = LIGHT_RATIO + 2,  // u58: ReSTIR GI's bounce texels' surfaces as this frame's paths found them
+    SURFACE_NORMAL,                    // u59
+    DESCRIPTOR_COUNT,
   };
   static constexpr UINT SRV_COUNT = VISIBILITY;
   // rt_path.hlsli's path flags and cache size.
@@ -2668,7 +2691,7 @@ class RtScene12 {
     for (const UINT descriptor : std::initializer_list<UINT>{SPECULAR_ACCUMULATED, SPECULAR_HISTORY, SPECULAR_META, SPECULAR_META_HISTORY,
                                                              REFLECTION, SPECULAR_OCCLUSION, LIGHT_MASK, FOG, AMBIENT_HISTORY,
                                                              AMBIENT_HISTORY + 1, AMBIENT_POSITIONS, HIT_DISTANCE, LIGHT_HISTORY,
-                                                             LIGHT_HISTORY + 1, FOG_LIGHTS, TINT}) {
+                                                             LIGHT_HISTORY + 1, FOG_LIGHTS, TINT, SURFACE_ORIGIN, SURFACE_NORMAL}) {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
     if (cache_keys_) return;
@@ -2788,17 +2811,22 @@ class RtScene12 {
         paths_frame_ = UINT32_MAX;
         return true;
       case HISTORY_REUSE:
-        // ReSTIR GI's two sets of reservoirs (the path-traced Light Bounce's).
+        // ReSTIR GI's two sets of reservoirs (the path-traced Light Bounce's) and the bounce texels' surfaces (rt_path.hlsli
+        // surface_origin, surface_normal: this frame's only; ~265 MB at 4K).
         if (reuse_samples_[0]) return true;
         for (UINT set = 0; set < 2; ++set) {
-          if (!Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reuse_samples_[set]) || !Texture(DXGI_FORMAT_R32G32B32A32_UINT, &reuse_data_[set])) {
+          if (!Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reuse_samples_[set]) || !Texture(DXGI_FORMAT_R32G32B32A32_UINT, &reuse_data_[set])
+              || !Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reuse_surface_[set])) {
             reuse_samples_ = {};
             reuse_data_ = {};
+            reuse_surface_ = {};
             return false;
           }
           Written(reuse_samples_[set].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, REUSE_SAMPLES + set);
           Written(reuse_data_[set].Get(), DXGI_FORMAT_R32G32B32A32_UINT, REUSE_DATA + set);
         }
+        Written(reuse_surface_[0].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, SURFACE_ORIGIN);
+        Written(reuse_surface_[1].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, SURFACE_NORMAL);
         reuse_frame_ = UINT32_MAX;
         return true;
       case HISTORY_SKY:
@@ -2928,8 +2956,9 @@ class RtScene12 {
     }
     if (water_positions_ && unused(HISTORY_WATER)) release("water's positions", {std::addressof(water_positions_)}, {});
     if (reuse_samples_[0] && unused(HISTORY_REUSE)) {
-      release("ReSTIR GI", {std::addressof(reuse_samples_[0]), std::addressof(reuse_samples_[1]), std::addressof(reuse_data_[0]), std::addressof(reuse_data_[1])},
-              {REUSE_SAMPLES, REUSE_SAMPLES + 1, REUSE_DATA, REUSE_DATA + 1});
+      release("ReSTIR GI", {std::addressof(reuse_samples_[0]), std::addressof(reuse_samples_[1]), std::addressof(reuse_data_[0]), std::addressof(reuse_data_[1]),
+                            std::addressof(reuse_surface_[0]), std::addressof(reuse_surface_[1])},
+              {REUSE_SAMPLES, REUSE_SAMPLES + 1, REUSE_DATA, REUSE_DATA + 1, SURFACE_ORIGIN, SURFACE_NORMAL});
     }
     if (own_sky_[0] && unused(HISTORY_SKY)) release("own sky's", {std::addressof(own_sky_[0]), std::addressof(own_sky_[1])}, {OWN_SKY, OWN_SKY + 1});
     if (light_ratio_[0] && unused(HISTORY_RATIO)) {
@@ -6113,6 +6142,7 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> reuse_lean_pipeline_;  // its Lean Reuse build (REUSE_LEAN)
   std::array<ComPtr<ID3D12Resource>, 2> reuse_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
+  std::array<ComPtr<ID3D12Resource>, 2> reuse_surface_;  // the bounce texels' rays' origins and normals (SURFACE_ORIGIN, SURFACE_NORMAL)
   uint32_t reuse_frame_ = UINT32_MAX;  // the frame the reservoirs were last made in
   uint32_t reuse_lights_mode_ = 0;     // its Torch and Fire Light in the Light Bounce mode (rt_camera.hlsli LIGHTS_MODE; 0: none)
   uint32_t reuse_parity_ = 0;          // this frame's set
