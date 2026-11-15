@@ -66,7 +66,7 @@ float4 main(float2 v0 : TEXCOORD0, float2 v1 : TEXCOORD1, float2 v2 : TEXCOORD2)
 #endif
 {
   bool injection_valid = SI.peak_white_nits > 0.f && SI.diffuse_white_nits > 0.f;
-  int hdr_mode = injection_valid ? (int)clamp(floor(HDR + 0.5f), 0.f, 3.f) : 0;
+  int hdr_mode = injection_valid ? (int)clamp(floor(HDR + 0.5f), 0.f, 4.f) : 0;
   bool hdr = hdr_mode != 0;
 
   // Native scene/bloom storage is UNORM. Keep its range multiplier after sampling.
@@ -122,7 +122,7 @@ float4 main(float2 v0 : TEXCOORD0, float2 v1 : TEXCOORD1, float2 v2 : TEXCOORD2)
   float psycho_anchor_in = 0.18f;
   bool direct_response = false;
   [branch]
-  if (hdr_mode >= 2 && Gamma > 0.0001f && Brightness > 0.0001f) {
+  if (hdr_mode == 2 && Gamma > 0.0001f && Brightness > 0.0001f) {
     // Under the retained gamma-2.2 output assumption, the decoded neutral is
     // V(x) = (Brightness * x^Gamma)^2.2. Calibrate in the same domain as Psycho input.
     float log_anchor = (log2(0.18f) - 2.2f * log2(Brightness)) / Gamma;
@@ -132,8 +132,9 @@ float4 main(float2 v0 : TEXCOORD0, float2 v1 : TEXCOORD1, float2 v2 : TEXCOORD2)
     }
   }
 
-  // SDR and Native Tone keep the native response; degenerate anchors/fades do too. `responded`: the SDR picture before
-  // its clip (PsychoV35's Hue Clip Emulation).
+  // Every mode but Full Replacement keeps the native response: the map's Brightness / Gamma grade, whose clip at 1 is the
+  // game's only tone mapping (test/tw_psychov35 part 6: its slope and colours kept there); degenerate anchors too.
+  // `responded`: the SDR picture before its clip.
   const float luma = dot(color, kLuma);
   const float3 responded = ((luma > 0.f) ? color * pow(luma, Gamma - 1.f) : 0.f) * Brightness;
   [branch]
@@ -148,17 +149,21 @@ float4 main(float2 v0 : TEXCOORD0, float2 v1 : TEXCOORD1, float2 v2 : TEXCOORD2)
     return float4(renodx::color::gamma::EncodeSafe(color), 1.f);
   }
 
-  // The HDR modes use the supplied V31 response (or Musa's PsychoV35) and retain decoded RGB ratios.
+  // The HDR modes replace the clip (V31 Full Replacement the response too) and retain decoded RGB ratios.
   color = renodx::color::gamma::DecodeSafe(color);
   [branch]
-  if (hdr_mode >= 3) {
-    // PsychoV35 (twattila/psycho35.hlsli), anchored as Full Replacement; Hue Clip Emulation toward the hue the game's
-    // response and its per-channel clip give.
+  if (hdr_mode == 4) {
+    // Extended: the SDR picture up to Paper White; above it each channel rolls off to Peak on its own, as the clip turns
+    // bright colours toward white (Ryse fix32's shoulder).
+    const float shoulder = max(HDR_PEAK, 1.0001f) - 1.f;
+    color = min(color, 1.f) + renodx::tonemap::neutwo::PerChannel(max(color - 1.f, 0.f), shoulder.xxx);
+  } else if (hdr_mode == 3) {
+    // PsychoV35 (twattila/psycho35.hlsli) in place of the clip; Hue Clip Emulation toward the hue the clip gives.
     [branch]
     if (SI.hue_clip > 0.f) {
       color = renodx::tonemap::psychov::HueTransfer(color, renodx::color::gamma::DecodeSafe(saturate(responded)), SI.hue_clip);
     }
-    color = ApplyPsychoV35(color * (0.18f / psycho_anchor_in), HDR_PEAK, false);
+    color = ApplyPsychoV35(color, HDR_PEAK, false);
   } else {
     color = ApplyPsychoV31Reference(color, psycho_anchor_in);
   }

@@ -8,7 +8,7 @@ struct ShaderInjectData {
   float graphics_white_nits;
   float swap_chain_encoding;
 
-  float hdr;  // 0 SDR, 1 PsychoV31 Native Tone, 2 PsychoV31 Full Replacement, 3 PsychoV35 (Full Replacement).
+  float hdr;  // 0 SDR, 1 PsychoV31 Native Tone, 2 PsychoV31 Full Replacement, 3 PsychoV35 (after the response), 4 Extended.
   float bloom;
   float vignette;
 

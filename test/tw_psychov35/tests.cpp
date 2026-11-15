@@ -26,9 +26,10 @@
 // the same source) runs in parts 3 and 4 too (no SDR output: the add-on has none yet), at the median map's grade, and:
 // 6. Grey and slope: an input ramp around the grey the game's SDR response puts at 0.18 (its display light is
 //    Brightness^2.2 X^Gamma, X the decoded graded scene), at the menu's, the median map's and the steepest map's Gamma /
-//    Brightness and HDRParam 1, 2, 4: every mode lands grey at 0.18 of Paper White; the SDR slope at grey is Gamma; the
-//    HDR modes' slopes printed against it (V35 also with its Contrast at Gamma). Markers (the 15 scene draws that undo the
-//    post's grade in advance, census C2): the SDR result is their authored colour; the HDR modes' shift printed.
+//    Brightness and HDRParam 1, 2, 4: every mode lands grey at 0.18 of Paper White; the slope at grey is Gamma in SDR and
+//    Extended, within 2% in V31 Native Tone and V35 (both after the response; Full Replacement's printed). Extended's
+//    ramp within Peak, grey never darker. Markers (the 15 scene draws that undo the post's grade in advance, census C2):
+//    SDR gives their authored colour, Extended the same; the other modes' shift printed.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -1166,25 +1167,15 @@ static void ReportHue(const Chain& chain) {
 struct RuseMode {
   const char* name;
   float hdr;
-  bool v35_contrast_at_gamma;
 };
 const std::vector<RuseMode> RUSE_MODES = {
-    {"SDR", 0.f, false}, {"V31 Native Tone", 1.f, false}, {"V31 Full Replacement", 2.f, false}, {"V35", 3.f, false},
-    {"V35 Contrast = Gamma", 3.f, true}};
-
-static std::vector<Float3> RunRuseMode(const Shader& post, const std::vector<Float4>& scene, const RuseGrade& grade, float hdr_param,
-                                       const RuseMode& mode) {
-  auto si = RuseInjection(mode.hdr);
-  if (mode.v35_contrast_at_gamma) si.v35_contrast = grade.gamma;
-  return RunRuse(post, scene, grade, hdr_param, si);
-}
+    {"SDR", 0.f}, {"V31 Native Tone", 1.f}, {"V31 Full Replacement", 2.f}, {"V35", 3.f}, {"Extended", 4.f}};
 
 static void TestRuse(const Shader& post) {
   // Every column grey; row 24 the decoded scene X where the game's SDR light Brightness^2.2 X^Gamma is 0.18, the rows
   // 1/12 stop apart (+-2 stops).
   constexpr UINT GREY_ROW = 24;
   constexpr float STOPS_PER_ROW = 1.f / 12.f;
-  float worst_v35_at_gamma = 0.f;
   for (const RuseGrade& grade : {RUSE_MENU_GRADE, RUSE_MEDIAN_GRADE, RUSE_STEEPEST_GRADE}) {
     const float grey_input = std::pow(0.18f / std::pow(grade.brightness, 2.2f), 1.f / grade.gamma);
     std::vector<Float4> scene(WIDTH * HEIGHT);
@@ -1195,17 +1186,30 @@ static void TestRuse(const Shader& post) {
     for (const float hdr_param : {1.f, 2.f, 4.f}) {
       std::printf("6. %s, HDRParam %.0f: grey (x Paper White) and slope at grey (stops out per stop in)\n", grade.name, hdr_param);
       for (const RuseMode& mode : RUSE_MODES) {
-        const auto out = RunRuseMode(post, scene, grade, hdr_param, mode);
+        const auto out = RunRuse(post, scene, grade, hdr_param, RuseInjection(mode.hdr));
         const float grey = Luminance(out[GREY_ROW * WIDTH]);
         const float slope = std::log2(Luminance(out[(GREY_ROW + 1) * WIDTH]) / Luminance(out[(GREY_ROW - 1) * WIDTH])) / (2.f * STOPS_PER_ROW);
         std::printf("   %-22s grey %.4f slope %.3f (the game's %.3f)\n", mode.name, grey, slope, grade.gamma);
         CHECK(std::abs(grey - 0.18f) <= 0.18f * 0.02f);
-        if (mode.hdr == 0.f) CHECK(std::abs(slope - grade.gamma) <= 0.01f);
-        if (mode.v35_contrast_at_gamma) worst_v35_at_gamma = std::max(worst_v35_at_gamma, std::abs(slope - grade.gamma) / grade.gamma);
+        // Every mode but Full Replacement keeps the map's contrast (V31 / V35 near grey: within 2%).
+        if (mode.hdr == 0.f || mode.hdr == 4.f) CHECK(std::abs(slope - grade.gamma) <= 0.01f);
+        if (mode.hdr == 1.f || mode.hdr == 3.f) CHECK(std::abs(slope - grade.gamma) <= 0.02f * grade.gamma);
       }
     }
   }
-  std::printf("6. V35 with Contrast = Gamma: slope at grey within %.1f%% of the game's in every case\n", 100.f * worst_v35_at_gamma);
+
+  // Extended's highlights: the 64 colours 2^-8 to 2^12 of white; each channel within Peak, grey never darker.
+  int failures_in_ramp = 0;
+  for (const float peak : {1000.f, 400.f}) {
+    for (const RuseGrade& grade : {RUSE_MEDIAN_GRADE, RUSE_STEEPEST_GRADE}) {
+      auto si = RuseInjection(4.f);
+      si.peak_white_nits = peak;
+      CheckRamp((std::string("RUSE Extended, ") + grade.name + ", " + std::to_string(static_cast<int>(peak)) + " nits").c_str(),
+                RunRuse(post, Scene(PatternColumns(), -8.f, 20.f / 47.f, 1.f), grade, 1.f, si), peak, 203.f, false, true, true,
+                &failures_in_ramp);
+    }
+  }
+  CHECK(failures_in_ramp == 0);
 
   // Markers: authored (display-encoded) colours the 15 pre-inverted draws (0829620B ...) write as
   // x = (c / Brightness) * luma(c / Brightness)^(1 / Gamma - 1), which the post's response returns to c.
@@ -1222,13 +1226,17 @@ static void TestRuse(const Shader& post) {
       for (int channel = 0; channel < 3; ++channel) scene[i][channel] = std::pow(c[channel] * scale, 2.2f);
     }
     std::printf("6. Markers, %s: the HDR modes against the authored colour (SDR's): Y ratio, OkLab distance x 100\n", grade.name);
-    const auto sdr = RunRuseMode(post, scene, grade, 1.f, RUSE_MODES[0]);
+    const auto sdr = RunRuse(post, scene, grade, 1.f, RuseInjection(0.f));
+    const auto extended = RunRuse(post, scene, grade, 1.f, RuseInjection(4.f));
     for (size_t m = 0; m < markers.size(); ++m) {
       const Float3& c = markers[m].second;
-      for (int channel = 0; channel < 3; ++channel) CHECK(std::abs(sdr[m][channel] - std::pow(c[channel], 2.2f)) <= 2e-3f);
+      for (int channel = 0; channel < 3; ++channel) {
+        CHECK(std::abs(sdr[m][channel] - std::pow(c[channel], 2.2f)) <= 2e-3f);
+        CHECK(std::abs(extended[m][channel] - sdr[m][channel]) <= 1e-5f);  // Extended is SDR up to Paper White
+      }
     }
     for (size_t mode = 1; mode < RUSE_MODES.size(); ++mode) {
-      const auto hdr = RunRuseMode(post, scene, grade, 1.f, RUSE_MODES[mode]);
+      const auto hdr = RunRuse(post, scene, grade, 1.f, RuseInjection(RUSE_MODES[mode].hdr));
       std::printf("   %-22s", RUSE_MODES[mode].name);
       for (size_t m = 0; m < markers.size(); ++m) {
         const Float3 a = OkLab(sdr[m]);

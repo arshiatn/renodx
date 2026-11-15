@@ -232,7 +232,7 @@ bool IsAdvancedSettings() {
 }
 
 bool HasHDRScene() {
-  return shader_injection.hdr >= 1.f && shader_injection.hdr <= 3.f;
+  return shader_injection.hdr >= 1.f && shader_injection.hdr <= 4.f;
 }
 
 // Every HDR mode's rows (Extra).
@@ -392,7 +392,7 @@ void OnPresentFrame(
 void ApplyResetPreset() {
   // Display/output settings and the independent Motion Blur/DOF controls are preserved.
   renodx::utils::settings::UpdateSettings({
-      {"rendering_mode", 1.f},
+      {"rendering_mode", 4.f},
 
       // PsychoV31
       {"exposure", 1.f},
@@ -503,16 +503,17 @@ void BuildRuntimeData() {
                      "SDR: the game's original picture (no tonemapper, highlights clip).\n"
                      "PsychoV31 - Native Tone: applies PsychoV31 after the game's gamma/brightness response.\n"
                      "PsychoV31 - Full Replacement: PsychoV31 replaces that response.\n"
-                     "PsychoV35: Musa's PsychoV35 replaces it, with Hue Clip Emulation (Recommended).\n"
+                     "PsychoV35: Musa's PsychoV35 after the map's own gamma/brightness, with Hue Clip Emulation (Recommended).\n"
+                     "Extended: the game's picture up to Paper White, its clipped highlights rolled off to Peak.\n"
                      "All HDR modes retain the game's colour grading, bloom and vignette.",
-          .labels = {"SDR", "HDR (PsychoV31 - Native Tone)", "HDR (PsychoV31 - Full Replacement)", "HDR (PsychoV35)"},
+          .labels = {"SDR", "HDR (PsychoV31 - Native Tone)", "HDR (PsychoV31 - Full Replacement)", "HDR (PsychoV35)", "HDR (Extended)"},
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
           .label = "Reset (Faithful to SDR)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Resets Psycho controls, Bloom and Vignette; selects PsychoV31 - Native Tone.\n"
+          .tooltip = "Resets Psycho controls, Bloom and Vignette; selects HDR (Extended).\n"
                      "Peak, Paper White, UI, output, Motion Blur and Depth of Field are preserved.",
           .on_change = []() {
             ApplyResetPreset();
