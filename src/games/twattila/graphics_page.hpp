@@ -24,6 +24,7 @@
 #include "./feature_settings.hpp"
 #include "./lighting_settings.hpp"
 #include "./rt_scene.hpp"
+#include "./settings_pages.hpp"
 
 // Graphics 1 of 2 (ATN; Attila's, and with Bindings another game's): one section per job (anti-aliasing, shadows, ambient occlusion, Global Illumination,
 // reflections, ray tracing), each with a method slider and only that method's settings, the less important ones under
@@ -109,20 +110,7 @@ inline void ClearSavedRows(int revision, std::initializer_list<const char*> keys
   reshade::set_config_value(nullptr, global.c_str(), "SettingsRevision", revision);
 }
 
-inline const std::string AA_SECTION = "Anti-Aliasing and Upscaling";
-inline const std::string AO_SECTION = "Ambient Occlusion";
-inline const std::string SHADOWS_SECTION = "Shadows";
-inline const std::string GI_SECTION = "Global Illumination";
-inline const std::string REFLECTIONS_SECTION = "Reflections and Water";
-inline const std::string RT_SECTION = "Ray Tracing Extra Options";
-// Light Through Foliage's and the smoke's shadows without rays' defaults where a game run has shown them (Attila's).
-constexpr float FOLIAGE_LIGHT_DEFAULT = 0.5f;
-constexpr float SMOKE_MAP_DEFAULT = 1.f;
-constexpr uint32_t TITLE_TINT = 0x7FBFFF;
-constexpr uint32_t MORE_TINT = 0xFFB86B;
-constexpr uint32_t WARNING_TINT = 0xFF5050;
-constexpr uint32_t NOTICE_TINT = 0xFFE066;
-using credits::FULL_DOWNLOAD_NOTE;
+// The page's sections and colours, Note, EmptyLine and MoreOptions: settings_pages.hpp.
 
 // What the page says that is true of one game only.
 struct Texts {
@@ -364,31 +352,6 @@ inline Setting* MethodSlider(const std::string& section, const std::string& tool
         if (changed) choose(value);
         return changed;
       },
-  };
-}
-
-inline Setting* Note(const std::string& label, const std::string& section, uint32_t tint, std::function<bool()> shown) {
-  return new Setting{.value_type = SettingValueType::TEXT, .label = label, .section = section, .tint = tint, .is_visible = std::move(shown)};
-}
-
-inline Setting* EmptyLine(const std::string& section) {
-  return new Setting{.value_type = SettingValueType::TEXT, .label = "", .section = section};
-}
-
-// A section's More Options: closed at each start, its colour the same on every section. It reads back into `open`, which
-// its rows' visibility reads as they are drawn after it.
-inline Setting* MoreOptions(const std::string& section, bool* open, std::function<bool()> shown) {
-  return new Setting{
-      .value_type = SettingValueType::CUSTOM,
-      .label = "More Options##" + section,
-      .section = section,
-      .on_draw = [open] {
-        ImGui::PushStyleColor(ImGuiCol_Text, renodx::utils::settings::ImVec4FromHex(MORE_TINT));
-        *open = ImGui::TreeNodeEx("More Options", ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanFullWidth);
-        ImGui::PopStyleColor();
-        return false;
-      },
-      .is_visible = std::move(shown),
   };
 }
 
