@@ -218,7 +218,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     CloseHandle(clusters);
   }
 
-  // A device on the game's GPU.
+  // A device on the game's GPU (again after a GPU reset removed it: every request waits and signals on it).
   ComPtr<IDXGIFactory4> factory;
   ComPtr<IDXGIAdapter1> adapter;
   ComPtr<ID3D11Device> device;
@@ -228,11 +228,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   ComPtr<ID3D11Device1> device1;
   ComPtr<ID3D11Device5> device5;
   ComPtr<ID3D11DeviceContext4> context4;
+  const auto make_device = [&] {
+    return SUCCEEDED(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, LEVELS, 2, D3D11_SDK_VERSION,
+                                       device.ReleaseAndGetAddressOf(), nullptr, context.ReleaseAndGetAddressOf()))
+           && SUCCEEDED(device.As(&device1)) && SUCCEEDED(device.As(&device5)) && SUCCEEDED(context.As(&context4));
+  };
   if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf())))
-      || FAILED(factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(adapter.GetAddressOf())))
-      || FAILED(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, LEVELS, 2, D3D11_SDK_VERSION,
-                                  device.GetAddressOf(), nullptr, context.GetAddressOf()))
-      || FAILED(device.As(&device1)) || FAILED(device.As(&device5)) || FAILED(context.As(&context4))) {
+      || FAILED(factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(adapter.GetAddressOf()))) || !make_device()) {
     set_status("DLAA helper: no D3D11.4 device on the game's GPU");
     return 1;
   }
@@ -651,6 +653,33 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   while (next_request() == WAIT_OBJECT_0) {
     log_removed_devices();
     last_request = std::chrono::steady_clock::now();
+    // A GPU reset removed the D3D11 device every request waits and signals on: a new one, this set's fence opened again on
+    // it (its handles stay open: set_handles; the textures with the next DLSS request). None: the helper ends, which the
+    // addon's watcher reports (else every request would pass unanswered for good).
+    if (FAILED(device->GetDeviceRemovedReason())) {
+      backend.Reset();
+      super_resolution_ran = false;
+      super_resolution_opened = false;
+      color.Reset();
+      depth.Reset();
+      motion.Reset();
+      output.Reset();
+      fence.Reset();
+      context4.Reset();
+      device5.Reset();
+      device1.Reset();
+      context.Reset();
+      device.Reset();
+      if (!make_device()) {
+        LogWithTime("[TW DLAA helper] A GPU reset removed its D3D11 device and no new one could be made: the helper ends.");
+        break;
+      }
+      ReShadeLogMessage(nullptr, 0, "[TW DLAA helper] A GPU reset removed its D3D11 device: a new one.");
+      if (shared->generation == opened_generation && shared->color != 0
+          && FAILED(device5->OpenSharedFence(reinterpret_cast<HANDLE>(shared->fence), IID_PPV_ARGS(fence.GetAddressOf())))) {
+        fence.Reset();
+      }
+    }
     // The stalled scene's work is done, or its device removed since (held, it would refuse the new devices below).
     const bool scene_resumes = stalled_scene && stalled_scene->Idle();
     if (scene_resumes) {
