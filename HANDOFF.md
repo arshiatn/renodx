@@ -39,6 +39,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -123,11 +124,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN at the end (R.U.S.E.): Extended replacing V31 Native Tone or beside it; Hue ... | ATN
 - ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 ... | coordinator
 - d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div ... | d1_
-- ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_
+- ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
 - sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (devi ... | sh_
 - hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, W ... | hb_
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
-- npr_: Ryse parity boxes (NON-TW SKILLS AUDIT section). Owner: npr_ | npr_
+- ATN DECIDES (Ryse): an ssao temporal / edge / denoise port (M) and an optional e ... | ATN
+- Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
 - npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe. Own ... | npu_
 - gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: g ... | gr_
 - Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device re ... | coordinator
@@ -151,13 +153,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - [P] ATN DECIDES R5 hue settings after PsychoV in legacy V30 / V31 modes (all TW ... | ATN
 - [P] ATN DECIDES R6 bloom: smoothing also in Rendering Mode SDR (Vanilla != game: ... | ATN
 - [P] ATN DECIDES Extended Saturation = RGB blend to grey, not OKLab chroma (WH2 : ... | ATN
-- Ryse: Time Each Pass (no pass_timing; no button in page_ry_fin). Owner: non-TW p ... | non-TW parity round (Ryse)
-- Ryse: twattila/test_hooks (SET / SHOT / PROFILE) beside the renodx_trace_now pol ... | non-TW parity round (Ryse), with the cvars-from-ini box
-- Ryse: ray-tracing Debug View + Scene Test rows + rt_scene::OnTonemapDrawn; READM ... | non-TW parity round (Ryse)
-- Ryse: RT rows missing in page_ry_fin (ryse.tsv DO NOW): RayTracedAORays, PathSky ... | non-TW parity round (Ryse)
-- Ryse: rows missing (ledger DO NOW): ssao temporal / edge fix / denoise / auto th ... | non-TW parity round (Ryse)
-- Ryse: tooltips name Attila / ATN (addon.cpp:1028 "as ATN plays Attila", :1215 "i ... | non-TW parity round
-- Ryse: SDR-encode WARP ramp of tonemap00, the gamma_correction code read, a Ryse ... | non-TW parity round (Ryse)
+- PARTLY DONE 707b4b68 (Experimental off: ssao auto thickness, light bounce checke ... | non-TW parity round (Ryse)
 - Tales + Expeditions: device_loss not wired (no Install / InstallLast / Uninstall ... | non-TW parity round (UE)
 - Tales: no Bend SSS, no GT-VBGI (no ScreenSpaceShadows* / light_bounce_* keys; ta ... | non-TW parity round (Tales)
 - Expeditions: 14 unmapped TAA permutations (TEMPORAL_SHADERS has 6, dlss_graphics ... | non-TW parity round (Expeditions)
@@ -1237,7 +1233,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         DOF blurs Attila / Thrones / WH1). Owner: hb_
       - [ ] ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 first, TW table driver, Ryse, Div2,
         Rome R, Tales / Expeditions). Owner: ht_
-      - [ ] npr_: Ryse parity boxes (NON-TW SKILLS AUDIT section). Owner: npr_
+      - [x] npr_ MERGED 707b4b68 00:2x: 8 commits (shared twattila/rays_preset.hpp; Ryse uses twattila's psycho_test31;
+        RENODX_TW_CVARS; tw_device_loss 3b Ryse chain; test/tw_ryse_tonemap PASS: SDR 0 difference, HDR control 1.07;
+        cb_audit DUMPS table; README fix57 draft). RT/PT: PathAmbient / SkyApart / KeptCube WON'T GET (tiled lighting cs
+        keeps the game's ambient); skipping the shadow pass WON'T GET (cascades bound for forward draws); gamma_correction
+        WON'T GET. Ryse rows not run in game.
+      - [ ] ATN DECIDES (Ryse): an ssao temporal / edge / denoise port (M) and an optional exposure cap in EDAD119F. Owner: ATN
+      - [ ] Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/families.txt); in-game check of every
+        new row (Debug View / Scene Test, RT rows, Time Each Pass, test hooks + RENODX_TW_CVARS, half-res particles, LOD
+        bias, auto thickness). Owner: next Ryse data run
       - [ ] npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe. Owner: npu_
       - [ ] gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: gr_
       - 23:4x ATN DONE PLAYING ("I am done with the game"): committed 38.8 GB, the gated builds started (d1_ first); gr_
@@ -1314,20 +1318,20 @@ heading text are in HANDOFF_ARCHIVE.md)
       pass one add-on / pages / Reset + RT/PT + No RT/PT / V35 / SDR preset / Output + first start / per-channel Extended /
       About / fast dispatch / frame trace / helper114 / tw_install / registry / helper-absent page dumps. GAPS below; one
       NON-TW PARITY ROUND (an implementer per game, after the fix merge: R2 / R5 / R6 / R11 / R17 touch these games).
-      - [ ] Ryse: Time Each Pass (no pass_timing; no button in page_ry_fin). Owner: non-TW parity round (Ryse)
-      - [ ] Ryse: twattila/test_hooks (SET / SHOT / PROFILE) beside the renodx_trace_now poll (graphics.hpp:2650). Owner:
+      - [x] DONE 11-16 (npr_, merged 707b4b68; not run in game): Ryse: Time Each Pass (no pass_timing; no button in page_ry_fin). Owner: non-TW parity round (Ryse)
+      - [x] DONE 11-16 (npr_, merged 707b4b68; not run in game): Ryse: twattila/test_hooks (SET / SHOT / PROFILE) beside the renodx_trace_now poll (graphics.hpp:2650). Owner:
         non-TW parity round (Ryse), with the cvars-from-ini box
-      - [ ] Ryse: ray-tracing Debug View + Scene Test rows + rt_scene::OnTonemapDrawn; README.md:339 "Not yet: the Debug
+      - [x] DONE 11-16 (npr_, merged 707b4b68; not run in game): Ryse: ray-tracing Debug View + Scene Test rows + rt_scene::OnTonemapDrawn; README.md:339 "Not yet: the Debug
         View". Owner: non-TW parity round (Ryse)
-      - [ ] Ryse: RT rows missing in page_ry_fin (ryse.tsv DO NOW): RayTracedAORays, PathSkyApart, PathKeptCube,
+      - [x] DONE 11-16 (npr_, merged 707b4b68; not run in game): Ryse: RT rows missing in page_ry_fin (ryse.tsv DO NOW): RayTracedAORays, PathSkyApart, PathKeptCube,
         PathAmbient, ReflectionReuse, LightBounceResolution, AoReblur; the RT/PT preset is a hand list (addon.cpp:239-260),
         not graphics_page::RAYS_PRESET (shaders-ui.md rule). Owner: non-TW parity round (Ryse)
-      - [ ] Ryse: rows missing (ledger DO NOW): ssao temporal / edge fix / denoise / auto thickness / resolution; light
+      - [ ] PARTLY DONE 707b4b68 (Experimental off: ssao auto thickness, light bounce checkerboard / backface / auto thickness, LOD bias all textures, half-res particles; Modded Auto Exposure NOT NEEDED: geometric-mean metering; ssao_resolution WON'T GET; LEFT: ssao temporal / edge / denoise = an M-size ao_filter port (ATN decides), VFX rows need a trace): Ryse: rows missing (ledger DO NOW): ssao temporal / edge fix / denoise / auto thickness / resolution; light
         bounce temporal / checkerboard / backface / auto thickness; LOD bias on all textures; Modded Auto Exposure; the VFX
         rows; r_ParticlesHalfRes. Owner: non-TW parity round (Ryse)
-      - [ ] Ryse: tooltips name Attila / ATN (addon.cpp:1028 "as ATN plays Attila", :1215 "in Attila's tests"); its own
+      - [x] DONE 11-16 (npr_, merged 707b4b68; not run in game): Ryse: tooltips name Attila / ATN (addon.cpp:1028 "as ATN plays Attila", :1215 "in Attila's tests"); its own
         FULL_DOWNLOAD_NOTE (addon.cpp:188) lacks FSR / XeSS (twattila/credits.hpp:12 has them). Owner: non-TW parity round
-      - [ ] Ryse: SDR-encode WARP ramp of tonemap00, the gamma_correction code read, a Ryse table in test/tw_device_loss;
+      - [x] DONE 11-16 (npr_, merged 707b4b68; not run in game): Ryse: SDR-encode WARP ramp of tonemap00, the gamma_correction code read, a Ryse table in test/tw_device_loss;
         the offline read of R0's traces (plan step 8: light list, smoke / foliage / water / fog families, cascade readers).
         Owner: non-TW parity round (Ryse)
       - [ ] Tales + Expeditions: device_loss not wired (no Install / InstallLast / Uninstall; Decide straight from
