@@ -2,6 +2,36 @@
 
 The game has no HDR option; RenoDX outputs HDR10/scRGB through a swap chain proxy.
 
+**One add-on** (UE4 merge round, 2026-11-15): the former DLSS add-on (`renodx-expeditionsrome_dlss.addon64`: DLAA /
+DLSS, the live render scale, frame generation, the live graphics settings and ray tracing) is part of this add-on
+(`dlss_graphics.hpp`, its history in `README_DLSS.md`). Remove the old `renodx-expeditionsrome_dlss.addon64` from the
+game folder (the install tool renames it aside).
+
+Pages (Settings Mode, as Attila's): HDR & Effects (every HDR row: no Simple / Advanced any more), Graphics 1 of 2
+(`twattila/graphics_page.hpp`: Anti-Aliasing and Upscaling with DLSS, FSR and XeSS and their modes, Ray Reconstruction,
+Frame Generation and Reflex, the Reset / No RT/PT / RT/PT presets, Shadows, Ambient Occlusion with GT-VBAO, Global
+Illumination, Reflections, Ray Tracing Extra Options; then Upscaling and Tools: Live Render Scale, Replace the Game's TAA
+Pass, Upscaling Details, Trace One Frame, Capture Upscaling Inputs), Graphics 2 of 2 (the live cvar table,
+`talesofarise_dlss/graphics_table.hpp`, with its presets and Contact Shadows under Shadow quality). The overlay's
+`[Rome AA]` keys go into the page's once (`Migrate`, `[renodx] SettingsRevision 1`; a preset's own key is kept; preset E
+becomes K; frame generation on: its multiplier, Reflex (+ Boost) and frame limit), the cvar choices stay in
+`[Rome Graphics Values]`. Output's default is Auto. Ray-traced effects need an upscaler now (as on every page); leaf
+opacity micromaps start off here.
+
+Upscaling, Ray Reconstruction, frame generation and Reflex go through the TW helper (`renodx-tw-dlaa64.exe`,
+`twattila/dlaa_bridge.hpp`, `twattila/frame_generation.hpp`, `twattila/reflex.hpp`; `talesofarise_dlss/upscaling.hpp` holds what the
+bridge is asked for), as in the Total War games: the in-process NGX and Streamline code is gone (no NVIDIA DLL in the
+add-on, no `nvsdk_ngx` link). The helper's DLSS has no inverted-depth flag, so the DLSS-inputs shader
+(`0xB69D8215.cs_5_0.hlsl`) writes 1 - depth. FSR and XeSS get the forward projection (Unreal's reverse-Z turned around).
+Without the helper next to the add-on (the HDR-only download) the add-on is HDR alone: the upscaling and ray tracing rows
+show the full-download note, Anti-Aliasing stays at the game's TAA, nothing waits.
+
+Tools as Attila's: the Upscaling Debug View (Motion Vectors: the merge shader `0xA3450ADB.cs_5_0.hlsl` draws the motion
+and colour the upscaler got, before the tonemapper; it turns Replace the Game's TAA Pass off while shown), the Ray Tracing
+Debug View and Scene test (drawn over the tonemapper's output, `twattila::rt_scene::OnTonemapDrawn`), Record Ray Tracing
+Profile, Time Each Pass (`twattila/pass_timing.hpp`, `expeditionsrome_pass_timing.txt`). The rays' and paths' methods
+read Experimental (no game run has shown them here yet).
+
 Windows display scaling above 100%: "ExpeditionsRome-Win64-Shipping.exe" (`ExpeditionsRome\Binaries\Win64`) ->
 Properties -> Compatibility -> Change high DPI settings -> Override high DPI scaling behavior, scaled by Application.
 Without it the game renders at the scaled size (4K at 175%: 2194x1234), Unreal's buffers are rounded up to 4 pixels
@@ -94,3 +124,13 @@ Tales of Arise; Attila's twattila/bitmask.hlsli primitives) with the game's inte
 place for a screen position comes from the interpolants' derivatives (works below 100% render scale). Noise moves every
 frame (present), settled by the game's AO blur and TAA / DLSS. GT-VBGI, screen-space shadows and reflections are not in
 (the passes for them are not identified in the dump yet).
+
+2026-11-15 shipped-shader carve (tools/nontw/shader_packs, uec_ round): no tonemapper, CombineLUTs or HDR permutation
+beyond the registered ones. 14 unregistered fullscreen post shaders no dump has shown drawn: the editor's selection
+outline (0x30AD0356, 0x600BADCC, 0xBB1E5908, 0xC3FD465B: stencil edges, gamma 2.2 round trip) and editor primitive
+composite (0x13FA738D and its MSAA 0x4F6C822B / 0x50E9A3AE / 0xDED86114) are editor-only in UE 4.23 shipping builds;
+the depth copy 0x76C3BF2B writes no colour. Three post materials read the scene and end in UE's max(0, x + c), which
+clips signed HDR colours after the tonemapper as outline00 / 01 did before their fix (0x93E43D26; 0x07E055CF and its
+viewport-clamped twin 0x1F128822: a luminance high-pass); 0x630E166D / 0xA7FF9EDD write a factor from depth and a mask
+(no scene read). Those five stay stock and log their first draw with the target's format (8-bit: after the tonemapper,
+they need outline00's treatment; 16-bit: before it, the clip is harmless).

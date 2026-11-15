@@ -265,6 +265,14 @@ struct Bindings {
   // The rays' sun shadows always multiply the game's shadow maps (no rays_replace_maps row): Shadow Map Size stays under them.
   bool rays_multiply_maps = false;
   bool has_gtvbao = true;  // GT-VBAO (ssao_mode 1); false: the AO's methods are the game's and the rays' (Rome Remastered)
+  // Bend's screen-space shadows (ScreenSpaceShadows); false: the shadows' methods are the game's maps and the rays' (sss read as off).
+  bool has_screen_space_shadows = true;
+  // GT-VBGI (light_bounce_strength with RayTracedLightBounce 0); false: Global Illumination's methods are off and the rays'
+  // (the Unreal games: the strength is the rays' alone).
+  bool has_gtvbgi = true;
+  // false: the rays' and paths' methods of Shadows, Ambient Occlusion and Global Illumination named Experimental (no game
+  // run has shown them in this game yet; the Unreal games).
+  bool rays_tested = true;
   bool has_gi = true;      // Global Illumination's section; false: none, the rows it would hold kept hidden (Rome Remastered)
   bool every_row = true;   // false: a row this page lists that the game lacks is no mistake, no log line (Rome Remastered)
 };
@@ -282,11 +290,11 @@ inline int AoMethodOf(const Bindings& b) {
 
 inline int ShadowMethodOf(const Bindings& b) {
   if (b.rt->sun_shadows != 0.f) return SHADOW_RAYS;
-  return (b.sss->enabled != 0.f) ? SHADOW_SCREEN : SHADOW_GAME;
+  return (b.has_screen_space_shadows && b.sss->enabled != 0.f) ? SHADOW_SCREEN : SHADOW_GAME;
 }
 
 inline int GiMethodOf(const Bindings& b) {
-  if (*b.light_bounce_strength <= 0.f) return GI_OFF;
+  if (*b.light_bounce_strength <= 0.f || (!b.has_gtvbgi && b.rt->light_bounce == 0.f)) return GI_OFF;
   return GI_GTVBGI + static_cast<int>(b.rt->light_bounce);
 }
 
@@ -456,6 +464,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   const auto always = [] { return true; };
   const auto upscaling = [b] { return feature_settings::Upscaling(*b.aa); };
   const auto scale_rows = [b] { return b.has_scale_rows && feature_settings::Upscaling(*b.aa); };
+  // A rays' method's name ("Ray-Traced (DXR)"), its "Experimental" in it where they are untested (rays_tested).
+  const auto rays_label = [&b](std::string label) {
+    if (!b.rays_tested) label.insert(label.size() - 1, ", Experimental");
+    return label;
+  };
   const auto below_100_rows = [b] { return (b.has_scale_rows || b.upscaling_mode != nullptr) && feature_settings::Upscaling(*b.aa); };
   const auto no_upscaler = [b] { return !feature_settings::Upscaling(*b.aa); };
   const auto dlss = [b] { return b.aa->method == 5.f; };
@@ -794,9 +807,19 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       if (nvidia() && b.aa->ray_reconstruction == 0.f) renodx::utils::settings::UpdateSettings({{"AntiAliasingRayReconstruction", 4.f}});
     };
     page.Add(rays_preset);
-    page.Add(MethodSlider(section, b.texts->shadow_tooltip,
-                          {"Game's Shadow Maps", "Bend Screen-Space", "Ray-Traced (DXR)"}, [b] { return ShadowMethodOf(b); },
-                          [](int method) { ChooseShadows(method); }));
+    // The slider's places: the methods this game has, in ShadowMethod's order.
+    std::vector<int> shadow_methods = {SHADOW_GAME};
+    if (b.has_screen_space_shadows) shadow_methods.push_back(SHADOW_SCREEN);
+    shadow_methods.push_back(SHADOW_RAYS);
+    const std::array<std::string, 3> shadow_labels = {"Game's Shadow Maps", "Bend Screen-Space", rays_label("Ray-Traced (DXR)")};
+    std::vector<std::string> shadow_places;
+    for (const int method : shadow_methods) shadow_places.push_back(shadow_labels[method]);
+    page.Add(MethodSlider(section, b.texts->shadow_tooltip, std::move(shadow_places),
+                          [b, shadow_methods] {
+                            return static_cast<int>(std::ranges::find(shadow_methods, ShadowMethodOf(b)) - shadow_methods.begin())
+                                   % static_cast<int>(shadow_methods.size());
+                          },
+                          [shadow_methods](int place) { ChooseShadows(shadow_methods[place]); }));
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return ShadowMethodOf(b) == SHADOW_RAYS && !feature_settings::Upscaling(*b.aa); }));
     // The game's shadow maps' size and the UI 4K mod's lock on it (Graphics 2 of 2's before v120): Bend's shadows draw over
@@ -1170,7 +1193,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (b.has_gtvbao) methods.push_back(AO_GTVBAO);
     methods.push_back(AO_RAYS);
     if (b.has_path_ambient) methods.push_back(AO_PATHS);
-    const std::array<std::string, 4> method_labels = {"Game's SSAO", "GT-VBAO", "Ray-Traced (RTAO)", b.texts->ao_paths_label};
+    const std::array<std::string, 4> method_labels = {"Game's SSAO", "GT-VBAO", rays_label("Ray-Traced (RTAO)"), rays_label(b.texts->ao_paths_label)};
     std::vector<std::string> labels;
     for (const int method : methods) labels.push_back(method_labels[method]);
     page.Add(MethodSlider(section, b.texts->ao_tooltip, std::move(labels),
@@ -1216,14 +1239,24 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const std::string& section = GI_SECTION;
     const auto gtvbgi = gi_is(GI_GTVBGI);
     const auto on = [b] { return GiMethodOf(b) != GI_OFF; };
+    // The slider's places: the methods this game has, in GiMethod's order.
+    std::vector<int> gi_methods = {GI_OFF};
+    if (b.has_gtvbgi) gi_methods.push_back(GI_GTVBGI);
+    gi_methods.insert(gi_methods.end(), {GI_RAYS, GI_PATHS});
+    const std::array<std::string, 4> gi_labels = {"Off", "GT-VBGI", rays_label("Ray-Traced (One Bounce)"), rays_label("Path-Traced (ReSTIR GI)")};
+    std::vector<std::string> gi_places;
+    for (const int method : gi_methods) gi_places.push_back(gi_labels[method]);
     page.Add(MethodSlider(section,
                           std::string("Sunlit ground, walls and soldiers bounce their light and colour into nearby shadows.\n"
                                       "GT-VBGI (visibility bitmask): from what is on screen. One Bounce: DXR rays through the scene,\n"
                                       "nothing guessed behind what the camera sees. ReSTIR GI: path tracing, several bounces, also from off\n"
                                       "screen, its samples reused over frames and between neighbours. Heavy. The last two need an upscaler.")
                               + b.texts->gi_tooltip_end,
-                          {"Off", "GT-VBGI", "Ray-Traced (One Bounce)", "Path-Traced (ReSTIR GI)"}, [b] { return GiMethodOf(b); },
-                          [b](int method) { ChooseGi(b, method); }));
+                          std::move(gi_places),
+                          [b, gi_methods] {
+                            return static_cast<int>(std::ranges::find(gi_methods, GiMethodOf(b)) - gi_methods.begin()) % static_cast<int>(gi_methods.size());
+                          },
+                          [b, gi_methods](int place) { ChooseGi(b, gi_methods[place]); }));
     page.Add(Note("Ray-traced effects need an upscaler (Anti-Aliasing above).", section, WARNING_TINT,
                   [b] { return GiMethodOf(b) >= GI_RAYS && !feature_settings::Upscaling(*b.aa); }));
     page.Take({.match = "gi-presets", .section = section, .shown = gtvbgi});
@@ -1262,7 +1295,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     const auto rays = reflections_are(REFLECTION_RAYS);
     if (b.ssr_hierarchical != nullptr) {
       std::vector<std::string> labels = {"Game's SSR", b.texts->reflections_middle_label};
-      if (b.has_reflections) labels.emplace_back(b.texts->reflections_rays_label);
+      if (b.has_reflections) labels.push_back(rays_label(b.texts->reflections_rays_label));
       page.Add(MethodSlider(section, b.texts->reflections_tooltip, std::move(labels), [b] { return ReflectionMethodOf(b); },
                             [](int method) { ChooseReflections(method); }));
     } else {

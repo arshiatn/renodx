@@ -9,8 +9,10 @@
 #define RENODX_MODS_SWAPCHAIN_VERSION 2
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -25,7 +27,12 @@
 #include "../talesofarise/hdr_only.hpp"
 #include "../talesofarise/test_hooks.hpp"
 #include "../twattila/draw_dispatch.hpp"
+#include "../twattila/feature_settings.hpp"
+#include "../twattila/frame_generation.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/output_encoding.hpp"
+#include "../twattila/reflex.hpp"
+#include "./dlss_graphics.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -36,24 +43,20 @@ namespace {
 ShaderInjectData shader_injection;
 float current_settings_mode = 0.f;
 
-bool IsAdvancedSettings() {
-  return current_settings_mode >= 1.f;
-}
-
 bool IsHDRMode() {
   return shader_injection.hdr >= 1.f;
 }
 
 bool IsExtendedMode() {
-  return shader_injection.hdr == 1.f && IsAdvancedSettings();
+  return shader_injection.hdr == 1.f;
 }
 
 bool IsPsychoMode() {
-  return shader_injection.hdr == 2.f && IsAdvancedSettings();
+  return shader_injection.hdr == 2.f;
 }
 
 bool IsPsychoV35Mode() {
-  return shader_injection.hdr == 3.f && IsAdvancedSettings();
+  return shader_injection.hdr == 3.f;
 }
 
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
@@ -137,6 +140,30 @@ bool ActivateRenderTargetClones(reshade::api::command_list* cmd_list) {
       },                                          \
   }
 
+// Post-process materials of the game's paks that no dump has shown drawn (the shader carve, 2026-11-15): stock. The first
+// draw of each logs its target's format, for the next data run: 8-bit, after the tonemapper, where their max(0, x) clips
+// the signed HDR colours as outline00 / 01's did before their fix; 16-bit, before it (the clip harmless).
+template <uint32_t HASH>
+bool LogFirstDraw(reshade::api::command_list* cmd_list) {
+  static std::atomic_flag logged;
+  if (!logged.test_and_set()) {
+    const auto& targets = renodx::utils::swapchain::GetRenderTargets(cmd_list);
+    const auto format = (targets.empty() || targets[0].handle == 0) ? reshade::api::format::unknown
+                                                                     : cmd_list->get_device()->get_resource_view_desc(targets[0]).format;
+    renodx::utils::log::i("[Rome] Post material ", renodx::utils::log::AsHex(HASH), " drawn: target format ", static_cast<uint32_t>(format), ".");
+  }
+  return true;
+}
+
+#define LoggedShader(value)                \
+  {                                        \
+      value,                               \
+      {                                    \
+          .crc32 = value,                  \
+          .on_draw = &LogFirstDraw<value>, \
+      },                                   \
+  }
+
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
@@ -170,11 +197,18 @@ void BuildRuntimeData() {
       CustomShaderEntry(0xBCD37CAF),         // fog08 (height + volumetric fog, directional)
       CustomShaderEntry(0x31A1C68C),         // ao00 (ambient occlusion, last level: GT-VBAO)
       CustomShaderEntry(0xBD381E21),         // ao01
+      // The carve's: scene colour (or its high-pass, viewport-clamped twin) through UE's max(0, x + c); depth and a mask
+      // into a factor (no scene read). Its editor-only selection outlines and editor primitive composites are left out.
+      LoggedShader(0x93E43D26),
+      LoggedShader(0x07E055CF),
+      LoggedShader(0x1F128822),
+      LoggedShader(0x630E166D),
+      LoggedShader(0xA7FF9EDD),
   };
 
   // 0-2 slider, 1 = default.
   auto slider = [](const std::string& key, float* binding, const std::string& label, const std::string& section,
-                   const std::string& tooltip, bool (*is_enabled)(), bool (*is_visible)()) {
+                   const std::string& tooltip, bool (*is_enabled)(), bool (*is_visible)() = [] { return true; }) {
     return new renodx::utils::settings::Setting{
         .key = key,
         .binding = binding,
@@ -198,7 +232,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .can_reset = false,
           .label = "Settings Mode",
-          .labels = {"Simple", "Advanced"},
+          .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
           .is_global = true,
       },
       new renodx::utils::settings::Setting{
@@ -337,97 +371,38 @@ void BuildRuntimeData() {
 
       // Extra (HDR only) /////////////////////////////////////////////////////////////////////////
       slider("bloom", &shader_injection.bloom, "Bloom", "Extra", "Bloom multiplier (incl. lens dirt). Probably needs in-game Post Processing on.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
       slider("vignette", &shader_injection.vignette, "Vignette", "Extra", "Vignette multiplier. Probably needs in-game Post Processing on.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
       slider("godrays", &shader_injection.godrays, "Godrays", "Extra", "Light shaft multiplier. Probably needs in-game Post Processing on.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
       slider("volumetric_fog", &shader_injection.volumetric_fog, "Volumetric Fog (experimental)", "Extra",
              "Volumetric fog multiplier, 0 = off. Fog on translucent objects (particles, glass) stays\n"
              "unchanged, and the fog's cost remains: Engine.ini r.VolumetricFog=0 is the cheaper off.\n"
              "Only shadows High/Ultra should have volumetric fog on.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
       slider("sharpening", &shader_injection.sharpening, "Sharpening", "Extra",
              "Multiplier on the game's sharpening (CAS pass and tonemapper). Default is 1.0. Recommendation: 0",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
 
       // Extra (Probably not used): engine features in the shader dump that the game doesn't seem to use (ATN). ///
-      // Ambient Occlusion: GT-VBAO in the game's last AO level (talesofarise/ue_bitmask_ao.hlsli). ////////////////
-      new renodx::utils::settings::Setting{
-          .key = "ssao_mode",
-          .binding = &shader_injection.ssao_mode,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 0.f,
-          .label = "Ambient Occlusion",
-          .section = "Ambient Occlusion",
-          .tooltip = "GT-VBAO: contact shading that lets light pass behind thin things (grass, poles,\n"
-                     "characters) instead of dark halos. Needs in-game ambient occlusion on.",
-          .labels = {"Game's", "GT-VBAO"},
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ssao_radius",
-          .binding = &shader_injection.ssao_radius,
-          .default_value = 1.5f,
-          .label = "Radius",
-          .section = "Ambient Occlusion",
-          .tooltip = "How far around a point other surfaces shade it (metres).",
-          .min = 0.25f,
-          .max = 5.f,
-          .format = "%.2f m",
-          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ssao_strength",
-          .binding = &shader_injection.ssao_strength,
-          .default_value = 1.f,
-          .label = "Strength",
-          .section = "Ambient Occlusion",
-          .max = 3.f,
-          .format = "%.2f",
-          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ssao_thickness",
-          .binding = &shader_injection.ssao_thickness,
-          .default_value = 0.1f,
-          .label = "Thickness",
-          .section = "Ambient Occlusion",
-          .tooltip = "How thick things are taken to be: thicker shades more behind them.",
-          .min = 0.01f,
-          .max = 1.f,
-          .format = "%.2f m",
-          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ssao_quality",
-          .binding = &shader_injection.ssao_quality,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
-          .label = "Quality",
-          .section = "Ambient Occlusion",
-          .tooltip = "Samples per side: more catch thin things. Heavier.",
-          .labels = {"8", "16", "32", "64"},
-          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ssao_directions",
-          .binding = &shader_injection.ssao_directions,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
-          .label = "Directions",
-          .section = "Ambient Occlusion",
-          .tooltip = "Directions per pixel: less noise. Heavier.",
-          .labels = {"1", "2", "4", "8"},
-          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
-      },
-
       slider("film_grain", &shader_injection.film_grain, "Film Grain", "Extra (Probably not used)",
-             "Multiplier on the game's film grain (where the game uses it).", IsHDRMode, IsAdvancedSettings),
+             "Multiplier on the game's film grain (where the game uses it).", IsHDRMode),
       slider("chromatic_aberration", &shader_injection.chromatic_aberration, "Chromatic Aberration",
              "Extra (Probably not used)", "Multiplier on the game's chromatic aberration (where the game uses it).",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode),
   };
   twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  // Ambient Occlusion: GT-VBAO in the game's last AO level (talesofarise/ue_bitmask_ao.hlsli; the graphics page takes them).
+  const auto ambient_occlusion = talesofarise::hdr_only::AmbientOcclusionRows({
+      .mode = &shader_injection.ssao_mode,
+      .radius = &shader_injection.ssao_radius,
+      .strength = &shader_injection.ssao_strength,
+      .thickness = &shader_injection.ssao_thickness,
+      .quality = &shader_injection.ssao_quality,
+      .directions = &shader_injection.ssao_directions,
+  });
+  settings.insert(settings.end(), ambient_occlusion.begin(), ambient_occlusion.end());
 }
 
 bool configured = false;
@@ -461,9 +436,22 @@ namespace {
 void ConfigureAddon() {
   if (configured) return;
 
+  // The former DLSS add-on's [Rome AA] keys into the page's, once, before the settings load (settings::Use).
+  expeditionsrome::dlss_graphics::Migrate();
   BuildRuntimeData();
-  // Without the DLSS add-on (the HDR-only snapshot), after Settings Mode.
-  settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote(L"renodx-expeditionsrome_dlss.addon64"));
+  // Without the helper (the HDR-only snapshot), after Settings Mode.
+  settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote());
+  settings.insert(settings.begin() + 2, new renodx::utils::settings::Setting{
+                                            .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                                            .label = "The game has no HDR option of its own: this add-on's Output makes it HDR.",
+                                            .section = "General",
+                                        });
+  // Section titles: one colour, Graphics 2 of 2's pink, the page's its own; then the page (Graphics 1 and 2 of 2).
+  const std::vector<std::string> engine_sections = expeditionsrome::dlss_graphics::EngineSections();
+  twattila::feature_settings::SetTints({"General", "Presets", "UE Extended", "PsychoV35", "PsychoV31", "Extra", "Extra (Probably not used)",
+                                        "Output (Restart Required)", "About"},
+                                       engine_sections);
+  expeditionsrome::dlss_graphics::AppendPage(&settings, &shader_injection.ssao_mode);
 
   // Shaders cb
   renodx::mods::shader::expected_constant_buffer_space = 50;
@@ -522,26 +510,20 @@ void ConfigureAddon() {
     auto* setting = new renodx::utils::settings::Setting{
         .key = "SwapChainEncoding",
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = 1.f,
+        .default_value = 3.f,
         .label = "Output",
         .section = "Output (Restart Required)",
-        .tooltip = "HDR10: 10-bit. scRGB: 16-bit (default). HDR frame generation always uses HDR10.\n"
-                   "SDR: displays without HDR (all fixes and options stay). Auto: scRGB with Windows HDR on, else SDR.",
+        .tooltip = "HDR10: 10-bit. scRGB: 16-bit. HDR frame generation always uses HDR10.\n"
+                   "SDR: displays without HDR (all fixes and options stay). Auto (default): scRGB with Windows HDR on, else SDR.",
         .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = static_cast<int>(setting->GetValue()),
-        // The DLSS addon's frame generation takes no scRGB: HDR10 with it.
-        .hdr_encoding = [](int output) {
-          bool frame_generation = false;
-          reshade::get_config_value(nullptr, "Rome AA", "FrameGeneration", frame_generation);
-          if (frame_generation || output == twattila::output_encoding::HDR10) return twattila::output_encoding::HDR10;
-          return twattila::output_encoding::SCRGB;
-        },
+        // The helper's frame generation takes scRGB too (its frames converted to HDR10: fg_hdr10), as Attila's.
+        .hdr_encoding = [](int output) { return (output == twattila::output_encoding::HDR10) ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB; },
         .first_start_without_hdr = &ApplySdrPreset,
         .recommended_preset = &ApplyRecommendedPreset,
         .log_name = "[Rome]",
@@ -555,7 +537,7 @@ void ConfigureAddon() {
                "and PsychoV35. UE Extended by Marat.",
       .section = "About",
   });
-  for (const char* line : {twattila::credits::ACES, twattila::credits::HELPER, twattila::credits::DLSS_ADDON}) {
+  for (const char* line : {twattila::credits::ACES, twattila::credits::HELPER}) {
     settings.push_back(new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::TEXT,
         .label = line,
@@ -566,11 +548,15 @@ void ConfigureAddon() {
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
       .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
       .section = "About",
-      .is_visible = IsAdvancedSettings,
   });
   // No NexusMods page known for this game's mod yet.
   const auto buttons = talesofarise::hdr_only::AboutButtons("https://www.nexusmods.com/expeditionsrome/mods/2");
   settings.insert(settings.end(), buttons.begin(), buttons.end());
+
+  // Settings Mode's pages: HDR & Effects, Graphics 1 of 2 (graphics_page.hpp and the upscaling tools), Graphics 2 of 2.
+  std::vector<std::string> graphics_sections = twattila::graphics_page::Sections();
+  graphics_sections.push_back(expeditionsrome::dlss_graphics::TOOLS_SECTION);
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, graphics_sections);
 
   configured = true;
 }
@@ -582,14 +568,39 @@ bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, 
   return false;
 }
 
-// GT-VBAO's noise moves every frame (the game's TAA / DLSS settle it).
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
+// GT-VBAO's noise moves every frame (the game's TAA / DLSS settle it). The helper's frame generation and Reflex (the page's
+// rows), its frames SDR with the SDR output; Time Each Pass's frame.
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
+  twattila::pass_timing::OnPresent(queue, "expeditionsrome");
   shader_injection.ssao_frame = std::fmod(shader_injection.ssao_frame + 1.f, 64.f);
+  const auto& sliders = expeditionsrome::dlss_graphics::aa_sliders;
+  const auto aa = twattila::feature_settings::AaSettings(sliders);
+  twattila::frame_generation::Update({
+      .multiplier = (twattila::feature_settings::Upscaling(sliders) && twattila::dlaa_bridge::HelperInstalled()) ? aa.frame_generation : 0u,
+      .reflex_boost = aa.reflex == 2,
+      .frame_limit = aa.frame_limit,
+      .preset = aa.frame_preset,
+      .hud_recomposition = aa.hud_recomposition,
+      .debug_view = aa.frame_debug_view,
+      .sdr_output = shader_injection.swap_chain_encoding == static_cast<float>(twattila::output_encoding::SDR),
+  });
+  twattila::reflex::Update(swapchain, aa.reflex, aa.frame_limit);
+}
+
+// The game's device is going away: frame generation's and Reflex's objects on it with it.
+void OnDestroyHelperDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  twattila::frame_generation::OnDestroyDevice(native);
+  twattila::reflex::OnDestroyDevice(native);
 }
 
 bool AttachAddon() {
   if (attached) return true;
+  // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
+  twattila::pass_timing::Install();
 
   ConfigureAddon();
 
@@ -604,6 +615,15 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The fast draw dispatch, with the gate of view cloning's command-wide callback (resource upgrades).
   twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
+  // DLSS, graphics and ray tracing (the former DLSS add-on): after the shader mod, so its callbacks run after this part's
+  // on the same shaders, as when it loaded second.
+  expeditionsrome::dlss_graphics::Install();
+  // Frame generation (the helper presents; HUD-less images through the swap chain shader, its constants at b13) and
+  // Reflex for the game's own presents.
+  twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
+                                      sizeof(shader_injection), __fg_hdr10);
+  twattila::reflex::Install();
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
 
   attached = true;
   return true;
@@ -612,6 +632,11 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
+  twattila::reflex::Uninstall();
+  twattila::frame_generation::Uninstall();
+  // Last of the helper's users: the bridge ends with it.
+  expeditionsrome::dlss_graphics::Uninstall();
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
@@ -621,6 +646,7 @@ void DetachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
   twattila::test_hooks::Uninstall();
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
+  twattila::pass_timing::Uninstall();
 
   attached = false;
 }

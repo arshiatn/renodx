@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -28,7 +29,12 @@
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/draw_dispatch.hpp"
+#include "../twattila/feature_settings.hpp"
+#include "../twattila/frame_generation.hpp"
+#include "../twattila/graphics_page.hpp"
+#include "../twattila/reflex.hpp"
 #include "../twattila/output_encoding.hpp"
+#include "./dlss_graphics.hpp"
 #include "./hdr_only.hpp"
 #include "./test_hooks.hpp"
 #include "./shared.h"
@@ -41,24 +47,20 @@ namespace {
 ShaderInjectData shader_injection;
 float current_settings_mode = 0.f;
 
-bool IsAdvancedSettings() {
-  return current_settings_mode >= 1.f;
-}
-
 bool IsHDRMode() {
   return shader_injection.hdr >= 1.f;
 }
 
 bool IsExtendedMode() {
-  return shader_injection.hdr == 1.f && IsAdvancedSettings();
+  return shader_injection.hdr == 1.f;
 }
 
 bool IsPsychoMode() {
-  return shader_injection.hdr == 2.f && IsAdvancedSettings();
+  return shader_injection.hdr == 2.f;
 }
 
 bool IsPsychoV35Mode() {
-  return shader_injection.hdr == 3.f && IsAdvancedSettings();
+  return shader_injection.hdr == 3.f;
 }
 
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
@@ -321,7 +323,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .can_reset = false,
           .label = "Settings Mode",
-          .labels = {"Simple", "Advanced"},
+          .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
           .is_global = true,
       },
       new renodx::utils::settings::Setting{
@@ -622,25 +624,25 @@ void BuildRuntimeData() {
 
       // Post Processing ////////////////////////////////////////////////////////////////////////////
       slider("bloom", &shader_injection.bloom, "Bloom", "Post Processing", "Bloom multiplier (incl. lens dirt). Needs in-game Bloom on.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode, [] { return true; }),
       slider("motion_blur", &shader_injection.motion_blur, "Motion Blur", "Post Processing",
              "Motion blur strength (blur length) multiplier, SDR and HDR. Needs in-game Motion Blur on; 0 turns it off.",
-             [] { return true; }, IsAdvancedSettings),
+             [] { return true; }, [] { return true; }),
       slider("chromatic_aberration", &shader_injection.chromatic_aberration, "Chromatic Aberration", "Post Processing",
-             "Multiplier on the game's chromatic aberration (cutscenes).", IsHDRMode, IsAdvancedSettings),
+             "Multiplier on the game's chromatic aberration (cutscenes).", IsHDRMode, [] { return true; }),
       slider("vignette", &shader_injection.vignette, "Vignette", "Post Processing", "Vignette multiplier.", IsHDRMode,
-             IsAdvancedSettings),
+             [] { return true; }),
       slider("film_grain", &shader_injection.film_grain, "Film Grain", "Post Processing",
-             "Multiplier on the game's film grain (cutscenes).", IsHDRMode, IsAdvancedSettings),
+             "Multiplier on the game's film grain (cutscenes).", IsHDRMode, [] { return true; }),
       slider("sharpening", &shader_injection.sharpening, "Sharpening", "Post Processing",
              "Multiplier on the tonemapper's sharpening, which the game only turns on in some scenes (normal\n"
              "gameplay has none, with or without DLSS). The sharpening before DLAA / DLSS is the DLSS addon's.",
-             IsHDRMode, IsAdvancedSettings),
+             IsHDRMode, [] { return true; }),
       // Bandai's passes (ATN), SDR and HDR.
       slider("painterly", &shader_injection.painterly, "Painterly Filter", "Post Processing",
-             "Strength of the game's painterly (brush-like) filter. 0 = off.", [] { return true; }, IsAdvancedSettings, 1.f),
+             "Strength of the game's painterly (brush-like) filter. 0 = off.", [] { return true; }, [] { return true; }, 1.f),
       slider("outlines", &shader_injection.outlines, "Outlines", "Post Processing",
-             "Strength of the characters' outlines. 0 = off.", [] { return true; }, IsAdvancedSettings),
+             "Strength of the characters' outlines. 0 = off.", [] { return true; }, [] { return true; }),
 
       // Extra /////////////////////////////////////////////////////////////////////////////////////
       new renodx::utils::settings::Setting{
@@ -654,10 +656,9 @@ void BuildRuntimeData() {
           .tooltip = "Smooths the blocky edges of the sun's haze.\n"
                      "Soft: mild, in every direction. Along Sun Rays: along the rays, sharper edges.",
           .labels = {"Off", "Soft", "Along Sun Rays"},
-          .is_visible = IsAdvancedSettings,
       },
       slider("sun_haze", &shader_injection.sun_haze, "Sun Haze", "Extra",
-             "Strength of the sunlit haze and light shafts in the air.", [] { return true; }, IsAdvancedSettings),
+             "Strength of the sunlit haze and light shafts in the air.", [] { return true; }, [] { return true; }),
       new renodx::utils::settings::Setting{
           .key = "sun_shadow_smoothing",
           .binding = &shader_injection.sun_shadow_smoothing,
@@ -668,17 +669,16 @@ void BuildRuntimeData() {
           .tooltip = "Smooths blocky sun shadow edges when the DLSS addon's Sun shadow distance is above the game's.\n"
                      "Sharp to Sharpest: harder edges. Off: the game's.",
           .labels = {"Off", "Smooth", "Sharp", "Sharper", "Sharpest"},
-          .is_visible = IsAdvancedSettings,
       },
       slider("sun_shadow_edge", &shader_injection.sun_shadow_edge, "Thin Sun Shadow Edges", "Extra",
              "When the DLSS addon's Sun shadow distance is above the game's, keeps the soft edge of sun shadows\n"
              "thin (less halo) and still smooth. 0 = off, 1 = as thin as at the game's distance, 2 = thinner.\n"
              "Default 0.22.",
-             [] { return true; }, IsAdvancedSettings, 2.f, 0.22f),
+             [] { return true; }, [] { return true; }, 2.f, 0.22f),
       slider("shadow_edge_color", &shader_injection.shadow_edge_color, "Shadow Edge Color", "Extra",
              "How much of the game's edge color fills the soft edges of sun shadows.\n"
              "0 = none: the shadow tint shows there as a colored fringe. Higher: cleaner edges. Default 5.",
-             [] { return true; }, IsAdvancedSettings, 10.f, 5.f),
+             [] { return true; }, [] { return true; }, 10.f, 5.f),
       new renodx::utils::settings::Setting{
           .key = "video_highlights",
           .binding = &shader_injection.video_highlights,
@@ -692,7 +692,6 @@ void BuildRuntimeData() {
           .max = 1.f,
           .format = "%.2f",
           .is_enabled = [] { return IsHDRMode() && IsHdrOutput(); },
-          .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
           .key = "video_dithering",
@@ -705,7 +704,6 @@ void BuildRuntimeData() {
                      "Only with Video AutoHDR above 0.",
           .labels = {"Off", "On"},
           .is_enabled = [] { return IsHDRMode() && IsHdrOutput() && shader_injection.video_highlights > 0.f; },
-          .is_visible = IsAdvancedSettings,
       },
   };
   twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
@@ -749,9 +747,22 @@ namespace {
 void ConfigureAddon() {
   if (configured) return;
 
+  // The former DLSS add-on's [Tales AA] keys into the page's, once, before the settings load (settings::Use).
+  talesofarise::dlss_graphics::Migrate();
   BuildRuntimeData();
-  // Without the DLSS add-on (the HDR-only snapshot), after Settings Mode.
-  settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote(L"renodx-talesofarise_dlss.addon64"));
+  // Without the helper (the HDR-only snapshot), after Settings Mode.
+  settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote());
+  settings.insert(settings.begin() + 2, new renodx::utils::settings::Setting{
+                                            .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                                            .label = "The game has no HDR option of its own: this add-on's Output makes it HDR.",
+                                            .section = "General",
+                                        });
+  // Section titles: one colour, Graphics 2 of 2's pink, the page's its own; then the page (Graphics 1 and 2 of 2).
+  const std::vector<std::string> engine_sections = talesofarise::dlss_graphics::EngineSections();
+  twattila::feature_settings::SetTints({"General", "Presets", "UE Extended", "PsychoV35", "PsychoV31", "Post Processing", "Extra",
+                                        "Output (Restart Required)", "About"},
+                                       engine_sections);
+  talesofarise::dlss_graphics::AppendPage(&settings);
   shader_injection.filter_scale = 1.f;
   shader_injection.game_sharpening = 1.f;
 
@@ -832,19 +843,11 @@ void ConfigureAddon() {
                    "HDR10: 10-bit. scRGB: 16-bit. SDR: displays without HDR (all fixes and options stay).",
         .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
-        .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = static_cast<int>(setting->GetValue()),
-        // The DLSS addon's frame generation takes no scRGB: Auto gives HDR10 with it.
-        .hdr_encoding = [](int output) {
-          if (output != twattila::output_encoding::AUTO) return output;
-          bool frame_generation = false;
-          reshade::get_config_value(nullptr, "Tales AA", "FrameGeneration", frame_generation);
-          return (frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB);
-        },
         .first_start_without_hdr = &ApplySdrPreset,
         .recommended_preset = &ApplyRecommendedPreset,
         .log_name = "[Tales]",
@@ -868,18 +871,22 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = twattila::credits::DLSS_ADDON,
+          .label = twattila::credits::HELPER,
           .section = "About",
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
           .section = "About",
-          .is_visible = IsAdvancedSettings,
       },
   });
   const auto buttons = talesofarise::hdr_only::AboutButtons("https://nexusmods.com/talesofarise/mods/444");
   settings.insert(settings.end(), buttons.begin(), buttons.end());
+
+  // Settings Mode's pages: HDR & Effects, Graphics 1 of 2 (graphics_page.hpp and the upscaling tools), Graphics 2 of 2.
+  std::vector<std::string> graphics_sections = twattila::graphics_page::Sections();
+  graphics_sections.push_back(talesofarise::dlss_graphics::TOOLS_SECTION);
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, graphics_sections);
 
   configured = true;
 }
@@ -911,13 +918,38 @@ bool OnCopyResource(reshade::api::command_list*, reshade::api::resource source, 
   return false;
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*,
+// The helper's frame generation and Reflex (the page's rows), its frames SDR with the SDR output; Time Each Pass's frame.
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  twattila::pass_timing::OnPresent(queue, "talesofarise");
   frame_tonemapped.store(false, std::memory_order_relaxed);
+  const auto& sliders = talesofarise::dlss_graphics::aa_sliders;
+  const auto aa = twattila::feature_settings::AaSettings(sliders);
+  twattila::frame_generation::Update({
+      .multiplier = (twattila::feature_settings::Upscaling(sliders) && twattila::dlaa_bridge::HelperInstalled()) ? aa.frame_generation : 0u,
+      .reflex_boost = aa.reflex == 2,
+      .frame_limit = aa.frame_limit,
+      .preset = aa.frame_preset,
+      .hud_recomposition = aa.hud_recomposition,
+      .debug_view = aa.frame_debug_view,
+      .sdr_output = shader_injection.swap_chain_encoding == static_cast<float>(twattila::output_encoding::SDR),
+  });
+  twattila::reflex::Update(swapchain, aa.reflex, aa.frame_limit);
 }
 
-bool AttachAddon() {
+// The game's device is going away: frame generation's and Reflex's objects on it with it.
+void OnDestroyHelperDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  twattila::frame_generation::OnDestroyDevice(native);
+  twattila::reflex::OnDestroyDevice(native);
+}
+
+bool AttachAddon(HMODULE addon_module) {
   if (attached) return true;
+  // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
+  twattila::pass_timing::Install();
 
   ConfigureAddon();
 
@@ -935,6 +967,15 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The fast draw dispatch, with the gate of view cloning's command-wide callback (resource upgrades).
   twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
+  // DLSS, ray tracing and the graphics settings (the former DLSS add-on): after the shader mod, so its callbacks run after
+  // this part's on the same shaders, as when it loaded second.
+  talesofarise::dlss_graphics::Install(addon_module);
+  // Frame generation (the helper presents; HUD-less images through the swap chain shader, its constants at b13) and
+  // Reflex for the game's own presents.
+  twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
+                                      sizeof(shader_injection), __fg_hdr10);
+  twattila::reflex::Install();
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
 
   attached = true;
   return true;
@@ -943,6 +984,11 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
+  twattila::reflex::Uninstall();
+  twattila::frame_generation::Uninstall();
+  // Last of the helper's users: the bridge ends with it.
+  talesofarise::dlss_graphics::Uninstall();
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBindRenderTargetsAndDepthStencil);
@@ -955,6 +1001,7 @@ void DetachAddon() {
   twattila::test_hooks::Uninstall();
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
   talesofarise::post_filters::Use(DLL_PROCESS_DETACH);
+  twattila::pass_timing::Uninstall();
 
   attached = false;
 }
@@ -967,7 +1014,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
     addon_registered = true;
   }
 
-  return AttachAddon();
+  return AttachAddon(addon_module);
 }
 
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE) {
