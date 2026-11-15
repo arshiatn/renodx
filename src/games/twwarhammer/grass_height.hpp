@@ -234,6 +234,13 @@ inline void Install(const float* row) {
   }
 }
 
+inline void Uninstall() {
+  renodx::utils::pipeline::UnregisterOnCreateCallback(internal::OnCreatePipeline);
+  renodx::utils::command_action::Unregister(OnGrassDraw);
+  const std::unique_lock lock(internal::runtime.mutex);
+  internal::runtime.row = nullptr;
+}
+
 // The game's device is going away: the buffer with it.
 inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;

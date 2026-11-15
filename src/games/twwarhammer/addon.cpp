@@ -2555,6 +2555,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  twwarhammer::grass_height::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer::grass_height::OnDestroyDevice);
   renodx::utils::command_action::Unregister(PointLightRays::OnDraw);
   renodx::utils::command_action::Unregister(LinearPointLightRays::OnDraw);
   renodx::utils::command_action::Unregister(OnSunReplaceMaps);
