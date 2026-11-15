@@ -7,48 +7,29 @@
 
 #include <windows.h>
 
-#include <psapi.h>
-
-#include <algorithm>
-#include <array>
-#include <cwchar>
+#include <functional>
 #include <string>
-#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 
 // The Unreal HDR add-ons' (Tales of Arise, Expeditions: Rome) rows for the HDR-only snapshot that upstream ships alone:
-// the red full-download notice while the game's DLSS add-on is absent, and the About line's download buttons.
+// the red full-download notice while the full download's files are absent, and the About line's download buttons.
 namespace talesofarise::hdr_only {
 
 constexpr uint32_t WARNING_TINT = 0xFF5050;
 
-// Shown while no loaded module's file name ends with `dlss_addon` (installs put a load-order digit in front). Read as the
-// page draws: the DLSS add-on loads after this one.
-inline renodx::utils::settings::Setting* FullDownloadNote(std::wstring_view dlss_addon) {
+// Shown while `missing` says the full download's files are absent (read as the page draws).
+inline renodx::utils::settings::Setting* FullDownloadNote(std::function<bool()> missing) {
   return new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
       .label = "DLSS, Frame Generation, ray tracing and the extra graphics settings need the full download from GitHub: "
                "github.com/arshiatn/renodx/releases",
       .section = "General",
       .tint = WARNING_TINT,
-      .is_visible = [dlss_addon] {
-        std::array<HMODULE, 1024> modules = {};
-        DWORD bytes = 0;
-        if (K32EnumProcessModules(GetCurrentProcess(), modules.data(), sizeof(modules), &bytes) == FALSE) return false;
-        const size_t count = std::min<size_t>(bytes / sizeof(HMODULE), modules.size());
-        for (size_t index = 0; index < count; ++index) {
-          std::array<wchar_t, MAX_PATH> path = {};
-          const std::wstring_view name(path.data(), GetModuleFileNameW(modules[index], path.data(), MAX_PATH));
-          if (name.size() >= dlss_addon.size()
-              && _wcsnicmp(name.data() + name.size() - dlss_addon.size(), dlss_addon.data(), dlss_addon.size()) == 0) {
-            return false;
-          }
-        }
-        return true;
-      },
+      .is_visible = std::move(missing),
   };
 }
 

@@ -1,5 +1,8 @@
 # Tales of Arise — DLSS / DLAA + graphics settings
 
+History of the former DLSS add-on: since the UE4 merge round (2026-11-15) it is part of `renodx-talesofarise.addon64`
+(`dlss_graphics.hpp`); see `README.md`. Below: as it was a separate add-on.
+
 ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
 
 - **NVIDIA DLAA and DLSS** (Ultra Quality 77%, Quality 67%, Balanced 58%, Performance 50%, Ultra Performance 33%,

@@ -29,6 +29,7 @@
 #include "../twattila/credits.hpp"
 #include "../twattila/draw_dispatch.hpp"
 #include "../twattila/output_encoding.hpp"
+#include "./dlss_graphics.hpp"
 #include "./hdr_only.hpp"
 #include "./test_hooks.hpp"
 #include "./shared.h"
@@ -750,8 +751,10 @@ void ConfigureAddon() {
   if (configured) return;
 
   BuildRuntimeData();
-  // Without the DLSS add-on (the HDR-only snapshot), after Settings Mode.
-  settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote(L"renodx-talesofarise_dlss.addon64"));
+  // Without the full download's NVIDIA DLLs (the HDR-only snapshot: no nvngx_dlss.dll next to the add-on or the game),
+  // after Settings Mode.
+  settings.insert(settings.begin() + 1,
+                  talesofarise::hdr_only::FullDownloadNote([] { return talesofarise::dlss_graphics::dlss_library.folder.empty(); }));
   shader_injection.filter_scale = 1.f;
   shader_injection.game_sharpening = 1.f;
 
@@ -916,7 +919,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const res
   frame_tonemapped.store(false, std::memory_order_relaxed);
 }
 
-bool AttachAddon() {
+bool AttachAddon(HMODULE addon_module) {
   if (attached) return true;
 
   ConfigureAddon();
@@ -935,6 +938,9 @@ bool AttachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The fast draw dispatch, with the gate of view cloning's command-wide callback (resource upgrades).
   twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
+  // DLSS, frame generation, ray tracing and the graphics settings (the former DLSS add-on): after the shader mod, so its
+  // callbacks run after this part's on the same shaders, as when it loaded second.
+  talesofarise::dlss_graphics::Install(addon_module);
 
   attached = true;
   return true;
@@ -943,6 +949,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  talesofarise::dlss_graphics::Uninstall();
   reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBindRenderTargetsAndDepthStencil);
@@ -967,7 +974,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
     addon_registered = true;
   }
 
-  return AttachAddon();
+  return AttachAddon(addon_module);
 }
 
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE) {

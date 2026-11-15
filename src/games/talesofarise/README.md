@@ -4,6 +4,15 @@ The game has no HDR option; RenoDX outputs HDR10/scRGB through a swap chain prox
 Expeditions: Rome mod: its CombineLUTs is the same UE 4.21 shader (only two HDR output-device branches differ),
 and the post-tonemap handling is the same.
 
+**One add-on** (UE4 merge round, 2026-11-15): the former DLSS add-on (`renodx-talesofarise_dlss.addon64`: DLAA / DLSS,
+the live render scale, the camera jitter, frame generation, ray tracing and the graphics settings) is part of this
+add-on (`dlss_graphics.hpp`, its history in `README_DLSS.md`; its shaders `0x7A1E0D*` and `rt_*.hlsli` here too, the
+shared hud-less copy `0x7A1E0D42` included from `talesofarise_dlss/`). `talesofarise_dlss/` holds the Unreal headers
+other games include, no add-on. Remove the old `renodx-talesofarise_dlss.addon64` from the game folder (the install
+tool renames it aside). The full-download note shows while `nvngx_dlss.dll` is found neither next to the add-on nor
+the game. `Arise-SDK.ini` (Arise-SDK's settings next to the game's exe; the graphics settings change most of them live) moved
+here.
+
 ## Rendering modes
 
 | Mode | What it does |

@@ -2,7 +2,10 @@
  * SPDX-License-Identifier: MIT
  */
 
-#define ImTextureID ImU64
+// The former DLSS add-on (renodx-talesofarise_dlss.addon64, UE4 merge round 2026-11-15): DLAA / DLSS, the live render
+// scale, the camera jitter, frame generation, ray tracing and the graphics settings, part of the HDR add-on (addon.cpp:
+// Install after its shader mod, Uninstall first). Its history: README_DLSS.md.
+#pragma once
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -39,25 +42,25 @@
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/state.hpp"
-#include "./constant_mirror.hpp"
-#include "./constant_readback.hpp"
-#include "./code_patch.hpp"
-#include "./engine_cvars.hpp"
-#include "./engine_scale.hpp"
-#include "./native_state.hpp"
-#include "./ngx_backend.hpp"
-#include "./rr_d3d12.hpp"
-#include "./performance.hpp"
-#include "./frame_trace.hpp"
-#include "./pixel_trace.hpp"
-#include "./engine_hooks.hpp"
-#include "./frame_generation.hpp"
-#include "./post_filters.hpp"
-#include "./rt_shadows.hpp"
+#include "../talesofarise_dlss/constant_mirror.hpp"
+#include "../talesofarise_dlss/constant_readback.hpp"
+#include "../talesofarise_dlss/code_patch.hpp"
+#include "../talesofarise_dlss/engine_cvars.hpp"
+#include "../talesofarise_dlss/engine_scale.hpp"
+#include "../talesofarise_dlss/native_state.hpp"
+#include "../talesofarise_dlss/ngx_backend.hpp"
+#include "../talesofarise_dlss/rr_d3d12.hpp"
+#include "../talesofarise_dlss/performance.hpp"
+#include "../talesofarise_dlss/frame_trace.hpp"
+#include "../talesofarise_dlss/pixel_trace.hpp"
+#include "../talesofarise_dlss/engine_hooks.hpp"
+#include "../talesofarise_dlss/frame_generation.hpp"
+#include "../talesofarise_dlss/post_filters.hpp"
+#include "../talesofarise_dlss/rt_shadows.hpp"
 
 static_assert(_ITERATOR_DEBUG_LEVEL == 0, "DLAA must match the shared STL layout of Release RenoDX addons");
 
-namespace {
+namespace talesofarise::dlss_graphics {
 
 using Microsoft::WRL::ComPtr;
 using Context = renodx::utils::command_action::CommandContext<renodx::utils::command_action::DispatchArguments>;
@@ -781,7 +784,6 @@ void SaveChoice(const GraphicsEntry& entry) {
   const std::string value = (entry.choice == 0 ? std::string("game") : std::format("{:g}", entry.choices[entry.choice - 1]));
   reshade::set_config_value(nullptr, GRAPHICS_SECTION, entry.key.c_str(), value.c_str());
 }
-bool registered = false;
 
 struct Frame {
   std::unique_ptr<Runtime> runtime;
@@ -3269,16 +3271,9 @@ void OnOverlay(reshade::api::effect_runtime*) {
   }
 }
 
-}  // namespace
-
-extern "C" __declspec(dllexport) const char* NAME = "RenoDX Tales of Arise DLSS + Graphics";
-extern "C" __declspec(dllexport) const char* DESCRIPTION = "NVIDIA DLAA and DLSS on the game's TAA (post-processing at the output size), with the camera jitter they need, and graphics settings beyond the game's menu. Independent of the HDR addon.";
-
-extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
-  if (!registered) {
-    if (!reshade::register_addon(module)) return false;
-    registered = true;
-  }
+// The former add-on's AddonInit (the HDR part registered the add-on; its shader mod attached state, command_action and,
+// with twattila::draw_dispatch, the fast dispatch, post_filters' shared block too). `module`: this add-on's.
+inline bool Install(HMODULE module) {
   if (attached) return true;
   // Settings apply at launch, without opening the overlay.
   int saved_mode = 0;
@@ -3478,11 +3473,6 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
                                                                .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH,
                                                            });
   talesofarise::dlss::constants::Use(DLL_PROCESS_ATTACH);
-  talesofarise::post_filters::Use(DLL_PROCESS_ATTACH);
-  renodx::utils::state::Use(DLL_PROCESS_ATTACH);
-  renodx::utils::command_action::Use(DLL_PROCESS_ATTACH);
-  // The fast draw dispatch alone: every callback here has a shader hash.
-  renodx::utils::command_action::fast::Use(DLL_PROCESS_ATTACH);
   std::wstring module_path(32768, L'\0');
   module_path.resize(GetModuleFileNameW(module, module_path.data(), static_cast<DWORD>(module_path.size())));
   // Ray tracing's Agility SDK (DXR 1.2) in the D3D12 folder next to the add-on.
@@ -3505,7 +3495,8 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   return true;
 }
 
-extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
+// The former add-on's AddonUninit, before the HDR part detaches its shader mod.
+inline void Uninstall() {
   if (attached) {
     renodx::utils::command_action::Unregister(OnCommand);
     renodx::utils::command_action::Unregister(OnPostPass);
@@ -3515,12 +3506,8 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     renodx::utils::command_action::Unregister(OnLightingDraw);
     renodx::utils::command_action::Unregister(OnDepthPrepass);
     renodx::utils::command_action::Unregister(OnSunShadowMask);
-    renodx::utils::command_action::fast::Use(DLL_PROCESS_DETACH);
-    renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
-    renodx::utils::state::Use(DLL_PROCESS_DETACH);
     talesofarise::dlss::constants::Use(DLL_PROCESS_DETACH);
     talesofarise::post_filters::Store({});
-    talesofarise::post_filters::Use(DLL_PROCESS_DETACH);
     reshade::unregister_overlay("Tales of Arise DLSS + Graphics", OnOverlay);
     reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
     reshade::unregister_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
@@ -3545,20 +3532,6 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     Reset();
     attached = false;
   }
-  if (registered) {
-    reshade::unregister_addon(module);
-    registered = false;
-  }
 }
 
-BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved) {
-  if (reason == DLL_PROCESS_ATTACH) {
-    registered = reshade::register_addon(module);
-    return registered ? TRUE : FALSE;
-  }
-  if (reason == DLL_PROCESS_DETACH && reserved == nullptr && registered) {
-    reshade::unregister_addon(module);
-    registered = false;
-  }
-  return TRUE;
-}
+}  // namespace talesofarise::dlss_graphics

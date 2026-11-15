@@ -1,5 +1,10 @@
 {
   "$schema": "https://clshortfuse.github.io/renodx/renodx-metadata-schema.json",
   "id": "talesofarise",
-  "title": "Tales of Arise"
+  "title": "Tales of Arise",
+  "deploy": {
+    "game_exe": "Tales of Arise.exe",
+    "api": "d3d11",
+    "architecture": ["x64"]
+  }
 }
