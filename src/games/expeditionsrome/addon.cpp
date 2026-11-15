@@ -386,75 +386,6 @@ void BuildRuntimeData() {
              IsHDRMode),
 
       // Extra (Probably not used): engine features in the shader dump that the game doesn't seem to use (ATN). ///
-      // Ambient Occlusion: GT-VBAO in the game's last AO level (talesofarise/ue_bitmask_ao.hlsli). ////////////////
-      new renodx::utils::settings::Setting{
-          .key = "ssao_mode",
-          .binding = &shader_injection.ssao_mode,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 0.f,
-          .label = "Ambient Occlusion",
-          .section = "Ambient Occlusion",
-          .tooltip = "GT-VBAO: contact shading that lets light pass behind thin things (grass, poles,\n"
-                     "characters) instead of dark halos. Needs in-game ambient occlusion on.",
-          .labels = {"Game's", "GT-VBAO"},
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ssao_radius",
-          .binding = &shader_injection.ssao_radius,
-          .default_value = 1.5f,
-          .label = "Radius",
-          .section = "Ambient Occlusion",
-          .tooltip = "How far around a point other surfaces shade it (metres).",
-          .min = 0.25f,
-          .max = 5.f,
-          .format = "%.2f m",
-          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ssao_strength",
-          .binding = &shader_injection.ssao_strength,
-          .default_value = 1.f,
-          .label = "Strength",
-          .section = "Ambient Occlusion",
-          .max = 3.f,
-          .format = "%.2f",
-          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ssao_thickness",
-          .binding = &shader_injection.ssao_thickness,
-          .default_value = 0.1f,
-          .label = "Thickness",
-          .section = "Ambient Occlusion",
-          .tooltip = "How thick things are taken to be: thicker shades more behind them.",
-          .min = 0.01f,
-          .max = 1.f,
-          .format = "%.2f m",
-          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ssao_quality",
-          .binding = &shader_injection.ssao_quality,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
-          .label = "Quality",
-          .section = "Ambient Occlusion",
-          .tooltip = "Samples per side: more catch thin things. Heavier.",
-          .labels = {"8", "16", "32", "64"},
-          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
-      },
-      new renodx::utils::settings::Setting{
-          .key = "ssao_directions",
-          .binding = &shader_injection.ssao_directions,
-          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
-          .label = "Directions",
-          .section = "Ambient Occlusion",
-          .tooltip = "Directions per pixel: less noise. Heavier.",
-          .labels = {"1", "2", "4", "8"},
-          .is_enabled = [] { return shader_injection.ssao_mode != 0.f; },
-      },
-
       slider("film_grain", &shader_injection.film_grain, "Film Grain", "Extra (Probably not used)",
              "Multiplier on the game's film grain (where the game uses it).", IsHDRMode),
       slider("chromatic_aberration", &shader_injection.chromatic_aberration, "Chromatic Aberration",
@@ -462,6 +393,16 @@ void BuildRuntimeData() {
              IsHDRMode),
   };
   twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  // Ambient Occlusion: GT-VBAO in the game's last AO level (talesofarise/ue_bitmask_ao.hlsli; the graphics page takes them).
+  const auto ambient_occlusion = talesofarise::hdr_only::AmbientOcclusionRows({
+      .mode = &shader_injection.ssao_mode,
+      .radius = &shader_injection.ssao_radius,
+      .strength = &shader_injection.ssao_strength,
+      .thickness = &shader_injection.ssao_thickness,
+      .quality = &shader_injection.ssao_quality,
+      .directions = &shader_injection.ssao_directions,
+  });
+  settings.insert(settings.end(), ambient_occlusion.begin(), ambient_occlusion.end());
 }
 
 bool configured = false;
