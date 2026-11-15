@@ -102,6 +102,7 @@ struct Sliders {
   // Torch and Fire Light / Shadows from Path Tracing (graphics_page.hpp Bindings::lights_in_bounce, light_ratio).
   float lights_in_bounce = 0.f;
   float light_ratio = 0.f;
+  float light_ratio_follow = 0.f;  // with light_ratio: its row in graphics_page.hpp, next to light_ratio's
   float light_count = 0.f;  // Torch and Fire Shadow Lights: 32, 64, 128
   float light_range = 0.f;  // metres (0: any distance)
   float ambient_occlusion = 0.f;   // off, on (Attila: in place of the game's and GT-VBAO)
@@ -224,6 +225,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .light_steady = sliders.light_steady != 0.f,
       .lights_in_bounce = sliders.lights_in_bounce != 0.f,
       .light_ratio = sliders.light_ratio != 0.f,
+      .light_ratio_follow = sliders.light_ratio_follow != 0.f,
       // A page's preset can set it where no fog is hooked: nothing would read the trace.
       .fog_shadows = sliders.fog_shadows != 0.f && dlaa && internal::fog_shadows_installed,
       .micromaps = sliders.micromaps != 0.f,

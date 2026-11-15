@@ -940,6 +940,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .labels = {"Off", "On"},
           .is_visible = more_path_lights,
       });
+      page.Add(new Setting{
+          .key = "RayTracedLightRatioFollow",
+          .binding = &b.rt->light_ratio_follow,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Torch Shadows Follow the Camera (Experimental)",
+          .section = section,
+          .tooltip = "Those torch and fire shadows trail less behind a moving camera. Best at Half resolution and with\n"
+                     "Ray Reconstruction; at Full resolution without it a little noisier.",
+          .labels = {"Off", "On"},
+          .is_visible = [b, more_path_lights] { return more_path_lights() && *b.light_ratio != 0.f; },
+      });
     }
     page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays,
                .label = (b.far_cards_tested && b.sprites_tested) ? "" : "Sprite Soldier Shadows (Experimental)"});
