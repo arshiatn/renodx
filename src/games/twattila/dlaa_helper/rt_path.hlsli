@@ -63,6 +63,9 @@ RWTexture2D<uint4> reuse_data[2] : register(u25);      // its light (f16 r | g, 
 // This frame's surface of each bounce texel as PathTraceTexel found it (TexelSurface's), for ReuseTexel: its rays' origin
 // (w: its depth; 0: the sky) and its normal. Found again there for itself and five neighbours (StartPast's ray, the
 // normal's and planarity's fetches each), they cost more than the reuse's own work (Nsight at 4K: 2.5 -> 1.5 ms).
+// Every texel ReuseTexel reads holds this request's: its paths and its reuse dispatch the same bounce_width x
+// bounce_height with the same constants (rt_d3d12.hpp), and no mode traces a part of them; one that would must write the
+// texels it leaves out as the sky (w 0).
 RWTexture2D<float4> surface_origin : register(u58);
 RWTexture2D<float4> surface_normal : register(u59);
 // Own ReSTIR (Reflection Reuse): the reflections' own reservoirs at half the render pixels (ReflectReservoirTexel), laid

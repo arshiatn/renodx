@@ -2060,7 +2060,8 @@ void ConfigureAddon() {
       .label = "Two Shadow Cascades Under Rays (Experimental)",
       .section = "Graphics (Experimental)",
       .tooltip = "With ray-traced shadows and Skip the Shadow Maps: at the highest Shadows setting the game prepares\n"
-                 "2 shadow cascades, as at the lowest, instead of 4. Faster in forests. Applies after a restart.",
+                 "2 shadow cascades, as at the lowest, instead of 4. Faster in forests. On, off and the rays' shadows off\n"
+                 "apply after a restart.",
       .labels = {"Off", "On"},
   });
   graphics_status = tw::engine_tweaks::StatusLine();

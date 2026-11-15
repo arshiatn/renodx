@@ -81,6 +81,10 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; Attila's chain, part 4).
 constexpr float HUE_CLIP_DEFAULT = 40.f;
 
+// Modded Auto Exposure: Sensitivity's default, also what the presets with the protection off write (Reset, Recommended,
+// SDR): a player turning it on afterwards starts at the row's default.
+constexpr float AUTO_EXPOSURE_HEADROOM_DEFAULT = 4.f;
+
 // void ApplyHDRPreset(
 //     float exposure,
 //     float highlights,
@@ -157,7 +161,7 @@ void ApplyResetPreset() {
       {"some_indicators", 1.f},
       {"vfx_base_brightness", 1.f},
       {"auto_exposure_highlight_protection", 0.f},
-      {"auto_exposure_highlight_headroom_stops", 2.f},
+      {"auto_exposure_highlight_headroom_stops", AUTO_EXPOSURE_HEADROOM_DEFAULT},
       {"v31_exposure", 1.f},
       {"v31_highlights", 1.f},
       {"v31_shadows", 1.f},
@@ -996,7 +1000,7 @@ void BuildRuntimeData() {
         .key = "auto_exposure_highlight_headroom_stops",
         .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-        .default_value = 4.0f,
+        .default_value = AUTO_EXPOSURE_HEADROOM_DEFAULT,
         .label = "Modded Auto Exposure: Sensitivity",
         .section = "Extra (Experimental)",
         .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
@@ -2018,7 +2022,8 @@ void ConfigureAddon() {
           .label = "Two Shadow Cascades Under Rays (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "With ray-traced shadows: the game prepares 2 shadow cascades, as at Shadows Medium, instead of 4.\n"
-                     "The rays shadow instead; faster in forests. Applies after a restart.",
+                     "The rays shadow instead; faster in forests. On, off and the rays' shadows off apply after a restart\n"
+                     "or a change of the game's Shadows option.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

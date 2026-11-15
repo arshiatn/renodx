@@ -1625,6 +1625,7 @@ inline void Uninstall() {
   reflex::Uninstall();
   renodx::utils::command_action::Unregister(internal::OnSunDraw);
   object_motion::Uninstall();
+  frame_trace::Uninstall();
   internal::scaling.store(false);
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.scene_depth.Reset();

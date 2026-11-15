@@ -1,7 +1,7 @@
 // Output Auto's preset switch (twattila/output_encoding.hpp): a first start without Windows HDR takes the SDR preset, the
 // Recommended preset once when Windows HDR comes on, the SDR preset again when it goes, and nothing after a row changed;
-// a first start with Windows HDR on is never given a preset. A fake ReShade.ini, the real settings code, restarts between
-// steps. `control`: the first start with Windows HDR on leaves no "off" mark; its sequence must then fail.
+// a first start with Windows HDR on is never given a preset, nor one whose display query failed (SDR out, no SDR preset).
+// A fake ReShade.ini, the real settings code, restarts between steps. `control`: the first start with Windows HDR on leaves no "off" mark; its sequence must then fail.
 #include <windows.h>
 
 #include <cstdio>
@@ -69,7 +69,9 @@ static void RecommendedPreset() {
 static bool control = false;
 constexpr output::WindowsHdr HDR_ON = {.known = true, .on = true};
 constexpr output::WindowsHdr HDR_OFF = {.known = true, .on = false};
-constexpr output::WindowsHdr NO_ANSWER = {.known = false, .on = true};
+constexpr output::WindowsHdr NO_ANSWER = {.known = false, .on = true};  // no display path for the window (WindowsHdr's default)
+// The display's advanced-colour query failed (Decide(HWND)'s hdr_of): the output falls to SDR, the look must not.
+constexpr output::WindowsHdr QUERY_FAILED = {.known = false, .on = false};
 
 // A game start: the addon loads its rows from the ini (settings::Use's order) and configures the output.
 static void Start(int output_setting = output::AUTO) {
@@ -241,11 +243,27 @@ static int OtherStarts() {
   output::Decide(HDR_OFF);
   CHECK(sdr_applied == 1 && State().starts_with("sdr "));
 
+  // The query failed at the first start (an HDR display: remote session, driver start): SDR out for that chain, but no
+  // SDR preset and no decision; the next first start with Windows HDR on is never given one.
+  Fresh();
+  Start();
+  output::Decide(QUERY_FAILED);
+  CHECK(shader_encoding == static_cast<float>(output::SDR));
+  CHECK(sdr_applied == 0 && recommended_applied == 0 && State().empty() && Saved("tonemapper") == "none");
+  Start();
+  CHECK(output::first_start);
+  output::Decide(HDR_ON);
+  CHECK(sdr_applied == 0 && recommended_applied == 0 && State() == "off");
+
   // A player who switched Output to SDR after the SDR first start: no switch while it is not Auto, the key stays.
+  Fresh();
+  Start();
+  output::Decide(HDR_OFF);
+  CHECK(sdr_applied == 1 && State().starts_with("sdr "));
   Start(output::SDR);
   output::Decide(HDR_ON);
   CHECK(recommended_applied == 0 && State().starts_with("sdr "));
-  std::printf("PASS saved rows before, chosen Output, no answer at the first start\n");
+  std::printf("PASS saved rows before, chosen Output, no answer and a failed query at the first start\n");
   return 0;
 }
 

@@ -2149,7 +2149,8 @@ void ConfigureAddon() {
           .label = "Two Shadow Cascades Under Rays (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "With ray-traced shadows and Skip the Shadow Maps: at the highest Shadows setting the game prepares\n"
-                     "2 shadow cascades, as at the lowest, instead of 4. Faster in forests. Applies after a restart.",
+                     "2 shadow cascades, as at the lowest, instead of 4. Faster in forests. On, off and the rays' shadows off\n"
+                     "apply after a restart.",
           .labels = {"Off", "On"},
       },
       graphics_status,
@@ -2555,6 +2556,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  twwarhammer::grass_height::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer::grass_height::OnDestroyDevice);
   renodx::utils::command_action::Unregister(PointLightRays::OnDraw);
   renodx::utils::command_action::Unregister(LinearPointLightRays::OnDraw);
   renodx::utils::command_action::Unregister(OnSunReplaceMaps);

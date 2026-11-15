@@ -2124,6 +2124,7 @@ void DetachAddon() {
   twromeremastered::swap_chain_format::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  twattila::frame_trace::Uninstall();
   twromeremastered::dlaa::Uninstall();
   twromeremastered::ray_tracing::Uninstall();
   twattila::frame_generation::Uninstall();

@@ -94,6 +94,10 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to Attila's SDR picture).
 constexpr float HUE_CLIP_DEFAULT = 40.f;
 
+// Modded Auto Exposure: Sensitivity's default, also what the presets with the protection off write (Reset, Recommended,
+// SDR): a player turning it on afterwards starts at the row's default.
+constexpr float AUTO_EXPOSURE_HEADROOM_DEFAULT = 4.f;
+
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f;
 }
@@ -167,13 +171,13 @@ void ApplyHDRPreset(
 // SDR: Attila's own tonemapper and look (ATN 2026-11-01: this ran the HDR pipeline, PsychoV31, darker than the game);
 // the game's and the UI's white are the monitor's own (no Paper White / UI nits to set), so the HDR boosts off.
 void ApplySdrPreset() {
-  ApplyHDRPreset(0.f, 1.f, 1.00f, 1.f, 0.f, 2.f, 1.f, 1.f, 1.f, 1.f, 0.f, 1.f, 0.15f);
+  ApplyHDRPreset(0.f, 1.f, 1.00f, 1.f, 0.f, AUTO_EXPOSURE_HEADROOM_DEFAULT, 1.f, 1.f, 1.f, 1.f, 0.f, 1.f, 0.15f);
 }
 
 // Recommended: no VFX boost (right for any peak); Output Auto takes it once when Windows HDR comes on after a first start
 // without HDR.
 void ApplyRecommendedPreset() {
-  ApplyHDRPreset(3.f, 1.f, 1.00f, 0.35f, 0.f, 2.f, 1.f, 1.f, 1.f, 2.f, 0.2f);
+  ApplyHDRPreset(3.f, 1.f, 1.00f, 0.35f, 0.f, AUTO_EXPOSURE_HEADROOM_DEFAULT, 1.f, 1.f, 1.f, 2.f, 0.2f);
 }
 
 #define UpgradeRTVReplaceShader(value)                                                                \
@@ -387,7 +391,7 @@ void BuildRuntimeData() {
         .group = "preset-line-1",
         .tooltip = "Resets all image tuning to HDR defaults while preserving Peak, Paper White, UI brightness, Settings Mode, and output encoding.",
         .on_change = []() {
-          ApplyHDRPreset(3.f, 1.f, 1.00f, 1.f, 0.f, 2.f, 1.f, 1.f, 1.f, 1.f, 0.f);
+          ApplyHDRPreset(3.f, 1.f, 1.00f, 1.f, 0.f, AUTO_EXPOSURE_HEADROOM_DEFAULT, 1.f, 1.f, 1.f, 1.f, 0.f);
         },
     },
     new renodx::utils::settings::Setting{
@@ -781,7 +785,7 @@ void BuildRuntimeData() {
         .key = "auto_exposure_highlight_headroom_stops",
         .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-        .default_value = 4.0f,
+        .default_value = AUTO_EXPOSURE_HEADROOM_DEFAULT,
         .label = "Modded Auto Exposure: Sensitivity",
         .section = "Extra (Experimental)",
         .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
@@ -1828,7 +1832,8 @@ void ConfigureAddon() {
           .label = "Two Shadow Cascades Under Rays (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "With ray-traced shadows: the game prepares 2 shadow cascades, as at Shadows Medium, instead of 4.\n"
-                     "The rays shadow instead; faster in forests. Applies after a restart. Locked by UI 4K Mod Compatibility.",
+                     "The rays shadow instead; faster in forests. On, off and the rays' shadows off apply after a restart\n"
+                     "or a change of the game's Shadows option. Locked by UI 4K Mod Compatibility.",
           .labels = {"Off", "On"},
           .is_enabled = [] { return !shadow_size_locked; },
       },

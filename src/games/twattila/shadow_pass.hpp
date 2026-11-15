@@ -68,6 +68,7 @@ static std::array<Kind, PASS_KINDS> kinds;
 static uint32_t frame = 0;
 static std::atomic<DWORD> render_thread = 0;
 static std::atomic<bool> active = false;  // the row on and the casters skipped (Update, at the present)
+static std::atomic<bool> other_thread_logged = false;
 static uint32_t sun_binds = 0;
 static uint32_t other_binds = 0;
 static bool binds_counted = false;  // Install registered OnBindTargets
@@ -80,8 +81,14 @@ static bool searched = false;
 // A Render call of either build: `draw` makes the game's call.
 template <typename Draw>
 static void OnPassDraw(const uint8_t* self, uint8_t* pass, const Draw& draw) {
-  if (!active.load(std::memory_order_relaxed) || GetCurrentThreadId() != render_thread.load(std::memory_order_relaxed)
-      || self[SELF_ENABLED] == 0 || pass == nullptr) {
+  const bool on_render_thread = (GetCurrentThreadId() == render_thread.load(std::memory_order_relaxed));
+  // Once: the hook went in at the present on the assumption that only the render thread runs Render (its install's
+  // CALLER_GUARANTEES_QUIESCENCE); a call from another thread says that assumption is wrong for this game.
+  if (!on_render_thread && !other_thread_logged.load(std::memory_order_relaxed) && !other_thread_logged.exchange(true)) {
+    renodx::utils::log::w("[Total War] Shadow map work: the pass draw also runs on thread ", GetCurrentThreadId(),
+                          " (not the render thread): its hook's install at the present was not quiescent");
+  }
+  if (!active.load(std::memory_order_relaxed) || !on_render_thread || self[SELF_ENABLED] == 0 || pass == nullptr) {
     return draw();
   }
   void** pass_vtable;

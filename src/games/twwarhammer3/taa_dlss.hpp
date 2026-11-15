@@ -1449,6 +1449,7 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
   reshade::unregister_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
   twattila::texture_lod_bias::Shutdown();
+  twattila::frame_trace::Uninstall();
 }
 
 // The game's device is going away: the addon's objects on it with it.
