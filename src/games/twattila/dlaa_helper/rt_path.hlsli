@@ -60,6 +60,11 @@ RWTexture2D<float4> nrd_reflection : register(u50);        // out (PATH_NRD, the
 // and every third frame its sample re-checked (still in view, its light now): changed light shortens the history.
 RWTexture2D<float4> reuse_samples[2] : register(u23);  // the surface's position, W (its unbiased contribution weight)
 RWTexture2D<uint4> reuse_data[2] : register(u25);      // its light (f16 r | g, b | M), its normal, the texel's (octahedral)
+// This frame's surface of each bounce texel as PathTraceTexel found it (TexelSurface's), for ReuseTexel: its rays' origin
+// (w: its depth; 0: the sky) and its normal. Found again there for itself and five neighbours (StartPast's ray, the
+// normal's and planarity's fetches each), they cost more than the reuse's own work (Nsight at 4K: 2.5 -> 1.5 ms).
+RWTexture2D<float4> surface_origin : register(u58);
+RWTexture2D<float4> surface_normal : register(u59);
 // Own ReSTIR (Reflection Reuse): the reflections' own reservoirs at half the render pixels (ReflectReservoirTexel), laid
 // out as ReSTIR GI's; two sets, this frame's at PATH_REFLECT_PARITY.
 RWTexture2D<float4> reflect_samples[2] : register(u36);
@@ -709,6 +714,10 @@ void PathTraceTexel(uint2 id) {
   float3 origin;
   const float4 position = TexelSurface(id, normal, origin);
   const bool reuse = (path_flags & PATH_REUSE) != 0u;
+  if (reuse) {
+    surface_origin[id] = float4(origin, position.w);
+    surface_normal[id] = float4(normal, 0.f);
+  }
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
   // With the game's sun light the sky its rays bring is kept for the light this surface sends back as the next frame's
   // paths meet it (ScreenSky).
@@ -792,9 +801,7 @@ void PathTraceTexel(uint2 id) {
 // bounce.
 void ReuseTexel(uint2 id) {
   if (id.x >= bounce_width || id.y >= bounce_height) return;
-  float3 normal;
-  float3 origin;
-  const float4 position = TexelSurface(id, normal, origin);
+  const float4 position = positions[min(id * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u)];
   if (position.w <= 0.f) {
     bounce[id] = 0.f;
 #if defined(TORCHES_IN_BOUNCE)
@@ -802,6 +809,8 @@ void ReuseTexel(uint2 id) {
 #endif
     return;
   }
+  const float3 normal = surface_normal[id].xyz;
+  const float3 origin = surface_origin[id].xyz;
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
   const Reservoir own = LoadReservoir(reuse_samples[set], reuse_data[set], id);
   Reservoir combined = (Reservoir)0;
@@ -822,10 +831,9 @@ void ReuseTexel(uint2 id) {
     }
     const float3 other_origin = other_position.xyz;
 #else
-    float3 other_normal;
-    float3 other_origin;
-    const float4 other_position = TexelSurface(uint2(texel), other_normal, other_origin);
-    if (other_position.w <= 0.f || abs(other_position.w - position.w) > 0.1f * position.w || dot(other_normal, normal) < 0.9f) continue;
+    const float4 other_surface = surface_origin[uint2(texel)];
+    if (other_surface.w <= 0.f || abs(other_surface.w - position.w) > 0.1f * position.w || dot(surface_normal[uint2(texel)].xyz, normal) < 0.9f) continue;
+    const float3 other_origin = other_surface.xyz;
 #endif
     const Reservoir other = LoadReservoir(reuse_samples[set], reuse_data[set], uint2(texel));
     if (other.count <= 0.f) continue;
