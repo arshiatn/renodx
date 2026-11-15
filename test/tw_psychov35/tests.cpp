@@ -23,7 +23,8 @@
 //    mappers (curve 7: Attila's engine Hue Clip without the highlight limit, the stock whiteout off and 0 to 10); Pharaoh's
 //    t00 (curve 8: its lift, black and mid-gray handoff at burn 0.2 and 0).
 // R.U.S.E.'s final post (ruse/shaders/postprocess00_0x232EB5DF, D3D9 ps_3_0 in the game, compiled here as ps_5_0 /Gec from
-// the same source) runs in parts 3 and 4 too (no SDR output: the add-on has none yet), at the median map's grade, and:
+// the same source) runs in parts 3 and 4 too (SDR output: its whites at 203 nits, as addon.cpp latches them), at the
+// median map's grade, and:
 // 6. Grey and slope: an input ramp around the grey the game's SDR response puts at 0.18 (its display light is
 //    Brightness^2.2 X^Gamma, X the decoded graded scene), at the menu's, the median map's and the steepest map's Gamma /
 //    Brightness and HDRParam 1, 2, 4: every mode lands grey at 0.18 of Paper White; the slope at grey is Gamma in SDR and
@@ -1008,9 +1009,10 @@ static void TestPsychoV35(const Chain& chain) {
       // WH3's Output SDR: Peak, Paper White and UI all the display's white (shared.h's OutputShaderInjection).
       CheckRamp((std::string("WH3 ") + settings).c_str(), RunWh3(chain, Scene(columns, -8.f, 20.f / 47.f, Wh3White(0.3f)), w, 0.3f),
                 peak, 203.f, sdr, fit, monotonic, &failures_in_ramp);
-      if (sdr) continue;  // R.U.S.E. has no SDR output (its proxy is HDR10 / scRGB)
+      // R.U.S.E.'s Output SDR: Peak, Paper White and UI all the back buffer's 203-nit white (addon.cpp's LatchFrameInjection).
       auto r = RuseInjection(3.f);
-      r.peak_white_nits = peak;
+      r.peak_white_nits = (sdr ? 203.f : peak);
+      r.diffuse_white_nits = r.graphics_white_nits = 203.f;
       r.swap_chain_encoding = encoding;
       r.v35_exposure = s[0];
       r.v35_highlights = s[1];
@@ -1026,7 +1028,7 @@ static void TestPsychoV35(const Chain& chain) {
       r.v35_dechroma = e[3];
       r.v35_highlight_saturation = e[4];
       CheckRamp((std::string("RUSE ") + settings).c_str(),
-                RunRuse(*chain.ruse_post, Scene(columns, -8.f, 20.f / 47.f, 1.f), RUSE_MEDIAN_GRADE, 1.f, r), peak, 203.f, false, fit,
+                RunRuse(*chain.ruse_post, Scene(columns, -8.f, 20.f / 47.f, 1.f), RUSE_MEDIAN_GRADE, 1.f, r), peak, 203.f, sdr, fit,
                 monotonic, &failures_in_ramp);
     }
   }

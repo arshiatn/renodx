@@ -163,7 +163,7 @@ float4 main(float2 v0 : TEXCOORD0, float2 v1 : TEXCOORD1, float2 v2 : TEXCOORD2)
     if (SI.hue_clip > 0.f) {
       color = renodx::tonemap::psychov::HueTransfer(color, renodx::color::gamma::DecodeSafe(saturate(responded)), SI.hue_clip);
     }
-    color = ApplyPsychoV35(color, HDR_PEAK, false);
+    color = ApplyPsychoV35(color, HDR_PEAK, SI.swap_chain_encoding == 2.f);
   } else {
     color = ApplyPsychoV31Reference(color, psycho_anchor_in);
   }

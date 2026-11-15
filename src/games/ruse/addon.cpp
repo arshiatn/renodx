@@ -31,6 +31,7 @@
 #include "../../utils/settings.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../../utils/vtable.hpp"
+#include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
@@ -248,17 +249,30 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 3.f && IsAdvancedSettings();
 }
 
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != static_cast<float>(twattila::output_encoding::SDR);
+}
+
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, the clip alone).
 constexpr float HUE_CLIP_DEFAULT = 100.f;
+
+// The controls a host frame draws with. SDR output: Peak, Paper White and UI all the display's white (the back buffer's
+// 203-nit reference), so the game's picture reaches the display as it is.
+void LatchFrameInjection() {
+  frame_injection = shader_injection;
+  if (!IsHdrOutput()) {
+    frame_injection.peak_white_nits = RUSE_REFERENCE_WHITE;
+    frame_injection.diffuse_white_nits = RUSE_REFERENCE_WHITE;
+    frame_injection.graphics_white_nits = RUSE_REFERENCE_WHITE;
+  }
+  frame_injection.ui_scale = std::pow(std::max(frame_injection.graphics_white_nits, 1.f) / RUSE_REFERENCE_WHITE, 1.f / 2.2f);
+  frame_injection.video_scale = std::pow(std::max(frame_injection.diffuse_white_nits, 1.f) / RUSE_REFERENCE_WHITE, 1.f / 2.2f);
+}
 
 bool OnFrameShaderDraw(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return true;
   if (!frame_latched) {
-    frame_injection = shader_injection;
-    frame_injection.ui_scale = std::pow(
-        std::max(frame_injection.graphics_white_nits, 1.f) / RUSE_REFERENCE_WHITE, 1.f / 2.2f);
-    frame_injection.video_scale = std::pow(
-        std::max(frame_injection.diffuse_white_nits, 1.f) / RUSE_REFERENCE_WHITE, 1.f / 2.2f);
+    LatchFrameInjection();
     frame_latched = true;
   }
   // UI and video shaders can also draw into offscreen textures. Scale only
@@ -384,15 +398,16 @@ void OnPresentFrame(
   }
   if (!frame_latched) {
     // Screens without any known replacement still update output controls.
-    frame_injection = shader_injection;
+    LatchFrameInjection();
   }
   frame_latched = false;
 }
 
-void ApplyResetPreset() {
+// Reset (Extended) and SDR: every look control at its default.
+void ApplyDefaultLook(float rendering_mode) {
   // Display/output settings and the independent Motion Blur/DOF controls are preserved.
   renodx::utils::settings::UpdateSettings({
-      {"rendering_mode", 4.f},
+      {"rendering_mode", rendering_mode},
 
       // PsychoV31
       {"exposure", 1.f},
@@ -469,7 +484,7 @@ void BuildRuntimeData() {
           .tooltip = "Target highlight peak in nits. The final HDR composite is limited to this value.",
           .min = 400.f,
           .max = 10000.f,
-          .is_visible = HasHDRScene,
+          .is_visible = []() { return HasHDRScene() && IsHdrOutput(); },
       },
       new renodx::utils::settings::Setting{
           .key = "diffuse_white_nits",
@@ -480,6 +495,7 @@ void BuildRuntimeData() {
           .tooltip = "Brightness of the scene and cutscene video in nits.",
           .min = 1.f,
           .max = 500.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           .key = "graphics_white_nits",
@@ -490,6 +506,7 @@ void BuildRuntimeData() {
           .tooltip = "Brightness of UI and HUD in nits.",
           .min = 1.f,
           .max = 500.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           // Settings loading clamps the former V31 index 3 to Full Replacement (2).
@@ -516,7 +533,17 @@ void BuildRuntimeData() {
           .tooltip = "Resets Psycho controls, Bloom and Vignette; selects HDR (Extended).\n"
                      "Peak, Paper White, UI, output, Motion Blur and Depth of Field are preserved.",
           .on_change = []() {
-            ApplyResetPreset();
+            ApplyDefaultLook(4.f);
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "SDR",
+          .section = "Presets",
+          .group = "preset-line-1",
+          .tooltip = "For displays without HDR: selects SDR with every look control at its default.",
+          .on_change = []() {
+            ApplyDefaultLook(0.f);
           },
       },
       new renodx::utils::settings::Setting{
@@ -752,23 +779,29 @@ void ConfigureAddon() {
   renodx::mods::swapchain::device_proxy_wait_idle_source = true;
   renodx::mods::swapchain::device_proxy_wait_idle_destination = true;
 
-  // Appended Settings (HDR10)
+  // Output (twattila/output_encoding.hpp): decided for each new DX9 swap chain (OnCreateSwapchain).
   {
     auto* setting = new renodx::utils::settings::Setting{
         .key = "SwapChainEncoding",
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = 1.f,
+        .default_value = static_cast<float>(twattila::output_encoding::AUTO),
         .label = "Output",
         .section = "Output (Restart Required)",
-        .tooltip = "HDR10: PQ / BT.2020 output.\nscRGB: floating-point linear output.\nRestart after changing this setting.",
-        .labels = {"HDR10", "scRGB"},
+        .tooltip = "HDR10: 10-bit. scRGB: 16-bit.\n"
+                   "SDR: displays without HDR. Auto (default): scRGB with Windows HDR on, else SDR.\n"
+                   "Restart after changing this setting.",
+        .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
         .is_visible = IsAdvancedSettings,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
-    const auto value = setting->GetValue();
-    shader_injection.swap_chain_encoding = value;
-    renodx::mods::swapchain::SetUseHDR10(value == 0);
+    twattila::output_encoding::Configure({
+        .shader_encoding = &shader_injection.swap_chain_encoding,
+        .setting = static_cast<int>(setting->GetValue()),
+        .first_start_without_hdr = []() { ApplyDefaultLook(0.f); },
+        .recommended_preset = &ApplyPsychoRecommended,
+        .log_name = "[R.U.S.E.]",
+    });
     settings.push_back(setting);
   }
 
@@ -796,11 +829,22 @@ void ConfigureAddon() {
   configured = true;
 }
 
+// The game's DX9 swap chain, before the swapchain mod's create_swapchain (registered after this) and its DX11 proxy.
+// output_encoding hands an SDR target to the swapchain mod alone (shared step S2): the proxy takes it from here.
+bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_desc&, void* hwnd) {
+  if (api != reshade::api::device_api::d3d9) return false;
+  twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
+  renodx::utils::device_proxy::SetTargetFormat(renodx::mods::swapchain::target_format);
+  renodx::utils::device_proxy::SetTargetColorSpace(renodx::mods::swapchain::target_color_space);
+  return false;
+}
+
 bool AttachAddon() {
   if (attached) return true;
 
   ConfigureAddon();
 
+  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_swapchain>(OnDestroyGameSwapchain);
   reshade::register_event<reshade::addon_event::present>(OnPresentFrame);
@@ -825,6 +869,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_swapchain>(OnDestroyGameSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresentFrame);
