@@ -1,4 +1,4 @@
-# Shogun 2's engine tweaks (tests.cpp): src/games/twshogun2completeedition_dlss/tweak_objects.hpp's Find on the game's
+# Shogun 2's engine tweaks (tests.cpp): src/games/twshogun2completeedition/tweak_objects.hpp's Find on the game's
 # empire.retail.x64.dll (-Dll, mapped as an image resource: only read) against the list its initializers give (-Expected:
 # tools\shogun2\pkg_1114\s2_tweaks_1114.txt), and every engine value behind Shogun 2's engine value rows found. amd64 only.
 # -OutDir: where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin).

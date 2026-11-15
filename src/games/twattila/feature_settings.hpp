@@ -15,19 +15,12 @@
 #include "./lighting_settings.hpp"
 #include "./screen_space_lights.hpp"
 #include "./screen_space_shadows.hpp"
+#include "./settings_pages.hpp"
 #include "./ssr_hiz.hpp"
 
 // The Total War addons' Screen-Space Shadows and Anti-Aliasing settings (Graphics 1 of 2, after the AO and GI): their
-// sliders, sections, settings and the modules' settings from them; and Settings Mode's pages (Attila's layout).
+// sliders, settings and the modules' settings from them (their sections and Settings Mode's pages: settings_pages.hpp).
 namespace twattila::feature_settings {
-
-inline const std::string SSS_SECTION = "Screen-Space Shadows (Bend Studio, Experimental, needs in-game shadows)";
-inline const std::string AA_SECTION = "Anti-Aliasing (Experimental, in-game AA off)";
-inline const std::string GRAPHICS_SECTION = "Graphics (Experimental)";
-constexpr uint32_t SSS_TINT = 0xC08CFF;
-constexpr uint32_t AA_TINT = 0x7FFFD4;
-constexpr uint32_t GRAPHICS_TINT = 0xFF7FAF;
-constexpr uint32_t BASE_TINT = 0x7EE08A;
 
 struct SssSliders {
   float enabled = 0.f;
@@ -617,21 +610,6 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                     });
 }
 
-// The section colours (ATN): `base_sections` (tone mapping, grading, effects, output, About) one green, the AO, GI,
-// SSS and AA their own, `engine_sections` (Graphics 2 of 2) pink.
-inline void SetTints(std::initializer_list<std::string> base_sections, const std::vector<std::string>& engine_sections) {
-  renodx::utils::settings::section_tints = {
-      {lighting_settings::AO_SECTION, lighting_settings::AO_TINT},
-      {lighting_settings::GI_SECTION, lighting_settings::GI_TINT},
-      {SSS_SECTION, SSS_TINT},
-      {AA_SECTION, AA_TINT},
-  };
-  for (const std::string& section : base_sections) renodx::utils::settings::section_tints.emplace_back(section, BASE_TINT);
-  for (const std::string& section : engine_sections) {
-    renodx::utils::settings::section_tints.emplace_back(section, GRAPHICS_TINT);
-  }
-}
-
 // The reflections' settings (ssr_hiz.hpp; the game's shader_injection: ssr_hierarchical) for its Graphics section:
 // Reflection Method; with the resolve (shader_injection with ssr_rays: environment_specular_light's reflections),
 // Reflection Denoiser (`denoiser`) and Reflection Rays.
@@ -694,27 +672,6 @@ inline void UpdateSsr(Injection* injection, float denoiser = 0.f) {
     injection->ssr_frame = static_cast<float>(++frame % 4);
   } else {
     ssr_hiz::Update(injection->ssr_hierarchical != 0.f, false, 0);
-  }
-}
-
-// Settings Mode's pages (ATN): HDR & Effects (0): tone mapping, grading, effects, output; Graphics 1 of 2: the ambient
-// occlusion, Global Illumination, screen-space shadows and anti-aliasing; Graphics 2 of 2 (`engine_sections`): the engine
-// graphics and their tests. About on every page. `mode`: the Settings Mode slider's value.
-inline void AssignPages(std::vector<renodx::utils::settings::Setting*>* settings, const float* mode,
-                        const std::vector<std::string>& engine_sections, const std::vector<std::string>& graphics_sections = {}) {
-  for (auto* setting : *settings) {
-    if (setting->key == "SettingsMode" || setting->section == "About") continue;
-    int page = 0;
-    if (std::ranges::find(engine_sections, setting->section) != engine_sections.end()) {
-      page = 2;
-    } else if (setting->section == lighting_settings::AO_SECTION || setting->section == lighting_settings::GI_SECTION
-               || setting->section == SSS_SECTION || setting->section == AA_SECTION
-               || std::ranges::find(graphics_sections, setting->section) != graphics_sections.end()) {
-      page = 1;
-    }
-    setting->is_visible = [page, mode, shown = setting->is_visible] {
-      return (static_cast<int>(*mode) == page) && shown();
-    };
   }
 }
 

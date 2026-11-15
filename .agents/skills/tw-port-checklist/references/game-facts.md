@@ -35,7 +35,7 @@ Answer every row for a new game before planning, with a proof level (A, B, C as 
 
 Outside the usual pattern:
 
-- **Shogun 2**: graphics rows live in its `_dlss` addon, which has its own trace header; tweaks are built in `empire.retail.x64.dll` as `lea rdi, [name]; lea rsi, [obj]; call`, the value at obj + 0xb8 for ints, a form `tw_tweaks.py` and `engine_tweaks::Find` don't read.
+- **Shogun 2**: one add-on since 2026-11-15 (its `_dlss` addon's overlay is Graphics 1 of 2 and 2 of 2, the DLSS keys migrated once from `[Shogun 2 DLSS]`), with its own trace header (`twshogun2completeedition/frame_trace.hpp`); tweaks are built in `empire.retail.x64.dll` as `lea rdi, [name]; lea rsi, [obj]; call`, the value at obj + 0xb8 for ints, a form `tw_tweaks.py` and `engine_tweaks::Find` don't read.
 - **Rome Remastered**: Feral's Forward+, no G-buffer pass (ASSAO, a CSM resolve that is a screen-space shadow mask, Feral SSR compute, SMAA and FXAA): the G-buffer and sun-shader rows here don't apply.
 
 ## Traps when reading a fact

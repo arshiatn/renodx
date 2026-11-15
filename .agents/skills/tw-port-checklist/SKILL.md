@@ -80,16 +80,16 @@ Every rule in `game-port-method`'s list holds; these are the Total War additions
 
 Non-TW games (Tales of Arise, Ryse, Expeditions: Rome and later ones) follow `game-port-method` and its engine notes, not this skill. What they take from TW folders, so the grep at the top lists them as consumers:
 
-- `twattila/rt_core.hpp` through a host's `scene_draw` and `main_view` (Ryse, Expeditions); the helper and `dlaa_bridge` (Ryse, Expeditions, and Shogun 2, a TW game with two addons); `psycho35_settings.hpp` and `credits.hpp` in every HDR addon.
+- `twattila/rt_core.hpp` through a host's `scene_draw` and `main_view` (Ryse, Expeditions); the helper and `dlaa_bridge` (Ryse, Expeditions, and Shogun 2, a TW game with its own host); `psycho35_settings.hpp` and `credits.hpp` in every HDR addon.
 - The other way: `talesofarise_dlss/` (NGX, frame generation, pixel trace) is included by Attila and the helper, so a change there rebuilds both.
-- They have two addons each (`game-port-method`'s [addon-split.md](../game-port-method/references/addon-split.md)), their own trace header (`talesofarise_dlss/frame_trace.hpp`) and tool folders beside `tools/tw` (`toa`, `ryse`, `exr`, `expeditions`, `shogun2`, `ingame`).
+- Ryse, Tales and Expeditions have two addons each (Shogun 2 one since 2026-11-15; `game-port-method`'s [addon-split.md](../game-port-method/references/addon-split.md)), their own trace header (`talesofarise_dlss/frame_trace.hpp`) and tool folders beside `tools/tw` (`toa`, `ryse`, `exr`, `expeditions`, `shogun2`, `ingame`).
 
 ## Checks by kind of change
 
 **Shared code** (any file another game folder includes; the grep at the top lists who): build every addon that includes it, 32-bit too; a change in `talesofarise_dlss/ngx_backend.hpp` also rebuilds the helper. Attila, Rome II and Thrones are only meaningful from `build32`. After a shared edit:
 
 ```text
-cmake --build build --config Release --target renodx-ruse.addon64 renodx-twromeremastered.addon64 renodx-talesofarise.addon64 renodx-expeditionsrome.addon64 renodx-twtroy.addon64 renodx-twpharaohdynasties.addon64 renodx-twwarhammer.addon64 renodx-twwarhammer2.addon64 renodx-twwarhammer3.addon64 renodx-twshogun2completeedition.addon64 renodx-twshogun2completeedition_dlss.addon64 renodx-rysesonofrome.addon64 renodx-rysesonofrome_dlss.addon64 renodx-expeditionsrome_dlss.addon64 renodx-talesofarise_dlss.addon64
+cmake --build build --config Release --target renodx-ruse.addon64 renodx-twromeremastered.addon64 renodx-talesofarise.addon64 renodx-expeditionsrome.addon64 renodx-twtroy.addon64 renodx-twpharaohdynasties.addon64 renodx-twwarhammer.addon64 renodx-twwarhammer2.addon64 renodx-twwarhammer3.addon64 renodx-twshogun2completeedition.addon64 renodx-rysesonofrome.addon64 renodx-rysesonofrome_dlss.addon64 renodx-expeditionsrome_dlss.addon64 renodx-talesofarise_dlss.addon64
 cmake --build build32 --config Release --target renodx-twattila.addon32 renodx-twrome2.addon32 renodx-twthronesofbritannia.addon32
 ```
 
@@ -103,7 +103,7 @@ A behaviour one game needs goes behind a parameter that defaults to today's valu
 
 **New `command_action::Register`**: without callback data use `[]<typename Context>`; a `<typename T, typename Context>` lambda is dropped silently. [scripts/scan_register.py](scripts/scan_register.py) must print nothing. Add a one-shot "applied" log line. A `.bypass` nearby needs its state back in `finalize_callback`. Every `Register` and `Install` has its `Unregister` and `Uninstall` in `DetachAddon`.
 
-**New TW add-on, or a new command-wide callback** (`command_action::Register` without a shader hash): the add-on calls `twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH)` right after `mods::shader::Use` (or `command_action::Use`), and its detach just before theirs. An add-on without resource upgrades (Shogun 2 DLSS) calls `command_action::fast::Use` itself. Gates, the reason and the checks: `game-port-method`'s fast draw dispatch section.
+**New TW add-on, or a new command-wide callback** (`command_action::Register` without a shader hash): the add-on calls `twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH)` right after `mods::shader::Use` (or `command_action::Use`), and its detach just before theirs. An add-on without resource upgrades (a `_dlss` add-on) calls `command_action::fast::Use` itself. Gates, the reason and the checks: `game-port-method`'s fast draw dispatch section.
 
 **New callback on the sun draws**: say where in the run order it lands and why. Registration order is run order.
 

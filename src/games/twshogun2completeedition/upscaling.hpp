@@ -22,22 +22,46 @@
 #include "../talesofarise_dlss/native_state.hpp"
 #include "../twattila/dlaa_bridge.hpp"
 #include "../twattila/frame_generation.hpp"
-#include "../twshogun2completeedition_dlss/hdr_link.hpp"
 
-// The helper's upscaler (Experimental, the DLSS addon's Upscaler): the game's DLSS evaluation (hdr_link.hpp, from the
-// DLSS addon's hook of it) through this addon's bridge to renodx-tw-dlaa64.exe (twattila/dlaa_bridge.hpp: one a
+// The helper's upscaler (Experimental, the Upscaler row): the game's DLSS evaluation (UpscaleRequest, from game_dlss.hpp's
+// hook of it) through this addon's bridge to renodx-tw-dlaa64.exe (twattila/dlaa_bridge.hpp: one a
 // process, the ray tracing's too) in place of the game's NGX: NVIDIA's DLSS (with Ray Reconstruction when the rays run),
 // AMD's FSR or Intel's XeSS. The game's textures into the bridge's (upscale_inputs), its result into the game's DLSS
 // output (upscale_output). Any frame it can't (the helper not up, no answer, no camera for FSR / XeSS) keeps the game's
 // DLSS. Every Prepare of the bridge asks the same (PrepareBridge): another set would make all of its textures again.
-// Frame generation (the DLSS addon's, twattila/frame_generation.hpp: the helper presents): the same inputs (the bridge's
+// Frame generation (twattila/frame_generation.hpp: the helper presents): the same inputs (the bridge's
 // depth and motion) with either upscaler, the frame's camera, its HUD-less image after the tone mapper (KeepFrame).
 namespace twshogun2::upscaling {
 
 using Microsoft::WRL::ComPtr;
 
+// camera_VS_PS's floats (44 registers).
+constexpr size_t CAMERA_FLOATS = 44 * 4;
+
+// The game's DLSS evaluation (NVSDK_NGX_D3D11_DLSS_Eval_Params after the render scale and jitter): the textures' top-left
+// render size in, the display size out.
+struct UpscaleRequest {
+  ID3D11DeviceContext* context = nullptr;
+  ID3D11Resource* color = nullptr;   // RGBA16F, linear, before the tone mapper
+  ID3D11Resource* depth = nullptr;   // D24S8, 0 near
+  ID3D11Resource* motion = nullptr;  // RG16F, pixels x motion_scale: to where each pixel was last frame
+  ID3D11Resource* output = nullptr;
+  uint32_t render_width = 0;
+  uint32_t render_height = 0;
+  float jitter_x = 0.f;  // render pixels, NGX's
+  float jitter_y = 0.f;
+  float motion_scale_x = 1.f;
+  float motion_scale_y = 1.f;
+  bool reset = false;
+  uint32_t preset = 0;  // NVSDK_NGX_DLSS_Hint_Render_Preset
+  // The main view's camera_VS_PS as uploaded (position c0, view c2-c5 and projection c6-c9 on column vectors, near and
+  // far c34); false: none this frame.
+  bool camera = false;
+  std::array<float, CAMERA_FLOATS> constants = {};
+};
+
 // What the bridge serves, set each present: the ray tracing (installed), its guides (reflections, paths, Ray
-// Reconstruction) and reflections, the upscaler (hdr_link: 0 the game's DLSS, else dlaa_bridge::UPSCALER_* + 1), Ray
+// Reconstruction) and reflections, the upscaler (0 the game's DLSS, else dlaa_bridge::UPSCALER_* + 1), Ray
 // Reconstruction (0 off, else its NGX preset + 1; with the rays only) and frame generation (its frames' format:
 // frame_generation::Format, unknown while off; its backend).
 struct BridgeUse {
@@ -146,10 +170,10 @@ inline bool PrepareBridge(ID3D11Device* device, UINT width, UINT height) {
                                         use.frame_backend);
 }
 
-// The DLSS addon's evaluation (hdr_link::Upscale) through the helper (frame generation alone: its inputs, the game's DLSS
+// The game's DLSS evaluation through the helper (frame generation alone: its inputs, the game's DLSS
 // after); `guides_written`: the ray tracing's G-buffer guides this frame (Ray Reconstruction needs them). False: the game's
 // DLSS runs.
-inline bool Evaluate(const hdr_link::UpscaleRequest& request, bool guides_written) {
+inline bool Evaluate(const UpscaleRequest& request, bool guides_written) {
   auto* native = request.context;
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   BridgeUse use;
