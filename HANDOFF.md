@@ -1043,6 +1043,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       Nsight, no per-preset Nsight (per-preset numbers came from Time Each Pass / PresentMon / RT_PROFILE). ACTED: reuse
       (record + Lean), WH3 reflections, smoke build, SER / cluster flags / GT-VBAO prefetch / hand-off hops rejected with
       numbers. NEVER TURNED INTO A TASK: the four below + f16 reservoirs closed on the wrong number.
+      - ATN 19:3x "let's do them": GPU round agent gr_ started (worktree; code + builds + WARP now; GPU harness / Nsight
+        only after ATN's MHR session: ATN "do them after the game"). Owner of the six boxes below: gr_
       - [ ] Path tracing register limit (1.47-1.81 ms in game, 28.7 % occupancy, 85 % registers): fewer live registers
         or surface / shading as two dispatches with the same math; estimate -0.15 to -0.45 ms; exact (prove with
         HARNESS_DUMP as a833578d). Owner: next GPU round
@@ -1075,7 +1077,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         (the DLL image, tools/shogun2/sx.py) + an in-game check. Owner: next Shogun 2 round
       - [ ] R22 skipped (a failed Prepare texture turns the bridge off for the session): a retry changes what players see
         (DLSS comes back after a VRAM failure); freeing the helper's old set from Prepare's fail path needs Release's request
-        sequence. ATN decides whether DLSS may come back after a VRAM failure. Owner: ATN, then coordinator
+        sequence. ATN 19:3x: YES, DLSS comes back after a failure (coordinator: with a limit, e.g. a retry at the next
+        resize or after 30 s, at most 3 a session, one log line each). Owner: fx_ round 2 (after the second review)
       - [ ] test/tw_native_hook_lifetime does not compile (x86 / amd64): graphics_hooks.hpp includes rt_core.hpp ->
         embed/shaders.h, run.ps1 has no twattila include path (before these fixes). Owner: next test round
       - [ ] test/tw_device_loss "limit, front" case failed once per arch while builds ran (window focus): rerun quiet.
