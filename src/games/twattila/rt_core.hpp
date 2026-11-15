@@ -23,6 +23,7 @@
 #include <future>
 #include <limits>
 #include <mutex>
+#include <shared_mutex>
 #include <span>
 #include <string>
 #include <thread>
@@ -994,6 +995,10 @@ struct PixelCoverage {
   std::string uv_semantic;
   UINT uv_index = 0;
 };
+// Its own lock, never runtime.mutex: destroy_pipeline (OnDestroyPipeline) also fires inside the D3D11 calls CaptureDraw
+// makes under runtime.mutex (D3D11 deletes a released shader at a later draw), and a second lock of runtime.mutex on that
+// thread threw (Expeditions' first rays, 2026-11-15).
+static std::shared_mutex pixel_coverage_mutex;
 static std::unordered_map<uint64_t, PixelCoverage> pixel_coverage;
 static bool clip_captures = false;  // the scene shaders stream out their SV_Position
 static bool world_captures = false;  // and some are placed (or SceneShader::cascade_world): those in world space (WORLD_BASE)
@@ -3462,7 +3467,7 @@ inline PixelCoverage ClassifyCoverage(std::span<const uint8_t> code) {
 
 // A pipeline going away: its pixel shader's coverage with it (its handle may come back).
 inline void OnDestroyPipeline(reshade::api::device*, reshade::api::pipeline pipeline) {
-  const std::unique_lock lock(runtime.mutex);
+  const std::unique_lock lock(pixel_coverage_mutex);
   pixel_coverage.erase(pipeline.handle);
 }
 
@@ -3476,7 +3481,7 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
     const auto* code = static_cast<const uint8_t*>(desc->code);
     if (subobjects[index].type == reshade::api::pipeline_subobject_type::pixel_shader && host.scene_draw != nullptr) {
       PixelCoverage coverage = ClassifyCoverage({code, desc->code_size});
-      const std::unique_lock lock(runtime.mutex);
+      const std::unique_lock lock(pixel_coverage_mutex);
       pixel_coverage[pipeline.handle] = std::move(coverage);
       continue;
     }
@@ -4357,7 +4362,7 @@ inline bool SceneCoverage(ID3D11DeviceContext* native, SceneShader* shader) {
   ComPtr<ID3D11PixelShader> pixel_shader;
   native->PSGetShader(pixel_shader.GetAddressOf(), nullptr, nullptr);
   if (!pixel_shader) return true;
-  const std::unique_lock lock(internal::runtime.mutex);
+  const std::shared_lock lock(internal::pixel_coverage_mutex);
   const auto found = internal::pixel_coverage.find(reinterpret_cast<uint64_t>(pixel_shader.Get()));
   if (found == internal::pixel_coverage.end() || found->second.coverage == internal::Coverage::LEFT_OUT) return false;
   if (found->second.coverage == internal::Coverage::MASKED) {
