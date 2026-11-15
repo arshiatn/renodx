@@ -49,6 +49,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -136,7 +137,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div ... | d1_
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
-- hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, W ... | hb_
+- In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
@@ -145,16 +146,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Both D3D12 devices (Streamline FG + RR) removed at the same moment: every order ... | next helper round
 - Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device re ... | coordinator
 - REVIEWS + FIXES MERGED 8ee4ab2f 20:5x (left: GPU harness after ATN's game, build ... | coordinator
-- [B] R4 Peak / Paper White can reach 0.8 (Peak min 400, Paper White max 500): cla ... | HDR bug round (after the fix merge)
-- [B] R4 Peak not 1 on Output SDR (Attila does it): WH2 shared.h:157, WH3 :156, Ph ... | HDR bug round
-- [B] R4 V30 / V31 gamut mode on SDR output: V30 macros always pass mode 1 (Attila ... | HDR bug round
-- [B] R4 Shogun 2: Peak not pre-corrected for ApplyGameGamma after PsychoV (tonema ... | HDR bug round
-- [B] R4 WH2 fxaa00_0xCE9EA4E8:221 max(0) strips PsychoV's BT.2020 channels when F ... | HDR bug round
-- [B] R7 game DOF blurs clip every tap (mov_sat), not replaced: Attila A27C3A75 / ... | HDR bug round (trace part: next data run per game)
-- [B] R7 alpha unclamped: Thrones tone_mapper.hlsli:71, WH1 :52 (Attila saturates) ... | HDR bug round
 - [B] R7 no reader inventory for Shogun 2's broad upgrade (addon.cpp:2576-2594), D ... | HDR bug round (inventory from traces)
 - [B] R10 unproven 8-bit links (never traced): Pharaoh FXAA 0xA6756C1F, WH2 dof00/ ... | next data run per game
-- [B] R12 Pharaoh t00_0x976C1C74:132 max(0) before the bypass lerp (:224). Owner: ... | HDR bug round
 - [B] R13 Vanilla-exact tests with a failing control (only Div1 0x30A1D40D has one ... | HDR test round (after the fix merge)
 - [B] R14 variants not replaced (traces decide if they draw): Attila / Thrones D91 ... | next data run per game, then the HDR bug round
 - [P] ATN DECIDES R1 Div1 mode 1 "UC2 Extended / PsychoV30" = UpgradeToneMap then ... | ATN
@@ -1271,7 +1264,10 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own SetTargetFormat lines) and
         Divinity 1 (`.first_start_key = "tonemap_type"`, drop the override at addon.cpp:989-993); in-game check of S2 SDR
         output through the R.U.S.E. proxy and S3 SET / SHOT. Owner: ru6_ / d1_, then the R.U.S.E. T-run
-      - [ ] hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, WH2 FXAA, alpha, Pharaoh max,
+      - [ ] In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), Shogun 2 highlights (V35 top
+        now reaches Peak), WH2 with FXAA on; a trace that the DOF chain draws (Attila / Thrones / WH1) and its targets are
+        16-bit; README lines for the fixes at release. Owner: next TW data runs / release round
+      - [x] hb_ MERGED 8bb28f1f 01:3x (7 fixes, 1 false finding; built x86 + amd64). hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, WH2 FXAA, alpha, Pharaoh max,
         DOF blurs Attila / Thrones / WH1). Owner: hb_
       - [ ] ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 first, TW table driver, Ryse, Div2,
         Rome R, Tales / Expeditions). Owner: ht_
@@ -1343,27 +1339,27 @@ heading text are in HANDOFF_ARCHIVE.md)
       Vanilla-exact tests with a failing mutant, switch / area variants, skipped swap chains. Audit agent running; findings
       become boxes (look changes: ATN). Owner: coordinator
       HDR AUDIT FINDINGS (all 15 add-ons break at least one rule; [B] = pure bug, [P] = changes the picture):
-      - [ ] [B] R4 Peak / Paper White can reach 0.8 (Peak min 400, Paper White max 500): clamp max(peak, paper white) in
+      - [x] DONE 12577cce (hb_, merged 8bb28f1f; Div1 = d1_): [B] R4 Peak / Paper White can reach 0.8 (Peak min 400, Paper White max 500): clamp max(peak, paper white) in
         Attila shared.h:149, Div1 shared.h:59, Div2 t00_0x7016F292:221 + shared.h:84. Owner: HDR bug round (after the fix merge)
-      - [ ] [B] R4 Peak not 1 on Output SDR (Attila does it): WH2 shared.h:157, WH3 :156, Pharaoh :156, Troy :150 (SDR
+      - [x] FALSE FINDING (hb_: WH2 / WH3 / Pharaoh / Troy already set peak = paper white = UI = 100 on Output SDR since e92046f6): [B] R4 Peak not 1 on Output SDR (Attila does it): WH2 shared.h:157, WH3 :156, Pharaoh :156, Troy :150 (SDR
         display + Recommended clips per channel in the proxy). Owner: HDR bug round
-      - [ ] [B] R4 V30 / V31 gamut mode on SDR output: V30 macros always pass mode 1 (Attila / Rome II / Thrones / WH1 /
+      - [x] DONE 4b509903 (hb_, merged 8bb28f1f; 9 V30 macros + 8 V31 sites; R.U.S.E. = ru_ 01029a12 on its branch): [B] R4 V30 / V31 gamut mode on SDR output: V30 macros always pass mode 1 (Attila / Rome II / Thrones / WH1 /
         WH2 / WH3 / Pharaoh / Troy shared.h, Rome R :126-130, Div1 :70-73); V31 takes the slider, never BT.709 on SDR
         (hdr_to_screen.hlsli of Rome II / Thrones / WH1 :17, WH2 :83, WH3 t00:170, Pharaoh :84, Troy :81, Rome R
         resolve.hlsli:83, RUSE shared.h:70). Legacy modes only. Owner: HDR bug round
-      - [ ] [B] R4 Shogun 2: Peak not pre-corrected for ApplyGameGamma after PsychoV (tonemap.hlsli:415 / :419 -> :443),
+      - [x] DONE 881dd9ed (hb_, merged 8bb28f1f; changes the V35 top too, the bug was in it): [B] R4 Shogun 2: Peak not pre-corrected for ApplyGameGamma after PsychoV (tonemap.hlsli:415 / :419 -> :443),
         LimitToPeak (:461) clips the top. Owner: HDR bug round
-      - [ ] [B] R4 WH2 fxaa00_0xCE9EA4E8:221 max(0) strips PsychoV's BT.2020 channels when FXAA is on. Owner: HDR bug round
-      - [ ] [B] R7 game DOF blurs clip every tap (mov_sat), not replaced: Attila A27C3A75 / B35968DC / CS C9D036B1 /
+      - [x] DONE 130d2dc6 (hb_, merged 8bb28f1f; also the unfiltered centre texel at line 53): [B] R4 WH2 fxaa00_0xCE9EA4E8:221 max(0) strips PsychoV's BT.2020 channels when FXAA is on. Owner: HDR bug round
+      - [x] DONE 9f68e7a7 (hb_, merged 8bb28f1f; also Thrones / WH1 compute blurs; test/tw_dof_blurs WARP 12/12 bit-exact in SDR, mutant + LOD controls fail; LEFT: a trace that the chain draws into 16-bit targets; Expeditions part = no change): [B] R7 game DOF blurs clip every tap (mov_sat), not replaced: Attila A27C3A75 / B35968DC / CS C9D036B1 /
         83A1A82D, Thrones A27C3A75 / B35968DC, WH1 0228529B / 4044871E (Rome II replaced its dof01-05); first a trace that
         the chain draws. Expeditions 0x93E43D26 / 0x07E055CF / 0x1F128822 max(0, x+c) stock (draw after the tone map?).
         Owner: HDR bug round (trace part: next data run per game)
-      - [ ] [B] R7 alpha unclamped: Thrones tone_mapper.hlsli:71, WH1 :52 (Attila saturates). Owner: HDR bug round
+      - [x] DONE 534c88d5 (hb_, merged 8bb28f1f): [B] R7 alpha unclamped: Thrones tone_mapper.hlsli:71, WH1 :52 (Attila saturates). Owner: HDR bug round
       - [ ] [B] R7 no reader inventory for Shogun 2's broad upgrade (addon.cpp:2576-2594), Div1's every-RGBA8 upgrade
         (addon.cpp:957-965), Tales' stock FXAA 0x8533AF0C / SMAA. Owner: HDR bug round (inventory from traces)
       - [ ] [B] R10 unproven 8-bit links (never traced): Pharaoh FXAA 0xA6756C1F, WH2 dof00/01 C337D8E3 / 91B4F89A,
         Shogun 2 dofblur02_0x6531CCC3 (unorm). Owner: next data run per game
-      - [ ] [B] R12 Pharaoh t00_0x976C1C74:132 max(0) before the bypass lerp (:224). Owner: HDR bug round
+      - [x] DONE 73c0d40c (hb_, merged 8bb28f1f): [B] R12 Pharaoh t00_0x976C1C74:132 max(0) before the bypass lerp (:224). Owner: HDR bug round
       - [ ] [B] R13 Vanilla-exact tests with a failing control (only Div1 0x30A1D40D has one): TW tone mappers /
         hdr_to_screen / bloom / lens flare, Shogun 2 tonemap00/01 first (rewritten from source), Ryse (ledger DO NOW),
         Tales / Expeditions (no harness source to re-run their WARP claim), Div1 bloom / god rays / UI / AA, Div2 t01 /
