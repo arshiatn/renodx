@@ -44,6 +44,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -115,7 +116,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Divinity 2: the orthographic EoCSight_HDR 0x5C4137E2 (50-nit constants vs 300) n ... | d2_ after R1b
 - Divinity 2 later: D2-8b scene R11G11B10F -> RGBA16F (view cloning, Experimental ... | d2_ after R1b
 - Divinity 2 R1b leftovers: the gamma slider at 1.2 (needs ATN's clicks); no menu ... | next Divinity 2 run
-- Divinity 2 after R1b: D2-8 cb0s -> Hue Clip reference / mid grey (level A), part ... | d2b_ (started 00:2x)
+- ATN DECIDES (Divinity 2, from the R1b shots): V30 / V35 shadows ~5x brighter tha ... | ATN
+- Divinity 2 next run: what triggers the orthographic camera (tactical toggle?); A ... | next Divinity 2 run / ht_
 - ATN at the end (Divinity 2): mid grey row's default; old presets / V30 keep or d ... | ATN
 - R.U.S.E. whole package in ONE implementation round, plan.md 10b order, all Exper ... | ru_ (implementation round)
 - R.U.S.E. T-run (one agent data run, ATN's OK): W1 resource log (pools, formats, ... | coordinator (next game window)
@@ -1113,8 +1115,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         inventory / character sheet with ATN's key.
       - [ ] Divinity 2 R1b leftovers: the gamma slider at 1.2 (needs ATN's clicks); no menu videos exist (the menu is a
         live 3D scene). Owner: next Divinity 2 run
-      - [ ] Divinity 2 after R1b: D2-8 cb0s -> Hue Clip reference / mid grey (level A), part 6 on the traced cb0;
-        orthographic EoCSight_HDR 0x5C4137E2; D2-8b later. Owner: d2b_ (started 00:2x)
+      - [x] MERGED 1c1641ab 00:5x (d2b_): a5d62b19 orthographic EoCSight_HDR 0x5C4137E2 replaced (its bytes hold 50 / 100
+        nits, an older compile than the source's 240 / 300; never drawn in R1 / R1b, a CameraOrtho camera picks it);
+        5815198f Hue Clip reference = the game's SDR transform on the traced constants (within 0.32 8-bit codes; the old
+        stand-in was off by 137), part 6 on the R1b cb0s, Off t00 + t01 bit-exact with failing controls (x86 + amd64
+        PASS); 2435eb92 "Higher Precision Scene (Experimental)" off. ATN's UI Brightness is 203 (not 50; 50 is the game's
+        own HDRPaperWhite, ignored in modded modes). Divinity 2 after R1b: D2-8, ortho EoCSight, D2-8b.
+      - [ ] ATN DECIDES (Divinity 2, from the R1b shots): V30 / V35 shadows ~5x brighter than Off (0.05-1 nit pixels) and
+        mid tones ~23 % less saturated (flatter than the game's ACES toe); Hue Clip default (80 kept; 60 closest on
+        average, 80 best for fire / red). Owner: ATN
+      - [ ] Divinity 2 next run: what triggers the orthographic camera (tactical toggle?); A/B of Higher Precision Scene
+        (alpha readers, copies, inventory, back buffer through the proxy); gamma slider 1.2. R13 exact tests for bloom00,
+        ui00, outlines00-02. Owner: next Divinity 2 run / ht_
       - [x] ATN ANSWERED 18:5x (Divinity 2): mid grey BOTH as a row (ATN decides later); "i" is the inventory key; keep the
         old presets + V30; per-channel shoulder ON by default; Nexus divinityoriginalsin2definitiveedition/mods/547; Script
         Extender installs as DXGI.dll in DefEd\bin (ReShade can't be dxgi.dll there: d2_ writes the rule). Sent to d2_.
