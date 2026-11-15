@@ -1240,6 +1240,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] npr_: Ryse parity boxes (NON-TW SKILLS AUDIT section). Owner: npr_
       - [ ] npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe. Owner: npu_
       - [ ] gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: gr_
+      - 23:4x ATN DONE PLAYING ("I am done with the game"): committed 38.8 GB, the gated builds started (d1_ first); gr_
+        told GPU free; fx_ resumed for its harness checks on atn-mods (gpu_job.lock per job).
       - [ ] Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device removal with FG on, FG device
         loss, fg_bridge_test), quiet tw_device_loss, gr_, ru_ H1 / H2, build all, stamp, install (dry run, fresh backups).
         Owner: coordinator
