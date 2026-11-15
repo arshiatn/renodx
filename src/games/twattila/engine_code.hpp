@@ -23,9 +23,9 @@
 #include "../../utils/log.hpp"
 #include "../twrome2/engine_tweaks.hpp"
 
-// Faster Game CPU Code: three of Attila's hot routines in empire.retail.dll, the render lists' sort and a prefetch in the
-// instance gather, each replaced by code with the same results (test/tw_engine_code runs the game's code and this one
-// side by side: every register, the stack, the x87 state); Faster Render Lists (its own row): one more site the same way.
+// Faster Game CPU Code: three of Attila's hot routines in empire.retail.dll and the render lists' sort, each replaced by
+// code with the same results (test/tw_engine_code runs the game's code and this one side by side: every register, the
+// stack, the x87 state); Faster Render Lists (its own row): a fifth site the same way.
 // Each is found by its exact bytes: code another mod changed (the Attila CPU Performance Fix patches 1277 x87 blocks,
 // the first one below among them) or another build is left alone. A jump into the addon's own code page replaces the
 // first instruction(s) of each; the page is never freed (a thread can still be in it after the game's bytes are back).
@@ -362,30 +362,6 @@ constexpr std::array<uint8_t, 0x148> SORT_STUB = {
     0xC3,                                            // ret
 };
 
-// 6. The instance gather (+0x182c990, a virtual method: for each item of a draw memcpy(destination + i x stride, item[i],
-// stride); 0.52 ms of workers a frame in cpl2's recording, most on memcpy's first load: the source isn't in the cache).
-// Its loop head (two loads, 8 bytes; the loop's back edge jumps to the first) jumps to a stub that runs them, then
-// prefetches the first and last byte of item i + 16's source while i + 16 is below the loop's end: a slot the loop
-// reads itself, the prefetch a hint. edx and the flags it changes are written by the loop before they are read.
-constexpr uint32_t GATHER_RVA = 0x182c990;
-constexpr std::string_view GATHER =
-    "53 8B 59 1C 55 56 8B 71 18 57 8B 79 24 8B 2F 3B F3 74 23 8B 0F 8B 85 84 00 00 00 8B 51 44 52 FF 34 B0 0F AF D6 03 "
-    "51 48 52 E8";
-constexpr size_t GATHER_SITE = 19;    // mov ecx, dword ptr [edi]; mov eax, dword ptr [ebp + 0x84]
-constexpr size_t GATHER_RESUME = 27;  // mov edx, dword ptr [ecx + 0x44]
-constexpr std::array<uint8_t, 33> GATHER_STUB = {
-    0x8B, 0x0F,                          // mov ecx, dword ptr [edi]
-    0x8B, 0x85, 0x84, 0x00, 0x00, 0x00,  // mov eax, dword ptr [ebp + 0x84]      the items
-    0x8D, 0x56, 0x10,                    // lea edx, [esi + 0x10]
-    0x39, 0xDA,                          // cmp edx, ebx                         the loop's end
-    0x73, 0x0D,                          // jae back
-    0x8B, 0x14, 0x90,                    // mov edx, dword ptr [eax + edx*4]     item i + 16
-    0x0F, 0x18, 0x0A,                    // prefetcht0 byte ptr [edx]
-    0x03, 0x51, 0x44,                    // add edx, dword ptr [ecx + 0x44]      + stride
-    0x0F, 0x18, 0x4A, 0xFF,              // prefetcht0 byte ptr [edx - 1]
-    0xE9, 0x00, 0x00, 0x00, 0x00,        // back: jmp back
-};
-
 // Thrones of Britannia's build (empire.retail.dll 64A47C87; test/tw_engine_code with its DLL): float to half and fmod the
 // same bytes at other RVAs; the soldier draw's truncation the same instructions at other stack slots (control word 0x20,
 // float 0x24, its control word | 0xc00 0x28, integer 0x1c after the push), so its own stub with the same steps; the CRT's
@@ -405,8 +381,8 @@ constexpr std::string_view ROME2_TRUNCATION =
     "D9 6C 24 28 DB 5C 24 24 D9 6C 24 18 58 0F B7 44 24 20 66 0F 6E C0 0F 5B C0 F3 0F 11 84 24";
 constexpr std::array<uint8_t, 44> ROME2_TRUNCATION_STUB = TruncationStub(0x18, 0x28, 0x20, 0x24);
 
-// What differs between the games' builds. Thrones' render list push, its sort, the sort's caller and the gather the
-// same bytes; Rome II has none of them (list_push_rva, sort_caller_rva, gather_rva 0: not looked for).
+// What differs between the games' builds. Thrones' render list push, its sort and the sort's caller the same bytes;
+// Rome II has neither function (list_push_rva, sort_caller_rva 0: not looked for).
 struct Build {
   uint32_t truncation_rva;
   std::string_view truncation;
@@ -417,13 +393,11 @@ struct Build {
   uint32_t list_push_rva;
   uint32_t sort_rva;
   uint32_t sort_caller_rva;
-  uint32_t gather_rva;
 };
-constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, SORT_RVA, SORT_CALLER_RVA,
-                                GATHER_RVA};
+constexpr Build ATTILA_BUILD = {TRUNCATION_RVA, TRUNCATION, TRUNCATION_STUB, HALF_RVA, FMOD_RVA, FMOD_MATHERR, LIST_PUSH_RVA, SORT_RVA, SORT_CALLER_RVA};
 constexpr Build THRONES_BUILD = {THRONES_TRUNCATION_RVA, THRONES_TRUNCATION, THRONES_TRUNCATION_STUB, 0x1707eb0, 0x1b0a030, THRONES_FMOD_MATHERR, 0x17df0a9,
-                                 0x220850, 0x182cf80, 0x18a13e0};
-constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0, 0};
+                                 0x220850, 0x182cf80};
+constexpr Build ROME2_BUILD = {0x14b433c, ROME2_TRUNCATION, ROME2_TRUNCATION_STUB, 0x1368030, 0x169ca30, THRONES_FMOD_MATHERR, 0, 0, 0};
 constexpr std::array<Build, 3> BUILDS = {ATTILA_BUILD, THRONES_BUILD, ROME2_BUILD};  // by Game
 
 // Where each stub sits in the page.
@@ -432,12 +406,11 @@ constexpr size_t HALF_PAGE = 0x040;
 constexpr size_t FMOD_PAGE = 0x180;
 constexpr size_t LIST_PUSH_PAGE = 0x240;
 constexpr size_t SORT_PAGE = 0x280;
-constexpr size_t GATHER_PAGE = 0x3d0;
 constexpr size_t PAGE_SIZE = 0x1000;
 
 // Which sites each row writes (bits by `sites` index).
-constexpr uint32_t CPU_CODE_SITES = 0b110111;  // Faster Game CPU Code
-constexpr uint32_t LIST_SITES = 0b001000;      // Faster Render Lists
+constexpr uint32_t CPU_CODE_SITES = 0b10111;  // Faster Game CPU Code
+constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
 
 // The first instruction (or two, whole) of each site: 5 bytes that become a jump into the page (the render list push's:
 // a 4-byte instruction and the first byte of the next, both run by its stub), or a call that calls the page instead.
@@ -450,12 +423,11 @@ struct Site {
   std::array<uint8_t, SITE_SIZE> jump = {};
 };
 
-static std::array<Site, 6> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 5> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
-                                     {.name = "render list sort"},
-                                     {.name = "instance gather"}}};
+                                     {.name = "render list sort"}}};
 static uint8_t* page = nullptr;
 static uint8_t* sort_scratch = nullptr;  // never freed, as the page
 static bool prepared = false;
@@ -561,7 +533,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   };
 
   page = static_cast<uint8_t*>(VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-  std::array<uint8_t*, 6> stubs = {};
+  std::array<uint8_t*, 5> stubs = {};
   if (page != nullptr) {
     if (uint8_t* match = find(build.truncation, build.truncation_rva); match != nullptr) {
       uint8_t* stub = page + TRUNCATION_PAGE;
@@ -642,22 +614,13 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
         stubs[4] = stub;
       }
     }
-    if (uint8_t* match = (build.gather_rva != 0 ? find(GATHER, build.gather_rva) : nullptr); match != nullptr) {
-      uint8_t* stub = page + GATHER_PAGE;
-      std::memcpy(stub, GATHER_STUB.data(), GATHER_STUB.size());
-      uint8_t* stub_end = stub + GATHER_STUB.size();
-      write32(stub_end - 4, relative(stub_end, match + GATHER_RESUME));
-      sites[5].at = match + GATHER_SITE;
-      stubs[5] = stub;
-    }
     DWORD protection;
     VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection);
     FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
   }
   std::string faster;
   std::string left;
-  const uint32_t looked_for = 0b000111u | (build.list_push_rva != 0 ? 0b001000u : 0u) | (build.sort_caller_rva != 0 ? 0b010000u : 0u)
-                              | (build.gather_rva != 0 ? 0b100000u : 0u);
+  const uint32_t looked_for = 0b00111u | (build.list_push_rva != 0 ? 0b01000u : 0u) | (build.sort_caller_rva != 0 ? 0b10000u : 0u);
   for (size_t index = 0; index < sites.size(); ++index) {
     Site& site = sites[index];
     if ((looked_for >> index & 1) == 0) continue;
