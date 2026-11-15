@@ -13,6 +13,18 @@ together. Do not combine these shaders with the previous addon binary.
 | Vanilla | Captured native curve and native colour processing, with fixed reference brightness/contrast | About 15 nits |
 | Vanilla+ (Tweaked ACES) | Full RenoDX ACES after the game's white balance and regional colour grading | Calibrated to about 15 nits |
 | Vanilla+ (PsychoV30) | PsychoV30 after the same game grading | About 15 nits |
+| Vanilla+ (PsychoV35) | Musa's PsychoV35 (`twattila/psycho35.hlsli`) after the same game grading, Hue Clip Emulation before it | About 15 nits |
+
+Presets: **Recommended** = PsychoV35 with Bloom 0.44; **Reset** = every image
+control at its default (Vanilla); **SDR (monitors without HDR)** = Off (turn the
+game's HDR off too). The PsychoV30 / Tweaked ACES presets stay until ATN decides.
+
+PsychoV35 replaces everything after the game's white balance and regional
+grading (the untonemapped scene-linear point, `t00` before the former V30 call),
+like V30: no curve runs on another curve's output. It has no fire rows: Hue Clip
+Emulation (0-100, default 80) moves bright colours toward the hue an SDR ACES
+transform clips them to (RenoDX ACES at 0.02 / 48 nits stands in for the game's
+SDR LUT until its constants are traced).
 
 These are neutral scene-linear 0.18 inputs at the tone-mapping stage, with
 neutral user controls. Authored grading, exposure and other user adjustments
@@ -29,6 +41,13 @@ keep their scaled native brightness, including the neutral gray reference.
 At Paper White 203 / Peak 1000, in-range native values are unchanged. Higher
 peaks now brighten highlights again. Raising paper white also scales scene
 brightness intentionally.
+
+**Per-Channel Highlights** (Vanilla, on by default): when Peak is below the
+scaled native peak (1000 x Paper White / 203), each channel gets its own
+shoulder and ceiling, so bright fire's red rolls off before its green and the
+core turns orange / white as the SDR clip does. Expansions (Peak above it) keep
+the channel ratios either way: no per-channel boost. Off = the earlier
+brightest-channel shoulder, bit for bit.
 
 The captured spline, luminance/per-channel blend, native colour processing,
 black normalization and output matrix are retained. The baseline curve comes
@@ -117,6 +136,25 @@ The user confirmed matching inventory appearance in the preceding version.
 This update preserves that version's SDR handling and t01 routing. UI
 composition and bloom shaders are unchanged. t01's FadeValue at c0.z remains
 live; c0.w is still unused.
+
+**LUT addressing (2026-11-15, test/tw_psychov35 part 6):** t00 writes texel i
+for the shaper's PQ i / 31, and the game's t01 samples the PQ code u straight,
+so every pixel reads the colour at PQ (32 u - 0.5) / 31: mid gray about 12.2
+nits where a mode places 15, in every mode including Off. **Exact Colour LUT
+(Experimental, off)** samples a modded LUT at its texel centres (grey 14.98 nits
+through the LUT); Off and the SDR LUT are read as the game reads them.
+
+## Data runs and installing
+
+- **Trace One Frame** (Advanced, Debug), `renodx_trace_now` next to the exe or
+  `RENODX_TW_SET`'s `trace` key: `tales_frame_trace.txt` next to `EoCApp.exe`
+  with every draw / dispatch, their formats, PPComputeLUT's cb0 (each LUT, HDR
+  and the inventory's SDR) and PerView b12 at the sight pass.
+- `RENODX_TW_SET` / `RENODX_TW_SHOT` (or `renodx_test_hooks.txt` next to the exe)
+  set rows and take screenshots in scripted runs.
+- ReShade: `dxgi.dll` in `DefEd\bin` today. Norbyte's Script Extender installs
+  as `DXGI.dll` there too: where it is present, ReShade goes in as `d3d11.dll`
+  (the game is D3D11), never over the Extender.
 
 ## Compare in game
 

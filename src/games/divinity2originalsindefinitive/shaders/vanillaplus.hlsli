@@ -82,6 +82,12 @@ float3 ACES(float3 scene_bt709, float paper_white, float peak_nits) {
       (peak_nits / paper_white) * 48.f, identity_ap1) / 48.f;
 }
 
+// The game's SDR picture of a scene colour (BT.709, white 1, clipped per channel) for PsychoV35's Hue Clip and its SDR
+// mid gray. The SDR LUT's own constants are not traced yet: RenoDX's ACES at 0.02 / 48 nits stands in for them.
+float3 SdrReference(float3 scene_bt709) {
+  return saturate(renodx::tonemap::aces::RRTAndODT(scene_bt709, 0.02f, 48.f) / 48.f);
+}
+
 // Solve against the actual RenoDX implementation linked by the user's build.
 // An exposure change preserves ACES's selected peak; multiplying its already
 // tonemapped output by a gray correction would also change that peak.

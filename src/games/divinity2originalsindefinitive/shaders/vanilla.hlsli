@@ -65,30 +65,44 @@ float3 ToneMap(float3 color) {
   return float3(ToneMap(color.x), ToneMap(color.y), ToneMap(color.z));
 }
 
+// Rational shoulder above `knee`: slope 1 at the knee, exactly `peak_nits` at `source_peak`.
+float Shoulder(float value, float knee, float source_peak, float peak_nits) {
+  if (value <= knee) return value;
+  float source_range = source_peak - knee;
+  float target_range = peak_nits - knee;
+  float t = saturate((value - knee) / source_range);
+  float denominator = target_range * (1.f - t) + source_range * t;
+  return knee + source_range * (target_range * t / denominator);
+}
+
 // Calibrate the captured native output without replacing its middle-gray point.
 // At Paper White 203 / Peak 1000 this is identity for in-range native colours.
 // Other paper-white values scale the scene. Other peaks remap the upper range
 // smoothly; values below the knee keep their scaled native brightness.
-float3 Calibrate(float3 native_nits, float paper_white, float peak_nits) {
+// `per_channel`: when the range is compressed (Peak below the scaled native peak), each channel its own shoulder and
+// ceiling, so a bright fire's red rolls off before its green and the core turns toward orange / white as the game's SDR
+// clip does. An expansion (Peak above it) always keeps the ratios: expanding each channel apart would push fire redder.
+float3 Calibrate(float3 native_nits, float paper_white, float peak_nits, bool per_channel) {
   float scene_scale = paper_white / REFERENCE_PAPER_WHITE;
   float3 output_nits = native_nits * scene_scale;
+  float source_peak = REFERENCE_PEAK_NITS * scene_scale;
+  // The curve's scene-linear 1.0 output is about 107.437 reference nits.
+  // Keep a positive shoulder interval even for a low peak / high paper white.
+  if (per_channel && peak_nits < source_peak) {
+    float knee = min(ToneMap(1.f) * scene_scale, peak_nits * 0.5f);
+    output_nits = float3(Shoulder(output_nits.r, knee, source_peak, peak_nits),
+                         Shoulder(output_nits.g, knee, source_peak, peak_nits),
+                         Shoulder(output_nits.b, knee, source_peak, peak_nits));
+    return min(output_nits, peak_nits);
+  }
+
   float highest_channel = max(output_nits.r, max(output_nits.g, output_nits.b));
   if (highest_channel <= 0.f) return output_nits;
 
-  float source_peak = REFERENCE_PEAK_NITS * scene_scale;
   float mapped_channel = highest_channel;
   if (source_peak != peak_nits) {
-    // The curve's scene-linear 1.0 output is about 107.437 reference nits.
-    // Keep a positive shoulder interval even for a low peak / high paper white.
     float knee = min(ToneMap(1.f) * scene_scale, peak_nits * 0.5f);
-    if (highest_channel > knee) {
-      float source_range = source_peak - knee;
-      float target_range = peak_nits - knee;
-      float t = saturate((highest_channel - knee) / source_range);
-      // Rational shoulder: slope 1 at the knee, exact target at source_peak.
-      float denominator = target_range * (1.f - t) + source_range * t;
-      mapped_channel = knee + source_range * (target_range * t / denominator);
-    }
+    mapped_channel = Shoulder(highest_channel, knee, source_peak, peak_nits);
   }
 
   // Native luminance mapping/post-matrix may exceed its nominal peak. Keep

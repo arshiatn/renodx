@@ -56,6 +56,11 @@ void main(
   r0.xyz = log2(r0.xyz);
   r0.xyz = float3(78.84375,78.84375,78.84375) * r0.xyz;
   r0.xyz = exp2(r0.xyz);
+  // t00 writes texel i for the shaper's PQ i / 31, but the game samples PQ u straight, so it reads PQ (32 u - 0.5) / 31:
+  // mid gray about a fifth darker than the mode puts it. Exact LUT Sampling (modded LUTs only) samples the texel centres.
+  if (fixed_hdr_domain && SI.exact_lut_sampling != 0.f) {
+    r0.xyz = r0.xyz * (31.f / 32.f) + (0.5f / 32.f);
+  }
   r0.xyz = LUT.SampleLevel(LinearClampSampler_s, r0.xyz, 0).xyz;
   r0.w = 1;
   r1.xyzw = float4(0,0,0,1) + -r0.xyzw;

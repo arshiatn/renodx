@@ -19,6 +19,7 @@ RWTexture3D<unorm float4> LUT : register(u0);
 #define cmp -
 #include "../shared.h"
 #include "../psycho_test30.hlsli"
+#include "../../twattila/psycho35.hlsli"
 #include "./vanilla.hlsli"
 #include "./vanillaplus.hlsli"
 
@@ -59,7 +60,7 @@ float3 VanillaAP1ToHDR10(float3 color_ap1, float paper_white, float peak_nits) {
       dot(float3(-0.00501333317f, -0.0252900254f, 1.03030288f), color_ap1));
   // Native output at final Contrast 1 / Brightness 1, before PQ encoding.
   float3 native_nits = min(max(color_bt2020, 0.f) * dos2_vanilla::REFERENCE_PEAK_NITS, 65504.f);
-  return dos2_vanilla::Calibrate(native_nits, paper_white, peak_nits);
+  return dos2_vanilla::Calibrate(native_nits, paper_white, peak_nits, SI.vanilla_per_channel_shoulder != 0.f);
 }
 
 [numthreads(32, 32, 1)]
@@ -77,6 +78,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID, uint group_index : SV_GroupInde
   bool use_aces_fixed = (SI.tonemap_type == 1.f) && is_hdr;
   bool use_aces_tweaked = (SI.tonemap_type == 2.f) && is_hdr;
   bool use_psycho = (SI.tonemap_type == 3.f) && is_hdr;
+  bool use_psycho35 = (SI.tonemap_type == 4.f) && is_hdr;
 
   // The condition depends only on uniform constant-buffer values. Every
   // thread in a Tweaked ACES group reaches the barrier before any return.
@@ -213,13 +215,33 @@ void main(uint3 vThreadID : SV_DispatchThreadID, uint group_index : SV_GroupInde
 
   // Native white balance and regional grading above are common to all modes.
   // Vanilla+ replaces the complete native rendering transform below them.
-  if (use_aces_tweaked || use_psycho) {
+  if (use_aces_tweaked || use_psycho || use_psycho35) {
     const float diffuse_white_nits = max(SI.diffuse_white_nits, 0.0001f);
     const float peak_white_nits = DOS2_PEAK_NITS;
     const float relative_peak = peak_white_nits / diffuse_white_nits;
 
     // custom user Grading (in BT.709 space)
     float3 graded_bt709 = renodx::color::bt709::from::AP1(r0.xyz);
+
+    // PsychoV35 alone on the untonemapped graded colour, as V30 below. Hue Clip Emulation replaces the fire rows:
+    // bright colours take the hue the game's SDR picture clips them to. Mid gray: the game's HDR curve's (15 nits at
+    // Paper White 203) or its SDR picture's.
+    if (use_psycho35) {
+      [branch]
+      if (SI.hue_clip > 0.f) {
+        graded_bt709 = renodx::tonemap::psychov::HueTransfer(
+            graded_bt709, dos2_vanillaplus::SdrReference(graded_bt709), SI.hue_clip);
+      }
+      const float mid_gray = (SI.v35_mid_gray != 0.f)
+                                 ? renodx::color::y::from::BT709(dos2_vanillaplus::SdrReference(
+                                       float3(DOS2_GRAY_INPUT, DOS2_GRAY_INPUT, DOS2_GRAY_INPUT)))
+                                 : DOS2_GRAY_OUTPUT;
+      float3 psycho35_bt2020 = renodx::color::bt2020::from::BT709(
+          ApplyPsychoV35(graded_bt709, relative_peak, false, mid_gray));
+      LUT[vThreadID.xyz] = float4(
+          renodx::color::pq::EncodeSafe(psycho35_bt2020, diffuse_white_nits), DOS2_HDR_LUT_ALPHA);
+      return;
+    }
 
     // Apply user colorgrading with the sliders and etc. It needs to be in bt709
     if (use_aces_tweaked &&
