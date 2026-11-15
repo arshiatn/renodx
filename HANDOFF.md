@@ -721,9 +721,27 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     is a look change (8-bit truncation): fps only, ATN DECIDES. Owner: coordinator
   - [ ] g2a_ bench variants g2a_torch.json + g2a_shadow_skip.json (copy attila_pass_timing.txt after each start, read with
     tools/tw/preset_audit/g2a_tep_gaps.py); their add-ons in testbin/g2a_bench. Owner: coordinator
-  - [ ] GPU ROUND 3 (helper): cheaper cluster instantiate (split CLAS room, merge only opaque unit draws at intake); (e)
-    per-texel surface record for ReSTIR reuse (bit-identical to full reuse at ~Lean's cost; plan g2b_plans.md); torch U2
-    Half while moving (shorter history where the reprojection moved). Owner: GPU ROUND 3
+  - [x] GPU ROUND 3B MERGED (g3b_, a833578d + 0c4335ff; final helper build\tw_dlaa_helper_g3b2 3C9DB0234740, not
+    installed): (e) surface record: byte-identical in 32 modes (NRD modes nondeterministic in the base too), 4K bounce
+    1.39 -> 1.02 ms, reuse 0.74 -> 0.34, Nsight reuse 2.52 -> 1.49 ms, frame 8.00 -> 7.16; +265 MB VRAM at 4K while reuse
+    history exists. RT_PATH_RATIO_FOLLOW (bridge flag 1u<<25, off; bridge stays v31): U2 Half + RR moving 11.48 -> 6.99 %
+    (settles in 10 frames, not 32), Half no RR 11.92 -> 8.44, Full no RR WORSE 5.12 -> 5.68. NOT TAKEN: merging opaque
+    unit draws (units -0.23 ms but field rays +3 ms), f16 reservoirs (reuse already 0.34 ms). all_modes 179/179,
+    fg_bridge_test 0 failed, helper suites PASS x86 + amd64.
+    - [ ] Rebuild every add-on using dlaa_bridge.h (x86 + amd64) on the merged tree. Owner: coordinator, before the bench
+    - [ ] Lean Reuse row: now saves only ~0.06 ms (RT_PROFILE) / 0.39 ms reuse (Nsight base clocks), its look scored as
+      no change: keep or remove? Bench variant g3b_reuse.json gives the in-game number. Owner: ATN
+    - [ ] RT_PATH_RATIO_FOLLOW as an Experimental add-on row (Half + RR the clear win; maybe only with RR or Half and
+      below, since Full without RR scores worse). Owner: next add-on round; ATN places the row
+    - [ ] U2 step 3 (own light reservoir); record at bounce size at Half (VRAM); f16 relative hits need a two-set record.
+      Owner: next ReSTIR round
+    - [ ] Field-scene ray slowdown after merging unit clusters unexplained; fewer unit triangles or the trunc8 bench next.
+      Owner: coordinator
+    - [ ] A32: under GPU Trace without REPLAYABLE the helper commits ~838 MB/s for ~15 s (private 13 GB peak, system
+      Committed 30 -> 48.5 GB): a test switch that serialises requests but keeps the shared fence, to split the two
+      halves. Watch the 55 GB abort rule in any such run. Owner: Nsight round
+    - [ ] ns_trace_run.py must end its "rescue" helper (one blocked the next job 7+ minutes). Owner: Nsight tooling
+    - [ ] Bench variants g3b_reuse.json + g3b_round3b_plan.txt in the end-of-batch bench. Owner: coordinator
   - [ ] f16 reservoirs (look change, scored) only if (e) leaves the reuse pass above ~0.4 ms. Owner: after (e)
   - [ ] Resource upgrade 0.196 ms a frame (GetResourceViewClone per pushed view): a module-local clone cache against a
     shared epoch; skipped no-handler casters ~0.17 ms (skip before the event fires). Owner: GPU ROUND 3 (D3D11 side)
