@@ -22,6 +22,7 @@ HDR later, 24cdfb9c).
 ## OPEN (owners)
 Pointer index of every open box below (short title | owner, file order); the detailed line stays where it is.
 Rebuild it when boxes change; the boxes themselves are the record.
+- END BENCH (94 starts, tools/tw/bench/end_of_batch_1115.md) after g4_ | coordinator
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace ... | coordinator (D: WH3 data run; E)
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not ... | coordinator, next CPU round
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN ... | ATN
@@ -62,8 +63,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN 02:3x (for later): per-game GitHub download links instead of the shared ... | release round
 - WARP ramp of the UE SDR encodes; Ryse's redundant renodx_trace_now poll; the ... | UE4 / Ryse merge rounds
 - ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH (do them all, several ... | coordinator
-- ATN 03:4x: go through HANDOFF: leftovers vs open, tick / trace / archive. ... | coordinator
-- ATN 03:3x: no time caps on rounds; night sound fine; no page-file change ... | coordinator
 - Decompile Ryse's 6,421 (cmd_Decompiler) and map the new families (tonemap / ... | RYSE MERGE (rym_)
 - Finish the UE inner-zlib carve over every plain entry (both games; hours in ... | UE SHADER CARVE uec_
 - Data runs (ATN allowed, scripted, fresh save backups): Tales G1 + G2 one ... | coordinator
@@ -674,10 +673,22 @@ heading text are in HANDOFF_ARCHIVE.md)
     d3d12_device / rt_shadows / rr_d3d12 go). Owner: UE4 MERGE agent (after s2m_))
     (merged from "Full Attila package for all three (memory project_nontw_full...": Full Attila package for all three
     (memory project_nontw_full_package.md); stamps + watermarks for every game. Owner: per-game rounds after the merges)
-  - [ ] ATN 03:4x: go through HANDOFF: leftovers vs open, tick / trace / archive. HANDOFF AUDIT hfa_ (read-only,
+  - [ ] (04:2x) HANDOFF audit done (hfa_, tools/tw/round_notes/handoff_audit_1115.tsv: 66 DONE, 13 OBSOLETE, 61 OPEN, 14 ATN);
+    hfx_ applying it + HANDOFF_ARCHIVE.md. BENCH PREP bpr_ started (copy-out fix for tw_rt_profile*.csv /
+    attila_pass_timing.txt / grass dumps, end_of_batch_1115.md plan, dry runs). Owner: coordinator merges both
+  - [x] BENCH PREP DONE (bpr_): constantinople_bench.ps1 copies every per-start output out (tw_rt_profile*.csv were LOST
+    before: ATN's old copies were restored over them; attila_pass_timing.txt / grass dumps never backed up) + OUTPUT MISSING
+    lines; test 15 / 15 in a fake folder; every variant dry-run exits 0; plan tools/tw/bench/end_of_batch_1115.md: 94 starts
+    ~6 h (shorter 57 / 3.6 h, shortest 35 / 2.2 h). Coordinator: full plan (no time cap per ATN); cpu5 + grass_dump use
+    ATN's installed helper; the older gpu_units_range / gpu_probe sets skipped (g3b2 answers gpu_reuse; units_range /
+    probe lines stay open for a later bench); 128-light night / Rarer Objects need other scenes (open)
+  - [ ] END BENCH: after g4_ merges and while no agent builds (the merge agents wait on the quiet lock); Fable review in
+    parallel (read-only). Owner: coordinator
+  - [x] ATN 03:4x: go through HANDOFF: leftovers vs open, tick / trace / archive. DONE 05:0x (merge of hfx_: 7115 ->
+    1035 lines, 82 open, verify OK, HANDOFF_ARCHIVE.md). Was: HANDOFF AUDIT hfa_ (read-only,
     tools/tw/round_notes/handoff_audit_1115.tsv), then the coordinator applies it (archive file for history). Owner:
     hfa_, then coordinator Owner (audit 11-15): coordinator (hfa_ DONE: the TSV; applied by the hfx_ round with HANDOFF_ARCHIVE.md).
-  - [ ] ATN 03:3x: no time caps on rounds; night sound fine; no page-file change (system setting, ATN's). GPU ROUND 4 g4_
+  - [x] ATN 03:3x: no time caps on rounds; night sound fine; no page-file change (system setting, ATN's). GPU ROUND 4 g4_
     (no cap) + UE SHADER CARVE uec_ (both games' plain pak data, parallel, stops on the quiet lock) running Owner (audit 11-15): coordinator: tick when g4_ and uec_ report (their work has own lines).
   - [x] merged into "ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH" (was: "Full Attila package for all three (memory project_nontw_full...")
   - [x] SHADER-PACK ROUND DONE (shp_, tools/nontw/shader_packs/report.md; read-only, nothing decrypted): RYSE COMPLETE
