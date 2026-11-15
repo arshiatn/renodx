@@ -18,7 +18,7 @@
 #include <embed/shaders.h>
 
 #include "../../utils/directx.hpp"
-#include "../rysesonofrome_dlss/constant_mirror.hpp"
+#include "./constant_mirror.hpp"
 #include "../talesofarise_dlss/matrix.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
 #include "../twattila/rt_core.hpp"
@@ -28,7 +28,7 @@
 // targets and the depth, depth written, unblended; too many vertex shader permutations to list; alpha-tested ones with
 // their UV) streamed out through its own vertex shader (those with bone inputs every frame); the camera they were drawn with is VS PER_FRAME (b2, a
 // range of a bigger buffer: rows c0-c3 the jittered view-projection, c6 the camera), read from the game's uploads
-// (rysesonofrome_dlss/constant_mirror.hpp). Before the tiled lighting (cs 0x897232B5: t0 linear depth, b0 its
+// (constant_mirror.hpp). Before the tiled lighting (cs 0x897232B5: t0 linear depth, b0 its
 // PER_BATCH: the far plane's corners from the camera, the camera, the sun) each pixel's world position and the sun go
 // to the helper (0x52C5E004), with the G-buffer guides when the reflections or paths want them (0x52C5E005), and the
 // frame is traced. The sun's visibility then goes into the sun's shadow mask with the contact shadows, the ambient

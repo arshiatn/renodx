@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#define ImTextureID ImU64
+#pragma once
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -60,7 +60,11 @@
 
 static_assert(_ITERATOR_DEBUG_LEVEL == 0, "DLSS must match the shared STL layout of Release RenoDX addons");
 
-namespace {
+// The anti-aliasing (DLAA / DLSS in place of the game's TAA), frame generation and the game's settings above its High,
+// once the separate DLSS add-on (rysesonofrome_dlss): addon.cpp calls Install after its own attach and Uninstall
+// before its detach, so every event and command_action callback here runs after the HDR part's, as when the two
+// add-ons loaded by name. Its settings stay in ReShade.ini's [Ryse AA] and [Ryse Game Settings].
+namespace rysesonofrome::graphics {
 
 using Microsoft::WRL::ComPtr;
 namespace command_action = renodx::utils::command_action;
@@ -1055,7 +1059,6 @@ std::array<RendererPin, 2> renderer_pins = {{
     {.name = "r_DeferredShadingFilterGBuffer", .value = 0, .keep_game = &gbuffer_filter},
 }};  // Present thread
 bool attached = false;
-bool registered = false;
 
 // The game's projection jitter (r_PostAAMode): latest value in pixels, pattern length (frames until the
 // first offset repeats; NVIDIA wants at least 8 * (output / input)^2), first frames logged.
@@ -3792,17 +3795,10 @@ void OnOverlay(reshade::api::effect_runtime*) {
   }
 }
 
-}  // namespace
-
-extern "C" __declspec(dllexport) const char* NAME = "RenoDX Ryse: Son of Rome DLAA / DLSS";
-extern "C" __declspec(dllexport) const char* DESCRIPTION = "DLAA / DLSS in place of the game's TAA, and graphics settings above its High. Independent of HDR, with stock TAA fallback.";
-
-extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
-  if (!registered) {
-    if (!reshade::register_addon(module)) return false;
-    registered = true;
-  }
-  if (attached) return true;
+// After the HDR part's attach (mods::shader::Use has attached state and command_action, draw_dispatch::Use the fast
+// dispatch, device_loss::InstallLast its last handlers): `module` is the add-on's, for frame generation's folder.
+inline void Install(HMODULE module) {
+  if (attached) return;
   // Settings apply at launch, without opening the overlay.
   if (int saved_mode = 0; reshade::get_config_value(nullptr, "Ryse AA", "Mode", saved_mode)
                           && saved_mode >= 0 && static_cast<size_t>(saved_mode) < AA_MODES.size()) {
@@ -3872,77 +3868,54 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   command_action::Register(OnLightingDispatch, {.shader_hash = TILED_LIGHTING_SHADER, .command_types = command_action::COMMAND_TYPE_DISPATCH});
   rysesonofrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
   rysesonofrome::dlss::constants::SetUploadCallback(OnCameraUpload);
-  renodx::utils::state::Use(DLL_PROCESS_ATTACH);
-  command_action::Use(DLL_PROCESS_ATTACH);
-  // The fast draw dispatch alone: every callback here has a shader hash, and this add-on registers no resource upgrades
-  // (twattila::draw_dispatch gates theirs in the HDR add-on).
-  command_action::fast::Use(DLL_PROCESS_ATTACH);
   attached = true;
-  return true;
 }
 
-extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
-  if (attached) {
-    command_action::Unregister(OnTaaDraw);
-    command_action::Unregister(OnSmaaDraw);
-    command_action::Unregister(OnPostDraw);
-    command_action::Unregister(OnUpscaleDraw);
-    command_action::Unregister(OnReflectionDraw);
-    command_action::Unregister(OnLightingDispatch);
-    command_action::fast::Use(DLL_PROCESS_DETACH);
-    command_action::Use(DLL_PROCESS_DETACH);
-    renodx::utils::state::Use(DLL_PROCESS_DETACH);
-    rysesonofrome::dlss::constants::Use(DLL_PROCESS_DETACH);
-    reshade::unregister_overlay("Ryse DLSS", OnOverlay);
-    reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
-    reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
-    reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
-    reshade::unregister_event<reshade::addon_event::present>(OnPresent);
-    rysesonofrome::pixel_trace::Stop();
-    talesofarise::frame_trace::Stop();
-    reshade::unregister_event<reshade::addon_event::draw>(OnDraw);
-    reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
-    reshade::unregister_event<reshade::addon_event::copy_resource>(OnTraceCopy);
-    reshade::unregister_event<reshade::addon_event::copy_texture_region>(OnTraceCopyRegion);
-    reshade::unregister_event<reshade::addon_event::init_sampler>(OnInitSampler);
-    reshade::unregister_event<reshade::addon_event::destroy_sampler>(OnDestroySampler);
-    reshade::unregister_event<reshade::addon_event::push_descriptors>(OnPushDescriptors);
-    for (auto& pin : renderer_pins) {
-      if (!pin.set) continue;
-      std::atomic_ref<int>(*pin.address).store(pin.game_value, std::memory_order_relaxed);
-      pin.set = false;
-    }
-    if (jitter_control.controlling) {
-      std::atomic_ref<int>(*jitter_control.value).store(jitter_control.game_value, std::memory_order_relaxed);
-      jitter_control.controlling = false;
-    }
-    if (uint8_t* cvars = (screen_res_pin.cvars != nullptr ? *screen_res_pin.cvars : nullptr); cvars != nullptr && screen_res_pin.set) {
-      std::atomic_ref<int>(*reinterpret_cast<int*>(cvars + SCREEN_RES_CVAR)).store(screen_res_pin.game_value, std::memory_order_relaxed);
-      screen_res_pin.set = false;
-    }
-    rysesonofrome::engine_memory::ApplyCodePatch(&jitter_control.jitter_setup, false);
-    rysesonofrome::engine_memory::ApplyCodePatch(&jitter_control.pause_flag_check, false);
-    rysesonofrome::engine_memory::ApplyCodePatch(&character_animation.lod_lists, false);
-    rysesonofrome::particle_counts::Uninstall();
-    rysesonofrome::attack_patterns::Uninstall();
-    Reset();
-    ReleaseGameDrawShaders();
-    attached = false;
+// Before the HDR part's detach (command_action still attached for the Unregister calls).
+inline void Uninstall() {
+  if (!attached) return;
+  command_action::Unregister(OnTaaDraw);
+  command_action::Unregister(OnSmaaDraw);
+  command_action::Unregister(OnPostDraw);
+  command_action::Unregister(OnUpscaleDraw);
+  command_action::Unregister(OnReflectionDraw);
+  command_action::Unregister(OnLightingDispatch);
+  rysesonofrome::dlss::constants::Use(DLL_PROCESS_DETACH);
+  reshade::unregister_overlay("Ryse DLSS", OnOverlay);
+  reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
+  reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  rysesonofrome::pixel_trace::Stop();
+  talesofarise::frame_trace::Stop();
+  reshade::unregister_event<reshade::addon_event::draw>(OnDraw);
+  reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
+  reshade::unregister_event<reshade::addon_event::copy_resource>(OnTraceCopy);
+  reshade::unregister_event<reshade::addon_event::copy_texture_region>(OnTraceCopyRegion);
+  reshade::unregister_event<reshade::addon_event::init_sampler>(OnInitSampler);
+  reshade::unregister_event<reshade::addon_event::destroy_sampler>(OnDestroySampler);
+  reshade::unregister_event<reshade::addon_event::push_descriptors>(OnPushDescriptors);
+  for (auto& pin : renderer_pins) {
+    if (!pin.set) continue;
+    std::atomic_ref<int>(*pin.address).store(pin.game_value, std::memory_order_relaxed);
+    pin.set = false;
   }
-  if (registered) {
-    reshade::unregister_addon(module);
-    registered = false;
+  if (jitter_control.controlling) {
+    std::atomic_ref<int>(*jitter_control.value).store(jitter_control.game_value, std::memory_order_relaxed);
+    jitter_control.controlling = false;
   }
+  if (uint8_t* cvars = (screen_res_pin.cvars != nullptr ? *screen_res_pin.cvars : nullptr); cvars != nullptr && screen_res_pin.set) {
+    std::atomic_ref<int>(*reinterpret_cast<int*>(cvars + SCREEN_RES_CVAR)).store(screen_res_pin.game_value, std::memory_order_relaxed);
+    screen_res_pin.set = false;
+  }
+  rysesonofrome::engine_memory::ApplyCodePatch(&jitter_control.jitter_setup, false);
+  rysesonofrome::engine_memory::ApplyCodePatch(&jitter_control.pause_flag_check, false);
+  rysesonofrome::engine_memory::ApplyCodePatch(&character_animation.lod_lists, false);
+  rysesonofrome::particle_counts::Uninstall();
+  rysesonofrome::attack_patterns::Uninstall();
+  Reset();
+  ReleaseGameDrawShaders();
+  attached = false;
 }
 
-BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved) {
-  if (reason == DLL_PROCESS_ATTACH) {
-    registered = reshade::register_addon(module);
-    return registered ? TRUE : FALSE;
-  }
-  if (reason == DLL_PROCESS_DETACH && reserved == nullptr && registered) {
-    reshade::unregister_addon(module);
-    registered = false;
-  }
-  return TRUE;
-}
+}  // namespace rysesonofrome::graphics

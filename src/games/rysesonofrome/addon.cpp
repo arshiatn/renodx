@@ -39,6 +39,7 @@
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "./contact_shadows.hpp"
+#include "./graphics.hpp"
 #include "./light_bounce.hpp"
 #include "./ray_tracing.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -1747,10 +1748,14 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
     addon_registered = true;
   }
 
-  return AttachAddon();
+  if (!AttachAddon()) return false;
+  // The anti-aliasing, frame generation and game settings (once the DLSS add-on) after the HDR part, as by name.
+  rysesonofrome::graphics::Install(addon_module);
+  return true;
 }
 
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE) {
+  rysesonofrome::graphics::Uninstall();
   DetachAddon();
   twattila::dlaa_bridge::Shutdown();
   if (addon_registered) {
