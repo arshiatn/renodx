@@ -28,6 +28,7 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../../utils/vtable.hpp"
@@ -807,23 +808,51 @@ void ConfigureAddon() {
 
   twattila::psycho35::InsertBefore(&settings, "Extra", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 
-  // Appended Settings (About)
-  settings.push_back(new renodx::utils::settings::Setting{
+  // The game's own setting the mod needs, first on General.
+  settings.insert(settings.begin() + 1, new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
       .label = "Turn on the in-game HDR setting.",
-      .section = "About",
+      .section = "General",
   });
-  settings.push_back(new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::TEXT,
-      .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
-               "and PsychoV35.",
-      .section = "About",
-  });
-  settings.push_back(new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::TEXT,
-      .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
-      .section = "About",
-      .is_visible = IsAdvancedSettings,
+
+  // Appended Settings (About)
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
+                   "and PsychoV35.",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
+          .section = "About",
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "ATN's Ko-fi",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0xFF5A16,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://ko-fi.com/atnthegreat"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "NexusMods",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x2196F3,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://www.nexusmods.com/ruse/mods/6"); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "GitHub (Downloads)",
+          .section = "About",
+          .group = "line_1",
+          .tint = 0x6E7681,
+          .on_change = []() { renodx::utils::platform::LaunchURL("https://github.com/arshiatn/renodx/releases"); },
+      },
   });
 
   configured = true;
