@@ -42,6 +42,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -112,7 +113,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Divinity 2 SHARED STEP: output_encoding needs a game-owned-output flag (Apply mu ... | coordinator (shared-steps round after the fix merge)
 - Divinity 2: the orthographic EoCSight_HDR 0x5C4137E2 (50-nit constants vs 300) n ... | d2_ after R1b
 - Divinity 2 later: D2-8b scene R11G11B10F -> RGBA16F (view cloning, Experimental ... | d2_ after R1b
-- Divinity 2 R1b (trace build): both cb0s (HDR / SDR LUT), PerView b12, per-mode s ... | coordinator (next game window)
+- Divinity 2 R1b leftovers: the gamma slider at 1.2 (needs ATN's clicks); no menu ... | next Divinity 2 run
+- Divinity 2 after R1b: D2-8 cb0s -> Hue Clip reference / mid grey (level A), part ... | d2b_ (started 00:2x)
 - ATN at the end (Divinity 2): mid grey row's default; old presets / V30 keep or d ... | ATN
 - R.U.S.E. whole package in ONE implementation round, plan.md 10b order, all Exper ... | ru_ (implementation round)
 - R.U.S.E. T-run (one agent data run, ATN's OK): W1 resource log (pools, formats, ... | coordinator (next game window)
@@ -132,7 +134,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse: skip the game's shadow maps under RT Shadows Only (ATN 00:0x rejected npr_ ... | rys_ (started 00:1x)
 - Ryse: path-traced GI / AO (ATN 00:1x: "PT GI/AO is probably doable. You need to ... | rys_ (after the shadow-map item)
-- Divinity 2 profile oddity (ATN 00:1x): R1 could load 6Party not ATN THE GREAT; R ... | d2 R1b agent (running 00:0x, gpu_job
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
 - npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe. Own ... | npu_
 - gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: g ... | gr_
@@ -1101,8 +1102,17 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] Divinity 2 later: D2-8b scene R11G11B10F -> RGBA16F (view cloning, Experimental off); D2-9 helper DLAA / FG /
         Reflex on the linear scene before PPApplyLUT; D2-11 RT host (RT sun into the R8 mask, shadow pass skipped under
         RT). Owner: d2_ after R1b
-      - [ ] Divinity 2 R1b (trace build): both cb0s (HDR / SDR LUT), PerView b12, per-mode shots, valid frame times, the
-        inventory / character sheet with ATN's key. Owner: coordinator (next game window)
+      - [x] DONE 00:13 (R1b agent, ATN loaded the Arx save, stamp "d2 v1 addon" via tw_install divinity2=1 --first;
+        tools/nontw/divinity2/r1b/run_r1b_235909): HDR LUT cb0 (c31 = 3, 1e-4, 1000; c32 1516.49); SDR LUT cb0 from the
+        inventory = ACES 0.02 / 48 nits, output device 0; PerView b12 (vfov 45, city near 1 / far 100, menu far 270);
+        per-mode shots Off / Vanilla / V30 / V35 / Tweaked (c1_grid.jpg; ATN's HDR Analysis overlay visible); PresentMon
+        30 s focused 247 fps, 4.05 ms, p99 4.62, GPU 3.74, CPU 1.88, Independent Flip. ATN's 10 files restored + hashed.
+        Divinity 2 R1b (trace build): both cb0s (HDR / SDR LUT), PerView b12, per-mode shots, valid frame times, the
+        inventory / character sheet with ATN's key.
+      - [ ] Divinity 2 R1b leftovers: the gamma slider at 1.2 (needs ATN's clicks); no menu videos exist (the menu is a
+        live 3D scene). Owner: next Divinity 2 run
+      - [ ] Divinity 2 after R1b: D2-8 cb0s -> Hue Clip reference / mid grey (level A), part 6 on the traced cb0;
+        orthographic EoCSight_HDR 0x5C4137E2; D2-8b later. Owner: d2b_ (started 00:2x)
       - [x] ATN ANSWERED 18:5x (Divinity 2): mid grey BOTH as a row (ATN decides later); "i" is the inventory key; keep the
         old presets + V30; per-channel shoulder ON by default; Nexus divinityoriginalsin2definitiveedition/mods/547; Script
         Extender installs as DXGI.dll in DefEd\bin (ReShade can't be dxgi.dll there: d2_ writes the rule). Sent to d2_.
@@ -1255,7 +1265,10 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] Ryse: path-traced GI / AO (ATN 00:1x: "PT GI/AO is probably doable. You need to double check"; npr_ wrote WON'T
         GET for PathAmbient / SkyApart / KeptCube: the tiled lighting cs keeps the game's ambient): find where ambient /
         indirect enters, Experimental rows if possible. Owner: rys_ (after the shadow-map item)
-      - [ ] Divinity 2 profile oddity (ATN 00:1x): R1 could load 6Party not ATN THE GREAT; R1b the reverse,
+      - [x] CHECKED 00:13 (read-only): our scripts never write profiles (lsx_set.py = graphicSettings.lsx only); the GAME
+        created Debug_Client_Profile_2 at 00:03:42 when 6Party failed and rewrote 6Party's profile.lsb / modsettings.lsx /
+        InventorySettings.lsb (not in the backup set, left as they are); restored playerprofiles.lsb has 6Party active
+        again, so the next start may fail the same way. Debug profile kept. Divinity 2 profile oddity (ATN 00:1x): R1 could load 6Party not ATN THE GREAT; R1b the reverse,
         "Debug_Client_Profile_2" blocks; did our scripts (lsx_set.py, settings restores) touch playerprofiles? Restore from
         the fresh backup, never delete profiles. Owner: d2 R1b agent (running 00:0x, gpu_job.lock)
       - [ ] Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/families.txt); in-game check of every
