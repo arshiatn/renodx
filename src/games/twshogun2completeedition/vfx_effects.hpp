@@ -166,7 +166,7 @@ inline void SetKind(uint32_t id, Kind kind) {
   }
 }
 
-inline void OnMapBufferRegion(reshade::api::device*, reshade::api::resource resource, uint64_t offset, uint64_t,
+inline void OnMapBufferRegion(reshade::api::device* device, reshade::api::resource resource, uint64_t offset, uint64_t,
                               reshade::api::map_access access, void** data) {
   if (!internal::tracking.load(std::memory_order_relaxed) || data == nullptr || *data == nullptr || offset != 0
       || access == reshade::api::map_access::read_only) {
@@ -176,6 +176,9 @@ inline void OnMapBufferRegion(reshade::api::device*, reshade::api::resource reso
     const std::shared_lock lock(internal::state.mutex);
     if (!internal::state.buffer_effects.contains(resource.handle)) return;
   }
+  // A known handle may be a smaller buffer by now (one destroyed, another made at its address): Identify reads
+  // CONSTANTS_SIZE bytes of the mapping.
+  if (device->get_resource_desc(resource).buffer.size < internal::CONSTANTS_SIZE) return;
   const std::unique_lock lock(internal::state.mutex);
   internal::state.mapped[resource.handle] = static_cast<const uint8_t*>(*data);
   internal::any_mapped.store(true, std::memory_order_relaxed);
