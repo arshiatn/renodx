@@ -1179,6 +1179,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedGrassShadowRange", .section = section, .shown = more_rays, .label = "Grass Shadow Range"});
     page.Take({.match = "RayTracedGrassRange", .section = section, .shown = more_rays});
     page.Take({.match = "RayTracedUnitsRange", .section = section, .shown = more_rays});
+    page.Take({.match = "RayTracedBatchedUnits", .section = section, .shown = more_rays});
     page.Add(EmptyLine(section));
   }
 

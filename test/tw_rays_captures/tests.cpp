@@ -29,6 +29,16 @@
 //   G2 the game's chain at factor 1 streams out the capture's triangles, patch for patch, each corner within 1e-6 (the domain
 //      shader's 0.2 / 0.8 Phong blend at a corner);
 //   G3 CONTROL: at factor 4 with the corners' normals apart the chain's triangles leave the capture's plane.
+// B. Batched Unit Capture (twattila/rt_core.hpp: Capture's batched draws, FlushBatch), Attila's main units 5F9CD405 (shader model 3)
+//   and A691CFF4 (4.1) with their capture versions rt_capture_unit_sm3 / sm41 (build32's twattila.include\embed): 3 draws as the game
+//   draws them (VB0 stride 28: POSITION0 R16G16B16A16_FLOAT, POSITION1-5 R8G8B8A8_UNORM but POSITION3 R16G16_FLOAT; VB1 stride 120 an
+//   instance: TEXCOORD0-6 R32G32B32A32_FLOAT, TEXCOORD7 R32G32_FLOAT; the input layout made for the game's shader), each through its
+//   mesh's remap indices as points, its own base vertex and first instance, two animation textures 512 wide, the second draw's place
+//   in `captured` 100 texels past the first's end, the third's right after the second's:
+//   B1 the batched corners (rt_batch_unit_mesh + rt_batch_unit_rows streamed at the draws, rt_batch_unit_sm3 / sm41 over them in
+//      FlushBatch's runs, copied into `captured`) are the per-draw stream output's bit for bit, w 1;
+//   B2 the second draw marked stale, and the third drawn with a width of 256 at b2: their corners NaN, the first's still bit for bit;
+//   B3 CONTROL: the first draw's animation texture written again after the draws, before the flush: its corners differ.
 // tests.exe <dump root: the folder holding dump_shader_<game>_pack\cso> <build root: the folder holding <game>.include\embed>
 //           <build32 root: the same for the 32-bit games>
 #include <windows.h>
@@ -36,6 +46,7 @@
 #include <d3d11.h>
 #include <d3d11shader.h>
 #include <d3dcompiler.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <array>
@@ -501,6 +512,323 @@ static bool CheckTerrain(const std::string& dump_root, const std::string& build3
   return passed;
 }
 
+// B (see the top) for one unit family.
+struct BatchedFamily {
+  const char* name;
+  const char* game_vs;  // the dump's (its input layout)
+  const char* capture;  // the add-on's built shaders
+  const char* compute;
+};
+
+static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& dump_root, const std::string& build32_root) {
+  using Microsoft::WRL::ComPtr;
+  const auto game_vs = Load(dump_root + "\\dump_shader_twattila_pack\\cso\\" + family.game_vs + ".cso");
+  const std::string built = build32_root + "\\twattila.include\\embed\\";
+  const auto capture = Load(built + family.capture + ".cso");
+  const auto mesh = Load(built + "rt_batch_unit_mesh.cso");
+  const auto rows = Load(built + "rt_batch_unit_rows.cso");
+  const auto compute = Load(built + family.compute + ".cso");
+  std::printf("B %s: vs %s; %s, rt_batch_unit_mesh, rt_batch_unit_rows, %s\n", family.name, family.game_vs, family.capture, family.compute);
+  if (game_vs.empty() || capture.empty() || mesh.empty() || rows.empty() || compute.empty()) {
+    std::printf("  MISSING a shader's bytes\n");
+    return false;
+  }
+  const std::array<D3D11_INPUT_ELEMENT_DESC, 14> layout = {{
+      {"POSITION", 0, DXGI_FORMAT_R16G16B16A16_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"POSITION", 1, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"POSITION", 2, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"POSITION", 3, DXGI_FORMAT_R16G16_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"POSITION", 4, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"POSITION", 5, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
+      {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+      {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+      {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+      {"TEXCOORD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 48, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+      {"TEXCOORD", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 64, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+      {"TEXCOORD", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 80, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+      {"TEXCOORD", 6, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 96, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+      {"TEXCOORD", 7, DXGI_FORMAT_R32G32_FLOAT, 1, 112, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+  }};
+  ComPtr<ID3D11InputLayout> input_layout;
+  if (FAILED(device->CreateInputLayout(layout.data(), UINT(layout.size()), game_vs.data(), game_vs.size(), input_layout.GetAddressOf()))) {
+    std::printf("  no input layout for the game's shader\n");
+    return false;
+  }
+  // The draws: vertices, instances, base vertex, first instance, place in `captured`, animation texture.
+  struct DrawSpec {
+    UINT vertices;
+    UINT instances;
+    UINT base_vertex;
+    UINT first_instance;
+    UINT captured_first;
+    UINT texture;
+  };
+  constexpr std::array<DrawSpec, 3> DRAWS = {{{150, 33, 0, 0, 0, 0},
+                                              {97, 1, 200, 40, (150 * 33) + 100, 0},
+                                              {211, 70, 400, 50, (150 * 33) + 100 + 97, 1}}};
+  constexpr UINT TEXELS = (150 * 33) + 100 + 97 + (211 * 70);
+  constexpr UINT VERTICES = 700;
+  constexpr UINT INSTANCES = 128;
+  constexpr UINT ANIMATION_WIDTH = 512;
+  constexpr UINT ANIMATION_HEIGHT = 32;
+  std::vector<uint8_t> vertex_data(size_t{VERTICES} * 28);
+  for (UINT v = 0; v < VERTICES; ++v) {
+    uint8_t* vertex = &vertex_data[size_t{v} * 28];
+    const std::array<uint16_t, 4> position = {uint16_t(HalfBits(Range(-1.f, 1.f))), uint16_t(HalfBits(Range(-0.2f, 1.9f))),
+                                              uint16_t(HalfBits(Range(-1.f, 1.f))), uint16_t(HalfBits(1.f))};
+    std::memcpy(vertex, position.data(), 8);
+    for (size_t byte = 8; byte < 28; ++byte) vertex[byte] = uint8_t(rng() & 0xFFu);
+    const std::array<uint16_t, 2> uv = {uint16_t(HalfBits(Range(0.f, 1.f))), uint16_t(HalfBits(Range(0.f, 1.f)))};
+    std::memcpy(vertex + 16, uv.data(), 4);
+  }
+  std::vector<float> instance_data(size_t{INSTANCES} * 30);
+  for (UINT i = 0; i < INSTANCES; ++i) {
+    float* instance = &instance_data[size_t{i} * 30];
+    for (int value = 0; value < 30; ++value) instance[value] = Range(-2.f, 2.f);
+    for (int row = 0; row < 3; ++row) instance[(row * 4) + 3] = Range(-500.f, 500.f);
+    // TEXCOORD3.x: the instance's first bone texel (bones 0-255 a vertex, 3 texels each: within the texture).
+    instance[12] = float((rng() % 2400u) * 3u);
+  }
+  const auto make_buffer = [](const void* data, UINT bytes, UINT bind, UINT misc, ComPtr<ID3D11Buffer>* made) {
+    const D3D11_BUFFER_DESC desc = {bytes, D3D11_USAGE_DEFAULT, bind, 0, misc, 0};
+    const D3D11_SUBRESOURCE_DATA init = {data, 0, 0};
+    return SUCCEEDED(device->CreateBuffer(&desc, (data != nullptr ? &init : nullptr), made->GetAddressOf()));
+  };
+  const auto make_animation = [](ComPtr<ID3D11Texture2D>* texture, ComPtr<ID3D11ShaderResourceView>* view) {
+    std::vector<float> texels(size_t{ANIMATION_WIDTH} * ANIMATION_HEIGHT * 4);
+    for (float& texel : texels) texel = Range(-1.f, 1.f);
+    const D3D11_TEXTURE2D_DESC desc = {ANIMATION_WIDTH, ANIMATION_HEIGHT, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT,
+                                       D3D11_BIND_SHADER_RESOURCE, 0, 0};
+    const D3D11_SUBRESOURCE_DATA init = {texels.data(), ANIMATION_WIDTH * 16, 0};
+    return SUCCEEDED(device->CreateTexture2D(&desc, &init, texture->GetAddressOf()))
+           && SUCCEEDED(device->CreateShaderResourceView(texture->Get(), nullptr, view->GetAddressOf()));
+  };
+  ComPtr<ID3D11Buffer> vertex_buffer, instance_buffer, camera, config, animation_size, narrow_size;
+  std::array<ComPtr<ID3D11Texture2D>, 2> animation_textures;
+  std::array<ComPtr<ID3D11ShaderResourceView>, 2> animation_maps;
+  std::array<ComPtr<ID3D11Buffer>, 3> remaps;
+  const std::array<float, 36 * 4> camera_values = {};
+  const std::array<float, 5 * 4> config_values = {};
+  const std::array<float, 4> size_values = {float(ANIMATION_HEIGHT), 0.f, float(ANIMATION_WIDTH), 0.f};
+  const std::array<float, 4> narrow_values = {float(ANIMATION_HEIGHT), 0.f, float(ANIMATION_WIDTH / 2), 0.f};
+  bool made = make_buffer(vertex_data.data(), UINT(vertex_data.size()), D3D11_BIND_VERTEX_BUFFER, 0, &vertex_buffer)
+              && make_buffer(instance_data.data(), UINT(instance_data.size() * 4), D3D11_BIND_VERTEX_BUFFER, 0, &instance_buffer)
+              && make_buffer(camera_values.data(), sizeof(camera_values), D3D11_BIND_CONSTANT_BUFFER, 0, &camera)
+              && make_buffer(config_values.data(), sizeof(config_values), D3D11_BIND_CONSTANT_BUFFER, 0, &config)
+              && make_buffer(size_values.data(), sizeof(size_values), D3D11_BIND_CONSTANT_BUFFER, 0, &animation_size)
+              && make_buffer(narrow_values.data(), sizeof(narrow_values), D3D11_BIND_CONSTANT_BUFFER, 0, &narrow_size)
+              && make_animation(&animation_textures[0], &animation_maps[0]) && make_animation(&animation_textures[1], &animation_maps[1]);
+  for (size_t d = 0; d < DRAWS.size(); ++d) {
+    std::vector<uint32_t> remap(250);
+    for (uint32_t index = 0; index < remap.size(); ++index) remap[index] = index;
+    std::shuffle(remap.begin(), remap.end(), rng);
+    made = made && make_buffer(remap.data(), DRAWS[d].vertices * 4, D3D11_BIND_INDEX_BUFFER, 0, &remaps[d]);
+  }
+  ComPtr<ID3D11VertexShader> capture_vs, mesh_vs, rows_vs;
+  ComPtr<ID3D11GeometryShader> capture_gs, mesh_gs, rows_gs;
+  ComPtr<ID3D11ComputeShader> batch_cs;
+  const D3D11_SO_DECLARATION_ENTRY world_entry = {0, "TEXCOORD", 0, 0, 4, 0};
+  const std::array<D3D11_SO_DECLARATION_ENTRY, 2> mesh_entries = {{{0, "TEXCOORD", 0, 0, 4, 0}, {0, "TEXCOORD", 1, 0, 4, 0}}};
+  const std::array<D3D11_SO_DECLARATION_ENTRY, 4> rows_entries = {
+      {{0, "TEXCOORD", 0, 0, 4, 0}, {0, "TEXCOORD", 1, 0, 4, 0}, {0, "TEXCOORD", 2, 0, 4, 0}, {0, "TEXCOORD", 3, 0, 4, 0}}};
+  constexpr UINT WORLD_STRIDE = 16;
+  constexpr UINT MESH_STRIDE = 32;
+  constexpr UINT ROWS_STRIDE = 64;
+  made = made && SUCCEEDED(device->CreateVertexShader(capture.data(), capture.size(), nullptr, capture_vs.GetAddressOf()))
+         && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(capture.data(), capture.size(), &world_entry, 1, &WORLD_STRIDE, 1,
+                                                                   D3D11_SO_NO_RASTERIZED_STREAM, nullptr, capture_gs.GetAddressOf()))
+         && SUCCEEDED(device->CreateVertexShader(mesh.data(), mesh.size(), nullptr, mesh_vs.GetAddressOf()))
+         && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(mesh.data(), mesh.size(), mesh_entries.data(), 2, &MESH_STRIDE, 1,
+                                                                   D3D11_SO_NO_RASTERIZED_STREAM, nullptr, mesh_gs.GetAddressOf()))
+         && SUCCEEDED(device->CreateVertexShader(rows.data(), rows.size(), nullptr, rows_vs.GetAddressOf()))
+         && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(rows.data(), rows.size(), rows_entries.data(), 4, &ROWS_STRIDE, 1,
+                                                                   D3D11_SO_NO_RASTERIZED_STREAM, nullptr, rows_gs.GetAddressOf()))
+         && SUCCEEDED(device->CreateComputeShader(compute.data(), compute.size(), nullptr, batch_cs.GetAddressOf()));
+  if (!made) {
+    std::printf("  could not make the draws' objects\n");
+    return false;
+  }
+  const auto read_back = [](ID3D11Buffer* buffer, UINT bytes) {
+    std::vector<uint32_t> values(bytes / 4);
+    const D3D11_BUFFER_DESC desc = {bytes, D3D11_USAGE_STAGING, 0, D3D11_CPU_ACCESS_READ, 0, 0};
+    ComPtr<ID3D11Buffer> staging;
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    const D3D11_BOX whole = {0, 0, 0, bytes, 1, 1};
+    if (SUCCEEDED(device->CreateBuffer(&desc, nullptr, staging.GetAddressOf()))) {
+      context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, buffer, 0, &whole);
+      if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        std::memcpy(values.data(), mapped.pData, bytes);
+        context->Unmap(staging.Get(), 0);
+      }
+    }
+    return values;
+  };
+  // The game's state at a unit draw, then the add-on's draw through the remap indices (rt_core.hpp Capture).
+  const auto game_state = [&](size_t d, ID3D11Buffer* size) {
+    const std::array<ID3D11Buffer*, 2> buffers = {vertex_buffer.Get(), instance_buffer.Get()};
+    constexpr std::array<UINT, 2> STRIDES = {28, 120};
+    constexpr std::array<UINT, 2> OFFSETS = {0, 0};
+    context->IASetVertexBuffers(0, 2, buffers.data(), STRIDES.data(), OFFSETS.data());
+    context->IASetInputLayout(input_layout.Get());
+    context->IASetIndexBuffer(remaps[d].Get(), DXGI_FORMAT_R32_UINT, 0);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+    const std::array<ID3D11Buffer*, 3> constants = {camera.Get(), config.Get(), size};
+    context->VSSetConstantBuffers(0, 3, constants.data());
+    context->VSSetShaderResources(0, 1, animation_maps[DRAWS[d].texture].GetAddressOf());
+    context->PSSetShader(nullptr, nullptr, 0);
+  };
+  ComPtr<ID3D11Buffer> streamed;
+  made = make_buffer(nullptr, TEXELS * 16, D3D11_BIND_STREAM_OUTPUT, 0, &streamed);
+  for (size_t d = 0; made && d < DRAWS.size(); ++d) {
+    game_state(d, animation_size.Get());
+    const UINT offset = DRAWS[d].captured_first * 16;
+    context->VSSetShader(capture_vs.Get(), nullptr, 0);
+    context->GSSetShader(capture_gs.Get(), nullptr, 0);
+    context->SOSetTargets(1, streamed.GetAddressOf(), &offset);
+    context->DrawIndexedInstanced(DRAWS[d].vertices, DRAWS[d].instances, 0, int(DRAWS[d].base_vertex), DRAWS[d].first_instance);
+  }
+  context->SOSetTargets(0, nullptr, nullptr);
+  const std::vector<uint32_t> per_draw = read_back(streamed.Get(), TEXELS * 16);
+  // The batched path: the meshes and rows streamed at the draws, then FlushBatch's table, runs (by animation texture and width),
+  // dispatches and copies.
+  const auto batched = [&](bool stale_second, bool narrow_third, bool written_first) {
+    ComPtr<ID3D11Buffer> meshes, rows_buffer, table_buffer, output, run, width, captured;
+    ComPtr<ID3D11ShaderResourceView> meshes_view, rows_view, table_view;
+    ComPtr<ID3D11UnorderedAccessView> output_view;
+    std::vector<uint32_t> none;
+    const auto view = [](ID3D11Buffer* buffer, DXGI_FORMAT format, UINT elements, ComPtr<ID3D11ShaderResourceView>* made_view) {
+      D3D11_SHADER_RESOURCE_VIEW_DESC desc = {format, D3D11_SRV_DIMENSION_BUFFER};
+      desc.Buffer.NumElements = elements;
+      return SUCCEEDED(device->CreateShaderResourceView(buffer, &desc, made_view->GetAddressOf()));
+    };
+    D3D11_UNORDERED_ACCESS_VIEW_DESC output_desc = {DXGI_FORMAT_R32_TYPELESS, D3D11_UAV_DIMENSION_BUFFER};
+    output_desc.Buffer = {0, TEXELS * 4, D3D11_BUFFER_UAV_FLAG_RAW};
+    if (!make_buffer(nullptr, VERTICES * 32, D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE, 0, &meshes)
+        || !view(meshes.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, VERTICES * 2, &meshes_view)
+        || !make_buffer(nullptr, INSTANCES * 64, D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE, 0, &rows_buffer)
+        || !view(rows_buffer.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, INSTANCES * 4, &rows_view)
+        || !make_buffer(nullptr, UINT(DRAWS.size()) * 32, D3D11_BIND_SHADER_RESOURCE, 0, &table_buffer)
+        || !view(table_buffer.Get(), DXGI_FORMAT_R32G32B32A32_UINT, UINT(DRAWS.size()) * 2, &table_view)
+        || !make_buffer(nullptr, TEXELS * 16, D3D11_BIND_UNORDERED_ACCESS, D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS, &output)
+        || FAILED(device->CreateUnorderedAccessView(output.Get(), &output_desc, output_view.GetAddressOf()))
+        || !make_buffer(nullptr, 16, D3D11_BIND_CONSTANT_BUFFER, 0, &run) || !make_buffer(nullptr, 16, D3D11_BIND_CONSTANT_BUFFER, 0, &width)
+        || !make_buffer(nullptr, TEXELS * 16, D3D11_BIND_STREAM_OUTPUT | D3D11_BIND_SHADER_RESOURCE, 0, &captured)) {
+      return none;
+    }
+    UINT mesh_texels = 0;
+    UINT instances = 0;
+    std::vector<std::array<uint32_t, 8>> table;
+    for (size_t d = 0; d < DRAWS.size(); ++d) {
+      game_state(d, (narrow_third && d == 2) ? narrow_size.Get() : animation_size.Get());
+      const UINT mesh_offset = mesh_texels * 16;
+      const UINT rows_offset = instances * 64;
+      context->VSSetShader(mesh_vs.Get(), nullptr, 0);
+      context->GSSetShader(mesh_gs.Get(), nullptr, 0);
+      context->SOSetTargets(1, meshes.GetAddressOf(), &mesh_offset);
+      context->DrawIndexedInstanced(DRAWS[d].vertices, 1, 0, int(DRAWS[d].base_vertex), DRAWS[d].first_instance);
+      context->VSSetShader(rows_vs.Get(), nullptr, 0);
+      context->GSSetShader(rows_gs.Get(), nullptr, 0);
+      context->SOSetTargets(1, rows_buffer.GetAddressOf(), &rows_offset);
+      context->DrawIndexedInstanced(1, DRAWS[d].instances, 0, int(DRAWS[d].base_vertex), DRAWS[d].first_instance);
+      table.push_back({mesh_texels, DRAWS[d].vertices, instances, DRAWS[d].instances, 0, 0, (stale_second && d == 1) ? 1u : 0u, 0});
+      mesh_texels += DRAWS[d].vertices * 2;
+      instances += DRAWS[d].instances;
+    }
+    context->SOSetTargets(0, nullptr, nullptr);
+    context->GSSetShader(nullptr, nullptr, 0);
+    if (written_first) {
+      std::vector<float> texels(size_t{ANIMATION_WIDTH} * ANIMATION_HEIGHT * 4);
+      for (float& texel : texels) texel = Range(-1.f, 1.f);
+      context->UpdateSubresource(animation_textures[0].Get(), 0, nullptr, texels.data(), ANIMATION_WIDTH * 16, 0);
+    }
+    // FlushBatch: outputs in order, groups from each run's start; a run per animation texture (all one width here).
+    std::vector<std::array<uint32_t, 3>> runs;
+    uint32_t texels = 0;
+    uint32_t run_first = 0;
+    uint32_t run_groups = 0;
+    for (size_t d = 0; d < DRAWS.size(); ++d) {
+      if (d != 0 && DRAWS[d].texture != DRAWS[d - 1].texture) {
+        runs.push_back({run_first, uint32_t(d) - run_first, run_groups});
+        run_first = uint32_t(d);
+        run_groups = 0;
+      }
+      table[d][4] = texels;
+      table[d][5] = run_groups;
+      run_groups += ((DRAWS[d].vertices * DRAWS[d].instances) + 63) / 64;
+      texels += DRAWS[d].vertices * DRAWS[d].instances;
+    }
+    runs.push_back({run_first, uint32_t(DRAWS.size()) - run_first, run_groups});
+    context->UpdateSubresource(table_buffer.Get(), 0, nullptr, table.data(), 0, 0);
+    const std::array<ID3D11ShaderResourceView*, 3> views = {meshes_view.Get(), rows_view.Get(), table_view.Get()};
+    const std::array<ID3D11Buffer*, 2> constants = {width.Get(), run.Get()};
+    context->CSSetShader(batch_cs.Get(), nullptr, 0);
+    context->CSSetShaderResources(2, 3, views.data());
+    context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
+    context->CSSetConstantBuffers(2, 2, constants.data());
+    for (const auto& [first, count, groups] : runs) {
+      const float animation_width = float(ANIMATION_WIDTH);
+      const std::array<float, 4> width_values = {0.f, 0.f, animation_width, 0.f};
+      const std::array<uint32_t, 4> run_values = {first, count, groups, std::bit_cast<uint32_t>(animation_width)};
+      context->UpdateSubresource(width.Get(), 0, nullptr, width_values.data(), 0, 0);
+      context->UpdateSubresource(run.Get(), 0, nullptr, run_values.data(), 0, 0);
+      context->CSSetShaderResources(0, 1, animation_maps[DRAWS[first].texture].GetAddressOf());
+      context->Dispatch(std::min(groups, 65535u), (groups + 65534) / 65535, 1);
+    }
+    ID3D11UnorderedAccessView* no_view = nullptr;
+    context->CSSetUnorderedAccessViews(0, 1, &no_view, nullptr);
+    for (size_t copied = 0; copied < DRAWS.size();) {
+      size_t next = copied + 1;
+      while (next < DRAWS.size() && DRAWS[next].captured_first == DRAWS[next - 1].captured_first + (DRAWS[next - 1].vertices * DRAWS[next - 1].instances)) ++next;
+      const D3D11_BOX stretch = {table[copied][4] * 16, 0, 0, (table[next - 1][4] + (DRAWS[next - 1].vertices * DRAWS[next - 1].instances)) * 16, 1, 1};
+      context->CopySubresourceRegion(captured.Get(), 0, DRAWS[copied].captured_first * 16, 0, 0, output.Get(), 0, &stretch);
+      copied = next;
+    }
+    return read_back(captured.Get(), TEXELS * 16);
+  };
+  // Per draw: corners differing from the per-draw stream output's, and NaN (a quiet NaN's bits in all four).
+  const auto compare = [&](const std::vector<uint32_t>& values, size_t d, uint64_t* differ, uint64_t* nan) {
+    *differ = 0;
+    *nan = 0;
+    for (UINT corner = 0; corner < DRAWS[d].vertices * DRAWS[d].instances; ++corner) {
+      const size_t at = size_t{DRAWS[d].captured_first + corner} * 4;
+      *differ += (values.size() == per_draw.size() && std::memcmp(&values[at], &per_draw[at], 16) == 0) ? 0 : 1;
+      *nan += (values.size() == per_draw.size() && values[at] == 0x7FC00000u && values[at + 1] == 0x7FC00000u && values[at + 2] == 0x7FC00000u
+               && values[at + 3] == 0x7FC00000u)
+                  ? 1
+                  : 0;
+    }
+  };
+  uint64_t w_not_1 = 0;
+  for (const DrawSpec& draw : DRAWS) {
+    for (UINT corner = 0; corner < draw.vertices * draw.instances; ++corner) {
+      w_not_1 += (std::bit_cast<float>(per_draw[(size_t{draw.captured_first + corner} * 4) + 3]) == 1.f) ? 0 : 1;
+    }
+  }
+  const auto whole = batched(false, false, false);
+  std::array<std::array<uint64_t, 2>, 3> b1 = {};
+  for (size_t d = 0; d < DRAWS.size(); ++d) compare(whole, d, &b1[d][0], &b1[d][1]);
+  const bool b1_ok = !whole.empty() && w_not_1 == 0 && b1[0][0] == 0 && b1[1][0] == 0 && b1[2][0] == 0;
+  std::printf("  B1 batched vs per-draw: %llu / %llu / %llu of %u / %u / %u corners differ, w not 1 %llu (0)\n", (unsigned long long)b1[0][0],
+              (unsigned long long)b1[1][0], (unsigned long long)b1[2][0], DRAWS[0].vertices * DRAWS[0].instances, DRAWS[1].vertices * DRAWS[1].instances,
+              DRAWS[2].vertices * DRAWS[2].instances, (unsigned long long)w_not_1);
+  const auto left_out = batched(true, true, false);
+  std::array<std::array<uint64_t, 2>, 3> b2 = {};
+  for (size_t d = 0; d < DRAWS.size(); ++d) compare(left_out, d, &b2[d][0], &b2[d][1]);
+  const bool b2_ok = !left_out.empty() && b2[0][0] == 0 && b2[1][1] == DRAWS[1].vertices * DRAWS[1].instances
+                     && b2[2][1] == DRAWS[2].vertices * DRAWS[2].instances;
+  std::printf("  B2 stale second, third at width 256: first %llu differ (0), second %llu NaN (%u), third %llu NaN (%u)\n", (unsigned long long)b2[0][0],
+              (unsigned long long)b2[1][1], DRAWS[1].vertices * DRAWS[1].instances, (unsigned long long)b2[2][1], DRAWS[2].vertices * DRAWS[2].instances);
+  const auto written = batched(false, false, true);
+  std::array<uint64_t, 2> b3 = {};
+  compare(written, 0, &b3[0], &b3[1]);
+  const bool b3_ok = !written.empty() && b3[0] > 0;
+  std::printf("  B3 CONTROL the first draw's bones written before the flush: %llu of %u corners differ (> 0)\n", (unsigned long long)b3[0],
+              DRAWS[0].vertices * DRAWS[0].instances);
+  const bool passed = b1_ok && b2_ok && b3_ok;
+  std::printf("  %s\n", passed ? "PASSED" : "FAILED");
+  return passed;
+}
+
 int main(int argc, char** argv) {
   if (argc < 4) {
     std::printf("tests.exe <dump root> <build root> <build32 root>\n");
@@ -622,6 +950,10 @@ int main(int argc, char** argv) {
                          root, build32_root)
         && all;
   all = CheckTerrain(root, build32_root) && all;
+  for (const BatchedFamily& family : {BatchedFamily{"Attila main units sm3", "0x5F9CD405.vs_4_0", "rt_capture_unit_sm3", "rt_batch_unit_sm3"},
+                                      BatchedFamily{"Attila main units sm4.1", "0xA691CFF4.vs_4_1", "rt_capture_unit_sm41", "rt_batch_unit_sm41"}}) {
+    all = CheckBatchedUnits(family, root, build32_root) && all;
+  }
   std::printf("%s\n", all ? "ALL PASSED" : "SOME FAILED");
   return all ? 0 : 1;
 }

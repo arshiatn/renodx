@@ -93,6 +93,7 @@ struct Sliders {
   float grass_shadow_range = 0.f;  // metres (0: everywhere)
   float grass_range = 0.f;         // metres (0: everywhere; placed grass, Attila)
   float units_range = 0.f;         // metres (0: everywhere; compact unit draws)
+  float batched_units = 0.f;       // Batched Unit Capture (games whose scene shaders have batch versions)
   float path_ser = 0.f;
   float sharc = 0.f;
   float reuse_lean = 0.f;
@@ -214,6 +215,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
                                 : sliders.grass_shadow_range,
       .grass_range = sliders.grass_range,
       .units_range = sliders.units_range,
+      .batched_units = sliders.batched_units != 0.f,
       .smoke_fast_build = sliders.smoke_fast_build != 0.f,
       .path_ser = sliders.path_ser != 0.f,
       .sharc = sliders.sharc != 0.f,
@@ -2002,6 +2004,21 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
             return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) {
               return shader.dynamic && !shader.grass && !shader.thin && !shader.tessellated && !shader.sun_facing && !shader.foliage;
             });
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedBatchedUnits",
+          .binding = &sliders->batched_units,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Batched Unit Capture (Experimental)",
+          .section = section,
+          .tooltip = "Soldiers' and horses' shapes for the ray tracing gathered in one pass after they are drawn:\n"
+                     "the same shadows, less graphics card time in battles.",
+          .is_enabled = dlaa_on,
+          // Its scene shaders' batch versions, and the host's flush before the game writes their bones again.
+          .is_visible = [] {
+            return internal::BatchInScene() && internal::host.flushes_unit_captures != nullptr && internal::host.flushes_unit_captures();
           },
       },
       new renodx::utils::settings::Setting{
