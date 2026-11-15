@@ -106,9 +106,13 @@ constexpr std::array<ModeSettings, 8> AA_MODES = {{
 static std::atomic<uint32_t> buffer_multiple = 4;
 
 // UE reuses 29C140B2/201C3D3D with reduced inputs at high screen percentages.
-// A shader hash identifies the compute contract, not the active render scale.
-constexpr std::array<uint32_t, 6> TEMPORAL_SHADERS = {
-    0x29C140B2u, 0x201C3D3Du, 0xCCB4A156u, 0xD8C07EEEu, 0x4B43383Du, 0xB266ECB6u};
+// A shader hash identifies the compute contract, not the active render scale. The last four (seen in the shader dump
+// only, never in a frame) read and write what the first six do, without the upsample filter's kernel width (E91209D0
+// with it). Not here: the six that also write a half-size copy of the result to u1 (skipping them would leave it old)
+// and the depth of field's four temporal passes (census: tools/nontw/expeditions/census/census_taa.txt).
+constexpr std::array<uint32_t, 10> TEMPORAL_SHADERS = {
+    0x29C140B2u, 0x201C3D3Du, 0xCCB4A156u, 0xD8C07EEEu, 0x4B43383Du, 0xB266ECB6u,
+    0xE91209D0u, 0x71C87DBCu, 0x90BED7D1u, 0xBC7F1717u};
 
 struct Texture {
   ComPtr<ID3D11Texture2D> resource;
@@ -2117,7 +2121,7 @@ inline bool Install() {
   talesofarise::dlss::constants::log_tag = "[Rome AA constants]";
   talesofarise::dlss::constants::Use(DLL_PROCESS_ATTACH);
   attached = true;
-  renodx::utils::log::i("[Rome DLAA] The helper's DLAA / DLSS, FSR and XeSS at the game's TAA (all six Ultra/Fast compute hashes; exact/4/8-pixel allocations), frame generation, Ray Reconstruction; live render scale; graphics settings.");
+  renodx::utils::log::i("[Rome DLAA] The helper's DLAA / DLSS, FSR and XeSS at the game's TAA (ten Ultra/Fast compute hashes; exact/4/8-pixel allocations), frame generation, Ray Reconstruction; live render scale; graphics settings.");
   return true;
 }
 
