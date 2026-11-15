@@ -302,7 +302,7 @@ add-on (`rysesonofrome_dlss`, v116 draft) moved into this folder: its addon.cpp 
 (`rysesonofrome::graphics`, Install after this add-on's attach, Uninstall before its detach, so every event and
 command_action callback keeps the order the two add-ons had by name), its headers and shaders (0x52594501-06,
 0x7A1E0D40-42) beside this add-on's; its notes in `README_DLSS.md`. The `renodx-rysesonofrome_dlss.addon64` target is
-gone; this target links NGX (CMake's NGX block). Settings keep their keys and sections: the HDR rows in the renodx
+gone (and from step 3 this target no longer links NGX). Settings keep their keys and sections: the HDR rows in the renodx
 section, the anti-aliasing / frame generation keys in `[Ryse AA]`, the game settings in `[Ryse Game Settings]`. An old
 `renodx-rysesonofrome_dlss.addon64` next to this one would run everything twice: the install renames it aside
 (`tools/tw/install/tw_install.py`, `.retired-<time>`). Pages as the Total War add-ons': **Settings Mode** is HDR & Effects
@@ -312,6 +312,20 @@ Shadows, Light Bounce and Ray Tracing; Graphics 2 of 2 the game's settings above
 Experimental ones and Audio. The DLSS overlay's own tab is gone. Simple / Advanced is its own row, Options
 (`SettingsAdvanced`, every page): a saved Advanced (Settings Mode's 1, or the overlay's `[Ryse AA] SettingsMode` 1)
 moves there once, and Settings Mode starts on HDR & Effects.
+**Helper route** (as the Total War games and Shogun 2): the AA modes run in renodx-tw-dlaa64.exe beside the add-on
+(`twattila/dlaa_bridge.hpp`, `upscaling.hpp`) in place of the in-process NGX D3D11 path (`ngx_backend.hpp` gone): the
+preparation pass's colour, depth (turned to 0 near) and motion go into the bridge (`upscale_inputs`), the helper's DLSS /
+DLAA, FSR or XeSS (`[Ryse AA] Upscaler`) evaluates, its result comes back (`upscale_output`, Shogun 2's) for the copy and
+the post pass as before. Ray Reconstruction (Experimental, `[Ryse AA] RayReconstruction`, off by default) from the ray
+tracing's guides while a ray-traced effect is on, the colour's square root as Attila's. Frame generation is the helper's
+(`twattila/frame_generation.hpp`; DLSS, FSR or XeSS, `FrameGenerationMethod` Auto; HUD recomposition, its preset, Reflex
+through `twattila/reflex.hpp`) in place of Streamline in process, Tales' keys kept (FrameGeneration,
+FrameGenerationMultiplier, ReflexBoost, FrameGenerationFrameLimit); it starts without a restart. The bridge is the
+upscaler's output size while it upscales: the rays at the render size in its top-left (`ray_tracing.hpp`
+`depth_at_render_size`, the traced reflections copied out for the lighting), the kept HDR scene in its own texture until
+the next trace. Without the helper (the HDR-only download) the AA mode stays Off (the game's TAA), the rows hidden, the
+download note shown; no wait. Not the same as before: the helper's DLSS measures exposure itself (the in-process path
+gave 1) and picks its model from the sizes (Custom below 100%).
 
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)

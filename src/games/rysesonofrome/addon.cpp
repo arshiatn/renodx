@@ -1211,9 +1211,19 @@ void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swa
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   // GT-VBAO's noise moves every frame (the game's SSDO blur and TAA / DLSS settle it).
   shader_injection.ssao_frame = static_cast<float>((static_cast<uint32_t>(shader_injection.ssao_frame) + 1u) % 4096u);
+  // What the helper serves this frame (graphics.hpp adds the upscaler and frame generation): the ray tracing, its guides
+  // with the reflections or paths, Ray Reconstruction while a ray-traced effect is on.
+  rysesonofrome::upscaling::BridgeUse use;
   if (ray_tracing_installed) {
     const bool bounce = shader_injection.light_bounce > 0.f && (rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f);
     const bool reflections = rt_sliders.reflections != 0.f;
+    const bool path_tracing = (bounce || reflections) && rt_sliders.path_tracing != 0.f;
+    use = {
+        .ray_tracing = true,
+        .guides = reflections || path_tracing,
+        .reflections = reflections,
+        .ray_reconstruction = (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || bounce || reflections) ? 1u : 0u,
+    };
     rysesonofrome::ray_tracing::Update({
         .sun_shadows = rt_sliders.sun_shadows != 0.f,
         .ambient_occlusion = rt_sliders.ambient_occlusion != 0.f,
@@ -1223,12 +1233,13 @@ void OnPresentHotkeys(reshade::api::command_queue*, reshade::api::swapchain* swa
         .light_bounce = bounce,
         .light_bounce_rays = static_cast<uint32_t>(rt_sliders.rays),
         .light_bounce_range = rt_sliders.range,
-        .path_tracing = (bounce || reflections) && rt_sliders.path_tracing != 0.f,
+        .path_tracing = path_tracing,
         .path_bounces = static_cast<uint32_t>(rt_sliders.bounces),
         .reflections = reflections,
         .reflection_samples = static_cast<uint32_t>(rt_sliders.reflection_samples),
     });
   }
+  rysesonofrome::graphics::UpdateHelper(swapchain, use, !IsHdrOutput());
 #ifdef RYSE_UI_DRAW_LOG
   if (ui_log != nullptr) {
     std::fputs("frame end\n", ui_log);
@@ -1830,7 +1841,8 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
 
   if (!AttachAddon()) return false;
   // The anti-aliasing, frame generation and game settings (once the DLSS add-on) after the HDR part, as by name.
-  rysesonofrome::graphics::Install(addon_module);
+  rysesonofrome::graphics::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
+                                   sizeof(shader_injection));
   return true;
 }
 
