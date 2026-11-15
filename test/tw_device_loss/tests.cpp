@@ -26,6 +26,9 @@ namespace output = twattila::output_encoding;
 
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (false)
 
+// output_encoding's preset switch reads the settings rows (none here).
+extern "C" __declspec(dllexport) const char* const NAME = "tw_device_loss";
+
 static std::mutex log_mutex;
 static std::vector<std::string> log_lines;
 extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) {

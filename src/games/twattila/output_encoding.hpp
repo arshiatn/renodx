@@ -8,15 +8,20 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <format>
 #include <optional>
+#include <span>
+#include <string>
 
 #include <include/reshade.hpp>
 
 #include "../../mods/swapchain.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
+#include "../../utils/settings.hpp"
 
-// The Output setting of the Total War addons, decided for each new swap chain: a game that rebuilds its device (a GPU
+// The Output setting of the Total War addons (and Ryse's, Tales of Arise's, Expeditions: Rome's), decided for each new swap chain: a game that rebuilds its device (a GPU
 // reset, a display change) gets the output its display takes then, not the one of the game's start.
 namespace twattila::output_encoding {
 
@@ -31,11 +36,27 @@ struct Config {
   int setting = AUTO;
   // The HDR output of a setting other than SDR. Null: HDR10 where chosen, else scRGB.
   int (*hdr_encoding)(int setting) = nullptr;
-  // A player's first start, on a display without HDR. Null: not a first start.
+  // The game's SDR preset: a player's first start (no look rows saved yet) on a display without HDR takes it. Null: none.
   void (*first_start_without_hdr)() = nullptr;
+  // The game's Recommended preset. After a first start without HDR, Auto switches between the two presets when Windows HDR
+  // comes or goes, until the player changes a row (PRESET_SWITCH_KEY). Null: no switch.
+  void (*recommended_preset)() = nullptr;
+  // The addon's log prefix.
+  const char* log_name = "[Total War]";
 };
 
 static Config config;
+
+// The last new swap chain's output.
+static std::optional<int> decided;
+
+// No look rows saved at the addon's start (the game's first preset holds no Rendering Mode).
+static bool first_start = false;
+
+// The global ini key of Auto's preset switch: "sdr <hash>" or "hdr <hash>", the preset Auto applied last and the hash of
+// every non-global row right after it; "off": a first start with Windows HDR on, or a row changed since Auto's preset,
+// never again. No key: nothing decided (a first start decides).
+constexpr const char* PRESET_SWITCH_KEY = "OutputAutoPreset";
 
 // Windows HDR for the display the game's window is on. Not known: Windows gave no answer for it.
 struct WindowsHdr {
@@ -74,11 +95,86 @@ inline void Apply(int encoding) {
 // At the addon's start, before any swap chain: the display is not known yet.
 inline void Configure(const Config& game_config) {
   config = game_config;
+  if (config.first_start_without_hdr != nullptr) {
+    float saved_mode = 0.f;
+    first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
+  }
   Apply(Encoding(config.setting, {}));
 }
 
-// The last new swap chain's output.
-static std::optional<int> decided;
+// A new swap chain, with what Windows says of the display its window is on.
+inline void Decide(const WindowsHdr& windows_hdr) {
+  const int encoding = Encoding(config.setting, windows_hdr, decided);
+  Apply(encoding);
+  constexpr const char* NAMES[] = {"HDR10", "scRGB", "SDR"};
+  const char* windows_state = "on or unknown";
+  if (windows_hdr.known && windows_hdr.on) {
+    windows_state = "on";
+  } else if (windows_hdr.known && windows_hdr.on_elsewhere) {
+    windows_state = "off for the window's display, on for another";
+  } else if (windows_hdr.known) {
+    windows_state = "off";
+  } else if (!windows_hdr.on) {
+    windows_state = "not answered";
+  }
+  if (encoding == SDR && config.setting != SDR && config.setting != AUTO) {
+    renodx::utils::log::w(config.log_name, " Output: Windows HDR is off for every display, SDR instead of ", NAMES[config.setting],
+                          " for this swap chain.");
+  } else {
+    renodx::utils::log::i(config.log_name, " Output: ", NAMES[encoding], " (Windows HDR ", windows_state, ").");
+  }
+
+  // Auto's preset switch. A player whose first start had Windows HDR on is never given a preset; one whose first start
+  // had it off gets the SDR preset, the Recommended one when Windows HDR comes on, the SDR one again when it goes, each
+  // once per change of Windows HDR and only while no row changed since the last.
+  if (config.setting == AUTO && config.first_start_without_hdr != nullptr && !renodx::utils::settings::IsPresetOff()) {
+    const std::string state = renodx::utils::settings::ReadGlobalString(PRESET_SWITCH_KEY);
+    const auto state_of = [](const char* side) {
+      uint32_t hash = 2166136261u;  // FNV-1a
+      const auto add = [&hash](std::span<const std::byte> bytes) {
+        for (const std::byte byte : bytes) {
+          hash = (hash ^ std::to_integer<uint32_t>(byte)) * 16777619u;
+        }
+      };
+      for (const auto* setting : *renodx::utils::settings::settings) {
+        if (setting->key.empty() || setting->is_global || !setting->HasNumericValue()) continue;
+        const float value = setting->GetValue();
+        add(std::as_bytes(std::span(setting->key.c_str(), setting->key.size() + 1)));
+        add(std::as_bytes(std::span(&value, 1)));
+      }
+      return std::format("{} {:08x}", side, hash);
+    };
+    const auto apply = [&state_of](void (*preset)(), const char* side) {
+      preset();
+      // Saved and read back as the next start reads them (clamped to each row's range): the hash is that start's.
+      const std::string section = renodx::utils::settings::GetCurrentPresetName();
+      renodx::utils::settings::SaveSettings(section);
+      renodx::utils::settings::LoadSettings(section);
+      renodx::utils::settings::WriteGlobalString(PRESET_SWITCH_KEY, state_of(side));
+    };
+    if (state.empty()) {
+      if (!decided.has_value() && first_start && encoding == SDR) {
+        apply(config.first_start_without_hdr, "sdr");
+        renodx::utils::log::i(config.log_name, " Output Auto: first start without Windows HDR, the SDR preset applied.");
+      } else if (!decided.has_value() && first_start && windows_hdr.known) {
+        renodx::utils::settings::WriteGlobalString(PRESET_SWITCH_KEY, "off");
+      }
+    } else if (state != "off") {
+      const bool sdr_applied = (state == state_of("sdr"));
+      if (!sdr_applied && state != state_of("hdr")) {
+        renodx::utils::settings::WriteGlobalString(PRESET_SWITCH_KEY, "off");
+        renodx::utils::log::i(config.log_name, " Output Auto: a row changed since the automatic preset, no automatic preset again.");
+      } else if (windows_hdr.known && config.recommended_preset != nullptr && sdr_applied && encoding != SDR) {
+        apply(config.recommended_preset, "hdr");
+        renodx::utils::log::i(config.log_name, " Output Auto: Windows HDR on since the SDR preset, the Recommended preset applied.");
+      } else if (windows_hdr.known && config.recommended_preset != nullptr && !sdr_applied && encoding == SDR) {
+        apply(config.first_start_without_hdr, "sdr");
+        renodx::utils::log::i(config.log_name, " Output Auto: Windows HDR off since the Recommended preset, the SDR preset applied.");
+      }
+    }
+  }
+  decided = encoding;
+}
 
 // A new swap chain for `window`, before the swapchain mod reads the output.
 inline void Decide(HWND window) {
@@ -118,29 +214,7 @@ inline void Decide(HWND window) {
       });
     }
   }
-  const int encoding = Encoding(config.setting, windows_hdr, decided);
-  Apply(encoding);
-  constexpr const char* NAMES[] = {"HDR10", "scRGB", "SDR"};
-  const char* windows_state = "on or unknown";
-  if (windows_hdr.known && windows_hdr.on) {
-    windows_state = "on";
-  } else if (windows_hdr.known && windows_hdr.on_elsewhere) {
-    windows_state = "off for the window's display, on for another";
-  } else if (windows_hdr.known) {
-    windows_state = "off";
-  } else if (!windows_hdr.on) {
-    windows_state = "not answered";
-  }
-  if (encoding == SDR && config.setting != SDR && config.setting != AUTO) {
-    renodx::utils::log::w("[Total War] Output: Windows HDR is off for every display, SDR instead of ", NAMES[config.setting],
-                          " for this swap chain.");
-  } else {
-    renodx::utils::log::i("[Total War] Output: ", NAMES[encoding], " (Windows HDR ", windows_state, ").");
-  }
-  if (!decided.has_value() && config.first_start_without_hdr != nullptr && config.setting == AUTO && encoding == SDR) {
-    config.first_start_without_hdr();
-  }
-  decided = encoding;
+  Decide(windows_hdr);
 }
 
 }  // namespace twattila::output_encoding
