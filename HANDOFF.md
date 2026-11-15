@@ -914,9 +914,10 @@ heading text are in HANDOFF_ARCHIVE.md)
           DrawIndexedInstanced (vtable 0xa0); D3D11 deleted a released shader at that draw, ReShade fired destroy_pipeline
           on the thread, OnDestroyPipeline locked runtime.mutex again. pixel_coverage now has its own shared_mutex. Every
           scene_draw host had it: Expeditions, Ryse, Rome Remastered, Shogun 2. Skills f99e871c.
-        - [ ] Build all (shared rt_core change: both build lines), stamp, install Expeditions / Ryse / Rome Remastered /
-          Shogun 2 (+ the rest on the same commit), then Expeditions G1 again with rays on at launch. Owner: coordinator
-          after Ryse R0
+        - [x] 17:37 Expeditions v32 + Ryse fix56 built (acf3d270) and INSTALLED (tw_install.py, helper114 kept, ATN's
+          files unchanged); re-check runs started ~17:40 (Expeditions rays on at launch; Ryse s8 rays + RR, 4 shots).
+        - [ ] The rest (Rome Remastered, Shogun 2 and every add-on on the shared code) on the review-fix commit: build all,
+          stamp, install. Owner: coordinator after the review fixes
       - [ ] Expeditions save load: the main menu takes no SendInput keys; the save scene (carve materials 93E43D26,
         07E055CF, 1F128822, 630E166D, A7FF9EDD first-draw lines, RT on vs off) still needs a way in. Owner: ATN decides
         (foreground fix / a mouse click), then coordinator
@@ -926,6 +927,9 @@ heading text are in HANDOFF_ARCHIVE.md)
       R.U.S.E." (PsychoV35 position: never on top of UpgradeToneMap / UC2 Extended; Divinity 2's at its Psycho's place).
       Skills f99e871c. Planners d1_ / d2_ / ru_ started ~17:05 (brief tools/tw/round_notes/nontw2_plan_brief_1115.md,
       plans to tools/nontw/divinity1 | divinity2 | ruse/plan.md). Owner: coordinator
+    - [ ] ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 (the planners run them, one at
+      a time through gpu_job.lock, no start after 19:30); from 20:00 ATN plays 4-6 h: OFFLINE ONLY until ATN says done.
+      Owner: coordinator
     - [ ] ATN 17:3x "Start the review": Fable 5.2 High crash / freeze review workflow wf_73f86de5-728 (6 areas: locks,
       bridge, hooks, lifetime, non-TW, TW; each verified by a refuting agent). Then fixes one at a time, build all,
       install. Owner: coordinator
