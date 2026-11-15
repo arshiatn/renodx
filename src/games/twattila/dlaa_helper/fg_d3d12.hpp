@@ -374,6 +374,11 @@ class FrameGeneration12 {
       SignalOnly(value);
       return false;
     }
+    static const long test_removal_at = TestRemovalAt(L"RENODX_TW_TEST_FG_DEVICE_REMOVAL");
+    static long test_presents = 0;
+    if (++test_presents == test_removal_at) {
+      if (ComPtr<ID3D12Device5> device5; SUCCEEDED(device_.As(&device5))) device5->RemoveDevice();
+    }
     // NVIDIA's preset into the driver profile (DLSS-G reads it when it starts: a new one applies at the next start), on
     // a thread of its own (loading the driver's profiles takes long).
     if (version_ >= 12 && shared->fg_preset != preset_) {
