@@ -44,6 +44,7 @@
 #include "./graphics.hpp"
 #include "./light_bounce.hpp"
 #include "./ray_tracing.hpp"
+#include "./shadow_skip.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/device_loss.hpp"
@@ -210,6 +211,7 @@ renodx::utils::settings::Settings settings;
 struct RtSliders {
   float sun_shadows = 0.f;
   float softness = 0.5f;  // degrees of the sun's disk
+  float skip_sun_maps = 0.f;  // shadow_skip.hpp's Choice
   float ambient_occlusion = 0.f;
   float ambient_range = 2.f;  // metres
   float ambient_quarter = 0.f;
@@ -263,6 +265,7 @@ const PresetValues RAYS_OWN_KEYS = {
 };
 const PresetValues RAYS_RESET = {
     {"RayTracedShadowSoftness", 0.5f},
+    {"RayTracedSkipSunShadowMaps", 0.f},
     {"RayTracedAmbientRange", 2.f},
     {"RayTracedAOQuarter", 0.f},
     {"RayTracedReflectionSamples", 1.f},
@@ -331,14 +334,17 @@ void BuildRuntimeData() {
         if (rt_sliders.ambient_occlusion != 0.f) ambient_visibility = ambient;
       }
     }
-    rysesonofrome::contact_shadows::Apply(cmd_list,
-                                          {
-                                              .length = shader_injection.contact_shadow_length,
-                                              .thickness = shader_injection.contact_shadow_thickness,
-                                              .strength = shader_injection.contact_shadows,
-                                              .frame = shader_injection.ssao_frame,
-                                          },
-                                          sun_visibility, ambient_visibility);
+    // Skip the Game's Sun Shadow Maps: the next frame's maps only with the rays' in this one's mask.
+    if (rysesonofrome::contact_shadows::Apply(cmd_list,
+                                              {
+                                                  .length = shader_injection.contact_shadow_length,
+                                                  .thickness = shader_injection.contact_shadow_thickness,
+                                                  .strength = shader_injection.contact_shadows,
+                                                  .frame = shader_injection.ssao_frame,
+                                              },
+                                              sun_visibility, ambient_visibility)) {
+      rysesonofrome::shadow_skip::NoteRays();
+    }
     if (context != nullptr) rysesonofrome::ray_tracing::BindReflections(context);
     return true;
   };
@@ -1141,6 +1147,21 @@ void BuildRuntimeData() {
           .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
+      // shadow_skip.hpp: acts live, with the ray tracing on at launch.
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedSkipSunShadowMaps",
+          .binding = &rt_sliders.skip_sun_maps,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Skip the Game's Sun Shadow Maps (Experimental)",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "The game stops drawing its sun shadow maps: the rays alone shadow the sun. Faster.\n"
+                     "Past the Near Ones: hair and fog keep the game's shadows near you.\n"
+                     "All: hair strands and fog lose the sun's shadow, and nothing out of view casts one.",
+          .labels = {"Off", "Past the Near Ones", "All"},
+          .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
+      },
       new renodx::utils::settings::Setting{
           .key = "RayTracedAmbientOcclusion",
           .binding = &rt_sliders.ambient_occlusion,
@@ -1586,6 +1607,9 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
     rays.reflection_samples *= rays_of(rt_sliders.rays_reflections);
     rays.light_bounce_rays = std::min(rays.light_bounce_rays * rays_of(rt_sliders.rays_paths), 16u);
     rysesonofrome::ray_tracing::Update(rays);
+    rysesonofrome::shadow_skip::OnPresent(
+        (rt_sliders.sun_shadows != 0.f) ? static_cast<rysesonofrome::shadow_skip::Choice>(std::clamp(rt_sliders.skip_sun_maps, 0.f, 2.f))
+                                        : rysesonofrome::shadow_skip::OFF);
   }
   rysesonofrome::graphics::UpdateHelper(swapchain, use, !IsHdrOutput());
 #ifdef RYSE_UI_DRAW_LOG
@@ -1851,6 +1875,7 @@ void OnDestroyDevice(reshade::api::device* device) {
   if (ray_tracing_installed) {
     twattila::rt_scene::OnDestroyDevice(device);
     rysesonofrome::ray_tracing::Release();
+    rysesonofrome::shadow_skip::Release();
   }
   const std::scoped_lock lock(mutex);
   if (data.device != device) return;
@@ -2148,6 +2173,7 @@ bool AttachAddon() {
   ray_tracing_installed = AnyRays() && !HelperAbsent();
   if (ray_tracing_installed) {
     rysesonofrome::ray_tracing::Install();
+    rysesonofrome::shadow_skip::Install(&custom_shaders);
     rysesonofrome::light_bounce::ray_traced_trace = twattila::rt_scene::internal::TraceLightBounce;
     // The Debug View over the tone mapper's output (its RGBA16F target at the render size; rt_core's DrawDebugView).
     custom_shaders[0xB9B672AA].on_drawn = [](reshade::api::command_list* cmd_list) {
@@ -2206,6 +2232,7 @@ void DetachAddon() {
 
   if (ray_tracing_installed) {
     rysesonofrome::light_bounce::ray_traced_trace = nullptr;
+    rysesonofrome::shadow_skip::Uninstall();
     rysesonofrome::ray_tracing::Uninstall();
   }
   twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
