@@ -635,11 +635,11 @@ void BuildRuntimeData() {
           .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
-          // Settings loading clamps the former V31 index 3 to Full Replacement (2).
+          // ATN 2026-11-15: PsychoV35 (the Recommended mode) is the default for new players; Reset stays Extended.
           .key = "rendering_mode",
           .binding = &shader_injection.hdr,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 2.f,
+          .default_value = 3.f,
           .label = "Rendering Mode",
           .section = "General",
           .tooltip = "Needs the in-game HDR setting on.\n"
