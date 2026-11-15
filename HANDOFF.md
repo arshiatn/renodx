@@ -830,6 +830,25 @@ Brief: tools/tw/round_notes/game_agent_brief.md (phase P: plan + trace build + d
     in the add-on, DLSS with NVIDIA's DLL, rays / FG / RR / FSR / XeSS with the helper). Owners: Shogun 2 = MERGE agent
     s2m_ (TW batch, before the Fable review); Tales + Expeditions = ue4_ after its offline steps, then a UE4 MERGE round;
     Ryse = rys_ after its offline steps, then a RYSE MERGE round
+  - [x] RYSE OFFLINE ROUND MERGED d0b97911 (rys_; both add-ons build on the merged tree): fast dispatch opt-in (HDR
+    draw_dispatch::Use, DLSS fast::Use; tw_draw_dispatch amd64 PASS), constant mirror once per process (moot after the
+    merge), HDR-only pieces (download note on General + Ray Tracing, GitHub, SDR preset, first start; RT installs only
+    with the helper), device_loss + output_encoding as Attila (each new swap chain decides the output, HDR -> SDR only
+    when Windows HDR is known off everywhere, stall log after 20 s: TW behaviour, accepted by the coordinator as the
+    "same as TW" decision, ATN may object), reorder warning fixed, README fix54 DRAFT (release must carry helper from
+    the same commit, Agility, NVIDIA set, Streamline 2.14.16). Not run in game.
+    - [ ] SHARED STEP: twattila/test_hooks.hpp includes rt_scene.hpp (Attila's embedded shaders) but needs only
+      rt_core.hpp. Owner: g3a_ (sent ~02:0x), then Ryse / UE4 test hooks in the merge rounds
+    - [ ] RYSE MERGE ROUND (one add-on): rys_'s plan in its report: move _dlss files + 0x52594501-06 / 0x7A1E0D40-42
+      shaders into rysesonofrome, the DLSS addon.cpp as a header, Graphics 1 of 2 (AA / DLSS / FG / RT presets + RT
+      rows) and 2 of 2 (32 game settings + presets, Experimental, Audio) via graphics_page, ini sections [Ryse AA] /
+      [Ryse Game Settings] kept, the _dlss target removed from the loader list (ATN's one-add-on decision), then helper
+      upscaler / RR / FSR / XeSS / FG via rt_core (Shogun 2's HelperUpscaler model), Debug View after R0, page dump,
+      tw_device_loss Ryse table, SDR WARP ramp. Owner: RYSE MERGE agent (after s2m_ shows the TW pattern)
+    - [ ] A page_dump_ryd_rys1.exe (PID 35256) is stuck in tools/tw/page_dump (built outside testbin; "Access denied",
+      likely Bitdefender). Owner: ATN ends it and deletes page_dump_ry_rys1.exe / page_dump_ryd_rys1.exe there
+    - [ ] Remove the DevKit symlink from Ryse's Bin64 before runs (it keeps fast dispatch off). Owner: coordinator at
+      the install (fresh backup)
   - [ ] Full Attila package for all three (memory project_nontw_full_package.md); stamps + watermarks for every game.
     Owner: per-game rounds after the merges
   - [ ] SHADER-PACK round: read the shipped packs where not encrypted (DXBC / DXIL in UE paks' unencrypted entries,
