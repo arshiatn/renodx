@@ -961,9 +961,12 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] D1 R1 run (after steps 1 + 7, ATN's OK, no DevKit): main-menu torches (fire values, point lights, run-time
         shader dump), beach Params / ColorMatrix vs atmospheres.tsv, b12, mode shots, timing, window-mode path with the
         fix; optional SSREnabled 1, FIREEXAMPLE save. Owner: coordinator (next game window)
-      - [ ] ATN DECIDES (Divinity 1): modes 3 / 4 and keep legacy V30 / Pragmap?; bench save; seen start crashes before?;
-        below 100 % render scale; fire boosts in V35 / Extended; may rows write graphicSettings.lsx?; Pragmap's author
-        (credits); is the "mod invalid" dialog at every start expected? Owner: ATN
+      - [x] ATN ANSWERED 18:3x (Divinity 1): keep V30 / Pragmap for now (ATN decides at the end); bench / R1 save = ATN's
+        own profile, newest save (Act 2/3); no start crashes known, two seen at fullscreen -> fake fullscreen; below 100 %
+        YES (the full Attila package); fire through Hue Clip Emulation, ideally no per-channel boosts; rows may write
+        graphicSettings.lsx; Pragmap credit not needed; the "mod invalid" dialog is expected (mods not installed). Sent to
+        d1_.
+      - [ ] ATN at the end (Divinity 1): drop or keep the legacy V30 / Pragmap modes. Owner: ATN
     - [ ] ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 (the planners run them, one at
       a time through gpu_job.lock, no start after 19:30); from 20:00 ATN plays 4-6 h: OFFLINE ONLY until ATN says done.
       Owner: coordinator
