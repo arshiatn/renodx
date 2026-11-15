@@ -1142,14 +1142,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         4fffa624, R12 f35d6d5f, R13 d312c48c, R14 0883c7c6, R15 80802e0b, R16 a4a9371d, R17 70490b09, R18 75680deb, R19
         6f836836, R23 54e09a90, R24 ec99db49. Both build lines + helper built; x86 / amd64 PASS: tw_fg_initialization,
         tw_game_gi, tw_helper_lifetime, tw_gpu_completion, tw_output_encoding, tw_scrub_lods, tw_unit_pack_rounds.
-        Second Fable 5.2 High review of the fix diff running (wf_b2c7ad87-41e); merge after it. The R boxes below are
-        ticked at the merge.
+        Second Fable 5.2 High review of the fix diff DONE 20:0x (wf_b2c7ad87-41e, review2_1115.json): 7 confirmed, 1
+        refuted; 15 of the 19 commits OK. fx_ round 2 started on the same branch (the 7 + R22). Merge after round 2 and
+        the harness runs (after ATN's game). The R boxes below are ticked at the merge.
+      - [ ] Review 2 #4 REGRESSION (791a2123 R1): the kept lost RR object holds its removed D3D12 device: no new device
+        (Streamline, scene, RR, FSR / XeSS) until restart; fix: Shutdown Streamline first, then destroy RR normally, then
+        restart both. Owner: fx_ round 2 (+ harness removal modes after ATN's game)
+      - [ ] Review 2 #1 (d312c48c R13): a scene reopened inside a steady request still gets the 5 s budget: Answer(20000).
+        Owner: fx_ round 2
+      - [ ] Review 2 #2 (80802e0b R15): an FG backend switch during an FSR / XeSS chain cold start still joins the maker:
+        park a still-making proxy. Owner: fx_ round 2
+      - [ ] Review 2 #3 (6f836836 R19 half): WH1 / WH2 in DX12 still new a proxy pass + log a warning every present: early
+        return when no proxy shader. Owner: fx_ round 2
+      - [ ] Review 2 #5 / #6 (minor): don't park in the Lost branches; clear state.presenting when the bridge can't be
+        prepared on the new device. Owner: fx_ round 2
       - [ ] R21 skipped (Shogun 2 NGX feature release): needs the game's static NVSDK_NGX_D3D11_ReleaseFeature by pattern
         (the DLL image, tools/shogun2/sx.py) + an in-game check. Owner: next Shogun 2 round
       - [ ] R22 skipped (a failed Prepare texture turns the bridge off for the session): a retry changes what players see
         (DLSS comes back after a VRAM failure); freeing the helper's old set from Prepare's fail path needs Release's request
         sequence. ATN 19:3x: YES, DLSS comes back after a failure (coordinator: with a limit, e.g. a retry at the next
-        resize or after 30 s, at most 3 a session, one log line each). Owner: fx_ round 2 (after the second review)
+        resize or after 30 s, at most 3 a session, one log line each; review 2 #7: also free the helper's previous set on
+        the fail path). Owner: fx_ round 2 (started 20:0x)
       - [ ] test/tw_native_hook_lifetime does not compile (x86 / amd64): graphics_hooks.hpp includes rt_core.hpp ->
         embed/shaders.h, run.ps1 has no twattila include path (before these fixes). Owner: next test round
       - [ ] test/tw_device_loss "limit, front" case failed once per arch while builds ran (window focus): rerun quiet.
