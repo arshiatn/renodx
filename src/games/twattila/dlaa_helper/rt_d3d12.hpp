@@ -1880,7 +1880,9 @@ class RtScene12 {
   static constexpr uint32_t SWAY_IN_VIEW = 2;
   static constexpr uint64_t SWAY_COUNTS_BYTES = 96 + (uint64_t{MAX_CLUSTERS} / 64 * 16) + 16;
   static constexpr uint64_t CLUSTER_DESTINATION_OFFSET = CLUSTER_COUNT_OFFSET + 8;
+  static constexpr uint64_t CLUSTER_BLAS_COUNT_OFFSET = CLUSTER_DESTINATION_OFFSET + (CLUSTER_BLASES * 8);  // the batched build's
   static constexpr uint64_t CLUSTER_INDICES_OFFSET = CLUSTER_DESTINATION_OFFSET + 248;
+  static_assert(CLUSTER_BLAS_COUNT_OFFSET + 4 <= CLUSTER_INDICES_OFFSET);
   static constexpr uint64_t CLUSTER_RECORDS_OFFSET = CLUSTER_INDICES_OFFSET + 256;
   static constexpr uint64_t CLUSTER_UPLOAD_BYTES = CLUSTER_RECORDS_OFFSET + uint64_t{MAX_CLUSTERS} * 16;
   // The partitioned TLAS: an instance per static record and the units' last, this many a partition; a slot's upload
@@ -4095,19 +4097,28 @@ class RtScene12 {
         }
         const std::array<std::pair<uint32_t, uint32_t>, CLUSTER_BLASES> blas_runs = {
             {{0u, grass_first}, {grass_first, grass_end}, {grass_end, units_end}, {units_end, cluster_count}}};
-        // With the sway (rt_sway) the counts start at 0 in sway_counts_ and the lists are sway_lists_'s.
+        // With the sway (rt_sway) the counts start at 0 in sway_counts_ and the lists are sway_lists_'s: an argument for each
+        // cluster BLAS in its place (rt_sway counts each run's there). Without it the non-empty runs' only, packed, their
+        // count after the destinations (no zero-cluster argument in the batched build).
         const bool sway = sway_flags != 0;
         std::array<uint64_t, CLUSTER_BLASES> destinations = {};
+        std::array<size_t, CLUSTER_BLASES> arg_blases = {};  // each argument's cluster BLAS
+        uint32_t blas_arg_count = 0;
         for (size_t blas = 0; blas < CLUSTER_BLASES; ++blas) {
+          const uint32_t run_clusters = blas_runs[blas].second - blas_runs[blas].first;
+          if (!sway && run_clusters == 0) continue;
           const NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS blas_args = {
-              .clusterCount = sway ? 0u : blas_runs[blas].second - blas_runs[blas].first, .reserved = 0,
+              .clusterCount = sway ? 0u : run_clusters, .reserved = 0,
               .clusterVAs = (sway ? sway_lists_ : clas_addresses_)->GetGPUVirtualAddress() + (uint64_t{blas_runs[blas].first} * 8)};
-          std::memcpy(data + CLUSTER_BLAS_ARGS_OFFSET + (blas * 16), &blas_args, sizeof(blas_args));
-          destinations[blas] = cluster_blases_[blas]->GetGPUVirtualAddress();
+          std::memcpy(data + CLUSTER_BLAS_ARGS_OFFSET + (uint64_t{blas_arg_count} * 16), &blas_args, sizeof(blas_args));
+          destinations[blas_arg_count] = cluster_blases_[blas]->GetGPUVirtualAddress();
+          arg_blases[blas_arg_count] = blas;
+          ++blas_arg_count;
         }
         const std::array<uint32_t, 2> clas_counts = {sway ? 0u : cluster_count - templated_clusters, sway ? 0u : templated_clusters};
         std::memcpy(data + CLUSTER_COUNT_OFFSET, clas_counts.data(), sizeof(clas_counts));
         std::memcpy(data + CLUSTER_DESTINATION_OFFSET, destinations.data(), sizeof(destinations));
+        std::memcpy(data + CLUSTER_BLAS_COUNT_OFFSET, &blas_arg_count, sizeof(blas_arg_count));
         // The captures' clusters' arguments and records, the BLAS's destination (and once the indices) copied where the
         // builds read them.
         const uint64_t captured = cluster_count - compact_clusters;
@@ -4201,7 +4212,7 @@ class RtScene12 {
             .resultSizeArray = {},
             .indirectArgArray = {.StartAddress = sway ? sway_counts_->GetGPUVirtualAddress() : upload + CLUSTER_BLAS_ARGS_OFFSET,
                                  .StrideInBytes = sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS)},
-            .indirectArgCount = 0,
+            .indirectArgCount = upload + CLUSTER_BLAS_COUNT_OFFSET,
         };
         const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS instantiate_params = {
             .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &instantiate_desc};
@@ -4233,16 +4244,40 @@ class RtScene12 {
             list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
           }
         }
-        // The cluster BLASes in one call, an argument each (an empty run's BLAS built empty, never instanced): one call a
-        // BLAS with a barrier after each made a battle's grass and units wait for each other (4K harness, units + a grass
-        // field: clusters 2.55 -> 2.33 ms).
-        const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS blas_params = {
-            .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &blas_desc};
-        const bool blases_built = clas_built && cluster_count != 0
-                                  && NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &blas_params) == NVAPI_OK;
+        // The cluster BLASes in one call, an argument each: one call a BLAS with a barrier after each made a battle's grass
+        // and units wait for each other (4K harness, units + a grass field: clusters 2.55 -> 2.33 ms). If a driver refuses
+        // the batch, one call an argument from then on (once in the log). An empty run's BLAS is never instanced.
+        const auto build_blases = [&](uint32_t first_arg, uint32_t args) {
+          NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC run_desc = blas_desc;
+          if (args == 1) {
+            run_desc.inputs.maxArgCount = 1;
+            run_desc.indirectArgCount = 0;
+          }
+          run_desc.destinationAddressArray.StartAddress += uint64_t{first_arg} * 8;
+          run_desc.indirectArgArray.StartAddress += uint64_t{first_arg} * 16;
+          const NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS run_params = {
+              .version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER, .pDesc = &run_desc};
+          return NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(list, &run_params);
+        };
+        if (clas_built && cluster_count != 0 && !cluster_blases_apart_) {
+          if (const NvAPI_Status batched = build_blases(0, blas_arg_count); batched == NVAPI_OK) {
+            for (uint32_t arg = 0; arg < blas_arg_count; ++arg) cluster_built[arg_blases[arg]] = true;
+          } else {
+            cluster_blases_apart_ = true;
+            slow_report_ += std::format("{}[TW ray tracing] Mega Geometry: the cluster BLASes' batched build refused ({}), one call each now.",
+                                        (slow_report_.empty() ? "" : "\n"), static_cast<int>(batched));
+          }
+        }
+        if (clas_built && cluster_count != 0 && cluster_blases_apart_) {
+          // The same scratch: a barrier between them.
+          for (uint32_t arg = 0; arg < blas_arg_count; ++arg) {
+            if (arg != 0) list->ResourceBarrier(1, &uav_barrier);
+            cluster_built[arg_blases[arg]] = (build_blases(arg, 1) == NVAPI_OK);
+          }
+        }
         list->ResourceBarrier(1, &uav_barrier);
         for (size_t blas = 0; blas < CLUSTER_BLASES; ++blas) {
-          cluster_built[blas] = blases_built && blas_runs[blas].second != blas_runs[blas].first;
+          cluster_built[blas] = cluster_built[blas] && blas_runs[blas].second != blas_runs[blas].first;
         }
         units_clustered = cluster_built[0] || cluster_built[1] || cluster_built[2];
         smoke_clustered = cluster_built[3];
@@ -5965,6 +6000,9 @@ class RtScene12 {
   uint32_t cluster_limit_ = MAX_CLUSTERS;  // the most a frame (CLUSTER_TIERS)
   uint32_t cluster_room_ = MAX_CLUSTERS;   // room for them now (ClusterRoom: grown while a frame fills 3/4 of it)
   bool clusters_crowded_ = false;          // the last request's clusters filled 3/4 of a run's room or more
+  // The driver refused the cluster BLASes' batched build: one call each (RENODX_TW_TEST_CLUSTER_BLASES_APART: from the
+  // start, the GPU harness's check of that path).
+  bool cluster_blases_apart_ = GetEnvironmentVariableW(L"RENODX_TW_TEST_CLUSTER_BLASES_APART", nullptr, 0) != 0;
   uint64_t templated_wanted_ = 0;          // and the clusters its runs wanted (fitting or not)
   uint64_t built_wanted_ = 0;
   uint32_t built_limit_ = MAX_CLUSTERS;    // of the room built from triangles (the rest instantiated from templates)
