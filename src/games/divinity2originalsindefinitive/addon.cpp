@@ -836,12 +836,12 @@ void ConfigureAddon() {
   // Swapchain cb
   renodx::mods::swapchain::expected_constant_buffer_index = 10;
   renodx::mods::swapchain::expected_constant_buffer_space = 50;
-  
+
   // Swapchain upgrade settings
   renodx::mods::swapchain::use_resource_cloning = false;
   renodx::mods::swapchain::force_borderless = false;
   renodx::mods::swapchain::prevent_full_screen = false;
-  
+
   // Proxy Shaders
   renodx::mods::swapchain::swap_chain_proxy_shaders = {
       {
