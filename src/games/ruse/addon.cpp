@@ -23,6 +23,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <span>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -101,6 +102,7 @@ void OnInitDepthResource(reshade::api::device* device, const reshade::api::resou
 
 void OnBridgeBindTargets(reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view* targets,
                          reshade::api::resource_view depth_stencil) {
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return;
   auto& bridge = ruse::bridge::state;
   bridge.depth_stencil = depth_stencil.handle;
   bridge.render_target = (count > 0) ? targets[0].handle : 0u;
@@ -130,6 +132,7 @@ void OnBridgePushConstants(reshade::api::command_list*, reshade::api::shader_sta
 
 bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t, uint32_t first_index, int32_t vertex_offset,
                          uint32_t) {
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return false;
   ruse::bridge::OnDraw(cmd_list);
   if (ruse::replay::state.enabled && ruse::bridge::IsSceneDraw()) {
     ruse::replay::Record(cmd_list, index_count, first_index, vertex_offset);
@@ -522,7 +525,8 @@ void OnPresentFrame(
       ruse::replay::state.log_next = true;
     }
   }
-  ruse::replay::Replay();
+  ruse::replay::Replay(ruse::bridge::state.camera_valid ? std::span<const float>(ruse::bridge::state.camera).subspan(16, 16)
+                                                       : std::span<const float>());
   native_gui_phase = false;
   skip_host_present = false;
   proxy_present_started = false;
@@ -1142,13 +1146,7 @@ void ConfigureAddon() {
                                                  : ((choice == 3) ? twattila::dlaa_bridge::UPSCALER_XESS : twattila::dlaa_bridge::UPSCALER_DLSS);
     readable_depth_enabled = readable_depth_enabled || ruse::bridge::state.enabled;
     if (ruse::bridge::state.enabled) {
-      // The camera pass: its matrices (c0-c8) as it drew; the bloom's first pass: the upscaler on the scene it reads.
-      custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list*) {
-                                      std::memcpy(ruse::bridge::state.camera.data(), ruse::bridge::state.pixel_registers.data(),
-                                                  sizeof(ruse::bridge::state.camera));
-                                      ruse::bridge::state.camera_valid = true;
-                                      return true;
-                                    }};
+      // The bloom's first pass: the upscaler on the scene it reads.
       for (const uint32_t bloom : {0x41B68A24u, 0xF663E47Eu}) {
         custom_shaders[bloom] = {.crc32 = bloom, .on_draw = [](reshade::api::command_list* cmd_list) {
                                    ruse::bridge::Evaluate(cmd_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
@@ -1192,6 +1190,15 @@ void ConfigureAddon() {
     ruse::replay::state.enabled = setting->GetValue() != 0.f;
     ruse::replay::state.log_next = ruse::replay::state.enabled;
     readable_depth_enabled = readable_depth_enabled || ruse::replay::state.enabled;
+  }
+  if (ruse::bridge::state.enabled || ruse::replay::state.enabled) {
+    // The camera pass: its matrices (c0-c8) as it drew (the bridge's motion, the replay's placements).
+    custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list*) {
+                                    std::memcpy(ruse::bridge::state.camera.data(), ruse::bridge::state.pixel_registers.data(),
+                                                sizeof(ruse::bridge::state.camera));
+                                    ruse::bridge::state.camera_valid = true;
+                                    return true;
+                                  }};
   }
 
   twattila::psycho35::InsertBefore(&settings, "Extra", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));

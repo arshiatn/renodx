@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <format>
@@ -35,13 +37,26 @@
 // CPU and uploaded to a D3D11 buffer the first time a replayed draw reads it after a change. A3: the game's vertex
 // declarations as D3D11 input layouts, one per declaration and shader, the integer formats ReShade reports read
 // normalized and scaled back (the shaders' cbuffer b1). A4: each scene draw recorded (shader, declaration, streams,
-// indices, the vertex constants it reads), replayed at the game's present into one stream output buffer.
+// indices, the vertex constants it reads), replayed at the game's present into one stream output buffer. A rigid draw
+// seen at its place in an earlier frame (its placement) isn't replayed again: about 1,800 of the B0 trace's 2,200 scene
+// draws a frame (tools/nontw/ruse/scripts/ru_trace_static.py), so a frame replays its skinned and moved draws alone.
 namespace ruse::replay {
 
 using Microsoft::WRL::ComPtr;
 
 constexpr UINT STREAM_OUTPUT_BYTES = 64u << 20;  // 4 M clip positions a frame
 constexpr UINT STREAMS = 4;
+// A placement's model is the camera pass's inverse view-projection (0x88292FC6's c4-c7) x the draw's c0-c3: that float
+// inverse at world coordinates near 2e6 is a few units off, differently as the camera moves, so a placement keeps its
+// place while its translation stays within PLACE_TOLERANCE world units; unseen for PLACE_RELEASE_FRAMES it is forgotten.
+constexpr double PLACE_TOLERANCE = 32.0;
+constexpr uint64_t PLACE_RELEASE_FRAMES = 600;
+
+struct Placement {
+  std::array<double, 3> translation = {};
+  uint64_t frame = 0;      // the last frame a draw had it
+  uint64_t scene_key = 0;  // ray tracing's key for its capture (0: not captured yet)
+};
 
 struct Mirror {
   std::vector<uint8_t> bytes;
@@ -92,11 +107,17 @@ struct Draw {
   int32_t vertex_offset = 0;
   uint32_t topology = 4;  // reshade::api::primitive_topology (= D3D11's for lists and strips)
   size_t constants = 0;   // into State::constants, `shader->registers` x 4 floats
+  // Its placement (State::placements[place_key][place_index]; place_key 0: none, replayed every frame) and whether an
+  // earlier frame had it there already.
+  uint64_t place_key = 0;
+  uint32_t place_index = 0;
+  bool placed = false;
 };
 
 // Why recorded draws were not replayed (logged with Trace One Frame).
 struct Counts {
   uint32_t recorded = 0;
+  uint32_t placed = 0;
   uint32_t replayed = 0;
   uint32_t no_shader = 0;
   uint32_t no_layout = 0;
@@ -124,6 +145,8 @@ struct State {
   std::vector<Draw> draws;
   std::vector<float> constants;
   Counts counts;
+  uint64_t frame = 0;
+  std::unordered_map<uint64_t, std::vector<Placement>> placements;
   // The proxy's objects (made on the first replay).
   std::unordered_map<uint32_t, std::pair<ComPtr<ID3D11VertexShader>, ComPtr<ID3D11GeometryShader>>> shaders;
   std::map<std::pair<uint64_t, uint32_t>, Layout> layouts;  // by declaration and shader hash
@@ -350,15 +373,86 @@ inline ID3D11Buffer* GetBuffer(ID3D11Device* device, ID3D11DeviceContext* contex
   return result;
 }
 
-// A4 at the game's present: this frame's recorded draws through their replay shaders into `positions` (triangles of
-// clip positions in draw order), the proxy's state as it was after.
-inline void Replay() {
+// A4 at the game's present: this frame's recorded draws, each rigid one given its placement (`inverse_view_projection`:
+// the camera pass's c4-c7, rows; empty: unknown, none placed); those not placed in an earlier frame through their replay
+// shaders into `positions` (triangles of clip positions in draw order), the proxy's state as it was after.
+inline void Replay(std::span<const float> inverse_view_projection) {
   auto* proxy_reshade = renodx::utils::device_proxy::proxy_device_reshade;
   if (!state.enabled || proxy_reshade == nullptr || state.draws.empty()) {
     state.draws.clear();
     state.constants.clear();
     state.counts = {};
     return;
+  }
+  ++state.frame;
+  const auto written = [](uint64_t handle) {
+    uint64_t count = 0;
+    state.mirrors.if_contains(handle, [&](const auto& entry) {
+      const auto& [key, mirror] = entry;
+      count = mirror.written;
+    });
+    return count;
+  };
+  for (auto& draw : state.draws) {
+    const auto inputs = std::span(draw.shader->inputs).first(draw.shader->input_count);
+    const bool skinned = std::ranges::any_of(inputs, [](const ShaderInput& input) { return std::strcmp(input.semantic, "BLENDINDICES") == 0; });
+    if (skinned || inverse_view_projection.size() != 16 || draw.shader->registers < 4) continue;
+    // Its model's rows 0-2 (the inverse x its c0-c3, rows acting on column vectors), in doubles.
+    const float* registers = state.constants.data() + draw.constants;
+    std::array<double, 12> model = {};
+    for (int row = 0; row < 3; ++row) {
+      for (int column = 0; column < 4; ++column) {
+        for (int k = 0; k < 4; ++k) {
+          model[(row * 4) + column] += static_cast<double>(inverse_view_projection[(row * 4) + k]) * registers[(k * 4) + column];
+        }
+      }
+    }
+    uint64_t key = 14695981039346656037ull;
+    const auto mix = [&key](uint64_t value) { key = (key ^ value) * 1099511628211ull; };
+    mix(draw.shader->hash);
+    mix(draw.declaration);
+    for (UINT stream = 0; stream < STREAMS; ++stream) {
+      mix(draw.streams[stream]);
+      mix((uint64_t{draw.strides[stream]} << 32) | draw.offsets[stream]);
+      mix(written(draw.streams[stream]));
+    }
+    mix(draw.index_buffer);
+    mix(written(draw.index_buffer));
+    mix((uint64_t{draw.index_offset} << 32) | draw.index_size);
+    mix((uint64_t{draw.index_count} << 32) | draw.first_index);
+    mix((uint64_t{static_cast<uint32_t>(draw.vertex_offset)} << 32) | draw.topology);
+    for (int row = 0; row < 3; ++row) {
+      for (int column = 0; column < 3; ++column) {
+        mix(static_cast<uint64_t>(std::llround(model[(row * 4) + column] * 1024.0)));
+      }
+    }
+    for (uint32_t index = 16; index < draw.shader->registers * 4u; ++index) mix(std::bit_cast<uint32_t>(registers[index]));
+    const std::array<double, 3> translation = {model[3], model[7], model[11]};
+    auto& candidates = state.placements[key];
+    const auto nearby = [&](const Placement& placement) {
+      return placement.frame != state.frame && std::abs(placement.translation[0] - translation[0]) <= PLACE_TOLERANCE
+             && std::abs(placement.translation[1] - translation[1]) <= PLACE_TOLERANCE
+             && std::abs(placement.translation[2] - translation[2]) <= PLACE_TOLERANCE;
+    };
+    auto found = std::ranges::find_if(candidates, nearby);
+    draw.placed = found != candidates.end();
+    if (draw.placed) {
+      found->frame = state.frame;
+      ++state.counts.placed;
+    } else {
+      // A new place, in a placement unseen for PLACE_RELEASE_FRAMES if the key has one.
+      found = std::ranges::find_if(candidates, [](const Placement& placement) { return placement.frame + PLACE_RELEASE_FRAMES < state.frame; });
+      if (found == candidates.end()) found = candidates.insert(candidates.end(), Placement{});
+      *found = {.translation = translation, .frame = state.frame};
+    }
+    draw.place_key = key;
+    draw.place_index = static_cast<uint32_t>(found - candidates.begin());
+  }
+  if ((state.frame % 64) == 0) {
+    std::erase_if(state.placements, [](const auto& entry) {
+      const auto& [key, candidates] = entry;
+      return std::ranges::all_of(candidates, [](const Placement& placement) { return placement.frame + PLACE_RELEASE_FRAMES < state.frame; });
+    });
   }
   auto* device = reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native());
   ComPtr<ID3D11DeviceContext> context;
@@ -385,6 +479,7 @@ inline void Replay() {
   ID3D11Buffer* const game_constants = state.game_constants.Get();
   if (state.log_next) context->Begin(state.statistics.Get());
   for (const auto& draw : state.draws) {
+    if (draw.placed) continue;
     if (draw.topology != static_cast<uint32_t>(reshade::api::primitive_topology::triangle_list)
         && draw.topology != static_cast<uint32_t>(reshade::api::primitive_topology::triangle_strip)) {
       ++state.counts.fan;
@@ -449,10 +544,12 @@ inline void Replay() {
     }
     const Counts& counts = state.counts;
     reshade::log::message(reshade::log::level::info,
-                          std::format("[R.U.S.E.] Scene Replay: {} scene draws, {} replayed ({} triangles, {} needed), skipped: {} "
-                                      "unknown shader, {} no layout, {} unmirrored buffer, {} fan; {} mirrored buffers",
-                                      counts.recorded, counts.replayed, written.NumPrimitivesWritten, written.PrimitivesStorageNeeded,
-                                      counts.no_shader, counts.no_layout, counts.no_buffer, counts.fan, state.mirrors.size())
+                          std::format("[R.U.S.E.] Scene Replay: {} scene draws, {} at their earlier place, {} replayed ({} triangles, {} "
+                                      "needed), skipped: {} unknown shader, {} no layout, {} unmirrored buffer, {} fan; {} mirrored "
+                                      "buffers, {} placement keys",
+                                      counts.recorded, counts.placed, counts.replayed, written.NumPrimitivesWritten,
+                                      written.PrimitivesStorageNeeded, counts.no_shader, counts.no_layout, counts.no_buffer, counts.fan,
+                                      state.mirrors.size(), state.placements.size())
                               .c_str());
     state.log_next = false;
   }
