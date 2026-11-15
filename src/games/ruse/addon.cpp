@@ -64,6 +64,45 @@ bool frame_trace_enabled = false;
 bool frame_trace_requested = false;
 std::filesystem::path frame_trace_marker;
 
+// The whole-package round's first pieces (plan.md 10b W1, D1), restart rows for the test run: with Frame Trace on, every
+// resource the game makes goes to ReShade.log (pools, usages, formats, samples: the B0 trace saw none); Readable Scene
+// Depth makes the game's back-buffer-sized single-sample depth surfaces INTZ textures (ReShade's generic depth add-on does
+// the same on D3D9), the upscalers' and the ground shadows' depth.
+bool readable_depth_enabled = false;
+uint32_t back_buffer_width = 0;
+uint32_t back_buffer_height = 0;
+
+void OnLogResource(reshade::api::device* device, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
+                   reshade::api::resource_usage, reshade::api::resource resource) {
+  if (device->get_api() != reshade::api::device_api::d3d9) return;
+  reshade::log::message(
+      reshade::log::level::info,
+      std::format("[R.U.S.E.] resource 0x{:x}: type {} {} heap {} usage 0x{:x} flags 0x{:x}", resource.handle,
+                  static_cast<uint32_t>(desc.type),
+                  (desc.type == reshade::api::resource_type::buffer)
+                      ? std::format("{} bytes stride {}", desc.buffer.size, desc.buffer.stride)
+                      : std::format("{}x{} levels {} format {} samples {}", desc.texture.width, desc.texture.height,
+                                    desc.texture.levels, static_cast<uint32_t>(desc.texture.format), desc.texture.samples),
+                  static_cast<uint32_t>(desc.heap), static_cast<uint32_t>(desc.usage), static_cast<uint32_t>(desc.flags))
+          .c_str());
+}
+
+bool OnCreateDepthResource(reshade::api::device* device, reshade::api::resource_desc& desc, reshade::api::subresource_data*,
+                           reshade::api::resource_usage) {
+  if (device->get_api() != reshade::api::device_api::d3d9) return false;
+  // Surfaces only: a D24 texture may be sampled as a hardware shadow map (PCF), which INTZ would break.
+  if (desc.type != reshade::api::resource_type::surface || (desc.usage & reshade::api::resource_usage::depth_stencil) == 0) return false;
+  if (desc.texture.samples > 1 || desc.texture.width != back_buffer_width || desc.texture.height != back_buffer_height) return false;
+  if (desc.texture.format != reshade::api::format::d24_unorm_s8_uint && desc.texture.format != reshade::api::format::d24_unorm_x8_uint) {
+    return false;
+  }
+  desc.texture.format = reshade::api::format::intz;
+  desc.usage |= reshade::api::resource_usage::shader_resource;
+  reshade::log::message(reshade::log::level::info,
+                        std::format("[R.U.S.E.] depth {}x{} made readable (INTZ)", desc.texture.width, desc.texture.height).c_str());
+  return true;
+}
+
 // Graphics 2 of 2 (ATN Q7): values the game reads from its Option.ini ([advanced_video]: the ClusterLoadSaverOptions
 // list) above what its menu sets. The game reads the file at start and writes it only when its options menu applies
 // (SaveCommandName) or the file fails to load (ForceSaveIfNotOk): a row writes the file when it changes and at each start,
@@ -1005,6 +1044,23 @@ void ConfigureAddon() {
         .is_visible = []() { return frame_trace_enabled && IsAdvancedSettings(); },
     });
   }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "ReadableDepth",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Readable Scene Depth (Testing)",
+        .section = "Output (Restart Required)",
+        .tooltip = "For testing: makes the game's depth readable for the upcoming anti-aliasing and shadows.\n"
+                   "Needs the in-game anti-aliasing off. Off (default) changes nothing. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    readable_depth_enabled = (setting->GetValue() != 0.f);
+    settings.push_back(setting);
+  }
 
   twattila::psycho35::InsertBefore(&settings, "Extra", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
 
@@ -1138,8 +1194,10 @@ void ConfigureAddon() {
 
 // The game's DX9 swap chain, before the swapchain mod's create_swapchain (registered after this) and its DX11 proxy.
 // output_encoding hands an SDR target to the swapchain mod alone (shared step S2): the proxy takes it from here.
-bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_desc&, void* hwnd) {
+bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_desc& desc, void* hwnd) {
   if (api != reshade::api::device_api::d3d9) return false;
+  back_buffer_width = desc.back_buffer.texture.width;
+  back_buffer_height = desc.back_buffer.texture.height;
   twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
   renodx::utils::device_proxy::SetTargetFormat(renodx::mods::swapchain::target_format);
   renodx::utils::device_proxy::SetTargetColorSpace(renodx::mods::swapchain::target_color_space);
@@ -1173,6 +1231,10 @@ bool AttachAddon() {
 
   if (frame_trace_enabled) {
     renodx::utils::trace::Use(DLL_PROCESS_ATTACH);
+    reshade::register_event<reshade::addon_event::init_resource>(OnLogResource);
+  }
+  if (readable_depth_enabled) {
+    reshade::register_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
   }
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &frame_injection);
@@ -1197,6 +1259,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::reshade_open_overlay>(OnOpenReShadeOverlay);
   reshade::unregister_event<reshade::addon_event::reshade_overlay>(OnReShadeOverlay);
   reshade::unregister_event<reshade::addon_event::reshade_present>(OnReShadePresent);
+  reshade::unregister_event<reshade::addon_event::init_resource>(OnLogResource);
+  reshade::unregister_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
   UninstallPresentHooks();
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &frame_injection);
