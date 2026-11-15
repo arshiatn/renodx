@@ -1024,7 +1024,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         Distance 2x / 4x (Option.ini written each start, game's values kept, "Game's" restores byte for byte). Built only.
         D3D9 bridge (plan 4c): DLAA / DLSS / FSR / XeSS yes, FG + Reflex after DLAA, AO / GI Experimental, RT / PT WON'T
         GET (no stream output, pure hardware device: no ProcessVertices); the device is D3D9Ex already.
-      - [ ] R.U.S.E. D3D9 bridge B0 trace (next game run: Frame Trace at the menu + in battle, in-game AA off and on:
+      - [x] R.U.S.E. B0 TRACE RAN 20:08-20:12 (ATN's OK + ATN loaded the battle): ReShade 6.8.0.2155 installed as
+        d3d9.dll + ReShade.ini (FrameTrace=1) in D:\...\R.U.S.E, add-on stamped "ruse u1" (af1acced, tw_install --first);
+        two one-frame traces (tools/nontw/ruse/u1_trace_200820); clean exit, no dump, Option.ini unchanged. ru_ reads them
+        and writes ONE whole-package plan (ATN 20:0x: "plan and do everything ... from the beginning", after the reviews).
+      - [ ] R.U.S.E. whole package in ONE implementation round (bridge + Bend + draw replay + RT shadows + AO / GI / PT
+        where the trace allows + pages), after the review fixes merge. Owner: ru_
+      - [ ] (was) R.U.S.E. D3D9 bridge B0 trace (next game run: Frame Trace at the menu + in battle, in-game AA off and on:
         depth MSAA / INTZ, motion target, camera pass 0x88292FC6 constants c0-c8, final post samplers), then B1-B4, then
         the Fable 5.2 High review (ATN). Owner: coordinator (run) then ru_
       - [ ] R.U.S.E. U1 run (after ReShade + the stamped add-on are installed on D:): Frame Trace menu + battle; every
@@ -1188,6 +1194,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         4fffa624, R12 f35d6d5f, R13 d312c48c, R14 0883c7c6, R15 80802e0b, R16 a4a9371d, R17 70490b09, R18 75680deb, R19
         6f836836, R23 54e09a90, R24 ec99db49. Both build lines + helper built; x86 / amd64 PASS: tw_fg_initialization,
         tw_game_gi, tw_helper_lifetime, tw_gpu_completion, tw_output_encoding, tw_scrub_lods, tw_unit_pack_rounds.
+        fx_ ROUND 2 DONE 20:1x (same branch, 7 commits 8fd15e5c..159f46e6): R13 Answer(20000) for a pending steady
+        answer (also Release(true)); R15 park on a backend switch, never on a loss; R19 no pass without a proxy shader; R1
+        RR loss stops Streamline, destroys RR normally, restarts both (no leak); R4 presenting cleared on failure; R22 retry
+        (resize / device change / 30 s, 3 a session, PublishEmptySet frees the helper's set). Builds both lines + helper
+        build\tw_dlaa_helper_fx2; x86 + amd64 PASS: tw_helper_lifetime (new retry case), tw_device_loss, tw_fg_initialization,
+        tw_game_gi, tw_gpu_completion, tw_output_encoding, tw_scrub_lods, tw_unit_pack_rounds. LEFT: harness
+        RENODX_TW_TEST_DEVICE_REMOVAL with FG on + an FG device loss + fg_bridge_test (GPU, after ATN's game); then merge,
+        build all, stamp, install.
         Second Fable 5.2 High review of the fix diff DONE 20:0x (wf_b2c7ad87-41e, review2_1115.json): 7 confirmed, 1
         refuted; 15 of the 19 commits OK. fx_ round 2 started on the same branch (the 7 + R22). Merge after round 2 and
         the harness runs (after ATN's game). The R boxes below are ticked at the merge.
