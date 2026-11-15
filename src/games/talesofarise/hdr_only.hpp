@@ -11,7 +11,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cwchar>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,7 +28,7 @@ namespace talesofarise::hdr_only {
 constexpr uint32_t WARNING_TINT = 0xFF5050;
 
 // Shown while no loaded module's file name ends with `dlss_addon` (installs put a load-order digit in front). Read as the
-// page draws: the DLSS add-on loads after this one.
+// page draws (the DLSS add-on loads after this one), the modules listed at most every 2 s (each overlay frame cost CPU).
 inline renodx::utils::settings::Setting* FullDownloadNote(std::wstring_view dlss_addon) {
   return new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
@@ -34,20 +36,26 @@ inline renodx::utils::settings::Setting* FullDownloadNote(std::wstring_view dlss
                "github.com/arshiatn/renodx/releases",
       .section = "General",
       .tint = WARNING_TINT,
-      .is_visible = [dlss_addon] {
-        std::array<HMODULE, 1024> modules = {};
-        DWORD bytes = 0;
-        if (K32EnumProcessModules(GetCurrentProcess(), modules.data(), sizeof(modules), &bytes) == FALSE) return false;
-        const size_t count = std::min<size_t>(bytes / sizeof(HMODULE), modules.size());
-        for (size_t index = 0; index < count; ++index) {
-          std::array<wchar_t, MAX_PATH> path = {};
-          const std::wstring_view name(path.data(), GetModuleFileNameW(modules[index], path.data(), MAX_PATH));
-          if (name.size() >= dlss_addon.size()
-              && _wcsnicmp(name.data() + name.size() - dlss_addon.size(), dlss_addon.data(), dlss_addon.size()) == 0) {
-            return false;
+      .is_visible = [dlss_addon, shown = false, listed_at = std::optional<uint64_t>()]() mutable {
+        const uint64_t now = GetTickCount64();
+        if (listed_at.has_value() && now - *listed_at < 2000) return shown;
+        listed_at = now;
+        shown = [dlss_addon] {
+          std::array<HMODULE, 1024> modules = {};
+          DWORD bytes = 0;
+          if (K32EnumProcessModules(GetCurrentProcess(), modules.data(), sizeof(modules), &bytes) == FALSE) return false;
+          const size_t count = std::min<size_t>(bytes / sizeof(HMODULE), modules.size());
+          for (size_t index = 0; index < count; ++index) {
+            std::array<wchar_t, MAX_PATH> path = {};
+            const std::wstring_view name(path.data(), GetModuleFileNameW(modules[index], path.data(), MAX_PATH));
+            if (name.size() >= dlss_addon.size()
+                && _wcsnicmp(name.data() + name.size() - dlss_addon.size(), dlss_addon.data(), dlss_addon.size()) == 0) {
+              return false;
+            }
           }
-        }
-        return true;
+          return true;
+        }();
+        return shown;
       },
   };
 }
