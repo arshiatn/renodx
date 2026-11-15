@@ -43,6 +43,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -137,6 +138,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
 - npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe. Own ... | npu_
 - gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: g ... | gr_
+- Both D3D12 devices (Streamline FG + RR) removed at the same moment: every order ... | next helper round
 - Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device re ... | coordinator
 - REVIEWS + FIXES MERGED 8ee4ab2f 20:5x (left: GPU harness after ATN's game, build ... | coordinator
 - [B] R4 Peak / Paper White can reach 0.8 (Peak min 400, Paper White max 500): cla ... | HDR bug round (after the fix merge)
@@ -1282,6 +1284,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         in-game data runs tonight ("Start game data runs if you want"). Runs after their builds + GPU checks, one at a time
         under gpu_job.lock, fresh backups first: R.U.S.E. T-run (after ru5_ + H1 / H2), Divinity 1 R1 (after d1_ step 1),
         Divinity 2 R1b, Expeditions E9 (-d3d12) + Low start. Saves that need a mouse click: ask ATN (keyboard only).
+      - [x] fx_ GPU ROUND DONE + MERGED 4a7f6318 00:4x: RR removal with FG on CRASHED the helper (C0000005 nvngx_dlssd)
+        -> 066d921e: a lost RR object goes before Streamline's stop, Streamline's own loss keeps its live RR (PASS 3/3,
+        2.6 s stall; SL loss with RR PASS 2/2, 3.0 s, ~180 MiB kept); 62423a4c RENODX_TW_TEST_FG_DEVICE_REMOVAL; both
+        losses in a row PASS (5.3 s); FSR / XeSS FG losses with RR PASS; harness 17/17 ALL PASSED + 5/5 on the final
+        helper build\tw_dlaa_helper_fx3 (6DAAA4BF9CBF); fg_bridge_test 6 phases PASS; quiet tw_device_loss x86 + amd64
+        PASS; tw_gpu_completion + tw_helper_lifetime PASS.
+      - [ ] Both D3D12 devices (Streamline FG + RR) removed at the same moment: every order tried crashes or keeps a
+        removed device; not covered by the switches. Owner: next helper round
+      - 00:4x coordinator ended ru_'s gated build (ninja -j 3 target ruse, hung 45 min with no child, held slot 1;
+        everything queued behind it). ru6_ builds the R.U.S.E. tree once its pieces are in.
       - [ ] Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device removal with FG on, FG device
         loss, fg_bridge_test), quiet tw_device_loss, gr_, ru_ H1 / H2, build all, stamp, install (dry run, fresh backups).
         Owner: coordinator
