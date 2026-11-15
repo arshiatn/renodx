@@ -788,9 +788,20 @@ heading text are in HANDOFF_ARCHIVE.md)
     - [ ] +265 MB VRAM for the bounce-size ReSTIR record. Owner: next ReSTIR round
     - [ ] Shogun 2 terrain_detail not restored at detach (minor). Owner: next Shogun 2 round
     - [ ] talesofarise_dlss/frame_generation.hpp detours have no uninstall. Owner: next UE round
-  - [ ] FINAL VERIFICATION on bc7ba324 (rfx_ in its worktree: every suite, HARNESS_DUMP, page dumps incl. ry / ta / exr,
-    parity_check 0) + main checkout build + helper114 (coordinator, tools/tw/round_notes/final_build_1115.ps1); then
-    stamp + install all TW games, then END BENCH part 2. Owner: rfx_ / coordinator
+  - [x] FINAL VERIFICATION bc7ba324 (rfx_): builds exit 0; tw_engine_code x86 PASS (3 DLLs), tw_output_encoding 5 / 5
+    x86 + amd64, tw_helper_lifetime / tw_gpu_completion / tw_screen_space_shadows x86 + amd64 PASS, tw_rays_captures ALL
+    PASSED, fg_bridge_test PASS (7 phases), all_modes 178 / 179 (rr_ao_reblur_release: the same flaky +30 MiB sets check,
+    4 / 4 alone), HARNESS_DUMP 59 / 60 equal to rfx1 (nrd_bounce_reuse nondeterministic in rfx1 too); page dumps: TW +
+    Shogun 2 + Ryse unchanged, Tales / Expeditions +1 row RayTracedGamePointShadows (f407205a's shared row, Experimental
+    off); parity_check exit 0 after 3 ledger lines (shogun2 RayTracedLightRatioFollow SHARED STEP / RayTracedGamePointShadows
+    NEEDS A TRACE, romeremastered RayTracedLightRatioFollow SHARED STEP). Main checkout build + helper114 (sha256 cf5ba820...,
+    44 headers as g3b2).
+  - [x] INSTALLED 08:00 (tw_install.py --helper 114 --install; stamped, hashes checked, ATN's files unchanged, fresh
+    backups): Attila v161, WH3 v60, Pharaoh v68, Rome II r4, Thrones r5, WH2 v51, Shogun 2 v74 (old _dlss add-on
+    .retired-20261115_080042), Troy v55, WH1 r6, Rome Remastered v12, all with helper114; Agility SDK D3D12Core.dll
+    copied to the 8 games that lacked it. Not run in game.
+  - [ ] END BENCH PART 2 (end_of_batch_1115_run2.ps1: g2a_torch, g2a_shadow, g2b_clusters, g4_capture, g3b_reuse,
+    grass_dump; ~46 starts, ~3 h) on the installed v161 + helper114, then the verdicts here. Owner: coordinator
   - [x] SHOGUN 2 ONE ADD-ON MERGED d4c82679 (s2m_): _dlss folded in (pages HDR & Effects / Graphics 1 of 2 / 2 of 2;
     shared twattila/settings_pages.hpp for the page helpers; fast dispatch; hdr_link / dlss_jitter / in-process FG
     shaders 0x7A1E0D40-42 dropped; red note + log while the old _dlss file sits in the folder; README tells players to
