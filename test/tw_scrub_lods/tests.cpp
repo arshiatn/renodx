@@ -426,10 +426,10 @@ static void __fastcall ControlDrawScrub(uint8_t* manager, void* edx, uint32_t in
 
 static void __fastcall EmptyDrawScrub(uint8_t*, void*, uint32_t, const float*, uint32_t, const uint8_t*, uint32_t) {}
 
-// The cell loop's bias for a record (its +0x11 byte, the scrub's +0x84; 1 / 65025 as the game has it).
+// The cell loop's bias for a record (its +0x11 byte, the scrub's +0x84; the game's constant, ~1 / 65025).
 static float Bias(uint8_t thinning_byte, float bias_scale) {
   const float thinning = static_cast<float>(thinning_byte);
-  return (((thinning * std::bit_cast<float>(0x37810101u)) * bias_scale) * thinning) * bias_scale;
+  return (((thinning * std::bit_cast<float>(0x37810183u)) * bias_scale) * thinning) * bias_scale;
 }
 
 // The cell loop (+0x1897a30) over the replay's records, as the game's ABI passes a cell (its distance test against
