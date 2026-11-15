@@ -18,7 +18,7 @@
 
 // The Total War HDR add-ons' opt-in to command_action's fast dispatch (utils/command_action_fast.hpp), with the gate of
 // the resource upgrades' command-wide callback; view_share, object_motion and rt_scene gate their own. An add-on without
-// resource upgrades (Shogun 2 DLSS) calls fast::Use itself.
+// resource upgrades (a _dlss add-on) calls fast::Use itself.
 namespace twattila::draw_dispatch {
 
 namespace internal {

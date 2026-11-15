@@ -30,8 +30,8 @@ usage:
 
 Limits: static. A key in both pages counts as had, whatever the row does (games_compare's defaults and preset values are not
 compared here); a row of another name doing Attila's job needs its HAVE line. The census's own limits hold (its family and
-pass come from names and bytes; level B = in no trace). Shogun 2's page is two add-ons joined (HDR rows and the DLSS overlay,
-other key names): most of Attila's keys need a ledger line there. Feature lines are checked only for their status and proof.
+pass come from names and bytes; level B = in no trace). Shogun 2's page (one add-on since 2026-11-15, the DLSS overlay's rows
+under other key names): most of Attila's keys need a ledger line there. Feature lines are checked only for their status and proof.
 The page dumps compile the addon on the CPU (no GPU); the census disassembles with fxc into <tools>/parity/asm/<letter>. Both
 wait while <tools>/quiet_run.lock exists (a game run measuring CPU frame times).
 """
