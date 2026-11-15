@@ -969,6 +969,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         graphicSettings.lsx; Pragmap credit not needed; the "mod invalid" dialog is expected (mods not installed). Sent to
         d1_.
       - [ ] ATN at the end (Divinity 1): drop or keep the legacy V30 / Pragmap modes. Owner: ATN
+      - [x] R.U.S.E. PLAN DONE 18:4x (ru_): tools/nontw/ruse/plan.md + ruse.tsv, census\ (all 1,803 shipped shaders:
+        1,528 ps_3_0 + 275 vs_3_0 from ZZ_Win.dat's shadercachev02.shc, decompiled, families), scripts\, u0\. U0 runs
+        18:04-18:10 + 18:26-18:29 (plain game, no ReShade on D:): D3D9, battle 158 fps (VSync cap), GPU busy 3.4 ms;
+        DirectX11PlatformWanted=true still D3D9 and no DXBC ships: DX11 helper route WON'T GET; the window close crashes
+        the unmodded game ("ChangeMode failure"); menu ignores keys, battle camera keys work. Psycho: V35 at the right
+        place but keeps slope 1 while each map grades Brightness * rgb * luma^(Gamma-1) (Gamma 1.0-1.6 over 87 maps):
+        25-60 % flatter.
+      - [ ] R.U.S.E. U1-U7 (offline): U1 V35 contrast = the map's Gamma (postprocess.hlsli:161) + Extended (per-channel
+        roll-off) as a mode; U2 test/tw_psychov35 part 6 (WARP: grey, slope, highlights, hue, C2 markers, ps_3_0 slots);
+        U3 Output SDR / Auto + first start + SDR preset (coordinator owns the shared S1 / S2); U4 About / Ko-fi / fast::Use;
+        U5 the 20 unreplaced UI / video / loading shaders (C1), Video AutoHDR Experimental; U6 D3D9 one-frame trace +
+        test_hooks on the proxy runtime (S3); U7 dump_ru.cpp, parity_check 'ru', tw_install 'ruse'. Owner: ru_ (resumed)
+      - [ ] R.U.S.E. C2: 15 marker / map-interface draws pre-undo the post grade (authored colour in SDR / Extended,
+        shifted under V35): measured in U2, fix after. Owner: ru_
+      - [ ] R.U.S.E. U8 / U1 run: ReShade + the stamped add-on into D:\...\R.U.S.E (coordinator, fresh backup), trace build,
+        starts: ATN's settings, proxy waits off, ShaderQuality 1 / 2, UseHDR off, Option.ini above the menu's max; ATN
+        loads the save and quits by hand. Owner: coordinator (next game window, ATN's OK)
+      - [ ] ATN DECIDES (R.U.S.E.): V35 with each map's own contrast (Gamma)?; Extended replacing V31 Native Tone (or added
+        beside it)?; a D3D9 bridge for DLAA / DLSS (XL) or HDR + graphics only?; the Nexus URL; who installs ReShade on D:?;
+        which values above the menu's maximum; Hue Clip by eye (100 now). Owner: ATN
     - [ ] ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 (the planners run them, one at
       a time through gpu_job.lock, no start after 19:30); from 20:00 ATN plays 4-6 h: OFFLINE ONLY until ATN says done.
       Owner: coordinator
