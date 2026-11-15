@@ -30,6 +30,8 @@
 // 10. The instance gather's prefetch (+0x182c990, Faster Game CPU Code): 20000 random draws (ranges, strides, the items'
 //    pointers ending where a page without access starts) in both copies: every register, esp and destination byte
 //    equal; on and off 200 times while 4 threads gather; timing with cold sources.
+// 11. The sort or its caller not at its RVA: the sort's site left alone with a log line, no scratch (no search of the
+//    image for another prologue or another of the seven alike callers).
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots.
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -1450,7 +1452,32 @@ int main(int argc, char** argv) {
   CHECK((ec::sites[4].at != nullptr) == (build.sort_rva != 0));
   CHECK((ec::sites[5].at != nullptr) == (build.gather_rva != 0));
   CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("soldier draw rounding") != std::string::npos);
-  std::printf("7. a block another mod changed: left alone, the other two found\nPASS\n");
+  std::printf("7. a block another mod changed: left alone, the other two found\n");
+
+  // 11. The sort or its caller not at the Steam build's place: the render list sort left alone with its log line, no
+  // scratch, no search of the image (SORT matches once and SORT_CALLER seven times elsewhere: a scan would find them).
+  if (build.sort_rva != 0) {
+    for (const bool caller_moved : {false, true}) {
+      ec::Build moved = *build.code;
+      if (caller_moved) {
+        moved.sort_caller_rva += 0x10;
+      } else {
+        moved.sort_rva += 0x10;
+      }
+      if (ec::sort_scratch != nullptr) VirtualFree(ec::sort_scratch, 0, MEM_RELEASE);
+      ec::sort_scratch = nullptr;
+      for (ec::Site& site : ec::sites) site.at = nullptr;
+      ec::prepared = false;
+      const size_t lines_before = log_lines.size();
+      ec::Prepare(reinterpret_cast<HMODULE>(patched), moved);
+      CHECK(ec::sites[4].at == nullptr && ec::sort_scratch == nullptr);
+      CHECK(ec::sites[1].at != nullptr && ec::sites[2].at != nullptr);
+      CHECK(std::any_of(log_lines.begin() + static_cast<ptrdiff_t>(lines_before), log_lines.end(),
+                        [](const std::string& line) { return line.find("render list sort left alone") != std::string::npos; }));
+    }
+    std::printf("11. the sort or its caller moved: left alone, no scratch\n");
+  }
+  std::printf("PASS\n");
   return 0;
 }
 
