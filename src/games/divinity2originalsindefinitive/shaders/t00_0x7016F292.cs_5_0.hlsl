@@ -224,16 +224,20 @@ void main(uint3 vThreadID : SV_DispatchThreadID, uint group_index : SV_GroupInde
     float3 graded_bt709 = renodx::color::bt709::from::AP1(r0.xyz);
 
     // PsychoV35 alone on the untonemapped graded colour, as V30 below. Hue Clip Emulation replaces the fire rows:
-    // bright colours take the hue an SDR ACES transform clips them to (the game's SDR LUT constants are not known
-    // yet: RenoDX's ACES at 0.02 / 48 nits stands in for them).
+    // bright colours take the hue the game's SDR picture clips them to. Mid gray: the game's HDR curve's (15 nits at
+    // Paper White 203) or its SDR picture's.
     if (use_psycho35) {
       [branch]
       if (SI.hue_clip > 0.f) {
         graded_bt709 = renodx::tonemap::psychov::HueTransfer(
-            graded_bt709, saturate(renodx::tonemap::aces::RRTAndODT(graded_bt709, 0.02f, 48.f) / 48.f), SI.hue_clip);
+            graded_bt709, dos2_vanillaplus::SdrReference(graded_bt709), SI.hue_clip);
       }
+      const float mid_gray = (SI.v35_mid_gray != 0.f)
+                                 ? renodx::color::y::from::BT709(dos2_vanillaplus::SdrReference(
+                                       float3(DOS2_GRAY_INPUT, DOS2_GRAY_INPUT, DOS2_GRAY_INPUT)))
+                                 : DOS2_GRAY_OUTPUT;
       float3 psycho35_bt2020 = renodx::color::bt2020::from::BT709(
-          ApplyPsychoV35(graded_bt709, relative_peak, false, DOS2_GRAY_OUTPUT));
+          ApplyPsychoV35(graded_bt709, relative_peak, false, mid_gray));
       LUT[vThreadID.xyz] = float4(
           renodx::color::pq::EncodeSafe(psycho35_bt2020, diffuse_white_nits), DOS2_HDR_LUT_ALPHA);
       return;

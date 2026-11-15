@@ -100,6 +100,7 @@ void ApplyResetPreset() {
       {"vanilla_fire_color_strength", 0.f},
       {"vanilla_fire_color_hue", 0.75f},
       {"bloom", 1.f},
+      {"v35_mid_gray", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -825,6 +826,20 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
 
         twattila::psycho35::InsertBefore(
             &settings, "Psycho V30", twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
+        twattila::psycho35::InsertBefore(
+            &settings, "Psycho V30",
+            {new renodx::utils::settings::Setting{
+                .key = "v35_mid_gray",
+                .binding = &shader_injection.v35_mid_gray,
+                .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                .default_value = 0.f,
+                .label = "Mid Gray",
+                .section = "PsychoV35",
+                .tooltip = "How bright mid gray is: as in the game's HDR (default) or as in its SDR picture (a little brighter).",
+                .labels = {"Game's HDR", "Game's SDR"},
+                .is_enabled = ShowPsychoV35Settings,
+                .is_visible = ShowPsychoV35Settings,
+            }});
 
         reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
 
