@@ -223,6 +223,9 @@ struct RtSliders {
   float range = 10.f;  // metres
   float path_tracing = 0.f;
   float bounces = 2.f;
+  float path_ambient = 0.f;  // Path-Traced Ambient (ray_tracing.hpp): the paths' sky for the game's probes' ambient
+  float path_sky_apart = 1.f;
+  float path_kept_cube = 0.f;
   // Attila's rows (twattila/graphics_page.hpp's keys; Experimental here).
   float denoiser = 0.f;    // RayTracingDenoiser: built-in, NRD (with the helper's upscaler)
   float sharc = 0.f;       // with path tracing
@@ -244,6 +247,11 @@ struct RtSliders {
 bool ray_tracing_installed = false;
 constexpr uint32_t RAYS_TINT = 0x6BE0D8;
 
+// Path-Traced Ambient: with path tracing on the Light Bounce (its paths bring the sky), in place of the ray-traced AO too.
+bool PathAmbientWanted() {
+  return rt_sliders.path_ambient != 0.f && rt_sliders.path_tracing != 0.f && shader_injection.light_bounce > 0.f;
+}
+
 // With a ray-traced effect on (the rows for all of them; at launch: the ray tracing installed).
 bool AnyRays() {
   return rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
@@ -255,13 +263,14 @@ bool AnyRays() {
 using PresetValues = twattila::graphics_page::Values;
 const PresetValues RAYS_OFF = {
     {"RayTracedSunShadows", 0.f}, {"RayTracedAmbientOcclusion", 0.f}, {"RayTracedReflections", 0.f},
-    {"RayTracedSpecularOcclusion", 0.f}, {"RayTracedLightBounce", 0.f}, {"PathTracing", 0.f},
+    {"RayTracedSpecularOcclusion", 0.f}, {"RayTracedLightBounce", 0.f}, {"PathTracing", 0.f}, {"RayTracedPathAmbient", 0.f},
 };
 // The list's methods in this section's keys: the Light Bounce on and traced (one row here, Attila's 2 the paths), path
-// tracing its own row, the Light Bounce's strength `light_bounce`; no path-traced ambient (nothing takes the game's ambient
-// out of the tiled lighting): ray-traced AO over the game's SSDO, as Attila's page does where a game has none.
+// tracing its own row, the Light Bounce's strength `light_bounce`; Path-Traced Ambient off (Experimental, until it is tested
+// in game): ray-traced AO over the game's SSDO, as Attila's page does where a game has none.
 const PresetValues RAYS_OWN_KEYS = {
     {"RayTracedLightBounce", 1.f}, {"PathTracing", 1.f}, {"light_bounce", 1.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f},
+    {"RayTracedPathAmbient", 0.f},
 };
 const PresetValues RAYS_RESET = {
     {"RayTracedShadowSoftness", 0.5f},
@@ -272,6 +281,8 @@ const PresetValues RAYS_RESET = {
     {"RayTracedLightBounceRays", 4.f},
     {"RayTracedLightBounceRange", 10.f},
     {"PathTracingBounces", 2.f},
+    {"RayTracedPathSkyApart", 1.f},
+    {"RayTracedPathKeptCube", 0.f},
     {"RayTracingDenoiser", 0.f},
     {"RayTracedSharc", 0.f},
     {"RayTracedReuseLean", 0.f},
@@ -331,7 +342,7 @@ void BuildRuntimeData() {
       if (rysesonofrome::ray_tracing::Trace(context)) {
         const auto [sun, ambient] = twattila::rt_scene::Visibilities();
         if (rt_sliders.sun_shadows != 0.f) sun_visibility = sun;
-        if (rt_sliders.ambient_occlusion != 0.f) ambient_visibility = ambient;
+        if (rt_sliders.ambient_occlusion != 0.f && !PathAmbientWanted()) ambient_visibility = ambient;
       }
     }
     // Skip the Game's Sun Shadow Maps: the next frame's maps only with the rays' in this one's mask.
@@ -345,7 +356,7 @@ void BuildRuntimeData() {
                                               sun_visibility, ambient_visibility)) {
       rysesonofrome::shadow_skip::NoteRays();
     }
-    if (context != nullptr) rysesonofrome::ray_tracing::BindReflections(context);
+    if (context != nullptr) rysesonofrome::ray_tracing::BindLightingInputs(context);
     return true;
   };
   // After it: the Light Bounce added to the scene it lit. Traced by rays: at their own resolution, every texel each frame
@@ -355,7 +366,7 @@ void BuildRuntimeData() {
     if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
     renodx::utils::directx::TryNativeFromReShadeProxy(&context);
-    if (ray_tracing_installed) rysesonofrome::ray_tracing::RestoreReflections(context);
+    if (ray_tracing_installed) rysesonofrome::ray_tracing::RestoreLightingInputs(context);
     const bool traced = ray_tracing_installed && (rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f);
     const bool temporal = shader_injection.light_bounce_temporal != 0.f;
     rysesonofrome::light_bounce::Apply(context,
@@ -1344,6 +1355,27 @@ void BuildRuntimeData() {
           .is_enabled = [] { return rt_sliders.path_tracing != 0.f; },
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
+      // Path-Traced Ambient (ray_tracing.hpp; Attila's keys): live.
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedPathAmbient",
+          .binding = &rt_sliders.path_ambient,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Path-Traced Ambient (Experimental)",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "With Path Tracing: the paths bring the sky's light too, in place of the game's ambient light and the\n"
+                     "ray-traced AO. Darker where little sky reaches. Needs the Light Bounce on.",
+          .labels = {"Off", "On"},
+          .is_enabled = [] { return rt_sliders.path_tracing != 0.f && shader_injection.light_bounce > 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
+      },
+      ray_choice("RayTracedPathSkyApart", &rt_sliders.path_sky_apart, "Path-Traced AO: Own Sky Rays", off_on,
+                 "The sky's light averaged from each pixel's own rays, as in Ray-Traced AO:\n"
+                 "less noise, and more rays help. Off: through ReSTIR GI.",
+                 PathAmbientWanted),
+      ray_choice("RayTracedPathKeptCube", &rt_sliders.path_kept_cube, "Path-Traced AO: Steady Bounce Light (Experimental)", off_on,
+                 "Light bouncing off walls and ground follows the game's sky, not the view Path-Traced AO started in.",
+                 PathAmbientWanted),
       // Attila's (twattila/graphics_page.hpp's keys), with a ray-traced effect on.
       ray_choice("RayTracedSharc", &rt_sliders.sharc, "SHaRC radiance cache (Experimental)", off_on,
                  "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).", paths),
@@ -1566,9 +1598,10 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
         .ray_reconstruction =
             (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || bounce || reflections || specular_occlusion) ? 1u : 0u,
     };
+    const bool path_ambient = path_tracing && bounce && PathAmbientWanted();
     twattila::rt_scene::Settings rays = {
         .sun_shadows = rt_sliders.sun_shadows != 0.f,
-        .ambient_occlusion = rt_sliders.ambient_occlusion != 0.f,
+        .ambient_occlusion = rt_sliders.ambient_occlusion != 0.f && !path_ambient,
         .ambient_range = rt_sliders.ambient_range,
         .ambient_rays = static_cast<uint32_t>(std::clamp(rt_sliders.ambient_rays, 1.f, 8.f)),
         .ambient_quarter = rt_sliders.ambient_quarter != 0.f,
@@ -1579,6 +1612,9 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
         .light_bounce_resolution = rt_sliders.light_bounce_resolution,
         .path_tracing = path_tracing,
         .path_bounces = static_cast<uint32_t>(rt_sliders.bounces),
+        .path_ambient = path_ambient,
+        .path_sky_apart = path_ambient && rt_sliders.path_sky_apart != 0.f,
+        .path_kept_cube = path_ambient && rt_sliders.path_kept_cube != 0.f,
         .reflections = reflections,
         .specular_occlusion = specular_occlusion,
         .reflection_samples = static_cast<uint32_t>(rt_sliders.reflection_samples),

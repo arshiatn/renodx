@@ -35,7 +35,10 @@
 // frame is traced. The sun's visibility then goes into the sun's shadow mask with the contact shadows, the ambient
 // visibility into the lighting's directional occlusion (contact_shadows.hpp), the traced reflections take the
 // screen-space ones' place at the lighting (t6; their trace, ps 0xE0B7E115, left out), the Light Bounce's trace goes
-// through rays (light_bounce.hpp; path traced when on). The game's HDR scene at the end of the frame is the helper's
+// through rays (light_bounce.hpp; path traced when on). With Path-Traced Ambient the paths' sky is the game's widest
+// probe (rt_probe_sky, the sun texture's ambient cube) and, while the paths bring it, the lighting's diffuse probes (t34)
+// are a black cube: its diffuse ambient comes from the probes alone (the decompile's lightType 1 loop), so the Light
+// Bounce's apply adds the paths' light in its place. The game's HDR scene at the end of the frame is the helper's
 // last frame's colour (KeepColor, 0x52C5E006; kept apart, the bridge's colour is the upscaler's input after it). The
 // bridge (upscaling.hpp) is the upscaler's output size while the helper upscales: the rays at the render size, its
 // textures' top-left. Its scene shaders' code is kept from the game's start: Install only when ray tracing is on at
@@ -76,6 +79,11 @@ struct State {
   ComPtr<ID3D11ShaderResourceView> game_reflections;
   bool reflections_bound = false;
   bool reflecting = false;
+  // Path-Traced Ambient: the sky's pass, the black cube bound at the lighting's t34 and the game's put back after it.
+  ComPtr<ID3D11ComputeShader> probe_sky;
+  ComPtr<ID3D11ShaderResourceView> no_probes;
+  ComPtr<ID3D11ShaderResourceView> game_probes;
+  bool probes_bound = false;
   bool failed = false;
 };
 static State state;
@@ -213,18 +221,27 @@ inline bool Trace(ID3D11DeviceContext* context) {
   twattila::rt_scene::Camera camera;
   std::array<UINT, 2> size;
   bool keep_color = false;
+  bool path_ambient = false;
   {
     const std::unique_lock lock(state.mutex);
     if (!state.camera_found) return false;
     camera = state.camera;
     size = state.render_size;
     keep_color = (state.settings.reflections || state.settings.path_tracing) && state.kept_color;
+    path_ambient = state.settings.path_ambient;
   }
   ComPtr<ID3D11ShaderResourceView> depth;
   ComPtr<ID3D11Buffer> per_batch;
   context->CSGetShaderResources(0, 1, depth.GetAddressOf());
   context->CSGetConstantBuffers(0, 1, per_batch.GetAddressOf());
   if (!depth || !per_batch) return false;
+  // Path-Traced Ambient's sky from the lighting's lights (t32) and diffuse probes (t34); unbound: none.
+  ComPtr<ID3D11ShaderResourceView> light_list;
+  ComPtr<ID3D11ShaderResourceView> diffuse_probes;
+  if (path_ambient) {
+    context->CSGetShaderResources(32, 1, light_list.GetAddressOf());
+    context->CSGetShaderResources(34, 1, diffuse_probes.GetAddressOf());
+  }
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
   if (state.device != device) {
@@ -237,6 +254,8 @@ inline bool Trace(ID3D11DeviceContext* context) {
     state.color.Reset();
     state.specular_merge.Reset();
     state.linear_sampler.Reset();
+    state.probe_sky.Reset();
+    state.no_probes.Reset();
     const D3D11_SAMPLER_DESC sampler_desc = {
         .Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR,
         .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
@@ -245,6 +264,24 @@ inline bool Trace(ID3D11DeviceContext* context) {
         .ComparisonFunc = D3D11_COMPARISON_NEVER,
         .MaxLOD = D3D11_FLOAT32_MAX,
     };
+    // A black cube (one layer: the lighting's resIndex clamps to it) for Path-Traced Ambient.
+    const std::array<uint64_t, 6> black = {};
+    std::array<D3D11_SUBRESOURCE_DATA, 6> black_faces = {};
+    for (auto& face : black_faces) face = {.pSysMem = &black[0], .SysMemPitch = 8};
+    const D3D11_TEXTURE2D_DESC cube_desc = {
+        .Width = 1,
+        .Height = 1,
+        .MipLevels = 1,
+        .ArraySize = 6,
+        .Format = DXGI_FORMAT_R16G16B16A16_FLOAT,
+        .SampleDesc = {.Count = 1},
+        .Usage = D3D11_USAGE_IMMUTABLE,
+        .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+        .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE,
+    };
+    D3D11_SHADER_RESOURCE_VIEW_DESC cube_view = {.Format = DXGI_FORMAT_R16G16B16A16_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY};
+    cube_view.TextureCubeArray = {.MostDetailedMip = 0, .MipLevels = 1, .First2DArrayFace = 0, .NumCubes = 1};
+    ComPtr<ID3D11Texture2D> cube;
     state.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
                    || FAILED(device1->CreateDeviceContextState(0, &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr,
                                                                state.private_state.GetAddressOf()))
@@ -253,7 +290,10 @@ inline bool Trace(ID3D11DeviceContext* context) {
                    || FAILED(device->CreateComputeShader(__0x52C5E006.data(), __0x52C5E006.size(), nullptr, state.color.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__rt_specular_merge.data(), __rt_specular_merge.size(), nullptr,
                                                          state.specular_merge.GetAddressOf()))
-                   || FAILED(device->CreateSamplerState(&sampler_desc, state.linear_sampler.GetAddressOf()));
+                   || FAILED(device->CreateSamplerState(&sampler_desc, state.linear_sampler.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__rt_probe_sky.data(), __rt_probe_sky.size(), nullptr, state.probe_sky.GetAddressOf()))
+                   || FAILED(device->CreateTexture2D(&cube_desc, black_faces.data(), cube.GetAddressOf()))
+                   || FAILED(device->CreateShaderResourceView(cube.Get(), &cube_view, state.no_probes.GetAddressOf()));
   }
   if (state.failed) return false;
   auto& bridge = twattila::dlaa_bridge::bridge;
@@ -265,11 +305,20 @@ inline bool Trace(ID3D11DeviceContext* context) {
   twattila::dlaa_bridge::BeforeSharedWrites(context);
   {
     const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
-    ID3D11ShaderResourceView* inputs[] = {depth.Get()};
+    // Every trace: without Path-Traced Ambient its texels written empty (an older sky never stays).
+    ID3D11ShaderResourceView* sky_inputs[] = {light_list.Get(), diffuse_probes.Get()};
+    ID3D11UnorderedAccessView* sky_output[] = {bridge.rt_sun.uav.Get()};
+    ID3D11SamplerState* sky_samplers[] = {state.linear_sampler.Get()};
+    context->CSSetShader(state.probe_sky.Get(), nullptr, 0);
+    context->CSSetShaderResources(0, 2, sky_inputs);
+    context->CSSetUnorderedAccessViews(0, 1, sky_output, nullptr);
+    context->CSSetSamplers(0, 1, sky_samplers);
+    context->Dispatch(1, 1, 1);
+    ID3D11ShaderResourceView* inputs[] = {depth.Get(), nullptr};
     ID3D11UnorderedAccessView* outputs[] = {bridge.rt_positions.uav.Get(), bridge.rt_sun.uav.Get()};
     ID3D11Buffer* constants[] = {per_batch.Get()};
     context->CSSetShader(state.positions.Get(), nullptr, 0);
-    context->CSSetShaderResources(0, 1, inputs);
+    context->CSSetShaderResources(0, 2, inputs);
     context->CSSetUnorderedAccessViews(0, 2, outputs, nullptr);
     context->CSSetConstantBuffers(0, 1, constants);
     context->Dispatch((size[0] + 7) / 8, (size[1] + 7) / 8, 1);
@@ -298,14 +347,28 @@ inline bool Trace(ID3D11DeviceContext* context) {
   return twattila::rt_scene::Trace(context, nullptr, camera);
 }
 
-// At the tiled lighting's dispatch, after Trace: the traced reflections in place of its screen-space ones (t6: the same
-// lerp over the probes, reflected light by the share of rays that met something); without them the traced specular
-// occlusion merged into the screen-space ones (rt_specular_merge: the probes' share times it). The game's put back after
-// the dispatch (RestoreReflections).
-inline void BindReflections(ID3D11DeviceContext* context) {
+// At the tiled lighting's dispatch, after Trace: Path-Traced Ambient's black probes (t34) while the paths bring the sky
+// (their bounce traced the frame before: a frame without it keeps the game's ambient); the traced reflections in place of
+// its screen-space ones (t6: the same lerp over the probes, reflected light by the share of rays that met something);
+// without them the traced specular occlusion merged into the screen-space ones (rt_specular_merge: the probes' share times
+// it). The game's put back after the dispatch (RestoreLightingInputs).
+inline void BindLightingInputs(ID3D11DeviceContext* context) {
   auto& state = internal::state;
   const auto traced = twattila::rt_scene::Reflections(context);
+  bool paths_bring_sky = false;
+  {
+    auto& runtime = twattila::rt_scene::internal::runtime;
+    const std::unique_lock runtime_lock(runtime.mutex);
+    paths_bring_sky = runtime.path_ambient_on && runtime.bounced_frame + 1 >= runtime.frame;
+  }
   const std::unique_lock lock(state.mutex);
+  if (paths_bring_sky && state.no_probes && !state.probes_bound) {
+    state.game_probes.Reset();
+    context->CSGetShaderResources(34, 1, state.game_probes.GetAddressOf());
+    ID3D11ShaderResourceView* black = state.no_probes.Get();
+    context->CSSetShaderResources(34, 1, &black);
+    state.probes_bound = true;
+  }
   state.reflecting = traced[0] != nullptr && state.settings.reflections;
   const bool occluding = !state.reflecting && traced[1] != nullptr && state.settings.specular_occlusion && state.specular_merge;
   ComPtr<ID3D11DeviceContext1> context1;
@@ -345,9 +408,15 @@ inline void BindReflections(ID3D11DeviceContext* context) {
   state.reflections_bound = true;
 }
 
-inline void RestoreReflections(ID3D11DeviceContext* context) {
+inline void RestoreLightingInputs(ID3D11DeviceContext* context) {
   auto& state = internal::state;
   const std::unique_lock lock(state.mutex);
+  if (state.probes_bound) {
+    ID3D11ShaderResourceView* probes = state.game_probes.Get();
+    context->CSSetShaderResources(34, 1, &probes);
+    state.game_probes.Reset();
+    state.probes_bound = false;
+  }
   if (!state.reflections_bound) return;
   ID3D11ShaderResourceView* game = state.game_reflections.Get();
   context->CSSetShaderResources(6, 1, &game);
@@ -438,6 +507,10 @@ inline void Release() {
   state.game_reflections.Reset();
   state.reflections_bound = false;
   state.reflecting = false;
+  state.probe_sky.Reset();
+  state.no_probes.Reset();
+  state.game_probes.Reset();
+  state.probes_bound = false;
   state.failed = false;
 }
 
