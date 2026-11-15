@@ -1242,6 +1242,10 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: gr_
       - 23:4x ATN DONE PLAYING ("I am done with the game"): committed 38.8 GB, the gated builds started (d1_ first); gr_
         told GPU free; fx_ resumed for its harness checks on atn-mods (gpu_job.lock per job).
+      - 23:5x ATN closed the leftover game processes (some Attila ones won't end; committed 38.8 -> 28.5 GB) and allowed
+        in-game data runs tonight ("Start game data runs if you want"). Runs after their builds + GPU checks, one at a time
+        under gpu_job.lock, fresh backups first: R.U.S.E. T-run (after ru5_ + H1 / H2), Divinity 1 R1 (after d1_ step 1),
+        Divinity 2 R1b, Expeditions E9 (-d3d12) + Low start. Saves that need a mouse click: ask ATN (keyboard only).
       - [ ] Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device removal with FG on, FG device
         loss, fg_bridge_test), quiet tw_device_loss, gr_, ru_ H1 / H2, build all, stamp, install (dry run, fresh backups).
         Owner: coordinator
