@@ -440,6 +440,9 @@ heading text are in HANDOFF_ARCHIVE.md)
   - [ ] Author packages (tools/tw/testbin/cpu4_heapfix/: a_memfast_65_128, b_loopfetch_animation, c_x87_truncation
     question; plus for_author_pf): bench numbers into the NOTEs, then ATN sends Owner (audit 11-15): coordinator (bench numbers into the NOTEs after the end bench), then ATN sends.
     Bench numbers 06:2x (END BENCH PART 1 line): b gains 0.15-0.62 ms in every round; c no gain; a worse in max CPU.
+    NOTEs DONE 06:4x ("## In the replay" in a / b / c NOTE.md, each start's heapfix.log line checked: x87 1276 of 1277,
+    loop prefetch 7 of 7, memcpy 128 bytes): b = proposal with its gain; a = "we don't propose it any more"; c = "keep
+    x87fix as it is". ATN SENDS b (a / c optional, as information) and the earlier for_author_pf. Owner: ATN
     (merged from "ATN, when sending the heapfix package: ask the author whethe...": ATN, when sending the heapfix
     package: ask the author whether we may patch the x87 block over heapfix's bytes (+0x17f6515) and about his disabled
     prefetch site in the animation pack loop)
