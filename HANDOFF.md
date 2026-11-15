@@ -29,6 +29,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -81,7 +82,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - talesofarise_dlss/frame_generation.hpp detours have no uninstall. Owner: next UE ... | next UE round
 - ATN DECIDES: g2b trunc8 (8-bit cluster truncation: -0.2 ms more cluster build; a ... | ATN
 - Faster-with-a-look-risk list for ATN (numbers in the reply 12:1x): Lean ReSTIR R ... | ATN
-- Non-TW data runs (ATN 12:2x "Sure, go ahead"): Tales G1 + G2 (agent started 12:2 ... | coordinator
+- Non-TW data runs (ATN 12:2x "Sure, go ahead"): Tales G1 + G2 (agent started 12:2 ... | coordinator - Tales try 1 (12:24 / 12:30): SteamStub relaunc
+- Release round: player / release zips carry no Streamline (release_zip.py, player ... | coordinator, release round
+- Tales: G2's camp save has no torch / night / indoor view; the in-process RT has ... | next UE round
 - WH3's x64 render-list WPR run: the game said "Unable to initialize SteamAPI" twi ... | ATN, then coordinator
 - In game (ATN's list): migration keeps the old DLSS values (log line once); no re ... | ATN (in game)
 - Port RayTracedBatchedUnits + RayTracedUnitsRange to Shogun 2 (SHARED STEP, after ... | GPU round after the install
@@ -860,6 +863,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         Quality preset L through the helper, AA constants matched 30 readbacks, no ERROR. Fix f4d95f6c (shared
         test_hooks.hpp: renodx_test_hooks.txt next to the exe, deleted at the first present); Tales v73 + Expeditions v30
         installed 12:41 (stamped, ATN's files unchanged); the Tales agent resumed with the file.
+      - [x] Tales G1 + G2 DONE 12:50-13:28 (tools/nontw/tales/g1g2/run_124955): both saves loaded by keys; PresentMon fps
+        G1 DLAA 94.9 / Quality 165.6 / Performance 232.4, with RT 40.8 / 77.3 / 114.8, Quality RT + FG 2x 133.8; G2 76.9 /
+        128.5 / 173.8, RT 46.4 / 84.3 / 122.6, FG 140.9; RT +4.1-6.9 ms at Quality; "[Tales ray tracing] Running (DXR 1.2:
+        opacity micromaps, SER; Agility SDK)", RR active (D3D12); Time Each Pass with RT: TAA/DLSS cs 88765764 3.57 ms,
+        lighting00 3.24, sunshadow00 2.85; frame traces: all 14 replaced families hit their replaced permutation, none
+        unreplaced; WPR G2: add-on 1.6 % of the process; no errors; ATN's 13 files restored + hash OK, no save changed.
+      - [x] FG fell back to FSR FG: no Streamline next to the helper. 11 of 13 folders had none (only Attila, WH3):
+        tw_install.py now writes ngx_dlls.STREAMLINE (sl.interposer / common / dlss_g / reflex / pcl 2.14.16) where
+        missing; INSTALLED 13:5x with the rebuild for f4d95f6c: Attila v163, WH3 v62, Pharaoh v70, Rome II r6, Thrones r7,
+        WH2 v53, Shogun 2 v76, Troy v57, WH1 r8, Rome Remastered v14, Ryse fix55 (unchanged), Tales v74, Expeditions v31
+        (build_shared relinked Tales / Expeditions after their v73 / v30 stamps: new tags, same source); Streamline in all
+        13 folders, ATN's files unchanged.
+      - [ ] Release round: player / release zips carry no Streamline (release_zip.py, player_zip.py): DLSS FG there needs
+        sl.* 2.14.16 + NVIDIA's licence in the zips, or a README line. Owner: coordinator, release round
+      - [ ] Tales: G2's camp save has no torch / night / indoor view; the in-process RT has no torch rows yet (Tales' rays to
+        the helper box). The NVIDIA DLSS on-screen indicator shows in every shot (ATN's driver setting). Owner: next UE round
     - [ ] WH3's x64 render-list WPR run: the game said "Unable to initialize SteamAPI" twice (Steam not elevated;
       HKCU Valve ActiveProcess pointed at a dead pid); ATN restarts Steam, then one run (x64_run.ps1). Owner: ATN, then
       coordinator
