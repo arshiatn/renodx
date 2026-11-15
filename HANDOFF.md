@@ -1214,6 +1214,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         3109a806 W2 / W3 / D2-D4 (bridge.hpp, DLAA (Experimental) restart row, Halton jitter in VS c0-c3; not built;
         tw_install 'ruse' ships the helper). ru2_ continues in the same worktree: H1 / H2 sources, D5 / D6 / gpu_fence,
         A1-A5 + H3; status in plan.md 11b. Then a part 3 agent: G1, G2, O1, AO, GI + water reflections, FG + Reflex, P1.
+        ru2_ DONE (not built): 3e4ebcc4 D5 + W3 "Anti-Aliasing (Experimental)" Game's / DLAA / FSR / XeSS + GPU Sync
+        row; 4bdf5df3 test/tw_ruse_bridge H1 + H2 sources; 9fa99a6b A2 275 VS -> vs_5_0 (275/275 SAME on a new SM3 VS
+        interpreter); 5807314f A1 / A3 / A4 bridge_replay.hpp + "Scene Replay (Testing)"; H3 CPU 12/12. Open: A4 replays
+        every draw (~10 ms CPU), D6 needs the T-run (MainRTDivider), moving units ghost (no object velocity).
+        ru3_ started: static draws once, A5 rt_core host, G1 ground RT shadows, O1. Part 4 after it: G2, AO, GI + water
+        reflections, FG + Reflex, P1.
       - [ ] sh_: shared steps S1 (first-start key as a Config field, Div2 adopts) + S2 (device_proxy target format) + S3
         (test_hooks runtime filter); R.U.S.E. adopts later. Owner: sh_
       - [ ] hb_: HDR audit [B] fixes 1-8 (peak clamps, SDR peak, SDR gamut, Shogun 2 peak, WH2 FXAA, alpha, Pharaoh max,
