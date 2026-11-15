@@ -18,7 +18,8 @@
 #include <string_view>
 #include <vector>
 
-// Small patches of the game's code (from rysesonofrome_dlss's engine_memory.hpp).
+// Small patches of the game's code (from rysesonofrome_dlss's engine_memory.hpp); Expeditions: Rome's DLSS add-on uses
+// it too.
 namespace talesofarise::code_patch {
 
 // A few code bytes, replaced while applied.

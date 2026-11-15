@@ -40,6 +40,7 @@
 #include "./frame_trace.hpp"
 #include "./native_hook_lifetime.hpp"
 #include "./object_motion.hpp"
+#include "./rt_core.hpp"
 
 // Attila's Graphics (Experimental) in empire.retail.dll, found by byte patterns: the unit, tree, grass and animation
 // packing hooks, each scaled live by its slider. Rome II: the unit and dead unit hooks (its own patterns and offsets; trees and
@@ -655,8 +656,10 @@ static uint32_t frames_without_overflow = 0;  // the first pack's thread (the re
 static bool __fastcall OnPackAnimations(void* pages, void* unused_edx, uint32_t first, uint32_t second, void* soldiers,
                                         uint32_t* next, uint32_t end) {
   if (!hooks_active.load(std::memory_order_relaxed)) return original_pack_animations(pages, unused_edx, first, second, soldiers, next, end);
-  // The soldiers drawn since the last pack: their motion's bones recorded while the pages still hold them.
+  // The soldiers drawn since the last pack: their motion's bones recorded and their batched corners made (Batched Unit Capture)
+  // while the pages still hold them.
   object_motion::FlushUnitRecords();
+  rt_scene::FlushUnitCaptures();
   const uint32_t start = (next != nullptr ? *next : end);
   const bool packed = original_pack_animations(pages, unused_edx, first, second, soldiers, next, end);
   const auto* return_slot = static_cast<const uint8_t*>(_AddressOfReturnAddress());
@@ -1139,6 +1142,11 @@ inline void DumpGrass() {
   const std::unique_lock lock(internal::grass_dump.mutex);
   internal::grass_dump.presents = 0;
   renodx::utils::log::i("[Total War] Grass dump asked (from the next grass update)");
+}
+
+// Whether the bone packing is hooked (OnPackAnimations: unit records and batched unit corners made before each pack).
+inline bool PacksHooked() {
+  return internal::hooks_active.load(std::memory_order_relaxed) && internal::original_pack_animations != nullptr;
 }
 
 // Whether the grass draws' rows are read now (one atomic: the grass draws' callback returns on it).

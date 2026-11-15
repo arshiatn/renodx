@@ -38,6 +38,7 @@
 #include <type_traits>
 
 #include "../../utils/command_action.hpp"
+#include "../../utils/command_action_fast.hpp"
 #include "../../utils/data.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
@@ -2298,7 +2299,6 @@ constexpr auto OnLightingDispatch = []<typename Context>(Context& command) -> co
     context->CSGetShader(game_draw_shaders.game_lighting.GetAddressOf(), nullptr, nullptr);
     context->CSSetShader(game_draw_shaders.tiled_lights.Get(), nullptr, 0);
     return {
-        .replay = true,
         .post_callback = [](Context& dispatched, const void*) {
           const auto context = ImmediateContext(dispatched.cmd_list);
           if (!context) return;
@@ -2306,6 +2306,7 @@ constexpr auto OnLightingDispatch = []<typename Context>(Context& command) -> co
           context->CSSetShader(game_draw_shaders.game_lighting.Get(), nullptr, 0);
           game_draw_shaders.game_lighting.Reset();
         },
+        .replay = true,
     };
   }
 };
@@ -3873,6 +3874,9 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   rysesonofrome::dlss::constants::SetUploadCallback(OnCameraUpload);
   renodx::utils::state::Use(DLL_PROCESS_ATTACH);
   command_action::Use(DLL_PROCESS_ATTACH);
+  // The fast draw dispatch alone: every callback here has a shader hash, and this add-on registers no resource upgrades
+  // (twattila::draw_dispatch gates theirs in the HDR add-on).
+  command_action::fast::Use(DLL_PROCESS_ATTACH);
   attached = true;
   return true;
 }
@@ -3885,6 +3889,7 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     command_action::Unregister(OnUpscaleDraw);
     command_action::Unregister(OnReflectionDraw);
     command_action::Unregister(OnLightingDispatch);
+    command_action::fast::Use(DLL_PROCESS_DETACH);
     command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);
     rysesonofrome::dlss::constants::Use(DLL_PROCESS_DETACH);

@@ -21,6 +21,7 @@
 
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
+#include "./constant_mirror.hpp"
 
 namespace talesofarise::dlss {
 
@@ -88,7 +89,7 @@ struct ConstantReadback {
   }
 
   void Disable(const std::string& reason) {
-    if (!mirror_off) renodx::utils::log::w("[Tales AA constants] CPU copy disabled, GPU readback waits again: ", reason);
+    if (!mirror_off) renodx::utils::log::w(constants::log_tag, " CPU copy disabled, GPU readback waits again: ", reason);
     mirror_off = true;
     matches = 0;
     mirror_reason = reason;
@@ -102,7 +103,7 @@ struct ConstantReadback {
     if (difference.empty()) {
       ++checked;
       if (++matches == TRUST_AFTER) {
-        renodx::utils::log::i("[Tales AA constants] CPU copy matched ", TRUST_AFTER, " exact readbacks; GPU wait removed.");
+        renodx::utils::log::i(constants::log_tag, " CPU copy matched ", TRUST_AFTER, " exact readbacks; GPU wait removed.");
       }
       return;
     }

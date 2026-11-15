@@ -323,7 +323,9 @@ float3 ApplyPsychoV31(float3 untonemapped_ap1, float peak)
   float3 result = renodx::tonemap::psychov::custom_psychotm_test31(
       untonemapped_bt709, peak, SI.exposure, SI.highlights, SI.shadows,
       SI.contrast, 0.f, 1.f, 1.f, SI.saturation, SI.highlight_saturation, 0.f,
-      0.18f, anchor_out, 0.f, 1.f, renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020,
+      0.18f, anchor_out, 0.f, 1.f,
+        (EXR_SDR_OUTPUT ? renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT709
+                        : renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020),
       compression, 1.f, 0.5f, 0.f,
       renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_AP1, 1.f);
   // V31 can return black for saturated blues (its source cage, compiler dependent): redo target-only.
@@ -333,7 +335,9 @@ float3 ApplyPsychoV31(float3 untonemapped_ap1, float peak)
     result = renodx::tonemap::psychov::custom_psychotm_test31(
         untonemapped_bt709, peak, SI.exposure, SI.highlights, SI.shadows,
         SI.contrast, 0.f, 1.f, 1.f, SI.saturation, SI.highlight_saturation, 0.f,
-        0.18f, anchor_out, 0.f, 1.f, renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020,
+        0.18f, anchor_out, 0.f, 1.f,
+        (EXR_SDR_OUTPUT ? renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT709
+                        : renodx::tonemap::psychov::CUSTOM_PSYCHO31_TARGET_GAMUT_BT2020),
         compression, 1.f, 0.5f, 0.f,
         renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_AP1, 0.f);
     failed = all(result == 0.f);
@@ -509,7 +513,7 @@ float4 GenerateHDRLut(float3 untonemapped_ap1)
                                                                  SI.hue_clip);
     }
     color = renodx::color::correct::GammaSafe(
-        PostGradeHDR(ApplySDRLuts(ApplyPsychoV35(untonemapped_bt709, peak, false, GameMidGray()))));
+        PostGradeHDR(ApplySDRLuts(ApplyPsychoV35(untonemapped_bt709, peak, EXR_SDR_OUTPUT, GameMidGray()))));
   } else {
     // HDR (PsychoV31): the game's post grade after the complete tone curve (fades must not be undone by the HDR
     // shoulder).
@@ -517,7 +521,7 @@ float4 GenerateHDRLut(float3 untonemapped_ap1)
   }
 
   color = LimitToPeak(color, EXR_PEAK);
-  color *= max(SI.diffuse_white_nits, 1.f) / max(SI.graphics_white_nits, 1.f);
+  color *= EXR_PAPER_WHITE;
   // / 1.05; alpha 1 tags the HDR LUT for its consumers.
   return float4(renodx::color::gamma::EncodeSafe(color) * 0.952381015f, 1.f);
 }

@@ -170,6 +170,12 @@ void ApplySdrPreset() {
   ApplyHDRPreset(0.f, 1.f, 1.00f, 1.f, 0.f, 2.f, 1.f, 1.f, 1.f, 1.f, 0.f, 1.f, 0.15f);
 }
 
+// Recommended: no VFX boost (right for any peak); Output Auto takes it once when Windows HDR comes on after a first start
+// without HDR.
+void ApplyRecommendedPreset() {
+  ApplyHDRPreset(3.f, 1.f, 1.00f, 0.35f, 0.f, 2.f, 1.f, 1.f, 1.f, 2.f, 0.2f);
+}
+
 #define UpgradeRTVReplaceShader(value)                                                                \
   {                                                                                                   \
       value,                                                                                          \
@@ -387,9 +393,7 @@ void BuildRuntimeData() {
         .label = "Recommended: no VFX boost",
         .group = "preset-line-1",
         .tooltip = "Resets all image tuning to HDR defaults while preserving Peak, Paper White, UI brightness, Settings Mode, and output encoding.",
-        .on_change = []() {
-          ApplyHDRPreset(3.f, 1.f, 1.00f, 0.35f, 0.f, 2.f, 1.f, 1.f, 1.f, 2.f, 0.2f);
-        },
+        .on_change = []() { ApplyRecommendedPreset(); },
     },
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
@@ -1287,11 +1291,15 @@ constexpr std::array<twattila::rt_scene::SceneShader, 44> SCENE_SHADERS = {{
     {.hash = 0x46C616F0, .capture_shader = __rt_capture_leaf_sm3, .rows_shader = __motion_record_tree, .foliage = true},
     {.hash = 0x5B880546, .capture_shader = __rt_capture_leaf_sm41, .rows_shader = __motion_record_tree, .foliage = true},
     {.hash = 0xCABCB9D1, .capture_shader = __rt_capture_leaf_sm5, .rows_shader = __motion_record_tree, .foliage = true},
-    {.hash = 0x5F9CD405, .capture_shader = __rt_capture_unit_sm3, .cut_out_shader = __rt_capture_unit_cut_out_sm3, .dynamic = true},
+    // Batched Unit Capture (Experimental): the main units' compact draws (vs_main, 2 bones a vertex) streamed as their mesh and rows,
+    // their corners rt_capture_unit_sm3 / sm41's own code in one pass (test/tw_rays_captures B).
+    {.hash = 0x5F9CD405, .capture_shader = __rt_capture_unit_sm3, .cut_out_shader = __rt_capture_unit_cut_out_sm3, .dynamic = true,
+     .batch_mesh_shader = __rt_batch_unit_mesh, .batch_rows_shader = __rt_batch_unit_rows, .batch_compute = __rt_batch_unit_sm3},
     {.hash = 0x0ECFE74C, .capture_shader = __rt_capture_unit_4_bones_sm3, .cut_out_shader = __rt_capture_unit_4_bones_cut_out_sm3, .dynamic = true},
     {.hash = 0xDAC80ECC, .capture_shader = __rt_capture_unit_dismember_sm3, .cut_out_shader = __rt_capture_unit_dismember_cut_out_sm3, .dynamic = true},
     {.hash = 0xC2AA8FDA, .capture_shader = __rt_capture_unit_4_bones_dismember_sm3, .cut_out_shader = __rt_capture_unit_4_bones_dismember_cut_out_sm3, .dynamic = true},
-    {.hash = 0xA691CFF4, .capture_shader = __rt_capture_unit_sm41, .cut_out_shader = __rt_capture_unit_cut_out_sm41, .dynamic = true},
+    {.hash = 0xA691CFF4, .capture_shader = __rt_capture_unit_sm41, .cut_out_shader = __rt_capture_unit_cut_out_sm41, .dynamic = true,
+     .batch_mesh_shader = __rt_batch_unit_mesh, .batch_rows_shader = __rt_batch_unit_rows, .batch_compute = __rt_batch_unit_sm41},
     {.hash = 0x372628AB, .capture_shader = __rt_capture_unit_4_bones_sm41, .cut_out_shader = __rt_capture_unit_4_bones_cut_out_sm41, .dynamic = true},
     {.hash = 0xEA1AEB0E, .capture_shader = __rt_capture_unit_dismember_sm41, .cut_out_shader = __rt_capture_unit_dismember_cut_out_sm41, .dynamic = true},
     {.hash = 0x31B66A15, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .cut_out_shader = __rt_capture_unit_4_bones_dismember_cut_out_sm41, .dynamic = true},
@@ -1984,14 +1992,12 @@ void ConfigureAddon() {
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     const int value = static_cast<int>(setting->GetValue());
-    // No settings saved yet: a player's first start. On an SDR monitor it starts with the SDR preset.
-    float saved_mode = 0.f;
-    const bool first_start = !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemapper", saved_mode);
     twattila::output_encoding::Configure({
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = value,
         .hdr_encoding = [](int output) { return (output == twattila::output_encoding::SCRGB) ? twattila::output_encoding::SCRGB : twattila::output_encoding::HDR10; },
-        .first_start_without_hdr = (first_start ? &ApplySdrPreset : nullptr),
+        .first_start_without_hdr = &ApplySdrPreset,
+        .recommended_preset = &ApplyRecommendedPreset,
     });
     settings.push_back(setting);
   }
@@ -2144,7 +2150,10 @@ bool AttachAddon() {
   // The AO pass before the ray tracing (its multiply after the pass's own output), both before the Light Bounce (it
   // draws the sun draws itself: no callback after it runs).
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
-  twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS);
+  // Batched Unit Capture's corners are made before each bone pack (graphics_hooks.hpp OnPackAnimations), where it is hooked.
+  twattila::rt_scene::Host host = twattila::rt_scene::TW_HOST;
+  host.flushes_unit_captures = twattila::graphics_hooks::PacksHooked;
+  twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, host);
   twattila::rt_scene::InstallCutOuts(0xF79BFB14, UNIT_CUT_OUT_PIXEL_SHADERS);  // rigidcommon ps30_shadow_alpha_test
   for (const uint32_t shader_hash : CAMPAIGN_SHADERS) {
     renodx::utils::command_action::Register(

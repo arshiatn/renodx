@@ -289,6 +289,9 @@ constexpr uint32_t RT_PATH_LIGHT_RATIO = 1u << 23;
 // Lean ReSTIR Reuse (a Light Bounce request's with path tracing and RT_PATH_REUSE; helpers before 112 ignore it): the
 // reuse's neighbours by their positions and reservoirs' normals, not their whole surfaces (not with RT_PATH_LIGHTS_IN_BOUNCE).
 constexpr uint32_t RT_PATH_REUSE_LEAN = 1u << 24;
+// With RT_PATH_LIGHT_RATIO (older helpers ignore it): the shadow ratio's history shorter while the camera moves (Torch and
+// Fire Shadows from the Light Bounce trailed a moving camera at Half).
+constexpr uint32_t RT_PATH_RATIO_FOLLOW = 1u << 25;
 // Scene flags (Shared::rt_scene_flags, a trace request's). Smoke BLAS Fast Build (helpers before 113 ignore it): the smoke's
 // BLAS, built anew each request, built for a fast build, not fast rays (which particles a ray meets first, and so counts, can
 // change: Smoke Shadow Quality's count).

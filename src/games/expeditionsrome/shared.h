@@ -5,7 +5,7 @@ struct ShaderInjectData {
   float peak_white_nits;
   float diffuse_white_nits;
   float graphics_white_nits;
-  float swap_chain_encoding;  // 0 HDR10, 1 scRGB
+  float swap_chain_encoding;  // 0 HDR10, 1 scRGB, 2 SDR (10-bit, gamma 2.2)
 
   float hdr;  // 0 SDR, 1 HDR (Extended: UE Filmic Extended), 2 HDR (PsychoV31)
   float bloom;
@@ -62,10 +62,14 @@ struct ShaderInjectData {
 #define SI  shader_injection
 #define HDR SI.hdr
 
+// SDR output: gamma 2.2 as the game's, white = the display's (no Peak, Paper White or UI nits).
+#define EXR_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
 // Peak relative to Paper White.
-#define EXR_PEAK (max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 1.f))
+#define EXR_PEAK (EXR_SDR_OUTPUT ? 1.f : (max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 1.f)))
+// Paper White relative to the UI.
+#define EXR_PAPER_WHITE (EXR_SDR_OUTPUT ? 1.f : (max(SI.diffuse_white_nits, 1.f) / max(SI.graphics_white_nits, 1.f)))
 // Paper White / UI as a gain on gamma 2.2 encoded values (the proxy decodes 2.2 x UI nits).
-#define EXR_ENCODED_SCALE pow(max(SI.diffuse_white_nits, 1.f) / max(SI.graphics_white_nits, 1.f), 1.f / 2.2f)
+#define EXR_ENCODED_SCALE pow(EXR_PAPER_WHITE, 1.f / 2.2f)
 
 #ifndef __cplusplus
 #if ((__SHADER_TARGET_MAJOR == 5 && __SHADER_TARGET_MINOR >= 1) || __SHADER_TARGET_MAJOR >= 6)

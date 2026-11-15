@@ -24,7 +24,7 @@
 // The readback transitively includes unrelated private DirectX entry points.
 #pragma clang diagnostic ignored "-Wunused-function"
 #endif
-#include "../constant_readback.hpp"
+#include "../../talesofarise_dlss/constant_readback.hpp"
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
@@ -91,7 +91,7 @@ int main() {
     std::array<uint32_t, 2> constant_counts = {16, 16};
     std::array<std::vector<std::byte>, 2> output = {std::vector<std::byte>(128), std::vector<std::byte>(64)};
     const std::array<std::span<std::byte>, 2> destinations = {output[0], output[1]};
-    expeditionsrome::dlss::ConstantReadback readback;
+    talesofarise::dlss::ConstantReadback readback;
 
     constexpr char SHADER[] =
         "cbuffer Constants : register(b0) { uint4 value; };"

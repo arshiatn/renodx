@@ -34,20 +34,21 @@
 #include <vector>
 
 #include "../../utils/command_action.hpp"
+#include "../../utils/command_action_fast.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/state.hpp"
-#include "./code_patch.hpp"
-#include "./constant_mirror.hpp"
-#include "./constant_readback.hpp"
+#include "../talesofarise_dlss/code_patch.hpp"
+#include "../talesofarise_dlss/constant_mirror.hpp"
+#include "../talesofarise_dlss/constant_readback.hpp"
 #include "./contact_shadows.hpp"
-#include "./engine_cvars.hpp"
-#include "./engine_scale.hpp"
-#include "./native_state.hpp"
+#include "../talesofarise_dlss/engine_cvars.hpp"
+#include "../talesofarise_dlss/engine_scale.hpp"
+#include "../talesofarise_dlss/native_state.hpp"
 #include "./ngx_backend.hpp"
 #include "../talesofarise_dlss/frame_generation.hpp"
 #include "../talesofarise_dlss/frame_trace.hpp"
-#include "./performance.hpp"
+#include "../talesofarise_dlss/performance.hpp"
 #include "./ray_tracing.hpp"
 #include "./temporal_capture.hpp"
 
@@ -124,8 +125,8 @@ struct Texture {
 
 struct Runtime {
   expeditionsrome::dlss::Backend backend;
-  expeditionsrome::dlss::ConstantReadback constant_readback;
-  expeditionsrome::dlss::Performance performance;
+  talesofarise::dlss::ConstantReadback constant_readback;
+  talesofarise::dlss::Performance performance;
   ComPtr<ID3D11Device> device;
   ComPtr<ID3DDeviceContextState> private_state;
   ComPtr<ID3D11ComputeShader> prepare_shader;
@@ -164,7 +165,7 @@ struct State {
   uint32_t render_height = 0;
   uint32_t temporal_shader_hash = 0;
   AAMode last_mode = AAMode::OFF;
-  expeditionsrome::dlss::PerformanceSummary performance;
+  talesofarise::dlss::PerformanceSummary performance;
   std::string status = "Off — original game TAA";
   std::string constants;
   uint64_t copied_bytes = 0;
@@ -197,7 +198,7 @@ struct Diagnostics {
 } diagnostics;
 bool attached = false;
 
-// UE 4.26 keeps the jitter position in a signed byte (FSceneViewState +0x4AA, loaded with movsx). Past 128 positions
+// UE 4.23 keeps the jitter position in a signed byte (FSceneViewState +0x4AA, loaded with movsx). Past 128 positions
 // (8 * (output / input)^2: below 25% scale) it turns negative and Halton(position + 1 <= 0) is 0, so the jitter stops
 // for 127 of every 256 frames: DLSS pulses blurry/sharp. Loaded unsigned (movsx -> movzx), the pattern is right up to
 // UE's cap of 255 positions (below 18% it repeats early). Applied while the addon is loaded.
@@ -206,7 +207,7 @@ constexpr std::array<std::string_view, 2> JITTER_POSITION_LOADS = {
     "CC 0F BE 81 ?? ?? 00 00 C3",                  // FSceneViewState::GetCurrentTemporalAASampleIndex
 };
 constexpr size_t SIGNED_LOAD_OPCODE = 2;  // 0F BE (movsx) -> 0F B6 (movzx)
-std::array<expeditionsrome::code_patch::CodePatch, JITTER_POSITION_LOADS.size()> jitter_position_patches;
+std::array<talesofarise::code_patch::CodePatch, JITTER_POSITION_LOADS.size()> jitter_position_patches;
 
 // DLAA / DLSS use NVIDIA's jitter (as Tales): Halton (2, 3) over the whole pixel, 8 * (output / input)^2 positions (8
 // for DLAA), any length. UE's own: Halton only while it upscales and at most 255 positions (below 18% it repeats
@@ -221,7 +222,7 @@ constexpr std::string_view JITTER_STORE =
 constexpr size_t JITTER_STORE_SIZE = 8;  // movss [rdi + disp32], xmm7
 constexpr size_t JUMP_SIZE = 5;          // jmp rel32
 struct HaltonJitter {
-  expeditionsrome::code_patch::CodePatch patch;  // the jump into the block
+  talesofarise::code_patch::CodePatch patch;  // the jump into the block
   float* sample = nullptr;                       // x, y in input pixels
   uint32_t positions = 0;
   uint32_t index = 0;
@@ -230,7 +231,7 @@ struct HaltonJitter {
 // Live render scale (engine_scale.hpp): the AA mode's percentage is written into
 // r.ScreenPercentage; Off or disabling puts the game's own value back.
 struct LiveScale {
-  expeditionsrome::engine_scale::Finder finder;
+  talesofarise::engine_scale::Finder finder;
   bool enabled = true;
   float custom = 50.f;
   bool controlling = false;
@@ -390,13 +391,12 @@ constexpr auto GRAPHICS_SETTINGS = std::to_array<GraphicsSetting>({
      "-100: ambient occlusion at its highest quality even where a level asks for less (100: the level's own)."},
     {OPTIONAL_GROUP, L"r.LensFlareQuality", "Lens flare quality", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 3.f},
      "3: higher quality (bokeh-shaped) lens flares; the game uses 2."},
-    // UE 4.26's screen-space global illumination (off in the game): light bouncing off what is on screen.
-    {OPTIONAL_GROUP, L"r.SSGI.Enable", "Screen-space global illumination", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 1.f},
-     "1: light bounces off nearby surfaces onto others (Unreal's own, screen-space). Brighter shade, slower."},
-    {OPTIONAL_GROUP, L"r.SSGI.Quality", "Screen-space global illumination quality", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 4.f},
-     "Rays per pixel of the global illumination (1-4; 4: least noise)."},
-    {OPTIONAL_GROUP, L"r.SSGI.HalfRes", "Screen-space global illumination at half resolution", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 0.f},
-     "0: the global illumination at full resolution (sharper, slower)."},
+    // UE 4.23's screen-space global illumination: one cvar (no r.SSGI.Enable / HalfRes in this exe). Registered with 0
+    // (off, the game's); the renderer draws it while the value is above 0 and clamps the quality to 1..4.
+    {OPTIONAL_GROUP, L"r.SSGI.Quality", "Screen-space global illumination", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 4.f},
+     "Light bounces off nearby surfaces onto others (Unreal's own, screen-space). Brighter shade, slower.\n"
+     "1-4: rays per pixel (4: least noise).",
+     {1.f, KEEP}},
     // In no preset (a load-time trade-off, not quality): read when an area's shaders load.
     {"Loading", L"r.CreateShadersOnLoad", "Shaders on load", Better::EXACT, {KEEP, KEEP, KEEP, KEEP, 1.f},
      "1: creates all of an area's shaders while it loads, instead of the first time an effect or material appears on\n"
@@ -460,7 +460,7 @@ twattila::rt_scene::Settings ray_tracing_settings;
 float ray_traced_bounce_strength = 1.f;
 bool ray_tracing_installed = false;
 
-// UE 4.26's View rows frame generation reads (Tales' 4.21 rows + 4: ClipToWorld came before them).
+// UE 4.23's View rows frame generation reads (Tales' 4.21 rows + 4: ClipToWorld came before them).
 constexpr uint32_t VIEW_VIEW_TO_CLIP_NO_AA = 32;
 constexpr uint32_t VIEW_FORWARD = 56;
 constexpr uint32_t VIEW_UP = 57;
@@ -491,7 +491,7 @@ constexpr size_t VOLUMETRIC_FOG_CELL = SettingIndex(L"r.VolumetricFog.GridPixelS
 constexpr const char* GRAPHICS_SECTION = "Rome Graphics Values";
 
 struct GraphicsEntry {
-  expeditionsrome::engine_cvars::Cvar cvar;
+  talesofarise::engine_cvars::Cvar cvar;
   std::string details;  // int / float and the game's value at the search, or why it is unusable
   std::string key;      // the cvar name
   std::vector<float> choices;
@@ -501,7 +501,7 @@ struct GraphicsEntry {
   float written = 0.f;
 };
 struct Graphics {
-  expeditionsrome::engine_cvars::Console console;
+  talesofarise::engine_cvars::Console console;
   bool searched = false;
   bool available = false;
   std::string status = "Searching the game's settings...";
@@ -513,7 +513,7 @@ void SaveChoice(const GraphicsEntry& entry) {
   reshade::set_config_value(nullptr, GRAPHICS_SECTION, entry.key.c_str(), value.c_str());
 }
 
-// Texture LOD bias below 100% (DLSS section). With temporal upscaling UE 4.26 biases material textures (599 of the
+// Texture LOD bias below 100% (DLSS section). With temporal upscaling UE 4.23 biases material textures (599 of the
 // game's pixel shaders sample with View.MaterialTextureMipBias) by max(log2(scale) + r.ViewTextureMipBias.Offset,
 // r.ViewTextureMipBias.Min), read every frame (PreVisibilityFrameSetup); the game's -0.3 and -1 leave textures blurrier
 // than NVIDIA's log2(scale) - 1 below ~57%. While DLSS renders below 100%: offset 0 / -1 / -2 (Matched / Sharper /
@@ -521,7 +521,7 @@ void SaveChoice(const GraphicsEntry& entry) {
 constexpr std::array<const wchar_t*, 2> TEXTURE_LOD_BIAS_CVARS = {L"r.ViewTextureMipBias.Offset", L"r.ViewTextureMipBias.Min"};
 constexpr float LOWEST_MIP_BIAS = -16.f;  // D3D11's lowest; no minimum in practice
 struct TextureLodBias {
-  std::array<expeditionsrome::engine_cvars::Cvar, TEXTURE_LOD_BIAS_CVARS.size()> cvars;
+  std::array<talesofarise::engine_cvars::Cvar, TEXTURE_LOD_BIAS_CVARS.size()> cvars;
   std::array<float, TEXTURE_LOD_BIAS_CVARS.size()> game_values = {};
   bool controlling = false;
   int choice = 2;  // 0 off (the game's), 1 matched, 2 sharper, 3 sharpest; Present thread (the overlay runs in it)
@@ -825,7 +825,7 @@ bool Evaluate(Frame* frame, bool replace) {
   }
   bool evaluated = false;
   {
-    expeditionsrome::dlss::ContextStateScope restore(context, runtime.private_state.Get());
+    talesofarise::dlss::ContextStateScope restore(context, runtime.private_state.Get());
     runtime.performance.Mark(context);
     struct PrepareConstants {
       std::array<std::array<float, 4>, 4> clip_to_previous;
@@ -1114,9 +1114,9 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
       continue;
     }
     const uint64_t offset = uint64_t{first_constants[slot]} * 16;
-    expeditionsrome::dlss::constants::Watch(buffers[slot].Get(), static_cast<uint32_t>(std::min<uint64_t>(offset + sizes[slot], UINT32_MAX)));
+    talesofarise::dlss::constants::Watch(buffers[slot].Get(), static_cast<uint32_t>(std::min<uint64_t>(offset + sizes[slot], UINT32_MAX)));
     mirrored = mirrored && uint64_t{constant_counts[slot]} * 16 >= sizes[slot]
-               && expeditionsrome::dlss::constants::Read(buffers[slot].Get(), offset, cpu[slot]);
+               && talesofarise::dlss::constants::Read(buffers[slot].Get(), offset, cpu[slot]);
   }
   if (mirrored && readback.Trusted()) {
     // No GPU wait: values from the game's own uploads, checked later against GPU copies.
@@ -1216,13 +1216,7 @@ void OnDestroyDevice(reshade::api::device* device) {
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  // Debug: renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt;
-  // checked each second, the file removed).
-  if (static uint32_t presents = 0; ++presents % 60 == 0) {
-    if (DeleteFileW((talesofarise::frame_trace::internal::ExecutableFolder() / L"renodx_trace_now").c_str()) != 0) {
-      talesofarise::frame_trace::Request();
-    }
-  }
+  // Debug: also renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt).
   talesofarise::frame_trace::OnPresent();
   if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Update(ray_tracing_settings, ray_traced_bounce_strength);
   if (talesofarise::frame_generation::Presenting()) {
@@ -1256,7 +1250,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     state.last_mode = mode;
     missed = state.claimed_frame != state.frame;
     ++state.frame;
-    const uint64_t copied = expeditionsrome::dlss::constants::CopiedBytes();
+    const uint64_t copied = talesofarise::dlss::constants::CopiedBytes();
     state.copied_per_frame = copied - state.copied_bytes;
     state.copied_bytes = copied;
   }
@@ -1306,7 +1300,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
 
   // Live render scale: find r.ScreenPercentage once, then keep it at the mode's value.
   auto& finder = live.finder;
-  using Phase = expeditionsrome::engine_scale::Finder::Phase;
+  using Phase = talesofarise::engine_scale::Finder::Phase;
   if (live.enabled && !live.problem.empty() && live.retries < MAX_LIVE_RETRIES
       && std::chrono::steady_clock::now() >= live.retry_at) {
     ++live.retries;
@@ -1421,7 +1415,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     std::atomic_ref(halton_jitter.sample[1]).store(radical_inverse(halton_jitter.index + 1, 3) - .5f, std::memory_order_relaxed);
   }
   if (halton_jitter.patch.address != nullptr && halton_jitter.patch.applied != halton) {
-    if (expeditionsrome::code_patch::ApplyCodePatch(&halton_jitter.patch, halton)) {
+    if (talesofarise::code_patch::ApplyCodePatch(&halton_jitter.patch, halton)) {
       renodx::utils::log::i("[Rome DLAA jitter] ", (halton ? std::format("NVIDIA's Halton (2, 3), {} positions", halton_jitter.positions)
                                                            : std::string("the game's")), ".");
     } else {
@@ -1434,7 +1428,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (!graphics.searched && !finder.Searching()) {
     graphics.searched = true;
     std::string details;
-    graphics.available = graphics.console.Start(&details);
+    graphics.available = graphics.console.Start(talesofarise::engine_cvars::UE_4_23, &details);
     graphics.status = (graphics.available ? "" : "Graphics settings unavailable: " + details + " (details in ReShade.log).");
     if (graphics.available) {
       renodx::utils::log::i("[Rome graphics] ", details, ".");
@@ -1531,7 +1525,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
     const std::shared_lock lock(state.mutex);
     overlay_frame.store(state.frame + 1);
   }
-  using Phase = expeditionsrome::engine_scale::Finder::Phase;
+  using Phase = talesofarise::engine_scale::Finder::Phase;
   if (int settings_mode = (advanced ? 1 : 0); ImGui::Combo("Settings mode", &settings_mode, "Simple\0Advanced\0")) {
     advanced = settings_mode == 1;
     reshade::set_config_value(nullptr, "Rome AA", "SettingsMode", settings_mode);
@@ -1623,7 +1617,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
   uint64_t completed;
   std::array<uint32_t, 4> extents;
   uint32_t temporal_shader_hash;
-  expeditionsrome::dlss::PerformanceSummary performance;
+  talesofarise::dlss::PerformanceSummary performance;
   {
     const std::shared_lock lock(state.mutex);
     status = state.status;
@@ -1661,7 +1655,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
       8.0 * std::pow(static_cast<double>(extents[2]) / std::max(extents[0], 1u), 2)));
   // NVIDIA wants 8 * (output / input)^2 positions: UE's pattern has them down to 25% (signed position) or, with the
   // jitter fix, 18% (its cap of 255).
-  const bool jitter_fixed = std::ranges::all_of(jitter_position_patches, &expeditionsrome::code_patch::CodePatch::applied);
+  const bool jitter_fixed = std::ranges::all_of(jitter_position_patches, &talesofarise::code_patch::CodePatch::applied);
   const float lowest_scale = (jitter_fixed ? 18.f : 25.f);
   if (!halton_jitter.patch.applied && (mode == AAMode::DLSS_CUSTOM && live.enabled && live.custom < lowest_scale)
       || (completed != 0 && extents[2] != 0
@@ -1853,7 +1847,7 @@ void OnOverlay(reshade::api::effect_runtime*) {
   ImGui::TextWrapped("Ultra Quality (77%%) is not an NVIDIA mode: it runs NVIDIA's Quality model at 77%%.");
   ImGui::TextWrapped("Both low/high-scale Ultra and Fast TAAU compute variants are recognized. Below 100%%, Temporal Upscaling OFF still uses stock AA; that pixel-shader path is not supported yet.");
   ImGui::TextWrapped("Replacing skips the game's TAA/TAAU dispatch and NVIDIA writes straight into its output, once the CPU copy of the constants is trusted. Off, or while the GPU readback is still in use, stock TAA runs first and DLSS is merged with its alpha.");
-  ImGui::TextWrapped("Constants come from a CPU copy of the game's uploads once it matched %u exact GPU readbacks in a row; it stays checked against GPU copies without waiting, and any mismatch returns to the waiting readback.", expeditionsrome::dlss::ConstantReadback::TRUST_AFTER);
+  ImGui::TextWrapped("Constants come from a CPU copy of the game's uploads once it matched %u exact GPU readbacks in a row; it stays checked against GPU copies without waiting, and any mismatch returns to the waiting readback.", talesofarise::dlss::ConstantReadback::TRUST_AFTER);
   ImGui::Separator();
   if (!dlss_library.folder.empty()) {
     ImGui::TextWrapped("nvngx_dlss.dll %u.%u.%u %s (%s). An override in the NVIDIA app or Profile Inspector can load another version; the DLSS indicator shows the one in use.",
@@ -2051,19 +2045,19 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
   for (size_t index = 0; index < JITTER_POSITION_LOADS.size(); ++index) {
     auto& patch = jitter_position_patches[index];
     patch = {};
-    if (uint8_t* site = expeditionsrome::code_patch::FindPattern(JITTER_POSITION_LOADS[index], &patch.details); site != nullptr) {
+    if (uint8_t* site = talesofarise::code_patch::FindPattern(JITTER_POSITION_LOADS[index], &patch.details); site != nullptr) {
       patch.address = site + SIGNED_LOAD_OPCODE;
       patch.original = {0xBE};
       patch.replacement = {0xB6};
     }
-    if (expeditionsrome::code_patch::ApplyCodePatch(&patch, true)) {
+    if (talesofarise::code_patch::ApplyCodePatch(&patch, true)) {
       renodx::utils::log::i("[Rome DLAA jitter] Jitter position read unsigned ", patch.details, ".");
     } else {
       renodx::utils::log::w("[Rome DLAA jitter] Jitter position load ", index, " not fixed: ", patch.details, ".");
     }
   }
   halton_jitter = {};
-  if (uint8_t* site = expeditionsrome::code_patch::FindPattern(JITTER_STORE, &halton_jitter.patch.details); site != nullptr) {
+  if (uint8_t* site = talesofarise::code_patch::FindPattern(JITTER_STORE, &halton_jitter.patch.details); site != nullptr) {
     DWORD region_size = 0;
     auto* region = static_cast<uint8_t*>(DetourAllocateRegionWithinJumpBounds(site, &region_size));
     DWORD protection = 0;
@@ -2110,9 +2104,12 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE module, HMODULE) {
                                                             });
     }
   }
-  expeditionsrome::dlss::constants::Use(DLL_PROCESS_ATTACH);
+  talesofarise::dlss::constants::log_tag = "[Rome AA constants]";
+  talesofarise::dlss::constants::Use(DLL_PROCESS_ATTACH);
   renodx::utils::state::Use(DLL_PROCESS_ATTACH);
   renodx::utils::command_action::Use(DLL_PROCESS_ATTACH);
+  // The fast draw dispatch alone: every callback here has a shader hash (ray tracing gates rt_core's own).
+  renodx::utils::command_action::fast::Use(DLL_PROCESS_ATTACH);
   attached = true;
   renodx::utils::log::i("[Rome DLAA] Native DLAA and DLSS Ultra Quality/Quality/Balanced/Performance/Ultra Performance/Custom 1-100% (all six Ultra/Fast compute hashes; exact/4/8-pixel allocations). Live render scale; preset choice; graphics settings. Runtime NVIDIA scale limits; exact CB readbacks and asynchronous phase timings; Release-compatible shared ABI.");
   return true;
@@ -2126,9 +2123,10 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     renodx::utils::command_action::Unregister(expeditionsrome::dlss::contact_shadows::OnLightRectangle);
     if (ray_tracing_installed) expeditionsrome::dlss::ray_tracing::Uninstall();
     talesofarise::frame_trace::Stop();
+    renodx::utils::command_action::fast::Use(DLL_PROCESS_DETACH);
     renodx::utils::command_action::Use(DLL_PROCESS_DETACH);
     renodx::utils::state::Use(DLL_PROCESS_DETACH);
-    expeditionsrome::dlss::constants::Use(DLL_PROCESS_DETACH);
+    talesofarise::dlss::constants::Use(DLL_PROCESS_DETACH);
     reshade::unregister_overlay("Rome DLAA (experimental)", OnOverlay);
     reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
     reshade::unregister_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
@@ -2142,8 +2140,8 @@ extern "C" __declspec(dllexport) void AddonUninit(HMODULE module, HMODULE) {
     }
     graphics.console.Refresh();
     RestoreTextureLodBias();
-    for (auto& patch : jitter_position_patches) expeditionsrome::code_patch::ApplyCodePatch(&patch, false);
-    expeditionsrome::code_patch::ApplyCodePatch(&halton_jitter.patch, false);
+    for (auto& patch : jitter_position_patches) talesofarise::code_patch::ApplyCodePatch(&patch, false);
+    talesofarise::code_patch::ApplyCodePatch(&halton_jitter.patch, false);
     Reset();
     attached = false;
   }
