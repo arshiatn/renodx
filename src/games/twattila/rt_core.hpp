@@ -963,6 +963,7 @@ struct Runtime {
   std::array<uint64_t, dlaa_bridge::RT_ATLAS_SLICES> slice_used = {};
   uint32_t atlas_generation = 0;
   DeviceObjects objects;
+  uint64_t last_key = 0;  // the last Capture's scene key (CaptureReplayed's answer)
 };
 
 static Runtime runtime;
@@ -1678,6 +1679,7 @@ void Capture(Context& command, const SceneShader& shader) {
     const std::unique_lock lock(runtime.mutex);
     if (const auto entry = runtime.short_keys.find(short_key); entry != runtime.short_keys.end() && !entry->second.ambiguous) {
       if (const auto known = runtime.known.find(entry->second.key); known != runtime.known.end()) {
+        runtime.last_key = entry->second.key;
         if (known->second.frame != runtime.frame) {
           known->second.frame = runtime.frame;
           if (runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(entry->second.key);
@@ -1820,6 +1822,7 @@ void Capture(Context& command, const SceneShader& shader) {
   {
     const std::unique_lock lock(runtime.mutex);
     if (!Enabled() || !dlaa_bridge::bridge.ray_tracing) return;
+    runtime.last_key = key;
     if (short_path) {
       const auto [entry, added] = runtime.short_keys.try_emplace(short_key, Runtime::ShortKey{.key = key});
       if (!added && entry->second.key != key) entry->second.ambiguous = true;
@@ -4391,6 +4394,51 @@ constexpr auto OnAnyDraw = []<typename Context>(Context&) -> renodx::utils::comm
     return {.post_callback = internal::CaptureAnyDraw<Context>};
   }
 };
+
+// A host replaying another API's draws on its own D3D11 device (R.U.S.E.'s D3D9 scene): no ReShade draw events, so no
+// InstallScene; `host` (its scene_draw only marks the capture versions as the host's own) and a clip-space scene whose
+// draws come through CaptureReplayed.
+inline void InstallReplayedScene(const Host& host) {
+  const std::unique_lock lock(internal::runtime.mutex);
+  internal::scene_shaders = {};
+  internal::host = host;
+  internal::clip_captures = true;
+  internal::world_captures = false;
+  internal::leaf_cutoff = 0.f;
+}
+
+// InstallReplayedScene's draws: the indexed draw the host bound on `cmd_list`'s immediate context, captured as
+// Host::scene_draw's are (`shader` as scene_draw fills it, its capture_shader the replayed vertex shader); its scene key
+// for MarkDrawn (known once a trace took it; 0: off).
+inline uint64_t CaptureReplayed(reshade::api::command_list* cmd_list, const SceneShader& shader,
+                                const renodx::utils::command_action::DrawIndexedArguments& arguments) {
+  if (!internal::active.load(std::memory_order_relaxed)) return 0u;
+  renodx::utils::command_action::CommandContext<renodx::utils::command_action::DrawIndexedArguments> command = {
+      .cmd_list = cmd_list,
+      .arguments = arguments,
+  };
+  {
+    const std::unique_lock lock(internal::runtime.mutex);
+    internal::runtime.last_key = 0u;
+  }
+  internal::Capture(command, shader);
+  const std::unique_lock lock(internal::runtime.mutex);
+  return internal::runtime.last_key;
+}
+
+// A static mesh CaptureReplayed gave `key` for, unchanged since in the host's view: drawn this frame without its draw;
+// false: not in the scene any more (the host captures it again).
+inline bool MarkDrawn(uint64_t key) {
+  auto& runtime = internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  const auto known = runtime.known.find(key);
+  if (known == runtime.known.end()) return false;
+  if (known->second.frame != runtime.frame) {
+    known->second.frame = runtime.frame;
+    if (runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(key);
+  }
+  return true;
+}
 
 // The scene's shaders (`shaders`, the addon's, kept while installed; or every draw host.scene_draw accepts) and the
 // game's view (`host`).
