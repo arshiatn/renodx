@@ -388,6 +388,18 @@ shadows. All leaves out every map but the kept far one: hair strands and fog vol
 out of view cast none (the rays see only what is drawn on screen). Under the skip a frame without the rays' shadow draws
 the maps again. Test: `test/tw_ryse_shadow_skip` (WARP: the game's five mask passes and the built ones, PCSS too, write
 no shadow on a map cleared to 1, full shadow with a caster).
+**Path-Traced Ambient (Experimental, off; RT/PT keeps it off)** with Attila's two sub-rows (Own Sky Rays, Steady Bounce
+Light), live, with Path Tracing and the Light Bounce on. fix57's "nothing takes the game's ambient out of the tiled
+lighting" was wrong: the decompile of cs 0x897232B5 takes its diffuse ambient from the probes alone (the lightType 1 loop:
+DiffuseCubeArray t34 x the entry's colour and falloff, then x the SSDO and colour bleeding), so while the paths bring the
+sky (Attila's gate: 150 frames of paths, last frame bounced) `ray_tracing.hpp` binds a one-layer black cube at t34 for the
+dispatch (the raised light-limit cs takes the game's bindings too) and the Light Bounce's apply adds the paths' light x
+albedo in its place; the probes' reflections (t33) and the eyes', hair's and particles' forward ambient stay the game's.
+The paths' sky: `rt_probe_sky` writes the level's widest probe before the sun (the list's last frame entry) toward the six
+axes into the sun texture's ambient cube (texels 3-8, zeros without the row). Ray-traced AO is off under it, as Attila's.
+Test: `test/tw_ryse_path_ambient` (WARP: the game's and the raised lighting with only probe lights and their reflections
+black give a lit scene with the game's cubes and exactly 0 in u1 and u2 with the black cube; with the reflections on the
+black cube keeps them; `rt_probe_sky` picks the widest probe before the sun and writes zeros without a list).
 
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
