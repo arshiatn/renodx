@@ -154,6 +154,9 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] C: Hue Clip by eye: Ryse 80, Tales 70, Expeditions 70, Divinity 2 80 (60 is closer on average), Thrones (its S-curve texture is in no dump)? (from: "ATN by eye: Hue Clip Ryse 80 ...")
 - [ ] C: Divinity 1 Smooth Grade Shoulder: keep it an Experimental row (off, now), or the default? On: OkLab 0.033 at 0.8-1, 0.025 at 1-2, 0.006 at 2-4, 0.002 at 4-16. (from: "C9 Divinity 1 grade shoulder ...")
 - [ ] C: Divinity 1 / 2 VFX / indicator rows: OK to patch the effects' pixel shader output (D1 633, D2 2,050 permutations) with a constant buffer, as Troy's VFX brightness? (from: "dvf_ not done ...")
+- [ ] C: Shogun 2 PsychoV35 toe vs SDR: Recommended lifts shadows x2.5-6.2 under 1 nit, up to x2.3 at 1-15 nits (bos_japan winter up to x8.2), dark colour x0.78; SDR-like x1.4-2.1. Keep, move toward SDR-like, or a toe row (Experimental)? (Rome Remastered x0.89-0.92: fine.) (from: "s2r_ not done ...")
+- [ ] C: Rome Remastered Modded Auto Exposure Sensitivity default 1 instead of 2? (battle-like scene: +0.014 stops at 2, +0.19 at 1, +0.29 at 0.6; the row is off by default) (from: "s2r_ not done ...")
+- [ ] B: Shogun 2 decals under Ray-Traced AO now take the rays' AO like the ground around them (before: the game's SSAO): look right? (from: "s2r_ not done ...")
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -203,7 +206,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN DECIDES: Tales' rays now need an upscaler on (before: also with the game's T ... | ATN
 - Dead files: talesofarise_dlss/rr_d3d12.hpp (no user), ngx_backend.hpp, 0x7A1E0D4 ... | coordinator, release round
 - Expeditions left: the three max(0) carve materials (G1 data run), micromaps star ... | next UE round (after G1)
-- Wire RayTracedLightRatioFollow into Shogun 2 (its own rows). Owner: next Shogun ... | next Shogun 2 round
 - Skip the game's point-shadow casters under the row (shadow_pointlight VS 7DF3D76 ... | next D3D11 round
 - In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows + ... | ATN (in game)
 - Real GT-VBAO savings need per-sample math changes (look change): visual A/B, ATN ... | later
@@ -211,7 +213,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - shadow_pass: (a) the row's next game run reads the new off-thread warning (if it ... | next Attila CPU / D3D11 round
 - Two Shadow Cascades live rebuild (no restart). Owner: next D3D11 round | next D3D11 round
 - +265 MB VRAM for the bounce-size ReSTIR record. Owner: next ReSTIR round | next ReSTIR round
-- Shogun 2 terrain_detail not restored at detach (minor). Owner: next Shogun 2 rou ... | next Shogun 2 round
 - Faster-with-a-look-risk list for ATN (numbers in the reply 12:1x): Lean ReSTIR R ... | ATN
 - Release round: player / release zips carry no Streamline (release_zip.py, player ... | coordinator, release round
 - Tales: G2's camp save has no torch / night / indoor view; the in-process RT has ... | next UE round
@@ -243,7 +244,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - dvf_ not done: VFX / indicator Experimental rows in both games (D1 633 FX_MAT an ... | next Divinity round / runs, ATN (VFX scope, C rows)
 - tex_ not done: Expeditions Video AutoHDR (NV12 convert ps 0x524CDCDF; needs one ... | next UE round, coordinator (release), shs_
 - w3f_ not done: vanilla_exact over every WH3 shader + a lensflare00 control (~20 ... | next WH3 round, shs_
-- s2r_ not done: Rome Remastered Modded Auto Exposure (Feral's AE compute not iden ... | next Shogun 2 / Rome Remastered rounds and data runs
+- (tw3_ 11-16 DONE: RomeR Modded Auto Exposure 0774c682f (Extra, off; off = game b ... | next Shogun 2 / Rome Remastered rounds and data runs
 - gpu2_ next wins: (1) paths at 128 registers (split trace / shade, or SASS livene ... | next GPU round, next ReSTIR round, tools owner
 - Shared leftovers (shs_ / ryf_): rt_core OnAnyDraw replays every draw while trace ... | next shared round, next WH3 round, release round
 - ryf_ not done: row 9 e_GsmLodsNum under the rays' sun (trace: which lod is the c ... | next Ryse round / data run
@@ -275,9 +276,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - A2a Skip the game's SSAO under RT AO: WH2 / Troy reader census, Pharaoh ssao2 (o ... | tw1_ (WH2), tw2_ (Troy, Pharaoh)
 - A2b Tales / Expeditions: a present-time one-AO-method gate (GT-VBAO off under RT ... | tpa_
 - A2c Tales t5 reader census (is it only the SSAO?). Owner: tpa_ | tpa_
-- A2d RT AO round follow-ups: page dumps of the 10 games after the AO change, tw_w ... | coordinator, tw3_
+- (Shogun 2 sunlight00-03 vanilla exact DONE tw3_ 513a6964b) A2d RT AO round follo ... | coordinator, tw3_
 - A3 WH2 AO blurs (C7B1F6F7 / 901C2215) under GT-VBAO: trace + skip proof; Time Ea ... | tw1_, data run
-- A4 Reflections, one method: the game's SSR / hi-Z / preconvolve skipped under RT ... | tw3_ (Shogun 2, Rome Remastered), tw1_, tw2_, tpa_, div1_, d
+- (Shogun 2 DONE tw3_ f54681df6: preconvolve 0xBC3CB71D skipped under RT reflectio ... | tw3_ (Shogun 2, Rome Remastered), tw1_, tw2_, tpa_, div1_, d
 - A5 Trilinear LOD bias proof run: Log Details at 50 % in Attila, Thrones, Shogun ... | coordinator (run)
 - A9 Bench: Reset and No RT/PT presets' D3D11 cost (Bend / SSSR / GT-VBAO / GT-VBG ... | eob_ if its session allows, else the next bench
 - A10a Tales L / M sqrt feed: harness numbers at its input range, then C for ATN. ... | tpa_
@@ -299,10 +300,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - C3 Ryse: prove the rays overwriting the sun mask (dual-source split, the cascade ... | rys2_
 - C4 WH3 / Rome II: prove Replace for the sun shadows, then default (your replace ... | tw2_
 - C6 Ryse: Texture LOD Bias on All Textures on by default, label without "(Experim ... | rys2_
-- C10 Shogun 2 Auto Thickness rows off by default as the shared ones (23fb900c2). ... | tw3_
 - D1 Boxes no round owned, now assigned: scorer (L749), DLSS RR 310.9 paths boil ( ... | those rounds
 - NEXT ROUNDS 11-16 (ATN ~10:4x: "start doing everything that is in next game and ... | coordinator
 - ATN 10:3x "Where are PT AO / PT GI for all the games?": every TW game, Shogun 2, ... | tpa_, next Divinity rounds
+- Shogun 2 / Rome Remastered next (tw3_ 11-16): Shogun 2 smoke shadow map without ... | next Shogun 2 / Rome Remastered round
+- SHARED STEPS (tw3_ 11-16): per-input values in tw_vanilla_exact (particlelight00 ... | next shared round
 - DIVINITY 1 RUN (div1_ 11-16 NEEDS A RUN, save T1, in-game AA off, helper next to ... | coordinator (one game at a time)
 - Divinity 1 next (div1_ 11-16): render scale below 100 % (view_share) + texture L ... | next Divinity 1 round
 - SHARED STEP: rt_core's path ambient works only for TW hosts (internal::ambient_c ... | shared round with tpa_'s result
@@ -340,21 +342,21 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Pharaoh below 100 %: p2ph_scale_census.txt still has 8 BUG (B) rows (shroud deca ... | next Pharaoh round
 - Path tracing register limit (1.47-1.81 ms in game, 28.7 % occupancy, 85 % regist ... | next GPU round
 - (4bcc1a742: spills 0, 0.701 -> 0.630 ms; still 128 registers: gpu3_) Attila refl ... | next GPU round
-- R21 skipped (Shogun 2 NGX feature release): needs the game's static NVSDK_NGX_D3 ... | next Shogun 2 round
+- (code DONE tw3_ 8420b3393: the game's release at +0x1ad0a90 frees DLSS_PASS's fe ... | next Shogun 2 round
 - test/tw_native_hook_lifetime does not compile (x86 / amd64): graphics_hooks.hpp ... | next test round
 - fx_ notes: R1 the kept lost RR object holds its removed D3D12 device (RR / RT / ... | coordinator (harness before the install)
 - WH3's x64 render-list WPR run: the game said "Unable to initialize SteamAPI" twi ... | ATN, then coordinator
 - In game (ATN's list): migration keeps the old DLSS values (log line once); no re ... | ATN (in game)
-- Port RayTracedBatchedUnits + RayTracedUnitsRange to Shogun 2 (SHARED STEP, after ... | GPU round after the install
+- (tw3_ 11-16: SHARED STEP first: rt_core's unit rule (rt_core.hpp:1819) would cou ... | GPU round after the install
 - Cosmetic: moved files keep "[Shogun 2 DLSS]" log tags; HLSL comments "(DLSS addo ... | coordinator, release round
 - (hca_: S4 b200df25 and S6 done; uem_ gone: the rest to shs2_) SHARED STEP owners ... | UE4 MERGE (uem_)
 - (atn scene DONE 11-16 eob_: 32 / 64 / 128 lights 0.21 / 0.267 / 0.454 ms helper, ... | coordinator, end-of-batch bench (torch-128 night / burning-c
 - Rarer Objects needs a view with siege towers or ships (bench scene choice) Owner ... | coordinator, end-of-batch bench
 - After everything: one A/B of ATN's CPU set rule against an affinity rule of the ... | the bench, ATN's OK at the time
-- caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain ent ... | coordinator, after parity round 2 (shared script)
+- (tw3_ 11-16: spec in romeremastered.tsv rows 81-90) caster_census.py for Feral's ... | coordinator, after parity round 2 (shared script)
 - D9123DE1 + its MSAA / stencil builds (constant tone mapper "with_bloom_and_gamma ... | the next data run or ATN's trace
 - render_pass_behavior / shader_injection_behavior suites: ATN 02:2x OK to downloa ... | coordinator, tools pass
-- Rome Remastered IB-rewrite trace (whether Feral rewrites index buffers, b6ec6be6 ... | the next Rome Remastered data run (coordinator)
+- (tw3_ 11-16: first a SHARED STEP: rt_core OnIndexWrite logs nothing and misses M ... | the next Rome Remastered data run (coordinator)
 - Look-changing GPU savings (half-rate rays for grass / far soldiers, float16 anim ... | GPU round after the end bench
 
 ## CARRIED OVER (open lines of archived sections; HANDOFF_ARCHIVE.md, 2026-11-15)
@@ -1027,7 +1029,7 @@ heading text are in HANDOFF_ARCHIVE.md)
     not the game's bits (skinlm 1,305 / 1,301 / 212 / 206 values apart, fxc reassociation): now bit-exact. `captured` as a
     UAV impossible (SO + UAV binding refused). GT-VBAO bitmask: ALU / issue-bound (98 registers); the exact prefetch
     rewrite is slower (1.483 -> 1.544 ms): not taken. tw_rays_captures ALL PASSED. Attila build32 rebuilt on the merge.
-    - [ ] Wire RayTracedLightRatioFollow into Shogun 2 (its own rows). Owner: next Shogun 2 round
+    - [x] DONE (already, 03643a0bf; tw3_ 11-16) Wire RayTracedLightRatioFollow into Shogun 2 (its own rows). Owner: next Shogun 2 round
     - [ ] Skip the game's point-shadow casters under the row (shadow_pointlight VS 7DF3D76D / AD71694F, rigid 8B138A6A,
       billboard 6B379EC6); Rome II's point-shadow builds (64 unique non-MSAA, 96 with MSAA; f407205a's message says 48:
       wrong). Owner: next D3D11 round
@@ -1077,7 +1079,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       patch); (b) relearning needs per-kind call counts over a moving battle. Owner: next Attila CPU / D3D11 round
     - [ ] Two Shadow Cascades live rebuild (no restart). Owner: next D3D11 round
     - [ ] +265 MB VRAM for the bounce-size ReSTIR record. Owner: next ReSTIR round
-    - [ ] Shogun 2 terrain_detail not restored at detach (minor). Owner: next Shogun 2 round
+    - [x] DONE tw3_ 1220cf4a8 + 63bdd9134 (game's values saved at install, written back at detach; tw_shogun2_tweaks part 6 PASS) Shogun 2 terrain_detail not restored at detach (minor). Owner: next Shogun 2 round
     - [x] OBSOLETE (Fable review 11-15: no add-on includes it; goes with the Dead files box): talesofarise_dlss/frame_generation.hpp detours have no uninstall. Owner: next UE round
   - [x] FINAL VERIFICATION bc7ba324 (rfx_): builds exit 0; tw_engine_code x86 PASS (3 DLLs), tw_output_encoding 5 / 5
     x86 + amd64, tw_helper_lifetime / tw_gpu_completion / tw_screen_space_shadows x86 + amd64 PASS, tw_rays_captures ALL
@@ -1678,7 +1680,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           tw_shogun2_tweaks part 4 (12 patterns once, CONTROL 0); Rome Remastered FSR / XeSS through the helper, test hooks,
           Bend off where the rays shadowed. Tests: tw_shogun2_shaders / tweaks, tw_romer_dlaa / rays PASS; tw_vanilla_exact
           45 EXACT (Shogun2 7, Shogun2PS 17, RomeR 15, RomeRPS 6). dump_rr.cpp now dumps AA {0,5,6,7} (coordinator).
-        - [ ] s2r_ not done: Rome Remastered Modded Auto Exposure (Feral's AE compute not identified: trace 40, port, WARP);
+        - [ ] (tw3_ 11-16 DONE: RomeR Modded Auto Exposure 0774c682f (Extra, off; off = game bit-exact 1200 runs); Shogun 2 SSAO under the rays' AO 3947a8a59 (33 t_ssao readers, decals now take the rays' AO); 8 open vanilla_exact shaders 255f96f93 (5 exact, treevelocity by design, particlelight00 / vfxglow00 need per-input values); toe test 97c75f7f9; settings matrix; scale census WON'T GET (game-owned scale). LEFT: RomeR cascades under rays (units' battle trace), RomeR LOD bias (SHARED STEP graphics_page game-owned-scale flag, then a 67 % battle run), Shogun old AO path + summed-area DOF (run: lowest SSAO / DOF battle, Trace One Frame), RT harness all_modes with Shogun's settings (SHARED STEP)) s2r_ not done: Rome Remastered Modded Auto Exposure (Feral's AE compute not identified: trace 40, port, WARP);
           skip Shogun 2's own line-sweep SSAO under the rays' AO (reader census first); Rome Remastered rays replacing the
           cascades + texture LOD bias proof (NEEDS A TRACE, reader census); Shogun 2 old AO path + summed-area DOF blurs
           (NEEDS A TRACE); PsychoV35 toe / settings matrix / scale census (harness); vanilla_exact 8 open (highlight00 /
@@ -1885,11 +1887,11 @@ heading text are in HANDOFF_ARCHIVE.md)
           Owner: tw1_ (WH2), tw2_ (Troy, Pharaoh)
         - [ ] A2b Tales / Expeditions: a present-time one-AO-method gate (GT-VBAO off under RT AO / PT ambient). Owner: tpa_
         - [ ] A2c Tales t5 reader census (is it only the SSAO?). Owner: tpa_
-        - [ ] A2d RT AO round follow-ups: page dumps of the 10 games after the AO change, tw_warhammer_shaders on x86, a
+        - [ ] (Shogun 2 sunlight00-03 vanilla exact DONE tw3_ 513a6964b) A2d RT AO round follow-ups: page dumps of the 10 games after the AO change, tw_warhammer_shaders on x86, a
           vanilla-exact line for Shogun 2 sunlight00-03. Owner: coordinator, tw3_
         - [ ] A3 WH2 AO blurs (C7B1F6F7 / 901C2215) under GT-VBAO: trace + skip proof; Time Each Pass before / after. Owner:
           tw1_, data run
-        - [ ] A4 Reflections, one method: the game's SSR / hi-Z / preconvolve skipped under RT reflections per game (only WH2
+        - [ ] (Shogun 2 DONE tw3_ f54681df6: preconvolve 0xBC3CB71D skipped under RT reflections, part 21 (e) 0 of 768, control 768; RomeR n/a) A4 Reflections, one method: the game's SSR / hi-Z / preconvolve skipped under RT reflections per game (only WH2
           does it, 53b600329; Shogun 2 first). Owner: tw3_ (Shogun 2, Rome Remastered), tw1_, tw2_, tpa_, div1_, div2_
         - [ ] A5 Trilinear LOD bias proof run: Log Details at 50 % in Attila, Thrones, Shogun 2. Owner: coordinator (run)
         - [ ] A9 Bench: Reset and No RT/PT presets' D3D11 cost (Bend / SSSR / GT-VBAO / GT-VBGI), Time Each Pass + PresentMon
@@ -1928,7 +1930,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           addon.cpp:2166-2173, graphics.hpp:1110). Owner: rys2_
         - [x] DONE div1_ 9da00b28b (knee at 1 again; Smooth Grade Shoulder row Experimental off, in Reset; WARP row off = a6762afab^ 0 of 3,538,944 texels, control 0.26): C9 Divinity 1 grade shoulder (a6762afab, installed d1 v3): back to the previous default, the smooth shoulder as
           an Experimental row, off (unless you keep it: top). Owner: div1_
-        - [ ] C10 Shogun 2 Auto Thickness rows off by default as the shared ones (23fb900c2). Owner: tw3_
+        - [x] DONE tw3_ 173eb3d72 (both rows + every AO / GI preset off, page dump confirms) C10 Shogun 2 Auto Thickness rows off by default as the shared ones (23fb900c2). Owner: tw3_
         - [ ] D1 Boxes no round owned, now assigned: scorer (L749), DLSS RR 310.9 paths boil (L751), both D3D12 devices
           removed at once (L1966), Tales SER (L1744, with tpa_): gpu3_; WARP ramp for the SDR presets (L773), [B] R7 reader
           inventory (L2000), Unit round D / E (L313), CPU items (3) / (5) (L535), SHARED STEP owners rest (L2315), the
@@ -1949,6 +1951,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         (kept only under the Open Sky row); Divinity 1 / 2 have no ray tracing at all yet (rt_core host: the D1 steps
         9-10 box + a D2 one below); R.U.S.E. has a path-traced ground bounce, no separate PT AO. Owner: tpa_, next
         Divinity rounds
+      - [ ] Shogun 2 / Rome Remastered next (tw3_ 11-16): Shogun 2 smoke shadow map without rays (twattila/smoke_map + the
+        SSS host, M, Experimental); RomeR GT-VBAO from depth into ASSAO's t13 (Shogun's ao_bitmask_collect, M,
+        Experimental); RomeR indicator brightness on C919A85F (needs a trace with a unit selected); treevelocity proof with
+        a unit_w test option; RomeR addon.cpp:549 builds a format string every post-pass draw (frame_trace::Mark: only
+        while tracing); RomeR "Solid and All are untested" tooltip is a dev note (player text). Owner: next Shogun 2 /
+        Rome Remastered round
+      - [ ] SHARED STEPS (tw3_ 11-16): per-input values in tw_vanilla_exact (particlelight00 / vfxglow00); RT harness
+        all_modes with a game's RaySettings. Owner: next shared round
       - [ ] DIVINITY 1 RUN (div1_ 11-16 NEEDS A RUN, save T1, in-game AA off, helper next to the add-on): a. DLSS K / M / L,
         FSR, XeSS: "[Divinity] Upscaling: applied" + status line, still shot vs SMAA, pan with Upscaling Debug View, walking
         characters, FG 2x + FG Debug View 1, Reflex, PresentMon, Time Each Pass; b. a DLSS-on trace: 224-byte b12 uploads
@@ -2322,7 +2332,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         return when no proxy shader. Owner: fx_ round 2
       - [x] DONE 11-15 (merged 8ee4ab2f): Review 2 #5 / #6 (minor): don't park in the Lost branches; clear state.presenting when the bridge can't be
         prepared on the new device. Owner: fx_ round 2
-      - [ ] R21 skipped (Shogun 2 NGX feature release): needs the game's static NVSDK_NGX_D3D11_ReleaseFeature by pattern
+      - [ ] (code DONE tw3_ 8420b3393: the game's release at +0x1ad0a90 frees DLSS_PASS's feature + parameters before the new one, pattern once, tweaks part 5 PASS; LEFT the run: Upscaling Mode twice in a battle, log "released and created again", no NGX error) R21 skipped (Shogun 2 NGX feature release): needs the game's static NVSDK_NGX_D3D11_ReleaseFeature by pattern
         (the DLL image, tools/shogun2/sx.py) + an in-game check. Owner: next Shogun 2 round
       - [x] DONE 11-15 (merged 8ee4ab2f): R22 skipped (a failed Prepare texture turns the bridge off for the session): a retry changes what players see
         (DLSS comes back after a VRAM failure); freeing the helper's old set from Prepare's fail path needs Release's request
@@ -2413,7 +2423,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       Advanced players open on Graphics 1 of 2 Owner: ATN (in game)
     - [x] SDR-to-HDR switch hashes the DLSS rows too (any changed row ends the automatic switching, as in every one-add-on
       TW game): kept, consistent with "any change ends it"
-    - [ ] Port RayTracedBatchedUnits + RayTracedUnitsRange to Shogun 2 (SHARED STEP, after ATN's Attila test; Shogun's host
+    - [ ] (tw3_ 11-16: SHARED STEP first: rt_core's unit rule (rt_core.hpp:1819) would count Shogun's dynamic trees, far cards, sprites, sails, ropes, wind as units; a unit flag per SceneShader) Port RayTracedBatchedUnits + RayTracedUnitsRange to Shogun 2 (SHARED STEP, after ATN's Attila test; Shogun's host
       has no rt_scene table). Owner: GPU round after the install
     - [ ] Cosmetic: moved files keep "[Shogun 2 DLSS]" log tags; HLSL comments "(DLSS addon)"; Custom render scale row has
       no reset icon. Owner: coordinator, release round
@@ -2503,7 +2513,7 @@ heading text are in HANDOFF_ARCHIVE.md)
   - [x] DONE 11-15 (not run: superseded by the g2b2 / g3b2 helpers (end_of_batch_1115.md "Optional")): Bench variants: gpu_units_range.json, gpu_probe.json (answers c, k, h, j, b in game), gpu_reuse.json; plan
     tools/tw/bench/gpu_bench_plan.md. The bench must copy tw_rt_profile.csv, tw_rt_profile_helper.csv and
     attila_pass_timing.txt out after each start (it doesn't yet). Owner: coordinator before the end-of-batch bench
-    - [ ] caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
+    - [ ] (tw3_ 11-16: spec in romeremastered.tsv rows 81-90) caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain entry points, Feral's shader names)
       so parity_check settles Rome Remastered's casters itself. Owner: coordinator, after parity round 2 (shared script)
 - Was: SHARED STEP agent started (shs_): torch rows from PT for 8 games via graphics_page (Pharaoh's particle lights too), GS
   capture path in rt_core (WH1 / Pharaoh / Troy / WH2 imposters), tessellated meshes via patch_triangles (WH1 / Troy / WH2),
@@ -2655,7 +2665,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       leftovers after 63d17575; (l) J2 / J3 / A32, the helper's commit under Nsight (J9 answered: no change); (m) the
       scorer's smoke / fog / reflections / water scenes, history off, RR 310.9; Rome Remastered IB-rewrite trace;
       the look-changing savings (ATN decides) OBSOLETE: split into later boxes: (d) -> WH3 grass read-back line, (e) DONE 0b50ca87, (g) f16 NOT TAKEN / torch U2 -> U2 step 3 line, (i) -> Resource upgrade line, (l) J2 NOT TAKEN, J3 / A32 -> the J3 and A32 lines, (m) + RR 310.9 -> the Scorer and DLSS RR 310.9 lines, look savings -> Look-changing GPU savings; see those lines + the Rome Remastered IB-rewrite trace box below.
-    - [ ] Rome Remastered IB-rewrite trace (whether Feral rewrites index buffers, b6ec6be6; from the NEXT GPU ROUND list). Owner: the next Rome Remastered data run (coordinator)
+    - [ ] (tw3_ 11-16: first a SHARED STEP: rt_core OnIndexWrite logs nothing and misses Map writes, a one-shot index-write log; then the run: rays Solid, Log Details, 2 min camera moves) Rome Remastered IB-rewrite trace (whether Feral rewrites index buffers, b6ec6be6; from the NEXT GPU ROUND list). Owner: the next Rome Remastered data run (coordinator)
     Was: GPU PERF ROUND STARTED ~22:00 (gpu_ agent, base cdfae24e; no game runs: its bench variants go into the single
     end-of-batch session). Plan: (one agent after the drw_ merge; helper / rt_core; ATN 21:xx: measure at the bench's stopped view,
     Constantinople after the camera move: Time Each Pass (One Frame) + a frame trace there in game, the helper's D3D12
