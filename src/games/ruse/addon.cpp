@@ -351,6 +351,26 @@ void ApplyGameOptions() {
   }
 }
 
+// The Anti-Aliasing row's value for this GPU: DLAA on NVIDIA's (DLSS starts there alone), XeSS on Intel's, else FSR.
+float VendorAntiAliasing() {
+  return twattila::dlaa_bridge::OnNvidia() ? 1.f : ((twattila::dlaa_bridge::gpu_vendor == 0x8086) ? 3.f : 2.f);
+}
+
+// The game's GPU's vendor from the proxy's device (read once; RENODX_TW_FAKE_VENDOR in tests), and a saved DLAA run and
+// saved as this GPU's (Attila's saved DLSS). Before the bridge's first evaluation and at the proxy's presents (the row's
+// list and the RT/PT button without the bridge).
+void ChooseUpscaler() {
+  if (renodx::utils::device_proxy::proxy_device_reshade == nullptr) return;
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native()));
+  auto& bridge = ruse::bridge::state;
+  if (!bridge.enabled || bridge.upscaler != twattila::dlaa_bridge::UPSCALER_DLSS || twattila::dlaa_bridge::OnNvidia()) return;
+  const float choice = VendorAntiAliasing();
+  bridge.upscaler = (choice == 3.f) ? twattila::dlaa_bridge::UPSCALER_XESS : twattila::dlaa_bridge::UPSCALER_FSR;
+  renodx::utils::settings::UpdateSetting("RuseAntiAliasing", choice);
+  reshade::log::message(reshade::log::level::info,
+                        std::format("[R.U.S.E.] Anti-aliasing: DLAA needs an NVIDIA GPU: {} instead (saved)", ruse::bridge::UpscalerName()).c_str());
+}
+
 // ReShade's DX9 Present callback runs before its DX9 overlay and the native
 // Present. The nested HDR proxy has already displayed the frame at that point.
 // Suppress the subsequent native presentation so its stale 8-bit buffer cannot
@@ -599,6 +619,7 @@ void OnPresentFrame(
   // The nested DX11 proxy Present must not start a new host frame.
   if (device->get_api() != reshade::api::device_api::d3d9) {
     if (presenting_host != nullptr && renodx::utils::device_proxy::IsProxyDevice(device)) {
+      ChooseUpscaler();
       ruse::ray_tracing::state.proxy_queue = queue;
       proxy_present_started = true;
       twattila::reflex::Update(swapchain, static_cast<uint32_t>(generation_sliders.reflex), static_cast<uint32_t>(generation_sliders.frame_limit));
@@ -1281,12 +1302,12 @@ void ConfigureAddon() {
           .section = RAYS_SECTION,
           .group = "rays-presets",
           .tooltip = "Ray-traced ground and object shadows and ground ambient occlusion on (restart the game).\n"
-                     "The rays need Anti-Aliasing: the game's becomes DLAA (FSR Native AA on AMD and Intel).",
+                     "The rays need Anti-Aliasing: the game's becomes DLAA (XeSS Native AA on Intel, FSR Native AA on AMD).",
           .on_change = [] {
             renodx::utils::settings::UpdateSettings(RAYS_ON);
             if (auto* anti_aliasing = renodx::utils::settings::FindSetting("RuseAntiAliasing");
                 anti_aliasing != nullptr && anti_aliasing->GetValue() == 0.f) {
-              renodx::utils::settings::UpdateSetting("RuseAntiAliasing", twattila::dlaa_bridge::OnNvidia() ? 1.f : 2.f);
+              renodx::utils::settings::UpdateSetting("RuseAntiAliasing", VendorAntiAliasing());
               ApplyGameOptions();
             }
           },
@@ -1328,9 +1349,29 @@ void ConfigureAddon() {
                    "(it sets the in-game anti-aliasing to 1x). Needs the full download. Restart after changing this setting.",
         .labels = {"Game's", "DLAA", "FSR Native AA", "XeSS Native AA"},
         .is_global = true,
+        .is_visible = [] { return twattila::dlaa_bridge::OnNvidia(); },
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
+    // Off NVIDIA's GPUs the list without DLAA (Attila's): the slider's places past Game's are one lower than the values.
+    settings.push_back(new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+        .label = setting->label,
+        .section = AA_SECTION,
+        .tooltip = setting->tooltip,
+        .on_draw = [setting] {
+          constexpr std::array<const char*, 3> LABELS = {"Game's", "FSR Native AA", "XeSS Native AA"};
+          const int value = static_cast<int>(setting->GetValue());
+          int place = (value <= 0) ? 0 : std::clamp(value - 1, 1, 2);
+          if (!ImGui::SliderInt(setting->label.c_str(), &place, 0, 2, LABELS[place], ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
+            return false;
+          }
+          renodx::utils::settings::UpdateSetting(setting->key, (place == 0) ? 0.f : static_cast<float>(place + 1));
+          ApplyGameOptions();
+          return true;
+        },
+        .is_visible = [] { return !twattila::dlaa_bridge::OnNvidia(); },
+    });
     // The game's MSAA off under ours (Option.ini MainRTAA: RUSE.exe's anti-aliasing list at rva 0x1083AFC pairs 1, 2, 4,
     // 8, 8.5, 16, 16.5 with "1x", "2x", "4x", "8x CSAA", "8x MSAA", "16x CSAA", "16x MSAA"), for the game's next start
     // (it reads the file before its device); its value back with Game's.
@@ -1353,6 +1394,7 @@ void ConfigureAddon() {
       // The bloom's first pass: the upscaler on the scene it reads.
       for (const uint32_t bloom : {0x41B68A24u, 0xF663E47Eu}) {
         custom_shaders[bloom] = {.crc32 = bloom, .on_draw = [](reshade::api::command_list* cmd_list) {
+                                   ChooseUpscaler();
                                    ruse::ray_tracing::OnBloomStart(cmd_list);
                                    ruse::bridge::Evaluate(cmd_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
                                    ruse::ray_tracing::OnBloom(cmd_list);
