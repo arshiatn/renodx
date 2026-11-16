@@ -54,6 +54,7 @@
 #include "../twwarhammer2/modded_auto_exposure.hpp"
 #include "../twwarhammer2/particle_smoothing.hpp"
 #include "../twwarhammer2/shadow_cascades.hpp"
+#include "../twwarhammer2/sun_ambient.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 #include "./trace_reads.hpp"
@@ -430,6 +431,11 @@ constexpr auto OnSunReplaceMaps = []<typename Context>(Context& command) -> reno
   }};
 };
 
+// One occlusion a reflection (shaders/ssr00): the AO the sun draws read (twwarhammer2/sun_ambient.hpp) at the resolve's t45 /
+// s5, under Ray-Traced Specular Occlusion or the rays' reflections (test/tw_warhammer_shaders part 30).
+constexpr UINT SUN_AMBIENT_SLOT = 45;
+constexpr UINT SUN_AMBIENT_SAMPLER_SLOT = 5;
+
 // Only our stand-in's device (nullptr: the addon's end, DetachAddon).
 void OnDestroyAtlasLitDevice(reshade::api::device* device) {
   if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
@@ -491,9 +497,20 @@ void BuildRuntimeData() {
   // replace the screen-space march, the march (raycast) and its blurs are left out.
   custom_shaders[0x6B80E35B].on_draw = [](auto* cmd_list) {
     twattila::rt_scene::BindReflections(cmd_list, true, true);
+    if (auto* native = twattila::rt_scene::internal::NativeContext(cmd_list); native != nullptr) {
+      twwarhammer2::sun_ambient::BindCompute(native, SUN_AMBIENT_SLOT, SUN_AMBIENT_SAMPLER_SLOT);
+    }
     return true;
   };
-  custom_shaders[0x6B80E35B].on_drawn = [](auto* cmd_list) { twattila::rt_scene::BindReflections(cmd_list, true, false); };
+  custom_shaders[0x6B80E35B].on_drawn = [](auto* cmd_list) {
+    twattila::rt_scene::BindReflections(cmd_list, true, false);
+    if (auto* native = twattila::rt_scene::internal::NativeContext(cmd_list); native != nullptr) {
+      ID3D11ShaderResourceView* const no_view = nullptr;
+      ID3D11SamplerState* const no_sampler = nullptr;
+      native->CSSetShaderResources(SUN_AMBIENT_SLOT, 1, &no_view);
+      native->CSSetSamplers(SUN_AMBIENT_SAMPLER_SLOT, 1, &no_sampler);
+    }
+  };
   for (const uint32_t hash : {0x021D7515u, 0x4EBDA7FAu, 0x537CAD4Bu}) {
     custom_shaders[hash].on_draw = twattila::rt_scene::OnReflectionMarch;
   }
@@ -1771,6 +1788,7 @@ constexpr std::array<twattila::light_bounce::SunDraw, 31> LIGHT_BOUNCE_DRAWS = {
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  twwarhammer2::sun_ambient::OnPresent();
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
   // preset's is XeSS on Intel's, else FSR.
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -2543,6 +2561,9 @@ bool AttachAddon() {
                                       sizeof(shader_injection), __fg_hdr10);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
   twattila::ao_filter::Install(LIGHT_BOUNCE_DRAWS);
+  // One occlusion a reflection: the AO the sun draws read, after the rays' combine and the AO filter bound theirs, before the
+  // Light Bounce's (it draws the sun draw itself).
+  twwarhammer2::sun_ambient::Install(LIGHT_BOUNCE_DRAWS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Smoke Shadows without rays: the smoke's dimming into the sun draws' t49 (their x(1 - t49) patch), after the rays' occlusion.
@@ -2582,6 +2603,7 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(PointLightRays::OnDraw);
   renodx::utils::command_action::Unregister(LinearPointLightRays::OnDraw);
   renodx::utils::command_action::Unregister(OnSunReplaceMaps);
+  twwarhammer2::sun_ambient::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
   OnDestroyAtlasLitDevice(nullptr);
   reshade::unregister_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
