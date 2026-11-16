@@ -28,6 +28,7 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../talesofarise_dlss/pixel_trace.hpp"
 #include "../twattila/draw_dispatch.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/device_loss.hpp"
@@ -1572,6 +1573,9 @@ bool graphics_found = false;
 // The graphics watch's values (4 hardware breakpoints).
 constexpr std::array<std::string_view, 4> WATCHED_VALUES = {"tree_lod_scaler", "scrub_lod_distance_default", "campaign_culling_ratio", "terrain_visible_tiles"};
 
+// The pixel trace's position, % of the screen's width and height.
+std::array<float, 2> traced_pixel = {50.f, 50.f};
+
 bool configured = false;
 bool attached = false;
 bool addon_registered = false;
@@ -1800,6 +1804,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
+  talesofarise::pixel_trace::OnPresent(queue);
   twattila::pass_timing::OnPresent(queue, "warhammer");
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   reflection_passes_skipped = false;
@@ -1920,6 +1925,7 @@ void ConfigureAddon() {
       });
 
   // Appended Settings (Graphics (Experimental))
+  talesofarise::pixel_trace::file_prefix = "warhammer";
   unit_detail[0].tweaks = {{.name = "VERY_SMALL_IMPOSTER_DISTANCE"}};
   unit_detail[1].tweaks = {{.name = "SMALL_IMPOSTER_DISTANCE"}};
   unit_detail[2].tweaks = {{.name = "MEDIUM_IMPOSTER_DISTANCE"}};
@@ -2158,6 +2164,33 @@ void ConfigureAddon() {
           .labels = {"Off", "On"},
       },
       graphics_status,
+      // The pixel trace (talesofarise_dlss/pixel_trace.hpp), one frame on request; its marker only while it is open.
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+          .section = "Graphics (Experimental)",
+          .on_draw = [] {
+            if (!ImGui::TreeNode("Pixel trace")) return false;
+            ImGui::SliderFloat2("Traced pixel (% of width, height)", traced_pixel.data(), 0.f, 100.f, "%.1f%%");
+            // A red cross marks the pixel, the red line the traced line through it.
+            const ImVec2 screen = ImGui::GetIO().DisplaySize;
+            const ImVec2 cross = {screen.x * traced_pixel[0] / 100.f, screen.y * traced_pixel[1] / 100.f};
+            const float half_line = screen.x * talesofarise::pixel_trace::LINE_WIDTH * 0.5f;
+            ImDrawList* foreground = ImGui::GetForegroundDrawList(nullptr);
+            foreground->AddLine({cross.x - half_line, cross.y}, {cross.x + half_line, cross.y}, IM_COL32(255, 0, 0, 255), 1.f);
+            foreground->AddLine({cross.x, cross.y - 12.f}, {cross.x, cross.y + 12.f}, IM_COL32(255, 0, 0, 255), 2.f);
+            if (ImGui::Button("Trace these pixels for one frame")) {
+              talesofarise::pixel_trace::Request(traced_pixel[0] / 100.f, traced_pixel[1] / 100.f);
+            }
+            if (ImGui::IsItemHovered()) {
+              ImGui::SetTooltip("Saves every pass that changes the pixels under the red line during the next frame\n"
+                                "to warhammer_pixel_trace.txt next to the game's exe (one short hitch). Put the cross\n"
+                                "on something too dark.");
+            }
+            ImGui::TextWrapped("%s", talesofarise::pixel_trace::Status().c_str());
+            ImGui::TreePop();
+            return false;
+          },
+      },
       // Two empty lines between this section and the ambient occlusion (ATN).
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
@@ -2579,6 +2612,7 @@ void DetachAddon() {
   twattila::rt_scene::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
   twattila::ao_filter::Uninstall();
+  talesofarise::pixel_trace::Stop();
   tw::engine_tweaks::Uninstall(graphics_options);
 
   twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
