@@ -2,11 +2,11 @@
 
 ### Replace round (2026-11-16, tw1_; built only, not run in game)
 
-- **Rays Replace Shadow Maps on by default** (ATN: ours replaces the game's): under ray-traced sun shadows the hardware
-  gather 5.0 sun shaders take the rays' shadow alone, not the rays' times the game's shadow maps; the row lost
-  "(Experimental)", a saved 0 is cleared once. The Shader Model 4.1 builds (software / hardware pcf shadows) keep the game's
-  maps: the rays' shadow never reaches them yet. WARP part 29: t49 0 / 1 bit for bit the game's lit / shadowing atlas;
-  CONTROL the multiply differs.
+- **The rays always replace the shadow maps** (ATN: ours replaces the game's; "If it is on by default, then get rid of
+  that slider"): under ray-traced sun shadows the hardware gather 5.0 sun shaders take the rays' shadow alone, not the
+  rays' times the game's shadow maps; the Rays Replace Shadow Maps row is gone (a saved value is cleared once and never
+  read). The Shader Model 4.1 builds (software / hardware pcf shadows) keep the game's maps: the rays' shadow never
+  reaches them yet. WARP part 29: t49 0 / 1 bit for bit the game's lit / shadowing atlas; CONTROL the multiply differs.
 - **One occlusion a reflection** under Ray-Traced Specular Occlusion and the rays' reflections (as Attila's 6c6c7559): the
   SSR resolve now gets the AO the sun draws read (t45), so the scene's share of the cubes' light comes off as the sun
   draws put it in. WARP part 30: 4096 of 4096 as expected in every case; CONTROLS the resolve as it was 4096.
