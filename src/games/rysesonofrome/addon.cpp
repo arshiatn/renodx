@@ -27,6 +27,7 @@
 #include <shared_mutex>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #include <deps/imgui/imgui.h>
@@ -36,6 +37,8 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/command_action.hpp"
+#include "../../utils/command_action_fast.hpp"
 #include "../../utils/data.hpp"
 #include "../../utils/hash.hpp"
 #include "../../utils/platform.hpp"
@@ -1486,90 +1489,91 @@ bool IsHiddenHighlight(reshade::api::command_list* cmd_list) {
          && highlight_shaders.contains(renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader));
 }
 
-// Scaleform's flat shapes (0x1B59F534) while the HUD is hidden (the skull is indexed: OnDrawIndexedUi), the execution
-// highlights while they are.
-bool OnDrawUi(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
-  if (IsHiddenHighlight(cmd_list)) return true;
-  return hud_hidden
-         && renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader) == 0x1B59F534;
-}
-
-// The skull follows its own hotkey, every other flat shape the HUD's.
-bool OnDrawIndexedUi(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t instance_count,
-                     uint32_t first_index, int32_t vertex_offset, uint32_t) {
-  if (IsHiddenHighlight(cmd_list)) return true;
-  const bool skip = (index_count >= execution_skull_min_indices ? execution_skull_hidden.load() : hud_hidden.load());
+// Scaleform's flat shapes (0x1B59F534) while the HUD is hidden (the skull, indexed, by its own hotkey), the execution
+// highlights while they are: left out through command_action's bypass, not a draw event's skip (with the ray tracing on
+// command_action replays every draw for rt_core's capture, past any draw event's skip). Gated on the hotkeys' state.
+constexpr auto OnDrawUi = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  using Arguments = typename Context::ArgumentType;
+  auto* cmd_list = command.cmd_list;
+  if (IsHiddenHighlight(cmd_list)) return {.bypass = true};
+  bool skip = hud_hidden.load();
+  if constexpr (std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    skip = (command.arguments.index_count >= execution_skull_min_indices ? execution_skull_hidden.load() : hud_hidden.load());
+  }
 #ifdef RYSE_UI_DRAW_LOG
-  if (ui_log == nullptr && !skip) return false;
+  if (ui_log == nullptr && !skip) return {};
 #else
-  if (!skip) return false;
+  if (!skip) return {};
 #endif
   if (renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader) != 0x1B59F534) {
-    return false;
+    return {};
   }
 #ifdef RYSE_UI_DRAW_LOG
-  if (ui_log != nullptr) {
-    // b0 of both stages read back (stalls, one frame): VS cCompositeMat (4x4), PS cBitmapColorTransform (multiply,
-    // add) and cPremultiplyAlpha.
-    auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-    ID3D11DeviceContext1* context1 = nullptr;
-    std::array<float, 16> vertex_constants = {};
-    std::array<float, 12> pixel_constants = {};
-    const auto read_constants = [&](bool vertex_stage, std::span<float> values) {
-      ID3D11Buffer* buffer = nullptr;
-      UINT first_constant = 0;
-      UINT constant_count = 0;
-      if (vertex_stage) {
-        context1->VSGetConstantBuffers1(0, 1, &buffer, &first_constant, &constant_count);
-      } else {
-        context1->PSGetConstantBuffers1(0, 1, &buffer, &first_constant, &constant_count);
-      }
-      if (buffer == nullptr) return;
-      D3D11_BUFFER_DESC desc = {};
-      buffer->GetDesc(&desc);
-      ID3D11Device* device = nullptr;
-      buffer->GetDevice(&device);
-      const D3D11_BUFFER_DESC staging_desc = {
-          .ByteWidth = desc.ByteWidth,
-          .Usage = D3D11_USAGE_STAGING,
-          .CPUAccessFlags = D3D11_CPU_ACCESS_READ,
-      };
-      ID3D11Buffer* staging = nullptr;
-      if (SUCCEEDED(device->CreateBuffer(&staging_desc, nullptr, &staging))) {
-        context->CopyResource(staging, buffer);
-        D3D11_MAPPED_SUBRESOURCE mapped = {};
-        const size_t offset = size_t{first_constant} * 16;
-        if (offset < desc.ByteWidth && SUCCEEDED(context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped))) {
-          std::memcpy(values.data(), static_cast<const std::byte*>(mapped.pData) + offset,
-                      std::min(values.size_bytes(), desc.ByteWidth - offset));
-          context->Unmap(staging, 0);
+  if constexpr (std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    if (ui_log != nullptr) {
+      const auto& [index_count, instance_count, first_index, vertex_offset, first_instance] = command.arguments;
+      // b0 of both stages read back (stalls, one frame): VS cCompositeMat (4x4), PS cBitmapColorTransform (multiply,
+      // add) and cPremultiplyAlpha.
+      auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+      ID3D11DeviceContext1* context1 = nullptr;
+      std::array<float, 16> vertex_constants = {};
+      std::array<float, 12> pixel_constants = {};
+      const auto read_constants = [&](bool vertex_stage, std::span<float> values) {
+        ID3D11Buffer* buffer = nullptr;
+        UINT first_constant = 0;
+        UINT constant_count = 0;
+        if (vertex_stage) {
+          context1->VSGetConstantBuffers1(0, 1, &buffer, &first_constant, &constant_count);
+        } else {
+          context1->PSGetConstantBuffers1(0, 1, &buffer, &first_constant, &constant_count);
         }
-        staging->Release();
+        if (buffer == nullptr) return;
+        D3D11_BUFFER_DESC desc = {};
+        buffer->GetDesc(&desc);
+        ID3D11Device* device = nullptr;
+        buffer->GetDevice(&device);
+        const D3D11_BUFFER_DESC staging_desc = {
+            .ByteWidth = desc.ByteWidth,
+            .Usage = D3D11_USAGE_STAGING,
+            .CPUAccessFlags = D3D11_CPU_ACCESS_READ,
+        };
+        ID3D11Buffer* staging = nullptr;
+        if (SUCCEEDED(device->CreateBuffer(&staging_desc, nullptr, &staging))) {
+          context->CopyResource(staging, buffer);
+          D3D11_MAPPED_SUBRESOURCE mapped = {};
+          const size_t offset = size_t{first_constant} * 16;
+          if (offset < desc.ByteWidth && SUCCEEDED(context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped))) {
+            std::memcpy(values.data(), static_cast<const std::byte*>(mapped.pData) + offset,
+                        std::min(values.size_bytes(), desc.ByteWidth - offset));
+            context->Unmap(staging, 0);
+          }
+          staging->Release();
+        }
+        device->Release();
+        buffer->Release();
+      };
+      if (SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(&context1)))) {
+        read_constants(true, vertex_constants);
+        read_constants(false, pixel_constants);
+        context1->Release();
       }
-      device->Release();
-      buffer->Release();
-    };
-    if (SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(&context1)))) {
-      read_constants(true, vertex_constants);
-      read_constants(false, pixel_constants);
-      context1->Release();
+      const auto& m = vertex_constants;
+      const auto& p = pixel_constants;
+      std::fprintf(ui_log,
+                   "%u: indices %u, instances %u, first index %u, base vertex %d | mat %g %g %g %g / %g %g %g %g / "
+                   "%g %g %g %g / %g %g %g %g | mul %g %g %g %g add %g %g %g %g pm %g\n",
+                   logged_ui_draws++, index_count, instance_count, first_index, vertex_offset, m[0], m[1], m[2], m[3],
+                   m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15], p[0], p[1], p[2], p[3],
+                   p[4], p[5], p[6], p[7], p[8]);
     }
-    const auto& m = vertex_constants;
-    const auto& p = pixel_constants;
-    std::fprintf(ui_log,
-                 "%u: indices %u, instances %u, first index %u, base vertex %d | mat %g %g %g %g / %g %g %g %g / "
-                 "%g %g %g %g / %g %g %g %g | mul %g %g %g %g add %g %g %g %g pm %g\n",
-                 logged_ui_draws++, index_count, instance_count, first_index, vertex_offset, m[0], m[1], m[2], m[3],
-                 m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15], p[0], p[1], p[2], p[3],
-                 p[4], p[5], p[6], p[7], p[8]);
   }
 #endif
-  return skip;
-}
+  if (!skip) return {};
+  return {.bypass = true};
+};
 
 // Polled at Present, while the game window is in front.
 std::array<bool, 256> keys_down = {};
-bool ui_draw_events = false;  // OnDrawUi / OnDrawIndexedUi registered (Present thread)
 
 // True at the Present where `key` went down.
 bool KeyWentDown(int key) {
@@ -1688,21 +1692,6 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
   // F5 only: the key above Tab is the game's command key, and F8 is Print on some keyboards.
   if (KeyWentDown(VK_F5)) {
     execution_skull_hidden = !execution_skull_hidden;
-  }
-  // The draw events only while something is hidden (else every draw of the game went through them).
-  bool wanted = hud_hidden || execution_highlights_hidden || execution_skull_hidden;
-#ifdef RYSE_UI_DRAW_LOG
-  wanted = wanted || ui_log != nullptr;
-#endif
-  if (wanted != ui_draw_events) {
-    ui_draw_events = wanted;
-    if (wanted) {
-      reshade::register_event<reshade::addon_event::draw>(OnDrawUi);
-      reshade::register_event<reshade::addon_event::draw_indexed>(OnDrawIndexedUi);
-    } else {
-      reshade::unregister_event<reshade::addon_event::draw>(OnDrawUi);
-      reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexedUi);
-    }
   }
 }
 
@@ -2231,6 +2220,16 @@ bool AttachAddon() {
       }
     };
   }
+  // The hotkeys' hidden UI draws; on the fast dispatch called only while something is hidden.
+  renodx::utils::command_action::Register(OnDrawUi, {.command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  renodx::utils::command_action::fast::SetGate(OnDrawUi, {.active = [](reshade::api::command_list*) {
+#ifdef RYSE_UI_DRAW_LOG
+                                                  if (ui_log != nullptr) return true;
+#endif
+                                                  return hud_hidden.load(std::memory_order_relaxed)
+                                                         || execution_highlights_hidden.load(std::memory_order_relaxed)
+                                                         || execution_skull_hidden.load(std::memory_order_relaxed);
+                                                }});
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The fast draw dispatch with the resource upgrades' gate (the swap chain mod's view cloning registers them).
@@ -2260,8 +2259,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresentHotkeys);
   reshade::unregister_event<reshade::addon_event::init_pipeline>(OnInitPipelineHighlights);
-  reshade::unregister_event<reshade::addon_event::draw>(OnDrawUi);
-  reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexedUi);
+  renodx::utils::command_action::fast::ClearGate(OnDrawUi);
+  renodx::utils::command_action::Unregister(OnDrawUi);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_swapchain>(back_buffer_fix::OnDestroySwapchain);
   reshade::unregister_event<reshade::addon_event::init_resource>(back_buffer_fix::OnInitResource);
