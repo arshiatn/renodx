@@ -55,6 +55,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -148,8 +149,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
 - tl_ (started 01:1x): UE port of Bend SSS + GT-VBGI, Tales first then Expeditions ... | ATN
-- ATN DECIDES: Near ReSTIR Reuse on by default (faster AND scores better through R ... | ATN
-- Radiance cache item (f) from the Nsight list. Owner: next GPU round | next GPU round
+- GPU round 2 (after the Divinity 1 run + ruh_'s R.U.S.E. GPU tests free the GPU): ... | coordinator (next GPU round)
 - Both D3D12 devices (Streamline FG + RR) removed at the same moment: every order ... | next helper round
 - Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device re ... | coordinator
 - REVIEWS + FIXES MERGED 8ee4ab2f 20:5x (left: GPU harness after ATN's game, build ... | coordinator
@@ -1350,8 +1350,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         -46 %, frame -0.16 ms, RR rRMSE 2.19 -> 1.96 % = better); (d) half-precision ReSTIR NOT TAKEN (not faster; branch
         gr-half-restir-wip ac78a3ed); (f) radiance cache not started. Helper build\gr_final BD968BB67FF4 (includes fx3's
         fixes? -> the install round rebuilds the helper from atn-mods). gr_ (still waiting for "GPU free"): Nsight's untried speedups measured.
-      - [ ] ATN DECIDES: Near ReSTIR Reuse on by default (faster AND scores better through RR, but a look change)? Owner: ATN
-      - [ ] Radiance cache item (f) from the Nsight list. Owner: next GPU round
+      - [x] DONE 2f0d8152 (ATN 02:2x "Sure, worst case ... I tell you to turn it off"): Near ReSTIR Reuse on by default
+        (Attila's page = every TW game, Ryse, Shogun 2; label without "Experimental"). In-game check with ATN's tests.
+      - [ ] GPU round 2 (after the Divinity 1 run + ruh_'s R.U.S.E. GPU tests free the GPU): radiance cache item (f) from
+        the Nsight list; then, after the install, a fresh Nsight capture of Attila at ATN's preset for the next wins.
+        Owner: coordinator (next GPU round)
       - 23:4x ATN DONE PLAYING ("I am done with the game"): committed 38.8 GB, the gated builds started (d1_ first); gr_
         told GPU free; fx_ resumed for its harness checks on atn-mods (gpu_job.lock per job).
       - 23:5x ATN closed the leftover game processes (some Attila ones won't end; committed 38.8 -> 28.5 GB) and allowed
