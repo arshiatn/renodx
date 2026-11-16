@@ -3392,10 +3392,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (aa_sliders.method >= 1.f && aa_sliders.method <= 4.f) {
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", 0.f}});
   }
-  // A setup saved with both (the older rows allowed it): ray-traced AO multiplies what runs, the page can't undo GT-VBAO under it.
-  if (rt_sliders.ambient_occlusion != 0.f && shader_injection.ssao_mode >= 1.f) {
-    renodx::utils::settings::UpdateSettings({{"ssao_mode", 0.f}});
-  }
 #if FIX_BLOOM
   // A third-party DLSS mod runs its own upscale: Upscaling Mode leaves it alone.
   const bool third_party_upscale = bloom_fix::upscaled.load(std::memory_order_relaxed);
@@ -3446,8 +3442,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
   twattila::screen_space_shadows::Update(swapchain, sss_settings);
-  // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
-  const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
+  // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp); none under the rays'
+  // AO, which leaves GT-VBAO's setting as it was (graphics_page's rays_replace_ao) and skips it with the game's passes.
+  const bool bitmask_ao = shader_injection.ssao_mode >= 1.f && !SkipGameSsao();
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
       (bitmask_ao && shader_injection.ssao_temporal != 0.f) ? static_cast<float>(++ao_frame % 64) : 0.f;
@@ -3745,7 +3742,7 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
 
   // Ray tracing (twattila/rt_scene.hpp) with an upscaler.
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION,
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
   for (auto* setting : settings) {
     // Their shared rule reads dlss_mode, which no row sets here: the scale is the game's float (upscaling_mode_row).
@@ -4163,8 +4160,7 @@ void ConfigureAddon() {
                                              .has_scale_rows = false,
                                              .has_object_motion = true,
                                              .has_foliage_light = true,
-                                             .lights_own_row = true,
-                                             .rays_replace_ao = false});
+                                             .lights_own_row = true});
   // The page names Reflection Quality "Quality"; here it is untested in game.
   for (auto* setting : settings) {
     if (setting->key == "ssr_quality") setting->label = "Quality (Experimental)";
