@@ -225,9 +225,18 @@ Total War helper (`renodx-tw-dlaa64.exe` and its DLLs next to `EoCApp.exe`):
   traced visibility into the texture PPApplyAO and ClusteredLightingWithSSAO
   read. Skip the Game's Shadow Maps (Experimental, off): under the rays' sun
   nothing is drawn into the cascades' atlas (learned at the mask's draw).
+- **Global Illumination** (rays or paths, Experimental, Strength 0 = off):
+  the lit scene right after ClusteredLightingWithSSAO prepared, traced by the
+  helper, resolved over frames and added to it, times each pixel's diffuse
+  colour as the game's IBL takes it (base colour x (1 - metal); not the sky,
+  not unlit materials). **Path-Traced Ambient** (Experimental, not in RT/PT):
+  DeferredSky's distant diffuse cube becomes the paths' sky (6 axis values);
+  once the paths have learned the game's light, the sky's and the light
+  probes' diffuse cubes are black and the SAO chain open: the paths bring the
+  ambient light and its shade (the specular IBL stays the game's).
 
 Not yet: render scale below 100%, the game's settings above its maximum,
-path-traced ambient, GI and reflections, Ray Reconstruction.
+reflections, Ray Reconstruction.
 
 ## Data runs and installing
 
@@ -275,7 +284,9 @@ cone response): press Reset before comparing defaults.
   (R1b's PerView), the jitter, the motion and colour through aa_dlaa_prepare /
   finish, SMAA / FXAA giving way, the rays' writes read by the game's own
   PPApplyAO, the sun's direction from PerFrame and the overlays left out of
-  the rays' scene, each with a control that must fail.
+  the rays' scene, Skip the Game's Shadow Maps, and against the game's
+  DeferredSky the paths' sky, its black diffuse under the paths and the GI's
+  diffuse factor, each with a control that must fail.
 - `test/tw_psychov30_nan`, `test/tw_output_encoding`, `test/tw_device_loss`,
   `test/tw_draw_dispatch`: the shared PsychoV30 guards, the not-configured
   Output, device loss and the fast draw dispatch.

@@ -25,6 +25,14 @@
 //    bytes (CONTROL: an opaque material's shader).
 // 8. Skip the Game's Shadow Maps: the draws into the cascades' atlas (learned at the replaced mask's draw) skipped under
 //    the rays' sun (CONTROLS: another depth target, the row off, no trace this frame).
+// 9. Path-Traced Ambient and Global Illumination against the game's DeferredSky (0x518005B9, the census's bytes): the
+//    paths' sky (rt_sky through OnAmbientPass at the sky's draw) is each axis's light as the game lights a white
+//    non-metal surface facing it (CONTROL: the opposite axis's), zeros without Path-Traced Ambient; under the paths' sky the
+//    game's draw with the black cube gives no diffuse and the same specular bit for bit, its own cube bound again after
+//    (CONTROL: Path-Traced Ambient off, the game's diffuse); rt_bounce_apply adds the resolved light times the game's own
+//    diffuse factor (its o1 under a white cube: 0 on the sky and unlit pixels) and the strength, alpha kept, its
+//    neighbours weighed in the world normal's plane (CONTROL: the view's rows transposed); KeepSun at the lighting's
+//    display-size target (CONTROL: another size, nothing written).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -794,6 +802,384 @@ int main(int argc, char** argv) {
     CHECK(!scene_skipped && !row_off_skipped && !untraced_skipped);
     bound(nullptr);
     bridge.rt_visibility.srv.Reset();
+    dlaa::rays = false;
+  }
+
+  // 9. Path-Traced Ambient and Global Illumination against the game's DeferredSky.
+  {
+    auto& runtime = twattila::rt_scene::internal::runtime;
+    auto& bridge = twattila::dlaa_bridge::bridge;
+    auto& ray_state = rays::internal::state;
+    const auto& objects = ray_state.objects;
+    dlaa::rays = true;
+    state.depth_size = {WIDTH, HEIGHT};
+    const std::string census = std::string(argv[1]).substr(0, std::string(argv[1]).find_last_of("\\/") + 1);
+    std::vector<uint8_t> sky_code;
+    {
+      std::ifstream file(census + "0x518005B9.ps_5_0.cso", std::ios::binary);
+      sky_code.assign(std::istreambuf_iterator<char>(file), {});
+    }
+    REQUIRE(!sky_code.empty() && renodx::utils::hash::ComputeCRC32(sky_code.data(), sky_code.size()) == 0x518005B9);
+    ComPtr<ID3D11PixelShader> sky;
+    REQUIRE(SUCCEEDED(device->CreatePixelShader(sky_code.data(), sky_code.size(), nullptr, sky.GetAddressOf())));
+    // DeferredSky's vertex shader's outputs: SV_Position, TexCoord0 (uv), TexCoord1 (the view ray, x the linear depth).
+    const char* vertex_source =
+        "struct V { float4 position : SV_Position0; float2 uv : TexCoord0; float3 ray : TexCoord1; };\n"
+        "V main(uint id : SV_VertexID) { V v; v.uv = float2((id << 1) & 2, id & 2); v.position = float4(v.uv * float2(2, -2) + float2(-1, 1), 0, 1);"
+        " v.ray = float3(.3, .2, 1); return v; }\n";
+    ComPtr<ID3DBlob> vertex_blob;
+    REQUIRE(SUCCEEDED(D3DCompile(vertex_source, std::strlen(vertex_source), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_blob.GetAddressOf(), nullptr)));
+    ComPtr<ID3D11VertexShader> sky_vertex;
+    REQUIRE(SUCCEEDED(device->CreateVertexShader(vertex_blob->GetBufferPointer(), vertex_blob->GetBufferSize(), nullptr, sky_vertex.GetAddressOf())));
+    const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                             .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+    ComPtr<ID3D11SamplerState> sampler;
+    REQUIRE(SUCCEEDED(device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf())));
+    // An 8 x 8 cube (a direction near a face's centre takes that face alone), each face one colour (+x, -x, +y, -y, +z, -z).
+    const auto make_cube = [&](const std::array<std::array<float, 3>, 6>& faces) {
+      constexpr UINT FACE = 8;
+      std::vector<std::array<uint16_t, 4>> texels(static_cast<size_t>(FACE) * FACE * 6);
+      std::array<D3D11_SUBRESOURCE_DATA, 6> data = {};
+      for (UINT face = 0; face < 6; ++face) {
+        for (UINT at = 0; at < FACE * FACE; ++at) {
+          texels[(face * FACE * FACE) + at] = {ToHalf(faces[face][0]), ToHalf(faces[face][1]), ToHalf(faces[face][2]), ToHalf(1.f)};
+        }
+        data[face] = {.pSysMem = &texels[face * FACE * FACE], .SysMemPitch = FACE * 8};
+      }
+      const D3D11_TEXTURE2D_DESC desc = {.Width = FACE, .Height = FACE, .MipLevels = 1, .ArraySize = 6, .Format = DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                         .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                         .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE};
+      ComPtr<ID3D11Texture2D> texture;
+      REQUIRE(SUCCEEDED(device->CreateTexture2D(&desc, data.data(), texture.GetAddressOf())));
+      return Srv(texture.Get());
+    };
+    std::array<std::array<float, 3>, 6> sky_faces = {};
+    for (int face = 0; face < 6; ++face) sky_faces[face] = {0.25f * static_cast<float>(face + 1), 0.125f * static_cast<float>(7 - face), 1.f + (0.5f * static_cast<float>(face))};
+    const auto diffuse_cube = make_cube(sky_faces);
+    const auto white_cube = make_cube({{{1.f, 1.f, 1.f}, {1.f, 1.f, 1.f}, {1.f, 1.f, 1.f}, {1.f, 1.f, 1.f}, {1.f, 1.f, 1.f}, {1.f, 1.f, 1.f}}});
+    const auto specular_cube = make_cube({{{.5f, .75f, 1.f}, {1.f, .5f, .25f}, {.25f, .25f, .5f}, {2.f, 1.f, .5f}, {.5f, 1.5f, 1.f}, {1.f, 1.f, 3.f}}});
+    const auto exposure_of = [&](float value) { return Srv(MakeTexture(1, 1, DXGI_FORMAT_R32_FLOAT, D3D11_BIND_SHADER_RESOURCE, &value, 4).Get()); };
+    const auto exposure = exposure_of(2.f);
+    const auto exposure_one = exposure_of(1.f);
+    std::vector<std::array<uint16_t, 4>> lut_texels(16 * 16, {ToHalf(.5f), ToHalf(.25f), ToHalf(1.f), ToHalf(1.f)});
+    const auto lut = Srv(MakeTexture(16, 16, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D11_BIND_SHADER_RESOURCE, lut_texels.data(), 16 * 8).Get());
+    // The view's rotation (world to view, rows acting on column vectors): 45 degrees about x, then 30 about z. DeferredSky's
+    // invViewMatrix (c9-c11) is its transpose, the camera's View its rows.
+    const double c45 = std::sqrt(.5);
+    const double c30 = std::sqrt(3.) / 2.;
+    const std::array<std::array<double, 3>, 3> rx = {{{1., 0., 0.}, {0., c45, -c45}, {0., c45, c45}}};
+    const std::array<std::array<double, 3>, 3> rz = {{{c30, -.5, 0.}, {.5, c30, 0.}, {0., 0., 1.}}};
+    std::array<std::array<double, 3>, 3> rotation = {};
+    for (int row = 0; row < 3; ++row) {
+      for (int column = 0; column < 3; ++column) {
+        for (int k = 0; k < 3; ++k) rotation[row][column] += rz[row][k] * rx[k][column];
+      }
+    }
+    std::array<float, 48> sky_globals = {};
+    sky_globals[(3 * 4) + 1] = 1.f;    // ProbeProperties.y: the specular's mip scale
+    sky_globals[(3 * 4) + 2] = .01f;   // ProbeProperties.z: the intensity
+    for (int row = 0; row < 3; ++row) {
+      for (int column = 0; column < 3; ++column) sky_globals[((9 + row) * 4) + column] = static_cast<float>(rotation[column][row]);
+    }
+    const auto globals = MakeBuffer(192, D3D11_USAGE_DEFAULT);
+    context->UpdateSubresource(globals.Get(), 0, nullptr, sky_globals.data(), 0, 0);
+    const auto per_view = MakeBuffer(240, D3D11_USAGE_DEFAULT);
+    const std::array<float, 60> no_view = {};
+    context->UpdateSubresource(per_view.Get(), 0, nullptr, no_view.data(), 0, 0);
+    // The G-buffer: GBuffer1 the stereographic view normal (/ 3.5554 + 0.5), GBuffer2 base colour, GBuffer3 roughness,
+    // reflectance, metal, shading model << 1; LinearDepth 1 the far plane.
+    struct GBuffer {
+      ComPtr<ID3D11ShaderResourceView> normals, base, surface, depth;
+    };
+    const auto encode = [](const std::array<double, 3>& view_normal) {
+      const double scale = 1. / (1. + view_normal[2]);
+      return std::array<uint16_t, 2>{ToHalf(static_cast<float>(((view_normal[0] * scale) + 1.7777) / 3.5554)),
+                                     ToHalf(static_cast<float>(((view_normal[1] * scale) + 1.7777) / 3.5554))};
+    };
+    const auto to_view = [&](const std::array<double, 3>& world) {
+      std::array<double, 3> view = {};
+      for (int row = 0; row < 3; ++row) view[row] = (rotation[row][0] * world[0]) + (rotation[row][1] * world[1]) + (rotation[row][2] * world[2]);
+      return view;
+    };
+    const auto make_gbuffer = [&](const std::vector<std::array<uint16_t, 2>>& normals, const std::vector<uint32_t>& base, const std::vector<uint32_t>& surface,
+                                  const std::vector<float>& depth) {
+      return GBuffer{Srv(MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R16G16_FLOAT, D3D11_BIND_SHADER_RESOURCE, normals.data(), WIDTH * 4).Get()),
+                     Srv(MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, D3D11_BIND_SHADER_RESOURCE, base.data(), WIDTH * 4).Get()),
+                     Srv(MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, D3D11_BIND_SHADER_RESOURCE, surface.data(), WIDTH * 4).Get()),
+                     Srv(MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32_FLOAT, D3D11_BIND_SHADER_RESOURCE, depth.data(), WIDTH * 4).Get())};
+    };
+    const size_t pixels = static_cast<size_t>(WIDTH) * HEIGHT;
+    // Each pixel faces a world axis ((x + y) % 6: +x, -x, +y, -y, +z, -z), white, not metal, shading model 0.
+    std::vector<std::array<uint16_t, 2>> axis_normals(pixels);
+    std::vector<int> axis_of(pixels);
+    for (UINT y = 0; y < HEIGHT; ++y) {
+      for (UINT x = 0; x < WIDTH; ++x) {
+        const int axis = static_cast<int>((x + y) % 6);
+        std::array<double, 3> world = {};
+        world[axis / 2] = (axis % 2 == 0) ? 1. : -1.;
+        axis_of[(y * WIDTH) + x] = axis;
+        axis_normals[(y * WIDTH) + x] = encode(to_view(world));
+      }
+    }
+    const auto axes = make_gbuffer(axis_normals, std::vector<uint32_t>(pixels, 0xFFFFFFFFu), std::vector<uint32_t>(pixels, 0x00008080u),
+                                   std::vector<float>(pixels, .5f));
+    const auto specular_target = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_RENDER_TARGET);
+    const auto diffuse_target = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_RENDER_TARGET);
+    const auto specular_rtv = Rtv(specular_target.Get());
+    const auto diffuse_rtv = Rtv(diffuse_target.Get());
+    using Texel = std::array<float, 4>;
+    // The game's sky draw (`hooked`: OnAmbientPass before it, OnAmbientPassDrawn after): its o0 (specular) and o1 (diffuse).
+    const auto& sky_pass = rays::internal::AMBIENT_PASSES[0];
+    ID3D11ShaderResourceView* after_cube = nullptr;
+    const auto draw_sky = [&](const GBuffer& gbuffer, ID3D11ShaderResourceView* cube, ID3D11ShaderResourceView* exposure_view, bool hooked) {
+      const std::array<ID3D11ShaderResourceView*, 8> views = {exposure_view, cube, specular_cube.Get(), lut.Get(),
+                                                              gbuffer.depth.Get(), gbuffer.normals.Get(), gbuffer.base.Get(), gbuffer.surface.Get()};
+      const std::array<ID3D11RenderTargetView*, 2> targets = {specular_rtv.Get(), diffuse_rtv.Get()};
+      const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(WIDTH), .Height = static_cast<float>(HEIGHT), .MaxDepth = 1.f};
+      constexpr std::array<float, 4> CLEAR = {-1.f, -1.f, -1.f, -1.f};
+      context->ClearRenderTargetView(specular_rtv.Get(), CLEAR.data());
+      context->ClearRenderTargetView(diffuse_rtv.Get(), CLEAR.data());
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->IASetInputLayout(nullptr);
+      context->VSSetShader(sky_vertex.Get(), nullptr, 0);
+      context->PSSetShader(sky.Get(), nullptr, 0);
+      context->PSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+      context->PSSetConstantBuffers(0, 1, globals.GetAddressOf());
+      context->PSSetConstantBuffers(12, 1, per_view.GetAddressOf());
+      context->PSSetSamplers(0, 1, sampler.GetAddressOf());
+      context->RSSetState(nullptr);
+      context->RSSetViewports(1, &viewport);
+      context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+      context->OMSetRenderTargets(2, targets.data(), nullptr);
+      if (hooked) rays::OnAmbientPass(&mock_list, sky_pass);
+      context->Draw(3, 0);
+      if (hooked) rays::OnAmbientPassDrawn(&mock_list);
+      context->PSGetShaderResources(1, 1, &after_cube);
+      if (after_cube != nullptr) after_cube->Release();
+      const std::array<ID3D11ShaderResourceView*, 8> no_views = {};
+      context->PSSetShaderResources(0, static_cast<UINT>(no_views.size()), no_views.data());
+      context->OMSetRenderTargets(0, nullptr, nullptr);
+      return std::pair{ReadBack<Texel>(specular_target.Get(), WIDTH, HEIGHT), ReadBack<Texel>(diffuse_target.Get(), WIDTH, HEIGHT)};
+    };
+    const auto sun = MakeTexture(16, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_UNORDERED_ACCESS);
+    bridge.rt_sun.uav = Uav(sun.Get());
+    const std::vector<uint8_t> visibility(pixels, 255);
+    const auto visibility_texture = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R8_UNORM, D3D11_BIND_SHADER_RESOURCE, visibility.data(), WIDTH);
+    bridge.rt_visibility.srv = Srv(visibility_texture.Get());
+    runtime.traced_frame = runtime.frame;
+
+    // a. The paths' sky: Path-Traced Ambient on, the paths still learning (the game's cubes stay).
+    ray_state.settings.path_ambient = true;
+    runtime.path_ambient_on = false;
+    const auto [plain_specular, plain_diffuse] = draw_sky(axes, diffuse_cube.Get(), exposure.Get(), false);
+    const auto [learning_specular, learning_diffuse] = draw_sky(axes, diffuse_cube.Get(), exposure.Get(), true);
+    const auto sky_texels = ReadBack<Texel>(sun.Get(), 16, 1);
+    double sky_worst = 0.;
+    double opposite_nearest = 1e30;
+    for (size_t at = 0; at < pixels; ++at) {
+      const int axis = axis_of[at];
+      double worst = 0.;
+      double opposite = 0.;
+      for (int channel = 0; channel < 3; ++channel) {
+        const double game = plain_diffuse[at][channel];
+        worst = std::max(worst, std::abs(sky_texels[3 + axis][channel] - game) / std::max(std::abs(game), 1e-6));
+        opposite = std::max(opposite, std::abs(sky_texels[3 + (axis ^ 1)][channel] - game) / std::max(std::abs(game), 1e-6));
+      }
+      sky_worst = std::max(sky_worst, worst);
+      opposite_nearest = std::min(opposite_nearest, opposite);
+    }
+    const bool sky_w = sky_texels[3][3] == 1.f && sky_texels[4][3] == 1.f && sky_texels[5][3] == 0.f && sky_texels[6][3] == 0.f && sky_texels[7][3] == 0.f
+                       && sky_texels[8][3] == 0.f;
+    const bool learning_same = learning_specular == plain_specular && learning_diffuse == plain_diffuse;
+
+    // b. The paths bring the sky: the black cube in the diffuse's place, the game's own back after the draw.
+    runtime.path_ambient_on = true;
+    const auto [paths_specular, paths_diffuse] = draw_sky(axes, diffuse_cube.Get(), exposure.Get(), true);
+    const bool cube_back = after_cube == diffuse_cube.Get();
+    const bool diffuse_black = std::ranges::all_of(paths_diffuse, [](const Texel& texel) { return texel == Texel{}; });
+    const bool specular_same = paths_specular == plain_specular;
+    // CONTROL: Path-Traced Ambient off: the game's diffuse, the paths' sky zeros.
+    ray_state.settings.path_ambient = false;
+    const auto [off_specular, off_diffuse] = draw_sky(axes, diffuse_cube.Get(), exposure.Get(), true);
+    const auto off_texels = ReadBack<Texel>(sun.Get(), 16, 1);
+    const bool off_game = off_diffuse == plain_diffuse && off_specular == plain_specular
+                          && std::ranges::any_of(off_diffuse, [](const Texel& texel) { return texel[0] > 0.f; });
+    const bool off_zeros = std::all_of(off_texels.begin() + 3, off_texels.begin() + 9, [](const Texel& texel) { return texel == Texel{}; });
+    std::printf("paths' sky: each axis's light within %.2e of the game's diffuse on a white surface facing it, w %s; CONTROL the opposite "
+                "axis's: %.3f off at the nearest; still learning: the game's draw %s\n",
+                sky_worst, (sky_w ? "1 1 0 0 0 0" : "WRONG"), opposite_nearest, (learning_same ? "as it is" : "CHANGED"));
+    std::printf("paths bring the sky: the game's diffuse %s, specular %s, its cube %s after; CONTROL Path-Traced Ambient off: the game's "
+                "diffuse %s, the sky texels %s\n",
+                (diffuse_black ? "0 everywhere" : "NOT 0"), (specular_same ? "bit for bit" : "CHANGED"), (cube_back ? "bound again" : "NOT BACK"),
+                (off_game ? "as it is" : "CHANGED"), (off_zeros ? "zeros" : "NOT ZEROS"));
+    CHECK(sky_worst < 1e-5 && sky_w && learning_same);
+    CHECK(opposite_nearest > .1);
+    CHECK(diffuse_black && specular_same && cube_back);
+    CHECK(off_game && off_zeros);
+
+    // c. rt_bounce_apply: one world normal, base colours, metal, the sky and unlit pixels from a pattern; the game's diffuse
+    //    factor its o1 under a white cube (intensity x 100 = 1, exposure 1, LUT z 1).
+    const std::array<double, 3> world_normal = [] {
+      const double length = std::sqrt((.2 * .2) + (.9 * .9) + (.3 * .3));
+      return std::array<double, 3>{.2 / length, .9 / length, .3 / length};
+    }();
+    const auto view_normal = to_view(world_normal);
+    const auto stored = encode(view_normal);
+    // The world normal as the apply decodes it (floats), the plane's axes from it.
+    std::array<double, 3> decoded = {};
+    {
+      const float ex = (Half(stored[0]) * 3.5554f) - 1.7777f;
+      const float ey = (Half(stored[1]) * 3.5554f) - 1.7777f;
+      const float g = 2.f / ((ex * ex) + (ey * ey) + 1.f);
+      const std::array<double, 3> normal = {g * ex, g * ey, g - 1.f};
+      for (int axis = 0; axis < 3; ++axis) decoded[axis] = (rotation[0][axis] * normal[0]) + (rotation[1][axis] * normal[1]) + (rotation[2][axis] * normal[2]);
+      const double length = std::sqrt((decoded[0] * decoded[0]) + (decoded[1] * decoded[1]) + (decoded[2] * decoded[2]));
+      for (double& value : decoded) value /= length;
+    }
+    const auto cross = [](const std::array<double, 3>& a, const std::array<double, 3>& b) {
+      return std::array<double, 3>{(a[1] * b[2]) - (a[2] * b[1]), (a[2] * b[0]) - (a[0] * b[2]), (a[0] * b[1]) - (a[1] * b[0])};
+    };
+    std::array<double, 3> u = cross(decoded, {0., 0., 1.});
+    const double u_length = std::sqrt((u[0] * u[0]) + (u[1] * u[1]) + (u[2] * u[2]));
+    for (double& value : u) value /= u_length;
+    const std::array<double, 3> v = cross(decoded, u);
+    std::vector<uint32_t> base(pixels);
+    std::vector<uint32_t> surface(pixels);
+    std::vector<float> depth(pixels, .5f);
+    std::vector<Texel> positions(pixels);
+    std::vector<Texel> resolved_positions(pixels);
+    std::vector<std::array<uint16_t, 4>> resolved(pixels);
+    const std::array<float, 3> light_a = {.5f, 1.f, 2.f};
+    const std::array<float, 3> light_b = {2.f, .25f, 1.f};
+    for (UINT y = 0; y < HEIGHT; ++y) {
+      for (UINT x = 0; x < WIDTH; ++x) {
+        const size_t at = (static_cast<size_t>(y) * WIDTH) + x;
+        const uint32_t seed = static_cast<uint32_t>(at) * 2654435761u;
+        base[at] = (seed >> 8) | 0xFF000000u;
+        const uint32_t model = ((seed >> 3) % 8 == 0) ? 1u : ((seed >> 5) % 3 == 0 ? 2u : 0u);
+        surface[at] = 0x80u | (0x80u << 8) | (((seed >> 13) & 0xFFu) << 16) | (((model << 1) | ((seed >> 21) & 1u)) << 24);
+        const bool sky_pixel = (seed >> 17) % 10 == 0;
+        if (sky_pixel) depth[at] = 1.f;
+        Texel position = {};
+        for (int axis = 0; axis < 3; ++axis) {
+          position[axis] = static_cast<float>(std::array<double, 3>{100., 5., -40.}[axis] + (((x * u[axis]) + (y * v[axis])) * .5));
+        }
+        position[3] = 10.f;
+        positions[at] = position;
+        resolved_positions[at] = position;
+        if (sky_pixel) resolved_positions[at][3] = 0.f;
+        const auto& light = ((x + y) % 2 == 0) ? light_a : light_b;
+        resolved[at] = {ToHalf(light[0]), ToHalf(light[1]), ToHalf(light[2]), 0};
+      }
+    }
+    const auto plane = make_gbuffer(std::vector<std::array<uint16_t, 2>>(pixels, stored), base, surface, depth);
+    const auto white = draw_sky(plane, white_cube.Get(), exposure_one.Get(), false);
+    const std::vector<Texel>& white_diffuse = white.second;
+    const auto resolved_srv = Srv(MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D11_BIND_SHADER_RESOURCE, resolved.data(), WIDTH * 8).Get());
+    const auto resolved_positions_srv =
+        Srv(MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_SHADER_RESOURCE, resolved_positions.data(), WIDTH * 16).Get());
+    const auto positions_srv = Srv(MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_SHADER_RESOURCE, positions.data(), WIDTH * 16).Get());
+    const auto scene = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_RENDER_TARGET);
+    const auto scene_rtv = Rtv(scene.Get());
+    constexpr float STRENGTH = 1.5f;
+    constexpr Texel SCENE = {.1f, .2f, .3f, .7f};
+    // The apply's constants (ray_tracing.hpp LightBounce's: sizes, settings, the View's rows).
+    struct ApplyConstants {
+      std::array<uint32_t, 4> sizes;
+      std::array<float, 4> settings;
+      std::array<float, 16> rows;
+    };
+    const auto apply = [&](bool transposed) {
+      ApplyConstants constants = {.sizes = {WIDTH, HEIGHT, WIDTH, HEIGHT}, .settings = {STRENGTH, 1.f}};
+      for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+          constants.rows[(row * 4) + column] = static_cast<float>(transposed ? rotation[column][row] : rotation[row][column]);
+        }
+      }
+      context->UpdateSubresource(objects.bounce_constants.Get(), 0, nullptr, &constants, 0, 0);
+      context->ClearRenderTargetView(scene_rtv.Get(), SCENE.data());
+      const std::array<ID3D11ShaderResourceView*, 7> views = {resolved_srv.Get(), resolved_positions_srv.Get(), positions_srv.Get(), plane.normals.Get(),
+                                                              plane.base.Get(),   plane.surface.Get(),            plane.depth.Get()};
+      rays::internal::FullScreen(context.Get(), scene_rtv.Get(), {WIDTH, HEIGHT}, objects.bounce_apply.Get(), views, objects.bounce_constants.Get(),
+                                 objects.add.Get());
+      return ReadBack<Texel>(scene.Get(), WIDTH, HEIGHT);
+    };
+    const auto compare = [&](const std::vector<Texel>& out, bool* alpha_kept) {
+      double worst = 0.;
+      *alpha_kept = true;
+      for (UINT y = 0; y < HEIGHT; ++y) {
+        for (UINT x = 0; x < WIDTH; ++x) {
+          const size_t at = (static_cast<size_t>(y) * WIDTH) + x;
+          std::array<double, 3> light = {};
+          double weights = 0.;
+          for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) {
+              const int tx = static_cast<int>(x) + dx;
+              const int ty = static_cast<int>(y) + dy;
+              if (tx < 0 || ty < 0 || tx >= static_cast<int>(WIDTH) || ty >= static_cast<int>(HEIGHT)) continue;
+              const size_t there = (static_cast<size_t>(ty) * WIDTH) + tx;
+              if (resolved_positions[there][3] <= 0.f) continue;
+              const double weight = std::exp(-static_cast<double>((dx * dx) + (dy * dy)));
+              for (int channel = 0; channel < 3; ++channel) light[channel] += Half(resolved[there][channel]) * weight;
+              weights += weight;
+            }
+          }
+          for (int channel = 0; channel < 3; ++channel) {
+            const double factor = std::max(0.f, white_diffuse[at][channel]);
+            const double expected = (weights > 0. ? light[channel] / weights : 0.) * factor * STRENGTH;
+            const double added = static_cast<double>(out[at][channel]) - SCENE[channel];
+            worst = std::max(worst, std::abs(added - expected) / std::max(expected, 1e-3));
+          }
+          *alpha_kept = *alpha_kept && out[at][3] == SCENE[3];
+        }
+      }
+      return worst;
+    };
+    bool alpha_kept = false;
+    const double apply_worst = compare(apply(false), &alpha_kept);
+    bool transposed_alpha = false;
+    const double transposed_worst = compare(apply(true), &transposed_alpha);
+    const size_t unlit = static_cast<size_t>(std::ranges::count_if(white_diffuse, [](const Texel& texel) { return texel[0] == 0.f && texel[1] == 0.f && texel[2] == 0.f; }));
+    std::printf("GI apply: the resolved light x the game's diffuse factor (%zu of %zu pixels 0: sky, unlit or black) x %.1f added within "
+                "%.2e, alpha %s; CONTROL the view's rows transposed: %.3f off\n",
+                unlit, pixels, STRENGTH, apply_worst, (alpha_kept ? "kept" : "CHANGED"), transposed_worst);
+    CHECK(apply_worst < 1e-4 && alpha_kept && unlit > pixels / 10);
+    CHECK(transposed_worst > .05);
+
+    // d. KeepSun at the lighting draw: its target the display's size (its t0 the 1 x 1 exposure); CONTROL: another size.
+    std::array<float, 32> per_frame = {};
+    const std::array<float, 3> toward = {-.4f, .7f, .2f};
+    for (int axis = 0; axis < 3; ++axis) per_frame[axis * 4] = toward[axis];
+    const auto frame_constants = MakeBuffer(128, D3D11_USAGE_DEFAULT);
+    context->UpdateSubresource(frame_constants.Get(), 0, nullptr, per_frame.data(), 0, 0);
+    const auto keep_sun = [&](UINT width, UINT height) {
+      const std::array<Texel, 16> zeros = {};
+      const auto sun_texture = MakeTexture(16, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_UNORDERED_ACCESS, zeros.data(), 16 * 16);
+      bridge.rt_sun.uav = Uav(sun_texture.Get());
+      const auto target = MakeTexture(width, height, DXGI_FORMAT_R11G11B10_FLOAT, D3D11_BIND_RENDER_TARGET);
+      const auto target_rtv = Rtv(target.Get());
+      context->OMSetRenderTargets(1, target_rtv.GetAddressOf(), nullptr);
+      context->PSSetShaderResources(0, 1, exposure.GetAddressOf());
+      context->PSSetConstantBuffers(13, 1, frame_constants.GetAddressOf());
+      rays::KeepSun(&mock_list);
+      ID3D11ShaderResourceView* no_srv = nullptr;
+      context->PSSetShaderResources(0, 1, &no_srv);
+      context->OMSetRenderTargets(0, nullptr, nullptr);
+      return ReadBack<Texel>(sun_texture.Get(), 16, 1)[0];
+    };
+    const Texel kept = keep_sun(WIDTH, HEIGHT);
+    const Texel other = keep_sun(WIDTH / 2, HEIGHT / 2);
+    const double toward_length = std::sqrt((toward[0] * toward[0]) + (toward[1] * toward[1]) + (toward[2] * toward[2]));
+    double kept_worst = 0.;
+    for (int axis = 0; axis < 3; ++axis) kept_worst = std::max(kept_worst, std::abs(kept[axis] - (toward[axis] / toward_length)));
+    std::printf("KeepSun: the lighting draw's sun within %.2e; CONTROL another size: %s\n", kept_worst, (other == Texel{} ? "nothing written" : "WRITTEN"));
+    CHECK(kept_worst < 1e-5 && kept[3] == 1.f);
+    CHECK(other == Texel{});
+
+    bridge.rt_sun.uav.Reset();
+    bridge.rt_visibility.srv.Reset();
+    runtime.path_ambient_on = false;
+    ray_state.settings.path_ambient = false;
     dlaa::rays = false;
   }
 

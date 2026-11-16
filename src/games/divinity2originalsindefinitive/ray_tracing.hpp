@@ -14,6 +14,8 @@
 #include <cstdint>
 #include <mutex>
 #include <shared_mutex>
+#include <span>
+#include <unordered_map>
 #include <unordered_set>
 
 #include <embed/shaders.h>
@@ -41,7 +43,12 @@
 // Ours replaces the game's (ATN 2026-11-16): under Ray-Traced Sun Shadows the mask draw writes the traced visibility in
 // place of the game's filter; under Ray-Traced AO the AO chain isn't drawn and its two blurs write the traced visibility
 // into their targets (the texture both readers take); Skip the Game's Shadow Maps leaves the cascades' draws out under the
-// rays' sun. Off, or not traced this frame: the game's passes as they are. Its
+// rays' sun. Global Illumination (the rays' One Bounce or the paths' ReSTIR GI, Expeditions' route): the scene right after
+// ClusteredLightingWithSSAO prepared, traced, resolved over frames and added to it times each pixel's diffuse colour.
+// Path-Traced Ambient (tpa_'s route for a host without rt_core's ambient cube): DeferredSky's distant diffuse cube into the
+// paths' sky (rt_sky: the bridge's sun texels 3-8); once the paths have learned the game's light, the IBL diffuse passes'
+// cubes black (the sky's and the light probes') and the AO chain open (1): the paths bring that light and its occlusion.
+// Off, or not traced this frame: the game's passes as they are. Its
 // scene's shaders' code is kept from the game's start: Install only when a row is on at launch.
 namespace divinity2::ray_tracing {
 
@@ -53,6 +60,9 @@ static twattila::rt_scene::Sliders sliders;
 // (R1's city: 962 of the frame's 3,526 draws); its only reader in the census by name (Shadow at t1) is the mask the rays
 // replace.
 static float skip_shadow_maps = 0.f;
+// Global Illumination's strength (the graphics page's light_bounce_strength; 0: off): the rays' light bounce (One Bounce)
+// or the paths (ReSTIR GI), and with them Path-Traced Ambient.
+static float light_bounce_strength = 0.f;
 
 namespace internal {
 
@@ -87,20 +97,69 @@ constexpr std::array<uint32_t, 107> OVERLAY_PIXEL_SHADERS = {
     0xDB7751E1, 0xDBAE1C57, 0xE486915F, 0xE50A8259, 0xEB074F94, 0xEB4FF5F6, 0xEE9C5480, 0xEEADB9A5,
     0xEFEAEAA8, 0xF0BD3D36, 0xFD61875E};
 static_assert(std::ranges::is_sorted(OVERLAY_PIXEL_SHADERS));
+// The passes that light with the game's IBL diffuse (RDEF: their IBL_Diffuse_RGB / _2_RGB cubes' slots): the sky
+// (DeferredSky and its fades: the distant probe, Path-Traced Ambient's sky from its t1) and the local light probes. Under
+// Path-Traced Ambient their diffuse cubes are black (the paths bring that light); their specular stays.
+struct AmbientPass {
+  uint32_t hash;
+  std::array<UINT, 2> diffuse_slots;
+  UINT diffuse_count;
+  bool sky;
+};
+constexpr std::array<AmbientPass, 7> AMBIENT_PASSES = {{
+    {.hash = 0x518005B9, .diffuse_slots = {1, 0}, .diffuse_count = 1, .sky = true},   // DeferredSky
+    {.hash = 0x6E5BAE70, .diffuse_slots = {1, 0}, .diffuse_count = 1, .sky = true},   // DeferredSky_FadeBlack
+    {.hash = 0xD11AF8DB, .diffuse_slots = {1, 4}, .diffuse_count = 2, .sky = true},   // DeferredSky_FadeCapture
+    {.hash = 0x1EF3024A, .diffuse_slots = {1, 4}, .diffuse_count = 2, .sky = true},   // DeferredSky_FadeProbe
+    {.hash = 0x7BFF3402, .diffuse_slots = {1, 0}, .diffuse_count = 1, .sky = false},  // DeferredLightProbe
+    {.hash = 0xE65FA8E5, .diffuse_slots = {1, 0}, .diffuse_count = 1, .sky = false},  // DeferredLightProbe_FadeBlack
+    {.hash = 0x7B6DC76E, .diffuse_slots = {1, 6}, .diffuse_count = 2, .sky = false},  // DeferredLightProbe_FadeCapture
+}};
+// The most frames the bounce's resolve averages (Expeditions' value).
+constexpr float BOUNCE_FRAMES = 24.f;
 
 struct Objects {
   ComPtr<ID3D11Device> device;
   ComPtr<ID3DDeviceContextState> private_state;
   ComPtr<ID3D11ComputeShader> sun;
+  ComPtr<ID3D11ComputeShader> sky;
   ComPtr<ID3D11VertexShader> full_screen;
   ComPtr<ID3D11PixelShader> write;
+  ComPtr<ID3D11PixelShader> bounce_prepare;
+  ComPtr<ID3D11ComputeShader> bounce_resolve;
+  ComPtr<ID3D11PixelShader> bounce_apply;
   ComPtr<ID3D11RasterizerState> no_cull;
+  ComPtr<ID3D11BlendState> add;
+  ComPtr<ID3D11SamplerState> linear;
+  ComPtr<ID3D11Buffer> bounce_constants;  // 96 bytes: the resolve's (the most), the prepare's and the apply's
+  ComPtr<ID3D11Buffer> sky_settings;
+  ComPtr<ID3D11ShaderResourceView> black_cube;
   bool failed = false;
+};
+
+// The light bounce's textures (the render thread's: Clustered's draw).
+struct Bounce {
+  std::array<UINT, 2> size = {};
+  twattila::dlaa_bridge::Texture prepared;
+  ComPtr<ID3D11RenderTargetView> prepared_rtv;
+  twattila::dlaa_bridge::Texture traced;
+  std::array<twattila::dlaa_bridge::Texture, 2> resolved;
+  std::array<twattila::dlaa_bridge::Texture, 2> resolved_positions;
+  uint32_t resolved_index = 0;
+  uint64_t resolved_frame = UINT64_MAX;
+  std::array<float, 16> previous_view_projection = {};
+  std::unordered_map<ID3D11Resource*, ComPtr<ID3D11ShaderResourceView>> scene_views;
+  // An ambient pass's own diffuse cubes while black ones stand in (OnAmbientPass to OnAmbientPassDrawn).
+  std::array<ComPtr<ID3D11ShaderResourceView>, 2> kept_cubes;
+  const AmbientPass* kept_pass = nullptr;
 };
 
 struct State {
   std::shared_mutex mutex;
   Objects objects;  // on the game's device
+  twattila::rt_scene::Settings settings;
+  uint64_t frame = 0;
+  Bounce bounce;
 };
 static State state;
 static bool installed = false;
@@ -197,7 +256,10 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   {
     const std::unique_lock lock(state.mutex);
-    if (state.objects.device.Get() == native) state.objects = {};
+    if (state.objects.device.Get() == native) {
+      state.objects = {};
+      state.bounce = {};
+    }
   }
   const std::unique_lock lock(atlas_mutex);
   shadow_atlas_address.store(0, std::memory_order_relaxed);
@@ -206,10 +268,31 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 
 inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
                       uint32_t, const reshade::api::rect*) {
-  // The rows as Attila's (they need an upscaler), at 100%.
-  const twattila::rt_scene::Settings settings = twattila::rt_scene::SettingsOf(sliders, dlaa::sliders, 0.f, 1.f);
-  dlaa::rays = settings.sun_shadows || settings.ambient_occlusion;
+  // The rows as Attila's (they need an upscaler), at 100%. Path-Traced Ambient for a host without rt_core's ambient cube
+  // (tpa_'s route, Expeditions' 170aa2058): the host's own sky (rt_sky) and the rays' AO off under it (one AO method).
+  twattila::rt_scene::Settings settings = twattila::rt_scene::SettingsOf(sliders, dlaa::sliders, light_bounce_strength, 1.f);
+  settings.path_ambient = sliders.path_ambient != 0.f && settings.path_tracing;
+  settings.ambient_occlusion = settings.ambient_occlusion && !settings.path_ambient;
+  dlaa::rays = settings.sun_shadows || settings.ambient_occlusion || settings.light_bounce;
   twattila::rt_scene::Update(settings);
+  const std::unique_lock lock(state.mutex);
+  state.settings = settings;
+  ++state.frame;
+}
+
+// The paths bring the sky this frame: Path-Traced Ambient on, the last light bounce's paths had learned the game's
+// light (rt_core's path_ambient_on) and this frame was traced (at LinearizeDepth, before the AO and the sky passes).
+inline bool PathsBringSky() {
+  {
+    const std::shared_lock lock(state.mutex);
+    if (!state.settings.path_ambient) return false;
+  }
+  {
+    auto& runtime = twattila::rt_scene::internal::runtime;
+    const std::unique_lock lock(runtime.mutex);
+    if (!runtime.path_ambient_on) return false;
+  }
+  return twattila::rt_scene::Visibilities()[0] != nullptr;
 }
 
 // The objects on the game's `device` (made again when it changes); false: not available.
@@ -221,13 +304,33 @@ inline bool MakeObjects(ID3D11Device* device) {
   ComPtr<ID3D11Device1> device1;
   const D3D_FEATURE_LEVEL feature_level = device->GetFeatureLevel();
   const D3D11_RASTERIZER_DESC raster_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE, .DepthClipEnable = TRUE};
+  D3D11_BLEND_DESC add_desc = {};
+  add_desc.RenderTarget[0] = {.BlendEnable = TRUE, .SrcBlend = D3D11_BLEND_ONE, .DestBlend = D3D11_BLEND_ONE, .BlendOp = D3D11_BLEND_OP_ADD, .SrcBlendAlpha = D3D11_BLEND_ZERO, .DestBlendAlpha = D3D11_BLEND_ONE, .BlendOpAlpha = D3D11_BLEND_OP_ADD, .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN | D3D11_COLOR_WRITE_ENABLE_BLUE};
+  const D3D11_SAMPLER_DESC linear_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  const D3D11_BUFFER_DESC bounce_desc = {.ByteWidth = 96, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  const D3D11_BUFFER_DESC sky_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  // A 1 x 1 black cube in place of the ambient passes' diffuse ones.
+  const D3D11_TEXTURE2D_DESC cube_desc = {.Width = 1, .Height = 1, .MipLevels = 1, .ArraySize = 6, .Format = DXGI_FORMAT_R8G8B8A8_UNORM, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_SHADER_RESOURCE, .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE};
+  constexpr uint32_t BLACK = 0u;
+  const std::array<D3D11_SUBRESOURCE_DATA, 6> cube_data = {{{&BLACK, 4}, {&BLACK, 4}, {&BLACK, 4}, {&BLACK, 4}, {&BLACK, 4}, {&BLACK, 4}}};
+  ComPtr<ID3D11Texture2D> cube;
   objects.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
                    || FAILED(device1->CreateDeviceContextState(0, &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr,
                                                                objects.private_state.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__rt_frame_sun.data(), __rt_frame_sun.size(), nullptr, objects.sun.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__rt_sky.data(), __rt_sky.size(), nullptr, objects.sky.GetAddressOf()))
                    || FAILED(device->CreateVertexShader(__light_bounce_vs.data(), __light_bounce_vs.size(), nullptr, objects.full_screen.GetAddressOf()))
                    || FAILED(device->CreatePixelShader(__rt_write.data(), __rt_write.size(), nullptr, objects.write.GetAddressOf()))
-                   || FAILED(device->CreateRasterizerState(&raster_desc, objects.no_cull.GetAddressOf()));
+                   || FAILED(device->CreatePixelShader(__rt_bounce_prepare.data(), __rt_bounce_prepare.size(), nullptr, objects.bounce_prepare.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__rt_bounce_resolve.data(), __rt_bounce_resolve.size(), nullptr, objects.bounce_resolve.GetAddressOf()))
+                   || FAILED(device->CreatePixelShader(__rt_bounce_apply.data(), __rt_bounce_apply.size(), nullptr, objects.bounce_apply.GetAddressOf()))
+                   || FAILED(device->CreateRasterizerState(&raster_desc, objects.no_cull.GetAddressOf()))
+                   || FAILED(device->CreateBlendState(&add_desc, objects.add.GetAddressOf()))
+                   || FAILED(device->CreateSamplerState(&linear_desc, objects.linear.GetAddressOf()))
+                   || FAILED(device->CreateBuffer(&bounce_desc, nullptr, objects.bounce_constants.GetAddressOf()))
+                   || FAILED(device->CreateBuffer(&sky_desc, nullptr, objects.sky_settings.GetAddressOf()))
+                   || FAILED(device->CreateTexture2D(&cube_desc, cube_data.data(), cube.GetAddressOf()))
+                   || FAILED(device->CreateShaderResourceView(cube.Get(), nullptr, objects.black_cube.GetAddressOf()));
   return !objects.failed;
 }
 
@@ -236,25 +339,33 @@ inline ID3D11DeviceContext* ImmediateContext(reshade::api::command_list* cmd_lis
   return dlaa::internal::ImmediateContext(cmd_list);
 }
 
-// `visibility` (R8, 1 open) into `target` in place of what the game's draw would have written there (its red; no blend),
-// in the addon's own context state (the game's put back after).
-inline void DrawVisibility(ID3D11DeviceContext* native, ID3D11RenderTargetView* target, ID3D11ShaderResourceView* visibility) {
+// A full-screen triangle of `pixel_shader` into `target` (`size`: the viewport's; `blend` null: none) with `views` at
+// t0 on and `constants` at b0, in the addon's own context state (the game's put back after; state.mutex held shared).
+inline void FullScreen(ID3D11DeviceContext* native, ID3D11RenderTargetView* target, std::array<UINT, 2> size, ID3D11PixelShader* pixel_shader,
+                       std::span<ID3D11ShaderResourceView* const> views, ID3D11Buffer* constants = nullptr, ID3D11BlendState* blend = nullptr) {
   ComPtr<ID3D11DeviceContext1> native1;
   if (FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
-  const D3D11_TEXTURE2D_DESC target_desc = dlaa::internal::TextureOf(target);
-  const std::shared_lock lock(state.mutex);
   const auto& objects = state.objects;
-  if (objects.failed || !objects.write) return;
   const talesofarise::dlss::ContextStateScope scope(native1.Get(), objects.private_state.Get());
-  const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(target_desc.Width), .Height = static_cast<float>(target_desc.Height), .MaxDepth = 1.f};
+  const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(size[0]), .Height = static_cast<float>(size[1]), .MaxDepth = 1.f};
   native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   native->VSSetShader(objects.full_screen.Get(), nullptr, 0);
-  native->PSSetShader(objects.write.Get(), nullptr, 0);
-  native->PSSetShaderResources(0, 1, &visibility);
+  native->PSSetShader(pixel_shader, nullptr, 0);
+  native->PSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+  if (constants != nullptr) native->PSSetConstantBuffers(0, 1, &constants);
   native->RSSetState(objects.no_cull.Get());
   native->RSSetViewports(1, &viewport);
+  native->OMSetBlendState(blend, nullptr, 0xFFFFFFFF);
   native->OMSetRenderTargets(1, &target, nullptr);
   native->Draw(3, 0);
+}
+
+// `visibility` (R8, 1 open) into `target` in place of what the game's draw would have written there (its red; no blend).
+inline void DrawVisibility(ID3D11DeviceContext* native, ID3D11RenderTargetView* target, ID3D11ShaderResourceView* visibility) {
+  const D3D11_TEXTURE2D_DESC target_desc = dlaa::internal::TextureOf(target);
+  const std::shared_lock lock(state.mutex);
+  if (state.objects.failed || !state.objects.write) return;
+  FullScreen(native, target, {target_desc.Width, target_desc.Height}, state.objects.write.Get(), std::span(&visibility, 1));
 }
 
 // The sun's direction from PerFrame (`frame_constants`, the game's b13) into the bridge's sun texture (texel 0), for the
@@ -280,6 +391,28 @@ inline bool MainViewInput(ID3D11DeviceContext* native) {
   const D3D11_TEXTURE2D_DESC desc = dlaa::internal::TextureOf(input.Get());
   const auto [width, height] = dlaa::SceneSize();
   return width != 0 && desc.Width == width && desc.Height == height;
+}
+
+// A draw's first render target is the display's size (the main view's lighting: ClusteredLighting's t0 is the 1 x 1
+// exposure).
+inline ComPtr<ID3D11RenderTargetView> MainViewTarget(ID3D11DeviceContext* native) {
+  ComPtr<ID3D11RenderTargetView> target;
+  native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+  const D3D11_TEXTURE2D_DESC desc = dlaa::internal::TextureOf(target.Get());
+  const auto [width, height] = dlaa::SceneSize();
+  return (width != 0 && desc.Width == width && desc.Height == height) ? target : nullptr;
+}
+
+// A bounce texture of `format` at the bounce's size, read by views, written by a render target (`rtv`) or unordered
+// access.
+inline bool MakeBounceTexture(ID3D11Device* device, std::array<UINT, 2> size, DXGI_FORMAT format, twattila::dlaa_bridge::Texture* texture,
+                              ComPtr<ID3D11RenderTargetView>* rtv = nullptr) {
+  *texture = {};
+  const D3D11_TEXTURE2D_DESC desc = {.Width = size[0], .Height = size[1], .MipLevels = 1, .ArraySize = 1, .Format = format, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = static_cast<UINT>(D3D11_BIND_SHADER_RESOURCE | (rtv != nullptr ? D3D11_BIND_RENDER_TARGET : D3D11_BIND_UNORDERED_ACCESS))};
+  return SUCCEEDED(device->CreateTexture2D(&desc, nullptr, texture->texture.GetAddressOf()))
+         && SUCCEEDED(device->CreateShaderResourceView(texture->texture.Get(), nullptr, texture->srv.GetAddressOf()))
+         && (rtv != nullptr ? SUCCEEDED(device->CreateRenderTargetView(texture->texture.Get(), nullptr, rtv->ReleaseAndGetAddressOf()))
+                            : SUCCEEDED(device->CreateUnorderedAccessView(texture->texture.Get(), nullptr, texture->uav.GetAddressOf())));
 }
 
 }  // namespace internal
@@ -316,10 +449,11 @@ inline void Trace(reshade::api::command_list* cmd_list) {
                             });
 }
 
-// ClusteredLightingWithSSAO (before its draw: PerFrame at its b13): the sun's direction for the next trace.
+// ClusteredLightingWithSSAO (before its draw: PerFrame at its b13; its target the scene): the sun's direction for the
+// next trace.
 inline void KeepSun(reshade::api::command_list* cmd_list) {
   ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
-  if (native == nullptr || !internal::MainViewInput(native)) return;
+  if (native == nullptr || !internal::MainViewTarget(native)) return;
   ComPtr<ID3D11Buffer> frame_constants;
   native->PSGetConstantBuffers(13, 1, frame_constants.GetAddressOf());
   if (frame_constants) internal::WriteSun(native, frame_constants.Get());
@@ -359,22 +493,214 @@ inline bool AmbientReplaced() {
   return sliders.ambient_occlusion != 0.f && dlaa::rays && twattila::rt_scene::Visibilities()[1] != nullptr;
 }
 
-// The AO chain's draws (before them): not drawn while the traced AO replaces them (true: skipped), the main view's only.
+// The AO chain's draws (before them): not drawn while the traced AO or the paths replace them (true: skipped), the main
+// view's only.
 inline bool SkipAmbientChain(reshade::api::command_list* cmd_list) {
   ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
-  return native != nullptr && AmbientReplaced() && internal::MainViewInput(native);
+  return native != nullptr && internal::MainViewInput(native) && (AmbientReplaced() || internal::PathsBringSky());
 }
 
-// The AO chain's blur (before it): the traced visibility into its target in its place (true: drawn, the blur skipped).
+// The AO chain's blur (before it): the traced visibility into its target in its place, open (1) while the paths bring the
+// sky (their blocked rays are the occlusion: the game's AO off; true: drawn, the blur skipped).
 inline bool ReplaceAmbientBlur(reshade::api::command_list* cmd_list) {
   ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
-  if (native == nullptr || !AmbientReplaced() || !internal::MainViewInput(native)) return false;
+  if (native == nullptr || !internal::MainViewInput(native)) return false;
   ComPtr<ID3D11RenderTargetView> target;
   native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+  if (!target) return false;
+  if (internal::PathsBringSky()) {
+    constexpr std::array<float, 4> OPEN = {1.f, 1.f, 1.f, 1.f};
+    native->ClearRenderTargetView(target.Get(), OPEN.data());
+    return true;
+  }
   ID3D11ShaderResourceView* visibility = twattila::rt_scene::Visibilities()[1];
-  if (!target || visibility == nullptr) return false;
+  if (!AmbientReplaced() || visibility == nullptr) return false;
   internal::DrawVisibility(native, target.Get(), visibility);
   return true;
+}
+
+// An ambient pass (before its draw; AMBIENT_PASSES): the sky's the paths' sky from its distant diffuse cube (zeros without
+// Path-Traced Ambient), and its diffuse cubes black while the paths bring the sky (OnAmbientPassDrawn binds its own back).
+inline void OnAmbientPass(reshade::api::command_list* cmd_list, const internal::AmbientPass& pass) {
+  ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
+  if (native == nullptr || !internal::MainViewTarget(native)) return;
+  auto& bridge = twattila::dlaa_bridge::bridge;
+  bool path_ambient = false;
+  {
+    const std::shared_lock lock(internal::state.mutex);
+    path_ambient = internal::state.settings.path_ambient;
+  }
+  if (pass.sky && bridge.rt_sun.uav) {
+    std::array<ID3D11ShaderResourceView*, 2> views = {};
+    native->PSGetShaderResources(1, 1, &views[0]);
+    native->PSGetShaderResources(0, 1, &views[1]);
+    ComPtr<ID3D11Buffer> globals;
+    native->PSGetConstantBuffers(0, 1, globals.GetAddressOf());
+    ComPtr<ID3D11DeviceContext1> native1;
+    const std::shared_lock lock(internal::state.mutex);
+    const auto& objects = internal::state.objects;
+    if (views[0] != nullptr && views[1] != nullptr && globals && !objects.failed && objects.sky
+        && SUCCEEDED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) {
+      const talesofarise::dlss::ContextStateScope scope(native1.Get(), objects.private_state.Get());
+      const std::array<float, 4> sky_settings = {path_ambient ? 1.f : 0.f, 0.f, 0.f, 0.f};
+      native->UpdateSubresource(objects.sky_settings.Get(), 0, nullptr, sky_settings.data(), 0, 0);
+      const std::array<ID3D11Buffer*, 2> constants = {globals.Get(), objects.sky_settings.Get()};
+      native->CSSetShader(objects.sky.Get(), nullptr, 0);
+      native->CSSetShaderResources(0, 2, views.data());
+      native->CSSetConstantBuffers(0, 2, constants.data());
+      native->CSSetSamplers(0, 1, objects.linear.GetAddressOf());
+      native->CSSetUnorderedAccessViews(0, 1, bridge.rt_sun.uav.GetAddressOf(), nullptr);
+      native->Dispatch(1, 1, 1);
+    }
+    for (auto* view : views) {
+      if (view != nullptr) view->Release();
+    }
+  }
+  if (!path_ambient || !internal::PathsBringSky()) return;
+  auto& bounce = internal::state.bounce;
+  ComPtr<ID3D11ShaderResourceView> black;
+  {
+    const std::shared_lock lock(internal::state.mutex);
+    black = internal::state.objects.black_cube;
+  }
+  if (!black) return;
+  for (UINT index = 0; index < pass.diffuse_count; ++index) {
+    native->PSGetShaderResources(pass.diffuse_slots[index], 1, bounce.kept_cubes[index].ReleaseAndGetAddressOf());
+    ID3D11ShaderResourceView* view = black.Get();
+    native->PSSetShaderResources(pass.diffuse_slots[index], 1, &view);
+  }
+  bounce.kept_pass = &pass;
+}
+
+// An ambient pass drawn: its own diffuse cubes bound again.
+inline void OnAmbientPassDrawn(reshade::api::command_list* cmd_list) {
+  auto& bounce = internal::state.bounce;
+  if (bounce.kept_pass == nullptr) return;
+  ID3D11DeviceContext* native = dlaa::internal::ImmediateContext(cmd_list);
+  if (native != nullptr) {
+    for (UINT index = 0; index < bounce.kept_pass->diffuse_count; ++index) {
+      ID3D11ShaderResourceView* view = bounce.kept_cubes[index].Get();
+      native->PSSetShaderResources(bounce.kept_pass->diffuse_slots[index], 1, &view);
+    }
+  }
+  bounce.kept_cubes = {};
+  bounce.kept_pass = nullptr;
+}
+
+// ClusteredLightingWithSSAO drawn (the scene lit): the light bounce from it (Expeditions' route: prepared, traced by the
+// rays or the paths, resolved over frames) added to it, times each pixel's diffuse colour and the strength.
+inline void LightBounce(reshade::api::command_list* cmd_list) {
+  ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
+  if (native == nullptr) return;
+  const ComPtr<ID3D11RenderTargetView> target = internal::MainViewTarget(native);
+  dlaa::internal::Camera camera;
+  if (!target || !dlaa::MainCamera(&camera)) return;
+  twattila::rt_scene::Settings settings;
+  uint64_t frame = 0;
+  {
+    const std::shared_lock lock(internal::state.mutex);
+    settings = internal::state.settings;
+    frame = internal::state.frame;
+  }
+  if (!settings.light_bounce || light_bounce_strength <= 0.f) return;
+  // The G-buffer the lighting read (t2 GBuffer1, t3 GBuffer2, t4 GBuffer3, t6 LinearDepth).
+  std::array<ComPtr<ID3D11ShaderResourceView>, 4> gbuffer;
+  native->PSGetShaderResources(2, 1, gbuffer[0].GetAddressOf());
+  native->PSGetShaderResources(3, 1, gbuffer[1].GetAddressOf());
+  native->PSGetShaderResources(4, 1, gbuffer[2].GetAddressOf());
+  native->PSGetShaderResources(6, 1, gbuffer[3].GetAddressOf());
+  if (!gbuffer[0] || !gbuffer[1] || !gbuffer[2] || !gbuffer[3]) return;
+  ComPtr<ID3D11Resource> scene;
+  target->GetResource(scene.GetAddressOf());
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  const auto render_size = dlaa::SceneSize();
+  const std::shared_lock lock(internal::state.mutex);
+  const auto& objects = internal::state.objects;
+  auto& bounce = internal::state.bounce;
+  if (objects.failed || !objects.bounce_apply) return;
+  const UINT scale = 1u << std::min(static_cast<UINT>(settings.light_bounce_resolution), 2u);
+  const std::array<UINT, 2> size = {(render_size[0] + scale - 1) / scale, (render_size[1] + scale - 1) / scale};
+  // The bounce's textures at the render size's and the resolution's (made again when either changes; the scene's views
+  // let go with the game's old targets).
+  if (bounce.size != size) {
+    bounce.size = size;
+    bounce.resolved_frame = UINT64_MAX;
+    bounce.scene_views.clear();
+    if (!internal::MakeBounceTexture(device.Get(), size, DXGI_FORMAT_R11G11B10_FLOAT, &bounce.prepared, &bounce.prepared_rtv)
+        || !internal::MakeBounceTexture(device.Get(), size, DXGI_FORMAT_R16G16B16A16_FLOAT, &bounce.traced)
+        || !std::ranges::all_of(bounce.resolved, [&](auto& texture) {
+             return internal::MakeBounceTexture(device.Get(), size, DXGI_FORMAT_R16G16B16A16_FLOAT, &texture);
+           })
+        || !std::ranges::all_of(bounce.resolved_positions, [&](auto& texture) {
+             return internal::MakeBounceTexture(device.Get(), size, DXGI_FORMAT_R32G32B32A32_FLOAT, &texture);
+           })) {
+      bounce.size = {};
+      return;
+    }
+  }
+  auto& scene_view = bounce.scene_views[scene.Get()];
+  if (!scene_view && FAILED(device->CreateShaderResourceView(scene.Get(), nullptr, scene_view.GetAddressOf()))) {
+    bounce.scene_views.erase(scene.Get());
+    return;
+  }
+  // The prepare's, the resolve's and the apply's constants (the buffer's whole 96 bytes: a constant buffer is written whole).
+  struct Constants {
+    std::array<uint32_t, 4> sizes;
+    std::array<float, 4> settings;
+    std::array<float, 16> rows;
+  };
+  const std::array<uint32_t, 4> sizes = {size[0], size[1], render_size[0], render_size[1]};
+  const Constants prepare_constants = {.sizes = sizes, .settings = {0.f, static_cast<float>(scale)}};
+  native->UpdateSubresource(objects.bounce_constants.Get(), 0, nullptr, &prepare_constants, 0, 0);
+  ID3D11ShaderResourceView* scene_srv = scene_view.Get();
+  internal::FullScreen(native, bounce.prepared_rtv.Get(), size, objects.bounce_prepare.Get(), std::span(&scene_srv, 1), objects.bounce_constants.Get());
+  if (!twattila::rt_scene::internal::TraceLightBounce(native, bounce.prepared.texture.Get(), size[0], size[1], scale, bounce.traced.texture.Get())) {
+    return;
+  }
+  auto& bridge = twattila::dlaa_bridge::bridge;
+  const uint32_t previous = bounce.resolved_index;
+  const uint32_t current = previous ^ 1u;
+  {
+    // The resolve's: last frame's camera (rows acting on column vectors, unjittered), the sizes, its settings.
+    struct ResolveConstants {
+      std::array<float, 16> previous_view_projection;
+      std::array<uint32_t, 4> sizes;
+      std::array<float, 4> settings;
+    };
+    const ResolveConstants constants = {
+        .previous_view_projection = bounce.previous_view_projection,
+        .sizes = sizes,
+        .settings = {internal::BOUNCE_FRAMES, (bounce.resolved_frame + 1 == frame) ? 1.f : 0.f, static_cast<float>(scale)},
+    };
+    ComPtr<ID3D11DeviceContext1> native1;
+    if (FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
+    const talesofarise::dlss::ContextStateScope scope(native1.Get(), objects.private_state.Get());
+    native->UpdateSubresource(objects.bounce_constants.Get(), 0, nullptr, &constants, 0, 0);
+    const std::array<ID3D11ShaderResourceView*, 4> views = {bounce.traced.srv.Get(), bridge.rt_positions.srv.Get(), bounce.resolved[previous].srv.Get(),
+                                                            bounce.resolved_positions[previous].srv.Get()};
+    const std::array<ID3D11UnorderedAccessView*, 2> outputs = {bounce.resolved[current].uav.Get(), bounce.resolved_positions[current].uav.Get()};
+    native->CSSetShader(objects.bounce_resolve.Get(), nullptr, 0);
+    native->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+    native->CSSetUnorderedAccessViews(0, static_cast<UINT>(outputs.size()), outputs.data(), nullptr);
+    native->CSSetConstantBuffers(0, 1, objects.bounce_constants.GetAddressOf());
+    native->Dispatch((size[0] + 7) / 8, (size[1] + 7) / 8, 1);
+  }
+  bounce.resolved_index = current;
+  bounce.resolved_frame = frame;
+  bounce.previous_view_projection = camera.view_projection;
+  const Constants apply_constants = {
+      .sizes = sizes,
+      .settings = {light_bounce_strength, static_cast<float>(scale)},
+      .rows = {camera.view[0], camera.view[1], camera.view[2], 0.f, camera.view[4], camera.view[5], camera.view[6], 0.f, camera.view[8], camera.view[9],
+               camera.view[10], 0.f},
+  };
+  native->UpdateSubresource(objects.bounce_constants.Get(), 0, nullptr, &apply_constants, 0, 0);
+  const std::array<ID3D11ShaderResourceView*, 7> views = {bounce.resolved[current].srv.Get(), bounce.resolved_positions[current].srv.Get(),
+                                                          bridge.rt_positions.srv.Get(), gbuffer[0].Get(),
+                                                          gbuffer[1].Get(), gbuffer[2].Get(),
+                                                          gbuffer[3].Get()};
+  internal::FullScreen(native, target.Get(), render_size, objects.bounce_apply.Get(), views, objects.bounce_constants.Get(), objects.add.Get());
 }
 
 // At the addon's start, with a row on (the scene's shaders kept from the game's start).

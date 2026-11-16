@@ -806,7 +806,7 @@ constexpr uint32_t CLUSTERED_LIGHTING_HASH = 0xA6E6A660;
 
 // The graphics page's anti-aliasing: the game's, the helper's DLSS, FSR and XeSS (dlaa.hpp: in DLSS's place).
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
-// What the page reads that this game has no row for (GT-VBAO, Light Bounce, Bend): 0 / off.
+// What the page reads that this game has no row for (GT-VBAO, Bend): 0 / off.
 float no_game_row = 0.f;
 twattila::feature_settings::SssSliders no_screen_space_shadows;
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
@@ -818,13 +818,16 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .in_game_aa_note = "DLSS, FSR and XeSS take the place of the game's SMAA or FXAA: any in-game Anti-Aliasing works.",
     .reset_tooltip = "Everything on this page but Anti-Aliasing back to its default: the game's shadows and AO.",
     .no_rays_tooltip = "The game's own shadows and ambient occlusion. The rest of this page at its default.",
-    .rays_tooltip = "Ray-traced sun shadows and ambient occlusion at my settings. The rest of this page at its default.\n"
+    .rays_tooltip = "Ray-traced sun shadows, ambient occlusion and global illumination at my settings. The rest of this page at its\n"
+                    "default.\n"
                     "Needs an upscaler (Anti-Aliasing above). Restart the game after turning ray tracing on.",
     .shadow_tooltip = "Game's Shadow Maps: the original. DXR: ray-traced sun shadows in their place (keep in-game\n"
                       "shadows on). Needs an upscaler. Restart the game after turning it on.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground.\n"
                   "Game's SSAO: the original. RTAO: from rays through the scene, in its place (keep in-game SSAO on).\n"
+                  "Path-Traced: the sky's light itself from Global Illumination's paths, its shade included.\n"
                   "Needs an upscaler. Restart the game after turning it on.",
+    .gi_tooltip_end = "\nRestart the game after turning it on.",
 };
 
 // Each replaced shader's first use is logged once (the "applied" lines of a data run); a bit per custom shader.
@@ -1164,7 +1167,19 @@ void ConfigureAddon() {
         divinity2::ray_tracing::KeepSun(cmd_list);
         return true;
       },
+      .on_drawn = divinity2::ray_tracing::LightBounce,
   };
+  // The IBL diffuse passes (the sky's and the light probes'): Path-Traced Ambient's sky, the paths in their diffuse's place.
+  for (const auto& pass : divinity2::ray_tracing::internal::AMBIENT_PASSES) {
+    custom_shaders[pass.hash] = {
+        .crc32 = pass.hash,
+        .on_draw = [&pass](reshade::api::command_list* cmd_list) {
+          divinity2::ray_tracing::OnAmbientPass(cmd_list, pass);
+          return true;
+        },
+        .on_drawn = divinity2::ray_tracing::OnAmbientPassDrawn,
+    };
+  }
   // The sun shadow masks without code here (the replaced PCSS ones above): the rays' visibility in the filter's place.
   for (const uint32_t hash : divinity2::ray_tracing::internal::SUN_MASK_SHADERS) {
     if (custom_shaders.contains(hash)) continue;
@@ -1207,24 +1222,35 @@ void ConfigureAddon() {
       .tooltip = "With ray-traced shadows: nothing is drawn into the game's sun shadow maps, the rays replace them. Faster.",
       .labels = {"Off", "On"},
   });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "light_bounce_strength",
+      .binding = &divinity2::ray_tracing::light_bounce_strength,
+      .default_value = 0.f,
+      .label = "Strength",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Lit ground and walls bounce their light and colour into nearby shadows.\n"
+                 "1: physically correct; 0: off.",
+      .min = 0.f,
+      .max = 4.f,
+      .format = "%.2f",
+  });
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   twattila::graphics_page::Apply(&settings, {.aa = &divinity2::dlaa::sliders,
                                              .sss = &no_screen_space_shadows,
                                              .rt = &divinity2::ray_tracing::sliders,
                                              .ssao_mode = &no_game_row,
-                                             .light_bounce_strength = &no_game_row,
+                                             .light_bounce_strength = &divinity2::ray_tracing::light_bounce_strength,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .has_scale_rows = false,
                                              .has_foliage_light = false,
                                              .rays_preset_as_attila = true,
-                                             .has_path_ambient = false,
+                                             .path_ambient_tested = false,
                                              .has_reflections = false,
                                              .has_gtvbao = false,
                                              .has_screen_space_shadows = false,
                                              .has_gtvbgi = false,
                                              .rays_tested = false,
-                                             .has_gi = false,
                                              .every_row = false});
   const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
   for (auto* setting : settings) {
@@ -1258,7 +1284,8 @@ bool AttachAddon() {
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   twattila::test_hooks::Install(&settings, true, "[Divinity 2]");
   // A ray tracing row on at launch: its scene's shaders kept from the start.
-  if (divinity2::ray_tracing::sliders.sun_shadows != 0.f || divinity2::ray_tracing::sliders.ambient_occlusion != 0.f) {
+  if (divinity2::ray_tracing::sliders.sun_shadows != 0.f || divinity2::ray_tracing::sliders.ambient_occlusion != 0.f
+      || divinity2::ray_tracing::sliders.light_bounce != 0.f) {
     divinity2::ray_tracing::Install();
   }
   // Before the swap chain mod (below): a removed device's chain let go, the no-frame limit and stall log after it. The
