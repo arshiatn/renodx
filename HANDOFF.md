@@ -51,6 +51,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -143,7 +144,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
-- ATN DECIDES (Tales): Bend SSS instead of Bandai's contact shadows 0x95802ADA? GT ... | ATN
+- tl_ (started 01:1x): UE port of Bend SSS + GT-VBGI, Tales first then Expeditions ... | ATN
 - gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: g ... | gr_
 - Both D3D12 devices (Streamline FG + RR) removed at the same moment: every order ... | next helper round
 - Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device re ... | coordinator
@@ -1314,7 +1315,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         bias, auto thickness). Owner: next Ryse data run
       - [x] npu_ MERGED a0057296 01:2x (11 commits; built amd64; cb_audit.py conflict with npr_ resolved: list DUMPS +
         Ryse, --embed): see the NON-TW SKILLS AUDIT boxes. npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe.
-      - [ ] ATN DECIDES (Tales): Bend SSS instead of Bandai's contact shadows 0x95802ADA? GT-VBGI instead of Bandai's own
+      - [x] ATN ANSWERED 01:1x "Yes, ours. Ours should be much better": Bend SSS + GT-VBGI replace Bandai's contact shadows
+        + SSGI in Tales (then Expeditions, shared UE port); rows off until an in-game look check, then on by default.
+      - [ ] tl_ (started 01:1x): UE port of Bend SSS + GT-VBGI, Tales first then Expeditions, replacing Bandai's passes;
+        WARP tests; then in-game look + GPU cost, then defaults on. Owner: tl_
+        (was) ATN DECIDES (Tales): Bend SSS instead of Bandai's contact shadows 0x95802ADA? GT-VBGI instead of Bandai's own
         SSGI? (double work: tools/nontw/tales/census/t13_double_work.txt; both need a UE port). AO temporal / edge /
         denoise for Tales / Expeditions: not wanted per ATN's 00:0x "ignore Attila's own SSAO" (UE GT-VBAO leaves noise to
         TAA / DLSS). Owner: ATN
