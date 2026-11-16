@@ -8,7 +8,7 @@
 
 // Ray-traced ambient occlusion, bounce light (or path tracing), reflections and specular occlusion (the DLSS addon's
 // Experimental options, rt_shadows.hpp), bound only while they run (the render size): the ambient visibility at t41
-// (1 open, 0 occluded), multiplied into the lighting pass's ambient occlusion; the bounce light at t42 (the light
+// (1 open, 0 occluded), in place of the lighting pass's ambient occlusion; the bounce light at t42 (the light
 // arriving from nearby surfaces, times its strength); the reflections at t43 (the light the pixel's own reflection
 // lobe finds, the share of its rays that met a surface); the specular occlusion at t44 (the share of the lobe open).
 Texture2D<float> t41 : register(t41);
@@ -16,10 +16,11 @@ Texture2D<float4> t42 : register(t42);
 Texture2D<float4> t43 : register(t43);
 Texture2D<float> t44 : register(t44);
 
-float RayTracedAmbientOcclusion(float2 uv) {
+// The traced ambient visibility in place of the game's AO (`game`), never on top of it (ATN 2026-11-16): `game` when off.
+float RayTracedAmbientOcclusion(float2 uv, float game) {
   uint width, height;
   t41.GetDimensions(width, height);
-  if (width == 0u) return 1.f;
+  if (width == 0u) return game;
   return t41.Load(int3(min(uint2(uv * float2(width, height)), uint2(width, height) - 1u), 0));
 }
 

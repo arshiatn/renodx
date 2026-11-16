@@ -105,8 +105,8 @@ void main(
   r7.xyz = r4.xyz / r6.xyz;
   r5.x = dot(cb0[53].xyz, r3.xyz);
   r5.y = cmp(0 != r5.y);
-  // Ray-traced ambient occlusion (the DLSS addon, Experimental): 1 when it is off.
-  r6.w = t5.Sample(s4_s, v0.xy).x * RayTracedAmbientOcclusion(v0.xy);
+  // Ray-traced ambient occlusion (Experimental) in place of the game's: the game's when it is off.
+  r6.w = RayTracedAmbientOcclusion(v0.xy, t5.Sample(s4_s, v0.xy).x);
   r6.w = log2(r6.w);
   r1.w = r6.w * r1.w;
   r8.y = exp2(r1.w);
