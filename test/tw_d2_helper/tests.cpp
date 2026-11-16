@@ -46,6 +46,13 @@
 //    and a visibility near 1 on open ground, dark in the corner; the game's shader and bindings back after; the game's blur
 //    keeps them so (CONTROLS: GT-VBAO off, the game's reinterleave writes its slices' AO; the world normal in GBuffer1
 //    (no View rotation) darkens open ground; the blur changed the texture).
+// 11. GT-VBGI (screen_space.hpp OnLit, talesofarise_dlss/ue_light_bounce.hpp's passes on bounce_gbuffer.hlsli) on that
+//    scene cast through the jittered camera the upload hook kept: the ground by a lit wall gets the wall's light in its
+//    hue, nothing past the radius, alpha kept, the added light in the ratio of the ground's base colour bytes, none on
+//    metal; a probe of bounce_gbuffer.hlsli through the camera OnLit uploaded: positions, normals, diffuse colour and
+//    pixels per metre as cast, and with the camera moved a frame later the last frame's pixel and distance (CONTROLS: the
+//    world normal in GBuffer1, Strength 0 and the rays' bounce leave the scene alone, the rows without the jitter, the
+//    moved camera's own view-projection).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -233,6 +240,91 @@ static ComPtr<ID3D11RenderTargetView> Rtv(ID3D11Texture2D* texture) {
   ComPtr<ID3D11RenderTargetView> view;
   REQUIRE(SUCCEEDED(device->CreateRenderTargetView(texture, nullptr, view.GetAddressOf())));
   return view;
+}
+
+// A ground 15 m below CITY's eye and a wall facing the camera 2 m past where the screen's centre ray meets the ground,
+// cast through `to_world` (a view-projection's inverse: as that camera drew it) at the pixels' centres: LinearizeDepth's
+// view z / 100 (1: nothing), GBuffer1 as the game's G-buffer writes it (View's rows times the world normal,
+// n.xy / (1 + n.z) x 0.281262308 + 0.5) and the world normal so encoded (no View rotation), each pixel's camera-space
+// position and normal (View's), its distance from the wall (the ground's; -1 on the wall) and its kind (1 the ground 3 m
+// or more from the wall, 2 within 0.25 m of the corner).
+struct WallScene {
+  std::vector<float> depth;
+  std::vector<std::array<uint16_t, 2>> normals;
+  std::vector<std::array<uint16_t, 2>> world_normals;
+  std::vector<std::array<double, 3>> positions;
+  std::vector<std::array<double, 3>> view_normals;
+  std::vector<double> from_wall;
+  std::vector<int> kind;
+};
+
+static WallScene BuildWallScene(const Matrix& to_world, UINT width, UINT height) {
+  const size_t pixels = static_cast<size_t>(width) * height;
+  WallScene scene = {.depth = std::vector<float>(pixels, 1.f), .normals = std::vector<std::array<uint16_t, 2>>(pixels),
+                     .world_normals = std::vector<std::array<uint16_t, 2>>(pixels), .positions = std::vector<std::array<double, 3>>(pixels),
+                     .view_normals = std::vector<std::array<double, 3>>(pixels), .from_wall = std::vector<double>(pixels, -1.),
+                     .kind = std::vector<int>(pixels, 0)};
+  const Matrix view = Rows(CITY.data());
+  const std::array<double, 3> eye = {CITY[48], CITY[49], CITY[50]};
+  const double ground_y = eye[1] - 15.;
+  const auto ray_of = [&](double x, double y) {
+    const auto near_point = Apply(to_world, {x, y, 0., 1.});
+    const auto far_point = Apply(to_world, {x, y, 1., 1.});
+    std::array<double, 3> direction = {};
+    for (int k = 0; k < 3; ++k) direction[k] = (far_point[k] / far_point[3]) - (near_point[k] / near_point[3]);
+    const double length = std::sqrt((direction[0] * direction[0]) + (direction[1] * direction[1]) + (direction[2] * direction[2]));
+    for (double& value : direction) value /= length;
+    return direction;
+  };
+  const double across_length = std::hypot(CITY[8], CITY[10]);
+  const std::array<double, 3> across = {CITY[8] / across_length, 0., CITY[10] / across_length};
+  const auto centre_ray = ray_of(0., 0.);
+  const double centre_t = (ground_y - eye[1]) / centre_ray[1];
+  std::array<double, 3> wall_point = {};
+  for (int k = 0; k < 3; ++k) wall_point[k] = eye[k] + (centre_t * centre_ray[k]) + (2. * across[k]);
+  const std::array<double, 3> wall_normal = {-across[0], 0., -across[2]};
+  const auto dot3 = [](const std::array<double, 3>& a, const std::array<double, 3>& b) { return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]); };
+  for (UINT py = 0; py < height; ++py) {
+    for (UINT px = 0; px < width; ++px) {
+      const auto direction = ray_of(((px + .5) / width * 2.) - 1., 1. - ((py + .5) / height * 2.));
+      double t = 1e30;
+      std::array<double, 3> normal = {0., 1., 0.};
+      if (direction[1] < 0.) t = (ground_y - eye[1]) / direction[1];
+      const double facing = dot3(direction, wall_normal);
+      bool on_wall = false;
+      if (facing < 0.) {
+        const double wall_t = dot3({wall_point[0] - eye[0], wall_point[1] - eye[1], wall_point[2] - eye[2]}, wall_normal) / facing;
+        if (wall_t > 0. && wall_t < t) {
+          t = wall_t;
+          normal = wall_normal;
+          on_wall = true;
+        }
+      }
+      if (t > 1e29) continue;
+      const std::array<double, 3> hit = {eye[0] + (t * direction[0]), eye[1] + (t * direction[1]), eye[2] + (t * direction[2])};
+      const size_t at = (static_cast<size_t>(py) * width) + px;
+      std::array<double, 3> view_normal = {};
+      for (int row = 0; row < 3; ++row) {
+        scene.positions[at][row] = (view[row * 4] * hit[0]) + (view[(row * 4) + 1] * hit[1]) + (view[(row * 4) + 2] * hit[2]) + view[(row * 4) + 3];
+        view_normal[row] = (view[row * 4] * normal[0]) + (view[(row * 4) + 1] * normal[1]) + (view[(row * 4) + 2] * normal[2]);
+      }
+      scene.view_normals[at] = view_normal;
+      scene.depth[at] = static_cast<float>(scene.positions[at][2] / 100.);
+      const auto encode = [](const std::array<double, 3>& n) {
+        return std::array<uint16_t, 2>{ToHalf(static_cast<float>((n[0] / (1. + n[2]) * 0.281262308) + .5)),
+                                        ToHalf(static_cast<float>((n[1] / (1. + n[2]) * 0.281262308) + .5))};
+      };
+      scene.normals[at] = encode(view_normal);
+      scene.world_normals[at] = encode(normal);
+      if (on_wall) {
+        if (hit[1] - ground_y < .25) scene.kind[at] = 2;
+      } else {
+        scene.from_wall[at] = dot3({hit[0] - wall_point[0], hit[1] - wall_point[1], hit[2] - wall_point[2]}, wall_normal);
+        scene.kind[at] = (scene.from_wall[at] >= 3.) ? 1 : ((scene.from_wall[at] < .25) ? 2 : 0);
+      }
+    }
+  }
+  return scene;
 }
 
 int main(int argc, char** argv) {
@@ -1528,75 +1620,12 @@ int main(int argc, char** argv) {
                                            .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
     ComPtr<ID3D11SamplerState> point_clamp;
     REQUIRE(SUCCEEDED(device->CreateSamplerState(&point_desc, point_clamp.GetAddressOf())));
-    // The scene through CITY's camera (unjittered): the ground 15 m below the eye, a wall facing the camera 2 m past where
-    // the screen's centre ray meets the ground. LinearizeDepth's view z / 100; GBuffer1 as the game's G-buffer writes it
-    // (View's rows times the world normal, n.xy / (1 + n.z) x 0.281262308 + 0.5), and the world normal so encoded.
-    const Matrix view = Rows(CITY.data());
-    const Matrix to_world = Inverse(Rows(CITY.data() + 32));
-    const std::array<double, 3> eye = {CITY[48], CITY[49], CITY[50]};
-    const double ground_y = eye[1] - 15.;
-    const auto ray_of = [&](double x, double y) {
-      const auto near_point = Apply(to_world, {x, y, 0., 1.});
-      const auto far_point = Apply(to_world, {x, y, 1., 1.});
-      std::array<double, 3> direction = {};
-      for (int k = 0; k < 3; ++k) direction[k] = (far_point[k] / far_point[3]) - (near_point[k] / near_point[3]);
-      const double length = std::sqrt((direction[0] * direction[0]) + (direction[1] * direction[1]) + (direction[2] * direction[2]));
-      for (double& value : direction) value /= length;
-      return direction;
-    };
-    const double across_length = std::hypot(CITY[8], CITY[10]);
-    const std::array<double, 3> across = {CITY[8] / across_length, 0., CITY[10] / across_length};
-    const auto centre_ray = ray_of(0., 0.);
-    const double centre_t = (ground_y - eye[1]) / centre_ray[1];
-    std::array<double, 3> wall_point = {};
-    for (int k = 0; k < 3; ++k) wall_point[k] = eye[k] + (centre_t * centre_ray[k]) + (2. * across[k]);
-    const std::array<double, 3> wall_normal = {-across[0], 0., -across[2]};
-    const auto dot3 = [](const std::array<double, 3>& a, const std::array<double, 3>& b) { return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]); };
-    std::vector<float> depth_texels(AO_PIXELS, 1.f);
-    std::vector<std::array<uint16_t, 2>> normal_texels(AO_PIXELS);
-    std::vector<std::array<uint16_t, 2>> world_texels(AO_PIXELS);
-    std::vector<int> kind(AO_PIXELS, 0);  // 1 the ground 3 m or more from the wall (open), 2 within 0.25 m of the corner
-    for (UINT py = 0; py < AO_HEIGHT; ++py) {
-      for (UINT px = 0; px < AO_WIDTH; ++px) {
-        const auto direction = ray_of(((px + .5) / AO_WIDTH * 2.) - 1., 1. - ((py + .5) / AO_HEIGHT * 2.));
-        double t = 1e30;
-        std::array<double, 3> normal = {0., 1., 0.};
-        if (direction[1] < 0.) t = (ground_y - eye[1]) / direction[1];
-        const double facing = dot3(direction, wall_normal);
-        bool on_wall = false;
-        if (facing < 0.) {
-          const double wall_t = dot3({wall_point[0] - eye[0], wall_point[1] - eye[1], wall_point[2] - eye[2]}, wall_normal) / facing;
-          if (wall_t > 0. && wall_t < t) {
-            t = wall_t;
-            normal = wall_normal;
-            on_wall = true;
-          }
-        }
-        if (t > 1e29) continue;
-        const std::array<double, 3> hit = {eye[0] + (t * direction[0]), eye[1] + (t * direction[1]), eye[2] + (t * direction[2])};
-        const size_t at = (static_cast<size_t>(py) * AO_WIDTH) + px;
-        depth_texels[at] = static_cast<float>(((view[8] * hit[0]) + (view[9] * hit[1]) + (view[10] * hit[2]) + view[11]) / 100.);
-        const auto encode = [&](bool rotated) {
-          std::array<double, 3> n = normal;
-          if (rotated) {
-            for (int row = 0; row < 3; ++row) n[row] = (view[row * 4] * normal[0]) + (view[(row * 4) + 1] * normal[1]) + (view[(row * 4) + 2] * normal[2]);
-          }
-          return std::array<uint16_t, 2>{ToHalf(static_cast<float>((n[0] / (1. + n[2]) * 0.281262308) + .5)),
-                                          ToHalf(static_cast<float>((n[1] / (1. + n[2]) * 0.281262308) + .5))};
-        };
-        normal_texels[at] = encode(true);
-        world_texels[at] = encode(false);
-        if (on_wall) {
-          if (hit[1] - ground_y < .25) kind[at] = 2;
-        } else {
-          const double from_wall = dot3({hit[0] - wall_point[0], hit[1] - wall_point[1], hit[2] - wall_point[2]}, wall_normal);
-          kind[at] = (from_wall >= 3.) ? 1 : ((from_wall < .25) ? 2 : 0);
-        }
-      }
-    }
-    const auto depth = Srv(MakeTexture(AO_WIDTH, AO_HEIGHT, DXGI_FORMAT_R32_FLOAT, D3D11_BIND_SHADER_RESOURCE, depth_texels.data(), AO_WIDTH * 4).Get());
-    const auto normals = Srv(MakeTexture(AO_WIDTH, AO_HEIGHT, DXGI_FORMAT_R16G16_FLOAT, D3D11_BIND_SHADER_RESOURCE, normal_texels.data(), AO_WIDTH * 4).Get());
-    const auto world_normals = Srv(MakeTexture(AO_WIDTH, AO_HEIGHT, DXGI_FORMAT_R16G16_FLOAT, D3D11_BIND_SHADER_RESOURCE, world_texels.data(), AO_WIDTH * 4).Get());
+    // The scene (BuildWallScene) through CITY's camera, unjittered.
+    const WallScene scene = BuildWallScene(Inverse(Rows(CITY.data() + 32)), AO_WIDTH, AO_HEIGHT);
+    const auto& kind = scene.kind;
+    const auto depth = Srv(MakeTexture(AO_WIDTH, AO_HEIGHT, DXGI_FORMAT_R32_FLOAT, D3D11_BIND_SHADER_RESOURCE, scene.depth.data(), AO_WIDTH * 4).Get());
+    const auto normals = Srv(MakeTexture(AO_WIDTH, AO_HEIGHT, DXGI_FORMAT_R16G16_FLOAT, D3D11_BIND_SHADER_RESOURCE, scene.normals.data(), AO_WIDTH * 4).Get());
+    const auto world_normals = Srv(MakeTexture(AO_WIDTH, AO_HEIGHT, DXGI_FORMAT_R16G16_FLOAT, D3D11_BIND_SHADER_RESOURCE, scene.world_normals.data(), AO_WIDTH * 4).Get());
     // PPSAO's four slices (R8, half size): 0.5, what the game's reinterleave writes as its AO.
     const std::vector<uint8_t> slice_texels(static_cast<size_t>(AO_WIDTH / 2) * (AO_HEIGHT / 2), 128);
     std::array<ComPtr<ID3D11ShaderResourceView>, 4> slices;
@@ -1650,7 +1679,7 @@ int main(int argc, char** argv) {
     };
     const auto run_chain = [&](ID3D11ShaderResourceView* gbuffer1, float mode) {
       AoRun run;
-      screen::ao.mode = mode;
+      rays::lighting_rows.ssao_mode = mode;
       context->PSSetShaderResources(0, 1, &gbuffer1);
       context->PSSetConstantBuffers(12, 1, per_view.GetAddressOf());
       for (int draw = 0; draw < 4; ++draw) run.skipped += screen::SkipSao(&mock_list) ? 1 : 0;
@@ -1699,7 +1728,7 @@ int main(int argc, char** argv) {
       stats.corner /= corner_count;
       return stats;
     };
-    screen::ao = {.radius = 2.f};
+    rays::lighting_rows = {.ssao_radius = 2.f, .ssao_thickness = .1f, .ssao_quality = 1.f, .ssao_directions = 1.f};
     const AoRun ours = run_chain(normals.Get(), 1.f);
     const AoRun game = run_chain(normals.Get(), 0.f);
     const AoRun wrong_frame = run_chain(world_normals.Get(), 1.f);
@@ -1740,10 +1769,270 @@ int main(int argc, char** argv) {
     std::printf("the game's blur over it: open ground %.3f, the corner %.3f; CONTROL it changed the texture by up to %.3f\n", blurred_stats.open,
                 blurred_stats.corner, blur_changed);
     CHECK(blurred_stats.open >= .97 && blurred_stats.corner <= .7 && blur_changed > .02);
-    screen::ao = {};
+    rays::lighting_rows = {};
     screen::internal::state.device.Reset();
     screen::internal::state.vbao.Reset();
     screen::internal::state.ao_constants.Reset();
+  }
+
+  // 11. GT-VBGI at ClusteredLightingWithSSAO's draw.
+  {
+    namespace screen = divinity2::screen_space;
+    constexpr UINT GI_WIDTH = 256;
+    constexpr UINT GI_HEIGHT = 144;
+    constexpr size_t GI_PIXELS = static_cast<size_t>(GI_WIDTH) * GI_HEIGHT;
+    // The main camera: CITY at 256 x 144 through the module's upload hook, jittered (section 1's jitter), wanted for
+    // GT-VBGI alone.
+    dlaa::sliders.method = 0.f;
+    dlaa::rays = false;
+    dlaa::screen_effects = true;
+    state.display = {GI_WIDTH, GI_HEIGHT};
+    state.depth_size = {GI_WIDTH, GI_HEIGHT};
+    state.jitter = jitter;
+    PerView camera_a = CITY;
+    camera_a[54] = static_cast<float>(GI_WIDTH);
+    camera_a[55] = static_cast<float>(GI_HEIGHT);
+    // A second camera 0.5 m right and 0.3 m back along the ground (View's translation and the view-projection again).
+    PerView camera_b = camera_a;
+    {
+      const std::array<double, 3> moved = {.5, 0., -.3};
+      for (int row = 0; row < 3; ++row) {
+        camera_b[(row * 4) + 3] -= static_cast<float>((CITY[row * 4] * moved[0]) + (CITY[(row * 4) + 1] * moved[1]) + (CITY[(row * 4) + 2] * moved[2]));
+      }
+      for (int k = 0; k < 3; ++k) camera_b[48 + k] += static_cast<float>(moved[k]);
+      const Matrix moved_vp = Multiply(Rows(CITY.data() + 16), Rows(camera_b.data()));
+      for (int index = 0; index < 16; ++index) camera_b[32 + index] = static_cast<float>(moved_vp[index]);
+    }
+    const auto upload = [&](PerView camera) {
+      state.camera = {};
+      Upload(camera_buffer.Get(), &camera);
+      REQUIRE(state.camera.frame == state.frame);
+      return state.camera;
+    };
+    const dlaa::internal::Camera kept_a = upload(camera_a);
+    const WallScene scene = BuildWallScene(Rows(kept_a.inverse_view_projection.data()), GI_WIDTH, GI_HEIGHT);
+    // The G-buffer: the ground's base colour 64 / 255 (or `ground_base`, metal `ground_metal`), the wall's 128 / 255, both
+    // lit shading model, reflectance 0.5; the scene the sun lit: the wall (1, 0.5, 0.25), the ground black.
+    const auto gbuffer_of = [&](uint8_t ground_base, uint8_t ground_metal) {
+      std::vector<std::array<uint8_t, 4>> base(GI_PIXELS);
+      std::vector<std::array<uint8_t, 4>> material(GI_PIXELS);
+      for (size_t at = 0; at < GI_PIXELS; ++at) {
+        const bool wall = scene.from_wall[at] < 0.;
+        const uint8_t colour = wall ? uint8_t{128} : ground_base;
+        base[at] = {colour, colour, colour, 255};
+        material[at] = {128, 128, wall ? uint8_t{0} : ground_metal, 0};
+      }
+      return std::array<ComPtr<ID3D11ShaderResourceView>, 2>{
+          Srv(MakeTexture(GI_WIDTH, GI_HEIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, D3D11_BIND_SHADER_RESOURCE, base.data(), GI_WIDTH * 4).Get()),
+          Srv(MakeTexture(GI_WIDTH, GI_HEIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, D3D11_BIND_SHADER_RESOURCE, material.data(), GI_WIDTH * 4).Get())};
+    };
+    const auto depth = Srv(MakeTexture(GI_WIDTH, GI_HEIGHT, DXGI_FORMAT_R32_FLOAT, D3D11_BIND_SHADER_RESOURCE, scene.depth.data(), GI_WIDTH * 4).Get());
+    const auto normals = Srv(MakeTexture(GI_WIDTH, GI_HEIGHT, DXGI_FORMAT_R16G16_FLOAT, D3D11_BIND_SHADER_RESOURCE, scene.normals.data(), GI_WIDTH * 4).Get());
+    const auto world_normals =
+        Srv(MakeTexture(GI_WIDTH, GI_HEIGHT, DXGI_FORMAT_R16G16_FLOAT, D3D11_BIND_SHADER_RESOURCE, scene.world_normals.data(), GI_WIDTH * 4).Get());
+    std::vector<std::array<uint16_t, 4>> lit(GI_PIXELS);
+    for (size_t at = 0; at < GI_PIXELS; ++at) {
+      lit[at] = (scene.from_wall[at] < 0.) ? std::array<uint16_t, 4>{ToHalf(1.f), ToHalf(.5f), ToHalf(.25f), ToHalf(1.f)}
+                                           : std::array<uint16_t, 4>{0, 0, 0, ToHalf(1.f)};
+    }
+    // ClusteredLightingWithSSAO drawn into a copy of the lit scene (its G-buffer at t2-t4 and t6) through OnLit: the scene
+    // after, a frame later each time (GT-VBGI runs once a frame).
+    const auto run_lit = [&](ID3D11ShaderResourceView* gbuffer1, const std::array<ComPtr<ID3D11ShaderResourceView>, 2>& gbuffer) {
+      screen::OnPresent(nullptr, nullptr, nullptr, nullptr, 0, nullptr);
+      const auto target = MakeTexture(GI_WIDTH, GI_HEIGHT, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE,
+                                      lit.data(), GI_WIDTH * 8);
+      const auto rtv = Rtv(target.Get());
+      const std::array<ID3D11ShaderResourceView*, 5> views = {gbuffer1, gbuffer[0].Get(), gbuffer[1].Get(), nullptr, depth.Get()};
+      context->PSSetShaderResources(2, static_cast<UINT>(views.size()), views.data());
+      context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+      screen::OnLit(&mock_list);
+      const std::array<ID3D11ShaderResourceView*, 5> no_views = {};
+      context->PSSetShaderResources(2, static_cast<UINT>(no_views.size()), no_views.data());
+      context->OMSetRenderTargets(0, nullptr, nullptr);
+      return ReadBack<std::array<uint16_t, 4>>(target.Get(), GI_WIDTH, GI_HEIGHT);
+    };
+    // The light added near the wall (the ground within 0.5 m of it: each channel's sum) and far from it (5 m and more,
+    // past the radius: the most of any channel), whether alpha stayed 1, and whether anything changed at all.
+    struct Added {
+      std::array<double, 3> near_sum = {};
+      double far_most = 0.;
+      bool alpha_kept = true;
+      bool changed = false;
+    };
+    const auto added_of = [&](const std::vector<std::array<uint16_t, 4>>& after) {
+      Added added;
+      for (size_t at = 0; at < GI_PIXELS; ++at) {
+        for (int channel = 0; channel < 3; ++channel) {
+          const double light = Half(after[at][channel]) - Half(lit[at][channel]);
+          added.changed = added.changed || after[at][channel] != lit[at][channel];
+          if (scene.from_wall[at] >= 0. && scene.from_wall[at] < .5) added.near_sum[channel] += light;
+          if (scene.from_wall[at] >= 5.) added.far_most = std::max(added.far_most, std::abs(light));
+        }
+        added.alpha_kept = added.alpha_kept && after[at][3] == lit[at][3];
+      }
+      return added;
+    };
+    auto& rows = rays::lighting_rows;
+    // GT-VBGI at full resolution, one frame, no smoothing (a deterministic bounce): Strength 1, Radius 4 m, Quality 32, 4
+    // directions.
+    rows = {.light_bounce_strength = 1.f, .light_bounce_radius = 4.f, .light_bounce_resolution = 0.f, .light_bounce_quality = 2.f,
+            .light_bounce_directions = 2.f, .light_bounce_temporal = 0.f, .light_bounce_denoise = 0.f, .light_bounce_checkerboard = 0.f};
+    rays::sliders.light_bounce = 0.f;
+    const auto grey = gbuffer_of(64, 0);
+    const Added ours = added_of(run_lit(normals.Get(), grey));
+    const Added lighter = added_of(run_lit(normals.Get(), gbuffer_of(191, 0)));
+    const Added metal = added_of(run_lit(normals.Get(), gbuffer_of(64, 255)));
+    const Added wrong_frame = added_of(run_lit(world_normals.Get(), grey));
+    rows.light_bounce_strength = 0.f;
+    const Added off = added_of(run_lit(normals.Get(), grey));
+    rows.light_bounce_strength = 1.f;
+    rays::sliders.light_bounce = 1.f;
+    const Added rays_bounce = added_of(run_lit(normals.Get(), grey));
+    rays::sliders.light_bounce = 0.f;
+    const double ratio = lighter.near_sum[0] / ours.near_sum[0];
+    const double wrong_change = std::abs(wrong_frame.near_sum[0] - ours.near_sum[0]) / ours.near_sum[0];
+    std::printf("GT-VBGI: the ground by the lit wall gets %.3f / %.3f / %.3f (green / red %.3f, blue / red %.3f), past the radius at most %.2e, "
+                "alpha kept %d; base 191 / 64 gives %.4f x (the bytes' %.4f), metal %.2e; CONTROLS the world normal in GBuffer1 changes it by "
+                "%.0f%%, Strength 0 changed %d, the rays' bounce chosen changed %d\n",
+                ours.near_sum[0], ours.near_sum[1], ours.near_sum[2], ours.near_sum[1] / ours.near_sum[0], ours.near_sum[2] / ours.near_sum[0],
+                ours.far_most, ours.alpha_kept, ratio, 191. / 64., metal.near_sum[0], 100. * wrong_change, off.changed, rays_bounce.changed);
+    CHECK(ours.near_sum[0] > 1. && std::abs((ours.near_sum[1] / ours.near_sum[0]) - .5) < .01 && std::abs((ours.near_sum[2] / ours.near_sum[0]) - .25) < .01);
+    CHECK(ours.far_most < 1e-3 && ours.alpha_kept && std::abs(ratio - (191. / 64.)) < .01 && std::abs(metal.near_sum[0]) < 1e-3);
+    CHECK(wrong_change > .2 && !off.changed && !rays_bounce.changed);
+
+    // bounce_gbuffer.hlsli through the camera OnLit uploaded (b11), its G-buffer at t42-t45: each pixel's camera-space
+    // position against the cast's (the jittered rows undone), its normal, its diffuse colour and its pixels per metre;
+    // with the camera moved a frame later, its place in the last frame's pixels (the unjittered view-projection) and its
+    // distance from the last camera. CONTROLS: the rows without the jitter, GBuffer1's world normal, the moved camera's
+    // own view-projection.
+    std::string root = __FILE__;
+    root = root.substr(0, root.find_last_of("\\/"));
+    root = root.substr(0, root.find_last_of("\\/"));
+    root = root.substr(0, root.find_last_of("\\/"));
+    std::ranges::replace(root, '\\', '/');
+    // Named as if in the add-on's folder: its includes are found from there.
+    const std::string probe_source =
+        "#include \"bounce_gbuffer.hlsli\"\n"
+        "void main(float4 v0 : SV_Position, out float4 o0 : SV_Target0, out float4 o1 : SV_Target1, out float4 o2 : SV_Target2) {\n"
+        "  const int2 texel = int2(v0.xy); const float3 position = BounceViewPosition(texel);\n"
+        "  o0 = float4(position, BounceDepth(texel)); o1 = float4(BounceViewNormal(texel), BouncePixelsPerMetre(length(position)));\n"
+        "  o2 = float4(BouncePrevious(position), BounceDiffuseAlbedo(texel).r); }\n";
+    ComPtr<ID3DBlob> probe_blob;
+    ComPtr<ID3DBlob> probe_errors;
+    const HRESULT probe_compiled = D3DCompile(probe_source.data(), probe_source.size(), (root + "/src/games/divinity2originalsindefinitive/probe.hlsl").c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
+                                              "main", "ps_5_0", 0, 0, probe_blob.GetAddressOf(), probe_errors.GetAddressOf());
+    if (FAILED(probe_compiled) && probe_errors) std::printf("%s\n", static_cast<const char*>(probe_errors->GetBufferPointer()));
+    REQUIRE(SUCCEEDED(probe_compiled));
+    ComPtr<ID3D11PixelShader> probe;
+    REQUIRE(SUCCEEDED(device->CreatePixelShader(probe_blob->GetBufferPointer(), probe_blob->GetBufferSize(), nullptr, probe.GetAddressOf())));
+    const char* probe_vertex_source =
+        "float4 main(uint id : SV_VertexID) : SV_Position { const float2 uv = float2((id << 1) & 2, id & 2); return float4(uv * float2(2, -2) + float2(-1, 1), 0, 1); }";
+    ComPtr<ID3DBlob> probe_vertex_blob;
+    REQUIRE(SUCCEEDED(D3DCompile(probe_vertex_source, std::strlen(probe_vertex_source), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0,
+                                 probe_vertex_blob.GetAddressOf(), nullptr)));
+    ComPtr<ID3D11VertexShader> probe_vertex;
+    REQUIRE(SUCCEEDED(device->CreateVertexShader(probe_vertex_blob->GetBufferPointer(), probe_vertex_blob->GetBufferSize(), nullptr, probe_vertex.GetAddressOf())));
+    const auto run_probe = [&](ID3D11ShaderResourceView* gbuffer1, ID3D11Buffer* view) {
+      std::array<ComPtr<ID3D11Texture2D>, 3> outputs;
+      std::array<ComPtr<ID3D11RenderTargetView>, 3> output_rtvs;
+      std::array<ID3D11RenderTargetView*, 3> output_pointers = {};
+      for (size_t index = 0; index < outputs.size(); ++index) {
+        outputs[index] = MakeTexture(GI_WIDTH, GI_HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_RENDER_TARGET);
+        output_rtvs[index] = Rtv(outputs[index].Get());
+        output_pointers[index] = output_rtvs[index].Get();
+      }
+      const std::array<ID3D11ShaderResourceView*, 4> views = {gbuffer1, grey[0].Get(), grey[1].Get(), depth.Get()};
+      const D3D11_VIEWPORT viewport = {.Width = GI_WIDTH, .Height = GI_HEIGHT, .MaxDepth = 1.f};
+      context->IASetInputLayout(nullptr);
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->VSSetShader(probe_vertex.Get(), nullptr, 0);
+      context->PSSetShader(probe.Get(), nullptr, 0);
+      context->PSSetShaderResources(42, static_cast<UINT>(views.size()), views.data());
+      context->PSSetConstantBuffers(11, 1, &view);
+      context->RSSetState(nullptr);
+      context->RSSetViewports(1, &viewport);
+      context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+      context->OMSetRenderTargets(3, output_pointers.data(), nullptr);
+      context->Draw(3, 0);
+      const std::array<ID3D11ShaderResourceView*, 4> no_views = {};
+      context->PSSetShaderResources(42, static_cast<UINT>(no_views.size()), no_views.data());
+      context->OMSetRenderTargets(0, nullptr, nullptr);
+      std::array<std::vector<std::array<float, 4>>, 3> values;
+      for (size_t index = 0; index < outputs.size(); ++index) values[index] = ReadBack<std::array<float, 4>>(outputs[index].Get(), GI_WIDTH, GI_HEIGHT);
+      return values;
+    };
+    // Frame 1 (camera A, as cast): positions, normals, diffuse colour, pixels per metre.
+    run_lit(normals.Get(), grey);
+    const auto probed = run_probe(normals.Get(), screen::internal::state.bounce_view.Get());
+    const auto probed_world = run_probe(world_normals.Get(), screen::internal::state.bounce_view.Get());
+    double position_worst = 0.;
+    double unjittered_worst = 0.;
+    double normal_worst = 0.;
+    double world_normal_worst = 0.;
+    double albedo_worst = 0.;
+    double scale_worst = 0.;
+    for (UINT py = 0; py < GI_HEIGHT; ++py) {
+      for (UINT px = 0; px < GI_WIDTH; ++px) {
+        const size_t at = (static_cast<size_t>(py) * GI_WIDTH) + px;
+        if (!(scene.depth[at] < 1.f)) continue;
+        const auto& expected = scene.positions[at];
+        const double z = static_cast<double>(scene.depth[at]) * 100.;
+        const double ndc_x = ((px + .5) / GI_WIDTH * 2.) - 1.;
+        const double ndc_y = 1. - ((py + .5) / GI_HEIGHT * 2.);
+        const double length = std::sqrt((expected[0] * expected[0]) + (expected[1] * expected[1]) + (expected[2] * expected[2]));
+        for (int k = 0; k < 3; ++k) {
+          position_worst = std::max(position_worst, std::abs(probed[0][at][k] - expected[k]) / length);
+          normal_worst = std::max(normal_worst, std::abs(probed[1][at][k] - scene.view_normals[at][k]));
+          world_normal_worst = std::max(world_normal_worst, std::abs(probed_world[1][at][k] - scene.view_normals[at][k]));
+        }
+        unjittered_worst = std::max(unjittered_worst, std::max(std::abs((ndc_x * z / CITY[16]) - expected[0]), std::abs((ndc_y * z / CITY[21]) - expected[1])) / length);
+        const double albedo = ((scene.from_wall[at] < 0.) ? 128. : 64.) / 255.;
+        albedo_worst = std::max(albedo_worst, std::abs(probed[2][at][3] - albedo));
+        scale_worst = std::max(scale_worst, std::abs((probed[1][at][3] / (.5 * GI_HEIGHT * CITY[21] / length)) - 1.));
+      }
+    }
+    // Frame 2 (camera B, the same textures): the last frame's pixel and distance against the CPU's (A's unjittered
+    // view-projection on the world point B's View puts there).
+    const dlaa::internal::Camera kept_b = upload(camera_b);
+    run_lit(normals.Get(), grey);
+    const auto moved = run_probe(normals.Get(), screen::internal::state.bounce_view.Get());
+    const Matrix view_b = Rows(kept_b.view.data());
+    double previous_worst = 0.;
+    double distance_worst = 0.;
+    double own_camera_least = 1e30;
+    for (size_t at = 0; at < GI_PIXELS; ++at) {
+      if (!(scene.depth[at] < 1.f)) continue;
+      // The world point: B's rotation transposed on the position less its translation.
+      std::array<double, 4> world = {0., 0., 0., 1.};
+      for (int k = 0; k < 3; ++k) {
+        for (int row = 0; row < 3; ++row) world[k] += view_b[(row * 4) + k] * (moved[0][at][row] - view_b[(row * 4) + 3]);
+      }
+      const auto pixel_through = [&](const std::array<float, 16>& view_projection) {
+        const auto clip = Apply(Rows(view_projection.data()), world);
+        return std::array<double, 2>{((clip[0] / clip[3] * .5) + .5) * GI_WIDTH, ((clip[1] / clip[3] * -.5) + .5) * GI_HEIGHT};
+      };
+      const auto expected = pixel_through(kept_a.view_projection);
+      const auto own = pixel_through(kept_b.view_projection);
+      previous_worst = std::max(previous_worst, std::max(std::abs(moved[2][at][0] - expected[0]), std::abs(moved[2][at][1] - expected[1])));
+      own_camera_least = std::min(own_camera_least, std::max(std::abs(moved[2][at][0] - own[0]), std::abs(moved[2][at][1] - own[1])));
+      const double distance = std::sqrt(((world[0] - kept_a.position[0]) * (world[0] - kept_a.position[0])) + ((world[1] - kept_a.position[1]) * (world[1] - kept_a.position[1]))
+                                        + ((world[2] - kept_a.position[2]) * (world[2] - kept_a.position[2])));
+      distance_worst = std::max(distance_worst, std::abs(moved[2][at][2] - distance));
+    }
+    std::printf("GT-VBGI's view of the G-buffer: positions within %.2e of the cast (relative), normals %.2e, diffuse colour %.2e, pixels per "
+                "metre %.2e; the last frame's pixel %.2e px, distance %.2e m; CONTROLS the rows without the jitter %.2e, the world normal %.3f, "
+                "the moved camera's own view-projection %.2f px off at least\n",
+                position_worst, normal_worst, albedo_worst, scale_worst, previous_worst, distance_worst, unjittered_worst, world_normal_worst,
+                own_camera_least);
+    CHECK(position_worst < 1e-4 && normal_worst < 2e-3 && albedo_worst < 1e-6 && scale_worst < 1e-4);
+    CHECK(previous_worst < 1e-2 && distance_worst < 1e-3);
+    CHECK(unjittered_worst > 5e-4 && world_normal_worst > .1 && own_camera_least > 1.);
+    rows = {};
+    dlaa::screen_effects = false;
+    talesofarise::ue_light_bounce::Release(device.Get());
+    screen::internal::state.device.Reset();
+    screen::internal::state.bounce_view.Reset();
+    screen::internal::state.scene_views.clear();
   }
 
   std::printf("%s: %d failure(s)\n", (failures == 0 ? "PASS" : "FAIL"), failures);

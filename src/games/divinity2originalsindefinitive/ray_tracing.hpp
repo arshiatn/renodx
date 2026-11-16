@@ -24,6 +24,7 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/hash.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
+#include "../talesofarise_dlss/ue_light_bounce.hpp"
 #include "../twattila/rt_core.hpp"
 #include "../twattila/rt_scene.hpp"
 #include "./dlaa.hpp"
@@ -63,9 +64,10 @@ static twattila::rt_scene::Sliders sliders;
 // (R1's city: 962 of the frame's 3,526 draws); its only reader in the census by name (Shadow at t1) is the mask the rays
 // replace.
 static float skip_shadow_maps = 0.f;
-// Global Illumination's strength (the graphics page's light_bounce_strength; 0: off): the rays' light bounce (One Bounce)
-// or the paths (ReSTIR GI), and with them Path-Traced Ambient.
-static float light_bounce_strength = 0.f;
+// Ambient Occlusion's and Global Illumination's rows (the graphics page's ssao_* and light_bounce_* keys): GT-VBAO's and
+// GT-VBGI's (screen_space.hpp); light_bounce_strength (0: off) also the rays' light bounce (One Bounce) or the paths'
+// (ReSTIR GI), and with them Path-Traced Ambient's.
+static talesofarise::ue_light_bounce::Rows lighting_rows;
 
 namespace internal {
 
@@ -299,7 +301,7 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
                       uint32_t, const reshade::api::rect*) {
   // The rows as Attila's (they need an upscaler), at 100%. Path-Traced Ambient for a host without rt_core's ambient cube
   // (tpa_'s route, Expeditions' 170aa2058): the host's own sky (rt_sky) and the rays' AO off under it (one AO method).
-  twattila::rt_scene::Settings settings = twattila::rt_scene::SettingsOf(sliders, dlaa::sliders, light_bounce_strength, 1.f);
+  twattila::rt_scene::Settings settings = twattila::rt_scene::SettingsOf(sliders, dlaa::sliders, lighting_rows.light_bounce_strength, 1.f);
   settings.path_ambient = sliders.path_ambient != 0.f && settings.path_tracing;
   settings.ambient_occlusion = settings.ambient_occlusion && !settings.path_ambient;
   dlaa::reflections = settings.reflections || settings.specular_occlusion;
@@ -751,7 +753,7 @@ inline void LightBounce(reshade::api::command_list* cmd_list) {
     settings = internal::state.settings;
     frame = internal::state.frame;
   }
-  if (!settings.light_bounce || light_bounce_strength <= 0.f) return;
+  if (!settings.light_bounce || lighting_rows.light_bounce_strength <= 0.f) return;
   // The G-buffer the lighting read (t2 GBuffer1, t3 GBuffer2, t4 GBuffer3, t6 LinearDepth).
   std::array<ComPtr<ID3D11ShaderResourceView>, 4> gbuffer;
   native->PSGetShaderResources(2, 1, gbuffer[0].GetAddressOf());
@@ -840,7 +842,7 @@ inline void LightBounce(reshade::api::command_list* cmd_list) {
   bounce.previous_view_projection = camera.view_projection;
   const Constants apply_constants = {
       .sizes = sizes,
-      .settings = {light_bounce_strength, static_cast<float>(scale)},
+      .settings = {lighting_rows.light_bounce_strength, static_cast<float>(scale)},
       .rows = {camera.view[0], camera.view[1], camera.view[2], 0.f, camera.view[4], camera.view[5], camera.view[6], 0.f, camera.view[8], camera.view[9],
                camera.view[10], 0.f},
   };

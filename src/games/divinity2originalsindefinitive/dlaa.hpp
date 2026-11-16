@@ -51,6 +51,8 @@ static twattila::feature_settings::AaSliders sliders;
 // Ray tracing (ray_tracing.hpp) is on: the main camera and the scene's depth are kept without DLAA too, the bridge made
 // with its ray tracing textures and kept.
 static bool rays = false;
+// GT-VBGI or Bend (screen_space.hpp) want them too (the camera's rows and motion, the scene's depth).
+static bool screen_effects = false;
 // The rays want the G-buffer guides (Ray Reconstruction, the paths, the reflections) and the reflections' textures in the
 // bridge (ray_tracing.hpp's present, as `rays`).
 static bool guides = false;
@@ -58,9 +60,9 @@ static bool reflections = false;
 
 namespace internal {
 
-// DLAA or the rays want the main camera and the scene's depth.
+// DLAA, the rays or the screen-space effects want the main camera and the scene's depth.
 inline bool CameraWanted() {
-  return sliders.method != 0.f || rays;
+  return sliders.method != 0.f || rays || screen_effects;
 }
 
 // PerView (GlobalConstants_DX11.shdh): 15 registers; the buffer may be rounded up to 256 bytes.

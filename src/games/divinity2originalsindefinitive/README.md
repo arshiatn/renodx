@@ -255,6 +255,13 @@ Without the helper (`screen_space.hpp`, Experimental, off until a game run):
   normal) in its pixel shader's place: the game's two blurs, PPApplyAO and
   ClusteredLightingWithSSAO read it as the game's AO. Ray-traced AO and
   Path-Traced Ambient take the chain over: one method.
+- **GT-VBGI** (Global Illumination's method, Strength above 0 with the rays'
+  bounce off): the Total War games' passes (`talesofarise_dlss/ue_light_bounce.hpp`;
+  `bounce_gbuffer.hlsli` reads GBuffer1-3 and LinearizeDepth's depth through
+  the main camera, the last frame's for its history) right after
+  ClusteredLightingWithSSAO, from the scene it lit, added to it times each
+  pixel's diffuse colour: where the rays' bounce goes. No RT/PT (Recommended)
+  leaves it off until a game run shows it here.
 
 Not yet: render scale below 100%, the game's settings above its maximum.
 
@@ -310,8 +317,9 @@ cone response): press Reset before comparing defaults.
   the reflections over its own IBL specular and the screen-space reflections
   left out (the game's DeferredSSRCombine bytes), GT-VBAO in the game's
   reinterleave's place (its depth channel the game's bit for bit, open ground
-  and a corner) and the game's own blur over it, each with a control that
-  must fail.
+  and a corner) and the game's own blur over it, GT-VBGI by a lit wall and
+  its view of the G-buffer (positions, normals, diffuse colour, the last
+  frame's pixel), each with a control that must fail.
 - `test/tw_psychov30_nan`, `test/tw_output_encoding`, `test/tw_device_loss`,
   `test/tw_draw_dispatch`: the shared PsychoV30 guards, the not-configured
   Output, device loss and the fast draw dispatch.

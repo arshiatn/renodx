@@ -836,7 +836,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
         "gets behind thin ones. RTAO: from rays through the scene, in its place.\n"
         "Path-Traced: the sky's light itself from Global Illumination's paths, its shade included.\n"
         "The last two need an upscaler. Restart the game after turning them on.",
-    .gi_tooltip_end = "\nRestart the game after turning it on.",
+    .gi_tooltip_end = "\nGT-VBGI is Experimental here. Restart the game after turning the rays' or the paths' on.",
     .reflections_tooltip =
         "Reflections on metal, water and polished floors.\n"
         "Game's SSR: the original (its light probes, with in-game SSR its screen-space reflections). DXR: from\n"
@@ -1174,13 +1174,17 @@ void ConfigureAddon() {
       },
       .on_drawn = divinity2::ray_tracing::Trace,
   };
+  // After it the light bounce: the rays' or the paths', or GT-VBGI (one method: Global Illumination's).
   custom_shaders[CLUSTERED_LIGHTING_HASH] = {
       .crc32 = CLUSTERED_LIGHTING_HASH,
       .on_draw = [](reshade::api::command_list* cmd_list) {
         divinity2::ray_tracing::OnLighting(cmd_list);
         return true;
       },
-      .on_drawn = divinity2::ray_tracing::LightBounce,
+      .on_drawn = [](reshade::api::command_list* cmd_list) {
+        divinity2::ray_tracing::LightBounce(cmd_list);
+        divinity2::screen_space::OnLit(cmd_list);
+      },
   };
   custom_shaders[REFLECTION_MARCH_HASH] = {
       .crc32 = REFLECTION_MARCH_HASH,
@@ -1254,28 +1258,28 @@ void ConfigureAddon() {
       .tooltip = "With ray-traced shadows: nothing is drawn into the game's sun shadow maps, the rays replace them. Faster.",
       .labels = {"Off", "On"},
   });
-  settings.push_back(new renodx::utils::settings::Setting{
-      .key = "light_bounce_strength",
-      .binding = &divinity2::ray_tracing::light_bounce_strength,
-      .default_value = 0.f,
-      .label = "Strength",
-      .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "Lit ground and walls bounce their light and colour into nearby shadows.\n"
-                 "1: physically correct; 0: off.",
-      .min = 0.f,
-      .max = 4.f,
-      .format = "%.2f",
-  });
+  // Global Illumination's rows (GT-VBGI's, lighting_settings'; Strength also the rays' and the paths'), the
+  // screen-space search's off under the rays; GT-VBGI's own smoothing rows shown with it alone (the rays' bounce here
+  // has its own resolve).
+  auto& lighting_rows = divinity2::ray_tracing::lighting_rows;
+  talesofarise::ue_light_bounce::AppendRows(&settings, &lighting_rows, [] { return divinity2::ray_tracing::sliders.light_bounce != 0.f; });
+  for (auto* setting : settings) {
+    if (setting->key == "light_bounce_strength") {
+      setting->tooltip = "Lit ground and walls bounce their light and colour into nearby shadows.\n1: physically correct; 0: off.";
+    }
+    if (setting->key == "light_bounce_temporal" || setting->key == "light_bounce_denoise" || setting->key == "light_bounce_multi_bounce") {
+      setting->is_visible = [] { return divinity2::ray_tracing::sliders.light_bounce == 0.f; };
+    }
+  }
   // GT-VBAO's rows (screen_space.hpp; the page's method slider writes ssao_mode).
   {
     using renodx::utils::settings::Setting;
     using renodx::utils::settings::SettingValueType;
-    auto& ao = divinity2::screen_space::ao;
     const std::string& section = twattila::feature_settings::AA_SECTION;
     settings.insert(settings.end(), {
                                         new Setting{
                                             .key = "ssao_mode",
-                                            .binding = &ao.mode,
+                                            .binding = &lighting_rows.ssao_mode,
                                             .value_type = SettingValueType::INTEGER,
                                             .default_value = 0.f,
                                             .label = "Ambient Occlusion",
@@ -1284,7 +1288,7 @@ void ConfigureAddon() {
                                         },
                                         new Setting{
                                             .key = "ssao_strength",
-                                            .binding = &ao.strength,
+                                            .binding = &lighting_rows.ssao_strength,
                                             .default_value = 1.f,
                                             .label = "Strength",
                                             .section = section,
@@ -1295,7 +1299,7 @@ void ConfigureAddon() {
                                         },
                                         new Setting{
                                             .key = "ssao_radius",
-                                            .binding = &ao.radius,
+                                            .binding = &lighting_rows.ssao_radius,
                                             .default_value = 1.f,
                                             .label = "Radius",
                                             .section = section,
@@ -1306,7 +1310,7 @@ void ConfigureAddon() {
                                         },
                                         new Setting{
                                             .key = "ssao_thickness",
-                                            .binding = &ao.thickness,
+                                            .binding = &lighting_rows.ssao_thickness,
                                             .default_value = 0.1f,
                                             .label = "Thickness",
                                             .section = section,
@@ -1316,7 +1320,7 @@ void ConfigureAddon() {
                                         },
                                         new Setting{
                                             .key = "ssao_quality",
-                                            .binding = &ao.quality,
+                                            .binding = &lighting_rows.ssao_quality,
                                             .value_type = SettingValueType::INTEGER,
                                             .default_value = 1.f,
                                             .label = "Quality",
@@ -1326,7 +1330,7 @@ void ConfigureAddon() {
                                         },
                                         new Setting{
                                             .key = "ssao_directions",
-                                            .binding = &ao.directions,
+                                            .binding = &lighting_rows.ssao_directions,
                                             .value_type = SettingValueType::INTEGER,
                                             .default_value = 1.f,
                                             .label = "Directions",
@@ -1336,7 +1340,7 @@ void ConfigureAddon() {
                                         },
                                         new Setting{
                                             .key = "ssao_auto_thickness",
-                                            .binding = &ao.auto_thickness,
+                                            .binding = &lighting_rows.ssao_auto_thickness,
                                             .value_type = SettingValueType::BOOLEAN,
                                             .default_value = 0.f,
                                             .label = "Auto Thickness (Experimental)",
@@ -1351,8 +1355,8 @@ void ConfigureAddon() {
   twattila::graphics_page::Apply(&settings, {.aa = &divinity2::dlaa::sliders,
                                              .sss = &no_screen_space_shadows,
                                              .rt = &divinity2::ray_tracing::sliders,
-                                             .ssao_mode = &divinity2::screen_space::ao.mode,
-                                             .light_bounce_strength = &divinity2::ray_tracing::light_bounce_strength,
+                                             .ssao_mode = &lighting_rows.ssao_mode,
+                                             .light_bounce_strength = &lighting_rows.light_bounce_strength,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .has_scale_rows = false,
@@ -1360,11 +1364,17 @@ void ConfigureAddon() {
                                              .rays_preset_as_attila = true,
                                              .path_ambient_tested = false,
                                              .has_screen_space_shadows = false,
-                                             .has_gtvbgi = false,
                                              .rays_tested = false,
                                              .every_row = false});
   const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
   for (auto* setting : settings) {
+    // No RT/PT (Recommended) leaves GT-VBGI off here until a game run shows it (Attila's turns it on).
+    if (setting->value_type == renodx::utils::settings::SettingValueType::BUTTON && setting->label == "No RT/PT (Recommended)") {
+      setting->on_change = [apply = setting->on_change] {
+        apply();
+        renodx::utils::settings::UpdateSettings({{"light_bounce_strength", 0.f}});
+      };
+    }
     if (std::ranges::find(page_sections, setting->section) == page_sections.end()) continue;
     setting->is_visible = [shown = setting->is_visible] { return IsAdvancedSettings() && (shown == nullptr || shown()); };
   }
@@ -1393,6 +1403,8 @@ bool AttachAddon() {
                                       sizeof(shader_injection), __fg_hdr10, 10);
   twattila::reflex::Install();
 
+  // GT-VBGI joins Global Illumination: presets that had it off keep it off (SettingsRevision 2).
+  talesofarise::ue_light_bounce::KeepSavedGiOff(2);
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   twattila::test_hooks::Install(&settings, true, "[Divinity 2]");
   // A ray tracing row on at launch: its scene's shaders kept from the start.
