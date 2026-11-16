@@ -702,8 +702,11 @@ void OnPresentFrame(
       ruse::replay::state.log_next = true;
     }
   }
-  ruse::replay::Replay(ruse::bridge::state.camera_valid ? std::span<const float>(ruse::bridge::state.camera).subspan(16, 16)
-                                                       : std::span<const float>());
+  {
+    const twattila::rt_scene::internal::CpuTime timed(ruse::ray_tracing::Timed(&ruse::ray_tracing::state.steps.replay));
+    ruse::replay::Replay(ruse::bridge::state.camera_valid ? std::span<const float>(ruse::bridge::state.camera).subspan(16, 16)
+                                                         : std::span<const float>());
+  }
   // With the rays the next frame's scene draws are recorded only for a try that takes them: no replay work while they
   // don't trace.
   ruse::replay::state.recording = !ruse::replay::state.rays || ruse::ray_tracing::SceneWanted();
@@ -1410,7 +1413,14 @@ void ConfigureAddon() {
         custom_shaders[bloom] = {.crc32 = bloom, .on_draw = [](reshade::api::command_list* cmd_list) {
                                    ChooseUpscaler();
                                    ruse::ray_tracing::OnBloomStart(cmd_list);
-                                   ruse::bridge::Evaluate(cmd_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
+                                   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
+                                   ruse::bridge::StampPass(host, ruse::bridge::BLOOM);
+                                   {
+                                     const twattila::rt_scene::internal::CpuTime timed(
+                                         ruse::ray_tracing::Timed(&ruse::ray_tracing::state.steps.evaluate));
+                                     ruse::bridge::Evaluate(cmd_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
+                                   }
+                                   ruse::bridge::StampPass(host, ruse::bridge::ANTI_ALIASED);
                                    ruse::ray_tracing::OnBloom(cmd_list);
                                    return true;
                                  }};
@@ -1424,7 +1434,7 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Anti-Aliasing GPU Sync (Experimental)",
         .section = AA_SECTION,
-        .tooltip = "The GPU waits for the anti-aliasing instead of the CPU (faster when it works).\n"
+        .tooltip = "The GPU waits for the anti-aliasing and the ground's passes instead of the CPU (faster when it works).\n"
                    "Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
@@ -1542,7 +1552,7 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Ray-Traced Ground Shadows (Experimental)",
         .section = SHADOWS_SECTION,
-        .tooltip = "Ray-traced sun shadows on the ground in place of the game's shadow maps (costs CPU and GPU time).\n"
+        .tooltip = "Ray-traced sun shadows on the ground, with the game's shadow maps (costs CPU and GPU time).\n"
                    "Needs Anti-Aliasing at DLAA, FSR or XeSS. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
@@ -1563,7 +1573,7 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Ray-Traced Object Shadows (Experimental)",
         .section = SHADOWS_SECTION,
-        .tooltip = "Ray-traced sun shadows on buildings, units and trees in place of the game's shadow maps (costs GPU time).\n"
+        .tooltip = "Ray-traced sun shadows on buildings, units and trees, with the game's shadow maps (costs GPU time).\n"
                    "Moving units' shadows are a frame late. Needs Ray-Traced Ground Shadows. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
@@ -1579,8 +1589,41 @@ void ConfigureAddon() {
       }
     }
   }
+  // Off, the rays keep the game's shadow maps (the darker of the two) until a run proves they hold the maps' casters.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RuseRaysReplaceShadowMaps",
+      .binding = &ruse::ray_tracing::state.replace_maps,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Rays Replace Shadow Maps (Experimental)",
+      .section = SHADOWS_SECTION,
+      .tooltip = "On: the ray-traced shadows alone, in place of the game's shadow maps.\n"
+                 "Off: both, the darker of the two (no shadow of the game's is lost).",
+      .is_enabled = [] { return ruse::ray_tracing::state.ground; },
+  });
+  // One frame's passes on the game's D3D9 queue, into ReShade.log.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+      .label = "Time Each Pass (One Frame)",
+      .section = SHADOWS_SECTION,
+      .tooltip = "The GPU's time of the next frame's passes (the game's and the add-on's), written to ReShade.log.",
+      .on_change = [] { ruse::bridge::state.pass_timing.requested = true; },
+  });
+  // What the ground's passes made this frame, over the scene (live).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RuseGroundDebugView",
+      .binding = &ruse::ray_tracing::state.debug_view,
+      .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+      .default_value = 0.f,
+      .label = "Ground Debug View",
+      .section = SHADOWS_SECTION,
+      .tooltip = "Shows what the ground's shadow and ambient occlusion rows made this frame (black: shadowed or occluded;\n"
+                 "magenta: nothing made).",
+      .labels = {"Off", "Ground Shadow Mask", "Sun Visibility", "Ambient Occlusion"},
+      .is_enabled = [] { return ruse::ray_tracing::Shading(); },
+  });
   // Attila's row (live): the helper leaves out the moving replayed draws (the replay's compact ones, rt_core's units)
-  // past the range; it takes 65,535 world units at most (655 m at a centimetre a unit).
+  // past the range (metres: ray_tracing.hpp HELPER_METRES).
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedUnitsRange",
       .binding = &ruse::ray_tracing::state.units_range,
@@ -1623,9 +1666,9 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Screen-Space Ground Shadows (Experimental)",
         .section = SHADOWS_SECTION,
-        .tooltip = "Bend Studio's screen-space sun shadows on the ground: hills and slopes shadow what lies behind them, with the\n"
-                   "game's shadow maps (costs GPU time). Off under Ray-Traced Ground Shadows. Needs Anti-Aliasing at DLAA, FSR or\n"
-                   "XeSS. Restart after changing this setting.",
+        .tooltip = "Bend Studio's screen-space sun shadows on the ground: hills, buildings, units and trees shadow what lies behind\n"
+                   "them, with the game's shadow maps (costs GPU time). Off under Ray-Traced Ground Shadows. Needs Anti-Aliasing at\n"
+                   "DLAA, FSR or XeSS. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
     };
@@ -1643,8 +1686,9 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Screen-Space Ground Ambient Occlusion (Experimental)",
         .section = AO_SECTION,
-        .tooltip = "GT-VBAO ambient occlusion on the ground: softly darker in hollows and at the foot of slopes (costs GPU time).\n"
-                   "Works without the helper; the ray-traced ground ambient occlusion replaces it where it runs.\n"
+        .tooltip = "GT-VBAO ambient occlusion on the ground: softly darker in hollows, at the foot of slopes and around buildings,\n"
+                   "units and trees (costs GPU time). Without Anti-Aliasing at DLAA, FSR or XeSS: hollows and slopes alone.\n"
+                   "The ray-traced ground ambient occlusion replaces it where it runs.\n"
                    "Needs the in-game anti-aliasing at 1x. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
@@ -1740,7 +1784,9 @@ void ConfigureAddon() {
   }
   if (ruse::bridge::state.enabled || ruse::replay::state.enabled || ruse::ray_tracing::state.vbao) {
     // The camera pass: its matrices (c0-c8) as it drew (the bridge's motion, the replay's placements).
-    custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list*) {
+    custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list* cmd_list) {
+                                    ruse::bridge::StampPass(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()),
+                                                            ruse::bridge::CAMERA_PASS);
                                     std::memcpy(ruse::bridge::state.camera.data(), ruse::bridge::state.pixel_registers.data(),
                                                 sizeof(ruse::bridge::state.camera));
                                     ruse::bridge::state.camera_valid = true;

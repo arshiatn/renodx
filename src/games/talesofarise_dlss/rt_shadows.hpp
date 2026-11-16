@@ -193,8 +193,9 @@ constexpr std::array<MaskedShader, 89> MASKED_SHADERS = {{
 constexpr uint32_t SUN_SHADOW_SHADER = 0x2084C889;
 // Where the HDR addon's sun shadow mask reads the visibility.
 constexpr UINT VISIBILITY_SLOT = 40;
-// The sun texture (0x7A1E0D12): toward the sun, the camera, TranslatedWorldToClip (4), PreViewTranslation, view size.
-constexpr UINT SUN_TEXELS = 8;
+// The sun texture (0x7A1E0D12): toward the sun, the camera, TranslatedWorldToClip (4), PreViewTranslation, view size,
+// the game's sky light (SkyLightColor, the 7 rows of SkyIrradianceEnvironmentMap: rt_surface.hlsli SkyLight).
+constexpr UINT SUN_TEXELS = 16;
 
 // Ray-traced sun shadows (Experimental): the HDR addon's sun shadow mask keeps the darker of its shadow map and these
 // (t40). Soft: the sun's disk angular radius (degrees; 0 hard): penumbras from each ray's blocker distance.
@@ -207,6 +208,9 @@ static std::atomic_bool character_shadows = true;
 static std::atomic_bool ambient_occlusion = false;
 static std::atomic<float> ambient_range = 200.f;
 static std::atomic<uint32_t> ambient_rays = 2;
+// Path-Traced Ambient (with path tracing): those rays weighted by the game's sky light toward each (SkyLight): the share
+// of the sky's light that escapes, in place of the game's AO under its ambient (the bounce light the paths').
+static std::atomic_bool sky_weighted_ambient = false;
 // Ray-traced bounce light (Experimental): rays around each pixel's normal find the nearest surface within the range
 // (UE centimetres), whose light is last frame's scene colour there (CaptureSceneColor); accumulated over frames and
 // filtered, the HDR addon's lighting pass adds it times the base colour (t42).
@@ -226,6 +230,9 @@ static std::atomic_bool specular_occlusion = false;
 static std::atomic_bool path_tracing = false;
 static std::atomic<uint32_t> path_bounces = 2;
 static std::atomic<uint32_t> path_samples = 1;
+// DXR 1.2 (Experimental): the paths as a ray generation shader with shader execution reordering (0x7A1E0D1C); off: the
+// compute paths with micromaps (0x7A1E0D34; Attila measured reordering slower at every size).
+static std::atomic_bool path_reorder = false;
 // The add-on's Agility SDK folder (D3D12Core.dll), set at load; empty or missing: Windows' D3D12 (DXR 1.1).
 static std::string agility_folder;
 
@@ -540,7 +547,7 @@ struct Gpu {
   ComPtr<ID3D12PipelineState> cache_resolve_pipeline;  // 0x7A1E0D16
   ComPtr<ID3D12PipelineState> scene_data_pipeline;    // 0x7A1E0D19
   ComPtr<ID3D12PipelineState> micromap_pipeline;      // 0x7A1E0D1A (DXR 1.2)
-  ComPtr<ID3D12PipelineState> path_pipeline;          // 0x7A1E0D1B (without DXR 1.2)
+  ComPtr<ID3D12PipelineState> path_pipeline;          // 0x7A1E0D1B (0x7A1E0D34 with DXR 1.2)
   ComPtr<ID3D12PipelineState> learn_pipeline;         // 0x7A1E0D1D
   ComPtr<ID3D12PipelineState> specular_pipeline;      // 0x7A1E0D1E
   ComPtr<ID3D12PipelineState> sun_pipeline;           // 0x7A1E0D1F
@@ -1105,14 +1112,14 @@ inline bool Initialize(ID3D11Device* game_device) {
       || !pipeline(__0x7A1E0D16, &gpu.cache_resolve_pipeline) || !pipeline(__0x7A1E0D19, &gpu.scene_data_pipeline)
       || !pipeline(__0x7A1E0D1D, &gpu.learn_pipeline) || !pipeline(__0x7A1E0D1E, &gpu.specular_pipeline)
       || !pipeline(__0x7A1E0D1F, &gpu.sun_pipeline)
-      || (!gpu.dxr12 && !pipeline(__0x7A1E0D1B, &gpu.path_pipeline))
+      || !pipeline(gpu.dxr12 ? std::span<const uint8_t>(__0x7A1E0D34) : std::span<const uint8_t>(__0x7A1E0D1B), &gpu.path_pipeline)
       || FAILED(device12->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(gpu.descriptors.GetAddressOf())))) {
     Fail("the ray query shaders failed (needs shader model 6.5).");
     release();
     return false;
   }
-  // DXR 1.2: the opacity micromaps' bake, and the path tracing as a ray generation shader (shader execution
-  // reordering); without them, the compute path tracing and no micromaps.
+  // DXR 1.2: the opacity micromaps' bake, and the path tracing also as a ray generation shader (shader execution
+  // reordering, the Experimental row); without them, the compute path tracing and no micromaps.
   if (gpu.dxr12) {
     const D3D12_EXPORT_DESC export_desc = {.Name = L"PathTraceRayGen"};
     const D3D12_DXIL_LIBRARY_DESC library = {
@@ -1153,6 +1160,7 @@ inline bool Initialize(ID3D11Device* game_device) {
       gpu.micromap_pipeline.Reset();
       gpu.path_shader_table.Reset();
       gpu.pipeline.Reset();
+      gpu.path_pipeline.Reset();
       if (!pipeline(__0x7A1E0D13, &gpu.pipeline) || !pipeline(__0x7A1E0D1B, &gpu.path_pipeline)) {
         Fail("the ray query shaders failed (needs shader model 6.5).");
         release();
@@ -1253,7 +1261,7 @@ inline bool Initialize(ID3D11Device* game_device) {
   device12->CreateUnorderedAccessView(gpu.triangle_normals.Get(), nullptr, &normals_written, DescriptorAt(TRIANGLE_NORMALS_WRITTEN));
   // The effects' own textures and the radiance cache are made when first on; until then their descriptors are null.
   NullDescriptors();
-  state.status = std::format("Running ({}; {}).", gpu.dxr12 ? "DXR 1.2: opacity micromaps, shader execution reordering" : "DXR 1.1",
+  state.status = std::format("Running ({}; {}).", gpu.dxr12 ? "DXR 1.2: opacity micromaps" : "DXR 1.1",
                              agility ? "Agility SDK" : agility_reason);
   return true;
 }
@@ -2236,6 +2244,7 @@ inline bool Trace(ID3D11DeviceContext* context) {
       static_cast<uint32_t>(state.frame),
       (sun_shadows ? 1u : 0u) | (ambient_occlusion.load(std::memory_order_relaxed) ? 2u : 0u) | (bounce ? 4u : 0u)
           | (history_valid ? 8u : 0u) | (reflect ? 16u : 0u) | (cache_valid ? 32u : 0u) | (bounce_history ? 64u : 0u)
+          | (sky_weighted_ambient.load(std::memory_order_relaxed) ? 128u : 0u)
           | (character_shadows.load(std::memory_order_relaxed) ? 256u : 0u) | (pt ? 512u : 0u)
           | (specular_occlusion.load(std::memory_order_relaxed) ? 2048u : 0u)
           | (reconstructing.load(std::memory_order_relaxed) ? 8192u : 0u),
@@ -2473,11 +2482,11 @@ inline LightingResult TraceLighting(ID3D11DeviceContext* context, const std::arr
   }
   list->SetComputeRoot32BitConstants(internal::ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
   const auto uav_barrier = internal::UavBarrier();
-  // Learning (base colours into the cache, the learned lighting's sums), then the paths (SER on DXR 1.2).
+  // Learning (base colours into the cache, the learned lighting's sums), then the paths (SER: DXR 1.2 and the row).
   list->SetPipelineState(gpu.learn_pipeline.Get());
   list->Dispatch((gpu.width / 2 + 7) / 8, (gpu.height / 2 + 7) / 8, 1);
   list->ResourceBarrier(1, &uav_barrier);
-  if (gpu.dxr12) {
+  if (gpu.dxr12 && path_reorder.load(std::memory_order_relaxed)) {
     list->SetPipelineState1(gpu.path_state_object.Get());
     const D3D12_DISPATCH_RAYS_DESC rays = {
         .RayGenerationShaderRecord = {.StartAddress = gpu.path_shader_table->GetGPUVirtualAddress(),
@@ -2530,6 +2539,14 @@ inline ComPtr<ID3D11ShaderResourceView> AmbientOcclusion() {
   const std::shared_lock lock(state.mutex);
   if (state.traced_frame != state.frame) return nullptr;
   return state.gpu.ambient.srv;
+}
+
+// The rays' AO reached last frame's lighting: a pass before this frame's trace (Bandai's SSAO) may leave the AO to them.
+inline bool AmbientOcclusionTracedLastFrame() {
+  using internal::state;
+  if (!ambient_occlusion.load(std::memory_order_relaxed)) return false;
+  const std::shared_lock lock(state.mutex);
+  return state.traced_frame + 1 == state.frame;
 }
 
 // This frame's ray-traced bounce light (not path traced) for the lighting pass (t42), or null (off, or not traced this
@@ -2623,8 +2640,8 @@ inline void OnPresent(ID3D11DeviceContext* context) {
       D3D11_MAPPED_SUBRESOURCE mapped = {};
       if (SUCCEEDED(context->Map(gpu.sun_readback.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
         const auto* sun = static_cast<const float*>(mapped.pData);
-        state.trace += std::format("toward the sun {:.3f} {:.3f} {:.3f} (valid {:.0f}), camera {:.0f} {:.0f} {:.0f}\n",
-                                   sun[0], sun[1], sun[2], sun[3], sun[4], sun[5], sun[6]);
+        state.trace += std::format("toward the sun {:.3f} {:.3f} {:.3f} (valid {:.0f}), camera {:.0f} {:.0f} {:.0f}, sky light colour {:.4f} {:.4f} {:.4f}\n",
+                                   sun[0], sun[1], sun[2], sun[3], sun[4], sun[5], sun[6], sun[32], sun[33], sun[34]);
         context->Unmap(gpu.sun_readback.Get(), 0);
       }
     }

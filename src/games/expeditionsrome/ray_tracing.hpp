@@ -65,6 +65,14 @@ namespace internal {
 constexpr uint32_t VIEW_WORLD_TO_CLIP = 4;
 constexpr uint32_t VIEW_WORLD_CAMERA_ORIGIN = 63;
 constexpr uint32_t VIEW_LIGHT_OUTPUT_SCALE = 129;
+// The sky light (Path-Traced Ambient's sky): SkyLightColor (162) and SkyIrradianceEnvironmentMap (163-169: Unreal's
+// GetSkySHDiffuse), as the sky light passes shaders/skylight00-02 read them.
+constexpr uint32_t VIEW_SKY_LIGHT_COLOR = 162;
+constexpr uint32_t VIEW_SKY_IRRADIANCE = 163;
+constexpr uint32_t VIEW_ROWS = VIEW_SKY_IRRADIANCE + 7;
+// The sky light passes and the slot their Path-Traced Ambient switch reads (shared.h ExrPathAmbient).
+constexpr std::array<uint32_t, 3> SKY_LIGHT_SHADERS = {0x6C9A1DD0, 0x62008428, 0x5E77BB26};
+constexpr UINT PATH_AMBIENT_SLOT = 120;
 // FDeferredLightUniformStruct: ShadowedBits (c2.x), the light's colour (c4.xyz), the direction toward the light (c5.xyz);
 // bound 144 - 256 bytes.
 constexpr uint32_t LIGHT_SHADOWED_BITS = 2;
@@ -117,6 +125,9 @@ struct State {
   uint32_t resolved_index = 0;
   uint64_t resolved_frame = UINT64_MAX;
   uint64_t shadowed_frame = UINT64_MAX;  // the rays' sun shadows' last draw
+  // Path-Traced Ambient: the last frame the light bounce added the paths' sky, and the sky light passes' switch (1 x 1).
+  uint64_t sky_frame = UINT64_MAX;
+  ComPtr<ID3D11ShaderResourceView> path_ambient_switch;
   std::array<float, 16> view_projection = {};
   std::array<float, 16> previous_view_projection = {};
 };
@@ -193,6 +204,11 @@ inline bool PrepareDevice(ID3D11Device* device) {
                                   .BlendOpAlpha = D3D11_BLEND_OP_ADD, .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALPHA};
   const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC bounce_desc = {.ByteWidth = 96, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  constexpr uint8_t SWITCH_ON = 255;
+  const D3D11_TEXTURE2D_DESC switch_desc = {.Width = 1, .Height = 1, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R8_UNORM,
+                                            .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  const D3D11_SUBRESOURCE_DATA switch_data = {.pSysMem = &SWITCH_ON, .SysMemPitch = 1};
+  ComPtr<ID3D11Texture2D> switch_texture;
   state.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
                  || FAILED(device1->CreateDeviceContextState(state_flags, &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1),
                                                              nullptr, state.private_state.ReleaseAndGetAddressOf()))
@@ -210,7 +226,9 @@ inline bool PrepareDevice(ID3D11Device* device) {
                  || FAILED(device->CreateComputeShader(__0x7A1E0D49.data(), __0x7A1E0D49.size(), nullptr, state.resolve.ReleaseAndGetAddressOf()))
                  || FAILED(device->CreatePixelShader(__0x7A1E0D4A.data(), __0x7A1E0D4A.size(), nullptr, state.apply.ReleaseAndGetAddressOf()))
                  || FAILED(device->CreateBlendState(&add_desc, state.add.ReleaseAndGetAddressOf()))
-                 || FAILED(device->CreateBuffer(&bounce_desc, nullptr, state.bounce_constants.ReleaseAndGetAddressOf()));
+                 || FAILED(device->CreateBuffer(&bounce_desc, nullptr, state.bounce_constants.ReleaseAndGetAddressOf()))
+                 || FAILED(device->CreateTexture2D(&switch_desc, &switch_data, switch_texture.GetAddressOf()))
+                 || FAILED(device->CreateShaderResourceView(switch_texture.Get(), nullptr, state.path_ambient_switch.ReleaseAndGetAddressOf()));
   if (state.failed) renodx::utils::log::w("[Rome ray tracing] Could not create its shaders or states.");
   return !state.failed;
 }
@@ -376,6 +394,18 @@ void OnSunLit(Context& command, const void*) {
   const std::array<ID3D11ShaderResourceView*, 6> views = {state.resolved[current].srv.Get(), state.resolved_positions[current].srv.Get(),
                                                           bridge.rt_positions.srv.Get(), gbuffer[0].Get(), gbuffer[1].Get(), gbuffer[2].Get()};
   FullScreen(context1.Get(), target.Get(), state.add.Get(), state.apply.Get(), views, constant_buffers);
+  // Path-Traced Ambient: this bounce brought the paths' sky (rt_core's path_ambient_on, once they learned the game's
+  // light): this frame's sky light passes leave Unreal's diffuse sky light out (OnSkyLight).
+  bool paths_sky = false;
+  {
+    auto& runtime = twattila::rt_scene::internal::runtime;
+    const std::unique_lock runtime_lock(runtime.mutex);
+    paths_sky = runtime.path_ambient_on;
+  }
+  if (paths_sky) {
+    const std::unique_lock lock(state.mutex);
+    state.sky_frame = frame;
+  }
 }
 
 // The sun's deferred light draw: its camera and sun to the helper, the guides, the trace; then the traced sun into the
@@ -404,11 +434,14 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   const UINT light_first = std::min(first_constants[1] * 16, light_desc.ByteWidth);
   const UINT light_bytes = std::min(light_desc.ByteWidth - light_first, constant_counts[1] * 16);
   if (light_bytes < MIN_LIGHT_BYTES || light_bytes > MAX_LIGHT_BYTES || constant_counts[0] <= VIEW_LIGHT_OUTPUT_SCALE) return {};
-  std::array<std::array<float, 4>, VIEW_LIGHT_OUTPUT_SCALE + 1> view = {};
+  // The View's rows up to the sky light's where its range holds them (Path-Traced Ambient's sky below), else to 129.
+  const UINT view_rows = std::min(VIEW_ROWS, constant_counts[0]);
+  std::array<std::array<float, 4>, VIEW_ROWS> view = {};
   std::array<std::array<float, 4>, LIGHT_DIRECTION + 1> light = {};
-  talesofarise::dlss::constants::Watch(buffers[0].Get(), (first_constants[0] * 16) + static_cast<uint32_t>(sizeof(view)));
+  talesofarise::dlss::constants::Watch(buffers[0].Get(), (first_constants[0] + view_rows) * 16);
   talesofarise::dlss::constants::Watch(buffers[1].Get(), light_first + static_cast<uint32_t>(sizeof(light)));
-  if (!talesofarise::dlss::constants::Read(buffers[0].Get(), uint64_t{first_constants[0]} * 16, std::as_writable_bytes(std::span(view)))
+  if (!talesofarise::dlss::constants::Read(buffers[0].Get(), uint64_t{first_constants[0]} * 16,
+                                           std::as_writable_bytes(std::span(view).first(view_rows)))
       || !talesofarise::dlss::constants::Read(buffers[1].Get(), light_first, std::as_writable_bytes(std::span(light)))) {
     return {};
   }
@@ -485,6 +518,33 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   twattila::rt_scene::WriteSun(context, {direction[0] / direction_length, direction[1] / direction_length, direction[2] / direction_length},
                                {color[0] * scale, color[1] * scale, color[2] * scale, 1.f});
   auto& bridge = twattila::dlaa_bridge::bridge;
+  // Path-Traced Ambient's sky (dlaa_helper/rt_path.hlsli SkyLight, OpenSky): Unreal's sky light toward +x, -x, +y, -y,
+  // +z, -z (GetSkySHDiffuse x SkyLightColor x View 129.y, as skylight00-02 light the diffuse colour) into the sun
+  // texture's texels 3-8, w 1 (texel 4's: the sky's scale, the game's units), texel 6's w 0 (Unreal's up is z: no
+  // stretch of y, which Attila's sun light shaders have). Without it, or without the View's sky rows: zeros (no sky).
+  std::array<std::array<float, 4>, 6> sky = {};
+  if (settings.path_ambient && view_rows == VIEW_ROWS && bridge.rt_sun.texture) {
+    for (size_t side = 0; side < sky.size(); ++side) {
+      std::array<float, 3> normal = {};
+      normal[side / 2] = (side % 2 == 0) ? 1.f : -1.f;
+      const std::array<float, 4> linear = {normal[0], normal[1], normal[2], 1.f};
+      const std::array<float, 4> quadratic = {normal[0] * normal[1], normal[1] * normal[2], normal[2] * normal[2], normal[2] * normal[0]};
+      const float band = (normal[0] * normal[0]) - (normal[1] * normal[1]);
+      for (size_t channel = 0; channel < 3; ++channel) {
+        float irradiance = view[VIEW_SKY_IRRADIANCE + 6][channel] * band;
+        for (size_t component = 0; component < 4; ++component) {
+          irradiance += (view[VIEW_SKY_IRRADIANCE + channel][component] * linear[component])
+                        + (view[VIEW_SKY_IRRADIANCE + 3 + channel][component] * quadratic[component]);
+        }
+        sky[side][channel] = std::max(irradiance, 0.f) * view[VIEW_SKY_LIGHT_COLOR][channel] * view[VIEW_LIGHT_OUTPUT_SCALE][1];
+      }
+      sky[side][3] = (side == 3) ? 0.f : 1.f;
+    }
+  }
+  if (bridge.rt_sun.texture) {
+    const D3D11_BOX sky_texels = {.left = 3, .top = 0, .front = 0, .right = 9, .bottom = 1, .back = 1};
+    context->UpdateSubresource(bridge.rt_sun.texture.Get(), 0, &sky_texels, sky.data(), static_cast<UINT>(sizeof(sky)), 0);
+  }
   if (guides && bridge.guides) {
     const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
     const std::array<UINT, 4> size = {render_size[0], render_size[1], 0, 0};
@@ -604,6 +664,28 @@ constexpr auto OnReflection = []<typename Context>(Context& command) -> renodx::
   return {.bypass = true};
 };
 
+// The sky light passes (shaders/skylight00-02): Path-Traced Ambient's switch at t120 while this frame's light bounce
+// brought the paths' sky (OnSunLit; a frame without it keeps Unreal's diffuse sky light), unbound in a finalize callback.
+constexpr auto OnSkyLight = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  ComPtr<ID3D11ShaderResourceView> path_ambient_switch;
+  {
+    const std::unique_lock lock(state.mutex);
+    if (state.sky_frame != state.frame) return {};
+    path_ambient_switch = state.path_ambient_switch;
+  }
+  auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
+  if (context == nullptr || !path_ambient_switch) return {};
+  context->PSSetShaderResources(PATH_AMBIENT_SLOT, 1, path_ambient_switch.GetAddressOf());
+  return {.finalize_callback = [](Context& post, const void*) {
+    auto* post_context = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&post_context);
+    if (post_context == nullptr) return;
+    ID3D11ShaderResourceView* const none = nullptr;
+    post_context->PSSetShaderResources(PATH_AMBIENT_SLOT, 1, &none);
+  }};
+};
+
 }  // namespace internal
 
 inline const twattila::rt_scene::Host HOST = {
@@ -672,11 +754,16 @@ inline void Install() {
                                                                        .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   renodx::utils::command_action::Register(internal::OnReflection, {.shader_hash = REFLECTION_SHADER,
                                                                    .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  for (const uint32_t sky_light_shader : internal::SKY_LIGHT_SHADERS) {
+    renodx::utils::command_action::Register(internal::OnSkyLight, {.shader_hash = sky_light_shader,
+                                                                   .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
 }
 
 inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnLightRectangle);
   renodx::utils::command_action::Unregister(internal::OnReflection);
+  renodx::utils::command_action::Unregister(internal::OnSkyLight);
   twattila::rt_scene::UninstallScene();
 }
 
@@ -700,6 +787,7 @@ inline void Release(reshade::api::device* device) {
     state.resolved = {};
     state.resolved_positions = {};
     state.bounce_size = {};
+    state.path_ambient_switch.Reset();
     state.failed = false;
   }
   twattila::rt_scene::OnDestroyDevice(device);

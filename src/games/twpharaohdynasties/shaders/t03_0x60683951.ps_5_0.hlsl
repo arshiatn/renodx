@@ -445,7 +445,7 @@ void main(
         r0.z = r0.z * r3.w;
         r3.w = (int)r6.y | (int)r7.y;
         r0.z = r2.w * r0.z;
-        r0.z = (int)r0.z & (int)r3.w;
+        r0.z = (r3.w != 0) ? r0.z : 0;  // the game's `and` (its mask r3.w -1 or 0 here): the height fog kept or zeroed, not cut to an integer
         r0.z = r2.w * abs(r6.w) + r0.z;
         r2.w = 2.20000002e-005 * r4.w;
         r6.xyw = g_rayleigh_density.xyz * r4.yyy + r2.www;

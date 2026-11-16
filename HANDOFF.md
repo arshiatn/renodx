@@ -158,6 +158,15 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] C: Rome Remastered Modded Auto Exposure Sensitivity default 1 instead of 2? (battle-like scene: +0.014 stops at 2, +0.19 at 1, +0.29 at 0.6; the row is off by default) (from: "s2r_ not done ...")
 - [ ] B: Shogun 2 decals under Ray-Traced AO now take the rays' AO like the ground around them (before: the game's SSAO): look right? (from: "s2r_ not done ...")
 - [x] ANSWERED 22:1x (ATN: "Idk, if you can add a row and its default should be what we have right now": an Experimental row, off = today's blur; code box below, owner tw1_) C: Attila / Thrones under RT reflections: the game's reflection blur still widens the rays' reflection by roughness (up to 2 texels x effects share; the rays already follow a roughness lobe). Keep it (today's look) or skip it where the rays reflect (sharper, an Experimental row)? (from: tw1_ 11-16 A4)
+- [ ] C: Troy menuvideo01 now matches the game's look exactly (up to 0.037 of the encoded value) instead of the old sRGB decode: keep? (from: tw2_ 11-16)
+- [ ] C: Rome II cut-outs: include the 16 alpha_overlay pixel shaders too? (rigid parts use the game's 0.35 threshold, units 0.5) (from: tw2_ 11-16)
+- [ ] C: Pharaoh pools under RT AO: open AO on the pools now, or wait for the shared AO-reader list? (from: tw2_ 11-16)
+- [ ] C: WH3 sun shadows Multiply row: keep it as the off switch (Replace is the default)? (from: tw2_ 11-16)
+- [ ] C: Expeditions No Distance Field AO Under Ours (Experimental, off): on by default? Lighter under overhangs, saves 0.298 ms. (from: tpa_ 11-16)
+- [ ] C: Expeditions 192686A0 keeps the game's AO on baked light under RT AO (two methods): move our trace earlier, or a deferred multiply? (from: tpa_ 11-16)
+- [ ] C: R.U.S.E. Rays Replace Shadow Maps: off now (darker of the two) until the A/B run shows the rays hold the maps' casters (sprite imposters, off-screen casters); then on, per your replace rule? (from: rur2_ 11-16)
+- [ ] C: R.U.S.E. map table: rays cost 24.58 ms (41 fps) vs 6.56 with DLAA alone. Keep them, or rays off above an eye height (a look change at the table)? (from: rur2_ 11-16)
+- [ ] C: R.U.S.E. Bend: +1.1 ms, no caster shadow in the harness. If Ground Debug View 2 shows nothing in game either, drop the row? (from: rur2_ 11-16)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -203,10 +212,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN DECIDES: Ryse's helper DLSS presets L/M get the sqrt feed (Attila's dark-ton ... | ATN after R0
 - WARP check of rt_specular_merge; switch to twattila/settings_pages.hpp once it d ... | next Ryse round
 - Port the new shader families (tools/nontw/ryse/rym_shaders: families.tsv): tonem ... | next Ryse round (after R0)
-- Tales' rays still run in process (rt_shadows.hpp on its own D3D12 device): move ... | next UE round
+- (tpa_ 11-16 plan: host on DEPTH_SHADERS / MASKED_SHADERS, WriteSun at 2084C889, ... | next UE round
 - ATN DECIDES: Tales' rays now need an upscaler on (before: also with the game's T ... | ATN
 - Dead files: talesofarise_dlss/rr_d3d12.hpp (no user), ngx_backend.hpp, 0x7A1E0D4 ... | coordinator, release round
-- Expeditions left: the three max(0) carve materials (G1 data run), micromaps star ... | next UE round (after G1)
+- (tpa_ 11-16: Bend / GT-VBGI already 51c464877, NRD default, tests build 42a1b3b7 ... | next UE round (after G1)
 - Skip the game's point-shadow casters under the row (shadow_pointlight VS 7DF3D76 ... | next D3D11 round
 - In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows + ... | ATN (in game)
 - Real GT-VBAO savings need per-sample math changes (look change): visual A/B, ATN ... | later
@@ -216,9 +225,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - +265 MB VRAM for the bounce-size ReSTIR record. Owner: next ReSTIR round | next ReSTIR round
 - Faster-with-a-look-risk list for ATN (numbers in the reply 12:1x): Lean ReSTIR R ... | ATN
 - Release round: player / release zips carry no Streamline (release_zip.py, player ... | coordinator, release round
-- Tales: G2's camp save has no torch / night / indoor view; the in-process RT has ... | next UE round
-- Expeditions rays-on DLAA 22.9 fps with GPU busy 9.31 ms (frame 43.7 ms): a stall ... | next UE round
-- Expeditions unreplaced post into 8-bit f90 targets before the tonemapper: A45907 ... | next UE round
+- (tpa_ 11-16: G2 does have local lights 038D003A, ledger fixed; night / indoor sa ... | next UE round
 - ATN by eye (Divinity 1): Hue Clip 70 in Extended / V35. Owner: ATN | ATN
 - (steps 9-10 DONE div1_ 315588b61: helper DLAA / FSR / XeSS at 100 %, b12 jitter, ... | d1_ after R1
 - ATN at the end (Divinity 1): drop or keep the legacy V30 / Pragmap modes. Owner: ... | ATN
@@ -228,7 +235,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Divinity 2 next run: what triggers the orthographic camera (tactical toggle?); A ... | next Divinity 2 run / ht_
 - ATN at the end (Divinity 2): mid grey row's default; old presets / V30 keep or d ... | ATN
 - R.U.S.E. U1 run (after ReShade + the stamped add-on are installed on D:): Frame ... | coordinator (next game window, ATN's OK)
-- R.U.S.E. open ledger rows: Time Each Pass (D3D9 timestamp queries, optional); th ... | ru_ / release round
+- (Time Each Pass with D3D9 queries DONE rur2_ efc3c40ec, test 13; LEFT: HDR-only ... | ru_ / release round
 - ATN DECIDES (R.U.S.E.): keep R.U.S.E.'s own V31 rows or move to Attila's 15 v31_ ... | ATN
 - R.U.S.E. C2: 15 marker / map-interface draws pre-undo the post grade (authored c ... | ru_
 - ATN at the end (R.U.S.E.): Extended replacing V31 Native Tone or beside it; Hue ... | ATN
@@ -241,16 +248,16 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Attila / Thrones / Rome II / WH1 / WH2 / Troy / Pharaoh / WH3 2.2 GC in HDR: ATN ... | ATN
 - (hca_: steps 4 / 5 done; left: step 2 = the R.U.S.E. T-run list, step 6 = ATN) A ... | coordinator (steps 2, 4, 5), ATN (step 6)
 - dvf_ not done: VFX / indicator Experimental rows in both games (D1 633 FX_MAT an ... | next Divinity round / runs, ATN (VFX scope, C rows)
-- tex_ not done: Expeditions Video AutoHDR (NV12 convert ps 0x524CDCDF; needs one ... | next UE round, coordinator (release), shs_
-- w3f_ not done: vanilla_exact over every WH3 shader + a lensflare00 control (~20 ... | next WH3 round, shs_
+- (tpa_ 11-16: PT Ambient DONE 170aa2058 / 99b372c7a; double-work table in the led ... | next UE round, coordinator (release), shs_
+- (tw2_ 11-16 DONE: vanilla_exact over all 31 WH3 PS 144df3b82 (22 EXACT, t00 acce ... | next WH3 round, shs_
 - (tw3_ 11-16 DONE: RomeR Modded Auto Exposure 0774c682f (Extra, off; off = game b ... | next Shogun 2 / Rome Remastered rounds and data runs
 - gpu2_ next wins: (1) paths at 128 registers (split trace / shade, or SASS livene ... | next GPU round, next ReSTIR round, tools owner
-- Shared leftovers (shs_ / ryf_): rt_core OnAnyDraw replays every draw while trace ... | next shared round, next WH3 round, release round
+- (WH3 shadowed point lights with RtLocalLightTraced DONE tw2_ 8c4e848c7, WARP par ... | next shared round, next WH3 round, release round
 - ryf_ not done: row 9 e_GsmLodsNum under the rays' sun (trace: which lod is the c ... | next Ryse round / data run
-- tpf_ not done: Torch / Fire Shadows on the 7 other point-light PS per game (14 W ... | next Troy / Pharaoh round, data run
+- (tw2_ 11-16 DONE: Troy point lights 7b7dff2c4 ps_compare 7/7, Pharaoh 7e9972097 ... | next Troy / Pharaoh round, data run
 - (tw1_ 11-16 DONE: (a) Replace on by default WH1 / WH2 5d9810cd1, part 29 bit for ... | next WH1 / WH2 round
-- rux_ not done: RT debug view, moving units under DLAA, combined O1 variant, Time ... | next R
-- r2fix_ not done: cut-outs (cut_out_shader capture versions first); Batched Unit ... | next Rome II round, shared round, data run
+- (rur2_ 11-16: RT debug view DONE 77ed43198 (Ground Debug View 1 mask / 2 sun vis ... | next R
+- (tw2_ 11-16 DONE: Rome II cut-outs 1c5d7437d (12 wrappers, 88 unit clip PS, part ... | next Rome II round, shared round, data run
 - (tw1_ 11-16 DONE: unclear-sun WARP 2x test 48 of 48 (24 Attila + 24 Thrones sun ... | next Attila round / data runs, per-game agents (t46)
 - Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - (tw1_ 11-16: Thrones VFX families = TW1 RUN 5, thrones.tsv 10 / 51 / 59) Group 1 ... | next GPU round (grass range), next data runs (VFX)
@@ -269,39 +276,41 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - A1f Divinity 2 SupportTool.exe dump at every close: the harness's close order, o ... | coordinator
 - A1g Helper idle release (70-78 ms): does it hitch a frame (PresentMon around the ... | gpu3_, coordinator (run)
 - A1h Tales run: keep the game open past +728 s so ue_back gets timed; still-view ... | coordinator
-- A1i Expeditions: UE's own AO levels (540p / 1080p, 0.53 ms) under GT-VBAO: r.Amb ... | tpa_
 - A1j UE runners: two pass-timing frames per segment, drop outliers. Owner: coordi ... | coordinator
 - A1k R.U.S.E. helper RT GPU cost (Nsight / the helper's pass timing; PresentMon c ... | gpu3_, coordinator
-- (WH2 DONE tw1_ b4142f9b2: 41-trace census, sweep / blurs / F1CE6943 skipped, col ... | tw1_ (WH2), tw2_ (Troy, Pharaoh)
-- A2b Tales / Expeditions: a present-time one-AO-method gate (GT-VBAO off under RT ... | tpa_
-- A2c Tales t5 reader census (is it only the SSAO?). Owner: tpa_ | tpa_
+- (Troy DONE tw2_ 9d9dd3284: 27-trace census, only the 24 sun PS read red, chain s ... | tw1_ (WH2), tw2_ (Troy, Pharaoh)
 - (Shogun 2 sunlight00-03 vanilla exact DONE tw3_ 513a6964b) A2d RT AO round follo ... | coordinator, tw3_
 - (tw1_ 11-16: in 0 of 41 traces, they blur GT-VBAO's output in place = look chang ... | tw1_, data run
-- (WH1 already 356b71003; Attila / Thrones: no hi-Z / preconvolve, the march skip ... | tw3_ (Shogun 2, Rome Remastered), tw1_, tw2_, tpa_, div1_, d
+- (WH3 DONE tw2_ 389712f8e: row Skip the Game's Reflection Passes on, 18 hit-mip d ... | tw3_ (Shogun 2, Rome Remastered), tw1_, tw2_, tpa_, div1_, d
 - A5 Trilinear LOD bias proof run: Log Details at 50 % in Attila, Thrones, Shogun ... | coordinator (run)
 - A9 Bench: Reset and No RT/PT presets' D3D11 cost (Bend / SSSR / GT-VBAO / GT-VBG ... | eob_ if its session allows, else the next bench
-- A10a Tales L / M sqrt feed: harness numbers at its input range, then C for ATN. ... | tpa_
-- A10b Tales lens flare / DOF / distortion WON'T GET: a second look with proof. Ow ... | tpa_
-- A10c Tales / Expeditions CPU WON'T GETs (Faster Game CPU Code, skip the shadow p ... | tpa_
-- A10d Tales ledger: re-read the NEEDS A TRACE rows against the 28 G1 / G2 traces, ... | tpa_
-- A11a Expeditions distance-field AO stacking under ours (a level with a movable s ... | tpa_, run
-- A11b Expeditions baked indirect light stacking: the base pass's precomputed ligh ... | tpa_, run
-- A11d Expeditions texture LOD bias at the game's own spatial scale. Owner: tpa_ | tpa_
+- (tpa_ 11-16 not done: needs Tales' DLSS input range from a frame + harness time; ... | tpa_
+- (tpa_ 11-16: WON'T GET unproven, every post pass in G1 / G2 is float; NEEDS A TR ... | tpa_
+- (tpa_ 11-16: Tales WON'T GET with numbers (GPU-bound, game CPU <= 1.8 / 2.6 ms); ... | tpa_
+- (code DONE tpa_ 1fdf1af28: row No Distance Field AO Under Ours, Experimental off ... | tpa_, run
+- (tpa_ 11-16: a volumetric lightmap is bound in 523 of 656 G-buffer draws; NEEDS ... | tpa_, run
 - A15 GT-VBAO flat-ground horizon loss at grazing pitch (0.969 at 13.6 deg, single ... | shs2_
 - A16 MAX_MODULES fails silently like MAX_GATES did. Owner: shs2_ | shs2_
-- A17a R.U.S.E. rays (rur2_ items 1-5: ground shadows lost under the rays, CPU 18. ... | rur2_, then coordinator
+- (code DONE rur2_ 11-16, harness case 12 shadowed 1,276 / 1,276, lit 3,776+ / 3,7 ... | rur2_, then coordinator
 - A17b R.U.S.E. next run: atlas / bloom exclusion count, sprite / imposter stabili ... | coordinator
 - A18 test/tw_output_encoding: a Ryse case. Owner: shs2_ | shs2_
 - A20 Ryse windowed without a size: the window shows the add-on's size once. Owner ... | rys2_
-- A21 R.U.S.E. audit lines: unpatched shaders (AO 2 + 2 terrain, O1 2 object PS, 4 ... | rur2_
-- A22 Rome II README "Not done": grass past every LOD skips DrawScrub + Grass Trac ... | tw2_, run
+- (rur2_ 11-16: H2 RT part (case 12) + H3 O1 reprojection (6b) written + passing; ... | rur2_
+- (tw2_ 11-16: DrawScrub skip + Grass Trace button = SHARED STEP graphics_hooks Dr ... | tw2_, run
 - A23 rt_core.hpp:4059 prints an empty status before any request. Owner: gpu3_ | gpu3_
 - C3 Ryse: prove the rays overwriting the sun mask (dual-source split, the cascade ... | rys2_
-- C4 WH3 / Rome II: prove Replace for the sun shadows, then default (your replace ... | tw2_
+- (WH3 already DONE: Replace default since e8aaefcbe, WARP 4bdd913de 1 of 98304; R ... | tw2_
 - C6 Ryse: Texture LOD Bias on All Textures on by default, label without "(Experim ... | rys2_
-- D1 Boxes no round owned, now assigned: scorer (L749), DLSS RR 310.9 paths boil ( ... | those rounds
+- (tpa_: D1f Expeditions tests build + 7/7 PASS 42a1b3b70 (UE SDR WARP ramp left); ... | those rounds
 - NEXT ROUNDS 11-16 (ATN ~10:4x: "start doing everything that is in next game and ... | coordinator
-- ATN 10:3x "Where are PT AO / PT GI for all the games?": every TW game, Shogun 2, ... | tpa_, next Divinity rounds
+- (Tales + Expeditions Path-Traced Ambient DONE tpa_ 99b372c7a / 170aa2058, Experi ... | tpa_, next Divinity rounds
+- R.U.S.E. RUN (rur2_ 11-16, near / map table / mid as run_rn3): 1. rays on vs DLA ... | coordinator (one game at a time)
+- R.U.S.E. next (rur2_ 11-16): Bend harness case with a solid caster + the 37-45 s ... | next R
+- SHARED STEP (rur2_ 11-16): dlaa_helper rt_scene_data WriteTriangle drops triangl ... | gpu3_ / next shared round
+- TW2 RUNS (tw2_ 11-16 NEEDS A RUN): WH3 night siege with torches + RT/PT (per-lig ... | coordinator (one game at a time)
+- SHARED STEPS (tw2_ 11-16): AO-reader list beside LIGHT_BOUNCE_DRAWS (Pharaoh poo ... | next shared round
+- TW2 next (tw2_ 11-16): the -pi literal (0xc0490fdb) elsewhere: WH3 reflection00 ... | per-game rounds (-pi + int-AND: one sweep, shared round)
+- UE next (tpa_ 11-16): Expeditions 192686A0 (BasePassAO) keeps the game's AO on b ... | next UE round, coordinator (runs)
 - Attila + Thrones row (ATN 22:1x): skip the game's reflection blur where the rays ... | tw1_ (resumed 22:1x)
 - TW1 RUNS (tw1_ 11-16 NEEDS A RUN): 1. WH1 / WH2 battle, Shadows DXR, Replace on ... | coordinator (one game at a time)
 - WH next (tw1_ 11-16): psychov35 part 6 WH t00 driver (traced t00 constants, S-cu ... | next WH1 / WH2 round
@@ -310,7 +319,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEPS (tw3_ 11-16): per-input values in tw_vanilla_exact (particlelight00 ... | next shared round
 - DIVINITY 1 RUN (div1_ 11-16 NEEDS A RUN, save T1, in-game AA off, helper next to ... | coordinator (one game at a time)
 - Divinity 1 next (div1_ 11-16): render scale below 100 % (view_share) + texture L ... | next Divinity 1 round
-- SHARED STEP: rt_core's path ambient works only for TW hosts (internal::ambient_c ... | shared round with tpa_'s result
+- (tpa_'s spec: rt_scene::WriteSky(context, float4[6]) + a host-sky flag in Settin ... | shared round with tpa_'s result
 - Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask ... | next Divinity 2 round
 - Bench script: constantinople_bench.ps1 checks build tools 3 times in a row; a bu ... | next shared round
 - Reset / No RT/PT cost (eob_ 11-16): Bend +0.96 ms and GT-VBAO / GT-VBGI +0.94 ms ... | next shared round
@@ -330,7 +339,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - [P] ATN DECIDES R5 hue settings after PsychoV in legacy V30 / V31 modes (all TW ... | ATN
 - [P] ATN DECIDES R6 bloom: (smoothing answered 01:56: intended) smoothing also in ... | ATN
 - [P] ATN DECIDES Extended Saturation = RGB blend to grey, not OKLab chroma (WH2 : ... | ATN
-- (hca_: rows, auto thickness, page text done a0057296 / 65586632; the mapping lin ... | non-TW parity round (Expeditions)
+- (tpa_ 11-16: NEEDS A TRACE rows re-read; LEFT: E9 (-d3d12) + Low start run, 14 T ... | non-TW parity round (Expeditions)
 - All three: parity_check letters + tools/tw/parity ledgers (ryse / tales / expedi ... | non-TW parity round (coordinator part)
 - ATN by eye: Hue Clip Ryse 80 (addon.cpp:87), Tales 70 (:67), Expeditions 70 (:63 ... | ATN
 - Release (all three): README entries (Tales last v71 at :369; Expeditions README_ ... | coordinator, release round
@@ -341,8 +350,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Attila 10-29 / 10-30 archive items: river noise while moving (RR / reflections) ... | next Attila RT round / harness
 - Rome Remastered input bug: ATN watches input after a long session (ticked line H ... | ATN (in game)
 - Astra review: the tester's first freeze still unexplained (archive 1344): check ... | coordinator
-- WH3 v40 / batch 6 "Not done" (archive 1270, 1315-1331; wh3_v40 / wh3_batch6 repo ... | next WH3 round (+ ATN for the tent)
-- Pharaoh below 100 %: p2ph_scale_census.txt still has 8 BUG (B) rows (shroud deca ... | next Pharaoh round
+- (tw2_ 11-16: Shadow Map Size already f0c18f9a4; 800F7F7F half copy skipped a13b3 ... | next WH3 round (+ ATN for the tent)
+- (tw2_ 11-16: the 8 BUG rows already fixed / not bugs (ce280b22, 7224b347, depth- ... | next Pharaoh round
 - Path tracing register limit (1.47-1.81 ms in game, 28.7 % occupancy, 85 % regist ... | next GPU round
 - (4bcc1a742: spills 0, 0.701 -> 0.630 ms; still 128 registers: gpu3_) Attila refl ... | next GPU round
 - (code DONE tw3_ 8420b3393: the game's release at +0x1ad0a90 frees DLSS_PASS's fe ... | next Shogun 2 round
@@ -986,7 +995,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       graphics_page flags (has_screen_space_shadows / has_gtvbgi / rays_tested), hdr_only::AmbientOcclusionRows /
       FullDownloadNote, talesofarise_dlss/upscaling.hpp shared; Tales Output default Auto (hdr_encoding hook gone, FG
       scRGB via fg_hdr10). CMake NGX block deleted in the merge (no add-on links NGX). Skills / tools lose the _dlss targets.
-      - [ ] Tales' rays still run in process (rt_shadows.hpp on its own D3D12 device): move to the helper (rt_scene host
+      - [ ] (tpa_ 11-16 plan: host on DEPTH_SHADERS / MASKED_SHADERS, WriteSun at 2084C889, t41-t44 wired, sky texels c155-c162, torches 038D003A; Expeditions ray_tracing.hpp is the template; then a G1 / G2 data run) Tales' rays still run in process (rt_shadows.hpp on its own D3D12 device): move to the helper (rt_scene host
         like Expeditions' ray_tracing.hpp: scene from the depth prepass, sun from the lighting pass, outputs t40-t44,
         bounce resolve); until then rt_scene-only rows hidden, no Upscaling Debug View. Owner: next UE round
       - [ ] ATN DECIDES: Tales' rays now need an upscaler on (before: also with the game's TAA); Path Tracing Bounces
@@ -994,7 +1003,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         preset E -> K on migration), by eye. Owner: ATN
       - [ ] Dead files: talesofarise_dlss/rr_d3d12.hpp (no user), ngx_backend.hpp, 0x7A1E0D42.ps_5_0.hlsl (folder has no
         target): delete or keep. Owner: coordinator, release round
-      - [ ] Expeditions left: the three max(0) carve materials (G1 data run), micromaps start off, no Bend SSS / GT-VBGI,
+      - [ ] (tpa_ 11-16: Bend / GT-VBGI already 51c464877, NRD default, tests build 42a1b3b70; LEFT: carve materials + micromaps (G1 run), AO range min 0.5 + pre-exposure to the helper (shared), RT debug views) Expeditions left: the three max(0) carve materials (G1 data run), micromaps start off, no Bend SSS / GT-VBGI,
         NRD default, RT AO range minimum 0.5, no pre-exposure to the helper, expeditionsrome/tests not compiled, debug
         views. Owner: next UE round (after G1)
       - [x] merged into the older "Data runs (ATN allowed, scripted, fresh save backups)" line: Data runs (helper DLAA / DLSS Quality, RR, FG 2x, Tales' in-process RT together; ReShade.log status lines,
@@ -1158,7 +1167,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         13 folders, ATN's files unchanged.
       - [ ] Release round: player / release zips carry no Streamline (release_zip.py, player_zip.py): DLSS FG there needs
         sl.* 2.14.16 + NVIDIA's licence in the zips, or a README line. Owner: coordinator, release round
-      - [ ] Tales: G2's camp save has no torch / night / indoor view; the in-process RT has no torch rows yet (Tales' rays to
+      - [ ] (tpa_ 11-16: G2 does have local lights 038D003A, ledger fixed; night / indoor save after the helper port) Tales: G2's camp save has no torch / night / indoor view; the in-process RT has no torch rows yet (Tales' rays to
         the helper box). The NVIDIA DLSS on-screen indicator shows in every shot (ATN's driver setting). Owner: next UE round
       - [x] Expeditions G1 ran 16:14-16:35 (tools/nontw/expeditions/g1, two starts): start 1 (rays on at launch)
         CRASHED in the main menu ~9 s after "Ray tracing ready" (run_epic_161410, crash_29648.dmp); start 2 (rays off)
@@ -1181,7 +1190,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           ~9.5 min of rays (RR active, Ray tracing ready), all 7 segments, normal exit, no dump; ATN's 20 files OK, saves
           unchanged. Menu fps rays on / off: DLAA 22.9 / 83.1, DLSS Performance 79.5 / 150.1, Performance + FG 136.4 /
           221.1.
-        - [ ] Expeditions rays-on DLAA 22.9 fps with GPU busy 9.31 ms (frame 43.7 ms): a stall, not GPU work (helper
+        - [x] DONE tpa_ (ledger): not a stall: the helper's 4K GPU work shows as fence waits (19.55 ms at C38C91CD, 9.57 at SSR); PresentMon's GPU busy counts the game process only. Expeditions rays-on DLAA 22.9 fps with GPU busy 9.31 ms (frame 43.7 ms): a stall, not GPU work (helper
           wait? RR at native?); read that run's pass timing + helper log. Owner: next UE round
         - [x] Ryse s8b re-check RAN 18:30-18:35 (ATN loaded the checkpoint): not black (see the Ryse R0 boxes).
         - [x] DONE 11-16 (TW install 05:0x: Attila v164, Rome II r7, Thrones r8, WH1 r9, WH2 v54, Troy v58, Pharaoh v71, WH3 v63, Shogun 2 v77, Rome Remastered v15, all on helper115): The rest (Rome Remastered, Shogun 2 and every add-on on the shared code) on the review-fix commit: build all,
@@ -1189,7 +1198,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [x] ANSWERED 05:52 (clicks allowed: click-load at the next run, coordinator). Expeditions save load: the main menu takes no SendInput keys; the save scene (carve materials 93E43D26,
         07E055CF, 1F128822, 630E166D, A7FF9EDD first-draw lines, RT on vs off) still needs a way in. Owner: ATN decides
         (foreground fix / a mouse click), then coordinator
-      - [ ] Expeditions unreplaced post into 8-bit f90 targets before the tonemapper: A45907DE (1920x1080), 2491478D
+      - [x] DONE tpa_ (nothing to fix: all [0,1] data: A45907DE / 2491478D SSAO levels, D9414A76 DF / capsule shadow upsample sqrt-encoded, B25C9978 / FF9ECC89 HZB on R16F) Expeditions unreplaced post into 8-bit f90 targets before the tonemapper: A45907DE (1920x1080), 2491478D
         (960x540), D9414A76 (3840x2160 + depth); B25C9978, FF9ECC89 (target unknown): clamp check. Owner: next UE round
     - [x] DONE 11-16 (skills f99e871c, plans written): ATN 17:0x: "Add new/fixes to the skill then Start the whole package planning for Divinity 1, Divinity2 and
       R.U.S.E." (PsychoV35 position: never on top of UpgradeToneMap / UC2 Extended; Divinity 2's at its Psycho's place).
@@ -1344,7 +1353,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         backup; ruse u2 installed 03:2x with --first), trace build, starts: ATN's settings, proxy waits off,
         ShaderQuality 1 / 2, UseHDR off, Option.ini above the menu's max; ATN loads the save and quits by hand. Owner:
         coordinator (next game window, ATN's OK)
-      - [ ] R.U.S.E. open ledger rows: Time Each Pass (D3D9 timestamp queries, optional); the HDR-only snapshot check
+      - [ ] (Time Each Pass with D3D9 queries DONE rur2_ efc3c40ec, test 13; LEFT: HDR-only snapshot check = release round) R.U.S.E. open ledger rows: Time Each Pass (D3D9 timestamp queries, optional); the HDR-only snapshot check
         (release round). Owner: ru_ / release round
       - [x] DONE c04da639 (sh_): SHARED STEPS from R.U.S.E.: S1 output_encoding's first-start key as a Config field ("rendering_mode"; Divinity
         1 needs the same with "tonemap_type", addon.cpp:999; corrected 11-16, was "Divinity 2"); S2 output_encoding Apply calls utils::device_proxy::SetTargetFormat /
@@ -1655,7 +1664,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           Brightness 40 = DisplayGamma 1), Expeditions Two Shadow Cascades Under Rays (Experimental off; cascades 2-3 =
           34-55 % of the atlas indices, atlas 0.47-0.84 ms), tw_ue_patterns (23/23 + 4/4, controls fail). Tests:
           tw_vanilla_exact 40 EXACT, tw_ue_sss_gi PASS both, tw_psychov35 PASS.
-        - [ ] tex_ not done: Expeditions Video AutoHDR (NV12 convert ps 0x524CDCDF; needs one trace while
+        - [ ] (tpa_ 11-16: PT Ambient DONE 170aa2058 / 99b372c7a; double-work table in the ledger; Modded Auto Exposure WON'T GET both games (UE's histogram percentiles already ignore isolated highlights); LEFT: Video AutoHDR (trace in the loading video), VFX / indicator / sky (battle + campaign runs), R11G11B10 / LOD-bias censuses, level-B twins, 6 New_1 permutations, the C38C91CD texel-2 WARP, CSM caster proof) tex_ not done: Expeditions Video AutoHDR (NV12 convert ps 0x524CDCDF; needs one trace while
           Rome_MainMenuLoading.mp4 plays); Expeditions Modded Auto Exposure (eye adaptation ps 323FECA6, port + WARP); VFX /
           indicator / sky lines (traces named in the ledgers); from the main round: V35 fit, Path-Traced Ambient,
           vanilla_exact widening, R11G11B10 / LOD-bias censuses, one occlusion (192686A0 t1), double-work table, level-B
@@ -1670,7 +1679,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           rays); Recommended sky_deband 0; Reset writes the 4 VFX rows; reflection00 one occlusion (part 6); 2.2 gamma in
           every mode from t00's g_gamma_output; psychov35 part 8. Tests: tw_warhammer3_shaders 1-6 PASS, tw_vanilla_exact
           WH3 6 EXACT, psychov35 amd64 + x86 PASS, parity_check wh3 open 0.
-        - [ ] w3f_ not done: vanilla_exact over every WH3 shader + a lensflare00 control (~20 shaders need Vanilla bindings,
+        - [ ] (tw2_ 11-16 DONE: vanilla_exact over all 31 WH3 PS 144df3b82 (22 EXACT, t00 accepted, 0 FAIL; cutscene00/01, sky00, ui00 controls not caught, shadowcopy depth-only, rays-only + compute out, reasons in the table); lensflare00 control already caught 0.41; point shadow maps stay by design (untraced lights use them since 8c4e848c7). LEFT: grass range (gpu3_ 48639eb2f WIP), shared rows (Shared leftovers box)) w3f_ not done: vanilla_exact over every WH3 shader + a lensflare00 control (~20 shaders need Vanilla bindings,
           own round); the game's point shadow maps are still drawn (fog / portraits / forward passes read them: cost);
           Grass RT range (row 16, boxed in the 17-row leftovers). Shared rows (contact_shadows_off route, per-light traced
           flag, RAY_METHODS, frame_gamma comment, DLSS scaled decode 2.2 vs WH3's 2.0) sent to shs_. Owner: next WH3 round,
@@ -1723,7 +1732,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           Expeditions; credits::DLSS_ADDON stale; fast MAX_GATES 8 headroom (Ryse adds 2) with a check; run scripts read
           <game>_frame_trace.txt. Rome II / WH1 / WH2 / Troy / Pharaoh / R.U.S.E. told to do Methods + pass_timing in their
           rounds. Owner: csp_, per-game agents
-        - [ ] Shared leftovers (shs_ / ryf_): rt_core OnAnyDraw replays every draw while traced, defeating raw draw-event
+        - [ ] (WH3 shadowed point lights with RtLocalLightTraced DONE tw2_ 8c4e848c7, WARP part 5, control 20850+; WH3 DLSS frame-gamma call waits on shs2_'s API) Shared leftovers (shs_ / ryf_): rt_core OnAnyDraw replays every draw while traced, defeating raw draw-event
           skips in every rt_scene host (audit each host's raw skips + CPU cost); WH3's DLSS scaled prepare / finish and
           rr_extra_scaled decode at 2.2 while t00 writes TW_FRAME_GAMMA 2.0 with GC off (exact round trip, wrong domain: a
           frame-gamma float in their b0 + WARP); contact_shadows_off sharing WH3's b3 / byte-28 route; WH3 shadowed point
@@ -1742,7 +1751,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           standard labels; tw_pharaoh part 7 dead_units pattern once, CONTROL none; test switches only via
           renodx_test_hooks.txt; vanilla_exact 42 EXACT / 12 accepted / 0 FAIL; pass_timing + credits::Methods (+ smaa).
           AA domain shared patch applied 7150cd9cd (CMAA2 29.7x -> 0.0011, SMAA edges 548 -> 0; Attila's path unchanged).
-        - [ ] tpf_ not done: Torch / Fire Shadows on the 7 other point-light PS per game (14 WARPs; DO NOW in both ledgers);
+        - [ ] (tw2_ 11-16 DONE: Troy point lights 7b7dff2c4 ps_compare 7/7, Pharaoh 7e9972097 8/8 incl. fire02 (+ fire02 SDR fix: Fire Brightness applied in SDR), Troy fxaa00 / menuvideo01 EXACT c87f82630; LEFT: Pharaoh Filmgrain c9.z data run) tpf_ not done: Torch / Fire Shadows on the 7 other point-light PS per game (14 WARPs; DO NOW in both ledgers);
           Pharaoh Filmgrain c9.z (next data run); Troy fxaa00 (0.062) and menuvideo01 (0.037) differ in Vanilla, causes not
           read; tw_troy_shaders not run (no -OutDir; nothing it tests changed). Owner: next Troy / Pharaoh round, data run
         - [x] WH1 + WH2 MERGED 2e2e74f63 (w12_, 25 commits; amd64 both exit 0): Reset sky_deband off, credits::Methods (+
@@ -1769,7 +1778,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           multiple of 16 B were recreated every upload); test hooks. Tests: psychov35 part 6 (V35 = SDR exactly), ru_c1_verify,
           ru_post_vanilla 7 / 7, page dump, static_checks 0. dump_any.py now links MinHook + d3d9 (coordinator; backup
           dump_any.py.bak_minhook).
-        - [ ] rux_ not done: RT debug view, moving units under DLAA, combined O1 variant, Time Each Pass (D3D9 queries); shared:
+        - [ ] (rur2_ 11-16: RT debug view DONE 77ed43198 (Ground Debug View 1 mask / 2 sun visibility / 3 AO, 6b 0 wrong); Time Each Pass DONE efc3c40ec; LEFT: moving units under DLAA (video run), combined O1 variant (patch mode joining the 642-shader O1 table with reflections + WARP + a trace), device_proxy = shs2_) rux_ not done: RT debug view, moving units under DLAA, combined O1 variant, Time Each Pass (D3D9 queries); shared:
           utils/device_proxy has no removed-device path (+ WARP test; ledger row reopened). T-run checks (with ATN or a
           click-loaded Continue): MainRTAA 1x against an all-off start; is MainRTDivider a render scale (then D6 + LOD bias);
           Gamma Correction (U1 box); shadow-map pass skip (off-screen casters / imposters); Units range zoomed out (is a world
@@ -1781,7 +1790,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           4, saved x log2(10) at revision 3), indicator HDR-only (SDR = game bytes), plain Recommended for Output Auto, preset
           tooltips, page-1 order + video rows HDR-only, twrome2/shadow_cascades.hpp + tw_unit_shadows part 8, AO blurs
           {41894C1F, 7DDD84A3}, vanilla_exact 21 -> 57 (53 EXACT, 4 accepted, 0 FAIL).
-        - [ ] r2fix_ not done: cut-outs (cut_out_shader capture versions first); Batched Unit Capture (no Rome II bone pack
+        - [ ] (tw2_ 11-16 DONE: Rome II cut-outs 1c5d7437d (12 wrappers, 88 unit clip PS, part K 384 / 0, control 384); Hide Batched Unit Capture already febbf4f50 (README corrected bc04430b8); LEFT: 8 NEEDS A TRACE rows + ao-gi costs (data run), shared items) r2fix_ not done: cut-outs (cut_out_shader capture versions first); Batched Unit Capture (no Rome II bone pack
           hook; its row shows default 1 but does nothing: hide it); shared: a quad shader per SmokePixelShader for
           fire_smoke_loop, a shadow patch route for the 18 SM3 water readers, unit patterns in the shared once-count test;
           8 NEEDS A TRACE ledger rows (rome2.tsv) for a data run; ao-gi.md double-work rows (SSAO under RT AO gone, maps
@@ -1881,60 +1890,60 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] A1g Helper idle release (70-78 ms): does it hitch a frame (PresentMon around the 10 s release)? Owner: gpu3_,
           coordinator (run)
         - [ ] A1h Tales run: keep the game open past +728 s so ue_back gets timed; still-view shots. Owner: coordinator
-        - [ ] A1i Expeditions: UE's own AO levels (540p / 1080p, 0.53 ms) under GT-VBAO: r.AmbientOcclusionLevels 1 under it
+        - [x] DONE tpa_ ee85fa8c1 (r.AmbientOcclusionLevels <= 1 under GT-VBAO, -0.569 ms at 4K DLAA; ao01 untraced, level B) A1i Expeditions: UE's own AO levels (540p / 1080p, 0.53 ms) under GT-VBAO: r.AmbientOcclusionLevels 1 under it
           (one AO method). Owner: tpa_
         - [ ] A1j UE runners: two pass-timing frames per segment, drop outliers. Owner: coordinator
         - [ ] A1k R.U.S.E. helper RT GPU cost (Nsight / the helper's pass timing; PresentMon can't see it). Owner: gpu3_,
           coordinator
-        - [ ] (WH2 DONE tw1_ b4142f9b2: 41-trace census, sweep / blurs / F1CE6943 skipped, collect cleared to 1, resolve t1 = sun AO, part 31 0 of 4096; not under PT AO / GT-VBAO) A2a Skip the game's SSAO under RT AO: WH2 / Troy reader census, Pharaoh ssao2 (only the sun draws read it).
+        - [ ] (Troy DONE tw2_ 9d9dd3284: 27-trace census, only the 24 sun PS read red, chain skipped + target cleared to 1; Pharaoh LEFT: pools 9D28319F / 03B9CEFE / 40154AD7 / AC04E623 read t_ssao = SHARED STEP AO-reader list or ATN) (WH2 DONE tw1_ b4142f9b2(WH2 DONE tw1_ b4142f9b2: 41-trace census, sweep / blurs / F1CE6943 skipped, collect cleared to 1, resolve t1 = sun AO, part 31 0 of 4096; not under PT AO / GT-VBAO) A2a Skip the game's SSAO under RT AO: WH2 / Troy reader census, Pharaoh ssao2 (only the sun draws read it).
           Owner: tw1_ (WH2), tw2_ (Troy, Pharaoh)
-        - [ ] A2b Tales / Expeditions: a present-time one-AO-method gate (GT-VBAO off under RT AO / PT ambient). Owner: tpa_
-        - [ ] A2c Tales t5 reader census (is it only the SSAO?). Owner: tpa_
+        - [x] DONE tpa_ 99b372c7a (Tales) + d0265241a (Expeditions) A2b Tales / Expeditions: a present-time one-AO-method gate (GT-VBAO off under RT AO / PT ambient). Owner: tpa_
+        - [x] DONE tpa_ aba71d95f (Bandai's SSAO skipped under RT AO / PT Ambient, readers read t41: -0.110 ms Performance, -0.342 ms DLAA with rays) A2c Tales t5 reader census (is it only the SSAO?). Owner: tpa_
         - [ ] (Shogun 2 sunlight00-03 vanilla exact DONE tw3_ 513a6964b) A2d RT AO round follow-ups: page dumps of the 10 games after the AO change, tw_warhammer_shaders on x86, a
           vanilla-exact line for Shogun 2 sunlight00-03. Owner: coordinator, tw3_
         - [ ] (tw1_ 11-16: in 0 of 41 traces, they blur GT-VBAO's output in place = look change without proof; skipped under RT AO; NEEDS TW1 RUN 2) A3 WH2 AO blurs (C7B1F6F7 / 901C2215) under GT-VBAO: trace + skip proof; Time Each Pass before / after. Owner:
           tw1_, data run
-        - [ ] (WH1 already 356b71003; Attila / Thrones: no hi-Z / preconvolve, the march skip proven tw1_ b3188be1d tw_thrones_ssr part G) (Shogun 2 DONE tw3_ f54681df6(Shogun 2 DONE tw3_ f54681df6: preconvolve 0xBC3CB71D skipped under RT reflections, part 21 (e) 0 of 768, control 768; RomeR n/a) A4 Reflections, one method: the game's SSR / hi-Z / preconvolve skipped under RT reflections per game (only WH2
+        - [ ] (WH3 DONE tw2_ 389712f8e: row Skip the Game's Reflection Passes on, 18 hit-mip dispatches out under the rays, part 7 0 apart; WH3 LEFT: 23 dispatches before the march (trace at 0ED84C3D); Troy / Pharaoh LEFT: 4 height-pyramid dispatches run before the water-rays decision (design change); Rome II one method) (WH1 already 356b71003;(WH1 already 356b71003; Attila / Thrones: no hi-Z / preconvolve, the march skip proven tw1_ b3188be1d tw_thrones_ssr part G) (Shogun 2 DONE tw3_ f54681df6(Shogun 2 DONE tw3_ f54681df6: preconvolve 0xBC3CB71D skipped under RT reflections, part 21 (e) 0 of 768, control 768; RomeR n/a) A4 Reflections, one method: the game's SSR / hi-Z / preconvolve skipped under RT reflections per game (only WH2
           does it, 53b600329; Shogun 2 first). Owner: tw3_ (Shogun 2, Rome Remastered), tw1_, tw2_, tpa_, div1_, div2_
         - [ ] A5 Trilinear LOD bias proof run: Log Details at 50 % in Attila, Thrones, Shogun 2. Owner: coordinator (run)
         - [ ] A9 Bench: Reset and No RT/PT presets' D3D11 cost (Bend / SSSR / GT-VBAO / GT-VBGI), Time Each Pass + PresentMon
           (promised 01:41). Owner: eob_ if its session allows, else the next bench
-        - [ ] A10a Tales L / M sqrt feed: harness numbers at its input range, then C for ATN. Owner: tpa_
-        - [ ] A10b Tales lens flare / DOF / distortion WON'T GET: a second look with proof. Owner: tpa_
-        - [ ] A10c Tales / Expeditions CPU WON'T GETs (Faster Game CPU Code, skip the shadow pass): proof or a port target.
+        - [ ] (tpa_ 11-16 not done: needs Tales' DLSS input range from a frame + harness time; WH3 P5: L 0.911 linear vs 0.930 sqrt, K 0.998) A10a Tales L / M sqrt feed: harness numbers at its input range, then C for ATN. Owner: tpa_
+        - [ ] (tpa_ 11-16: WON'T GET unproven, every post pass in G1 / G2 is float; NEEDS A TRACE: cutscene DOF, sun in view, haze) A10b Tales lens flare / DOF / distortion WON'T GET: a second look with proof. Owner: tpa_
+        - [ ] (tpa_ 11-16: Tales WON'T GET with numbers (GPU-bound, game CPU <= 1.8 / 2.6 ms); Expeditions LEFT: a battle WPR, shadow maps 0.82-0.89 ms at 4K) A10c Tales / Expeditions CPU WON'T GETs (Faster Game CPU Code, skip the shadow pass): proof or a port target.
           Owner: tpa_
-        - [ ] A10d Tales ledger: re-read the NEEDS A TRACE rows against the 28 G1 / G2 traces, box the rest with a scene.
+        - [x] DONE tpa_ (rows 19 / 21 answered, 44 / 45 corrected, the rest have scenes named) A10d Tales ledger: re-read the NEEDS A TRACE rows against the 28 G1 / G2 traces, box the rest with a scene.
           Owner: tpa_
-        - [ ] A11a Expeditions distance-field AO stacking under ours (a level with a movable sky light). Owner: tpa_, run
-        - [ ] A11b Expeditions baked indirect light stacking: the base pass's precomputed lighting in the save-scene trace.
+        - [ ] (code DONE tpa_ 1fdf1af28: row No Distance Field AO Under Ours, Experimental off, r.AOQuality 0, DFAO 0.298 ms; ATN decides the default) A11a Expeditions distance-field AO stacking under ours (a level with a movable sky light). Owner: tpa_, run
+        - [ ] (tpa_ 11-16: a volumetric lightmap is bound in 523 of 656 G-buffer draws; NEEDS GT-VBGI on / off shots in a battle) A11b Expeditions baked indirect light stacking: the base pass's precomputed lighting in the save-scene trace.
           Owner: tpa_, run
-        - [ ] A11d Expeditions texture LOD bias at the game's own spatial scale. Owner: tpa_
+        - [x] DONE tpa_ (already UE's own MaterialTextureMipBias; the game's TAAU with mode Off = low value, not done) A11d Expeditions texture LOD bias at the game's own spatial scale. Owner: tpa_
         - [ ] A15 GT-VBAO flat-ground horizon loss at grazing pitch (0.969 at 13.6 deg, single pixels 0.83; bitmask.hlsli is
           Attila's too): measure in the harness. Owner: shs2_
         - [ ] A16 MAX_MODULES fails silently like MAX_GATES did. Owner: shs2_
-        - [ ] A17a R.U.S.E. rays (rur2_ items 1-5: ground shadows lost under the rays, CPU 18.8 ms, the map table keeps
+        - [ ] (code DONE rur2_ 11-16, harness case 12 shadowed 1,276 / 1,276, lit 3,776+ / 3,778: (1) shadows lost = 3 causes: centimetre camera past the 2e5 m cut (31a12841a, metres now), the rays replaced the map term + R32F alpha 1 (221b3f8c5, darker of the two, Rays Replace Shadow Maps Experimental off), rays started under the ground: camera 0.70 m off vs the jittered D3D9-centre depth (13637b108, now 0.013 m); (2) CPU 18.8 ms = waits (GPU latency 0.21 ms, GPU wait 12.8 ms), GPU Sync now covers the trace point's two waits (998ea1297, off, A/B run); (3) the map table is the 3D world, traces legitimately (ATN decides); (4) GT-VBAO / Bend / GT-VBGI marched over the terrain-only pre-pass depth: now O1's start depth (77ed43198, Ground Debug View, "Ground passes ready" line); (5) 1,806 draws = exact (2,136 - quad - 329 ground layers). LEFT: R.U.S.E. RUN below) A17a R.U.S.E. rays (rur2_ items 1-5: ground shadows lost under the rays, CPU 18.8 ms, the map table keeps
           tracing, GT-VBAO / Bend / GT-VBGI no visible change, 1,806 vs ~2,400 scene draws, Bend logs no line). Owner:
           rur2_, then coordinator
         - [ ] A17b R.U.S.E. next run: atlas / bloom exclusion count, sprite / imposter stability in motion (video). Owner:
           coordinator
         - [ ] A18 test/tw_output_encoding: a Ryse case. Owner: shs2_
         - [ ] A20 Ryse windowed without a size: the window shows the add-on's size once. Owner: rys2_
-        - [ ] A21 R.U.S.E. audit lines: unpatched shaders (AO 2 + 2 terrain, O1 2 object PS, 4 water), H2 RT part and H3 O1
+        - [ ] (rur2_ 11-16: H2 RT part (case 12) + H3 O1 reprojection (6b) written + passing; README already 452638c5b; unpatched: AO 0x4B1D1523 / 0xAFFF53E4 need a two-site patch, 0xE697765A / 0xF17D27A4 no ambient term, O1 0x8588D239 = mask pre-pass (covered), O1 0x1AD365A4 needs a temp register (check it draws), "4 water" not found in scene_patches.tsv; LEFT: those patches + one fixed cost scene (run: rated benchmark or autoreplay)) A21 R.U.S.E. audit lines: unpatched shaders (AO 2 + 2 terrain, O1 2 object PS, 4 water), H2 RT part and H3 O1
           reprojection tests, README stale (c200-c210, "Extended removed"), one fixed scene for costs. Owner: rur2_
-        - [ ] A22 Rome II README "Not done": grass past every LOD skips DrawScrub + Grass Trace button, the particle rows'
+        - [ ] (tw2_ 11-16: DrawScrub skip + Grass Trace button = SHARED STEP graphics_hooks DrawScrub 114B3F80 / ScrubUpdate 114B9300, then a grassy battle; particle fire / smoke at 50 % + artillery smoke trails = TW2 RUNS) A22 Rome II README "Not done": grass past every LOD skips DrawScrub + Grass Trace button, the particle rows'
           50 % fire / smoke trace, smoke shadows from artillery trails (or name them among the 8 NEEDS A TRACE rows). Owner:
           tw2_, run
         - [ ] A23 rt_core.hpp:4059 prints an empty status before any request. Owner: gpu3_
         - [ ] C3 Ryse: prove the rays overwriting the sun mask (dual-source split, the cascade casters box), then default
           (your 05:59 answer). Owner: rys2_
-        - [ ] C4 WH3 / Rome II: prove Replace for the sun shadows, then default (your replace rule), as Troy / Pharaoh did.
+        - [ ] (WH3 already DONE: Replace default since e8aaefcbe, WARP 4bdd913de 1 of 98304; Rome II SHARED STEP: sun_replace_maps needs a sampler slot per hash (s1 slm / s0 skinlm) + an SRV-swap route for 16 SM4.1 / 3.0 shaders, rig tools/tw/rome2/sun_test) C4 WH3 / Rome II: prove Replace for the sun shadows, then default (your replace rule), as Troy / Pharaoh did.
           Owner: tw2_
         - [ ] C6 Ryse: Texture LOD Bias on All Textures on by default, label without "(Experimental)" (your 05:55 answer;
           addon.cpp:2166-2173, graphics.hpp:1110). Owner: rys2_
         - [x] DONE div1_ 9da00b28b (knee at 1 again; Smooth Grade Shoulder row Experimental off, in Reset; WARP row off = a6762afab^ 0 of 3,538,944 texels, control 0.26): C9 Divinity 1 grade shoulder (a6762afab, installed d1 v3): back to the previous default, the smooth shoulder as
           an Experimental row, off (unless you keep it: top). Owner: div1_
         - [x] DONE tw3_ 173eb3d72 (both rows + every AO / GI preset off, page dump confirms) C10 Shogun 2 Auto Thickness rows off by default as the shared ones (23fb900c2). Owner: tw3_
-        - [ ] D1 Boxes no round owned, now assigned: scorer (L749), DLSS RR 310.9 paths boil (L751), both D3D12 devices
+        - [ ] (tpa_: D1f Expeditions tests build + 7/7 PASS 42a1b3b70 (UE SDR WARP ramp left); D1i Tales SER off by default 5eb0ec036, row Path Tracing Reordering Experimental off (Nsight A/B left)) D1 Boxes no round owned, now assigned: scorer (L749), DLSS RR 310.9 paths boil (L751), both D3D12 devices
           removed at once (L1966), Tales SER (L1744, with tpa_): gpu3_; WARP ramp for the SDR presets (L773), [B] R7 reader
           inventory (L2000), Unit round D / E (L313), CPU items (3) / (5) (L535), SHARED STEP owners rest (L2315), the
           page_dump README line (sk4_): shs2_; the UE SDR encodes ramp + Expeditions tests' include paths (L874): tpa_;
@@ -1948,12 +1957,49 @@ heading text are in HANDOFF_ARCHIVE.md)
         Pharaoh, Rome II), tw3_ (Shogun 2, Rome Remastered), rys2_ (Ryse), tpa_ (+ the UE round boxes), rur2_ (+ the
         R.U.S.E. boxes). Still separate: release-round boxes (ATN releases), data runs (after the merges, one game at a
         time), ATN's own boxes. Owner: coordinator
-      - [ ] ATN 10:3x "Where are PT AO / PT GI for all the games?": every TW game, Shogun 2, Rome Remastered and Ryse have
+      - [ ] (Tales + Expeditions Path-Traced Ambient DONE tpa_ 99b372c7a / 170aa2058, Experimental off; toons onto our AO / GI d9ccadb9b; Divinity 1 RT shadows + RT AO div1_; LEFT: Divinity PT = host-neutral SHARED STEP, Divinity 2 div2_) ATN 10:3x "Where are PT AO / PT GI for all the games?": every TW game, Shogun 2, Rome Remastered and Ryse have
         both; Tales + Expeditions have PT GI but Path-Traced Ambient does nothing (has_path_ambient false): tpa_ wires it
         (one method, WARP proof, Experimental off) + ports Tales' 10 toon shaders so Bandai's GI chain can be skipped again
         (kept only under the Open Sky row); Divinity 1 / 2 have no ray tracing at all yet (rt_core host: the D1 steps
         9-10 box + a D2 one below); R.U.S.E. has a path-traced ground bounce, no separate PT AO. Owner: tpa_, next
         Divinity rounds
+      - [ ] R.U.S.E. RUN (rur2_ 11-16, near / map table / mid as run_rn3): 1. rays on vs DLAA alone: tree / unit / tank
+        shadows back, the lighter mask (+3.1 % near / +8.4 % mid) gone, Ground Debug View 1/2/3 shots, "Ground passes
+        ready" + "Ray tracing profile" (RENODX_TW_PROFILE 30 s), Time Each Pass x3, PresentMon 25 s a view; 2. Rays Replace
+        Shadow Maps off / on; 3. GPU Sync off / on with rays (CPU busy, GPU wait, corruption); 4. GT-VBAO, Bend, GT-VBGI
+        each vs DLAA alone near; 5. moving units under DLAA (video); 6. find the rated benchmark or autoreplay scene; 7. the
+        U1 and T-run lists. Owner: coordinator (one game at a time)
+      - [ ] R.U.S.E. next (rur2_ 11-16): Bend harness case with a solid caster + the 37-45 stray single pixels on flat
+        ground; test/tw_ruse_bridge H2 DLSS flat / edge pair fails since before this round (flat 23,509 of 31,349, edge
+        192-195 of 479; a DLAA preset change?); O1 reprojection's kept_jitter uses bridge.jitter when the bridge isn't
+        ready. Owner: next R.U.S.E. round
+      - [ ] SHARED STEP (rur2_ 11-16): dlaa_helper rt_scene_data WriteTriangle drops triangles past MAX_COORDINATE
+        silently: one warning with a count (as A16); an rt_core Camera / rt_positions note: pass the camera as the depth
+        was drawn (jitter, pixel centres). Owner: gpu3_ / next shared round
+      - [ ] TW2 RUNS (tw2_ 11-16 NEEDS A RUN): WH3 night siege with torches + RT/PT (per-light shadows), river battle with
+        RT reflections (Time Each Pass, hit-mip rows gone), siege with smoke (800F7F7F gone), Shadow Maps Under Rays at
+        Shadow Map Size 1024 / 2048 ("Shadow map sizes:", VRAM); Troy torches with RT/PT, RT AO battle with PresentMon,
+        menu backgrounds + FXAA in SDR vs the game; Pharaoh torches with RT/PT, SDR Fire Brightness off 1, foggy battle glow
+        + DOF, Filmgrain data run; Rome II RT shadow battle (cut-outs on cloaks / banners / fences), 50 % DLSS battle with
+        fire / smoke (97D98192 cb_vfx b3), artillery smoke trails. Owner: coordinator (one game at a time)
+      - [ ] SHARED STEPS (tw2_ 11-16): AO-reader list beside LIGHT_BOUNCE_DRAWS (Pharaoh pools); view_share rule for
+        loop-carried march uv (Pharaoh / Troy contact march < 100 %); dxbc AddVelocityTarget register parameters (WH3
+        motion); graphics_hooks Rome II DrawScrub / ScrubUpdate + bone pack hooks; ONE shared SkipGameSsao instead of
+        three copies (WH1, WH3, Troy); vanilla_exact UAV-writing PS + inputs reaching Pharaoh's height-fog mask. Owner:
+        next shared round
+      - [ ] TW2 next (tw2_ 11-16): the -pi literal (0xc0490fdb) elsewhere: WH3 reflection00 (6), Pharaoh
+        motion_unit_weighted_standard_2_feat_db1e / f8ff VS, WH2 (3 files), Shogun 2 (8), Tales (5), Expeditions (5),
+        Divinity 2 (1), ue-extended (lutbuilder 124, ghostwire 3); the decompile (int)-AND bug in WH2 fxaa00_0xCE9EA4E8:218,
+        RomeR fxaa00_0xEEFF2F33:352 / fxaa01_0x602CD6AB:357 (Attila vfx00*, Tales outline00/01 unchecked); Troy / Pharaoh
+        SSAO chain still runs under PT AO (shades the sun's cube reflection); WH3 23 reflection dispatches before the
+        march; a WARP harness for Pharaoh dof00/01 + t01-t04 fog mask; tw_troy_shaders run.ps1 -OutDir. Owner: per-game
+        rounds (-pi + int-AND: one sweep, shared round)
+      - [ ] UE next (tpa_ 11-16): Expeditions 192686A0 (BasePassAO) keeps the game's AO on baked light under RT AO = two
+        methods (move the trace earlier or a deferred multiply: ATN); Tales SSR switch r.EnableScreenSpaceReflectionTO14
+        trace (A4); C1747FE1 t5 check (G2 runtime dump); SER Nsight A/B; ao01 confirm (one GT-VBAO trace); UE SDR WARP ramp;
+        A10a harness; Tales landscape LOD bias (sampler clones on 44 PS, big, low value). ATN checks: Tales PT Ambient in G1 / G2, characters under GT-VBGI / rays, SSAO-skip timing, the SER
+        row; Expeditions PT Ambient (no double sky), GT-VBAO at Levels 1, the DFAO row. Owner: next UE round, coordinator
+        (runs)
       - [ ] Attila + Thrones row (ATN 22:1x): skip the game's reflection blur where the rays reflect, Experimental, OFF by
         default (= today's look) and in Reset / presets; WARP off = today's bytes + control. Owner: tw1_ (resumed 22:1x)
       - [ ] TW1 RUNS (tw1_ 11-16 NEEDS A RUN): 1. WH1 / WH2 battle, Shadows DXR, Replace on / off at each in-game shadow
@@ -1988,7 +2034,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         vectors; skip the shadow pass under RT shadows (292 caster draws); skip the SSAO chain under RT AO (0.086 ms; the
         trace must move before SSAO, no reader between BlurV and the sun pass in R1 T1); RT reflections after run d; the
         page label says "Graphics 1 of 2". Owner: next Divinity 1 round
-      - [ ] SHARED STEP: rt_core's path ambient works only for TW hosts (internal::ambient_cube): Path-Traced Ambient + RT /
+      - [ ] (tpa_'s spec: rt_scene::WriteSky(context, float4[6]) + a host-sky flag in SettingsOf; today a non-TW host sets settings.path_ambient, writes 6 axis irradiances into rt_sun texels 3-8 (texel 3 w != 0 = sky, texel 4 = scale, texel 6 = 0 unless y-up), drops its own diffuse sky while runtime.path_ambient_on (under runtime.mutex), turns RT AO off) SHARED STEP: rt_core's path ambient works only for TW hosts (internal::ambient_cube): Path-Traced Ambient + RT /
         PT GI for non-TW hosts (Divinity 1 / 2, same gap as Tales / Expeditions, tpa_). Owner: shared round with tpa_'s result
       - [ ] Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask, RT AO / PT ambient replacing
         PPApplyAO, RT / PT GI replacing the IBL diffuse, RT reflections replacing IBL_Specular; the ledger's stacking lines)
@@ -2243,7 +2289,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [x] DONE 11-16 (Bend / GT-VBGI on: 1fd4f778, 51c464877). PARTLY DONE a0057296 (ssao auto thickness Experimental off; censuses T9 / T10 / T11 / T12 / T15 written, T9 found + fixed a preset turning Motion Blur Off back on; LEFT: Bend SSS / GT-VBGI = ATN decides, landscape LOD bias needs sampler clones on 44 PS): Tales: no Bend SSS, no GT-VBGI (no ScreenSpaceShadows* / light_bounce_* keys; tales.tsv T13); no AO temporal /
         edge fix / denoise rows, no LOD bias trilinear (T12); the censuses T9 (25 menu settings), T10 (casters), T11 (scale)
         and T15 (shadow-map skip) not found. Owner: non-TW parity round (Tales)
-      - [ ] (hca_: rows, auto thickness, page text done a0057296 / 65586632; the mapping lines: tpa_) PARTLY DONE a0057296 (4 mapped, 6 half-size-copy ones mapped but not bypassed, 4 DOF temporal never mapped, all level B; RayTracedSpecularOcclusion + RayTracedLightBounceResolution rows + a cbuffer over-read fix; ssao auto thickness; E7 WARP PASS; sg.* census; page text "Keep the game's own HDR setting off"; LEFT: E9 -d3d12 launch, the Low start, NEEDS A TRACE rows): Expeditions: 14 unmapped TAA permutations (TEMPORAL_SHADERS has 6, dlss_graphics.hpp:110); the sg.* level
+      - [ ] (tpa_ 11-16: NEEDS A TRACE rows re-read; LEFT: E9 (-d3d12) + Low start run, 14 TAA permutations (level B, traces)) (hca_: rows, auto thickness, page text done a0057296 / 65586632; the mapping lines: tpa_) PARTLY DONE a0057296 (4 mapped, 6 half-size-copy ones mapped but not bypassed, 4 DOF temporal never mapped, all level B; RayTracedSpecularOcclusion + RayTracedLightBounceResolution rows + a cbuffer over-read fix; ssao auto thickness; E7 WARP PASS; sg.* census; page text "Keep the game's own HDR setting off"; LEFT: E9 -d3d12 launch, the Low start, NEEDS A TRACE rows): Expeditions: 14 unmapped TAA permutations (TEMPORAL_SHADERS has 6, dlss_graphics.hpp:110); the sg.* level
         census (S10); the Low start never ran; rows missing: RayTracedSpecularOcclusion, RayTracedLightBounceResolution,
         ssao temporal / edge fix / denoise / auto thickness / resolution; E9 (-d3d12 launch), E7 (WARP of lut00's
         output-device branch); the page says "The game has no HDR option of its own" (addon.cpp:446) though
@@ -2286,10 +2332,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: ATN (in game)
       - [ ] Astra review: the tester's first freeze still unexplained (archive 1344): check against today's 21 review
         findings. Owner: coordinator
-      - [ ] WH3 v40 / batch 6 "Not done" (archive 1270, 1315-1331; wh3_v40 / wh3_batch6 reports): Shadow Map Size 2048 /
+      - [ ] (tw2_ 11-16: Shadow Map Size already f0c18f9a4; 800F7F7F half copy skipped a13b3b1b9 (no reader in 93 traces, 0.10 ms); LEFT: C0ED2883 / 1405BFB4 motion (SHARED STEP dxbc AddVelocityTarget registers, ~1 day), the tent = ATN) WH3 v40 / batch 6 "Not done" (archive 1270, 1315-1331; wh3_v40 / wh3_batch6 reports): Shadow Map Size 2048 /
         1024, the 800F7F7F half-copy bypass (0.10 ms), C0ED2883 / 1405BFB4 motion, the tent's black spot (item 15 waits
         for ATN). Owner: next WH3 round (+ ATN for the tent)
-      - [ ] Pharaoh below 100 %: p2ph_scale_census.txt still has 8 BUG (B) rows (shroud decals 61C823A0 / 8852FBD3, SSR
+      - [ ] (tw2_ 11-16: the 8 BUG rows already fixed / not bugs (ce280b22, 7224b347, depth-only, MSAA-only); LEFT: contact march at 33 % (SHARED STEP view_share rule for loop-carried uv), SSR variants 11C3B7AE / 5DB9A046 / F93FA73F / 6ECC6281 NEED A TRACE) Pharaoh below 100 %: p2ph_scale_census.txt still has 8 BUG (B) rows (shroud decals 61C823A0 / 8852FBD3, SSR
         apply DE4F92CD, particles 3F1B86E1, ...) and 5 of 9 sun draws differ at 33 % with the game's contact shadows on
         (archive 852, v61). Owner: next Pharaoh round
     - [x] NSIGHT AUDIT 19:1x (ATN: "did we use last night's Nsight captures?"): harness captures only (11-14 / 11-15:
