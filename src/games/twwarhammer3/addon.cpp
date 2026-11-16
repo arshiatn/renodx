@@ -896,6 +896,11 @@ namespace reflections {
 
 enum class Pass : uint8_t { GAME, OURS, RAYS };
 Pass pass = Pass::GAME;
+// Skip the Game's Reflection Passes (row, on): with the rays' reflections everywhere (Pass::RAYS) the hits' mip chain after the
+// march (79F74068 / 66C301FF / FB547085, 6 levels) goes with the march and its blurs: the resolve takes the rays' light and share
+// wherever it reflects and t_hit changes nothing (test/tw_warhammer3_shaders part 7). The hierarchical depth and the light's mips
+// run before the march, where the rays are traced: those stay.
+float skip_row = 1.f;
 float all_surfaces_row = 0.f;  // The method slider's second place: the game's march, closed to water since WH2, on the flags' bit 0 too.
 float quality_row = 1.f;       // Reflection Quality: x the march's 100 steps (ours swapped in off 1; at 1 the game's bytes).
 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> main_depth;
@@ -1025,6 +1030,7 @@ bool RaysOn() {
 }
 
 bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
+  pass = Pass::GAME;  // the pass's first dispatch: no RAYS left from a frame without the resolve
   one_to_one = false;
   mip_chain = MipChain::NONE;
   const uint32_t render_width = twattila::frame_history::render_width.load(std::memory_order_relaxed);
@@ -1273,6 +1279,7 @@ bool OnBlur(reshade::api::command_list* cmd_list, Copy* copy) {
 
 // `depth_levels`: the hierarchical depth's steps (CB0A1AF6, after 0ED84C3D, before the march), t_hit's target and share.
 bool OnMipStep(reshade::api::command_list* cmd_list, Copy* copy, bool depth_levels = false) {
+  if (pass == Pass::RAYS && skip_row != 0.f) return false;
   if (mip_chain == MipChain::NONE) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
@@ -3961,6 +3968,17 @@ void ConfigureAddon() {
       .label = "Fog in Reflections (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "Far hills in ray-traced reflections get the game's fog. Needs Reflections Lit as This Frame for the right brightness.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSkipGameReflections",
+      .binding = &reflections::skip_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 1.f,
+      .label = "Skip the Game's Reflection Passes",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Leaves out the game's screen-space reflection passes the rays' reflections replace: the same picture,\n"
+                 "a little faster.",
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{
