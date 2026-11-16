@@ -167,6 +167,10 @@ void ApplyResetPreset() {
       {"ssr_quality", 1.f},
       {"auto_exposure_highlight_protection", 0.f},
       {"auto_exposure_highlight_headroom_stops", 2.f},
+      {"VfxFireAndGlow", 1.f},
+      {"VfxSmokeAndDust", 1.f},
+      {"VfxEffectMeshes", 1.f},
+      {"VfxParticleFog", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
