@@ -10,6 +10,10 @@
 - Proven offline: under the rays' reflections the game's screen-space march no longer reaches the picture (`tw_thrones_ssr`
   part G: 0 of 32768 apart with the light buffer black; CONTROL without the rays 7471).
 - Code only: one psycho_test30 / psycho_test31.hlsli (Attila's; 110 of 110 shaders the same bytes).
+- New: **Sharp Ray-Traced Reflections (Experimental, off)**: with ray-traced reflections, the game's blur on top of them
+  leaves out its roughness step where the rays reflect (their reflection follows the roughness already). Off: the game's
+  look, also in Reset and every preset. `tw_thrones_ssr` part H: off the build before's bits (0 apart); on the 9 taps reach
+  +-0.9 texels in place of +-1.8 (up to +-5.6), a checkerboard through the game's blur 26 % closer to sharp.
 
 ## Dev, fix round (2026-11-16; built only, not stamped, not installed, not run in game)
 
