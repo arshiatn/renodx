@@ -432,8 +432,12 @@ Off while the game renders below the display (Native Upscaling); Texture LOD Bia
 "Dark tones for L / M" (Experimental, off: the square-root feed of the TW games). "No RT/PT + Screen-Space
 (Experimental)" beside No RT/PT. Into windowed: the game's own size at once. No per-frame work for debug features: the
 frame trace is a button (renodx_trace_now only in scripted runs), the jitter diagnostics only while the AA section
-shows, back_buffer_fix matches a bind by its view. rt_specular_merge exact where open. Tests: `test/tw_ryse_sun_replace`,
-`test/tw_ryse_specular_merge`, `test/tw_ryse_shadow_skip` part 2, `test/tw_ryse_path_ambient` 3a (three SSDO shaders).
+shows, back_buffer_fix matches a bind by its view. rt_specular_merge exact where open. `rt_probe_sky` writes texel 6's
+w 0: the helper's open sky takes Ryse's cube at the normal as it is (w 1 stretched y, Attila's y-up habit). Tests (WARP,
+all PASS): `test/tw_ryse_sun_replace`, `test/tw_ryse_specular_merge`, `test/tw_ryse_shadow_skip` part 2,
+`test/tw_ryse_path_ambient` 2 and 3a (three SSDO shaders), `test/tw_ryse_tonemap` (V35 against the game below white:
+2.05x the game's grey at 0.1 nits at the shipped defaults; fit Contrast 1.15 / Shadows 1.35 within 4.8 %, ATN decides),
+`test/tw_vanilla_exact` Ryse (14 replaced shaders exact with their control).
 
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
