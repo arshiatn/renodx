@@ -311,6 +311,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEPS (div2_ 11-16): rt_core TraceLightBounce: one missed bounce frame re ... | shs2_ / next shared round
 - GAME-SPECIFIC SKIPS PARITY (ATN 23:0x "Game-specific skips, let's do this too"): ... | per-game rounds (after the current merges)
 - NIGHT + SEA BENCH (ATN 23:0x offers a burning Constantinople at night replay; a ... | ATN (replays), coordinator
+- RESTIR UPGRADE (ATN 23:1x: debug43 chats + 4 NVIDIA papers): own implementations ... | gpu3_ after the torch row + paths split
 - PATHS TRACE / SHADE SPLIT (ATN 23:0x "Let's do that"): the paths at 128 register ... | gpu3_
 - GPU3 RUNS (gpu3_ 11-16 NEEDS A RUN): 1. Attila Constantinople, ATN's rows, path- ... | coordinator (one game at a time)
 - GPU next (gpu3_ 11-16): Attila Nsight round DONE (whole frame 3.711 -> 3.607 ms, ... | next GPU round
@@ -2012,6 +2013,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         replays; then one bench + WPR (ATN's tasks) + Nsight GPU trace at each (torches 128, fire / smoke particles, RT
         water reflections, ships = Rarer Objects), then a CPU / GPU round from the findings. Owner: ATN (replays),
         coordinator
+      - [ ] RESTIR UPGRADE (ATN 23:1x: debug43 chats + 4 NVIDIA papers): own implementations from the papers (their code
+        only where its licence allows: ReSTIR-CGNS = Falcor's BSD-3; hedstrom2026 zip / ReSTIR PG / PT Enhanced: no code
+        or licence named), each Nsight before / after + the reference path tracer: (1) reciprocal neighbor selection
+        (lin2026, halves spatial reuse cost: our reuse pass is L2-bound); (2) compatibility-guided neighbor selection
+        (junkins2026: SMAPE -6..29 %, temporal covariance -22..49 %, +2..5 % cost: less boiling); (3) the feedback-loop
+        check of kajiya's gi-overview "Indirect diffuse" (Embark, MIT / Apache-2.0): spatial + temporal data fed back
+        onto itself boils, M clamp; duplication maps only if they keep the energy; (4) torches into the paths through the
+        GI reservoir (lin2026's unified DI + GI reservoirs) instead of a light loop per hit; (5) later: stochastic
+        pairwise MIS (hedstrom2026, disocclusions), ReSTIR PG path guiding (zeng2025). PT DI (RTXDI-style direct light)
+        stays the game's: its raster lights with our visibility bits (one bit per light), keeping the game's look.
+        Diffuse BRDF at path hits stays Lambert (as the game shades what it sees; EON / Hammon / VMF diffuse would change
+        the bounce only, not the game's direct light). Owner: gpu3_ after the torch row + paths split
       - [ ] PATHS TRACE / SHADE SPLIT (ATN 23:0x "Let's do that"): the paths at 128 registers split into trace and shade
         passes in the shared helper (every helper game gets it). Owner: gpu3_
       - [ ] GPU3 RUNS (gpu3_ 11-16 NEEDS A RUN): 1. Attila Constantinople, ATN's rows, path-traced GI: pan along the walls
