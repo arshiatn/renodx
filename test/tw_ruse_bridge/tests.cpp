@@ -54,6 +54,8 @@
 //    traces): 125 frames try at 0, 60, 120 and record 0, 59, 60, 119, 120 (a try's frame and the one before), GT-VBAO in
 //    every frame; GT-VBAO off: the ground's depth copied in the try's frame alone; a due frame without a trace point
 //    tries nothing and moves the try 60 frames on; one "not tracing" log line in all of it.
+//    Rays Off Above at 600 m, the eye at 672 m: no try and nothing recorded in 70 frames, no "not tracing" line; at 0 m
+//    the next frame tries; a line with the eye's height at each change.
 // H2 (renodx-tw-dlaa64.exe beside this exe; argv[2] dlss / fsr / xess):
 // 7. Evaluate on a synthetic aliased frame (the ground quad's hard edges drawn with each frame's jitter) for 24 frames:
 //    a result each frame after the first, written back into the scene; flat pixels within 3 codes of the aliased
@@ -1594,6 +1596,29 @@ int main(int argc, char** argv) {
     std::printf("Rays' gate, no trace point at a due frame: no try %d, the next try %u frames on %d; \"not tracing\" lines %td\n", skipped ? 1 : 0,
                 ruse::ray_tracing::RAYS_RETRY_FRAMES, pushed ? 1 : 0, not_tracing);
     CHECK(skipped && pushed && not_tracing == 1);
+    // Rays Off Above (the map table; the trace camera's eye at 672 m): under a 600 m ceiling no try in 70 frames, nothing
+    // recorded, no "not tracing" line; back at 0 m the next frame tries; a line with the eye's height at each change.
+    logged.clear();
+    rays.rays_ceiling = 600.f;
+    size_t high_tries = 0;
+    size_t high_recorded = 0;
+    for (int index = 0; index < 70; ++index) {
+      frame(true);
+      high_tries += (rays.tried_frame == state.frame) ? 1u : 0u;
+      high_recorded += replay.recording ? 1u : 0u;
+    }
+    const bool was_above = rays.above_ceiling;
+    rays.rays_ceiling = 0.f;
+    frame(true);
+    const bool back = !rays.above_ceiling && rays.tried_frame == state.frame;
+    const auto count_lines = [&](const char* start) {
+      return std::ranges::count_if(logged, [start](const std::string& line) { return line.find(start) == 0; });
+    };
+    const auto ceiling_lines = count_lines("[R.U.S.E.] Rays Off Above");
+    std::printf("Rays Off Above 600 m, the eye at 672 m: %zu tries and %zu frames recorded in 70; at 0 m tried at once %d; its lines %td, \"not "
+                "tracing\" lines %td\n",
+                high_tries, high_recorded, back ? 1 : 0, ceiling_lines, count_lines("[R.U.S.E.] Ray tracing: not tracing"));
+    CHECK(was_above && high_tries == 0 && high_recorded == 0 && back && ceiling_lines == 2 && count_lines("[R.U.S.E.] Ray tracing: not tracing") == 0);
     rays.ground = false;
     rays.proxy_queue = nullptr;
     state.ready = false;

@@ -1601,6 +1601,20 @@ void ConfigureAddon() {
                  "Off: both, the darker of the two (no shadow of the game's is lost).",
       .is_enabled = [] { return ruse::ray_tracing::state.ground; },
   });
+  // The map table: over this eye height the game's shadows (ATN reads the table's height from ReShade.log).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RuseRaysOffAbove",
+      .binding = &ruse::ray_tracing::state.rays_ceiling,
+      .default_value = 0.f,
+      .label = "Rays Off Above",
+      .section = SHADOWS_SECTION,
+      .tooltip = "Camera height over which the rays go off and the game's shadows come back (the map table).\n"
+                 "0 m: rays at any height. The camera's height goes to ReShade.log when this changes.",
+      .min = 0.f,
+      .max = 50000.f,
+      .format = "%.0f m",
+      .is_enabled = [] { return ruse::ray_tracing::state.ground; },
+  });
   // One frame's passes on the game's D3D9 queue, into ReShade.log.
   settings.push_back(new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::BUTTON,

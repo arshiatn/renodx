@@ -114,6 +114,12 @@ struct State {
   // The Rays Replace Shadow Maps row (live): the rays in place of the game's shadow-map term; off, the darker of the two
   // on the ground and the rays' umbra over the game's factor on objects (until a run proves the rays hold the maps' casters).
   float replace_maps = 0.f;
+  // The Rays Off Above row (live; the map table): over this eye height (metres) no trace, the game's shadows; 0 none.
+  // The last trace point's eye over it; the row's value and the eye's height lines this start (a few, never one a frame).
+  float rays_ceiling = 0.f;
+  bool above_ceiling = false;
+  float logged_ceiling = 0.f;
+  uint32_t ceiling_lines = 0;
   bool guides = false;  // either: the guide targets and the helper's guides
   bool failed = false;
   bool tracing = false;  // the last trace's answer, and its changes logged this start (a few: never a line a frame)
@@ -341,7 +347,7 @@ inline void SetTracing(bool tracing, const std::string& why_not) {
 // Whether this frame's scene draws are recorded (addon.cpp sets the replay's row at the game's present): for a try this
 // frame or the next, the one that takes them.
 inline bool SceneWanted() {
-  return state.ground && bridge::state.frame + 1 >= state.rays_frame;
+  return state.ground && !state.above_ceiling && bridge::state.frame + 1 >= state.rays_frame;
 }
 
 // The ground's sun shadows once a frame (the rays, Bend's march or both) into the ground mask, before the main pass draws
@@ -353,9 +359,29 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       || !bridge.camera_valid || !bridge.intz_depths.contains(state.prepass_depth)) {
     return false;
   }
+  std::array<double, 16> view_projection = {};
+  std::array<double, 3> eye = {};
+  if (!bridge::CurrentCamera(&view_projection, &eye)) return false;
+  // Rays Off Above (the map table): over that eye height no trace, the game's shadows. The eye's height into ReShade.log
+  // when the row changes and when the rays go off or come back (the table's height read from it).
+  if (state.ground) {
+    constexpr uint32_t MOST_LINES = 16;
+    const double eye_height = eye[2] * HELPER_METRES;
+    const bool above = state.rays_ceiling > 0.f && eye_height > state.rays_ceiling;
+    if ((above != state.above_ceiling || state.rays_ceiling != state.logged_ceiling) && state.ceiling_lines < MOST_LINES) {
+      ++state.ceiling_lines;
+      reshade::log::message(reshade::log::level::info,
+                            std::format("[R.U.S.E.] Rays Off Above {:.0f} m: the eye at {:.1f} m, the rays {}{}", state.rays_ceiling, eye_height,
+                                        (above ? "off (the game's shadows)" : "on"),
+                                        (state.ceiling_lines == MOST_LINES ? " (no more of these lines this start)" : ""))
+                                .c_str());
+    }
+    state.logged_ceiling = state.rays_ceiling;
+    state.above_ceiling = above;
+  }
   // The rays tried each frame while they trace, else every RAYS_RETRY_FRAMES; between tries without another ground row
   // nothing below runs (the depth's copy and its wait included).
-  const bool rays = state.ground && bridge.frame >= state.rays_frame;
+  const bool rays = state.ground && !state.above_ceiling && bridge.frame >= state.rays_frame;
   if (!rays && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;
   using twattila::rt_scene::internal::CpuTime;
   const CpuTime ground_timed(Timed(&state.steps.ground));
@@ -586,9 +612,6 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   // a texel left of and above D3D11's (unshifted, every ray started up to 0.69 m under the ground at 200 m at 256 x 144:
   // all blocked, tw_ruse_bridge 12). The captures' rows keep the game's clip (CaptureScene's, unjittered).
   const float* inverse = bridge.camera.data() + 16;
-  std::array<double, 16> view_projection = {};
-  std::array<double, 3> eye = {};
-  if (!bridge::CurrentCamera(&view_projection, &eye)) return false;
   const std::array<float, 2> drawn_jitter = bridge::DrawnJitter();
   const std::array<double, 2> shift = {(2.0 * drawn_jitter[0] + 1.0) / bridge.width, -(2.0 * drawn_jitter[1] + 1.0) / bridge.height};
   twattila::rt_scene::Camera camera = {};
@@ -1188,9 +1211,10 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
 
 // The game's present (after the bridge's, which counted the frame): rt_core's new frame (its AO rays off while the paths'
 // ambient stands in for the occlusion). A frame that was to ask for the rays and didn't (no trace point: a menu, the
-// map table; or its inputs not ready) asks again RAYS_RETRY_FRAMES on, the replay idle until the frame before.
+// map table; or its inputs not ready) asks again RAYS_RETRY_FRAMES on, the replay idle until the frame before; one over
+// Rays Off Above asks at the next frame under it.
 inline void OnPresent() {
-  if (const uint32_t ended = bridge::state.frame - 1; state.rays_frame <= ended && state.tried_frame != ended) {
+  if (const uint32_t ended = bridge::state.frame - 1; state.rays_frame <= ended && state.tried_frame != ended && !state.above_ceiling) {
     state.rays_frame = ended + RAYS_RETRY_FRAMES;
     SetTracing(false, (state.traced_frame == ended) ? "the trace point's inputs weren't ready: the bridge, the camera pass or the pre-pass's depth"
                                                     : "no trace point: no camera pass and mask copy, or no main pass after them");
