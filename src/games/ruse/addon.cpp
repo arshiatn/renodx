@@ -155,7 +155,7 @@ bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_co
   if (ruse::bridge::state.post_surface) {
     ruse::bridge::KeepHudless(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()));
   }
-  if ((ruse::ray_tracing::state.ground || ruse::ray_tracing::state.bend || ruse::ray_tracing::state.vbao) && ruse::bridge::IsSceneDraw()) {
+  if (ruse::ray_tracing::Shading() && ruse::bridge::IsSceneDraw()) {
     ruse::ray_tracing::OnSceneDraw(cmd_list);
   }
   ruse::bridge::OnDraw(cmd_list);
@@ -214,7 +214,10 @@ constexpr char RAYS_SECTION[] = "Ray Tracing (Experimental, Restart Required)";
 constexpr char AA_SECTION[] = "Anti-Aliasing and Upscaling";
 constexpr char SHADOWS_SECTION[] = "Shadows";
 constexpr char AO_SECTION[] = "Ambient Occlusion";
-constexpr std::array<std::string_view, 4> GRAPHICS_1_SECTIONS = {RAYS_SECTION, AA_SECTION, SHADOWS_SECTION, AO_SECTION};
+constexpr char GI_SECTION[] = "Global Illumination";
+constexpr char REFLECTIONS_SECTION[] = "Reflections and Water";
+constexpr std::array<std::string_view, 6> GRAPHICS_1_SECTIONS = {RAYS_SECTION, AA_SECTION, SHADOWS_SECTION, AO_SECTION, GI_SECTION,
+                                                                 REFLECTIONS_SECTION};
 
 // The ray tracing presets (R.U.S.E. has no path tracing): RT/PT every ray-traced row on, No RT/PT every one off.
 const std::vector<std::pair<std::string, float>> RAYS_ON = {
@@ -1498,6 +1501,56 @@ void ConfigureAddon() {
       }
     }
   }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseGroundLightBounce",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Ground Light Bounce (Experimental)",
+        .section = GI_SECTION,
+        .tooltip = "GT-VBGI bounced light on the ground: sunlit slopes, walls and fields light what lies beside them (costs GPU time).\n"
+                   "Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // GT-VBGI over the ground's depth with last frame's scene (the bridge's colour) as the light; the terrain shaders with
+    // the ambient occlusion and the bounced light from one texel (each proved the game's with it at (1, 0, 0, 0)) replace
+    // the ambient occlusion's; the occlusion rides in that texel (the rays', else GT-VBAO's, else 1).
+    ruse::ray_tracing::state.bounce = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
+    readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.bounce;
+    if (ruse::ray_tracing::state.bounce) {
+      for (const auto& [hash, code] : ruse::ray_tracing::GROUND_LIGHT_SHADERS) {
+        custom_shaders[hash] = {.crc32 = hash, .code = code};
+      }
+    }
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseWaterReflections",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Water Reflections (Experimental)",
+        .section = REFLECTIONS_SECTION,
+        .tooltip = "Screen-space reflections of the banks, buildings and units on rivers, lakes and the sea, over the game's sky\n"
+                   "reflection (costs GPU time). Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off.\n"
+                   "Restart after changing this setting.",
+        .labels = {"Off", "Screen-Space"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The march over the ground's depth with last frame's main depth (the water's surface) in it, hits from last frame's
+    // scene; the water shaders blend it over their cube map (each proved the game's with its share at 0).
+    ruse::ray_tracing::state.reflections = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
+    readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.reflections;
+    if (ruse::ray_tracing::state.reflections) {
+      for (const auto& [hash, code] : ruse::ray_tracing::WATER_REFLECTION_SHADERS) {
+        custom_shaders[hash] = {.crc32 = hash, .code = code};
+      }
+    }
+  }
   if (ruse::bridge::state.enabled || ruse::replay::state.enabled || ruse::ray_tracing::state.vbao) {
     // The camera pass: its matrices (c0-c8) as it drew (the bridge's motion, the replay's placements).
     custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list*) {
@@ -1727,7 +1780,7 @@ bool AttachAddon() {
   if (ruse::ray_tracing::state.ground) {
     twattila::rt_scene::InstallReplayedScene(ruse::ray_tracing::HOST);
   }
-  if (ruse::ray_tracing::state.ground || ruse::ray_tracing::state.bend || ruse::ray_tracing::state.vbao) {
+  if (ruse::ray_tracing::Shading()) {
     reshade::register_event<reshade::addon_event::copy_texture_region>(ruse::ray_tracing::OnCopyTextureRegion);
     reshade::register_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
   }

@@ -43,7 +43,11 @@
 // Screen-space ground shadows (G2): Bend Studio's march (Attila's sss_setup / sss_bend) over the same depth, into the
 // same visibility by minimum, with the rays or alone. The ground's ambient occlusion without rays: GT-VBAO
 // (ground_vbao.cs_5_0) over the same depth into the same occlusion texture, without the helper too (the bridge's
-// shared textures alone: MakeObjects).
+// shared textures alone: MakeObjects). The ground's bounced light: GT-VBGI (ground_bounce.cs_5_0, the same march) with
+// last frame's scene as the light, which the terrain shaders add to their ambient, with the occlusion in the same s14
+// texel (s12, the one other sampler the patches could take, is the game's uniDiversityMap in 23 shaders). Water
+// reflections: a screen-space march (water_reflections.cs_5_0) over the same depth with last frame's main depth in it,
+// its hits read in last frame's scene; the water shaders blend it over their cube map by its share at s13.
 namespace ruse::ray_tracing {
 
 // The rays' ambient range in world units: 2 m if a unit is a centimetre (eye heights near 67,000 on the B0 trace; the
@@ -53,6 +57,12 @@ constexpr float AMBIENT_RANGE = 200.f;
 // T-run checks).
 constexpr float VBAO_RADIUS = 2000.f;
 constexpr float VBAO_THICKNESS = 500.f;
+// The bounced light's strength (1: the scene's light as it was).
+constexpr float BOUNCE_STRENGTH = 1.f;
+// The water reflections' reach and the thickness a depth sample stands for, world units (1 km and 5 m if a unit is a
+// centimetre; the T-run checks).
+constexpr float REFLECTION_REACH = 100000.f;
+constexpr float REFLECTION_THICKNESS = 500.f;
 
 using Microsoft::WRL::ComPtr;
 
@@ -62,6 +72,8 @@ struct State {
   bool ambient = false;  // the Ray-Traced Ground Ambient Occlusion row (restart; with the ground's)
   bool bend = false;  // the Screen-Space Ground Shadows row (restart; with the anti-aliasing's bridge)
   bool vbao = false;  // the Screen-Space Ground Ambient Occlusion row (restart; no helper needed)
+  bool bounce = false;  // the Ground Light Bounce row (restart; with the anti-aliasing's bridge)
+  bool reflections = false;  // the Water Reflections row (restart; with the anti-aliasing's bridge)
   bool failed = false;
   // This frame's pre-pass (the camera pass's target and depth), where its copy went (an IDirect3DTexture9), the sun.
   uint32_t camera_frame = UINT32_MAX;
@@ -98,7 +110,22 @@ struct State {
   ComPtr<ID3D11UnorderedAccessView> occlusion_uav;
   uint32_t occlusion_frame = UINT32_MAX;
   ComPtr<ID3D11ComputeShader> vbao_shader;
-  ComPtr<ID3D11Buffer> vbao_settings;  // ground_vbao's: projection, size, radius / thickness / noise frame
+  ComPtr<ID3D11Buffer> vbao_settings;  // ground_vbao's and ground_bounce's: projection, size, range, to last frame
+  // The bounced light (s14 with the occlusion: x it, yzw the light) and the water reflections (s13): last frame's scene
+  // (the bridge's colour, from its bloom) read by both, their textures for the D3D9 pass (RGBA16F), the frames they hold;
+  // the rays' occlusion for the bounce's texel.
+  ComPtr<ID3D11ShaderResourceView> light_view;
+  ComPtr<ID3D11ShaderResourceView> occlusion_view;
+  ComPtr<ID3D11ComputeShader> bounce_shader;
+  bridge::SharedTexture ground_light;
+  ComPtr<ID3D11UnorderedAccessView> ground_light_uav;
+  uint32_t bounce_frame = UINT32_MAX;
+  ComPtr<ID3D11ComputeShader> reflection_shader;
+  ComPtr<ID3D11Buffer> reflection_settings;  // water_reflections': the eye-relative matrices, size, projection, range
+  bridge::SharedTexture reflection;
+  ComPtr<ID3D11UnorderedAccessView> reflection_uav;
+  uint32_t reflection_frame = UINT32_MAX;
+  ComPtr<IDirect3DTexture9> unlit;  // s13 / the bounce's s14 when untraced: (1, 0, 0, 0), the game's shading
   // G2: sss_setup's dispatch list (camera_VS_PS b0, lighting_VS_PS b1, sss_settings b2), sss_bend's eight indirect
   // dispatches (b3 each one's index) into the occlusion, ground_bend's minimum into the visibility.
   struct Bend {
@@ -147,6 +174,11 @@ struct BendSettings {
   float foliage_bit = 0.f;
   std::array<float, 3> padding = {};
 };
+
+// Any row that shades the ground or the water from the main pass's first draw (ShadeGround).
+inline bool Shading() {
+  return state.ground || state.bend || state.vbao || state.bounce || state.reflections;
+}
 
 inline const twattila::rt_scene::Host HOST = {
     .render_size = [] { return std::array<UINT, 2>{bridge::state.width, bridge::state.height}; },
@@ -280,17 +312,36 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
         context->UpdateSubresource(bend.settings.Get(), 0, nullptr, &settings, 0, 0);
       }
     }
-    if (made && state.vbao) {
-      const D3D11_BUFFER_DESC desc = {.ByteWidth = 12 * sizeof(float), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
-      made = SUCCEEDED(proxy->CreateComputeShader(__ground_vbao.data(), __ground_vbao.size(), nullptr, state.vbao_shader.ReleaseAndGetAddressOf()))
-             && SUCCEEDED(proxy->CreateBuffer(&desc, nullptr, state.vbao_settings.ReleaseAndGetAddressOf()));
+    if (made && (state.vbao || state.bounce)) {
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = 32 * sizeof(float), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      made = SUCCEEDED(proxy->CreateBuffer(&desc, nullptr, state.vbao_settings.ReleaseAndGetAddressOf()))
+             && (!state.vbao || SUCCEEDED(proxy->CreateComputeShader(__ground_vbao.data(), __ground_vbao.size(), nullptr, state.vbao_shader.ReleaseAndGetAddressOf())));
+    }
+    if (made && (state.bounce || state.reflections)) {
+      made = SUCCEEDED(proxy->CreateShaderResourceView(bridge.color.proxy.Get(), nullptr, state.light_view.ReleaseAndGetAddressOf()));
+    }
+    if (made && state.bounce) {
+      made = SUCCEEDED(proxy->CreateComputeShader(__ground_bounce.data(), __ground_bounce.size(), nullptr, state.bounce_shader.ReleaseAndGetAddressOf()))
+             && bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.ground_light,
+                                   D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS)
+             && SUCCEEDED(proxy->CreateUnorderedAccessView(state.ground_light.proxy.Get(), nullptr, state.ground_light_uav.ReleaseAndGetAddressOf()));
+    }
+    if (made && state.reflections) {
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = 60 * sizeof(float), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      made = SUCCEEDED(proxy->CreateComputeShader(__water_reflections.data(), __water_reflections.size(), nullptr,
+                                                  state.reflection_shader.ReleaseAndGetAddressOf()))
+             && SUCCEEDED(proxy->CreateBuffer(&desc, nullptr, state.reflection_settings.ReleaseAndGetAddressOf()))
+             && bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.reflection,
+                                   D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS)
+             && SUCCEEDED(proxy->CreateUnorderedAccessView(state.reflection.proxy.Get(), nullptr, state.reflection_uav.ReleaseAndGetAddressOf()));
     }
     if (made && (state.ambient || state.vbao)) {
       made = bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.occlusion,
                                 D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS)
-             && SUCCEEDED(proxy->CreateUnorderedAccessView(state.occlusion.proxy.Get(), nullptr, state.occlusion_uav.ReleaseAndGetAddressOf()));
+             && SUCCEEDED(proxy->CreateUnorderedAccessView(state.occlusion.proxy.Get(), nullptr, state.occlusion_uav.ReleaseAndGetAddressOf()))
+             && (!state.bounce || SUCCEEDED(proxy->CreateShaderResourceView(state.occlusion.proxy.Get(), nullptr, state.occlusion_view.ReleaseAndGetAddressOf())));
     }
-    if (made && state.objects) {
+    if (made && (state.objects || state.reflections)) {
       D3D11_TEXTURE2D_DESC desc = {
           .Width = bridge.width,
           .Height = bridge.height,
@@ -354,10 +405,11 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   }
   camera.relative_inverse[15] = 1.f;
 
-  // O1: last frame's depth (clip -> clip by this frame's view-projection x its inverse, in doubles) over the ground's.
-  // Moved units are a frame behind; where nothing lands, the ground's depth.
+  // O1 (and the water reflections: the water's surface): last frame's depth (clip -> clip by this frame's
+  // view-projection x its inverse, in doubles) over the ground's. Moved units are a frame behind; where nothing lands,
+  // the ground's depth.
   ID3D11ShaderResourceView* start_depth = state.depth_view.Get();
-  if (state.objects && state.kept_frame + 1 == bridge.frame) {
+  if ((state.objects || state.reflections) && state.kept_frame + 1 == bridge.frame) {
     std::array<float, 24> reprojection = {};
     for (int row = 0; row < 4; ++row) {
       for (int column = 0; column < 4; ++column) {
@@ -401,7 +453,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     traced = twattila::rt_scene::Trace(context.Get(), start_depth, camera);
   }
   const auto [visibility, occlusion] = (traced ? twattila::rt_scene::Visibilities() : std::array<ID3D11ShaderResourceView*, 2>{});
-  if (visibility == nullptr && !state.bend && !state.vbao) return false;
+  if (visibility == nullptr && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;
   // 8 x 8 groups over the bridge's size: `shader` from `source` into `destination` (the helper's R8 results into the
   // textures the D3D9 device shares, R32F; Bend's occlusion into the visibility).
   const auto run = [&](ID3D11ComputeShader* shader, ID3D11ShaderResourceView* source, ID3D11UnorderedAccessView* destination) {
@@ -416,30 +468,82 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     constexpr std::array<FLOAT, 4> LIT = {1.f, 1.f, 1.f, 1.f};
     context->ClearUnorderedAccessViewFloat(state.visibility_uav.Get(), LIT.data());
   }
-  if (state.ambient && occlusion != nullptr) {
+  constexpr std::array<ID3D11ShaderResourceView*, 3> NO_VIEWS = {};
+  constexpr std::array<ID3D11UnorderedAccessView*, 2> NO_OUTPUTS = {};
+  constexpr std::array<ID3D11Buffer*, 4> NO_CONSTANTS = {};
+  const auto [p00, p11, depth_scale, depth_offset] = bridge::ProjectionTerms(view_projection);
+  // The bounce and the reflections read last frame's scene: the bridge's colour, written at its bloom.
+  const bool light_kept = bridge.depth_frame + 1 == bridge.frame;
+  const bool bouncing = state.bounce && light_kept;
+  const bool rays_occlusion = state.ambient && occlusion != nullptr;
+  if (rays_occlusion) {
     run(state.copy.Get(), occlusion, state.occlusion_uav.Get());
     state.occlusion_frame = bridge.frame;
   }
-  // GT-VBAO where the rays' ambient occlusion didn't run this frame; its noise still without the upscaler (no frames to
-  // settle it).
-  if (state.vbao && state.occlusion_frame != bridge.frame) {
-    const auto [p00, p11, depth_scale, depth_offset] = bridge::ProjectionTerms(view_projection);
-    const std::array<float, 12> settings = {
+  // GT-VBAO where the rays' ambient occlusion didn't run this frame; with the bounce GT-VBGI's march instead, its light
+  // and the occlusion (the rays', else its own with the GT-VBAO row) in one texel. Their noise still without the upscaler
+  // (no frames to settle it). The bounce's light: this frame's clip to last frame's (c0-c3 x c4-c7, in doubles).
+  if (bouncing || (state.vbao && !rays_occlusion)) {
+    std::array<float, 32> settings = {
         p00, p11, depth_scale, depth_offset,
         static_cast<float>(bridge.width), static_cast<float>(bridge.height), 1.f / static_cast<float>(bridge.width),
         1.f / static_cast<float>(bridge.height),
-        VBAO_RADIUS, VBAO_THICKNESS, static_cast<float>(bridge.enabled ? (bridge.frame % 64u) : 0u), 0.f,
+        VBAO_RADIUS, VBAO_THICKNESS, static_cast<float>(bridge.enabled ? (bridge.frame % 64u) : 0u), BOUNCE_STRENGTH,
     };
+    for (size_t row = 0; row < 4; ++row) {
+      for (size_t column = 0; column < 4; ++column) {
+        double value = 0.0;
+        for (size_t k = 0; k < 4; ++k) value += static_cast<double>(bridge.camera[(row * 4) + k]) * static_cast<double>(inverse[(k * 4) + column]);
+        settings[12 + (row * 4) + column] = static_cast<float>(value);
+      }
+    }
+    settings[28] = (rays_occlusion ? 2.f : (state.vbao ? 1.f : 0.f));
     context->UpdateSubresource(state.vbao_settings.Get(), 0, nullptr, settings.data(), 0, 0);
     context->CSSetConstantBuffers(0, 1, state.vbao_settings.GetAddressOf());
-    run(state.vbao_shader.Get(), start_depth, state.occlusion_uav.Get());
-    ID3D11Buffer* no_settings = nullptr;
-    context->CSSetConstantBuffers(0, 1, &no_settings);
-    state.occlusion_frame = bridge.frame;
+    if (bouncing) {
+      const std::array<ID3D11ShaderResourceView*, 2> inputs = {state.light_view.Get(), state.occlusion_view.Get()};
+      context->CSSetShaderResources(1, 2, inputs.data());
+      run(state.bounce_shader.Get(), start_depth, state.ground_light_uav.Get());
+      state.bounce_frame = bridge.frame;
+    } else {
+      run(state.vbao_shader.Get(), start_depth, state.occlusion_uav.Get());
+      state.occlusion_frame = bridge.frame;
+    }
+    context->CSSetShaderResources(0, 3, NO_VIEWS.data());
+    context->CSSetConstantBuffers(0, 1, NO_CONSTANTS.data());
   }
-  constexpr std::array<ID3D11ShaderResourceView*, 2> NO_VIEWS = {};
-  constexpr std::array<ID3D11UnorderedAccessView*, 2> NO_OUTPUTS = {};
-  constexpr std::array<ID3D11Buffer*, 4> NO_CONSTANTS = {};
+  // Water reflections: the march's matrices act on offsets from this frame's eye (world coordinates near 2e6): this
+  // frame's clip to an offset (rt's relative rows, the inverse's w row), an offset to this frame's clip and to last
+  // frame's (the view-projections with the eye's translation folded in, in doubles).
+  if (state.reflections && light_kept) {
+    std::array<float, 60> settings = {};
+    std::copy_n(camera.relative_inverse.begin(), 12, settings.begin());
+    std::copy_n(inverse + 12, 4, settings.begin() + 12);
+    for (size_t row = 0; row < 4; ++row) {
+      double now = view_projection[(row * 4) + 3];
+      double previous = bridge.camera[(row * 4) + 3];
+      for (size_t axis = 0; axis < 3; ++axis) {
+        settings[16 + (row * 4) + axis] = static_cast<float>(view_projection[(row * 4) + axis]);
+        settings[32 + (row * 4) + axis] = bridge.camera[(row * 4) + axis];
+        now += view_projection[(row * 4) + axis] * eye[axis];
+        previous += static_cast<double>(bridge.camera[(row * 4) + axis]) * eye[axis];
+      }
+      settings[16 + (row * 4) + 3] = static_cast<float>(now);
+      settings[32 + (row * 4) + 3] = static_cast<float>(previous);
+    }
+    const std::array<float, 12> tail = {
+        static_cast<float>(bridge.width), static_cast<float>(bridge.height), 1.f / static_cast<float>(bridge.width),
+        1.f / static_cast<float>(bridge.height), p00, p11, depth_scale, depth_offset, REFLECTION_REACH, REFLECTION_THICKNESS, 0.f, 0.f,
+    };
+    std::ranges::copy(tail, settings.begin() + 48);
+    context->UpdateSubresource(state.reflection_settings.Get(), 0, nullptr, settings.data(), 0, 0);
+    context->CSSetConstantBuffers(0, 1, state.reflection_settings.GetAddressOf());
+    context->CSSetShaderResources(1, 1, state.light_view.GetAddressOf());
+    run(state.reflection_shader.Get(), start_depth, state.reflection_uav.Get());
+    context->CSSetShaderResources(0, 2, NO_VIEWS.data());
+    context->CSSetConstantBuffers(0, 1, NO_CONSTANTS.data());
+    state.reflection_frame = bridge.frame;
+  }
   // G2: Bend's dispatch list for this camera and sun (camera_VS_PS: the projection's depth at infinity in _m22 / _m23,
   // the view-projection, both read as column-major: our rows as they are), its march over the rays' start depth.
   if (state.bend) {
@@ -497,7 +601,8 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
 }
 
 // The patched shaders' textures, read by VPOS (point, clamped: one texel a pixel): s15 the sun visibility (O1's object
-// shaders), s14 the ambient occlusion (the terrain's); white (the game's shading) unless `traced` this frame.
+// shaders), s14 the ambient occlusion (the terrain's; with the bounce x it, yzw the light), s13 the reflection (the
+// water's); white or (1, 0, 0, 0) (the game's shading) unless `traced` this frame.
 inline void BindTraced(IDirect3DDevice9* host, bool traced) {
   const auto bind = [host](DWORD stage, IDirect3DTexture9* texture) {
     host->SetTexture(stage, texture);
@@ -511,8 +616,13 @@ inline void BindTraced(IDirect3DDevice9* host, bool traced) {
   if (state.objects) {
     bind(15, traced ? state.visibility.host.Get() : state.unshadowed.Get());
   }
-  if (state.ambient || state.vbao) {
+  if (state.bounce) {
+    bind(14, (traced && state.bounce_frame == bridge::state.frame) ? state.ground_light.host.Get() : state.unlit.Get());
+  } else if (state.ambient || state.vbao) {
     bind(14, (traced && state.occlusion_frame == bridge::state.frame) ? state.occlusion.host.Get() : state.unshadowed.Get());
+  }
+  if (state.reflections) {
+    bind(13, (traced && state.reflection_frame == bridge::state.frame) ? state.reflection.host.Get() : state.unlit.Get());
   }
 }
 
@@ -523,7 +633,9 @@ inline void OnBloom(reshade::api::command_list* cmd_list) {
   auto& bridge = bridge::state;
   auto* proxy_reshade = renodx::utils::device_proxy::proxy_device_reshade;
   BindTraced(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()), false);
-  if (!state.objects || state.kept_depth == nullptr || proxy_reshade == nullptr || bridge.depth_frame != bridge.frame) return;
+  if (!(state.objects || state.reflections) || state.kept_depth == nullptr || proxy_reshade == nullptr || bridge.depth_frame != bridge.frame) {
+    return;
+  }
   ComPtr<ID3D11DeviceContext> context;
   reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native())->GetImmediateContext(context.GetAddressOf());
   context->CopyResource(state.kept_depth.Get(), bridge.depth.proxy.Get());
@@ -550,16 +662,18 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
   }
   // The patched shaders' textures white from each frame's first scene draw until a trace.
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
-  if ((state.objects || state.ambient || state.vbao) && state.bound_frame != bridge.frame) {
+  if ((state.objects || state.ambient || state.vbao || state.bounce || state.reflections) && state.bound_frame != bridge.frame) {
     state.bound_frame = bridge.frame;
-    if (state.unshadowed == nullptr) {
+    const auto make_texel = [host](D3DCOLOR color, ComPtr<IDirect3DTexture9>* texture) {
+      if (*texture != nullptr) return;
       ComPtr<IDirect3DSurface9> texel;
-      if (FAILED(host->CreateTexture(1, 1, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, state.unshadowed.GetAddressOf(), nullptr))
-          || FAILED(state.unshadowed->GetSurfaceLevel(0, texel.GetAddressOf()))
-          || FAILED(host->ColorFill(texel.Get(), nullptr, D3DCOLOR_ARGB(255, 255, 255, 255)))) {
-        state.unshadowed.Reset();
+      if (FAILED(host->CreateTexture(1, 1, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, texture->GetAddressOf(), nullptr))
+          || FAILED((*texture)->GetSurfaceLevel(0, texel.GetAddressOf())) || FAILED(host->ColorFill(texel.Get(), nullptr, color))) {
+        texture->Reset();
       }
-    }
+    };
+    make_texel(D3DCOLOR_ARGB(255, 255, 255, 255), &state.unshadowed);
+    make_texel(D3DCOLOR_ARGB(0, 255, 0, 0), &state.unlit);
     BindTraced(host, false);
   }
   if (state.mask_frame != bridge.frame || state.traced_frame == bridge.frame || bridge.depth_stencil == state.prepass_depth) return;
@@ -596,14 +710,26 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.occlusion_uav.Reset();
     state.vbao_shader.Reset();
     state.vbao_settings.Reset();
+    state.light_view.Reset();
+    state.occlusion_view.Reset();
+    state.bounce_shader.Reset();
+    state.ground_light = {};
+    state.ground_light_uav.Reset();
+    state.reflection_shader.Reset();
+    state.reflection_settings.Reset();
+    state.reflection = {};
+    state.reflection_uav.Reset();
     state.bend_objects = {};
   } else if (device->get_api() == reshade::api::device_api::d3d9) {
     state.depth_copy.Reset();
     state.shadows.Reset();
     state.unshadowed.Reset();
+    state.unlit.Reset();
     state.bound_frame = UINT32_MAX;
     state.visibility = {};
     state.occlusion = {};
+    state.ground_light = {};
+    state.reflection = {};
     state.ground_mask = 0;
     state.prepass_depth = 0;
     state.prepass_target = 0;
