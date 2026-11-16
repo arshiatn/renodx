@@ -2225,10 +2225,10 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .max = 500.f,
           .format = "%.0f m",
           .is_enabled = dlaa_on,
-          // The helper leaves out the instances of units' compact draws (a scene table's skinned soldiers and horses;
-          // a host without a table, Rome Remastered's, marks every scene draw dynamic).
+          // The helper leaves out the instances of units' compact draws (a scene table's skinned soldiers and horses, or
+          // a scene_draw host's characters: Host::characters_dynamic; Rome Remastered marks every scene draw dynamic).
           .is_visible = [] {
-            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) {
+            return internal::host.characters_dynamic || std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) {
               return shader.dynamic && !shader.grass && !shader.thin && !shader.tessellated && !shader.sun_facing && !shader.foliage;
             });
           },

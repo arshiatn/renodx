@@ -112,6 +112,8 @@ struct Texts {
   const char* reflections_middle_label = "FidelityFX SSSR";
   const char* reflections_rays_label = "Ray-Traced (DXR)";
   const char* untraced_casters_tooltip = "Ropes, and objects the game tessellates (its Tessellation on), also cast ray-traced shadows.";
+  const char* units_range_label = "";    // Empty: the row's own (soldiers and horses).
+  const char* units_range_tooltip = "";  // Empty: the row's own.
 };
 
 inline constexpr Texts ATTILA_TEXTS = {
@@ -1138,7 +1140,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedOffScreenSway", .section = section, .shown = more_rays, .label = "Off-Screen Sway"});
     page.Take({.match = "RayTracedGrassShadowRange", .section = section, .shown = more_rays, .label = "Grass Shadow Range"});
     page.Take({.match = "RayTracedGrassRange", .section = section, .shown = more_rays});
-    page.Take({.match = "RayTracedUnitsRange", .section = section, .shown = more_rays});
+    page.Take({.match = "RayTracedUnitsRange", .section = section, .shown = more_rays, .label = b.texts->units_range_label,
+               .tooltip = b.texts->units_range_tooltip});
     page.Take({.match = "RayTracedBatchedUnits", .section = section, .shown = more_rays});
     page.Add(EmptyLine(section));
   }

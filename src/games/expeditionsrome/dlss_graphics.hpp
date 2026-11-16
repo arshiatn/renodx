@@ -1730,6 +1730,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .reflections_tooltip = "Reflections on water, metal and wet ground. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. DXR: from rays, also what is off screen. Needs an upscaler. Restart the game\n"
                            "after turning it on.",
+    .units_range_label = "Characters Ray Tracing Range (Experimental)",
+    .units_range_tooltip = "Characters farther than this are left out of the ray tracing (their shadows there are a few pixels):\n"
+                           "faster in big battles. 0 m: all characters.",
 };
 // The page's anti-aliasing: the game's TAA, DLSS, FSR, XeSS.
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};

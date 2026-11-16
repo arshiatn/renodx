@@ -396,6 +396,9 @@ struct Host {
   bool (*scene_draw)(ID3D11DeviceContext* native, SceneShader* shader) = nullptr;
   // Whether a vertex shader's code has bone inputs (null: BLENDINDICES in its input signature).
   bool (*skinned_code)(std::span<const uint8_t> code) = nullptr;
+  // scene_draw marks only its characters' draws dynamic (skinned; Expeditions: Rome): the helper's RT_UNIT draws, which
+  // Units Ray Tracing Range leaves out by distance. False: no such row (Rome Remastered marks every draw dynamic).
+  bool characters_dynamic = false;
   bool (*moving)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawArguments& arguments) = nullptr;
   bool (*moving_indexed)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawIndexedArguments& arguments) = nullptr;
   // Whether a draw is the main view's (null: every draw into its depth is).

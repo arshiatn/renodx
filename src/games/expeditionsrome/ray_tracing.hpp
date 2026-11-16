@@ -600,6 +600,7 @@ inline const twattila::rt_scene::Host HOST = {
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
     .skinned_code = internal::Skinned,
+    .characters_dynamic = true,
 };
 
 // Every present: the settings (the addon's; the light bounce's strength) and a new frame.
