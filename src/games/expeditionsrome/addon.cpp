@@ -61,6 +61,11 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 3.f;
 }
 
+// Peak, Paper White and UI do nothing under Output SDR (the display's white is the game's and the UI's).
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != 2.f;
+}
+
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
 constexpr float HUE_CLIP_DEFAULT = 70.f;
 
@@ -247,6 +252,7 @@ void BuildRuntimeData() {
           .tooltip = "Maximum brightness output in nits.",
           .min = 400.f,
           .max = 10000.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           .key = "diffuse_white_nits",
@@ -257,6 +263,7 @@ void BuildRuntimeData() {
           .tooltip = "Brightness of the scene/game and cutscenes.",
           .min = 1.f,
           .max = 500.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           .key = "graphics_white_nits",
@@ -267,6 +274,7 @@ void BuildRuntimeData() {
           .tooltip = "Brightness of UI and HUD in nits.",
           .min = 1.f,
           .max = 500.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           .key = "tonemapper",
@@ -378,9 +386,9 @@ void BuildRuntimeData() {
              IsHDRMode),
       slider("godrays", &shader_injection.godrays, "Godrays", "Extra", "Light shaft multiplier. Probably needs in-game Post Processing on.",
              IsHDRMode),
-      slider("volumetric_fog", &shader_injection.volumetric_fog, "Volumetric Fog (experimental)", "Extra",
+      slider("volumetric_fog", &shader_injection.volumetric_fog, "Volumetric Fog (Experimental)", "Extra",
              "Volumetric fog multiplier, 0 = off. Fog on translucent objects (particles, glass) stays\n"
-             "unchanged, and the fog's cost remains: Engine.ini r.VolumetricFog=0 is the cheaper off.\n"
+             "unchanged, and the fog's cost remains: Graphics 2 of 2's Volumetric fog 0 is the cheaper off.\n"
              "Only shadows High/Ultra should have volumetric fog on.",
              IsHDRMode),
       slider("sharpening", &shader_injection.sharpening, "Sharpening", "Extra",

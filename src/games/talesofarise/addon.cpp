@@ -642,7 +642,7 @@ void BuildRuntimeData() {
              "Multiplier on the game's film grain (cutscenes).", IsHDRMode, [] { return true; }),
       slider("sharpening", &shader_injection.sharpening, "Sharpening", "Post Processing",
              "Multiplier on the tonemapper's sharpening, which the game only turns on in some scenes (normal\n"
-             "gameplay has none, with or without DLSS). The sharpening before DLAA / DLSS is the DLSS addon's.",
+             "gameplay has none, with or without DLSS). The sharpening before DLAA / DLSS is Graphics 1 of 2's Game's Sharpening.",
              IsHDRMode, [] { return true; }),
       // Bandai's passes (ATN), SDR and HDR.
       slider("painterly", &shader_injection.painterly, "Painterly Filter", "Post Processing",
@@ -672,12 +672,12 @@ void BuildRuntimeData() {
           .default_value = 1.f,
           .label = "Smooth Sun Shadows",
           .section = "Extra",
-          .tooltip = "Smooths blocky sun shadow edges when the DLSS addon's Sun shadow distance is above the game's.\n"
+          .tooltip = "Smooths blocky sun shadow edges when Graphics 2 of 2's Sun shadow distance is above the game's.\n"
                      "Sharp to Sharpest: harder edges. Off: the game's.",
           .labels = {"Off", "Smooth", "Sharp", "Sharper", "Sharpest"},
       },
       slider("sun_shadow_edge", &shader_injection.sun_shadow_edge, "Thin Sun Shadow Edges", "Extra",
-             "When the DLSS addon's Sun shadow distance is above the game's, keeps the soft edge of sun shadows\n"
+             "When Graphics 2 of 2's Sun shadow distance is above the game's, keeps the soft edge of sun shadows\n"
              "thin (less halo) and still smooth. 0 = off, 1 = as thin as at the game's distance, 2 = thinner.\n"
              "Default 0.22.",
              [] { return true; }, [] { return true; }, 2.f, 0.22f),
@@ -842,7 +842,7 @@ void ConfigureAddon() {
         .default_value = 3.f,
         .label = "Output",
         .section = "Output (Restart Required)",
-        .tooltip = "Auto: scRGB with Windows HDR on (HDR10 with DLSS frame generation), else SDR. Default.\n"
+        .tooltip = "Auto: scRGB with Windows HDR on, else SDR. Default.\n"
                    "HDR10: 10-bit. scRGB: 16-bit. SDR: displays without HDR (all fixes and options stay).",
         .labels = {"HDR10", "scRGB", "SDR", "Auto"},
         .is_global = true,
