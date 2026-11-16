@@ -12,7 +12,9 @@
 // One occlusion a term (ATN 2026-11-16): under Specular Occlusion the occluded environment is the open one (the material's
 // own occlusion, the AO term 1) x the rays' t46, not the game's AO x t46. The environment taken off the scene is the one
 // the sun light draws added: with the rays' AO in place of the game's there (t41, rt_sun.hlsli RtInPlace), here too
-// (ray_tracing.hpp BindResolveAmbient). Unbound, the game's bytes.
+// (ray_tracing.hpp BindResolveAmbient). Under Specular Occlusion the reflection's hit (the march's or the rays') takes
+// the material's own occlusion alone, not the AO as well (as Attila's ssr00 / ssr01: the rays' occlusion is the
+// specular's one method there). Unbound, the game's bytes.
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -282,6 +284,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     uint rt_occlusion_width, rt_occlusion_height;
     t_rt_specular_occlusion.GetDimensions(rt_occlusion_width, rt_occlusion_height);
     const float3 rt_open_environment = RtOccludedEnvironment(rt_texel, (rt_occlusion_width != 0u) ? rt_environment_open : r1.xzw);
+    if (rt_occlusion_width != 0u) r0.x = rt_material_occlusion;
     r0.x = -1 + r0.x;
     r0.x = r2.w * r0.x + 1;
     r0.y = 16.666666 * r3.z;

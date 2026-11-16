@@ -3270,7 +3270,9 @@ static void TestBannerReplay(const std::string& games, const std::string& folder
 //     t_ssao 0.37; (c) Ray-Traced Specular Occlusion at t46 (0.6) with no confidence (hit 0): the environment the sun light
 //     draws added (the game's output with full confidence and no reflection: G1 = -environment) taken off, 0.6 x the open
 //     one (the same with t_ssao 1: G1') put back: G1 - 0.6 G1'. CONTROL: the version before (0.6 x the AO'd environment:
-//     G1 x 0.4, the game's AO under the rays' occlusion) differs.
+//     G1 x 0.4, the game's AO under the rays' occlusion) differs. (d) With t46 bound the reflection's hit (full confidence,
+//     the random t9 less the black one's output) is the same over the random t_ssao and t_ssao 1: no AO on it. CONTROL:
+//     without t46 (the game's) the random AO changes it.
 static void TestResolve(const std::string& games, const std::string& folder) {
   std::ifstream file(folder + "/0xF87ECE85.cs_5_0.cso", std::ios::binary);
   const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -3419,9 +3421,35 @@ static void TestResolve(const std::string& games, const std::string& folder) {
   const size_t stacked_apart = apart(occluded, stacked);
   CHECK(occlusion_apart == 0, "t46 0.6: %zu of %zu values off G1 - 0.6 G1'", occlusion_apart, occluded.size());
   CHECK(stacked_apart > 0, "CONTROL: t46 0.6 gave 0.6 x the AO'd environment");
+  // (d) The hit's share: the output with the random t9 less the one with t9 black, at each AO.
+  const auto hit_apart = [&](ID3D11ShaderResourceView* specular_occlusion) {
+    const Inputs random_ao = {.hit = full_confidence.Get(), .specular_occlusion = specular_occlusion};
+    const Inputs open_ao = {.ssao = open.Get(), .hit = full_confidence.Get(), .specular_occlusion = specular_occlusion};
+    Inputs random_black = random_ao;
+    Inputs open_black = open_ao;
+    random_black.radiance = open_black.radiance = black.Get();
+    const auto a = run(ours.Get(), random_ao);
+    const auto a_black = run(ours.Get(), random_black);
+    const auto b = run(ours.Get(), open_ao);
+    const auto b_black = run(ours.Get(), open_black);
+    size_t count = 0, shown = 0;
+    for (size_t value = 0; value < a.size(); ++value) {
+      const float tolerance = (1e-5f * (std::fabs(a[value]) + std::fabs(a_black[value]) + std::fabs(b[value]) + std::fabs(b_black[value]))) + 1e-6f;
+      count += (std::fabs((a[value] - a_black[value]) - (b[value] - b_black[value])) <= tolerance) ? 0 : 1;
+      shown += (std::fabs(b[value] - b_black[value]) > tolerance) ? 1 : 0;
+    }
+    return std::pair{count, shown};
+  };
+  const auto [hit_occluded_apart, hit_shown] = hit_apart(occlusion.Get());
+  const auto [hit_game_apart, hit_game_shown] = hit_apart(nullptr);
+  CHECK(hit_occluded_apart == 0 && hit_shown > 0, "t46 0.6: the hit over the random AO %zu values off its share with AO 1 (%zu shown)",
+        hit_occluded_apart, hit_shown);
+  CHECK(hit_game_apart > 0, "CONTROL: without t46 the random AO left the hit as with AO 1");
   std::printf("ssrresolve00: unbound the game's (%zu of %zu values lit, 0 apart); t41 0.37 = t_ssao 0.37 (%zu apart; %zu apart from the random "
-              "AO); t46 0.6 the open environment x 0.6 (%zu apart; the AO'd one's %zu apart)\n",
-              lit_values, game_lit.size(), ambient_apart, ambient_shown, occlusion_apart, stacked_apart);
+              "AO); t46 0.6 the open environment x 0.6 (%zu apart; the AO'd one's %zu apart); t46: the hit without the AO (%zu of %zu shown "
+              "apart; without t46 %zu apart)\n",
+              lit_values, game_lit.size(), ambient_apart, ambient_shown, occlusion_apart, stacked_apart, hit_occluded_apart, hit_shown,
+              hit_game_apart);
 }
 
 int main(int argc, char** argv) {
