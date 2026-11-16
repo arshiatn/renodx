@@ -232,7 +232,7 @@ struct RtSliders {
   // Attila's rows (twattila/graphics_page.hpp's keys; Experimental here).
   float denoiser = 0.f;    // RayTracingDenoiser: built-in, NRD (with the helper's upscaler)
   float sharc = 0.f;       // with path tracing
-  float reuse_lean = 0.f;  // with path tracing
+  float reuse_lean = 1.f;  // with path tracing
   float reuse_near = 1.f;  // with path tracing
   float path_ser = 0.f;    // the paths' and reflections' rays
   float output_rays = 0.f;  // Rays a Pixel: 1, Match Output, 2-8
@@ -291,7 +291,7 @@ const PresetValues RAYS_RESET = {
     {"RayTracedPathKeptCube", 0.f},
     {"RayTracingDenoiser", 0.f},
     {"RayTracedSharc", 0.f},
-    {"RayTracedReuseLean", 0.f},
+    {"RayTracedReuseLean", 1.f},
     {"RayTracedReuseNear", 1.f},
     {"RayTracedPathSer", 0.f},
     {"RayTracingOutputResolution", 0.f},
@@ -1388,7 +1388,7 @@ void BuildRuntimeData() {
       // Attila's (twattila/graphics_page.hpp's keys), with a ray-traced effect on.
       ray_choice("RayTracedSharc", &rt_sliders.sharc, "SHaRC radiance cache (Experimental)", off_on,
                  "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).", paths),
-      ray_choice("RayTracedReuseLean", &rt_sliders.reuse_lean, "Lean ReSTIR reuse (Experimental)", off_on,
+      ray_choice("RayTracedReuseLean", &rt_sliders.reuse_lean, "Lean ReSTIR reuse", off_on,
                  "A faster ReSTIR GI for path tracing, with the same look.", paths),
       ray_choice("RayTracedReuseNear", &rt_sliders.reuse_near, "Near ReSTIR reuse", off_on,
                  "A faster ReSTIR GI for path tracing: fewer, nearer neighbours share their light (also a little cleaner).", paths),
