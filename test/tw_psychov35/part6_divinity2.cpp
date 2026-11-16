@@ -27,6 +27,12 @@
 //    that must fail: the stand-in used before the trace (RenoDX's ACES at 0.02 / 48 nits alone) misses it.
 // 9. t01 against the game's own bytes, pixel for pixel, on the game's HDR (Off) and SDR LUTs, Off and PsychoV35, fade 0 and
 //    0.5. Control that must fail: the game's pass fed the SDR LUT's shaper domain for the HDR LUT differs.
+// 10. PsychoV35 at its Divinity 2 defaults (shared.h: the game's response) against the game (its own t00, Off), both
+//    through the chain (t00 -> LUT -> t01, the game's addressing), Peak 1000 / Paper White 203 (the game's reference),
+//    the neutral and the city's LUT: grey within 5 % of the game where the game puts it at 0.05 - 1 and 1 - 15 nits;
+//    colour (OkLab chroma at equal lightness, the ramp's 63 colours) within 5 % on average where the game's luminance is
+//    1 - 30 nits (mid tones); grey at +5 .. +8 stops within 10 % of PsychoV35's own sliders (its highlights kept) at
+//    1000 / 203 and 2500 / 275. Control that must fail: PsychoV35's own sliders (all 1, before ATN's 2026-11-16 decision).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -44,6 +50,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace dos2 {
@@ -172,9 +179,10 @@ static dos2::ShaderInjectData Injection(float mode) {
       .aces_tweaked_shadows = 1.f, .aces_tweaked_saturation = 1.f, .aces_tweaked_highlight_saturation = 1.f,
       .fire_color_strength = 0.45f, .fire_color_hue = 0.65f, .aces_tweaked_fire_color_strength = 0.25f,
       .aces_tweaked_fire_color_hue = 0.6f, .vanilla_fire_color_strength = 0.f, .vanilla_fire_color_hue = 0.75f,
-      .hue_clip = 0.8f, .v35_exposure = 1.f, .v35_highlights = 1.f, .v35_shadows = 1.f, .v35_contrast = 1.f,
-      .v35_highlight_contrast = 1.f, .v35_shadow_contrast = 1.f, .v35_flare = 0.f, .v35_saturation = 1.f, .v35_dechroma = 0.f,
-      .v35_highlight_saturation = 1.f, .v35_roll_off = 1.f, .v35_gamut_compression = 1.f,
+      .hue_clip = 0.8f, .v35_exposure = 1.f, .v35_highlights = 1.f, .v35_shadows = DOS2_V35_SHADOWS,
+      .v35_contrast = DOS2_V35_CONTRAST, .v35_highlight_contrast = DOS2_V35_HIGHLIGHT_CONTRAST, .v35_shadow_contrast = 1.f,
+      .v35_flare = 0.f, .v35_saturation = DOS2_V35_SATURATION, .v35_dechroma = 0.f, .v35_highlight_saturation = 1.f,
+      .v35_roll_off = 1.f, .v35_gamut_compression = 1.f,
   };
 }
 
@@ -724,6 +732,127 @@ static void TestT01Exact(ID3D11PixelShader* game_t01, ID3D11PixelShader* t01, ID
               "white\n", grey[0], grey[1], grey[2]);
 }
 
+// 10. PsychoV35 against the game ////////////////////////////////////////////////////////////////////////////////////
+
+static void TestGameResponse(ID3D11ComputeShader* game_t00, ID3D11ComputeShader* t00, ID3D11PixelShader* t01,
+                             ID3D11ShaderResourceView* base) {
+  // BT.2020 nits over Paper White 203 as linear BT.709 (renodx's BT2020_TO_BT709_MAT) for OkLab.
+  constexpr float BT2020_TO_BT709[3][3] = {{1.660491f, -0.58764114f, -0.07284986f},
+                                           {-0.12455047f, 1.1328999f, -0.00834942f},
+                                           {-0.01815076f, -0.1005789f, 1.11872966f}};
+  const auto lab = [&](const Float4& nits) {
+    Float3 bt709 = {};
+    for (int row = 0; row < 3; ++row) {
+      bt709[row] = (BT2020_TO_BT709[row][0] * nits[0] + BT2020_TO_BT709[row][1] * nits[1] + BT2020_TO_BT709[row][2] * nits[2]) / 203.f;
+    }
+    return OkLab(bt709);
+  };
+  const auto chain_nits = [&](ID3D11ComputeShader* shader, Frame frame, const dos2::ShaderInjectData& injection) {
+    const auto game = TracedConstants(frame);
+    const auto pixels = ApplyLut(t01, BuildLut(shader, DXGI_FORMAT_R10G10B10A2_UNORM, game, injection), base, game, injection);
+    std::vector<Float4> nits(pixels.size());
+    for (size_t i = 0; i < pixels.size(); ++i) {
+      nits[i] = {PQToNits(pixels[i][0]), PQToNits(pixels[i][1]), PQToNits(pixels[i][2]), 0.f};
+    }
+    return nits;
+  };
+  const auto own_sliders = [](dos2::ShaderInjectData injection) {
+    injection.v35_contrast = 1.f;
+    injection.v35_shadows = 1.f;
+    injection.v35_saturation = 1.f;
+    injection.v35_highlight_contrast = 1.f;
+    return injection;
+  };
+  struct Match {
+    float shadows_low = 1e9f, shadows_high = 0.f;  // grey over the game's where the game is 0.05 - 1 nits
+    float mid_low = 1e9f, mid_high = 0.f;          // 1 - 15 nits
+    float chroma = 0.f;                            // chroma at equal lightness over the game's, the game's 1 - 30 nits
+    float chroma_low = 1e9f, chroma_high = 0.f;    // per colour
+  };
+  const auto compare = [&](const std::vector<Float4>& game, const std::vector<Float4>& v35) {
+    Match match;
+    for (UINT y = 0; y < EXPOSURES; ++y) {
+      const float game_grey = LuminanceBT2020(game[y * COLOURS]);
+      const float ratio = LuminanceBT2020(v35[y * COLOURS]) / game_grey;
+      if (game_grey >= 0.05f && game_grey <= 1.f) {
+        match.shadows_low = std::min(match.shadows_low, ratio);
+        match.shadows_high = std::max(match.shadows_high, ratio);
+      } else if (game_grey > 1.f && game_grey <= 15.f) {
+        match.mid_low = std::min(match.mid_low, ratio);
+        match.mid_high = std::max(match.mid_high, ratio);
+      }
+    }
+    double log_sum = 0.;
+    int count = 0;
+    for (UINT column = 1; column < COLOURS; ++column) {
+      double column_sum = 0.;
+      int column_count = 0;
+      for (UINT y = 0; y < EXPOSURES; ++y) {
+        const Float4& game_nits = game[y * COLOURS + column];
+        const float game_luminance = LuminanceBT2020(game_nits);
+        if (game_luminance < 1.f || game_luminance > 30.f) continue;
+        const Float3 game_lab = lab(game_nits);
+        // PsychoV35's chroma where its lightness is the game's (both rise with exposure).
+        for (UINT j = 0; j + 1 < EXPOSURES; ++j) {
+          const Float3 below = lab(v35[j * COLOURS + column]);
+          const Float3 above = lab(v35[(j + 1) * COLOURS + column]);
+          if (game_lab[0] < below[0] || game_lab[0] > above[0]) continue;
+          const float t = (above[0] > below[0]) ? (game_lab[0] - below[0]) / (above[0] - below[0]) : 0.f;
+          const float chroma = std::lerp(std::hypot(below[1], below[2]), std::hypot(above[1], above[2]), t);
+          column_sum += std::log(chroma / std::hypot(game_lab[1], game_lab[2]));
+          ++column_count;
+          break;
+        }
+      }
+      if (column_count == 0) continue;
+      const float column_ratio = static_cast<float>(std::exp(column_sum / column_count));
+      match.chroma_low = std::min(match.chroma_low, column_ratio);
+      match.chroma_high = std::max(match.chroma_high, column_ratio);
+      log_sum += column_sum;
+      count += column_count;
+    }
+    match.chroma = static_cast<float>(std::exp(log_sum / std::max(count, 1)));
+    return match;
+  };
+  const auto matches = [](const Match& match) {
+    return match.shadows_low >= 0.95f && match.shadows_high <= 1.05f && match.mid_low >= 0.95f && match.mid_high <= 1.05f &&
+           std::abs(match.chroma - 1.f) <= 0.05f;
+  };
+  for (const Frame frame : {Frame::NEUTRAL_HDR, Frame::CITY_HDR}) {
+    const auto game = chain_nits(game_t00, frame, Injection(0.f));
+    const Match defaults = compare(game, chain_nits(t00, frame, Injection(4.f)));
+    const Match own = compare(game, chain_nits(t00, frame, own_sliders(Injection(4.f))));
+    CHECK(matches(defaults));
+    CHECK(!matches(own));
+    std::printf("10. %s LUT, PsychoV35 against the game (Off) through the chain, 1000 / 203; Divinity 2's defaults (contrast "
+                "%.2f, shadows %.2f, saturation %.2f, highlight contrast %.2f) / its own sliders (control, %s):\n"
+                "    grey where the game is 0.05 - 1 nits x%.3f..x%.3f / x%.3f..x%.3f, 1 - 15 nits x%.3f..x%.3f / x%.3f..x%.3f\n"
+                "    colour at equal lightness, the game's 1 - 30 nits: x%.3f (per colour x%.2f..x%.2f) / x%.3f (x%.2f..x%.2f)\n",
+                FRAME_NAMES[static_cast<int>(frame)], DOS2_V35_CONTRAST, DOS2_V35_SHADOWS, DOS2_V35_SATURATION,
+                DOS2_V35_HIGHLIGHT_CONTRAST, matches(own) ? "PASSED (wrong)" : "fails (caught)", defaults.shadows_low,
+                defaults.shadows_high, own.shadows_low, own.shadows_high, defaults.mid_low, defaults.mid_high, own.mid_low,
+                own.mid_high, defaults.chroma, defaults.chroma_low, defaults.chroma_high, own.chroma, own.chroma_low,
+                own.chroma_high);
+  }
+  // PsychoV35's highlights: grey at +5 .. +8 stops with the defaults over its own sliders.
+  for (const auto& [peak, paper_white] : {std::pair{1000.f, 203.f}, std::pair{2500.f, 275.f}}) {
+    auto injection = Injection(4.f);
+    injection.peak_white_nits = peak;
+    injection.diffuse_white_nits = paper_white;
+    const auto defaults = chain_nits(t00, Frame::NEUTRAL_HDR, injection);
+    const auto own = chain_nits(t00, Frame::NEUTRAL_HDR, own_sliders(injection));
+    float low = 1e9f, high = 0.f;
+    for (UINT y = GREY_ROW + 10; y <= GREY_ROW + 16; ++y) {
+      const float ratio = LuminanceBT2020(defaults[y * COLOURS]) / LuminanceBT2020(own[y * COLOURS]);
+      low = std::min(low, ratio);
+      high = std::max(high, ratio);
+    }
+    CHECK(low >= 0.9f && high <= 1.1f);
+    std::printf("10. highlights, Peak %.0f / Paper White %.0f: grey at +5 .. +8 stops x%.3f..x%.3f of PsychoV35's own sliders\n",
+                peak, paper_white, low, high);
+  }
+}
+
 // 4. Hue report /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static void ReportHue(ID3D11ComputeShader* direct_shader, const std::vector<Float4>& ramp) {
@@ -801,6 +930,7 @@ int main(int argc, char** argv) {
   TestExactSampling(t00_after.Get(), t01_before.Get(), t01_after.Get(), direct_shader.Get(), base.Get(), ramp);
   TestSdrReference(game_t00.Get(), direct_shader.Get());
   TestT01Exact(game_t01.Get(), t01_after.Get(), game_t00.Get(), base.Get());
+  TestGameResponse(game_t00.Get(), t00_after.Get(), t01_after.Get(), base.Get());
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
   return failures == 0 ? 0 : 1;
 }
