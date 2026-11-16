@@ -328,7 +328,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GPU next (gpu3_ 11-16): Attila Nsight round DONE (whole frame 3.711 -> 3.607 ms, ... | next GPU round
 - (+ rys2_ 23:xx: renodx_trace_now in 2-3 levels / times of day for tonemap00 PER_ ... | coordinator (one game at a time)
 - Ryse next (rys2_ 11-16): upgraded-target reader census needs a log line per upgr ... | next Ryse round, shared round
-- (+ rur2_ 00:0x: Ground Debug View 2 over units / trees / buildings with Screen-S ... | coordinator (one game at a time)
+- (+ rur2_ 01:xx: 1024 shadow map under Replace 649531527: Frame Trace at the star ... | coordinator (one game at a time)
 - SHARED STEP (rur2_ 11-16): dlaa_helper rt_scene_data WriteTriangle drops triangl ... | gpu3_ / next shared round
 - (+ tw2_ 00:0x: Multiply removed in WH3 / Troy / Pharaoh b21662993 (rays always r ... | coordinator (one game at a time)
 - SHARED STEPS (tw2_ 11-16): AO-reader list beside LIGHT_BOUNCE_DRAWS (Pharaoh poo ... | next shared round
@@ -2116,7 +2116,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] Ryse next (rys2_ 11-16): upgraded-target reader census needs a log line per upgrade; RT reflections do nothing
         under 0xCDB59F36 (never reads t6); tw_vanilla_exact sRGB-view input for post00/01/03, upscale00, taa00 (SHARED STEP).
         Owner: next Ryse round, shared round
-      - [ ] (+ rur2_ 00:0x: Ground Debug View 2 over units / trees / buildings with Screen-Space Ground Shadows (52ff6f94a); Time Each Pass with Replace on / off (the shadow-map skip 364f83bee: ~1,512 of 1,536 map draws, 5.6 M indices); the coverage run then flip Replace's default; a failed-trace frame doesn't flash dark; the OnBloom hand-off costs ~0; ATN reads the map table's eye height from the log and sets Rays Off Above (23aacc4d7)) R.U.S.E. RUN (rur2_ 11-16, near / map table / mid as run_rn3): 1. rays on vs DLAA alone: tree / unit / tank
+      - [ ] (+ rur2_ 01:xx: 1024 shadow map under Replace 649531527: Frame Trace at the start after Replace on logs a 1024 x 1024 R16G16 8x target; fallback frames (Rays Off Above at the map table, a failed trace) look right; Replace is per preset, the size catches up one start late after a preset switch) (+ rur2_ 00:0x: Ground Debug View 2 over units / trees / buildings with Screen-Space Ground Shadows (52ff6f94a); Time Each Pass with Replace on / off (the shadow-map skip 364f83bee: ~1,512 of 1,536 map draws, 5.6 M indices); the coverage run then flip Replace's default; a failed-trace frame doesn't flash dark; the OnBloom hand-off costs ~0; ATN reads the map table's eye height from the log and sets Rays Off Above (23aacc4d7)) R.U.S.E. RUN (rur2_ 11-16, near / map table / mid as run_rn3): 1. rays on vs DLAA alone: tree / unit / tank
         shadows back, the lighter mask (+3.1 % near / +8.4 % mid) gone, Ground Debug View 1/2/3 shots, "Ground passes
         ready" + "Ray tracing profile" (RENODX_TW_PROFILE 30 s), Time Each Pass x3, PresentMon 25 s a view; 2. Rays Replace
         Shadow Maps off / on; 3. GPU Sync off / on with rays (CPU busy, GPU wait, corruption); 4. GT-VBAO, Bend, GT-VBGI
