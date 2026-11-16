@@ -63,6 +63,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -150,6 +151,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp cand ... | next Divinity 1 agent
 - tw_install.py's include scanner counts includes inside an #ifndef the add-on def ... | coordinator (tools)
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
+- FABLE 5.2 HIGH REVIEW OF THE R.U.S.E. BRIDGE DONE 02:4x (read-only, 12 findings; ... | rrf_
 - R.U.S.E. T-run list (ATN loads a battle, one row at a time with PresentMon): DLA ... | coordinator (after the Fable review fixes)
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
 - Skills update 2 (tools/tw/round_notes/skill_lessons_1116b.md, 11 lessons) by sk2 ... | sk2_ / coordinator
@@ -1320,6 +1322,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         ReflectPixel; Experimental rows; branch ruse-gi. Owner: ru7_ (started 01:2x)
       - [x] DONE a98b1871 02:0x (sk_ 6b854be3 + 67e7e62d, all 17 lessons placed; zip rebuilt: Downloads\RenoDX_skills_2026-11-15.zip,
         48 files). Skills update from tonight's 17 lessons (tools/tw/round_notes/skill_lessons_1116.md) + rebuilt skills zip.
+      - [ ] FABLE 5.2 HIGH REVIEW OF THE R.U.S.E. BRIDGE DONE 02:4x (read-only, 12 findings; ATN asked): 1 BLOCKER
+        IsSceneDraw never true in game (INTZ: container texture stored, level-0 surface bound; the harness hid it); 2 freeze
+        after a GPU reset (WaitProxy spins on DEVICE_REMOVED); 3 no teardown on a D3D9 Reset (old-size textures / MRT);
+        4 UI + final post jittered (counted as scene draws); 5 helper dies -> jitter stays; 6 rt_core short key ignores
+        placements (instances never enter the BVH); 7 placement slots wrap; 8 PLAUSIBLE self-deadlock (mirrors lock + no API
+        filter); 9 dangling scene_depth / intz_depths never pruned; 10 GT-VBAO unused under RT bounce; 11 device filters;
+        12 perf retries. rrf_ fixing all (started 02:4x), then H1-H3 again, then the T-run. Owner: rrf_
       - [ ] R.U.S.E. T-run list (ATN loads a battle, one row at a time with PresentMon): DLAA / FSR / XeSS in game, readable
         depth with in-game AA off, G1 sun sign / units / acne, O1 reprojection, AO range, Bend thickness, GT-VBAO darkening
         at the real pitch, water reflections + ground bounce (units: BOUNCE_RANGE 1000 = cm?, brightness of the gamma-space
