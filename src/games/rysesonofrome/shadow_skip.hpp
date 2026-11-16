@@ -39,8 +39,9 @@
 // lose the sun's shadow where a map is skipped. The eyes, the hair's first pass and the particles read the mask. The
 // 16384 atlas is the lights' shadow pool (torches, fires), not the sun's: never learned. Only while the rays shadowed the
 // mask the frame before (a frame without them draws the maps again). The draws are left out through command_action's
-// bypass, not a draw event's skip: while the scene is traced every draw is replayed by command_action for rt_core's capture
-// (OnAnyDraw's post callback), and a replayed draw reaches the GPU whatever another draw event returns.
+// bypass, not a draw event's skip: a draw that any command_action callback gives a post callback is drawn by
+// command_action itself and reaches the GPU whatever a later draw event returns (rt_core's OnAnyDraw captures before the
+// draw since 300fd8323, so the scene's capture no longer does that).
 namespace rysesonofrome::shadow_skip {
 
 using Microsoft::WRL::ComPtr;

@@ -1570,8 +1570,9 @@ bool IsHiddenHighlight(reshade::api::command_list* cmd_list) {
 }
 
 // Scaleform's flat shapes (0x1B59F534) while the HUD is hidden (the skull, indexed, by its own hotkey), the execution
-// highlights while they are: left out through command_action's bypass, not a draw event's skip (with the ray tracing on
-// command_action replays every draw for rt_core's capture, past any draw event's skip). Gated on the hotkeys' state.
+// highlights while they are: left out through command_action's bypass, not a draw event's skip (a draw that a
+// command_action callback gives a post callback is drawn by command_action itself, past any later draw event's skip; the
+// rays' capture runs before the draw since 300fd8323). Gated on the hotkeys' state.
 constexpr auto OnDrawUi = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
   auto* cmd_list = command.cmd_list;
