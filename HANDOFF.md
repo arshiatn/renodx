@@ -184,6 +184,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Attila has no frame trace `on_demand` / `at_100` (Pharaoh, Rome II, WH3 have bot ... | next Attila round
 - grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound i ... | next Attila round
 - SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator 06:xx rao_ merged ad541a4f (RT AO replaces the g
+- dvf_ not done: VFX / indicator Experimental rows in both games (D1 633 FX_MAT an ... | next Divinity round / runs, ATN (VFX scope, C rows)
 - ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
 - Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
@@ -1522,6 +1523,19 @@ heading text are in HANDOFF_ARCHIVE.md)
           Occlusion (tw_thrones_ssr part F 0 differ, control 27686 / 7168); tw_vanilla_exact 60 EXACT / 8 accepted / 0 FAIL
           (x86 + amd64); tw_psychov35 part 4 on Thrones (Hue Clip 40 = minimum, 6.31 deg), part 8 (V35 toe: darks
           x0.996-1.000, chroma 30-150 nits x1.055), default -Before now 4b5099035. Not built on atn-mods yet (rebuild all).
+        - [x] Divinity 1 + 2 MERGED b27e5eb02 (dvf_, 13 commits; amd64 builds exit 0 on its branch): D1 credits + tooltips,
+          GradeAfterCurve C-infinity shoulder from 0.8 (tw_divinity1 test 4), one shared twattila/psycho_test30.hlsli
+          (tw_psychov30_nan: the NaN guards work), D1 spot lights 0x23B84721 / 0x7CBAA94E follow the light rows +
+          LightVolume SMAA trio (tw_d1_post 22 exact), D2 device_loss + Time Each Pass (output_encoding.hpp: no-op when
+          never configured; tw_output_encoding ALL PASS), D2 Sun Shadow Softness Experimental on 8 CascadedPCSS variants
+          (tw_d2_passes: 0 at 1, control 0.006), page-1 Gamma Correction lines (D1 exe read: proof B), preset tooltips.
+        - [ ] dvf_ not done: VFX / indicator Experimental rows in both games (D1 633 FX_MAT and D2 2,050 RS3_FX permutations,
+          no few shaders to replace: scope is ATN's call); Modded Auto Exposure (plain 4x4-average chain to 1x1, needs the
+          last frame's average bound into the first downsample, size M, one run); D1 PsychoV35 toe / saturation fit; exact
+          tests for D2 bloom00 / ui00 / outlines; B: D1 SSR proof, D2 SDR path, SupportTool dumps (Larian's, not ours); C:
+          hue shift after V30, Vanilla Calibrate curve-on-curve, UI sRGB decode. Next run: D2 Sun Shadow Softness at PCSS,
+          page-1 lines, Time Each Pass file; D1 "applied" log lines for LightVolume / AA. Owner: next Divinity round / runs,
+          ATN (VFX scope, C rows)
         - [ ] ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB73442 / D9123DE1, vanilla coverage
           of pointlight00-39 / UI sprites / grass00-01 (the generic driver can't feed them); view_share Classify 24 unclear
           sun-PS rows a game (NEEDS A TRACE). The t46 x AO double-occlusion check was sent to WH3, WH1 / WH2, Troy / Pharaoh,
