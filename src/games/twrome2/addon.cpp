@@ -220,13 +220,21 @@ void ApplySdrPreset() {
       },                                                                                              \
   }
 
-// The point lights without the game's cube shadow maps, the only ones drawn in ATN's runs (A1, A2, C1, N1, L1, L2, S1: 802 and
-// 784 draws): pointlightsmoothfalloff ps30 slm_highdef and skinlm_highdef (point shadows hardware gather 5.0). The two with the
-// maps (3B5C9DAF, D2F190A8) keep them. Ours (shaders/pointlight00-01: the game's code x the light's traced visibility) draw
-// only where the rays are bound (OnLightShadowsDraw): 7CB7BB8A's copy compiles up to 0.12% apart from the game's bytes (WARP
-// tools/tw/rome2/lights_r3), so without the rays the game's own.
-constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0xEB8E5349, 0x7CB7BB8A};
-constexpr std::array<std::span<const uint8_t>, 2> RAY_TRACED_LIGHT_SHADERS = {__0xEB8E5349, __0x7CB7BB8A};
+// The point lights without the game's cube shadow maps: pointlightsmoothfalloff ps30 slm_highdef and skinlm_highdef (point
+// shadows hardware gather 5.0), the only ones drawn in ATN's runs (A1, A2, C1, N1, L1, L2, S1: 802 and 784 draws), and every
+// other live build without a point shadow map in its RDEF (in no trace, level B: the low-detail lights, the linear falloff, the
+// shader model 4.1 and 3.0 builds; the MSAA ones stay out, no rays under the game's MSAA). The 16 with the maps (3B5C9DAF,
+// D2F190A8, ...) keep them. Ours (shaders/pointlight00-25: the game's code x the light's traced visibility) draw only where
+// the rays are bound (OnLightShadowsDraw), so without the rays the game's own; WARP tools/tw/rome2/lights_r3 on each against
+// the game's bytes.
+constexpr std::array<uint32_t, 26> POINT_LIGHT_SHADERS = {
+    0xEB8E5349, 0x7CB7BB8A, 0x04DC39EE, 0x9D4260BA, 0xE021B167, 0xE5D3E58F, 0x977F794E, 0xB8658A9B, 0x35C55373,
+    0xE6CBBA92, 0x7D38EDEC, 0x1C5F3E24, 0xBFB1B8BE, 0xEEA0895B, 0x7668C232, 0x25EAE821, 0xAED219EE, 0xED9F7ABE,
+    0x9BDD40BF, 0xBE13FD5C, 0x4B8CE904, 0xFE570665, 0x357EA6B1, 0xCB257BE6, 0x8B834C92, 0xEF102757};
+constexpr std::array<std::span<const uint8_t>, POINT_LIGHT_SHADERS.size()> RAY_TRACED_LIGHT_SHADERS = {
+    __0xEB8E5349, __0x7CB7BB8A, __0x04DC39EE, __0x9D4260BA, __0xE021B167, __0xE5D3E58F, __0x977F794E, __0xB8658A9B, __0x35C55373,
+    __0xE6CBBA92, __0x7D38EDEC, __0x1C5F3E24, __0xBFB1B8BE, __0xEEA0895B, __0x7668C232, __0x25EAE821, __0xAED219EE, __0xED9F7ABE,
+    __0x9BDD40BF, __0xBE13FD5C, __0x4B8CE904, __0xFE570665, __0x357EA6B1, __0xCB257BE6, __0x8B834C92, __0xEF102757};
 
 // Smoke Shadows' particles (Experimental, off): each smoke effect has its own generated vertex and pixel shader (drawn only
 // together) and draws each particle as an instance of a quad (6 indices). In ATN's runs (proof level A):
@@ -259,7 +267,7 @@ twattila::rt_scene::Sliders rt_sliders;
 struct LightShadows {
   std::shared_mutex mutex;
   ID3D11Device* device = nullptr;  // ours' (compared only)
-  std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, 2> ours;  // RAY_TRACED_LIGHT_SHADERS'
+  std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, POINT_LIGHT_SHADERS.size()> ours;  // RAY_TRACED_LIGHT_SHADERS'
   Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;          // bound again after the draw
   bool logged = false;
 };
