@@ -1779,7 +1779,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   twwarhammer2::particle_smoothing::OnPresent();
   talesofarise::pixel_trace::OnPresent(queue);
-  twattila::pass_timing::OnPresent(queue, "warhammer");
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   reflection_passes_skipped = false;
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
@@ -2216,13 +2215,7 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
-  settings.push_back(new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-      .label = "Time Each Pass (One Frame)",
-      .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "The GPU's time of every pass of the next frame into warhammer_pass_timing.txt next to the game's exe.",
-      .on_change = [] { twattila::pass_timing::Request(); },
-  });
+  settings.push_back(twattila::pass_timing::Button(twattila::feature_settings::AA_SECTION));
   // Ray-Traced Water Reflections' rows shown: the water pass at F2CCEF86.
   twattila::rt_scene::internal::water_pass = true;
   settings.push_back(new renodx::utils::settings::Setting{
@@ -2414,7 +2407,7 @@ void ConfigureAddon() {
 bool AttachAddon() {
   if (attached) return true;
   // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
-  twattila::pass_timing::Install();
+  twattila::pass_timing::Install("wh1");
 
   ConfigureAddon();
   tw::engine_tweaks::watch::StartIfRequested(graphics_options, WATCHED_VALUES, 300);
