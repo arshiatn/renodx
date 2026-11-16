@@ -107,6 +107,12 @@ struct ShaderInjectData {
 #define SI  shader_injection
 #define HDR SI.hdr
 
+// PsychoV35's slider defaults here: the game's own response (Hable's toe below mid gray, its colour at equal lightness),
+// minimax-fitted on WARP against tonemap00's game bytes (test/tw_ryse_tonemap); the other PsychoV35 sliders keep Musa's.
+#define RYSE_V35_CONTRAST   1.15f
+#define RYSE_V35_SHADOWS    1.35f
+#define RYSE_V35_SATURATION 1.f
+
 // SDR output (displays without HDR): the display's white is the game's and the UI's.
 #define RYSE_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
 // Peak relative to Paper White.

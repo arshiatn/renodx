@@ -28,6 +28,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <deps/imgui/imgui.h>
@@ -95,6 +96,13 @@ bool IsPsychoV35Mode() {
 
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, Hable on each channel).
 constexpr float HUE_CLIP_DEFAULT = 80.f;
+
+// PsychoV35's defaults that follow the game's response (shared.h): Hable's darker shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", RYSE_V35_CONTRAST},
+    {"v35_shadows", RYSE_V35_SHADOWS},
+    {"v35_saturation", RYSE_V35_SATURATION},
+};
 
 bool IsHdrOutput() {
   return shader_injection.swap_chain_encoding != 2.f;
@@ -179,6 +187,7 @@ void ApplyResetPreset() {
   renodx::utils::settings::UpdateSettings(FIRE_OPTION_1);
   renodx::utils::settings::UpdateSettings(EXT_FIRE_OPTION_1);
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 // The game's own picture (Rendering Mode SDR); the button also sets Output SDR, a first start on a display without HDR
@@ -214,7 +223,8 @@ renodx::utils::settings::Settings settings;
 struct RtSliders {
   float sun_shadows = 0.f;
   float softness = 0.5f;  // degrees of the sun's disk
-  float replace_sun_maps = 1.f;  // the rays' sun shadow alone in the mask's sun channels (contact_shadows.hpp)
+  float replace_sun_maps = 0.f;  // the rays' sun shadow alone in the mask's sun channels (contact_shadows.hpp)
+  float casters_out_of_view = 0.f;  // rt_core's cascade capture from the sun's maps (ray_tracing.hpp SceneDraw)
   float skip_sun_maps = 0.f;  // shadow_skip.hpp's Choice
   float ambient_occlusion = 0.f;
   float ambient_range = 2.f;  // metres
@@ -270,7 +280,8 @@ bool AnyRays() {
 }
 
 // The Ray Tracing presets: RT/PT writes RAYS_RESET, then the one list every game's RT/PT writes
-// (twattila/rays_preset.hpp; the keys this section lacks are skipped), then RAYS_OWN_KEYS; No RT/PT RAYS_OFF; Reset both.
+// (twattila/rays_preset.hpp; the keys this section lacks are skipped), then RAYS_OWN_KEYS; No RT/PT RAYS_OFF and the
+// screen-space methods; Reset RAYS_OFF and RAYS_RESET.
 using PresetValues = twattila::graphics_page::Values;
 const PresetValues RAYS_OFF = {
     {"RayTracedSunShadows", 0.f}, {"RayTracedAmbientOcclusion", 0.f}, {"RayTracedReflections", 0.f},
@@ -286,6 +297,7 @@ const PresetValues RAYS_OWN_KEYS = {
 const PresetValues RAYS_RESET = {
     {"RayTracedShadowSoftness", 0.5f},
     {"RayTracedReplaceShadowMaps", 0.f},
+    {"RayTracedUnitsOutOfView", 0.f},
     {"RayTracedSkipSunShadowMaps", 0.f},
     {"RayTracedAmbientRange", 2.f},
     {"RayTracedAOQuarter", 0.f},
@@ -346,6 +358,11 @@ void BuildRuntimeData() {
   const auto keep_shader = [](reshade::api::command_list*) { return false; };
   const auto draw_hud = [](reshade::api::command_list*) { return !hud_hidden; };
   custom_shaders[0x96675B77] = {.crc32 = 0x96675B77, .on_replace = keep_shader, .on_draw = draw_hud};
+  // The one-frame trace: its PER_BATCH (the PsychoV35 fit's constants).
+  custom_shaders[0xB9B672AA].on_draw = [](reshade::api::command_list* cmd_list) {
+    rysesonofrome::graphics::TraceTonemapConstants(cmd_list);
+    return true;
+  };
   // The tiled lighting (kept): this frame's ray tracing, then the contact shadows (and the ray-traced sun's) into the
   // sun's shadow mask and the ray-traced ambient into its occlusion before it runs, the traced reflections bound for it.
   const auto contact_shadows = [](reshade::api::command_list* cmd_list) {
@@ -611,8 +628,8 @@ void BuildRuntimeData() {
           .label = "Recommended",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended look: HDR (PsychoV35), no film grain, no motion blur,\n"
-                     "no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.25.\n"
+          .tooltip = "Recommended look: HDR (PsychoV35) with the game's shadows and colours, no film grain,\n"
+                     "no motion blur, no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.25.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() { ApplyRecommendedPreset(); },
       },
@@ -621,12 +638,12 @@ void BuildRuntimeData() {
           .label = "Recommended (with Deeper Shadows)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "As Recommended, with deeper shadows closer to the game's\n"
-                     "(PsychoV35 Shadows 0.75; in PsychoV31 Shadows 0.75, Flare 0.25).",
+          .tooltip = "As Recommended, with deeper shadows closer to the game's in PsychoV31\n"
+                     "(Shadows 0.75, Flare 0.25). PsychoV35 follows the game's shadows already.",
           .on_change = []() {
             ApplyResetPreset();
             renodx::utils::settings::UpdateSettings(LESS_POST_PROCESSING);
-            renodx::utils::settings::UpdateSettings({{"shadows", 0.75f}, {"flare", 0.25f}, {"v35_shadows", 0.75f}});
+            renodx::utils::settings::UpdateSettings({{"shadows", 0.75f}, {"flare", 0.25f}});
           },
       },
       new renodx::utils::settings::Setting{
@@ -1170,14 +1187,10 @@ void BuildRuntimeData() {
                      reshade::set_config_value(nullptr, "Ryse AA", "RayReconstruction", 4);
                    }
                  }),
-      ray_button("No RT/PT (Recommended)", "Every ray-traced effect off, their sliders kept (restart the game).",
-                 [] { renodx::utils::settings::UpdateSettings(RAYS_OFF); }),
-      // Attila's and Tales' No RT/PT content (their screen-space methods in the rays' place), kept apart until GT-VBAO,
-      // the Light Bounce and the Contact Shadows have their in-game check: then the maintainer decides whether No RT/PT
-      // takes it.
-      ray_button("No RT/PT + Screen-Space (Experimental)",
-                 "Every ray-traced effect off (restart the game), in their place GT-VBAO, the Light Bounce and the\n"
-                 "Contact Shadows on.",
+      // Attila's and Tales' No RT/PT: the screen-space methods in the rays' place (ATN 2026-11-16).
+      ray_button("No RT/PT (Recommended)",
+                 "Every ray-traced effect off, their sliders kept (restart the game); in their place GT-VBAO,\n"
+                 "the Light Bounce and the Contact Shadows on.",
                  [] {
                    renodx::utils::settings::UpdateSettings(RAYS_OFF);
                    renodx::utils::settings::UpdateSettings({{"ssao_mode", 1.f}, {"light_bounce", 1.f}, {"contact_shadows", 1.f}});
@@ -1221,7 +1234,22 @@ void BuildRuntimeData() {
           .label = "Rays Replace Shadow Maps",
           .section = "Ray Tracing (Experimental)",
           .tooltip = "On: the sun's shadow from the rays alone. Off: the darker of the rays' and the game's.\n"
-                     "On, what is out of view casts no sun shadow (the rays see what is on screen).",
+                     "On, what is out of view casts no sun shadow, unless Shadow Casters Out of View is on.",
+          .labels = {"Off", "On"},
+          .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
+      },
+      // ray_tracing.hpp SceneDraw: the sun's casters from the game's own maps, every frame (the Total War games' key).
+      // Experimental until an in-game run measures its cost and shows the coverage; then Rays Replace Shadow Maps on.
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedUnitsOutOfView",
+          .binding = &rt_sliders.casters_out_of_view,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Shadow Casters Out of View (Experimental)",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "Rays' sun shadows: what is behind the camera or off screen keeps its shadow,\n"
+                     "as far as the game's sun shadows reach. Costs GPU time.",
           .labels = {"Off", "On"},
           .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
@@ -1236,7 +1264,7 @@ void BuildRuntimeData() {
           .section = "Ray Tracing (Experimental)",
           .tooltip = "The game stops drawing its sun shadow maps: the rays alone shadow the sun. Faster.\n"
                      "Past the Near Ones: hair and fog keep the game's shadows near you.\n"
-                     "All: hair strands and fog lose the sun's shadow, and nothing out of view casts one.",
+                     "All: hair strands and fog lose the sun's shadow; out of view only Shadow Casters Out of View casts one.",
           .labels = {"Off", "Past the Near Ones", "All"},
           .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
@@ -1527,7 +1555,15 @@ void BuildRuntimeData() {
           .is_visible = [] { return twattila::dlaa_bridge::HelperInstalled() && AnyRays(); },
       },
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 }
 
 // The execution skull above enemies: the largest 0x1B59F534 draw, missing from frames without it (F9 logs, 4K).
@@ -1570,8 +1606,9 @@ bool IsHiddenHighlight(reshade::api::command_list* cmd_list) {
 }
 
 // Scaleform's flat shapes (0x1B59F534) while the HUD is hidden (the skull, indexed, by its own hotkey), the execution
-// highlights while they are: left out through command_action's bypass, not a draw event's skip (with the ray tracing on
-// command_action replays every draw for rt_core's capture, past any draw event's skip). Gated on the hotkeys' state.
+// highlights while they are: left out through command_action's bypass, not a draw event's skip (a draw that a
+// command_action callback gives a post callback is drawn by command_action itself, past any later draw event's skip; the
+// rays' capture runs before the draw since 300fd8323). Gated on the hotkeys' state.
 constexpr auto OnDrawUi = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
   auto* cmd_list = command.cmd_list;
@@ -1731,6 +1768,7 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
     rays.scene_test = ((rt_sliders.debug_view != 0.f) ? SCENE_TESTS[static_cast<size_t>(std::clamp(rt_sliders.scene_test, 0.f, 3.f))] : 0u);
     rays.debug_log = rt_sliders.debug_log != 0.f;
     rays.units_range = rt_sliders.units_range;
+    rays.casters_out_of_view = rays.sun_shadows && rt_sliders.casters_out_of_view != 0.f;
     // Rays a Pixel: Match Output, those of the output pixels a render pixel stands for (at most 8).
     const auto render = rysesonofrome::ray_tracing::HOST.render_size();
     const float scale = (render[0] != 0 && back_buffer.texture.width != 0)

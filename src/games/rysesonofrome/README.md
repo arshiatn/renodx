@@ -9,7 +9,7 @@ The game has no HDR option; RenoDX outputs HDR10/scRGB through a swap chain prox
 | SDR | The game's native tonemapper (Hable / Uncharted 2 filmic) and color chart, scaled by Paper White. |
 | HDR (Extended) | Default. UC2 Extended (Musa/Jon) on the game's Hable: Hable up to its knee (third derivative root), its tangent above it, per channel (Hue Correction, fix29-41, removed in fix42: it moved hues by 0-3 degrees, the knee is low and the tangent above it keeps the channels' ratios); above 1 each channel rolls off to Peak on its own (Neutwo, fix32), as SDR clips each channel, so bright fire gets a yellow / white core. Until fix31 the brightest channel rolled off and the color kept its saturation: bright fire stayed a flat salmon orange ([1, 0.47, 0.25] at its core; PsychoV31 [1, 0.87, 0.77], SDR white). No "colors from SDR" since fix28 (below). |
 | HDR (PsychoV31) | Recommended preset (with Film Grain 0, Motion Blur (Camera) 0, Motion Blur (Objects) 1, Video Highlights 0.25). PsychoV31 replaces Hable, anchored on Hable's mid gray. Exposure, bloom, saturation / color balance, sun shafts and the color chart stay. Falls back to target-only, then Extended, where V31 returns black. |
-| HDR (PsychoV35) | Recommended (2026-11-12). Musa's custom PsychoV35 (`twattila/psycho_test35.hlsli`, shared with Attila and WH3) with its own sliders (`v35_*`) and **Hue Clip Emulation** (`twattila/psycho35.hlsli`, `psycho35_settings.hpp`), anchored on Hable's mid gray; Hue Clip Emulation (default 80) toward Hable on each channel, clipped; V31's highlight and fire hue shifts not used. Recommended (with Deeper Shadows): V35 Shadows 0.75. Hue Clip default from test/tw_psychov35 part 5 (WARP): its kind of stock curve on the scene, PsychoV35 right after, the OkLab hue error against the per-channel SDR clip where it clips; not measured on this game's own chain (Hable on each channel). Built only, not run in game. |
+| HDR (PsychoV35) | Recommended (2026-11-12). Musa's custom PsychoV35 (`twattila/psycho_test35.hlsli`, shared with Attila and WH3) with its own sliders (`v35_*`) and **Hue Clip Emulation** (`twattila/psycho35.hlsli`, `psycho35_settings.hpp`), anchored on Hable's mid gray; Hue Clip Emulation (default 80) toward Hable on each channel, clipped; V31's highlight and fire hue shifts not used. Contrast 1.15, Shadows 1.35, Saturation 1 by default (rows, Reset, Recommended; shared.h RYSE_V35_*): the game's grey within 4.8 % at 0.05 - 15 nits and its chroma within 4.7 %, Musa's own 2.05x the game's grey at 0.1 nits (test/tw_ryse_tonemap, level B: assumed time-of-day constants; the frame trace logs tonemap00's PER_BATCH for level A). Recommended (with Deeper Shadows) changes V31 only. Hue Clip default from test/tw_psychov35 part 5 (WARP): its kind of stock curve on the scene, PsychoV35 right after, the OkLab hue error against the per-channel SDR clip where it clips; not measured on this game's own chain (Hable on each channel). Built only, not run in game. |
 
 **Removed in fix28: "colors from SDR" (Extended).** Until fix27, Extended pulled its color toward SDR's:
 `MatchSDRColor` scaled the SDR color (Hable, saturated) to the HDR luminance and kept the HDR color only for
@@ -429,15 +429,33 @@ the rays, contact shadows and Light Bounce. The game's edge mask (ps 0x292F2865,
 under Sun Shadow Softness (PCSS doesn't read it; six unreplaced near-mask permutations bring it back). Texture LOD bias:
 the shared `twattila::texture_lod_bias` with a main-view gate (shadow maps keep the game's levels), also with AA mode
 Off while the game renders below the display (Native Upscaling); Texture LOD Bias on All Textures on by default. DLSS
-"Dark tones for L / M" (Experimental, off: the square-root feed of the TW games). "No RT/PT + Screen-Space
-(Experimental)" beside No RT/PT. Into windowed: the game's own size at once. No per-frame work for debug features: the
+presets L and M always get the colour's square root (squared back after), as Ray Reconstruction and the TW games' L / M
+(the "Dark tones for L / M" row is gone, ATN 2026-11-16). No RT/PT turns GT-VBAO, the Light Bounce and the
+Contact Shadows on in the rays' place, as Attila's (one button; ATN 2026-11-16). Into windowed: the game's own size at once. No per-frame work for debug features: the
 frame trace is a button (renodx_trace_now only in scripted runs), the jitter diagnostics only while the AA section
 shows, back_buffer_fix matches a bind by its view. rt_specular_merge exact where open. `rt_probe_sky` writes texel 6's
 w 0: the helper's open sky takes Ryse's cube at the normal as it is (w 1 stretched y, Attila's y-up habit). Tests (WARP,
 all PASS): `test/tw_ryse_sun_replace`, `test/tw_ryse_specular_merge`, `test/tw_ryse_shadow_skip` part 2,
 `test/tw_ryse_path_ambient` 2 and 3a (three SSDO shaders), `test/tw_ryse_tonemap` (V35 against the game below white:
-2.05x the game's grey at 0.1 nits at the shipped defaults; fit Contrast 1.15 / Shadows 1.35 within 4.8 %, ATN decides),
+Ryse's V35 defaults Contrast 1.15 / Shadows 1.35 / Saturation 1 within 4.8 % of the game's grey and 4.7 % of its chroma, Musa's own 111.9 % off as the control),
 `test/tw_vanilla_exact` Ryse (14 replaced shaders exact with their control).
+
+fix61 (draft, 2026-11-16 rys2_ round, built only, not run in game): **Shadow Casters Out of View (Experimental)** (Ray
+Tracing, `RayTracedUnitsOutOfView`, the TW games' key; off): the sun's casters from the game's own sun maps, so what is
+behind the camera or off screen stays in the rays' scene and Rays Replace Shadow Maps can keep its shadow. `SceneDraw`
+takes a depth-only draw into one of the maps the mask passes read the frame before (`shadow_skip::SunMap`: the cascades
+and the characters' maps, not the far map the game keeps) as rt_core's cascade draw, every frame: the game's shadow
+vertex shader with the main view's matrix in PER_FRAME (rt_core `Host::cascade_view_slot` 2 / `cascade_view_row` 0;
+the TW games keep b0 / c10), a triangle in the view collapsed (the G-buffer's draw has it): Warhammer III's
+`rt_outside_view` for the solid casters (ps 0x78B445B5), `rt_outside_view_uv` (TEXCOORD0) for the alpha-tested ones
+(ps 0x9112241F, cut out by their diffuse map). The R0 traces' sun maps: 773-837 draws, nine vertex shaders, 10.2 M
+indices a frame (7.5 M in the middle cascade) all streamed out every frame with the row on: its cost is the run's to
+measure. The rest of the shadow pass's PER_FRAME is 0 there: hair strands (0xDF6E8CD1) face the world's origin and bending
+foliage (0xCFE96F1E) stands still. Readers of the maps besides the mask passes (`r0/shadow_readers.txt`): the hair's
+forward strands and the fog volumes (ps 0x91A72BC2); the particles and smoke read the mask. Test (WARP, PASS):
+`test/tw_ryse_cascade_casters` (the game's 0x7EB6531F / 0x48CE820A through the geometry shaders: 0 of 1536 corners off
+the main view, outside triangles kept bit for bit, the rest collapsed, UV unchanged; CONTROLS: the light's PER_FRAME and
+row 10 put every corner off, the uncollapsed stream fails the rule: 532 corners).
 
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
