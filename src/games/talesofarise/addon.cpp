@@ -248,6 +248,7 @@ void BuildRuntimeData() {
       CustomShaderEntry(0xCB3E2B7E),        // video03 (faded look)
       // UE 4.21 motion blur filters (pixel shader path; quality levels / permutations): Motion Blur slider.
       // Bandai's screen filters before the TAA, sized in render pixels: in output pixels while DLSS upscales.
+      CustomShaderEntry(0x038D003A),        // locallight00 (deferred local lights: the helper's torch shadows)
       PostFilterShader(0xF2A6E883),         // lighting00 (deferred sun lighting: Smooth Volumetric Light, shadow edge tint)
       PostFilterShader(0x6513DC8E),         // lighting01 (lighting00, Bandai's t14.y test folded)
       PostFilterShader(0xC28D2F1E),         // lighting02
