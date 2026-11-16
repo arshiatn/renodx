@@ -55,11 +55,22 @@ Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); 
 - Ray tracing (Experimental, restart after turning the first effect on; `ray_tracing.hpp`): a host of the Total War
   helper's rt_core. Every G-buffer draw goes into the scene (skinned characters every frame, alpha-tested materials
   with their cut-out); the frame is traced at DownsampleDepth (0xEB741AE5: the G-buffer done, before SSAO and the
-  shadow casters; else at the shadow filter or the sun pass). Ray-Traced Shadows replace the sun's shadow filter (CascadedPCSS / Unfiltered / VSM are left
-  out; `d1_rt_shadow` writes the mask the sun pass and the forward materials read). Ray-Traced AO is drawn over the SSAO
+  shadow casters; else at the shadow filter or the sun pass). Ray-Traced Shadows replace the sun's shadow filter
+  (CascadedPCSS / Unfiltered / VSM are left out; `d1_rt_shadow` writes the mask the sun pass and the forward materials
+  read). Ray-Traced AO is drawn over the SSAO
   result (`d1_rt_ambient`), so the sun pass and the forward materials read the rays' AO alone (the game's SSAO must
   stay on). Ray Reconstruction gets the G-buffer guides (`d1_rt_guides`). The RT/PT preset is Attila's.
-  Not yet: Path-Traced Ambient, Light Bounce (GI) and reflections.
+  Global Illumination (Strength, off by default; the rays' One Bounce or the paths' ReSTIR GI, Experimental): before
+  DeferredFog (0xEDA7F8A1) the scene, lit by the sun and every local light, is prepared, traced, resolved over frames
+  (Expeditions' `rt_bounce_prepare` / `rt_bounce_resolve`) and added to it times each pixel's diffuse colour
+  (`d1_rt_bounce_apply`, gBuffer3 as the sun pass's ambient takes it). Path-Traced Ambient (Experimental, off, left out
+  of RT/PT): the sun pass's sky and ground ambient (PerFrame b13) become the paths' sky (`d1_rt_sky`, the bridge's sun
+  texels 3-8); once the paths have learned the game's light the sun pass draws with that ambient zeroed (a PerFrame copy
+  at b13, the game's bound again after) and SSAO is skipped, its result open (1): the paths bring the sky's light and its
+  shade. The forward surfaces (blood, ooze, fire, electrified) keep the game's ambient. The paths' sky is the helper's
+  six-colour cube: exact facing the six axes, up to |sky - ground| / 8 off between them (R1: 0.094 of 0.81 in blue at
+  30 degrees above the horizon).
+  Not yet: reflections.
 
 ## Tests (offline, WARP)
 
@@ -68,7 +79,9 @@ Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); 
   below 0.8) with a hard-knee control, the row off bit-equal to the tone map before it (a6762afab^; control: the row on).
 - `test/tw_d1_rays/run.ps1`: the helper's inputs and the rays' replacements, the game's sun pass reading them: the motion
   and the rays' positions within 0.002 px, the colour's round trip, the guides against its own normal decode, the shadow
-  mask and the AO over the SSAO result giving its light; each with a control that must fail.
+  mask and the AO over the SSAO result giving its light, Path-Traced Ambient's sky texels against the pass's ambient
+  facing each axis (1.2e-7), the pass from PerFrame without the ambient bit-equal to it from R1's zeroed, the bounce's
+  apply against the pass's ambient (2.4e-7); each with a control that must fail.
 - `test/tw_d1_post/run.ps1`: 22 replaced passes Vanilla exact against the game's census bytes, each with a wrong copy
   that must fail; the light rows at 2 give twice the game's light.
 - `test/tw_d1_swapchain`, `test/tw_device_loss`, `test/tw_output_encoding`: the window's chains, device loss, Output.

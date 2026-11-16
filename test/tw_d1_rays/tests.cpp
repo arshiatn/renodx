@@ -18,7 +18,17 @@
 //    render / target sizes (the top-left quarter stretched).
 // 6. d1_rt_inputs: each position projected by the jittered camera lands on its pixel's centre, at the depth's distance;
 //    the sky none; the sun texels from PerFrame. Control (must fail): the jitter not taken out.
-// d1_rays.exe <sun pass cso> <upscale_inputs> <upscale_output> <rt_inputs> <rt_guides> <rt_shadow> <rt_ambient> <full-screen vs>.
+// 7. d1_rt_sky's sky texels (Path-Traced Ambient) against the game's sun pass lighting a white surface facing each world
+//    axis with R1's sky and ground (its sun and specular off), their w, zeros with it off, the other texels untouched.
+//    Control (must fail): the opposite axis' texel.
+// 8. d1_rt_sky's PerFrame without the ambient, copied into a constant buffer as the add-on binds it: the game's sun pass
+//    from it equals, bit for bit, the pass from R1's PerFrame with the sky and ground zeroed (its registers 4-7 byte-equal).
+//    Control (must fail): R1's PerFrame as it is (the ambient in).
+// 9. d1_rt_bounce_apply: a uniform resolved light L on a wall gives L x the diffuse colour x the strength, against the game's
+//    sun pass lighting that G-buffer with an ambient of L (sky = ground); the sky pixels nothing. Control (must fail):
+//    gBuffer4's specular colours in gBuffer3's place.
+// d1_rays.exe <sun pass cso> <upscale_inputs> <upscale_output> <rt_inputs> <rt_guides> <rt_shadow> <rt_ambient> <full-screen vs>
+//   <rt_sky> <rt_bounce_apply>.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -66,6 +76,11 @@ constexpr std::array<float, 16> SUN_GLOBALS = {1.f, 1.f, 1.f, 1.f, 0.47485602f, 
 // the last register the ground's ambient).
 constexpr std::array<float, 16> PER_FRAME = {-0.5f, 0.29765308f, 1.f, 1.f, 0.70710677f, 0.7011688f, 0.9658153f, 1.f,
                                              -0.49999994f, 1.f, 0.45908016f, 1.f, 0.25f, 0.25f, 0.25f, 0.f};
+// The whole of R1's PerFrame (128 bytes: the light, the fog's registers, global_Data).
+constexpr std::array<float, 32> PER_FRAME_FULL = {-0.5f, 0.29765308f, 1.f, 1.f, 0.70710677f, 0.7011688f, 0.9658153f, 1.f,
+                                                  -0.49999994f, 1.f, 0.45908016f, 1.f, 0.25f, 0.25f, 0.25f, 0.f,
+                                                  0.8147317f, 0.38890973f, 20.f, 1.f, 2.4831772f, 0.6523694f, 60.f, 10.f,
+                                                  2.974176f, 1.f, -15.f, 10.f, 215.61876f, 0.0082251f, 0.48480964f, -0.8746197f};
 
 static Matrix Multiply(const Matrix& a, const Matrix& b) {
   Matrix out = {};
@@ -220,6 +235,24 @@ static std::vector<Float4> ReadFloat4(ID3D11Texture2D* texture) {
   return texels;
 }
 
+static std::vector<float> ReadBuffer(ID3D11Buffer* buffer) {
+  D3D11_BUFFER_DESC desc = {};
+  buffer->GetDesc(&desc);
+  desc.Usage = D3D11_USAGE_STAGING;
+  desc.BindFlags = 0;
+  desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  desc.MiscFlags = 0;
+  ComPtr<ID3D11Buffer> staging;
+  REQUIRE(SUCCEEDED(device->CreateBuffer(&desc, nullptr, &staging)));
+  context->CopyResource(staging.Get(), buffer);
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  REQUIRE(SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped)));
+  std::vector<float> values(desc.ByteWidth / 4);
+  std::memcpy(values.data(), mapped.pData, desc.ByteWidth);
+  context->Unmap(staging.Get(), 0);
+  return values;
+}
+
 static std::vector<Float4> ReadHalf4(ID3D11Texture2D* texture) {
   const auto bytes = Read(texture, 8);
   std::vector<Float4> texels(bytes.size() / 8);
@@ -241,6 +274,8 @@ struct Shaders {
   ComPtr<ID3D11ComputeShader> rt_guides;
   ComPtr<ID3D11PixelShader> rt_shadow;
   ComPtr<ID3D11PixelShader> rt_ambient;
+  ComPtr<ID3D11ComputeShader> rt_sky;
+  ComPtr<ID3D11PixelShader> rt_bounce_apply;
   ComPtr<ID3D11VertexShader> full_screen;  // the add-on's (light_bounce_vs: SV_Position only)
   ComPtr<ID3D11VertexShader> sun_vertex;   // the sun pass's interface: SV_Position, TexCoord0 (uv), TexCoord1 (the view ray)
   ComPtr<ID3D11SamplerState> linear;
@@ -354,7 +389,9 @@ static SunInputs MakeSunInputs(const GBuffer& g, const std::array<float, 16>& pe
 }
 
 int main(int argc, char** argv) {
-  REQUIRE(argc >= 9);
+  // Unbuffered: a section's lines reach the log even if a later one stops the program.
+  std::setvbuf(stdout, nullptr, _IONBF, 0);
+  REQUIRE(argc >= 11);
   REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context)));
   const auto pixel = [](const char* path) {
     const auto code = ReadFile(path);
@@ -382,6 +419,8 @@ int main(int argc, char** argv) {
     REQUIRE(!code.empty());
     REQUIRE(SUCCEEDED(device->CreateVertexShader(code.data(), code.size(), nullptr, &shaders.full_screen)));
   }
+  shaders.rt_sky = compute(argv[9]);
+  shaders.rt_bounce_apply = pixel(argv[10]);
   constexpr char SUN_VERTEX[] =
       "void main(uint id : SV_VertexID, out float4 position : SV_Position, out float2 uv : TexCoord0, out float3 ray : TexCoord1) {"
       "  uv = float2((id << 1) & 2, id & 2); position = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1);"
@@ -767,6 +806,204 @@ int main(int argc, char** argv) {
     CHECK(distance_worst <= 2e-5);
     CHECK(sky_wrong == 0 && sun_right);
     CHECK(control > 0.1);
+  }
+
+  // Sections 7 to 9: no shadow (the mask's ones), no SSAO (its result 1).
+  const std::vector<uint8_t> mask_ones(WIDTH * HEIGHT * 4, 255);
+  const auto unshadowed = View(Texture(DXGI_FORMAT_R8G8B8A8_UNORM, WIDTH, HEIGHT, D3D11_BIND_SHADER_RESOURCE, mask_ones.data(), WIDTH * 4).Get());
+  // d1_rt_sky as ray_tracing.hpp runs it (one group of 8): the sun texture (16 x 1, its texels first 7) and the copy.
+  const auto sky_run = [&](float on) {
+    const std::vector<Float4> sentinel(16, Float4{7.f, 7.f, 7.f, 7.f});
+    const auto sun = Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, 16, 1, D3D11_BIND_UNORDERED_ACCESS, sentinel.data(), 16 * 16);
+    const D3D11_BUFFER_DESC without_desc = {128, D3D11_USAGE_DEFAULT, D3D11_BIND_UNORDERED_ACCESS, 0, 0, 0};
+    ComPtr<ID3D11Buffer> without;
+    REQUIRE(SUCCEEDED(device->CreateBuffer(&without_desc, nullptr, &without)));
+    D3D11_UNORDERED_ACCESS_VIEW_DESC without_view = {};
+    without_view.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    without_view.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+    without_view.Buffer.NumElements = 8;
+    ComPtr<ID3D11UnorderedAccessView> without_uav;
+    REQUIRE(SUCCEEDED(device->CreateUnorderedAccessView(without.Get(), &without_view, &without_uav)));
+    const std::array<float, 4> settings = {on, 0.f, 0.f, 0.f};
+    const auto frame_buffer = Constants(PER_FRAME_FULL);
+    const auto settings_buffer = Constants(settings);
+    const auto sun_uav = Unordered(sun.Get());
+    context->ClearState();
+    context->CSSetShader(shaders.rt_sky.Get(), nullptr, 0);
+    ID3D11Buffer* constants[] = {frame_buffer.Get(), settings_buffer.Get()};
+    ID3D11UnorderedAccessView* outputs[] = {sun_uav.Get(), without_uav.Get()};
+    context->CSSetConstantBuffers(0, 2, constants);
+    context->CSSetUnorderedAccessViews(0, 2, outputs, nullptr);
+    context->Dispatch(1, 1, 1);
+    return std::pair{ReadFloat4(sun.Get()), without};
+  };
+  const auto [sky_texels, without_ambient] = sky_run(1.f);
+
+  // 7. Path-Traced Ambient's sky.
+  {
+    // Each pixel faces a world axis (i % 6: +x, -x, +y, -y, +z, -z): its view-space normal, stereographic (the inverse of
+    // the pass's decode).
+    GBuffer facing = g;
+    for (size_t i = 0; i < facing.normals.size(); ++i) {
+      const size_t axis = i % 6;
+      std::array<double, 3> world = {};
+      world[axis / 2] = (axis % 2 == 0) ? 1.0 : -1.0;
+      std::array<double, 3> view = {};
+      for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) view[r] += VIEW[r][c] * world[c];
+      }
+      const double scale = view[2] + 1.0;
+      facing.normals[i] = {static_cast<float>((view[0] / scale + 1.7777) / 3.5554), static_cast<float>((view[1] / scale + 1.7777) / 3.5554)};
+      facing.depth[i] = 0.1f;
+    }
+    // R1's sky and ground, its sun and specular off.
+    const std::array<float, 16> sky_frame = {-0.5f, 0.29765308f, 0.f, 0.f, 0.70710677f, 0.7011688f, 0.f, 0.f, -0.49999994f, 1.f, 0.f, 0.f,
+                                             0.25f, 0.25f, 0.25f, 0.f};
+    const auto lit = SunPass(MakeSunInputs(facing, sky_frame, true), no_occlusion.Get(), unshadowed.Get());
+    double worst = 0.0, control = 0.0;
+    for (size_t i = 0; i < lit.size(); ++i) {
+      const size_t axis = i % 6;
+      for (int c = 0; c < 3; ++c) {
+        worst = std::max(worst, static_cast<double>(std::abs(lit[i][c] - sky_texels[3 + axis][c])));
+        control = std::max(control, static_cast<double>(std::abs(lit[i][c] - sky_texels[3 + (axis ^ 1)][c])));
+      }
+    }
+    const bool w_right = sky_texels[3][3] == 1.f && sky_texels[4][3] == 1.f && sky_texels[5][3] == 0.f && sky_texels[6][3] == 0.f
+                         && sky_texels[7][3] == 0.f && sky_texels[8][3] == 0.f;
+    const auto off = sky_run(0.f).first;
+    bool off_zero = true, others_kept = true;
+    for (size_t texel = 0; texel < 16; ++texel) {
+      for (int c = 0; c < 4; ++c) {
+        if (texel >= 3 && texel < 9) {
+          off_zero = off_zero && off[texel][c] == 0.f;
+        } else {
+          others_kept = others_kept && off[texel][c] == 7.f && sky_texels[texel][c] == 7.f;
+        }
+      }
+    }
+    std::printf("7. Path-Traced Ambient's sky against the game's sun pass on a white surface facing each axis: largest difference %.3g;\n"
+                "   w right %d, zeros with it off %d, other texels untouched %d; control (the opposite axis' texel) %.3g\n",
+                worst, w_right, off_zero, others_kept, control);
+    CHECK(worst <= 1e-6);
+    CHECK(w_right && off_zero && others_kept);
+    CHECK(control > 0.1);
+  }
+
+  // 8. PerFrame without the ambient (the sun pass's b13 while the paths bring the sky).
+  {
+    const D3D11_BUFFER_DESC frame_desc = {128, D3D11_USAGE_DEFAULT, D3D11_BIND_CONSTANT_BUFFER, 0, 0, 0};
+    ComPtr<ID3D11Buffer> frame_copy;
+    REQUIRE(SUCCEEDED(device->CreateBuffer(&frame_desc, nullptr, &frame_copy)));
+    context->CopyResource(frame_copy.Get(), without_ambient.Get());
+    std::array<float, 32> zeroed = PER_FRAME_FULL;
+    zeroed[1] = zeroed[5] = zeroed[9] = 0.f;
+    zeroed[12] = zeroed[13] = zeroed[14] = 0.f;
+    const auto copied = ReadBuffer(frame_copy.Get());
+    const bool bytes_right = copied.size() == zeroed.size() && std::memcmp(copied.data(), zeroed.data(), sizeof(zeroed)) == 0;
+    SunInputs inputs = MakeSunInputs(g, PER_FRAME, false);
+    inputs.per_frame = frame_copy;
+    const auto ours = SunPass(inputs, no_occlusion.Get(), unshadowed.Get());
+    inputs.per_frame = Constants(zeroed);
+    const auto reference = SunPass(inputs, no_occlusion.Get(), unshadowed.Get());
+    inputs.per_frame = Constants(PER_FRAME_FULL);
+    const auto game = SunPass(inputs, no_occlusion.Get(), unshadowed.Get());
+    std::printf("8. PerFrame without the ambient: bytes as R1's with the sky and ground zeroed %d; the game's sun pass from it against\n"
+                "   from that: largest difference %.3g; control (R1's PerFrame as it is) %.3g\n",
+                bytes_right, Largest(ours, reference), Largest(game, reference));
+    CHECK(bytes_right);
+    CHECK(Largest(ours, reference) == 0.f);
+    CHECK(Largest(game, reference) > 1e-2f);
+  }
+
+  // 9. The bounce's apply against the game's ambient.
+  {
+    constexpr UINT SCALE = 2;
+    constexpr UINT BOUNCE_WIDTH = WIDTH / SCALE;
+    constexpr UINT BOUNCE_HEIGHT = HEIGHT / SCALE;
+    constexpr Float4 LIGHT = {0.3f, 0.6f, 0.9f, 1.f};
+    // A wall facing the view's z (gBuffer2 0.5, 0.5: the view-space normal 0 0 1; in the world the view's row 2), its
+    // points 5 cm apart, 10 m away; the sky pixels (i % 23 == 0) none.
+    GBuffer wall = g;
+    const std::array<double, 3> normal = {VIEW[2][0], VIEW[2][1], VIEW[2][2]};
+    const double across_length = std::hypot(normal[2], normal[0]);
+    const std::array<double, 3> across = {normal[2] / across_length, 0.0, -normal[0] / across_length};
+    const std::array<double, 3> up = {normal[1] * across[2] - normal[2] * across[1], normal[2] * across[0] - normal[0] * across[2],
+                                      normal[0] * across[1] - normal[1] * across[0]};
+    const auto point = [&](UINT x, UINT y) {
+      Float4 p = {};
+      for (int c = 0; c < 3; ++c) p[c] = static_cast<float>(std::array<double, 3>{350.0, 18.0, 300.0}[c] + (x + 0.5) * 0.05 * across[c] + (y + 0.5) * 0.05 * up[c]);
+      p[3] = 10.f;
+      return p;
+    };
+    std::vector<Float4> positions(WIDTH * HEIGHT);
+    for (UINT y = 0; y < HEIGHT; ++y) {
+      for (UINT x = 0; x < WIDTH; ++x) {
+        const size_t i = y * WIDTH + x;
+        const bool sky = (i % 23 == 0);
+        wall.normals[i] = {0.5f, 0.5f};
+        wall.depth[i] = sky ? 1.f : 0.1f;
+        positions[i] = sky ? Float4{} : point(x, y);
+      }
+    }
+    std::vector<Float4> resolved(BOUNCE_WIDTH * BOUNCE_HEIGHT, LIGHT);
+    std::vector<Float4> resolved_positions(BOUNCE_WIDTH * BOUNCE_HEIGHT);
+    for (UINT y = 0; y < BOUNCE_HEIGHT; ++y) {
+      for (UINT x = 0; x < BOUNCE_WIDTH; ++x) {
+        resolved_positions[y * BOUNCE_WIDTH + x] = positions[std::min(y * SCALE + SCALE / 2, HEIGHT - 1) * WIDTH + std::min(x * SCALE + SCALE / 2, WIDTH - 1)];
+      }
+    }
+    const auto float4_view = [](const std::vector<Float4>& texels, UINT width, UINT height) {
+      return View(Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, width, height, D3D11_BIND_SHADER_RESOURCE, texels.data(), width * 16).Get());
+    };
+    const auto resolved_view = float4_view(resolved, BOUNCE_WIDTH, BOUNCE_HEIGHT);
+    const auto resolved_positions_view = float4_view(resolved_positions, BOUNCE_WIDTH, BOUNCE_HEIGHT);
+    const auto positions_view = float4_view(positions, WIDTH, HEIGHT);
+    SunInputs inputs = MakeSunInputs(wall, PER_FRAME, false);
+    const std::vector<Float4> no_emissive(WIDTH * HEIGHT, Float4{});
+    inputs.emissive = float4_view(no_emissive, WIDTH, HEIGHT);
+    struct ApplyConstants {
+      std::array<uint32_t, 4> sizes;
+      std::array<float, 4> settings;
+      std::array<float, 12> view;
+    };
+    ApplyConstants constants = {.sizes = {BOUNCE_WIDTH, BOUNCE_HEIGHT, WIDTH, HEIGHT}, .settings = {1.5f, static_cast<float>(SCALE), 0.f, 0.f}};
+    for (int r = 0; r < 3; ++r) {
+      for (int c = 0; c < 3; ++c) constants.view[r * 4 + c] = static_cast<float>(VIEW[r][c]);
+    }
+    const auto constant_buffer = Constants(constants);
+    const auto apply = [&](ID3D11ShaderResourceView* colours) {
+      const auto target = Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, WIDTH, HEIGHT, D3D11_BIND_RENDER_TARGET);
+      Draw(shaders.full_screen.Get(), shaders.rt_bounce_apply.Get(), Target(target.Get()).Get(), WIDTH, HEIGHT,
+           {resolved_view.Get(), resolved_positions_view.Get(), positions_view.Get(), inputs.normals.Get(), colours, inputs.depth.Get()},
+           {{0, constant_buffer.Get()}});
+      return ReadFloat4(target.Get());
+    };
+    const auto ours = apply(inputs.diffuse.Get());
+    const auto specular_in_place = apply(inputs.specular.Get());
+    // The game's ambient of L (sky = ground), its sun and specular off.
+    const std::array<float, 16> ambient_frame = {-0.5f, LIGHT[0], 0.f, 0.f, 0.70710677f, LIGHT[1], 0.f, 0.f, -0.49999994f, LIGHT[2], 0.f, 0.f,
+                                                 LIGHT[0], LIGHT[1], LIGHT[2], 0.f};
+    inputs.per_frame = Constants(ambient_frame);
+    const auto game = SunPass(inputs, no_occlusion.Get(), unshadowed.Get());
+    double worst = 0.0, control = 0.0;
+    size_t sky_lit = 0, lit = 0;
+    for (size_t i = 0; i < ours.size(); ++i) {
+      if (wall.depth[i] >= 0.999f) {
+        sky_lit += (ours[i][0] != 0.f || ours[i][1] != 0.f || ours[i][2] != 0.f) ? 1 : 0;
+        continue;
+      }
+      lit += (game[i][0] + game[i][1] + game[i][2] > 0.f) ? 1 : 0;
+      for (int c = 0; c < 3; ++c) {
+        worst = std::max(worst, static_cast<double>(std::abs(ours[i][c] - 1.5f * game[i][c])));
+        control = std::max(control, static_cast<double>(std::abs(specular_in_place[i][c] - 1.5f * game[i][c])));
+      }
+    }
+    std::printf("9. bounce apply: L x the diffuse colour x 1.5 against 1.5 x the game's sun pass with an ambient of L: largest\n"
+                "   difference %.3g over %zu lit pixels; sky pixels lit %zu; control (the specular colours in its place) %.3g\n",
+                worst, lit, sky_lit, control);
+    CHECK(worst <= 1e-5);
+    CHECK(lit > 1000 && sky_lit == 0);
+    CHECK(control > 0.05);
   }
 
   std::printf(failures == 0 ? "tw_d1_rays: all checks passed\n" : "tw_d1_rays: %d checks failed\n", failures);
