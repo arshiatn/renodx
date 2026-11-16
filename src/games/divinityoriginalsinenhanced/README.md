@@ -54,7 +54,8 @@ Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); 
   for the game's presents. The in-game anti-aliasing must be off.
 - Ray tracing (Experimental, restart after turning the first effect on; `ray_tracing.hpp`): a host of the Total War
   helper's rt_core. Every G-buffer draw goes into the scene (skinned characters every frame, alpha-tested materials
-  with their cut-out). Ray-Traced Shadows replace the sun's shadow filter (CascadedPCSS / Unfiltered / VSM are left
+  with their cut-out); the frame is traced at DownsampleDepth (0xEB741AE5: the G-buffer done, before SSAO and the
+  shadow casters; else at the shadow filter or the sun pass). Ray-Traced Shadows replace the sun's shadow filter (CascadedPCSS / Unfiltered / VSM are left
   out; `d1_rt_shadow` writes the mask the sun pass and the forward materials read). Ray-Traced AO is drawn over the SSAO
   result (`d1_rt_ambient`), so the sun pass and the forward materials read the rays' AO alone (the game's SSAO must
   stay on). Ray Reconstruction gets the G-buffer guides (`d1_rt_guides`). The RT/PT preset is Attila's.

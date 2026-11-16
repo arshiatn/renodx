@@ -31,10 +31,11 @@
 // (five targets, gBuffer1 R32F linear depth at rt1, the depth written; the 494 _D_ material pixel shaders are too many
 // to list) streamed out through its own vertex shader (skinned ones, BLENDINDICES, every frame; alpha-tested _AT_ ones by
 // rt_core's SceneCoverage with their UV), their camera the b12 PerView they drew with as uploaded (upscaling.hpp keeps
-// every upload). At the sun's shadow filter (CascadedPCSS 0x8F114E47 at ShadowQuality 0, CascadedUnfiltered 0x7697084B,
-// CascadedVSM 0x1C0323E3: after the G-buffer, SSAO and the shadow casters) or, with the game's shadows off, at the sun's
-// light pass (0xCCCB7253): the pixels' world positions and the sun (d1_rt_inputs, b13 PerFrame bound there), the G-buffer
-// guides when Ray Reconstruction or the paths want them (d1_rt_guides), and the trace. Ray-Traced Shadows replace the
+// every upload). At DownsampleDepth (0xEB741AE5, SSAO's half-size depth from gBuffer1: after the G-buffer, before SSAO and
+// the sun's shadow casters) or, where it isn't drawn, at the sun's shadow filter (CascadedPCSS 0x8F114E47 at ShadowQuality
+// 0, CascadedUnfiltered 0x7697084B, CascadedVSM 0x1C0323E3) or the sun's light pass (0xCCCB7253): the pixels' world
+// positions and the sun (d1_rt_inputs, b13 PerFrame bound there) and the trace; the G-buffer guides when Ray
+// Reconstruction or the paths want them (d1_rt_guides, at the sun pass). Ray-Traced Shadows replace the
 // filter's mask (the filter left out; d1_rt_shadow): the sun pass and the forward materials that read it get the rays
 // alone. Ray-Traced AO is drawn over the SSAO chain's result at the sun pass (its Base, t5; d1_rt_ambient): the sun pass
 // and the forward materials (t3 in R1's trace) read the rays' AO alone. The scene's shaders are kept from the game's
@@ -46,6 +47,8 @@ using Microsoft::WRL::ComPtr;
 // The sun's shadow filters (one a ShadowQuality: PCSS, unfiltered, VSM), each writing the RGBA8 mask the sun pass reads.
 constexpr std::array<uint32_t, 3> SHADOW_FILTER_SHADERS = {0x8F114E47, 0x7697084B, 0x1C0323E3};
 constexpr uint32_t SUN_SHADER = 0xCCCB7253;
+// DownsampleDepth: gBuffer1 at t0, the G-buffer complete (R1 T1: its 256 draws all before it, none after).
+constexpr uint32_t DOWNSAMPLE_DEPTH_SHADER = 0xEB741AE5;
 
 namespace internal {
 
@@ -190,8 +193,15 @@ inline void FullScreen(ID3D11DeviceContext1* context, ID3D11RenderTargetView* ta
   context->Draw(3, 0);
 }
 
-// This frame's trace (one try a frame), at a pass that binds the game's linear depth at `depth_slot` and PerFrame at b13:
-// the positions and the sun (d1_rt_inputs), then rt_core's Trace.
+// The game's immediate context of a draw's `cmd_list` and its ID3D11DeviceContext1; false: none.
+inline bool NativeContext(reshade::api::command_list* cmd_list, ID3D11DeviceContext** context, ComPtr<ID3D11DeviceContext1>* context1) {
+  *context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(context);
+  return *context != nullptr && SUCCEEDED((*context)->QueryInterface(IID_PPV_ARGS(context1->ReleaseAndGetAddressOf())));
+}
+
+// This frame's trace (once a frame), at a pass that binds the game's linear depth (gBuffer1: R32F at the G-buffer's size)
+// at `depth_slot` and PerFrame at b13: the positions and the sun (d1_rt_inputs), then rt_core's Trace.
 inline void Trace(ID3D11DeviceContext* context, ID3D11DeviceContext1* context1, UINT depth_slot) {
   if (!twattila::dlaa_bridge::bridge.ray_tracing) return;
   upscaling::Camera camera;
@@ -201,16 +211,29 @@ inline void Trace(ID3D11DeviceContext* context, ID3D11DeviceContext1* context1, 
   {
     const std::unique_lock lock(state.mutex);
     if (state.traced_frame == state.frame) return;
-    state.traced_frame = state.frame;
     size = state.render_size;
   }
   ComPtr<ID3D11ShaderResourceView> depth;
   ComPtr<ID3D11Buffer> per_frame;
   context->PSGetShaderResources(depth_slot, 1, depth.GetAddressOf());
   context->PSGetConstantBuffers(13, 1, per_frame.GetAddressOf());
+  if (!depth || !per_frame || size[0] == 0) return;
+  D3D11_SHADER_RESOURCE_VIEW_DESC depth_view_desc = {};
+  depth->GetDesc(&depth_view_desc);
+  ComPtr<ID3D11Resource> depth_resource;
+  depth->GetResource(depth_resource.GetAddressOf());
+  ComPtr<ID3D11Texture2D> depth_texture;
+  D3D11_TEXTURE2D_DESC depth_desc = {};
+  if (FAILED(depth_resource.As(&depth_texture))) return;
+  depth_texture->GetDesc(&depth_desc);
+  if (depth_view_desc.Format != DXGI_FORMAT_R32_FLOAT || depth_desc.Width != size[0] || depth_desc.Height != size[1]) return;
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
-  if (!depth || !per_frame || size[0] == 0 || !PrepareDevice(device.Get())) return;
+  if (!PrepareDevice(device.Get())) return;
+  {
+    const std::unique_lock lock(state.mutex);
+    state.traced_frame = state.frame;
+  }
   // The jittered view-projection (as the depth and the captures were drawn).
   std::array<float, 16> view_projection = camera.view_projection;
   for (size_t column = 0; column < 4; ++column) {
@@ -246,12 +269,20 @@ inline void Trace(ID3D11DeviceContext* context, ID3D11DeviceContext1* context1, 
                                               });
 }
 
-// The sun's shadow filter: this frame's trace, then the traced sun into its mask in its place (the filter left out).
-constexpr auto OnShadowFilter = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
+// DownsampleDepth: this frame's trace, before SSAO and the sun's shadow casters.
+constexpr auto OnDownsampleDepth = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  ID3D11DeviceContext* context = nullptr;
   ComPtr<ID3D11DeviceContext1> context1;
-  if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
+  if (NativeContext(command.cmd_list, &context, &context1)) Trace(context, context1.Get(), 0);
+  return {};
+};
+
+// The sun's shadow filter: this frame's trace (if not yet), then the traced sun into its mask in its place (the filter
+// left out).
+constexpr auto OnShadowFilter = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  ID3D11DeviceContext* context = nullptr;
+  ComPtr<ID3D11DeviceContext1> context1;
+  if (!NativeContext(command.cmd_list, &context, &context1)) return {};
   Trace(context, context1.Get(), 0);
   bool sun_shadows = false;
   std::array<UINT, 2> size;
@@ -279,10 +310,9 @@ constexpr auto OnShadowFilter = []<typename Context>(Context& command) -> renodx
 // (its t1-t4) when Ray Reconstruction wants them (it reads them at the tone mapper); the traced ambient over the SSAO
 // chain's result it reads (t5; only while the game's SSAO is on: its shaderProperties.x samples it).
 constexpr auto OnSunLight = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::TryNativeFromReShadeProxy(&context);
+  ID3D11DeviceContext* context = nullptr;
   ComPtr<ID3D11DeviceContext1> context1;
-  if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
+  if (!NativeContext(command.cmd_list, &context, &context1)) return {};
   Trace(context, context1.Get(), 1);
   bool ambient_occlusion = false;
   std::array<UINT, 2> size;
@@ -384,6 +414,8 @@ inline void Update(const twattila::rt_scene::Settings& settings) {
 
 inline void Install() {
   twattila::rt_scene::InstallScene({}, HOST);
+  renodx::utils::command_action::Register(internal::OnDownsampleDepth, {.shader_hash = DOWNSAMPLE_DEPTH_SHADER,
+                                                                        .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   for (const uint32_t shader_hash : SHADOW_FILTER_SHADERS) {
     renodx::utils::command_action::Register(internal::OnShadowFilter, {.shader_hash = shader_hash,
                                                                        .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -393,6 +425,7 @@ inline void Install() {
 }
 
 inline void Uninstall() {
+  renodx::utils::command_action::Unregister(internal::OnDownsampleDepth);
   renodx::utils::command_action::Unregister(internal::OnShadowFilter);
   renodx::utils::command_action::Unregister(internal::OnSunLight);
   twattila::rt_scene::UninstallScene();
