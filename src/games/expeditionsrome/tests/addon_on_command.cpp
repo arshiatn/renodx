@@ -222,7 +222,7 @@ int main() {
         Case{.label = "Ultra Custom 40", .hash = 0xCCB4A156u, .percentage = 40},
         Case{.label = "Fast Custom 49", .hash = 0x4B43383Du, .percentage = 49},
         Case{.label = "Ultra Custom 49", .hash = 0xCCB4A156u, .percentage = 49},
-        Case{.label = "Custom rejects below33", .hash = 0x4B43383Du, .percentage = 32, .validated = false},
+        Case{.label = "Custom 32 (Custom is 1-100%)", .hash = 0x4B43383Du, .percentage = 32},
         Case{.label = "Fast captured Ultra Performance 33", .hash = 0x4B43383Du, .percentage = 33, .mode = AAMode::DLSS_ULTRA_PERFORMANCE},
         Case{.label = "Ultra Performance 33 Ultra contract", .hash = 0xCCB4A156u, .percentage = 33, .mode = AAMode::DLSS_ULTRA_PERFORMANCE},
         Case{.label = "Fast Ultra Performance 34", .hash = 0x4B43383Du, .percentage = 34, .mode = AAMode::DLSS_ULTRA_PERFORMANCE},

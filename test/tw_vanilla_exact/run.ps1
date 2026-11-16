@@ -29,7 +29,8 @@ if (-not $Fxc) {
 # Vanilla ones; ShaderSettings (by shader name): more of them for those shaders; Registers (by shader name): constants
 # where the game's bytes carry no names (tests.cpp, GameConstants); FrameGamma: the frame's gamma whose 2.2 decode Gamma
 # Correction gives in every Rendering Mode (tests.cpp's Gamma Correction check), none for NoGamma's shaders; Modes: those
-# Rendering Modes where not 0 - 3.
+# Rendering Modes where not 0 - 3; Binds: the add-on's own inputs bound (tests.cpp MakeBinds: t<slot>=<value> a switch,
+# t<add-on slot>>t<game slot> read in place of the game's input, which the game then reads).
 # Attila and Thrones (the same table): every replaced shader the generic inputs exercise; ssr02-07 have tw_thrones_ssr,
 # vfx and battlefog tw_attila_builds, dof tw_dof_blurs. Left out: pointlight00-39 (their light's place and reach are vertex
 # inputs, so no texel is lit here: the control is never caught; their WARP proof is tools/tw/testbin/g4_point_shadows),
@@ -43,10 +44,19 @@ $attilaShaders = @{
 $table = [ordered]@{
   'Shogun2'     = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'; Shaders = '^(tonemap|flare|hdrflare)\d+_' }
   # Shogun 2's other replaced pixel shaders (skill audit 11-16: every replacement against the game's bytes), those exact
-  # with their control caught on 11-16. Not yet: highlight00 / ribbon00 (inf apart), ssrcopy00 (0.79), treevelocity00-03
-  # (1.9 - 2.4), and particlelight00, pointlight00 / 01, vfxglow00 (exact, the control missed): open (fix round 11-16 report).
+  # with their control caught. highlight00 / ssrcopy00 (render scale: read at the pixel, the game at its quad's texcoord)
+  # with that texcoord the screen's uv and screen-size textures, as the game's quad at 100% (screen_uv); ribbon00 (the
+  # viewport from the camera, the game's from g_viewport_offset_scale: the whole screen at 100%, tests.cpp's
+  # GameConstants). pointlight00 / 01 with their light's colour and a reach past every texel (point_light_PS c1: noise put
+  # every texel out of reach, a black output the output-swap control can't see). sunlight00-03 (the four sun light draws;
+  # the rays' t40 / t41 / t50 / t51 unbound, as without rays) with Foliage Sun Glints at the game's 1. Not here:
+  # treevelocity00-03 (by design: the previous position divided by its w, the game's read with w = 1); particlelight00 and
+  # vfxglow00 (exact, but the generated TEXCOORDs put the particles behind the depth: nearly every pixel discarded, the
+  # control missed: 0 and 1.7e-6 on 11-16; they need per-input values this driver doesn't give).
   'Shogun2PS'   = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'
-                     Shaders = '^(fog|vignette|video|uiresolve|uifigure|sun|projectiletrail|glowmesh|vfxoverlay|dissolve|campaignwater)\d+_|^vfxglow01_' }
+                     Shaders = '^(fog|vignette|video|uiresolve|uifigure|sun|sunlight|projectiletrail|glowmesh|vfxoverlay|dissolve|campaignwater|highlight|ssrcopy|ribbon|pointlight)\d+_|^vfxglow01_'
+                     ShaderSettings = @{ '^(highlight|ssrcopy)\d+_' = 'screen_uv=1'; '^sunlight\d+_' = 'foliage_glints=1' }
+                     Registers = @{ '^pointlight\d+_' = 'point_light_PS[1]=0.9,0.5,0.2,1000000' } }
   'Attila'      = $attilaShaders + @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'
                                       Shaders = '^((t|bloom|lensflare|sky|markersbattle|cutscene|vignette|autoexposure|ssao)\d+|ssr0[01]|grass02)_' }
   # Rome II (fix round 11-16): the tone mappers, bloom and lens flares and each family this driver sees, its VFX rows at 1.
@@ -70,17 +80,25 @@ $table = [ordered]@{
                      FrameGamma = '2' }
   'WH2'         = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^(t|bloom|lensflare|sky|vignette)\d+_|^battlefog0[4-6]_'
                      FrameGamma = '2'; Modes = '0,1,2,3,4' }
-  'WH3'         = @{ Folder = 'twwarhammer3'; Dump = 'dump_shader_twwarhammer3_pack\cso'; Shaders = '^(t|bloom|lensflare|lensblood)\d+_'
-                     FrameGamma = '2'; Modes = '0,1,2,3,4' }
+  # Warhammer III (tw2_ 11-16: every replaced pixel shader tried): the tone mapper, bloom, flares, lens blood, the fog's light
+  # draws (battlefog00-08, ours only under the rays or Fog Strength), the unit indicators and sharpening (no Gamma Correction
+  # check: a pass on the tone mapper's output) and the vignette, each with its control caught. Left out: cutscene00 / 01,
+  # sky00 and ui00 (their control not caught here), shadowcopy00-02 (depth output: nothing to compare), the point lights
+  # and the sun mask (drawn only with the rays: test/tw_warhammer3_shaders 4 and 5), the compute passes (reflection, AO,
+  # DOF, auto exposure: tests 2, 3, 6, 7 or none).
+  'WH3'         = @{ Folder = 'twwarhammer3'; Dump = 'dump_shader_twwarhammer3_pack\cso'; Shaders = '^(t|bloom|lensflare|lensblood|battlefog|indicator|sharpening|vignette)\d+_'
+                     NoGamma = '^sharpening\d+_'; FrameGamma = '2'; Modes = '0,1,2,3,4' }
   # Troy and Pharaoh: their tone mappers, bloom and flares, and the other replaced screen passes that pass here with their
-  # control caught (fix round 2026-11-16: tools/tw/troy/vanilla_exact_tp_1116.txt). Left out, each with its reason there:
-  # Troy fxaa00 (0.062 off; its HDR edge threshold the suspect) and menuvideo01 (0.037 off), causes not read yet (B);
-  # Pharaoh highlightindicator00 / 03 (their stock 10x overbright saturated and its division by 0 made safe, on purpose);
+  # control caught (fix round 2026-11-16: tools/tw/troy/vanilla_exact_tp_1116.txt; Troy fxaa00 and menuvideo01 since tw2_ 11-16:
+  # the decompile's (int) casts on fxaa00's end-of-edge mask, menuvideo01's sRGB decode the game doesn't do; menuvideo01 without
+  # the Gamma Correction check, as menuvideo00: its control isn't caught in Rendering Mode SDR). Left out, each with
+  # its reason there: Pharaoh highlightindicator00 / 03 (their stock 10x overbright saturated and its division by 0 made safe, on purpose);
   # the UI, cinematics and fire02 (their control not caught: outputs the inputs here don't move); sharpening, chromatic
   # aberration, menuvideo00, Troy's ui03 and photo02 / 04 (the Gamma Correction check, made for the tone mappers, on a pass
   # that takes the tone mapper's output); compute shaders (autoexposure00); passes with their own WARP tests (fog, AO, SSR).
   'Troy'        = @{ Folder = 'twtroy'; Dump = 'dump_shader_twtroy_pack\cso'; FrameGamma = '2'; Modes = '0,1,2,3,4'
-                     Shaders = '^(t|bloom|lensflare|chromatic|godrays|vignette|skydome|markershighlight)\d+_|^photo0[13]_' }
+                     Shaders = '^(t|bloom|lensflare|chromatic|godrays|vignette|skydome|markershighlight|fxaa)\d+_|^(photo0[13]|menuvideo01)_'
+                     NoGamma = '^menuvideo01_' }
   'Pharaoh'     = @{ Folder = 'twpharaohdynasties'; Dump = 'dump_shader_twpharaohdynasties_pack\cso'; FrameGamma = '2'; Modes = '0,1,2,3,4'
                      Shaders = '^(t|bloom|lensflare|lensblood|godrays|vignette|skydome)\d+_|^(fire0[01]|highlightindicator0[12]|photo0[1-4])_' }
   # Rome Remastered (Feral's port, no names): the resolve (resolve.hlsli: screen size, luma off, brightness 1; gamma 2.2,
@@ -111,6 +129,14 @@ $table = [ordered]@{
   # floor (these inputs' AO stays above 0.3: the floor itself is not exercised here).
   'TalesGIOpenSky' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^lighting\d+_'
                         Settings = 'filter_scale=1,sun_shadow_distance=1,shadow_edge_color=1,sun_haze=1,gtvbgi=2' }
+  # The rays' AO and Path-Traced Ambient (t41: one texture read in place of Bandai's AO, t5) against the game's bytes
+  # reading that texture as its AO: Bandai's AO input replaced, nothing else.
+  'TalesLightingRays' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^lighting\d+_'; Binds = 't41>t5'
+                           Settings = 'filter_scale=1,sun_shadow_distance=1,shadow_edge_color=1,sun_haze=1' }
+  # Bandai's ten toon lighting passes (toon00-09): our GI off and our AO unbound, the game's bytes; with t41 in place of
+  # Bandai's AO (t6), the game's bytes reading that texture as its AO.
+  'TalesToon'   = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^toon\d+_' }
+  'TalesToonRays' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^toon\d+_'; Binds = 't41>t6' }
   'Expeditions' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^(t|lut)\d+_' }
   # The four newer SDR presets (Reset, Rendering Mode SDR, Output SDR: the button, and a first start without Windows HDR):
   # the tone mappers on the scene ramp at Output SDR (Peak, Paper White and UI white 100 nits) with Gamma Correction as
@@ -122,6 +148,15 @@ $table = [ordered]@{
                      Settings = 'swap_chain_encoding=2,gamma_correction=1'
                      Registers = @{ '^t\d+_' = 'cb0[0]=u64,u48,0,1;cb0[1]=2.2,1,1,0.2;cb0[2]=11,0.9,1.2,2;cb0[3]=0.5,0.6,0,1;cb0[4]=1,1,1,0.8' } }
   'Shogun2Sdr'  = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'; Shaders = '^tonemap\d+_'; Settings = 'swap_chain_encoding=2' }
+  # Expeditions' sky light passes (skylight00-02): Path-Traced Ambient's switch (t120) unbound, the game's bytes. The View's
+  # BufferSizeAndInvSize (cb1[127]) the test's frame: skylight00's distance field AO upsample divides by its half (noise: NaN).
+  'ExpeditionsSky' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^skylight\d+_'
+                        Registers = @{ '^skylight\d+_' = 'cb1[127]=64,48,0.015625,0.020833334' } }
+  # The switch bound: against the game's bytes with its diffuse sky light at 0 (SkyIrradianceEnvironmentMap c163-c169 and
+  # the occlusion tint cb0[1].xyz 0 in both): everything else (specular, subsurface sky) the game's. Binds' check: with
+  # the game's own sky the switch changes the output (the diffuse sky light goes).
+  'ExpeditionsSkyPaths' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^skylight\d+_'; Binds = 't120=1'
+                             Registers = @{ '^skylight\d+_' = 'cb1[163]=0,0,0,0;cb1[164]=0,0,0,0;cb1[165]=0,0,0,0;cb1[166]=0,0,0,0;cb1[167]=0,0,0,0;cb1[168]=0,0,0,0;cb1[169]=0,0,0,0;cb0[1]=0,0,0,0.5;cb1[127]=64,48,0.015625,0.020833334' } }
 }
 
 # The build's flags (CMakeLists.txt): fxc with the target's major / minor, NDEBUG, /Gec, /O3.
@@ -160,7 +195,7 @@ foreach ($game in $table.Keys) {
     $registers = if ($entry.Registers) { ($entry.Registers.Keys | Where-Object { $file.Name -match $_ } | ForEach-Object { $entry.Registers[$_] }) -join ';' } else { '' }
     $settings = @($entry.Settings) + @(if ($entry.ShaderSettings) { $entry.ShaderSettings.Keys | Where-Object { $file.Name -match $_ } | ForEach-Object { $entry.ShaderSettings[$_] } })
     $frameGamma = if ($entry.NoGamma -and $file.Name -match $entry.NoGamma) { '' } else { $entry.FrameGamma }
-    $manifest += "$game`t$($file.BaseName -replace '\.\w+_\d_\d$', '')`t$gameCso`t$addonCso`t$(($settings | Where-Object { $_ }) -join ',')`t$registers`t$frameGamma`t$($entry.Modes)"
+    $manifest += "$game`t$($file.BaseName -replace '\.\w+_\d_\d$', '')`t$gameCso`t$addonCso`t$(($settings | Where-Object { $_ }) -join ',')`t$registers`t$frameGamma`t$($entry.Modes)`t$($entry.Binds)"
   }
 }
 $manifestPath = Join-Path $testBuild 'manifest.tsv'

@@ -896,6 +896,11 @@ namespace reflections {
 
 enum class Pass : uint8_t { GAME, OURS, RAYS };
 Pass pass = Pass::GAME;
+// Skip the Game's Reflection Passes (row, on): with the rays' reflections everywhere (Pass::RAYS) the hits' mip chain after the
+// march (79F74068 / 66C301FF / FB547085, 6 levels) goes with the march and its blurs: the resolve takes the rays' light and share
+// wherever it reflects and t_hit changes nothing (test/tw_warhammer3_shaders part 7). The hierarchical depth and the light's mips
+// run before the march, where the rays are traced: those stay.
+float skip_row = 1.f;
 float all_surfaces_row = 0.f;  // The method slider's second place: the game's march, closed to water since WH2, on the flags' bit 0 too.
 float quality_row = 1.f;       // Reflection Quality: x the march's 100 steps (ours swapped in off 1; at 1 the game's bytes).
 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> main_depth;
@@ -1025,6 +1030,7 @@ bool RaysOn() {
 }
 
 bool OnHierarchicalDepth(reshade::api::command_list* cmd_list) {
+  pass = Pass::GAME;  // the pass's first dispatch: no RAYS left from a frame without the resolve
   one_to_one = false;
   mip_chain = MipChain::NONE;
   const uint32_t render_width = twattila::frame_history::render_width.load(std::memory_order_relaxed);
@@ -1273,6 +1279,7 @@ bool OnBlur(reshade::api::command_list* cmd_list, Copy* copy) {
 
 // `depth_levels`: the hierarchical depth's steps (CB0A1AF6, after 0ED84C3D, before the march), t_hit's target and share.
 bool OnMipStep(reshade::api::command_list* cmd_list, Copy* copy, bool depth_levels = false) {
+  if (pass == Pass::RAYS && skip_row != 0.f) return false;
   if (mip_chain == MipChain::NONE) return true;
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
@@ -1352,7 +1359,8 @@ void OnResolved(reshade::api::command_list* cmd_list) {
 // Point light shadows and fog shadows from rays: 8 light PS (fx_pointlight*: linear and smooth falloff, with and without the point
 // shadow map and the aux G-buffer) and the fog's 6 light PS (fx_battlefog, all traced after the sun). Our copies run only where
 // rt_scene's hook has just bound the rays' texture; otherwise the game's bytes do, and nothing here touches the picture. The 4 with
-// the point shadow map run their unshadowed twin's copy (BuildRuntimeData): the rays' shadow replaces the map's.
+// the point shadow map take the rays' shadow in place of the map's for each light the rays trace at the pixel, and keep the map
+// for the lights they don't (rt_local_lights.hlsli RtLocalLightTraced): one shadow per light.
 // The sun's mask (E6BCBA8A, before the sun draw and this frame's trace) the same, while rays cast the sun's shadow: lit cascades, no
 // contact march; smoke, clouds and the terrain's map stay. Fog, portraits and forward passes read the maps, so the casters still draw.
 // With the maps kept under ours (Bend Screen-Space Shadows, or the rays with Rays Replace Shadow Maps off) the game's own bytes draw
@@ -1812,13 +1820,6 @@ void BuildRuntimeData() {
     const uint32_t hash = traced_lights::SHADERS[index];
     traced_lights::codes[index] = custom_shaders[hash].code;
     custom_shaders[hash] = {.crc32 = hash, .on_inject = not_injected};
-  }
-  // The 4 light PS that read the game's point shadow map (B2453C88, 1315B4F2, BE7249F1, EE766574) take their unshadowed twin's
-  // copy under the rays (8AD6BFD4, EBF0B0A0, 2240F035, F551453C: the same constants, inputs and G-buffer slots, the map's
-  // b2 / t4 or t5 / s0 / s1 left out): the rays' torch shadows in place of the game's maps, not on top of them. The game's
-  // shadowed PS with its whole map lit draws its twin's light (tw_warhammer3_shaders part 5).
-  for (const auto& [shadowed, twin] : {std::pair{2, 0}, std::pair{3, 1}, std::pair{6, 4}, std::pair{7, 5}}) {
-    traced_lights::codes[shadowed] = traced_lights::codes[twin];
   }
   // Unit/Building Indicator Brightness: fx_indicator's colour passes (names.tsv; its VS 550C70F2), in no trace (no unit selected in
   // them): level B. Ours only off 1 in an HDR mode, else the game's bytes. Not fx_indicator_mboit (E01EE900 writes moments, no colour;
@@ -3013,20 +3014,38 @@ constexpr auto OnCascadeCaster = []<typename Context>(Context& command) -> renod
 // their code, so a source twice their target). With Log Details, once each, at their next draw.
 constexpr std::array<uint32_t, 3> SHADOW_SIZE_SHADERS = {0xC883E3FA, 0x800F7F7F, 0xD5DCC85F};
 std::array<std::atomic_bool, SHADOW_SIZE_SHADERS.size()> shadow_size_logged = {};
+std::atomic_bool half_copy_skip_logged = false;
 constexpr auto OnShadowSizeDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& hash = command.template GetCallbackData<uint32_t>();
-  // The half copy's t1: the kept maps (OnCascadeCaster), from the first frame on.
+  // The half copy (800F7F7F, 4 draws a frame in the particle shadow pass): its t1 the kept maps (OnCascadeCaster), from the
+  // first frame on. Its own target, the 2048 x 2048 [4] R32_TYPELESS array at the game's highest Shadows (HALF), has no
+  // reader: no draw or dispatch binds it in any of 93 traces, no shader in the dump declares another name for it
+  // (wh3_batch6 p4 item10_readers.md; level A). So its draws are skipped there (0.10 ms of the frame's GPU in batch 6's
+  // Time Each Pass); at any other size (another Shadows setting, Shadow Map Size) the game's draws stay.
+  bool half_copy_skipped = false;
   if (hash == 0x800F7F7F) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
     renodx::utils::directx::TryNativeFromReShadeProxy(&context);
+    if (context == nullptr) return {};
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> kept;
-    if (context != nullptr) context->PSGetShaderResources(1, 1, kept.GetAddressOf());
+    context->PSGetShaderResources(1, 1, kept.GetAddressOf());
     Microsoft::WRL::ComPtr<ID3D11Resource> resource;
     if (kept) kept->GetResource(resource.GetAddressOf());
     if (resource) kept_maps.store(reinterpret_cast<uintptr_t>(resource.Get()), std::memory_order_relaxed);
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView> half;
+    context->OMGetRenderTargets(0, nullptr, half.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Resource> half_resource;
+    if (half) half->GetResource(half_resource.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> half_texture;
+    D3D11_TEXTURE2D_DESC half_desc = {};
+    if (half_resource && SUCCEEDED(half_resource.As(&half_texture))) half_texture->GetDesc(&half_desc);
+    half_copy_skipped = half_desc.Width == 2048 && half_desc.Height == 2048 && half_desc.ArraySize == 4 && half_desc.Format == DXGI_FORMAT_R32_TYPELESS;
+    if (half_copy_skipped && !half_copy_skip_logged.exchange(true, std::memory_order_relaxed)) {
+      renodx::utils::log::i("[Warhammer III] First run: the half copy 800F7F7F skipped (its 2048 x 2048 [4] target has no reader).");
+    }
   }
-  if (rt_sliders.debug_log == 0.f) return {};
-  if (shadow_size_logged[&hash - SHADOW_SIZE_SHADERS.data()].exchange(true, std::memory_order_relaxed)) return {};
+  if (rt_sliders.debug_log == 0.f) return {.bypass = half_copy_skipped};
+  if (shadow_size_logged[&hash - SHADOW_SIZE_SHADERS.data()].exchange(true, std::memory_order_relaxed)) return {.bypass = half_copy_skipped};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
@@ -3060,7 +3079,7 @@ constexpr auto OnShadowSizeDraw = []<typename Context>(Context& command) -> reno
   renodx::utils::log::i(std::format("[Warhammer III] Shadow map sizes: ps {:08X}: colour {}, depth {}, viewport {:g}x{:g}, t0 {}, t1 {}{}{}.", hash,
                                     size_of(colour.Get()), size_of(depth.Get()), viewport.Width, viewport.Height, size_of(inputs[0].Get()),
                                     size_of(inputs[1].Get()), (constants.empty() ? "" : ", b0's first 12 floats"), constants));
-  return {};
+  return {.bypass = half_copy_skipped};
 };
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
@@ -3949,6 +3968,17 @@ void ConfigureAddon() {
       .label = "Fog in Reflections (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "Far hills in ray-traced reflections get the game's fog. Needs Reflections Lit as This Frame for the right brightness.",
+      .labels = {"Off", "On"},
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSkipGameReflections",
+      .binding = &reflections::skip_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 1.f,
+      .label = "Skip the Game's Reflection Passes",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Leaves out the game's screen-space reflection passes the rays' reflections replace: the same picture,\n"
+                 "a little faster.",
       .labels = {"Off", "On"},
   });
   settings.push_back(new renodx::utils::settings::Setting{

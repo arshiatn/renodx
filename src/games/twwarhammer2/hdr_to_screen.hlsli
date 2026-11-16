@@ -6,7 +6,7 @@
 // lut_sampler_1-3_s, lut_weights, g_brightness, g_gamma_output, g_inv_gamma_output).
 #include "./shared.h"
 #include "../twattila/psycho_test30.hlsli"
-#include "./psycho_test31.hlsli"
+#include "../twattila/psycho_test31.hlsli"
 #include "../twattila/psycho35.hlsli"
 
 float3 ApplyHDR1UserGrading(float3 color)

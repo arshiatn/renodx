@@ -1,0 +1,390 @@
+// PsychoV35's toe against Vanilla below white, through the add-on's built tone mappers on WARP
+// (build\<game>.include\embed): Shogun 2's tonemap00 0xEF060C7C (UE4's FilmToneMap with the game's constants, its
+// grading neutral, Gamma 2.0) and Rome Remastered's t00 0xB72063D6 (Feral's Hable on the luminance, the LUT's strength 0,
+// the auto exposure's 1, no vignette, no dither). Recommended (PsychoV35 at its defaults, each game's Hue Clip: Shogun 2
+// 70, Rome Remastered 80) and Shogun 2's "SDR-like" preset (V35 Contrast 1.3, Roll-off 2) against Rendering Mode SDR,
+// both as a 2.2 display shows them, 1000 / 203 nits: grey where SDR is 0.05 - 1, 1 - 15 and 15 - 100 nits; colour (OkLab
+// chroma at equal lightness) where SDR is 1 - 30 and 30 - 150 nits (tw_psychov35 part 8's bands). Numbers for ATN; the
+// checks only that each grey ramp rises and SDR reaches 150 nits (the bindings reach the curves).
+// tests <build folder>
+#include <windows.h>
+#include <d3d11.h>
+#include <d3dcompiler.h>
+#include <wrl/client.h>
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <tuple>
+#include <vector>
+
+namespace shogun2 {
+#include "src/games/twshogun2completeedition/shared.h"
+}  // namespace shogun2
+namespace romer {
+#include "src/games/twromeremastered/shared.h"
+}  // namespace romer
+
+using Microsoft::WRL::ComPtr;
+using Float3 = std::array<float, 3>;
+using Float4 = std::array<float, 4>;
+
+constexpr UINT WIDTH = 64;   // grey, then 21 hues x 3 saturations
+constexpr UINT HEIGHT = 96;  // a quarter stop a row
+constexpr float NITS = 203.f;
+
+static ComPtr<ID3D11Device> device;
+static ComPtr<ID3D11DeviceContext> context;
+static int failures = 0;
+
+#define CHECK(x, ...)                                  \
+  do {                                                 \
+    if (!(x)) {                                        \
+      std::printf("FAIL line %d: %s: ", __LINE__, #x); \
+      std::printf(__VA_ARGS__);                        \
+      std::printf("\n");                               \
+      ++failures;                                      \
+    }                                                  \
+  } while (false)
+
+static ComPtr<ID3D11Buffer> Constants(const void* data, size_t bytes) {
+  std::vector<uint8_t> registers(((bytes + 15) / 16) * 16);
+  std::memcpy(registers.data(), data, bytes);
+  const D3D11_BUFFER_DESC desc = {.ByteWidth = static_cast<UINT>(registers.size()), .Usage = D3D11_USAGE_DEFAULT,
+                                  .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = registers.data()};
+  ComPtr<ID3D11Buffer> buffer;
+  device->CreateBuffer(&desc, &initial, buffer.GetAddressOf());
+  return buffer;
+}
+
+static ComPtr<ID3D11ShaderResourceView> Texture(UINT width, UINT height, const std::vector<Float4>& texels) {
+  const D3D11_TEXTURE2D_DESC desc = {.Width = width, .Height = height, .MipLevels = 1, .ArraySize = 1,
+                                     .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1},
+                                     .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = texels.data(), .SysMemPitch = width * 16};
+  ComPtr<ID3D11Texture2D> texture;
+  device->CreateTexture2D(&desc, &initial, texture.GetAddressOf());
+  ComPtr<ID3D11ShaderResourceView> view;
+  device->CreateShaderResourceView(texture.Get(), nullptr, view.GetAddressOf());
+  return view;
+}
+
+// One 16-byte element (Shogun 2's Auto_exposure_output, Rome Remastered's t1_t).
+static ComPtr<ID3D11ShaderResourceView> Structured(const Float4& element) {
+  const D3D11_BUFFER_DESC desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                  .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, .StructureByteStride = 16};
+  const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = element.data()};
+  ComPtr<ID3D11Buffer> buffer;
+  device->CreateBuffer(&desc, &initial, buffer.GetAddressOf());
+  const D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER,
+                                                     .Buffer = {.FirstElement = 0, .NumElements = 1}};
+  ComPtr<ID3D11ShaderResourceView> view;
+  device->CreateShaderResourceView(buffer.Get(), &view_desc, view.GetAddressOf());
+  return view;
+}
+
+// Rome Remastered's colour LUT: one texel (its strength is 0).
+static ComPtr<ID3D11ShaderResourceView> Lut() {
+  const Float4 texel = {0.5f, 0.5f, 0.5f, 1.f};
+  const D3D11_TEXTURE3D_DESC desc = {.Width = 1, .Height = 1, .Depth = 1, .MipLevels = 1, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                     .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = texel.data(), .SysMemPitch = 16, .SysMemSlicePitch = 16};
+  ComPtr<ID3D11Texture3D> texture;
+  device->CreateTexture3D(&desc, &initial, texture.GetAddressOf());
+  ComPtr<ID3D11ShaderResourceView> view;
+  device->CreateShaderResourceView(texture.Get(), nullptr, view.GetAddressOf());
+  return view;
+}
+
+static ComPtr<ID3D11PixelShader> LoadPixelShader(const std::filesystem::path& path) {
+  std::ifstream file(path, std::ios::binary);
+  const std::vector<char> code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  ComPtr<ID3D11PixelShader> shader;
+  if (code.empty() || FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader.GetAddressOf()))) {
+    std::printf("missing %s (build the add-on first)\n", path.string().c_str());
+    std::exit(2);
+  }
+  return shader;
+}
+
+static float Luminance(const Float3& c) { return 0.2126390059f * c[0] + 0.7151686788f * c[1] + 0.0721923154f * c[2]; }
+
+static Float3 Hue(float degrees, float saturation) {
+  Float3 rgb;
+  for (int i = 0; i < 3; ++i) {
+    const float k = std::fmod(degrees / 60.f + (i == 0 ? 5.f : (i == 1 ? 3.f : 1.f)), 6.f);
+    rgb[i] = 1.f - std::max(0.f, std::min({k, 4.f - k, 1.f}));
+  }
+  for (float& channel : rgb) channel = 1.f - saturation * (1.f - channel);
+  return rgb;
+}
+
+// Each column's colour at one luminance a row: white x 2^(first_stop + row / 4).
+static std::vector<Float4> Scene(float first_stop, float white) {
+  std::vector<Float3> columns = {{1.f, 1.f, 1.f}};
+  for (int h = 0; h < 21; ++h) {
+    for (const float s : {0.4f, 0.8f, 0.95f}) columns.push_back(Hue(h * 360.f / 21.f, s));
+  }
+  std::vector<Float4> texels(WIDTH * HEIGHT);
+  for (UINT y = 0; y < HEIGHT; ++y) {
+    const float brightness = white * std::exp2(first_stop + 0.25f * y);
+    for (UINT x = 0; x < WIDTH; ++x) {
+      const float scale = brightness / Luminance(columns[x]);
+      texels[y * WIDTH + x] = {columns[x][0] * scale, columns[x][1] * scale, columns[x][2] * scale, 1.f};
+    }
+  }
+  return texels;
+}
+
+// OkLab (Ottosson) from linear BT.709: {L, a, b}.
+static Float3 OkLab(const Float3& c) {
+  const float l = 0.4122214708f * c[0] + 0.5363325363f * c[1] + 0.0514459929f * c[2];
+  const float m = 0.2119034982f * c[0] + 0.6806995451f * c[1] + 0.1073969566f * c[2];
+  const float s = 0.0883024619f * c[0] + 0.2817188376f * c[1] + 0.6299787005f * c[2];
+  const float l3 = std::cbrt(l), m3 = std::cbrt(m), s3 = std::cbrt(s);
+  return {0.2104542553f * l3 + 0.7936177850f * m3 - 0.0040720468f * s3, 1.9779984951f * l3 - 2.4285922050f * m3 + 0.4505937099f * s3,
+          0.0259040371f * l3 + 0.7827717662f * m3 - 0.8086757660f * s3};
+}
+
+struct Bindings {
+  std::vector<ComPtr<ID3D11ShaderResourceView>> views;     // from t0
+  std::vector<std::pair<UINT, ComPtr<ID3D11Buffer>>> constants;  // slot, buffer
+};
+
+// The shader over a WIDTH x HEIGHT target, its output decoded at 2.2 (Paper White 1).
+static std::vector<Float3> Draw(ID3D11PixelShader* shader, const Bindings& bindings) {
+  static ComPtr<ID3D11VertexShader> vertex;
+  static ComPtr<ID3D11SamplerState> point;
+  if (vertex == nullptr) {
+    constexpr char SOURCE[] =
+        "void main(uint id : SV_VertexID, out float4 position : SV_Position, out float2 uv : TEXCOORD0) {"
+        "  uv = float2((id << 1) & 2, id & 2); position = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1); }";
+    ComPtr<ID3DBlob> code;
+    D3DCompile(SOURCE, sizeof(SOURCE) - 1, nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, code.GetAddressOf(), nullptr);
+    device->CreateVertexShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, vertex.GetAddressOf());
+    const D3D11_SAMPLER_DESC desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                     .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                     .MaxLOD = D3D11_FLOAT32_MAX};
+    device->CreateSamplerState(&desc, point.GetAddressOf());
+  }
+  const D3D11_TEXTURE2D_DESC target_desc = {.Width = WIDTH, .Height = HEIGHT, .MipLevels = 1, .ArraySize = 1,
+                                            .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1},
+                                            .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_RENDER_TARGET};
+  ComPtr<ID3D11Texture2D> target;
+  device->CreateTexture2D(&target_desc, nullptr, target.GetAddressOf());
+  ComPtr<ID3D11RenderTargetView> target_view;
+  device->CreateRenderTargetView(target.Get(), nullptr, target_view.GetAddressOf());
+  std::vector<ID3D11ShaderResourceView*> views;
+  for (const auto& view : bindings.views) views.push_back(view.Get());
+  const std::array<ID3D11SamplerState*, 16> samplers = {point.Get(), point.Get(), point.Get(), point.Get(), point.Get(), point.Get(),
+                                                        point.Get(), point.Get(), point.Get(), point.Get(), point.Get(), point.Get(),
+                                                        point.Get(), point.Get(), point.Get(), point.Get()};
+  const D3D11_VIEWPORT viewport = {.Width = WIDTH, .Height = HEIGHT, .MaxDepth = 1.f};
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  context->VSSetShader(vertex.Get(), nullptr, 0);
+  context->PSSetShader(shader, nullptr, 0);
+  context->PSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+  context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+  for (const auto& [slot, buffer] : bindings.constants) context->PSSetConstantBuffers(slot, 1, buffer.GetAddressOf());
+  context->RSSetViewports(1, &viewport);
+  context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+  context->Draw(3, 0);
+  context->ClearState();
+  D3D11_TEXTURE2D_DESC staging_desc = target_desc;
+  staging_desc.Usage = D3D11_USAGE_STAGING;
+  staging_desc.BindFlags = 0;
+  staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  ComPtr<ID3D11Texture2D> staging;
+  device->CreateTexture2D(&staging_desc, nullptr, staging.GetAddressOf());
+  context->CopyResource(staging.Get(), target.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  std::vector<Float3> linear(WIDTH * HEIGHT);
+  for (UINT y = 0; y < HEIGHT; ++y) {
+    const auto* row = reinterpret_cast<const float*>(static_cast<const uint8_t*>(mapped.pData) + (static_cast<size_t>(y) * mapped.RowPitch));
+    for (UINT x = 0; x < WIDTH; ++x) {
+      for (int i = 0; i < 3; ++i) linear[y * WIDTH + x][i] = std::copysign(std::pow(std::abs(row[x * 4 + i]), 2.2f), row[x * 4 + i]);
+    }
+  }
+  context->Unmap(staging.Get(), 0);
+  return linear;
+}
+
+// PsychoV35's sliders at twattila::psycho35::Defaults; contrast and roll-off as the preset's.
+template <typename Injection>
+static Injection Psycho35(float hdr, float hue_clip, float contrast, float roll_off) {
+  Injection si = {};
+  si.peak_white_nits = 1000.f;
+  si.diffuse_white_nits = NITS;
+  si.graphics_white_nits = NITS;
+  si.hdr = hdr;
+  si.hue_clip = hue_clip;
+  si.v35_exposure = si.v35_highlights = si.v35_shadows = 1.f;
+  si.v35_contrast = contrast;
+  si.v35_highlight_contrast = si.v35_shadow_contrast = 1.f;
+  si.v35_saturation = si.v35_highlight_saturation = 1.f;
+  si.v35_roll_off = roll_off;
+  si.v35_gamut_compression = 1.f;
+  return si;
+}
+
+// Shogun 2: the game's constants (data.pack *.lighting TONE_MAPPING: toe 0.5, black clip 0, white clip 0.04; `slope` and
+// `shoulder` by map), Brightness 1 without auto exposure, Gamma 2.0 (g_inv_gamma_output 0.5), the grading neutral.
+static std::vector<Float3> RunShogun2(ID3D11PixelShader* shader, const shogun2::ShaderInjectData& si, float slope, float shoulder) {
+  std::array<float, 38 * 4> camera = {};
+  camera[(37 * 4) + 0] = WIDTH;
+  camera[(37 * 4) + 1] = HEIGHT;
+  camera[(37 * 4) + 2] = 1.f / WIDTH;
+  camera[(37 * 4) + 3] = 1.f / HEIGHT;
+  const std::array<float, 4> colorimetry = {0.f, 0.f, 0.5f, 0.f};
+  std::array<float, 6 * 4> tone_mapping = {};
+  tone_mapping[0] = tone_mapping[1] = 1.f;  // brightness, its fade
+  tone_mapping[(4 * 4) + 1] = slope;
+  tone_mapping[(4 * 4) + 2] = 0.5f;  // toe
+  tone_mapping[(4 * 4) + 3] = shoulder;
+  tone_mapping[(5 * 4) + 1] = 0.04f;  // white clip; black clip 0, g_use_auto_exposure 0
+  std::array<float, 23 * 4> grading = {};
+  for (UINT c = 2; c < 22; ++c) {
+    // saturation, contrast, gamma, gain, offset: global, shadows, mids, highlights
+    for (UINT i = 0; i < 4; ++i) grading[(c * 4) + i] = ((c - 2) % 5 == 4) ? 0.f : 1.f;
+  }
+  grading[(22 * 4) + 0] = 0.09f;  // cg_shadows_max
+  grading[(22 * 4) + 1] = grading[(22 * 4) + 2] = 0.5f;  // cg_mids_max, cg_highlights_max
+  grading[(22 * 4) + 3] = 6500.f;  // cg_color_temp
+  return Draw(shader, {.views = {Texture(WIDTH, HEIGHT, Scene(-16.f, 1.f)), Texture(WIDTH, HEIGHT, std::vector<Float4>(WIDTH * HEIGHT)),
+                                 Structured({1.f, 0.f, 0.f, 0.f})},
+                       .constants = {{0, Constants(camera.data(), sizeof(camera))},
+                                     {1, Constants(colorimetry.data(), sizeof(colorimetry))},
+                                     {2, Constants(tone_mapping.data(), sizeof(tone_mapping))},
+                                     {3, Constants(grading.data(), sizeof(grading))},
+                                     {13, Constants(&si, sizeof(si))}}});
+}
+
+// Rome Remastered: the scene stored gamma-encoded (t00 decodes it at 2.2), the auto exposure's exposure 1 without its
+// shadow boost (t1 {1, 0, 0, 0}), Hable's white `white`, Gamma 2.2 (in-game 50 %), the LUT's strength 0, the vignette's
+// edge past the screen, the dither's noise 0.5 (none).
+static std::vector<Float3> RunRome(ID3D11PixelShader* shader, const romer::ShaderInjectData& si, float white) {
+  auto scene = Scene(-20.f, white);
+  for (auto& texel : scene) {
+    for (int i = 0; i < 3; ++i) texel[i] = std::pow(texel[i], 1.f / 2.2f);
+  }
+  std::array<float, 5 * 4> cb0 = {};
+  const std::array<uint32_t, 2> size = {WIDTH, HEIGHT};
+  std::memcpy(cb0.data(), size.data(), sizeof(size));
+  cb0[3] = 1.f;  // brightness / fade
+  cb0[4] = 2.2f;  // gamma
+  cb0[5] = white;
+  cb0[6] = 1.f;  // exposure
+  cb0[8] = 1.f;
+  cb0[9] = cb0[10] = 1e6f;  // the vignette's edge
+  cb0[11] = cb0[12] = cb0[13] = 1.f;
+  return Draw(shader, {.views = {Texture(WIDTH, HEIGHT, scene), Structured({1.f, 0.f, 0.f, 0.f}), Lut(),
+                                 Texture(64, 64, std::vector<Float4>(64 * 64, {0.5f, 0.5f, 0.5f, 0.5f}))},
+                       .constants = {{0, Constants(cb0.data(), sizeof(cb0))}, {13, Constants(&si, sizeof(si))}}});
+}
+
+struct Range {
+  float low = 1e9f, high = 0.f;
+};
+
+static void Report(const char* name, const std::vector<Float3>& sdr, const std::vector<Float3>& v35) {
+  bool sdr_rises = true, v35_rises = true;
+  for (UINT y = 1; y < HEIGHT; ++y) {
+    sdr_rises = sdr_rises && Luminance(sdr[y * WIDTH]) >= Luminance(sdr[(y - 1) * WIDTH]) - 1e-7f;
+    v35_rises = v35_rises && Luminance(v35[y * WIDTH]) >= Luminance(v35[(y - 1) * WIDTH]) - 1e-7f;
+  }
+  const float sdr_top = Luminance(sdr[(HEIGHT - 1) * WIDTH]) * NITS;
+  CHECK(sdr_rises && v35_rises, "%s: the grey ramp falls somewhere (SDR %d, PsychoV35 %d)", name, sdr_rises, v35_rises);
+  CHECK(sdr_top > 150.f, "%s: SDR's top %g nits (the ramp misses the bands)", name, sdr_top);
+  std::array<Range, 3> grey;  // 0.05 - 1, 1 - 15, 15 - 100 nits
+  for (UINT y = 0; y < HEIGHT; ++y) {
+    const float sdr_nits = Luminance(sdr[y * WIDTH]) * NITS;
+    const float ratio = Luminance(v35[y * WIDTH]) / std::max(Luminance(sdr[y * WIDTH]), 1e-9f);
+    const int band = (sdr_nits >= 0.05f && sdr_nits <= 1.f) ? 0 : ((sdr_nits > 1.f && sdr_nits <= 15.f) ? 1 : ((sdr_nits > 15.f && sdr_nits <= 100.f) ? 2 : -1));
+    if (band < 0) continue;
+    grey[band].low = std::min(grey[band].low, ratio);
+    grey[band].high = std::max(grey[band].high, ratio);
+  }
+  // Chroma at equal lightness: PsychoV35's chroma interpolated where its lightness is SDR's.
+  std::array<double, 2> log_sums = {};
+  std::array<int, 2> counts = {};
+  std::array<Range, 2> per_colour;
+  for (UINT column = 1; column < WIDTH; ++column) {
+    std::array<double, 2> column_sums = {};
+    std::array<int, 2> column_counts = {};
+    for (UINT y = 0; y < HEIGHT; ++y) {
+      const Float3& game_colour = sdr[y * WIDTH + column];
+      const float sdr_nits = Luminance(game_colour) * NITS;
+      const int band = (sdr_nits >= 1.f && sdr_nits <= 30.f) ? 0 : ((sdr_nits > 30.f && sdr_nits <= 150.f) ? 1 : -1);
+      if (band < 0) continue;
+      const Float3 game_lab = OkLab(game_colour);
+      const float game_chroma = std::hypot(game_lab[1], game_lab[2]);
+      if (game_chroma < 0.01f) continue;
+      for (UINT j = 0; j + 1 < HEIGHT; ++j) {
+        const Float3 below = OkLab(v35[j * WIDTH + column]);
+        const Float3 above = OkLab(v35[(j + 1) * WIDTH + column]);
+        if (game_lab[0] < below[0] || game_lab[0] > above[0]) continue;
+        const float t = (above[0] > below[0]) ? (game_lab[0] - below[0]) / (above[0] - below[0]) : 0.f;
+        const float chroma = std::lerp(std::hypot(below[1], below[2]), std::hypot(above[1], above[2]), t);
+        column_sums[band] += std::log(chroma / game_chroma);
+        ++column_counts[band];
+        break;
+      }
+    }
+    for (int band = 0; band < 2; ++band) {
+      if (column_counts[band] == 0) continue;
+      const float column_ratio = static_cast<float>(std::exp(column_sums[band] / column_counts[band]));
+      per_colour[band].low = std::min(per_colour[band].low, column_ratio);
+      per_colour[band].high = std::max(per_colour[band].high, column_ratio);
+      log_sums[band] += column_sums[band];
+      counts[band] += column_counts[band];
+    }
+  }
+  std::printf("%s: PsychoV35 over Rendering Mode SDR below white, 1000 / 203 nits\n"
+              "   grey where SDR is 0.05 - 1 nits x%.3f..x%.3f, 1 - 15 nits x%.3f..x%.3f, 15 - 100 nits x%.3f..x%.3f\n"
+              "   colour at equal lightness, SDR 1 - 30 nits x%.3f (per colour x%.2f..x%.2f), 30 - 150 nits x%.3f (x%.2f..x%.2f)\n",
+              name, grey[0].low, grey[0].high, grey[1].low, grey[1].high, grey[2].low, grey[2].high,
+              std::exp(log_sums[0] / std::max(counts[0], 1)), per_colour[0].low, per_colour[0].high,
+              std::exp(log_sums[1] / std::max(counts[1], 1)), per_colour[1].low, per_colour[1].high);
+}
+
+int main(int argc, char** argv) {
+  if (argc < 2) {
+    std::printf("tests <build folder>\n");
+    return 2;
+  }
+  if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
+                               context.GetAddressOf()))) {
+    return 2;
+  }
+  const std::filesystem::path build = argv[1];
+  const auto tonemap00 = LoadPixelShader(build / "twshogun2completeedition.include/embed/0xEF060C7C.cso");
+  const auto t00 = LoadPixelShader(build / "twromeremastered.include/embed/0xB72063D6.cso");
+  using ShogunData = shogun2::ShaderInjectData;
+  using RomeData = romer::ShaderInjectData;
+  // Every battle map's curve (slope 0.88, shoulder 0.13 / 0.14) and Fall of the Samurai's flattest (bos_japan winter).
+  for (const auto& [label, slope, shoulder] : std::array<std::tuple<const char*, float, float>, 2>{
+           {{"slope 0.88, shoulder 0.135", 0.88f, 0.135f}, {"bos_japan winter, slope 0.52, shoulder 0.4", 0.52f, 0.4f}}}) {
+    const auto sdr = RunShogun2(tonemap00.Get(), Psycho35<ShogunData>(0.f, 0.7f, 1.f, 1.f), slope, shoulder);
+    Report(std::format("Shogun 2 Recommended, {}", label).c_str(), sdr,
+           RunShogun2(tonemap00.Get(), Psycho35<ShogunData>(3.f, 0.7f, 1.f, 1.f), slope, shoulder));
+    Report(std::format("Shogun 2 SDR-like (V35 Contrast 1.3, Roll-off 2), {}", label).c_str(), sdr,
+           RunShogun2(tonemap00.Get(), Psycho35<ShogunData>(3.f, 0.7f, 1.3f, 2.f), slope, shoulder));
+  }
+  // Hable's white: Uncharted 2's 11.2 and a closer one.
+  for (const float white : {11.2f, 4.f}) {
+    Report(std::format("Rome Remastered Recommended, Hable white {}", white).c_str(),
+           RunRome(t00.Get(), Psycho35<RomeData>(0.f, 0.8f, 1.f, 1.f), white),
+           RunRome(t00.Get(), Psycho35<RomeData>(4.f, 0.8f, 1.f, 1.f), white));
+  }
+  std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
+  return failures == 0 ? 0 : 1;
+}

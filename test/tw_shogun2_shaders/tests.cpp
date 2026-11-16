@@ -29,7 +29,9 @@
 // 20. Light Through Banners' replay against the game's cloth G-buffer draw 0xBDFF60D4 + 0x0FBCC65A (TestBannerReplay; the csos'
 //     folder third).
 // 21. ssrresolve00 against the game's 0xF87ECE85: unbound the game's, the rays' AO in place of the game's, one occlusion on
-//     the environment under Ray-Traced Specular Occlusion (TestResolve; the csos' folder third).
+//     the environment under Ray-Traced Specular Occlusion, the radiance (t9) unread under the rays' reflections (TestResolve;
+//     the csos' folder third).
+// 22. rt_ambient_into_game (Ray-Traced AO into the game's SSAO target for its other readers) (TestAmbientIntoGame).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -3272,7 +3274,10 @@ static void TestBannerReplay(const std::string& games, const std::string& folder
 //     one (the same with t_ssao 1: G1') put back: G1 - 0.6 G1'. CONTROL: the version before (0.6 x the AO'd environment:
 //     G1 x 0.4, the game's AO under the rays' occlusion) differs. (d) With t46 bound the reflection's hit (full confidence,
 //     the random t9 less the black one's output) is the same over the random t_ssao and t_ssao 1: no AO on it. CONTROL:
-//     without t46 (the game's) the random AO changes it.
+//     without t46 (the game's) the random AO changes it. (e) With the rays' reflections at t47 (and the sea's mask at t45
+//     both ways: 0 and 1) the output is the same over the random t9 and a black one: the preconvolve copy (cs50_preconvolve_copy
+//     0xBC3CB71D, t9's only writer; its other readers the mip chain left out under the rays) is unread then. CONTROL:
+//     without t47 the random t9 changes the output.
 static void TestResolve(const std::string& games, const std::string& folder) {
   std::ifstream file(folder + "/0xF87ECE85.cs_5_0.cso", std::ios::binary);
   const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -3365,6 +3370,8 @@ static void TestResolve(const std::string& games, const std::string& folder) {
     ID3D11ShaderResourceView* radiance = nullptr;  // else the random t9
     ID3D11ShaderResourceView* ambient = nullptr;   // t41
     ID3D11ShaderResourceView* specular_occlusion = nullptr;  // t46
+    ID3D11ShaderResourceView* reflection = nullptr;          // t47 (the rays' reflections)
+    ID3D11ShaderResourceView* water = nullptr;               // t45 (the sea's mask)
   };
   const auto run = [&](ID3D11ComputeShader* shader, const Inputs& inputs) {
     const auto output = Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
@@ -3381,6 +3388,8 @@ static void TestResolve(const std::string& games, const std::string& folder) {
     context->CSSetShaderResources(0, static_cast<UINT>(bound.size()), bound.data());
     context->CSSetShaderResources(41, 1, &inputs.ambient);
     context->CSSetShaderResources(46, 1, &inputs.specular_occlusion);
+    context->CSSetShaderResources(47, 1, &inputs.reflection);
+    context->CSSetShaderResources(45, 1, &inputs.water);
     context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
     context->Dispatch(1, 1, 1);
     context->ClearState();
@@ -3445,11 +3454,73 @@ static void TestResolve(const std::string& games, const std::string& folder) {
   CHECK(hit_occluded_apart == 0 && hit_shown > 0, "t46 0.6: the hit over the random AO %zu values off its share with AO 1 (%zu shown)",
         hit_occluded_apart, hit_shown);
   CHECK(hit_game_apart > 0, "CONTROL: without t46 the random AO left the hit as with AO 1");
+  // (e)
+  const auto traced_reflection = plain(SIZE, values(SIZE * SIZE * 4));
+  const auto sea = plain(SIZE, std::vector<float>(SIZE * SIZE * 4, 1.f));
+  size_t radiance_apart = 0;
+  for (ID3D11ShaderResourceView* water : {black.Get(), sea.Get()}) {
+    const Inputs rays = {.hit = full_confidence.Get(), .reflection = traced_reflection.Get(), .water = water};
+    Inputs rays_black = rays;
+    rays_black.radiance = black.Get();
+    radiance_apart += apart(run(ours.Get(), rays), run(ours.Get(), rays_black));
+  }
+  const size_t radiance_shown = apart(run(ours.Get(), lit), run(ours.Get(), {.hit = full_confidence.Get(), .radiance = black.Get()}));
+  CHECK(radiance_apart == 0 && radiance_shown > 0, "t47 bound: the random t9 %zu values off a black t9 (without t47 %zu)", radiance_apart,
+        radiance_shown);
   std::printf("ssrresolve00: unbound the game's (%zu of %zu values lit, 0 apart); t41 0.37 = t_ssao 0.37 (%zu apart; %zu apart from the random "
               "AO); t46 0.6 the open environment x 0.6 (%zu apart; the AO'd one's %zu apart); t46: the hit without the AO (%zu of %zu shown "
-              "apart; without t46 %zu apart)\n",
+              "apart; without t46 %zu apart); t47: t9 unread (%zu apart over the sea's mask 0 and 1; without t47 %zu apart)\n",
               lit_values, game_lit.size(), ambient_apart, ambient_shown, occlusion_apart, stacked_apart, hit_occluded_apart, hit_shown,
-              hit_game_apart);
+              hit_game_apart, radiance_apart, radiance_shown);
+}
+
+// 22. rt_ambient_into_game (Ray-Traced AO for every reader of the game's SSAO: ray_tracing.hpp CopyAmbient after the frame's
+//     first sun light draw, the line sweep and collect left out and their target cleared open) on a 13 x 11 render in the
+//     game's 16 x 16 R8 target: each render pixel the traced visibility (t41's value, within one 8-bit code), every other
+//     texel the cleared 1. CONTROL: the traced values one pixel to the side are off.
+static void TestAmbientIntoGame(const std::string& games) {
+  const auto shader = Compile(games + "/twshogun2completeedition/rt_ambient_into_game.cs_5_0.hlsl");
+  constexpr UINT RENDER_WIDTH = 13;
+  constexpr UINT RENDER_HEIGHT = 11;
+  constexpr UINT TARGET = 16;
+  std::mt19937 random(22);
+  std::uniform_real_distribution<float> unit(0.f, 1.f);
+  std::vector<float> traced(RENDER_WIDTH * RENDER_HEIGHT);
+  for (auto& value : traced) value = unit(random);
+  const auto ambient = Texture(RENDER_WIDTH, RENDER_HEIGHT, DXGI_FORMAT_R32_FLOAT, traced.data(), RENDER_WIDTH * 4, D3D11_BIND_SHADER_RESOURCE);
+  const std::vector<uint8_t> cleared(TARGET * TARGET, 255);  // ClearUnorderedAccessViewFloat's 1 (OnGameAmbientCollect)
+  const auto target = Texture(TARGET, TARGET, DXGI_FORMAT_R8_UNORM, cleared.data(), TARGET,
+                              D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS);
+  const auto ambient_view = Srv(ambient.Get());
+  const auto target_view = Uav(target.Get());
+  context->CSSetShader(shader.Get(), nullptr, 0);
+  context->CSSetShaderResources(0, 1, ambient_view.GetAddressOf());
+  context->CSSetUnorderedAccessViews(0, 1, target_view.GetAddressOf(), nullptr);
+  context->Dispatch((RENDER_WIDTH + 7) / 8, (RENDER_HEIGHT + 7) / 8, 1);
+  context->ClearState();
+  const auto texels = Read(target.Get(), 1);
+  size_t render_apart = 0;
+  size_t outside_apart = 0;
+  size_t shifted_apart = 0;
+  for (UINT y = 0; y < TARGET; ++y) {
+    for (UINT x = 0; x < TARGET; ++x) {
+      const int code = texels[(y * TARGET) + x];
+      if (x < RENDER_WIDTH && y < RENDER_HEIGHT) {
+        render_apart += (std::abs(code - static_cast<int>(std::lround(traced[(y * RENDER_WIDTH) + x] * 255.f))) > 1) ? 1 : 0;
+        if (x + 1 < RENDER_WIDTH) {
+          shifted_apart += (std::abs(code - static_cast<int>(std::lround(traced[(y * RENDER_WIDTH) + x + 1] * 255.f))) > 1) ? 1 : 0;
+        }
+      } else {
+        outside_apart += (code != 255) ? 1 : 0;
+      }
+    }
+  }
+  CHECK(render_apart == 0 && outside_apart == 0 && shifted_apart > 50, "ambient into the game's target: %zu render pixels apart, %zu outside not 1, CONTROL shifted %zu",
+        render_apart, outside_apart, shifted_apart);
+  std::printf("rt_ambient_into_game: %u render pixels the traced AO (%zu apart), %u others the cleared 1 (%zu apart); CONTROL one pixel to the "
+              "side %zu of %u apart\n",
+              RENDER_WIDTH * RENDER_HEIGHT, render_apart, TARGET * TARGET - (RENDER_WIDTH * RENDER_HEIGHT), outside_apart, shifted_apart,
+              (RENDER_WIDTH - 1) * RENDER_HEIGHT);
 }
 
 int main(int argc, char** argv) {
@@ -3495,6 +3566,7 @@ int main(int argc, char** argv) {
   TestSunTint(games);
   TestParticleQuads(games);
   TestSoftMask(games);
+  TestAmbientIntoGame(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
