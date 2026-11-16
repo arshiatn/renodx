@@ -19,6 +19,20 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
   yet).
 - In game: Ray-Traced AO: corners lighter than before (no game AO under the rays' AO); rays off: unchanged.
 
+### Ray Tracing in the Helper, step 1 (2026-11-16; built only, not run in game)
+
+- New **Ray Tracing in the Helper (Experimental)** (off, a restart): the rays' sun shadows and AO traced in the Total
+  War helper (`ray_tracing.hpp`, an rt_core host as Expeditions'), not on the add-on's own D3D12 device
+  (`rt_shadows.hpp`, still the default until the helper's rays prove equal offline). Scene: the depth prepass into the
+  scene depth (the opaque prepass's six vertex shaders, the masked prepass by rt_core's pixel-shader coverage); trace
+  at the sun shadow mask 0x2084C889 with the camera from TranslatedWorldToClip + PreViewTranslation in metres and the
+  sun from ScreenToShadow (0x7A1E0D12's TowardSun on the CPU); the traced sun at t40 for sunshadow00, the traced
+  ambient copied to the scene depth's size at t41 (same contract as the in-process rays). Reflections, the bounce,
+  the paths, the sky texels (c155-c162) and torches (038D003A) stay in process for now (off in this mode).
+- Known differences to prove offline: masks read at a scaled UV (some of the 89 masked shaders) are left out, and the
+  helper cuts alpha at 0.5 where the game does at 0.333 (rt_core's host route has no cutoff of its own yet).
+- tests/helper_rays (WARP + CPU): TowardSun equals sun_direction.hlsli's, the camera equals TranslatedWorldToClip.
+
 ## Install
 
 1. Put `renodx-talesofarise_dlss.addon64` and NVIDIA's latest `nvngx_dlss.dll` (310.5 or newer) in
