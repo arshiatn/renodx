@@ -1,5 +1,20 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Every point light, the fog in the glow (2026-11-16 next round; built only, not run in game)
+
+- **Torch and Fire Shadows on every point light**: the game's 7 other point-light shaders (smooth / linear falloff,
+  slm / skinlm, with and without the point shadow map) read the rays as fire02 does. The 4 with the point shadow map take
+  the rays' shadow in place of the map's for a light the rays trace at the pixel and keep the map for the rest. WARP
+  (ps_compare, the game's bytes, nothing of ours bound): 8 of 8 the game's, 0 values off.
+- Fixed: the main torch light (fire02) in Rendering Mode SDR is the game's again (it took Fire Brightness there too).
+- Fixed: the height fog in the glow's depth masking (tone mappers t01-t04) and in the depth of field's composite: the
+  decompile cut its term to a whole number, so there was less fog there than the game's. Proven by the game's bytes only
+  (the Vanilla test's inputs don't reach that term).
+- Still open: the game's SSAO under Ray-Traced AO (the building pools read it in 2 of 24 traces: they need the rays' AO
+  too before it can go), the contact march below 100 % (5 sun draws, a shared step).
+- In game: a night battle with torches and RT/PT on; Rendering Mode SDR with Fire Brightness off 1; a foggy battle with
+  glow near the camera and the depth of field.
+
 ### Fix round (2026-11-16; built only, not run in game)
 
 - **Rays Replace Shadow Maps on by default** (ATN: ours replaces the game's, one method per effect): under ray-traced sun
