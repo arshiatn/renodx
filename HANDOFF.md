@@ -181,6 +181,8 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 00:3x (ATN: "If it is on by default, then get rid of that slider": it is on by default (5d9810cd1), row removed in WH1 / WH2; tw1_ after the SSR item) C: WH1 / WH2: remove the Rays Replace Shadow Maps row too (off = Multiply), as WH3 / Troy / Pharaoh now (one method; WH1's 12 SM 4.1 builds keep the game's maps until the shared Patch)? (from: tw2_ 00:0x)
 - [x] ANSWERED 00:4x (ATN: "Let's take your suggestion": the game's shadow map smaller while Replace is on, restart to take effect; rur2_) C: R.U.S.E. VRAM: a smaller ShadowRTSize while Replace is on frees memory (~72 MiB at 1024 vs ~290 MiB at 2048; coarser game shadows where they come back: above Rays Off Above, a failed trace, Replace off)? (from: rur2_ 00:0x)
 - [x] ANSWERED 01:xx (ATN: "Row placement, that sounds good!"; the occlusion source asked, coordinator: keep the specular-occlusion lobe, more correct for reflections) C: Path-Traced Reflection Occlusion: lobe vs sky visibility, row next to Path-Traced Ambient (graphics_page, shs2_)
+- [ ] C: Divinity 2: GT-VBGI (like the rays' bounce) adds on top of the light probes' IBL diffuse: keep, or black the probes' diffuse under GT-VBGI? After a run: No RT/PT (Recommended) turns Bend and GT-VBGI on, as Attila's? Defaults OK: GT-VBAO radius 1 m, Bend thickness 0.005? (from: div2_ 01:xx)
+- [ ] C: Attila paths trace / shade split: measured ~0 net at your rows (trace-only 0.288 vs 0.366 ms, no occupancy win): drop it, or one in-game Nsight of the trace-only helper first? (from: gpu3_ 01:xx)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -309,6 +311,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (Ryse level B DONE rys2_ f795f917c: Contrast 1.15 / Shadows 1.35 / Saturation 1 ... | rys2_ (Ryse), V35 fit round (the rest)
 - (+ div2_ 23:xx: RR on with the rays (helper log RR line); RT reflections on meta ... | coordinator (one game at a time)
 - (div2_ 23:xx DONE: rt_guides + Ray Reconstruction bd7332449 (diffuse / specular ... | next Divinity 2 round
+- DIVINITY 2 RUNS 3 (div2_ 01:xx NEEDS A RUN, city + an interior, Time Each Pass): ... | coordinator (one game at a time)
+- Divinity 2 render scale below 100 % (div2_ 01:xx not done: VPtoRTScaleBias in 98 ... | next Divinity 2 round
+- SHARED STEPS (div2_ 01:xx): graphics_page: an "untested method" flag so GT-VBAO ... | next shared round
 - SHARED STEPS (div2_ 11-16): rt_core TraceLightBounce: one missed bounce frame re ... | shs2_ / next shared round
 - GAME-SPECIFIC SKIPS PARITY (ATN 23:0x "Game-specific skips, let's do this too"): ... | per-game rounds (after the current merges)
 - NIGHT + SEA BENCH (ATN 23:0x offers a burning Constantinople at night replay; a ... | ATN (replays), coordinator
@@ -326,8 +331,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - X64 ENGINE MEMORY (ATN 00:1x: end of the week or next week if usage is left): th ... | coordinator, end of week 47 / week 48
 - TW2 / R.U.S.E. NEXT (00:0x): Sharp Ray-Traced Reflections for Rome II (its ssr00 ... | per-game rounds, next shared round
 - RESTIR UPGRADE (ATN 23:1x: debug43 chats + 4 NVIDIA papers): own implementations ... | gpu3_ after the torch row + paths split
-- PATHS TRACE / SHADE SPLIT (ATN 23:0x "Let's do that"): the paths at 128 register ... | gpu3_
+- (gpu3_ 01:xx MEASURED, no commit: trace-only kernel 0.288 ms vs 0.366 ms, occupa ... | gpu3_
 - GPU3 RUNS (gpu3_ 11-16 NEEDS A RUN): 1. Attila Constantinople, ATN's rows, path- ... | coordinator (one game at a time)
+- (gpu3_ 01:xx) Attila paths: dark texels: the light estimator sums 115 against th ... | reference suite (plan phase 2)
 - GPU next (gpu3_ 11-16): Attila Nsight round DONE (whole frame 3.711 -> 3.607 ms, ... | next GPU round
 - (+ rys2_ 23:xx: renodx_trace_now in 2-3 levels / times of day for tonemap00 PER_ ... | coordinator (one game at a time)
 - Ryse next (rys2_ 11-16): upgraded-target reader census needs a log line per upgr ... | next Ryse round, shared round
@@ -2003,12 +2009,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         (rays + paths, city + interior); Path-Traced Ambient on (after ~2.5 s the ambient swaps, brightness vs the
         game's); Higher Precision Scene water / refraction; the orthographic camera trigger. Owner: coordinator (one game
         at a time)
-      - [ ] (div2_ 23:xx DONE: rt_guides + Ray Reconstruction bd7332449 (diffuse / specular within 0.002 of the game's, controls 0.768 / 1.190); RT reflections + Specular Occlusion 31770fe86, Experimental off, in RT/PT as Attila's: blended into DeferredSky + probes' IBL specular texture before Clustered reads it (the 7 writers' blend / order not provable), WARP within 1e-7 of the game's o0, DeferredSSR skipped + combine passes the scene bit for bit; LEFT: GT-VBAO / GT-VBGI / Bend no-RT methods, render scale < 100 %, Graphics 2 of 2, our TAA / CMAA2, Modded Auto Exposure, look rows, FidelityFX SSSR (after the SSR trace), Clustered's SSAO specular occlusion under RT reflections (r9.z, a Clustered patch after the run)) Divinity 2 next (div2_ 11-16): rt_guides CS (d1_rt_guides pattern: GBuffer1 normals, GBuffer2 base, GBuffer3
+      - [ ] (div2_ 23:xx DONE: rt_guides + Ray Reconstruction bd7332449 (diffuse / specular within 0.002 of the game's, controls 0.768 / 1.190); RT reflections + Specular Occlusion 31770fe86, Experimental off, in RT/PT as Attila's: blended into DeferredSky + probes' IBL specular texture before Clustered reads it (the 7 writers' blend / order not provable), WARP within 1e-7 of the game's o0, DeferredSSR skipped + combine passes the scene bit for bit; GT-VBAO a5c20508a / GT-VBGI 847680660 / Bend 3e95198a0 DONE div2_ round 3, merged 0f6b3dcd5, Experimental off, WARP
+        tw_d2_helper 10-12 PASS; LEFT: render scale < 100 %, Graphics 2 of 2, our TAA / CMAA2, Modded Auto Exposure, look rows, FidelityFX SSSR (after the SSR trace), Clustered's SSAO specular occlusion under RT reflections (r9.z, a Clustered patch after the run)) Divinity 2 next (div2_ 11-16): rt_guides CS (d1_rt_guides pattern: GBuffer1 normals, GBuffer2 base, GBuffer3
         roughness / metal; unlocks RR + reflections); RT reflections (7 IBL specular shaders vanilla exact + DeferredSSR
         off); render scale below 100 % (D2-10 viewport route); Graphics 2 of 2 / Shadow Map Size (D2-12, exe read first);
         our TAA / CMAA2; GT-VBAO / GT-VBGI / Bend as the no-RT methods; Modded Auto Exposure (meter takes log2 above 2,
         knee 4.3 stops over the 0.104 average: a run's numbers); vignette / fog / VFX half-resolution rows. Owner: next
         Divinity 2 round
+      - [ ] DIVINITY 2 RUNS 3 (div2_ 01:xx NEEDS A RUN, city + an interior, Time Each Pass): GT-VBAO vs the game's SSAO;
+        GT-VBGI strength and radius (lighting_settings' 20 m); Bend Length / Thickness (fades 40-60 m, far plane 100 m).
+        Owner: coordinator (one game at a time)
+      - [ ] Divinity 2 render scale below 100 % (div2_ 01:xx not done: VPtoRTScaleBias in 98 pixel shaders + ViewInfo.zw;
+        trace every full-screen pass's uv source first (R2), then the viewport route). Owner: next Divinity 2 round
+      - [ ] SHARED STEPS (div2_ 01:xx): graphics_page: an "untested method" flag so GT-VBAO / Bend / GT-VBGI method labels
+        say "(Experimental)" and No RT/PT (Recommended) leaves them off (D2 wraps the button by its label today);
+        talesofarise_dlss/ue_sss_setup.hlsli: the includer supplies viewport size, light projection and light depth (D2's
+        ue_sss_setup.cs copies BuildDispatchList's glue); neutral embed names in the shared hosts (D2's wrappers are
+        named ue_*). Owner: next shared round
       - [ ] SHARED STEPS (div2_ 11-16): rt_core TraceLightBounce: one missed bounce frame resets path_frames, so
         path_ambient_on drops for 150 frames (2.5 s of the game's ambient) after any missed trace, every host: a grace
         window as AmbientReplaced (30 frames); rt_bounce_prepare / resolve include ../expeditionsrome/0x7A1E0D48 / 49:
@@ -2053,7 +2070,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         install; 1 ATN's night / sea replays -> one capture run each; 2 reference suite; 3 one features batch (ReSTIR
         papers, PT DI with RTXDI code allowed + NVIDIA notice, torches via one DI + GI reservoir, vMF diffuse row after PT
         DI, SER / OMM / PTLAS re-measured); 4 Opus review (xHigh reviewers, High fixers); 5 install + ATN's short list.
-        Owner: coordinator
+        ATN's order (01:xx, "What do you think?", coordinator agreed): (1) when the game agents are done, every game's next
+        plan into HANDOFF; (2) the skills updated with the lessons of 11-16 / 11-17; (3) RT/PT performance; (4) the new
+        features (papers, PT DI, vMF); (5) reference comparisons (should find bugs like DEBUG44's); (6) bug fixes + the
+        plan's fixes; (7) best helper; (8) finish Attila. Nsight in every step. Owner: coordinator
       - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
         (a) PsychoV35 RED: dark / shadowed pixels turn deep red under V35 (V31 fine, same frame): in Bend shots, path-torch
         shots and plain night ground: V35 mishandles near-black / negative / NaN input; fix V35 (shared, every game's
@@ -2065,7 +2085,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         RT shadows a light halo around cypress trees against the dark backdrop, the backdrop greyer (Bend shot without);
         owner bug1_ with the night1 capture. (e) RT SHADOWS BLOCKY: a sail's shadow on the next sail stair-stepped
         (debug view: big polygon steps) and rope shadows missing, Bend + the game's maps smooth: the rays' sail mesh is
-        coarser than drawn (cloth / LOD) and thin ropes not captured; owner bug1_ with the sea1 capture. (f) SCALING
+        coarser than drawn (cloth / LOD) and thin ropes not captured; second example (sea, RT / SSS / game's maps): the rays' sail shadow a coarse stepped
+        shape, every rope shadow on the sails missing, SSS and the game's maps show the ropes; owner bug1_ with the sea1
+        capture. (f) SCALING
         BELOW 100 %: sea battle, DLSS Performance vs DLAA: the ships' selection indicators on the water become big stripes,
         the wave foam pattern changes: shaders never in our traces (no sea battle traced); a static scan of every shipped
         shader for screen-space reads (not only traced ones) + the sea1 traces, every TW game with sea battles; owner bug1_
@@ -2108,12 +2130,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (junkins2026: SMAPE -6..29 %, temporal covariance -22..49 %, +2..5 % cost: less boiling); (3) the feedback-loop
         check of kajiya's gi-overview "Indirect diffuse" (Embark, MIT / Apache-2.0): spatial + temporal data fed back
         onto itself boils, M clamp; duplication maps only if they keep the energy; (4) torches into the paths through the
-        GI reservoir (lin2026's unified DI + GI reservoirs) instead of a light loop per hit; (5) later: stochastic
+        GI reservoir (lin2026's unified DI + GI reservoirs) instead of a light loop per hit (gpu3_ 01:xx: the light-loop
+        version shipped as the row, +0.08-0.1 ms = the most a merged DI reservoir can save); (5) later: stochastic
         pairwise MIS (hedstrom2026, disocclusions), ReSTIR PG path guiding (zeng2025). PT DI (RTXDI-style direct light)
         stays the game's: its raster lights with our visibility bits (one bit per light), keeping the game's look.
         Diffuse BRDF at path hits stays Lambert (as the game shades what it sees; EON / Hammon / VMF diffuse would change
         the bounce only, not the game's direct light). Owner: gpu3_ after the torch row + paths split
-      - [ ] PATHS TRACE / SHADE SPLIT (ATN 23:0x "Let's do that"): the paths at 128 registers split into trace and shade
+      - [ ] (gpu3_ 01:xx MEASURED, no commit: trace-only kernel 0.288 ms vs 0.366 ms, occupancy 37 -> 50 % bought nothing,
+        shading <= 0.08 ms, a hit record each way ~0.07 ms = net ~0; tools/tw/path_probe runs/register_variants.txt; ATN
+        decides: drop, or an in-game Nsight of build/gpu3_v_trace) PATHS TRACE / SHADE SPLIT (ATN 23:0x "Let's do that"): the paths at 128 registers split into trace and shade
         passes in the shared helper (every helper game gets it). Owner: gpu3_
       - [ ] GPU3 RUNS (gpu3_ 11-16 NEEDS A RUN): 1. Attila Constantinople, ATN's rows, path-traced GI: pan along the walls
         past torches, do off-screen corners still brighten then settle (f128a1cc1); 2. R.U.S.E. battle with rays: Record Ray
@@ -2121,7 +2146,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         rays: Time Each Pass, PresentMon CPU busy, the capture triangle line (OnAnyDraw CPU cost, Ryse back buffer fix); 4.
         Attila MSAA 4x + DLSS + Path-Traced Ambient: the game's AO shows (0194c0b98); 5. D1b: Attila RR guide-inputs dump
         on DLSS 310.7 vs 310.9.16 (preset F); 6. grass bank lit without grass shadows (L2085) + river noise while moving
-        (L2093). Owner: coordinator (one game at a time)
+        (L2093); 7. Attila night Constantinople with torches, ATN's rows, Torch Light in Path-Traced GI off vs on: warm
+        bounce near fires, no blow-out, noise. Owner: coordinator (one game at a time)
+      - [x] DONE gpu3_ 1b0ea68fa (merged 01:xx; Shogun 2's own page 00dcf8440): Torch Light in Path-Traced GI
+        (Experimental, off; Attila / Rome II / Pharaoh / Thrones via graphics_page, Shogun 2): local lights at every path
+        hit, seen and unseen; unseen / seen x1.008, vs the reference path tracer x0.995 / x1.005, picked vs every light
+        (pbrt's form) x1.0001; +0.094 ms path tracing at 4K; row off = 0 of 288 HARNESS_DUMP outputs changed
+      - [ ] (gpu3_ 01:xx) Attila paths: dark texels: the light estimator sums 115 against the reference's 9 over 2,750
+        texels, cause not found. Owner: reference suite (plan phase 2)
       - [ ] GPU next (gpu3_ 11-16): Attila Nsight round DONE (whole frame 3.711 -> 3.607 ms, with the game's sun light 3.837
         -> 3.683: reflect_filter tile ef9a91f4f 0.35 -> 0.30, rt_reflect_one c3 f6dd8edc7 0.630 -> 0.613 (spills ~219 MB a
         frame), path one-sample build 43c404c62 0.378 -> 0.364; HARNESS_DUMP 0 of 288 changed; grass range for drawn grass
