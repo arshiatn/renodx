@@ -43,6 +43,8 @@ constexpr char BUILD_TIME[] = __TIME__;
 namespace {
 
 ShaderInjectData shader_injection;
+// The Ambient Occlusion row; shader_injection.ssao_mode follows it but for one AO method (dlss_graphics.hpp OnPresent).
+float ssao_mode_row = 0.f;
 float current_settings_mode = 0.f;
 
 bool IsHDRMode() {
@@ -418,7 +420,7 @@ void BuildRuntimeData() {
   twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
   // Ambient Occlusion: GT-VBAO in the game's last AO level (talesofarise/ue_bitmask_ao.hlsli; the graphics page takes them).
   const auto ambient_occlusion = talesofarise::hdr_only::AmbientOcclusionRows({
-      .mode = &shader_injection.ssao_mode,
+      .mode = &ssao_mode_row,
       .radius = &shader_injection.ssao_radius,
       .strength = &shader_injection.ssao_strength,
       .thickness = &shader_injection.ssao_thickness,
@@ -479,7 +481,7 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({"General", "Presets", "UE Extended", "PsychoV35", "PsychoV31", "Extra", "Extra (Probably not used)",
                                         "Output (Restart Required)", "About"},
                                        engine_sections);
-  expeditionsrome::dlss_graphics::AppendPage(&settings, &shader_injection.ssao_mode, &shader_injection.ssao_thickness);
+  expeditionsrome::dlss_graphics::AppendPage(&settings, &ssao_mode_row, &shader_injection.ssao_thickness, &shader_injection.ssao_mode);
 
   // Shaders cb
   renodx::mods::shader::expected_constant_buffer_space = 50;

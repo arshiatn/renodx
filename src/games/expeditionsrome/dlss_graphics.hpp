@@ -457,6 +457,9 @@ static twattila::rt_scene::Sliders rt_sliders;
 static twattila::feature_settings::SssSliders screen_space_shadows_rows;
 static talesofarise::ue_light_bounce::Rows gi_rows;
 static const float* ao_thickness_row = nullptr;
+// GT-VBAO's row (the HDR part's Ambient Occlusion) and the shader constant it reaches (OnPresent: one AO method).
+static const float* ao_method_row = nullptr;
+static float* ao_method_constant = nullptr;
 static float live_scale_row = 1.f;
 static float replace_taa_row = 1.f;
 static float contact_shadows_row = 0.f;  // percent of the screen
@@ -1278,6 +1281,12 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     if (ray_tracing_settings.path_ambient) {
       ray_tracing_settings.ambient_occlusion = false;
     }
+    // One AO method: no GT-VBAO under the rays' AO or Path-Traced Ambient (the RT/PT preset's own ssao_mode 0, kept
+    // when the rows are set by hand).
+    if (ao_method_row != nullptr && ao_method_constant != nullptr) {
+      const bool rays_ambient = ray_tracing_installed && (ray_tracing_settings.ambient_occlusion || ray_tracing_settings.path_ambient);
+      *ao_method_constant = rays_ambient ? 0.f : *ao_method_row;
+    }
     ray_traced_bounce_strength = gi_rows.light_bounce_strength;
     // What the bridge serves this frame (upscaling.hpp); Ray Reconstruction with a ray-traced effect only.
     const auto& rays = ray_tracing_settings;
@@ -1788,9 +1797,10 @@ inline std::vector<std::string> EngineSections() {
 
 // The page's rows (HDR part's ConfigureAddon, after its own rows): Graphics 1 of 2 (graphics_page.hpp with
 // feature_settings::AppendAa's and rt_scene::AppendSettings' rows, then TOOLS_SECTION), Graphics 2 of 2
-// (GRAPHICS_SETTINGS, EngineSections); `ssao_mode` and `ssao_thickness` GT-VBAO's (the HDR part's). After
-// feature_settings::SetTints.
-inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings, float* ssao_mode, const float* ssao_thickness) {
+// (GRAPHICS_SETTINGS, EngineSections); `ssao_mode` and `ssao_thickness` GT-VBAO's rows (the HDR part's), `ssao_mode_constant`
+// the shader constant OnPresent sets from the first. After feature_settings::SetTints.
+inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings, float* ssao_mode, const float* ssao_thickness,
+                       float* ssao_mode_constant) {
   using renodx::utils::settings::Setting;
   using renodx::utils::settings::SettingValueType;
   const auto upscaling = [] { return twattila::feature_settings::Upscaling(aa_sliders); };
@@ -1840,6 +1850,8 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
   // GT-VBGI's rows (Global Illumination; its Strength also the rays' bounce light's), the screen-space search's off
   // under the rays; Bend's rows without those of the Total War games' own sun shaders.
   ao_thickness_row = ssao_thickness;
+  ao_method_row = ssao_mode;
+  ao_method_constant = ssao_mode_constant;
   talesofarise::ue_light_bounce::AppendRows(settings, &gi_rows, [] { return rt_sliders.light_bounce != 0.f; });
   twattila::feature_settings::AppendSss(settings, &screen_space_shadows_rows);
   erase({"ScreenSpaceShadowsDistanceSoftness", "ScreenSpaceShadowsDebugView"});
