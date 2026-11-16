@@ -57,6 +57,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -147,6 +148,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI ... | ru7_ (started 01:2x)
 - R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA pas ... | coordinator
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
+- vf_ (started 02:0x): fix the Vanilla-exact FAILs: Shogun 2 flare00 / 02 / 03 spr ... | vf_
+- ATN DECIDES (Vanilla not exactly the game, by design today): Attila / Thrones le ... | ATN
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
@@ -158,7 +161,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REVIEWS + FIXES MERGED 8ee4ab2f 20:5x (left: GPU harness after ATN's game, build ... | coordinator
 - [B] R7 no reader inventory for Shogun 2's broad upgrade (addon.cpp:2576-2594), D ... | HDR bug round (inventory from traces)
 - [B] R10 unproven 8-bit links (never traced): Pharaoh FXAA 0xA6756C1F, WH2 dof00/ ... | next data run per game
-- [B] R13 Vanilla-exact tests with a failing control (only Div1 0x30A1D40D has one ... | HDR test round (after the fix merge)
 - [B] R14 variants not replaced (traces decide if they draw): Attila / Thrones D91 ... | next data run per game, then the HDR bug round
 - [P] ATN DECIDES R1 Div1 mode 1 "UC2 Extended / PsychoV30" = UpgradeToneMap then ... | ATN
 - [P] ATN DECIDES R1 shoulders not identity below their start: Neutwo from 0 (grad ... | ATN
@@ -1311,6 +1313,11 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own SetTargetFormat lines) and
         Divinity 1 (`.first_start_key = "tonemap_type"`, drop the override at addon.cpp:989-993); in-game check of S2 SDR
         output through the R.U.S.E. proxy and S3 SET / SHOT. Owner: ru6_ / d1_, then the R.U.S.E. T-run
+      - [ ] vf_ (started 02:0x): fix the Vanilla-exact FAILs: Shogun 2 flare00 / 02 / 03 sprite rotation (0.70-0.74), Rome
+        Remastered bloom01 dither cast (0.0052); confirm Div1 FXAA EXACT after 35a37ac4; whole suite amd64 + x86. Owner: vf_
+      - [ ] ATN DECIDES (Vanilla not exactly the game, by design today): Attila / Thrones lens flares decode 2.2 / encode 2.0
+        in every mode (0.035); Gamma Correction on by default re-encodes 2.0 -> 2.2 in Rome II / WH1 / WH2 / Troy / Pharaoh
+        Vanilla (0.027-0.035); the R6 bloom smoothing in SDR (up to 22 in WH2 t00). Make Vanilla = the game? Owner: ATN
       - [ ] In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), Shogun 2 highlights (V35 top
         now reaches Peak), WH2 with FXAA on; a trace that the DOF chain draws (Attila / Thrones / WH1) and its targets are
         16-bit; README lines for the fixes at release. Owner: next TW data runs / release round
@@ -1421,7 +1428,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] [B] R10 unproven 8-bit links (never traced): Pharaoh FXAA 0xA6756C1F, WH2 dof00/01 C337D8E3 / 91B4F89A,
         Shogun 2 dofblur02_0x6531CCC3 (unorm). Owner: next data run per game
       - [x] DONE 73c0d40c (hb_, merged 8bb28f1f): [B] R12 Pharaoh t00_0x976C1C74:132 max(0) before the bypass lerp (:224). Owner: HDR bug round
-      - [ ] [B] R13 Vanilla-exact tests with a failing control (only Div1 0x30A1D40D has one): TW tone mappers /
+      - [x] DONE 78622e74 (ht_ test/tw_vanilla_exact: 212 shaders vs the game's bytes on WARP amd64; 167 EXACT, 32 known R6,
+        13 FAIL, controls 212/212 caught; part 6 conflict kept atn-mods' (d2b_ had the same Div2 check)). [B] R13 Vanilla-exact tests with a failing control (only Div1 0x30A1D40D has one): TW tone mappers /
         hdr_to_screen / bloom / lens flare, Shogun 2 tonemap00/01 first (rewritten from source), Ryse (ledger DO NOW),
         Tales / Expeditions (no harness source to re-run their WARP claim), Div1 bloom / god rays / UI / AA, Div2 t01 /
         bloom00 / ui00 (t00 report-only), Rome R, RUSE. Owner: HDR test round (after the fix merge)
