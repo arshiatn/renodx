@@ -40,6 +40,12 @@
 //    yellow shadowed lit ground). Cases: the ground alone; the boxes in the depth Bend marches, with ShadeGround's window
 //    and x 15 (its width in pixels at 3840 wide: at 256 x 144 a ray climbing a wall passes the default 0.5 % between two
 //    pixels); the boxes in the main depth alone (O1's start depth, as 6b: the units, trees and buildings in the game).
+// 6d. The game's sun shadow map at 1024 (Rays Replace Shadow Maps' smaller map): the pre-pass mask's pixel shader
+//    (census 0x8588D239: its light-space UV `clip x (0.5, -0.5) + (0.5, 0.5029297)`, one bilinear tap, an exponential
+//    shadow test; every one of the 644 readers maps the same way, none has a texel-size constant for the map) over a
+//    full-screen light-space ramp, on a G16R16 map holding a caster disc (depth 0.3, receivers at 0.5) drawn at 2048 and
+//    at 1024: the same shadow but for edge pixels. Control: the 1024 map read as if it were 2048 texels wide (its UVs
+//    doubled: what a texel-size constant baked for 2048 would do), the shadow elsewhere.
 // 9. Guides (ray_tracing.hpp BindGuides: the rays' bounce and reflections): the three guide targets made by D3D9Ex and
 //    opened by D3D11 (B8G8R8A8, RGBA16F x 2) as render targets 1-3 beside a 10-bit scene target: ColorFill clears them
 //    (RGBA16F too), each target's write mask holds, a blended draw (SRCALPHA / INVSRCALPHA: D3D9's one blend state)
@@ -449,6 +455,23 @@ float4 rows[4] : register(c0);
 float4 main(float3 position : POSITION) : POSITION {
   const float4 world = float4(position, 1);
   return float4(dot(rows[0], world), dot(rows[1], world), dot(rows[2], world), dot(rows[3], world));
+})";
+
+// 6d's light-space ramp: clip xy as the light's projected position (z 0.5: the receivers), no motion.
+constexpr char LIGHT_RAMP_VS[] = R"(
+struct Out {
+  float4 position : POSITION;
+  float4 light : TEXCOORD0;
+  float3 current : TEXCOORD1;
+  float3 previous : TEXCOORD2;
+};
+Out main(float3 position : POSITION) {
+  Out o;
+  o.position = float4(position.xy, 0.5, 1);
+  o.light = float4(position.xy, 0.5, 1);
+  o.current = float3(0, 0, 1);
+  o.previous = float3(0, 0, 1);
+  return o;
 })";
 
 constexpr char FLAT_PS[] = R"(
@@ -1433,6 +1456,88 @@ int main(int argc, char** argv) {
       CHECK(wide.stray * 100 <= wide.lit_ground && kept.stray * 100 <= kept.lit_ground);
     }
     rays.bend = false;
+
+    // 6d. The game's shadow-map reader on a 1024 map.
+    {
+      const std::vector<uint8_t> mask_code = ReadFile(census + R"(\0x8588D239.ps_3_0.cso)");
+      REQUIRE(!mask_code.empty());
+      ComPtr<IDirect3DPixelShader9> mask_ps;
+      REQUIRE(SUCCEEDED(host->CreatePixelShader(reinterpret_cast<const DWORD*>(mask_code.data()), mask_ps.GetAddressOf())));
+      const ComPtr<ID3DBlob> ramp_code = Compile(LIGHT_RAMP_VS, "vs_3_0");
+      ComPtr<IDirect3DVertexShader9> ramp_vs;
+      REQUIRE(SUCCEEDED(host->CreateVertexShader(static_cast<const DWORD*>(ramp_code->GetBufferPointer()), ramp_vs.GetAddressOf())));
+      // G16R16 (red the filtered term: 1; green the occluder's depth): a disc of radius 0.25 around the map's centre at
+      // depth 0.3, far (1) elsewhere; `stretch` 2: the disc where a reader doubling the map's UVs finds it.
+      const auto make_map = [&](UINT size, double stretch) {
+        ComPtr<IDirect3DTexture9> staging;
+        REQUIRE(SUCCEEDED(host->CreateTexture(size, size, 1, 0, D3DFMT_G16R16, D3DPOOL_SYSTEMMEM, staging.GetAddressOf(), nullptr)));
+        D3DLOCKED_RECT locked = {};
+        REQUIRE(SUCCEEDED(staging->LockRect(0, &locked, nullptr, 0)));
+        for (UINT y = 0; y < size; ++y) {
+          auto* row = reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(locked.pBits) + (static_cast<size_t>(y) * locked.Pitch));
+          for (UINT x = 0; x < size; ++x) {
+            const double u = (((x + 0.5) / size) * stretch) - 0.5;
+            const double v = (((y + 0.5) / size) * stretch) - 0.5;
+            const uint32_t depth = ((u * u) + (v * v) < 0.0625) ? static_cast<uint32_t>(0.3 * 65535.0) : 0xFFFFu;
+            row[x] = 0xFFFFu | (depth << 16);
+          }
+        }
+        staging->UnlockRect(0);
+        ComPtr<IDirect3DTexture9> map;
+        REQUIRE(SUCCEEDED(host->CreateTexture(size, size, 1, 0, D3DFMT_G16R16, D3DPOOL_DEFAULT, map.GetAddressOf(), nullptr)));
+        REQUIRE(SUCCEEDED(host->UpdateTexture(staging.Get(), map.Get())));
+        return map;
+      };
+      const ComPtr<IDirect3DTexture9> mask_target = MakeTarget(host, D3DFMT_A16B16G16R16F);
+      REQUIRE(mask_target != nullptr);
+      const ComPtr<IDirect3DSurface9> mask_surface = Level(mask_target.Get());
+      // The shader's shadow term (oC0.x) over the ramp, as the game samples its map (bilinear, clamped).
+      const auto shadow_term = [&](IDirect3DTexture9* map) {
+        host->SetRenderTarget(0, mask_surface.Get());
+        host->SetDepthStencilSurface(nullptr);
+        for (const auto [state_type, value] :
+             {std::pair{D3DRS_ZENABLE, DWORD{FALSE}}, std::pair{D3DRS_STENCILENABLE, DWORD{FALSE}}, std::pair{D3DRS_ALPHATESTENABLE, DWORD{FALSE}},
+              std::pair{D3DRS_ALPHABLENDENABLE, DWORD{FALSE}}, std::pair{D3DRS_SCISSORTESTENABLE, DWORD{FALSE}},
+              std::pair{D3DRS_CULLMODE, DWORD{D3DCULL_NONE}}, std::pair{D3DRS_COLORWRITEENABLE, DWORD{0xF}}}) {
+          host->SetRenderState(state_type, value);
+        }
+        host->SetVertexShader(ramp_vs.Get());
+        host->SetPixelShader(mask_ps.Get());
+        host->SetFVF(D3DFVF_XYZ);
+        constexpr std::array<float, 4> RENDER_DT = {1.f, 1.f, 1.f, 1.f};  // c0 uniRenderDt (the motion's)
+        host->SetPixelShaderConstantF(0, RENDER_DT.data(), 1);
+        host->SetTexture(0, map);
+        host->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+        host->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+        host->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+        host->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+        host->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+        constexpr std::array<float, 18> QUAD = {-1.f, -1.f, 0.f, -1.f, 1.f, 0.f, 1.f, -1.f, 0.f, 1.f, -1.f, 0.f, -1.f, 1.f, 0.f, 1.f, 1.f, 0.f};
+        host->BeginScene();
+        REQUIRE(SUCCEEDED(host->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, QUAD.data(), 3 * sizeof(float))));
+        host->EndScene();
+        host->SetTexture(0, nullptr);
+        const std::vector<uint8_t> pixels = ReadHost(host, mask_surface.Get(), 8);
+        std::vector<float> term(static_cast<size_t>(WIDTH) * HEIGHT);
+        for (size_t index = 0; index < term.size(); ++index) term[index] = Half(pixels, index * 4);
+        return term;
+      };
+      const std::vector<float> at_2048 = shadow_term(make_map(2048, 1.0).Get());
+      const std::vector<float> at_1024 = shadow_term(make_map(1024, 1.0).Get());
+      const std::vector<float> stretched = shadow_term(make_map(1024, 2.0).Get());
+      const auto shadowed = [](const std::vector<float>& term) { return std::ranges::count_if(term, [](float value) { return value < 0.5f; }); };
+      const auto differing = [](const std::vector<float>& a, const std::vector<float>& b) {
+        size_t count = 0;
+        for (size_t index = 0; index < a.size(); ++index) count += (std::abs(a[index] - b[index]) > 0.5f) ? 1u : 0u;
+        return count;
+      };
+      const size_t edge = differing(at_2048, at_1024);
+      const size_t control = differing(at_2048, stretched);
+      std::printf("Shadow map at 1024: the mask shader's shadowed pixels %td at 2048, %td at 1024 (%zu pixels differ); stretched control %td "
+                  "(%zu differ)\n",
+                  shadowed(at_2048), shadowed(at_1024), edge, shadowed(stretched), control);
+      CHECK(shadowed(at_2048) > 5000 && edge * 100 <= static_cast<size_t>(shadowed(at_2048)) && control > 2000);
+    }
 
     // 10. The trace point (GT-VBAO alone as its ground row).
     ruse::ray_tracing::ReleaseHost();
