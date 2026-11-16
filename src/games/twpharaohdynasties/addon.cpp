@@ -2219,9 +2219,8 @@ void OnInitDevice(reshade::api::device*) {
       shadow_cascades_row != 0.f && twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).sun_shadows);
 }
 
-void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  twattila::pass_timing::OnPresent(queue, "pharaoh");
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
   // preset's is XeSS on Intel's, else FSR.
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -2775,13 +2774,7 @@ void ConfigureAddon() {
   // The water's reflection apply reads the ray-traced reflections (twattila/water_reflections.hpp): their rows, the water's too.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
   twattila::rt_scene::internal::water_pass = true;
-  settings.push_back(new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-      .label = "Time Each Pass (One Frame)",
-      .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "The GPU's time of every pass of the next frame into pharaoh_pass_timing.txt next to the game's exe.",
-      .on_change = [] { twattila::pass_timing::Request(); },
-  });
+  settings.push_back(twattila::pass_timing::Button(twattila::feature_settings::AA_SECTION));
 
   // Appended Settings (HDR10)
   {
@@ -2975,7 +2968,7 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
-  twattila::pass_timing::Install();
+  twattila::pass_timing::Install("pharaoh");
 
   // Failed native-hook removal can retain this DLL across host unload/reload: its detach restored the game's code.
   graphics_found = false;
