@@ -46,6 +46,7 @@
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/sun_replace_maps.hpp"
@@ -1840,6 +1841,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   tw::ao_trace::OnPresent();
   twwarhammer2::particle_smoothing::OnPresent();
   talesofarise::pixel_trace::OnPresent(queue);
+  twattila::pass_timing::OnPresent(queue, "warhammer2");
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   // The rays' AO in place of the game's in the sun draws' t_ssao, never on top of it (ATN 2026-11-16): every sun draw with an AO
@@ -2318,6 +2320,13 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
+  settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+      .label = "Time Each Pass (One Frame)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "The GPU's time of every pass of the next frame into warhammer2_pass_timing.txt next to the game's exe.",
+      .on_change = [] { twattila::pass_timing::Request(); },
+  });
 
   // Appended Settings (HDR10)
   {
@@ -2494,6 +2503,8 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
+  twattila::pass_timing::Install();
 
   ConfigureAddon();
   tw::engine_tweaks::watch::StartIfRequested(graphics_options, WATCHED_VALUES, 300);
@@ -2631,6 +2642,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  twattila::pass_timing::Uninstall();
   twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
