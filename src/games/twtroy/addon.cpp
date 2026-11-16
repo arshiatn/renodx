@@ -370,6 +370,11 @@ void OnDestroyDevice(reshade::api::device* device) {
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
+// GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone): the rays' AO stands
+// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO stays
+// there, as when the page turned GT-VBAO off with them.
+bool bitmask_ao = false;
+
 void BuildRuntimeData() {
   custom_shaders = {
       FrameCopyShader(0x506EFD2A), //sharpening (reads our 16-bit frame copy)
@@ -400,7 +405,7 @@ void BuildRuntimeData() {
   // code (Game's costs what it did). The collect always runs: where no blur runs (Warhammer II at some settings), the
   // game's AO stays, never an unwritten one.
   custom_shaders[0x16A457D0].on_draw = [](auto* cmd_list) {
-    if (shader_injection.ssao_mode < 1.f) return true;
+    if (!bitmask_ao) return true;
     return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
                                                false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
   };
@@ -1814,20 +1819,23 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
+  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  // The rays' AO in place of the game's in the sun draws' t_ssao, never on top of it (ATN 2026-11-16): every sun draw with an AO
+  // slot reads its red alone (the dump), which the combine replaces by the traced visibility, its other channels kept.
+  rt_settings.ambient_alone = true;
+  bitmask_ao = shader_injection.ssao_mode >= 1.f && !rt_settings.ambient_occlusion && !rt_settings.path_ambient;
   // The HBAO setting's Visibility Bitmask (ssao01): its Depth Levels (twattila/ao_pass.hpp; no Temporal Smoothing).
-  twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f, false, (shader_injection.ssao_resolution != 0.f) ? 2.f : 1.f,
+  twattila::ao_pass::Update(bitmask_ao, false, (shader_injection.ssao_resolution != 0.f) ? 2.f : 1.f,
                             false);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   twattila::particle_layer::Update(swapchain);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
-  const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
       (bitmask_ao && shader_injection.ssao_temporal != 0.f) ? static_cast<float>(++ao_frame % 64) : 0.f;
   twattila::ao_filter::Update(swapchain, {.temporal = bitmask_ao && shader_injection.ssao_temporal != 0.f,
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
-  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
@@ -1920,7 +1928,7 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
-// (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO, the paths take the sky from the sun
+// (the sun shaders' patched comparisons), ray-traced AO in place of the game's SSAO, the paths take the sky from the sun
 // shaders' ambient cube; point lights (143A02ED), smoke (F5CE48CC), the water's Clarity and Caustics and its ray-traced
 // reflections (the game's reflections fall on the water alone, Pharaoh's texts) hooked, no fog.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
@@ -1941,7 +1949,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
-                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.\n"
+                  "RTAO: from rays through the scene, in place of the game's. Needs an upscaler.\n"
                   "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
                   "turns it on below. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
@@ -2082,7 +2090,7 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   // The water's reflection apply reads the ray-traced reflections (twattila/water_reflections.hpp): their rows, the water's too.
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
   twattila::rt_scene::internal::water_pass = true;
 
   // Appended Settings (HDR10)
@@ -2248,7 +2256,6 @@ void ConfigureAddon() {
                                              .water_caustics_tested = false,
                                              .rays_preset_as_attila = true,
                                              .lights_own_row = true,
-                                             .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
   // Smooth Banner Shadows (Experimental, off; RT/PT turns it on, as Attila's): the sails are this game's thin cloth in the
   // rays (its unit banners are not in them), so the row names them.
