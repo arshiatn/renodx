@@ -1160,7 +1160,7 @@ void BuildRuntimeData() {
         .binding = &shader_injection.someindicators,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.0f,
-        .label = "Unit / Building Indicator Brightness",
+        .label = "Unit/Building Indicator Brightness",
         .section = "Extra",
         .tooltip = "Brightness of selected highlight indicators.",
         .min = 0.0f,
@@ -1254,7 +1254,7 @@ void BuildRuntimeData() {
         .binding = &shader_injection.sky_deband,
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
         .default_value = 0.f,
-        .label = "Dithering for sky's 7-bit texture",
+        .label = "Sky Debanding",
         .section = "Extra (Experimental)",
         .tooltip = "Dithering to reduce sky's bandings.\n"
                    "Higher levels destroy more sky details while fixing banding.",
