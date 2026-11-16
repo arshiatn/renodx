@@ -16,6 +16,9 @@
   all 24 traced tone-mapper draws (`tools/tw/pharaoh/open_items/grain_slots.py`). The frame trace now writes those draws'
   constants (value_hashes: t01-t08, photo01-04). Next data run: one trace in a battle and the campaign; c9.z above 0 means
   the game draws grain, then Filmgrain's default goes to 1 (the game's look); 0 everywhere means the row can be hidden.
+- **Sky Debanding off in every preset** (hdr-review-rules: off in every preset; its own tooltip says Higher softens the
+  sky's details): default, Reset and the three Recommended presets wrote Medium (2), Attila's and Troy's write Off. A saved
+  2 is cleared once (SettingsRevision 4). In game: the sky as the game draws it at Off; Low to High still smooth its bands.
 
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 

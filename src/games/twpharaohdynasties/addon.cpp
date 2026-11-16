@@ -172,7 +172,7 @@ void ApplyResetPreset() {
       {"auto_exposure_highlight_headroom_stops", 2.f},
       {"vfx_fire_brightness", 1.f},
       {"vfx_base_brightness", 1.f},
-      {"sky_deband", 2.f},
+      {"sky_deband", 0.f},
       {"filmgrain", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
@@ -211,7 +211,7 @@ void ApplyPsychoRecommendedNoVFXBoost() {
       {"auto_exposure_highlight_headroom_stops", 2.f},
       {"vfx_fire_brightness", 1.f},
       {"vfx_base_brightness", 1.f},
-      {"sky_deband", 2.f},
+      {"sky_deband", 0.f},
       {"filmgrain", 0.f},
   });
 }
@@ -243,7 +243,7 @@ void ApplyPsychoRecommendedVFXBoost2500() {
       {"auto_exposure_highlight_headroom_stops", 2.0f},
       {"vfx_fire_brightness", 6.f},
       {"vfx_base_brightness", 4.5f},
-      {"sky_deband", 2.f},
+      {"sky_deband", 0.f},
       {"filmgrain", 0.f},
   });
 }
@@ -275,7 +275,7 @@ void ApplyPsychoRecommendedVFXBoost1000() {
       {"auto_exposure_highlight_headroom_stops", 2.0f},
       {"vfx_fire_brightness", 4.f},
       {"vfx_base_brightness", 2.4f},
-      {"sky_deband", 2.f},
+      {"sky_deband", 0.f},
       {"filmgrain", 0.f},
   });
 }
@@ -1253,7 +1253,7 @@ void BuildRuntimeData() {
         .key = "sky_deband",
         .binding = &shader_injection.sky_deband,
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = 2.f,
+        .default_value = 0.f,
         .label = "Dithering for sky's 7-bit texture",
         .section = "Extra (Experimental)",
         .tooltip = "Dithering to reduce sky's bandings.\n"
@@ -3006,10 +3006,12 @@ bool AttachAddon() {
 
   // Rows saved at an old default, cleared once: Smoke Shadows and Sprite Soldier Shadows were saved hidden at RT/PT's 1
   // (SetRaysPresetDefaults) until they showed, Experimental and off. Rays Replace Shadow Maps was saved at its old
-  // Experimental 0; now on by default.
+  // Experimental 0; now on by default. Sky Debanding was saved at its old Medium (default, Reset and every Recommended);
+  // now off in every preset, as Attila's.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSmokeShadows"});
   twattila::graphics_page::ClearSavedRows(2, {"RayTracedSpriteShadows"});
   twattila::graphics_page::ClearSavedRows(3, {"RayTracedReplaceShadowMaps"});
+  twattila::graphics_page::ClearSavedRows(4, {"sky_deband"});
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
