@@ -20,6 +20,14 @@ float RtInPlace(Texture2D<float> traced, float2 pixel, float game) {
   return (width != 0u) ? traced.Load(int3(pixel, 0)) : game;
 }
 
+// Rays Replace Shadow Maps (Experimental; ray_tracing.hpp sun_replaces_maps): this frame's traced sun visibility at t51 in
+// place of the game's mask (its cascades and screen-space shadows); t51 unbound: the darker of t40 and the game's.
+Texture2D<float> t_rt_sun_alone : register(t51);
+
+float RtSunVisibility(float2 pixel, float game) {
+  return RtInPlace(t_rt_sun_alone, pixel, RtDarker(t_rt_sun, pixel, game));
+}
+
 // Coloured Shadows (ray_tracing.hpp OnSunDraw, with this frame's trace): at t50 the share of the sun's colour that cloth and
 // sails took out on its way (1 - the colour they let through); unbound reads 0, the sun's colour as it is.
 Texture2D<float4> t_rt_tint : register(t50);

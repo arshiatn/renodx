@@ -309,13 +309,13 @@ struct Bridge {
 
 static Bridge bridge;
 
-// The game's GPU's PCI vendor (the addon's first present; 0: not known yet, or a game that does not ask).
+// The game's GPU's PCI vendor (ReadGpuVendor at the add-on's first present; 0: not known, no DXGI adapter found yet).
 inline std::atomic<uint32_t> gpu_vendor = 0;
 
-// DLSS, Ray Reconstruction and Streamline's frame generation start on NVIDIA's GPUs only.
+// DLSS, Ray Reconstruction, Reflex and Streamline's frame generation start on NVIDIA's GPUs only. An unknown vendor is
+// not NVIDIA: none of their rows.
 inline bool OnNvidia() {
-  const uint32_t vendor = gpu_vendor.load(std::memory_order_relaxed);
-  return vendor == 0 || vendor == 0x10DE;
+  return gpu_vendor.load(std::memory_order_relaxed) == 0x10DE;
 }
 
 // The game's GPU's vendor from its device (ReShade's proxy or not), once. RENODX_TW_FAKE_VENDOR (tests): another's.

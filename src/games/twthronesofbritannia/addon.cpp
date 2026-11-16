@@ -42,6 +42,7 @@
 #include "../twattila/particle_layer.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/rt_scene.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/shadow_pass.hpp"
@@ -64,6 +65,10 @@ float current_settings_mode = 0.f;
 
 bool IsHDRMode() {
   return shader_injection.hdr >= 1.f;
+}
+
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != 2.f;
 }
 
 bool IsPsychoV30Mode() {
@@ -139,6 +144,7 @@ void ApplyResetPreset() {
       {"gamma_correction", 1.f},
       {"sky_smooth", 0.f},
       {"sky_smooth_strength", 1.f},
+      {"sky_deband", 0.f},
       {"fog_strength", 1.f},
 
       // PsychoV30
@@ -858,7 +864,7 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 1.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput(); },
     },
     new renodx::utils::settings::Setting{
         .key = "video_dithering",
@@ -870,7 +876,7 @@ void BuildRuntimeData() {
         .tooltip = "Fine noise that hides banding in the brightened videos.\n"
                    "Only with Video AutoHDR above 0.",
         .labels = {"Off", "On"},
-        .is_enabled = [] { return IsHDRMode() && shader_injection.video_autohdr > 0.f; },
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput() && shader_injection.video_autohdr > 0.f; },
     },
     new renodx::utils::settings::Setting{
         .key = "fog_strength",
@@ -1326,7 +1332,7 @@ bool graphics_hooks_installed = false;
 // pass (whose replacement is the game's code only).
 constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
     {.shader_hash = 0xBD389EF1, .bitmask = __ao_bitmask, .upsample = __ao_upsample, .resolve = __ao_resolve,
-     .denoise = __ao_denoise},  // ssao00
+     .denoise = __ao_denoise, .blurs = {0xB4026AF2, 0x6203C824}},  // ssao00, its blur_x and blur_y
 }};
 
 // DLAA / DLSS object motion (twattila/anti_aliasing.hpp, as Attila's): the game's shaders whose things move on
@@ -2098,6 +2104,7 @@ void ConfigureAddon() {
   // The rays' AO in place of the game's and GT-VBAO (ssao00's rt_ambient_alone, as Attila's), the reflections' pass hooked.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
+  settings.push_back(twattila::pass_timing::Button(twattila::feature_settings::AA_SECTION));
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
@@ -2248,6 +2255,7 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  twattila::pass_timing::Install("thrones");
 
   // Failed native-hook removal can retain this DLL across host unload/reload.
   graphics_found = false;
@@ -2417,6 +2425,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twattila::test_hooks::Uninstall();
+  twattila::pass_timing::Uninstall();
   renodx::utils::command_action::Unregister(OnCampaignDraw);
   renodx::utils::command_action::Unregister(OnSunDrawClock);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);

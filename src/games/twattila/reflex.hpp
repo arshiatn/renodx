@@ -112,7 +112,8 @@ inline void OnFinishPresent(reshade::api::command_queue*, reshade::api::swapchai
 
 // Every present (anti_aliasing.hpp): Reflex `mode` (0 off, 1 on, 2 on + boost) and its `frame_limit` (rendered frames
 // per second, 0 none) on the game's device, while no frame generation paces the game itself (DLSS's Reflex, XeSS's Xe Low
-// Latency, which takes no other).
+// Latency, which takes no other). The GPU's vendor read from that device first (once: every add-on with Reflex, its
+// NVIDIA-only rows by it).
 inline void Update(reshade::api::swapchain* swapchain, uint32_t mode, uint32_t frame_limit) {
   auto& state = internal::state;
   const bool paced = frame_generation::Presenting() && dlaa_bridge::FrameGenerationBackend() != dlaa_bridge::FG_BACKEND_FSR;
@@ -120,6 +121,7 @@ inline void Update(reshade::api::swapchain* swapchain, uint32_t mode, uint32_t f
   const uint32_t wanted_limit = (wanted != 0 ? frame_limit : 0u);
   auto* device = reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&device);
+  dlaa_bridge::ReadGpuVendor(device);
   const std::unique_lock lock(state.mutex);
   if (wanted == state.mode && wanted_limit == state.frame_limit && (wanted == 0 || device == state.device.Get())) return;
   if (!state.loaded) {

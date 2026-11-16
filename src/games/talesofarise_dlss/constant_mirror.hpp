@@ -34,7 +34,8 @@ namespace talesofarise::dlss::constants {
 inline const char* log_tag = "[Tales AA constants]";
 
 // Texture mip bias for DLSS upscaling (UE 4.21 biases material textures only for its own temporal upscaling): mapped
-// uploads whose ViewSizeAndInvSize is the main view's get MaterialTextureMipBias (.x) before the GPU reads them.
+// uploads whose ViewSizeAndInvSize is the main view's get `bias` added to MaterialTextureMipBias (.x) before the GPU reads
+// them (the game's own, r.MipMapLODBias, stays under it).
 struct ViewMipBias {
   uint32_t size_vector = 0;  // the View uniform buffer's ViewSizeAndInvSize
   uint32_t bias_vector = 0;  // its MaterialTextureMipBias
@@ -65,6 +66,8 @@ inline std::unordered_map<ID3D11Buffer*, Snapshot> buffers;
 inline std::array<std::atomic<uint64_t>, 4> watched = {};
 // Any entry in `watched`: until then every event returns at once (no GetDesc, no lock).
 inline std::atomic_bool watching = false;
+// Upscaling Details' counts (CopiedBytes, BiasedUploads), counted only while `counting` (SetCounting: the panel drawn).
+inline std::atomic_bool counting = false;
 inline std::atomic<uint64_t> copied_bytes = 0;
 inline ViewMipBias view_mip_bias;  // under `mutex`
 inline std::atomic<uint64_t> biased_uploads = 0;
@@ -109,7 +112,7 @@ inline void OnInitResource(reshade::api::device*, const reshade::api::resource_d
   if (initial_data != nullptr && initial_data->data != nullptr) {
     std::memcpy(snapshot.bytes.data(), initial_data->data, needed);
     snapshot.valid_end = needed;
-    copied_bytes.fetch_add(needed, std::memory_order_relaxed);
+    if (counting.load(std::memory_order_relaxed)) copied_bytes.fetch_add(needed, std::memory_order_relaxed);
   }
 }
 
@@ -149,13 +152,16 @@ inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource re
     std::memcpy(view_size.data(), snapshot.bytes.data() + edit.size_vector * 16, sizeof(view_size));
     if (view_size[0] == static_cast<float>(edit.width) && view_size[1] == static_cast<float>(edit.height)
         && std::abs(view_size[0] * view_size[2] - 1.f) < 1e-3f && std::abs(view_size[1] * view_size[3] - 1.f) < 1e-3f) {
-      std::memcpy(snapshot.mapping + edit.bias_vector * 16, &edit.bias, sizeof(edit.bias));
-      biased_uploads.fetch_add(1, std::memory_order_relaxed);
+      float game_bias;
+      std::memcpy(&game_bias, snapshot.mapping + edit.bias_vector * 16, sizeof(game_bias));
+      game_bias += edit.bias;
+      std::memcpy(snapshot.mapping + edit.bias_vector * 16, &game_bias, sizeof(game_bias));
+      if (counting.load(std::memory_order_relaxed)) biased_uploads.fetch_add(1, std::memory_order_relaxed);
     }
   }
   snapshot.mapping = nullptr;
   snapshot.valid_end = static_cast<uint32_t>(snapshot.bytes.size());
-  copied_bytes.fetch_add(snapshot.bytes.size(), std::memory_order_relaxed);
+  if (counting.load(std::memory_order_relaxed)) copied_bytes.fetch_add(snapshot.bytes.size(), std::memory_order_relaxed);
 }
 
 // ReShade reports this for the immediate context only (deferred ones use update_buffer_region_command).
@@ -178,7 +184,7 @@ inline bool OnUpdateBufferRegion(reshade::api::device*, const void* data, reshad
     return false;
   }
   std::memcpy(snapshot.bytes.data() + begin, data, end - begin);
-  copied_bytes.fetch_add(end - begin, std::memory_order_relaxed);
+  if (counting.load(std::memory_order_relaxed)) copied_bytes.fetch_add(end - begin, std::memory_order_relaxed);
   // Keep one range: merge when touching, else keep only the new bytes.
   if (snapshot.valid_end > snapshot.valid_begin && begin <= snapshot.valid_end && end >= snapshot.valid_begin) {
     snapshot.valid_begin = std::min(snapshot.valid_begin, begin);
@@ -257,6 +263,16 @@ inline bool Read(ID3D11Buffer* buffer, uint64_t byte_offset, std::span<std::byte
       || byte_offset + destination.size() > snapshot.valid_end) return false;
   std::memcpy(destination.data(), snapshot.bytes.data() + byte_offset, destination.size());
   return true;
+}
+
+// The counts below grow only while counting is on: on at each draw of the panel that shows them (Upscaling Details), off at
+// each present after its counts were read, so a closed panel costs no counter (the overlay draws after the present event).
+inline void SetCounting(bool on) {
+  internal::counting.store(on, std::memory_order_relaxed);
+}
+
+inline bool Counting() {
+  return internal::counting.load(std::memory_order_relaxed);
 }
 
 inline uint64_t CopiedBytes() {

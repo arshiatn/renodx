@@ -27,6 +27,7 @@
 #include <shared_mutex>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #include <deps/imgui/imgui.h>
@@ -36,6 +37,8 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/command_action.hpp"
+#include "../../utils/command_action_fast.hpp"
 #include "../../utils/data.hpp"
 #include "../../utils/hash.hpp"
 #include "../../utils/platform.hpp"
@@ -229,7 +232,7 @@ struct RtSliders {
   // Attila's rows (twattila/graphics_page.hpp's keys; Experimental here).
   float denoiser = 0.f;    // RayTracingDenoiser: built-in, NRD (with the helper's upscaler)
   float sharc = 0.f;       // with path tracing
-  float reuse_lean = 0.f;  // with path tracing
+  float reuse_lean = 1.f;  // with path tracing
   float reuse_near = 1.f;  // with path tracing
   float path_ser = 0.f;    // the paths' and reflections' rays
   float output_rays = 0.f;  // Rays a Pixel: 1, Match Output, 2-8
@@ -243,9 +246,12 @@ struct RtSliders {
   float reflection_reuse = 0.f;         // 0 off, 1 from ReSTIR GI (with path tracing), 2 Own ReSTIR
   float ao_reblur = 0.f;                // AO under Ray Reconstruction: 0 Light History, 1 REBLUR
   float debug_view = 0.f;               // rt_core's Debug View value (the row's parse)
+  float units_range = 0.f;              // Characters Ray Tracing Range: metres (0: every character in the scene)
   float scene_test = 0.f;
 } rt_sliders;
 bool ray_tracing_installed = false;
+// The rays' AO went into this frame's lighting (render thread; read at the present).
+std::atomic_bool rays_ambient_applied = false;
 constexpr uint32_t RAYS_TINT = 0x6BE0D8;
 
 // Path-Traced Ambient: with path tracing on the Light Bounce (its paths bring the sky), in place of the ray-traced AO too.
@@ -268,7 +274,7 @@ const PresetValues RAYS_OFF = {
 };
 // The list's methods in this section's keys: the Light Bounce on and traced (one row here, Attila's 2 the paths), path
 // tracing its own row, the Light Bounce's strength `light_bounce`; Path-Traced Ambient off (Experimental, until it is tested
-// in game): ray-traced AO over the game's SSDO, as Attila's page does where a game has none.
+// in game): ray-traced AO in place of the game's SSDO amount.
 const PresetValues RAYS_OWN_KEYS = {
     {"RayTracedLightBounce", 1.f}, {"PathTracing", 1.f}, {"light_bounce", 1.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f},
     {"RayTracedPathAmbient", 0.f},
@@ -286,7 +292,7 @@ const PresetValues RAYS_RESET = {
     {"RayTracedPathKeptCube", 0.f},
     {"RayTracingDenoiser", 0.f},
     {"RayTracedSharc", 0.f},
-    {"RayTracedReuseLean", 0.f},
+    {"RayTracedReuseLean", 1.f},
     {"RayTracedReuseNear", 1.f},
     {"RayTracedPathSer", 0.f},
     {"RayTracingOutputResolution", 0.f},
@@ -301,6 +307,7 @@ const PresetValues RAYS_RESET = {
     {"RayTracedAoReblur", 0.f},
     {"RayTracedDebugView", 0.f},
     {"RayTracedSceneTest", 0.f},
+    {"RayTracedUnitsRange", 0.f},
 };
 
 void BuildRuntimeData() {
@@ -347,17 +354,18 @@ void BuildRuntimeData() {
         if (rt_sliders.ambient_occlusion != 0.f && !PathAmbientWanted()) ambient_visibility = ambient;
       }
     }
+    // The rays' AO in place of the game's SSDO amount while ssdo00 left it out (the AO method 2), else the darker.
+    const auto applied = rysesonofrome::contact_shadows::Apply(cmd_list,
+                                                               {
+                                                                   .length = shader_injection.contact_shadow_length,
+                                                                   .thickness = shader_injection.contact_shadow_thickness,
+                                                                   .strength = shader_injection.contact_shadows,
+                                                                   .frame = shader_injection.ssao_frame,
+                                                               },
+                                                               sun_visibility, ambient_visibility, shader_injection.ao_method == 2.f);
     // Skip the Game's Sun Shadow Maps: the next frame's maps only with the rays' in this one's mask.
-    if (rysesonofrome::contact_shadows::Apply(cmd_list,
-                                              {
-                                                  .length = shader_injection.contact_shadow_length,
-                                                  .thickness = shader_injection.contact_shadow_thickness,
-                                                  .strength = shader_injection.contact_shadows,
-                                                  .frame = shader_injection.ssao_frame,
-                                              },
-                                              sun_visibility, ambient_visibility)) {
-      rysesonofrome::shadow_skip::NoteRays();
-    }
+    if (applied.sun) rysesonofrome::shadow_skip::NoteRays();
+    rays_ambient_applied.store(applied.ambient, std::memory_order_relaxed);
     if (context != nullptr) rysesonofrome::ray_tracing::BindLightingInputs(context);
     return true;
   };
@@ -859,8 +867,9 @@ void BuildRuntimeData() {
           .label = "Ambient Occlusion",
           .section = "Ambient Occlusion",
           .tooltip = "GT-VBAO: contact shading that lets light pass behind thin things (railings, spears, grass)\n"
-                     "instead of the game's dark halos. Experimental.",
+                     "instead of the game's dark halos. Experimental. Ray-traced AO and Path-Traced Ambient replace it.",
           .labels = {"Game's (SSDO)", "GT-VBAO"},
+          .is_enabled = [] { return !(ray_tracing_installed && (rt_sliders.ambient_occlusion != 0.f || PathAmbientWanted())); },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_radius",
@@ -872,7 +881,7 @@ void BuildRuntimeData() {
           .min = 0.25f,
           .max = 4.f,
           .format = "%.2f m",
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_strength",
@@ -884,7 +893,7 @@ void BuildRuntimeData() {
           .min = 0.f,
           .max = 3.f,
           .format = "%.2f",
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_thickness",
@@ -896,7 +905,7 @@ void BuildRuntimeData() {
           .min = 0.01f,
           .max = 1.f,
           .format = "%.2f m",
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_quality",
@@ -907,7 +916,7 @@ void BuildRuntimeData() {
           .section = "Ambient Occlusion",
           .tooltip = "Samples per side: more catch thin things. Heavier.",
           .labels = {"8", "16", "32", "64"},
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_directions",
@@ -918,7 +927,7 @@ void BuildRuntimeData() {
           .section = "Ambient Occlusion",
           .tooltip = "Directions per pixel: less noise. Heavier.",
           .labels = {"1", "2", "4", "8"},
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_auto_thickness",
@@ -930,7 +939,7 @@ void BuildRuntimeData() {
           .tooltip = "Guesses each object's thickness from its width, AO Thickness as the least:\n"
                      "spears stay thin, walls and pillars block fully.",
           .labels = {"Off", "On"},
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       // Contact Shadows (contact_shadows.hpp): short screen-space shadows toward the sun, into its shadow mask.
       new renodx::utils::settings::Setting{
@@ -1182,7 +1191,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .label = "Ray-Traced Ambient Occlusion (restart)",
           .section = "Ray Tracing (Experimental)",
-          .tooltip = "Shade in corners and under things from rays, with the game's.\n"
+          .tooltip = "Shade in corners and under things from rays, in place of the game's.\n"
                      "Restart the game after turning on.",
           .labels = {"Off", "On"},
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
@@ -1381,13 +1390,28 @@ void BuildRuntimeData() {
       // Attila's (twattila/graphics_page.hpp's keys), with a ray-traced effect on.
       ray_choice("RayTracedSharc", &rt_sliders.sharc, "SHaRC radiance cache (Experimental)", off_on,
                  "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).", paths),
-      ray_choice("RayTracedReuseLean", &rt_sliders.reuse_lean, "Lean ReSTIR reuse (Experimental)", off_on,
+      ray_choice("RayTracedReuseLean", &rt_sliders.reuse_lean, "Lean ReSTIR reuse", off_on,
                  "A faster ReSTIR GI for path tracing, with the same look.", paths),
       ray_choice("RayTracedReuseNear", &rt_sliders.reuse_near, "Near ReSTIR reuse", off_on,
                  "A faster ReSTIR GI for path tracing: fewer, nearer neighbours share their light (also a little cleaner).", paths),
       ray_choice("RayTracedPathSer", &rt_sliders.path_ser, "Path tracing SER (Experimental)", off_on,
                  "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.",
                  [] { return rt_sliders.light_bounce != 0.f || rt_sliders.reflections != 0.f; }),
+      // rt_core's units_range: the skinned characters' compact draws (ray_tracing.hpp's dynamic scene draws) past it out.
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedUnitsRange",
+          .binding = &rt_sliders.units_range,
+          .default_value = 0.f,
+          .label = "Characters Ray Tracing Range (Experimental)",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "Characters farther than this are left out of the ray tracing (their shadows there are a few pixels):\n"
+                     "faster in big battles. 0 m: all characters.",
+          .min = 0.f,
+          .max = 500.f,
+          .format = "%.0f m",
+          .is_enabled = [] { return ray_tracing_installed; },
+          .is_visible = [] { return twattila::dlaa_bridge::HelperInstalled() && AnyRays(); },
+      },
       ray_choice("RayTracingDenoiser", &rt_sliders.denoiser, "Ray tracing denoiser (Experimental)", {"Built-in", "NRD"},
                  "Cleans the ray-traced shadows, AO, Light Bounce and reflections (with an AA mode on, without Ray Reconstruction).\n"
                  "Built-in: the mod's own filters. NRD: NVIDIA's denoisers, steadier, uses more memory."),
@@ -1428,8 +1452,10 @@ void BuildRuntimeData() {
           .parse = [](float value) { return (value == 6.f ? 9.f : value); },
           .is_visible = [] { return twattila::dlaa_bridge::HelperInstalled() && AnyRays(); },
       },
+      // Ryse's parts of rt_core's scene tests (SCENE_TESTS): no draw is marked terrain (its Terrain Only would be empty),
+      // no placed rows (Objects and Trees Only: what is neither terrain nor skinned), no leaves apart from alpha tests.
       ray_choice("RayTracedSceneTest", &rt_sliders.scene_test, "Ray tracing scene (test)",
-                 {"Everything", "Terrain Only", "Objects and Trees Only", "No Leaves", "Nothing Kept Off-Screen"},
+                 {"Everything", "Static Only (no characters)", "No Alpha-Tested", "Nothing Kept Off-Screen"},
                  "While the Debug View is on: one part of the scene alone, to find what breaks an effect.",
                  [] { return ray_tracing_installed && rt_sliders.debug_view != 0.f; }),
       new renodx::utils::settings::Setting{
@@ -1486,90 +1512,91 @@ bool IsHiddenHighlight(reshade::api::command_list* cmd_list) {
          && highlight_shaders.contains(renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader));
 }
 
-// Scaleform's flat shapes (0x1B59F534) while the HUD is hidden (the skull is indexed: OnDrawIndexedUi), the execution
-// highlights while they are.
-bool OnDrawUi(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
-  if (IsHiddenHighlight(cmd_list)) return true;
-  return hud_hidden
-         && renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader) == 0x1B59F534;
-}
-
-// The skull follows its own hotkey, every other flat shape the HUD's.
-bool OnDrawIndexedUi(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t instance_count,
-                     uint32_t first_index, int32_t vertex_offset, uint32_t) {
-  if (IsHiddenHighlight(cmd_list)) return true;
-  const bool skip = (index_count >= execution_skull_min_indices ? execution_skull_hidden.load() : hud_hidden.load());
+// Scaleform's flat shapes (0x1B59F534) while the HUD is hidden (the skull, indexed, by its own hotkey), the execution
+// highlights while they are: left out through command_action's bypass, not a draw event's skip (with the ray tracing on
+// command_action replays every draw for rt_core's capture, past any draw event's skip). Gated on the hotkeys' state.
+constexpr auto OnDrawUi = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  using Arguments = typename Context::ArgumentType;
+  auto* cmd_list = command.cmd_list;
+  if (IsHiddenHighlight(cmd_list)) return {.bypass = true};
+  bool skip = hud_hidden.load();
+  if constexpr (std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    skip = (command.arguments.index_count >= execution_skull_min_indices ? execution_skull_hidden.load() : hud_hidden.load());
+  }
 #ifdef RYSE_UI_DRAW_LOG
-  if (ui_log == nullptr && !skip) return false;
+  if (ui_log == nullptr && !skip) return {};
 #else
-  if (!skip) return false;
+  if (!skip) return {};
 #endif
   if (renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader) != 0x1B59F534) {
-    return false;
+    return {};
   }
 #ifdef RYSE_UI_DRAW_LOG
-  if (ui_log != nullptr) {
-    // b0 of both stages read back (stalls, one frame): VS cCompositeMat (4x4), PS cBitmapColorTransform (multiply,
-    // add) and cPremultiplyAlpha.
-    auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-    ID3D11DeviceContext1* context1 = nullptr;
-    std::array<float, 16> vertex_constants = {};
-    std::array<float, 12> pixel_constants = {};
-    const auto read_constants = [&](bool vertex_stage, std::span<float> values) {
-      ID3D11Buffer* buffer = nullptr;
-      UINT first_constant = 0;
-      UINT constant_count = 0;
-      if (vertex_stage) {
-        context1->VSGetConstantBuffers1(0, 1, &buffer, &first_constant, &constant_count);
-      } else {
-        context1->PSGetConstantBuffers1(0, 1, &buffer, &first_constant, &constant_count);
-      }
-      if (buffer == nullptr) return;
-      D3D11_BUFFER_DESC desc = {};
-      buffer->GetDesc(&desc);
-      ID3D11Device* device = nullptr;
-      buffer->GetDevice(&device);
-      const D3D11_BUFFER_DESC staging_desc = {
-          .ByteWidth = desc.ByteWidth,
-          .Usage = D3D11_USAGE_STAGING,
-          .CPUAccessFlags = D3D11_CPU_ACCESS_READ,
-      };
-      ID3D11Buffer* staging = nullptr;
-      if (SUCCEEDED(device->CreateBuffer(&staging_desc, nullptr, &staging))) {
-        context->CopyResource(staging, buffer);
-        D3D11_MAPPED_SUBRESOURCE mapped = {};
-        const size_t offset = size_t{first_constant} * 16;
-        if (offset < desc.ByteWidth && SUCCEEDED(context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped))) {
-          std::memcpy(values.data(), static_cast<const std::byte*>(mapped.pData) + offset,
-                      std::min(values.size_bytes(), desc.ByteWidth - offset));
-          context->Unmap(staging, 0);
+  if constexpr (std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    if (ui_log != nullptr) {
+      const auto& [index_count, instance_count, first_index, vertex_offset, first_instance] = command.arguments;
+      // b0 of both stages read back (stalls, one frame): VS cCompositeMat (4x4), PS cBitmapColorTransform (multiply,
+      // add) and cPremultiplyAlpha.
+      auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+      ID3D11DeviceContext1* context1 = nullptr;
+      std::array<float, 16> vertex_constants = {};
+      std::array<float, 12> pixel_constants = {};
+      const auto read_constants = [&](bool vertex_stage, std::span<float> values) {
+        ID3D11Buffer* buffer = nullptr;
+        UINT first_constant = 0;
+        UINT constant_count = 0;
+        if (vertex_stage) {
+          context1->VSGetConstantBuffers1(0, 1, &buffer, &first_constant, &constant_count);
+        } else {
+          context1->PSGetConstantBuffers1(0, 1, &buffer, &first_constant, &constant_count);
         }
-        staging->Release();
+        if (buffer == nullptr) return;
+        D3D11_BUFFER_DESC desc = {};
+        buffer->GetDesc(&desc);
+        ID3D11Device* device = nullptr;
+        buffer->GetDevice(&device);
+        const D3D11_BUFFER_DESC staging_desc = {
+            .ByteWidth = desc.ByteWidth,
+            .Usage = D3D11_USAGE_STAGING,
+            .CPUAccessFlags = D3D11_CPU_ACCESS_READ,
+        };
+        ID3D11Buffer* staging = nullptr;
+        if (SUCCEEDED(device->CreateBuffer(&staging_desc, nullptr, &staging))) {
+          context->CopyResource(staging, buffer);
+          D3D11_MAPPED_SUBRESOURCE mapped = {};
+          const size_t offset = size_t{first_constant} * 16;
+          if (offset < desc.ByteWidth && SUCCEEDED(context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped))) {
+            std::memcpy(values.data(), static_cast<const std::byte*>(mapped.pData) + offset,
+                        std::min(values.size_bytes(), desc.ByteWidth - offset));
+            context->Unmap(staging, 0);
+          }
+          staging->Release();
+        }
+        device->Release();
+        buffer->Release();
+      };
+      if (SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(&context1)))) {
+        read_constants(true, vertex_constants);
+        read_constants(false, pixel_constants);
+        context1->Release();
       }
-      device->Release();
-      buffer->Release();
-    };
-    if (SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(&context1)))) {
-      read_constants(true, vertex_constants);
-      read_constants(false, pixel_constants);
-      context1->Release();
+      const auto& m = vertex_constants;
+      const auto& p = pixel_constants;
+      std::fprintf(ui_log,
+                   "%u: indices %u, instances %u, first index %u, base vertex %d | mat %g %g %g %g / %g %g %g %g / "
+                   "%g %g %g %g / %g %g %g %g | mul %g %g %g %g add %g %g %g %g pm %g\n",
+                   logged_ui_draws++, index_count, instance_count, first_index, vertex_offset, m[0], m[1], m[2], m[3],
+                   m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15], p[0], p[1], p[2], p[3],
+                   p[4], p[5], p[6], p[7], p[8]);
     }
-    const auto& m = vertex_constants;
-    const auto& p = pixel_constants;
-    std::fprintf(ui_log,
-                 "%u: indices %u, instances %u, first index %u, base vertex %d | mat %g %g %g %g / %g %g %g %g / "
-                 "%g %g %g %g / %g %g %g %g | mul %g %g %g %g add %g %g %g %g pm %g\n",
-                 logged_ui_draws++, index_count, instance_count, first_index, vertex_offset, m[0], m[1], m[2], m[3],
-                 m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15], p[0], p[1], p[2], p[3],
-                 p[4], p[5], p[6], p[7], p[8]);
   }
 #endif
-  return skip;
-}
+  if (!skip) return {};
+  return {.bypass = true};
+};
 
 // Polled at Present, while the game window is in front.
 std::array<bool, 256> keys_down = {};
-bool ui_draw_events = false;  // OnDrawUi / OnDrawIndexedUi registered (Present thread)
 
 // True at the Present where `key` went down.
 bool KeyWentDown(int key) {
@@ -1581,10 +1608,20 @@ bool KeyWentDown(int key) {
 
 void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  // Time Each Pass's frame (its button).
-  twattila::pass_timing::OnPresent(queue, "ryse");
   // GT-VBAO's noise moves every frame (the game's SSDO blur and TAA / DLSS settle it).
   shader_injection.ssao_frame = static_cast<float>((static_cast<uint32_t>(shader_injection.ssao_frame) + 1u) % 4096u);
+  // The next frame's one AO method (ours replaces the game's; a saved GT-VBAO with a ray-traced one runs the rays alone):
+  // Path-Traced Ambient, else the ray-traced AO (the game's SSDO amount left out once the rays' went into a lighting,
+  // the game's SSDO back after a frame without them), else the row's.
+  if (ray_tracing_installed && PathAmbientWanted()) {
+    shader_injection.ao_method = 3.f;
+  } else if (ray_tracing_installed && rt_sliders.ambient_occlusion != 0.f) {
+    shader_injection.ao_method = (rays_ambient_applied.exchange(false, std::memory_order_relaxed) ? 2.f : 0.f);
+  } else {
+    shader_injection.ao_method = shader_injection.ssao_mode;
+  }
+  // The Light Bounce in place of the game's indirect light (graphics.hpp's r_SSII row) while it runs.
+  rysesonofrome::graphics::own_light_bounce.store(shader_injection.light_bounce > 0.f, std::memory_order_relaxed);
   // What the helper serves this frame (graphics.hpp adds the upscaler and frame generation): the ray tracing, its guides
   // with the reflections or paths, Ray Reconstruction while a ray-traced effect is on.
   const auto back_buffer = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
@@ -1633,8 +1670,10 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
     rays.nrd = rt_sliders.denoiser != 0.f && rysesonofrome::graphics::requested_mode.load() != rysesonofrome::graphics::AAMode::OFF;
     rays.ao_reblur = rt_sliders.ao_reblur != 0.f;
     rays.debug_view = static_cast<uint32_t>(rt_sliders.debug_view);
-    rays.scene_test = ((rt_sliders.debug_view != 0.f) ? static_cast<uint32_t>(rt_sliders.scene_test) : 0u);
+    constexpr std::array<uint32_t, 4> SCENE_TESTS = {0u, 2u, 3u, 4u};  // the row's items as rt_core's scene tests
+    rays.scene_test = ((rt_sliders.debug_view != 0.f) ? SCENE_TESTS[static_cast<size_t>(std::clamp(rt_sliders.scene_test, 0.f, 3.f))] : 0u);
     rays.debug_log = rt_sliders.debug_log != 0.f;
+    rays.units_range = rt_sliders.units_range;
     // Rays a Pixel: Match Output, those of the output pixels a render pixel stands for (at most 8).
     const auto render = rysesonofrome::ray_tracing::HOST.render_size();
     const float scale = (render[0] != 0 && back_buffer.texture.width != 0)
@@ -1688,21 +1727,6 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
   // F5 only: the key above Tab is the game's command key, and F8 is Print on some keyboards.
   if (KeyWentDown(VK_F5)) {
     execution_skull_hidden = !execution_skull_hidden;
-  }
-  // The draw events only while something is hidden (else every draw of the game went through them).
-  bool wanted = hud_hidden || execution_highlights_hidden || execution_skull_hidden;
-#ifdef RYSE_UI_DRAW_LOG
-  wanted = wanted || ui_log != nullptr;
-#endif
-  if (wanted != ui_draw_events) {
-    ui_draw_events = wanted;
-    if (wanted) {
-      reshade::register_event<reshade::addon_event::draw>(OnDrawUi);
-      reshade::register_event<reshade::addon_event::draw_indexed>(OnDrawIndexedUi);
-    } else {
-      reshade::unregister_event<reshade::addon_event::draw>(OnDrawUi);
-      reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexedUi);
-    }
   }
 }
 
@@ -2053,7 +2077,9 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
-                   "and PsychoV35. UC2 Extended by Musa and Jon.",
+                   "and PsychoV35. UC2 Extended by Musa and Jon. Visibility Bitmask ambient occlusion and Light Bounce: the "
+                   "method of Therrien, Levesque and Gilet (2023) on GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by "
+                   "Mirko Salm (2024); auto thickness after Bjorn Ottosson.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -2063,7 +2089,9 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = twattila::credits::DLSS_ADDON,
+          .label = "NVIDIA DLSS's presets: the NGX SDK's header (NVIDIA RTX SDKs license); NVIDIA and DLSS are trademarks "
+                   "and/or registered trademarks of NVIDIA Corporation. Hooks: Microsoft Detours (MIT). Every license ships "
+                   "with the mod.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -2197,7 +2225,7 @@ void ConfigureAddon() {
 bool AttachAddon() {
   if (attached) return true;
   // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
-  twattila::pass_timing::Install();
+  twattila::pass_timing::Install("ryse");
 
   ConfigureAddon();
 
@@ -2231,6 +2259,16 @@ bool AttachAddon() {
       }
     };
   }
+  // The hotkeys' hidden UI draws; on the fast dispatch called only while something is hidden.
+  renodx::utils::command_action::Register(OnDrawUi, {.command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  renodx::utils::command_action::fast::SetGate(OnDrawUi, {.active = [](reshade::api::command_list*) {
+#ifdef RYSE_UI_DRAW_LOG
+                                                  if (ui_log != nullptr) return true;
+#endif
+                                                  return hud_hidden.load(std::memory_order_relaxed)
+                                                         || execution_highlights_hidden.load(std::memory_order_relaxed)
+                                                         || execution_skull_hidden.load(std::memory_order_relaxed);
+                                                }});
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
   // The fast draw dispatch with the resource upgrades' gate (the swap chain mod's view cloning registers them).
@@ -2260,8 +2298,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresentHotkeys);
   reshade::unregister_event<reshade::addon_event::init_pipeline>(OnInitPipelineHighlights);
-  reshade::unregister_event<reshade::addon_event::draw>(OnDrawUi);
-  reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexedUi);
+  renodx::utils::command_action::fast::ClearGate(OnDrawUi);
+  renodx::utils::command_action::Unregister(OnDrawUi);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_swapchain>(back_buffer_fix::OnDestroySwapchain);
   reshade::unregister_event<reshade::addon_event::init_resource>(back_buffer_fix::OnInitResource);

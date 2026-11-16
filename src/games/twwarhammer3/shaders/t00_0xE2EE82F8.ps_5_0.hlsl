@@ -11,6 +11,7 @@
 // HDR 2 (Psycho): Reinhard dropped, scene-linear with SDR's mid grey pinned to 0.18
 //        -> HDR-safe native grade -> PsychoV30.
 // HDR 4 (PsychoV35, Experimental): as HDR 2 with Hue Clip before the grade, then PsychoV35.
+// Every mode ends in the frame's gamma (twattila/frame_gamma.hlsli), Gamma Correction in each.
 // Sliders: SI.bloom, SI.uvdistort.
 
 struct Auto_exposure_output
@@ -172,7 +173,7 @@ float3 ApplyPsychoV31(float3 color)
                                                           : int(SI.v31_gamut_compression_mode));
   const float compression = 1.f + 0.5f * SI.v31_roll_off * SI.v31_roll_off;
   float3 result = renodx::tonemap::psychov::custom_psychotm_test31(
-      color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
+      color, WH3_TONE_MAP_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
       SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,
       SI.v31_dechroma, 0.18f, 0.18f, 0.f, SI.v31_gamut_compression, target_gamut, compression, 1.f, 0.5f, 0.f,
       renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 1.f);
@@ -181,7 +182,7 @@ float3 ApplyPsychoV31(float3 color)
   [branch]
   if (all(result == 0.f) && scene_y > 1e-6f) {
     result = renodx::tonemap::psychov::custom_psychotm_test31(
-        color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
+        color, WH3_TONE_MAP_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
         SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,
         SI.v31_dechroma, 0.18f, 0.18f, 0.f, SI.v31_gamut_compression, target_gamut, compression, 1.f, 0.5f, 0.f,
         renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 0.f);
@@ -211,7 +212,7 @@ float3 ApplyWH3Psycho(float3 color)
   if (HDR >= 3.5f) {
     // PsychoV35 (twattila/psycho35.hlsli; the handoff carries the game's exposure, the Hue Clip Emulation before the
     // grade replaces V31's highlight shifts).
-    return ApplyPsychoV35(color, HDR_PEAK, SI.swap_chain_encoding == 2.f);
+    return ApplyPsychoV35(color, WH3_TONE_MAP_PEAK, SI.swap_chain_encoding == 2.f);
   }
   [branch]
   if (HDR >= 2.5f) {
@@ -294,7 +295,7 @@ float3 ApplyHDR1PeakShoulder(float3 color)
 {
   // Above 1 each channel rolls off to Peak on its own, as SDR clips each channel: bright fire turns yellow / white at
   // its core (as Ryse). (The brightest-channel roll-off kept fire's full orange saturation up to Peak: flat, salmon.)
-  const float headroom = max(HDR_PEAK, 1.0001f) - 1.f;
+  const float headroom = max(WH3_TONE_MAP_PEAK, 1.0001f) - 1.f;
   const float3 over = max(color - 1.f, 0.f);
   return min(color, 1.f)
          + float3(renodx::tonemap::Neutwo(over.r, headroom), renodx::tonemap::Neutwo(over.g, headroom),
@@ -438,10 +439,9 @@ void main(
     o0.xyz = SampleNativeLuts(ApplyColourMatrix(r3.xyz), use_secondary, secondary_strength);
     o0.w = output_alpha;
 
-    // Undo the game's gamma, scene to Paper White, encode for the 2.2 swapchain.
-    o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, SDR_STOCK_GAMMA);
-    o0.xyz *= SDR_PAPER_WHITE;
-    o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
+    // The game's picture at Paper White in the frame's gamma. Gamma Correction on an HDR display (the frame's 2.2): as a 2.2
+    // display shows it, whatever g_gamma_output; on an SDR display (the frame's 2.0): decoded at g_gamma_output.
+    o0.xyz = SdrToFrame(o0.xyz, (TW_FRAME_GAMMA == 2.f) ? g_gamma_output : 2.f, SDR_PAPER_WHITE);
     return;
   }
 
@@ -454,8 +454,11 @@ void main(
     graded_hdr = ApplyWH3Psycho(graded_hdr);
   }
 
-  o0.xyz = graded_hdr * (SI.diffuse_white_nits / SI.graphics_white_nits);
-  o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
+  // In the frame's gamma. Gamma Correction: the game's gamma g_gamma_output picture as a 2.2 display shows it,
+  // x^(2.2 / g_gamma_output) within Peak (2.2: unchanged). HdrToFrame shows a gamma 2.0 encode at 2.2, so it takes
+  // x^(2 / g_gamma_output).
+  o0.xyz = HdrToFrame((TW_FRAME_GAMMA == 2.f) ? graded_hdr : renodx::color::gamma::EncodeSafe(graded_hdr, 0.5f * g_gamma_output),
+                      SI.diffuse_white_nits / SI.graphics_white_nits);
   o0.w = output_alpha;
   return;
 }

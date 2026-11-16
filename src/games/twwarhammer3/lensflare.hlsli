@@ -9,11 +9,9 @@ float4 ScaleLensOverlay(float4 stock_color, float strength)
   // UNORM clamp the FP16 target lost.
   float4 flare = saturate(stock_color);
 
-  // Frame is 2.2-encoded here. Scale in linear, same ratio t00 uses.
-  float3 flare_linear = renodx::color::gamma::DecodeSafe(flare.xyz);
-  flare_linear *= strength
-                * (SI.diffuse_white_nits / SI.graphics_white_nits);
-  flare.xyz = renodx::color::gamma::EncodeSafe(flare_linear);
+  // The game's own add, scaled in linear with the frame's gamma (the swap chain proxy's decode, twattila/frame_gamma.hlsli),
+  // the ratio t00 uses: at strength 1 and Paper White = UI it is the game's.
+  flare.xyz = EncodeFrame(DecodeFrame(flare.xyz) * (strength * (SI.diffuse_white_nits / SI.graphics_white_nits)));
 
   return flare;
 }

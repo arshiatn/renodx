@@ -40,11 +40,13 @@ using renodx::utils::settings::SettingValueType;
 // The RT/PT preset (RAYS_PRESET) and Values: rays_preset.hpp.
 
 // RAYS_PRESET as a game's defaults of what the methods leave (Warhammer III, Pharaoh); the methods themselves (sun
-// shadows, Path-Traced AO, Global Illumination and its strength, reflections) stay off. Before Apply: the page's Reset
-// reads the defaults as it is built.
+// shadows, Path-Traced AO, Global Illumination and its strength, reflections) stay off, and so do the rows that start the
+// rays alone (Fog Shadows, Specular Occlusion: with an upscaler they traced with every method off). Before Apply: the
+// page's Reset reads the defaults as it is built.
 inline void SetRaysPresetDefaults(std::vector<Setting*>* settings) {
-  constexpr std::array<std::string_view, 5> RAY_METHODS = {"RayTracedSunShadows", "RayTracedPathAmbient", "RayTracedLightBounce",
-                                                           "light_bounce_strength", "RayTracedReflections"};
+  constexpr std::array<std::string_view, 7> RAY_METHODS = {"RayTracedSunShadows", "RayTracedPathAmbient", "RayTracedLightBounce",
+                                                           "light_bounce_strength", "RayTracedReflections", "RayTracedFogShadows",
+                                                           "RayTracedSpecularOcclusion"};
   for (Setting* setting : *settings) {
     const auto preset = std::ranges::find(RAYS_PRESET, setting->key, &Values::value_type::first);
     if (preset != RAYS_PRESET.end() && std::ranges::find(RAY_METHODS, setting->key) == RAY_METHODS.end()) {
@@ -110,6 +112,8 @@ struct Texts {
   const char* reflections_middle_label = "FidelityFX SSSR";
   const char* reflections_rays_label = "Ray-Traced (DXR)";
   const char* untraced_casters_tooltip = "Ropes, and objects the game tessellates (its Tessellation on), also cast ray-traced shadows.";
+  const char* units_range_label = "";    // Empty: the row's own (soldiers and horses).
+  const char* units_range_tooltip = "";  // Empty: the row's own.
 };
 
 inline constexpr Texts ATTILA_TEXTS = {
@@ -439,7 +443,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   const auto gi_is = [b](int method) { return [b, method] { return GiMethodOf(b) == method; }; };
   const auto gi_traced = [b] { return GiMethodOf(b) >= GI_RAYS; };
   const auto reflections_are = [b](int method) { return [b, method] { return ReflectionMethodOf(b) == method; }; };
-  // Fog Shadows only where a fog is hooked (SetRaysPresetDefaults can leave the row on where none is).
+  // Fog Shadows only where a fog is hooked (the RT/PT preset can turn the row on where none is).
   const auto ray_traced = [b] {
     return feature_settings::Upscaling(*b.aa)
            && (ShadowMethodOf(b) == SHADOW_RAYS || AoMethodOf(b) >= AO_RAYS || GiMethodOf(b) >= GI_RAYS
@@ -645,11 +649,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .key = "AntiAliasingTextureLodBiasTrilinear",
           .binding = b.lod_bias_trilinear,
           .value_type = SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Texture LOD Bias on All Textures (Experimental)",
+          .default_value = 1.f,
+          .label = "Texture LOD Bias on All Textures",
           .section = section,
-          .tooltip = "Texture LOD Bias also on the textures the game filters without anisotropy.\n"
-                     "Can shimmer.",
+          .tooltip = "Texture LOD Bias also on the textures the game filters without anisotropy (terrain, buildings).\n"
+                     "Off: those stay blurrier while the upscaler renders below 100%.",
           .is_visible = more(&more_aa, below_100_rows),
       });
     }
@@ -1136,7 +1140,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedOffScreenSway", .section = section, .shown = more_rays, .label = "Off-Screen Sway"});
     page.Take({.match = "RayTracedGrassShadowRange", .section = section, .shown = more_rays, .label = "Grass Shadow Range"});
     page.Take({.match = "RayTracedGrassRange", .section = section, .shown = more_rays});
-    page.Take({.match = "RayTracedUnitsRange", .section = section, .shown = more_rays});
+    page.Take({.match = "RayTracedUnitsRange", .section = section, .shown = more_rays, .label = b.texts->units_range_label,
+               .tooltip = b.texts->units_range_tooltip});
     page.Take({.match = "RayTracedBatchedUnits", .section = section, .shown = more_rays});
     page.Add(EmptyLine(section));
   }
@@ -1239,7 +1244,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "GlobalIlluminationGameSky", .section = section, .shown = more_on, .only_some_games = true});
     const auto more_paths = more(&more_gi, gi_is(GI_PATHS));
     page.Take({.match = "RayTracedPathSer", .section = section, .shown = more_paths, .label = "Shader Execution Reordering",
-               .tooltip = (b.has_reflections ? "" : "Shader execution reordering for Path Tracing (DXR 1.2, RTX 40 / 50 series): may be faster.")});
+               .tooltip = (b.has_reflections ? "" : "Shader execution reordering for Path Tracing (DXR 1.2, RTX 40 / 50 series). Slower in every test so far.")});
     page.Take({.match = "RayTracedSharc", .section = section, .shown = more_paths, .label = "SHaRC Radiance Cache"});
     page.Take({.match = "RayTracedReuseLean", .section = section, .shown = more_paths});
     page.Take({.match = "RayTracedReuseNear", .section = section, .shown = more_paths});

@@ -44,6 +44,8 @@
 #include "../twattila/device_loss.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/lighting_settings.hpp"
+#include "../twattila/pass_timing.hpp"
+#include "../twattila/rays_preset.hpp"
 #include "../twattila/settings_pages.hpp"
 #include "../twattila/texture_lod_bias.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
@@ -205,7 +207,7 @@ struct AaSliders {
   float frame_preset = 0.f;      // the driver's, A, B, C
   float frame_debug_view = 0.f;  // off, the HUD-less image, the UI layer
   float texture_lod_bias = 2.f;  // below 100%: off, matched, sharper (NVIDIA's), sharpest
-  float lod_bias_trilinear = 0.f;  // twattila/texture_lod_bias.hpp SetWrappingTrilinear
+  float lod_bias_trilinear = 1.f;  // twattila/texture_lod_bias.hpp SetWrappingTrilinear
   float debug_view = 0.f;        // UpscalingDebugView: 1 the motion the helper's upscaler gets
   float jitter = 1.f;            // the camera jitter the game leaves off with its DLSS
   float object_motion = 1.f;     // ships', sails', ropes' and water's motion vectors (object_velocity.hpp)
@@ -297,6 +299,7 @@ struct RaySliders {
   float far_tree_shadows = 0.f;
   float units_out_of_view = 0.f;
   float untraced_casters = 0.f;
+  float replace_maps = 0.f;
   float sheets_unselfed = 0.f;
   float smoke_shadows = 0.f;
   float smoke_quality = 1.f;  // Low to Maximum
@@ -329,10 +332,11 @@ struct RaySliders {
   float path_tracing = 0.f;
   float path_bounces = 2.f;
   float sharc = 0.f;
-  float reuse_lean = 0.f;
+  float reuse_lean = 1.f;
   float reuse_near = 1.f;
   float lights_in_bounce = 0.f;
   float light_ratio = 0.f;
+  float light_ratio_follow = 0.f;
   float path_ambient = 0.f;
   float path_sky_apart = 0.f;
   float path_kept_cube = 0.f;
@@ -370,6 +374,7 @@ twattila::rt_scene::Settings RaySettings() {
   // (rays from pixels farther than it pass the grass), both the helper's.
   rays.sheets_unselfed = on(rows.sheets_unselfed);
   twshogun2::ray_tracing::untraced_casters.store(on(rows.untraced_casters), std::memory_order_relaxed);
+  twshogun2::ray_tracing::sun_replaces_maps.store(rays.sun_shadows && on(rows.replace_maps), std::memory_order_relaxed);
   rays.grass_shadow_range = std::clamp(rows.grass_shadow_range, 0.f, 200.f);
   rays.ambient_occlusion = on(rows.ambient_occlusion);
   rays.ambient_range = std::clamp(rows.ambient_range, 0.25f, 5.f);
@@ -423,6 +428,8 @@ twattila::rt_scene::Settings RaySettings() {
   // Torch and Fire Light / Shadows from Path Tracing (Attila's keys; rt_core.hpp Settings::lights_in_bounce, light_ratio).
   rays.lights_in_bounce = on(rows.lights_in_bounce);
   rays.light_ratio = on(rows.light_ratio);
+  // Torch Shadows Follow the Camera (Attila's key; rt_core's RT_PATH_RATIO_FOLLOW, with the shadows from path tracing).
+  rays.light_ratio_follow = on(rows.light_ratio_follow);
   rays.path_ser = on(rows.path_ser);
   rays.micromaps = on(rows.micromaps);
   rays.gpu_micromaps = on(rows.gpu_micromaps);
@@ -612,51 +619,20 @@ const Values GI_DEFAULTS = {
 };
 const std::string RAYS_SECTION = "Ray Tracing (Experimental, restart after turning on)";
 constexpr uint32_t RAYS_TINT = 0x6BE0D8;
-// The Ray Tracing presets (twattila/graphics_page.hpp's, in this section's keys): RT/PT writes RAYS_RESET, then
-// RAYS_PRESET; No RT/PT RAYS_OFF; Reset both.
+// The Ray Tracing presets: RT/PT writes RAYS_RESET, then the one list every game's RT/PT writes
+// (twattila/rays_preset.hpp; the keys this section lacks are skipped), then RAYS_OWN_KEYS; No RT/PT RAYS_OFF; Reset both.
 const Values RAYS_OFF = {
     {"RayTracedSunShadows", 0.f}, {"RayTracedAmbientOcclusion", 0.f}, {"RayTracedLocalLights", 0.f},
     {"RayTracedReflections", 0.f}, {"RayTracedLightBounce", 0.f}, {"PathTracing", 0.f},
     {"RayTracedFogShadows", 0.f}, {"RayTracedPathAmbient", 0.f}, {"RayTracedSpecularOcclusion", 0.f},
 };
-const Values RAYS_PRESET = {
-    {"RayTracedSunShadows", 1.f},
-    {"RayTracedShadowSoftness", 0.8f},
-    {"RayTracedLeafLight", 1.f},
-    {"RayTracedColouredShadows", 1.f},
-    {"RayTracedSpriteShadows", 1.f},
-    {"RayTracedFarTreeShadows", 1.f},
-    {"RayTracedUnitsOutOfView", 1.f},
-    {"RayTracedSheetsUnselfed", 1.f},
-    {"RayTracedAmbientOcclusion", 1.f},
-    {"RayTracedLocalLights", 1.f},
-    {"RayTracedLightSoftness", 0.25f},
-    {"RayTracedLightImportance", 1.f},
-    {"RayTracingDenoiser", 1.f},
-    {"RayTracedLightBounce", 1.f},
-    {"PathTracing", 1.f},
-    {"RayTracedLightBounceRays", 1.f},
-    {"RayTracedLightBounceResolution", 0.f},
-    {"RayTracedLightBounceRange", 50.f},
-    {"PathTracingBounces", 1.f},
-    {"RayTracedPathAmbient", 1.f},
-    {"RayTracedPathSkyApart", 1.f},
-    {"RayTracedPathKeptCube", 1.f},
-    {"RayTracedReflections", 1.f},
-    {"RayTracedReflectionSamples", 1.f},
-    {"RayTracedReflectionReuse", 2.f},
-    {"RayTracedWaterReflections", 1.f},
-    {"RayTracedWaterSteady", 1.f},
-    {"RayTracedWaterSoft", 1.f},
-    {"RayTracedSpecularOcclusion", 1.f},
-    {"RayTracedFogShadows", 1.f},
-    {"RayTracedLeafMicromaps", 1.f},
-    // Attila's RT/PT values for this game's own rows (ATN: RT/PT as Attila's; still Experimental, off by default).
-    {"RayTracedLightGlow", 1.f},
-    {"RayTracedSmokeShadows", 1.f},
-    {"RayTracedSmokeQuality", 3.f},
-    {"WaterClarity", 1.f},
-    {"WaterCaustics", 1.f},
+// The list's methods in this section's keys (as Ryse's): the Light Bounce on and traced (one row here, Attila's 2 the
+// paths), path tracing its own row, the Global Illumination's strength LightBounceStrength; and this game's own rows:
+// ray-traced AO (OnPresent turns it off while Path-Traced AO runs: the campaign keeps it), point light shadows (Attila's
+// come with its torch rows), shadow casters out of view and leaf micromaps.
+const Values RAYS_OWN_KEYS = {
+    {"RayTracedLightBounce", 1.f},      {"PathTracing", 1.f},          {"LightBounceStrength", 1.f},     {"RayTracedAmbientOcclusion", 1.f},
+    {"RayTracedLocalLights", 1.f},      {"RayTracedUnitsOutOfView", 1.f}, {"RayTracedLeafMicromaps", 1.f},
 };
 const Values RAYS_RESET = {
     {"RayTracedShadowSoftness", 0.5f},
@@ -666,6 +642,7 @@ const Values RAYS_RESET = {
     {"RayTracedFarTreeShadows", 0.f},
     {"RayTracedUnitsOutOfView", 0.f},
     {"RayTracedUntracedCasters", 0.f},
+    {"RayTracedReplaceShadowMaps", 0.f},
     {"RayTracedSheetsUnselfed", 0.f},
     {"RayTracedGrassShadowRange", 0.f},
     {"RayTracedAoReblur", 0.f},
@@ -691,10 +668,11 @@ const Values RAYS_RESET = {
     {"RayTracedLightBounceResolution", 1.f},
     {"PathTracingBounces", 2.f},
     {"RayTracedSharc", 0.f},
-    {"RayTracedReuseLean", 0.f},
+    {"RayTracedReuseLean", 1.f},
     {"RayTracedReuseNear", 1.f},
     {"RayTracedLightsInBounce", 0.f},
     {"RayTracedLightShadowRatio", 0.f},
+    {"RayTracedLightRatioFollow", 0.f},
     {"RayTracedPathSkyApart", 0.f},
     {"RayTracedPathKeptCube", 0.f},
     {"RayTracedPathSer", 0.f},
@@ -833,6 +811,7 @@ void BuildRuntimeData() {
     if (ray_tracing_installed) {
       twattila::rt_scene::BindReflections(cmd_list, true, true);
       twshogun2::ray_tracing::BindWaterMask(cmd_list, true, true);
+      twshogun2::ray_tracing::BindResolveAmbient(cmd_list, true);
     }
     return true;
   };
@@ -840,6 +819,7 @@ void BuildRuntimeData() {
     if (!ray_tracing_installed) return;
     twattila::rt_scene::BindReflections(cmd_list, true, false);
     twshogun2::ray_tracing::BindWaterMask(cmd_list, true, false);
+    twshogun2::ray_tracing::BindResolveAmbient(cmd_list, false);
     twshogun2::ray_tracing::KeepColor(cmd_list);
   };
   // Ray-Traced Water Reflections (ray_tracing.hpp OnSeaDraw): the sea's plane, the rays' reflections for shaders/ocean00-03.
@@ -1666,9 +1646,10 @@ void BuildRuntimeData() {
       choice("FrameGenerationDebugView", &aa_sliders.frame_debug_view, 0.f, "Frame generation debug view", aa_section,
              "What frame generation gets, shown while this menu is closed: the picture without the HUD, or the HUD in magenta.",
              {"Off", "HUD-less image", "UI layer"}, {}, generation_rows),
+      // On NVIDIA's GPUs only (OnPresent reads the vendor first), the limit also with XeSS's frame generation (Xe Low Latency).
       choice("Reflex", &aa_sliders.reflex, 0.f, "NVIDIA Reflex", aa_section,
              "Less input lag on NVIDIA GPUs: each frame starts only as the GPU needs it. Always on with frame generation.",
-             {"Off", "On", "On + Boost"}),
+             {"Off", "On", "On + Boost"}, {}, [] { return twattila::dlaa_bridge::OnNvidia(); }),
       new Setting{
           .key = "FrameGenerationFrameLimit",
           .binding = &aa_sliders.frame_limit,
@@ -1676,18 +1657,25 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .label = "Frame rate limit",
           .section = aa_section,
-          .tooltip = "Caps the rendered frame rate with Reflex (frame generation multiplies it). 0: off.",
+          .tooltip = "Caps the rendered frame rate with NVIDIA Reflex or Xe Low Latency (frame generation multiplies it). A\n"
+                     "cap the game always reaches keeps the frame rate steady: less VRR flicker on OLED displays.\n"
+                     "Needs Reflex or frame generation on. 0: off.",
           .min = 0.f,
           .max = 240.f,
           .format = "%d fps",
+          .is_enabled = [] { return aa_sliders.reflex != 0.f || (HelperUpscaling() && aa_sliders.frame_generation != 0.f); },
+          .is_visible = [] {
+            return twattila::dlaa_bridge::OnNvidia() || twattila::dlaa_bridge::FrameGenerationBackend() == twattila::dlaa_bridge::FG_BACKEND_XESS;
+          },
       },
       choice("TextureLodBias", &aa_sliders.texture_lod_bias, 2.f, "Texture LOD bias", aa_section,
              "Texture sharpness below 100%. Matched: as at your resolution; Sharper / Sharpest: more.",
              {"Off (the game's own)", "Matched (as sharp as at your resolution)", "Sharper (one step sharper; NVIDIA's recommendation)",
               "Sharpest (two steps sharper; can shimmer)"}),
       // Attila's key (twattila/texture_lod_bias.hpp SetWrappingTrilinear: the samplers filtered without anisotropy too).
-      toggle("AntiAliasingTextureLodBiasTrilinear", &aa_sliders.lod_bias_trilinear, 0.f, "Texture LOD bias on all textures (Experimental)",
-             aa_section, "Texture LOD bias also on the textures the game filters without anisotropy. Can shimmer.", {},
+      toggle("AntiAliasingTextureLodBiasTrilinear", &aa_sliders.lod_bias_trilinear, 1.f, "Texture LOD bias on all textures",
+             aa_section, "Texture LOD bias also on the textures the game filters without anisotropy (terrain, buildings).\n"
+             "Off: those stay blurrier while the upscaler renders below 100%.", {},
              [] { return aa_sliders.dlss_mode != 0.f && aa_sliders.texture_lod_bias != 0.f; }),
       new Setting{
           .value_type = SettingValueType::CUSTOM,
@@ -1739,6 +1727,14 @@ void BuildRuntimeData() {
           .label = "Trace one frame (shogun2_frame_trace.txt next to the exe)",
           .section = aa_section,
           .on_change = [] { twshogun2::frame_trace::Request(); },
+          .is_visible = [] { return more_aa; },
+      },
+      new Setting{
+          .value_type = SettingValueType::BUTTON,
+          .label = "Time Each Pass (One Frame)",
+          .section = aa_section,
+          .tooltip = "The GPU's time of every pass of the next frame into shogun2_pass_timing.txt next to the game's exe.",
+          .on_change = [] { twattila::pass_timing::Request(); },
           .is_visible = [] { return more_aa; },
       },
       new Setting{
@@ -2119,8 +2115,8 @@ void BuildRuntimeData() {
                  "(restart the game). Turns the Global Illumination on, and Ray Reconstruction where DLSS runs without it.",
                  [] {
                    renodx::utils::settings::UpdateSettings(RAYS_RESET);
-                   renodx::utils::settings::UpdateSettings(RAYS_PRESET);
-                   renodx::utils::settings::UpdateSettings({{"LightBounceStrength", 1.f}});
+                   renodx::utils::settings::UpdateSettings(twattila::graphics_page::RAYS_PRESET);
+                   renodx::utils::settings::UpdateSettings(RAYS_OWN_KEYS);
                    // Without Ray Reconstruction the rays have only the built-in denoisers (Attila's preset: F).
                    if (aa_sliders.method == 5.f && aa_sliders.ray_reconstruction == 0.f) {
                      renodx::utils::settings::UpdateSettings({{"AntiAliasingRayReconstruction", 4.f}});
@@ -2150,6 +2146,10 @@ void BuildRuntimeData() {
                  sun),
       ray_choice("RayTracedUntracedCasters", &rt_sliders.untraced_casters, 0.f, "Rarer objects in the rays (Experimental)", off_on,
                  "Objects and near ground the game tessellates (its Tessellation on) also cast ray-traced shadows.", sun),
+      ray_choice("RayTracedReplaceShadowMaps", &rt_sliders.replace_maps, 0.f, "Rays replace shadow maps (Experimental)", off_on,
+                 "The sun's shadows from the rays alone, without the game's shadow maps and screen-space shadows.\n"
+                 "Far soldiers and far trees need their shadow rows on; grass casts no contact shadows.",
+                 sun),
       ray_choice("RayTracedSheetsUnselfed", &rt_sliders.sheets_unselfed, 0.f, "Smooth banner shadows (Experimental)", off_on,
                  "Banners, sails and other cloth don't shade themselves: no blocky triangles on them. Shadows of other things stay.", sun),
       ray_choice("RayTracedSmokeShadows", &rt_sliders.smoke_shadows, 0.f, "Ray-traced smoke shadows (Experimental)", off_on,
@@ -2163,8 +2163,8 @@ void BuildRuntimeData() {
       ray_amount("RayTracedGrassShadowRange", &rt_sliders.grass_shadow_range, 0.f, "Grass shadow range (Experimental)", 0.f, 200.f, "%.0f m",
                  "Past this distance grass casts no ray-traced shadows (on itself or the ground): faster over fields. 0 m: everywhere.", sun),
       ray_toggle("RayTracedAmbientOcclusion", &rt_sliders.ambient_occlusion, "Ray-traced ambient occlusion",
-                 "Shade in corners and under things from rays, with the game's (the darker).\n"
-                 "Faster: the game's SSAO off, the rays then alone."),
+                 "Shade in corners and under things from rays, in place of the game's ambient occlusion and GT-VBAO.\n"
+                 "Faster: the game's SSAO off in its options."),
       ray_amount("RayTracedAmbientRange", &rt_sliders.ambient_range, 2.f, "Ray-traced AO range", 0.25f, 5.f, "%.2f m",
                  "How far its rays look for what shades a point.", ambient),
       ray_count("RayTracedAORays", &rt_sliders.ambient_rays, 2.f, 8.f, "Ray-traced AO rays", "More rays: less noise. Heavier.", ambient),
@@ -2209,7 +2209,7 @@ void BuildRuntimeData() {
                  "Own ReSTIR: their own samples, reused over frames and between neighbours.",
                  reflections),
       ray_choice("RayTracedWaterReflections", &rt_sliders.water_reflections, 0.f, "Ray-traced water reflections (Experimental)", off_on,
-                 "The sea, rivers and lakes reflect ships, shores and units with rays (water quality High or Ultra).", reflections),
+                 "The sea, rivers and lakes reflect ships, shores and units with rays.", reflections),
       ray_choice("RayTracedWaterSteady", &rt_sliders.water_steady, 0.f, "Steadier water reflections (Experimental)", off_on,
                  "Fewer flickering dots in calm water's reflections: each pixel stays within what the water around it shows.", water),
       ray_choice("RayTracedWaterSoft", &rt_sliders.water_soft, 0.f, "Softer water reflections (Experimental)", off_on,
@@ -2234,7 +2234,7 @@ void BuildRuntimeData() {
                 "Bounces past the first where the camera sees nothing. 1: faster, a little darker.", paths),
       ray_choice("RayTracedSharc", &rt_sliders.sharc, 0.f, "SHaRC radiance cache (Experimental)", off_on,
                  "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).", paths),
-      ray_choice("RayTracedReuseLean", &rt_sliders.reuse_lean, 0.f, "Lean ReSTIR reuse (Experimental)", off_on,
+      ray_choice("RayTracedReuseLean", &rt_sliders.reuse_lean, 1.f, "Lean ReSTIR reuse", off_on,
                  "A faster ReSTIR GI for path tracing: the same look in tests.", paths),
       ray_choice("RayTracedReuseNear", &rt_sliders.reuse_near, 1.f, "Near ReSTIR reuse", off_on,
                  "A faster ReSTIR GI for path tracing: fewer, nearer neighbours share their light (also a little cleaner).", paths),
@@ -2247,6 +2247,10 @@ void BuildRuntimeData() {
                  "The torches' and fires' own light, their shadows from the path-traced Global Illumination instead of their own\n"
                  "rays: faster with many fires. Softer shadows that follow moving units a little later; 32 fires at most.",
                  [paths] { return paths() && rt_sliders.local_lights != 0.f; }),
+      ray_choice("RayTracedLightRatioFollow", &rt_sliders.light_ratio_follow, 0.f, "Torch shadows follow the camera (Experimental)", off_on,
+                 "Those torch and fire shadows trail less behind a moving camera. Best at Half resolution and with\n"
+                 "Ray Reconstruction; at Full resolution without it a little noisier.",
+                 [paths] { return paths() && rt_sliders.local_lights != 0.f; }, [] { return rt_sliders.light_ratio != 0.f; }),
       ray_choice("RayTracedPathAmbient", &rt_sliders.path_ambient, 0.f, "Path-traced AO (Experimental)", off_on,
                  "The paths bring the sky's light in place of the game's ambient: shade wherever the sky can't reach.\n"
                  "In battles, in place of ray-traced AO (the campaign map keeps it). Needs Ray-traced Global Illumination.",
@@ -2258,7 +2262,8 @@ void BuildRuntimeData() {
                  "Light bouncing off walls and ground follows the game's sky, not the view Path-traced AO started in.",
                  [paths] { return paths() && rt_sliders.path_ambient != 0.f; }),
       ray_choice("RayTracedPathSer", &rt_sliders.path_ser, 0.f, "Path tracing SER (Experimental)", off_on,
-                 "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.",
+                 "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series).\n"
+                 "Slower in every test so far: for tests only.",
                  paths_enabled),
       // With a ray-traced effect on.
       ray_choice("RayTracingDenoiser", &rt_sliders.denoiser, 0.f, "Ray tracing denoiser (Experimental)", {"Built-in", "NRD"},
@@ -2364,13 +2369,22 @@ void ApplyGameRows() {
   twshogun2::shadow_resolution::Set(scale_of(SHADOW_MAP_SIZES, graphics_rows.shadow_map_resolution));
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  // Before any setting is read this frame: the helper's DLSS never starts on another vendor's GPU, a saved one or a
+  // preset's is its XeSS on Intel's, else its FSR (Attila's; HelperUpscaler's slider places 2 and 3, parsed to 6 and 7).
+  // The game's DLSS (0) stays: the game runs it or not itself.
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"HelperUpscaler", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 3.f : 2.f)}});
+  }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  // GT-VBAO not under the rays' AO (one AO method, as Attila's rt_ambient_alone: the sun draws read the rays' AO in place of
-  // the game's, rt_sun.hlsli RtInPlace). Its Temporal Smoothing (its noise moving each frame) and Denoiser
-  // (twattila/ao_filter.hpp), as Warhammer II's.
-  bitmask_ao = shader_injection.ssao_mode >= 1.f && rt_sliders.ambient_occlusion == 0.f;
+  // GT-VBAO not under the rays' AO or Path-Traced AO, where they run (one AO method, as Attila's rt_ambient_alone: the sun
+  // draws read the rays' AO in place of the game's, rt_sun.hlsli RtInPlace; the paths' blocked rays are the occlusion of
+  // the ambient they replace). The game's own AO stays the fallback while nothing is traced. Its Temporal Smoothing (its
+  // noise moving each frame) and Denoiser (twattila/ao_filter.hpp), as Warhammer II's.
+  auto rays = RaySettings();
+  bitmask_ao = shader_injection.ssao_mode >= 1.f && !(ray_tracing_installed && (rays.ambient_occlusion || rays.path_ambient));
   const bool ao_temporal = bitmask_ao && ao_filter_rows.temporal != 0.f;
   const bool ao_denoise = bitmask_ao && ao_filter_rows.denoise != 0.f;
   static uint32_t ao_frame = 0;
@@ -2406,7 +2420,6 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::reflex::Update(swapchain, reflex, frame_limit);
   const uint32_t upscaler = HelperUpscaling() ? std::min(static_cast<uint32_t>(aa_sliders.method), 7u) - 4u : 0u;
   helper_evaluates.store(upscaler != 0 || frame_generation != 0, std::memory_order_relaxed);
-  auto rays = RaySettings();
   const bool any_rays = ray_tracing_installed
                         && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.local_lights
                             || rays.fog_shadows || rays.specular_occlusion);
@@ -2637,7 +2650,9 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31\n"
-                   "and PsychoV35.\n"
+                   "and PsychoV35. UE Extended by Marat. Visibility Bitmask ambient occlusion and Light Bounce: the method of\n"
+                   "Therrien, Levesque and Gilet (2023) on GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm\n"
+                   "(2024); auto thickness after Bjorn Ottosson.\n"
                    "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0\n"
                    "(APACHE_LICENSE-2.0.txt).",
           .section = "About",
@@ -2737,6 +2752,8 @@ namespace {
 
 bool AttachAddon() {
   if (attached) return true;
+  // Its draw and dispatch events before any other of the add-on's (pass_timing.hpp: their run order is registration order).
+  twattila::pass_timing::Install("shogun2");
 
   ConfigureAddon();
 
@@ -2946,6 +2963,7 @@ void DetachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
+  twattila::pass_timing::Uninstall();
 
   attached = false;
 }

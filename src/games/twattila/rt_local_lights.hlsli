@@ -37,11 +37,14 @@ float3 RtLocalLightAt(float3 world) {
 // frames old (a carried torch moves; within 1 cm only, its shadow went).
 static const float RT_LIGHT_MATCH_DISTANCE = 0.25f;
 
-// The light at `light_position`'s share reaching a render pixel: 0 blocked, 1 reached (or not traced).
-float RtLocalLightVisibility(int2 render_pixel, float3 light_position) {
+// Whether the rays trace the light at `light_position` at a render pixel (nothing bound: no), and then its share reaching
+// it (`visibility`: 0 blocked, 1 reached; 1 when not traced). A light pass whose draws hold lights the rays may not trace
+// keeps the game's shadow map for those, per pixel, by it.
+bool RtLocalLightTraced(int2 render_pixel, float3 light_position, out float visibility) {
+  visibility = 1.f;
   uint width, height;
   t_rt_light_mask.GetDimensions(width, height);
-  if (width == 0u) return 1.f;
+  if (width == 0u) return false;
   const uint count = min(rt_light_count.x, 128u);
   const uint tile_row = rt_light_count.z;
   const int2 tile = render_pixel >> 3;
@@ -61,11 +64,19 @@ float RtLocalLightVisibility(int2 render_pixel, float3 light_position) {
       nearest = slot;
     }
   }
-  if (nearest >= 32u) return 1.f;
+  if (nearest >= 32u) return false;
   const uint pixel_word = t_rt_light_mask.Load(int3(render_pixel, 0));
   // b9's w 1 (Torch and Fire Shadows from the Light Bounce, bridge RT_LIGHT_RATIO): the word is the pixel's shadow ratio
   // (a float, the same for all its lights), else its bits.
-  return (rt_light_count.w != 0u) ? saturate(asfloat(pixel_word)) : (float)((pixel_word >> nearest) & 1u);
+  visibility = (rt_light_count.w != 0u) ? saturate(asfloat(pixel_word)) : (float)((pixel_word >> nearest) & 1u);
+  return true;
+}
+
+// The light at `light_position`'s share reaching a render pixel: 0 blocked, 1 reached (or not traced).
+float RtLocalLightVisibility(int2 render_pixel, float3 light_position) {
+  float visibility;
+  RtLocalLightTraced(render_pixel, light_position, visibility);
+  return visibility;
 }
 
 #endif  // SRC_GAMES_TWATTILA_RT_LOCAL_LIGHTS_HLSLI_
