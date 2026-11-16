@@ -363,7 +363,11 @@ void ChooseUpscaler() {
   if (renodx::utils::device_proxy::proxy_device_reshade == nullptr) return;
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native()));
   auto& bridge = ruse::bridge::state;
-  if (!bridge.enabled || bridge.upscaler != twattila::dlaa_bridge::UPSCALER_DLSS || twattila::dlaa_bridge::OnNvidia()) return;
+  // An unknown vendor (no DXGI adapter read) is not NVIDIA's (OnNvidia) but changes no saved choice.
+  if (!bridge.enabled || bridge.upscaler != twattila::dlaa_bridge::UPSCALER_DLSS || twattila::dlaa_bridge::gpu_vendor == 0
+      || twattila::dlaa_bridge::OnNvidia()) {
+    return;
+  }
   const float choice = VendorAntiAliasing();
   bridge.upscaler = (choice == 3.f) ? twattila::dlaa_bridge::UPSCALER_XESS : twattila::dlaa_bridge::UPSCALER_FSR;
   renodx::utils::settings::UpdateSetting("RuseAntiAliasing", choice);
