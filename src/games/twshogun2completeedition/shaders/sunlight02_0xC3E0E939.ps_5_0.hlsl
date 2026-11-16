@@ -187,7 +187,7 @@ void main(
   r0.zw = min(r3.xw, r0.zw);
   r4.xy = (uint2)r0.zw;
   r4.zw = float2(0,0);
-  r0.z = RtDarker(t_rt_sun, r4.xy, t_shadow.Load(r4.xyz).x);
+  r0.z = RtSunVisibility(r4.xy, t_shadow.Load(r4.xyz).x);
   sun_tinted = RtSunColour(sun_colour.xyz, r4.xy);
   r0.z = max(g_Shadow_low_clamp, r0.z);
   r0.z = min(1, r0.z);
