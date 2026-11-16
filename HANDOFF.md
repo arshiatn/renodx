@@ -183,7 +183,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 17-ROW CHECK (ATN 06:xx: the first audits ran before the 17 Attila rows were in ... | coordinator
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
 - Ryse ray costs (RT shadows +1.0 ms, PT +2.7 ms at 4K DLSS Quality): Nsight work ... | a later GPU round
-- Tales Bend / GT-VBGI look shots: rerun tales\g1g2 un.ps1 -Bend with a mouse clic ... | coordinator
+- RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan ... | ATN (go-ahead), then a Ryse round
+- Tales Bend / GT-VBGI look shots: rerun tales\g1g2\run.ps1 -Bend with a mouse cli ... | coordinator
 - REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cos ... | coordinator, Ryse fix agent
 - RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
 - Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, G ... | rao_, then the next replace round
@@ -1524,7 +1525,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: SHARED STEP agent (after rao_)
       - [ ] Ryse ray costs (RT shadows +1.0 ms, PT +2.7 ms at 4K DLSS Quality): Nsight work in the next days / weeks (ATN
         06:xx). Owner: a later GPU round
-      - [ ] Tales Bend / GT-VBGI look shots: rerun tales\g1g2un.ps1 -Bend with a mouse click on the title (ATN allows it)
+      - [ ] RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan per row, each replaces the
+        game's method): (1) ray shadows for the hair's blended strands: a second small mask from the strands' own depth
+        (the hair's solid first pass already reads the ray mask); RTX Character Rendering's LSS strands need strand curves
+        the game doesn't have (its hair is textured cards), so trace the cards as alpha-tested triangles; (2) ray fog shadows
+        replacing the fog volumes' map march (ps 0x91A72BC2), Attila's Fog Shadows port, then a path-traced fog step (sun
+        shafts + torch light in the fog through the PT light list); no standalone NVIDIA volumetrics SDK found, RTX Remix /
+        NvRTX have it built in; (3) ray shadows for torches / fires replacing the 16384 light atlas (Attila's TW point light
+        shadows); (4) RT skin subsurface (RTX Character Rendering's Burley + single scattering) replacing the game's skin
+        SSS; (5) smoke / particles lit and shadowed by the rays (Attila's smoke shadows, particle light). With (1) + (2) the
+        shadow-map skip All loses nothing near you. Licence: NVIDIA RTX SDK terms. Owner: ATN (go-ahead), then a Ryse round
+      - [ ] Tales Bend / GT-VBGI look shots: rerun tales\g1g2\run.ps1 -Bend with a mouse click on the title (ATN allows it)
         after the fix round's install. Owner: coordinator
       - [ ] REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cost_050544 + run_r2pt_053054
         (r2_cost.ps1: keyboard Continue, PresentMon + nvidia-smi + pass copy per state, light_bounce=1). Skip 1 / 2 removed
