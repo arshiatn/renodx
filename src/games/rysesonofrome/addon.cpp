@@ -246,6 +246,7 @@ struct RtSliders {
   float reflection_reuse = 0.f;         // 0 off, 1 from ReSTIR GI (with path tracing), 2 Own ReSTIR
   float ao_reblur = 0.f;                // AO under Ray Reconstruction: 0 Light History, 1 REBLUR
   float debug_view = 0.f;               // rt_core's Debug View value (the row's parse)
+  float units_range = 0.f;              // Characters Ray Tracing Range: metres (0: every character in the scene)
   float scene_test = 0.f;
 } rt_sliders;
 bool ray_tracing_installed = false;
@@ -306,6 +307,7 @@ const PresetValues RAYS_RESET = {
     {"RayTracedAoReblur", 0.f},
     {"RayTracedDebugView", 0.f},
     {"RayTracedSceneTest", 0.f},
+    {"RayTracedUnitsRange", 0.f},
 };
 
 void BuildRuntimeData() {
@@ -1395,6 +1397,21 @@ void BuildRuntimeData() {
       ray_choice("RayTracedPathSer", &rt_sliders.path_ser, "Path tracing SER (Experimental)", off_on,
                  "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.",
                  [] { return rt_sliders.light_bounce != 0.f || rt_sliders.reflections != 0.f; }),
+      // rt_core's units_range: the skinned characters' compact draws (ray_tracing.hpp's dynamic scene draws) past it out.
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedUnitsRange",
+          .binding = &rt_sliders.units_range,
+          .default_value = 0.f,
+          .label = "Characters Ray Tracing Range (Experimental)",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "Characters farther than this are left out of the ray tracing (their shadows there are a few pixels):\n"
+                     "faster in big battles. 0 m: all characters.",
+          .min = 0.f,
+          .max = 500.f,
+          .format = "%.0f m",
+          .is_enabled = [] { return ray_tracing_installed; },
+          .is_visible = [] { return twattila::dlaa_bridge::HelperInstalled() && AnyRays(); },
+      },
       ray_choice("RayTracingDenoiser", &rt_sliders.denoiser, "Ray tracing denoiser (Experimental)", {"Built-in", "NRD"},
                  "Cleans the ray-traced shadows, AO, Light Bounce and reflections (with an AA mode on, without Ray Reconstruction).\n"
                  "Built-in: the mod's own filters. NRD: NVIDIA's denoisers, steadier, uses more memory."),
@@ -1655,6 +1672,7 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
     rays.debug_view = static_cast<uint32_t>(rt_sliders.debug_view);
     rays.scene_test = ((rt_sliders.debug_view != 0.f) ? static_cast<uint32_t>(rt_sliders.scene_test) : 0u);
     rays.debug_log = rt_sliders.debug_log != 0.f;
+    rays.units_range = rt_sliders.units_range;
     // Rays a Pixel: Match Output, those of the output pixels a render pixel stands for (at most 8).
     const auto render = rysesonofrome::ray_tracing::HOST.render_size();
     const float scale = (render[0] != 0 && back_buffer.texture.width != 0)
