@@ -5,9 +5,55 @@
 
 #pragma once
 
+#include <format>
+#include <string>
+#include <utility>
+
 // About's lines for third-party work shared by several add-ons (their own lines stay in each add-on), and the red line
 // every HDR add-on shows when it runs alone (no renodx-tw-dlaa64.exe next to it).
 namespace twattila::credits {
+
+// What a game ships of the methods several add-ons share (Methods' line names only those).
+struct Shipped {
+  bool psycho_v30 = true;       // PsychoV30 (else the line names PsychoV31 and PsychoV35 alone)
+  bool gtvbao = false;          // Visibility Bitmask ambient occlusion
+  bool gtvbgi = false;          // Visibility Bitmask Light Bounce
+  bool auto_thickness = false;  // their Auto Thickness rows
+  bool ue_extended = false;     // UE Filmic Extended
+  bool bend = false;            // Bend screen-space shadows
+  bool smaa = false;
+  bool cmaa2 = false;
+  bool sssr = false;     // the reflections' FidelityFX SSSR ray march
+  bool detours = false;  // hooks through Microsoft Detours
+};
+
+// About's line of those methods, with their authors and licences (Attila's texts; a game's own lines follow it).
+inline std::string Methods(const Shipped& shipped) {
+  std::string text = std::format("RenoDX, {}PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
+                                 "PsychoV31 and PsychoV35.",
+                                 (shipped.psycho_v30 ? "PsychoV30, " : ""));
+  if (shipped.gtvbao || shipped.gtvbgi) {
+    const bool both = shipped.gtvbao && shipped.gtvbgi;
+    text += std::format(" Visibility Bitmask {}: the method of Therrien, Levesque and Gilet (2023) on GTAO (Jimenez et al. 2016), as "
+                        "{} by Mirko Salm (2024){}.",
+                        (both ? "ambient occlusion and Light Bounce" : (shipped.gtvbao ? "ambient occlusion" : "Light Bounce")),
+                        (both ? "GT-VBAO and GT-VBGI" : (shipped.gtvbao ? "GT-VBAO" : "GT-VBGI")),
+                        (shipped.auto_thickness ? "; auto thickness after Bjorn Ottosson" : ""));
+  }
+  if (shipped.ue_extended) text += " UE Filmic Extended by Marat (marat569), from RenoDX's UE Extended add-on, MIT License.";
+  if (shipped.bend) text += "\nScreen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0.";
+  std::string libraries;
+  for (const auto& [on, line] : {
+           std::pair{shipped.smaa, "SMAA: Jimenez, Echevarria, Masia, Navarro and Gutierrez (2013), MIT License."},
+           std::pair{shipped.cmaa2, "CMAA2: Filip Strugar, Copyright (c) 2018 Intel Corporation, Apache License 2.0."},
+           std::pair{shipped.sssr, "Reflections' ray march: AMD FidelityFX SSSR, Copyright (c) 2021 Advanced Micro Devices, MIT License."},
+           std::pair{shipped.detours, "Hooks: Microsoft Detours, Copyright (c) Microsoft Corporation, MIT License."},
+       }) {
+    if (on) libraries += (libraries.empty() ? "" : " ") + std::string(line);
+  }
+  if (!libraries.empty()) text += "\n" + libraries;
+  return text;
+}
 
 constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
 
