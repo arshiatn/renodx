@@ -930,6 +930,9 @@ struct Runtime {
   uint32_t helper_left_out = 0;
   std::unordered_map<uint64_t, uint32_t> key_shaders;
   std::unordered_map<uint32_t, uint32_t> left_out_shaders;
+  // Without Debug Log the first 10 s with garbage are still said once a start: a scene in other units than metres
+  // (R.U.S.E.'s centimetres) went out whole without a sign.
+  bool left_out_said = false;
   // Under Ray-Traced Shadows Only, one frame every 10 s: the pixel shaders reading the game's sun shadow map that are
   // not the patched sun draws (forward-lit grass and the like: lit everywhere, the map has no casters).
   uint64_t readers_frame = UINT64_MAX;
@@ -4077,7 +4080,7 @@ inline void Update(const Settings& settings) {
   }
   if (const uint64_t now = GetTickCount64(); now >= runtime.new_static_time + 10000) {
     if (!settings.debug_log) {
-      runtime.left_out_shaders.clear();
+      if (runtime.left_out_said) runtime.left_out_shaders.clear();
       runtime.shadow_readers.clear();
     }
     if (!runtime.new_static.empty()) {
@@ -4094,10 +4097,20 @@ inline void Update(const Settings& settings) {
       runtime.new_static.clear();
       runtime.new_static_examples.clear();
     }
-    for (const auto& [hash, triangles] : runtime.left_out_shaders) {
-      renodx::utils::log::w(std::format("[Total War] Ray tracing: {} garbage triangles (far off or stretched) left out in 10 s, the last in "
-                                        "a capture of vertex shader {:08X}.",
-                                        triangles, hash));
+    if (!runtime.left_out_shaders.empty()) {
+      uint32_t total = 0;
+      std::string shaders;
+      for (const auto& [hash, triangles] : runtime.left_out_shaders) {
+        total += triangles;
+        shaders += std::format("{}{:08X} ({})", (shaders.empty() ? "" : ", "), hash, triangles);
+      }
+      // The limits: dlaa_helper/rt_scene_data.hlsli MAX_COORDINATE, MAX_PART, MAX_EDGE.
+      renodx::utils::log::w(std::format("[Total War] Ray tracing: {} garbage triangles left out in 10 s (a coordinate past 200,000 m, a part's "
+                                        "edge past 200 m, another's past 5,000 m: a scene in other units?), by the vertex shader of each "
+                                        "trace's last: {}{}",
+                                        total, shaders,
+                                        settings.debug_log ? "." : "; said once without Debug Log, an example in renodx-tw-dlaa64.log."));
+      runtime.left_out_said = true;
     }
     runtime.left_out_shaders.clear();
     runtime.key_shaders.clear();
