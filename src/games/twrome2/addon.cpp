@@ -1701,17 +1701,42 @@ constexpr std::array<twattila::view_share::RegionRead, 5> RENDER_SCALE_READS = {
     {.shader_hash = 0x024D3FCB, .slots = 0b1, .whole = true},   // water refraction (4 channels)
 }};
 
-// Water Clarity and Caustics (twattila/water_effects.hpp): the battle water drawn in ATN's runs (A1, C1, A2), lighting_VS_PS's
-// g_sea_bed_light_scatter at c10 as Attila's (its RDEF). The campaign's sea 3DCC4AED, lake F5A45F91 and river ED0C5F47 never
-// read it. Caustics' patch: WARP tools/tw/rome2/water_r2 (the game's bytes and the render scale's patch first: t51 unbound
-// bit-identical, t51 = k the refraction x (1 + k)).
-constexpr std::array<twattila::water_effects::WaterShader, 3> WATER_SHADERS = {{
+// Water Clarity and Caustics (twattila/water_effects.hpp): every live battle water and river PS that uses lighting_VS_PS's
+// g_sea_bed_light_scatter (c10, as Attila's; their RDEF): the three drawn in ATN's runs (A1, C1, A2) and, in no trace (level
+// B), the other shader models, shadow forms and Water Qualities (waterplane's world position at TEXCOORD3 = v3, rigidriver's
+// at TEXCOORD0 = v1, s_terrain_refraction at t1, lighting_VS_PS at b2 with shadows, b1 without). The other water PS (the
+// campaign's sea, lake and rivers, the battle sea) never read it. Caustics' patch: WARP tools/tw/rome2/water_r2 on each
+// (the game's bytes and the render scale's patch first: t51 unbound bit-identical, t51 = k the refraction x (1 + k)).
+constexpr std::array<twattila::water_effects::WaterShader, 17> WATER_SHADERS = {{
     {.hash = 0x58DC6E12, .lighting_slot = 2, .world_input = 3, .refraction_slot = 1},  // battle plane, Water Quality Ultra
     {.hash = 0xB0A1E151, .lighting_slot = 1, .world_input = 3, .refraction_slot = 1},  // battle plane, High
     {.hash = 0x3ECFEAF5, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // battle river
+    {.hash = 0xBB6C2E17, .lighting_slot = 2, .world_input = 3, .refraction_slot = 1},  // plane Ultra, shader model 4.1
+    {.hash = 0x06B5BB38, .lighting_slot = 2, .world_input = 3, .refraction_slot = 1},  // plane Ultra, 3.0 fetch4
+    {.hash = 0x4D90F8A9, .lighting_slot = 2, .world_input = 3, .refraction_slot = 1},  // plane Ultra, 3.0 pcf
+    {.hash = 0xCF39F205, .lighting_slot = 2, .world_input = 3, .refraction_slot = 1},  // plane Ultra, 3.0 software
+    {.hash = 0x06DE957F, .lighting_slot = 1, .world_input = 3, .refraction_slot = 1},  // plane Low / Medium
+    {.hash = 0xCB209741, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 4.1 gather
+    {.hash = 0x02FFA958, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 4.1 software
+    {.hash = 0x302DB6C3, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 4.1 fetch4
+    {.hash = 0xC505972E, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 4.1 pcf
+    {.hash = 0x176FFE86, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 3.0 fetch4
+    {.hash = 0x23B7EAC3, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 3.0 pcf
+    {.hash = 0xBB7158F7, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 3.0 software
+    {.hash = 0x324CBBD2, .lighting_slot = 1, .world_input = 1, .refraction_slot = 1},  // river without shadows, 4.1
+    {.hash = 0x33C21B87, .lighting_slot = 1, .world_input = 1, .refraction_slot = 1},  // river without shadows, 3.0
 }};
-// The sun's per-frame atlas's readers besides the sun draws (A1, C1, A2): the battle water Ultra and river, the campaign's sea.
-constexpr std::array<uint32_t, 3> SHADOW_READER_SHADERS = {0x58DC6E12, 0x3ECFEAF5, 0x3DCC4AED};
+// The sun's per-frame atlas's readers besides the sun draws: the battle water Ultra and river and the campaign's sea (A1, C1,
+// A2), and in no trace (B) their other shader models with a comparison the shared forward patch finds (water_r2: t49 unbound
+// bit-identical, t49 = 1 equals every comparison failing) and the battle sea's (ocean high / ultra). Their shader model 3.0
+// builds (fetch4 / pcf / software: 18 PS, water_r2's list) have no such comparison: under Skip the Shadow Maps they read the
+// casterless atlas (lit) until the shared patch has a route for them.
+constexpr std::array<uint32_t, 15> SHADOW_READER_SHADERS = {
+    0x58DC6E12, 0x3ECFEAF5, 0x3DCC4AED,              // drawn
+    0xBB6C2E17, 0xCB209741, 0x02FFA958, 0x302DB6C3, 0xC505972E,  // battle plane / river, 4.1
+    0x1077B1F5, 0x2962631F, 0xB6E14CD7,              // campaign sea 4.1 high / medium, 5.0 medium
+    0x809D7997, 0xB4BAD934, 0xD627B33B, 0xF5A1526C,  // battle sea, 5.0 / 4.1 high and ultra
+};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {{
     {.shader_hash = 0x0AF04E16, .standard = true, .sun_direction = 0},
