@@ -408,8 +408,10 @@ constexpr size_t SUN_SHADOW_CASCADES = SettingIndex(L"r.Shadow.CSM.MaxCascades")
 constexpr size_t SUN_SHADOW_RESOLUTION = SettingIndex(L"r.Shadow.MaxCSMResolution");
 // r.VolumetricFog 0 greys out the r.VolumetricFog.* settings.
 constexpr size_t VOLUMETRIC_FOG = SettingIndex(L"r.VolumetricFog");
+// Unreal's own screen-space GI: 0 while ours replaces it (one GI method, ATN 2026-11-16).
+constexpr size_t SSGI_QUALITY = SettingIndex(L"r.SSGI.Quality");
 static_assert(SUN_SHADOW_CASCADES < SUN_SHADOW_RESOLUTION && SUN_SHADOW_RESOLUTION < GRAPHICS_SETTINGS.size());
-static_assert(VOLUMETRIC_FOG < GRAPHICS_SETTINGS.size());
+static_assert(VOLUMETRIC_FOG < GRAPHICS_SETTINGS.size() && SSGI_QUALITY < GRAPHICS_SETTINGS.size());
 // "Effects at output resolution" (on by default, as Tales): while DLSS renders below 100%, settings sized in render
 // pixels follow the render scale s (render / output), so these effects keep the detail they have at 100%: cell sizes
 // and resolution divisors x s (nearest, at least 1), shadow texels per pixel / s (Unreal sizes object, spot, point and
@@ -1495,6 +1497,18 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
                             details, ".");
     }
   }
+  // GT-VBGI (not with the rays' bounce light: Global Illumination's method), at the sun's light draw; it, the rays' light
+  // bounce or path tracing that reached the scene within the last half second replace Unreal's own SSGI (the Max preset's
+  // Optional row writes 4): r.SSGI.Quality 0 meanwhile, the game's value back after.
+  if (ao_thickness_row != nullptr) {
+    gi_rows.ssao_thickness = *ao_thickness_row;
+  }
+  auto gi = twattila::lighting_settings::LightBounceSliders(gi_rows);
+  if (rt_sliders.light_bounce != 0.f) {
+    gi.strength = 0.f;
+  }
+  const bool our_gi = gi.strength > 0.f
+                      || (ray_tracing_installed && ray_tracing_settings.light_bounce && expeditionsrome::dlss::ray_tracing::BouncingRecently());
   bool wrote = false;
   const bool upscaling = live.controlling && render_percentage > 0.f && render_percentage < 100.f;
   const float render_scale = (upscaling ? render_percentage / 100.f : 1.f);
@@ -1505,7 +1519,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     const float preset_value = (entry.choice == 0 ? KEEP : entry.choices[entry.choice - 1]);
     const OutputScaling scaling = ((effects_at_output && upscaling) ? OUTPUT_SCALING[index] : OutputScaling::NONE);
     const float current = entry.cvar.Get();
-    if (std::isnan(preset_value) && scaling == OutputScaling::NONE) {
+    const bool replaced = index == SSGI_QUALITY && our_gi;
+    if (std::isnan(preset_value) && scaling == OutputScaling::NONE && !replaced) {
       if (entry.controlling) {
         entry.cvar.Set(entry.game_value);
         wrote = true;
@@ -1518,6 +1533,9 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     float desired = (std::isnan(preset_value) ? entry.game_value : preset_value);
     if (setting.better == Better::HIGHER) desired = std::max(entry.game_value, desired);
     if (setting.better == Better::LOWER) desired = std::min(entry.game_value, desired);
+    if (replaced) {
+      desired = 0.f;
+    }
     switch (scaling) {
       case OutputScaling::CELL_OR_DIVISOR:
         desired = std::max(1.f, std::round(desired * render_scale));
@@ -1549,17 +1567,9 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     entry.written = desired;
   }
   if (wrote) graphics.console.Refresh();
-  // Bend's screen-space shadows (not while the rays' sun shadows run) and GT-VBGI (not with the rays' bounce light: Global
-  // Illumination's method) at the sun's light draw.
+  // Bend's screen-space shadows (not while the rays' sun shadows run) at the sun's light draw.
   auto shadows = twattila::feature_settings::SssSettings(screen_space_shadows_rows);
   shadows.enabled = shadows.enabled && !(ray_tracing_installed && ray_tracing_settings.sun_shadows);
-  if (ao_thickness_row != nullptr) {
-    gi_rows.ssao_thickness = *ao_thickness_row;
-  }
-  auto gi = twattila::lighting_settings::LightBounceSliders(gi_rows);
-  if (rt_sliders.light_bounce != 0.f) {
-    gi.strength = 0.f;
-  }
   expeditionsrome::dlss::ue_effects::Update(shadows, gi, render_scale);
 
   const bool below_native = (mode == AAMode::DLSS_CUSTOM ? (live.custom < 100.f)

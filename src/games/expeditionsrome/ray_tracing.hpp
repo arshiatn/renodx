@@ -353,7 +353,10 @@ void OnSunLit(Context& command, const void*) {
     context->Dispatch((bounce_size[0] + 7) / 8, (bounce_size[1] + 7) / 8, 1);
   }
   state.resolved_index = current;
-  state.resolved_frame = frame;
+  {
+    const std::unique_lock lock(state.mutex);
+    state.resolved_frame = frame;
+  }
   state.previous_view_projection = state.view_projection;
   // The G-buffer the light read (its t2 - t4).
   std::array<ComPtr<ID3D11ShaderResourceView>, 3> gbuffer;
@@ -611,6 +614,14 @@ inline void Update(const twattila::rt_scene::Settings& settings, float bounce_st
     ++internal::state.frame;
   }
   twattila::rt_scene::Update(settings);
+}
+
+// Whether the light bounce (path traced or not) reached the scene within the last half second: Unreal's own screen-space
+// GI stays off meanwhile (one GI method).
+inline bool BouncingRecently() {
+  constexpr uint64_t RECENT_FRAMES = 30;
+  const std::unique_lock lock(internal::state.mutex);
+  return internal::state.resolved_frame != UINT64_MAX && internal::state.resolved_frame + RECENT_FRAMES >= internal::state.frame;
 }
 
 // At the temporal pass: its scene colour (`color`, the render pixels at its top-left) is the helper's last frame's
