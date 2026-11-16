@@ -222,7 +222,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (row DONE rys2_ d39434650: "Dark tones for L / M" Experimental off; ATN decides, ... | ATN after R0
 - (rys2_ 11-16: WARP DONE d29bf211f + 4ca336eb8 (0.17 % at occlusion 0.55, 0.08 % ... | next Ryse round
 - (rys2_ 11-16: tiled lighting 0x488BF732 / 0xCDB59F36 hooked 35c2a45f8 (level B); ... | next Ryse round (after R0)
-- (step 1 DONE tpa_ 2cb8fbd6c: talesofarise/ray_tracing.hpp rt_core host behind "R ... | next UE round
+- (steps 2-4 DONE tpa_ 00:5x: reflections + specular occlusion b524d4dd0 (kept cop ... | next UE round
 - ATN DECIDES: Tales' rays now need an upscaler on (before: also with the game's T ... | ATN
 - Dead files: talesofarise_dlss/rr_d3d12.hpp (no user), ngx_backend.hpp, 0x7A1E0D4 ... | coordinator, release round
 - (tpa_ 11-16: Bend / GT-VBGI already 51c464877, NRD default, tests build 42a1b3b7 ... | next UE round (after G1)
@@ -311,8 +311,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEPS (div2_ 11-16): rt_core TraceLightBounce: one missed bounce frame re ... | shs2_ / next shared round
 - GAME-SPECIFIC SKIPS PARITY (ATN 23:0x "Game-specific skips, let's do this too"): ... | per-game rounds (after the current merges)
 - NIGHT + SEA BENCH (ATN 23:0x offers a burning Constantinople at night replay; a ... | ATN (replays), coordinator
-- UE RUN (tpa_ 23:xx): Expeditions with RT AO: baked-light areas (indoor, under ro ... | coordinator (one game at a time)
-- SHARED STEPS (tpa_ 23:xx): rt_core scene_draw hosts: a host leaf alpha cutoff (T ... | next shared round
+- (+ tpa_ 00:5x, Tales with Ray Tracing in the Helper + restart: reflections / spe ... | coordinator (one game at a time)
+- (+ tpa_ 00:5x: a sky-weighted AO mode in the helper (AO rays weighted by the hos ... | next shared round
 - SHS2 RUNS (shs2_ 23:xx NEEDS A RUN): Pharaoh battle near a building pool with RT ... | coordinator (one game at a time)
 - SHARED STEPS NEXT (shs2_ 23:xx): every game: a census of its other SSAO readers ... | per-game rounds, gpu3_, next shared round
 - R7 / TEST BOXES (shs2_ 23:xx): R7 clamps: Shogun 2 sea overlay writers C8375A74 ... | per-game rounds, next test round
@@ -1014,7 +1014,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       graphics_page flags (has_screen_space_shadows / has_gtvbgi / rays_tested), hdr_only::AmbientOcclusionRows /
       FullDownloadNote, talesofarise_dlss/upscaling.hpp shared; Tales Output default Auto (hdr_encoding hook gone, FG
       scRGB via fg_hdr10). CMake NGX block deleted in the merge (no add-on links NGX). Skills / tools lose the _dlss targets.
-      - [ ] (step 1 DONE tpa_ 2cb8fbd6c: talesofarise/ray_tracing.hpp rt_core host behind "Ray Tracing in the Helper (Experimental)", off, restart: sun shadows + AO via the helper, in-process path stays default; tests/helper_rays 64 cases (camera relative 9.2e-5 at 1.2 km, limit 1e-4); LEFT: step 2 reflections + specular occlusion (Tales guides, KeepColor), step 3 bounce + paths + PT Ambient sky c155-c162, step 4 torches 038D003A, step 5 offline equality helper vs rt_shadows on a replayed frame, then default on + in-process removed; a test/tw_tales_unit runner) (ATN 23:0x yes: Tales' rays to the helper as the other games; tpa_) (tpa_ 11-16 plan: host on DEPTH_SHADERS / MASKED_SHADERS, WriteSun at 2084C889, t41-t44 wired, sky texels c155-c162, torches 038D003A; Expeditions ray_tracing.hpp is the template; then a G1 / G2 data run) Tales' rays still run in process (rt_shadows.hpp on its own D3D12 device): move to the helper (rt_scene host
+      - [ ] (steps 2-4 DONE tpa_ 00:5x: reflections + specular occlusion b524d4dd0 (kept copy exact, control 52), bounce + paths via twattila::light_bounce::SetRayTracedTrace 4b16d53d7 (tw_ue_sss_gi PASS), torch shadows on locallight00 0x038D003A 42d4c9932 (vanilla EXACT, the traced branch untested on WARP), one-method gates in helper mode beaf57dfd, tw_tales_unit runner 0a1297de5; step 5 BLOCKED by SHARED STEPS (leaf cutoff, scaled-UV coverage, sky-weighted AO); PT Ambient in helper mode = plain AO under the paths) (step 1 DONE tpa_ 2cb8fbd6c: talesofarise/ray_tracing.hpp rt_core host behind "Ray Tracing in the Helper (Experimental)", off, restart: sun shadows + AO via the helper, in-process path stays default; tests/helper_rays 64 cases (camera relative 9.2e-5 at 1.2 km, limit 1e-4); LEFT: step 2 reflections + specular occlusion (Tales guides, KeepColor), step 3 bounce + paths + PT Ambient sky c155-c162, step 4 torches 038D003A, step 5 offline equality helper vs rt_shadows on a replayed frame, then default on + in-process removed; a test/tw_tales_unit runner) (ATN 23:0x yes: Tales' rays to the helper as the other games; tpa_) (tpa_ 11-16 plan: host on DEPTH_SHADERS / MASKED_SHADERS, WriteSun at 2084C889, t41-t44 wired, sky texels c155-c162, torches 038D003A; Expeditions ray_tracing.hpp is the template; then a G1 / G2 data run) Tales' rays still run in process (rt_shadows.hpp on its own D3D12 device): move to the helper (rt_scene host
         like Expeditions' ray_tracing.hpp: scene from the depth prepass, sun from the lighting pass, outputs t40-t44,
         bounce resolve); until then rt_scene-only rows hidden, no Upscaling Debug View. Owner: next UE round
       - [ ] ATN DECIDES: Tales' rays now need an upscaler on (before: also with the game's TAA); Path Tracing Bounces
@@ -2020,11 +2020,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         replays; then one bench + WPR (ATN's tasks) + Nsight GPU trace at each (torches 128, fire / smoke particles, RT
         water reflections, ships = Rarer Objects), then a CPU / GPU round from the findings. Owner: ATN (replays),
         coordinator
-      - [ ] UE RUN (tpa_ 23:xx): Expeditions with RT AO: baked-light areas (indoor, under roofs) take the rays' AO (lighter
+      - [ ] (+ tpa_ 00:5x, Tales with Ray Tracing in the Helper + restart: reflections / specular occlusion vs in-process, the game's SSR off under them; bounce + paths vs in-process; torch shadows at night / indoors; Bend + GT-VBAO off under the helper's rays; frame time vs in-process) UE RUN (tpa_ 23:xx): Expeditions with RT AO: baked-light areas (indoor, under roofs) take the rays' AO (lighter
         where the game's SSAO was darker), no AO flicker on the first frame after a camera cut / load, ~1 ms less at 4K
         (65c4b0ed4, DFAO 45125722a); Tales with Ray Tracing in the Helper + restart: sun shadows + AO as the in-process ones
         (thin alpha leaves thinner: scaled-UV masks, 0.5 cutoff). Owner: coordinator (one game at a time)
-      - [ ] SHARED STEPS (tpa_ 23:xx): rt_core scene_draw hosts: a host leaf alpha cutoff (Tales 0.333 vs the helper's
+      - [ ] (+ tpa_ 00:5x: a sky-weighted AO mode in the helper (AO rays weighted by the host's sky SH) or a host-neutral way to tell the paths' sky from a sky baked into the scene colour (Tales PT Ambient); guides written twice a frame with RR + the helper's reflections (drop the AA copy); a WARP proof of the torch shadows' traced branch (b9 / t42 binds); a Tales frame replay harness in-process vs helper for step 5; owner of the leaf cutoff + scaled-UV coverage: shs2_ now) SHARED STEPS (tpa_ 23:xx): rt_core scene_draw hosts: a host leaf alpha cutoff (Tales 0.333 vs the helper's
         0.5); SceneCoverage for masks read at a scaled UV (UV x material register, some of Tales' 89 masked shaders).
         Owner: next shared round
       - [ ] SHS2 RUNS (shs2_ 23:xx NEEDS A RUN): Pharaoh battle near a building pool with RT AO on: the pool follows the
