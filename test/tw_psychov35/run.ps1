@@ -1,12 +1,14 @@
 # PsychoV35 and Hue Clip (Attila's Rendering Mode 3, WH3's 4) on WARP (tests.cpp) with the tone mappers compiled from this
-# tree and from d3d6425b (the commit before them) with the build's flags: Attila's t00 - t10 and WH3's t00. Every other
-# mode must give the same bits as d3d6425b; Hue Clip and PsychoV35 are checked on their own (tests.cpp's header).
+# tree and from -Before with the build's flags: Attila's t00 - t10 and WH3's t00. Every other mode must give the same bits
+# as -Before; Hue Clip and PsychoV35 are checked on their own (tests.cpp's header). -Before is 4b509903 (hdr audit R4:
+# BT.709 on Output SDR in V30 / V31, the newest change those modes were meant to take); against d3d6425b, the commit
+# before PsychoV35, only Output SDR in Attila's V30 and WH3's V30 / V31 differ (2026-11-16: 30604 pixels, all there).
 # -AllShaders also compiles every shader of both add-ons on both sides and lists the ones whose bytes changed; -ReportOnly
 # runs part 4 alone. R.U.S.E.'s post (parts 3, 4, 6) is compiled from this tree alone, as ps_5_0 /Gec; its 25 D3D9
 # replacements are compiled as ps_3_0 with their instruction slots listed.
 # -OutDir: where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\.
 # Run as x86 and amd64.
-param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [switch]$AllShaders, [switch]$ReportOnly, [string]$Before = 'd3d6425b',
+param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [switch]$AllShaders, [switch]$ReportOnly, [string]$Before = '4b5099035',
       [string]$OutDir = '', [string]$GammaBefore = '242d6101')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
@@ -25,7 +27,8 @@ New-Item -ItemType Directory -Force -Path $beforeTree | Out-Null
 $archive = Join-Path $testBuild 'before.tar'
 # Both add-ons and every folder their shaders include from.
 & git -C $repairRoot archive --output=$archive $Before src/games/twattila src/games/twwarhammer3 src/games/twrome2 `
-    src/games/twwarhammer2 src/games/twshogun2completeedition src/games/talesofarise_dlss src/shaders src/mods src/utils
+    src/games/twwarhammer2 src/games/twshogun2completeedition src/games/twthronesofbritannia src/games/talesofarise_dlss `
+    src/shaders src/mods src/utils
 if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
 & (Join-Path $env:SystemRoot 'System32\tar.exe') -xf $archive -C $beforeTree
 if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
@@ -64,6 +67,8 @@ $toneMappers = [ordered]@{
   'a_t10' = 'twattila\shaders\t10_0x6E20B0EF.ps_4_0.hlsl'; 'w_t00' = 'twwarhammer3\shaders\t00_0xE2EE82F8.ps_5_0.hlsl'
   # Rome II's chain: part 4's report only (no bit comparison).
   'r_t00' = 'twrome2\shaders\t00_0xEE1DA45C.ps_4_0.hlsl'; 'r_t01' = 'twrome2\shaders\t01_0x850AEE44.ps_4_0.hlsl'
+  # Thrones of Britannia's chain: parts 4 and 8's reports only.
+  'th_t00' = 'twthronesofbritannia\shaders\t00_0x8BF6B657.ps_4_0.hlsl'; 'th_t01' = 'twthronesofbritannia\shaders\t01_0xD0FAF089.ps_4_0.hlsl'
 }
 $beforeShaders = Join-Path $testBuild 'before_cso'
 $afterShaders = Join-Path $testBuild 'after_cso'

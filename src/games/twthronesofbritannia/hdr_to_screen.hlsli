@@ -72,7 +72,7 @@ float4 HdrToScreenOutput(float3 hdr_color, float alpha)
   } else {
     color = ApplyPsychoV30(graded_hdr);
   }
-  return float4(HdrToFrame(color, SI.diffuse_white_nits / SI.graphics_white_nits), alpha);
+  return float4(HdrToFrame(color, SI.diffuse_white_nits / SI.graphics_white_nits), saturate(alpha));
 }
 
 // SDR: the stock result, clipped as the original 8-bit target, at Paper White relative to UI (in the frame's gamma).

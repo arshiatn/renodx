@@ -3,9 +3,22 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
-- [ ] NEW 11-16: Lean ReSTIR Reuse is faster with the same picture (2.72 -> 1.02 ms, same rRMSE) but still Experimental
+- [ ] NEW 11-16 (fix round, ATN decides): Thrones' preset turns on Steady Bounce Light and 128 torch lights (both
+  Experimental) and Auto Thickness is on while labelled Experimental: keep or off?; Ryse's Recommended Video AutoHDR 0.25
+  (as Shogun 2's) against the skill's 0.2; Path-Traced Ambient alone leaves the reflections without occlusion: Specular
+  Occlusion with the paths, or keep SSAO for that reader?; Specular Occlusion on makes armour creases a little brighter
+  (look). Owner: ATN
+- [x] ANSWERED 06:xx (ATN: "RT Shadows should replace them (and make them stop to save performance maybe)"): rays
+  keep the far shadows (more correct), replace the maps' term, maps only for hair / fog; skip fix in the Ryse fix round. Still open from the run analysis: Ryse far-facade ray shadows (rays darken far facades the maps leave lit, up to 0.67
+  stop): keep or limit? Owner: ATN
+- [x] ANSWERED 06:xx "you are allowed to use mouse click on screens" (memory feedback_mouse_clicks_allowed): Tales redo with a click after the fix round. NEW 11-16: Tales' title screen ("Press Any Key") won't take our keyboard input from a script (Enter / Space end in the
+  attract movie), so the Bend / GT-VBGI look shots couldn't be redone. Choose: you load SaveData_006 once during a run, or
+  allow one mouse click on Tales' title screen for scripted runs. Owner: ATN
+- [x] ANSWERED 06:xx "we could improve them later with nsight maybe (in next days/weeks)": box below. NEW 11-16: Ryse costs (4K DLSS Quality): RT sun shadows +1.0 ms, path tracing +2.7 ms (+1.7 over RT), Path-Traced
+  Ambient about 0. Need work, or fine? (tools/tw/round_notes/redo_1116.md) Owner: ATN
+- [x] ANSWERED 06:xx "On by default" (shs_ applying; Ryse / Shogun 2 tables at merge). NEW 11-16: Lean ReSTIR Reuse is faster with the same picture (2.72 -> 1.02 ms, same rRMSE) but still Experimental
   off: on by default under your 11-15 rule "faster + same picture = on"? Owner: ATN
-- [ ] NEW 11-16 06:xx: from the run analysis: Bend + GT-VBGI defaults (Tales +0.31 / +0.27 ms, Expeditions +0.90 / +0.49
+- [x] ANSWERED 06:xx: Bend + GT-VBGI ON by default in Tales / Expeditions (Tales+Exp agent, with the SSGI replace); Higher Precision Scene stays Experimental off; trilinear LOD bias default ON (shs_); Ryse far-facade shadows + redo save still open below. NEW 11-16 06:xx: from the run analysis: Bend + GT-VBGI defaults (Tales +0.31 / +0.27 ms, Expeditions +0.90 / +0.49
   ms); Higher Precision Scene stays Experimental off?; Ryse far-facade ray shadows (rays darken far facades the maps leave
   lit, up to 0.67 stop): keep or limit?; pick a Ryse redo save (sunlit, near hair, fog volume, torch interior). Pictures:
   tools/tw/round_notes/an_1116/out. Owner: ATN
@@ -171,8 +184,19 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Attila has no frame trace `on_demand` / `at_100` (Pharaoh, Rome II, WH3 have bot ... | next Attila round
 - grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound i ... | next Attila round
 - SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator 06:xx rao_ merged ad541a4f (RT AO replaces the g
+- ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
+- Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
+- 17-ROW CHECK (ATN 06:xx: the first audits ran before the 17 Attila rows were in ... | coordinator
+- Group 1 leftovers: Grass Ray Tracing Range for grass captured as drawn (Rome II, ... | next GPU round (grass range), next data runs (VFX)
+- ATN DECIDES: UI 4K Mod Compatibility for Thrones and Rome II, only if a UI mod f ... | ATN
+- Group 2 leftovers: WH3 Grass Ray Tracing Range for GPU-placed grass (new work, m ... | next per-game data runs / rounds
+- ATN DECIDES: Shogun 2 Recommended Video AutoHDR is 0.25, the skill says 0.2 (Tal ... | ATN
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
+- Ryse ray costs (RT shadows +1.0 ms, PT +2.7 ms at 4K DLSS Quality): Nsight work ... | a later GPU round
+- RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan ... | ATN (go-ahead), then a Ryse round
+- Tales Bend / GT-VBGI look shots: rerun tales\g1g2\run.ps1 -Bend with a mouse cli ... | coordinator
+- REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cos ... | coordinator, Ryse fix agent
 - RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
 - Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, G ... | rao_, then the next replace round
 - Attila features vs skills: sk3_ is comparing; then ATN decides which to add. Own ... | sk3_, then ATN
@@ -1493,11 +1517,50 @@ heading text are in HANDOFF_ARCHIVE.md)
         06:xx rao_ merged ad541a4f (RT AO replaces the game's AO in 10 games, AO gates; Ryse in its round). Fix round started
         (brief tools/tw/round_notes/fix_round_1116/brief.md): shs_ (shared), Attila + Thrones, Rome II, WH1 + WH2, WH3, Troy +
         Pharaoh, Shogun 2 + Rome Remastered, Ryse, Tales + Expeditions, R.U.S.E.; dvf_ (Divinity) earlier. Merge one at a time.
+        - [x] Attila + Thrones MERGED 1f5f02e94 (ath_, 10 commits): Thrones Time Each Pass, alpha clamp, battlefog01 MSAA,
+          sky_deband off in its presets, video rows HDR-only; Attila + Thrones ssr00 / ssr01 one occlusion under RT Specular
+          Occlusion (tw_thrones_ssr part F 0 differ, control 27686 / 7168); tw_vanilla_exact 60 EXACT / 8 accepted / 0 FAIL
+          (x86 + amd64); tw_psychov35 part 4 on Thrones (Hue Clip 40 = minimum, 6.31 deg), part 8 (V35 toe: darks
+          x0.996-1.000, chroma 30-150 nits x1.055), default -Before now 4b5099035. Not built on atn-mods yet (rebuild all).
+        - [ ] ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB73442 / D9123DE1, vanilla coverage
+          of pointlight00-39 / UI sprites / grass00-01 (the generic driver can't feed them); view_share Classify 24 unclear
+          sun-PS rows a game (NEEDS A TRACE). The t46 x AO double-occlusion check was sent to WH3, WH1 / WH2, Troy / Pharaoh,
+          Rome II and Shogun 2 agents. Owner: next Attila round / data runs, per-game agents (t46)
+        - [x] 17-ROW CHECK non-TW DONE (ryse / tales / expeditions / divinity1 / divinity2 / ruse _17.md): A rows sent to the
+          Ryse, Tales + Expeditions, R.U.S.E., Divinity agents and shs_ (Units Range for scene_draw hosts, Tales NO_DXR12 /
+          TEST_DEVICE_REMOVAL switches, rt_core index-write event for R.U.S.E.'s replay if needed).
+        - [ ] Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shadows.hpp:1113-1125,
+          rt_path.hlsli:39-48; Attila measured SER slower at every size): a cs_6_9 compute path with micromaps, SER an
+          Experimental row after an Nsight A/B; torch lights in Ryse / Tales / Expeditions (ryse.tsv:47, tales.tsv:44-45,
+          expeditions.tsv:59, traces); R.U.S.E. gamma slider, Divinity 1 / 2 Bink videos, Ryse VFX / sky, Tales VFX / sky /
+          auto exposure, Tales smaa00 input encoding (traces). Owner: next GPU round (SER), next data runs (rest)
       - [ ] From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Pharaoh's and Troy's SMAA / CMAA2
         wrappers decode Attila's gamma 2.0 while their frame is linear there (wrong domain? WARP check); the vendor fallback
         (saved DLSS -> XeSS on Intel, else FSR) is missing in Rome Remastered, Shogun 2, Ryse, Tales, Expeditions;
         tools/tw/page_dump/README.txt still says non-TW add-ons have no driver (dump_ry / dump_ta / dump_exr exist).
         Owner: per-game rounds (SMAA / CMAA2, fallback), coordinator (README)
+      - [ ] 17-ROW CHECK (ATN 06:xx: the first audits ran before the 17 Attila rows were in the skills): 3 read-only agents,
+        reports skill_audit_1116/<game>_17.md; their A rows go to a second fix pass. Owner: coordinator
+        - [x] Group 1 DONE (thrones / rome2 / wh1 / wh2 _17.md): A rows sent to the running fix agents (Rome II Modded
+          Auto Exposure in decades -> stops x0.30103, indicator HDR-only, a plain Recommended, preset tooltips, cascades
+          pattern test; WH1 preset tooltips; Thrones sky_deband 0 in Reset; Rome II / WH1 / WH2 gamma line above the
+          download note; all four IsHdrOutput on the video rows; shared: graphics_hooks pattern count test to shs_). Check
+          each agent's report for them.
+        - [ ] Group 1 leftovers: Grass Ray Tracing Range for grass captured as drawn (Rome II, WH1, WH2: drop far vertices
+          in the capture, Nsight cost first; shared code); VFX Brightness families need traces (Thrones snow / storm
+          thrones.tsv:10, :51; WH1 wh1.tsv:73; WH2 wh2.tsv:36). Owner: next GPU round (grass range), next data runs (VFX)
+        - [ ] ATN DECIDES: UI 4K Mod Compatibility for Thrones and Rome II, only if a UI mod for those games patches the
+          same DLL code (Thrones writes Shadow Map Size and the cascades with no lock, addon.cpp:1705). Owner: ATN
+        - [x] Group 2 DONE (wh3 / troy / pharaoh / shogun2 / romer _17.md): A rows sent to the running fix agents (WH3
+          sky_deband 0 + Reset VFX rows; Troy indicator label; Pharaoh sky_deband 0 in presets + dead_units pattern test;
+          Shogun 2 Reflex / limit gates, Torch Follow row, own Lean ReSTIR on, 11-pattern test, SER tooltip; Rome
+          Remastered Modded Auto Exposure (optional), vendor-aware Reflex; shared: unknown vendor read as NVIDIA
+          dlaa_bridge.hpp:316-318 + SER tooltip to shs_). Check each agent's report for them.
+        - [ ] Group 2 leftovers: WH3 Grass Ray Tracing Range for GPU-placed grass (new work, measure in the 4K harness
+          first); Rome Remastered Unit/Building Indicator Brightness on C919A85F (needs a trace with a selected unit), VFX
+          Brightness (particle census) and Sky Debanding (trace); Shogun 2 Sky Debanding (trace, shogun2.tsv:13); WH3's
+          offline pattern test needs a memory image (Denuvo exe on disk). Owner: next per-game data runs / rounds
+        - [ ] ATN DECIDES: Shogun 2 Recommended Video AutoHDR is 0.25, the skill says 0.2 (Tales 0.25). Owner: ATN
       - [ ] SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specular Occlusion default on, so rays
         run with every ray method off (Thrones, Rome II, Rome Remastered, WH1-3, Pharaoh, Troy; fix: both keys into
         RAY_METHODS, graphics_page.hpp:46-47); ssr00/01/06/07 reflections occluded twice under RT Specular Occlusion and not
@@ -1508,6 +1571,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         started again" on the helper's 10 s idle release = info, not WARN; talesofarise_dlss frame_trace.hpp:341 polls
         renodx_trace_now every 60 presents on the game thread; Tales / Expeditions per-frame counters for the details panel.
         Owner: SHARED STEP agent (after rao_)
+      - [ ] Ryse ray costs (RT shadows +1.0 ms, PT +2.7 ms at 4K DLSS Quality): Nsight work in the next days / weeks (ATN
+        06:xx). Owner: a later GPU round
+      - [ ] RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan per row, each replaces the
+        game's method): (1) ray shadows for the hair's blended strands: a second small mask from the strands' own depth
+        (the hair's solid first pass already reads the ray mask); RTX Character Rendering's LSS strands need strand curves
+        the game likely doesn't have (its hair looks like textured cards: check in a trace), so trace the cards as alpha-tested triangles; (2) ray fog shadows
+        replacing the fog volumes' map march (ps 0x91A72BC2), Attila's Fog Shadows port, then a path-traced fog step (sun
+        shafts + torch light in the fog through the PT light list); no standalone NVIDIA volumetrics SDK found, RTX Remix /
+        NvRTX have it built in; (3) ray shadows for torches / fires replacing the 16384 light atlas (Attila's TW point light
+        shadows); (4) RT skin subsurface (RTX Character Rendering's Burley + single scattering) replacing the game's skin
+        SSS; (5) smoke / particles lit and shadowed by the rays (Attila's smoke shadows, particle light). With (1) + (2) the
+        shadow-map skip All loses nothing near you. Licence: NVIDIA RTX SDK terms. Owner: ATN (go-ahead), then a Ryse round
+      - [ ] Tales Bend / GT-VBGI look shots: rerun tales\g1g2\run.ps1 -Bend with a mouse click on the title (ATN allows it)
+        after the fix round's install. Owner: coordinator
+      - [ ] REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cost_050544 + run_r2pt_053054
+        (r2_cost.ps1: keyboard Continue, PresentMon + nvidia-smi + pass copy per state, light_bounce=1). Skip 1 / 2 removed
+        NO shadow-map draws (5 passes, 862 draws in every state): sent to the Ryse fix agent. PresentMon GPU busy counts
+        only Ryse's D3D11 queue (not the helper's D3D12): use frame time. Tales redo failed at the title (keyboard). Tales
+        keys.ps1 focus fix without clicks (AttachThreadInput / Alt before SetForegroundWindow) to try. Owner: coordinator,
+        Ryse fix agent
       - [ ] RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116/out): D1 SSR never drew (the
         exe dropped or ignored SSREnabled; keep the game's lsx after exit next time); D2 gamma slider does nothing in HDR
         (PPGammaCorrection never draws); Higher Precision Scene darks +0.000..+0.026 stops, nothing broken, banding not
