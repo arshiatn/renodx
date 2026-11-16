@@ -64,6 +64,9 @@ struct State {
   bool guides = false;  // with the helper's guides (ray_tracing.hpp's traced bounce or reflections, restart)
   bool reflections = false;  // with the helper's reflections (ray_tracing.hpp's traced reflections, restart)
   bool failed = false;   // a step failed for good: no jitter, the game's picture
+  // The game's own anti-aliasing (MSAA) at this start: its scene depth's samples (0: single-sample). Its main pass then
+  // has no readable depth (only the ground pre-pass's is single-sample): no scene draws, the game's picture.
+  uint32_t game_samples = 0;
   bool ready = false;
   bool scene_closed = false;  // from the bloom to the present: no scene draws (the final post's and the UI's)
   bool jitter_written = false;
@@ -449,9 +452,10 @@ inline void OnDestroyDepthView(reshade::api::device*, reshade::api::resource_vie
   }
 }
 
-// The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth, before the bloom.
+// The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth, before the bloom;
+// none with the game's MSAA on (the pre-pass alone would be jittered and read).
 inline bool IsSceneDraw() {
-  return state.render_target_is_frame_sized && !state.scene_closed && state.depth_stencil != state.post_depth
+  return state.game_samples == 0 && state.render_target_is_frame_sized && !state.scene_closed && state.depth_stencil != state.post_depth
          && state.intz_depths.contains(state.depth_stencil);
 }
 
@@ -535,6 +539,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     twattila::dlaa_bridge::Release();
   } else {
     state.intz_depths.clear();
+    state.game_samples = 0;
   }
 }
 

@@ -191,7 +191,22 @@ bool OnCreateDepthResource(reshade::api::device* device, reshade::api::resource_
   if (device->get_api() != reshade::api::device_api::d3d9) return false;
   // Surfaces only: a D24 texture may be sampled as a hardware shadow map (PCF), which INTZ would break.
   if (desc.type != reshade::api::resource_type::surface || (desc.usage & reshade::api::resource_usage::depth_stencil) == 0) return false;
-  if (desc.texture.samples > 1 || desc.texture.width != back_buffer_width || desc.texture.height != back_buffer_height) return false;
+  if (desc.texture.width != back_buffer_width || desc.texture.height != back_buffer_height) return false;
+  // The game's MSAA (Option.ini MainRTAA above 1x): its main pass's depth (B0 trace: one depth for the shadow-map, sprite
+  // and main passes) can't be read; the scene draws stay the game's (bridge.hpp IsSceneDraw) until a start without it.
+  if (desc.texture.samples > 1) {
+    if (ruse::bridge::state.game_samples == 0) {
+      reshade::log::message(
+          reshade::log::level::warning,
+          std::format("[R.U.S.E.] The game's anti-aliasing is on ({} samples): Anti-Aliasing, the rays and the ground rows are off "
+                      "until a restart{}",
+                      desc.texture.samples,
+                      (ruse::bridge::state.enabled ? " (Option.ini MainRTAA is set to 1x for it)" : "; set the in-game anti-aliasing to 1x"))
+              .c_str());
+    }
+    ruse::bridge::state.game_samples = desc.texture.samples;
+    return false;
+  }
   if (desc.texture.format != reshade::api::format::d24_unorm_s8_uint && desc.texture.format != reshade::api::format::d24_unorm_x8_uint) {
     return false;
   }
@@ -228,10 +243,14 @@ struct GameOption {
   std::vector<std::string> option_keys;  // [advanced_video]
   std::vector<float> values;             // one per label after Game's
   bool factors = false;                  // the values scale the game's own
+  bool needs_helper = false;             // the game's own value while the helper isn't beside the add-on
 };
 std::vector<std::pair<renodx::utils::settings::Setting*, GameOption>> game_options;
 
 void ApplyGameOption(const GameOption& option, int choice) {
+  if (option.needs_helper && !twattila::dlaa_bridge::HelperInstalled()) {
+    choice = 0;
+  }
   // LocalSaveDir: Steam's userdata\<user>\21970\local beside the steamclient64.dll the game loaded (the newest of its users).
   static const std::filesystem::path OPTION_INI = [] {
     std::filesystem::path newest;
@@ -304,7 +323,7 @@ void ApplyGameOption(const GameOption& option, int choice) {
     text.replace(value_at, value_end - value_at, wanted_text);
     changed = true;
     reshade::log::message(reshade::log::level::info,
-                          std::format("[R.U.S.E.] Option.ini {} {} -> {}", name, current_text, wanted_text).c_str());
+                          std::format("[R.U.S.E.] Option.ini {} {} -> {} (the game reads it at its next start)", name, current_text, wanted_text).c_str());
   }
   if (!changed) return;
   auto temporary = OPTION_INI;
@@ -315,6 +334,13 @@ void ApplyGameOption(const GameOption& option, int choice) {
     if (!file) return;
   }
   MoveFileExW(temporary.c_str(), OPTION_INI.c_str(), MOVEFILE_REPLACE_EXISTING);
+}
+
+// Every row that writes the game's Option.ini at its current value (at each start, and after a preset set them).
+void ApplyGameOptions() {
+  for (const auto& [setting, option] : game_options) {
+    ApplyGameOption(option, static_cast<int>(setting->GetValue()));
+  }
 }
 
 // ReShade's DX9 Present callback runs before its DX9 overlay and the native
@@ -473,6 +499,7 @@ void OnDestroyGameSwapchain(reshade::api::swapchain* swapchain, bool) {
   if (swapchain->get_device() == ruse::bridge::state.host_device) {
     ruse::ray_tracing::ReleaseHost();
     ruse::bridge::Release();
+    ruse::bridge::state.game_samples = 0;  // its depths are made again after the Reset
   }
   UninstallPresentHooks();
   frame_latched = false;
@@ -1229,6 +1256,7 @@ void ConfigureAddon() {
             if (auto* anti_aliasing = renodx::utils::settings::FindSetting("RuseAntiAliasing");
                 anti_aliasing != nullptr && anti_aliasing->GetValue() == 0.f) {
               renodx::utils::settings::UpdateSetting("RuseAntiAliasing", twattila::dlaa_bridge::OnNvidia() ? 1.f : 2.f);
+              ApplyGameOptions();
             }
           },
       },
@@ -1264,13 +1292,26 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Anti-Aliasing (Experimental)",
         .section = AA_SECTION,
-        .tooltip = "NVIDIA DLAA, AMD FSR or Intel XeSS at native resolution instead of the game's anti-aliasing.\n"
-                   "Needs the in-game anti-aliasing off and the helper beside the add-on. Restart after changing this setting.",
+        .tooltip = "NVIDIA DLAA, AMD FSR or Intel XeSS at native resolution instead of the game's anti-aliasing\n"
+                   "(it sets the in-game anti-aliasing to 1x). Needs the full download. Restart after changing this setting.",
         .labels = {"Game's", "DLAA", "FSR Native AA", "XeSS Native AA"},
         .is_global = true,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
+    // The game's MSAA off under ours (Option.ini MainRTAA: RUSE.exe's anti-aliasing list at rva 0x1083AFC pairs 1, 2, 4,
+    // 8, 8.5, 16, 16.5 with "1x", "2x", "4x", "8x CSAA", "8x MSAA", "16x CSAA", "16x MSAA"), for the game's next start
+    // (it reads the file before its device); its value back with Game's.
+    GameOption main_aa = {.option_keys = {"MainRTAA"}, .values = {1.f, 1.f, 1.f}, .needs_helper = true};
+    setting->on_change_value = [main_aa](float, float current) { ApplyGameOption(main_aa, static_cast<int>(current)); };
+    game_options.emplace_back(setting, std::move(main_aa));
+    settings.push_back(new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "The in-game anti-aliasing was on at this start (now 1x): restart the game.",
+        .section = AA_SECTION,
+        .tint = 0xFF5050,
+        .is_visible = [] { return ruse::bridge::state.enabled && ruse::bridge::state.game_samples != 0; },
+    });
     const int choice = static_cast<int>(setting->GetValue());
     ruse::bridge::state.enabled = choice != 0 && twattila::dlaa_bridge::HelperInstalled();
     ruse::bridge::state.upscaler = (choice == 2) ? twattila::dlaa_bridge::UPSCALER_FSR
@@ -1408,7 +1449,7 @@ void ConfigureAddon() {
         .label = "Ray-Traced Ground Shadows (Experimental)",
         .section = SHADOWS_SECTION,
         .tooltip = "Ray-traced sun shadows on the ground, added to the game's (costs CPU and GPU time).\n"
-                   "Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off. Restart after changing this setting.",
+                   "Needs Anti-Aliasing at DLAA, FSR or XeSS. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
     };
@@ -1473,7 +1514,7 @@ void ConfigureAddon() {
         .label = "Screen-Space Ground Shadows (Experimental)",
         .section = SHADOWS_SECTION,
         .tooltip = "Bend Studio's screen-space sun shadows on the ground: hills and slopes shadow what lies behind them, added to\n"
-                   "the game's (costs GPU time). Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off.\n"
+                   "the game's (costs GPU time). Needs Anti-Aliasing at DLAA, FSR or XeSS.\n"
                    "Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
@@ -1520,7 +1561,7 @@ void ConfigureAddon() {
                    "Screen-Space: GT-VBGI on the ground. Ray-Traced: rays on the ground, buildings, units and trees.\n"
                    "Path-Traced: paths bring the sky's light in place of the game's flat ambient light, and its bounces.\n"
                    "Ray-Traced and Path-Traced need Ray-Traced Ground Shadows (and Object Shadows for the objects).\n"
-                   "Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off. Restart after changing this setting.",
+                   "Needs Anti-Aliasing at DLAA, FSR or XeSS. Restart after changing this setting.",
         .labels = {"Off", "Screen-Space", "Ray-Traced", "Path-Traced"},
         .is_global = true,
     };
@@ -1560,7 +1601,7 @@ void ConfigureAddon() {
         .section = REFLECTIONS_SECTION,
         .tooltip = "Reflections of the banks, buildings and units on rivers, lakes and the sea, over the game's sky reflection\n"
                    "(costs GPU time). Ray-Traced: also what lies off screen; needs Ray-Traced Ground Shadows.\n"
-                   "Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off. Restart after changing this setting.",
+                   "Needs Anti-Aliasing at DLAA, FSR or XeSS. Restart after changing this setting.",
         .labels = {"Off", "Screen-Space", "Ray-Traced"},
         .is_global = true,
     };
@@ -1753,13 +1794,12 @@ bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_des
   shader_injection.rays_half_texel_x = 0.5f * shader_injection.rays_texel_x;
   shader_injection.rays_half_texel_y = 0.5f * shader_injection.rays_texel_y;
   twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
-  // Graphics 2 of 2 at each start, for the next one (the game read Option.ini before making its device).
+  // Graphics 2 of 2 and the game's anti-aliasing under ours at each start, for the next one (the game read Option.ini
+  // before making its device).
   static bool game_options_written = false;
   if (!game_options_written) {
     game_options_written = true;
-    for (const auto& [setting, option] : game_options) {
-      ApplyGameOption(option, static_cast<int>(setting->GetValue()));
-    }
+    ApplyGameOptions();
   }
   return false;
 }
