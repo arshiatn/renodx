@@ -154,25 +154,26 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] C: Hue Clip by eye: Ryse 80, Tales 70, Expeditions 70, Divinity 2 80 (60 is closer on average), Thrones (its S-curve texture is in no dump)? (from: "ATN by eye: Hue Clip Ryse 80 ...")
 - [ ] C: Divinity 1 Smooth Grade Shoulder: keep it an Experimental row (off, now), or the default? On: OkLab 0.033 at 0.8-1, 0.025 at 1-2, 0.006 at 2-4, 0.002 at 4-16. (from: "C9 Divinity 1 grade shoulder ...")
 - [ ] C: Divinity 1 / 2 VFX / indicator rows: OK to patch the effects' pixel shader output (D1 633, D2 2,050 permutations) with a constant buffer, as Troy's VFX brightness? (from: "dvf_ not done ...")
-- [ ] C: Shogun 2 PsychoV35 toe vs SDR: Recommended lifts shadows x2.5-6.2 under 1 nit, up to x2.3 at 1-15 nits (bos_japan winter up to x8.2), dark colour x0.78; SDR-like x1.4-2.1. Keep, move toward SDR-like, or a toe row (Experimental)? (Rome Remastered x0.89-0.92: fine.) (from: "s2r_ not done ...")
+- [x] ANSWERED 23:0x (ATN: V35 fit "Let's do it then": fitted to the game, V35 FIT box) C: Shogun 2 PsychoV35 toe vs SDR: Recommended lifts shadows x2.5-6.2 under 1 nit, up to x2.3 at 1-15 nits (bos_japan winter up to x8.2), dark colour x0.78; SDR-like x1.4-2.1. Keep, move toward SDR-like, or a toe row (Experimental)? (Rome Remastered x0.89-0.92: fine.) (from: "s2r_ not done ...")
 - [ ] C: Rome Remastered Modded Auto Exposure Sensitivity default 1 instead of 2? (battle-like scene: +0.014 stops at 2, +0.19 at 1, +0.29 at 0.6; the row is off by default) (from: "s2r_ not done ...")
 - [ ] B: Shogun 2 decals under Ray-Traced AO now take the rays' AO like the ground around them (before: the game's SSAO): look right? (from: "s2r_ not done ...")
 - [x] ANSWERED 22:1x (ATN: "Idk, if you can add a row and its default should be what we have right now": an Experimental row, off = today's blur; code box below, owner tw1_) C: Attila / Thrones under RT reflections: the game's reflection blur still widens the rays' reflection by roughness (up to 2 texels x effects share; the rays already follow a roughness lobe). Keep it (today's look) or skip it where the rays reflect (sharper, an Experimental row)? (from: tw1_ 11-16 A4)
 - [x] ANSWERED 22:3x (ATN: "Sure, any reason not do it?": kept as is, c87f82630) C: Troy menuvideo01 now matches the game's look exactly (up to 0.037 of the encoded value) instead of the old sRGB decode: keep? (from: tw2_ 11-16)
-- [ ] C: Rome II cut-outs: include the 16 alpha_overlay pixel shaders too? (rigid parts use the game's 0.35 threshold, units 0.5) (from: tw2_ 11-16)
+- [x] ANSWERED 23:0x (ATN: "Let's do that.": tw2_) C: Rome II cut-outs: include the 16 alpha_overlay pixel shaders too? (rigid parts use the game's 0.35 threshold, units 0.5) (from: tw2_ 11-16)
 - [x] ANSWERED 22:3x (ATN: "If it was a bug or something that exists in all the games, then lets fix it for everything": the shared AO-reader list for every game, shs2_; Pharaoh keeps the game's SSAO under RT AO until then) C: Pharaoh pools under RT AO: open AO on the pools now, or wait for the shared AO-reader list? (from: tw2_ 11-16)
-- [ ] C: WH3 sun shadows Multiply row: keep it as the off switch (Replace is the default)? (from: tw2_ 11-16)
-- [ ] C: Expeditions No Distance Field AO Under Ours (Experimental, off): on by default? Lighter under overhangs, saves 0.298 ms. (from: tpa_ 11-16)
-- [ ] C: Expeditions 192686A0 keeps the game's AO on baked light under RT AO (two methods): move our trace earlier, or a deferred multiply? (from: tpa_ 11-16)
+- [x] ANSWERED 23:0x (ATN: "Good suggestion, do that please": the Multiply row removed in WH3, Troy, Pharaoh; the rays always replace; tw2_) C: WH3 sun shadows Multiply row: keep it as the off switch (Replace is the default)? (from: tw2_ 11-16)
+- [x] ANSWERED 23:0x (ATN: "Let's not stack the game's on top of ours. Our GT-VBAO/RT AO/PT AO are much better.": on by default, no Experimental; tpa_) C: Expeditions No Distance Field AO Under Ours (Experimental, off): on by default? Lighter under overhangs, saves 0.298 ms. (from: tpa_ 11-16)
+- [x] ANSWERED 23:0x (ATN: "if our works, the second AO pass (game's own) gets skipped, correct? If yes, let's do your suggestion": move our trace earlier, the game's AO pass skipped; tpa_) C: Expeditions 192686A0 keeps the game's AO on baked light under RT AO (two methods): move our trace earlier, or a deferred multiply? (from: tpa_ 11-16)
 - [x] ANSWERED 22:3x (ATN: "No shadow maps should run when RT Shadows is being used. To save performance and VRAM": Replace on + the game's sun shadow maps skipped under RT shadows after the coverage run, rur2_; the rule for every game is boxed below) C: R.U.S.E. Rays Replace Shadow Maps: off now (darker of the two) until the A/B run shows the rays hold the maps' casters (sprite imposters, off-screen casters); then on, per your replace rule? (from: rur2_ 11-16)
-- [ ] C: R.U.S.E. map table: rays cost 24.58 ms (41 fps) vs 6.56 with DLAA alone. Keep them, or rays off above an eye height (a look change at the table)? (from: rur2_ 11-16)
+- [x] ANSWERED 23:0x (ATN: "Can you add this as an extra slider please for me to test?": a camera-height slider above which the rays go off; rur2_) C: R.U.S.E. map table: rays cost 24.58 ms (41 fps) vs 6.56 with DLAA alone. Keep them, or rays off above an eye height (a look change at the table)? (from: rur2_ 11-16)
 - [x] ANSWERED 22:3x (ATN: "there must a way to fix it. We probably are doing something wrong": fix, not drop; rur2_) C: R.U.S.E. Bend: +1.1 ms, no caster shadow in the harness. If Ground Debug View 2 shows nothing in game either, drop the row? (from: rur2_ 11-16)
-- [ ] C: Ryse V35 defaults: at the shipped defaults V35's grey is x2.05 the game's at 0.1 nit, x1.48 at 1, x1.18 at 5, x1.03 at 15 (chroma 4.1 % off); Contrast 1.15 / Shadows 1.35 / Saturation 1.00 lands within 4.8 % (x0.98-1.04, level B). Ship the fitted defaults? (from: rys2_ 11-16)
-- [ ] C: Ryse "Dark tones for L / M" (Experimental, off; Ryse's default preset is M): WH3 harness linear / sqrt: L 0.911 / 0.930, M 0.922 / 0.904, L dark detail 0.59 / 0.86. On for L only, both, or off? (from: rys2_ 11-16)
-- [ ] C: Ryse "No RT/PT + Screen-Space (Experimental)" button (GT-VBAO, Light Bounce, Contact Shadows, rys2_ 66594cc8e): should it become No RT/PT itself? (from: A7)
-- [ ] C: Ryse Rays Replace Shadow Maps: off now (out-of-view casters lose their sun shadow); on after the coverage run if it looks right? (from: C3)
-- [ ] C: Attila PT GI: torches also bounce (torch light for on-screen hits too: warm bounce near fires, costs a light loop + shadow ray per hit; gpu3_ measures first)? Calibrate the unseen route's sky (-3 % left, median 0.79, a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
+- [x] ANSWERED 23:0x (ATN: "Let's do it then": rys2_ fits at level A) C: Ryse V35 defaults: at the shipped defaults V35's grey is x2.05 the game's at 0.1 nit, x1.48 at 1, x1.18 at 5, x1.03 at 15 (chroma 4.1 % off); Contrast 1.15 / Shadows 1.35 / Saturation 1.00 lands within 4.8 % (x0.98-1.04, level B). Ship the fitted defaults? (from: rys2_ 11-16)
+- [x] ANSWERED 23:0x (ATN: "yeah good idea": always on for L / M / RR as Attila, no row; rys2_; every game checked 23:0x: TW (anti_aliasing.hpp), WH3, Shogun 2, RomeR, Divinity 1 / 2 already feed the square root; Tales / Expeditions feed DLSS before UE's tonemap (scene light + exposure), A10a decides) C: Ryse "Dark tones for L / M" (Experimental, off; Ryse's default preset is M): WH3 harness linear / sqrt: L 0.911 / 0.930, M 0.922 / 0.904, L dark detail 0.59 / 0.86. On for L only, both, or off? (from: rys2_ 11-16)
+- [x] ANSWERED 23:0x (ATN: "Yes good suggestion": No RT/PT turns on the screen-space methods as Attila's, one button; rys2_) C: Ryse "No RT/PT + Screen-Space (Experimental)" button (GT-VBAO, Light Bounce, Contact Shadows, rys2_ 66594cc8e): should it become No RT/PT itself? (from: A7)
+- [x] ANSWERED 23:0x (ATN: "Good idea.": the cascade-caster capture, then the coverage run, then on; rys2_) C: Ryse Rays Replace Shadow Maps: off now (out-of-view casters lose their sun shadow); on after the coverage run if it looks right? (from: C3)
+- [x] ANSWERED 23:0x (ATN: "Torches have "lights" too which can light up surfaces. That is what path tracing should do ... let's add that as an extra row too": a row Torch Light in Path-Traced GI (torches for seen + unseen hits), checked against the reference path tracer with torches, cost measured; gpu3_. Sky calibration + fewer rays stay open, next C line) C: Attila PT GI: torches also bounce (torch light for on-screen hits too: warm bounce near fires, costs a light loop + shadow ray per hit; gpu3_ measures first)? Calibrate the unseen route's sky (-3 % left, median 0.79, a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
 - [ ] C: Divinity 2 Skip the Game's Shadow Maps: on by default under RT shadows (your 22:3x every-game rule) once the coverage run passes (962 of 3,526 city draws skipped)? Path-Traced Ambient into the RT/PT preset once a run shows it? (from: div2_ 11-16)
+- [ ] C: Attila PT GI: calibrate the unseen route's sky (off-screen hits -3 % darker, sky median 0.79: a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -217,7 +218,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (row DONE rys2_ d39434650: "Dark tones for L / M" Experimental off; ATN decides, ... | ATN after R0
 - (rys2_ 11-16: WARP DONE d29bf211f + 4ca336eb8 (0.17 % at occlusion 0.55, 0.08 % ... | next Ryse round
 - (rys2_ 11-16: tiled lighting 0x488BF732 / 0xCDB59F36 hooked 35c2a45f8 (level B); ... | next Ryse round (after R0)
-- (tpa_ 11-16 plan: host on DEPTH_SHADERS / MASKED_SHADERS, WriteSun at 2084C889, ... | next UE round
+- (ATN 23:0x yes: Tales' rays to the helper as the other games; tpa_) (tpa_ 11-16 ... | next UE round
 - ATN DECIDES: Tales' rays now need an upscaler on (before: also with the game's T ... | ATN
 - Dead files: talesofarise_dlss/rr_d3d12.hpp (no user), ngx_backend.hpp, 0x7A1E0D4 ... | coordinator, release round
 - (tpa_ 11-16: Bend / GT-VBGI already 51c464877, NRD default, tests build 42a1b3b7 ... | next UE round (after G1)
@@ -308,6 +309,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - DIVINITY 2 RUN (div2_ 11-16, R1 Arx city save + a torch-lit interior): DLSS on ( ... | coordinator (one game at a time)
 - Divinity 2 next (div2_ 11-16): rt_guides CS (d1_rt_guides pattern: GBuffer1 norm ... | next Divinity 2 round
 - SHARED STEPS (div2_ 11-16): rt_core TraceLightBounce: one missed bounce frame re ... | shs2_ / next shared round
+- GAME-SPECIFIC SKIPS PARITY (ATN 23:0x "Game-specific skips, let's do this too"): ... | per-game rounds (after the current merges)
+- NIGHT + SEA BENCH (ATN 23:0x offers a burning Constantinople at night replay; a ... | ATN (replays), coordinator
+- PATHS TRACE / SHADE SPLIT (ATN 23:0x "Let's do that"): the paths at 128 register ... | gpu3_
 - GPU3 RUNS (gpu3_ 11-16 NEEDS A RUN): 1. Attila Constantinople, ATN's rows, path- ... | coordinator (one game at a time)
 - GPU next (gpu3_ 11-16): Attila Nsight round DONE (whole frame 3.711 -> 3.607 ms, ... | next GPU round
 - RYSE RUN (rys2_ 11-16 NEEDS A RUN): rays + RR with a moving camera (shots + vide ... | coordinator (one game at a time)
@@ -1002,7 +1006,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       graphics_page flags (has_screen_space_shadows / has_gtvbgi / rays_tested), hdr_only::AmbientOcclusionRows /
       FullDownloadNote, talesofarise_dlss/upscaling.hpp shared; Tales Output default Auto (hdr_encoding hook gone, FG
       scRGB via fg_hdr10). CMake NGX block deleted in the merge (no add-on links NGX). Skills / tools lose the _dlss targets.
-      - [ ] (tpa_ 11-16 plan: host on DEPTH_SHADERS / MASKED_SHADERS, WriteSun at 2084C889, t41-t44 wired, sky texels c155-c162, torches 038D003A; Expeditions ray_tracing.hpp is the template; then a G1 / G2 data run) Tales' rays still run in process (rt_shadows.hpp on its own D3D12 device): move to the helper (rt_scene host
+      - [ ] (ATN 23:0x yes: Tales' rays to the helper as the other games; tpa_) (tpa_ 11-16 plan: host on DEPTH_SHADERS / MASKED_SHADERS, WriteSun at 2084C889, t41-t44 wired, sky texels c155-c162, torches 038D003A; Expeditions ray_tracing.hpp is the template; then a G1 / G2 data run) Tales' rays still run in process (rt_shadows.hpp on its own D3D12 device): move to the helper (rt_scene host
         like Expeditions' ray_tracing.hpp: scene from the depth prepass, sun from the lighting pass, outputs t40-t44,
         bounce resolve); until then rt_scene-only rows hidden, no Upscaling Debug View. Owner: next UE round
       - [ ] ATN DECIDES: Tales' rays now need an upscaler on (before: also with the game's TAA); Path Tracing Bounces
@@ -2000,6 +2004,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         move into twattila as shared shaders; graphics_page GI tooltip names GT-VBGI / "soldiers" in games without them
         (a Texts field); Fog Shadows row shows in D2 with no effect (has_fog_shadows flag); page_dump_d2_body.h helper-
         present state. Owner: shs2_ / next shared round
+      - [ ] GAME-SPECIFIC SKIPS PARITY (ATN 23:0x "Game-specific skips, let's do this too"): every pass skip / D3D11 win
+        Attila got from the Nsight / WPR rounds ported to each game where the same pass exists (census + WARP per game),
+        the helper / shared shader wins reach every helper game at the next install. Owner: per-game rounds (after the
+        current merges)
+      - [ ] NIGHT + SEA BENCH (ATN 23:0x offers a burning Constantinople at night replay; a sea battle): ATN makes the
+        replays; then one bench + WPR (ATN's tasks) + Nsight GPU trace at each (torches 128, fire / smoke particles, RT
+        water reflections, ships = Rarer Objects), then a CPU / GPU round from the findings. Owner: ATN (replays),
+        coordinator
+      - [ ] PATHS TRACE / SHADE SPLIT (ATN 23:0x "Let's do that"): the paths at 128 registers split into trace and shade
+        passes in the shared helper (every helper game gets it). Owner: gpu3_
       - [ ] GPU3 RUNS (gpu3_ 11-16 NEEDS A RUN): 1. Attila Constantinople, ATN's rows, path-traced GI: pan along the walls
         past torches, do off-screen corners still brighten then settle (f128a1cc1); 2. R.U.S.E. battle with rays: Record Ray
         Tracing Profile (A1k GPU cost) + the new garbage-triangles WARN line in ReShade.log; 3. Ryse or Expeditions with
