@@ -70,8 +70,14 @@ $table = [ordered]@{
                      FrameGamma = '2' }
   'WH2'         = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^(t|bloom|lensflare|sky|vignette)\d+_|^battlefog0[4-6]_'
                      FrameGamma = '2'; Modes = '0,1,2,3,4' }
-  'WH3'         = @{ Folder = 'twwarhammer3'; Dump = 'dump_shader_twwarhammer3_pack\cso'; Shaders = '^(t|bloom|lensflare|lensblood)\d+_'
-                     FrameGamma = '2'; Modes = '0,1,2,3,4' }
+  # Warhammer III (tw2_ 11-16: every replaced pixel shader tried): the tone mapper, bloom, flares, lens blood, the fog's light
+  # draws (battlefog00-08, ours only under the rays or Fog Strength), the unit indicators and sharpening (no Gamma Correction
+  # check: a pass on the tone mapper's output) and the vignette, each with its control caught. Left out: cutscene00 / 01,
+  # sky00 and ui00 (their control not caught here), shadowcopy00-02 (depth output: nothing to compare), the point lights
+  # and the sun mask (drawn only with the rays: test/tw_warhammer3_shaders 4 and 5), the compute passes (reflection, AO,
+  # DOF, auto exposure: tests 2, 3, 6, 7 or none).
+  'WH3'         = @{ Folder = 'twwarhammer3'; Dump = 'dump_shader_twwarhammer3_pack\cso'; Shaders = '^(t|bloom|lensflare|lensblood|battlefog|indicator|sharpening|vignette)\d+_'
+                     NoGamma = '^sharpening\d+_'; FrameGamma = '2'; Modes = '0,1,2,3,4' }
   # Troy and Pharaoh: their tone mappers, bloom and flares, and the other replaced screen passes that pass here with their
   # control caught (fix round 2026-11-16: tools/tw/troy/vanilla_exact_tp_1116.txt; Troy fxaa00 and menuvideo01 since tw2_ 11-16:
   # the decompile's (int) casts on fxaa00's end-of-edge mask, menuvideo01's sRGB decode the game doesn't do; menuvideo01 without
