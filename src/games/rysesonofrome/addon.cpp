@@ -2076,10 +2076,9 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
-                   "and PsychoV35. UC2 Extended by Musa and Jon. Visibility Bitmask ambient occlusion and Light Bounce: the "
-                   "method of Therrien, Levesque and Gilet (2023) on GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by "
-                   "Mirko Salm (2024); auto thickness after Bjorn Ottosson.",
+          .label = twattila::credits::Methods({.psycho_v30 = false, .gtvbao = true, .gtvbgi = true, .auto_thickness = true,
+                                               .detours = true}) +
+                   "\nUC2 Extended by Musa and Jon.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -2090,8 +2089,7 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "NVIDIA DLSS's presets: the NGX SDK's header (NVIDIA RTX SDKs license); NVIDIA and DLSS are trademarks "
-                   "and/or registered trademarks of NVIDIA Corporation. Hooks: Microsoft Detours (MIT). Every license ships "
-                   "with the mod.",
+                   "and/or registered trademarks of NVIDIA Corporation. Every license ships with the mod.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{
