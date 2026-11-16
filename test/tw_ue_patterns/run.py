@@ -1,16 +1,17 @@
-"""Every byte pattern of Tales of Arise's code patches and hooks, run on the game's code.
+"""Every byte pattern of Tales of Arise's and Expeditions: Rome's code patches and hooks, run on the game's code.
 
 code_patch::FindPattern takes a site only when its pattern matches once in the exe's executable sections, else none
 (FindPatterns: every match, for the console variable lookups and the world time manager). This runs the patterns as
 written in the sources (string literals of hex bytes and ??, adjacent literals joined) on the same sections:
 - Tales of Arise: tales_image.bin, the decrypted image the add-on's Save Image writes (file offset = RVA; the exe is
   SteamStub-encrypted on disk).
+- Expeditions: Rome: its Shipping exe (not encrypted; sections read at their raw offsets).
 A pattern passes when it matches once (FindPatterns users: at least once). Tales' image was saved with the add-on
 running, so its patched sites hold the add-on's bytes: there a patched span matches the original or the replacement
 (PATCHED below, from the add-on's code; the NPC fade rows' immediates from their own table). CONTROLS that must FAIL the same check: the
 first pattern with its first fixed byte changed (no match), a run of int3 padding (many matches), and a pattern
 that does match once with one more fixed byte from beyond its end changed (no match); each control failing is the
-pass. Usage: python -I run.py [--tales IMAGE] [--game tales]
+pass. Usage: python -I run.py [--tales IMAGE] [--expeditions EXE] [--game tales|expeditions]
 """
 import argparse
 import pathlib
@@ -25,6 +26,12 @@ GAMES = {
         "mapped": True,
         "sources": ["src/games/talesofarise_dlss/engine_hooks.hpp", "src/games/talesofarise/dlss_graphics.hpp"],
         "engine": "UE_4_21",
+    },
+    "expeditions": {
+        "image": r"D:\SteamLibrary\steamapps\common\Expeditions Rome\ExpeditionsRome\Binaries\Win64\ExpeditionsRome-Win64-Shipping.exe",
+        "mapped": False,
+        "sources": ["src/games/expeditionsrome/dlss_graphics.hpp"],
+        "engine": "UE_4_23",
     },
 }
 # Searched with FindPatterns (every match is used): at least one match.
@@ -187,9 +194,10 @@ def Run(game, image_path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tales", default=GAMES["tales"]["image"])
+    parser.add_argument("--expeditions", default=GAMES["expeditions"]["image"])
     parser.add_argument("--game", choices=list(GAMES), action="append")
     arguments = parser.parse_args()
-    images = {"tales": arguments.tales}
+    images = {"tales": arguments.tales, "expeditions": arguments.expeditions}
     bad = sum(Run(game, images[game]) for game in (arguments.game or list(GAMES)))
     print("PASS" if bad == 0 else f"FAIL ({bad})")
     return 0 if bad == 0 else 1
