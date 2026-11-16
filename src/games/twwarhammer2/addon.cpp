@@ -150,6 +150,7 @@ void ApplyResetPreset() {
       {"fog_strength", 1.f},
       {"sky_smooth", 0.f},
       {"sky_smooth_strength", 1.f},
+      {"sky_deband", 0.f},
       {"dof", 1.f},
       {"vignette", 1.f},
       {"distortion", 1.f},
