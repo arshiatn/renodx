@@ -3,7 +3,8 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
-- [ ] Still open from the run analysis: Ryse far-facade ray shadows (rays darken far facades the maps leave lit, up to 0.67
+- [x] ANSWERED 06:xx (ATN: "RT Shadows should replace them (and make them stop to save performance maybe)"): rays
+  keep the far shadows (more correct), replace the maps' term, maps only for hair / fog; skip fix in the Ryse fix round. Still open from the run analysis: Ryse far-facade ray shadows (rays darken far facades the maps leave lit, up to 0.67
   stop): keep or limit? Owner: ATN
 - [x] ANSWERED 06:xx "you are allowed to use mouse click on screens" (memory feedback_mouse_clicks_allowed): Tales redo with a click after the fix round. NEW 11-16: Tales' title screen ("Press Any Key") won't take our keyboard input from a script (Enter / Space end in the
   attract movie), so the Bend / GT-VBGI look shots couldn't be redone. Choose: you load SaveData_006 once during a run, or
@@ -179,6 +180,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound i ... | next Attila round
 - SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator 06:xx rao_ merged ad541a4f (RT AO replaces the g
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
+- 17-ROW CHECK (ATN 06:xx: the first audits ran before the 17 Attila rows were in ... | coordinator
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
 - Ryse ray costs (RT shadows +1.0 ms, PT +2.7 ms at 4K DLSS Quality): Nsight work ... | a later GPU round
 - Tales Bend / GT-VBGI look shots: rerun tales\g1g2 un.ps1 -Bend with a mouse clic ... | coordinator
@@ -1508,6 +1510,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         (saved DLSS -> XeSS on Intel, else FSR) is missing in Rome Remastered, Shogun 2, Ryse, Tales, Expeditions;
         tools/tw/page_dump/README.txt still says non-TW add-ons have no driver (dump_ry / dump_ta / dump_exr exist).
         Owner: per-game rounds (SMAA / CMAA2, fallback), coordinator (README)
+      - [ ] 17-ROW CHECK (ATN 06:xx: the first audits ran before the 17 Attila rows were in the skills): 3 read-only agents,
+        reports skill_audit_1116/<game>_17.md; their A rows go to a second fix pass. Owner: coordinator
       - [ ] SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specular Occlusion default on, so rays
         run with every ray method off (Thrones, Rome II, Rome Remastered, WH1-3, Pharaoh, Troy; fix: both keys into
         RAY_METHODS, graphics_page.hpp:46-47); ssr00/01/06/07 reflections occluded twice under RT Specular Occlusion and not
