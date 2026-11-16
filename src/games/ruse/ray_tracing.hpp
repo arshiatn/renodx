@@ -256,9 +256,14 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     return false;
   }
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
-  // The anti-aliasing's bridge once it runs; without it (GT-VBAO alone) its shared textures and passes only.
-  if (!bridge.ready && (bridge.enabled || !state.vbao || !bridge::MakeObjects(host, __bridge_quad, __bridge_prepare, __bridge_writeback))) {
-    return false;
+  // The anti-aliasing's bridge once it runs; without it (GT-VBAO alone) its shared textures and passes only, tried once.
+  if (!bridge.ready) {
+    if (bridge.enabled || !state.vbao) return false;
+    if (!bridge::MakeObjects(host, __bridge_quad, __bridge_prepare, __bridge_writeback)) {
+      state.failed = true;
+      reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Ground ambient occlusion: the shared textures weren't made: off");
+      return false;
+    }
   }
   auto* proxy = reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native());
   ComPtr<ID3D11DeviceContext> context;

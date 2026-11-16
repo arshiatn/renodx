@@ -56,6 +56,9 @@ constexpr uint64_t PLACE_RELEASE_FRAMES = 600;
 // A rigid draw at its placement this many frames since it was made is still: a static mesh for ray tracing (CaptureScene);
 // before, and a draw that moves on more than PLACE_TOLERANCE in that time (2 units a frame), it is captured as drawn.
 constexpr uint64_t PLACE_STILL_FRAMES = 16;
+// The ground pre-pass's vertex shader: its 32 patches are the terrain; the main pass draws it again layer by layer
+// (300-odd draws in the same vertex declaration on the B0 trace, each a part of the patches), so those stay out (Record).
+constexpr uint32_t GROUND_SHADER = 0xF01502EA;
 
 struct Placement {
   std::array<double, 3> translation = {};
@@ -65,6 +68,7 @@ struct Placement {
   // Never reused (0: none): its static capture's first instance, which rt_core's keys hold (both its short and its full
   // one), so one mesh at two places, at a new place or with its buffer written again is a new static mesh.
   uint32_t serial = 0;
+  bool unusable = false;  // CaptureScene skipped it (a strip, no layout, an unmirrored buffer): not tried again
 };
 
 struct Mirror {
@@ -133,6 +137,7 @@ struct Counts {
   uint32_t no_layout = 0;
   uint32_t no_buffer = 0;
   uint32_t fan = 0;
+  uint32_t ground_layers = 0;
 };
 
 struct State {
@@ -153,6 +158,7 @@ struct State {
   uint32_t index_offset = 0;
   uint32_t index_size = 2;
   uint32_t topology = 4;
+  uint64_t ground_declaration = 0;  // this frame's ground pre-pass's (0: not drawn yet)
   std::array<float, 1024> vertex_constants = {};
   std::vector<Draw> draws;
   std::vector<float> constants;
@@ -289,6 +295,12 @@ inline void Record(reshade::api::command_list* cmd_list, uint32_t index_count, u
     ++state.counts.no_shader;
     return;
   }
+  if (hash == GROUND_SHADER) {
+    state.ground_declaration = state.declaration;
+  } else if (state.ground_declaration != 0 && state.declaration == state.ground_declaration) {
+    ++state.counts.ground_layers;
+    return;
+  }
   const ReplayShader* shader = &*found;
   const size_t constants = state.constants.size();
   state.constants.insert(state.constants.end(), state.vertex_constants.begin(), state.vertex_constants.begin() + (shader->registers * 4));
@@ -404,6 +416,7 @@ inline ID3D11Buffer* GetBuffer(ID3D11Device* device, ID3D11DeviceContext* contex
 // shaders into `positions` (triangles of clip positions in draw order), the proxy's state as it was after.
 inline void Replay(std::span<const float> inverse_view_projection) {
   auto* proxy_reshade = renodx::utils::device_proxy::proxy_device_reshade;
+  state.ground_declaration = 0;
   if (!state.enabled || proxy_reshade == nullptr || state.draws.empty()) {
     state.draws.clear();
     state.constants.clear();
@@ -585,11 +598,11 @@ inline void Replay(std::span<const float> inverse_view_projection) {
     const Counts& counts = state.counts;
     reshade::log::message(reshade::log::level::info,
                           std::format("[R.U.S.E.] Scene Replay: {} scene draws, {} at their earlier place, {} replayed ({} triangles, {} "
-                                      "needed), skipped: {} unknown shader, {} no layout, {} unmirrored buffer, {} fan; {} mirrored "
-                                      "buffers, {} placement keys",
+                                      "needed), skipped: {} unknown shader, {} no layout, {} unmirrored buffer, {} fan, {} ground layers (the pre-pass's "
+                                      "patches hold them); {} mirrored buffers, {} placement keys",
                                       counts.recorded, counts.placed, counts.replayed, written.NumPrimitivesWritten,
                                       written.PrimitivesStorageNeeded, counts.no_shader, counts.no_layout, counts.no_buffer, counts.fan,
-                                      state.mirrors.size(), state.placements.size())
+                                      counts.ground_layers, state.mirrors.size(), state.placements.size())
                               .c_str());
     state.log_next = false;
   }
@@ -652,6 +665,10 @@ inline void CaptureScene(reshade::api::command_list* cmd_list, const std::array<
       ++kept;
       continue;
     }
+    if (placement != nullptr && placement->unusable) {
+      ++skipped;
+      continue;
+    }
     const Layout* layout = GetLayout(device, draw);
     std::array<ID3D11Buffer*, STREAMS> streams = {};
     ID3D11Buffer* indices = GetBuffer(device, context.Get(), draw.index_buffer);
@@ -661,6 +678,10 @@ inline void CaptureScene(reshade::api::command_list* cmd_list, const std::array<
       if ((layout->streams & (1u << stream)) == 0) continue;
       streams[stream] = GetBuffer(device, context.Get(), draw.streams[stream]);
       usable = streams[stream] != nullptr;
+    }
+    // Its reason stays while its placement does (a buffer the game writes later, or written again, is a new placement).
+    if (!usable && placement != nullptr) {
+      placement->unusable = true;
     }
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (!usable || FAILED(context->Map(game_constants, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
@@ -692,7 +713,7 @@ inline void CaptureScene(reshade::api::command_list* cmd_list, const std::array<
     const uint64_t key = twattila::rt_scene::CaptureReplayed(
         cmd_list,
         {.hash = draw.shader->hash, .capture_shader = draw.shader->code,
-         .terrain = draw.shader->hash == 0xF01502EA || draw.shader->hash == 0xF28418A2, .dynamic = !still, .every_draw = !still},
+         .terrain = draw.shader->hash == GROUND_SHADER || draw.shader->hash == 0xF28418A2, .dynamic = !still, .every_draw = !still},
         {.index_count = draw.index_count, .instance_count = 1, .first_index = draw.first_index, .vertex_offset = draw.vertex_offset,
          .first_instance = (still ? placement->serial : 0u)});
     if (still) {
