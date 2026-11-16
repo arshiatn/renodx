@@ -1,53 +1,88 @@
 # RenoDX — R.U.S.E.
 
-Requires Windows HDR and the game's HDR option. Native scene targets keep
-their packed 10-bit format. RenoDX uses an FP16 backbuffer clone and a DX11
-HDR presentation proxy.
+R.U.S.E. renders with D3D9 (64-bit). RenoDX keeps the game's packed 10-bit scene targets, draws the game's frame into an
+FP16 clone of its 8-bit back buffer and presents it through a DX11 HDR swap chain (the device proxy). Turn the in-game
+HDR setting on: that path renders the 10-bit scene with bloom that the final post (`0x232EB5DF` and its permutations)
+tone maps. The game has no tone mapper of its own; its 8-bit back buffer clips at 1.
 
 ## Rendering modes
 
 | Mode | Behaviour |
 |---|---|
-| SDR | Original scene response and clipped highlights, scaled by Paper White. |
-| PsychoV31 - Native Tone | Applies PsychoV31 after the game's gamma/brightness response. The Faithful to SDR preset selects this mode. |
-| PsychoV31 - Full Replacement | Replaces that gamma/brightness response with PsychoV31. Same response and grey calibration as the preceding build's last V31 mode. Default until 2026-11-15. |
-| PsychoV35 | Recommended (2026-11-12) and the default for new players (2026-11-15; Reset stays Extended). Musa's custom PsychoV35 (`twattila/psycho_test35.hlsli`, shared with Attila and WH3) with its own sliders (`v35_*`) and **Hue Clip Emulation** (`twattila/psycho35.hlsli`, `psycho35_settings.hpp`), in place of the game's clip at 1, after the map's Brightness / Gamma response (2026-11-15: the map's own contrast, test/tw_psychov35 part 6: slope = Gamma, the 15 pre-inverted markers at their authored colour); Hue Clip Emulation (default 100) toward the clip's hue. Injection now c200 - c209 (10 registers). V35 builds for the game's SM3 shaders: on SM3 its failed pixels are black at once (as after ApplyPsychoV35 elsewhere). Built only, not run in game. |
-| Extended | 2026-11-15, beside the V31 modes (ATN decides). The SDR picture up to Paper White (the map's response kept), each channel above it rolled off to Peak (Ryse fix32's Neutwo shoulder) instead of the clip. Reset selects it. Built only, not run in game. |
+| SDR | The game's own picture (its map response, clipped highlights), scaled by Paper White. |
+| PsychoV31 - Native Tone | PsychoV31 after the map's gamma / brightness response. |
+| PsychoV31 - Full Replacement | PsychoV31 in place of that response (the earlier builds' last V31 mode). |
+| PsychoV35 | Recommended and the default for new players. Musa's PsychoV35 (`twattila/psycho_test35.hlsli`) with its own sliders (`v35_*`, `twattila/psycho35_settings.hpp`) and Hue Clip Emulation (default 100), in place of the game's clip at 1, after the map's Brightness / Gamma response (test/tw_psychov35 part 6: slope at grey = the map's Gamma, the 15 pre-inverted markers at their authored colour). |
+| Extended | The SDR picture up to Paper White, each channel above it rolled off to Peak (Ryse fix32's Neutwo shoulder). Reset selects it. |
 
-Output: HDR10, scRGB, SDR or Auto (default: scRGB with Windows HDR on, else SDR; `twattila/output_encoding.hpp`).
-SDR output keeps the game's picture (Peak, Paper White and UI at the back buffer's 203-nit white) in a 10-bit gamma
-2.2 chain; a first start without Windows HDR takes the SDR preset.
+The `rendering_mode` key: 0 SDR, 1 Native Tone, 2 Full Replacement, 3 PsychoV35, 4 Extended. Output: HDR10, scRGB, SDR or
+Auto (default: scRGB with Windows HDR on, else SDR; `twattila/output_encoding.hpp`). SDR output keeps the game's picture
+(Peak, Paper White and UI at the back buffer's 203-nit white). A first start without Windows HDR takes the SDR preset;
+Output Auto switches to Recommended and back as Windows HDR changes.
 
-Settings Mode's third page, **Graphics 2 of 2** (2026-11-15, Experimental, built only): Shadow Map Size, Sprite
-Resolution, Sprite Anti-Aliasing and Detail Distance write the game's own `Option.ini` ([advanced_video]: ShadowRTSize,
-ImposteurTextureSize, ImposteurRTAA / ImposteurShadowRTAA, LevelBuild_*) above its menu, at each start (the game reads
-the file at start and writes it only when its options menu applies); Game's gives the game's own value back. The file
-is found beside the steamclient64.dll the game loaded. Output also holds Wait for Each Frame Copy (the proxy's two GPU
-idle waits, On as shipped) and Frame Trace.
+Presets: Reset (Extended), SDR (Rendering Mode SDR and Output SDR), Recommended (PsychoV35). They write the look rows
+only, never Peak, Paper White or UI.
 
-Both Psycho modes retain the game's colour grading and each shader variant's
-bloom, vignette and directional blur. Native no-bloom variants remain without
-bloom. Existing processing and shared Psycho controls are unchanged. Extended
-and its separate grading controls have been removed.
-Psycho controls, Bloom and Vignette appear only in Advanced settings with a
-Psycho mode selected. Peak appears only in the Psycho modes.
+## Settings pages
 
-The `rendering_mode` config key is retained: 0 SDR, 1 Native Tone, 2 Full
-Replacement. Settings loading clamps the former last V31 mode's index 3 to 2.
-The former V30 selections now use V31. Existing slider keys and defaults are
-retained. Both Recommended presets reset Psycho controls, Bloom and Vignette
-while preserving Peak, Paper White, UI brightness, output settings, Motion Blur
-and Depth of Field.
+Settings Mode: Simple, Advanced, Graphics 1 of 2, Graphics 2 of 2 (About on every page).
 
-The separate V30 library and calls are removed. The supplied V31 header and
-its SM3 workaround remain unchanged: compression 1.5, no flare, BT.709 source
-cage and BT.2020 target. Its framework helper dependencies remain necessary.
+- **Graphics 1 of 2** (Attila's sections, every row Experimental, off, restart): Ray Tracing (RT/PT and No RT/PT, the
+  red full-download line without the helper, Readable Scene Depth and Scene Replay for tests), Anti-Aliasing and
+  Upscaling, Shadows, Ambient Occlusion, Global Illumination, Reflections and Water.
+- **Graphics 2 of 2**: Shadow Map Size, Sprite Resolution, Sprite Anti-Aliasing and Detail Distance write the game's own
+  `Option.ini` ([advanced_video]: ShadowRTSize, ImposteurTextureSize, ImposteurRTAA / ImposteurShadowRTAA,
+  LevelBuild_*) above its menu, at each start (the game reads the file before its device and writes it only when its
+  options menu applies); Game's gives the game's value back (kept in ReShade.ini [RUSE Option.ini]).
+- **Output** (Advanced): Output, Wait for Each Frame Copy (the proxy's two GPU idle waits, on as shipped), Frame Trace
+  and Trace One Frame (`renodx_trace_now` next to the exe works too).
 
-## Postprocess variants
+## The D3D9 bridge (`bridge.hpp`)
 
-All seven final postprocess shaders use `shaders/postprocess.hlsli`. The wrappers
-retain the native register bindings, blur kernels, bloom and packed scene-range
-restoration found in the dumped CSO/ASM:
+Anti-Aliasing (Experimental): DLAA, FSR Native AA or XeSS Native AA through the TW helper (`renodx-tw-dlaa64.exe`, the
+full download) on the DX11 proxy's device. The game's D3D9Ex device makes the shared textures and the proxy opens them.
+Each frame, before the bloom's first pass reads the resolved main target: a D3D9 pass writes the scene as light, the
+INTZ depth (Readable Scene Depth: the back-buffer-sized single-sample D24 surfaces made INTZ) and the camera's motion
+(the camera pass `0x88292FC6`'s matrices); the helper runs; a second pass writes the result back in the game's
+encoding. The scene draws get a Halton jitter in their camera registers c0-c3. GPU Sync waits on shared fences instead
+of the CPU.
+
+The row sets the game's own MSAA to 1x (`Option.ini` MainRTAA 1: RUSE.exe pairs 1, 2, 4, 8, 8.5, 16, 16.5 with "1x"
+... "16x MSAA"; ATN's 8.5 is "8x MSAA"), when it changes and at each start, for the game's next start; Game's gives the
+game's value back. A start whose main depth is still multisampled leaves the scene draws alone (no jitter, no rays: the
+pre-pass would be the only readable depth): one log line and a red line in the section say to restart.
+
+Frame Generation (2x-6x, Dynamic), NVIDIA Reflex, Frame Rate Limit, HUD Recomposition and the FG preset use
+`twattila/frame_generation.hpp` and `reflex.hpp`: the HUD-less image is the final post's target copied before the
+first UI draw; Reflex runs on the proxy's presents and the D3D9Ex queue is one frame deep.
+
+## Ray tracing and the screen-space rows (`ray_tracing.hpp`, `bridge_replay.hpp`)
+
+The rays trace the scene a D3D9 draw replay captures on the proxy's D3D11 device (`rt_core.hpp`'s clip-space host): the
+275 census vertex shaders transpiled to vs_5_0 with stream output (`shaders/replay`, each proved against the game's
+vs_3_0 on an SM3 vertex interpreter), static draws placed once. Ours replaces the game's, one method an effect:
+
+| Row | What it does |
+|---|---|
+| Ray-Traced Ground Shadows | The traced sun visibility in place of the game's shadow-map term in the ground mask (the pre-pass `0x8588D239` writes only that term into the red of the mask the 110 terrain and 94 water shaders read by screen position). A frame without a trace keeps the game's. |
+| Ray-Traced Object Shadows | 642 object pixel shaders, patched in their bytecode (`ru_scene_patches.py`): after their shadow-map factor's off-map select, `cmp rD, -rT.w, rD, rT.x` with s15 the visibility (its alpha 1: the rays in place of the factor; an alpha-0 texel when untraced: the game's). Moving units are a frame late (last frame's main depth reprojected). |
+| Screen-Space Ground Shadows | Bend Studio's march with the game's shadow maps (the darker of the two in the ground mask). Off under the ground rays. |
+| Ray-Traced Ground Ambient Occlusion / Screen-Space Ground Ambient Occlusion | The rays' AO, else GT-VBAO, into the 108 terrain shaders' ambient (s14). Both skipped once Path-Traced Light Bounce replaces the ambient. |
+| Ground Light Bounce | Screen-Space: GT-VBGI on the ground. Ray-Traced / Path-Traced: the helper's Light Bounce through guides the patched terrain and object shaders write (oC1 albedo, oC2 normal), into the same s14 texel; Path-Traced brings the sky in place of the game's flat ambient on the ground and the objects (Near ReSTIR Reuse on). |
+| Water Reflections | Screen-Space: a march over the start depth, its hits in last frame's scene; Ray-Traced: the helper's reflections; the 120 water shaders blend it over their cube by its share (s13). |
+
+Not covered: 2 object shaders whose shadow select writes an output, 60 lit object shaders the guides can't patch, 12
+terrain shaders (they keep the game's shading). The game's shadow-map pass still draws (its readers: water, sprites,
+the shaders above).
+
+The log says what runs: `[R.U.S.E.] Anti-aliasing: DLAA ready at WxH`, `... applied`, `[R.U.S.E.] Ray tracing:
+tracing (...)`, `[R.U.S.E.] Patched game shaders installed: ...`, `[R.U.S.E.] Frame generation: ...`; each at start or
+at a change, never a line a frame.
+
+## Postprocess, effects, video and UI
+
+All seven final post permutations use `shaders/postprocess.hlsli` with the game's register bindings, blur kernels,
+bloom and packed scene-range restoration:
 
 | Native sampling | Bloom | No bloom |
 |---|---|---|
@@ -56,211 +91,41 @@ restoration found in the dumped CSO/ASM:
 | 9 taps, uniform | `0xFB692F37` | `0x7E93D12F` |
 | Single tap | — | `0x0106B253` |
 
-The multi-tap families appear to correspond to high, medium and low quality;
-the exact setting-to-hash mapping still needs an in-game check. The single-tap
-shader has no native scene-range multiplier, directional blur or vignette.
-Psycho can only use the highlight headroom that reaches that shader. Keep the
-game's HDR option enabled. All three rendering modes are available in every
-variant.
+Advanced → Extra: Bloom and Vignette (HDR modes), Motion Blur (0 = the centre sample only; the multi-tap posts) and
+Depth of Field (the two DOF filters `0x6F08A739` / `0xDC8B14DB` bypassed, the masks `0x971790DF` / `0x7E5A7D9B` alpha
+scaled), Video AutoHDR (default 0) and Video Dithering on every video and loading-screen draw.
 
-## Effect controls
+UI and video: 26 replacements (ScaleForm, interface, text effects, the cutscene videos `0x1D8E1FA8` / `0x66D7BE52`, the
+loading screens) keep the game's math and scale only their final back-buffer draw (UI by the UI row, video by Paper
+White). The native DX9 ReShade GUI is blocked after a successful proxy present (`R.U.S.E.: native DX9 GUI draw filter
+installed.`); the proxy's overlay stays.
 
-Advanced → Extra includes two independent controls in all three rendering modes:
+Gamma 2.2 is the mod's working decode / encode. The final response is `Brightness * rgb * luma^(Gamma - 1)` (the map's
+c5.x / c6.x, per-map TPostProcess values: `tools/nontw/ruse/map_postprocess.tsv`).
 
-| Control | 0 | 1 (default) | Intermediate values |
-|---|---|---|---|
-| Motion Blur | Keep only the centre scene sample in the final blur pass. | Previous native blur path. | Reduce its sampling radius. |
-| Depth of Field | Bypass the two identified blur filters and zero the two DOF mask alphas. | Native filters and masks. | Reduce filter radius and mask strength. |
-
-Motion blur is confirmed by the previous-frame projection/motion-vector
-producers `0x88292FC6`, `0x8588D239` and `0xF2B4369C`, whose encoded Y/Z vectors
-are consumed by the final postprocess. The control covers all six multi-tap
-postprocess variants, including SDR. The single-tap variant has no motion blur
-to disable. Motion-vector/shadow producers themselves are left unchanged.
-
-The four DOF replacements retain native bindings, UVs, colour and alpha rules:
-
-| Shader | Role | Native bindings |
-|---|---|---|
-| `0x6F08A739` | Horizontal five-tap DOF filter | Input dimensions c0, native DOF intensity c1, input s0. |
-| `0xDC8B14DB` | Vertical five-tap DOF filter | Same. |
-| `0x971790DF` | Procedural DOF mask | Native DOF intensity c0; RGB stays zero. |
-| `0x7E5A7D9B` | Coloured DOF mask | HDR parameters c0, DOF intensity c1, subpass c2; RGB stays native. |
-
-Filter bypass outputs the input RGB and alpha 1, matching the native filter's
-alpha convention. The masks retain their RGB and only scale alpha. These passes
-can run offscreen, so DOF control applies there too; it does not scale nits or
-apply Psycho. Missing addon injection preserves native output. Both controls
-default to 1, and tone presets preserve the user's choices.
-
-Bloom and Vignette retain their existing controls in the Psycho modes. The dump
-has no separately confirmed lens-flare, god-ray or film-grain pass. Sun/sky glare,
-water simulation, general sprite draws and PreviousSceneMap filters are not
-given speculative effect-disable controls.
-
-## Gamma assumption
-
-Gamma 2.2 remains the mod's working decode/encode assumption; these shader dumps
-do not establish it as the game's display transfer function. The native final
-response uses `Gamma` at c5.x and `Brightness` at c6.x, operating on luminance:
-
-```text
-output = Brightness * gradedRGB * pow(luma(gradedRGB), Gamma - 1)
-```
-
-On a neutral ramp this is `Brightness * x^Gamma`. It is a configurable tone
-response, not evidence of a fixed 2.2 display curve. DX9 sRGB sampler/write
-states and presentation/gamma-ramp conversions can also operate outside the
-shader and are absent from the dump.
-
-To settle this, capture the unmodified game's c5.x/c6.x, sampler sRGB states,
-render-target format, sRGB write state and any presentation/gamma-ramp
-conversion, then compare a known grey ramp. If another transfer function is
-confirmed, the scene decode, Full Replacement grey anchor, UI/video scaling
-and proxy decode must be changed together. No gamma change was guessed here.
-
-## Brightness and cutscenes
-
-Paper White scales the scene and cutscene video. UI brightness scales the
-HUD/text separately. The two video replacements retain their native
-three-texture YUV-to-RGB conversion and chroma UV scaling:
-
-| Shader | Native composition |
-|---|---|
-| `0x1D8E1FA8` | Y dimensions c0, chroma c1; vertex RGBA tint/fade. |
-| `0x66D7BE52` | Background/fade c0, Y dimensions c1, chroma c2; background blend including native alpha. |
-
-Both keep Y/U/V at s0/s1/s2 and share `shaders/video.hlsli`. Finished video
-keeps its original SDR contrast and colour; it does not receive a Psycho tone
-curve. Paper White is applied after the native tint/background composition.
-
-Video is clipped to the native range before Paper White scaling. The final
-proxy does not clip it back to the 203-nit reference. A white video pixel at
-Paper White 400 therefore targets 400 nits, provided Peak is at least 400.
-At Paper White 203 the gain is 1. UI brightness does not control video.
-
-Only draws targeting the backbuffer receive UI/video scaling. Offscreen draws
-and shaders without valid addon injection preserve their native output. UI
-and video gains are captured once per host frame. If another video pass is
-found, or this pass renders offscreen in a different cutscene, its final
-composition pass still needs to be identified.
-
-2026-11-15, the shader census (every shader the game ships: 1,528 ps_3_0 + 275 vs_3_0 in ZZ_Win.dat's one cache,
-tools/nontw/ruse/census): 12 more UI / video replacements the dump never saw, from the census decompiles: ScaleForm
-`ui_0x085908AD`; interface `ui_0x46F14A5E`, `0x784A47D1`, `0x838AD0F0`, `0xA81CB0EB`, `0x1DC54AF9` and the two text
-effects `0xD7D77018`, `0xF576DA4E`; video `video_0xDFC86010` and the three loading screens `0xE916600D`, `0x149B8C4E`,
-`0xA0ACB571`. Each one's native function, recompiled, has the game's register table and the game's result on random
-inputs (tools/nontw/ruse/scripts/ru_c1_verify.ps1, an SM3 interpreter: 0 difference; the 13 older UI / video ones
-too). Not replaced: the three ScaleForm multiply variants (`0xFF00EE6B`, `0xC10B1348`, `0xAC151ECB`: their colour is
-a factor on what lies under them) and five plain copies whose target is unknown. Video AutoHDR (Extra, default off)
-and Video Dithering act on every video and loading-screen draw.
-
-## Automatic loading-screen fix
-
-The confirmed native DX9 ReShade GUI block is now automatic; there is no
-compatibility slider. It prevents the stale startup banner and cursor trails
-after successful HDR proxy presentation. The DX11 proxy overlay remains
-available. Failed/occluded proxy frames and device recovery retain native
-presentation and GUI. This retains the conditions of ATN's successful test.
-The install log message is `R.U.S.E.: native DX9 GUI draw filter installed.`
-
-## Highlight Hue Shift
-
-Advanced → Psycho V31 → Highlight Hue Shift controls V31's direction blend in
-both Psycho modes:
-
-| Value | Fully weighted highlight direction |
-|---|---|
-| 1 | Bisector hue. |
-| 2 | Tonemapper's own per-cone response hue. Default. |
-
-The range is now 1–2: V31 already returned the same bisector result for every
-value below 1. Saved lower values load as 1 with the same V31 result.
-
-Intermediate values blend these directions using V31's shadow, mid-grey and
-highlight weights. The strongest highlight change is also gated by shoulder
-compression. It preserves opponent radius and cone sum before gamut/Yf-ceiling
-projection. It affects all hues; gamut constraints can also change brightness.
-The Full Replacement grey-anchor calibration is retained.
+The injection: `ShaderInjectData`, 44 floats in DX9 c200-c210 (the game's shaders read c0-c199; c210 holds the rays'
+texel size for the patched shaders); the proxy reads it at b13.
 
 ## Build and verification
 
-Replace the whole `src/games/ruse` folder and rebuild with the game closed.
-Do not place dumped CSOs in that folder.
-
 ```powershell
 cmake --preset clang-x64
-cmake --build --preset clang-x64-debug --target ruse
+cmake --build build --config Release --target renodx-ruse.addon64
 ```
 
-Install `renodx-ruse.addon64`, keeping one R.U.S.E. addon in the game directory,
-and restart. Check that `embed/0x1D8E1FA8.h`, `embed/0x66D7BE52.h`, all seven
-postprocess headers and all four DOF headers are generated. There are now 37
-game shader replacements (2026-11-15: the 12 census ones).
+Offline checks (tools/nontw/ruse/scripts, outside the repo):
 
-- Check loading before and after opening/closing the proxy overlay.
-- During video, compare Paper White 100, 203 and 400 with Peak at least 400.
-  Hold Paper White fixed and move UI brightness; only HUD/subtitles should change.
-- Check both video passes, their colour, black/background fades and transitions
-  into gameplay. Offscreen use of a video shader retains native output.
-- Switch low/medium/high settings and bloom on/off. Confirm the corresponding
-  postprocess replacement is active and retains its native effects.
-- Compare all three rendering modes and hue values 1, 1.5 and 2. Check SDR,
-  preset selection and slider visibility. A saved mode 3 must select Full
-  Replacement on upgrade.
-- In Advanced → Extra, compare Motion Blur 1/0 while panning the camera and
-  watching moving units. Compare 0.5 as well. Check high/medium/low quality and
-  bloom on/off; the single-tap path should remain unchanged.
-- Compare Depth of Field 1/0/0.5 where the native game blurs the scene, especially
-  during zoom/focus transitions. Check mask edges and colour/brightness at the
-  same camera position. Confirm the active passes match the four hashes above;
-  additional unseen DOF permutations would need coverage.
-- Test both controls in SDR and both V31 modes. Switch Recommended presets and
-  confirm the chosen Motion Blur/Depth of Field values are retained.
+- `ru_post_vanilla.ps1`: the seven final posts in SDR at Paper White 203 = the game's bytecode on the SM3 interpreter;
+  controls Paper White 250 and PsychoV35 must differ.
+- `ru_c1_verify.ps1`: the UI / video / cutscene / DOF replacements' native functions = the game's, and their whole main
+  at neutral injection = the game's exactly; a control each (UI scale, video scale, Depth of Field, a wrong copy) must differ.
+- `ru_scene_patches.py`: every patched scene shader = the game's at its neutral texel, different at an active one; the
+  shadow patches free of the shadow map at alpha 1. `ru_d3d9_validate.py`: the D3D9 runtime accepts each (NULLREF
+  device, with a refused control).
+- `test/tw_psychov35` part 6 (WARP): grey, slope, markers and Extended's ramp for the three grades.
+- `test/tw_ruse_bridge` (GPU): H1 INTZ, shared textures, the 10-bit round trip and jitter; H2 the helper's DLAA / FSR /
+  XeSS and frame generation on synthetic frames; H3 the replay against the census VS.
 
-The injection remains 24 floats (96 bytes), DX9 c200–c205. Former Extended
-grading fields are padding; existing active offsets are retained. Offset 84
-holds video gain. Previously unused offsets 28 and 32 now hold Motion Blur and
-Depth of Field. Rebuild shaders and addon together.
-
-This update checked all 250 dumped CSO hashes and matched the seven final
-postprocess opcode streams, constants and sampler bindings against ASM. All
-seven replacements preprocess with the c200–c205 injection. In 10080 CPU cases,
-the actual postprocess main bodies match an independent native-ASM evaluation
-of sampling, grading and response, including Psycho input/grey-anchor routing
-(maximum relative difference 1.16e-6). Non-linear scene samples exercise Motion
-Blur 0/0.25/0.5/0.75/1; sample counts confirm the zero setting bypasses the blur.
-These include raw legacy mode 3 mapping to Full Replacement. Psycho calls were
-input/anchor spies in these checks; the tone library itself was not executed.
-
-The four actual DOF bodies were checked against the original CSO tokens in
-81920 float32 pixel cases, covering native defaults, missing injection, zero
-blur/mask strength and intermediate values. The filter kernels and native
-mask RGB/alpha conventions match; all four preprocess with their native
-bindings and c200–c205 injection.
-
-Both video shaders' actual conversion/composition assignments match their original
-CSO tokens in 10,000 float32 samples per shader, including vertex tint or
-background/fade alpha. The shared video output block passed the existing
-10,000-case Paper White/UI independence, alpha and offscreen/injection checks.
-GPU partial-precision rounding remains a runtime check.
-
-The actual addon body, compiled with an API shim, passed mode/default/preset
-and slider visibility checks, 1,000 frame sequences across all 25 callbacks,
-and the existing loading/presentation guard cases. The framework's actual
-settings read/clamp methods also verified saved mode 3 → 2 and hue below 1 → 1.
-
-The V31 header, shared injection offsets, postprocess sampling/grading,
-UI/proxy files and loading/presentation guards are retained. The existing
-loading fix remains automatic. Windows addon/FXC compilation and in-game
-quality/cutscene checks were not available here. ATN verified the loading fix
-in the preceding build.
-
-## PsychoV31 on SM3
-
-The supplied `psycho_test31.hlsli` is retained byte-for-byte, including its SM3
-`isnan`/`isinf` macros. The supplied base's notes report an FXC `isinf()` lowering
-issue, a comparison against ps_5_0 with maximum relative difference 1.5e-5, and
-about 2700 instruction slots for the earlier shader containing two tonemappers.
-These FXC results and the new shader's instruction count were not independently
-reproduced in this update.
+In game: in-game AA becomes 1x after the first start with Anti-Aliasing on (check the log's `Option.ini MainRTAA 8.5 ->
+1`), the next start logs `Anti-aliasing: DLAA ready` and `... applied`; with the rays, `Ray tracing: tracing (...)`.
+Compare each row off / on in one battle (F1 takes the HDR runtime's screenshot).
