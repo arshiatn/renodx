@@ -69,7 +69,9 @@
 //    with Rays Replace Shadow Maps in the last 8. The objects' s15 (rt_object_visibility): alpha 1 (the rays taken) in
 //    the plateau's shadow and 0 where the rays found the sun (the game's factor kept; the R32F visibility bound before
 //    read alpha 1 everywhere), 1 everywhere with Rays Replace Shadow Maps. In world units the helper's scene data left
-//    every triangle out (past 2e5 m): 0 shadowed.
+//    every triangle out (past 2e5 m): 0 shadowed. The pre-pass drawn with the bridge's jitter (OnDraw's), the helper's
+//    start positions within 5 cm of the CPU's ground points at D3D9's pixel centres in the first traced frame (with the
+//    game's unjittered camera at D3D11's texel centres: up to 0.69 m under the ground, every pixel shadowed).
 // 12b. The CPU's steps a frame at the game's scene draw count (run_rn3_rt_093315's capture line: 1,806 scene draws,
 //    1,654 kept, 152 captured): 1,654 still tiles and 152 moving 40 units a frame (512 triangles each) over the ground,
 //    recorded as the replay records them and traced each frame with object shadows, rt_core's profile on (ray_tracing.hpp's
@@ -1873,6 +1875,7 @@ int main(int argc, char** argv) {
       // mask's copy (the game's shadow-map term: 0.5 everywhere), the trace point at the main pass's clear, the bloom's
       // anti-aliasing (the bridge ready, the rays' inputs then); true when the rays traced it.
       std::vector<Ground> tiles;
+      std::array<float, 16> drawn = VIEW_PROJECTION;  // the pre-pass's camera as drawn (OnDraw's jitter)
       const auto play_frame = [&] {
         bridge::OnPresent(host);
         state.scene_depth = prepass_depth;  // as the scene draws set it (OnDraw): Evaluate makes the helper's set with the rays' textures
@@ -1884,15 +1887,23 @@ int main(int argc, char** argv) {
         }
         replay.recording = ruse::ray_tracing::SceneWanted();
         rays.sun_frame = state.frame;
-        // The pre-pass: the ground and the plateau into its target and depth (recorded as scene draws), the camera pass,
-        // the mask's copy (the game's shadow-map term: 0.5 everywhere).
+        // The pre-pass: the ground and the plateau into its target and depth (recorded as scene draws; jittered as
+        // OnDraw jitters them: rows 0 and 1 += the offset x row 3), the camera pass, the mask's copy (the game's
+        // shadow-map term: 0.5 everywhere).
+        drawn = VIEW_PROJECTION;
+        if (state.ready && !state.reset) {
+          for (size_t column = 0; column < 4; ++column) {
+            drawn[column] += 2.f * state.jitter[0] / static_cast<float>(WIDTH) * VIEW_PROJECTION[12 + column];
+            drawn[4 + column] -= 2.f * state.jitter[1] / static_cast<float>(HEIGHT) * VIEW_PROJECTION[12 + column];
+          }
+        }
         host->SetRenderTarget(0, scratch_surface.Get());
         host->SetDepthStencilSurface(depth_surface.Get());
         host->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0, far_depth, 0);
         host->SetRenderState(D3DRS_ZENABLE, TRUE);
         host->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
-        DrawGround(host, ground_draw, flat_ps.Get(), ground, &VIEW_PROJECTION, VIEW_PROJECTION);
-        DrawGround(host, ground_draw, flat_ps.Get(), plateau, &VIEW_PROJECTION, VIEW_PROJECTION);
+        DrawGround(host, ground_draw, flat_ps.Get(), ground, &drawn, VIEW_PROJECTION);
+        DrawGround(host, ground_draw, flat_ps.Get(), plateau, &drawn, VIEW_PROJECTION);
         if (replay.recording) {
           record(ground);
           record(plateau);
@@ -1952,6 +1963,37 @@ int main(int argc, char** argv) {
             const bool want = count.replaced || sun < ruse::ray_tracing::OBJECT_BLOCKED;
             if (taken != (want ? 1.f : 0.f)) ++count.object_alpha_wrong;
             if (expected[index] == 0 && taken == 1.f) ++count.object_shadowed;
+          }
+          if (traced.empty()) {
+            // The rays' start positions (the helper's, metres) against the CPU's ground hits at D3D9's pixel centres in the
+            // camera as drawn (the depth's), and the visibility.
+            const std::vector<uint8_t> positions = ReadProxy(devices, twattila::dlaa_bridge::bridge.rt_positions.texture.Get(), 16);
+            const std::vector<uint8_t> sun = ReadProxy(devices, twattila::dlaa_bridge::bridge.rt_visibility.texture.Get(), 1);
+            D3D11_TEXTURE2D_DESC positions_desc = {};
+            twattila::dlaa_bridge::bridge.rt_positions.texture->GetDesc(&positions_desc);
+            D3D11_TEXTURE2D_DESC sun_desc = {};
+            twattila::dlaa_bridge::bridge.rt_visibility.texture->GetDesc(&sun_desc);
+            const Matrix drawn_inverse = Inverse(ToDouble(drawn));
+            double worst = 0;
+            double worst_height = 0;
+            double ground_sun = 0;
+            size_t ground_pixels = 0;
+            for (UINT y = 0; y < HEIGHT; ++y) {
+              for (UINT x = 0; x < WIDTH; ++x) {
+                const GroundHit hit = HitGround(drawn_inverse, ground, x, y);
+                if (hit.inside < 0.02 || HitGround(inverse, plateau, x, y).inside > -0.02) continue;
+                const size_t texel = (static_cast<size_t>(y) * positions_desc.Width) + x;
+                for (int axis = 0; axis < 3; ++axis) worst = std::max(worst, std::abs(Float(positions, (texel * 4) + axis) - (hit.point[axis] * 0.01)));
+                worst_height = std::max(worst_height, std::abs(Float(positions, (texel * 4) + 2) - (hit.point[2] * 0.01)));
+                ground_sun += sun[(static_cast<size_t>(y) * sun_desc.Width) + x] / 255.0;
+                ++ground_pixels;
+              }
+            }
+            std::printf("Rays' first trace: start positions against the CPU's ground (metres): worst %.4f, height worst %.4f; the ground's "
+                        "mean visibility %.3f over %zu pixels (positions %ux%u, visibility %ux%u format %d)\n",
+                        worst, worst_height, ground_sun / static_cast<double>(std::max<size_t>(ground_pixels, 1)), ground_pixels, positions_desc.Width,
+                        positions_desc.Height, sun_desc.Width, sun_desc.Height, static_cast<int>(sun_desc.Format));
+            CHECK(worst < 0.05);
           }
           traced.push_back(count);
         }

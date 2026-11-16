@@ -577,14 +577,25 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   // in metres (HELPER_METRES): the view-projection takes them (its x, y, z columns / the scale), the inverse gives them
   // (its x, y, z rows x the scale), and so do Host::clip_relative's rows: a clip position's offset from the eye (the
   // inverse's row less its w row x the eye), the eye below them. The water march's offset rows are the same in world units.
+  // The helper's two matrices are the depth's as drawn (its positions from the depth's texel centres, its projections
+  // onto the screen): clip x and y moved by `shift` x w, the scene draws' jitter (OnDraw) and D3D9's pixel centres, half
+  // a texel left of and above D3D11's (unshifted, every ray started up to 0.69 m under the ground at 200 m at 256 x 144:
+  // all blocked, tw_ruse_bridge 12). The captures' rows keep the game's clip (CaptureScene's, unjittered).
   const float* inverse = bridge.camera.data() + 16;
   std::array<double, 16> view_projection = {};
   std::array<double, 3> eye = {};
   if (!bridge::CurrentCamera(&view_projection, &eye)) return false;
+  const std::array<float, 2> drawn_jitter = (bridge.ready ? bridge.jitter : std::array<float, 2>{});
+  const std::array<double, 2> shift = {(2.0 * drawn_jitter[0] + 1.0) / bridge.width, -(2.0 * drawn_jitter[1] + 1.0) / bridge.height};
   twattila::rt_scene::Camera camera = {};
-  for (size_t index = 0; index < 16; ++index) {
-    camera.view_projection[index] = static_cast<float>(view_projection[index] / ((index % 4) < 3 ? HELPER_METRES : 1.0));
-    camera.inverse_view_projection[index] = static_cast<float>(inverse[index] * (index < 12 ? HELPER_METRES : 1.0));
+  for (size_t row = 0; row < 4; ++row) {
+    for (size_t column = 0; column < 4; ++column) {
+      const size_t index = (row * 4) + column;
+      const double moved = view_projection[index] + (row < 2 ? shift[row] * view_projection[12 + column] : 0.0);
+      const double unmoved = inverse[index] - (column == 3 ? (shift[0] * inverse[row * 4]) + (shift[1] * inverse[(row * 4) + 1]) : 0.0);
+      camera.view_projection[index] = static_cast<float>(moved / (column < 3 ? HELPER_METRES : 1.0));
+      camera.inverse_view_projection[index] = static_cast<float>(unmoved * (row < 3 ? HELPER_METRES : 1.0));
+    }
   }
   std::array<float, 12> offset_rows = {};
   for (size_t axis = 0; axis < 3; ++axis) {

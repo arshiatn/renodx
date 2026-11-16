@@ -64,7 +64,9 @@ The rays trace the scene a D3D9 draw replay captures on the proxy's D3D11 device
 275 census vertex shaders transpiled to vs_5_0 with stream output (`shaders/replay`, each proved against the game's
 vs_3_0 on an SM3 vertex interpreter), static draws placed once. The helper works in metres: the camera and the ranges go
 to it at 0.01 a world unit (a centimetre: the map's terrain box is 26 km square); in centimetres near 2e6 its scene data
-dropped every triangle as garbage (past 200 km) and nothing cast a shadow. Ours replaces the game's, one method an effect:
+dropped every triangle as garbage (past 200 km) and nothing cast a shadow. Its camera is the depth's as drawn: the scene
+draws' jitter and D3D9's pixel centres (half a pixel left of and above D3D11's; without them every ray started under
+the ground at 256 x 144, at 4K about a quarter of the rays' surface offset). Ours replaces the game's, one method an effect:
 
 | Row | What it does |
 |---|---|
