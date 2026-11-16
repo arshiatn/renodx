@@ -234,9 +234,20 @@ Total War helper (`renodx-tw-dlaa64.exe` and its DLLs next to `EoCApp.exe`):
   once the paths have learned the game's light, the sky's and the light
   probes' diffuse cubes are black and the SAO chain open: the paths bring the
   ambient light and its shade (the specular IBL stays the game's).
+- **Ray Reconstruction** (DLSS, Experimental, off; with a ray tracing row on):
+  the G-buffer guides written at ClusteredLightingWithSSAO's draw as
+  DeferredSky lights the pixel (`rt_guides`: diffuse colour, specular colour
+  through its LUT, world normal, roughness); the paths read them too.
+- **Ray-traced reflections / specular occlusion** (Experimental, off): traced
+  once a frame at ClusteredLightingWithSSAO's draw, after the guides, and
+  blended into the IBL specular it reads (`rt_reflect_apply`, one / inverse
+  source alpha): where the rays met a surface their light times the specular
+  colour DeferredSky's IBL uses replaces the game's (sky and light probes
+  alike); the game's IBL stays for the rest, times the open share under
+  Specular Occlusion. The game's screen-space reflections (DeferredSSR and
+  its combine) are left out under them: one method.
 
-Not yet: render scale below 100%, the game's settings above its maximum,
-reflections, Ray Reconstruction.
+Not yet: render scale below 100%, the game's settings above its maximum.
 
 ## Data runs and installing
 
@@ -286,7 +297,10 @@ cone response): press Reset before comparing defaults.
   PPApplyAO, the sun's direction from PerFrame and the overlays left out of
   the rays' scene, Skip the Game's Shadow Maps, and against the game's
   DeferredSky the paths' sky, its black diffuse under the paths and the GI's
-  diffuse factor, each with a control that must fail.
+  diffuse factor, the G-buffer guides against its own diffuse / specular,
+  the reflections over its own IBL specular and the screen-space reflections
+  left out (the game's DeferredSSRCombine bytes), each with a control that
+  must fail.
 - `test/tw_psychov30_nan`, `test/tw_output_encoding`, `test/tw_device_loss`,
   `test/tw_draw_dispatch`: the shared PsychoV30 guards, the not-configured
   Output, device loss and the fast draw dispatch.
