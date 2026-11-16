@@ -144,14 +144,14 @@ struct ModeSettings {
 
 constexpr std::array<ModeSettings, 8> AA_MODES = {{
     {.label = "Off (game TAA)", .name = "Off", .scale = 1.f},
-    {.label = "DLAA (100%)", .name = "DLAA", .scale = 1.f},
-    {.label = "DLSS Quality (67%)", .name = "DLSS Quality", .scale = 2.f / 3.f},
-    {.label = "DLSS Balanced (58%)", .name = "DLSS Balanced", .scale = .58f},
-    {.label = "DLSS Performance (50%)", .name = "DLSS Performance", .scale = .5f},
-    {.label = "DLSS Ultra Performance (33%)", .name = "DLSS Ultra Performance", .scale = 1.f / 3.f},
+    {.label = "Native AA (DLAA, 100%)", .name = "DLAA", .scale = 1.f},
+    {.label = "Quality (67%)", .name = "DLSS Quality", .scale = 2.f / 3.f},
+    {.label = "Balanced (58%)", .name = "DLSS Balanced", .scale = .58f},
+    {.label = "Performance (50%)", .name = "DLSS Performance", .scale = .5f},
+    {.label = "Ultra Performance (33%)", .name = "DLSS Ultra Performance", .scale = 1.f / 3.f},
     // Not an NVIDIA SDK mode: the common 77%.
-    {.label = "DLSS Ultra Quality (77%)", .name = "DLSS Ultra Quality", .scale = .77f},
-    {.label = "DLSS Custom (14-100%)", .name = "DLSS Custom", .scale = .5f},
+    {.label = "Ultra Quality (77%)", .name = "DLSS Ultra Quality", .scale = .77f},
+    {.label = "Custom (14-100%)", .name = "DLSS Custom", .scale = .5f},
 }};
 
 // Menu order; AAMode values stay as saved in ReShade.ini.
@@ -351,10 +351,13 @@ std::atomic<int> upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;     // UPSCALE
 std::atomic<int> ray_reconstruction = 0;                              // RAY_RECONSTRUCTION_CHOICES' item
 std::atomic<int> upscaling_debug_view = 0;                            // 1: the motion the upscaler gets (upscale_output)
 // Frame generation (Experimental; the helper presents: twattila/frame_generation.hpp) with Tales' keys: FrameGeneration,
-// FrameGenerationMultiplier (2-6; 0 Dynamic; 1 off, Reflex only), ReflexBoost, FrameGenerationFrameLimit (Reflex's).
+// FrameGenerationMultiplier (2-6; 0 Dynamic; 1 off, Reflex only), FrameGenerationFrameLimit (Reflex's or Xe Low
+// Latency's; ReflexBoost, before the Reflex row, read once as its On + Boost).
 std::atomic_bool frame_generation = false;
 std::atomic<uint32_t> frame_multiplier = 2;
-std::atomic_bool reflex_boost = false;
+// NVIDIA Reflex with any AA mode ([Ryse AA] Reflex: REFLEX_CHOICES' item), always on with frame generation.
+constexpr std::array<const char*, 3> REFLEX_CHOICES = {"Off", "On", "On + Boost"};
+std::atomic<int> reflex = 0;
 std::atomic<uint32_t> frame_limit = 0;
 std::atomic<int> frame_method = 0;        // FRAME_METHODS' item
 std::atomic<int> hud_recomposition = 1;   // off, on
@@ -505,9 +508,13 @@ struct QualityOption {
   int default_choice = 0;  // the item before one is saved and Reset's
   int atn_choice = 0;  // Experimental: the item "ATN's setting" picks
   int floor_option = -1;  // index of an option whose factor this one's never goes below (-1: none)
+  // While true, its absolute cvars at their first values (the effect off): one of ours replaces the game's effect.
+  const std::atomic_bool* replaced_by = nullptr;
   std::vector<QualityCvar> cvars;
   int choice = 0;  // Present thread (the overlay runs in it)
 };
+// The add-on's Light Bounce runs (addon.cpp, each present): the game's indirect light (r_SSII) off in its place.
+std::atomic_bool own_light_bounce = false;
 // Cvars that read back unchanged are refused (e.g. e_DecalsRange, flags 0x800000; left out). Past the engine's caps
 // (the camera's far plane, LOD 0, the tessellation factor 64, every texture resident) higher factors change nothing.
 std::array<QualityOption, 33> quality_options = {{
@@ -838,7 +845,7 @@ std::array<QualityOption, 33> quality_options = {{
     {.label = "Indirect light",
      .key = "IndirectLight",
      .tooltip = "Screen-space indirect illumination: light bounces between surfaces on screen. Off in the game;\n"
-                "may not work.",
+                "may not work. Off while the Light Bounce is on (it replaces it).",
      .choices = "In-game setting (off)\0" "On\0",
      .choice_count = 2,
      .preset_choices = {0, 0, 0, 0},
@@ -846,6 +853,7 @@ std::array<QualityOption, 33> quality_options = {{
      .absolute = true,
      .experimental = true,
      .atn_choice = 1,
+     .replaced_by = &own_light_bounce,
      // "Screen space indirect illumination: 0 turns it off, otherwise it scales the contribution of SSII."
      .cvars = {{.name = "r_SSII", .is_float = false, .absolute = true, .values = {0.f, 1.f}, .from_choice = 1}}},
     {.label = "Grass tessellation",
@@ -1722,7 +1730,7 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
     return {};
   } else {
     if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
-    // Off: the game's jitter is still measured (diagnostics), the stock TAA runs.
+    // Off: the stock TAA runs (the game's jitter measured for Advanced's diagnostics alone, below).
     const AAMode mode = requested_mode.load();
     const bool active = mode != AAMode::OFF;
     uint64_t frame;
@@ -1732,6 +1740,11 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
       frame = state.frame;
     }
     taa_frame.store(frame, std::memory_order_relaxed);
+    // Off: the game's jitter measured only while Advanced shows it (the overlay drew within 120 frames); else no work and
+    // no log lines a frame.
+    if (const uint64_t overlay = overlay_frame.load(std::memory_order_relaxed); !active && !(overlay != 0 && frame + 1 - overlay < 120)) {
+      return {};
+    }
     const auto fail = [active](std::string_view message) -> command_action::CallbackResult<Context> {
       if (active) SetStatus(message);
       return {};
@@ -1906,7 +1919,7 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
       display_height = (state.display_height != 0 ? state.display_height : height);
     }
     if (width > display_width || height > display_height) {
-      SetStatus("Game TAA: the render size is above the display size (supersampling): DLSS needs it at or below");
+      SetStatus("Game TAA: the render size is above the display size (supersampling): the upscaler needs it at or below");
       return {};
     }
     // Below the display size (the native upscale follows) the helper upscales to it (any size: the mode's, or another
@@ -2645,6 +2658,15 @@ void SaveCaptures() {
 void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   if (swapchain->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   Reset();
+  // A saved DLSS on another vendor's GPU (DLSS starts on NVIDIA's only): XeSS on Intel, else FSR, saved (Attila's).
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (upscaler.load() == static_cast<int>(twattila::dlaa_bridge::UPSCALER_DLSS) && !twattila::dlaa_bridge::OnNvidia()) {
+    const auto fallback = static_cast<int>(twattila::dlaa_bridge::gpu_vendor.load() == 0x8086 ? twattila::dlaa_bridge::UPSCALER_XESS
+                                                                                              : twattila::dlaa_bridge::UPSCALER_FSR);
+    upscaler.store(fallback);
+    reshade::set_config_value(nullptr, "Ryse AA", "Upscaler", fallback);
+    renodx::utils::log::i("[Ryse DLSS] DLSS needs NVIDIA: the upscaler is ", UPSCALERS[fallback]);
+  }
   const auto desc = swapchain->get_device()->get_resource_desc(swapchain->get_back_buffer(0));
   const std::unique_lock lock(state.mutex);
   state.device = swapchain->get_device();
@@ -2944,7 +2966,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     for (auto& option : quality_options) {
       const QualityOption* floor_source =
           (option.floor_option >= 0 ? &quality_options[option.floor_option] : nullptr);
-      const bool game_own = option.choice == 0 && (floor_source == nullptr || floor_source->choice == 0);
+      const bool replaced = option.replaced_by != nullptr && option.replaced_by->load(std::memory_order_relaxed);
+      const bool game_own = !replaced && option.choice == 0 && (floor_source == nullptr || floor_source->choice == 0);
       float value = option.values[option.choice];
       if (floor_source != nullptr) {
         value = std::max(value, floor_source->values[floor_source->choice]);
@@ -2983,7 +3006,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           }
           entry.set = false;
         }
-        if (game_own || option.choice < entry.from_choice) {
+        if (!replaced && (game_own || option.choice < entry.from_choice)) {
           if (entry.set) {
             set(entry, entry.game_value);
             entry.set = false;
@@ -2995,7 +3018,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         }
         float desired = value;
         if (entry.absolute) {
-          desired = entry.values[option.choice];
+          desired = entry.values[replaced ? 0 : option.choice];
         } else if (!option.absolute) {
           desired = (entry.inverse ? entry.game_value / value : entry.game_value * value);
         }
@@ -3335,8 +3358,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
 }
 
 // Each present (addon.cpp, with the ray tracing's part of `use`: its ray_reconstruction non-zero while a ray-traced
-// effect is on): what the helper serves this frame (upscaling.hpp), frame generation's and Reflex's settings (both with
-// an AA mode on: their depth and motion are the upscaler's). Without the helper: none of them.
+// effect is on): what the helper serves this frame (upscaling.hpp) and frame generation's settings (with an AA mode on:
+// its depth and motion are the upscaler's; without the helper none), Reflex's (any AA mode, the game's own device).
 inline void UpdateHelper(reshade::api::swapchain* swapchain, upscaling::BridgeUse use, bool sdr_output) {
   const bool active = twattila::dlaa_bridge::HelperInstalled() && requested_mode.load() != AAMode::OFF;
   const int chosen = std::clamp(upscaler.load(), 0, static_cast<int>(UPSCALERS.size()) - 1);
@@ -3351,14 +3374,15 @@ inline void UpdateHelper(reshade::api::swapchain* swapchain, upscaling::BridgeUs
   const uint32_t multiplier = frame_multiplier.load();
   twattila::frame_generation::Update({
       .multiplier = (!generation || multiplier == 1) ? 0u : (multiplier == 0 ? 1u : multiplier),
-      .reflex_boost = reflex_boost.load(),
+      .reflex_boost = reflex.load() == 2,
       .frame_limit = frame_limit.load(),
       .preset = static_cast<uint32_t>(std::clamp(frame_preset.load(), 0, 3)),
       .hud_recomposition = hud_recomposition.load() != 0,
       .debug_view = static_cast<uint32_t>(std::clamp(frame_debug_view.load(), 0, 2)),
       .sdr_output = sdr_output,
   });
-  twattila::reflex::Update(swapchain, generation ? (reflex_boost.load() ? 2u : 1u) : 0u, frame_limit.load());
+  const auto reflex_mode = static_cast<uint32_t>(std::clamp(reflex.load(), 0, static_cast<int>(REFLEX_CHOICES.size()) - 1));
+  twattila::reflex::Update(swapchain, generation ? std::max(reflex_mode, 1u) : reflex_mode, frame_limit.load());
   use.frame_format = twattila::frame_generation::Format();
   use.frame_backend = FRAME_BACKENDS[std::clamp(frame_method.load(), 0, static_cast<int>(FRAME_BACKENDS.size()) - 1)];
   upscaling::SetUse(use);
@@ -3463,22 +3487,6 @@ inline void DrawAntiAliasing(bool advanced) {
       combo("Frame generation preset", "FrameGenerationPreset", &frame_preset, FRAME_PRESETS,
             "NVIDIA's presets. A: HUD recomposition off. B: on. C (Lite): lighter, lower quality.\n"
             "Saved in the NVIDIA driver profile of renodx-tw-dlaa64.exe; applies after restarting the game.");
-      if (bool boost = reflex_boost.load(); ImGui::Checkbox("Reflex Boost", &boost)) {
-        reflex_boost.store(boost);
-        reshade::set_config_value(nullptr, "Ryse AA", "ReflexBoost", boost);
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("NVIDIA Reflex is always on with frame generation (lower latency). Boost also keeps the GPU's\n"
-                          "clocks up when the CPU limits the frame rate.");
-      }
-      if (int limit = static_cast<int>(frame_limit.load()); ImGui::SliderInt("Frame rate limit", &limit, 0, 240, limit == 0 ? "Off" : "%d fps")) {
-        frame_limit.store(static_cast<uint32_t>(std::clamp(limit, 0, 240)));
-        reshade::set_config_value(nullptr, "Ryse AA", "FrameGenerationFrameLimit", frame_limit.load());
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Caps the rendered frame rate with NVIDIA Reflex (frame generation multiplies it). A cap the\n"
-                          "game always reaches keeps the frame rate steady: less VRR flicker on OLED displays.");
-      }
       // Attila's notice tint (twattila/graphics_page.hpp NOTICE_TINT).
       ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0xFF, 0xE0, 0x66, 0xFF));
       ImGui::TextWrapped("Frame generation pauses while this menu is open. A new choice applies when it closes.");
@@ -3505,10 +3513,10 @@ inline void DrawAntiAliasing(bool advanced) {
                               "Sharpest {:.1f}.",
                               std::round(scale * 100.f), matched, matched - 1.f, matched - 2.f);
       }
-      ImGui::SetTooltip("How sharp textures are while DLSS renders below 100%%.\n"
+      ImGui::SetTooltip("How sharp textures are while the upscaler renders below 100%%.\n"
                         "Matched: as sharp as at your output resolution.\n"
                         "Sharper / Sharpest: one / two steps sharper (more detail, can shimmer).\n"
-                        "DLAA and Off are not affected.%s",
+                        "Native AA and Off are not affected.%s",
                         example.c_str());
     }
     if (int filter = (gbuffer_filter.load() ? 1 : 0);
@@ -3523,9 +3531,30 @@ inline void DrawAntiAliasing(bool advanced) {
                         "On (Vanilla, as with TAA): weaker highlights, less flickering and shimmering.");
     }
     ImGui::PopStyleColor();
-    ImGui::TextWrapped("Unlike the game's TAA, DLSS / DLAA also filters trees, foliage and fences anisotropically and turns "
+    ImGui::TextWrapped("Unlike the game's TAA, these AA modes also filter trees, foliage and fences anisotropically and turn "
                        "the G-buffer filter off (unless set to On).");
     ImGui::TextWrapped("Changing the AA mode or render scale briefly resets the game's exposure and reloads textures.");
+  }
+  // Reflex on NVIDIA with any AA mode (Attila's rows); the limit with Reflex or XeSS's frame generation (Xe Low Latency).
+  const bool nvidia = twattila::dlaa_bridge::OnNvidia();
+  const bool generating = helper && frame_generation.load();
+  if (nvidia) {
+    combo("NVIDIA Reflex", "Reflex", &reflex, REFLEX_CHOICES,
+          "Less input lag on NVIDIA GPUs, with any anti-aliasing: each frame starts only as the GPU\n"
+          "needs it. Boost also keeps the GPU's clocks up. Always on with frame generation.");
+  }
+  if (nvidia || (generating && twattila::dlaa_bridge::FrameGenerationBackend() == twattila::dlaa_bridge::FG_BACKEND_XESS)) {
+    ImGui::BeginDisabled(reflex.load() == 0 && !generating);
+    if (int limit = static_cast<int>(frame_limit.load()); ImGui::SliderInt("Frame rate limit", &limit, 0, 240, limit == 0 ? "Off" : "%d fps")) {
+      frame_limit.store(static_cast<uint32_t>(std::clamp(limit, 0, 240)));
+      reshade::set_config_value(nullptr, "Ryse AA", "FrameGenerationFrameLimit", frame_limit.load());
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      ImGui::SetTooltip("Caps the rendered frame rate with NVIDIA Reflex or Xe Low Latency (frame generation multiplies it). A\n"
+                        "cap the game always reaches keeps the frame rate steady: less VRR flicker on OLED displays.\n"
+                        "Needs Reflex or frame generation on. 0: off.");
+    }
   }
 
   std::string status;
@@ -3561,10 +3590,10 @@ inline void DrawAntiAliasing(bool advanced) {
       ImGui::TextWrapped("Windowed: the game renders at the window size (it upscales only in fullscreen), so this mode runs at "
                          "100%% like DLAA. Fullscreen for the render scale.");
     } else if (rendering.native_off) {
-      ImGui::TextWrapped("Turn on Native Upscaling in the game's options: DLSS renders below the display resolution only with it.");
+      ImGui::TextWrapped("Turn on Native Upscaling in the game's options: the upscaler renders below the display resolution only with it.");
     }
     if (const uint64_t unshown = unshown_frames.load(); advanced && unshown != 0) {
-      ImGui::TextWrapped("Frames DLSS upscaled but the game showed its own (no native upscale or post pass seen): %llu",
+      ImGui::TextWrapped("Frames upscaled but the game showed its own (no native upscale or post pass seen): %llu",
                          static_cast<unsigned long long>(unshown));
     }
   }
@@ -3586,7 +3615,7 @@ inline void DrawAntiAliasing(bool advanced) {
   if (active && (!diagnostics.jitter_found.load() || (phases != 0 && phases < 8))) {
     if (control.searched && control.value == nullptr) {
       ImGui::TextWrapped("The game's camera jitter is %s, and the addon could not find r_PostAAMode in the game (details in "
-                         "ReShade.log). DLSS needs 8 or more positions.", jitter.c_str());
+                         "ReShade.log). The upscaler needs 8 or more positions.", jitter.c_str());
     } else if (!own_jitter.load()) {
       ImGui::TextWrapped("The game's camera jitter is %s: the game stops it in slow motion, hit stops and pauses. Choose "
                          "Jitter: the addon's own (Advanced).", jitter.c_str());
@@ -3594,9 +3623,9 @@ inline void DrawAntiAliasing(bool advanced) {
       ImGui::TextWrapped("The game's camera jitter is %s, and the addon could not take it over: %s.", jitter.c_str(),
                          control.jitter_setup.details.c_str());
     } else if (diagnostics.jittered_uploads.load() == 0) {
-      ImGui::TextWrapped("The game is not jittering its camera right now (jitter %s). DLSS then only smooths edges.", jitter.c_str());
+      ImGui::TextWrapped("The game is not jittering its camera right now (jitter %s). The upscaler then only smooths edges.", jitter.c_str());
     } else {
-      ImGui::TextWrapped("The game's camera jitter is %s. DLSS needs 8 or more positions.", jitter.c_str());
+      ImGui::TextWrapped("The game's camera jitter is %s. The upscaler needs 8 or more positions.", jitter.c_str());
     }
   }
   if (!advanced) return;
@@ -3673,10 +3702,10 @@ inline void DrawAntiAliasing(bool advanced) {
   }
   if (ImGui::Button("Save two upscaled frames' stages (debug, PNGs next to the exe)")) {
     capture_requested.store(true);
-    capture_result = "Waiting for an upscaled frame (a DLSS mode below 100%)";
+    capture_result = "Waiting for an upscaled frame (an AA mode below 100%)";
   }
   if (!capture_result.empty()) ImGui::TextWrapped("%s", capture_result.c_str());
-  if (ImGui::Button("Capture DLSS inputs (debug, 4 frames, ryse_dlss_capture_* next to the exe)")) {
+  if (ImGui::Button("Capture the upscaler's inputs (debug, 4 frames, ryse_dlss_capture_* next to the exe)")) {
     rysesonofrome::dlss_capture::Request();
   }
   if (ImGui::IsItemHovered()) {
@@ -3865,7 +3894,7 @@ inline void DrawAntiAliasing(bool advanced) {
       const void* width = GetGameCvar(console, "r_Width");
       saved_cvars = std::format("Saved {} console variables to {}{}; con_restricted {}; GetCVar(r_Width) {} ({}){}", count,
                                 reinterpret_cast<const char*>(path.u8string().c_str()), problem, restricted, width,
-                                (width == resolution.width ? "the renderer's" : "not the renderer's, or DLSS was never on"),
+                                (width == resolution.width ? "the renderer's" : "not the renderer's, or an AA mode was never on"),
                                 (file ? "" : "; writing failed"));
     }
     renodx::utils::log::i("[Ryse DLSS] ", saved_cvars);
@@ -4068,7 +4097,11 @@ inline void Install(std::span<const uint8_t> vertex_code, std::span<const uint8_
   if (uint32_t value = 2; reshade::get_config_value(nullptr, "Ryse AA", "FrameGenerationMultiplier", value)) {
     frame_multiplier.store(value <= 6 ? value : 2u);
   }
-  if (bool value = false; reshade::get_config_value(nullptr, "Ryse AA", "ReflexBoost", value)) reflex_boost.store(value);
+  if (int saved = 0; reshade::get_config_value(nullptr, "Ryse AA", "Reflex", saved)) {
+    reflex.store(std::clamp(saved, 0, static_cast<int>(REFLEX_CHOICES.size()) - 1));
+  } else if (bool boost = false; reshade::get_config_value(nullptr, "Ryse AA", "ReflexBoost", boost) && boost) {
+    reflex.store(2);
+  }
   if (uint32_t value = 0; reshade::get_config_value(nullptr, "Ryse AA", "FrameGenerationFrameLimit", value)) {
     frame_limit.store(std::min(value, 240u));
   }

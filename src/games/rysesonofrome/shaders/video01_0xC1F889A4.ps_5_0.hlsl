@@ -41,8 +41,8 @@ void main(
   r0.x = saturate(r1.w * 1.16400003 + r1.x);
   r0.z = saturate(r1.w * 1.16400003 + r1.z);
   r0.xyzw = r0.xyzw * cBitmapColorTransform._m00_m01_m02_m03 + cBitmapColorTransform._m10_m11_m12_m13;
-  // Video Highlights (HDR): inverse tone mapping (ITM), Video Dithering. Paper White instead of UI.
-  if (HDR >= 1.f && SI.video_highlights > 0.f) r0.xyz = RyseExpandVideo(r0.xyz, v0.xy);
+  // Video Highlights (HDR on an HDR output): inverse tone mapping (ITM), Video Dithering. Paper White instead of UI.
+  if (HDR >= 1.f && !RYSE_SDR_OUTPUT && SI.video_highlights > 0.f) r0.xyz = RyseExpandVideo(r0.xyz, v0.xy);
   r0.xyz *= RYSE_ENCODED_SCALE;
   r1.xyzw = r0.xyzw * r0.wwww;
   r2.x = cmp(0 != cPremultiplyAlpha);
