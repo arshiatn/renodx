@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <span>
 #include <utility>
 
@@ -88,7 +89,6 @@ struct State {
   ComPtr<IDirect3DPixelShader9> depth_copy;
   ComPtr<IDirect3DPixelShader9> shadows;
   bridge::SharedTexture visibility;  // R32F: the traced sun visibility for the D3D9 pass
-  ComPtr<ID3D11UnorderedAccessView> visibility_uav;
   ComPtr<ID3D11ShaderResourceView> depth_view;  // the bridge's shared depth
   ComPtr<ID3D11ComputeShader> copy;
   // O1: last frame's main depth with its camera (the inverse view-projection) and jitter (NDC), the rays' start depth
@@ -107,7 +107,6 @@ struct State {
   ComPtr<IDirect3DTexture9> unshadowed;
   // AO: the traced ambient occlusion for the D3D9 pass (R32F), and the frame it holds.
   bridge::SharedTexture occlusion;
-  ComPtr<ID3D11UnorderedAccessView> occlusion_uav;
   uint32_t occlusion_frame = UINT32_MAX;
   ComPtr<ID3D11ComputeShader> vbao_shader;
   ComPtr<ID3D11Buffer> vbao_settings;  // ground_vbao's and ground_bounce's: projection, size, range, to last frame
@@ -118,12 +117,10 @@ struct State {
   ComPtr<ID3D11ShaderResourceView> occlusion_view;
   ComPtr<ID3D11ComputeShader> bounce_shader;
   bridge::SharedTexture ground_light;
-  ComPtr<ID3D11UnorderedAccessView> ground_light_uav;
   uint32_t bounce_frame = UINT32_MAX;
   ComPtr<ID3D11ComputeShader> reflection_shader;
   ComPtr<ID3D11Buffer> reflection_settings;  // water_reflections': the eye-relative matrices, size, projection, range
   bridge::SharedTexture reflection;
-  ComPtr<ID3D11UnorderedAccessView> reflection_uav;
   uint32_t reflection_frame = UINT32_MAX;
   ComPtr<IDirect3DTexture9> unlit;  // s13 / the bounce's s14 when untraced: (1, 0, 0, 0), the game's shading
   // G2: sss_setup's dispatch list (camera_VS_PS b0, lighting_VS_PS b1, sss_settings b2), sss_bend's eight indirect
@@ -231,9 +228,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     bool made = SUCCEEDED(host->QueryInterface(IID_PPV_ARGS(host_ex.GetAddressOf())))
                       && SUCCEEDED(host->CreatePixelShader(reinterpret_cast<const DWORD*>(__ground_depth.data()), state.depth_copy.ReleaseAndGetAddressOf()))
                       && SUCCEEDED(host->CreatePixelShader(reinterpret_cast<const DWORD*>(__ground_shadows.data()), state.shadows.ReleaseAndGetAddressOf()))
-                      && bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.visibility,
-                                            D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS)
-                      && SUCCEEDED(proxy->CreateUnorderedAccessView(state.visibility.proxy.Get(), nullptr, state.visibility_uav.ReleaseAndGetAddressOf()))
+                      && bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_R32F, &state.visibility, true)
                       && SUCCEEDED(proxy->CreateShaderResourceView(bridge.depth.proxy.Get(), nullptr, state.depth_view.ReleaseAndGetAddressOf()))
                       && SUCCEEDED(proxy->CreateComputeShader(__rt_ground_copy.data(), __rt_ground_copy.size(), nullptr, state.copy.ReleaseAndGetAddressOf()));
     if (made && state.bend) {
@@ -322,24 +317,18 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     }
     if (made && state.bounce) {
       made = SUCCEEDED(proxy->CreateComputeShader(__ground_bounce.data(), __ground_bounce.size(), nullptr, state.bounce_shader.ReleaseAndGetAddressOf()))
-             && bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.ground_light,
-                                   D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS)
-             && SUCCEEDED(proxy->CreateUnorderedAccessView(state.ground_light.proxy.Get(), nullptr, state.ground_light_uav.ReleaseAndGetAddressOf()));
+             && bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_A16B16G16R16F, &state.ground_light, true);
     }
     if (made && state.reflections) {
       const D3D11_BUFFER_DESC desc = {.ByteWidth = 60 * sizeof(float), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
       made = SUCCEEDED(proxy->CreateComputeShader(__water_reflections.data(), __water_reflections.size(), nullptr,
                                                   state.reflection_shader.ReleaseAndGetAddressOf()))
              && SUCCEEDED(proxy->CreateBuffer(&desc, nullptr, state.reflection_settings.ReleaseAndGetAddressOf()))
-             && bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.reflection,
-                                   D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS)
-             && SUCCEEDED(proxy->CreateUnorderedAccessView(state.reflection.proxy.Get(), nullptr, state.reflection_uav.ReleaseAndGetAddressOf()));
+             && bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_A16B16G16R16F, &state.reflection, true);
     }
     if (made && (state.ambient || state.vbao)) {
-      made = bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.occlusion,
-                                D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS)
-             && SUCCEEDED(proxy->CreateUnorderedAccessView(state.occlusion.proxy.Get(), nullptr, state.occlusion_uav.ReleaseAndGetAddressOf()))
-             && (!state.bounce || SUCCEEDED(proxy->CreateShaderResourceView(state.occlusion.proxy.Get(), nullptr, state.occlusion_view.ReleaseAndGetAddressOf())));
+      made = bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_R32F, &state.occlusion, true)
+             && (!state.bounce || SUCCEEDED(proxy->CreateShaderResourceView(state.occlusion.work.Get(), nullptr, state.occlusion_view.ReleaseAndGetAddressOf())));
     }
     if (made && (state.objects || state.reflections)) {
       D3D11_TEXTURE2D_DESC desc = {
@@ -455,7 +444,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   const auto [visibility, occlusion] = (traced ? twattila::rt_scene::Visibilities() : std::array<ID3D11ShaderResourceView*, 2>{});
   if (visibility == nullptr && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;
   // 8 x 8 groups over the bridge's size: `shader` from `source` into `destination` (the helper's R8 results into the
-  // textures the D3D9 device shares, R32F; Bend's occlusion into the visibility).
+  // shared textures' work copies, R32F; Bend's occlusion into the visibility), copied into the shared ones after.
   const auto run = [&](ID3D11ComputeShader* shader, ID3D11ShaderResourceView* source, ID3D11UnorderedAccessView* destination) {
     context->CSSetShader(shader, nullptr, 0);
     context->CSSetShaderResources(0, 1, &source);
@@ -463,10 +452,10 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     context->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
   };
   if (visibility != nullptr) {
-    run(state.copy.Get(), visibility, state.visibility_uav.Get());
+    run(state.copy.Get(), visibility, state.visibility.work_uav.Get());
   } else {
     constexpr std::array<FLOAT, 4> LIT = {1.f, 1.f, 1.f, 1.f};
-    context->ClearUnorderedAccessViewFloat(state.visibility_uav.Get(), LIT.data());
+    context->ClearUnorderedAccessViewFloat(state.visibility.work_uav.Get(), LIT.data());
   }
   constexpr std::array<ID3D11ShaderResourceView*, 3> NO_VIEWS = {};
   constexpr std::array<ID3D11UnorderedAccessView*, 2> NO_OUTPUTS = {};
@@ -477,7 +466,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   const bool bouncing = state.bounce && light_kept;
   const bool rays_occlusion = state.ambient && occlusion != nullptr;
   if (rays_occlusion) {
-    run(state.copy.Get(), occlusion, state.occlusion_uav.Get());
+    run(state.copy.Get(), occlusion, state.occlusion.work_uav.Get());
     state.occlusion_frame = bridge.frame;
   }
   // GT-VBAO where the rays' ambient occlusion didn't run this frame; with the bounce GT-VBGI's march instead, its light
@@ -503,10 +492,10 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     if (bouncing) {
       const std::array<ID3D11ShaderResourceView*, 2> inputs = {state.light_view.Get(), state.occlusion_view.Get()};
       context->CSSetShaderResources(1, 2, inputs.data());
-      run(state.bounce_shader.Get(), start_depth, state.ground_light_uav.Get());
+      run(state.bounce_shader.Get(), start_depth, state.ground_light.work_uav.Get());
       state.bounce_frame = bridge.frame;
     } else {
-      run(state.vbao_shader.Get(), start_depth, state.occlusion_uav.Get());
+      run(state.vbao_shader.Get(), start_depth, state.occlusion.work_uav.Get());
       state.occlusion_frame = bridge.frame;
     }
     context->CSSetShaderResources(0, 3, NO_VIEWS.data());
@@ -539,7 +528,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     context->UpdateSubresource(state.reflection_settings.Get(), 0, nullptr, settings.data(), 0, 0);
     context->CSSetConstantBuffers(0, 1, state.reflection_settings.GetAddressOf());
     context->CSSetShaderResources(1, 1, state.light_view.GetAddressOf());
-    run(state.reflection_shader.Get(), start_depth, state.reflection_uav.Get());
+    run(state.reflection_shader.Get(), start_depth, state.reflection.work_uav.Get());
     context->CSSetShaderResources(0, 2, NO_VIEWS.data());
     context->CSSetConstantBuffers(0, 1, NO_CONSTANTS.data());
     state.reflection_frame = bridge.frame;
@@ -580,7 +569,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       context->DispatchIndirect(bend.arguments.Get(), index * 12);
     }
     context->CSSetShaderResources(0, 2, NO_VIEWS.data());
-    run(bend.combine.Get(), bend.occlusion_srv.Get(), state.visibility_uav.Get());
+    run(bend.combine.Get(), bend.occlusion_srv.Get(), state.visibility.work_uav.Get());
     ID3D11SamplerState* no_sampler = nullptr;
     context->CSSetSamplers(0, 1, &no_sampler);
     context->CSSetConstantBuffers(0, 4, NO_CONSTANTS.data());
@@ -588,6 +577,14 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   context->CSSetShaderResources(0, 1, NO_VIEWS.data());
   context->CSSetUnorderedAccessViews(0, 1, NO_OUTPUTS.data(), nullptr);
   context->CSSetShader(nullptr, nullptr, 0);
+  for (const auto& [shared, written] : {std::pair{&state.visibility, state.ground || state.bend},
+                                        std::pair{&state.occlusion, state.occlusion_frame == bridge.frame},
+                                        std::pair{&state.ground_light, state.bounce_frame == bridge.frame},
+                                        std::pair{&state.reflection, state.reflection_frame == bridge.frame}}) {
+    if (written) {
+      context->CopyResource(shared->proxy.Get(), shared->work.Get());
+    }
+  }
   bridge::WaitProxy(proxy, context.Get());
 
   if (state.ground || state.bend) {
@@ -693,7 +690,6 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   twattila::rt_scene::OnDestroyDevice(device);
   if (device->get_api() == reshade::api::device_api::d3d11) {
     state.visibility = {};
-    state.visibility_uav.Reset();
     state.depth_view.Reset();
     state.copy.Reset();
     state.shadows.Reset();
@@ -707,18 +703,15 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.reprojection.Reset();
     state.kept_frame = UINT32_MAX;
     state.occlusion = {};
-    state.occlusion_uav.Reset();
     state.vbao_shader.Reset();
     state.vbao_settings.Reset();
     state.light_view.Reset();
     state.occlusion_view.Reset();
     state.bounce_shader.Reset();
     state.ground_light = {};
-    state.ground_light_uav.Reset();
     state.reflection_shader.Reset();
     state.reflection_settings.Reset();
     state.reflection = {};
-    state.reflection_uav.Reset();
     state.bend_objects = {};
   } else if (device->get_api() == reshade::api::device_api::d3d9) {
     state.depth_copy.Reset();
