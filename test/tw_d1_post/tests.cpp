@@ -1,7 +1,8 @@
 // Divinity: Original Sin EE's replaced passes besides the tone map (bloom, god rays, UI, FXAA, SMAA, vignette, fog of
 // war, outlines, fire, candles, lights, the exe's colour shader) on WARP, Vanilla exact: in Rendering Mode SDR (Native)
 // each add-on shader gives the game's own bytes' picture, and a deliberately wrong copy of it (o0.x * 0.99 + 0.004 at its end,
-// written by run.ps1) must not. The tone map has its own test (test/tw_divinity1).
+// written by run.ps1) must not. The light passes (point and spot, plain and shadowed): their Player / Local Light
+// Intensity row at 2 in HDR gives twice the game's light. The tone map has its own test (test/tw_divinity1).
 // Inputs as the game's shader declares them (its reflection, the game's shaders ship it): every texture 64 x 64 of fixed
 // noise (0 - 1 for passes after the tone map, 0 - 4 before it), every constant buffer of fixed values 0 - 1 (a third set 0 - 16), samplers by
 // name (Point / Wrap / comparison), the interpolants from one vertex shader made from the game's input signature (fixed
@@ -9,7 +10,12 @@
 // at its default.
 // Compared: passes after the tone map through saturate (the game's UNORM targets), passes before it as they are
 // (R11G11B10F / RGBA16F targets), relative to max(1, |game|).
-// tests.exe <manifest>: lines "<hash> <pre|post> <game cso> <add-on cso> <mutant cso>"; exit code 0 when every check holds.
+// tests.exe <manifest>: lines "<hash> <pre|post> <game cso> <add-on cso> <mutant cso> [row|soft] [cb<slot>=<file> ...]"; exit
+// code 0 when every check holds. A line's cb<slot> files (floats, whitespace apart, zeros after them) are a fourth input set's
+// constant buffers at those slots: values that reach a pass's branch the noise does not.
+// Built with DIVINITY2 (test/tw_d2_passes/run.ps1): Divinity: Original Sin 2 DE's passes, its shader data (Rendering Mode
+// Off, every row at its default); a "soft" pass (the PCSS sun shadows) at Sun Shadow Softness 2 must change the game's
+// shadow (the inputs reach the scaled light size).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -28,13 +34,18 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <map>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace divinity {
+#ifdef DIVINITY2
+#include "src/games/divinity2originalsindefinitive/shared.h"
+#else
 #include "src/games/divinityoriginalsinenhanced/shared.h"
+#endif
 }  // namespace divinity
 
 using Microsoft::WRL::ComPtr;
@@ -60,6 +71,20 @@ static float Noise(uint32_t* state) {
   return static_cast<float>(*state >> 8) / 16777216.f;
 }
 
+#ifdef DIVINITY2
+// Rendering Mode Off (the game's own), every row at its default (addon.cpp).
+static divinity::ShaderInjectData VanillaInjection() {
+  return {.peak_white_nits = 1000.f, .diffuse_white_nits = 203.f, .graphics_white_nits = 203.f, .bloom = 1.f, .tonemap_type = 0.f,
+          .sun_shadow_softness = 1.f};
+}
+
+// "soft" passes: twice the sun's light size.
+static divinity::ShaderInjectData ChangedInjection() {
+  auto changed = VanillaInjection();
+  changed.sun_shadow_softness = 2.f;
+  return changed;
+}
+#else
 // Rendering Mode SDR (Native), every row at its default (addon.cpp).
 static divinity::ShaderInjectData VanillaInjection() {
   return {
@@ -74,6 +99,16 @@ static divinity::ShaderInjectData VanillaInjection() {
       .sun_shadow_softness = 1.f,
   };
 }
+
+// "row" passes: the light rows at 2 in HDR (Extended), the light passes' output doubles.
+static divinity::ShaderInjectData ChangedInjection() {
+  auto changed = VanillaInjection();
+  changed.tonemap_type = 3.f;
+  changed.player_light_intensity = 2.f;
+  changed.local_light_intensity = 2.f;
+  return changed;
+}
+#endif
 
 // What one pass reads, made from the game's shader's reflection.
 struct Inputs {
@@ -94,7 +129,9 @@ static ComPtr<ID3D11Buffer> MakeConstants(const void* data, UINT bytes) {
   return buffer;
 }
 
-static Inputs MakeInputs(const std::vector<char>& game_code, float range, float constant_scale, uint32_t seed) {
+// `fixed`: constant buffers by slot from the manifest (null: noise in every one).
+static Inputs MakeInputs(const std::vector<char>& game_code, float range, float constant_scale, uint32_t seed,
+                         const std::map<UINT, std::vector<float>>* fixed) {
   Inputs inputs;
   ComPtr<ID3D11ShaderReflection> reflection;
   if (FAILED(D3DReflect(game_code.data(), game_code.size(), IID_PPV_ARGS(&reflection)))) {
@@ -195,6 +232,11 @@ static Inputs MakeInputs(const std::vector<char>& game_code, float range, float 
         reflection->GetConstantBufferByName(bind.Name)->GetDesc(&buffer_desc);
         std::vector<float> values(buffer_desc.Size / 4);
         for (float& value : values) value = Noise(&state) * constant_scale;
+        if (fixed != nullptr && fixed->contains(bind.BindPoint)) {
+          const auto& file_values = fixed->at(bind.BindPoint);
+          std::ranges::fill(values, 0.f);
+          std::copy_n(file_values.begin(), std::min(file_values.size(), values.size()), values.begin());
+        }
         inputs.constants.emplace_back(bind.BindPoint, MakeConstants(values.data(), buffer_desc.Size));
         break;
       }
@@ -272,12 +314,25 @@ int main(int argc, char** argv) {
   }
   const auto vanilla = VanillaInjection();
   const ComPtr<ID3D11Buffer> injection = MakeConstants(&vanilla, sizeof(vanilla));
+  const auto changed = ChangedInjection();
+  const ComPtr<ID3D11Buffer> changed_injection = MakeConstants(&changed, sizeof(changed));
   std::ifstream manifest(argv[1]);
   int passes = 0;
   for (std::string line; std::getline(manifest, line);) {
     std::istringstream fields(line);
-    std::string hash, stage, game_path, addon_path, mutant_path;
+    std::string hash, stage, game_path, addon_path, mutant_path, row;
     if (!(fields >> hash >> stage >> game_path >> addon_path >> mutant_path)) continue;
+    std::map<UINT, std::vector<float>> fixed;
+    for (std::string token; fields >> token;) {
+      if (const size_t equals = token.find('='); token.starts_with("cb") && equals != std::string::npos) {
+        std::ifstream values_file(token.substr(equals + 1));
+        auto& values = fixed[static_cast<UINT>(std::stoul(token.substr(2, equals - 2)))];
+        for (float value = 0.f; values_file >> value;) values.push_back(value);
+        CHECK(!values.empty());
+      } else {
+        row = token;
+      }
+    }
     const bool post = stage == "post";
     const auto game_code = ReadFile(game_path);
     const auto addon_code = ReadFile(addon_path);
@@ -285,11 +340,22 @@ int main(int argc, char** argv) {
     CHECK(!game_code.empty() && !addon_code.empty() && !mutant_code.empty());
     float worst = 0.f;
     float mutant_worst = 0.f;  // caught when any input set shows it (saturate hides it where a set's output is past 1)
+    float row_worst = 0.f;     // a light pass at its row's 2 against twice the game's light
+    float soft_change = 0.f;   // a soft pass at Sun Shadow Softness 2 against the game's shadow
     bool flat = true;  // the game's output one value everywhere: these inputs reach one branch only
     std::string skipped;
-    // Three noise sets: other values everywhere, the third with constants 0 - 16 (other branches of a pass's tests).
-    for (const auto& [seed, constant_scale] : {std::pair{0x1234567u, 1.f}, std::pair{0x89ABCDEu, 1.f}, std::pair{0x2468ACEu, 16.f}}) {
-      const Inputs inputs = MakeInputs(game_code, (post ? 1.f : 4.f), constant_scale, seed ^ static_cast<uint32_t>(std::hash<std::string>{}(hash)));
+    // Three noise sets: other values everywhere, the third with constants 0 - 16 (other branches of a pass's tests); a
+    // fourth with the line's own constant buffers.
+    struct InputSet {
+      uint32_t seed;
+      float constant_scale;
+      const std::map<UINT, std::vector<float>>* fixed;
+    };
+    std::vector<InputSet> sets = {{0x1234567u, 1.f, nullptr}, {0x89ABCDEu, 1.f, nullptr}, {0x2468ACEu, 16.f, nullptr}};
+    if (!fixed.empty()) sets.push_back({0x13579BDu, 1.f, &fixed});
+    for (const auto& set : sets) {
+      const Inputs inputs = MakeInputs(game_code, (post ? 1.f : 4.f), set.constant_scale,
+                                       set.seed ^ static_cast<uint32_t>(std::hash<std::string>{}(hash)), set.fixed);
       if (!inputs.skipped.empty()) {
         skipped = inputs.skipped;
         break;
@@ -300,18 +366,40 @@ int main(int argc, char** argv) {
       }
       worst = std::max(worst, Difference(game, Draw(addon_code, inputs, injection.Get()), post));
       mutant_worst = std::max(mutant_worst, Difference(game, Draw(mutant_code, inputs, injection.Get()), post));
+      if (row == "row") {
+        auto twice = game;
+        for (auto& texel : twice) {
+          for (int channel = 0; channel < 3; ++channel) texel[channel] *= 2.f;
+        }
+        row_worst = std::max(row_worst, Difference(twice, Draw(addon_code, inputs, changed_injection.Get()), post));
+      }
+      if (row == "soft") soft_change = std::max(soft_change, Difference(game, Draw(addon_code, inputs, changed_injection.Get()), post));
     }
     if (!skipped.empty()) {
       std::printf("0x%s: NOT CHECKED (%s)\n", hash.c_str(), skipped.c_str());
       CHECK(skipped.empty());
       continue;
     }
-    std::printf("0x%s (%s): add-on against the game's bytes %.3g, the wrong copy %.3g%s\n", hash.c_str(), stage.c_str(), worst, mutant_worst,
+    std::printf("0x%s (%s): add-on against the game's bytes %.3g, the wrong copy %.3g%s", hash.c_str(), stage.c_str(), worst, mutant_worst,
                 (flat ? " (the game's output one value: one branch only)" : ""));
+    if (row == "row") std::printf("; its light row at 2 against twice the game's light %.3g", row_worst);
+    if (row == "soft") std::printf("; Sun Shadow Softness 2 against the game's shadow %.3g", soft_change);
+    std::printf("\n");
     CHECK(worst <= TOLERANCE);
     CHECK(mutant_worst > TOLERANCE);
+    CHECK(row != "row" || row_worst <= TOLERANCE);
+    CHECK(row != "soft" || soft_change > TOLERANCE);
     ++passes;
   }
-  std::printf(failures == 0 ? "tw_d1_post: %d passes Vanilla exact, every wrong copy caught\n" : "tw_d1_post: %d passes run, %d checks failed\n", passes, failures);
+#ifdef DIVINITY2
+  constexpr const char* NAME = "tw_d2_passes";
+#else
+  constexpr const char* NAME = "tw_d1_post";
+#endif
+  if (failures == 0) {
+    std::printf("%s: %d passes Vanilla exact, every wrong copy caught\n", NAME, passes);
+  } else {
+    std::printf("%s: %d passes run, %d checks failed\n", NAME, passes, failures);
+  }
   return failures == 0 ? 0 : 1;
 }

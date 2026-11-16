@@ -1,5 +1,62 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
+## Dev, fix round (2026-11-16; built only, not stamped, not installed, not run in game)
+
+- New: **Time Each Pass (One Frame)**, as Attila's: the GPU time of every pass of the next frame into
+  `thrones_pass_timing.txt` next to the exe.
+- Fixed: with the game's MSAA, Fog Strength and Fog & Sky Smoothing work (the battle fog's MSAA build A538288B, Attila's
+  bytes). `tw_attila_builds -Game twthronesofbritannia` battlefog01.
+- Fixed: the HDR output's alpha is held to 0 - 1, as Attila's.
+- Fixed: Reset, Recommended and the SDR preset turn Sky Debanding off, as Attila's presets.
+- Video AutoHDR and Video Dithering are greyed out at Output SDR (they do nothing there), as Attila's.
+- Fixed: with **Ray-Traced Specular Occlusion** on, the reflections took the game's AO on top of the rays' occlusion;
+  now the rays' occlusion alone, as Attila's. `tw_thrones_ssr` part F (WARP): the AO factor bit for bit the white-AO
+  run's, the environment still dimmed; the pre-fix build differs (control).
+- Measured: Hue Clip Emulation's default 40 on this game's own chain (`tw_psychov35` part 4): the smallest hue error over
+  all hues at the clip, 6.31 degrees (30: 6.69, 50: 6.35), the same numbers as Attila's. The game's own S-curve texture
+  is in no dump: measured with an identity curve, as Attila's.
+- Tests: `tw_vanilla_exact` covers 38 of the replaced shaders (sky, markers, video, vignette, auto exposure, SSAO,
+  reflections and grass02 added): 34 bit for bit the game's, 4 the bloom smoothing as intended, 0 failed (x86, amd64).
+- Test (ATN): 1. in-game MSAA on, Fog Strength 0.5 in a battle: thinner fog. 2. Specular Occlusion on, a sunny battle:
+  armour creases a little brighter than in r8, no glowing edges. 3. Time Each Pass: the file appears next to the exe.
+
+## r8 (2026-11-16 05:0x; stamped and installed with renodx-tw-dlaa64.exe helper115, not run in game)
+
+- New: **Gamma Correction in every Rendering Mode** (the same row, on by default), as Attila's: the HDR modes show the
+  game's gamma 2.0 picture as a gamma 2.2 display does; lens flares are drawn in the frame's gamma. Saturated highlights
+  still stop at Peak. Off: the HDR modes as before.
+- New: **Near ReSTIR Reuse** on by default: faster reuse, cleaner through Ray Reconstruction.
+- Fixed: in HDR the game's depth of field (pixel and compute blurs) clipped every tap at 1: highlights in the blur stay
+  in HDR now. Rendering Mode SDR: the game's clip.
+- Fixed: the tone mapper's alpha is held to 0 - 1 again (its 16-bit target had dropped the game's clamp), as Attila's.
+- Fixed: PsychoV30 / V31 on Output SDR compress the colours outside BT.709 into it (they were clipped per channel).
+- Fixed (stability), as Attila v164: after a GPU reset the helper makes its own new D3D11 device and releases FSR / XeSS
+  / Ray Reconstruction objects safely; frame generation turns off when the helper is gone; the game's LOD and grass
+  values are no longer scaled again; a refused swap chain falls back to the game's own.
+
+## r7 (2026-11-15 13:5x; stamped and installed with renodx-tw-dlaa64.exe helper114, not run in game)
+
+- Install: Streamline 2.14.16 next to the helper; without it DLSS Frame Generation fell back to FSR's.
+- Tests only: `renodx_test_hooks.txt` next to the exe gives scripted runs their test settings when the game restarts
+  itself through Steam; it is deleted at the first frame. Players: nothing changes.
+
+## r6 (2026-11-15 12:10; stamped and installed with renodx-tw-dlaa64.exe helper114, not run in game)
+
+- **Batched Unit Capture** and **Faster Render Lists** are on by default and no longer Experimental (Attila's bench:
+  -1.0 to -2.1 ms and -0.10 to -0.73 ms a frame, the same picture). A saved Off stays Off.
+
+## r5 (2026-11-15 08:00; stamped and installed with renodx-tw-dlaa64.exe helper114, not run in game)
+
+The Attila gaps and parity round sections below, and:
+- New: **Rays Replace Point Light Shadows (Experimental, off)**, as Attila's: with the game's point light shadows on,
+  torches and fires take their shadows from the rays where the game draws its own.
+- New: **Skip the Game's Shadow Map Work (Experimental, off)**, as Attila's: under ray-traced shadows the game no longer
+  prepares the sun's shadow map draws the rays replace (CPU time).
+- New: **Faster Render Lists (Experimental, off; on by default since r6)**, as Attila's: less CPU time per drawn item.
+- Fixed: Reset, Recommended and the SDR preset write Modded Auto Exposure Sensitivity's default 4 (was 2); no change
+  while its protection is off.
+- Output Auto takes Recommended once when Windows HDR comes on after a first start without HDR.
+
 ### Attila gaps (2026-11-14; built only, not run in game)
 
 Attila's fixes for the game's other builds, the same bytes here (Thrones' files include Attila's). Offline only (WARP).
@@ -178,7 +235,7 @@ Build: `cmake --build --preset clang-x86-release --target renodx-twthronesofbrit
 ## v48 (2026-11-12, PsychoV35 round; built only, not run in game)
 
 - **HDR (PsychoV35)** (Rendering Mode 3): Musa's custom PsychoV35 (`twattila/psycho_test35.hlsli`, shared with Attila and WH3) with its own sliders (`v35_*`) and **Hue Clip Emulation** (`twattila/psycho35.hlsli`, `psycho35_settings.hpp`). Hue Clip Emulation (0 - 100, default 40) Attila's tone mapper path (`AttilaEngineHueClip`, t18 without the highlight limit before bloom); default 40 = Attila's, the same chain (measured there, part 4). Reset and Recommended in PsychoV35 (no Extended mode here).
-- Hue Clip default from test/tw_psychov35 part 5 (WARP): its kind of stock curve on the scene, PsychoV35 right after, the OkLab hue error against the per-channel SDR clip where it clips; not measured on this game's own chain (Thrones and WH1 take Attila's).
+- Hue Clip default from test/tw_psychov35 part 5 (WARP): its kind of stock curve on the scene, PsychoV35 right after, the OkLab hue error against the per-channel SDR clip where it clips; not measured on this game's own chain (Thrones and WH1 take Attila's; Thrones' own chain measured 2026-11-16, see the fix round above).
 - Other modes: unchanged code paths (not bit-checked on this game; Attila's and WH3's are).
 
 ## v47 (2026-11-05, WH3's batch 5; built only, not run in game; renodx-tw-dlaa64.exe helper89, bridge v29: ship them together)

@@ -14,9 +14,12 @@ if (-not (Test-Path -LiteralPath $Census)) { throw "The census's shaders are not
 # post: after the tone map (UNORM targets in the game), pre: before it (float targets).
 $passes = [ordered]@{
   '88B0D842' = 'pre'; '940951FA' = 'pre'; 'ED93F883' = 'pre'; '93AEBB93' = 'pre'; 'D39E39C8' = 'pre'; '2F56D195' = 'pre'
+  '23B84721' = 'pre'; '7CBAA94E' = 'pre'; '25539638' = 'pre'; 'AD516F39' = 'pre'; '47E69078' = 'pre'
   '2400D20A' = 'post'; '35F39F1D' = 'post'; 'B7FC46C3' = 'post'; '6AF33A9B' = 'post'; 'FB839D33' = 'post'; 'DDBCD866' = 'post'
   '9B114FEF' = 'post'; '83553BB1' = 'post'; '20163A55' = 'post'; 'CB4B3BA6' = 'post'; '8F114E47' = 'post'
 }
+# Point and spot lights, plain and shadowed: the light rows.
+$lightRows = @('D39E39C8', '2F56D195', '23B84721', '7CBAA94E')
 # The build's flags (CMakeLists.txt): fxc, shader model 5.0, NDEBUG, /Gec, /O3, /Qstrip_reflect.
 $fxc = (Select-String -LiteralPath (Join-Path $repairRoot 'build\CMakeCache.txt') -Pattern '^FXC_BIN:FILEPATH=(.*)$').Matches[0].Groups[1].Value
 $manifest = @()
@@ -42,7 +45,9 @@ foreach ($hash in $passes.Keys) {
   $ErrorActionPreference = 'Stop'
   if ($addonExit -ne 0) { throw "fxc failed: $($source.Name)" }
   if ($mutantExit -ne 0) { throw "fxc failed: the wrong copy of $($source.Name)" }
-  $manifest += "$hash $($passes[$hash]) $game $addon $mutant"
+  # The light passes: Player / Local Light Intensity at 2 must double the game's light.
+  $row = if ($lightRows -contains $hash) { ' row' } else { '' }
+  $manifest += "$hash $($passes[$hash]) $game $addon $mutant$row"
 }
 $manifestPath = Join-Path $testBuild 'manifest.txt'
 Set-Content -LiteralPath $manifestPath -Value $manifest -Encoding ascii

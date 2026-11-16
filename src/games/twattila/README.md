@@ -1,5 +1,36 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, fix round (2026-11-16; built only, not stamped, not installed, not run in game)
+
+- Fixed: with **Ray-Traced Specular Occlusion** on, the reflections took the game's AO on top of the rays' occlusion
+  (shiny armour and metal darkened twice in creases); now the rays' occlusion alone. Off, and with the game's MSAA:
+  unchanged. `tw_thrones_ssr -Game twattila` part F (WARP): ssr00 / ssr01's AO factor bit for bit the white-AO run's,
+  the environment still dimmed (27686 / 7168 texels); the pre-fix build differs (control).
+- Tests: `tw_vanilla_exact` covers 30 of Attila's replaced shaders (sky, markers, video, vignette, auto exposure, SSAO,
+  reflections and grass02 added): 26 bit for bit the game's, 4 the bloom smoothing as intended, 0 failed (x86, amd64).
+- Test (ATN): Specular Occlusion on, a sunny battle with armoured units: armour creases a little brighter than in v164,
+  no glowing edges; off: as before.
+
+## v164 (2026-11-16 05:0x; stamped and installed with renodx-tw-dlaa64.exe helper115, not run in game)
+
+- New: **Gamma Correction in every Rendering Mode** (the same row, on by default): the HDR modes show the game's gamma
+  2.0 picture as a gamma 2.2 display does, as Rendering Mode SDR already did; lens flares are drawn in the frame's
+  gamma. Saturated highlights still stop at Peak. Off: the HDR modes as before.
+- New: **Near ReSTIR Reuse** on by default: faster reuse, cleaner through Ray Reconstruction.
+- Fixed: in HDR the game's depth of field (pixel and compute blurs) clipped every tap at 1: highlights in the blur stay
+  in HDR now. Rendering Mode SDR: the game's clip.
+- Fixed: Peak set below Paper White (Peak 400, Paper White 500) counts as Paper White. Defaults 1000 / 203: unchanged.
+- Fixed: PsychoV30 on Output SDR compresses the colours outside BT.709 into it (they were clipped per channel), as V31.
+- Fixed (stability): after a GPU reset the helper makes its own new D3D11 device, keeps FSR / XeSS / Ray Reconstruction
+  objects until they can go, stops and restarts Streamline in order; frame generation turns off when the helper is
+  gone; the game's LOD and grass values are no longer scaled again with the new device; a refused swap chain falls back
+  to the game's own.
+
+## v163 (2026-11-15 13:5x; stamped and installed with renodx-tw-dlaa64.exe helper114, not run in game)
+
+- Tests only: `renodx_test_hooks.txt` next to the exe gives scripted runs their test settings when the game restarts
+  itself through Steam; it is deleted at the first frame. Players: nothing changes.
+
 ### Grass on the GPU, phase 0 (2026-11-15; built only, not run in game)
 
 - New: **Grass Dump** (a test button beside Grass Trace, Graphics 2 of 2 > Grass & Trees (Tests)): one frame of the
@@ -69,6 +100,15 @@ not at ATN's settings now get the same. All level B (WARP against the game's dum
   Constantinople bench at 4K: Batched Unit Capture -1.0 to -2.1 ms a frame (+1.1 to +1.3 fps), the same picture
   (bit-exact on the hardware harness); Faster Render Lists -0.10 to -0.73 ms, the same results. A saved Off stays Off
   (Reset or a preset turns Batched Unit Capture on; Faster Render Lists stays outside the presets).
+
+## v161 (2026-11-15 08:00; stamped and installed with renodx-tw-dlaa64.exe helper114, not run in game)
+
+- New: **Rays Replace Point Light Shadows (Experimental, off)**: with the game's point light shadows on (Shader Model
+  4.1 / 5), torches and fires take their shadows from the rays where the game draws its own (32 builds; no trace drew
+  them yet).
+- Fixed: Reset, Recommended and the SDR preset write Modded Auto Exposure Sensitivity's default 4 (was 2); no change
+  while its protection is off.
+- Output Auto takes Recommended (no VFX boost) once when Windows HDR comes on after a first start without HDR.
 
 ## Dev, whole-frame check's code items (2026-11-14 afternoon; built only, not stamped, not installed, not run in game)
 

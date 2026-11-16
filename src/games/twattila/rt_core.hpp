@@ -396,6 +396,9 @@ struct Host {
   bool (*scene_draw)(ID3D11DeviceContext* native, SceneShader* shader) = nullptr;
   // Whether a vertex shader's code has bone inputs (null: BLENDINDICES in its input signature).
   bool (*skinned_code)(std::span<const uint8_t> code) = nullptr;
+  // scene_draw marks only its characters' draws dynamic (skinned; Expeditions: Rome): the helper's RT_UNIT draws, which
+  // Units Ray Tracing Range leaves out by distance. False: no such row (Rome Remastered marks every draw dynamic).
+  bool characters_dynamic = false;
   bool (*moving)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawArguments& arguments) = nullptr;
   bool (*moving_indexed)(ID3D11DeviceContext* native, const renodx::utils::command_action::DrawIndexedArguments& arguments) = nullptr;
   // Whether a draw is the main view's (null: every draw into its depth is).
@@ -504,6 +507,9 @@ constexpr uint32_t MAX_SET_BUILDS = 16;
 constexpr uint64_t CORNER_FRAMES = 30;
 // Record Ray Tracing Profile's length.
 constexpr uint64_t PROFILE_MS = 30000;
+// The helper lets its ray tracing go after this long without a trace request (dlaa_helper/main.cpp IDLE_RELEASE: menus,
+// loading screens, the rays off): its next device then is no restart.
+constexpr uint64_t HELPER_IDLE_RELEASE_MS = 10000;
 // Batched Unit Capture: the streamed meshes' texels, rows' instances and draws a flush holds at most (FlushBatch first when a
 // draw finds them full), the corners one turn of its compute makes before they are copied into `captured` (a draw with more is
 // captured at its draw).
@@ -915,6 +921,7 @@ struct Runtime {
   uint32_t lights_in_bounce = 0;
   uint32_t helper_device = 0;             // the helper's ray tracing device (a new one: its scene empty)
   uint64_t wanted_tick = 0;               // when ray tracing was last on (GetTickCount64)
+  uint64_t traced_tick = 0;               // when the helper last traced a frame (GetTickCount64)
   // The garbage triangles the helper left out (far off or stretched) as last read, the captures' vertex shaders by key
   // (since the last report) and what was left out since then by vertex shader (Update's report).
   uint32_t helper_left_out = 0;
@@ -977,6 +984,8 @@ static Host host;
 // Where the game's lighting buffer holds its sun colour, the paths' sun light with Path-Traced Ambient (rt_scene.hpp
 // InstallSunDraws; 0: none).
 static UINT sun_colour = 0;
+// A WriteSun host gave the sun's light (texel 2) too: the paths' sun light with Path-Traced Ambient, as sun_colour's.
+static std::atomic_bool sun_light_written = false;
 // The code of the scene shaders without a capture version, as the game made them (every vertex shader with
 // host.scene_draw; runtime.mutex), and those with bone inputs (BLENDINDICES: skinned, captured every frame).
 static std::unordered_map<uint32_t, std::vector<uint8_t>> game_code;
@@ -3387,7 +3396,8 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
                                                      | (runtime.path_ambient_on ? dlaa_bridge::RT_PATH_AMBIENT : 0u)
                                                      | ((runtime.path_ambient_on && runtime.settings.path_sky_apart) ? dlaa_bridge::RT_PATH_SKY_APART : 0u)
                                                      | ((runtime.path_ambient_on && runtime.settings.path_kept_cube) ? dlaa_bridge::RT_PATH_KEPT_CUBE : 0u)
-                                                     | ((runtime.path_ambient_on && sun_colour != 0) ? dlaa_bridge::RT_PATH_SUN_LIGHT : 0u)
+                                                     | ((runtime.path_ambient_on && (sun_colour != 0 || sun_light_written.load(std::memory_order_relaxed)))
+                                                            ? dlaa_bridge::RT_PATH_SUN_LIGHT : 0u)
                                                      | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                                                      | (runtime.settings.sharc ? dlaa_bridge::RT_PATH_SHARC : 0u)
                                                      | (runtime.settings.reuse_lean ? dlaa_bridge::RT_PATH_REUSE_LEAN : 0u)
@@ -3918,21 +3928,27 @@ inline void Update(const Settings& settings) {
   }
   dlaa_bridge::bridge.details = settings.debug_log;
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
+  const uint64_t tick = GetTickCount64();
+  if (runtime.traced_frame == runtime.frame) runtime.traced_tick = tick;
   ++runtime.frame;
-  // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed) or, with the rays
-  // off, released its scene after 10 s: every mesh captured again.
+  // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed) or released its
+  // scene after 10 s without a trace (the rays off, a menu): every mesh captured again. Only the first is a warning.
   if (const uint32_t device = dlaa_bridge::RayTracingDevice(); device != runtime.helper_device) {
     runtime.helper_device = device;
     runtime.known.clear();
     runtime.short_keys.clear();
     for (auto& [set_key, mesh] : runtime.cluster_meshes) mesh.sent = false;
     if (internal::Enabled() || dlaa_bridge::bridge.ray_tracing) {
-      renodx::utils::log::w("[Total War] Ray tracing: the helper started again (why: renodx-tw-dlaa64.log), the scene is captured again.");
+      if (tick >= runtime.traced_tick + internal::HELPER_IDLE_RELEASE_MS) {
+        renodx::utils::log::i("[Total War] Ray tracing: the helper let its scene go after 10 s without rays, the scene is captured again.");
+      } else {
+        renodx::utils::log::w("[Total War] Ray tracing: the helper started again (why: renodx-tw-dlaa64.log), the scene is captured again.");
+      }
     }
   }
   // Off for longer than the helper's IDLE_RELEASE: its scene is gone and nothing points at these, the addon's memory and
   // its hold on the game's mask textures back.
-  if (const uint64_t tick = GetTickCount64(); internal::Enabled() || dlaa_bridge::bridge.ray_tracing) {
+  if (internal::Enabled() || dlaa_bridge::bridge.ray_tracing) {
     runtime.wanted_tick = tick;
   } else if (runtime.objects.device && tick > runtime.wanted_tick + 15000) {
     runtime.objects = {};
@@ -4272,13 +4288,19 @@ inline void FlushUnitCaptures() {
 }
 
 // The sun's direction for the next trace (toward the sun, world space, unit length), where the game's lighting buffers
-// do not hold it in the TW games' layout (rt_sun).
-inline void WriteSun(ID3D11DeviceContext* native, const std::array<float, 3>& toward_sun) {
+// do not hold it in the TW games' layout (rt_sun), and its light (`light`, w 1; w 0: not given): texel 2, as rt_sun.cs
+// writes it, the light on a diffuse surface (the guides' albedo x light x N.L x the shadow is the game's lit). Given, the
+// paths take it as the sun's light under Path-Traced Ambient (RT_PATH_SUN_LIGHT).
+inline void WriteSun(ID3D11DeviceContext* native, const std::array<float, 3>& toward_sun, const std::array<float, 4>& light = {}) {
   auto& bridge = dlaa_bridge::bridge;
   if (!bridge.rt_sun.texture) return;
   const std::array<float, 4> sun = {toward_sun[0], toward_sun[1], toward_sun[2], 1.f};
   const D3D11_BOX texel = {.left = 0, .top = 0, .front = 0, .right = 1, .bottom = 1, .back = 1};
   native->UpdateSubresource(bridge.rt_sun.texture.Get(), 0, &texel, sun.data(), 16, 0);
+  if (light[3] == 0.f) return;
+  const D3D11_BOX light_texel = {.left = 2, .top = 0, .front = 0, .right = 3, .bottom = 1, .back = 1};
+  native->UpdateSubresource(bridge.rt_sun.texture.Get(), 0, &light_texel, light.data(), 16, 0);
+  internal::sun_light_written.store(true, std::memory_order_relaxed);
 }
 
 // This frame's traced sun and ambient visibility (R8 at the render size, the bridge's textures' top-left; 1 open); null

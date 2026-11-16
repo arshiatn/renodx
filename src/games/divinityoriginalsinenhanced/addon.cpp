@@ -536,6 +536,9 @@ renodx::mods::shader::CustomShaders custom_shaders = {
     UpgradeRTVReplaceShader(0xB7FC46C3), // SMAA Pass 1
     UpgradeRTVReplaceShader(0x6AF33A9B), // SMAA Pass 2
     UpgradeRTVReplaceShader(0xFB839D33), // SMAA Pass 3
+    UpgradeRTVReplaceShader(0x25539638), // SMAA Pass 1 with LightVolume on
+    UpgradeRTVReplaceShader(0xAD516F39), // SMAA Pass 2 with LightVolume on
+    UpgradeRTVReplaceShader(0x47E69078), // SMAA Pass 3 with LightVolume on
     UpgradeRTVReplaceShader(0xDDBCD866), // Vignette
     UpgradeRTVReplaceShader(0x20163A55), // Final UI/copy target must retain HDR RGB
     __ALL_CUSTOM_SHADERS,
@@ -552,6 +555,14 @@ renodx::utils::settings::Settings settings = {
         .label = "Settings Mode",
         .labels = {"Simple", "Advanced"},
         .is_global = true,
+    },
+    // GammaCorrection (graphicSettings.lsx, 1 by default) goes to a renderer method as 1 / value (EoCApp.exe 0x1407DF7F8 at
+    // the start, 0x140AF3AB1 from the options menu); no shader of the game reads a gamma value (the tone map encodes a
+    // fixed 1 / 2.2), and a display gamma ramp needs exclusive fullscreen, which the swap chain mod prevents.
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "Keep the game's Gamma Correction at 1 (neutral). The HDR modes ignore it.",
+        .section = "General",
     },
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
@@ -653,7 +664,8 @@ renodx::utils::settings::Settings settings = {
         .label = "PsychoV30 (earlier Recommended)",
         .section = "Presets",
         .group = "preset-buttons-1",
-        .tooltip = "HDR (UC2 Extended / PsychoV30) with less bloom, the brazier and candle boosts.",
+        .tooltip = "HDR (UC2 Extended / PsychoV30) with less bloom, the brazier and candle boosts.\n"
+                   "Peak, Paper White, UI, Settings Mode and Output are kept.",
         .on_change = []() {
           ApplyResetPreset();
           renodx::utils::settings::UpdateSettings({
@@ -699,7 +711,7 @@ renodx::utils::settings::Settings settings = {
         .default_value = 1.0f,
         .label = "Saturation / Purity",
         .section = "PsychoV30",
-        .tooltip = "Full-RGB PsychoV30 purity, used by UC2 Extended / PsychoV30.",
+        .tooltip = "Colour purity. 1.00: neutral.",
         .min = 0.00f,
         .max = 2.00f,
         .format = "%.2f",
@@ -752,7 +764,7 @@ renodx::utils::settings::Settings settings = {
         .default_value = 0.50f,
         .label = "Fire Highlights",
         .section = "Pragmap Effects",
-        .tooltip = "Fire Highlights EXTRA ON TOP of my highlights.",
+        .tooltip = "Extra brightness for fire, on top of Highlights.",
         .min = 0.50f,
         .max = 1.50f,
         .format = "%.2f",
@@ -763,9 +775,9 @@ renodx::utils::settings::Settings settings = {
         .key = "candlehighlightmultiplier",
         .binding = &shader_injection.candlehighlightmultiplier,
         .default_value = 1.0f,
-        .label = "Candle/staff/small particles Highlights",
+        .label = "Candle / Staff / Small Particle Highlights",
         .section = "Pragmap Effects",
-        .tooltip = "Candle/staff/small particles Highlights EXTRA ON TOP of my highlights.",
+        .tooltip = "Extra brightness for candles, staffs and small glowing particles, on top of Highlights.",
         .min = 0.50f,
         .max = 1.50f,
         .format = "%.2f",
@@ -780,8 +792,8 @@ renodx::utils::settings::Settings settings = {
         .default_value = 0.f,
         .label = "Brazier Color / Brightness Boost",
         .section = "Fire / Particles",
-        .tooltip = "Off uses stock emission.\nOn (old version) applies my old brightness boost.\n"
-                   "On (new color channel boost) is what I would use.",
+        .tooltip = "Brighter fire and braziers.\nOff: the game's.\nOn (old version): brighter and redder.\n"
+                   "On (new color channel boost): brighter, keeping more of the yellow.",
         .labels = {"Off", "On (old version)", "On (new color channel boost)"},
         .is_enabled = IsPsychoV30,
         .is_visible = ShowPsychoSettings,
@@ -790,9 +802,9 @@ renodx::utils::settings::Settings settings = {
         .key = "candlehighlightmultiplierpsycho",
         .binding = &shader_injection.candlehighlightmultiplierpsycho,
         .default_value = 1.0f,
-        .label = "Candle/Rain/small particles Highlights",
+        .label = "Candle / Staff / Small Particle Highlights",
         .section = "Fire / Particles",
-        .tooltip = "Candle/staff/small particles Highlights multiplier. 1.0 is stock",
+        .tooltip = "Brightness of candles, staffs and small glowing particles. 1.0: the game's.",
         .min = 1.0f,
         .max = 10.0f,
         .format = "%.1f",
@@ -805,7 +817,7 @@ renodx::utils::settings::Settings settings = {
         .default_value = 1.f,
         .label = "Bloom",
         .section = "Extra",
-        .tooltip = "Bloom multiplier (HDR only). 1.0 is stock.",
+        .tooltip = "Strength of the bloom (HDR only). 1.00: the game's.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
@@ -818,7 +830,7 @@ renodx::utils::settings::Settings settings = {
         .default_value = 1.f,
         .label = "Vignette",
         .section = "Extra",
-        .tooltip = "Multiplier on vignette mask.",
+        .tooltip = "Strength of the darkened screen edges. 1.00: the game's.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
@@ -831,7 +843,7 @@ renodx::utils::settings::Settings settings = {
         .default_value = 1.f,
         .label = "Godrays",
         .section = "Extra",
-        .tooltip = "Godrays multiplier.",
+        .tooltip = "Strength of the god rays. 1.0: the game's.",
         .min = 0.f,
         .max = 10.f,
         .format = "%.1f",
@@ -845,7 +857,7 @@ renodx::utils::settings::Settings settings = {
         .default_value = 1.f,
         .label = "UI",
         .section = "Game-Specific Settings",
-        .tooltip = "Toggle UI elements, enough for screenshot in pause menu.",
+        .tooltip = "Off hides the UI, for screenshots in the pause menu.",
         .labels = {"Off", "On"},
         .is_visible = IsAdvancedSettings,
     },
@@ -853,9 +865,9 @@ renodx::utils::settings::Settings settings = {
         .key = "playerLightIntensity",
         .binding = &shader_injection.player_light_intensity,
         .default_value = 1.f,
-        .label = "Player/Other stuff's Light Intensity",
+        .label = "Player Light Intensity",
         .section = "Game-Specific Settings",
-        .tooltip = "Adjusts the brightness of player, some other stuff's light intensity\n.",
+        .tooltip = "Brightness of the lights that cast shadows, such as the party's own light. 1.0: the game's.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.1f",
@@ -866,9 +878,9 @@ renodx::utils::settings::Settings settings = {
         .key = "playerLightRadius",
         .binding = &shader_injection.local_light_intensity,
         .default_value = 1.f,
-        .label = "Local/Enemy Light Intensity",
+        .label = "Local Light Intensity",
         .section = "Game-Specific Settings",
-        .tooltip = "Adjusts the brightness of torches, player and enemies.",
+        .tooltip = "Brightness of the lights without shadows: torches, lamps and most others. 1.0: the game's.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.1f",
@@ -915,11 +927,10 @@ renodx::utils::settings::Settings settings = {
 
 bool configured = false;
 
-// Time Each Pass's frame, and the frame trace's (renodx_trace_now next to the exe; FrameTrace=1 in ReShade.ini's
+// The frame trace's (renodx_trace_now next to the exe; FrameTrace=1 in ReShade.ini's
 // [renodx]: 600 frames of the 3D view in).
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  twattila::pass_timing::OnPresent(queue, "divinity");
   twattila::frame_trace::OnPresent(false, tonemap_drawn.exchange(false, std::memory_order_relaxed));
 }
 
@@ -1006,8 +1017,12 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX by ShortFuse. PsychoV30, PsychoV35 and Hue Clip Emulation: Musa's. UC2 Extended by Musa and "
-                   "DabVeed. Divinity: Original Sin Enhanced Edition by ATN.",
+          .label = twattila::credits::RENODX_PSYCHO_V30_V35,
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "UC2 Extended by Musa and DabVeed. Divinity: Original Sin Enhanced Edition by ATN.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -1061,13 +1076,14 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
       // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
-      twattila::pass_timing::Install();
+      twattila::pass_timing::Install("divinity");
       ConfigureAddon();
-      // Constants once each for the tone mapper, the exposure, the shadow filter, the sun, fog, SSAO and bloom's combine
-      // (b0-b13: the frame b13, the view b12; the camera fields are Attila's b0 registers, not this game's); blends of fire,
-      // candles and the UI combine.
+      // Constants once each for the tone mapper, the exposure, the shadow filter, the sun, fog, SSAO, bloom's combine and
+      // the point and spot lights, plain and shadowed (b0-b13: the frame b13, the view b12; the camera fields are Attila's b0
+      // registers, not this game's); blends of fire, candles and the UI combine.
       twattila::frame_trace::Install({
-          .value_hashes = {0x30A1D40D, 0x4E112ABA, 0x8F114E47, 0xCCCB7253, 0xEDA7F8A1, 0x385DCF3C, 0x88B0D842},
+          .value_hashes = {0x30A1D40D, 0x4E112ABA, 0x8F114E47, 0xCCCB7253, 0xEDA7F8A1, 0x385DCF3C, 0x88B0D842, 0xD39E39C8,
+                           0x2F56D195, 0x23B84721, 0x7CBAA94E},
           .value_slots = 14,
           .value_floats = 64,
           .on_demand = true,

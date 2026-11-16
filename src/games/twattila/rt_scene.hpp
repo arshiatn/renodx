@@ -97,7 +97,7 @@ struct Sliders {
   float batched_units = 1.f;       // Batched Unit Capture (games whose scene shaders have batch versions)
   float path_ser = 0.f;
   float sharc = 0.f;
-  float reuse_lean = 0.f;
+  float reuse_lean = 1.f;
   float reuse_near = 1.f;
   float light_importance = 0.f;
   float light_steady = 0.f;
@@ -514,6 +514,35 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
       post_native->IASetInputLayout(game_layout.Get());
       post_native->IASetPrimitiveTopology(game_topology);
     }};
+  }
+};
+
+// The game's blurs of its ambient occlusion (AmbientOcclusionDraw::blurs) under Path-Traced Ambient: the pass wrote white
+// and nothing multiplies into it (the paths are the occlusion), so they would blur white: left out (their cost), the last
+// one's target cleared white in their place (test/tw_ao_blurs: the game's blurs of white give exactly 1 there).
+constexpr auto OnAmbientBlurDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  using Arguments = typename Context::ArgumentType;
+  if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
+                && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    return {};
+  } else {
+    auto* native = internal::NativeContext(command.cmd_list);
+    if (native == nullptr) return {};
+    {
+      const std::unique_lock lock(internal::runtime.mutex);
+      if (!internal::runtime.settings.path_ambient) return {};
+    }
+    const auto& blurs = command.template GetCallbackData<ao_pass::AmbientOcclusionDraw>().blurs;
+    if (command.matched_shader_hash == ((blurs[1] != 0u) ? blurs[1] : blurs[0])) {
+      ComPtr<ID3D11RenderTargetView> target;
+      native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+      if (!target) return {};
+      constexpr std::array<FLOAT, 4> WHITE = {1.f, 1.f, 1.f, 1.f};
+      native->ClearRenderTargetView(target.Get(), WHITE.data());
+      static std::atomic_bool logged = false;
+      if (!logged.exchange(true)) renodx::utils::log::i("[Total War] Path-Traced Ambient: the game's AO blurs left out, their target white.");
+    }
+    return {.bypass = true};
   }
 };
 
@@ -1750,6 +1779,11 @@ inline void Install(std::span<const SceneShader> shaders, std::span<const ao_pas
     renodx::utils::command_action::Register(
         OnAmbientOcclusionDraw, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW},
         &draw);
+    for (const uint32_t blur : draw.blurs) {
+      if (blur == 0u) continue;
+      renodx::utils::command_action::Register(
+          OnAmbientBlurDraw, {.shader_hash = blur, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &draw);
+    }
   }
 }
 
@@ -1779,6 +1813,7 @@ inline void InstallSunDraws(std::span<const light_bounce::SunDraw> sun_draws, UI
 inline void Uninstall() {
   light_bounce::SetRayTracedTrace(nullptr);
   renodx::utils::command_action::Unregister(OnAmbientOcclusionDraw);
+  renodx::utils::command_action::Unregister(OnAmbientBlurDraw);
   renodx::utils::command_action::Unregister(OnSunDraw);
   renodx::utils::command_action::Unregister(OnSunDebugAmbient);
   if (internal::ambient_cube != 0) renodx::utils::command_action::Unregister(OnPathAmbientDraw);
@@ -2190,10 +2225,10 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .max = 500.f,
           .format = "%.0f m",
           .is_enabled = dlaa_on,
-          // The helper leaves out the instances of units' compact draws (a scene table's skinned soldiers and horses;
-          // a host without a table, Rome Remastered's, marks every scene draw dynamic).
+          // The helper leaves out the instances of units' compact draws (a scene table's skinned soldiers and horses, or
+          // a scene_draw host's characters: Host::characters_dynamic; Rome Remastered marks every scene draw dynamic).
           .is_visible = [] {
-            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) {
+            return internal::host.characters_dynamic || std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) {
               return shader.dynamic && !shader.grass && !shader.thin && !shader.tessellated && !shader.sun_facing && !shader.foliage;
             });
           },
@@ -2406,7 +2441,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Path Tracing SER (Experimental)",
           .section = section,
           .tooltip = "Shader execution reordering for Path Tracing and Ray-Traced Reflections\n"
-                     "(DXR 1.2, RTX 40 / 50 series): may be faster.",
+                     "(DXR 1.2, RTX 40 / 50 series). Slower in every test so far.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && (sliders->light_bounce == 2.f || sliders->reflections != 0.f); },
       },
@@ -2426,10 +2461,10 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .key = "RayTracedReuseLean",
           .binding = &sliders->reuse_lean,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Lean ReSTIR Reuse (Experimental)",
+          .default_value = 1.f,
+          .label = "Lean ReSTIR Reuse",
           .section = section,
-          .tooltip = "A faster ReSTIR GI for Path Tracing: the same look in tests.",
+          .tooltip = "A faster ReSTIR GI for Path Tracing: the same look.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
       },

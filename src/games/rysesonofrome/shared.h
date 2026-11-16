@@ -99,6 +99,9 @@ struct ShaderInjectData {
   float light_bounce_auto_thickness;  // 1: each occluder as thick as it is wide
   // GT-VBAO's Auto Thickness (appended; ssdo_bitmask.hlsli): 1 on.
   float ssao_auto_thickness;
+  // This frame's one AO method (appended; set at each present, ssdo00 reads it): 0 the game's SSDO, 1 GT-VBAO, 2 the
+  // ray-traced AO (the SSDO's amount 0: the rays' goes in at the tiled lighting), 3 Path-Traced Ambient.
+  float ao_method;
 };
 
 #define SI  shader_injection

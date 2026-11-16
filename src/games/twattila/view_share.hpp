@@ -858,8 +858,11 @@ constexpr auto OnCommand = []<typename Context>(Context& command) -> renodx::uti
           const D3D11_VIEWPORT whole = {.Width = width, .Height = height, .MinDepth = viewport.MinDepth, .MaxDepth = viewport.MaxDepth};
           native->RSSetViewports(1, &whole);
           Bind(native, values, reshade::api::pipeline_stage::pixel_shader);
+          // Put back at finalize: also when a later callback leaves the draw out (bypass runs no post callback; the AO
+          // blurs under Path-Traced Ambient, rt_scene.hpp OnAmbientBlurDraw).
           return {
-              .post_callback = [](Context& drawn, const void* data) {
+              .post_data = &whole_draw,
+              .finalize_callback = [](Context& drawn, const void* data) {
                 auto* context = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
                 renodx::utils::directx::TryNativeFromReShadeProxy(&context);
                 if (context == nullptr) return;
@@ -867,7 +870,6 @@ constexpr auto OnCommand = []<typename Context>(Context& command) -> renodx::uti
                 context->RSSetViewports(1, &replaced.viewport);
                 if (replaced.scissor_bound) context->RSSetScissorRects(1, &replaced.scissor);
               },
-              .post_data = &whole_draw,
           };
         }
         values[0] = std::clamp(viewport.Width / width, 0.f, 1.f);
