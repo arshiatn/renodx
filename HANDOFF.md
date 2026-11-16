@@ -71,6 +71,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -164,7 +165,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator 03:3x: lg_ / rrf_ / sk2_ / survey merged + pushe
 - CORRECTION (lg_): Rome II / WH1 / WH2 / Troy / Pharaoh have NO Gamma Correction ... | an agent AFTER THE RESTART (step 1b)
 - Attila / Thrones 2.2 GC in HDR: ATN's in-game look (scene, UI, flares, video, FG ... | ATN
-- AFTER THE RESTART, in order (nothing of this started before it): 1. Build all (b ... | coordinator
+- AFTER THE RESTART, in order (nothing of this started before it): 1. Build all (b ... | coordinator PROGRESS 11-16 (after the restart 03:1x
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
@@ -1422,6 +1423,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         6. ATN's in-game checks list: Near ReSTIR, HDR bug fixes (SDR colours, Shogun 2 highlights + flares, WH2 FXAA, DOF),
            Divinity 2 V35 look (press Recommended), Attila / Thrones 2.2 gamma.
         Owner: coordinator
+        PROGRESS 11-16 (after the restart 03:1x; ATN: "do every single thing that is left", ATN-present runs first, then
+        bed): page file max 76800 MB active. Steam came up elevated (logon task): -shutdown / -silent, non-elevated.
+        03:2x 1b started: g5_ agent (worktree) on the five games' 2.2 GC. Built + stamped + installed (tw_install, fresh
+        backups, hashes): ruse u2 (--first: helper115 + DLLs), ryse fix57, tales v75, exr v33 (helper115 each), d2 v2;
+        helper115 = atn-mods' helper (gr_ + Near ReSTIR). Divinity 1 run r2ssr 03:21-03:30 (d1 v2, SSREnabled 1 via
+        d1_ssr.py, two mode cycles in ATN's save, 14 shots, PresentMon 105 fps / GPU busy 2.92 ms, Time Each Pass 2.947 ms,
+        closed clean, restore 0 differ): tools/nontw/divinity1/r1/run_r2ssr_032119. Run scripts ready: ryse r0/r1_rays.ps1
+        (skip Off / Near / All, PT ambient Off / On, no rays; hooks via run.ps1 -Hooks), tales g1g2 + expeditions g1 run.ps1
+        -Bend (game / Bend / Bend+GI / GI), divinity2 r1b run.ps1 -Ini / -CycleStart. ATN doing the window-switch tests by
+        hand (Attila, Thrones, WH1, WH2, Tales, Ryse, R.U.S.E.). R.U.S.E. test hooks: twattila/test_hooks.hpp can't be
+        included there (rt_scene.hpp pulls Attila's light_bounce shaders): reverted, ini + restarts instead.
       - [ ] In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), Shogun 2 highlights (V35 top
         now reaches Peak), WH2 with FXAA on; a trace that the DOF chain draws (Attila / Thrones / WH1) and its targets are
         16-bit; README lines for the fixes at release. Owner: next TW data runs / release round
