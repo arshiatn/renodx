@@ -1,7 +1,8 @@
 // Output Auto's preset switch (twattila/output_encoding.hpp): a first start without Windows HDR takes the SDR preset, the
 // Recommended preset once when Windows HDR comes on, the SDR preset again when it goes, and nothing after a row changed;
 // a first start with Windows HDR on is never given a preset, nor one whose display query failed (SDR out, no SDR preset).
-// Also the first start's key (tonemapper unless the game names its own) and the D3D11 proxy's target beside each output.
+// Also the first start's key (tonemapper unless the game names its own), the D3D11 proxy's target beside each output, and
+// an addon that never configures the output (its own target stays).
 // A fake ReShade.ini, the real settings code, restarts between steps. `control`: the first start with Windows HDR on leaves no "off" mark; its sequence must then fail.
 #include <windows.h>
 
@@ -306,6 +307,26 @@ static int FirstStartKeys() {
   return 0;
 }
 
+static int NotConfigured() {
+  // An addon that never configures the output (Divinity 2 with device_loss): a new chain's Decide and a fallback chain's
+  // Apply(SDR) leave the addon's HDR10 target. The same calls on a configured output change it (the check sees a change).
+  Fresh();
+  Start(output::HDR10);
+  output::Decide(HDR_OFF);
+  CHECK(renodx::mods::swapchain::target_color_space == reshade::api::color_space::srgb_nonlinear);
+  output::config = {};
+  output::decided.reset();
+  renodx::mods::swapchain::SetUseHDR10(true);
+  last_log.clear();
+  output::Decide(HDR_OFF);
+  output::Apply(output::SDR);
+  CHECK(renodx::mods::swapchain::target_format == reshade::api::format::r10g10b10a2_unorm);
+  CHECK(renodx::mods::swapchain::target_color_space == reshade::api::color_space::hdr10_st2084);
+  CHECK(!output::decided.has_value() && last_log.empty());
+  std::printf("PASS not configured: Decide and Apply leave the addon's own output\n");
+  return 0;
+}
+
 int main(int argc, char** argv) {
   control = (argc > 1 && std::strcmp(argv[1], "control") == 0);
   settings::settings = &rows;
@@ -314,7 +335,10 @@ int main(int argc, char** argv) {
     std::printf("control: %s\n", (result == 0) ? "passed (the test cannot see the missing mark)" : "failed as it must");
     return result;
   }
-  if (SdrFirstStart() != 0 || HdrFirstStart() != 0 || PlayerChanged() != 0 || OtherStarts() != 0 || FirstStartKeys() != 0) return 1;
+  if (SdrFirstStart() != 0 || HdrFirstStart() != 0 || PlayerChanged() != 0 || OtherStarts() != 0 || FirstStartKeys() != 0
+      || NotConfigured() != 0) {
+    return 1;
+  }
   std::printf("ALL PASS\n");
   return 0;
 }

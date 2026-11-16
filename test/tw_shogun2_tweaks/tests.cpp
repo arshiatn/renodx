@@ -8,6 +8,11 @@
 //    Shogun's rows would have had.
 // 3. Shogun 2's engine value rows (Attila's tests in tweak_objects.hpp's ATTILA_TESTS): every value found but Rope Distance's
 //    rigid_rope_culling_threshold (absent), none read at the game's start.
+// 4. The engine's byte patterns (engine.hpp FindPattern: the hooks and patches of game_dlss, grass_distance, model_detail,
+//    particle_resolution, shadow_resolution, terrain_detail and unit_detail): the DLL mapped as an image too (its imports
+//    unresolved, its entry point never called: nothing of it runs) so FindPattern finds it by its name; each pattern
+//    matches its executable sections exactly once, where FindPattern points. CONTROL: each with its first fixed byte
+//    changed matches nowhere and FindPattern gives null.
 // tests.exe <empire.retail.x64.dll> <s2_tweaks_1114.txt>
 #include <windows.h>
 
@@ -15,18 +20,52 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <format>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "src/games/twattila/engine_tests.hpp"
+#include "src/games/twshogun2completeedition/engine.hpp"
+#include "src/games/twshogun2completeedition/game_dlss.hpp"
+#include "src/games/twshogun2completeedition/grass_distance.hpp"
+#include "src/games/twshogun2completeedition/model_detail.hpp"
+#include "src/games/twshogun2completeedition/particle_resolution.hpp"
+#include "src/games/twshogun2completeedition/shadow_resolution.hpp"
+#include "src/games/twshogun2completeedition/terrain_detail.hpp"
 #include "src/games/twshogun2completeedition/tweak_objects.hpp"
+#include "src/games/twshogun2completeedition/unit_detail.hpp"
 
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (false)
 
 extern "C" __declspec(dllexport) const char* const NAME = "Shogun 2 tweak test";
 extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) { std::printf("  log: %s\n", message); }
+
+// Part 4: how often `pattern` ("48 8B ?? ...") matches the executable sections of the image at `base`, and the first match.
+static std::pair<size_t, const uint8_t*> Matches(const uint8_t* base, std::string_view pattern) {
+  std::vector<int> bytes;
+  for (size_t at = 0; at + 1 < pattern.size(); at += 3) {
+    bytes.push_back(pattern[at] == '?' ? -1 : std::stoi(std::string(pattern.substr(at, 2)), nullptr, 16));
+  }
+  const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
+  const auto* section = IMAGE_FIRST_SECTION(nt);
+  size_t count = 0;
+  const uint8_t* first = nullptr;
+  for (WORD index = 0; index < nt->FileHeader.NumberOfSections; ++index, ++section) {
+    if ((section->Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) continue;
+    const uint8_t* begin = base + section->VirtualAddress;
+    for (size_t at = 0; at + bytes.size() <= section->Misc.VirtualSize; ++at) {
+      size_t matched = 0;
+      while (matched < bytes.size() && (bytes[matched] < 0 || begin[at + matched] == bytes[matched])) ++matched;
+      if (matched != bytes.size()) continue;
+      if (count++ == 0) first = begin + at;
+    }
+  }
+  return {count, first};
+}
 
 int main(int argc, char** argv) {
   if (argc < 3) {
@@ -139,6 +178,45 @@ int main(int argc, char** argv) {
   }
   std::printf("3. Shogun 2's %zu engine value rows: %zu float values found (rigid_rope_culling_threshold absent), none at start\n",
               tests.size(), values);
+
+  // 4. The byte patterns.
+  const HMODULE image = LoadLibraryExW(std::wstring(dll.begin(), dll.end()).c_str(), nullptr, DONT_RESOLVE_DLL_REFERENCES);
+  CHECK(image != nullptr && twshogun2::engine::Module() == image);
+  const std::pair<const char*, std::string_view> patterns[] = {
+      {"game_dlss CREATE_FEATURE", twshogun2::game_dlss::internal::CREATE_FEATURE},
+      {"game_dlss EVALUATE", twshogun2::game_dlss::internal::EVALUATE},
+      {"game_dlss JITTER_CONDITION", twshogun2::game_dlss::internal::JITTER_CONDITION},
+      {"game_dlss JITTER_FUNCTION", twshogun2::game_dlss::internal::JITTER_FUNCTION},
+      {"game_dlss DLSS_PASS", twshogun2::game_dlss::internal::DLSS_PASS},
+      {"grass_distance UPDATE", twshogun2::grass_distance::internal::UPDATE},
+      {"model_detail SELECT_LOD", twshogun2::model_detail::internal::SELECT_LOD},
+      {"model_detail LOD_FADE", twshogun2::model_detail::internal::LOD_FADE},
+      {"particle_resolution MINIMUM_READ", twshogun2::particle_resolution::internal::MINIMUM_READ},
+      {"shadow_resolution HIGHEST_SIZES", twshogun2::shadow_resolution::internal::HIGHEST_SIZES},
+      {"terrain_detail FORCE_LOD_READ", twshogun2::terrain_detail::internal::FORCE_LOD_READ},
+      {"unit_detail UNIT_DISTANCES", twshogun2::unit_detail::internal::UNIT_DISTANCES},
+  };
+  const auto* image_base = reinterpret_cast<const uint8_t*>(image);
+  for (const auto& [name, pattern] : patterns) {
+    const auto [count, first] = Matches(image_base, pattern);
+    const uint8_t* found = twshogun2::engine::FindPattern(pattern);
+    if (count != 1 || found != first) {
+      std::printf("FAIL %s: %zu matches, FindPattern %p, first %p\n", name, count, static_cast<const void*>(found), static_cast<const void*>(first));
+      return 1;
+    }
+    // CONTROL: its first fixed byte changed.
+    std::string changed(pattern);
+    const size_t fixed = changed.find_first_not_of("? ");
+    CHECK(fixed != std::string::npos);
+    changed.replace(fixed, 2, std::format("{:02X}", std::stoi(changed.substr(fixed, 2), nullptr, 16) ^ 0xFF));
+    const auto [changed_count, changed_first] = Matches(image_base, changed);
+    CHECK(changed_count == 0 && changed_first == nullptr && twshogun2::engine::FindPattern(changed) == nullptr);
+    std::printf("  %s: once, at +0x%zx (FindPattern's); CONTROL changed (%.2s -> %s): none\n", name,
+                static_cast<size_t>(found - image_base), pattern.data() + fixed, changed.substr(fixed, 2).c_str());
+  }
+  std::printf("4. %zu byte patterns: each once in the executable sections, where FindPattern points; CONTROL each with a changed byte: "
+              "none\n", std::size(patterns));
+  FreeLibrary(image);
   FreeLibrary(mapped);
   std::printf("PASS\n");
   return 0;

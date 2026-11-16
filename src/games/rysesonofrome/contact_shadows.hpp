@@ -23,8 +23,9 @@
 // array, t32 its light list, b0 its camera), the sun's shadow mask gets short screen-space shadows toward the sun: which
 // slice and channels are the sun's from the light list (0x52C5E001), then a full-screen pass (0x52C5E002 / 0x52C5E003)
 // max-blended into slice 0 of the mask (1 = shadow). With ray tracing's sun visibility (ray_tracing.hpp) the same pass
-// also writes its shadow, the darker; with its ambient visibility, the lighting's directional occlusion (t5) too, the
-// darker. In the addon's own context state; the game's is put back after.
+// also writes its shadow, the darker; with its ambient visibility, the lighting's directional occlusion (t5) too: added
+// to its amount where ssdo00 left the game's SSDO amount out (the AO method's 2: the rays' in its place, beside the
+// terrain's large-scale term), else the darker. In the addon's own context state; the game's is put back after.
 namespace rysesonofrome::contact_shadows {
 
 using Microsoft::WRL::ComPtr;
@@ -49,6 +50,7 @@ struct Objects {
   ComPtr<ID3D11ShaderResourceView> sun_srv;
   ComPtr<ID3D11Buffer> constants;
   ComPtr<ID3D11BlendState> max_blend;
+  ComPtr<ID3D11BlendState> replacing_blend;  // max_blend with the occlusion's amount added
   ComPtr<ID3D11RasterizerState> no_cull;
   ComPtr<ID3D11Resource> mask;  // the shadow mask array its slice-0 target is of
   ComPtr<ID3D11RenderTargetView> mask_target;
@@ -82,7 +84,7 @@ inline bool Create(ID3D11Device* device) {
       .Usage = D3D11_USAGE_DEFAULT,
       .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
   };
-  // The mask's channels, the occlusion's w.
+  // The mask's channels, the occlusion's w: the darker (max); replacing_desc adds the occlusion's amount instead.
   D3D11_BLEND_DESC blend_desc = {.IndependentBlendEnable = TRUE};
   blend_desc.RenderTarget[0] = {
       .BlendEnable = TRUE,
@@ -96,6 +98,8 @@ inline bool Create(ID3D11Device* device) {
   };
   blend_desc.RenderTarget[1] = blend_desc.RenderTarget[0];
   blend_desc.RenderTarget[1].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALPHA;
+  D3D11_BLEND_DESC replacing_desc = blend_desc;
+  replacing_desc.RenderTarget[1].BlendOpAlpha = D3D11_BLEND_OP_ADD;
   const D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE};
   objects.failed =
       FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
@@ -109,26 +113,34 @@ inline bool Create(ID3D11Device* device) {
       || FAILED(device->CreateShaderResourceView(objects.sun.Get(), &sun_srv_desc, objects.sun_srv.GetAddressOf()))
       || FAILED(device->CreateBuffer(&constants_desc, nullptr, objects.constants.GetAddressOf()))
       || FAILED(device->CreateBlendState(&blend_desc, objects.max_blend.GetAddressOf()))
+      || FAILED(device->CreateBlendState(&replacing_desc, objects.replacing_blend.GetAddressOf()))
       || FAILED(device->CreateRasterizerState(&rasterizer_desc, objects.no_cull.GetAddressOf()));
   return !objects.failed;
 }
 
 }  // namespace internal
 
+// What Apply put in besides the contact shadows.
+struct Applied {
+  bool sun = false;      // the ray-traced sun's visibility, into the sun's shadow mask
+  bool ambient = false;  // the ray-traced ambient visibility, into the directional occlusion
+};
+
 // Before the tiled lighting's dispatch (its bindings set): the contact shadows (and the ray-traced sun's,
 // `sun_visibility`: 1 lit, at the depth's size; null: none) into the sun's shadow mask, the ray-traced ambient
-// (`ambient_visibility`: 1 open; null: none) into its directional occlusion. True: the ray-traced sun's went in.
-inline bool Apply(reshade::api::command_list* cmd_list, const Settings& settings, ID3D11ShaderResourceView* sun_visibility = nullptr,
-                  ID3D11ShaderResourceView* ambient_visibility = nullptr) {
+// (`ambient_visibility`: 1 open; null: none) into its directional occlusion, added to its amount when ssdo00 left the
+// game's SSDO amount out this frame (`replaces_ambient`), else the darker of the two.
+inline Applied Apply(reshade::api::command_list* cmd_list, const Settings& settings, ID3D11ShaderResourceView* sun_visibility = nullptr,
+                     ID3D11ShaderResourceView* ambient_visibility = nullptr, bool replaces_ambient = false) {
   using internal::objects;
   if ((settings.strength <= 0.f && sun_visibility == nullptr && ambient_visibility == nullptr)
       || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) {
-    return false;
+    return {};
   }
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
-  if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return false;
+  if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
   ComPtr<ID3D11ShaderResourceView> depth;
   ComPtr<ID3D11ShaderResourceView> mask_view;
   ComPtr<ID3D11ShaderResourceView> occlusion_view;
@@ -139,19 +151,19 @@ inline bool Apply(reshade::api::command_list* cmd_list, const Settings& settings
   if (ambient_visibility != nullptr) context->CSGetShaderResources(5, 1, occlusion_view.GetAddressOf());
   context->CSGetShaderResources(32, 1, lights.GetAddressOf());
   context->CSGetConstantBuffers(0, 1, camera.GetAddressOf());
-  if (!depth || !mask_view || !lights || !camera) return false;
+  if (!depth || !mask_view || !lights || !camera) return {};
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
-  if (!internal::Create(device.Get())) return false;
+  if (!internal::Create(device.Get())) return {};
 
   // The mask's slice 0 as a target (made again when the game's mask changes).
   ComPtr<ID3D11Resource> mask;
   mask_view->GetResource(mask.GetAddressOf());
   ComPtr<ID3D11Texture2D> mask_texture;
-  if (FAILED(mask.As(&mask_texture))) return false;
+  if (FAILED(mask.As(&mask_texture))) return {};
   D3D11_TEXTURE2D_DESC mask_desc = {};
   mask_texture->GetDesc(&mask_desc);
-  if ((mask_desc.BindFlags & D3D11_BIND_RENDER_TARGET) == 0) return false;
+  if ((mask_desc.BindFlags & D3D11_BIND_RENDER_TARGET) == 0) return {};
   if (objects.mask != mask) {
     D3D11_SHADER_RESOURCE_VIEW_DESC mask_view_desc = {};
     mask_view->GetDesc(&mask_view_desc);
@@ -161,7 +173,7 @@ inline bool Apply(reshade::api::command_list* cmd_list, const Settings& settings
     };
     target_desc.Texture2DArray = {.MipSlice = 0, .FirstArraySlice = 0, .ArraySize = 1};
     objects.mask_target.Reset();
-    if (FAILED(device->CreateRenderTargetView(mask.Get(), &target_desc, objects.mask_target.GetAddressOf()))) return false;
+    if (FAILED(device->CreateRenderTargetView(mask.Get(), &target_desc, objects.mask_target.GetAddressOf()))) return {};
     objects.mask = mask;
   }
   // The directional occlusion as a target, at the mask's size (made again when it changes).
@@ -223,10 +235,10 @@ inline bool Apply(reshade::api::command_list* cmd_list, const Settings& settings
   context->PSSetConstantBuffers(0, 2, constants);
   context->RSSetState(objects.no_cull.Get());
   context->RSSetViewports(1, &viewport);
-  context->OMSetBlendState(objects.max_blend.Get(), nullptr, 0xFFFFFFFF);
+  context->OMSetBlendState((replaces_ambient ? objects.replacing_blend.Get() : objects.max_blend.Get()), nullptr, 0xFFFFFFFF);
   context->OMSetRenderTargets(2, targets, nullptr);
   context->Draw(3, 0);
-  return sun_visibility != nullptr;
+  return {.sun = sun_visibility != nullptr, .ambient = occlusion && ambient_visibility != nullptr};
 }
 
 // The game's device is going away: the addon's objects on it with it.

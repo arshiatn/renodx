@@ -55,8 +55,9 @@ GAMES = {  # letter: (ledger name, game folder, decompiler pack folder)
     'p': ('pharaoh', 'twpharaohdynasties', 'dump_shader_twpharaohdynasties_pack'),
     'rr': ('romeremastered', 'twromeremastered', 'dump_shader_twromeremastered_pack'),
     's2': ('shogun2', 'twshogun2completeedition', 'dump_shader_shogun2_pack'),
-    'd1': ('divinity1', 'divinityoriginalsinenhanced', 'dump_shader_divinity1_pack'),
-    'd2': ('divinity2', 'divinity2originalsindefinitive', 'dump_shader_divinity2_pack'),
+    # The Divinity games' censuses as caster dumps (<tools>/../nontw/parity_dumps.py: cso\ + names.tsv), not decompiler dumps.
+    'd1': ('divinity1', 'divinityoriginalsinenhanced', 'nontw/divinity1/parity_dump'),
+    'd2': ('divinity2', 'divinity2originalsindefinitive', 'nontw/divinity2/parity_dump'),
     # R.U.S.E. (D3D9; no cmd_Decompiler dump: its shaders are in its own census, tools/nontw/ruse/census).
     'ru': ('ruse', 'ruse', None),
 }
@@ -100,7 +101,8 @@ def census(args, letter, tools):
     if pack is None:  # a D3D9 game: no casters to hold (no stream-output capture there)
         return {}, 'none (D3D9: no D3D11 casters)'
     root = os.path.join(args.bin, 'cmd_Decompiler-1.3.16')
-    dump = os.path.join(root, pack)
+    # A pack with a folder in its name lives in the maintainer's tools (beside tools/tw), not under bin.
+    dump = os.path.join(os.path.dirname(tools), pack) if '/' in pack else os.path.join(root, pack)
     if not os.path.isdir(dump):
         found = [name for name in os.listdir(root) if name.startswith('dump_shader') and name.endswith('_pack') and
                  folder.replace('tw', '', 1) in name] if os.path.isdir(root) else []

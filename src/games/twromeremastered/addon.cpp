@@ -43,8 +43,10 @@
 #include "../twattila/frame_trace.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/output_encoding.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/reflex.hpp"
+#include "../twattila/test_hooks.hpp"
 #include "./contact_shadows.hpp"
 #include "./dlaa.hpp"
 #include "./ray_tracing.hpp"
@@ -546,7 +548,10 @@ std::atomic_bool log_post_sizes = true;
 
 void OnPostDraw(reshade::api::command_list* cmd_list, uint32_t hash) {
   post_drawn.store(true, std::memory_order_relaxed);
-  twattila::frame_trace::Mark(std::format("post pass {:08X}", hash));
+  // The mark's text only while a frame is traced (no string a draw otherwise).
+  if (twattila::frame_trace::Tracing()) {
+    twattila::frame_trace::Mark(std::format("post pass {:08X}", hash));
+  }
   if (!log_post_sizes.load(std::memory_order_relaxed) || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   // A texture view's size, format and samples ("none" without one).
@@ -571,8 +576,14 @@ void OnPostDraw(reshade::api::command_list* cmd_list, uint32_t hash) {
                                     viewport.Height, viewport.TopLeftX, viewport.TopLeftY, describe(target.Get()), describe(input.Get())));
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
+  // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS
+  // on Intel's, else FSR (Attila's).
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (twromeremastered::dlaa::sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
   // Frame generation (DLSS keeps the frames: dlaa.hpp) and Reflex from the page's rows, as Attila's.
   const twattila::anti_aliasing::Settings aa = twattila::feature_settings::AaSettings(twromeremastered::dlaa::sliders);
   twattila::frame_generation::Update({
@@ -667,25 +678,26 @@ void ClearOutputToOne(reshade::api::command_list* cmd_list, bool compute, std::a
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
-// The graphics page's anti-aliasing: the game's, DLSS.
-constexpr std::array<int, 2> AA_METHODS = {0, 5};
+// The graphics page's anti-aliasing: the game's, the helper's DLSS, FSR and XeSS (dlaa.hpp: in DLSS's place).
+constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
 // What the page reads that this game has no row for (GT-VBAO, Light Bounce): 0.
 float no_game_row = 0.f;
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
-    .aa_labels = {"Game's", "", "", "", "", "DLSS", "", ""},
+    .aa_labels = {"Game's", "", "", "", "", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
     .aa_tooltip = "Game's: the game's own (SMAA, FXAA or off).\n"
                   "DLSS: NVIDIA's (RTX): DLAA at 100% Resolution Scale, below it in place of the game's upscaler. It replaces\n"
-                  "the game's SMAA. Ray tracing needs it. Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
-    .in_game_aa_note = "In-game FXAA must be Off for DLSS and Frame Generation.",
+                  "the game's SMAA. FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU. Both in\n"
+                  "DLSS's place. Ray tracing needs one of them. Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
+    .in_game_aa_note = "In-game FXAA must be Off for DLSS, FSR, XeSS and Frame Generation.",
     .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to its default: the game's shadows and AO.",
     .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480). The rest of this page at its default.",
     .rays_tooltip = "Ray-traced sun shadows and ambient occlusion at my settings. The rest of this page at its default.\n"
-                    "Needs DLSS (Anti-Aliasing above). Restart the game after turning ray tracing on.",
+                    "Needs an upscaler (Anti-Aliasing above). Restart the game after turning ray tracing on.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons; needs in-game shadows on).\n"
-                      "DXR: ray-traced sun shadows over the game's. Needs DLSS. Restart the game after turning it on.",
+                      "DXR: ray-traced sun shadows over the game's. Needs an upscaler. Restart the game after turning it on.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground.\n"
-                  "Game's SSAO: the original. RTAO: from rays through the scene, in place of the game's. Needs DLSS.\n"
+                  "Game's SSAO: the original. RTAO: from rays through the scene, in place of the game's. Needs an upscaler.\n"
                   "Restart the game after turning it on.",
 };
 
@@ -729,8 +741,11 @@ void BuildRuntimeData() {
                             .on_drawn = [](reshade::api::command_list* cmd_list) {
                               twromeremastered::dlaa::KeepDepth(cmd_list, false);
                               if (test_sun_shadows_off != 0.f) { ClearOutputToOne(cmd_list, false, &logged_test_shadows, "the sun's shadow mask"); }
-                              twromeremastered::ray_tracing::Multiply(cmd_list, false);
-                              twromeremastered::contact_shadows::Apply(cmd_list);
+                              // One sun-shadow method (Attila's addon.cpp:1481): Bend's contact shadows only where the rays
+                              // didn't shadow this frame (its rows stay set: they come back without an upscaler or a trace).
+                              if (!twromeremastered::ray_tracing::Multiply(cmd_list, false)) {
+                                twromeremastered::contact_shadows::Apply(cmd_list);
+                              }
                             }};
   }
   for (const uint32_t hash : TONE_MAPPER_SHADERS) {
@@ -1898,8 +1913,8 @@ void ConfigureAddon() {
           .label = "Ray Tracing Battle Objects (Test)",
           .section = twattila::feature_settings::AA_SECTION,
           .tooltip = "Which battle objects the rays see. Tested: the campaign map's kinds only. Solid: also the battle's\n"
-                     "terrain, buildings and props. All: also its trees and plants. Solid and All are untested: they log\n"
-                     "details, and after a ray tracing restart they stay off until the game restarts.",
+                     "terrain, buildings and props. All: also its trees and plants. Solid and All: Experimental; after a\n"
+                     "ray tracing restart they stay off until the game restarts.",
           .labels = {"Tested", "Solid", "All"},
           .is_visible = [] {
             return twromeremastered::ray_tracing::sliders.sun_shadows != 0.f || twromeremastered::ray_tracing::sliders.ambient_occlusion != 0.f;
@@ -1939,6 +1954,14 @@ void ConfigureAddon() {
           },
           .is_visible = IsAdvancedSettings,
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Time Each Pass (One Frame)",
+          .section = "Tools",
+          .tooltip = "The GPU's time of every pass of the next frame into romer_pass_timing.txt next to the game's exe.",
+          .on_change = [] { twattila::pass_timing::Request(); },
+          .is_visible = IsAdvancedSettings,
+      },
   });
 
   // Appended Settings (HDR10)
@@ -1972,8 +1995,13 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                   "PsychoV31 and PsychoV35. Uncharted 2 extended: Musa and DabVeed.\n"
-                   "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0.",
+                   "PsychoV31 and PsychoV35. Uncharted 2 extended: Musa and DabVeed. Light Bounce: the Visibility Bitmask "
+                   "method of Therrien, Levesque and Gilet (2023) on GTAO (Jimenez et al. 2016), as GT-VBGI by Mirko Salm "
+                   "(2024).\n"
+                   "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0.\n"
+                   "SMAA: Jimenez, Echevarria, Masia, Navarro and Gutierrez (2013), MIT License. CMAA2: Filip Strugar, "
+                   "Copyright (c) 2018 Intel Corporation, Apache License 2.0. Reflections' ray march: AMD FidelityFX "
+                   "SSSR, Copyright (c) 2021 Advanced Micro Devices, MIT License. Hooks: Microsoft Detours (MIT).",
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -2046,6 +2074,8 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  // Its draw and dispatch events before any other of the add-on's (pass_timing.hpp: their run order is registration order).
+  twattila::pass_timing::Install("romer");
 
   ConfigureAddon();
 
@@ -2091,6 +2121,9 @@ bool AttachAddon() {
   }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  // RENODX_TW_SHOT / PROFILE / SET (or renodx_test_hooks.txt next to the exe): scripted runs' rows, timed from the first
+  // present.
+  twattila::test_hooks::Install(&settings, true, "[Rome Remastered]");
   // A ray tracing row on at launch: its scene's shaders kept from the start.
   if (twromeremastered::ray_tracing::sliders.sun_shadows != 0.f || twromeremastered::ray_tracing::sliders.ambient_occlusion != 0.f) {
     twromeremastered::ray_tracing::Install();
@@ -2123,6 +2156,7 @@ void DetachAddon() {
 
   twattila::device_loss::Uninstall();
   twromeremastered::swap_chain_format::Uninstall();
+  twattila::test_hooks::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twattila::frame_trace::Uninstall();
@@ -2142,6 +2176,7 @@ void DetachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
 
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
+  twattila::pass_timing::Uninstall();
 
   attached = false;
 }

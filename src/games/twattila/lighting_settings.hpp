@@ -88,7 +88,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
       {"ssao_quality", 2.f},
       {"ssao_directions", 0.f},
       {"ssao_resolution", (AO_SCALES ? 1.f : 0.f)},
-      {"ssao_auto_thickness", 1.f},
+      {"ssao_auto_thickness", 0.f},
   };
   if constexpr (AO_TEMPORAL) {
     ao_defaults.insert(ao_defaults.end(), {{"ssao_temporal", 1.f}, {"ssao_edge_fix", 0.f}, {"ssao_denoise", 1.f}});
@@ -105,7 +105,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
       {"light_bounce_multi_bounce", 0.f},
       {"light_bounce_checkerboard", 1.f},
       {"light_bounce_backface", 0.f},
-      {"light_bounce_auto_thickness", 1.f},
+      {"light_bounce_auto_thickness", 0.f},
   };
   if constexpr (HAS_MSAA<ShaderInjection>) {
     gi_defaults.emplace_back("light_bounce_msaa_pixel", 1.f);

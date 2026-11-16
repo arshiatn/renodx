@@ -1101,7 +1101,7 @@ int ui_mod_compatibility = 0;  // its slider: written to ReShade.ini, used from 
 // pass (whose replacement is the game's code only).
 constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
     {.shader_hash = 0xBD389EF1, .bitmask = __ao_bitmask, .upsample = __ao_upsample, .resolve = __ao_resolve,
-     .denoise = __ao_denoise},  // ssao00
+     .denoise = __ao_denoise, .blurs = {0xB4026AF2, 0x6203C824}},  // ssao00, its blur_x and blur_y
 }};
 
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl ps30 slm / slm_reflection (standard) and
@@ -1462,7 +1462,6 @@ void OnInitDevice(reshade::api::device*) {
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   talesofarise::pixel_trace::OnPresent(queue);
-  twattila::pass_timing::OnPresent(queue, "attila");
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
@@ -1964,13 +1963,7 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true, twattila::feature_settings::AA_SECTION,
                                      &shader_injection.light_bounce_strength);
-  settings.push_back(new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-      .label = "Time Each Pass (One Frame)",
-      .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "The GPU's time of every pass of the next frame into attila_pass_timing.txt next to the game's exe.",
-      .on_change = [] { twattila::pass_timing::Request(); },
-  });
+  settings.push_back(twattila::pass_timing::Button(twattila::feature_settings::AA_SECTION));
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
@@ -2047,15 +2040,8 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's "
-                   "custom PsychoV31 and PsychoV35. Visibility Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque "
-                   "and Gilet (2023) on GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024); auto "
-                   "thickness after Bjorn Ottosson.\n"
-                   "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License "
-                   "2.0.\n"
-                   "SMAA: Jimenez, Echevarria, Masia, Navarro and Gutierrez (2013), MIT License. CMAA2: Filip Strugar, "
-                   "Copyright (c) 2018 Intel Corporation, Apache License 2.0. Reflections' ray march: AMD FidelityFX "
-                   "SSSR, Copyright (c) 2021 Advanced Micro Devices, MIT License.",
+          .label = twattila::credits::Methods({.gtvbao = true, .gtvbgi = true, .auto_thickness = true, .bend = true, .smaa = true,
+                                               .cmaa2 = true, .sssr = true, .detours = true}),
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -2098,7 +2084,7 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
-  twattila::pass_timing::Install();
+  twattila::pass_timing::Install("attila");
 
   // Failed native-hook removal can retain this DLL across host unload/reload.
   graphics_found = false;

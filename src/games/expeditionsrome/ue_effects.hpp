@@ -24,7 +24,7 @@
 #include "../talesofarise_dlss/ue_screen_space_shadows.hpp"
 #include "./ray_tracing.hpp"
 
-// Bend's screen-space shadows and GT-VBGI (Experimental; Tales of Arise's Unreal port of the Total War games' passes:
+// Bend's screen-space shadows and GT-VBGI (on by default since ATN's 2026-11-16; Tales of Arise's Unreal port of the Total War games' passes:
 // talesofarise_dlss/ue_screen_space_shadows.hpp, ue_light_bounce.hpp) at the sun's deferred light draw (the light
 // rectangle vs 0x7C21DA11: the View at ps b0, the light's FDeferredLightUniformStruct at ps b1, the scene depth at t1,
 // G-buffer A-C at t2-t4, the light attenuation at t8). Bend before the draw, its occlusion into the attenuation's light

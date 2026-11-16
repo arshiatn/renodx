@@ -299,6 +299,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     r0.z = r13.z * r14.z + r0.z;
     r0.z = r13.w * r14.w + r0.z;
     r0.y = min(r0.y, r0.z);
+    float3 rt_open_cubes = 0;  // off water: the cubes without the screen-space AO, for t46 (below)
     if (r3.x == 0) {
       const float4 rt_colour = gbuffer_channel_2_texture.Load(r1.xyz);
       r1.xyz = lerp((float3)(rt_sun_low_quality ? 0.04f : 0.0799999982 * rt_colour.w), rt_colour.xyz, r2.x);
@@ -866,6 +867,10 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
       r13.yzw = r14.xyz * r13.yzw;
       r0.w = min(r0.x, r2.z);
       r0.w = min(r0.w, r13.x);
+      // RenoDX: the rays' specular occlusion (t46) already met what the AO (r0.x, the game's or the rays') stands for: the
+      // cubes it dims keep the material's and the volumes' occlusion alone, one occlusion a reflection.
+      const float rt_open = min(r2.z, r13.x);
+      rt_open_cubes = (r4.x * (1 + -rt_open) + rt_open) * r13.yzw * rt_open;
       r1.w = 1 + -r0.w;
       r1.w = r4.x * r1.w + r0.w;
       r13.xyz = r1.www * r13.yzw;
@@ -1823,8 +1828,9 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     r1.w = r8.x * r1.w;
     r2.x = (int)r2.w & 96;
     r2.x = cmp((int)r2.x == 64);
-    // RenoDX: off water no march ran; its result over the sun light's cubes, those dimmed by what blocks them.
-    const float3 rt_occluded = RtOccludedEnvironment(rt_texel, r13.xyz);
+    // RenoDX: off water no march ran; its result over the sun light's cubes (r13, with the AO: taken off again), those dimmed
+    // by what blocks them.
+    const float3 rt_occluded = RtOccludedEnvironment(rt_texel, (rt_occlusion_width != 0u) ? rt_open_cubes : r13.xyz);
     r0.xyz = r0.yzw * r0.xxx + -rt_occluded;
     r0.w = rt_here ? rt_traced.a : ((r2.x != 0 || rt_march_everywhere) ? min(1, r1.w) : 0);
     r0.xyz = r0.xyz * r0.www + (rt_occluded - r13.xyz);

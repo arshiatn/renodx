@@ -19,17 +19,21 @@
 #include <fstream>
 #include <mutex>
 #include <string>
+#include <span>
 #include <string_view>
-#include <unordered_set>
+#include <unordered_map>
+#include <utility>
 
 #include <include/reshade.hpp>
 
 #include "../../utils/directx.hpp"
+#include "../twattila/dxbc.hpp"
 #include "../../utils/state.hpp"
 
 // Debug (Advanced button, from the Shogun 2 DLSS addon): every draw, dispatch, copy and render target clear of one
-// frame with its shaders, targets (all 8 and depth), viewport, scissor, inputs and Unreal's view size, into
-// tales_frame_trace.txt next to the exe. For DLSS upscaling: at a render scale below 100%, which passes after the TAA
+// frame with its shaders, targets (all 8 and depth), viewport, scissor, inputs (every texture slot, the slots each shader
+// declares, the vertex buffers) and Unreal's view size, into <game>_frame_trace.txt next to the exe (OnPresent's name).
+// For DLSS upscaling: at a render scale below 100%, which passes after the TAA
 // run at the render size and which at the display size, where the game's spatial upscale is, and which formats they
 // use. Its events are registered only for the traced frame.
 namespace talesofarise::frame_trace {
@@ -50,7 +54,10 @@ struct State {
   std::string text;
   uint32_t lines = 0;
   std::string last_view;  // the last view sizes written
-  std::unordered_set<uint32_t> saved_shaders;
+  // Each traced shader's declared texture slots (" decl t0 t3"), its code saved once when first seen.
+  std::unordered_map<uint32_t, std::string> declared;
+  std::string game = "tales";  // the files' names: <game>_frame_trace.txt, <game>_frame_trace_shaders
+  HANDLE folder_changes = INVALID_HANDLE_VALUE;  // the exe folder's file names (scripted runs: renodx_trace_now)
   std::string status = "No frame trace yet.";
 };
 static State state;
@@ -134,31 +141,56 @@ inline std::string DescribeUnrealView(ID3D11DeviceContext* context, const std::a
   return "";
 }
 
-// Each traced shader's bytecode once, as tales_frame_trace_shaders\0x<hash>.cso next to the exe (when an addon keeps
-// the game's shader code, as the DevKit does).
-inline void SaveShader(reshade::api::command_list* cmd_list, reshade::api::pipeline_stage stage, uint32_t hash) {
-  if (hash == 0u) return;
+// A traced shader's declared texture slots (dcl_resource, raw and structured; their register), as " decl t0 t3"; its
+// bytecode saved once, as <game>_frame_trace_shaders\0x<hash>.cso next to the exe (when an addon keeps the game's shader
+// code, as the DevKit does). Empty: no code kept, or none declared.
+inline std::string Declared(reshade::api::command_list* cmd_list, reshade::api::pipeline_stage stage, uint32_t hash) {
+  if (hash == 0u) return {};
+  std::string game;
   {
     const std::lock_guard lock(state.mutex);
-    if (!state.saved_shaders.insert(hash).second) return;
+    if (const auto known = state.declared.find(hash); known != state.declared.end()) return known->second;
+    game = state.game;
   }
-  const auto* info = renodx::utils::state::GetBoundPipelineInfo(cmd_list, stage);
-  if (info == nullptr) return;
-  for (const auto& entry : info->shader_details) {
-    if (entry.shader_hash != hash || entry.subobject_index >= info->details.subobjects.size()) continue;
-    const auto* desc = static_cast<const reshade::api::shader_desc*>(info->details.subobjects[entry.subobject_index].data);
-    if (desc == nullptr || desc->code_size == 0) return;
-    const auto folder = ExecutableFolder() / L"tales_frame_trace_shaders";
+  const reshade::api::shader_desc* desc = nullptr;
+  if (const auto* info = renodx::utils::state::GetBoundPipelineInfo(cmd_list, stage); info != nullptr) {
+    for (const auto& entry : info->shader_details) {
+      if (entry.shader_hash != hash || entry.subobject_index >= info->details.subobjects.size()) continue;
+      desc = static_cast<const reshade::api::shader_desc*>(info->details.subobjects[entry.subobject_index].data);
+      break;
+    }
+  }
+  std::string declared;
+  if (desc != nullptr && desc->code_size != 0) {
+    const auto folder = ExecutableFolder() / std::format("{}_frame_trace_shaders", game);
     std::filesystem::create_directories(folder);
     std::ofstream(folder / std::format("0x{:08X}.cso", hash), std::ios::binary | std::ios::trunc)
         .write(static_cast<const char*>(desc->code), static_cast<std::streamsize>(desc->code_size));
-    return;
+    const auto program = twattila::dxbc::Read({static_cast<const uint8_t*>(desc->code), desc->code_size});
+    size_t temps_at = 0;
+    const size_t declarations_end = program.tokens.empty() ? 0 : twattila::dxbc::internal::FirstInstruction(program.tokens, &temps_at);
+    for (size_t at = 2; at < declarations_end;) {
+      const size_t length = twattila::dxbc::Length(program.tokens, at);
+      if (length == 0) break;
+      // dcl_resource (88), dcl_resource_raw (161), dcl_resource_structured (162): the register after the operand token.
+      if (const uint32_t opcode = program.tokens[at] & 0x7FF; opcode == 88 || opcode == 161 || opcode == 162) {
+        if (const size_t operand = twattila::dxbc::internal::FirstOperand(program.tokens, at); operand + 1 < at + length) {
+          declared += std::format(" t{}", program.tokens[operand + 1]);
+        }
+      }
+      at += length;
+    }
+    if (!declared.empty()) declared = " decl" + declared;
   }
+  const std::lock_guard lock(state.mutex);
+  state.declared.emplace(hash, declared);
+  return declared;
 }
 
+// Every texture slot bound (t0-t127).
 template <typename GetViews>
 std::string DescribeInputs(GetViews get_views) {
-  std::array<ID3D11ShaderResourceView*, 16> views = {};
+  std::array<ID3D11ShaderResourceView*, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT> views = {};
   get_views(views.data());
   std::string inputs;
   for (uint32_t slot = 0; slot < views.size(); ++slot) {
@@ -192,7 +224,22 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
   D3D11_RECT scissor = {};
   UINT scissor_count = 1;
   context->RSGetScissorRects(&scissor_count, &scissor);
-  const std::string inputs = DescribeInputs([&](ID3D11ShaderResourceView** views) { context->PSGetShaderResources(0, 16, views); });
+  const std::string inputs = DescribeInputs([&](ID3D11ShaderResourceView** views) {
+    context->PSGetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, views);
+  });
+  std::array<ID3D11Buffer*, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> vertex_buffers = {};
+  std::array<UINT, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> strides = {};
+  std::array<UINT, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> offsets = {};
+  context->IAGetVertexBuffers(0, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT, vertex_buffers.data(), strides.data(), offsets.data());
+  std::string vertices;
+  for (uint32_t slot = 0; slot < vertex_buffers.size(); ++slot) {
+    if (vertex_buffers[slot] == nullptr) continue;
+    D3D11_BUFFER_DESC desc = {};
+    vertex_buffers[slot]->GetDesc(&desc);
+    vertices += std::format(" vb{} {} bytes stride {} offset {}{}", slot, desc.ByteWidth, strides[slot], offsets[slot],
+                            (desc.Usage == D3D11_USAGE_DYNAMIC ? " dynamic" : ""));
+    vertex_buffers[slot]->Release();
+  }
   // The view sizes once per change (they stay for most of a pass).
   std::array<ID3D11Buffer*, 14> constants = {};
   context->PSGetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
@@ -218,13 +265,13 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
   }
   const uint32_t vertex_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader);
   const uint32_t pixel_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
-  SaveShader(cmd_list, reshade::api::pipeline_stage::vertex_shader, vertex_hash);
-  SaveShader(cmd_list, reshade::api::pipeline_stage::pixel_shader, pixel_hash);
-  Append(std::format("{} {} vs {:08X} ps {:08X} |{} | vp {}x{} at {},{}{} |{}{}", kind, count, vertex_hash, pixel_hash,
-                     outputs, viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY,
+  const std::string vertex_declared = Declared(cmd_list, reshade::api::pipeline_stage::vertex_shader, vertex_hash);
+  const std::string pixel_declared = Declared(cmd_list, reshade::api::pipeline_stage::pixel_shader, pixel_hash);
+  Append(std::format("{} {} vs {:08X}{} ps {:08X}{} |{} | vp {}x{} at {},{}{} |{} |{}{}", kind, count, vertex_hash, vertex_declared, pixel_hash,
+                     pixel_declared, outputs, viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY,
                      (scissor_count != 0 ? std::format(" scissor {},{}-{},{}", scissor.left, scissor.top, scissor.right, scissor.bottom)
                                          : std::string()),
-                     inputs, view));
+                     inputs, vertices, view));
 }
 
 inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, uint32_t instance_count, uint32_t,
@@ -251,7 +298,9 @@ inline void TraceDispatch(reshade::api::command_list* cmd_list, const std::strin
     outputs += std::format(" u{} {}", slot, DescribeView(uavs[slot]));
     uavs[slot]->Release();
   }
-  const std::string inputs = DescribeInputs([&](ID3D11ShaderResourceView** views) { context->CSGetShaderResources(0, 16, views); });
+  const std::string inputs = DescribeInputs([&](ID3D11ShaderResourceView** views) {
+    context->CSGetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, views);
+  });
   std::array<ID3D11Buffer*, 14> constants = {};
   context->CSGetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
   const std::string view = DescribeUnrealView(context, constants);
@@ -259,8 +308,8 @@ inline void TraceDispatch(reshade::api::command_list* cmd_list, const std::strin
     if (buffer != nullptr) buffer->Release();
   }
   const uint32_t compute_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::compute_shader);
-  SaveShader(cmd_list, reshade::api::pipeline_stage::compute_shader, compute_hash);
-  Append(std::format("{} cs {:08X} |{} |{}{}", kind, compute_hash, outputs, inputs, view));
+  const std::string declared = Declared(cmd_list, reshade::api::pipeline_stage::compute_shader, compute_hash);
+  Append(std::format("{} cs {:08X}{} |{} |{}{}", kind, compute_hash, declared, outputs, inputs, view));
 }
 
 inline bool OnDispatch(reshade::api::command_list* cmd_list, uint32_t x, uint32_t y, uint32_t z) {
@@ -334,18 +383,26 @@ inline std::string Status() {
   return internal::state.status;
 }
 
-// Present: ends a traced frame (writes the file), starts a requested one. renodx_trace_now next to the exe (a data run,
-// or RENODX_TW_SET's "trace" key) asks for the next frame: looked for each 60 presents, removed.
-inline void OnPresent() {
+// Present: ends a traced frame (writes <game>_frame_trace.txt), starts a requested one. In a scripted run
+// (twattila/test_hooks.hpp's RENODX_TW_SET, _SHOT or _PROFILE set, as every data run's renodx_test_hooks.txt sets them
+// before the first present) renodx_trace_now next to the exe (the run's script, or RENODX_TW_SET's "trace" key) asks for
+// the next frame, removed: looked for only when Windows says a file name in the exe's folder changed (a change
+// notification, tested without a wait). Otherwise nothing is looked for: the buttons call Request.
+inline void OnPresent(std::string_view game) {
   auto& state = internal::state;
-  if (static uint32_t presents = 0; ++presents % 60 == 0
-                                    && DeleteFileW((internal::ExecutableFolder() / L"renodx_trace_now").c_str()) != 0) {
-    Request();
+  static const bool scripted = GetEnvironmentVariableA("RENODX_TW_SET", nullptr, 0) != 0 || GetEnvironmentVariableA("RENODX_TW_SHOT", nullptr, 0) != 0
+                               || GetEnvironmentVariableA("RENODX_TW_PROFILE", nullptr, 0) != 0;
+  if (static bool watched = false; scripted && !std::exchange(watched, true)) {
+    state.folder_changes = FindFirstChangeNotificationW(internal::ExecutableFolder().c_str(), FALSE, FILE_NOTIFY_CHANGE_FILE_NAME);
+  }
+  if (state.folder_changes != INVALID_HANDLE_VALUE && WaitForSingleObject(state.folder_changes, 0) == WAIT_OBJECT_0) {
+    FindNextChangeNotification(state.folder_changes);
+    if (DeleteFileW((internal::ExecutableFolder() / L"renodx_trace_now").c_str()) != 0) Request();
   }
   if (state.tracing.exchange(false)) {
     internal::UseEvents(false);
-    const auto path = internal::ExecutableFolder() / L"tales_frame_trace.txt";
     const std::lock_guard lock(state.mutex);
+    const auto path = internal::ExecutableFolder() / std::format("{}_frame_trace.txt", state.game);
     std::ofstream(path, std::ios::binary | std::ios::trunc) << state.text;
     state.status = std::format("Frame trace: {} lines saved to {}", state.lines, path.string());
     state.text.clear();
@@ -359,18 +416,20 @@ inline void OnPresent() {
           "26 R11G11B10F, 28 RGBA8, 29 RGBA8 sRGB, 87 BGRA8).\n";
       state.lines = 0;
       state.last_view.clear();
-      state.saved_shaders.clear();
+      state.declared.clear();
+      state.game = game;
     }
     internal::UseEvents(true);
     state.tracing.store(true);
   }
 }
 
-// Unload: a frame being traced is dropped.
+// Unload: a frame being traced is dropped, the folder's notification closed.
 inline void Stop() {
   if (internal::state.tracing.exchange(false)) {
     internal::UseEvents(false);
   }
+  if (internal::state.folder_changes != INVALID_HANDLE_VALUE) FindCloseChangeNotification(std::exchange(internal::state.folder_changes, INVALID_HANDLE_VALUE));
 }
 
 }  // namespace talesofarise::frame_trace
