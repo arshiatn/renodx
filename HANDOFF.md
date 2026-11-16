@@ -1243,6 +1243,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         shaders + FXAA 0x35F39F1D FIXED (decompiler wrote Gather for GatherGreen: FXAA was broken for AntiAliasing 1
         players). tw_d1_swapchain PASS (control E_ACCESSDENIED -> S_OK), tw_device_loss 3c PASS, tw_divinity1 2c PASS; all
         12 device_loss consumers built. Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div1 R4 peak clamp + R13 tests.
+      - CONTROL RUNS 01:49-01:5x (ATN, inside the Act 2/3 save, fullscreen -> fake fullscreen -> fullscreen): VANILLA no
+        crash, RESHADE ONLY no crash, with our add-on CRASH (R1) -> the cause is ours (sent to d1f_).
       - [ ] Divinity 1 window-switch crash: d1f_ (started 01:5x) finds what holds the old flip chain (view clones,
         ReShade refs), releases it at destroy_swapchain, adds an E_ACCESSDENIED safety net (retry as the game's blt chain),
         extends tw_d1_swapchain; then a vanilla control run (no ReShade) and a re-run of the switch with ATN. Owner: d1f_
