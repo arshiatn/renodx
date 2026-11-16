@@ -942,8 +942,7 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                   "PsychoV30 and PsychoV35.",
+          .label = twattila::credits::RENODX_PSYCHO_V30_V35,
           .section = "About",
       },
       new renodx::utils::settings::Setting{
