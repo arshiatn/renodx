@@ -378,6 +378,15 @@ inline void Request() {
   internal::state.requested.store(true);
 }
 
+// A game's own line in the traced frame (a pass's constants, read only then).
+inline bool Tracing() {
+  return internal::state.tracing.load(std::memory_order_relaxed);
+}
+
+inline void Note(std::string line) {
+  internal::Append(std::move(line));
+}
+
 inline std::string Status() {
   const std::lock_guard lock(internal::state.mutex);
   return internal::state.status;

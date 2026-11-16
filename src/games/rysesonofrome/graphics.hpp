@@ -1648,6 +1648,42 @@ ComPtr<ID3D11DeviceContext1> ImmediateContext(reshade::api::command_list* cmd_li
   return context;
 }
 
+// The one-frame trace (ryse_frame_trace.txt): tonemap00's PER_BATCH (b0, 9 float4: HDRParams1, HDRColorBalance,
+// SunShafts_SunCol, HDREyeAdaptation, HDRFilmCurve, HDRParams0, HDRBloomColor, HDRParams2, PS_ScreenSize), the level's
+// time-of-day values that test/tw_ryse_tonemap's PerBatch assumes (the PsychoV35 fit). Read back through a staging
+// copy, only in the traced frame.
+inline void TraceTonemapConstants(reshade::api::command_list* cmd_list) {
+  if (!talesofarise::frame_trace::Tracing()) return;
+  const auto context = ImmediateContext(cmd_list);
+  if (!context) return;
+  ComPtr<ID3D11Buffer> buffer;
+  UINT first = 0;
+  UINT count = 0;
+  context->PSGetConstantBuffers1(0, 1, buffer.GetAddressOf(), &first, &count);
+  if (!buffer) return;
+  D3D11_BUFFER_DESC desc = {};
+  buffer->GetDesc(&desc);
+  constexpr UINT BYTES = 9 * 16;
+  if (desc.ByteWidth < (first * 16) + BYTES) return;
+  ComPtr<ID3D11Device> device;
+  context->GetDevice(device.GetAddressOf());
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = BYTES, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  if (FAILED(device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf()))) return;
+  const D3D11_BOX box = {.left = first * 16, .top = 0, .front = 0, .right = (first * 16) + BYTES, .bottom = 1, .back = 1};
+  context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, buffer.Get(), 0, &box);
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return;
+  const auto* values = static_cast<const float*>(mapped.pData);
+  std::string line = std::format("tonemap00 PER_BATCH (b0 at c{}):", first);
+  for (UINT constant = 0; constant < 9; ++constant) {
+    line += std::format(" c{} {:.6g} {:.6g} {:.6g} {:.6g} |", constant, values[constant * 4], values[(constant * 4) + 1],
+                        values[(constant * 4) + 2], values[(constant * 4) + 3]);
+  }
+  context->Unmap(staging.Get(), 0);
+  talesofarise::frame_trace::Note(std::move(line));
+}
+
 void Reset() {
   const std::lock_guard lock(runtime_mutex);
   runtime = {};

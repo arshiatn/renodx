@@ -355,6 +355,11 @@ void BuildRuntimeData() {
   const auto keep_shader = [](reshade::api::command_list*) { return false; };
   const auto draw_hud = [](reshade::api::command_list*) { return !hud_hidden; };
   custom_shaders[0x96675B77] = {.crc32 = 0x96675B77, .on_replace = keep_shader, .on_draw = draw_hud};
+  // The one-frame trace: its PER_BATCH (the PsychoV35 fit's constants).
+  custom_shaders[0xB9B672AA].on_draw = [](reshade::api::command_list* cmd_list) {
+    rysesonofrome::graphics::TraceTonemapConstants(cmd_list);
+    return true;
+  };
   // The tiled lighting (kept): this frame's ray tracing, then the contact shadows (and the ray-traced sun's) into the
   // sun's shadow mask and the ray-traced ambient into its occlusion before it runs, the traced reflections bound for it.
   const auto contact_shadows = [](reshade::api::command_list* cmd_list) {
