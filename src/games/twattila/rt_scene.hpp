@@ -2441,7 +2441,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Path Tracing SER (Experimental)",
           .section = section,
           .tooltip = "Shader execution reordering for Path Tracing and Ray-Traced Reflections\n"
-                     "(DXR 1.2, RTX 40 / 50 series): may be faster.",
+                     "(DXR 1.2, RTX 40 / 50 series). Slower in every test so far.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && (sliders->light_bounce == 2.f || sliders->reflections != 0.f); },
       },
