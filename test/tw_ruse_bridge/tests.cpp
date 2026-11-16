@@ -22,6 +22,11 @@
 //    camera's 13.6 degree pitch about one sector of 32 at the horizon goes, 0.969; 0.9975 facing the camera), darker on the
 //    ground beside the plateau on screen, and the same shader over the same depth and constants on WARP within one
 //    sector's share (1 / 128) at 99% of the pixels.
+// 9. Guides (ray_tracing.hpp BindGuides: the rays' bounce and reflections): the three guide targets made by D3D9Ex and
+//    opened by D3D11 (B8G8R8A8, RGBA16F x 2) as render targets 1-3 beside a 10-bit scene target: ColorFill clears them
+//    (RGBA16F too), each target's write mask holds, a blended draw (SRCALPHA / INVSRCALPHA: D3D9's one blend state)
+//    lerps the normal by the alpha (its w oC0's) and keeps the water's position whole (rgb / w, oC3.w 1), D3D11 reads
+//    what D3D9 wrote; unbound again after.
 // H2 (renodx-tw-dlaa64.exe beside this exe; argv[2] dlss / fsr / xess):
 // 7. Evaluate on a synthetic aliased frame (the ground quad's hard edges drawn with each frame's jitter) for 24 frames:
 //    a result each frame after the first, written back into the scene; flat pixels within 3 codes of the aliased
@@ -385,6 +390,23 @@ float4 main(float3 current : TEXCOORD1, float3 previous : TEXCOORD2) : COLOR0 {
 constexpr char FLAT_PS[] = R"(
 float4 colour : register(c0);
 float4 main() : COLOR0 { return colour; })";
+
+constexpr char GUIDE_PS[] = R"(
+float4 outputs[4] : register(c0);
+struct Output {
+  float4 colour : COLOR0;
+  float4 albedo : COLOR1;
+  float4 normal : COLOR2;
+  float4 water : COLOR3;
+};
+Output main() {
+  Output output;
+  output.colour = outputs[0];
+  output.albedo = outputs[1];
+  output.normal = outputs[2];
+  output.water = outputs[3];
+  return output;
+})";
 
 // The bridge's per-frame constants as Evaluate lays them out: the camera pass's c0-c8, then the size, HDRParam and
 // whether s2 holds the game's velocity.
@@ -780,6 +802,76 @@ int main(int argc, char** argv) {
     std::printf("GT-VBAO against WARP: mean difference %.2e, largest %.4f, %zu of %zu within 1 / 128\n", difference_sum / pixels, difference_most, within,
                 pixels);
     CHECK(within * 100 >= pixels * 99);
+  }
+
+  // 9. Guides.
+  {
+    auto& rays = ruse::ray_tracing::state;
+    REQUIRE(bridge::MakeShared(devices.proxy.Get(), host, D3DFMT_A8R8G8B8, &rays.guide_albedo));
+    REQUIRE(bridge::MakeShared(devices.proxy.Get(), host, D3DFMT_A16B16G16R16F, &rays.guide_normal));
+    REQUIRE(bridge::MakeShared(devices.proxy.Get(), host, D3DFMT_A16B16G16R16F, &rays.guide_water));
+    const ComPtr<IDirect3DTexture9> scene = MakeTarget(host, D3DFMT_A2R10G10B10);
+    REQUIRE(scene != nullptr);
+    const ComPtr<IDirect3DSurface9> scene_surface = Level(scene.Get());
+    // Something in them first, then the clear the trace point makes.
+    for (IDirect3DSurface9* guide : {rays.guide_albedo.host_surface.Get(), rays.guide_normal.host_surface.Get(), rays.guide_water.host_surface.Get()}) {
+      CHECK(SUCCEEDED(host->ColorFill(guide, nullptr, D3DCOLOR_ARGB(255, 255, 255, 255))));
+      CHECK(SUCCEEDED(host->ColorFill(guide, nullptr, D3DCOLOR_ARGB(0, 0, 0, 0))));
+    }
+    const ComPtr<ID3DBlob> guide_code = Compile(GUIDE_PS, "ps_3_0");
+    ComPtr<IDirect3DPixelShader9> guide_ps;
+    REQUIRE(SUCCEEDED(host->CreatePixelShader(static_cast<const DWORD*>(guide_code->GetBufferPointer()), guide_ps.GetAddressOf())));
+    const auto draw = [&](const std::array<float, 16>& outputs, std::array<DWORD, 3> masks, bool blend) {
+      host->SetRenderTarget(0, scene_surface.Get());
+      ruse::ray_tracing::BindGuides(host, true);
+      host->SetDepthStencilSurface(nullptr);
+      const D3DVIEWPORT9 viewport = {.X = 0, .Y = 0, .Width = WIDTH, .Height = HEIGHT, .MinZ = 0.f, .MaxZ = 1.f};
+      host->SetViewport(&viewport);
+      for (const auto [render_state, value] : std::initializer_list<std::pair<D3DRENDERSTATETYPE, DWORD>>{
+               {D3DRS_ZENABLE, FALSE}, {D3DRS_ZWRITEENABLE, FALSE}, {D3DRS_ALPHATESTENABLE, FALSE}, {D3DRS_CULLMODE, D3DCULL_NONE},
+               {D3DRS_STENCILENABLE, FALSE}, {D3DRS_SRGBWRITEENABLE, FALSE}, {D3DRS_ALPHABLENDENABLE, blend ? TRUE : FALSE},
+               {D3DRS_SEPARATEALPHABLENDENABLE, FALSE}, {D3DRS_BLENDOP, D3DBLENDOP_ADD}, {D3DRS_SRCBLEND, D3DBLEND_SRCALPHA},
+               {D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA}, {D3DRS_COLORWRITEENABLE, 0xF}, {D3DRS_COLORWRITEENABLE1, masks[0]},
+               {D3DRS_COLORWRITEENABLE2, masks[1]}, {D3DRS_COLORWRITEENABLE3, masks[2]}}) {
+        host->SetRenderState(render_state, value);
+      }
+      const std::array<float, 4> half_pixel = {-1.f / WIDTH, 1.f / HEIGHT, 0.f, 0.f};
+      host->SetVertexShader(state.quad.Get());
+      host->SetVertexShaderConstantF(0, half_pixel.data(), 1);
+      host->SetPixelShader(guide_ps.Get());
+      host->SetPixelShaderConstantF(0, outputs.data(), 4);
+      host->SetVertexDeclaration(state.quad_layout.Get());
+      constexpr std::array<float, 8> STRIP = {-1.f, 1.f, 1.f, 1.f, -1.f, -1.f, 1.f, -1.f};
+      CHECK(SUCCEEDED(host->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, STRIP.data(), 2 * sizeof(float))));
+    };
+    // An opaque terrain draw (oC1 / oC2 written, oC3 masked), then a blended water draw (oC1 masked, oC2 / oC3 written).
+    draw({0.5f, 0.5f, 0.5f, 1.f, 0.25f, 0.5f, 0.75f, 1.f, 0.f, 0.f, 1.f, 1.f, 3.f, 4.f, 5.f, 1.f}, {0xF, 0xF, 0}, false);
+    draw({1.f, 1.f, 1.f, 0.25f, 1.f, 1.f, 1.f, 0.25f, 1.f, 0.f, 0.f, 0.25f, 8.f, 8.f, 8.f, 1.f}, {0, 0xF, 0xF}, true);
+    ruse::ray_tracing::BindGuides(host, false);
+    std::array<ComPtr<IDirect3DSurface9>, 3> bound;
+    for (DWORD index = 0; index < bound.size(); ++index) host->GetRenderTarget(index + 1, bound[index].GetAddressOf());
+    CHECK(bound[0] == nullptr && bound[1] == nullptr && bound[2] == nullptr);
+    bridge::WaitHost(host);
+    const std::vector<uint8_t> albedo = ReadProxy(devices, rays.guide_albedo.proxy.Get(), 4);
+    const std::vector<uint8_t> normal = ReadProxy(devices, rays.guide_normal.proxy.Get(), 8);
+    const std::vector<uint8_t> water = ReadProxy(devices, rays.guide_water.proxy.Get(), 8);
+    size_t right = 0;
+    for (size_t pixel = 0; pixel < static_cast<size_t>(WIDTH) * HEIGHT; ++pixel) {
+      const uint8_t* bgra = albedo.data() + (pixel * 4);
+      const bool albedo_kept = std::abs(bgra[2] - 64) <= 1 && std::abs(bgra[1] - 128) <= 1 && std::abs(bgra[0] - 191) <= 1 && bgra[3] == 255;
+      const bool normal_lerped = std::abs(Half(normal, pixel * 4) - 0.25f) < 0.01f && std::abs(Half(normal, (pixel * 4) + 1)) < 0.01f
+                                 && std::abs(Half(normal, (pixel * 4) + 2) - 0.75f) < 0.01f;
+      const float water_w = Half(water, (pixel * 4) + 3);
+      const bool water_whole = water_w > 0.f && std::abs((Half(water, pixel * 4) / water_w) - 8.f) < 0.05f;
+      if (albedo_kept && normal_lerped && water_whole) ++right;
+    }
+    std::printf("Guides: %zu of %zu pixels right (albedo kept by its mask, normal lerped by the alpha, water rgb / w 8); water w %.3f "
+                "(1: each target's own alpha, 0.25: oC0's)\n",
+                right, static_cast<size_t>(WIDTH) * HEIGHT, Half(water, 3));
+    CHECK(right == static_cast<size_t>(WIDTH) * HEIGHT);
+    rays.guide_albedo = {};
+    rays.guide_normal = {};
+    rays.guide_water = {};
   }
 
   // 7. H2: the helper's anti-aliasing on an aliased frame drawn with each frame's jitter.
