@@ -300,8 +300,9 @@ files (RENODX_LICENSE.txt, NVIDIA's, Agility SDK's).
 fix55 (draft, 2026-11-15, rym_ merge round, built only, not run in game): **one add-on** (ATN's decision): the DLSS
 add-on (`rysesonofrome_dlss`, v116 draft) moved into this folder: its addon.cpp is `graphics.hpp`
 (`rysesonofrome::graphics`, Install after this add-on's attach, Uninstall before its detach, so every event and
-command_action callback keeps the order the two add-ons had by name), its headers and shaders (0x52594501-06,
-0x7A1E0D40-42) beside this add-on's; its notes in `README_DLSS.md`. The `renodx-rysesonofrome_dlss.addon64` target is
+command_action callback keeps the order the two add-ons had by name), its headers and shaders (0x52594501-06;
+Tales' in-process frame generation shaders 0x7A1E0D40-42 dropped 11-16: Ryse's FG is the helper's) beside this
+add-on's; its notes in `README_DLSS.md`. The `renodx-rysesonofrome_dlss.addon64` target is
 gone (and from step 3 this target no longer links NGX). Settings keep their keys and sections: the HDR rows in the renodx
 section, the anti-aliasing / frame generation keys in `[Ryse AA]`, the game settings in `[Ryse Game Settings]`. An old
 `renodx-rysesonofrome_dlss.addon64` next to this one would run everything twice: the install renames it aside
