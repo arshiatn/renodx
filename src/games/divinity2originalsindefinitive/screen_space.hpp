@@ -19,7 +19,9 @@
 #include <embed/shaders.h>
 #include <include/reshade.hpp>
 
+#include "../talesofarise_dlss/native_state.hpp"
 #include "../talesofarise_dlss/ue_light_bounce.hpp"
+#include "../talesofarise_dlss/ue_screen_space_shadows.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "./dlaa.hpp"
@@ -37,9 +39,17 @@
 // (talesofarise_dlss/ue_light_bounce.hpp, the Total War games' GT-VBGI; bounce_gbuffer.hlsli reads Divinity 2's G-buffer)
 // at the rays' place, ClusteredLightingWithSSAO drawn: from the scene it lit, added to it x each pixel's diffuse colour,
 // once a frame, the main view's (the camera dlaa.hpp keeps, and the last frame's for the history).
+// Bend's screen-space sun shadows (Shadows' method without rays): Bend Studio's passes through the same host's
+// talesofarise_dlss/ue_screen_space_shadows.hpp (their wrappers here: ue_sss_depth on the G-buffer pass's D24S8 depth
+// dlaa.hpp keeps, ue_sss_setup on PerView and PerFrame's sun) after the sun's shadow mask is drawn, the occlusion
+// multiplied into its red (the sun's visibility ClusteredLightingWithSSAO reads): over the game's shadow maps, as
+// Attila's. Under the rays' sun shadows the mask is theirs (its draw skipped: no Bend).
 namespace divinity2::screen_space {
 
 using Microsoft::WRL::ComPtr;
+
+// Bend's rows (feature_settings::AppendSss' keys).
+static twattila::feature_settings::SssSliders shadow_rows;
 
 namespace internal {
 
@@ -79,6 +89,12 @@ struct State {
   ComPtr<ID3D11Buffer> ao_constants;
   AoConstants uploaded = {};
   ComPtr<ID3D11Buffer> bounce_view;
+  // Bend's occlusion into the mask: the add-on's context state, the full-screen triangle, rt_write, a multiply blend.
+  ComPtr<ID3DDeviceContextState> private_state;
+  ComPtr<ID3D11VertexShader> full_screen;
+  ComPtr<ID3D11PixelShader> write;
+  ComPtr<ID3D11BlendState> multiply;
+  ComPtr<ID3D11RasterizerState> no_cull;
   uint64_t frame = 0;
   // PPSAO's normals and camera since the last reinterleave (null: the game's SSAO drew).
   ComPtr<ID3D11ShaderResourceView> normals;
@@ -105,15 +121,36 @@ inline bool MakeObjects(ID3D11Device* device) {
   state.vbao.Reset();
   state.ao_constants.Reset();
   state.bounce_view.Reset();
+  state.private_state.Reset();
+  state.full_screen.Reset();
+  state.write.Reset();
+  state.multiply.Reset();
+  state.no_cull.Reset();
   state.uploaded = {};
   state.bounce_frame = UINT64_MAX;
   state.scene_views.clear();
   const D3D11_BUFFER_DESC ao_desc = {.ByteWidth = sizeof(AoConstants), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC view_desc = {.ByteWidth = sizeof(BounceView), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  // The mask x (1 - the occlusion), red only (the mask is R8).
+  D3D11_BLEND_DESC multiply_desc = {};
+  multiply_desc.RenderTarget[0] = {.BlendEnable = TRUE, .SrcBlend = D3D11_BLEND_ZERO, .DestBlend = D3D11_BLEND_INV_SRC_COLOR,
+                                   .BlendOp = D3D11_BLEND_OP_ADD, .SrcBlendAlpha = D3D11_BLEND_ZERO, .DestBlendAlpha = D3D11_BLEND_ONE,
+                                   .BlendOpAlpha = D3D11_BLEND_OP_ADD, .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED};
+  const D3D11_RASTERIZER_DESC no_cull_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE};
   state.failed = FAILED(device->CreatePixelShader(__ao_vbao.data(), __ao_vbao.size(), nullptr, state.vbao.GetAddressOf()))
                  || FAILED(device->CreateBuffer(&ao_desc, nullptr, state.ao_constants.GetAddressOf()))
-                 || FAILED(device->CreateBuffer(&view_desc, nullptr, state.bounce_view.GetAddressOf()));
+                 || FAILED(device->CreateBuffer(&view_desc, nullptr, state.bounce_view.GetAddressOf()))
+                 || !talesofarise::dlss::MakeContextState(device, &state.private_state)
+                 || FAILED(device->CreateVertexShader(__light_bounce_vs.data(), __light_bounce_vs.size(), nullptr, state.full_screen.GetAddressOf()))
+                 || FAILED(device->CreatePixelShader(__rt_write.data(), __rt_write.size(), nullptr, state.write.GetAddressOf()))
+                 || FAILED(device->CreateBlendState(&multiply_desc, state.multiply.GetAddressOf()))
+                 || FAILED(device->CreateRasterizerState(&no_cull_desc, state.no_cull.GetAddressOf()));
   return !state.failed;
+}
+
+// Bend this frame (the rays' sun shadows skip the mask's draw itself).
+inline bool ShadowsWanted() {
+  return shadow_rows.enabled != 0.f;
 }
 
 // GT-VBGI this frame: Strength above 0 with the rays' bounce off.
@@ -268,11 +305,50 @@ inline void OnLit(reshade::api::command_list* cmd_list) {
                                        talesofarise::ue_light_bounce::ConstantsOf(sliders, state.frame), sliders.denoise != 0.f, target.Get());
 }
 
+// A sun shadow mask drawn (the main view's: its target the render size; PerFrame at b13 and PerView at b12 as it read
+// them): Bend's occlusion multiplied into its red.
+inline void OnSunMaskDrawn(reshade::api::command_list* cmd_list) {
+  if (!internal::ShadowsWanted()) return;
+  ID3D11DeviceContext* native = dlaa::internal::ImmediateContext(cmd_list);
+  if (native == nullptr) return;
+  const ComPtr<ID3D11RenderTargetView> target = ray_tracing::internal::MainViewTarget(native);
+  const ComPtr<ID3D11ShaderResourceView> depth = dlaa::SceneDepth();
+  talesofarise::dlss::ConstantBinding frame_constants;
+  talesofarise::dlss::ConstantBinding view_constants;
+  native->PSGetConstantBuffers(13, 1, frame_constants.buffer.GetAddressOf());
+  native->PSGetConstantBuffers(internal::PER_VIEW_SLOT, 1, view_constants.buffer.GetAddressOf());
+  ComPtr<ID3D11DeviceContext1> native1;
+  if (!target || !depth || !frame_constants.buffer || !view_constants.buffer || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) {
+    return;
+  }
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  const std::array<UINT, 2> size = dlaa::SceneSize();
+  auto& state = internal::state;
+  const std::unique_lock lock(state.mutex);
+  if (!internal::MakeObjects(device.Get())) return;
+  ID3D11ShaderResourceView* occlusion = talesofarise::ue_screen_space_shadows::Compute(
+      native, {.depth = depth.Get(), .sun = frame_constants, .view = view_constants}, twattila::feature_settings::SssSettings(shadow_rows));
+  if (occlusion == nullptr) return;
+  const talesofarise::dlss::ContextStateScope scope(native1.Get(), state.private_state.Get());
+  const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(size[0]), .Height = static_cast<float>(size[1]), .MaxDepth = 1.f};
+  ID3D11RenderTargetView* output = target.Get();
+  native1->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  native1->VSSetShader(state.full_screen.Get(), nullptr, 0);
+  native1->PSSetShader(state.write.Get(), nullptr, 0);
+  native1->PSSetShaderResources(0, 1, &occlusion);
+  native1->RSSetState(state.no_cull.Get());
+  native1->RSSetViewports(1, &viewport);
+  native1->OMSetBlendState(state.multiply.Get(), nullptr, 0xFFFFFFFF);
+  native1->OMSetRenderTargets(1, &output, nullptr);
+  native1->Draw(3, 0);
+}
+
 // The frame's end: the noise's next frame; normals kept by a PPSAO no reinterleave followed let go; whether the next
-// frame wants dlaa.hpp's camera and depth (GT-VBGI).
+// frame wants dlaa.hpp's camera and depth (GT-VBGI, Bend).
 inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*, uint32_t,
                       const reshade::api::rect*) {
-  dlaa::screen_effects = internal::BounceWanted();
+  dlaa::screen_effects = internal::BounceWanted() || internal::ShadowsWanted();
   auto& state = internal::state;
   const std::unique_lock lock(state.mutex);
   ++state.frame;
@@ -285,6 +361,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
   talesofarise::ue_light_bounce::Release(native);
+  talesofarise::ue_screen_space_shadows::Release(native);
   auto& state = internal::state;
   const std::unique_lock lock(state.mutex);
   if (state.device.Get() != native) return;
@@ -293,6 +370,11 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   state.vbao.Reset();
   state.ao_constants.Reset();
   state.bounce_view.Reset();
+  state.private_state.Reset();
+  state.full_screen.Reset();
+  state.write.Reset();
+  state.multiply.Reset();
+  state.no_cull.Reset();
   state.normals.Reset();
   state.per_view.Reset();
   state.scene_views.clear();

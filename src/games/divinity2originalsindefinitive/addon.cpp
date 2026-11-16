@@ -811,8 +811,6 @@ constexpr uint32_t REFLECTION_COMBINE_HASH = 0x0FA22D5A;
 
 // The graphics page's anti-aliasing: the game's, the helper's DLSS, FSR and XeSS (dlaa.hpp: in DLSS's place).
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
-// What the page reads that this game has no row for (Bend): off.
-twattila::feature_settings::SssSliders no_screen_space_shadows;
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's", "", "", "", "", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
     .aa_tooltip =
@@ -828,8 +826,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
         "this page at its default.\n"
         "Needs an upscaler (Anti-Aliasing above). Restart the game after turning ray tracing on.",
     .shadow_tooltip =
-        "Game's Shadow Maps: the original. DXR: ray-traced sun shadows in their place (keep in-game\n"
-        "shadows on). Needs an upscaler. Restart the game after turning it on.",
+        "Game's Shadow Maps: the original. Bend Screen-Space (Experimental): fine contact shadows from what is on\n"
+        "screen over the game's maps. DXR: ray-traced sun shadows in their place (keep in-game shadows on).\n"
+        "Needs an upscaler. Restart the game after turning it on.",
     .ao_tooltip =
         "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on.\n"
         "Game's SSAO: the original. GT-VBAO (Experimental): in its place, objects have a thickness, so light\n"
@@ -1213,6 +1212,10 @@ void ConfigureAddon() {
         .on_draw = [](reshade::api::command_list* cmd_list) { return !divinity2::ray_tracing::ReplaceSunMask(cmd_list); },
     };
   }
+  // Every sun shadow mask the game drew (not the rays'): Bend's screen-space shadows multiplied into it.
+  for (const uint32_t hash : divinity2::ray_tracing::internal::SUN_MASK_SHADERS) {
+    custom_shaders[hash].on_drawn = divinity2::screen_space::OnSunMaskDrawn;
+  }
   for (const uint32_t hash : divinity2::ray_tracing::internal::AO_CHAIN_SHADERS) {
     custom_shaders[hash] = {
         .crc32 = hash,
@@ -1271,6 +1274,13 @@ void ConfigureAddon() {
       setting->is_visible = [] { return divinity2::ray_tracing::sliders.light_bounce == 0.f; };
     }
   }
+  // Bend's rows (screen_space.hpp) but Softer Away from the Caster and the Debug View (the Total War sun shaders' own).
+  twattila::feature_settings::AppendSss(&settings, &divinity2::screen_space::shadow_rows);
+  std::erase_if(settings, [](renodx::utils::settings::Setting* setting) {
+    if (setting->key != "ScreenSpaceShadowsDistanceSoftness" && setting->key != "ScreenSpaceShadowsDebugView") return false;
+    delete setting;
+    return true;
+  });
   // GT-VBAO's rows (screen_space.hpp; the page's method slider writes ssao_mode).
   {
     using renodx::utils::settings::Setting;
@@ -1353,7 +1363,7 @@ void ConfigureAddon() {
   }
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   twattila::graphics_page::Apply(&settings, {.aa = &divinity2::dlaa::sliders,
-                                             .sss = &no_screen_space_shadows,
+                                             .sss = &divinity2::screen_space::shadow_rows,
                                              .rt = &divinity2::ray_tracing::sliders,
                                              .ssao_mode = &lighting_rows.ssao_mode,
                                              .light_bounce_strength = &lighting_rows.light_bounce_strength,
@@ -1363,16 +1373,15 @@ void ConfigureAddon() {
                                              .has_foliage_light = false,
                                              .rays_preset_as_attila = true,
                                              .path_ambient_tested = false,
-                                             .has_screen_space_shadows = false,
                                              .rays_tested = false,
                                              .every_row = false});
   const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
   for (auto* setting : settings) {
-    // No RT/PT (Recommended) leaves GT-VBGI off here until a game run shows it (Attila's turns it on).
+    // No RT/PT (Recommended) leaves Bend and GT-VBGI off here until a game run shows them (Attila's turns both on).
     if (setting->value_type == renodx::utils::settings::SettingValueType::BUTTON && setting->label == "No RT/PT (Recommended)") {
       setting->on_change = [apply = setting->on_change] {
         apply();
-        renodx::utils::settings::UpdateSettings({{"light_bounce_strength", 0.f}});
+        renodx::utils::settings::UpdateSettings({{"ScreenSpaceShadows", 0.f}, {"light_bounce_strength", 0.f}});
       };
     }
     if (std::ranges::find(page_sections, setting->section) == page_sections.end()) continue;

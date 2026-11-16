@@ -260,8 +260,16 @@ Without the helper (`screen_space.hpp`, Experimental, off until a game run):
   `bounce_gbuffer.hlsli` reads GBuffer1-3 and LinearizeDepth's depth through
   the main camera, the last frame's for its history) right after
   ClusteredLightingWithSSAO, from the scene it lit, added to it times each
-  pixel's diffuse colour: where the rays' bounce goes. No RT/PT (Recommended)
-  leaves it off until a game run shows it here.
+  pixel's diffuse colour: where the rays' bounce goes.
+- **Bend's screen-space shadows** (Shadows' method): Bend Studio's passes
+  (`talesofarise_dlss/ue_screen_space_shadows.hpp`; `ue_sss_depth` on the
+  G-buffer pass's D24S8 depth, `ue_sss_setup` on PerView and PerFrame's sun)
+  after the game's sun mask is drawn, the occlusion multiplied into it: fine
+  contact shadows over the game's maps. Under the rays' sun shadows the mask
+  is theirs.
+
+No RT/PT (Recommended) leaves GT-VBGI and Bend off until a game run shows them
+here.
 
 Not yet: render scale below 100%, the game's settings above its maximum.
 
@@ -319,7 +327,8 @@ cone response): press Reset before comparing defaults.
   reinterleave's place (its depth channel the game's bit for bit, open ground
   and a corner) and the game's own blur over it, GT-VBGI by a lit wall and
   its view of the G-buffer (positions, normals, diffuse colour, the last
-  frame's pixel), each with a control that must fail.
+  frame's pixel), Bend's contact shadow by a wall in the sun's mask, each with
+  a control that must fail.
 - `test/tw_psychov30_nan`, `test/tw_output_encoding`, `test/tw_device_loss`,
   `test/tw_draw_dispatch`: the shared PsychoV30 guards, the not-configured
   Output, device loss and the fast draw dispatch.

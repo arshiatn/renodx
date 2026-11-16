@@ -53,6 +53,10 @@
 //    pixels per metre as cast, and with the camera moved a frame later the last frame's pixel and distance (CONTROLS: the
 //    world normal in GBuffer1, Strength 0 and the rays' bounce leave the scene alone, the rows without the jitter, the
 //    moved camera's own view-projection).
+// 12. Bend (screen_space.hpp OnSunMaskDrawn, talesofarise_dlss/ue_screen_space_shadows.hpp's passes on ue_sss_depth /
+//    ue_sss_setup) on that scene's device depth, PerView and PerFrame's sun: the sun behind the wall shadows the ground
+//    by it in the mask, multiplied into the game's mask (half lit keeps half) (CONTROLS: the sun behind the camera
+//    shadows nothing there, Bend off leaves the mask alone).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -2033,6 +2037,109 @@ int main(int argc, char** argv) {
     screen::internal::state.device.Reset();
     screen::internal::state.bounce_view.Reset();
     screen::internal::state.scene_views.clear();
+  }
+
+  // 12. Bend's screen-space shadows into the sun's mask.
+  {
+    namespace screen = divinity2::screen_space;
+    constexpr UINT SSS_WIDTH = 256;
+    constexpr UINT SSS_HEIGHT = 144;
+    constexpr size_t SSS_PIXELS = static_cast<size_t>(SSS_WIDTH) * SSS_HEIGHT;
+    const WallScene scene = BuildWallScene(Inverse(Rows(CITY.data() + 32)), SSS_WIDTH, SSS_HEIGHT);
+    // The G-buffer pass's depth as the projection writes it (near 0, far 1), kept for this frame as LinearizeDepth's
+    // on_draw keeps it.
+    std::vector<float> device_depth(SSS_PIXELS, 1.f);
+    for (size_t at = 0; at < SSS_PIXELS; ++at) {
+      if (scene.depth[at] < 1.f) {
+        const double z = static_cast<double>(scene.depth[at]) * 100.;
+        device_depth[at] = static_cast<float>(((CITY[26] * z) + CITY[27]) / z);
+      }
+    }
+    dlaa::screen_effects = true;
+    state.display = {SSS_WIDTH, SSS_HEIGHT};
+    state.depth_size = {SSS_WIDTH, SSS_HEIGHT};
+    state.depth = Srv(MakeTexture(SSS_WIDTH, SSS_HEIGHT, DXGI_FORMAT_R32_FLOAT, D3D11_BIND_SHADER_RESOURCE, device_depth.data(), SSS_WIDTH * 4).Get());
+    state.depth_frame = state.frame;
+    PerView sss_view = CITY;
+    sss_view[54] = static_cast<float>(SSS_WIDTH);
+    sss_view[55] = static_cast<float>(SSS_HEIGHT);
+    const auto constant_buffer = [&](const void* data, UINT bytes) {
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = bytes, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = data};
+      ComPtr<ID3D11Buffer> buffer;
+      REQUIRE(SUCCEEDED(device->CreateBuffer(&desc, &initial, buffer.GetAddressOf())));
+      return buffer;
+    };
+    const auto per_view = constant_buffer(sss_view.data(), 240);
+    // PerFrame with the sun toward `toward` (LightPropertyMatrix column-major: row 0 in c0-c2's x).
+    const auto per_frame_toward = [&](std::array<double, 3> toward) {
+      const double length = std::sqrt((toward[0] * toward[0]) + (toward[1] * toward[1]) + (toward[2] * toward[2]));
+      std::array<float, 36> registers = {};
+      for (int k = 0; k < 3; ++k) registers[static_cast<size_t>(k) * 4] = static_cast<float>(toward[k] / length);
+      return constant_buffer(registers.data(), sizeof(registers));
+    };
+    // The view's forward on the ground (toward the wall) and up.
+    const double across_length = std::hypot(CITY[8], CITY[10]);
+    const std::array<double, 3> across = {CITY[8] / across_length, 0., CITY[10] / across_length};
+    // Behind the wall 27 degrees up (in front of the camera: 45 degrees up would lie in its plane), and behind the camera.
+    const auto behind_wall = per_frame_toward({across[0], .5, across[2]});
+    const auto behind_camera = per_frame_toward({-across[0], 1., -across[2]});
+    // The mask's draw done (R8 at `lit`), its PerFrame at b13 and PerView at b12, then OnSunMaskDrawn: the mask after.
+    const auto run_mask = [&](ID3D11Buffer* per_frame, uint8_t lit) {
+      const std::vector<uint8_t> texels(SSS_PIXELS, lit);
+      const auto mask = MakeTexture(SSS_WIDTH, SSS_HEIGHT, DXGI_FORMAT_R8_UNORM, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE, texels.data(), SSS_WIDTH);
+      const auto rtv = Rtv(mask.Get());
+      context->PSSetConstantBuffers(13, 1, &per_frame);
+      context->PSSetConstantBuffers(12, 1, per_view.GetAddressOf());
+      context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+      screen::OnSunMaskDrawn(&mock_list);
+      ID3D11Buffer* no_buffer = nullptr;
+      context->PSSetConstantBuffers(13, 1, &no_buffer);
+      context->PSSetConstantBuffers(12, 1, &no_buffer);
+      context->OMSetRenderTargets(0, nullptr, nullptr);
+      return ReadBack<uint8_t>(mask.Get(), SSS_WIDTH, SSS_HEIGHT);
+    };
+    // The share of the ground within 0.5 m of the wall darker than half (Bend's contact shadow: past it the rays run more
+    // than its thickness behind the wall), and of every pixel.
+    const auto shadowed_share = [&](const std::vector<uint8_t>& mask, uint8_t lit) {
+      std::array<double, 2> shares = {};
+      int near_count = 0;
+      for (size_t at = 0; at < SSS_PIXELS; ++at) {
+        const bool dark = mask[at] < lit / 2;
+        shares[1] += dark ? 1. : 0.;
+        if (scene.from_wall[at] >= 0. && scene.from_wall[at] < .5) {
+          shares[0] += dark ? 1. : 0.;
+          ++near_count;
+        }
+      }
+      REQUIRE(near_count > 100);
+      return std::array<double, 2>{shares[0] / near_count, shares[1] / static_cast<double>(SSS_PIXELS)};
+    };
+    screen::shadow_rows = {.enabled = 1.f};
+    const auto behind = run_mask(behind_wall.Get(), 255);
+    const auto half = run_mask(behind_wall.Get(), 128);
+    const auto front = run_mask(behind_camera.Get(), 255);
+    screen::shadow_rows.enabled = 0.f;
+    const auto off = run_mask(behind_wall.Get(), 255);
+    const auto behind_shares = shadowed_share(behind, 255);
+    const auto front_shares = shadowed_share(front, 255);
+    // The game's mask x (1 - the occlusion): half the light gives half of each result (within an 8-bit step and a half).
+    int half_worst = 0;
+    for (size_t at = 0; at < SSS_PIXELS; ++at) half_worst = std::max(half_worst, std::abs((2 * static_cast<int>(half[at])) - static_cast<int>(behind[at])));
+    const bool off_kept = std::ranges::all_of(off, [](uint8_t texel) { return texel == 255; });
+    std::printf("Bend into the sun's mask: the sun behind the wall shadows %.1f%% of the ground within 0.5 m of it (%.1f%% of the picture); the "
+                "game's half-lit mask keeps half (within %d / 255); CONTROLS the sun behind the camera: %.1f%% / %.1f%%, Bend off: the mask "
+                "%s\n",
+                100. * behind_shares[0], 100. * behind_shares[1], half_worst, 100. * front_shares[0], 100. * front_shares[1],
+                (off_kept ? "kept" : "CHANGED"));
+    CHECK(behind_shares[0] > .9 && half_worst <= 3);
+    CHECK(front_shares[0] < .05 && front_shares[1] < .02 && off_kept);
+    screen::shadow_rows = {};
+    dlaa::screen_effects = false;
+    state.depth.Reset();
+    talesofarise::ue_screen_space_shadows::Release(device.Get());
+    screen::internal::state.device.Reset();
+    screen::internal::state.private_state.Reset();
   }
 
   std::printf("%s: %d failure(s)\n", (failures == 0 ? "PASS" : "FAIL"), failures);
