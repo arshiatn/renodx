@@ -1018,7 +1018,7 @@ void main(
         r15.w = r16.x ? r15.w : 0;
         r15.y = r15.y * r15.z + r15.w;
         r15.z = cmp(r11.z < -r11.z);
-        r15.z = r15.z ? -3.141593 : 0;
+        r15.z = r15.z ? -3.14159274 : 0;  // the game's l(0xc0490fdb): -pi to the bit (the decompile printed -3.141593, one ulp off)
         r15.y = r15.y + r15.z;
         r15.z = min(r15.x, r11.z);
         r11.z = max(r15.x, r11.z);
@@ -1063,7 +1063,7 @@ void main(
         r8.w = r9.w ? r8.w : 0;
         r8.x = r8.x * r8.z + r8.w;
         r8.z = cmp(r5.y < -r5.y);
-        r8.z = r8.z ? -3.141593 : 0;
+        r8.z = r8.z ? -3.14159274 : 0;  // the game's l(0xc0490fdb): -pi to the bit (the decompile printed -3.141593, one ulp off)
         r8.x = r8.x + r8.z;
         r8.z = min(r5.z, r5.y);
         r5.y = max(r5.z, r5.y);
