@@ -3,6 +3,12 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 (Troy / Pharaoh round): TAA / T2x in Troy / Pharaoh run on the linear frame while Attila's run on 2.0
+  (linear: up to 12 % more light at thin lines, flicker 4 % higher, bias 22 % lower); the ready patch
+  tools/tw/troy/aa_domain/shared_step_taa.patch matches Attila within 0.004 - apply?; under Rays Replace the baked far
+  shadow map still multiplies; Pharaoh's Shadow Casters Out of View is off by default (no rays_preset_as_attila); Troy Hue
+  Clip 80 (fire 1.99 deg) vs the measured best 70 (0.82 deg); v31_highlight_hue_shift 0.1 / 0.06 vs the 0.04 rule;
+  RenoDX's own sharpening on by default. Owner: ATN
 - [ ] NEW 11-16 (shared + Ryse rounds): Auto Thickness is now OFF by default everywhere (it was labelled Experimental
   while on; your rule: Experimental off) - keep off, or on without the label?; players' saved Fog Shadows / Specular
   Occlusion = 1 and saved trilinear = 0 stay as saved (no ClearSavedRows) - clear them once?; Ryse: rays overwriting the
@@ -214,6 +220,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CALL-SITE PASS (csp_, running): credits::Methods in Thrones / WH3 / Rome Remaste ... | csp_, per-game agents
 - Shared leftovers (shs_ / ryf_): rt_core OnAnyDraw replays every draw while trace ... | next shared round, next WH3 round, release round
 - ryf_ not done: row 9 e_GsmLodsNum under the rays' sun (trace: which lod is the c ... | next Ryse round / data run
+- tpf_ not done: Torch / Fire Shadows on the 7 other point-light PS per game (14 W ... | next Troy / Pharaoh round, data run
 - ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
 - Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
@@ -1650,6 +1657,15 @@ heading text are in HANDOFF_ARCHIVE.md)
           Advanced's live counters + back_buffer_fix's per-bind view lookup; vanilla-exact widening, reader census, V35 fit.
           B in game: R2 cost rerun for the skip, HUD hotkeys with RT on, r_SSII read-back 0 in the log, RENODX_TW_FAKE_VENDOR
           8086 / 1002, Reflex with AA Off, Characters range at 50 / 100 m. Owner: next Ryse round / data run
+        - [x] Troy + Pharaoh MERGED ed7f9fb63 (tpf_, 22 commits; amd64 both, static_checks 0): Rays Replace Shadow Maps
+          on by default (proven offline: P1-P3 0 of 2,752,512, controls off; ATN's replace rule); Troy RR guides after the
+          water (WARP 0 apart, CONTROL 43,008 / 43,008); Sky Debanding 0 in every preset (Pharaoh SettingsRevision 4); the
+          standard labels; tw_pharaoh part 7 dead_units pattern once, CONTROL none; test switches only via
+          renodx_test_hooks.txt; vanilla_exact 42 EXACT / 12 accepted / 0 FAIL; pass_timing + credits::Methods (+ smaa).
+          AA domain shared patch applied 7150cd9cd (CMAA2 29.7x -> 0.0011, SMAA edges 548 -> 0; Attila's path unchanged).
+        - [ ] tpf_ not done: Torch / Fire Shadows on the 7 other point-light PS per game (14 WARPs; DO NOW in both ledgers);
+          Pharaoh Filmgrain c9.z (next data run); Troy fxaa00 (0.062) and menuvideo01 (0.037) differ in Vanilla, causes not
+          read; tw_troy_shaders not run (no -OutDir; nothing it tests changed). Owner: next Troy / Pharaoh round, data run
         - [ ] ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB73442 / D9123DE1, vanilla coverage
           of pointlight00-39 / UI sprites / grass00-01 (the generic driver can't feed them); view_share Classify 24 unclear
           sun-PS rows a game (NEEDS A TRACE). The t46 x AO double-occlusion check was sent to WH3, WH1 / WH2, Troy / Pharaoh,
