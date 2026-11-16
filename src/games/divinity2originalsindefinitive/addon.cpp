@@ -16,6 +16,8 @@
 #include <cstdint>
 #include <format>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -85,6 +87,14 @@ bool ShowPsychoV35Settings() {
 // and ATN's eye give D2's own.
 constexpr float HUE_CLIP_DEFAULT = 80.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h): its darker shadows and stronger colours.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", DOS2_V35_CONTRAST},
+    {"v35_shadows", DOS2_V35_SHADOWS},
+    {"v35_saturation", DOS2_V35_SATURATION},
+    {"v35_highlight_contrast", DOS2_V35_HIGHLIGHT_CONTRAST},
+};
+
 // Every image control at its default and Rendering Mode Vanilla; Peak, Paper White, UI, Settings Mode and Output kept.
 void ApplyResetPreset() {
   renodx::utils::settings::UpdateSettings({
@@ -119,6 +129,7 @@ void ApplyResetPreset() {
       {"exact_lut_sampling", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 
@@ -252,7 +263,7 @@ renodx::utils::settings::Settings settings = {
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-buttons-0",
-        .tooltip = "Recommended look: Vanilla+ (PsychoV35), Bloom 0.44.\n"
+        .tooltip = "Recommended look: Vanilla+ (PsychoV35) with the game's darker shadows and stronger colours, Bloom 0.44.\n"
                    "Peak, Paper White, UI, Settings Mode and Output are kept.",
         .on_change = []() {
           ApplyResetPreset();
@@ -974,8 +985,15 @@ void ConfigureAddon() {
       },
   });
 
-  twattila::psycho35::InsertBefore(
-      &settings, "Psycho V30", twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "Psycho V30", v35_rows);
   twattila::psycho35::InsertBefore(
       &settings, "Psycho V30",
       {new renodx::utils::settings::Setting{
