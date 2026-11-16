@@ -61,9 +61,8 @@ void main(
   r0.xyz = float3(0.25,0.25,0.25) * r0.xyz;
   // Stock: the brightest channel capped at cb0[0].z (bloom.hlsli: a shoulder in HDR).
   r0.xyz = CapBloomChannels(r0.xyz, cb0[0].z);
-  r1.xyz = (int3)r0.xyz & int3(0x7f800000,0x7f800000,0x7f800000);
-  r1.xyz = (int3)r1.xyz + int3(0xfd000000,0xfd000000,0xfd800000);
-  r1.xyz = max(float3(0,0,0), r1.xyz);
+  // The dither's size from each channel's float bits (R11G11B10 precision), as bloom00.
+  r1.xyz = max(asfloat((asuint(r0.xyz) & 0x7F800000u) + uint3(0xFD000000u, 0xFD000000u, 0xFD800000u)), 0.f);
   r1.w = -r1.y;
   r2.xy = (uint2)v0.xy;
   r2.xy = (int2)r2.xy & int2(63,63);
