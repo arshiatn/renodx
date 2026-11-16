@@ -351,10 +351,13 @@ std::atomic<int> upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;     // UPSCALE
 std::atomic<int> ray_reconstruction = 0;                              // RAY_RECONSTRUCTION_CHOICES' item
 std::atomic<int> upscaling_debug_view = 0;                            // 1: the motion the upscaler gets (upscale_output)
 // Frame generation (Experimental; the helper presents: twattila/frame_generation.hpp) with Tales' keys: FrameGeneration,
-// FrameGenerationMultiplier (2-6; 0 Dynamic; 1 off, Reflex only), ReflexBoost, FrameGenerationFrameLimit (Reflex's).
+// FrameGenerationMultiplier (2-6; 0 Dynamic; 1 off, Reflex only), FrameGenerationFrameLimit (Reflex's or Xe Low
+// Latency's; ReflexBoost, before the Reflex row, read once as its On + Boost).
 std::atomic_bool frame_generation = false;
 std::atomic<uint32_t> frame_multiplier = 2;
-std::atomic_bool reflex_boost = false;
+// NVIDIA Reflex with any AA mode ([Ryse AA] Reflex: REFLEX_CHOICES' item), always on with frame generation.
+constexpr std::array<const char*, 3> REFLEX_CHOICES = {"Off", "On", "On + Boost"};
+std::atomic<int> reflex = 0;
 std::atomic<uint32_t> frame_limit = 0;
 std::atomic<int> frame_method = 0;        // FRAME_METHODS' item
 std::atomic<int> hud_recomposition = 1;   // off, on
@@ -3350,8 +3353,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
 }
 
 // Each present (addon.cpp, with the ray tracing's part of `use`: its ray_reconstruction non-zero while a ray-traced
-// effect is on): what the helper serves this frame (upscaling.hpp), frame generation's and Reflex's settings (both with
-// an AA mode on: their depth and motion are the upscaler's). Without the helper: none of them.
+// effect is on): what the helper serves this frame (upscaling.hpp) and frame generation's settings (with an AA mode on:
+// its depth and motion are the upscaler's; without the helper none), Reflex's (any AA mode, the game's own device).
 inline void UpdateHelper(reshade::api::swapchain* swapchain, upscaling::BridgeUse use, bool sdr_output) {
   const bool active = twattila::dlaa_bridge::HelperInstalled() && requested_mode.load() != AAMode::OFF;
   const int chosen = std::clamp(upscaler.load(), 0, static_cast<int>(UPSCALERS.size()) - 1);
@@ -3366,14 +3369,15 @@ inline void UpdateHelper(reshade::api::swapchain* swapchain, upscaling::BridgeUs
   const uint32_t multiplier = frame_multiplier.load();
   twattila::frame_generation::Update({
       .multiplier = (!generation || multiplier == 1) ? 0u : (multiplier == 0 ? 1u : multiplier),
-      .reflex_boost = reflex_boost.load(),
+      .reflex_boost = reflex.load() == 2,
       .frame_limit = frame_limit.load(),
       .preset = static_cast<uint32_t>(std::clamp(frame_preset.load(), 0, 3)),
       .hud_recomposition = hud_recomposition.load() != 0,
       .debug_view = static_cast<uint32_t>(std::clamp(frame_debug_view.load(), 0, 2)),
       .sdr_output = sdr_output,
   });
-  twattila::reflex::Update(swapchain, generation ? (reflex_boost.load() ? 2u : 1u) : 0u, frame_limit.load());
+  const auto reflex_mode = static_cast<uint32_t>(std::clamp(reflex.load(), 0, static_cast<int>(REFLEX_CHOICES.size()) - 1));
+  twattila::reflex::Update(swapchain, generation ? std::max(reflex_mode, 1u) : reflex_mode, frame_limit.load());
   use.frame_format = twattila::frame_generation::Format();
   use.frame_backend = FRAME_BACKENDS[std::clamp(frame_method.load(), 0, static_cast<int>(FRAME_BACKENDS.size()) - 1)];
   upscaling::SetUse(use);
@@ -3478,22 +3482,6 @@ inline void DrawAntiAliasing(bool advanced) {
       combo("Frame generation preset", "FrameGenerationPreset", &frame_preset, FRAME_PRESETS,
             "NVIDIA's presets. A: HUD recomposition off. B: on. C (Lite): lighter, lower quality.\n"
             "Saved in the NVIDIA driver profile of renodx-tw-dlaa64.exe; applies after restarting the game.");
-      if (bool boost = reflex_boost.load(); ImGui::Checkbox("Reflex Boost", &boost)) {
-        reflex_boost.store(boost);
-        reshade::set_config_value(nullptr, "Ryse AA", "ReflexBoost", boost);
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("NVIDIA Reflex is always on with frame generation (lower latency). Boost also keeps the GPU's\n"
-                          "clocks up when the CPU limits the frame rate.");
-      }
-      if (int limit = static_cast<int>(frame_limit.load()); ImGui::SliderInt("Frame rate limit", &limit, 0, 240, limit == 0 ? "Off" : "%d fps")) {
-        frame_limit.store(static_cast<uint32_t>(std::clamp(limit, 0, 240)));
-        reshade::set_config_value(nullptr, "Ryse AA", "FrameGenerationFrameLimit", frame_limit.load());
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Caps the rendered frame rate with NVIDIA Reflex (frame generation multiplies it). A cap the\n"
-                          "game always reaches keeps the frame rate steady: less VRR flicker on OLED displays.");
-      }
       // Attila's notice tint (twattila/graphics_page.hpp NOTICE_TINT).
       ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0xFF, 0xE0, 0x66, 0xFF));
       ImGui::TextWrapped("Frame generation pauses while this menu is open. A new choice applies when it closes.");
@@ -3541,6 +3529,27 @@ inline void DrawAntiAliasing(bool advanced) {
     ImGui::TextWrapped("Unlike the game's TAA, DLSS / DLAA also filters trees, foliage and fences anisotropically and turns "
                        "the G-buffer filter off (unless set to On).");
     ImGui::TextWrapped("Changing the AA mode or render scale briefly resets the game's exposure and reloads textures.");
+  }
+  // Reflex on NVIDIA with any AA mode (Attila's rows); the limit with Reflex or XeSS's frame generation (Xe Low Latency).
+  const bool nvidia = twattila::dlaa_bridge::OnNvidia();
+  const bool generating = helper && frame_generation.load();
+  if (nvidia) {
+    combo("NVIDIA Reflex", "Reflex", &reflex, REFLEX_CHOICES,
+          "Less input lag on NVIDIA GPUs, with any anti-aliasing: each frame starts only as the GPU\n"
+          "needs it. Boost also keeps the GPU's clocks up. Always on with frame generation.");
+  }
+  if (nvidia || (generating && twattila::dlaa_bridge::FrameGenerationBackend() == twattila::dlaa_bridge::FG_BACKEND_XESS)) {
+    ImGui::BeginDisabled(reflex.load() == 0 && !generating);
+    if (int limit = static_cast<int>(frame_limit.load()); ImGui::SliderInt("Frame rate limit", &limit, 0, 240, limit == 0 ? "Off" : "%d fps")) {
+      frame_limit.store(static_cast<uint32_t>(std::clamp(limit, 0, 240)));
+      reshade::set_config_value(nullptr, "Ryse AA", "FrameGenerationFrameLimit", frame_limit.load());
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      ImGui::SetTooltip("Caps the rendered frame rate with NVIDIA Reflex or Xe Low Latency (frame generation multiplies it). A\n"
+                        "cap the game always reaches keeps the frame rate steady: less VRR flicker on OLED displays.\n"
+                        "Needs Reflex or frame generation on. 0: off.");
+    }
   }
 
   std::string status;
@@ -4083,7 +4092,11 @@ inline void Install(std::span<const uint8_t> vertex_code, std::span<const uint8_
   if (uint32_t value = 2; reshade::get_config_value(nullptr, "Ryse AA", "FrameGenerationMultiplier", value)) {
     frame_multiplier.store(value <= 6 ? value : 2u);
   }
-  if (bool value = false; reshade::get_config_value(nullptr, "Ryse AA", "ReflexBoost", value)) reflex_boost.store(value);
+  if (int saved = 0; reshade::get_config_value(nullptr, "Ryse AA", "Reflex", saved)) {
+    reflex.store(std::clamp(saved, 0, static_cast<int>(REFLEX_CHOICES.size()) - 1));
+  } else if (bool boost = false; reshade::get_config_value(nullptr, "Ryse AA", "ReflexBoost", boost) && boost) {
+    reflex.store(2);
+  }
   if (uint32_t value = 0; reshade::get_config_value(nullptr, "Ryse AA", "FrameGenerationFrameLimit", value)) {
     frame_limit.store(std::min(value, 240u));
   }
