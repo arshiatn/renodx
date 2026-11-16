@@ -170,7 +170,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AFTER THE RESTART, in order (nothing of this started before it): 1. DONE (non-TW ... | coordinator (steps 2, 4, 5), ATN (step 6)
 - Attila has no frame trace `on_demand` / `at_100` (Pharaoh, Rome II, WH3 have bot ... | next Attila round
 - grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound i ... | next Attila round
-- SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator
+- SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator 06:xx rao_ merged ad541a4f (RT AO replaces the g
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
 - RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
@@ -1490,6 +1490,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         game) / C (ATN decides) / W. Fix rounds after rao_ merges: one SHARED STEP agent (twattila / talesofarise_dlss /
         utils) + one agent per game folder, every A row, each row a commit; B / C rows go to OPEN FOR ATN. Divinity started
         early (dvf_, no rao_ overlap). Owner: coordinator
+        06:xx rao_ merged ad541a4f (RT AO replaces the game's AO in 10 games, AO gates; Ryse in its round). Fix round started
+        (brief tools/tw/round_notes/fix_round_1116/brief.md): shs_ (shared), Attila + Thrones, Rome II, WH1 + WH2, WH3, Troy +
+        Pharaoh, Shogun 2 + Rome Remastered, Ryse, Tales + Expeditions, R.U.S.E.; dvf_ (Divinity) earlier. Merge one at a time.
       - [ ] From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Pharaoh's and Troy's SMAA / CMAA2
         wrappers decode Attila's gamma 2.0 while their frame is linear there (wrong domain? WARP check); the vendor fallback
         (saved DLSS -> XeSS on Intel, else FSR) is missing in Rome Remastered, Shogun 2, Ryse, Tales, Expeditions;
