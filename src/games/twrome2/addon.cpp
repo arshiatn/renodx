@@ -242,6 +242,9 @@ constexpr std::array<twattila::rt_scene::SmokeVertexShader, 3> SMOKE_VERTEX_SHAD
 constexpr std::array<twattila::rt_scene::SmokePixelShader, 7> SMOKE_PIXEL_SHADERS = {
     {{.hash = 0x18FE5E2B}, {.hash = 0x31C72F52}, {.hash = 0x7115DE09}, {.hash = 0x085DDEDD}, {.hash = 0xB5D63E8A}, {.hash = 0x803E1461}, {.hash = 0xCC3CB1B7}}};
 
+// Ray tracing's (twattila/rt_scene.hpp).
+twattila::rt_scene::Sliders rt_sliders;
+
 // Torch and Fire Shadows: in a light draw where rt_scene's light hook (InstallPointLights, registered before this) bound this
 // frame's lit bits at t42, ours draws in the game's place and the game's is bound again after it (finalize).
 struct LightShadows {
@@ -253,6 +256,8 @@ struct LightShadows {
 };
 LightShadows light_shadows;
 constexpr auto OnLightShadowsDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  // Every light draw comes here (42 in A2's trace_24): without the rays or their torch row, on one atomic.
+  if (!twattila::rt_scene::internal::active.load(std::memory_order_relaxed) || rt_sliders.local_lights == 0.f) return {};
   if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
@@ -1483,8 +1488,6 @@ twattila::feature_settings::SssSliders sss_sliders;
 // Smoke Shadows without rays (Experimental, off; twattila/smoke_map.hpp): the particles Smoke Shadows' quad shaders stream.
 twattila::smoke_map::Sliders smoke_map_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
-// Ray tracing's (twattila/rt_scene.hpp).
-twattila::rt_scene::Sliders rt_sliders;
 // Skip the Shadow Maps (Experimental, off): Ray-Traced Shadows Only with the rays' sun shadows (rt_scene InstallShadowsOnly).
 float rays_skip_cascades_row = 0.f;
 float shadow_pass_row = 0.f;  // Skip the Game's Shadow Map Work (twattila/shadow_pass.hpp: Rome II's one-argument Render)
