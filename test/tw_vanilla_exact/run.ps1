@@ -43,10 +43,18 @@ $attilaShaders = @{
 $table = [ordered]@{
   'Shogun2'     = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'; Shaders = '^(tonemap|flare|hdrflare)\d+_' }
   # Shogun 2's other replaced pixel shaders (skill audit 11-16: every replacement against the game's bytes), those exact
-  # with their control caught on 11-16. Not yet: highlight00 / ribbon00 (inf apart), ssrcopy00 (0.79), treevelocity00-03
-  # (1.9 - 2.4), and particlelight00, pointlight00 / 01, vfxglow00 (exact, the control missed): open (fix round 11-16 report).
+  # with their control caught. highlight00 / ssrcopy00 (render scale: read at the pixel, the game at its quad's texcoord)
+  # with that texcoord the screen's uv and screen-size textures, as the game's quad at 100% (screen_uv); ribbon00 (the
+  # viewport from the camera, the game's from g_viewport_offset_scale: the whole screen at 100%, tests.cpp's
+  # GameConstants). pointlight00 / 01 with their light's colour and a reach past every texel (point_light_PS c1: noise put
+  # every texel out of reach, a black output the output-swap control can't see). Not here:
+  # treevelocity00-03 (by design: the previous position divided by its w, the game's read with w = 1); particlelight00 and
+  # vfxglow00 (exact, but the generated TEXCOORDs put the particles behind the depth: nearly every pixel discarded, the
+  # control missed: 0 and 1.7e-6 on 11-16; they need per-input values this driver doesn't give).
   'Shogun2PS'   = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'
-                     Shaders = '^(fog|vignette|video|uiresolve|uifigure|sun|projectiletrail|glowmesh|vfxoverlay|dissolve|campaignwater)\d+_|^vfxglow01_' }
+                     Shaders = '^(fog|vignette|video|uiresolve|uifigure|sun|projectiletrail|glowmesh|vfxoverlay|dissolve|campaignwater|highlight|ssrcopy|ribbon|pointlight)\d+_|^vfxglow01_'
+                     ShaderSettings = @{ '^(highlight|ssrcopy)\d+_' = 'screen_uv=1' }
+                     Registers = @{ '^pointlight\d+_' = 'point_light_PS[1]=0.9,0.5,0.2,1000000' } }
   'Attila'      = $attilaShaders + @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'
                                       Shaders = '^((t|bloom|lensflare|sky|markersbattle|cutscene|vignette|autoexposure|ssao)\d+|ssr0[01]|grass02)_' }
   # Rome II (fix round 11-16): the tone mappers, bloom and lens flares and each family this driver sees, its VFX rows at 1.
