@@ -556,6 +556,14 @@ renodx::utils::settings::Settings settings = {
         .labels = {"Simple", "Advanced"},
         .is_global = true,
     },
+    // GammaCorrection (graphicSettings.lsx, 1 by default) goes to a renderer method as 1 / value (EoCApp.exe 0x1407DF7F8 at
+    // the start, 0x140AF3AB1 from the options menu); no shader of the game reads a gamma value (the tone map encodes a
+    // fixed 1 / 2.2), and a display gamma ramp needs exclusive fullscreen, which the swap chain mod prevents.
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "Keep the game's Gamma Correction at 1 (neutral). The HDR modes ignore it.",
+        .section = "General",
+    },
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
