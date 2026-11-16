@@ -3682,11 +3682,13 @@ class RtScene12 {
         slot->capture_flags.insert(slot->capture_flags.end(), compact_flags.begin(), compact_flags.end());
       }
       // In rows of 65535 groups (D3D12's most along x: a frame of over 4.2 M triangles went past it).
-      const std::array<uint32_t, 4> scene_dispatch = {capture_count, scene_triangles, std::bit_cast<uint32_t>(own_cutoff), 0};
+      // Grass Ray Tracing Range for grass captured as drawn: the view-projection's row 3.
+      const std::array<uint32_t, 4> scene_dispatch = {capture_count, scene_triangles, std::bit_cast<uint32_t>(own_cutoff), std::bit_cast<uint32_t>(grass_range)};
       const uint32_t scene_groups = (scene_triangles + 63) / 64;
       Mark(list, L"scene data");
       list->SetPipelineState(scene_data_pipeline_.Get());
       list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 4, scene_dispatch.data(), 0);
+      list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 4, shared.rt_view_projection + 12, 4);
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, vertex_buffer_->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, slot->left_out->GetGPUVirtualAddress());
       list->Dispatch(std::min(scene_groups, 65535u), (scene_groups + 65534) / 65535, 1);

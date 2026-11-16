@@ -144,7 +144,7 @@ struct Settings {
   bool sway_off_screen = true;
   // Fast Leaf Shadows (Experimental, with Leaf Micromaps): micromapped leaves without alpha tests (2-state); Grass Shadow
   // Range (Experimental): pixels farther than these metres trace without grass (0: every pixel with it); Grass Ray Tracing
-  // Range (Experimental): placed grass farther than these metres is out of the scene (0: all of it in).
+  // Range (Experimental): grass farther than these metres is out of the scene (0: all of it in).
   bool fast_leaves = false;
   float grass_shadow_range = 0.f;
   float grass_range = 0.f;

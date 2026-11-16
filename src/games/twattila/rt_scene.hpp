@@ -92,7 +92,7 @@ struct Sliders {
   float sway_off_screen = 1.f;
   float fast_leaves = 0.f;
   float grass_shadow_range = 0.f;  // metres (0: everywhere)
-  float grass_range = 0.f;         // metres (0: everywhere; placed grass, Attila)
+  float grass_range = 0.f;         // metres (0: everywhere; placed, compact and drawn grass)
   float units_range = 0.f;         // metres (0: everywhere; compact unit draws)
   float batched_units = 1.f;       // Batched Unit Capture (games whose scene shaders have batch versions)
   float path_ser = 0.f;
@@ -1923,6 +1923,9 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
   const auto grass_placed = [] {
     return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.grass && !shader.rows_shader.empty(); });
   };
+  const auto grass_in_scene = [] {
+    return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.grass; });
+  };
   settings->insert(settings->end(), {
       new renodx::utils::settings::Setting{
           .key = "RayTracedSunShadows",
@@ -2216,9 +2219,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .max = 200.f,
           .format = "%.0f m",
           .is_enabled = dlaa_on,
-          .is_visible = [] {
-            return std::ranges::any_of(internal::scene_shaders, [](const SceneShader& shader) { return shader.grass; });
-          },
+          .is_visible = grass_in_scene,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedGrassRange",
@@ -2232,8 +2233,9 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .max = 200.f,
           .format = "%.0f m",
           .is_enabled = dlaa_on,
-          // The helper leaves out placed grass's instances past the range (other games' grass has no instance rows).
-          .is_visible = grass_placed,
+          // The helper leaves out grass past the range: placed grass's instances, compact grass's clusters (WH3), grass
+          // captured as drawn its triangles (Rome II, WH1, WH2).
+          .is_visible = grass_in_scene,
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedUnitsRange",
