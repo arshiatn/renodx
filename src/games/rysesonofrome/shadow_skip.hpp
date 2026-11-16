@@ -73,6 +73,7 @@ struct State {
   std::shared_mutex mutex;
   std::unordered_map<uint64_t, uint8_t> read;  // this frame's maps, by resource
   std::unordered_set<uint64_t> skipped;        // the maps whose draws this frame leaves out
+  std::unordered_set<uint64_t> sun_maps;       // the frame before's, but the kept far map (SunMap)
   uint64_t frame = 0;                          // presents so far
   uint64_t rays_frame = UINT64_MAX;            // the last frame the rays' sun shadows went into the mask
   size_t most_logged = 0;                      // the most maps skipped at once so far (logged when it grows)
@@ -123,10 +124,12 @@ inline void OnPresent(Choice choice) {
   auto& state = internal::state;
   const std::unique_lock lock(state.mutex);
   state.skipped.clear();
-  if (choice != OFF && state.rays_frame == state.frame) {
-    for (const auto& [map, kinds] : state.read) {
-      if ((kinds & internal::KEPT_MAP) == 0 && (choice == ALL || kinds == internal::MIDDLE_MAP)) state.skipped.insert(map);
-    }
+  state.sun_maps.clear();
+  const bool skips = choice != OFF && state.rays_frame == state.frame;
+  for (const auto& [map, kinds] : state.read) {
+    if ((kinds & internal::KEPT_MAP) != 0) continue;
+    state.sun_maps.insert(map);
+    if (skips && (choice == ALL || kinds == internal::MIDDLE_MAP)) state.skipped.insert(map);
   }
   state.read.clear();
   ++state.frame;
@@ -137,12 +140,20 @@ inline void OnPresent(Choice choice) {
   }
 }
 
+// Whether `map` is one of the sun's maps the game draws every frame (the cascades and the characters' own, as the mask
+// passes read them the frame before; not the far map it keeps): ray_tracing.hpp's casters out of view.
+inline bool SunMap(uint64_t map) {
+  const std::shared_lock lock(internal::state.mutex);
+  return internal::state.sun_maps.contains(map);
+}
+
 // The game's device is going away: its maps with it.
 inline void Release() {
   auto& state = internal::state;
   const std::unique_lock lock(state.mutex);
   state.read.clear();
   state.skipped.clear();
+  state.sun_maps.clear();
   internal::any_skipped.store(false, std::memory_order_relaxed);
   internal::skipping.store(nullptr, std::memory_order_relaxed);
 }

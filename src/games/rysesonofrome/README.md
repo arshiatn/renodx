@@ -439,6 +439,23 @@ all PASS): `test/tw_ryse_sun_replace`, `test/tw_ryse_specular_merge`, `test/tw_r
 Ryse's V35 defaults Contrast 1.15 / Shadows 1.35 / Saturation 1 within 4.8 % of the game's grey and 4.7 % of its chroma, Musa's own 111.9 % off as the control),
 `test/tw_vanilla_exact` Ryse (14 replaced shaders exact with their control).
 
+fix61 (draft, 2026-11-16 rys2_ round, built only, not run in game): **Shadow Casters Out of View (Experimental)** (Ray
+Tracing, `RayTracedUnitsOutOfView`, the TW games' key; off): the sun's casters from the game's own sun maps, so what is
+behind the camera or off screen stays in the rays' scene and Rays Replace Shadow Maps can keep its shadow. `SceneDraw`
+takes a depth-only draw into one of the maps the mask passes read the frame before (`shadow_skip::SunMap`: the cascades
+and the characters' maps, not the far map the game keeps) as rt_core's cascade draw, every frame: the game's shadow
+vertex shader with the main view's matrix in PER_FRAME (rt_core `Host::cascade_view_slot` 2 / `cascade_view_row` 0;
+the TW games keep b0 / c10), a triangle in the view collapsed (the G-buffer's draw has it): Warhammer III's
+`rt_outside_view` for the solid casters (ps 0x78B445B5), `rt_outside_view_uv` (TEXCOORD0) for the alpha-tested ones
+(ps 0x9112241F, cut out by their diffuse map). The R0 traces' sun maps: 773-837 draws, nine vertex shaders, 10.2 M
+indices a frame (7.5 M in the middle cascade) all streamed out every frame with the row on: its cost is the run's to
+measure. The rest of the shadow pass's PER_FRAME is 0 there: hair strands (0xDF6E8CD1) face the world's origin and bending
+foliage (0xCFE96F1E) stands still. Readers of the maps besides the mask passes (`r0/shadow_readers.txt`): the hair's
+forward strands and the fog volumes (ps 0x91A72BC2); the particles and smoke read the mask. Test (WARP, PASS):
+`test/tw_ryse_cascade_casters` (the game's 0x7EB6531F / 0x48CE820A through the geometry shaders: 0 of 1536 corners off
+the main view, outside triangles kept bit for bit, the rest collapsed, UV unchanged; CONTROLS: the light's PER_FRAME and
+row 10 put every corner off, the uncollapsed stream fails the rule: 532 corners).
+
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
 

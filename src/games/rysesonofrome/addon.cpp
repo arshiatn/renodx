@@ -223,7 +223,8 @@ renodx::utils::settings::Settings settings;
 struct RtSliders {
   float sun_shadows = 0.f;
   float softness = 0.5f;  // degrees of the sun's disk
-  float replace_sun_maps = 1.f;  // the rays' sun shadow alone in the mask's sun channels (contact_shadows.hpp)
+  float replace_sun_maps = 0.f;  // the rays' sun shadow alone in the mask's sun channels (contact_shadows.hpp)
+  float casters_out_of_view = 0.f;  // rt_core's cascade capture from the sun's maps (ray_tracing.hpp SceneDraw)
   float skip_sun_maps = 0.f;  // shadow_skip.hpp's Choice
   float ambient_occlusion = 0.f;
   float ambient_range = 2.f;  // metres
@@ -295,6 +296,7 @@ const PresetValues RAYS_OWN_KEYS = {
 const PresetValues RAYS_RESET = {
     {"RayTracedShadowSoftness", 0.5f},
     {"RayTracedReplaceShadowMaps", 0.f},
+    {"RayTracedUnitsOutOfView", 0.f},
     {"RayTracedSkipSunShadowMaps", 0.f},
     {"RayTracedAmbientRange", 2.f},
     {"RayTracedAOQuarter", 0.f},
@@ -1235,7 +1237,22 @@ void BuildRuntimeData() {
           .label = "Rays Replace Shadow Maps",
           .section = "Ray Tracing (Experimental)",
           .tooltip = "On: the sun's shadow from the rays alone. Off: the darker of the rays' and the game's.\n"
-                     "On, what is out of view casts no sun shadow (the rays see what is on screen).",
+                     "On, what is out of view casts no sun shadow, unless Shadow Casters Out of View is on.",
+          .labels = {"Off", "On"},
+          .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
+      },
+      // ray_tracing.hpp SceneDraw: the sun's casters from the game's own maps, every frame (the Total War games' key).
+      // Experimental until an in-game run measures its cost and shows the coverage; then Rays Replace Shadow Maps on.
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedUnitsOutOfView",
+          .binding = &rt_sliders.casters_out_of_view,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Shadow Casters Out of View (Experimental)",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "Rays' sun shadows: what is behind the camera or off screen keeps its shadow,\n"
+                     "as far as the game's sun shadows reach. Costs GPU time.",
           .labels = {"Off", "On"},
           .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
@@ -1250,7 +1267,7 @@ void BuildRuntimeData() {
           .section = "Ray Tracing (Experimental)",
           .tooltip = "The game stops drawing its sun shadow maps: the rays alone shadow the sun. Faster.\n"
                      "Past the Near Ones: hair and fog keep the game's shadows near you.\n"
-                     "All: hair strands and fog lose the sun's shadow, and nothing out of view casts one.",
+                     "All: hair strands and fog lose the sun's shadow; out of view only Shadow Casters Out of View casts one.",
           .labels = {"Off", "Past the Near Ones", "All"},
           .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
@@ -1754,6 +1771,7 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
     rays.scene_test = ((rt_sliders.debug_view != 0.f) ? SCENE_TESTS[static_cast<size_t>(std::clamp(rt_sliders.scene_test, 0.f, 3.f))] : 0u);
     rays.debug_log = rt_sliders.debug_log != 0.f;
     rays.units_range = rt_sliders.units_range;
+    rays.casters_out_of_view = rays.sun_shadows && rt_sliders.casters_out_of_view != 0.f;
     // Rays a Pixel: Match Output, those of the output pixels a render pixel stands for (at most 8).
     const auto render = rysesonofrome::ray_tracing::HOST.render_size();
     const float scale = (render[0] != 0 && back_buffer.texture.width != 0)
