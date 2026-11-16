@@ -295,7 +295,8 @@ struct GBufferCopy {
 } gbuffer;
 
 // Bend's and GT-VBGI's settings from the page's rows (each present) for the sun shadow mask and the lighting pass, and
-// this frame's GT-VBGI (it runs at the frame's first lighting draw, the others reuse it).
+// this frame's GT-VBGI (it runs at the frame's first lighting draw, the others reuse it); the last frame the rays' bounce
+// light or path tracing reached the lighting pass (Bandai's GI stays off while it did recently).
 struct UeEffects {
   std::shared_mutex mutex;
   twattila::screen_space_shadows::Settings shadows;
@@ -2866,15 +2867,15 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
                   "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
     .in_game_aa_note = "In-game Anti-Aliasing must be TAA for DLSS, FSR, XeSS and Frame Generation.",
-    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its shadows, AO and reflections.\n"
-                     "The rest at its default.",
+    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling at its default: Bend Screen-Space Shadows and\n"
+                     "GT-VBGI, the game's ambient occlusion and reflections.",
     .no_rays_tooltip = "No ray tracing: Bend Screen-Space Shadows and GT-VBGI in place of the game's contact shadows and Global\n"
                        "Illumination, the game's ambient occlusion and reflections. The rest of this page at its default.",
     .rays_tooltip = "Ray-traced shadows, ambient occlusion and reflections, path-traced Global Illumination at my settings. The\n"
                     "rest of this page at its default. Needs an upscaler (Anti-Aliasing above) and a DXR GPU; on NVIDIA also\n"
                     "turns DLSS Ray Reconstruction on.",
-    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows (Experimental): those plus fine sun shadows\n"
-                      "from what is on screen (Bend Studio's; characters, grass, small details), in place of the game's contact\n"
+    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine sun shadows from what is on\n"
+                      "screen (Bend Studio's; characters, grass, small details), in place of the game's contact\n"
                       "shadows toward the sun. DXR: buildings, terrain, rocks, leaves and grass also cast ray-traced sun\n"
                       "shadows, at any distance (the darker of the game's and the rays'). Heavy. Needs an upscaler and a DXR GPU.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game ambient occlusion on.\n"
@@ -2967,6 +2968,12 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
   talesofarise::ue_light_bounce::AppendRows(settings, &gi_rows, [] { return rt_sliders.light_bounce != 0.f; });
   twattila::feature_settings::AppendSss(settings, &screen_space_shadows_rows);
   erase({"ScreenSpaceShadowsDistanceSoftness", "ScreenSpaceShadowsDebugView"});
+  // Bend (Length 480, as No RT/PT) and GT-VBGI on by default (ATN 2026-11-16), in place of Bandai's contact shadows toward
+  // the sun and its Global Illumination; before Apply (the page's Reset reads the defaults as it is built).
+  for (Setting* setting : *settings) {
+    if (setting->key == "ScreenSpaceShadows" || setting->key == "light_bounce_strength") setting->default_value = 1.f;
+    if (setting->key == "ScreenSpaceShadowsLength") setting->default_value = 3.f;
+  }
   twattila::graphics_page::Apply(settings, {.aa = &aa_sliders,
                                             .sss = &screen_space_shadows_rows,
                                             .rt = &rt_sliders,

@@ -443,6 +443,8 @@ void ConfigureAddon() {
   expeditionsrome::dlss_graphics::Migrate();
   // GT-VBGI joins Global Illumination: presets that had it off keep it off (SettingsRevision 2).
   talesofarise::ue_light_bounce::KeepSavedGiOff(2);
+  // Bend and GT-VBGI on by default (ATN 2026-11-16): their rows saved at the old default (off) cleared once (SettingsRevision 3).
+  twattila::graphics_page::ClearSavedRows(3, {"ScreenSpaceShadows", "ScreenSpaceShadowsLength", "light_bounce_strength"});
   BuildRuntimeData();
   // Without the helper (the HDR-only snapshot), after Settings Mode.
   settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote());
