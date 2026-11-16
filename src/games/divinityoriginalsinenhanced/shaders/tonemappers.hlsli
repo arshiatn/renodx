@@ -187,17 +187,21 @@ float3 ApplyExtendedOnScene(float3 scene, float4 params, float peak) {
 }
 
 // The game's grade as the stock runs it after its curve, on gamma 2.2 values within 0 - 1: ColorMatrix (its last row
-// the alpha), then the selective colour (toward TargetColor near SourceColor, weight squared). The SDR LUT bridge: from
-// the shoulder's start the brightest channel rolls off toward 1 (Musa's C-infinity roll-off: the identity below its
-// start, smooth in every derivative), the colour is graded there and scaled back by max / roll_off(max): the grade's
-// colour, the curve's brightness. Below the start it is the stock's grade itself; a hard knee at 1 bent every ramp's
-// slope there. Below the stock's 0 clip a channel is 0, as in the game's UNORM target; out-of-gamut parts pass through.
-float4 GradeAfterCurve(float3 color, row_major float4x4 color_matrix, float3 source_color, float3 target_color) {
+// the alpha), then the selective colour (toward TargetColor near SourceColor, weight squared). A colour past 1 is
+// graded at its brightest channel's 1 and scaled back: the grade's colour, the curve's brightness (Ryse's colour chart
+// form). `smooth_shoulder` (Smooth Grade Shoulder, Experimental: a look change ATN decides): the SDR LUT bridge instead,
+// from 0.8 the brightest channel rolls off toward 1 (Musa's C-infinity roll-off: the identity below its start, smooth in
+// every derivative), the colour is graded there and scaled back by max / roll_off(max); the hard knee at 1 bends a ramp's
+// slope where the grade isn't homogeneous, the shoulder moves colours near white by up to 0.033 OkLab. Below the stock's
+// 0 clip a channel is 0, as in the game's UNORM target; out-of-gamut parts pass through.
+float4 GradeAfterCurve(float3 color, row_major float4x4 color_matrix, float3 source_color, float3 target_color, bool smooth_shoulder) {
   const float shoulder_start = 0.8f;
   const float channel_max = renodx::math::Max(color);
-  const float scale = (channel_max > shoulder_start)
-                          ? channel_max / renodx::tonemap::CInfinityRollOff(channel_max, 1.f, shoulder_start, 1.5f)
-                          : 1.f;
+  float scale = max(channel_max, 1.f);
+  [branch]
+  if (smooth_shoulder) {
+    scale = (channel_max > shoulder_start) ? channel_max / renodx::tonemap::CInfinityRollOff(channel_max, 1.f, shoulder_start, 1.5f) : 1.f;
+  }
   const float3 normalized = color / scale;
   const float3 inside = saturate(normalized);
   const float4 encoded = float4(pow(inside, 1.f / 2.2f), 1.f);
@@ -242,7 +246,7 @@ float4 ApplyOnScene(float3 scene, float4 params, row_major float4x4 color_matrix
   } else {
     tonemapped = ApplyExtendedOnScene(untonemapped, params, peak);
   }
-  const float4 graded = GradeAfterCurve(tonemapped, color_matrix, source_color, target_color);
+  const float4 graded = GradeAfterCurve(tonemapped, color_matrix, source_color, target_color, SI.grade_shoulder != 0.f);
   // The stock's fade lerps its gamma values toward black (alpha toward 1).
   const float fade = saturate(params.w);
   const float3 color = LimitToPeak(graded.rgb * pow(1.f - fade, 2.2f), peak);

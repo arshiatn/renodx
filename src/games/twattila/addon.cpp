@@ -2136,7 +2136,7 @@ bool AttachAddon() {
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
                                    RENDER_SCALE_READS, RENDER_SCALE_VERTEX_SHADERS, FULL_DEPTH_SHADERS,
-                                   twattila::view_share::WHOLE_TEXTURES);
+                                   twattila::view_share::WHOLE_TEXTURES, {.on_demand = true, .at_100 = true});
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10);
   // Ray tracing's sun draw hooks first: the screen-space shadows read its trace.

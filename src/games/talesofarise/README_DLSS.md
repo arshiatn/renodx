@@ -756,3 +756,26 @@ size; then:
   linear): whole frame -16.8%, lit open ground -32.6%, cliffs -26.3%; open lit ground faces the sun (no fill there), so
   it stays -33% with the row off; with it on the frame is the game's where the AO is 0.3 or more, plus ours.
   test/tw_vanilla_exact: TalesLighting, TalesGI, TalesGIOpenSky (lighting00-05 against the game's bytes).
+- Path-Traced Ambient round 2026-11-16 (tpa_, untested in game): **Path-Traced Ambient** (with Path Tracing): Bandai
+  bakes the sky's diffuse light into the base pass's colour (0x90B576A7: SH x the base colour, t4 / t7 of the
+  lighting passes), so the paths' ambient enters where its occlusion does: the AO rays (0x7A1E0D13 / 33) weight each
+  direction by the sky's light there (View SkyLightColor c155 x the SH c156-c162, copied into sun texels 8-15 by
+  0x7A1E0D12; rt_surface.hlsli SkyLight) and their visibility replaces Bandai's AO (t41) at every reader: the share of
+  the sky's light that reaches a spot. The rays' AO row is on under it (one AO method), GT-VBAO off while either runs
+  (post_filters ao_method 0). Experimental and off (graphics_page path_ambient_tested = false). test/tw_vanilla_exact:
+  TalesLightingRays (lighting00-05 reading t41 in t5's place against the game reading the same).
+- Toon round 2026-11-16 (tpa_, untested in game): the ten stock toon lighting passes (toon00-09: 0A9D482A, DF1B494D,
+  F6334BA2, 1C8D11B6, 36E08F9A traced; 1FE8B2B6, 4E695056, 4E8218FE, 8CCA5153, 90EF2450 from the dump) are the
+  add-on's: their AO reads (t6) take the rays' AO (t41), and under our GI their Bandai GI add goes and ours (t42) takes
+  its place (TOA_GAME_GI_SHARE, as lighting00-05); the lighting draw hook binds t41-t44 for them too (GT-VBGI from their
+  t7). Bandai's SSGI chain keeps running: lighting00-05's fill colour and the toon passes' tint of the lit colour and
+  their rims read it (terms ours does not replace), so skipping it (about 0.07 ms in run_101408) would change the look.
+  test/tw_vanilla_exact: TalesToon (off = the game's bytes), TalesToonRays (t41 in t6's place).
+- SER round 2026-11-16 (tpa_, untested in game): on DXR 1.2 the paths run as the compute shader with micromaps
+  (0x7A1E0D34: 0x7A1E0D1B at shader model 6.9); the ray generation shader with shader execution reordering
+  (0x7A1E0D1C) is the Experimental row **Path Tracing Reordering** (off): Attila measured reordering slower at every
+  size; Tales still needs its Nsight A/B.
+- AO round 2026-11-16 (tpa_, untested in game): Bandai's SSAO (E243580F and its blurs 8D9AC9A4 / 8C5387E3; 0.11 ms at
+  DLSS Performance, 0.34 ms at DLAA with the rays in run_124955) is skipped while the rays' AO or Path-Traced Ambient
+  traced the last frame: its readers (lighting00-05 t5, toon00-09 t6; census in tools/nontw/tales/tales.tsv) read t41
+  then. GT-VBAO off under them too (one AO method).

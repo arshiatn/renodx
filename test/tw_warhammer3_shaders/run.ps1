@@ -1,6 +1,7 @@
 # Warhammer III's shaders against the game's on WARP (tests.cpp): the rays' dynamic casters (03298FD5, 1C3500F0, 70F4C9F9)
 # Reflection Quality's water march (EF6B7767 against ssr_game_march), Modded Auto Exposure, the sun mask's contact march off
-# (E6BCBA8A) and the point light shadow twins.
+# (E6BCBA8A), the point lights' shadows under the rays (the map per untraced light, the rays' per traced one) and the
+# resolve under the rays without the hits' mips (Skip the Game's Reflection Passes).
 # -GameShaders: the folder of the game's dumped csos, only read. -Built: the add-on's compiled shaders
 # (build\twwarhammer3.include\embed after a twwarhammer3 build). Holds tools/tw's GPU job lock while it runs when -Lock names
 # it. -OutDir: where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\.

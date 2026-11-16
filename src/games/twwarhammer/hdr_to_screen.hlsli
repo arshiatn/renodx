@@ -5,7 +5,7 @@
 // (colour_matrix, lut_texture_1-3, lut_sampler_1-3_s, lut_weights).
 #include "./shared.h"
 #include "../twattila/psycho_test30.hlsli"
-#include "./psycho_test31.hlsli"
+#include "../twattila/psycho_test31.hlsli"
 #include "../twattila/psycho35.hlsli"
 
 // PsychoV31, anchored at mid gray (Warhammer's S-curve runs before, in t00); target-only where its source cage returns

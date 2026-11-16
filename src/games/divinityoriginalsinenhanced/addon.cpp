@@ -10,6 +10,7 @@
 
 #include <d3d11.h>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -19,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <deps/imgui/imgui.h>
@@ -31,17 +33,24 @@
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../talesofarise_dlss/upscaling.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/device_loss.hpp"
+#include "../twattila/dlaa_bridge.hpp"
 #include "../twattila/draw_dispatch.hpp"
+#include "../twattila/feature_settings.hpp"
+#include "../twattila/frame_generation.hpp"
 #include "../twattila/frame_trace.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/output_encoding.hpp"
 #include "../twattila/pass_timing.hpp"
 #include "../twattila/psycho35_settings.hpp"
-// Scripted runs' RENODX_TW_PROFILE records the Total War ray-traced scene, which this add-on lacks.
-#define RENODX_TEST_HOOKS_PROFILE ([] { renodx::utils::log::w("[Divinity] Test: RENODX_TW_PROFILE: no profile in this add-on."); })
+#include "../twattila/reflex.hpp"
+#include "../twattila/rt_scene.hpp"
 #include "../twattila/test_hooks.hpp"
+#include "./ray_tracing.hpp"
 #include "./shared.h"
+#include "./upscaling.hpp"
 
 const std::string build_date = __DATE__;
 const std::string build_time = __TIME__;
@@ -51,8 +60,44 @@ namespace {
 ShaderInjectData shader_injection = {.tonemap_type = TONEMAP_EXTENDED, .purity_scale = 1.f};
 float current_settings_mode = 0.f;
 
+// Graphics 1 of 2 (twattila/graphics_page.hpp): the helper's upscalers and frame generation (upscaling.hpp), the rays
+// (ray_tracing.hpp: sun shadows, AO). The game has no GT-VBAO, GT-VBGI, Bend or ray-traced Light Bounce and reflections
+// yet: those rows bind to values that stay 0 (the page's Bindings say the methods are missing).
+twattila::feature_settings::AaSliders aa_sliders;
+twattila::rt_scene::Sliders rt_sliders;
+twattila::feature_settings::SssSliders no_screen_space_shadows;
+float no_gtvbao = 0.f;
+float no_light_bounce = 0.f;
+// The game's own SSR (its settings object's byte 0x4E, which no setting of the game writes: README "Engine facts").
+float game_ssr = 0.f;
+// Installed when an effect is on at launch (the scene's shaders are kept from the game's start) and the helper is there.
+bool ray_tracing_installed = false;
+
+// The page's texts (graphics_page.hpp Texts): the game's FXAA / SMAA, the helper's upscalers at 100% (the tone mapper's
+// input), the rays' sun shadows and AO in place of the game's.
+constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
+    .aa_labels = {"Game's FXAA / SMAA", "", "", "", "", "DLSS", "FSR", "XeSS"},
+    .aa_tooltip = "Game's FXAA / SMAA: the game's own anti-aliasing (its graphics menu).\n"
+                  "DLSS: NVIDIA's (RTX), as DLAA at full resolution, the best. FSR: AMD's, FSR 4 on Radeon RX 6000 and newer,\n"
+                  "else 3.1. XeSS: Intel's, any GPU. Ray tracing needs one of them. Needs renodx-tw-dlaa64.exe and its DLLs in\n"
+                  "the game folder.",
+    .in_game_aa_note = "In-game Anti-Aliasing (FXAA / SMAA) must be Off for DLSS, FSR, XeSS and Frame Generation.",
+    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to its default: the game's shadows and SSAO.",
+    .no_rays_tooltip = "No ray tracing: the game's shadows and SSAO. The rest of this page at its default.",
+    .rays_tooltip = "Ray-traced sun shadows and ambient occlusion at my settings. The rest of this page at its default.\n"
+                    "Needs an upscaler (Anti-Aliasing above); on NVIDIA also turns DLSS Ray Reconstruction on. Restart the game\n"
+                    "after turning ray tracing on.",
+    .shadow_tooltip = "Game's Shadow Maps: the original. DXR: ray-traced sun shadows in place of the game's (needs in-game\n"
+                      "shadows on). Needs an upscaler. Restart the game after turning it on.",
+    .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on.\n"
+                  "Game's SSAO: the original. RTAO: from rays through the scene, in place of the game's. Needs an upscaler.\n"
+                  "Restart the game after turning it on.",
+};
+// The page's anti-aliasing: the game's, DLSS, FSR, XeSS.
+constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
+
 bool IsAdvancedSettings() {
-  return current_settings_mode >= 1.f;
+  return current_settings_mode == 1.f;
 }
 
 bool IsHDR() {
@@ -121,6 +166,7 @@ void ApplyResetPreset() {
       {"playerLightIntensity", 1.f},
       {"playerLightRadius", 1.f},
       {"sun_shadow_softness", 1.f},
+      {"grade_shoulder", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -496,8 +542,10 @@ void OnDestroyDevice(reshade::api::device*) {
 // The 3D view drew this frame (the tone mapper ran): the frame trace's FrameTrace count.
 std::atomic_bool tonemap_drawn = false;
 
-// Each replaced pass's first draw is logged once: a run counts by these "applied" lines.
-#define UpgradeRTVReplaceShader(value)                                                                \
+// Each replaced pass's first draw is logged once: a run counts by these "applied" lines. Before the tone mapper's draw its
+// input goes through the helper's upscaler (upscaling.hpp); before CombineUI's (the UI over the back buffer) frame
+// generation keeps the HUD-less image.
+#define UpgradeRTVReplaceShader(value)                                                               \
   {                                                                                                   \
       value,                                                                                          \
       {                                                                                               \
@@ -520,6 +568,15 @@ std::atomic_bool tonemap_drawn = false;
             if (changed) {                                                                            \
               renodx::mods::swapchain::FlushDescriptors(cmd_list);                                    \
               renodx::mods::swapchain::RewriteRenderTargets(cmd_list, rtvs.size(), rtvs.data(), {0}); \
+            }                                                                                         \
+            if constexpr (value == 0x30A1D40D || value == 0x20163A55) {                               \
+              auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());         \
+              renodx::utils::directx::TryNativeFromReShadeProxy(&context);                            \
+              if constexpr (value == 0x30A1D40D) {                                                    \
+                divinity::upscaling::OnTonemap(context);                                              \
+              } else {                                                                                \
+                divinity::upscaling::OnCombineUi(context);                                            \
+              }                                                                                       \
             }                                                                                         \
             return true; },                                                                           \
       },                                                                                              \
@@ -553,7 +610,7 @@ renodx::utils::settings::Settings settings = {
         .default_value = 0.f,
         .can_reset = false,
         .label = "Settings Mode",
-        .labels = {"Simple", "Advanced"},
+        .labels = {"Simple", "Advanced", "Graphics 1 of 2"},
         .is_global = true,
     },
     // GammaCorrection (graphicSettings.lsx, 1 by default) goes to a renderer method as 1 / value (EoCApp.exe 0x1407DF7F8 at
@@ -899,6 +956,32 @@ renodx::utils::settings::Settings settings = {
         .format = "%.2f",
         .is_visible = IsAdvancedSettings,
     },
+    // The game's grade after the curve with a smooth shoulder from 0.8 instead of the knee at 1 (shaders/tonemappers.hlsli
+    // GradeAfterCurve): a look change for ATN to decide, up to 0.033 OkLab near white (test/tw_divinity1 check 4).
+    new renodx::utils::settings::Setting{
+        .key = "grade_shoulder",
+        .binding = &shader_injection.grade_shoulder,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Grade Shoulder (Experimental)",
+        .section = "Game-Specific Settings",
+        .tooltip = "The game's colour grade eases toward white from 80% brightness instead of stopping at 100%:\n"
+                   "smoother bright gradients, colours near white change slightly.",
+        .labels = {"Off", "On"},
+        .is_visible = [] { return ShowExtendedSettings() || ShowPsychoV35Settings(); },
+    },
+    new renodx::utils::settings::Setting{
+        .key = "GameScreenSpaceReflections",
+        .binding = &game_ssr,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Game's Screen-Space Reflections (Experimental)",
+        .section = "Game-Specific Settings",
+        .tooltip = "The game's own screen-space reflections, which its menu does not offer. Restart the game after\n"
+                   "changing it.",
+        .labels = {"Off", "On"},
+        .is_visible = IsAdvancedSettings,
+    },
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
         .label = "Trace One Frame",
@@ -926,15 +1009,96 @@ renodx::utils::settings::Settings settings = {
 };
 
 bool configured = false;
+bool attached = false;
+bool addon_registered = false;
 
-// The frame trace's (renodx_trace_now next to the exe; FrameTrace=1 in ReShade.ini's
-// [renodx]: 600 frames of the 3D view in).
-void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*,
+// The Anti-Aliasing section's status line (graphics_page.hpp Bindings::upscaler_status): the upscaler's, the rays'.
+std::string UpscalerStatus() {
+  std::string status = divinity::upscaling::Status();
+  if (ray_tracing_installed) status += "\n" + twattila::rt_scene::Status();
+  return status;
+}
+
+// The frame trace's (renodx_trace_now next to the exe; FrameTrace=1 in ReShade.ini's [renodx]: 600 frames of the 3D view
+// in). Graphics 1 of 2's settings for the next frame: the bridge's use, the upscaler's jitter, the rays, frame generation
+// and Reflex.
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::frame_trace::OnPresent(false, tonemap_drawn.exchange(false, std::memory_order_relaxed));
+  auto* device = swapchain->get_device();
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  // DLSS needs NVIDIA's GPU: elsewhere XeSS on Intel's, else FSR (a GPU not known yet changes no saved choice).
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(device->get_native()));
+  if (aa_sliders.method == 5.f && twattila::dlaa_bridge::gpu_vendor != 0 && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
+  const auto aa = twattila::feature_settings::AaSettings(aa_sliders);
+  const bool upscaling = twattila::feature_settings::Upscaling(aa_sliders) && twattila::dlaa_bridge::HelperInstalled();
+  const auto rays = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, 0.f);
+  const bool traced = ray_tracing_installed && upscaling && (rays.sun_shadows || rays.ambient_occlusion);
+  // Ray Reconstruction with a ray-traced effect only (DLSS's).
+  const bool ray_reconstruction = traced && aa.ray_reconstruction;
+  const auto display = device->get_resource_desc(swapchain->get_current_back_buffer()).texture;
+  talesofarise::upscaling::SetUse({
+      .ray_tracing = ray_tracing_installed && upscaling,
+      .guides = ray_reconstruction,
+      .upscaler = upscaling ? (aa_sliders.method == 7.f ? twattila::dlaa_bridge::UPSCALER_XESS
+                                                        : (aa_sliders.method == 6.f ? twattila::dlaa_bridge::UPSCALER_FSR
+                                                                                    : twattila::dlaa_bridge::UPSCALER_DLSS))
+                                  + 1
+                            : 0u,
+      .ray_reconstruction = ray_reconstruction ? aa.ray_reconstruction_preset + 1 : 0u,
+      .frame_format = twattila::frame_generation::Format(),
+      .frame_backend = aa.frame_backend,
+      .width = display.width,
+      .height = display.height,
+  });
+  // DLSS's presets L and M and Ray Reconstruction get the colour's square root (memory "DLSS L/M dark tones").
+  divinity::upscaling::Update({.upscaling = upscaling,
+                               .preset = aa.dlaa_preset,
+                               .square_root = upscaling && (ray_reconstruction || (aa_sliders.method == 5.f && aa.dlaa_preset != 11u)),
+                               .ray_reconstruction = ray_reconstruction,
+                               .ray_reconstruction_preset = aa.ray_reconstruction_preset,
+                               .debug_view = aa_sliders.debug_view != 0.f},
+                              traced);
+  if (ray_tracing_installed) divinity::ray_tracing::Update(rays);
+  twattila::frame_generation::Update({
+      .multiplier = upscaling ? aa.frame_generation : 0u,
+      .reflex_boost = aa.reflex == 2,
+      .frame_limit = aa.frame_limit,
+      .preset = aa.frame_preset,
+      .hud_recomposition = aa.hud_recomposition,
+      .debug_view = aa.frame_debug_view,
+      .sdr_output = shader_injection.swap_chain_encoding == static_cast<float>(twattila::output_encoding::SDR),
+  });
+  twattila::reflex::Update(swapchain, aa.reflex, aa.frame_limit);
+}
+
+// The game's device is going away: the upscaler's, the rays', frame generation's and Reflex's objects on it with it, the
+// bridge's last.
+void OnDestroyHelperDevice(reshade::api::device* device) {
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (ray_tracing_installed) divinity::ray_tracing::Release(device);
+  twattila::frame_generation::OnDestroyDevice(native);
+  twattila::reflex::OnDestroyDevice(native);
+  divinity::upscaling::Release(native);
 }
 
 void OnInitSwapchain(reshade::api::swapchain* swapchain, bool resize) {
+  // The game's SSR before its renderer starts (it reads the byte at its start and at each settings apply): only in the
+  // exe the addresses were read from (README "Engine facts": the Steam EoCApp.exe, linked 0x56FD2C80).
+  if (game_ssr != 0.f) {
+    const auto* image = reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr));
+    const auto* headers = reinterpret_cast<const IMAGE_NT_HEADERS64*>(image + reinterpret_cast<const IMAGE_DOS_HEADER*>(image)->e_lfanew);
+    if (headers->FileHeader.TimeDateStamp == 0x56FD2C80u && headers->OptionalHeader.SizeOfImage > 0x12E3E38u) {
+      if (auto* settings_object = *reinterpret_cast<uint8_t* const*>(image + 0x12E3E30); settings_object != nullptr) {
+        settings_object[0x4E] = 1;
+        renodx::utils::log::i("[Divinity] Game's Screen-Space Reflections: on in the game's graphics settings.");
+      }
+    }
+  }
   auto peak = renodx::utils::swapchain::GetPeakNits(swapchain);
   if (!peak.has_value()) {
     peak = 1000.f;
@@ -1027,6 +1191,11 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::HELPER,
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "Build Date: " + build_date + " - " + build_time,
           .section = "About",
       },
@@ -1061,7 +1230,134 @@ void ConfigureAddon() {
   twattila::psycho35::InsertBefore(&settings, "PsychoV30",
                                    twattila::psycho35::Rows(&shader_injection, ShowPsychoV35Settings, HUE_CLIP_DEFAULT));
 
+  // Graphics 1 of 2: the helper's upscalers at 100% (the game has no render scale of its own), Ray Reconstruction, frame
+  // generation and Reflex; not the shader anti-aliasing (TW's) or object motion (the camera's alone here). Then the rays'
+  // rows (ray_tracing.hpp: sun shadows, AO), the rows the methods leave at Attila's RT/PT values, and the page.
+  twattila::feature_settings::AppendAa(&settings, &aa_sliders, false, true, true);
+  std::erase_if(settings, [](renodx::utils::settings::Setting* setting) {
+    constexpr std::array<std::string_view, 5> SHADER_AA_ROWS = {"AntiAliasingQuality", "AntiAliasingExtraSharpness", "AntiAliasingTaaStrength",
+                                                                "AntiAliasingSharpening", "AntiAliasingObjectMotion"};
+    if (std::ranges::find(SHADER_AA_ROWS, setting->key) == SHADER_AA_ROWS.end()) return false;
+    delete setting;
+    return true;
+  });
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders);
+  twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  for (auto* setting : settings) {
+    // The helper's opacity micromaps over the game's cut-out masks: off until a run shows them in this game.
+    if (setting->key == "RayTracedLeafMicromaps" || setting->key == "RayTracedGpuMicromaps") setting->default_value = 0.f;
+  }
+  twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders,
+                                             .sss = &no_screen_space_shadows,
+                                             .rt = &rt_sliders,
+                                             .ssao_mode = &no_gtvbao,
+                                             .light_bounce_strength = &no_light_bounce,
+                                             .texts = &PAGE_TEXTS,
+                                             .aa_methods = AA_METHODS,
+                                             .upscaler_status = &UpscalerStatus,
+                                             .has_scale_rows = false,
+                                             .has_foliage_light = false,
+                                             .rays_preset_as_attila = true,
+                                             .has_path_ambient = false,
+                                             .has_reflections = false,
+                                             .has_gtvbao = false,
+                                             .has_screen_space_shadows = false,
+                                             .has_gtvbgi = false,
+                                             .rays_tested = false,
+                                             .has_gi = false,
+                                             .every_row = false});
+  // Settings Mode's pages: Simple and Advanced the HDR rows (and the output's), Graphics 1 of 2 the page's; About on every
+  // page.
+  const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
+  for (auto* setting : settings) {
+    if (setting->key == "SettingsMode" || setting->section == "About") continue;
+    const bool graphics = std::ranges::find(page_sections, setting->section) != page_sections.end();
+    setting->is_visible = [graphics, shown = setting->is_visible] {
+      return (graphics ? current_settings_mode == 2.f : current_settings_mode < 2.f) && (shown == nullptr || shown());
+    };
+  }
+
   configured = true;
+}
+
+bool AttachAddon() {
+  if (attached) return true;
+  // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
+  twattila::pass_timing::Install("divinity");
+  ConfigureAddon();
+  // Constants once each for the tone mapper, the exposure, the shadow filter, the sun, fog, SSAO, bloom's combine and
+  // the point and spot lights, plain and shadowed (b0-b13: the frame b13, the view b12; the camera fields are Attila's b0
+  // registers, not this game's); blends of fire, candles and the UI combine.
+  twattila::frame_trace::Install({
+      .value_hashes = {0x30A1D40D, 0x4E112ABA, 0x8F114E47, 0xCCCB7253, 0xEDA7F8A1, 0x385DCF3C, 0x88B0D842, 0xD39E39C8,
+                       0x2F56D195, 0x23B84721, 0x7CBAA94E},
+      .value_slots = 14,
+      .value_floats = 64,
+      .on_demand = true,
+      .at_100 = true,
+      .blend_hashes = {0xED93F883, 0x93AEBB93, 0x20163A55},
+  });
+  // Before the swap chain mod: a removed device's chain let go, each new chain's output decided. The game makes a
+  // new chain for its window 2-4 times a start and at each window-mode change: the last flip chain is let go first.
+  twattila::device_loss::release_flip_chains_before_recreate = true;
+  twattila::device_loss::Install();
+  reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
+  reshade::register_event<reshade::addon_event::present>(OnPresent);
+  renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  if (const float mode = NormalizeTonemapMode(shader_injection.tonemap_type); mode != shader_injection.tonemap_type) {
+    renodx::utils::settings::UpdateSetting("tonemap_type", mode);
+  }
+  // Scripted runs (RENODX_TW_SET / SHOT, renodx_test_hooks.txt next to the exe): nothing without them.
+  twattila::test_hooks::Install(&settings, true, "[Divinity]");
+  // The rays when an effect is on at launch (restart to turn the first one on) and the helper is there to trace them;
+  // their Debug View over the tone mapper's output.
+  ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled() && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f);
+  if (ray_tracing_installed) {
+    custom_shaders[0x30A1D40D].on_drawn = [](reshade::api::command_list* cmd_list) { twattila::rt_scene::OnTonemapDrawn(cmd_list); };
+  }
+  renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
+  renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  // The fast draw dispatch with the resource upgrades' gate (the swap chain mod's view cloning registers them).
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
+  // Frame capture: after RenoDX, which drops these copies.
+  reshade::register_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
+  reshade::register_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
+  reshade::register_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
+  // Graphics 1 of 2: the helper's upscalers (the main camera's jitter, the tone mapper's input), the rays, frame
+  // generation (the helper presents; HUD-less images through the swap chain shader, its constants at b10) and Reflex for
+  // the game's presents.
+  divinity::upscaling::Install();
+  if (ray_tracing_installed) divinity::ray_tracing::Install();
+  twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
+                                      sizeof(shader_injection), __fg_hdr10, 10);
+  twattila::reflex::Install();
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
+  twattila::device_loss::InstallLast();
+  attached = true;
+  return true;
+}
+
+void DetachAddon() {
+  if (!attached) return;
+  twattila::device_loss::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
+  twattila::reflex::Uninstall();
+  twattila::frame_generation::Uninstall();
+  if (ray_tracing_installed) divinity::ray_tracing::Uninstall();
+  divinity::upscaling::Uninstall();
+  reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
+  reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  reshade::unregister_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
+  reshade::unregister_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
+  renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
+  renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
+  twattila::test_hooks::Uninstall();
+  renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
+  twattila::frame_trace::Uninstall();
+  twattila::pass_timing::Uninstall();
+  attached = false;
 }
 
 }  // namespace
@@ -1071,62 +1367,38 @@ void ConfigureAddon() {
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Divinity: Original Sin Enhanced Edition by ATN";
 
+// ReShade's AddonInit / AddonUninit, outside the loader lock: the helper's bridge waits on its threads when it ends.
+extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
+  if (!addon_registered) {
+    if (!reshade::register_addon(addon_module)) return false;
+    addon_registered = true;
+  }
+  return AttachAddon();
+}
+
+extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE) {
+  DetachAddon();
+  // Last of the helper's users: the bridge ends with it.
+  twattila::dlaa_bridge::Shutdown();
+  if (addon_registered) {
+    reshade::unregister_addon(addon_module);
+    addon_registered = false;
+  }
+}
+
 BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
-      // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
-      twattila::pass_timing::Install("divinity");
-      ConfigureAddon();
-      // Constants once each for the tone mapper, the exposure, the shadow filter, the sun, fog, SSAO, bloom's combine and
-      // the point and spot lights, plain and shadowed (b0-b13: the frame b13, the view b12; the camera fields are Attila's b0
-      // registers, not this game's); blends of fire, candles and the UI combine.
-      twattila::frame_trace::Install({
-          .value_hashes = {0x30A1D40D, 0x4E112ABA, 0x8F114E47, 0xCCCB7253, 0xEDA7F8A1, 0x385DCF3C, 0x88B0D842, 0xD39E39C8,
-                           0x2F56D195, 0x23B84721, 0x7CBAA94E},
-          .value_slots = 14,
-          .value_floats = 64,
-          .on_demand = true,
-          .at_100 = true,
-          .blend_hashes = {0xED93F883, 0x93AEBB93, 0x20163A55},
-      });
-      // Before the swap chain mod: a removed device's chain let go, each new chain's output decided. The game makes a
-      // new chain for its window 2-4 times a start and at each window-mode change: the last flip chain is let go first.
-      twattila::device_loss::release_flip_chains_before_recreate = true;
-      twattila::device_loss::Install();
-      reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
-      reshade::register_event<reshade::addon_event::present>(OnPresent);
-      renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
-      if (const float mode = NormalizeTonemapMode(shader_injection.tonemap_type); mode != shader_injection.tonemap_type) {
-        renodx::utils::settings::UpdateSetting("tonemap_type", mode);
-      }
-      // Scripted runs (RENODX_TW_SET / SHOT, renodx_test_hooks.txt next to the exe): nothing without them.
-      twattila::test_hooks::Install(&settings, true, "[Divinity]");
-      renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
-      renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
-      // The fast draw dispatch with the resource upgrades' gate (the swap chain mod's view cloning registers them).
-      twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
-      // Frame capture: after RenoDX, which drops these copies.
-      reshade::register_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
-      reshade::register_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
-      reshade::register_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
-      twattila::device_loss::InstallLast();
+      addon_registered = true;
       break;
     case DLL_PROCESS_DETACH:
-      twattila::device_loss::Uninstall();
-      reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
-      reshade::unregister_event<reshade::addon_event::present>(OnPresent);
-      reshade::unregister_event<reshade::addon_event::copy_resource>(frame_capture::OnCopyResource);
-      reshade::unregister_event<reshade::addon_event::copy_texture_region>(frame_capture::OnCopyTextureRegion);
-      reshade::unregister_event<reshade::addon_event::destroy_device>(frame_capture::OnDestroyDevice);
-      twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
-      renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
-      renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
-      twattila::test_hooks::Uninstall();
-      renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
-      twattila::frame_trace::Uninstall();
-      twattila::pass_timing::Uninstall();
-      reshade::unregister_addon(h_module);
+      // ReShade calls AddonUninit before an explicit unload. During process termination, avoid calling into ReShade or
+      // RenoDX under the loader lock.
+      if (lpv_reserved == nullptr && addon_registered) {
+        reshade::unregister_addon(h_module);
+        addon_registered = false;
+      }
       break;
   }
 

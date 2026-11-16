@@ -395,7 +395,7 @@ void main(
     r5.x = r5.y ? r5.x : 0;
     r4.x = r4.x * r4.w + r5.x;
     r4.w = cmp(r1.w < -r1.w);
-    r4.w = r4.w ? -3.141593 : 0;
+    r4.w = r4.w ? -3.14159274 : 0;  // the game's l(0xc0490fdb): -pi to the bit (the decompile printed -3.141593, one ulp off)
     r4.x = r4.x + r4.w;
     r4.w = min(r2.w, r1.w);
     r1.w = max(r2.w, r1.w);
@@ -471,7 +471,9 @@ void main(
   r1.xyz = r3.xyz * g_light_vegetation_backscattering_coef + r1.xyz;
   r0.xzw = r1.xyz * r0.xxx;
   r0.xyz = r0.yyy * r0.xzw;
-  if (HDR >= 0.5f) o0.xyz = max(float3(0,0,0), r0.xyz) * VfxFireBrightness;
+  // The game's `max o0.xyz, r0.xyz, 0` in every mode (SDR left o0 unwritten before: fxc took the HDR line for it).
+  o0.xyz = max(float3(0,0,0), r0.xyz);
+  if (HDR >= 0.5f) o0.xyz *= VfxFireBrightness;
   o0.xyz *= RtLocalLightVisibility(int2(v0.xy), v3.xyz);
   o0.w = 1;
   return;

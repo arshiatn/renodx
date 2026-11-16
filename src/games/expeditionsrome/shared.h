@@ -95,6 +95,16 @@ float4 ScaleVolumetricFog(float4 fog, float strength) {
   return float4(fog.rgb * ratio, scaled);
 }
 
+// Path-Traced Ambient (ray_tracing.hpp OnSkyLight): a texture at t120 while the paths bring the sky's light this frame
+// (the Light Bounce adds it); the sky light passes (skylight00-02) then leave out Unreal's diffuse sky light.
+Texture2D<float> exr_path_ambient : register(t120);
+
+bool ExrPathAmbient() {
+  uint width, height;
+  exr_path_ambient.GetDimensions(width, height);
+  return width != 0u;
+}
+
 #endif
 
 #endif  // SRC_EXPEDITIONSROME_SHARED_H_
