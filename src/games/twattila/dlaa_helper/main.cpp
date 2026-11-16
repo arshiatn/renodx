@@ -469,7 +469,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                                         "restarts."
                                       : "[TW ray tracing] Off until the game restarts (a second GPU reset).");
   };
+  // Ray tracing's idle release destroys its scene on this thread, off the request loop: the scene's device and its gigabytes
+  // took 70 to 101 ms inside the answer to the DLSS request that found it idle, a frame's hitch in the game (2026-11-16
+  // audit A1g). Joined before a scene is made again and at the end.
+  std::thread scene_release;
+  const auto wait_scene_release = [&] {
+    if (scene_release.joinable()) scene_release.join();
+  };
   const auto open_scene = [&] {
+    wait_scene_release();
     const bool details = (shared->rt_flags & twattila::dlaa_bridge::RT_DETAILS) != 0;
     scene_live = !scene_off();
     scene_open = scene_live && !stalled_scene && scene->Initialize(adapter.Get(), folder, details, other_upscaler()) && scene->Open(*shared, version, replayable);
@@ -607,8 +615,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const auto now = std::chrono::steady_clock::now();
     if (scene_live && version >= 15 && now - rt_used > IDLE_RELEASE) {
       rt_drain();
-      logged_release("[TW ray tracing] Off for 10 s: its memory released (it starts again when turned on)",
-                     [&] { scene = std::make_unique<twattila::dlaa_helper::RtScene12>(); });
+      wait_scene_release();
+      scene_release = std::thread([released = std::move(scene), &logged_release]() mutable {
+        logged_release("[TW ray tracing] Off for 10 s: its memory released, beside the requests (it starts again when turned on)",
+                       [&] { released.reset(); });
+      });
+      scene = std::make_unique<twattila::dlaa_helper::RtScene12>();
       scene_open = false;
       scene_live = false;
       scene_idle = true;
@@ -1047,6 +1059,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   }
   rt_work.changed.notify_all();
   rt_worker.join();
+  wait_scene_release();
   // The game and its window are gone: nothing to wait for on FSR's or XeSS's swap chain, nor for a parked one's making.
   proxy_generation.release();
   for (auto& parked : parked_upscalers) {
