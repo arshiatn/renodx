@@ -286,7 +286,9 @@ void main(
     r0.z = r0.z * r0.z;
     r2.x = r2.x * -r2.w + 0.5;
     r0.z = 0.75 * r0.z;
-    r2.x = (int)r2.x & (int)r2.y;
+    // The game's `and r2.x, r2.x, r2.y`: the end-of-edge offset kept or zeroed by the compare's mask (r2.y -1 or 0 here);
+    // the decompile's (int) casts cut the 0 - 0.5 offset to 0.
+    r2.x = (r2.y != 0) ? r2.x : 0;
     r0.z = max(r2.x, r0.z);
     r2.xy = r0.zz * r2.zz + r0.xy;
     r3.x = r0.w ? r0.x : r2.x;

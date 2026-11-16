@@ -1,4 +1,4 @@
-// sprite.hlsl blurred_yuv: the blurred videos (menu backgrounds), as menuvideo00.
+// sprite.hlsl blurred_yuv: the blurred videos (menu backgrounds), in the frame's gamma as the game writes them.
 
 cbuffer sprite_PS : register(b0)
 {
@@ -100,9 +100,10 @@ void main(
   }
   o0.xyz = float3(0.0078125,0.0078125,0.0078125) * r0.yzw;
   o0.w = v1.w;
-  // The blurred video, as the sharp one: the game's YUV result (sRGB encoded) decoded and clipped, AutoHDR (Video
-  // Dithering: 1 code value of noise on the 2.2 encoded video first), at Paper White, in the frame's gamma for the proxy.
-  float3 video = saturate(renodx::color::srgb::DecodeSafe(o0.xyz));
+  // The blurred video: the game writes its YUV result into the frame as it is (no gamma step, unlike the sharp one), so it
+  // is decoded with the frame's gamma and clipped (Vanilla: the game's bits), AutoHDR (Video Dithering: 1 code value of
+  // noise on the 2.2 encoded video first), at Paper White, in the frame's gamma for the proxy.
+  float3 video = saturate(DecodeFrame(o0.xyz));
   if (HDR >= 1.f && SI.video_autohdr > 0.f && SI.video_dithering != 0.f) {
     video = renodx::color::gamma::DecodeSafe(renodx::color::gamma::EncodeSafe(video)
                                              + (frac(52.9829189f * frac(dot(floor(v0.xy), float2(0.06711056f, 0.00583715f)))) - 0.5f) / 255.f);

@@ -188,6 +188,7 @@ float spark_fix_row = 1.f;
 float game_sharpening_row = 0.f;
 float character_shadows_row = 1.f;
 float path_samples_row = 1.f;
+float path_reorder_row = 0.f;
 
 struct Texture {
   ComPtr<ID3D11Texture2D> resource;
@@ -289,6 +290,10 @@ struct SparkMotion {
 // Ray Reconstruction: UE's G-buffer A / B / C (normal; metallic, specular, roughness; base colour), which Bandai's
 // lighting pass (its 6 permutations) reads at t1-t3, copied at its first draw each frame for the guides.
 constexpr std::array<uint32_t, 6> LIGHTING_SHADERS = {0xF2A6E883u, 0x6513DC8Eu, 0xC28D2F1Eu, 0xB2726B44u, 0x81E3CED2u, 0xF95FABAAu};
+// Bandai's toon lighting (characters, foliage: the HDR part's toon00-09), drawn before lighting00-05 with the same
+// G-buffer at t1-t3, the base pass's light at t7 (lighting00-05: t4): our AO and GI bound for them too.
+constexpr std::array<uint32_t, 10> TOON_SHADERS = {0x0A9D482Au, 0xDF1B494Du, 0xF6334BA2u, 0x1C8D11B6u, 0x36E08F9Au,
+                                                   0x1FE8B2B6u, 0x4E695056u, 0x4E8218FEu, 0x8CCA5153u, 0x90EF2450u};
 struct GBufferCopy {
   std::shared_mutex mutex;
   std::array<ComPtr<ID3D11Texture2D>, 3> textures;
@@ -1834,6 +1839,16 @@ constexpr auto OnDepthPrepass = []<DrawCommand Command>(Command&) -> renodx::uti
 // shadowing; unbound after it with the rays' (t40).
 constexpr UINT SCREEN_SPACE_SHADOWS_SLOT = 41;
 
+// Bandai's SSAO (ao00 E243580F and its two blurs, 0.11 ms at DLSS Performance, 0.34 ms at DLAA in run_124955): skipped
+// while the rays' AO or Path-Traced Ambient replaces it at every reader (lighting00-05's t5, toon00-09's t6: rt_ambient.hlsli
+// reads t41 instead). This frame's trace comes after it (the sun shadow mask): last frame's decides.
+constexpr std::array<uint32_t, 3> GAME_AO_SHADERS = {0xE243580Fu, 0x8D9AC9A4u, 0x8C5387E3u};
+
+constexpr auto OnGameAo = [](Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (!talesofarise::rt_shadows::AmbientOcclusionTracedLastFrame()) return {};
+  return {.bypass = true};
+};
+
 constexpr auto OnSunShadowMask = [](Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&context);
@@ -1972,7 +1987,7 @@ constexpr auto OnSpriteDraw = []<DrawCommand Command>(Command&) -> renodx::utils
 
 // Ray-traced ambient occlusion, bounce light (or path tracing), reflections and specular occlusion (rt_shadows.hpp; the
 // lighting pass's own traced here, from the G-buffer at t1-t3): bound at t41 / t42 / t43 / t44 for the HDR addon's
-// lighting pass, unbound after it.
+// lighting and toon lighting passes (whichever draws first traces; TOON_SHADERS), unbound after each.
 constexpr UINT AMBIENT_SLOT = 41;
 template <DrawCommand Command>
 void UnbindAmbient(Command& command, const void*) {
@@ -2008,13 +2023,14 @@ constexpr auto OnLightingDraw = []<DrawCommand Command>(Command& command) -> ren
     ComPtr<ID3D11DeviceContext1> context1;
     if (ue_effects.bounce_frame != frame && ue_effects.bounce.strength > 0.f
         && SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) {
-      BoundViews<ID3D11ShaderResourceView, 5> views;
+      BoundViews<ID3D11ShaderResourceView, 8> views;
       context->PSGetShaderResources(0, static_cast<UINT>(views.views.size()), views.views.data());
+      const bool toon = std::ranges::find(TOON_SHADERS, command.matched_shader_hash) != TOON_SHADERS.end();
       D3D11_VIEWPORT viewport = {};
       UINT viewport_count = 1;
       context->RSGetViewports(&viewport_count, &viewport);
       talesofarise::ue_light_bounce::Inputs inputs = {
-          .light = views.views[4],
+          .light = views.views[toon ? 7 : 4],
           .depth = views.views[0],
           .gbuffer_a = views.views[1],
           .gbuffer_b = views.views[2],
@@ -2271,12 +2287,16 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       }
     }
     // The rays (rt_shadows.hpp) with an upscaler on (rt_scene::SettingsOf; none without the helper); path tracing replaces the
-    // bounce light. An effect turned on tries again after a failed start.
+    // bounce light. An effect turned on tries again after a failed start. Path-Traced Ambient (SettingsOf's needs a Total
+    // War ambient cube): with the paths, the ambient rays weighted by the game's sky light in place of Bandai's AO under its
+    // ambient (Bandai's sky light comes from its base pass inside the scene colour the lighting passes read: no input to
+    // zero there, so the paths' share of it enters where its AO does), the paths' bounce at t42 as before.
     const auto rays = upscaling ? twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, gi_rows.light_bounce_strength) : twattila::rt_scene::Settings{};
+    const bool path_ambient = rays.path_tracing && rt_sliders.path_ambient != 0.f;
     bool turned_on = false;
     for (const auto& [effect, on] : std::to_array<std::pair<std::atomic_bool*, bool>>({
              {&talesofarise::rt_shadows::enabled, rays.sun_shadows},
-             {&talesofarise::rt_shadows::ambient_occlusion, rays.ambient_occlusion},
+             {&talesofarise::rt_shadows::ambient_occlusion, rays.ambient_occlusion || path_ambient},
              {&talesofarise::rt_shadows::bounce_light, rays.light_bounce && !rays.path_tracing},
              {&talesofarise::rt_shadows::reflections, rays.reflections},
              {&talesofarise::rt_shadows::specular_occlusion, rays.specular_occlusion},
@@ -2289,11 +2309,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     talesofarise::rt_shadows::character_shadows.store(character_shadows_row != 0.f);
     talesofarise::rt_shadows::ambient_range.store(std::clamp(rays.ambient_range, 0.5f, 10.001733f) * 100.f);
     talesofarise::rt_shadows::ambient_rays.store(std::clamp(rays.ambient_rays, 1u, 8u));
+    talesofarise::rt_shadows::sky_weighted_ambient.store(path_ambient);
     talesofarise::rt_shadows::bounce_strength.store(std::clamp(gi_rows.light_bounce_strength, 0.f, 4.f));
     talesofarise::rt_shadows::bounce_range.store(std::clamp(rays.light_bounce_range, 1.f, 50.012573f) * 100.f);
     talesofarise::rt_shadows::bounce_rays.store(std::clamp(rays.light_bounce_rays, 1u, 8u));
     talesofarise::rt_shadows::path_bounces.store(rays.path_bounces);
     talesofarise::rt_shadows::path_samples.store(static_cast<uint32_t>(std::clamp(path_samples_row, 1.f, 4.f)));
+    talesofarise::rt_shadows::path_reorder.store(path_reorder_row != 0.f);
   }
   {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
@@ -2698,9 +2720,10 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // One GI method (ATN 2026-11-16): lighting00-05 leave out Bandai's GI add while GT-VBGI runs, or while the rays' bounce
   // light or path tracing reached the lighting pass within the last half second (their light in place of Bandai's, never
   // added to it; a frame the rays miss stays so); Bandai's GI still colours their fill light (shared.h TOA_GAME_GI_SHARE:
-  // the menu's GI-off path also halved that fill). Bandai's SSGI chain (17CE7BCD, 13BDD599, 86CBF00A, 746654CA)
-  // still runs: ten stock toon lighting permutations (characters, foliage; 0A9D482A and its siblings, behind their own
-  // switch cb0[59].w) read its 10 x 6 texture at t25-t30, and a skipped chain left them a stale pooled texture.
+  // the menu's GI-off path also halved that fill). The ten toon lighting passes (toon00-09) the same: their GI add goes,
+  // ours in its place. Bandai's SSGI chain (17CE7BCD, 13BDD599, 86CBF00A, 746654CA) still runs under ours: lighting00-05's
+  // fill colour and the toon passes' tint of the lit colour and their rims read its 10 x 6 texture (t25-t30 there),
+  // terms ours does not replace; a skipped chain left them a stale pooled texture.
   constexpr uint64_t RECENT_FRAMES = 30;
   const uint64_t frame = CurrentFrame();
   bool rays_gi = false;
@@ -2717,7 +2740,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       .sharpening = ((mode != AAMode::OFF && !keep_game_sharpening) ? 0.f : 1.f),
       .ambient_occlusion = static_cast<float>(ambient_occlusion),
       .sun_shadow_distance = sun_distance_ratio,
-      .ao_method = static_cast<float>(ao_method),
+      // One AO method (ao-gi.md rule 6): GT-VBAO off while the rays' AO or Path-Traced Ambient takes the AO's place.
+      .ao_method = (talesofarise::rt_shadows::ambient_occlusion.load(std::memory_order_relaxed) ? 0.f : static_cast<float>(ao_method)),
       .ao_radius = ao_radius,
       .ao_strength = ao_strength,
       .ao_thickness = ao_thickness,
@@ -2883,8 +2907,10 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game ambient occlusion on.\n"
                   "Game's SSAO: the original. GT-VBAO: contact shading that lets light pass behind thin things (grass,\n"
                   "poles, characters) instead of dark halos.\n"
-                  "RTAO: large-scale shading from buildings, terrain and rocks, with the game's. Heavy. Needs an upscaler and a\n"
-                  "DXR GPU.",
+                  "RTAO: large-scale shading from buildings, terrain and rocks, in place of the game's. Heavy.\n"
+                  "Path-Traced: with Path Tracing Global Illumination, the share of the sky's light that reaches each spot.\n"
+                  "Needs an upscaler and a DXR GPU.",
+    .ao_paths_label = "Path-Traced",
     .gi_tooltip_end = "\nGT-VBGI takes the place of the game's own Global Illumination.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, fog, light shafts, reflections, clouds, effects, skin and shadows\n"
                                  "keep their 100% detail. Looks better, can cost some performance.",
@@ -2989,7 +3015,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                             .aa_methods = AA_METHODS,
                                             .upscaler_status = &UpscalerStatus,
                                             .has_foliage_light = false,
-                                            .has_path_ambient = false,
+                                            .path_ambient_tested = false,
                                             .rays_replace_ao = false,
                                             .rays_multiply_maps = true,
                                             .rays_tested = false,
@@ -3053,6 +3079,16 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                          .format = "%d",
                                          .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders) && rt_sliders.light_bounce == 2.f; },
                                      });
+  insert_after("PathTracingSamples", new Setting{
+                                          .key = "PathTracingReorder",
+                                          .binding = &path_reorder_row,
+                                          .value_type = SettingValueType::BOOLEAN,
+                                          .default_value = 0.f,
+                                          .label = "Path Tracing Reordering (Experimental)",
+                                          .tooltip = "Regroups the paths by what they hit first (shader execution reordering, newest GPUs and drivers).\n"
+                                                     "Same picture; faster or slower depending on the GPU.",
+                                          .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders) && rt_sliders.light_bounce == 2.f; },
+                                      });
   insert_after("light_bounce_multi_bounce", new Setting{
                                                 .key = "GlobalIlluminationGameOpenSky",
                                                 .binding = &game_gi_open_sky_row,
@@ -3504,11 +3540,13 @@ inline bool Install(HMODULE module) {
                                                                        .shader_hash = TRANSLUCENCY_COMPOSITE_SHADER,
                                                                        .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
                                                                    });
-  for (const uint32_t lighting_shader : LIGHTING_SHADERS) {
-    renodx::utils::command_action::Register(OnLightingDraw, {
-                                                                .shader_hash = lighting_shader,
-                                                                .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
-                                                            });
+  for (const auto& shaders : {std::span<const uint32_t>(LIGHTING_SHADERS), std::span<const uint32_t>(TOON_SHADERS)}) {
+    for (const uint32_t lighting_shader : shaders) {
+      renodx::utils::command_action::Register(OnLightingDraw, {
+                                                                  .shader_hash = lighting_shader,
+                                                                  .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
+                                                              });
+    }
   }
   for (const auto& [sprite_shader, motion_shader] : SPRITE_SHADERS) {
     renodx::utils::command_action::Register(OnSpriteDraw, {
@@ -3531,6 +3569,12 @@ inline bool Install(HMODULE module) {
   }
   // The alpha-tested draws' stream output is made from their own vertex shader's bytecode, kept from its creation.
   renodx::utils::pipeline::EnableSubobjectCaching();
+  for (const uint32_t shader_hash : GAME_AO_SHADERS) {
+    renodx::utils::command_action::Register(OnGameAo, {
+                                                          .shader_hash = shader_hash,
+                                                          .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH,
+                                                      });
+  }
   renodx::utils::command_action::Register(OnSunShadowMask, {
                                                                .shader_hash = talesofarise::rt_shadows::SUN_SHADOW_SHADER,
                                                                .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH,
@@ -3571,6 +3615,7 @@ inline void Uninstall() {
     renodx::utils::command_action::Unregister(OnLightingDraw);
     renodx::utils::command_action::Unregister(OnDepthPrepass);
     renodx::utils::command_action::Unregister(OnSunShadowMask);
+    renodx::utils::command_action::Unregister(OnGameAo);
     talesofarise::dlss::constants::Use(DLL_PROCESS_DETACH);
     talesofarise::post_filters::Store({});
     reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);

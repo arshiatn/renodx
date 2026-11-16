@@ -254,6 +254,17 @@ void BuildRuntimeData() {
       PostFilterShader(0xB2726B44),         // lighting03 (no volumetric lighting)
       PostFilterShader(0x81E3CED2),         // lighting04
       PostFilterShader(0xF95FABAA),         // lighting05
+      // Bandai's toon lighting (characters, foliage): our AO and GI in place of Bandai's (toon00-09).
+      PostFilterShader(0x0A9D482A),         // toon00
+      PostFilterShader(0xDF1B494D),         // toon01
+      PostFilterShader(0xF6334BA2),         // toon02
+      PostFilterShader(0x1C8D11B6),         // toon03
+      PostFilterShader(0x36E08F9A),         // toon04
+      PostFilterShader(0x1FE8B2B6),         // toon05
+      PostFilterShader(0x4E695056),         // toon06
+      PostFilterShader(0x4E8218FE),         // toon07
+      PostFilterShader(0x8CCA5153),         // toon08
+      PostFilterShader(0x90EF2450),         // toon09
       // Bandai's ambient occlusion (6 compute, 6 pixel shader permutations) + blurs: the DLSS addon's Ambient occlusion;
       // below 70% DLSS ao00 / 01 / 06 / 07 read the full-resolution depth.
       PostFilterShader(0xE243580F),         // ao00

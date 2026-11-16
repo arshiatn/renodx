@@ -5,7 +5,8 @@
 #define SRC_GAMES_TALESOFARISE_DLSS_RT_SURFACE_HLSLI_
 
 Texture2D<float4> positions : register(t1);  // world position, scene depth (0: sky)
-// [0] toward the sun (w 1: valid), [1] the camera, [2-5] TranslatedWorldToClip, [6] PreViewTranslation, [7] view size.
+// [0] toward the sun (w 1: valid), [1] the camera, [2-5] TranslatedWorldToClip, [6] PreViewTranslation, [7] view size,
+// [8] the game's SkyLightColor, [9-15] its SkyIrradianceEnvironmentMap (SkyLight).
 Texture2D<float4> sun : register(t2);
 Texture2D<float4> previous_color : register(t3);      // last frame's scene colour (the TAA's input)
 Texture2D<float4> previous_positions : register(t4);  // last frame's positions
@@ -38,6 +39,7 @@ static const uint HISTORY_VALID = 8u;  // last frame's positions and scene colou
 static const uint REFLECTIONS = 16u;
 static const uint CACHE_VALID = 32u;  // the radiance cache has been filled
 static const uint BOUNCE_HISTORY = 64u;  // last frame's bounce light accumulation is last frame's
+static const uint SKY_WEIGHTED = 128u;  // Path-Traced Ambient: the ambient rays weighted by the game's sky light (SkyLight)
 static const uint CHARACTER_SHADOWS = 256u;  // characters cast sun shadows (not on themselves)
 static const uint PATH_TRACING = 512u;  // the bounce light and reflections are path traced
 static const uint SPECULAR_HISTORY = 1024u;  // last frame's reflection accumulation is last frame's
@@ -87,6 +89,19 @@ bool PreviousPixel(float3 world, out int2 pixel) {
 bool SeenLastFrame(float3 world, int2 pixel) {
   const float4 seen = previous_positions[pixel];
   return seen.w > 0.f && distance(seen.xyz, world) < 3.f + 0.01f * seen.w;
+}
+
+// The luminance of the game's sky light toward `direction` (UE 4.21's GetSkySHDiffuse x SkyLightColor, as Bandai's
+// base pass lights the diffuse colour with it, 0x90B576A7), a little above 0: a sky without light weighs every ray alike.
+float SkyLight(float3 direction) {
+  const float4 linear_part = float4(direction, 1.f);
+  const float4 quadratic = direction.xyzz * direction.yzzx;
+  const float band = direction.x * direction.x - direction.y * direction.y;
+  const float3 irradiance = float3(dot(sun[uint2(9, 0)], linear_part) + dot(sun[uint2(12, 0)], quadratic),
+                                  dot(sun[uint2(10, 0)], linear_part) + dot(sun[uint2(13, 0)], quadratic),
+                                  dot(sun[uint2(11, 0)], linear_part) + dot(sun[uint2(14, 0)], quadratic))
+                           + sun[uint2(15, 0)].xyz * band;
+  return dot(max(irradiance, 0.f) * sun[uint2(8, 0)].rgb, float3(0.2126f, 0.7152f, 0.0722f)) + 1e-6f;
 }
 
 // Off a surface by 1 cm plus 0.1% of the depth (depth precision and coarser far geometry grow with distance).

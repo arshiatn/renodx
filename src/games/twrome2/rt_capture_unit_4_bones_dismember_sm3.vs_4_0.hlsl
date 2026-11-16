@@ -40,6 +40,7 @@ Texture2D<float4> s_animation_map : register(t0);
 
 
 #include "./motion.hlsli"
+#include "../twattila/rt_capture.hlsli"
 
 static float motion_time;
 static float4 motion_rows[4];
@@ -276,6 +277,10 @@ void main(
   motion_time = time_in_sec;
   GameMain(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, o0, o1, o2, o3, o4, o5, o6, o7, o8, o9);
   const float4 world = o0;
+#if defined(RT_CAPTURE_UV)
+  motion_world = RtWorldUv(world.xyz, o2.xy);
+#else
   motion_world = world;
+#endif
   motion_position = 0.f;
 }
