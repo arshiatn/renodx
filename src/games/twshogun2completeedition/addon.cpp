@@ -45,6 +45,7 @@
 #include "../twattila/credits.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/pass_timing.hpp"
+#include "../twattila/rays_preset.hpp"
 #include "../twattila/settings_pages.hpp"
 #include "../twattila/texture_lod_bias.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
@@ -613,51 +614,20 @@ const Values GI_DEFAULTS = {
 };
 const std::string RAYS_SECTION = "Ray Tracing (Experimental, restart after turning on)";
 constexpr uint32_t RAYS_TINT = 0x6BE0D8;
-// The Ray Tracing presets (twattila/graphics_page.hpp's, in this section's keys): RT/PT writes RAYS_RESET, then
-// RAYS_PRESET; No RT/PT RAYS_OFF; Reset both.
+// The Ray Tracing presets: RT/PT writes RAYS_RESET, then the one list every game's RT/PT writes
+// (twattila/rays_preset.hpp; the keys this section lacks are skipped), then RAYS_OWN_KEYS; No RT/PT RAYS_OFF; Reset both.
 const Values RAYS_OFF = {
     {"RayTracedSunShadows", 0.f}, {"RayTracedAmbientOcclusion", 0.f}, {"RayTracedLocalLights", 0.f},
     {"RayTracedReflections", 0.f}, {"RayTracedLightBounce", 0.f}, {"PathTracing", 0.f},
     {"RayTracedFogShadows", 0.f}, {"RayTracedPathAmbient", 0.f}, {"RayTracedSpecularOcclusion", 0.f},
 };
-const Values RAYS_PRESET = {
-    {"RayTracedSunShadows", 1.f},
-    {"RayTracedShadowSoftness", 0.8f},
-    {"RayTracedLeafLight", 1.f},
-    {"RayTracedColouredShadows", 1.f},
-    {"RayTracedSpriteShadows", 1.f},
-    {"RayTracedFarTreeShadows", 1.f},
-    {"RayTracedUnitsOutOfView", 1.f},
-    {"RayTracedSheetsUnselfed", 1.f},
-    {"RayTracedAmbientOcclusion", 1.f},
-    {"RayTracedLocalLights", 1.f},
-    {"RayTracedLightSoftness", 0.25f},
-    {"RayTracedLightImportance", 1.f},
-    {"RayTracingDenoiser", 1.f},
-    {"RayTracedLightBounce", 1.f},
-    {"PathTracing", 1.f},
-    {"RayTracedLightBounceRays", 1.f},
-    {"RayTracedLightBounceResolution", 0.f},
-    {"RayTracedLightBounceRange", 50.f},
-    {"PathTracingBounces", 1.f},
-    {"RayTracedPathAmbient", 1.f},
-    {"RayTracedPathSkyApart", 1.f},
-    {"RayTracedPathKeptCube", 1.f},
-    {"RayTracedReflections", 1.f},
-    {"RayTracedReflectionSamples", 1.f},
-    {"RayTracedReflectionReuse", 2.f},
-    {"RayTracedWaterReflections", 1.f},
-    {"RayTracedWaterSteady", 1.f},
-    {"RayTracedWaterSoft", 1.f},
-    {"RayTracedSpecularOcclusion", 1.f},
-    {"RayTracedFogShadows", 1.f},
-    {"RayTracedLeafMicromaps", 1.f},
-    // Attila's RT/PT values for this game's own rows (ATN: RT/PT as Attila's; still Experimental, off by default).
-    {"RayTracedLightGlow", 1.f},
-    {"RayTracedSmokeShadows", 1.f},
-    {"RayTracedSmokeQuality", 3.f},
-    {"WaterClarity", 1.f},
-    {"WaterCaustics", 1.f},
+// The list's methods in this section's keys (as Ryse's): the Light Bounce on and traced (one row here, Attila's 2 the
+// paths), path tracing its own row, the Global Illumination's strength LightBounceStrength; and this game's own rows:
+// ray-traced AO (OnPresent turns it off while Path-Traced AO runs: the campaign keeps it), point light shadows (Attila's
+// come with its torch rows), shadow casters out of view and leaf micromaps.
+const Values RAYS_OWN_KEYS = {
+    {"RayTracedLightBounce", 1.f},      {"PathTracing", 1.f},          {"LightBounceStrength", 1.f},     {"RayTracedAmbientOcclusion", 1.f},
+    {"RayTracedLocalLights", 1.f},      {"RayTracedUnitsOutOfView", 1.f}, {"RayTracedLeafMicromaps", 1.f},
 };
 const Values RAYS_RESET = {
     {"RayTracedShadowSoftness", 0.5f},
@@ -2128,8 +2098,8 @@ void BuildRuntimeData() {
                  "(restart the game). Turns the Global Illumination on, and Ray Reconstruction where DLSS runs without it.",
                  [] {
                    renodx::utils::settings::UpdateSettings(RAYS_RESET);
-                   renodx::utils::settings::UpdateSettings(RAYS_PRESET);
-                   renodx::utils::settings::UpdateSettings({{"LightBounceStrength", 1.f}});
+                   renodx::utils::settings::UpdateSettings(twattila::graphics_page::RAYS_PRESET);
+                   renodx::utils::settings::UpdateSettings(RAYS_OWN_KEYS);
                    // Without Ray Reconstruction the rays have only the built-in denoisers (Attila's preset: F).
                    if (aa_sliders.method == 5.f && aa_sliders.ray_reconstruction == 0.f) {
                      renodx::utils::settings::UpdateSettings({{"AntiAliasingRayReconstruction", 4.f}});
