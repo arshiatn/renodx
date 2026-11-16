@@ -28,8 +28,8 @@ void main(
   float4 fDest;
 
   r0.xyz = Base.SampleLevel(LinearSampler_s, v1.xy, 0).xyz;
-  r1.xyz = Base.Gather(LinearSampler_s, v1.xy).xyz;
-  r2.xyz = Base.Gather(LinearSampler_s, v1.xy, int2(-1, -1)).xzw;
+  r1.xyz = Base.GatherGreen(LinearSampler_s, v1.xy).xyz;  // the game gathers green (gather4 ... s0.y): the decompiler wrote Gather (red)
+  r2.xyz = Base.GatherGreen(LinearSampler_s, v1.xy, int2(-1, -1)).xzw;
   r0.w = max(r1.x, r0.y);
   r1.w = min(r1.x, r0.y);
   r0.w = max(r1.z, r0.w);
@@ -191,7 +191,8 @@ void main(
     r0.w = r0.w * r0.w;
     r1.x = r1.x * -r2.z + 0.5;
     r0.w = 0.75 * r0.w;
-    r1.x = (int)r1.x & (int)r1.w;
+    // The game's and of a float with a mask (r1.w = cmp: -1 or 0); the decompiler's (int) casts truncated the float to 0.
+    r1.x = r1.w ? r1.x : 0;
     r0.w = max(r1.x, r0.w);
     r1.xz = r0.ww * r1.zz + v1.xy;
     r2.x = r1.y ? v1.x : r1.x;
