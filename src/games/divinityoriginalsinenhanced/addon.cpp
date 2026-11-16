@@ -121,6 +121,7 @@ void ApplyResetPreset() {
       {"playerLightIntensity", 1.f},
       {"playerLightRadius", 1.f},
       {"sun_shadow_softness", 1.f},
+      {"grade_shoulder", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -898,6 +899,20 @@ renodx::utils::settings::Settings settings = {
         .max = 3.f,
         .format = "%.2f",
         .is_visible = IsAdvancedSettings,
+    },
+    // The game's grade after the curve with a smooth shoulder from 0.8 instead of the knee at 1 (shaders/tonemappers.hlsli
+    // GradeAfterCurve): a look change for ATN to decide, up to 0.033 OkLab near white (test/tw_divinity1 check 4).
+    new renodx::utils::settings::Setting{
+        .key = "grade_shoulder",
+        .binding = &shader_injection.grade_shoulder,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Grade Shoulder (Experimental)",
+        .section = "Game-Specific Settings",
+        .tooltip = "The game's colour grade eases toward white from 80% brightness instead of stopping at 100%:\n"
+                   "smoother bright gradients, colours near white change slightly.",
+        .labels = {"Off", "On"},
+        .is_visible = [] { return ShowExtendedSettings() || ShowPsychoV35Settings(); },
     },
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
