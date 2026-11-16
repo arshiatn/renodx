@@ -1510,8 +1510,8 @@ inline void FlushBatch(ID3D11DeviceContext* native) {
 }
 
 // After a scene draw of the main view: a draw not yet in the scene is drawn once more into the stream-output buffer.
-// A cascade's draw before it (OnSceneDraw): it needs nothing the draw does, and a later callback's skip of that draw
-// would drop a post callback.
+// A cascade's draw before it (OnSceneDraw), and a host's (host.scene_draw: OnAnyDraw): it needs nothing the draw does, and
+// a later callback's skip of that draw would drop a post callback.
 template <typename Context>
 void Capture(Context& command, const SceneShader& shader) {
   if (frame_trace::Tracing()) {
@@ -4420,16 +4420,19 @@ inline bool SkinnedVertexShader(uint32_t hash) {
   return found != internal::skinned_code.end() && found->second;
 }
 
-// Any draw (host.scene_draw tells the scene's apart).
-constexpr auto OnAnyDraw = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+// Any draw (host.scene_draw tells the scene's apart), captured before it as a cascade's draw is (OnSceneDraw): a post
+// callback has command_action draw it again itself, every draw of a traced frame, and such a draw reaches the GPU before
+// the draw events after command_action's run (a host's skip of it, a fix of its targets: Ryse's back_buffer_fix) and
+// whatever they return.
+constexpr auto OnAnyDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
-  if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
-                && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
-    return {};
-  } else {
-    if (!internal::active.load(std::memory_order_relaxed)) return {};
-    return {.post_callback = internal::CaptureAnyDraw<Context>};
+  if constexpr (std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
+                || std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    if (internal::active.load(std::memory_order_relaxed)) {
+      internal::CaptureAnyDraw<Context>(command, nullptr);
+    }
   }
+  return {};
 };
 
 // A host replaying another API's draws on its own D3D11 device (R.U.S.E.'s D3D9 scene): no ReShade draw events, so no
