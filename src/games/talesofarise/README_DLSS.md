@@ -11,6 +11,14 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
   blur and the tonemapper run at the output size, so nothing after DLSS is upscaled again.
 - **Graphics settings** beyond the game's menu, applied live: preset buttons and one choice per setting.
 
+### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
+
+- **Ray-Traced AO replaces the game's AO and GT-VBAO** (ATN: never on top of them): the six lighting passes
+  (lighting00-05) take the traced visibility (t41) in place of the game's AO (t5) while it is bound, instead of their
+  product; unbound, the game's AO as before. Picking the rays still turns GT-VBAO off (no gate in the shaders' constants
+  yet).
+- In game: Ray-Traced AO: corners lighter than before (no game AO under the rays' AO); rays off: unchanged.
+
 ## Install
 
 1. Put `renodx-talesofarise_dlss.addon64` and NVIDIA's latest `nvngx_dlss.dll` (310.5 or newer) in

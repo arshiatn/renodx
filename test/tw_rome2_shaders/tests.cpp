@@ -1,5 +1,6 @@
 // Rome II's replaced shaders (src/games/twrome2/shaders) on WARP.
-// tests.exe <before .cso> <after .cso>: the water's screen-space reflections 7C9C8ECF (waterreflection00), the build
+// tests.exe <before .cso> <after .cso> <AO before .cso> <AO after .cso>: the water's screen-space reflections 7C9C8ECF
+// (waterreflection00) and the ambient occlusion's resolve 1ED22F9C (ssao01, part 3), the build
 // before this change and the one after it (run.ps1 compiles both with the build's flags), drawn as the game draws it: a
 // full-screen quad over the reflection target (half the display) at the render scale's viewport, its TEXCOORD0 the
 // viewport's 0 - 1 (helper_quad_vs), the display-size depth at t1, the scene copy at t0 (drawn whole), the water's height
@@ -13,6 +14,11 @@
 //    the render's half, b12 (0.5, 0.5, 0.5, 0.5): after's view = after at 100% (game's march and rays bit for bit, the
 //    hierarchical march allowed a few pixels: its pyramid has one level more). CONTROLs: before at 50%, after at 50% with
 //    b12 unbound.
+// 3. The game's HBAO resolve (ssao01, the replacement's game's code) over a 64 x 64 view of a bumpy depth (view depth 4 -
+//    6 m through an identity inv_projection, the game's 4 directions x 4 steps, radius 4 m, a random jitter texture): with
+//    rt_ambient_alone 0 after = before, bit for bit; with 1 (the rays' AO or the paths' in place of the game's, rt_scene
+//    multiplying the traced visibility in after the pass) every channel of every pixel 1. CONTROL: before occludes (some
+//    pixels below 1).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -346,13 +352,94 @@ static int Differ(const std::vector<std::array<float, 4>>& a, const std::vector<
   return a.size() == b.size() ? count : -1;
 }
 
+// Part 3: the HBAO resolve's bytes (`code`) over the view, shader_injection's rt_ambient_alone `alone`.
+static std::vector<std::array<float, 4>> RunAmbient(const std::vector<char>& code, float alone) {
+  constexpr UINT SIZE = 64;
+  ComPtr<ID3D11PixelShader> shader;
+  if (FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, &shader))) return {};
+  // camera_VS_PS: inv_projection (c17-c20) identity, so the view depth is the texture's x; g_screen_size (c27).
+  std::array<float, 35 * 4> camera = {};
+  for (int row = 0; row < 4; ++row) camera[(17 + row) * 4 + row] = 1.f;
+  camera[27 * 4 + 0] = SIZE;
+  camera[27 * 4 + 1] = SIZE;
+  camera[27 * 4 + 2] = 1.f / SIZE;
+  camera[27 * 4 + 3] = 1.f / SIZE;
+  camera[29 * 4 + 0] = SIZE;
+  camera[29 * 4 + 1] = SIZE;
+  // ssao_resolve_PS: steps, directions, radius, angle bias; attenuation, contrast, AO resolution; fov, strength, minimum,
+  // jitter resolution.
+  const std::array<float, 12> resolve = {4.f, 4.f, 4.f, 0.1f, 1.f, 1.f, SIZE, SIZE, 1.f, 1.f, 0.f, 4.f};
+  ShaderInjectData injection = {};
+  injection.rt_ambient_alone = alone;
+  const auto camera_buffer = ConstantBuffer(camera.data(), sizeof(camera));
+  const auto resolve_buffer = ConstantBuffer(resolve.data(), sizeof(resolve));
+  const auto injection_buffer = ConstantBuffer(&injection, sizeof(injection));
+  std::vector<std::array<float, 4>> depth(size_t{SIZE} * SIZE);
+  std::vector<std::array<float, 4>> jitter(16);
+  uint32_t seed = 12345u;
+  const auto random = [&seed] {
+    seed = seed * 1664525u + 1013904223u;
+    return static_cast<float>(seed >> 8) / 16777216.f;
+  };
+  for (UINT y = 0; y < SIZE; ++y) {
+    for (UINT x = 0; x < SIZE; ++x) {
+      const float bump = ((x / 8 + y / 8) % 2 == 0) ? 0.f : 1.5f;
+      depth[size_t{y} * SIZE + x] = {4.f + bump + 0.5f * std::sin(0.3f * x), 0.f, 0.f, 0.f};
+    }
+  }
+  for (auto& texel : jitter) texel = {random(), random(), random(), random()};
+  const auto depth_view = View(SIZE, SIZE, depth);
+  const auto jitter_view = View(4, 4, jitter);
+  const D3D11_TEXTURE2D_DESC target_desc = {.Width = SIZE, .Height = SIZE, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                            .SampleDesc = {1, 0}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_RENDER_TARGET};
+  ComPtr<ID3D11Texture2D> target;
+  device->CreateTexture2D(&target_desc, nullptr, &target);
+  ComPtr<ID3D11RenderTargetView> target_view;
+  device->CreateRenderTargetView(target.Get(), nullptr, &target_view);
+  const float clear[4] = {SENTINEL, SENTINEL, SENTINEL, SENTINEL};
+  context->ClearState();
+  context->ClearRenderTargetView(target_view.Get(), clear);
+  context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+  const D3D11_VIEWPORT viewport = {.Width = SIZE, .Height = SIZE, .MaxDepth = 1.f};
+  context->RSSetViewports(1, &viewport);
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  context->VSSetShader(quad.Get(), nullptr, 0);
+  context->PSSetShader(shader.Get(), nullptr, 0);
+  ID3D11Buffer* b0_1[2] = {camera_buffer.Get(), resolve_buffer.Get()};
+  context->PSSetConstantBuffers(0, 2, b0_1);
+  ID3D11Buffer* b13 = injection_buffer.Get();
+  context->PSSetConstantBuffers(13, 1, &b13);
+  ID3D11ShaderResourceView* t0_1[2] = {depth_view.Get(), jitter_view.Get()};
+  context->PSSetShaderResources(0, 2, t0_1);
+  ID3D11SamplerState* samplers[2] = {point_clamp.Get(), point_clamp.Get()};
+  context->PSSetSamplers(0, 2, samplers);
+  context->Draw(3, 0);
+  D3D11_TEXTURE2D_DESC staging_desc = target_desc;
+  staging_desc.Usage = D3D11_USAGE_STAGING;
+  staging_desc.BindFlags = 0;
+  staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  ComPtr<ID3D11Texture2D> staging;
+  device->CreateTexture2D(&staging_desc, nullptr, &staging);
+  context->CopyResource(staging.Get(), target.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  std::vector<std::array<float, 4>> view(size_t{SIZE} * SIZE);
+  for (UINT y = 0; y < SIZE; ++y) {
+    std::memcpy(&view[size_t{y} * SIZE], static_cast<const char*>(mapped.pData) + size_t{y} * mapped.RowPitch, SIZE * 16);
+  }
+  context->Unmap(staging.Get(), 0);
+  return view;
+}
+
 int main(int argc, char** argv) {
-  if (argc < 3) {
-    std::printf("usage: tests.exe <before .cso> <after .cso>\n");
+  if (argc < 5) {
+    std::printf("usage: tests.exe <before .cso> <after .cso> <AO before .cso> <AO after .cso>\n");
     return 2;
   }
   const auto before = ReadFile(argv[1]);
   const auto after = ReadFile(argv[2]);
+  const auto ambient_before = ReadFile(argv[3]);
+  const auto ambient_after = ReadFile(argv[4]);
   const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, &device, nullptr, &context))) return 1;
   // helper_quad_vs's: TEXCOORD0 the quad's 0 - 1 over the viewport (a full-screen triangle).
@@ -393,6 +480,24 @@ int main(int argc, char** argv) {
     const int quality_quarter = Differ(Run(after, path, 1, nullptr, 0.25f), game);
     std::printf("%s, CONTROL Reflection Quality 2: %d differ, 0.25: %d differ\n", names[static_cast<int>(path)], quality_2, quality_quarter);
     CHECK(path != Path::GAME || (quality_2 > 0 && quality_quarter > 0), "Reflection Quality");
+  }
+  // Part 3: the HBAO resolve under the rays' AO.
+  {
+    const auto game = RunAmbient(ambient_before, 0.f);
+    const auto kept = RunAmbient(ambient_after, 0.f);
+    const auto alone = RunAmbient(ambient_after, 1.f);
+    int open = 0;
+    int occluded = 0;
+    for (const auto& texel : alone) open += (texel == std::array<float, 4>{1.f, 1.f, 1.f, 1.f}) ? 1 : 0;
+    for (const auto& texel : game) occluded += (texel[0] < 1.f && texel[0] != SENTINEL) ? 1 : 0;
+    const int differ = Differ(kept, game);
+    std::printf("HBAO resolve: rt_ambient_alone 0 after vs before, %d of %zu pixels differ; 1: %d of %zu every channel 1; CONTROL before "
+                "occludes %d (min %.4f)\n",
+                differ, game.size(), open, alone.size(), occluded,
+                game.empty() ? 0.f : (*std::ranges::min_element(game, {}, [](const auto& texel) { return texel[0]; }))[0]);
+    CHECK(!game.empty() && differ == 0, "HBAO resolve: rt_ambient_alone 0 is the game's code");
+    CHECK(!alone.empty() && open == static_cast<int>(alone.size()), "HBAO resolve: rt_ambient_alone 1 leaves no AO of its own");
+    CHECK(occluded > static_cast<int>(game.size()) / 10, "HBAO resolve CONTROL: the game's occludes");
   }
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
   return failures == 0 ? 0 : 1;

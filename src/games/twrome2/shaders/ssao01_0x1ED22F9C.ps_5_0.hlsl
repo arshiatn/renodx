@@ -390,13 +390,14 @@ void main(
 #endif
 }
 #else
-// The replacement: the game's code only (Ambient Occlusion Game's costs what it did).
+// The replacement: the game's code only (Ambient Occlusion Game's costs what it did); none when the ray-traced ambient
+// occlusion replaces it (twattila/rt_scene.hpp multiplies it in after this pass), as Attila's ssao00.
 void main(
   float4 v0 : SV_Position0,
   float2 v1 : TEXCOORD0,
   float2 w1 : TEXCOORD1,
   out float4 o0 : SV_Target0)
 {
-  o0 = GameAmbientOcclusion(v0);
+  o0 = (shader_injection.rt_ambient_alone != 0.f) ? 1.f : GameAmbientOcclusion(v0);
 }
 #endif

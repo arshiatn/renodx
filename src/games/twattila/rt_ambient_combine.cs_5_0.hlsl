@@ -5,8 +5,8 @@
 
 // Total War ray tracing (rt_scene.hpp), for the games without an ambient occlusion pass of the addon's (Warhammer): the
 // AO their sun draws read (t0, any size: sampled where it holds the pixel; its AO in red, as ao_filter.hlsli reads it)
-// times the traced ambient visibility (t1, at the render size's pixel), the game's other channels kept, at the display's
-// size for the sun draws in its place.
+// times the traced ambient visibility (t1, at the render size's pixel), or the traced alone in its place, the game's other
+// channels kept, at the display's size for the sun draws in its place.
 Texture2D<float4> game_ao : register(t0);
 Texture2D<float> ambient : register(t1);
 SamplerState linear_clamp : register(s0);
@@ -14,7 +14,7 @@ RWTexture2D<float4> combined : register(u0);
 
 cbuffer rt_combine : register(b0)
 {
-  uint4 size;  // xy the render size; z the rays in place of the game's AO (RT_COMBINE_SUN_MAPPING)
+  uint4 size;  // xy the render size; z the rays in place of the game's AO (rt_core.hpp Settings::ambient_alone)
 }
 
 #ifdef RT_COMBINE_SUN_MAPPING
@@ -38,12 +38,10 @@ void main(uint3 id : SV_DispatchThreadID)
 #endif
   const float4 game = game_ao.SampleLevel(linear_clamp, uv, 0);
   const float traced = all(id.xy < size.xy) ? ambient[id.xy] : 1.f;
-#ifdef RT_COMBINE_SUN_MAPPING
   // Inside the traced part only: past it the game's stays.
   if (size.z != 0u && all(id.xy < size.xy)) {
     combined[id.xy] = float4(traced, game.yzw);
     return;
   }
-#endif
   combined[id.xy] = float4(game.x * traced, game.yzw);
 }

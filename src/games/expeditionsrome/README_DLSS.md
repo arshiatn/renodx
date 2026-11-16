@@ -11,6 +11,14 @@ Performance and Custom upscaling**, not frame generation or a finished release. 
 game's actual 1–100% Screen Percentage; native 100% uses DLAA. Temporal
 Upscaling must be on below 100%. The Temporal Upscaling-off path is not enabled.
 
+### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
+
+- **Ray-Traced AO replaces Unreal's screen-space AO and GT-VBAO** (ATN: never on top of them): the traced visibility is
+  written over the R8 screen-space AO at the sun's light draw (no blend) instead of the darker of the two, so every later
+  reader (the sky light and reflections) gets the rays' AO alone. Picking the rays still turns GT-VBAO off (no gate in the
+  shaders' constants yet).
+- In game: Ray-Traced AO: corners lighter than before where the game's SSAO was darker than the rays'.
+
 ## Install (release)
 
 1. Put `renodx-expeditionsrome_dlss.addon64` and NVIDIA's latest

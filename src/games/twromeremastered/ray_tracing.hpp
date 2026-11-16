@@ -347,7 +347,14 @@ inline void Trace(reshade::api::command_list* cmd_list) {
                             });
 }
 
+// This frame's traced AO in place of the game's (ASSAO's output and the trees' AO drawn into it after: Multiply, TreeAOInject).
+inline bool AmbientReplaced() {
+  return sliders.ambient_occlusion != 0.f && twattila::rt_scene::Visibilities()[1] != nullptr;
+}
+
 // After ASSAO's apply (`ambient`) or the shadow mask's resolve: this frame's traced visibility multiplies the target's red.
+// ASSAO's target is cleared to open first: the rays' AO in place of the game's, never on top of it (ATN 2026-11-16; its 372
+// readers in the dump read its red only).
 inline void Multiply(reshade::api::command_list* cmd_list, bool ambient) {
   if ((ambient ? sliders.ambient_occlusion : sliders.sun_shadows) == 0.f) return;
   ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
@@ -357,6 +364,10 @@ inline void Multiply(reshade::api::command_list* cmd_list, bool ambient) {
   native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
   ComPtr<ID3D11DeviceContext1> native1;
   if (visibility == nullptr || !target || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
+  if (ambient) {
+    constexpr std::array<float, 4> OPEN = {1.f, 1.f, 1.f, 1.f};
+    native->ClearRenderTargetView(target.Get(), OPEN.data());
+  }
   internal::DrawMultiply(native1.Get(), target.Get(), visibility, false);
 }
 

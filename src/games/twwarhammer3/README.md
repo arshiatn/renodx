@@ -1,5 +1,16 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### Ray-Traced AO keeps GT-VBAO's setting (2026-11-16; built only, not run in game)
+
+- Ray-Traced and Path-Traced AO already stood in place of the game's SSAO and GT-VBAO here (the game's passes skipped, the
+  sun's slot the rays' AO alone, since v36). The page now treats them as Attila's does (`rays_replace_ao`): picking the rays
+  leaves GT-VBAO's setting as it was instead of writing the game's SSAO, the start-up line that turned a saved GT-VBAO off
+  under ray-traced AO is gone, and GT-VBAO's Temporal Smoothing and Denoiser stay off while the rays replace it. Back from
+  the rays (no upscaler, the helper missing) GT-VBAO returns where it was chosen. The RTAO tooltip says "in place of the
+  game's ambient occlusion and GT-VBAO".
+- In game: Ray-Traced AO with GT-VBAO chosen before: the same picture as with the game's SSAO chosen before; the method
+  slider back on GT-VBAO brings it back.
+
 ### Parity round 2 (2026-11-14 evening; built only, not run in game)
 
 - New: **Rarer Objects in the Rays (Experimental, off)** in Shadows' More Options, as Attila's, Warhammer's and Warhammer

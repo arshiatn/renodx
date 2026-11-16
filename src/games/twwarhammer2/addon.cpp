@@ -466,6 +466,11 @@ float rays_untraced_casters_row = 0.f;
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
+// GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone): the rays' AO stands
+// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO stays
+// there, as when the page turned GT-VBAO off with them.
+bool bitmask_ao = false;
+
 void BuildRuntimeData() {
   custom_shaders = {
       FrameCopyShader(0xF9646737), //sharpening (reads our 16-bit frame copy)
@@ -488,12 +493,12 @@ void BuildRuntimeData() {
   // collect stays its own code (Game's costs what it did); the game's blur, when it runs, blurs it as the game's.
   custom_shaders[0xF1CE6943].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0xF1CE6943, true);
-    if (shader_injection.ssao_mode >= 1.f) tw::line_sweep_ao::KeepComputeDepth(cmd_list, 0);
+    if (bitmask_ao) tw::line_sweep_ao::KeepComputeDepth(cmd_list, 0);
     return true;
   };
   custom_shaders[0x19CF3C83].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0x19CF3C83, true);
-    if (shader_injection.ssao_mode < 1.f) return true;
+    if (!bitmask_ao) return true;
     tw::line_sweep_ao::KeepComputeCamera(cmd_list, 0);
     return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_collect, &shader_injection, sizeof(shader_injection),
                                                true, __ao_upsample_collect, shader_injection.ssao_resolution != 0.f);
@@ -1835,15 +1840,18 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twwarhammer2::particle_smoothing::OnPresent();
   talesofarise::pixel_trace::OnPresent(queue);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
+  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  // The rays' AO in place of the game's in the sun draws' t_ssao, never on top of it (ATN 2026-11-16): every sun draw with an AO
+  // slot reads its red alone (the dump), which the combine replaces by the traced visibility, its other channels kept.
+  rt_settings.ambient_alone = true;
+  bitmask_ao = shader_injection.ssao_mode >= 1.f && !rt_settings.ambient_occlusion && !rt_settings.path_ambient;
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
-  const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
       (bitmask_ao && shader_injection.ssao_temporal != 0.f) ? static_cast<float>(++ao_frame % 64) : 0.f;
   twattila::ao_filter::Update(swapchain, {.temporal = bitmask_ao && shader_injection.ssao_temporal != 0.f,
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
-  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
   rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
@@ -1902,7 +1910,7 @@ constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {
 }};
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
-// (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO; reflections on the game's SSR resolve;
+// (the sun shaders' patched comparisons), ray-traced AO in place of the game's SSAO; reflections on the game's SSR resolve;
 // the paths' sky from the game's spherical harmonics (rt_sun); Water Clarity and Caustics on the water's own draws.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
@@ -1922,7 +1930,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
-                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.",
+                  "RTAO: from rays through the scene, in place of the game's. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
     .water_caustics_label = "Water Caustics (Experimental)",
@@ -2306,7 +2314,7 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
 
   // Appended Settings (HDR10)
   {
@@ -2474,8 +2482,7 @@ void ConfigureAddon() {
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .rays_preset_as_attila = true,
-                                             .lights_own_row = true,
-                                             .rays_replace_ao = false});
+                                             .lights_own_row = true});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;

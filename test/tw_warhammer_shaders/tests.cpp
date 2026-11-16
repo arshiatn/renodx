@@ -67,6 +67,9 @@
 //    rt_ambient_combine (twattila, without RT_COMBINE_SUN_MAPPING as here) the traced visibility alone; the sun shaders
 //    (CF0C5118 drawn in ATN's battles, 230F2241: their bytes, ambient cube light) read t_ssao's red only. CONTROLS: the
 //    game's AO at 0.5 changes the combine; the sun's light follows t_ssao's red.
+//    The rays in place of the game's AO (rt_core.hpp Settings::ambient_alone, the combine's size.z: every sun-draw game):
+//    over an RGBA AO of 0.5 with other channels of its own (0.25, 0.75, 1), red the traced visibility bit for bit and the
+//    other three the multiplying combine's bit for bit. CONTROL: the multiplying combine's red differs.
 // 16. The battle fog (shaders/battlefog00, the build's embed/0xE684D54E.cso; the game's E684D54E drawn in 34 of ATN's 36
 //    traces) over 8 x 8 pixels of varied depth, its constants by name in the game's ranges (height, distance, clear-distance
 //    and forced fog all partial): Fog Strength 1 equals the game's bytes (colour and opacity); 0.5 halves the opacity and
@@ -2687,11 +2690,12 @@ static void TestAoAlone(const std::string& games, const std::string& dump) {
                                      .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
   ComPtr<ID3D11SamplerState> sampler;
   device->CreateSamplerState(&linear, sampler.GetAddressOf());
-  const std::array<uint32_t, 4> size = {SIZE, SIZE, 0u, 0u};
-  const auto size_buffer = Constants(size.data(), sizeof(size));
-  // The game's AO target cleared to `game_value` (as the collect's skip clears it), then combined with the traced visibility.
-  const auto combined = [&](float game_value) {
-    const D3D11_TEXTURE2D_DESC ao_desc = {.Width = SIZE, .Height = SIZE, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R8_UNORM,
+  // The game's AO target (`format`) cleared to `game_value` (as the collect's skip clears it), then combined with the traced
+  // visibility: on top of it, or in its place (`alone`).
+  const auto combined = [&](DXGI_FORMAT format, const std::array<float, 4>& game_value, bool alone) {
+    const std::array<uint32_t, 4> size = {SIZE, SIZE, alone ? 1u : 0u, 0u};
+    const auto size_buffer = Constants(size.data(), sizeof(size));
+    const D3D11_TEXTURE2D_DESC ao_desc = {.Width = SIZE, .Height = SIZE, .MipLevels = 1, .ArraySize = 1, .Format = format,
                                           .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
                                           .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS};
     ComPtr<ID3D11Texture2D> ao;
@@ -2700,8 +2704,7 @@ static void TestAoAlone(const std::string& games, const std::string& dump) {
     device->CreateTexture2D(&ao_desc, nullptr, ao.GetAddressOf());
     device->CreateUnorderedAccessView(ao.Get(), nullptr, ao_uav.GetAddressOf());
     device->CreateShaderResourceView(ao.Get(), nullptr, ao_view.GetAddressOf());
-    const std::array<float, 4> value = {game_value, game_value, game_value, game_value};
-    context->ClearUnorderedAccessViewFloat(ao_uav.Get(), value.data());
+    context->ClearUnorderedAccessViewFloat(ao_uav.Get(), game_value.data());
     const auto output = Texture(SIZE, SIZE, nullptr, D3D11_BIND_UNORDERED_ACCESS);
     ComPtr<ID3D11UnorderedAccessView> uav;
     device->CreateUnorderedAccessView(output.Get(), nullptr, uav.GetAddressOf());
@@ -2715,17 +2718,29 @@ static void TestAoAlone(const std::string& games, const std::string& dump) {
     context->ClearState();
     return Read(output.Get());
   };
-  const auto open = combined(1.f);
-  const auto half = combined(0.5f);
+  const auto open = combined(DXGI_FORMAT_R8_UNORM, {1.f, 1.f, 1.f, 1.f}, false);
+  const auto half = combined(DXGI_FORMAT_R8_UNORM, {0.5f, 0.5f, 0.5f, 0.5f}, false);
+  constexpr std::array<float, 4> GAME_CHANNELS = {0.5f, 0.25f, 0.75f, 1.f};
+  const auto multiplied = combined(DXGI_FORMAT_R8G8B8A8_UNORM, GAME_CHANNELS, false);
+  const auto replaced = combined(DXGI_FORMAT_R8G8B8A8_UNORM, GAME_CHANNELS, true);
   int alone = 0;
   int control = 0;
+  int in_place = 0;
+  int kept = 0;
+  int multiplied_control = 0;
   for (size_t at = 0; at < traced.size(); ++at) {
     alone += (open[at][0] == traced[at]) ? 1 : 0;
     control += (traced[at] != 0.f && half[at][0] != traced[at]) ? 1 : 0;
+    in_place += (replaced[at][0] == traced[at]) ? 1 : 0;
+    kept += (replaced[at][1] == multiplied[at][1] && replaced[at][2] == multiplied[at][2] && replaced[at][3] == multiplied[at][3]) ? 1 : 0;
+    multiplied_control += (traced[at] != 0.f && multiplied[at][0] != traced[at]) ? 1 : 0;
   }
   const int texels = static_cast<int>(traced.size());
   CHECK(alone == texels, "the game's AO cleared to open: %d of %d combine to the traced visibility", alone, texels);
   CHECK(control > texels / 2, "CONTROL the game's AO 0.5: %d of %d differ", control, texels);
+  CHECK(in_place == texels && kept == texels, "the rays in place of the game's AO 0.5: red %d of %d the traced visibility, the other channels %d of %d kept",
+        in_place, texels, kept, texels);
+  CHECK(multiplied_control > texels / 2, "CONTROL the multiplying combine over the game's AO 0.5: %d of %d differ", multiplied_control, texels);
   // The battle's sun shaders (ATN's traces draw CF0C5118; 230F2241 part 1's): their light from the ambient cube alone.
   int red_only = 0;
   int follows = 0;
@@ -2743,9 +2758,10 @@ static void TestAoAlone(const std::string& games, const std::string& dump) {
   }
   CHECK(red_only == 2, "the sun shaders read t_ssao's red only: %d of 2", red_only);
   CHECK(follows == 2, "CONTROL the sun shaders' light follows that red: %d of 2", follows);
-  std::printf("rays' AO alone: the game's AO cleared to open, %d of %d combine to the traced visibility (CONTROL 0.5: %d differ); CF0C5118 / "
+  std::printf("rays' AO alone: the game's AO cleared to open, %d of %d combine to the traced visibility (CONTROL 0.5: %d differ); in its place "
+              "(size.z) over the game's 0.5: red %d of %d the traced, other channels %d of %d kept (CONTROL multiplying: %d differ); CF0C5118 / "
               "230F2241 read t_ssao's red only: %d of 2, their light follows it: %d of 2\n",
-              alone, texels, control, red_only, follows);
+              alone, texels, control, in_place, texels, kept, texels, multiplied_control, red_only, follows);
 }
 
 // What the battle fog's draw binds besides the game's constants (part 16).

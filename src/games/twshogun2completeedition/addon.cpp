@@ -726,6 +726,9 @@ constexpr std::array<RaysDebugView, 7> RAYS_DEBUG_VIEWS = {{
     {.value = 9, .label = "All"},
 }};
 
+// GT-VBAO this frame (OnPresent): its setting, not under the rays' AO.
+bool bitmask_ao = false;
+
 void BuildRuntimeData() {
   custom_shaders = {
       CustomShaderEntry(0xEF060C7C),  // tonemap00 (hdr_to_screen)
@@ -805,10 +808,10 @@ void BuildRuntimeData() {
   // stays the game's code (Game's costs what it did). The first frame (no camera kept yet): nothing.
   custom_shaders[0xA00FE3A3].on_draw = [](auto* cmd_list) {
     tw::line_sweep_ao::OnBlur(cmd_list);
-    return shader_injection.ssao_mode < 1.f;
+    return !bitmask_ao;
   };
   custom_shaders[0x98BB1159].on_draw = [](auto* cmd_list) {
-    if (shader_injection.ssao_mode < 1.f) return true;
+    if (!bitmask_ao) return true;
     if (!tw::line_sweep_ao::OnCollect(cmd_list, true, false, 0, 0)) return false;
     tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_collect, &shader_injection, sizeof(shader_injection), false,
                                        __ao_upsample_collect, shader_injection.ssao_resolution != 0.f);
@@ -2364,8 +2367,10 @@ void ApplyGameRows() {
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp), as Warhammer II's.
-  const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
+  // GT-VBAO not under the rays' AO (one AO method, as Attila's rt_ambient_alone: the sun draws read the rays' AO in place of
+  // the game's, rt_sun.hlsli RtInPlace). Its Temporal Smoothing (its noise moving each frame) and Denoiser
+  // (twattila/ao_filter.hpp), as Warhammer II's.
+  bitmask_ao = shader_injection.ssao_mode >= 1.f && rt_sliders.ambient_occlusion == 0.f;
   const bool ao_temporal = bitmask_ao && ao_filter_rows.temporal != 0.f;
   const bool ao_denoise = bitmask_ao && ao_filter_rows.denoise != 0.f;
   static uint32_t ao_frame = 0;

@@ -43,7 +43,7 @@
 // 0x7C21DA11, FDeferredLightUniformStruct at ps b1, View at ps b0, both read from the game's uploads:
 // constant_mirror.hpp): the G-buffer guides (0x7A1E0D44), the trace (the scene depth at t1, the sun's direction), then
 // the traced sun into the light attenuation (t8, 0x7A1E0D45: the darker of the game's and the traced) and the traced
-// ambient into the screen-space AO (t7, 0x7A1E0D46: the darker). The reflections replace the screen-space reflections'
+// ambient into the screen-space AO (t7, 0x7A1E0D46: in its place, never on top of it, ATN 2026-11-16). The reflections replace the screen-space reflections'
 // draw (0x7A1E0D47 into its target; the reflection captures and the sky fill the rest, which Specular Occlusion keeps only
 // where the lobe is open, also over the game's own reflections), their light from the scene
 // colour the temporal pass receives (KeepColor). The light bounce (path traced when on) right after the sun's draw: the
@@ -89,7 +89,6 @@ struct State {
   ComPtr<ID3D11PixelShader> ambient;
   ComPtr<ID3D11PixelShader> reflection;
   ComPtr<ID3D11BlendState> multiply_blue;
-  ComPtr<ID3D11BlendState> min_red;
   ComPtr<ID3D11BlendState> occlude_alpha;  // alpha only: a + (1 - a) x the shader's
   ComPtr<ID3D11Buffer> guides_constants;
   ComPtr<ID3D11Texture2D> attenuation_copy;
@@ -183,10 +182,6 @@ inline bool PrepareDevice(ID3D11Device* device) {
                               .SrcBlendAlpha = D3D11_BLEND_ZERO, .DestBlendAlpha = D3D11_BLEND_ONE, .BlendOpAlpha = D3D11_BLEND_OP_ADD,
                               .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN
                                                        | D3D11_COLOR_WRITE_ENABLE_BLUE};
-  D3D11_BLEND_DESC min_desc = {};
-  min_desc.RenderTarget[0] = {.BlendEnable = TRUE, .SrcBlend = D3D11_BLEND_ONE, .DestBlend = D3D11_BLEND_ONE,
-                              .BlendOp = D3D11_BLEND_OP_MIN, .SrcBlendAlpha = D3D11_BLEND_ONE, .DestBlendAlpha = D3D11_BLEND_ONE,
-                              .BlendOpAlpha = D3D11_BLEND_OP_MIN, .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED};
   D3D11_BLEND_DESC occlude_desc = {};
   occlude_desc.RenderTarget[0] = {.BlendEnable = TRUE, .SrcBlend = D3D11_BLEND_ZERO, .DestBlend = D3D11_BLEND_ONE, .BlendOp = D3D11_BLEND_OP_ADD,
                                   .SrcBlendAlpha = D3D11_BLEND_INV_DEST_ALPHA, .DestBlendAlpha = D3D11_BLEND_ONE,
@@ -204,7 +199,6 @@ inline bool PrepareDevice(ID3D11Device* device) {
                  || FAILED(device->CreatePixelShader(__0x7A1E0D47.data(), __0x7A1E0D47.size(), nullptr,
                                                      state.reflection.ReleaseAndGetAddressOf()))
                  || FAILED(device->CreateBlendState(&multiply_desc, state.multiply_blue.ReleaseAndGetAddressOf()))
-                 || FAILED(device->CreateBlendState(&min_desc, state.min_red.ReleaseAndGetAddressOf()))
                  || FAILED(device->CreateBlendState(&occlude_desc, state.occlude_alpha.ReleaseAndGetAddressOf()))
                  || FAILED(device->CreateBuffer(&constants_desc, nullptr, state.guides_constants.ReleaseAndGetAddressOf()))
                  || FAILED(device->CreatePixelShader(__0x7A1E0D48.data(), __0x7A1E0D48.size(), nullptr, state.prepare.ReleaseAndGetAddressOf()))
@@ -531,7 +525,7 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
       contact_shadows::ray_traced.store(true, std::memory_order_relaxed);
     }
   }
-  // The traced ambient: into the AO where the game made one (not its 1 x 1 default).
+  // The traced ambient: in place of the AO where the game made one (not its 1 x 1 default; R8, its one channel the AO).
   if (settings.ambient_occlusion && ambient != nullptr && inputs[AMBIENT]) {
     ComPtr<ID3D11Resource> occlusion;
     inputs[AMBIENT]->GetResource(occlusion.GetAddressOf());
@@ -541,7 +535,7 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
     if (desc.Width >= render_size[0] && desc.Height >= render_size[1] && desc.Format == DXGI_FORMAT_R8_UNORM) {
       if (auto* target = Target(device.Get(), occlusion.Get(), DXGI_FORMAT_R8_UNORM); target != nullptr) {
         const std::array<ID3D11ShaderResourceView*, 1> views = {ambient};
-        FullScreen(context1.Get(), target, state.min_red.Get(), state.ambient.Get(), views);
+        FullScreen(context1.Get(), target, nullptr, state.ambient.Get(), views);
       }
     }
   }

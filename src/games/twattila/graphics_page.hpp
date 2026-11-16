@@ -217,7 +217,9 @@ struct Bindings {
   // Ray-traced reflections (rt_scene::AppendSettings' reflection_pass); false: the Reflections section only with FidelityFX
   // SSSR (ssr_hierarchical), the game's SSR and it.
   bool has_reflections = true;
-  bool rays_replace_ao = true;  // Ray-traced AO in place of the game's; false: it multiplies the game's.
+  // The rays' AO in place of the game's AO and GT-VBAO, the page keeping GT-VBAO's setting under them (the add-on leaves
+  // GT-VBAO out at present, as Attila's rt_ambient_alone); false: picking the rays turns GT-VBAO off (no such gate in the game).
+  bool rays_replace_ao = true;
   // The rays' sun shadows always multiply the game's shadow maps (no rays_replace_maps row): Shadow Map Size stays under them.
   bool rays_multiply_maps = false;
   bool has_gtvbao = true;  // GT-VBAO (ssao_mode 1); false: the AO's methods are the game's and the rays' (Rome Remastered)
@@ -263,7 +265,7 @@ inline int ReflectionMethodOf(const Bindings& b) {
 // turns them on, and leaving them falls back to ray-traced AO (the game's ambient would come back with no AO on it).
 inline void ChooseAo(const Bindings& b, int method) {
   Values values = {{"RayTracedPathAmbient", (method == AO_PATHS) ? 1.f : 0.f}};
-  // Multiplying, ray-traced AO goes over the game's, not over GT-VBAO too.
+  // Without the add-on's GT-VBAO gate the rays' methods turn GT-VBAO off.
   if (method == AO_GAME || method == AO_GTVBAO || (method >= AO_RAYS && !b.rays_replace_ao)) values.emplace_back("ssao_mode", (method == AO_GTVBAO) ? 1.f : 0.f);
   values.emplace_back("RayTracedAmbientOcclusion", (method == AO_RAYS) ? 1.f : 0.f);
   if (method == AO_PATHS) {
@@ -737,7 +739,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     Values rays_values = RAYS_PRESET;
     // No paths for the sky's light here: ray-traced AO, over the game's.
     if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
-    // The paths' AO multiplying the game's (ChooseAo's Path-Traced): GT-VBAO goes off with it, else it ran hidden under the paths.
+    // Without the add-on's GT-VBAO gate (ChooseAo's Path-Traced): GT-VBAO goes off with the paths, else it ran hidden under them.
     if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
     // Without Global Illumination nothing of it to turn on.
     if (!b.has_gi) std::erase_if(rays_values, [](const Values::value_type& preset) { return preset.first == "RayTracedLightBounce"; });
@@ -1166,7 +1168,6 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedAORange", .section = section, .shown = rays, .label = "Range"});
     page.Take({.match = "RayTracedAORays", .section = section, .shown = rays, .label = "Rays"});
     page.Take({.match = "RayTracedAOQuarter", .section = section, .shown = rays, .label = "Rate"});
-    page.Take({.match = "RayTracedAOAlone", .section = section, .shown = rays, .only_some_games = true});
     page.Take({.match = "RayTracedPathSkyApart", .section = section, .shown = ao_is(AO_PATHS), .label = "Own Sky Rays"});
     page.Take({.match = "RayTracedPathKeptCube", .section = section, .shown = ao_is(AO_PATHS), .label = "Steady Bounce Light (Experimental)"});
     page.Take({.match = "RayTracedPathProbeSky", .section = section, .shown = ao_is(AO_PATHS), .only_some_games = true});

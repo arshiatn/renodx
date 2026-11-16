@@ -13,6 +13,13 @@ float RtDarker(Texture2D<float> traced, float2 pixel, float game) {
   return (width != 0u) ? min(game, traced.Load(int3(pixel, 0))) : game;
 }
 
+// The traced value in place of the game's (the rays' AO, never on top of the game's: ATN 2026-11-16); the game's unbound.
+float RtInPlace(Texture2D<float> traced, float2 pixel, float game) {
+  uint width, height;
+  traced.GetDimensions(width, height);
+  return (width != 0u) ? traced.Load(int3(pixel, 0)) : game;
+}
+
 // Coloured Shadows (ray_tracing.hpp OnSunDraw, with this frame's trace): at t50 the share of the sun's colour that cloth and
 // sails took out on its way (1 - the colour they let through); unbound reads 0, the sun's colour as it is.
 Texture2D<float4> t_rt_tint : register(t50);

@@ -1,5 +1,18 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
+
+- **Ray-Traced AO replaces the game's SSAO and GT-VBAO** (ATN: never on top of them). The sun draws' `t_ssao` now holds the
+  rays' AO alone where they traced (`rt_ambient_combine`'s in-place path, `rt_core` Settings::ambient_alone, as Warhammer
+  III's); before, it was the game's AO times the rays'. The page keeps GT-VBAO's setting under the rays (as Attila's): GT-VBAO
+  isn't drawn under Ray-Traced or Path-Traced AO; under Path-Traced AO the game's SSAO still occludes the sun's cube
+  reflection, as before. The game's SSAO passes still run under the rays (unread by the sun draws): the double-work table has the sun draws as their only reader, so they could be left out (not done yet).
+- Proven offline: `fxc /dumpbin` of all 24 sun draws with an AO slot (LIGHT_BOUNCE_DRAWS): one read each, its red only;
+  test/tw_warhammer_shaders part 15: the in-place combine's red is the traced visibility bit for bit, its other channels the
+  multiplying combine's (CONTROL: the multiplying combine's red differs).
+- In game: Ray-Traced AO in a battle: corners lighter than before (no SSAO under the rays' AO); GT-VBAO and the game's SSAO
+  unchanged without rays.
+
 ### Gamma Correction in every mode (2026-11-16; built only, not run in game)
 
 - **Gamma Correction** (same row, on by default) now also acts in the HDR modes, as Attila's and Thrones': the game's

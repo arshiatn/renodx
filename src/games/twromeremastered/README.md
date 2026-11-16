@@ -2,6 +2,16 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
+
+- **Ray-Traced AO replaces ASSAO and the trees' own AO** (ATN: never on top of them): after ASSAO's apply its target is
+  cleared to open, then the traced visibility multiplied in (the rays' AO alone), and the trees' AO (TreeAOInject) is left
+  out while the rays replace it this frame, as the Test row does. All 372 pixel shaders in the dump that read t13 read its
+  red only.
+- Proven offline: test/tw_romer_rays part 4: the cleared R8 then the multiply is the visibility to the bit, 2304 of 2304
+  texels (CONTROL multiplied over the game's 204: 2268 differ). Whole suite PASS.
+- In game: Ray-Traced AO in a battle: corners and tree feet lighter than before (no ASSAO under the rays' AO).
+
 ### Parity round 2 (2026-11-14 evening; built only, not run in game)
 
 - Shadow casters checked against ATN's 91 traces and the whole shader dump (85 vertex shaders the census could not

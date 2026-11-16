@@ -1,5 +1,14 @@
 # RenoDX — Total War: SHOGUN 2 Complete Edition (DX11)
 
+### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
+
+- **Ray-Traced AO replaces the game's SSAO and GT-VBAO** (ATN: never on top of them): the four sun draws (sunlight00-03)
+  take the traced visibility (t41) in place of their t_ssao while it is bound (rt_sun.hlsli RtInPlace), before the darker
+  of the two (RtDarker); GT-VBAO isn't drawn while the Ray-Traced AO row is on (one AO method at present; a saved GT-VBAO
+  comes back without it). The cube reflection's resolve (ssrresolve00) still multiplies the game's AO with the rays'
+  specular occlusion.
+- In game: Ray-Traced AO: corners lighter than before; GT-VBAO and the game's SSAO unchanged without rays.
+
 ### One add-on (2026-11-15; built, not run in game)
 
 **Players: delete `renodx-twshogun2completeedition_dlss.addon64` from the game folder.** The DLSS add-on is part of this
