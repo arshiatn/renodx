@@ -90,7 +90,6 @@ HDR later, 24cdfb9c).
 ## OPEN (owners)
 Pointer index of every open box below (short title | owner, file order); the detailed line stays where it is.
 Rebuild it when boxes change; the boxes themselves are the record.
-
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - ATN ~19:xx: "No more performance improvements on our side and the game's?" From ... | next CPU round
@@ -1454,6 +1453,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         SaveData_006 (made during the run, moved aside) put back. REDO the look shots overnight (keys). Owner: coordinator
         Expeditions run g1/run_epic_041035 (menu scene, ATN's wish: heavier): GPU busy 8.34 / Bend 9.23 / Bend+GI 9.72 /
         GI 8.84 / back 8.35 ms; 5 shots, traces + timings per state.
+        04:25-04:57 Divinity 2 r2gamma / r2precision (gamma 1.2, Higher Precision Scene; 10 shots each, trace at 300 s in the
+        second), R.U.S.E. t1rt (all RT rows: 137 fps, GPU busy 4.65 ms in RUSE.exe) / t2ss (screen-space: 138 fps, 4.63 ms;
+        HDR shots view\hdr_*.png). ATN done 04:57, in bed. 05:0x TW install (10 games, helper115), skills c4ebedb8 / 367b9d4d /
+        1ed75008 (ours replaces the game's, one method per effect, Bend keeps the maps), audits started: rao_ (RT AO replace),
+        sk3_ (Attila vs skills), an_ (run analysis), rd_ (Ryse cost + Tales shots redo), 10 per-game skill audits
+        (tools/tw/round_notes/skill_audit_1116), gpu2_ (GPU round 2 + Nsight). handoff_index.py no longer adds a blank line.
         LEFT (11-16 audit): step 2 (the rest of the "R.U.S.E. T-run list" box), step 4 (GPU round 2 + the Nsight
         capture), step 5's analysis (an_) and redo (own box "Ryse redo: per-state GPU cost"), step 6 (ATN's checks).
         Owner: coordinator (steps 2, 4, 5), ATN (step 6)
