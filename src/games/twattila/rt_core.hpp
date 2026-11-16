@@ -314,8 +314,9 @@ struct SceneShader {
   UINT sun_slot = 0;
   bool far_tree = false;  // a far tree's billboard (with sun_facing)
   bool still = false;       // placed foliage without wind (the campaign's trees): no swaying copies
-  // Its alpha test's cut-off where its game's isn't the helper's 0.5 (Troy's campaign trees: 0.01): its captures RT_OWN_CUTOFF,
-  // the bridge's rt_leaf_cutoff this; one value a game (the bridge carries one). 0: the helper's.
+  // Its alpha test's cut-off where its game's isn't the helper's 0.5 (Troy's campaign trees: 0.01; Rome II's rigid cut-outs:
+  // 0.35): its foliage or cut-out captures RT_OWN_CUTOFF, the bridge's rt_leaf_cutoff this; one value a game (the bridge
+  // carries one). 0: the helper's.
   float alpha_cutoff = 0.f;
   bool tessellated = false;
   // Its draws are 3-control-point patches its hull and domain shaders tessellate and displace (Attila's tessellated rigid objects):
@@ -2037,7 +2038,8 @@ void Capture(Context& command, const SceneShader& shader) {
                          | (shader.sun_facing ? dlaa_bridge::RT_SUN_ONLY : 0u) | (shader.far_tree ? dlaa_bridge::RT_SCATTERED : 0u)
                          // A rigid mesh the game's shadow pass alpha-tests too (a fence, a thatched house): as leaves a house let a
                          // quarter of the sun through under Light Through Leaves.
-                         | (cut_out ? dlaa_bridge::RT_SOLID_CUT_OUT : 0u) | ((foliage && shader.alpha_cutoff != 0.f) ? dlaa_bridge::RT_OWN_CUTOFF : 0u);
+                         | (cut_out ? dlaa_bridge::RT_SOLID_CUT_OUT : 0u)
+                         | (((foliage || cut_out) && shader.alpha_cutoff != 0.f) ? dlaa_bridge::RT_OWN_CUTOFF : 0u);
   // Placed meshes, and SceneShader::cascade_world's world positions, in a clip-space game: the world part.
   const bool world_part = clip_captures && (placed || (cascade_draw && shader.cascade_world));
   uint32_t& next_vertex = (world_part ? runtime.world_vertices : runtime.captured_vertices);
