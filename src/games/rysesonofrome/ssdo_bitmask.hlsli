@@ -113,4 +113,21 @@ float4 RyseBitmaskOcclusion(float2 uv, uint2 pixel, float3 normal, Texture2D<flo
   return float4((toward_length > 0.f) ? toward_occluders * (amount / toward_length) : 0.f, amount);
 }
 
+// This frame's AO method (SI.ao_method, one at a time) on the SSDO term of ssdo00 or a permutation of it (`term`: the
+// direction toward what covers the pixel in world space, its amount): GT-VBAO (1) the term from the visibility bitmask
+// (the G-buffer normal at `uv` through `camera`, the result back through `camera_inverse`: SSDO_CameraMatrix and its
+// inverse), the ray-traced AO (2) the amount 0 (the rays' amount is added at the tiled lighting, contact_shadows.hpp),
+// else the game's.
+float4 RyseSsdoTerm(float4 term, float2 uv, uint2 pixel, Texture2D<float4> normals, SamplerState normal_sampler, float3x3 camera,
+                    float3x3 camera_inverse, Texture2D<float4> depth_texture, SamplerState depth_sampler, float far,
+                    float4 view_space_params) {
+  if (SI.ao_method == 1.f) {
+    const float3 normal = mul(camera, normals.Sample(normal_sampler, uv).xyz * 2.f - 1.f);
+    const float4 occlusion = RyseBitmaskOcclusion(uv, pixel, normal, depth_texture, depth_sampler, far, view_space_params);
+    term = float4(mul(camera_inverse, occlusion.xyz), occlusion.w);
+  }
+  if (SI.ao_method == 2.f) term.w = 0.f;
+  return term;
+}
+
 #endif  // SRC_GAMES_RYSESONOFROME_SSDO_BITMASK_HLSLI_

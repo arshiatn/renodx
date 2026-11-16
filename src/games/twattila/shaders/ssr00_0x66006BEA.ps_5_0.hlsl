@@ -333,7 +333,9 @@ void main(
   // occlusion (t46, bound with it on) dimmed above: one occlusion a reflection.
   uint occlusion_width, occlusion_height;
   t_rt_specular_occlusion.GetDimensions(occlusion_width, occlusion_height);
-  if (r1.x == 0 && !(rt_reflected && r0.y <= RT_REFLECTION_ROUGH_LIMIT) && occlusion_width == 0u) {
+  // The rays' own reflection here (a surface smooth enough for them).
+  const bool rt_traced = rt_reflected && r0.y <= RT_REFLECTION_ROUGH_LIMIT;
+  if (r1.x == 0 && !rt_traced && occlusion_width == 0u) {
     o1.y = r0.z;
   } else {
     o1.y = 1;
@@ -346,5 +348,8 @@ void main(
   // Effects at Output Resolution (DLSS below 100%): the blur's step (reflections_blur: (this x 1.9 + 0.1) texels of the
   // full-size target) x the render share, as wide on screen as at 100%.
   o1.x = max(((o1.x * 1.9f + 0.1f) * SI.effects_share - 0.1f) / 1.9f, 0.f);
+  // Sharp Ray-Traced Reflections (Experimental, off): where the rays reflect (their lobe follows the roughness already) the
+  // blur's roughness step is 0; its fixed half-texel taps stay.
+  if (SI.rays_sharp_reflections != 0.f && rt_traced) o1.x = 0.f;
   return;
 }

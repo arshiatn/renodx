@@ -5,11 +5,13 @@
 //    the lighting's only ambient, the black cube takes all of it. Control: with the probes' reflections back, the black
 //    cube keeps them (the scene not black) and differs from the game's.
 // 2. rt_probe_sky (the add-on's build): the widest probe before the sun (later entries are older frames') at the six axes
-//    times its colour and attenuation into the sun texture's texels 3-8, w 1; no light list: zeros.
+//    times its colour and attenuation into the sun texture's texels 3-8, w 1 but texel 6's 0: the helper's OpenSky then
+//    equals the cube at the normal (control: texel 6's w 1 stretches y); no light list: zeros.
 // 3. The ray-traced AO in place of the game's SSDO amount (the AO method 2). a) ssdo00 (the add-on's build against the
 //    game's bytes, a camera above a floor facing a wall, GT-VBAO saved): the AO method 0 is the game's (GT-VBAO only at
 //    1), 2 leaves the SSDO amount out (w 0 without LSDO, the terrain's LSDO alone with it), the direction kept. Control:
-//    the game's amount at the wall's foot, GT-VBAO at the method 1. b) contact shadows' 0x52C5E003 adds the rays' amount
+//    the game's amount at the wall's foot, GT-VBAO at the method 1. The same for its two permutations against their
+//    bytes (optional arguments): 0xC17645D2 (depth samples from t5) and 0xA65B60AF (no LSDO, PER_BATCH tighter). b) contact shadows' 0x52C5E003 adds the rays' amount
 //    (1 - visibility) / SSDOParams.z onto t5's alpha, colour untouched; control: the old max blend. c) the game's tiled
 //    lighting with that t5 lights as with the rays' amount alone (LSDO kept); control: the max over the game's SSDO keeps
 //    its halo where the rays see open sky.
@@ -17,8 +19,8 @@
 //    of PER_BATCH (CopySubresourceRegion, then a zero float over SSDOParams.y) holds the game's 32 floats with y 0; the
 //    game's lighting with it: t5 open, the same picture; t5 occluded, the same diffuse (u2) and a brighter scene (the
 //    probes' reflections no longer occluded by SSDO; the control that the term was live).
-// Arguments: the repository (its build's embedded csos), the game's dumped 0x897232B5.cs_5_0.cso and 0xD1106E8B.ps_5_0.cso;
-// all only read.
+// Arguments: the repository (its build's embedded csos), the game's dumped 0x897232B5.cs_5_0.cso and 0xD1106E8B.ps_5_0.cso,
+// optionally its 0xC17645D2.ps_5_0.cso and 0xA65B60AF.ps_5_0.cso; all only read.
 #include <windows.h>
 
 #include <DirectXPackedVector.h>
@@ -507,11 +509,48 @@ int main(int argc, char** argv) {
   const auto with_list = sky(list_srv.Get(), faces_srv.Get());
   float worst = 0.f;
   for (UINT face = 0; face < 6; ++face) {
-    const std::array<float, 4> expected = {0.1f * static_cast<float>(face + 1) * 0.5f * 0.8f, 1.f * 1.f * 0.8f, 1.f * 2.f * 0.8f, 1.f};
+    // w 1, texel 6's 0 (the helper's OpenSky then takes the cube at the normal as it is: Ryse's world is z up).
+    const std::array<float, 4> expected = {0.1f * static_cast<float>(face + 1) * 0.5f * 0.8f, 1.f * 1.f * 0.8f, 1.f * 2.f * 0.8f,
+                                           (face == 3) ? 0.f : 1.f};
     for (UINT channel = 0; channel < 4; ++channel) worst = std::max(worst, std::abs(with_list[((3 + face) * 4) + channel] - expected[channel]));
-    std::printf("  sky texel %u: %.4f %.4f %.4f %.1f (expected %.4f %.4f %.4f 1)\n", 3 + face, with_list[(3 + face) * 4], with_list[((3 + face) * 4) + 1],
-                with_list[((3 + face) * 4) + 2], with_list[((3 + face) * 4) + 3], expected[0], expected[1], expected[2]);
+    std::printf("  sky texel %u: %.4f %.4f %.4f %.1f (expected %.4f %.4f %.4f %.0f)\n", 3 + face, with_list[(3 + face) * 4],
+                with_list[((3 + face) * 4) + 1], with_list[((3 + face) * 4) + 2], with_list[((3 + face) * 4) + 3], expected[0], expected[1],
+                expected[2], expected[3]);
   }
+  // The helper's OpenSky (dlaa_helper/rt_path.hlsli) on these texels: the cube at the normal, scaled by texel 4's w; texel
+  // 6's w not 0 stretches the normal's y four times (Attila's sun shaders). It must equal the plain cube at the normal
+  // (the tiled lighting samples its probes at the world normal); CONTROL: texel 6's w 1 (as before) must differ.
+  const auto open_sky = [&](std::array<float, 3> normal, float texel6_w) {
+    if (texel6_w != 0.f) {
+      normal[1] *= 4.f;
+      const float length = std::sqrt((normal[0] * normal[0]) + (normal[1] * normal[1]) + (normal[2] * normal[2]));
+      for (float& axis : normal) axis /= length;
+    }
+    std::array<float, 3> light = {};
+    for (UINT axis = 0; axis < 3; ++axis) {
+      const UINT texel = 3 + (2 * axis) + ((normal[axis] < 0.f) ? 1u : 0u);
+      for (UINT channel = 0; channel < 3; ++channel) light[channel] += normal[axis] * normal[axis] * with_list[(texel * 4) + channel];
+    }
+    for (float& channel : light) channel *= with_list[(4 * 4) + 3];
+    return light;
+  };
+  float sky_difference = 0.f;
+  float stretched_difference = 0.f;
+  for (const std::array<float, 3>& normal : {std::array<float, 3>{0.f, 0.6f, 0.8f}, std::array<float, 3>{0.48f, -0.6f, 0.64f},
+                                             std::array<float, 3>{-0.8f, 0.36f, -0.48f}}) {
+    const auto plain = open_sky(normal, 0.f);
+    const auto written = open_sky(normal, with_list[(6 * 4) + 3]);
+    const auto stretched = open_sky(normal, 1.f);
+    for (UINT channel = 0; channel < 3; ++channel) {
+      sky_difference = std::max(sky_difference, std::abs(written[channel] - plain[channel]));
+      stretched_difference = std::max(stretched_difference, std::abs(stretched[channel] - plain[channel]) / std::max(plain[channel], 1e-6f));
+    }
+  }
+  std::printf("  the helper's OpenSky with the written texel 6 against the cube at the normal: largest difference %.3g; CONTROL "
+              "texel 6's w 1 (y four times over): %.1f %% off\n",
+              sky_difference, 100.f * stretched_difference);
+  CHECK(sky_difference == 0.f);
+  CHECK(stretched_difference > 0.01f);
   std::printf("rt_probe_sky: the widest probe before the sun, largest difference %.3g; texels 0-2 untouched: %s\n", worst,
               (with_list[0] == -7.f && with_list[8] == -7.f) ? "yes" : "no");
   CHECK(worst <= 1e-5f);
@@ -568,13 +607,9 @@ int main(int argc, char** argv) {
   const auto screen_buffer = Constants(screen.data(), sizeof(screen));
   ComPtr<ID3DBlob> vertex_blob;
   ComPtr<ID3D11VertexShader> ssdo_vertex;
-  ComPtr<ID3D11PixelShader> game_ssdo;
-  ComPtr<ID3D11PixelShader> ssdo;
   if (FAILED(D3DCompile(SSDO_VERTEX, sizeof(SSDO_VERTEX) - 1, "ssdo_vertex", nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_blob.GetAddressOf(), nullptr))
-      || FAILED(device->CreateVertexShader(vertex_blob->GetBufferPointer(), vertex_blob->GetBufferSize(), nullptr, ssdo_vertex.GetAddressOf()))
-      || FAILED(device->CreatePixelShader(game_ssdo_code.data(), game_ssdo_code.size(), nullptr, game_ssdo.GetAddressOf()))
-      || FAILED(device->CreatePixelShader(ssdo_code.data(), ssdo_code.size(), nullptr, ssdo.GetAddressOf()))) {
-    std::printf("ssdo00's shaders could not be made\n");
+      || FAILED(device->CreateVertexShader(vertex_blob->GetBufferPointer(), vertex_blob->GetBufferSize(), nullptr, ssdo_vertex.GetAddressOf()))) {
+    std::printf("ssdo00's vertex shader could not be made\n");
     return 2;
   }
   const D3D11_SAMPLER_DESC point_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT,
@@ -586,10 +621,12 @@ int main(int argc, char** argv) {
                                          .MaxLOD = D3D11_FLOAT32_MAX};
   ComPtr<ID3D11SamplerState> point;
   device->CreateSamplerState(&point_desc, point.GetAddressOf());
-  // `shader` at the AO method `method` with GT-VBAO the saved row (ssao_mode 1), LSDO on or off.
-  const auto ssdo_run = [&](ID3D11PixelShader* shader, float method, bool lsdo) {
+  // `shader` at the AO method `method` with GT-VBAO the saved row (ssao_mode 1), LSDO on or off; `packed`: 0xA65B60AF's
+  // PER_BATCH (no LSDO_Params: c9-c14 one register down).
+  const auto ssdo_run = [&](ID3D11PixelShader* shader, float method, bool lsdo, bool packed) {
     auto lsdo_batch = batch;
     lsdo_batch[8] = {lsdo ? 1.f : 0.f, 0.f, 0.f, 0.f};
+    if (packed) std::copy(batch.begin() + 9, batch.end(), lsdo_batch.begin() + 8);
     ShaderInjectData injection = {};
     injection.ssao_mode = 1.f;
     injection.ssao_radius = 3.f;
@@ -630,51 +667,73 @@ int main(int argc, char** argv) {
     context->PSSetConstantBuffers(13, 1, &injection_constants);
     const std::array<ID3D11ShaderResourceView*, 2> inputs = {ssdo_normal.srv.Get(), ssdo_depth_image.srv.Get()};
     context->PSSetShaderResources(0, 2, inputs.data());
+    // 0xC17645D2's depth samples (t5): the same depth here.
+    context->PSSetShaderResources(5, 1, &inputs[1]);
     ID3D11ShaderResourceView* heightmap = terrain.srv.Get();
     context->PSSetShaderResources(11, 1, &heightmap);
     const std::array<ID3D11SamplerState*, 2> samplers = {point.Get(), point.Get()};
     context->PSSetSamplers(0, 2, samplers.data());
     context->PSSetSamplers(11, 1, samplers.data());
+    context->PSSetSamplers(5, 1, samplers.data());
     context->Draw(3, 0);
     return Floats(target.Get());
   };
-  const auto game_off = ssdo_run(game_ssdo.Get(), 0.f, false);
-  const auto game_on = ssdo_run(game_ssdo.Get(), 0.f, true);
-  const auto ours_off = ssdo_run(ssdo.Get(), 0.f, false);
-  const auto ours_on = ssdo_run(ssdo.Get(), 0.f, true);
-  const auto rays_off = ssdo_run(ssdo.Get(), 2.f, false);
-  const auto rays_on = ssdo_run(ssdo.Get(), 2.f, true);
-  const auto bitmask = ssdo_run(ssdo.Get(), 1.f, false);
-  float game_difference = 0.f;
-  float direction_difference = 0.f;
-  float rays_amount = 0.f;
-  float lsdo_difference = 0.f;
-  float game_amount = 0.f;
-  float bitmask_difference = 0.f;
-  double lsdo_sum = 0.0;
-  for (size_t index = 0; index < game_off.size(); ++index) {
-    game_difference = std::max({game_difference, std::abs(game_off[index] - ours_off[index]), std::abs(game_on[index] - ours_on[index])});
-    if (index % 4 != 3) {
-      direction_difference = std::max({direction_difference, std::abs(rays_off[index] - ours_off[index]), std::abs(rays_on[index] - ours_on[index])});
-      continue;
+  // ssdo00 or a permutation (`name`): the game's bytes against the build's.
+  const auto check_ssdo = [&](const char* name, const std::vector<char>& game_bytes, const std::vector<char>& built, bool packed) {
+    ComPtr<ID3D11PixelShader> game_ssdo;
+    ComPtr<ID3D11PixelShader> ssdo;
+    if (game_bytes.empty() || built.empty() || FAILED(device->CreatePixelShader(game_bytes.data(), game_bytes.size(), nullptr, game_ssdo.GetAddressOf()))
+        || FAILED(device->CreatePixelShader(built.data(), built.size(), nullptr, ssdo.GetAddressOf()))) {
+      std::printf("%s's shaders could not be made\n", name);
+      ++failures;
+      return;
     }
-    // The terrain's share: the game's amount with LSDO less without.
-    const float lsdo = ours_on[index] - ours_off[index];
-    lsdo_sum += lsdo;
-    rays_amount = std::max(rays_amount, std::abs(rays_off[index]));
-    lsdo_difference = std::max(lsdo_difference, std::abs(rays_on[index] - lsdo));
-    game_amount = std::max(game_amount, game_off[index]);
-    bitmask_difference = std::max(bitmask_difference, std::abs(bitmask[index] - ours_off[index]));
+    const auto game_off = ssdo_run(game_ssdo.Get(), 0.f, false, packed);
+    const auto game_on = ssdo_run(game_ssdo.Get(), 0.f, true, packed);
+    const auto ours_off = ssdo_run(ssdo.Get(), 0.f, false, packed);
+    const auto ours_on = ssdo_run(ssdo.Get(), 0.f, true, packed);
+    const auto rays_off = ssdo_run(ssdo.Get(), 2.f, false, packed);
+    const auto rays_on = ssdo_run(ssdo.Get(), 2.f, true, packed);
+    const auto bitmask = ssdo_run(ssdo.Get(), 1.f, false, packed);
+    float game_difference = 0.f;
+    float direction_difference = 0.f;
+    float rays_amount = 0.f;
+    float lsdo_difference = 0.f;
+    float game_amount = 0.f;
+    float bitmask_difference = 0.f;
+    double lsdo_sum = 0.0;
+    for (size_t index = 0; index < game_off.size(); ++index) {
+      game_difference = std::max({game_difference, std::abs(game_off[index] - ours_off[index]), std::abs(game_on[index] - ours_on[index])});
+      if (index % 4 != 3) {
+        direction_difference = std::max({direction_difference, std::abs(rays_off[index] - ours_off[index]), std::abs(rays_on[index] - ours_on[index])});
+        continue;
+      }
+      // The terrain's share: the game's amount with LSDO less without.
+      const float lsdo = ours_on[index] - ours_off[index];
+      lsdo_sum += lsdo;
+      rays_amount = std::max(rays_amount, std::abs(rays_off[index]));
+      lsdo_difference = std::max(lsdo_difference, std::abs(rays_on[index] - lsdo));
+      game_amount = std::max(game_amount, game_off[index]);
+      bitmask_difference = std::max(bitmask_difference, std::abs(bitmask[index] - ours_off[index]));
+    }
+    std::printf("%s, GT-VBAO saved: the AO method 0 against the game's bytes, largest difference %.3g (LSDO off and on); the method 2: "
+                "amount largest %.3g without LSDO, %.3g from the terrain's share with it (its mean %.4f), direction largest difference %.3g\n",
+                name, game_difference, rays_amount, lsdo_difference, lsdo_sum / (SSDO_WIDTH * SSDO_HEIGHT), direction_difference);
+    std::printf("  control: the game's amount largest %.3f; GT-VBAO at the method 1 differs by up to %.3f\n", game_amount, bitmask_difference);
+    CHECK(game_difference < 1e-3f);
+    CHECK(rays_amount == 0.f);
+    // No LSDO in 0xA65B60AF: its share 0.
+    CHECK(lsdo_difference < 1e-5f && (packed ? lsdo_sum == 0.0 : lsdo_sum / (SSDO_WIDTH * SSDO_HEIGHT) > 1e-3));
+    CHECK(direction_difference < 1e-6f);
+    CHECK(game_amount > 0.05f && bitmask_difference > 0.05f);
+  };
+  check_ssdo("ssdo00", game_ssdo_code, ssdo_code, false);
+  if (argc >= 6) {
+    check_ssdo("ssdo01 0xC17645D2", ReadFile(argv[4]), ReadFile(embed / "0xC17645D2.cso"), false);
+    check_ssdo("ssdo02 0xA65B60AF", ReadFile(argv[5]), ReadFile(embed / "0xA65B60AF.cso"), true);
+  } else {
+    std::printf("ssdo00's permutations: not tested (no game csos given)\n");
   }
-  std::printf("ssdo00, GT-VBAO saved: the AO method 0 against the game's bytes, largest difference %.3g (LSDO off and on); the method 2: "
-              "amount largest %.3g without LSDO, %.3g from the terrain's share with it (its mean %.4f), direction largest difference %.3g\n",
-              game_difference, rays_amount, lsdo_difference, lsdo_sum / (SSDO_WIDTH * SSDO_HEIGHT), direction_difference);
-  std::printf("  control: the game's amount largest %.3f; GT-VBAO at the method 1 differs by up to %.3f\n", game_amount, bitmask_difference);
-  CHECK(game_difference < 1e-3f);
-  CHECK(rays_amount == 0.f);
-  CHECK(lsdo_difference < 1e-5f && lsdo_sum / (SSDO_WIDTH * SSDO_HEIGHT) > 1e-3);
-  CHECK(direction_difference < 1e-6f);
-  CHECK(game_amount > 0.05f && bitmask_difference > 0.05f);
 
   // 3b. 0x52C5E003 onto t5 (RGBA16F, the blurred directional occlusion) with the sun in another slice (its mask gets
   // nothing). The rays see open sky on the left half, 0.2-1 on the right; t5 holds ssdo00's direction and LSDO (the method
