@@ -3,6 +3,8 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16: Lean ReSTIR Reuse is faster with the same picture (2.72 -> 1.02 ms, same rRMSE) but still Experimental
+  off: on by default under your 11-15 rule "faster + same picture = on"? Owner: ATN
 - [ ] NEW 11-16 06:xx: from the run analysis: Bend + GT-VBGI defaults (Tales +0.31 / +0.27 ms, Expeditions +0.90 / +0.49
   ms); Higher Precision Scene stays Experimental off?; Ryse far-facade ray shadows (rays darken far facades the maps leave
   lit, up to 0.67 stop): keep or limit?; pick a Ryse redo save (sunlit, near hair, fog volume, torch interior). Pictures:
@@ -167,9 +169,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Attila / Thrones 2.2 GC in HDR: ATN's in-game look (scene, UI, flares, video, FG ... | ATN
 - AFTER THE RESTART, in order (nothing of this started before it): 1. DONE (non-TW ... | coordinator (steps 2, 4, 5), ATN (step 6)
 - Attila has no frame trace `on_demand` / `at_100` (Pharaoh, Rome II, WH3 have bot ... | next Attila round
-- Ryse / Tales / Expeditions lack Output Auto's first-start path + the HDR-on / of ... | next non-TW round
 - grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound i ... | next Attila round
 - SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator
+- From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
 - RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
 - Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, G ... | rao_, then the next replace round
@@ -1477,7 +1479,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: coordinator (steps 2, 4, 5), ATN (step 6)
       - [ ] Attila has no frame trace `on_demand` / `at_100` (Pharaoh, Rome II, WH3 have both; Thrones, Troy, WH1, WH2, Rome
         Remastered, Divinity 1 have on_demand): port to the reference. Owner: next Attila round
-      - [ ] Ryse / Tales / Expeditions lack Output Auto's first-start path + the HDR-on / off preset switch
+      - [x] STALE (sk4_ + the Ryse / Tales audits 11-16: all three have it since 89d250f1; only test/tw_output_encoding has no
+        Ryse case: in the SHARED STEP list). Ryse / Tales / Expeditions lack Output Auto's first-start path + the HDR-on / off preset switch
         (twattila/output_encoding.hpp, test/tw_output_encoding). Owner: next non-TW round
       - [ ] grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound is the game's" (100 m fade).
         Owner: next Attila round
@@ -1487,6 +1490,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         game) / C (ATN decides) / W. Fix rounds after rao_ merges: one SHARED STEP agent (twattila / talesofarise_dlss /
         utils) + one agent per game folder, every A row, each row a commit; B / C rows go to OPEN FOR ATN. Divinity started
         early (dvf_, no rao_ overlap). Owner: coordinator
+      - [ ] From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Pharaoh's and Troy's SMAA / CMAA2
+        wrappers decode Attila's gamma 2.0 while their frame is linear there (wrong domain? WARP check); the vendor fallback
+        (saved DLSS -> XeSS on Intel, else FSR) is missing in Rome Remastered, Shogun 2, Ryse, Tales, Expeditions;
+        tools/tw/page_dump/README.txt still says non-TW add-ons have no driver (dump_ry / dump_ta / dump_exr exist).
+        Owner: per-game rounds (SMAA / CMAA2, fallback), coordinator (README)
       - [ ] SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specular Occlusion default on, so rays
         run with every ray method off (Thrones, Rome II, Rome Remastered, WH1-3, Pharaoh, Troy; fix: both keys into
         RAY_METHODS, graphics_page.hpp:46-47); ssr00/01/06/07 reflections occluded twice under RT Specular Occlusion and not
