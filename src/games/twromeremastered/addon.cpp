@@ -573,6 +573,12 @@ void OnPostDraw(reshade::api::command_list* cmd_list, uint32_t hash) {
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
+  // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS
+  // on Intel's, else FSR (Attila's).
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (twromeremastered::dlaa::sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
   // Frame generation (DLSS keeps the frames: dlaa.hpp) and Reflex from the page's rows, as Attila's.
   const twattila::anti_aliasing::Settings aa = twattila::feature_settings::AaSettings(twromeremastered::dlaa::sliders);
   twattila::frame_generation::Update({
