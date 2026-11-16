@@ -61,6 +61,7 @@
 #include "../twrome2/engine_tweaks.hpp"
 #include "./ao_trace.hpp"
 #include "./line_sweep_ao.hpp"
+#include "./modded_auto_exposure.hpp"
 #include "./particle_smoothing.hpp"
 #include "./shadow_cascades.hpp"
 #include "./trace_reads.hpp"
@@ -104,9 +105,9 @@ bool IsPsychoV35Mode() {
 // 0.3 and 0.5; fire's hue within 1.3 degrees of the game's SDR picture on average, the row's top).
 constexpr float HUE_CLIP_DEFAULT = 100.f;
 
-// bool IsModdedAutoExposureEnabled() {
-//   return shader_injection.auto_exposure_highlight_protection == 1.f;
-// }
+bool IsModdedAutoExposureEnabled() {
+  return shader_injection.auto_exposure_highlight_protection == 1.f;
+}
 
 void ApplyResetPreset() {
   // Reset only controls that are currently active in this addon.
@@ -117,6 +118,8 @@ void ApplyResetPreset() {
       {"gamma_correction", 1.f},
       {"video_autohdr", 0.f},
       {"lensflare", 1.f},
+      {"auto_exposure_highlight_protection", 0.f},
+      {"auto_exposure_highlight_headroom_stops", 4.f},
       // PsychoV31
       {"v31_exposure", 1.f},
       {"v31_highlights", 1.f},
@@ -560,6 +563,25 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0x73BA2BE9u, 0x9733C5E0u, 0x7C650AD9u, 0xBFD99540u}) {
     custom_shaders[hash].on_draw = [](auto*) { return !reflection_passes_skipped; };
   }
+  // Modded Auto Exposure (modded_auto_exposure.hpp, Warhammer's): last frame's sum copied out of the luma statistics before
+  // the game's clear 242CA153, then bound at our A50883CE's t1 (shaders/autoexposure00) and unbound after it.
+  custom_shaders[0x242CA153].on_draw = [](auto* cmd_list) {
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::OnClear(cmd_list);
+    }
+    return true;
+  };
+  custom_shaders[0xA50883CE].on_draw = [](auto* cmd_list) {
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::BindLastSum(cmd_list, true);
+    }
+    return true;
+  };
+  custom_shaders[0xA50883CE].on_drawn = [](auto* cmd_list) {
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::BindLastSum(cmd_list, false);
+    }
+  };
   // The point and spot lights' and the fog's shaders: ours only while the rays are bound (RaysShader above).
   PointLightRays::Take(&custom_shaders);
   SpotLightRays::Take(&custom_shaders);
@@ -1294,31 +1316,31 @@ void BuildRuntimeData() {
 
 
     // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_protection",
-    //     .binding = &shader_injection.auto_exposure_highlight_protection,
-    //     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-    //     .default_value = 0.0f,
-    //     .label = "Modded Auto Exposure",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
-    //     .labels = {"Off (Stock)", "On (Protected)"},
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_headroom_stops",
-    //     .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 1.0f,
-    //     .label = "Modded Auto Exposure: Sensitivity",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
-    //     .min = 0.0f,
-    //     .max = 2.0f,
-    //     .format = "%.1f",
-    //     .is_enabled = IsModdedAutoExposureEnabled,
-    //     .is_visible = IsAdvancedSettings,
-    // },
+    // Attila's rows (Experimental, off; Warhammer's): the metered maximum capped at last frame's average (shaders/autoexposure00,
+    // modded_auto_exposure.hpp; test/tw_warhammer_shaders part 25, Warhammer II's run).
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_protection",
+        .binding = &shader_injection.auto_exposure_highlight_protection,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.0f,
+        .label = "Modded Auto Exposure",
+        .section = "Extra (Experimental)",
+        .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
+        .labels = {"Off (Stock)", "On (Protected)"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_headroom_stops",
+        .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 4.0f,
+        .label = "Modded Auto Exposure: Sensitivity",
+        .section = "Extra (Experimental)",
+        .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
+        .min = 1.0f,
+        .max = 8.0f,
+        .format = "%.0f",
+        .is_enabled = IsModdedAutoExposureEnabled,
+    },
     // VFX //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .key = "vfx_fire_brightness",
@@ -2582,6 +2604,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
   twwarhammer2::particle_smoothing::Install();
+  reshade::register_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
   // Water Clarity and Caustics: every row a material water (the patched copy swapped in at the draw).
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
@@ -2720,6 +2743,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
   twwarhammer2::particle_smoothing::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
+  tw::modded_auto_exposure::OnDestroyDevice(nullptr);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::engine_tests::StopAtStart(&at_start_stop);

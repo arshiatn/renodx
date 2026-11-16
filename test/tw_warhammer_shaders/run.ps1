@@ -6,7 +6,9 @@
 # lock while it runs when -Lock names it: created only when it doesn't exist (CreateNew), kept only if it still holds this
 # run's line 3 s later (else waits again, the file left alone), deleted only while it is this run's.
 param([Parameter(Mandatory = $true)][string]$Dump, [ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64', [string]$Lock = '',
-      [string]$Before = 'df1aff82')
+      [string]$Before = 'df1aff82', [string]$Wh2Dump = '')
+# Warhammer II's dump (part 25's A50883CE): by default the folder next to $Dump with twwarhammer2 for twwarhammer.
+if ($Wh2Dump -eq '') { $Wh2Dump = $Dump -replace 'twwarhammer_pack', 'twwarhammer2_pack' }
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_warhammer_shaders'
@@ -73,7 +75,7 @@ while ($Lock -ne '') {
   Start-Sleep -Seconds 30
 }
 try {
-  & (Join-Path $testBuild 'warhammer_shaders.exe') $repairRoot $Dump
+  & (Join-Path $testBuild 'warhammer_shaders.exe') $repairRoot $Dump $Wh2Dump
   if ($LASTEXITCODE -ne 0) { throw 'WH1 shader test failed' }
 } finally {
   if ($Lock -ne '' -and (& $held)) { Remove-Item -LiteralPath $Lock -Force -Confirm:$false }

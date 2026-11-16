@@ -133,7 +133,8 @@
 //    166E783A, last frame's sum copied out of the statistics before the clear as the add-on does: off (t1 unbound or bound),
 //    or on without a sum at t1, the game's minimum / maximum / sum and bloom source bit for bit; on with Sensitivity 1 the
 //    maximum last frame's average x 2 (the minimum, sum and source the game's); Sensitivity 16 the game's. CONTROL: the capped
-//    maximum lower than the game's.
+//    maximum lower than the game's. The same for Warhammer II's A50883CE after its clear 242CA153 (its dump, the build's
+//    twwarhammer2.include/embed/0xA50883CE.cso, its own settings buffer: twwarhammer2/shared.h).
 // 26. GT-VBAO leaves the game's sweep 0C83DB37 and collect 38F6D9B6 out (reader_census_wh1.txt: sweep -> A, collect A -> B,
 //    blur_x E3DA9A8D (A, from depth t0 and B at t1), blur_y 4C1918DA (B, from depth t0 and A at t1); the sun reads B): on
 //    64 x 48 R8 targets (the traced format), ours in blur_x's place (the build's embed/ao_bitmask_blur.cso, as
@@ -175,8 +176,12 @@
 #include <vector>
 
 #include "ambient_patch.h"
-// The add-on's settings buffer (b13) as the shaders read it.
+// The add-on's settings buffer (b13) as the shaders read it; Warhammer II's (part 25) in wh2.
 #include "../../src/games/twwarhammer/shared.h"
+#undef SRC_TEMPLATE_SHARED_H_
+namespace wh2 {
+#include "../../src/games/twwarhammer2/shared.h"
+}  // namespace wh2
 #include "../../src/games/twwarhammer/rt_outside_view_colour_world_gs.h"
 #include "../../src/games/twpharaohdynasties/rt_outside_view_world_gs.h"
 
@@ -2545,14 +2550,15 @@ static void TestRaycast(const std::string& dump) {
               patched.ndc, patched.projected, equal, PIXELS, hits, marched - hits, PIXELS - marched, game_differs, unbound_differs, near_differs);
 }
 
-// The luma statistics (96BCFCBB's u1: minimum, maximum, sum) and its bloom source (u0) of `code` over `scene` (512 x 288),
-// after the game's clear 166E783A on `stats` (16 bytes, raw), Modded Auto Exposure's rows in b13 and `last_sum` at t1 (null:
-// unbound).
+// The luma statistics (compute_luma_stats' u1: minimum, maximum, sum) and its bloom source (u0) of `code` over `scene`
+// (512 x 288), after the game's clear `clear` on `stats` (16 bytes, raw), Modded Auto Exposure's rows in b13 and `last_sum` at
+// t1 (null: unbound).
 struct LumaRun {
   std::array<uint32_t, 3> stats = {};
   std::vector<Float4> source;
 };
 
+template <typename Injected>
 static LumaRun RunLuma(std::span<const uint8_t> code, std::span<const uint8_t> clear, ID3D11ShaderResourceView* scene, ID3D11Buffer* stats,
                        ID3D11ShaderResourceView* last_sum, float protection, float stops) {
   ComPtr<ID3D11ComputeShader> shader;
@@ -2577,7 +2583,7 @@ static LumaRun RunLuma(std::span<const uint8_t> code, std::span<const uint8_t> c
     camera[(reg * 4) + 3] = 1.f / 288.f;
   }
   const std::array<float, 4> limits = {0.001f, 0.5f, 0.05f, 64.f};  // luma_stats_buffer: black, -, -, white
-  ShaderInjectData injected = {};
+  Injected injected = {};
   injected.auto_exposure_highlight_protection = protection;
   injected.auto_exposure_highlight_headroom_stops = stops;
   std::vector<uint8_t> injected_bytes((sizeof(injected) + 15) & ~size_t{15});
@@ -2616,12 +2622,15 @@ static LumaRun RunLuma(std::span<const uint8_t> code, std::span<const uint8_t> c
   return run;
 }
 
-static void TestLuma(const std::string& root, const std::string& dump) {
-  const auto game = GameBytes(dump, 0x96BCFCBB);
-  const auto clear = GameBytes(dump, 0x166E783A);
-  const auto ours = Bytes(root + "/build/twwarhammer.include/embed/0x96BCFCBB.cso");
-  if (game.empty() || clear.empty()) {
-    CHECK(false, "luma: 96BCFCBB / 166E783A's bytes");
+// `game_name`'s compute_luma_stats `hash` (ours: the build's embed/0x<hash>.cso in `include`, its settings `Injected`) after
+// its clear `clear_hash`.
+template <typename Injected>
+static void TestLuma(const std::string& root, const std::string& include, const std::string& dump, uint32_t hash, uint32_t clear_hash, const char* game_name) {
+  const auto game = GameBytes(dump, hash);
+  const auto clear = GameBytes(dump, clear_hash);
+  const auto ours = Bytes(std::format("{}/build/{}/embed/0x{:08X}.cso", root, include, hash));
+  if (game.empty() || clear.empty() || ours.empty()) {
+    CHECK(false, "luma: %s's %08X / %08X's bytes, ours", game_name, hash, clear_hash);
     return;
   }
   // A scene of 512 x 288: a lit gradient (0.05 - 2.5), fire specks (30) and a sun (400, past the white limit 64).
@@ -2659,16 +2668,16 @@ static void TestLuma(const std::string& root, const std::string& dump) {
     const D3D11_BOX sum_bytes = {.left = 8, .top = 0, .front = 0, .right = 12, .bottom = 1, .back = 1};
     context->CopySubresourceRegion(kept.Get(), 0, 0, 0, 0, stats.Get(), 0, &sum_bytes);
   };
-  const auto expected = RunLuma(game, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
-  const auto off = RunLuma(ours, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
+  const auto expected = RunLuma<Injected>(game, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
+  const auto off = RunLuma<Injected>(ours, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
   keep_sum();
-  const auto off_bound = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 0.f, 1.f);
+  const auto off_bound = RunLuma<Injected>(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 0.f, 1.f);
   keep_sum();
-  const auto capped = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 1.f);
+  const auto capped = RunLuma<Injected>(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 1.f);
   keep_sum();
-  const auto wide = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 16.f);
-  const auto unbound = RunLuma(ours, clear, scene.Get(), stats.Get(), nullptr, 1.f, 1.f);
-  CHECK(expected.source.size() == 512 * 512 && off.source.size() == 512 * 512 && capped.source.size() == 512 * 512, "luma: outputs");
+  const auto wide = RunLuma<Injected>(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 16.f);
+  const auto unbound = RunLuma<Injected>(ours, clear, scene.Get(), stats.Get(), nullptr, 1.f, 1.f);
+  CHECK(expected.source.size() == 512 * 512 && off.source.size() == 512 * 512 && capped.source.size() == 512 * 512, "luma: %s's outputs", game_name);
   if (expected.source.size() != 512 * 512 || off.source.size() != 512 * 512 || capped.source.size() != 512 * 512) return;
   const auto same_source = [&](const LumaRun& run) { return std::memcmp(run.source.data(), expected.source.data(), expected.source.size() * 16) == 0; };
   // The cap as the shader makes it (last frame's sum: this scene's), within a float's rounding of the quantised value.
@@ -2683,12 +2692,12 @@ static void TestLuma(const std::string& root, const std::string& dump) {
                             std::fabs(static_cast<double>(capped.stats[1]) - expected_max) <= 4294967296.0 * 2e-6;
   const bool wide_same = wide.stats == expected.stats && same_source(wide);
   CHECK(off_same && capped_right && wide_same && capped.stats[1] < expected.stats[1],
-        "luma: off %d, capped %d (max %u, expected %.0f, the game's %u), Sensitivity 16 the game's %d", off_same, capped_right, capped.stats[1], expected_max,
-        expected.stats[1], wide_same);
-  std::printf("Modded Auto Exposure: our 96BCFCBB off (t1 unbound, bound, or on without last frame's sum) the game's bits (min %08X max %08X sum %08X, "
+        "luma: %s: off %d, capped %d (max %u, expected %.0f, the game's %u), Sensitivity 16 the game's %d", game_name, off_same, capped_right, capped.stats[1],
+        expected_max, expected.stats[1], wide_same);
+  std::printf("Modded Auto Exposure (%s): our %08X off (t1 unbound, bound, or on without last frame's sum) the game's bits (min %08X max %08X sum %08X, "
               "the bloom's 512 x 512 source) %s; on, Sensitivity 1: max %08X = last frame's average x 2 (expected %.0f; the game's %08X: CONTROL "
               "lower), min and sum and source the game's %s; Sensitivity 16 the game's %s\n",
-              expected.stats[0], expected.stats[1], expected.stats[2], off_same ? "yes" : "NO", capped.stats[1], expected_max, expected.stats[1],
+              game_name, hash, expected.stats[0], expected.stats[1], expected.stats[2], off_same ? "yes" : "NO", capped.stats[1], expected_max, expected.stats[1],
               capped_right ? "yes" : "NO", wide_same ? "yes" : "NO");
 }
 
@@ -3558,7 +3567,6 @@ static void TestBitmaskSkips(const std::string& root, const std::string& dump) {
               ours_apart, WIDTH * HEIGHT, blur_y_apart, blur_x_control, blur_y_control);
 }
 
-
 // Part 27: Warhammer II's resolve replacement with `hits` in t7 (its every texel's distance), `mips` added to t8's mips 1-6,
 // `shadow` t8 mip 0's alpha, the rays at t47 or not.
 struct Wh2ResolveRun {
@@ -3781,8 +3789,8 @@ static void TestWh2ReflectionSkip(const std::string& games) {
 }
 
 int main(int argc, char** argv) {
-  if (argc < 3) {
-    std::printf("tests <repo root> <the game's shader dump folder>\n");
+  if (argc < 4) {
+    std::printf("tests <repo root> <the game's shader dump folder> <Warhammer II's shader dump folder>\n");
     return 2;
   }
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
@@ -3818,7 +3826,8 @@ int main(int argc, char** argv) {
   TestTreeShadows(argv[2]);
   TestCloth(argv[1], argv[2]);
   TestRaycast(argv[2]);
-  TestLuma(argv[1], argv[2]);
+  TestLuma<ShaderInjectData>(argv[1], "twwarhammer.include", argv[2], 0x96BCFCBB, 0x166E783A, "Warhammer");
+  TestLuma<wh2::ShaderInjectData>(argv[1], "twwarhammer2.include", argv[3], 0xA50883CE, 0x242CA153, "Warhammer II");
   TestBitmaskSkips(argv[1], argv[2]);
   TestWh2ReflectionSkip(games);
   TestWh2OneOcclusion(games);
