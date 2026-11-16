@@ -3064,9 +3064,13 @@ bool AttachAddon() {
                                        // Also the point light's and the AO's (g_viewport_offset_scale, g_Resolution: their
                                        // 100% values below 100%, assumed until a trace lists them), the particles' PS
                                        // vfxextremeultra 3F1B86E1, the shroud decals' 61C823A0 (inv_rt_size c13: render or
-                                       // display size) and the campaign terrain's 1E864815.
+                                       // display size) and the campaign terrain's 1E864815. The hdr_to_screen draws t01-t08
+                                       // and photo01-04: whether the game's film grain draws (b5 hdr_to_screen_PS c9.z,
+                                       // grain_tex_offset_enabled: a branch no trace showed, its texture bound in all 24).
                                        .value_hashes = {0xF883F5B2, 0xE238D4C7, 0x976C1C74, 0xE318CE77, 0xD42C3523, 0x3F1B86E1, 0x61C823A0,
-                                                        0x1E864815},
+                                                        0x1E864815, 0x769869A4, 0xDC7D89CD, 0x60683951, 0x504E6093, 0xBB00FA18,
+                                                        0x436A0FBA, 0xDBB55D7B, 0xAD62FB1E, 0x7137A4E2, 0x63E7B6D1, 0x9F49A50F,
+                                                        0xBD868B0A},
                                        .value_slots = 6,
                                        .value_floats = 256,
                                        .on_demand = true,

@@ -11,6 +11,11 @@
   In game: a battle with Shadows DXR, the row on and off: on, Softness shows in full and no shadow map steps under the
   rays' shadows; near the screen's edges a building or tree behind the camera loses its shadow unless Shadow Casters
   Out of View is on.
+- **Filmgrain (default 0 in HDR): does the game's grain draw?** It is a branch in every hdr_to_screen tone mapper on
+  `grain_tex_offset_enabled.z` (b5 c9.z), which no trace recorded; its texture (1024 x 1024 BC1) sits at the grain slot in
+  all 24 traced tone-mapper draws (`tools/tw/pharaoh/open_items/grain_slots.py`). The frame trace now writes those draws'
+  constants (value_hashes: t01-t08, photo01-04). Next data run: one trace in a battle and the campaign; c9.z above 0 means
+  the game draws grain, then Filmgrain's default goes to 1 (the game's look); 0 everywhere means the row can be hidden.
 
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
