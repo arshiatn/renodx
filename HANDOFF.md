@@ -70,6 +70,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -156,11 +157,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp cand ... | next Divinity 1 agent
 - tw_install.py's include scanner counts includes inside an #ifndef the add-on def ... | coordinator (tools)
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
-- FABLE 5.2 HIGH REVIEW OF THE R.U.S.E. BRIDGE DONE 02:4x (read-only, 12 findings; ... | rrf_
+- R.U.S.E. rrf_ LEFT (T-run with ATN): #10 and the replay capture with the helper' ... | coordinator (T-run, after the restart)
 - R.U.S.E. T-run list (ATN loads a battle, one row at a time with PresentMon): DLA ... | coordinator (after the Fable review fixes)
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
 - Window-switch tests (after the restart, with ATN): Attila / Thrones / WH1 / WH2 ... | coordinator (data runs)
-- PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator ATN 02:5x: only the RUNNING agents finish (lg_ l
+- PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator 03:3x: lg_ / rrf_ / sk2_ / survey merged + pushe
 - CORRECTION (lg_): Rome II / WH1 / WH2 / Troy / Pharaoh have NO Gamma Correction ... | an agent AFTER THE RESTART (step 1b)
 - Attila / Thrones 2.2 GC in HDR: ATN's in-game look (scene, UI, flares, video, FG ... | ATN
 - AFTER THE RESTART, in order (nothing of this started before it): 1. Build all (b ... | coordinator
@@ -1332,13 +1333,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         ReflectPixel; Experimental rows; branch ruse-gi. Owner: ru7_ (started 01:2x)
       - [x] DONE a98b1871 02:0x (sk_ 6b854be3 + 67e7e62d, all 17 lessons placed; zip rebuilt: Downloads\RenoDX_skills_2026-11-15.zip,
         48 files). Skills update from tonight's 17 lessons (tools/tw/round_notes/skill_lessons_1116.md) + rebuilt skills zip.
-      - [ ] FABLE 5.2 HIGH REVIEW OF THE R.U.S.E. BRIDGE DONE 02:4x (read-only, 12 findings; ATN asked): 1 BLOCKER
+      - [x] MERGED e6e897ad 03:3x (rrf_ c8d653b0..7f961437, 13 commits; H1 / H2 / H3 PASS after the fixes): 1 INTZ depths
+        by the bound surface (init_resource_view); 2 WaitProxy waits only on S_FALSE; 3 old-size objects released at a D3D9
+        Reset (destroy_swapchain); 4 no scene draws from the bloom to the present; 5 no jitter while the helper is lost;
+        6 + 7 placements keyed by a serial in rt_core's keys; 8 deadlock REFUTED (filter added anyway: map / unmap /
+        destroy for the D3D9 device's resources alone); 9 scene depth cleared at the present, INTZ depths erased with their
+        views; 10 traced bounce takes GT-VBAO's occlusion when the rays' AO is off; 11 device filters; 12 skipped captures
+        remembered. +1 the review missed: compute passes now bind their output first and unbind it after (Bend shaded 0
+        pixels before; test at 20, 41-43 measured).
+      - [ ] R.U.S.E. rrf_ LEFT (T-run with ATN): #10 and the replay capture with the helper's rays in game; #3 on a real
+        in-game Reset (display mode / resolution); the 16-frame static budget after a level load. Owner: coordinator
+        (T-run, after the restart)
+      - [x] FABLE 5.2 HIGH REVIEW OF THE R.U.S.E. BRIDGE DONE 02:4x (read-only, 12 findings; ATN asked): 1 BLOCKER
         IsSceneDraw never true in game (INTZ: container texture stored, level-0 surface bound; the harness hid it); 2 freeze
         after a GPU reset (WaitProxy spins on DEVICE_REMOVED); 3 no teardown on a D3D9 Reset (old-size textures / MRT);
         4 UI + final post jittered (counted as scene draws); 5 helper dies -> jitter stays; 6 rt_core short key ignores
         placements (instances never enter the BVH); 7 placement slots wrap; 8 PLAUSIBLE self-deadlock (mirrors lock + no API
         filter); 9 dangling scene_depth / intz_depths never pruned; 10 GT-VBAO unused under RT bounce; 11 device filters;
-        12 perf retries. rrf_ fixing all (started 02:4x), then H1-H3 again, then the T-run. Owner: rrf_
+        12 perf retries. rrf_ fixed all (merged e6e897ad), then the T-run.
       - [ ] R.U.S.E. T-run list (ATN loads a battle, one row at a time with PresentMon): DLAA / FSR / XeSS in game, readable
         depth with in-game AA off, G1 sun sign / units / acne, O1 reprojection, AO range, Bend thickness, GT-VBAO darkening
         at the real pitch, water reflections + ground bounce (units: BOUNCE_RANGE 1000 = cm?, brightness of the gamma-space
@@ -1386,6 +1398,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         one crashes. Owner: coordinator (data runs)
       - [ ] PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, everything is merged, pushed and
         HANDOFF is current (no running build / GPU job / game); installs after the restart. Owner: coordinator
+        03:3x: lg_ / rrf_ / sk2_ / survey merged + pushed (e6e897ad), skills zip rebuilt, nothing running; ATN pinged.
         ATN 02:5x: only the RUNNING agents finish (lg_ lens flares + 2.2 gamma, rrf_ R.U.S.E. review fixes, sk2_ skills 2,
         the switch-fix survey); nothing new starts; merge them, rebuild the skills zip, push, then ping ATN.
       - [ ] CORRECTION (lg_): Rome II / WH1 / WH2 / Troy / Pharaoh have NO Gamma Correction in HDR (row hidden in HDR, HDR
@@ -1399,7 +1412,7 @@ heading text are in HANDOFF_ARCHIVE.md)
            R.U.S.E.; the helper from atn-mods), stamp, install every game with tw_install (dry run, fresh backups, hashes):
            the newest merged state for ATN's Attila test.
         1b. The 2.2 Gamma Correction for Rome II / WH1 / WH2 / Troy / Pharaoh (ATN 03:1x yes), before step 1's build.
-        2. R.U.S.E.: re-run H1-H3 if rrf_ changed the bridge after its own run, then the T-run with ATN loading a battle
+        2. R.U.S.E.: H1-H3 already PASS on e6e897ad (rrf_); the T-run with ATN loading a battle
            (list in the "R.U.S.E. T-run list" box).
         3. Window-switch fix for other games per the survey's table (opt-ins + tests), if any.
         4. GPU round 2: the radiance cache item (f); after the install a fresh Nsight capture of Attila at ATN's rows.
