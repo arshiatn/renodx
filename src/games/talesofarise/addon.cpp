@@ -332,6 +332,13 @@ void BuildRuntimeData() {
           .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
           .is_global = true,
       },
+      // The game's Brightness (0-100, its default 50) sets r.ScreenGammaScaleTO14, the tonemapper's gamma (cb0[50].w).
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "Use this in-game setting: Brightness 50.",
+          .section = "General",
+          .tint = 0xFFD23C,
+      },
       new renodx::utils::settings::Setting{
           .key = "peak_white_nits",
           .binding = &shader_injection.peak_white_nits,
