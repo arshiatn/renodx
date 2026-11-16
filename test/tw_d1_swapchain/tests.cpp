@@ -18,6 +18,10 @@
 //   the context flushed there, and flushed again at the next create_swapchain.
 // - The limit: a view of the old back buffer held elsewhere keeps the window, and neither the chain's nor the buffer's
 //   reference count shows it, so no blt fallback can be chosen ahead of CreateSwapChain.
+// - The window-mode switch (R1, 2026-11-16: a fresh factory, BufferCount 1, the one create that failed): a target the
+//   game binds again after the destroy needs the views unbound at the create too; a view it keeps through the create is
+//   the limit, and its own blt request works then (the fallback below ReShade: device_loss.hpp CreateSwapChainOrGameChain,
+//   its own code on WARP: test/tw_device_loss case 3d), the next flip chain once it let go.
 // tests.exe; exit code 0 when every check holds.
 #include <windows.h>
 #include <d3d11.h>
@@ -40,18 +44,21 @@ static ComPtr<ID3D11RenderTargetView> held_view;
 enum class Left { TARGET_BEFORE_PRESENT, TARGET_AFTER_PRESENT, READ_AS_TEXTURE, VIEW_HELD };
 enum class Release { NOTHING, FLUSH, UNBIND_TARGETS_AND_FLUSH, UNBIND_ALL_AND_FLUSH, CLEAR_STATE_AND_FLUSH, DROP_VIEW_AND_FLUSH };
 
-static HRESULT MakeChain(HWND window, DXGI_SWAP_EFFECT effect, IDXGISwapChain** chain) {
+// The mod's flip chains: 2 buffers, scRGB. The game's blt chains: `blt_buffers`, 8-bit. `on`: a factory of the game's
+// other than the first.
+static HRESULT MakeChain(HWND window, DXGI_SWAP_EFFECT effect, IDXGISwapChain** chain, IDXGIFactory* on = nullptr, UINT blt_buffers = 1) {
   const bool flip = effect == DXGI_SWAP_EFFECT_FLIP_DISCARD || effect == DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
   DXGI_SWAP_CHAIN_DESC desc = {
       .BufferDesc = {.Width = 64, .Height = 64, .Format = (flip ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_R8G8B8A8_UNORM)},
       .SampleDesc = {.Count = 1},
       .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_SHADER_INPUT,
-      .BufferCount = (flip ? 2u : 1u),
+      .BufferCount = (flip ? 2u : blt_buffers),
       .OutputWindow = window,
       .Windowed = TRUE,
       .SwapEffect = effect,
   };
-  return factory->CreateSwapChain(device.Get(), &desc, chain);
+  IDXGIFactory* const maker = (on != nullptr ? on : factory.Get());
+  return maker->CreateSwapChain(device.Get(), &desc, chain);
 }
 
 // The fix's unbinding (mods::swapchain_v2 OnDestroySwapchain): the output merger's targets and every stage's textures
@@ -193,6 +200,71 @@ static HRESULT Recreate(DXGI_SWAP_EFFECT first, Left left, Release release, DXGI
   return result;
 }
 
+// Divinity's window-mode switch (R1, 2026-11-16 01:46:43-45, the crash that is left): the mod's flip chain, the game's
+// last frame on it (its target bound after Present), destroy_swapchain (the fix: views unbound and a Flush), the game's
+// release, then a fresh CreateDXGIFactory1 and the game's BufferCount 1, windowed, DISCARD request, which the mod makes
+// FLIP_DISCARD with 2 buffers. `gap`: what the game does with its view of the old back buffer before that create.
+// `unbind_at_create`: the create's step unbinds the views as well as flushing (the fix; a Flush alone before). When the
+// flip chain is refused, `fallback` gets the game's own request's result, then `after` the flip chain the game's next
+// request gets once it let go of its view and of the fallback chain (S_OK in both when not asked).
+enum class Gap { NOTHING, BOUND_AGAIN, VIEW_KEPT };
+static HRESULT SwitchWindowMode(Gap gap, bool unbind_at_create, HRESULT* fallback, HRESULT* after, const char* name) {
+  HWND window = CreateWindowExW(0, L"STATIC", L"tw_d1_swapchain", WS_OVERLAPPEDWINDOW, 40, 40, 320, 200, nullptr, nullptr, nullptr, nullptr);
+  ShowWindow(window, SW_SHOWNOACTIVATE);
+  HRESULT result = E_FAIL;
+  *fallback = S_OK;
+  *after = S_OK;
+  ComPtr<ID3D11RenderTargetView> game_view;
+  bool presented = false;
+  {
+    ComPtr<IDXGISwapChain> chain;
+    ComPtr<ID3D11Texture2D> back_buffer;
+    if (SUCCEEDED(MakeChain(window, DXGI_SWAP_EFFECT_FLIP_DISCARD, &chain)) && SUCCEEDED(chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer)))
+        && SUCCEEDED(device->CreateRenderTargetView(back_buffer.Get(), nullptr, &game_view))) {
+      context->OMSetRenderTargets(1, game_view.GetAddressOf(), nullptr);
+      presented = SUCCEEDED(chain->Present(0, 0));
+      context->OMSetRenderTargets(1, game_view.GetAddressOf(), nullptr);
+      UnbindViews();
+      context->Flush();
+    }
+  }
+  switch (gap) {
+    case Gap::NOTHING:
+      game_view.Reset();
+      break;
+    case Gap::BOUND_AGAIN:
+      context->OMSetRenderTargets(1, game_view.GetAddressOf(), nullptr);
+      game_view.Reset();
+      break;
+    case Gap::VIEW_KEPT:
+      break;
+  }
+  if (unbind_at_create) {
+    UnbindViews();
+  }
+  context->Flush();
+  ComPtr<IDXGIFactory1> fresh;
+  if (presented && SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&fresh)))) {
+    ComPtr<IDXGISwapChain> next;
+    result = MakeChain(window, DXGI_SWAP_EFFECT_FLIP_DISCARD, &next, fresh.Get());
+    if (result == E_ACCESSDENIED) {
+      *fallback = MakeChain(window, DXGI_SWAP_EFFECT_DISCARD, &next, fresh.Get(), 1);
+      game_view.Reset();
+      next.Reset();
+      UnbindViews();
+      context->Flush();
+      *after = MakeChain(window, DXGI_SWAP_EFFECT_FLIP_DISCARD, &next, fresh.Get());
+    }
+  }
+  std::printf("%-80s 0x%08X, game's own 0x%08X, next 0x%08X\n", name, static_cast<unsigned>(result), static_cast<unsigned>(*fallback),
+              static_cast<unsigned>(*after));
+  game_view.Reset();
+  context->ClearState();
+  context->Flush();
+  DestroyWindow(window);
+  return result;
+}
+
 int main() {
   // The game's device: D3D11CreateDevice with SINGLETHREADED (ReShade.log 2026-10-17).
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_SINGLETHREADED, nullptr, 0,
@@ -245,6 +317,21 @@ int main() {
     // The limit: a view another holder keeps still takes the window, and the buffer's count says nothing of it.
     CHECK(RecreateWithFix(Left::VIEW_HELD, &references, "fix: a view held elsewhere (the limit)") == E_ACCESSDENIED);
     CHECK(references == 0);
+  }
+
+  // The window-mode switch: the fresh factory and the game's BufferCount 1 change nothing by themselves; the game's target
+  // bound again after the destroy needs the create's unbinding (the control: a Flush alone), and a view it keeps through
+  // the create keeps the window from every flip chain: its own blt request is made, and the next flip chain once it let go.
+  {
+    HRESULT fallback = S_OK;
+    HRESULT after = S_OK;
+    CHECK(SUCCEEDED(SwitchWindowMode(Gap::NOTHING, false, &fallback, &after, "switch: fresh factory, BufferCount 1, nothing in between")));
+    CHECK(SwitchWindowMode(Gap::BOUND_AGAIN, false, &fallback, &after, "switch: target bound again, Flush at create (before)") == E_ACCESSDENIED);
+    CHECK(SUCCEEDED(SwitchWindowMode(Gap::BOUND_AGAIN, true, &fallback, &after, "switch: target bound again, unbind + Flush at create (fix)")));
+    CHECK(SwitchWindowMode(Gap::VIEW_KEPT, false, &fallback, &after, "switch: view kept by the game, Flush at create (R1 crash)") == E_ACCESSDENIED);
+    CHECK(SwitchWindowMode(Gap::VIEW_KEPT, true, &fallback, &after, "switch: view kept by the game, unbind + Flush at create") == E_ACCESSDENIED);
+    CHECK(SUCCEEDED(fallback));
+    CHECK(SUCCEEDED(after));
   }
 
   // ClearState drops the game's other state (a sampler it set once); unbinding the views keeps it.

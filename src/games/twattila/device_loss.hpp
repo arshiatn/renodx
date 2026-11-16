@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <cstring>
 #include <ctime>
+#include <exception>
 #include <format>
 #include <memory>
 #include <mutex>
@@ -33,6 +34,7 @@
 
 #include "../../mods/swapchain.hpp"
 #include "../../utils/log.hpp"
+#include "../../utils/vtable.hpp"
 #include "./output_encoding.hpp"
 
 // A Total War game after a GPU reset. It builds a new device and swap chain for the same window, in one of two orders:
@@ -92,9 +94,10 @@ static HWND native_flip_window = nullptr;  // the game itself asked for a flip c
 // outlives the game's last Release while the immediate context binds its back buffer, and D3D11 destroys it only at
 // that context's next Flush; until then the window answers the next flip chain with 0x80070005. Opt-in (off: as
 // before): a flip chain's end unbinds the context's views (not ClearState: the game's samplers and shaders stay) and
-// flushes, and the window's next chain flushes again (the chain's last release comes after destroy_swapchain). A view
-// of the old back buffer still held elsewhere keeps the window all the same, and no reference count shows it (neither
-// the chain's nor the buffer's): no fallback is chosen ahead of CreateSwapChain.
+// flushes, and the window's next chain does both again (the chain's last release comes after destroy_swapchain, and a
+// game can bind the old target again between the two). A view of the old back buffer the game still holds keeps the
+// window all the same (Divinity's window-mode switch: its BufferCount 1 chain), and no reference count shows it: the
+// flip chain DXGI refuses for that is made as the game asked (blt, SDR for that chain) below ReShade's CreateSwapChain.
 static bool release_flip_chains_before_recreate = false;
 static HWND released_flip_window = nullptr;           // destroy / create swap chain on the game's thread
 static ID3D11Device* released_flip_device = nullptr;  // not owned: cleared at its destroy_device
@@ -127,6 +130,25 @@ static void DropBindings(ID3D11Device* device) {
   context->ClearState();
   context->Flush();
   context->Release();
+}
+
+// A live device's views of the window's last flip chain (release_flip_chains_before_recreate): the output merger's
+// targets, every stage's textures and the compute UAVs, then a Flush.
+static void UnbindViewsAndFlush(ID3D11Device* device) {
+  Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+  device->GetImmediateContext(context.GetAddressOf());
+  ID3D11RenderTargetView* no_targets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+  ID3D11ShaderResourceView* no_resources[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+  ID3D11UnorderedAccessView* no_uavs[D3D11_PS_CS_UAV_REGISTER_COUNT] = {};
+  context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, no_targets, nullptr);
+  context->VSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->HSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->DSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->GSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->CSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->CSSetUnorderedAccessViews(0, D3D11_PS_CS_UAV_REGISTER_COUNT, no_uavs, nullptr);
+  context->Flush();
 }
 
 // Where the frame thread stands when frames stopped: its instruction and the code addresses on its stack, nearest first (no
@@ -597,26 +619,68 @@ static void OnDestroySwapchain(reshade::api::swapchain* swapchain, bool resize) 
     return;
   }
   auto* device = reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native());
-  Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
-  device->GetImmediateContext(context.GetAddressOf());
-  ID3D11RenderTargetView* no_targets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
-  ID3D11ShaderResourceView* no_resources[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
-  ID3D11UnorderedAccessView* no_uavs[D3D11_PS_CS_UAV_REGISTER_COUNT] = {};
-  context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, no_targets, nullptr);
-  context->VSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
-  context->HSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
-  context->DSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
-  context->GSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
-  context->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
-  context->CSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
-  context->CSSetUnorderedAccessViews(0, D3D11_PS_CS_UAV_REGISTER_COUNT, no_uavs, nullptr);
-  context->Flush();
+  UnbindViewsAndFlush(device);
   released_flip_window = chain_desc.OutputWindow;
   released_flip_device = device;
 }
 
-static void OnInitSwapchain(reshade::api::swapchain*, bool) {
+// DXGI's own IDXGIFactory::CreateSwapChain (release_flip_chains_before_recreate), which ReShade's factory proxy calls
+// after the create_swapchain events: ReShade cannot retry a refused chain. The vtable slot is shared by every DXGI
+// factory, the game's fresh ones too.
+using CreateSwapChainFunction = HRESULT(STDMETHODCALLTYPE*)(IDXGIFactory*, IUnknown*, DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**);
+constexpr size_t CREATE_SWAP_CHAIN_SLOT = 10;
+static CreateSwapChainFunction original_create_swapchain = nullptr;
+static renodx::utils::vtable::Slot<CreateSwapChainFunction> create_swapchain_slot;
+
+// The flip chain the swapchain mod made of the game's blt request, refused (0x80070005: the window's last flip chain is
+// still alive): the game's own swap effect, buffer count and format instead (the mod's windowed state and flags stay,
+// tearing goes), and the mod treats the chain as one it left alone. The game reads a null chain otherwise.
+static HRESULT STDMETHODCALLTYPE CreateSwapChainOrGameChain(IDXGIFactory* factory, IUnknown* device, DXGI_SWAP_CHAIN_DESC* desc,
+                                                             IDXGISwapChain** chain) {
+  const HRESULT result = original_create_swapchain(factory, device, desc, chain);
+  const auto& requested = renodx::mods::swapchain::original_swapchain_desc;
+  if (result != E_ACCESSDENIED || desc == nullptr || !renodx::mods::swapchain::upgraded_swapchain_desc.has_value() || !requested.has_value()
+      || desc->OutputWindow != game_window.load(std::memory_order_relaxed)
+      || (desc->SwapEffect != DXGI_SWAP_EFFECT_FLIP_DISCARD && desc->SwapEffect != DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL)
+      || requested->present_mode == DXGI_SWAP_EFFECT_FLIP_DISCARD || requested->present_mode == DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL) {
+    return result;
+  }
+  DXGI_SWAP_CHAIN_DESC game_chain_desc = *desc;
+  game_chain_desc.BufferDesc.Format = static_cast<DXGI_FORMAT>(requested->back_buffer.texture.format);
+  game_chain_desc.BufferCount = requested->back_buffer_count;
+  game_chain_desc.SwapEffect = static_cast<DXGI_SWAP_EFFECT>(requested->present_mode);
+  game_chain_desc.Flags &= ~DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+  if (const HRESULT fallback = original_create_swapchain(factory, device, &game_chain_desc, chain); FAILED(fallback)) {
+    renodx::utils::log::e(std::format("[Total War] The window's flip chain was refused (0x{:08X}), the game's own chain too (0x{:08X}).",
+                                      static_cast<uint32_t>(result), static_cast<uint32_t>(fallback)));
+    return result;
+  }
+  renodx::mods::swapchain::upgraded_swapchain_desc.reset();
+  output_encoding::Apply(output_encoding::SDR);
+  renodx::utils::log::w(std::format("[Total War] The window's last flip chain is still alive (0x{:08X}): the game's own swap chain is used ({} buffer(s), SDR until the game's next chain).",
+                                    static_cast<uint32_t>(result), game_chain_desc.BufferCount));
+  return S_OK;
+}
+
+static void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   resizing = false;
+  if (!release_flip_chains_before_recreate || create_swapchain_slot.installed_address != nullptr
+      || swapchain->get_device()->get_api() != reshade::api::device_api::d3d11) {
+    return;
+  }
+  // The native chain's parent is DXGI's factory, not ReShade's proxy of it.
+  Microsoft::WRL::ComPtr<IDXGIFactory> factory;
+  if (FAILED(reinterpret_cast<IDXGISwapChain*>(swapchain->get_native())->GetParent(IID_PPV_ARGS(factory.GetAddressOf())))) return;
+  create_swapchain_slot = {.object = factory.Get(),
+                           .index = CREATE_SWAP_CHAIN_SLOT,
+                           .original = &original_create_swapchain,
+                           .replacement = &CreateSwapChainOrGameChain};
+  try {
+    renodx::utils::vtable::Install(&create_swapchain_slot);
+  } catch (const std::exception& error) {
+    create_swapchain_slot = {};
+    renodx::utils::log::w("[Total War] A refused flip chain cannot fall back to the game's own: ", error.what());
+  }
 }
 
 // Registered before the swapchain mod: the old chain goes with its context's bindings and a Flush (D3D11 destroys late),
@@ -641,13 +705,13 @@ static bool BeforeSwapchainMod(reshade::api::device_api, reshade::api::swapchain
     }
   }
   if (!std::exchange(resizing, false)) {
-    // The window's last flip chain (release_flip_chains_before_recreate): destroyed at this Flush after its last release.
+    // The window's last flip chain (release_flip_chains_before_recreate): destroyed at this Flush after its last release,
+    // unless the game still holds a view of it (then CreateSwapChainOrGameChain).
     if (released_flip_device != nullptr && window == released_flip_window) {
-      Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
-      released_flip_device->GetImmediateContext(context.GetAddressOf());
-      context->Flush();
+      UnbindViewsAndFlush(released_flip_device);
       released_flip_device = nullptr;
       released_flip_window = nullptr;
+      renodx::utils::log::i("[Total War] The window's last flip chain let go before its next: views unbound and flushed at its end and now.");
     }
     if (desc.present_mode == DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL || desc.present_mode == DXGI_SWAP_EFFECT_FLIP_DISCARD) {
       native_flip_window = window;
@@ -718,6 +782,16 @@ static void Uninstall() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(BeforeDestroyDevice);
   StopWatch();
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  if (create_swapchain_slot.installed_address != nullptr) {
+    try {
+      renodx::utils::vtable::Uninstall(&create_swapchain_slot);
+      create_swapchain_slot = {};
+    } catch (const std::exception&) {
+      // Another hook took the slot over since and may call this image's function: it stays loaded for the process.
+      HMODULE pinned = nullptr;
+      GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&CreateSwapChainOrGameChain), &pinned);
+    }
+  }
   // An image kept loaded after the detach tracks nothing. Not waited for: a watch that Windows ended inside the lock (the
   // process's end) never gives it back, and nothing reads the lists then.
   if (const std::unique_lock lock(devices_mutex, std::try_to_lock); lock.owns_lock()) {

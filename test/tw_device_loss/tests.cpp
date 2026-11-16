@@ -298,6 +298,10 @@ static void Reset() {
   loss::released_flip_window = nullptr;
   loss::released_flip_device = nullptr;
   loss::last_present_tick = 0;
+  if (loss::create_swapchain_slot.installed_address != nullptr) {
+    renodx::utils::vtable::Uninstall(&loss::create_swapchain_slot);
+    loss::create_swapchain_slot = {};
+  }
 }
 
 static void Pump(DWORD milliseconds) {
@@ -672,6 +676,117 @@ static int Parent(const wchar_t* self) {
     free_window();
     DestroyWindow(window);
     Reset();
+  }
+
+  // 3d. Divinity's window-mode switch (R1 2026-11-16 01:46:43-45, the crash left after 3c): after the mod's flip chain the
+  //     game makes a fresh factory and asks for BufferCount 1, windowed, DISCARD while it still holds a view of the old
+  //     back buffer; the flip chain the mod makes of it is refused (0x80070005) and the game read a null chain. Off (the
+  //     control): refused. On (release_flip_chains_before_recreate): the hook on DXGI's CreateSwapChain (below ReShade)
+  //     makes the game's own chain, SDR, and the mod sees it as one it left alone; a target only bound again after the
+  //     destroy keeps the flip chain (the views go at the create too). The request goes through the real swapchain mod.
+  {
+    HWND window = MakeWindow(SW_SHOWNOACTIVATE);
+    mock::Device device;
+    ComPtr<ID3D11DeviceContext> context;
+    CHECK(MakeDevice(&device, &context));
+    loss::OnInitDevice(&device);
+    // The mod's flip chain at its init_swapchain, the game's last frame on it, ReShade's destroy_swapchain, the game's
+    // release. `kept`: the game's view of the old back buffer through the next create; else its target bound again.
+    const auto leave_chain = [&](ComPtr<ID3D11RenderTargetView>* kept) {
+      ComPtr<IDXGISwapChain> chain;
+      ComPtr<ID3D11Texture2D> back;
+      ComPtr<ID3D11RenderTargetView> view;
+      if (FAILED(MakeChain(device.native.Get(), window, DXGI_SWAP_EFFECT_FLIP_DISCARD, &chain)) || FAILED(chain->GetBuffer(0, IID_PPV_ARGS(&back)))
+          || FAILED(device.native->CreateRenderTargetView(back.Get(), nullptr, &view))) {
+        return false;
+      }
+      mock::Swapchain made;
+      made.owner = &device;
+      made.native_chain = chain.Get();
+      loss::OnInitSwapchain(&made, false);
+      context->OMSetRenderTargets(1, view.GetAddressOf(), nullptr);
+      if (FAILED(chain->Present(0, 0))) return false;
+      context->OMSetRenderTargets(1, view.GetAddressOf(), nullptr);
+      loss::OnDestroySwapchain(&made, false);
+      if (kept != nullptr) {
+        *kept = view;
+      } else {
+        context->OMSetRenderTargets(1, view.GetAddressOf(), nullptr);
+      }
+      return true;
+    };
+    // The game's request from a fresh factory: the create_swapchain events in ReShade's order, then the DXGI desc ReShade
+    // passes on (the mod's thread-local descs as its create_swapchain left them).
+    const auto request = [&](IDXGISwapChain** chain) {
+      ComPtr<IDXGIFactory1> fresh;
+      if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&fresh)))) return E_FAIL;
+      auto desc = GameDesc(DXGI_SWAP_EFFECT_DISCARD);
+      desc.back_buffer_count = 1;
+      desc.present_flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+      loss::BeforeSwapchainMod(reshade::api::device_api::d3d11, desc, window);
+      renodx::mods::swapchain::OnCreateSwapchain(reshade::api::device_api::d3d11, desc, window);
+      loss::AfterSwapchainMod(reshade::api::device_api::d3d11, desc, window);
+      DXGI_SWAP_CHAIN_DESC dxgi_desc = {
+          .BufferDesc = {.Width = desc.back_buffer.texture.width, .Height = desc.back_buffer.texture.height,
+                         .Format = static_cast<DXGI_FORMAT>(desc.back_buffer.texture.format)},
+          .SampleDesc = {.Count = 1},
+          .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
+          .BufferCount = desc.back_buffer_count,
+          .OutputWindow = window,
+          .Windowed = desc.fullscreen_state ? FALSE : TRUE,
+          .SwapEffect = static_cast<DXGI_SWAP_EFFECT>(desc.present_mode),
+          .Flags = desc.present_flags,
+      };
+      return fresh->CreateSwapChain(device.native.Get(), &dxgi_desc, chain);
+    };
+    const auto free_window = [&] {
+      context->ClearState();
+      context->Flush();
+    };
+    ComPtr<IDXGISwapChain> chain;
+    ComPtr<ID3D11RenderTargetView> kept;
+    const size_t fallbacks = Logged("The window's last flip chain is still alive");
+    const size_t let_go = Logged("The window's last flip chain let go before its next");
+    // Off: the R1 crash (the control); no hook made.
+    CHECK(leave_chain(&kept));
+    CHECK(loss::create_swapchain_slot.installed_address == nullptr);
+    CHECK(request(&chain) == E_ACCESSDENIED && chain == nullptr);
+    renodx::mods::swapchain::upgraded_swapchain_desc.reset();
+    kept.Reset();
+    free_window();
+    // On, the view kept: the game's own chain, as it asked, SDR; the mod's init_swapchain sees no upgrade.
+    loss::release_flip_chains_before_recreate = true;
+    encoding = -1.f;
+    CHECK(leave_chain(&kept));
+    CHECK(loss::create_swapchain_slot.installed_address != nullptr && loss::original_create_swapchain != nullptr);
+    CHECK(SUCCEEDED(request(&chain)) && chain != nullptr);
+    DXGI_SWAP_CHAIN_DESC made_desc = {};
+    CHECK(SUCCEEDED(chain->GetDesc(&made_desc)));
+    CHECK(made_desc.SwapEffect == DXGI_SWAP_EFFECT_DISCARD && made_desc.BufferCount == 1 && made_desc.BufferDesc.Format == DXGI_FORMAT_R8G8B8A8_UNORM);
+    CHECK((made_desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) == 0 && made_desc.Windowed == TRUE);
+    CHECK(!renodx::mods::swapchain::upgraded_swapchain_desc.has_value());
+    CHECK(encoding == static_cast<float>(output::SDR));
+    CHECK(Logged("The window's last flip chain is still alive (0x80070005)") == fallbacks + 1);
+    CHECK(Logged("The window's last flip chain let go before its next") == let_go + 1);
+    chain.Reset();
+    kept.Reset();
+    free_window();
+    // On, the target only bound again: the flip chain the mod asked for (the create's unbinding), no fallback.
+    CHECK(leave_chain(nullptr));
+    CHECK(SUCCEEDED(request(&chain)) && chain != nullptr);
+    CHECK(SUCCEEDED(chain->GetDesc(&made_desc)));
+    CHECK(made_desc.SwapEffect == DXGI_SWAP_EFFECT_FLIP_DISCARD && made_desc.BufferCount == 2);
+    CHECK(renodx::mods::swapchain::upgraded_swapchain_desc.has_value());
+    renodx::mods::swapchain::upgraded_swapchain_desc.reset();  // the mod's init_swapchain
+    CHECK(Logged("The window's last flip chain is still alive") == fallbacks + 1);
+    CHECK(Logged("The window's last flip chain let go before its next") == let_go + 2);
+    chain.Reset();
+    free_window();
+    loss::OnDestroyDevice(&device);
+    DestroyWindow(window);
+    Reset();
+    CHECK(loss::create_swapchain_slot.installed_address == nullptr);
+    output::Configure({.shader_encoding = &encoding, .setting = output::SCRGB});
   }
 
   // 4. Who asks a device for its removed reason, and the frame thread's place when frames stop.
