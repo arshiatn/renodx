@@ -394,6 +394,9 @@ struct Host {
   UINT camera_slot = 0;
   bool (*capture_camera)(ID3D11DeviceContext* native, Camera* camera) = nullptr;
   bool (*scene_draw)(ID3D11DeviceContext* native, SceneShader* shader) = nullptr;
+  // The alpha test's cut-off of the masked draws SceneCoverage finds (their SceneShader::alpha_cutoff, the bridge's
+  // rt_leaf_cutoff; Tales of Arise: 0.333). 0: the helper's 0.5.
+  float leaf_cutoff = 0.f;
   // Whether a vertex shader's code has bone inputs (null: BLENDINDICES in its input signature).
   bool (*skinned_code)(std::span<const uint8_t> code) = nullptr;
   // scene_draw marks only its characters' draws dynamic (skinned; Expeditions: Rome): the helper's RT_UNIT draws, which
@@ -1036,7 +1039,8 @@ static std::shared_mutex pixel_coverage_mutex;
 static std::unordered_map<uint64_t, PixelCoverage> pixel_coverage;
 static bool clip_captures = false;  // the scene shaders stream out their SV_Position
 static bool world_captures = false;  // and some are placed (or SceneShader::cascade_world): those in world space (WORLD_BASE)
-static float leaf_cutoff = 0.f;  // the scene shaders' SceneShader::alpha_cutoff (0: none has one)
+// The bridge's rt_leaf_cutoff: Host::leaf_cutoff or the scene shaders' largest SceneShader::alpha_cutoff (0: the helper's).
+static float leaf_cutoff = 0.f;
 // Either effect on (else every callback returns at once).
 static std::atomic_bool active = false;
 // A cluster mesh holds one of the game's index buffers (runtime.index_buffer_sets not empty): else OnIndexWrite returns.
@@ -4426,7 +4430,7 @@ inline void UnbindLocalLights(ID3D11DeviceContext* native) {
 }
 
 // A scene draw's pixel shader (the one bound; host.scene_draw's): its alpha test into `shader` (foliage: the UV's
-// input); false: left out of the scene (a mask read some other way).
+// input, Host::leaf_cutoff's cut-off); false: left out of the scene (a mask read some other way).
 inline bool SceneCoverage(ID3D11DeviceContext* native, SceneShader* shader) {
   ComPtr<ID3D11PixelShader> pixel_shader;
   native->PSGetShader(pixel_shader.GetAddressOf(), nullptr, nullptr);
@@ -4438,6 +4442,7 @@ inline bool SceneCoverage(ID3D11DeviceContext* native, SceneShader* shader) {
     shader->foliage = true;
     shader->uv_semantic = found->second.uv_semantic.c_str();
     shader->uv_semantic_index = found->second.uv_index;
+    if (internal::host.leaf_cutoff != 0.f) shader->alpha_cutoff = internal::host.leaf_cutoff;
   }
   return true;
 }
@@ -4473,7 +4478,7 @@ inline void InstallReplayedScene(const Host& host) {
   internal::host = host;
   internal::clip_captures = true;
   internal::world_captures = false;
-  internal::leaf_cutoff = 0.f;
+  internal::leaf_cutoff = host.leaf_cutoff;
 }
 
 // InstallReplayedScene's draws: the indexed draw the host bound on `cmd_list`'s immediate context, captured as
@@ -4523,7 +4528,7 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   internal::world_captures = internal::clip_captures && std::ranges::any_of(shaders, [](const SceneShader& shader) {
                                return !shader.rows_shader.empty() || shader.cascade_world;
                              });
-  internal::leaf_cutoff = shaders.empty() ? 0.f : std::ranges::max(shaders, {}, &SceneShader::alpha_cutoff).alpha_cutoff;
+  internal::leaf_cutoff = std::max(host.leaf_cutoff, shaders.empty() ? 0.f : std::ranges::max(shaders, {}, &SceneShader::alpha_cutoff).alpha_cutoff);
   if (internal::clip_captures) reshade::register_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   if (host.scene_draw != nullptr) reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   reshade::register_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateIndices);
