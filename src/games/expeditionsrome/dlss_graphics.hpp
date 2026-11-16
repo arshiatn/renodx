@@ -710,7 +710,9 @@ inline bool Evaluate(Frame* frame, bool replace) {
   // The jitter's cycle only while Upscaling Details is drawn (no per-frame counters otherwise).
   if (const std::array<float, 2> jitter = {taa[26][0], taa[26][1]}; frame->measuring) {
     if (diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 4096) {
-      if (diagnostics.jitter_frames > 4096) diagnostics.jitter_phases.store(0);
+      if (diagnostics.jitter_frames > 4096) {
+        diagnostics.jitter_phases.store(0);
+      }
       diagnostics.first_jitter = jitter;
       diagnostics.jitter_frames = 1;
     } else if (jitter == diagnostics.first_jitter) {
@@ -1813,8 +1815,12 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
   // Bend (Length 480, as No RT/PT) and GT-VBGI on by default (ATN 2026-11-16), in place of Unreal's Contact Shadows and
   // screen-space GI; before Apply (the page's Reset reads the defaults as it is built).
   for (Setting* setting : *settings) {
-    if (setting->key == "ScreenSpaceShadows" || setting->key == "light_bounce_strength") setting->default_value = 1.f;
-    if (setting->key == "ScreenSpaceShadowsLength") setting->default_value = 3.f;
+    if (setting->key == "ScreenSpaceShadows" || setting->key == "light_bounce_strength") {
+      setting->default_value = 1.f;
+    }
+    if (setting->key == "ScreenSpaceShadowsLength") {
+      setting->default_value = 3.f;
+    }
   }
   twattila::graphics_page::Apply(settings, {.aa = &aa_sliders,
                                             .sss = &screen_space_shadows_rows,

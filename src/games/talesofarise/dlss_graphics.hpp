@@ -987,7 +987,9 @@ bool Evaluate(Frame* frame, bool replace) {
   // The jitter's cycle only while Upscaling Details is drawn.
   if (const std::array<float, 2> jitter = pixel_jitter; frame->measuring) {
     if (diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 4096) {
-      if (diagnostics.jitter_frames > 4096) diagnostics.jitter_phases.store(0);
+      if (diagnostics.jitter_frames > 4096) {
+        diagnostics.jitter_phases.store(0);
+      }
       diagnostics.first_jitter = jitter;
       diagnostics.jitter_frames = 1;
     } else if (jitter == diagnostics.first_jitter) {
@@ -2993,8 +2995,12 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
   // Bend (Length 480, as No RT/PT) and GT-VBGI on by default (ATN 2026-11-16), in place of Bandai's contact shadows toward
   // the sun and its Global Illumination; before Apply (the page's Reset reads the defaults as it is built).
   for (Setting* setting : *settings) {
-    if (setting->key == "ScreenSpaceShadows" || setting->key == "light_bounce_strength") setting->default_value = 1.f;
-    if (setting->key == "ScreenSpaceShadowsLength") setting->default_value = 3.f;
+    if (setting->key == "ScreenSpaceShadows" || setting->key == "light_bounce_strength") {
+      setting->default_value = 1.f;
+    }
+    if (setting->key == "ScreenSpaceShadowsLength") {
+      setting->default_value = 3.f;
+    }
   }
   twattila::graphics_page::Apply(settings, {.aa = &aa_sliders,
                                             .sss = &screen_space_shadows_rows,
