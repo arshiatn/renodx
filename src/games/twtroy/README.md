@@ -1,5 +1,17 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### Fix round (2026-11-16; built only, not run in game)
+
+- **Rays Replace Shadow Maps on by default** (ATN: ours replaces the game's, one method per effect): under ray-traced sun
+  shadows the sun draws now take the rays' shadow alone, not the rays' times the game's shadow maps; the row lost
+  "(Experimental)", and a saved 0 is cleared once (SettingsRevision 2). Water, effects and the map the game baked for the
+  far distance keep the game's shadows. Shadow Map Size shows only where the maps still shade the scene.
+  Proven offline: tools/tw/troy/sun_test v54 on the game's bytes (12 atlas sun shaders, 14 scenes): the sun's light with
+  Replace equals the rays' shadow alone in 0 of 2,752,512 values off (P1-P3), CONTROL the game's own shadow 1,264,414 off.
+  In game: a battle with Shadows DXR, the row on and off: on, Softness shows in full and no shadow map steps under the
+  rays' shadows; near the screen's edges a building or tree behind the camera loses its shadow unless Shadow Casters
+  Out of View is on.
+
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
 - **Ray-Traced AO replaces the game's SSAO and GT-VBAO** (ATN: never on top of them). The sun draws' `t_ssao` now holds the

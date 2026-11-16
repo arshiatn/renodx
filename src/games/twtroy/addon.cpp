@@ -1509,8 +1509,10 @@ float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
 // Rarer Objects in the Rays (Experimental): the scene's families drawn in no trace (level B: SCENE_SHADERS' held_row).
 float rays_untraced_casters_row = 0.f;
-// Rays Replace Shadow Maps and Skip the Shadow Maps under it (Graphics 1 of 2, Experimental): twattila/sun_replace_maps.hpp on the
-// sun draws reading the per-frame atlas through s2: the twins of Pharaoh's 12 (same names; tools\tw\troy\troy_atlas_twins.py).
+// Rays Replace Shadow Maps (Graphics 1 of 2, on by default: ours replaces the game's, ATN 2026-11-16) and Skip the Shadow
+// Maps under it (Experimental): twattila/sun_replace_maps.hpp on the sun draws reading the per-frame atlas through s2: the
+// twins of Pharaoh's 12 (same names; tools\tw\troy\troy_atlas_twins.py). WARP on the game's bytes with the traces'
+// constants, tools\tw\troy\sun_test v54: P1-P3 0 of 2,752,512 values (the rays' shadow alone), CONTROL P3c 1,264,414.
 constexpr std::array<uint32_t, 12> ATLAS_SUN_SHADERS = {0x049C3CFB, 0x2599D799, 0xD38FA7E4, 0x66D6229E, 0x5B17424A, 0xEB98DED2,
                                                         0x707B069C, 0x6D3D2B69, 0xE1707311, 0x089D1B5B, 0x5835F96C, 0xE885C018};
 float rays_replace_maps_row = 0.f;
@@ -1927,8 +1929,9 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 
 namespace {
 
-// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
-// (the sun shaders' patched comparisons), ray-traced AO in place of the game's SSAO, the paths take the sky from the sun
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows replace the per-frame shadow maps
+// (Rays Replace Shadow Maps; off: they multiply them through the sun shaders' patched comparisons), ray-traced AO in
+// place of the game's SSAO, the paths take the sky from the sun
 // shaders' ambient cube; point lights (143A02ED), smoke (F5CE48CC), the water's Clarity and Caustics and its ray-traced
 // reflections (the game's reflections fall on the water alone, Pharaoh's texts) hooked, no fog.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
@@ -1943,7 +1946,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
-                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays in place of the game's shadow maps and of Bend's.\n"
                       "Needs an upscaler.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
@@ -2240,7 +2243,6 @@ void ConfigureAddon() {
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
-                                             .rays_replace_maps_tested = false,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
@@ -2255,8 +2257,7 @@ void ConfigureAddon() {
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .rays_preset_as_attila = true,
-                                             .lights_own_row = true,
-                                             .rays_multiply_maps = true});
+                                             .lights_own_row = true});
   // Smooth Banner Shadows (Experimental, off; RT/PT turns it on, as Attila's): the sails are this game's thin cloth in the
   // rays (its unit banners are not in them), so the row names them.
   for (auto* setting : settings) {
@@ -2310,8 +2311,10 @@ bool AttachAddon() {
   }
 
   // Rows saved at an old default, cleared once: Sprite Soldier Shadows was saved hidden at RT/PT's 1 (SetRaysPresetDefaults)
-  // until the sprite soldiers were in the rays; now Experimental, off.
+  // until the sprite soldiers were in the rays; now Experimental, off. Rays Replace Shadow Maps was saved at its old
+  // Experimental 0; now on by default.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSpriteShadows"});
+  twattila::graphics_page::ClearSavedRows(2, {"RayTracedReplaceShadowMaps"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
   // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).
