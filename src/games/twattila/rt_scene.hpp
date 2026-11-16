@@ -517,6 +517,28 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
   }
 };
 
+namespace internal {
+
+// Frames without a trace after which the game's AO is its own again: a frame the helper missed now and then keeps the
+// rays' (no flicker), a bridge that stays off (the game's MSAA) gives it back within half a second.
+constexpr uint64_t AMBIENT_REPLACED_FRAMES = 30;
+
+// AmbientReplaced's without the lock: the rows' ray-traced AO or Path-Traced Ambient, and the rays traced lately.
+inline bool AmbientReplacedNow() {
+  return (runtime.settings.ambient_occlusion || runtime.settings.path_ambient) && runtime.traced_frame != UINT64_MAX
+         && runtime.traced_frame + AMBIENT_REPLACED_FRAMES >= runtime.frame;
+}
+
+}  // namespace internal
+
+// Whether the rays' AO or Path-Traced Ambient stands in for the game's ambient occlusion (its pass then writes white: the
+// shader injection's rt_ambient_alone). Not by the rows alone: with the game's own MSAA the bridge stays off, nothing is
+// traced, and a white AO left the picture without any (2026-11-16 audit: MSAA + DLSS + Path-Traced Ambient).
+inline bool AmbientReplaced() {
+  const std::unique_lock lock(internal::runtime.mutex);
+  return internal::AmbientReplacedNow();
+}
+
 // The game's blurs of its ambient occlusion (AmbientOcclusionDraw::blurs) under Path-Traced Ambient: the pass wrote white
 // and nothing multiplies into it (the paths are the occlusion), so they would blur white: left out (their cost), the last
 // one's target cleared white in their place (test/tw_ao_blurs: the game's blurs of white give exactly 1 there).
@@ -530,7 +552,7 @@ constexpr auto OnAmbientBlurDraw = []<typename T, typename Context>(Context& com
     if (native == nullptr) return {};
     {
       const std::unique_lock lock(internal::runtime.mutex);
-      if (!internal::runtime.settings.path_ambient) return {};
+      if (!internal::runtime.settings.path_ambient || !internal::AmbientReplacedNow()) return {};
     }
     const auto& blurs = command.template GetCallbackData<ao_pass::AmbientOcclusionDraw>().blurs;
     if (command.matched_shader_hash == ((blurs[1] != 0u) ? blurs[1] : blurs[0])) {
