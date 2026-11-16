@@ -26,12 +26,15 @@
 
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
+#include "../../utils/settings.hpp"
 #include "../../utils/state.hpp"
 
 // Time Each Pass (a button): one frame's GPU time of every draw and dispatch, from a timestamp at each, into
 // <prefix>_pass_timing.txt next to the exe, summed by pass (the same targets in a row) and by shader. Its events are the
 // addon's first (Install before any other draw hook): a draw another hook replays and skips (command_action's post callbacks)
 // still gets its stamp, and the addon's work at a command counts to it. Otherwise each event only tests a flag.
+// In an add-on: Install("<prefix>") first in its AttachAddon, Button(<section>) among its settings (graphics_page.hpp
+// places it by its label), Uninstall() in its DetachAddon. Its own present event ends and reads the timed frame.
 namespace twattila::pass_timing {
 
 namespace internal {
@@ -63,6 +66,7 @@ struct State {
   std::unordered_map<const void*, std::string> targets;  // described once, while they live
   uint32_t presents_waited = 0;
   std::string status = "Not run yet.";
+  std::string prefix;  // the file's name before _pass_timing.txt (Install)
 };
 static State state;
 
@@ -214,9 +218,10 @@ inline std::string Status() {
   return internal::state.status;
 }
 
-// Each present (before it): starts a requested frame, ends a timed one, reads its stamps once the GPU passed them.
-// `prefix`: the file's name before _pass_timing.txt.
-inline void OnPresent(reshade::api::command_queue* queue, const std::string& prefix) {
+// Each present (before it; the add-on's first present event, Install's): starts a requested frame, ends a timed one, reads
+// its stamps once the GPU passed them.
+inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
+                      uint32_t, const reshade::api::rect*) {
   using internal::Phase;
   auto& state = internal::state;
   const std::lock_guard lock(state.mutex);
@@ -272,7 +277,7 @@ inline void OnPresent(reshade::api::command_queue* queue, const std::string& pre
         if (clock.Disjoint != FALSE) {
           state.status = "The GPU's clock changed during the frame: run it again.";
         } else {
-          internal::Write(context, clock, prefix);
+          internal::Write(context, clock, state.prefix);
         }
         state.phase = Phase::IDLE;
       } else if (++state.presents_waited > internal::WAIT_PRESENTS) {
@@ -300,12 +305,18 @@ inline void OnDestroyDevice(reshade::api::device*) {
   state.targets.clear();
 }
 
-// Before any other draw or dispatch hook of the addon (their run order is registration order).
-inline void Install() {
+// Before any other draw, dispatch or present hook of the addon (their run order is registration order). `prefix`: the
+// file's name before _pass_timing.txt.
+inline void Install(const std::string& prefix) {
+  {
+    const std::lock_guard lock(internal::state.mutex);
+    internal::state.prefix = prefix;
+  }
   reshade::register_event<reshade::addon_event::draw>(internal::OnDraw);
   reshade::register_event<reshade::addon_event::draw_indexed>(internal::OnDrawIndexed);
   reshade::register_event<reshade::addon_event::dispatch>(internal::OnDispatch);
   reshade::register_event<reshade::addon_event::draw_or_dispatch_indirect>(internal::OnIndirect);
+  reshade::register_event<reshade::addon_event::present>(OnPresent);
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
 }
 
@@ -314,8 +325,20 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::draw_indexed>(internal::OnDrawIndexed);
   reshade::unregister_event<reshade::addon_event::dispatch>(internal::OnDispatch);
   reshade::unregister_event<reshade::addon_event::draw_or_dispatch_indirect>(internal::OnIndirect);
+  reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
   OnDestroyDevice(nullptr);
+}
+
+// The add-on's button in `section` (Graphics 1 of 2 moves it under Ray Tracing Extra Options by its label).
+inline renodx::utils::settings::Setting* Button(const std::string& section) {
+  return new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+      .label = "Time Each Pass (One Frame)",
+      .section = section,
+      .tooltip = "The GPU's time of every pass of the next frame, saved as ..._pass_timing.txt next to the game's exe.",
+      .on_change = [] { Request(); },
+  };
 }
 
 }  // namespace twattila::pass_timing

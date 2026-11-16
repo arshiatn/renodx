@@ -3378,7 +3378,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
   talesofarise::pixel_trace::OnPresent(queue);
-  twattila::pass_timing::OnPresent(queue, "wh3");
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   twwarhammer3::vfx_particles::OnPresent();
   reflections::sun_standard = false;
@@ -4175,7 +4174,7 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
-  twattila::pass_timing::Install();
+  twattila::pass_timing::Install("wh3");
 
   ConfigureAddon();
   tw::engine_tweaks::watch::StartIfRequested(graphics_options, WATCHED_VALUES, 300);

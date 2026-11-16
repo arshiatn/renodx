@@ -919,10 +919,9 @@ bool OnCopyResource(reshade::api::command_list*, reshade::api::resource source, 
   return false;
 }
 
-// The helper's frame generation and Reflex (the page's rows), its frames SDR with the SDR output; Time Each Pass's frame.
+// The helper's frame generation and Reflex (the page's rows), its frames SDR with the SDR output.
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  twattila::pass_timing::OnPresent(queue, "talesofarise");
   frame_tonemapped.store(false, std::memory_order_relaxed);
   const auto& sliders = talesofarise::dlss_graphics::aa_sliders;
   const auto aa = twattila::feature_settings::AaSettings(sliders);
@@ -950,7 +949,7 @@ void OnDestroyHelperDevice(reshade::api::device* device) {
 bool AttachAddon(HMODULE addon_module) {
   if (attached) return true;
   // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
-  twattila::pass_timing::Install();
+  twattila::pass_timing::Install("talesofarise");
 
   ConfigureAddon();
 

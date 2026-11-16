@@ -1581,8 +1581,6 @@ bool KeyWentDown(int key) {
 
 void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  // Time Each Pass's frame (its button).
-  twattila::pass_timing::OnPresent(queue, "ryse");
   // GT-VBAO's noise moves every frame (the game's SSDO blur and TAA / DLSS settle it).
   shader_injection.ssao_frame = static_cast<float>((static_cast<uint32_t>(shader_injection.ssao_frame) + 1u) % 4096u);
   // What the helper serves this frame (graphics.hpp adds the upscaler and frame generation): the ray tracing, its guides
@@ -2197,7 +2195,7 @@ void ConfigureAddon() {
 bool AttachAddon() {
   if (attached) return true;
   // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
-  twattila::pass_timing::Install();
+  twattila::pass_timing::Install("ryse");
 
   ConfigureAddon();
 

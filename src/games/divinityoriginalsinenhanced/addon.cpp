@@ -915,11 +915,10 @@ renodx::utils::settings::Settings settings = {
 
 bool configured = false;
 
-// Time Each Pass's frame, and the frame trace's (renodx_trace_now next to the exe; FrameTrace=1 in ReShade.ini's
+// The frame trace's (renodx_trace_now next to the exe; FrameTrace=1 in ReShade.ini's
 // [renodx]: 600 frames of the 3D view in).
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  twattila::pass_timing::OnPresent(queue, "divinity");
   twattila::frame_trace::OnPresent(false, tonemap_drawn.exchange(false, std::memory_order_relaxed));
 }
 
@@ -1061,7 +1060,7 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
       // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
-      twattila::pass_timing::Install();
+      twattila::pass_timing::Install("divinity");
       ConfigureAddon();
       // Constants once each for the tone mapper, the exposure, the shadow filter, the sun, fog, SSAO and bloom's combine
       // (b0-b13: the frame b13, the view b12; the camera fields are Attila's b0 registers, not this game's); blends of fire,
