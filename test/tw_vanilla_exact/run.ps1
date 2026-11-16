@@ -120,7 +120,9 @@ $table = [ordered]@{
   # Divinity 1: the tone map (tw_divinity1's), bloom, god rays, UI, FXAA, SMAA, vignette.
   'Divinity1'   = @{ Folder = 'divinityoriginalsinenhanced'; Dump = $Divinity1
                      Shaders = '^(bloom|godsrays\d+|ui\d+)_|^0x(30A1D40D|35F39F1D|6AF33A9B|B7FC46C3|FB839D33|DDBCD866)\.' }
-  'Divinity2'   = @{ Folder = 'divinity2originalsindefinitive'; Dump = $Divinity2; Shaders = '^(t01|bloom00|ui00)_' }
+  # Divinity 2: PPApplyLUT, bloom, the UI and the sight / outline passes (Off keeps the game's levels; the modded modes'
+  # UI-relative ones are its own).
+  'Divinity2'   = @{ Folder = 'divinity2originalsindefinitive'; Dump = $Divinity2; Shaders = '^(t01|bloom00|ui00|outlines0[0-2])_' }
   'Tales'       = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^(tonemap|lut)\d+_' }
   # Tales' deferred sun lighting (lighting00-05) with its Extra rows at the game's 1 (filter scale, sun shadow distance,
   # shadow edge colour, sun haze), Smooth Volumetric Light off, the rays unbound, our GI off.
