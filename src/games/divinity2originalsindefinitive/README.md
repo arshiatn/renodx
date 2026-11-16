@@ -203,6 +203,32 @@ with cloned views. It turns resource cloning on, so the back buffer also goes
 through the swap chain proxy. Not run in game yet: check alpha readers, copies
 and the inventory.
 
+## Graphics: DLSS, FSR, XeSS and ray tracing (Advanced)
+
+The game has no TAA, jitter or motion vectors (FXAA and SMAA only). With the
+Total War helper (`renodx-tw-dlaa64.exe` and its DLLs next to `EoCApp.exe`):
+
+- **Anti-Aliasing DLSS / FSR / XeSS** (`dlaa.hpp`, off by default, 100% only):
+  a Halton jitter written into the main camera's PerView upload (b12: a
+  perspective projection, ViewInfo's size the back buffer's, view-projection =
+  projection x view; the shadow cascades, the inventory portrait and the
+  orthographic camera are left alone), the camera's motion from the depth, the
+  helper on PPApplyLUT's input (the linear scene) with the result bound in its
+  place. The game's SMAA weights are not drawn (its blend then copies) and
+  FXAA is copied. Frame generation's HUD-less image is CombineUI_HDR's input.
+- **Ray-traced sun shadows / AO** (`ray_tracing.hpp`, Experimental, off,
+  restart after turning on; needs one of the upscalers): the G-buffer draws
+  (decals, the ground's surfaces and water left out by their shaders) streamed
+  out into the helper's scene; the trace right after LinearizeDepth. Sun
+  shadows: the traced visibility in the full-screen mask's place (every filter
+  and cascade count). AO: the SAO chain not drawn, its two blurs write the
+  traced visibility into the texture PPApplyAO and ClusteredLightingWithSSAO
+  read.
+
+Not yet: render scale below 100%, the game's settings above its maximum,
+path-traced ambient, GI and reflections (they need the G-buffer guides),
+Ray Reconstruction, skipping the shadow cascades under ray-traced shadows.
+
 ## Data runs and installing
 
 - **Trace One Frame** (Advanced, Debug), `renodx_trace_now` next to the exe or
@@ -245,6 +271,11 @@ cone response): press Reset before comparing defaults.
 - `test/tw_d2_passes/run.ps1`: the PCSS sun shadows (8 variants) Vanilla exact
   at Sun Shadow Softness 1 against the game's bytes, each with a wrong copy that
   must fail; at 2 the shadow must change.
+- `test/tw_d2_helper/run.ps1` (after building the add-on): DLAA's camera hooks
+  (R1b's PerView), the jitter, the motion and colour through aa_dlaa_prepare /
+  finish, SMAA / FXAA giving way, the rays' writes read by the game's own
+  PPApplyAO, the sun's direction from PerFrame and the overlays left out of
+  the rays' scene, each with a control that must fail.
 - `test/tw_psychov30_nan`, `test/tw_output_encoding`, `test/tw_device_loss`,
   `test/tw_draw_dispatch`: the shared PsychoV30 guards, the not-configured
   Output, device loss and the fast draw dispatch.

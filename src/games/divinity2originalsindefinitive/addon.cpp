@@ -12,6 +12,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <format>
@@ -32,9 +33,16 @@
 #include "../talesofarise_dlss/frame_trace.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/device_loss.hpp"
+#include "../twattila/dlaa_bridge.hpp"
 #include "../twattila/draw_dispatch.hpp"
+#include "../twattila/feature_settings.hpp"
+#include "../twattila/frame_generation.hpp"
+#include "../twattila/graphics_page.hpp"
 #include "../twattila/pass_timing.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "../twattila/reflex.hpp"
+#include "./dlaa.hpp"
+#include "./ray_tracing.hpp"
 #include "./shared.h"
 
 const std::string build_date = __DATE__;
@@ -783,8 +791,41 @@ renodx::utils::settings::Settings settings = {
 bool initialized = false;
 
 constexpr uint32_t LUT_BUILDER_HASH = 0x7016F292;  // t00, PPComputeLUT (HDR and SDR LUTs)
+constexpr uint32_t APPLY_LUT_HASH = 0xC5E7DE4B;    // t01, PPApplyLUT: DLAA on its input (dlaa.hpp)
+constexpr uint32_t COMBINE_UI_HASH = 0x2EDB0AFA;   // ui00, CombineUI_HDR: its t0 is frame generation's HUD-less picture
 constexpr uint32_t SIGHT_HASH = 0xA3A4EC44;        // outlines00, EoCSight_HDR: binds PerView b12
 constexpr uint32_t ORTHO_SIGHT_HASH = 0x5C4137E2;  // outlines02, the orthographic camera's EoCSight_HDR
+// The game's own bytes (no code), level A in R1 / R1b (EngineShaders.pak names): LinearizeDepth reads the scene's depth at
+// t0 (dlaa.hpp keeps it), SMAABlendingWeightCalculation (the scene's; its light volumes' is A2CA49F6) and PPFXAA (level B:
+// not in a trace, AntiAliasing 2 in both runs) give way to DLAA.
+constexpr uint32_t LINEARIZE_DEPTH_HASH = 0xCB4F88B7;
+constexpr uint32_t SMAA_WEIGHTS_HASH = 0x50B25933;
+constexpr uint32_t FXAA_HASH = 0x02DC3AD9;
+// ClusteredLightingWithSSAO (perspective): PerFrame bound at its b13 (the sun's direction for the rays, ray_tracing.hpp).
+constexpr uint32_t CLUSTERED_LIGHTING_HASH = 0xA6E6A660;
+
+// The graphics page's anti-aliasing: the game's, the helper's DLSS, FSR and XeSS (dlaa.hpp: in DLSS's place).
+constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
+// What the page reads that this game has no row for (GT-VBAO, Light Bounce, Bend): 0 / off.
+float no_game_row = 0.f;
+twattila::feature_settings::SssSliders no_screen_space_shadows;
+constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
+    .aa_labels = {"Game's", "", "", "", "", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
+    .aa_tooltip = "Game's: the game's own (SMAA, FXAA or off).\n"
+                  "DLSS: NVIDIA's DLAA (RTX), in place of the game's SMAA or FXAA. FSR: AMD's, FSR 4 on Radeon RX 6000 and\n"
+                  "newer, else 3.1. XeSS: Intel's, any GPU. Both in DLSS's place. Ray tracing needs one of them.\n"
+                  "Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
+    .in_game_aa_note = "DLSS, FSR and XeSS take the place of the game's SMAA or FXAA: any in-game Anti-Aliasing works.",
+    .reset_tooltip = "Everything on this page but Anti-Aliasing back to its default: the game's shadows and AO.",
+    .no_rays_tooltip = "The game's own shadows and ambient occlusion. The rest of this page at its default.",
+    .rays_tooltip = "Ray-traced sun shadows and ambient occlusion at my settings. The rest of this page at its default.\n"
+                    "Needs an upscaler (Anti-Aliasing above). Restart the game after turning ray tracing on.",
+    .shadow_tooltip = "Game's Shadow Maps: the original. DXR: ray-traced sun shadows in their place (keep in-game\n"
+                      "shadows on). Needs an upscaler. Restart the game after turning it on.",
+    .ao_tooltip = "Soft shadows in corners and where objects meet the ground.\n"
+                  "Game's SSAO: the original. RTAO: from rays through the scene, in its place (keep in-game SSAO on).\n"
+                  "Needs an upscaler. Restart the game after turning it on.",
+};
 
 // Each replaced shader's first use is logged once (the "applied" lines of a data run); a bit per custom shader.
 std::atomic_uint64_t applied_shaders = 0;
@@ -827,10 +868,27 @@ void AppendConstants(reshade::api::command_list* cmd_list, bool compute, UINT sl
   talesofarise::frame_trace::internal::Append(line);
 }
 
-// The frame trace's frame (Time Each Pass has its own present event).
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
+// The frame trace's frame (Time Each Pass has its own present event); the helper's rows for the next frame.
+void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
   talesofarise::frame_trace::OnPresent("divinity2");
+  // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS
+  // on Intel's, else FSR (Attila's).
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (divinity2::dlaa::sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
+  // Frame generation (DLAA keeps the frames: dlaa.hpp) and Reflex from the page's rows, as Attila's.
+  const twattila::anti_aliasing::Settings aa = twattila::feature_settings::AaSettings(divinity2::dlaa::sliders);
+  twattila::frame_generation::Update({
+      .multiplier = (divinity2::dlaa::sliders.method != 0.f ? aa.frame_generation : 0u),
+      .reflex_boost = (aa.reflex == 2u),
+      .frame_limit = aa.frame_limit,
+      .preset = aa.frame_preset,
+      .hud_recomposition = aa.hud_recomposition,
+      .debug_view = aa.frame_debug_view,
+  });
+  twattila::reflex::Update(swapchain, aa.reflex, aa.frame_limit);
 }
 
 }  // namespace
@@ -1056,6 +1114,15 @@ void ConfigureAddon() {
         renodx::utils::log::i(std::format("[Divinity 2] Replaced shader 0x{:08X} applied (Rendering Mode {:.0f}).", hash,
                                           shader_injection.tonemap_type));
       }
+      if (hash == APPLY_LUT_HASH) {
+        divinity2::dlaa::OnApplyLut(cmd_list);
+      } else if (hash == COMBINE_UI_HASH) {
+        divinity2::dlaa::KeepPicture(cmd_list);
+      } else if (std::ranges::find(divinity2::ray_tracing::internal::SUN_MASK_SHADERS, hash)
+                     != divinity2::ray_tracing::internal::SUN_MASK_SHADERS.end()
+                 && divinity2::ray_tracing::ReplaceSunMask(cmd_list)) {
+        return false;
+      }
       if (!talesofarise::frame_trace::internal::state.tracing.load(std::memory_order_relaxed)) return true;
       switch (hash) {
         case LUT_BUILDER_HASH:
@@ -1078,51 +1145,181 @@ void ConfigureAddon() {
       return true;
     };
   }
+  // After DLAA its input goes back; the rays' Debug View over its output.
+  custom_shaders[APPLY_LUT_HASH].on_drawn = [](reshade::api::command_list* cmd_list) {
+    divinity2::dlaa::OnApplyLutDrawn(cmd_list);
+    if (divinity2::dlaa::rays) twattila::rt_scene::OnTonemapDrawn(cmd_list);
+  };
+  custom_shaders[LINEARIZE_DEPTH_HASH] = {
+      .crc32 = LINEARIZE_DEPTH_HASH,
+      .on_draw = [](reshade::api::command_list* cmd_list) {
+        divinity2::dlaa::KeepDepth(cmd_list);
+        return true;
+      },
+      .on_drawn = divinity2::ray_tracing::Trace,
+  };
+  custom_shaders[CLUSTERED_LIGHTING_HASH] = {
+      .crc32 = CLUSTERED_LIGHTING_HASH,
+      .on_draw = [](reshade::api::command_list* cmd_list) {
+        divinity2::ray_tracing::KeepSun(cmd_list);
+        return true;
+      },
+  };
+  // The sun shadow masks without code here (the replaced PCSS ones above): the rays' visibility in the filter's place.
+  for (const uint32_t hash : divinity2::ray_tracing::internal::SUN_MASK_SHADERS) {
+    if (custom_shaders.contains(hash)) continue;
+    custom_shaders[hash] = {
+        .crc32 = hash,
+        .on_draw = [](reshade::api::command_list* cmd_list) { return !divinity2::ray_tracing::ReplaceSunMask(cmd_list); },
+    };
+  }
+  for (const uint32_t hash : divinity2::ray_tracing::internal::AO_CHAIN_SHADERS) {
+    custom_shaders[hash] = {
+        .crc32 = hash,
+        .on_draw = [](reshade::api::command_list* cmd_list) { return !divinity2::ray_tracing::SkipAmbientChain(cmd_list); },
+    };
+  }
+  custom_shaders[divinity2::ray_tracing::internal::AO_BLUR_SHADER] = {
+      .crc32 = divinity2::ray_tracing::internal::AO_BLUR_SHADER,
+      .on_draw = [](reshade::api::command_list* cmd_list) { return !divinity2::ray_tracing::ReplaceAmbientBlur(cmd_list); },
+  };
+  custom_shaders[SMAA_WEIGHTS_HASH] = {
+      .crc32 = SMAA_WEIGHTS_HASH,
+      .on_draw = [](reshade::api::command_list* cmd_list) { return !divinity2::dlaa::SkipSmaaWeights(cmd_list); },
+  };
+  custom_shaders[FXAA_HASH] = {
+      .crc32 = FXAA_HASH,
+      .on_draw = [](reshade::api::command_list* cmd_list) { return !divinity2::dlaa::SkipFxaa(cmd_list); },
+  };
 
+  // The graphics page (twattila/graphics_page.hpp, Attila's): its anti-aliasing rows (feature_settings::AppendAa: DLSS
+  // with its preset, frame generation and Reflex; SMAA, CMAA2 and TAA stay hidden), the rays' rows
+  // (rt_scene::AppendSettings: sun shadows and AO here), shown in Advanced (Settings Mode).
+  twattila::feature_settings::AppendAa(&settings, &divinity2::dlaa::sliders, false, false, true);
+  twattila::rt_scene::AppendSettings(&settings, &divinity2::ray_tracing::sliders, &divinity2::dlaa::sliders);
+  twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  twattila::graphics_page::Apply(&settings, {.aa = &divinity2::dlaa::sliders,
+                                             .sss = &no_screen_space_shadows,
+                                             .rt = &divinity2::ray_tracing::sliders,
+                                             .ssao_mode = &no_game_row,
+                                             .light_bounce_strength = &no_game_row,
+                                             .texts = &PAGE_TEXTS,
+                                             .aa_methods = AA_METHODS,
+                                             .has_scale_rows = false,
+                                             .has_foliage_light = false,
+                                             .rays_preset_as_attila = true,
+                                             .has_path_ambient = false,
+                                             .has_reflections = false,
+                                             .has_gtvbao = false,
+                                             .has_screen_space_shadows = false,
+                                             .has_gtvbgi = false,
+                                             .rays_tested = false,
+                                             .has_gi = false,
+                                             .every_row = false});
+  const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
+  for (auto* setting : settings) {
+    if (std::ranges::find(page_sections, setting->section) == page_sections.end()) continue;
+    setting->is_visible = [shown = setting->is_visible] { return IsAdvancedSettings() && (shown == nullptr || shown()); };
+  }
+}
+
+namespace {
+
+bool attached = false;
+bool addon_registered = false;
+
+bool AttachAddon() {
+  if (attached) return true;
+  // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
+  twattila::pass_timing::Install("divinity2");
+
+  if (!initialized) {
+    ConfigureAddon();
+    initialized = true;
+  }
+  reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
+  reshade::register_event<reshade::addon_event::present>(OnPresent);
+  divinity2::dlaa::Install();
+  // Frame generation's HUD-less frame through the swap chain shader, its constants at b10 (shared.h's shader_injection).
+  twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
+                                      sizeof(shader_injection), __fg_hdr10, 10);
+  twattila::reflex::Install();
+
+  renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  twattila::test_hooks::Install(&settings, true, "[Divinity 2]");
+  // A ray tracing row on at launch: its scene's shaders kept from the start.
+  if (divinity2::ray_tracing::sliders.sun_shadows != 0.f || divinity2::ray_tracing::sliders.ambient_occlusion != 0.f) {
+    divinity2::ray_tracing::Install();
+  }
+  // Before the swap chain mod (below): a removed device's chain let go, the no-frame limit and stall log after it. The
+  // output stays HDR10 (no Output choice to decide, no flip chain let go before the next).
+  twattila::device_loss::Install();
+  renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
+  renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
+  // The fast draw dispatch with the resource upgrades' gate: attached after mods::shader (command_action).
+  twattila::draw_dispatch::Use(DLL_PROCESS_ATTACH);
+  // Last: after the swapchain mod's create_swapchain and every other destroy_device.
+  twattila::device_loss::InstallLast();
+
+  attached = true;
+  return true;
+}
+
+void DetachAddon() {
+  if (!attached) return;
+  twattila::device_loss::Uninstall();
+  twattila::test_hooks::Uninstall();
+  reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  talesofarise::frame_trace::Stop();
+  reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
+  divinity2::dlaa::Uninstall();
+  divinity2::ray_tracing::Uninstall();
+  twattila::frame_generation::Uninstall();
+  twattila::reflex::Uninstall();
+  // The fast draw dispatch detached before mods::shader (command_action).
+  twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
+  renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
+  renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
+  renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
+  twattila::pass_timing::Uninstall();
+  attached = false;
+}
+
+}  // namespace
+
+extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
+  if (!addon_registered) {
+    if (!reshade::register_addon(addon_module)) return false;
+    addon_registered = true;
+  }
+  return AttachAddon();
+}
+
+extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE) {
+  DetachAddon();
+  // After its users are unregistered (dlaa_bridge.hpp: never from DllMain, it waits for the helper's watcher thread).
+  twattila::dlaa_bridge::Shutdown();
+  if (addon_registered) {
+    reshade::unregister_addon(addon_module);
+    addon_registered = false;
+  }
 }
 
 BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
-      // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
-      twattila::pass_timing::Install("divinity2");
-
-      if (!initialized) {
-        ConfigureAddon();
-        reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
-        reshade::register_event<reshade::addon_event::present>(OnPresent);
-        twattila::test_hooks::Install(&settings, true, "[Divinity 2]");
-        initialized = true;
-      }
-      // Before the swap chain mod (below): a removed device's chain let go, the no-frame limit and stall log after it. The
-      // output stays HDR10 (no Output choice to decide, no flip chain let go before the next).
-      twattila::device_loss::Install();
-
+      addon_registered = true;
       break;
+
     case DLL_PROCESS_DETACH:
-      twattila::device_loss::Uninstall();
-      twattila::test_hooks::Uninstall();
-      reshade::unregister_event<reshade::addon_event::present>(OnPresent);
-      talesofarise::frame_trace::Stop();
-      reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
-      reshade::unregister_addon(h_module);
+      // ReShade calls AddonUninit before an explicit unload. During process termination, no calls into ReShade or RenoDX
+      // under the loader lock.
+      if (lpv_reserved == nullptr && addon_registered) {
+        reshade::unregister_addon(h_module);
+        addon_registered = false;
+      }
       break;
-  }
-
-  renodx::utils::settings::Use(fdw_reason, &settings, nullptr);
-  renodx::mods::swapchain::Use(fdw_reason, &shader_injection);
-  // The fast draw dispatch with the resource upgrades' gate: attached after mods::shader (command_action), detached
-  // before it.
-  if (fdw_reason == DLL_PROCESS_DETACH) {
-    twattila::draw_dispatch::Use(fdw_reason);
-  }
-  renodx::mods::shader::Use(fdw_reason, custom_shaders, &shader_injection);
-  if (fdw_reason == DLL_PROCESS_ATTACH) {
-    twattila::draw_dispatch::Use(fdw_reason);
-    twattila::device_loss::InstallLast();
-  } else if (fdw_reason == DLL_PROCESS_DETACH) {
-    twattila::pass_timing::Uninstall();
   }
 
   return TRUE;
