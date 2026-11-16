@@ -61,6 +61,11 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 3.f;
 }
 
+// Peak, Paper White and UI do nothing under Output SDR (the display's white is the game's and the UI's).
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != 2.f;
+}
+
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
 constexpr float HUE_CLIP_DEFAULT = 70.f;
 
@@ -237,6 +242,16 @@ void BuildRuntimeData() {
           .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
           .is_global = true,
       },
+      // The game's Brightness sets Unreal's display gamma to 1 + 0.03 x Brightness (its default 50: 2.5); the LUT's gamma
+      // (cb0[27].y) is 2.2 / that, 1 at Brightness 40.
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "Use this in-game setting: Brightness 40.",
+          .section = "General",
+          .tooltip = "40 leaves the picture's gamma as made. The game's default 50 brightens dark tones and, in HDR, dims\n"
+                     "highlights.",
+          .tint = 0xFFD23C,
+      },
       new renodx::utils::settings::Setting{
           .key = "peak_white_nits",
           .binding = &shader_injection.peak_white_nits,
@@ -247,6 +262,7 @@ void BuildRuntimeData() {
           .tooltip = "Maximum brightness output in nits.",
           .min = 400.f,
           .max = 10000.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           .key = "diffuse_white_nits",
@@ -257,6 +273,7 @@ void BuildRuntimeData() {
           .tooltip = "Brightness of the scene/game and cutscenes.",
           .min = 1.f,
           .max = 500.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           .key = "graphics_white_nits",
@@ -267,6 +284,7 @@ void BuildRuntimeData() {
           .tooltip = "Brightness of UI and HUD in nits.",
           .min = 1.f,
           .max = 500.f,
+          .is_visible = IsHdrOutput,
       },
       new renodx::utils::settings::Setting{
           .key = "tonemapper",
@@ -378,9 +396,9 @@ void BuildRuntimeData() {
              IsHDRMode),
       slider("godrays", &shader_injection.godrays, "Godrays", "Extra", "Light shaft multiplier. Probably needs in-game Post Processing on.",
              IsHDRMode),
-      slider("volumetric_fog", &shader_injection.volumetric_fog, "Volumetric Fog (experimental)", "Extra",
+      slider("volumetric_fog", &shader_injection.volumetric_fog, "Volumetric Fog (Experimental)", "Extra",
              "Volumetric fog multiplier, 0 = off. Fog on translucent objects (particles, glass) stays\n"
-             "unchanged, and the fog's cost remains: Engine.ini r.VolumetricFog=0 is the cheaper off.\n"
+             "unchanged, and the fog's cost remains: Graphics 2 of 2's Volumetric fog 0 is the cheaper off.\n"
              "Only shadows High/Ultra should have volumetric fog on.",
              IsHDRMode),
       slider("sharpening", &shader_injection.sharpening, "Sharpening", "Extra",
@@ -443,6 +461,8 @@ void ConfigureAddon() {
   expeditionsrome::dlss_graphics::Migrate();
   // GT-VBGI joins Global Illumination: presets that had it off keep it off (SettingsRevision 2).
   talesofarise::ue_light_bounce::KeepSavedGiOff(2);
+  // Bend and GT-VBGI on by default (ATN 2026-11-16): their rows saved at the old default (off) cleared once (SettingsRevision 3).
+  twattila::graphics_page::ClearSavedRows(3, {"ScreenSpaceShadows", "ScreenSpaceShadowsLength", "light_bounce_strength"});
   BuildRuntimeData();
   // Without the helper (the HDR-only snapshot), after Settings Mode.
   settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote());
@@ -542,7 +562,7 @@ void ConfigureAddon() {
                "and PsychoV35. UE Extended by Marat.",
       .section = "About",
   });
-  for (const char* line : {twattila::credits::ACES, twattila::credits::HELPER}) {
+  for (const char* line : {twattila::credits::ACES, talesofarise::hdr_only::EFFECTS_CREDITS, twattila::credits::HELPER}) {
     settings.push_back(new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::TEXT,
         .label = line,
