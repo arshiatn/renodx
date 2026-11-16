@@ -2637,8 +2637,9 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH:
       addon_module_handle = h_module;
-      if (!reshade::register_addon(h_module)) return FALSE;
-      addon_registered = true;
+      // Not FALSE when it fails (a host whose ReShade refuses add-ons): after a FALSE the CRT's thread_local cleanup faults in
+      // the loader (Warhammer III's add-on in the helper's process: ntdll c0000005 each start). AddonInit fails instead.
+      addon_registered = reshade::register_addon(h_module);
       break;
 
     case DLL_PROCESS_DETACH:
