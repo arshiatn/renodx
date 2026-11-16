@@ -181,6 +181,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator 06:xx rao_ merged ad541a4f (RT AO replaces the g
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
 - 17-ROW CHECK (ATN 06:xx: the first audits ran before the 17 Attila rows were in ... | coordinator
+- Group 1 leftovers: Grass Ray Tracing Range for grass captured as drawn (Rome II, ... | next GPU round (grass range), next data runs (VFX)
+- ATN DECIDES: UI 4K Mod Compatibility for Thrones and Rome II, only if a UI mod f ... | ATN
 - Group 2 leftovers: WH3 Grass Ray Tracing Range for GPU-placed grass (new work, m ... | next per-game data runs / rounds
 - ATN DECIDES: Shogun 2 Recommended Video AutoHDR is 0.25, the skill says 0.2 (Tal ... | ATN
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
@@ -1515,6 +1517,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: per-game rounds (SMAA / CMAA2, fallback), coordinator (README)
       - [ ] 17-ROW CHECK (ATN 06:xx: the first audits ran before the 17 Attila rows were in the skills): 3 read-only agents,
         reports skill_audit_1116/<game>_17.md; their A rows go to a second fix pass. Owner: coordinator
+        - [x] Group 1 DONE (thrones / rome2 / wh1 / wh2 _17.md): A rows sent to the running fix agents (Rome II Modded
+          Auto Exposure in decades -> stops x0.30103, indicator HDR-only, a plain Recommended, preset tooltips, cascades
+          pattern test; WH1 preset tooltips; Thrones sky_deband 0 in Reset; Rome II / WH1 / WH2 gamma line above the
+          download note; all four IsHdrOutput on the video rows; shared: graphics_hooks pattern count test to shs_). Check
+          each agent's report for them.
+        - [ ] Group 1 leftovers: Grass Ray Tracing Range for grass captured as drawn (Rome II, WH1, WH2: drop far vertices
+          in the capture, Nsight cost first; shared code); VFX Brightness families need traces (Thrones snow / storm
+          thrones.tsv:10, :51; WH1 wh1.tsv:73; WH2 wh2.tsv:36). Owner: next GPU round (grass range), next data runs (VFX)
+        - [ ] ATN DECIDES: UI 4K Mod Compatibility for Thrones and Rome II, only if a UI mod for those games patches the
+          same DLL code (Thrones writes Shadow Map Size and the cascades with no lock, addon.cpp:1705). Owner: ATN
         - [x] Group 2 DONE (wh3 / troy / pharaoh / shogun2 / romer _17.md): A rows sent to the running fix agents (WH3
           sky_deband 0 + Reset VFX rows; Troy indicator label; Pharaoh sky_deband 0 in presets + dead_units pattern test;
           Shogun 2 Reflex / limit gates, Torch Follow row, own Lean ReSTIR on, 11-pattern test, SER tooltip; Rome
