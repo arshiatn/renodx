@@ -4,7 +4,8 @@
 // HDR (Extended): UE Filmic Extended from marat569's UE Extended (src/games/ue-extended:
 // lutbuilder/filmtonemap.hlsli, filmiclutbuilder.hlsli, lutbuildercommon.hlsli, common.hlsli) at its defaults:
 // Tonemap Scaling AP1, Blend Factor 50, film black clip 0, Expand Gamut 0 (lut00), blue correction 0.6 with its exact
-// inverse, post-LUT grading off (identity at its defaults), SDR EOTF emulation 2.2 (lut00).
+// inverse, post-LUT grading off (identity at its defaults), SDR EOTF emulation 2.2 (lut00). Expeditions: Rome's
+// lutbuilder includes it too.
 
 namespace ue_extended {
 

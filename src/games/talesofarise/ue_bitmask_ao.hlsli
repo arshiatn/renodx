@@ -13,8 +13,8 @@
 // space as UE's AO: x right, y up, z forward, (screen x z / projection.x, screen y z / projection.y, z) from a screen
 // position (-1..1, y up); the depth texture at `screen * depth_scale + depth_offset`, its value to linear depth (cm)
 // through `device_z_to_depth` (View.InvDeviceZToWorldZTransform; a linear depth: (1, 0, 0, -1e30)). Radius and
-// thickness in metres (UE's units: cm). No temporal smoothing of its own: the noise moves every frame (SI.ssao_frame)
-// and the game's TAA / DLSS (and its AO blur) settle it, XeGTAO's way.
+// thickness in metres (UE's units: cm); Auto Thickness as Attila's (SI.ssao_auto_thickness). No temporal smoothing of
+// its own: the noise moves every frame (SI.ssao_frame) and the game's TAA / DLSS (and its AO blur) settle it, XeGTAO's way.
 float UeAoDepth(float stored, float4 device_z_to_depth) {
   return stored * device_z_to_depth.x + device_z_to_depth.y + 1.f / (stored * device_z_to_depth.z - device_z_to_depth.w);
 }
@@ -60,6 +60,10 @@ float UeBitmaskAmbientOcclusion(float2 screen_position, float3 normal, uint2 pix
     const float slice_jitter = frac(noises.z + 0.618034f * slice);
     // The slice's screen direction runs down with pixels; screen positions run up.
     const float2 step_screen = float2(slice_info.screen_direction.x, -slice_info.screen_direction.y) * radius_screen;
+    // Auto Thickness (SI.ssao_auto_thickness): each side's occluder, the slice's random scale (bitmask.hlsli).
+    BitmaskOccluder occluder_minus = {position, position};
+    BitmaskOccluder occluder_plus = {position, position};
+    const float occluder_scale = exp2(2.f * frac(noises.z + 0.5f + 0.754877666f * slice) - 1.f);
     uint occluded = 0u;
     // Until every sector is covered (nothing farther can change it).
     [loop]
@@ -74,11 +78,29 @@ float UeBitmaskAmbientOcclusion(float2 screen_position, float3 normal, uint2 pix
         const float sample_depth = UeAoDepth(
             depth_texture.SampleLevel(depth_sampler, sample_screen * depth_scale + depth_offset, 0).x, device_z_to_depth);
         const float3 sample_position = UeAoViewPosition(sample_screen, sample_depth, projection);
+        float sample_thickness = thickness;
+        BitmaskOccluder occluder = occluder_minus;
+        if (side > 0) occluder = occluder_plus;
+        [branch]
+        if (SI.ssao_auto_thickness != 0.f) {
+          sample_thickness = BitmaskOccluderThickness(occluder, sample_position, view, thickness, occluder_scale);
+          if (side > 0) {
+            occluder_plus = occluder;
+          } else {
+            occluder_minus = occluder;
+          }
+        }
         const float3 delta = sample_position - position;
         const float delta_length = length(delta);
         if (!(delta_length > 0.01f) || delta_length > radius) continue;
-        // Its thickness along its own camera ray.
-        const float3 back = normalize(delta + normalize(sample_position) * thickness);
+        // Its thickness along its own camera ray (Auto Thickness: its occluder's).
+        float3 back;
+        [branch]
+        if (SI.ssao_auto_thickness != 0.f) {
+          back = BitmaskOccluderBack(occluder, delta, position, view, sample_thickness);
+        } else {
+          back = normalize(delta + normalize(sample_position) * thickness);
+        }
         occluded |= BitmaskSectors(delta / delta_length, back, view, side, slice_info, slice_jitter);
       }
     }

@@ -29,6 +29,7 @@
 #include "../talesofarise_dlss/post_filters.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/device_loss.hpp"
 #include "../twattila/draw_dispatch.hpp"
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/frame_generation.hpp"
@@ -168,6 +169,7 @@ bool LoadPostFilters(reshade::api::command_list*) {
   shader_injection.ssao_directions = filters.ao_directions;
   shader_injection.ssao_quality = filters.ao_quality;
   shader_injection.ssao_frame = filters.ao_frame;
+  shader_injection.ssao_auto_thickness = filters.ao_auto_thickness;
   return true;
 }
 
@@ -733,23 +735,6 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   }
 }
 
-// A ResizeBuffers raises create_swapchain too, and its back buffers keep the upgrade the swapchain mod made at the swap
-// chain's creation: the output stays as decided then (another one's view formats failed the game's view creation).
-static bool swapchain_resizing = false;
-
-void OnDestroySwapchain(reshade::api::swapchain*, bool resize) {
-  swapchain_resizing = resize;
-}
-
-// Output (twattila/output_encoding.hpp), decided for each new swap chain before the swapchain mod's create_swapchain
-// (registered after this): Auto follows Windows HDR for the game's display.
-bool OnCreateSwapchain(reshade::api::device_api, reshade::api::swapchain_desc&, void* hwnd) {
-  if (!std::exchange(swapchain_resizing, false)) {
-    twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
-  }
-  return false;
-}
-
 extern "C" __declspec(dllexport) constexpr const char* NAME = "RenoDX";
 extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - Tales of Arise by ATN";
 
@@ -964,8 +949,9 @@ bool AttachAddon(HMODULE addon_module) {
 
   ConfigureAddon();
 
-  reshade::register_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
-  reshade::register_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
+  // Before the swap chain mod: a removed device's chain let go, each new chain's output decided (Auto follows Windows
+  // HDR for the game's display; a ResizeBuffers keeps the output decided at the chain's creation).
+  twattila::device_loss::Install();
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBindRenderTargetsAndDepthStencil);
   reshade::register_event<reshade::addon_event::copy_resource>(OnCopyResource);
@@ -988,6 +974,7 @@ bool AttachAddon(HMODULE addon_module) {
                                       sizeof(shader_injection), __fg_hdr10);
   twattila::reflex::Install();
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
+  twattila::device_loss::InstallLast();
 
   attached = true;
   return true;
@@ -996,13 +983,12 @@ bool AttachAddon(HMODULE addon_module) {
 void DetachAddon() {
   if (!attached) return;
 
+  twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyHelperDevice);
   twattila::reflex::Uninstall();
   twattila::frame_generation::Uninstall();
   // Last of the helper's users: the bridge ends with it.
   talesofarise::dlss_graphics::Uninstall();
-  reshade::unregister_event<reshade::addon_event::destroy_swapchain>(OnDestroySwapchain);
-  reshade::unregister_event<reshade::addon_event::create_swapchain>(OnCreateSwapchain);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBindRenderTargetsAndDepthStencil);
   reshade::unregister_event<reshade::addon_event::copy_resource>(OnCopyResource);

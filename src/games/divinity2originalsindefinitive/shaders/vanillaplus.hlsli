@@ -83,9 +83,29 @@ float3 ACES(float3 scene_bt709, float paper_white, float peak_nits) {
 }
 
 // The game's SDR picture of a scene colour (BT.709, white 1, clipped per channel) for PsychoV35's Hue Clip and its SDR
-// mid gray. The SDR LUT's own constants are not traced yet: RenoDX's ACES at 0.02 / 48 nits stands in for them.
-float3 SdrReference(float3 scene_bt709) {
-  return saturate(renodx::tonemap::aces::RRTAndODT(scene_bt709, 0.02f, 48.f) / 48.f);
+// mid gray: ACES.shdh's outputTransform with the inventory's SDR LUT as traced (ACES 1.1 tone scale at 0.02 / 48 nits,
+// the same coefficients as RenoDX's): the highlight-fix LMT, the RRT, the tone scale per channel blended toward the
+// luminance one, the LMT's inverse, code values. luminance_apply / highlights_fix: t00's ToneMapLuminanceApply /
+// HighlightsFixAmount (one value for both LUTs).
+float3 SdrReference(float3 scene_bt709, float luminance_apply, float2 highlights_fix) {
+  static const float SDR_MIN_NITS = 0.02f;
+  static const float SDR_MAX_NITS = 48.f;
+  // ACES.shdh HightlightsCorrection_MAT (AP0).
+  static const float3x3 HIGHLIGHTS_CORRECTION = float3x3(
+      0.9404372683f, -0.0183068787f, 0.0778696104f,
+      0.0083786969f, 0.8286599939f, 0.1629613092f,
+      0.0005471261f, -0.0008833746f, 1.0003362486f);
+  float3 aces = mul(renodx::color::BT709_TO_AP0_MAT, scene_bt709);
+  aces = lerp(aces, mul(HIGHLIGHTS_CORRECTION, aces), highlights_fix.x);
+  float3 rgb_pre = renodx::tonemap::aces::RRT(aces);
+  renodx::tonemap::aces::ODTConfig config = renodx::tonemap::aces::CreateODTConfig(SDR_MIN_NITS, SDR_MAX_NITS);
+  float3 rgb_post = renodx::tonemap::aces::ODTToneMap(rgb_pre, config);
+  float y = dot(rgb_pre, renodx::color::AP1_TO_XYZ_MAT[1].rgb);
+  if (y > 0.f) {
+    rgb_post = lerp(rgb_post, rgb_pre * (renodx::tonemap::aces::SSTS(y, config) / y), luminance_apply);
+  }
+  rgb_post = dos2_vanilla::ApplyNativePostMatrix(max(rgb_post, SDR_MIN_NITS), highlights_fix);
+  return saturate(renodx::color::bt709::from::AP1((rgb_post - SDR_MIN_NITS) / (SDR_MAX_NITS - SDR_MIN_NITS)));
 }
 
 // Solve against the actual RenoDX implementation linked by the user's build.

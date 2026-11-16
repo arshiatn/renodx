@@ -25,16 +25,6 @@ RWTexture3D<unorm float4> LUT : register(u0);
 
 groupshared float dos2_aces_gray_exposure;
 
-// Helper function to apply the POST-MATRIX
-float3 ApplyNativePostMatrix(float3 color_ap1, float2 highlights_fix) {
-  float3 corrected_ap1 = float3(
-      dot(float3(1.06537485f, 1.44673368e-06f, -0.0653710067f), color_ap1),
-      dot(float3(-3.4558721e-07f, 1.20366347f, -0.203667715f), color_ap1),
-      dot(float3(1.98354986e-08f, 2.12240607e-08f, 0.999999583f), color_ap1));
-
-  return lerp(color_ap1, corrected_ap1, highlights_fix.x * highlights_fix.y);
-}
-
 // Preserve the native scalar/RGB blend and output stages, using the captured
 // reference spline instead of the former RenoDX ODT replacement.
 float3 ApplyVanillaToneCurve(float3 color_ap1, float luminance_amount, float2 highlights_fix) {
@@ -47,7 +37,7 @@ float3 ApplyVanillaToneCurve(float3 color_ap1, float luminance_amount, float2 hi
   }
 
   mapped_ap1 = max(mapped_ap1, dos2_vanilla::REFERENCE_BLACK_NITS);
-  mapped_ap1 = ApplyNativePostMatrix(mapped_ap1, highlights_fix);
+  mapped_ap1 = dos2_vanilla::ApplyNativePostMatrix(mapped_ap1, highlights_fix);
   return (mapped_ap1 - dos2_vanilla::REFERENCE_BLACK_NITS) /
          (dos2_vanilla::REFERENCE_PEAK_NITS - dos2_vanilla::REFERENCE_BLACK_NITS);
 }
@@ -218,7 +208,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID, uint group_index : SV_GroupInde
   if (use_aces_tweaked || use_psycho || use_psycho35) {
     const float diffuse_white_nits = max(SI.diffuse_white_nits, 0.0001f);
     const float peak_white_nits = DOS2_PEAK_NITS;
-    const float relative_peak = peak_white_nits / diffuse_white_nits;
+    const float relative_peak = max(peak_white_nits / diffuse_white_nits, 1.f);  // Paper White can be set above Peak
 
     // custom user Grading (in BT.709 space)
     float3 graded_bt709 = renodx::color::bt709::from::AP1(r0.xyz);
@@ -230,11 +220,14 @@ void main(uint3 vThreadID : SV_DispatchThreadID, uint group_index : SV_GroupInde
       [branch]
       if (SI.hue_clip > 0.f) {
         graded_bt709 = renodx::tonemap::psychov::HueTransfer(
-            graded_bt709, dos2_vanillaplus::SdrReference(graded_bt709), SI.hue_clip);
+            graded_bt709,
+            dos2_vanillaplus::SdrReference(graded_bt709, ToneMapLuminanceApply, HighlightsFixAmount),
+            SI.hue_clip);
       }
       const float mid_gray = (SI.v35_mid_gray != 0.f)
                                  ? renodx::color::y::from::BT709(dos2_vanillaplus::SdrReference(
-                                       float3(DOS2_GRAY_INPUT, DOS2_GRAY_INPUT, DOS2_GRAY_INPUT)))
+                                       float3(DOS2_GRAY_INPUT, DOS2_GRAY_INPUT, DOS2_GRAY_INPUT),
+                                       ToneMapLuminanceApply, HighlightsFixAmount))
                                  : DOS2_GRAY_OUTPUT;
       float3 psycho35_bt2020 = renodx::color::bt2020::from::BT709(
           ApplyPsychoV35(graded_bt709, relative_peak, false, mid_gray));

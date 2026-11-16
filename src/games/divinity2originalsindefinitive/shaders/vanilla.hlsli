@@ -65,6 +65,17 @@ float3 ToneMap(float3 color) {
   return float3(ToneMap(color.x), ToneMap(color.y), ToneMap(color.z));
 }
 
+// The highlight-fix LMT's inverse after the tone scale (ACES.shdh HightlightsCorrectionInv_MAT in AP1): keeps the white
+// point. highlights_fix: t00's HighlightsFixAmount.
+float3 ApplyNativePostMatrix(float3 color_ap1, float2 highlights_fix) {
+  float3 corrected_ap1 = float3(
+      dot(float3(1.06537485f, 1.44673368e-06f, -0.0653710067f), color_ap1),
+      dot(float3(-3.4558721e-07f, 1.20366347f, -0.203667715f), color_ap1),
+      dot(float3(1.98354986e-08f, 2.12240607e-08f, 0.999999583f), color_ap1));
+
+  return lerp(color_ap1, corrected_ap1, highlights_fix.x * highlights_fix.y);
+}
+
 // Rational shoulder above `knee`: slope 1 at the knee, exactly `peak_nits` at `source_peak`.
 float Shoulder(float value, float knee, float source_peak, float peak_nits) {
   if (value <= knee) return value;

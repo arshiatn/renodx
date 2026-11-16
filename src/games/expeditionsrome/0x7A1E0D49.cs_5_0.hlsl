@@ -4,7 +4,7 @@
  */
 
 // Private ray tracing shader (ray_tracing.hpp), not a game replacement registration: the ray-traced light bounce's
-// resolve over frames. Each bounce texel (2 x 2 render pixels, its centre's surface) keeps the light arriving there
+// resolve over frames. Each bounce texel (scale x scale render pixels, its centre's surface) keeps the light arriving there
 // averaged over up to `frames` frames: last frame's where its camera saw the same surface (bilinear, each tap only where
 // its surface lies within 2% of the distance), else this frame's alone. World positions in metres (the helper's).
 Texture2D<float4> traced : register(t0);              // this frame's arriving light, the distance from the camera
@@ -17,13 +17,15 @@ RWTexture2D<float4> resolved_positions : register(u1);
 cbuffer resolve : register(b0) {
   float4 previous_view_projection[4];  // last frame's camera (rows acting on column vectors)
   uint4 sizes;                         // xy the bounce texels, zw the render size
-  float4 settings;                     // x the most frames, y 1: last frame's resolve usable
+  float4 settings;                     // x the most frames, y 1: last frame's resolve usable, z the render pixels per
+                                       // texel each way (1, 2 or 4)
 };
 
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
   if (any(id.xy >= sizes.xy)) return;
-  const uint2 pixel = min(id.xy * 2u + 1u, sizes.zw - 1u);
+  const uint scale = uint(settings.z);
+  const uint2 pixel = min(id.xy * scale + scale / 2u, sizes.zw - 1u);
   const float4 position = positions[pixel];
   resolved_positions[id.xy] = position;
   if (position.w <= 0.f) {

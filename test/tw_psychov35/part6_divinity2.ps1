@@ -1,8 +1,10 @@
 # Part 6 (Divinity 2's PsychoV35): its LUT builder t00 and LUT pass t01 on WARP (part6_divinity2.cpp), compiled from this
 # tree and from $Before (the commit before PsychoV35) with the build's flags, and part6_divinity2.hlsl (V35 evaluated
-# directly). -GameShaders: a folder with the game's own 0x7016F292.cs_5_0.cso (part 5's report).
+# directly). -GameShaders (required): a folder with the game's own 0x7016F292.cs_5_0.cso and 0xC5E7DE4B.ps_5_0.cso (parts
+# 5, 8 and 9 compare against them).
 # Run as x86 and amd64.
-param([ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64', [string]$Before = '3122ccb8', [string]$GameShaders = '')
+param([ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64', [string]$Before = '3122ccb8',
+      [string]$GameShaders = $(throw '-GameShaders: the folder with the game''s own 0x7016F292.cs_5_0.cso and 0xC5E7DE4B.ps_5_0.cso'))
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_psychov35'
@@ -54,7 +56,5 @@ $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64
 & 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 -Wno-macro-redefined `
     /I $repairRoot "$testRoot\part6_divinity2.cpp" /Fe:part6_divinity2.exe /link /OPT:REF /OPT:ICF d3d11.lib d3dcompiler.lib
 if ($LASTEXITCODE -ne 0) { throw 'Part 6 test compile failed' }
-$arguments = @($beforeShaders, $afterShaders)
-if ($GameShaders) { $arguments += $GameShaders }
-& (Join-Path $testBuild 'part6_divinity2.exe') @arguments
+& (Join-Path $testBuild 'part6_divinity2.exe') $beforeShaders $afterShaders $GameShaders
 if ($LASTEXITCODE -ne 0) { throw 'Part 6 test failed' }

@@ -81,7 +81,7 @@ struct ShaderInjectData {
 
 #define SI shader_injection
 #define DOS2_PEAK_NITS clamp(SI.peak_white_nits, 1.f, 10000.f)
-#define HDR_PEAK (DOS2_PEAK_NITS / max(SI.diffuse_white_nits, 0.0001f))
+#define HDR_PEAK max(DOS2_PEAK_NITS / max(SI.diffuse_white_nits, 0.0001f), 1.f)  // at least Paper White
 #define DOS2_CORRECT_HDR (SI.tonemap_type != 0.f )  // Vanilla, Tweaked ACES, PsychoV30 or PsychoV35
 
 //This is for t01/t00 otherwise contrast slider still makes some differences.

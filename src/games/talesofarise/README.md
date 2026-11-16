@@ -88,6 +88,16 @@ SDR, HDR within the removed 8-bit dither; the 4 videos identical with Video High
 in SDR (within 2.4e-7), HDR finite with the alpha tag, and with identity LUT textures they reproduce lut00 (within
 2.6e-4). Wrong-permutation controls fail as expected.
 
+## Device and swap chain (ReShade.log of the 2026-11-15 data run)
+
+64-bit. Three probe devices first (`D3D11CreateDevice` Flags 0x1 = single-threaded, feature level 11_0; the third on
+the Microsoft Basic Render Driver, skipped), the add-on loaded and unloaded with each; then the game's device: Flags 0
+(not single-threaded), 11_0. One swap chain (`IDXGIFactory::CreateSwapChain`): blt (SwapEffect 0), 1 buffer,
+R10G10B10A2_UNORM, windowed, Flags 0x2 (mode switch); made at 1280x720, then ResizeBuffers to the display size in the
+same format. No exclusive fullscreen (only `SetFullscreenState(FALSE)` at exit). The device-loss handling
+(`twattila/device_loss.hpp`) keeps the swap chain upgrade after a loss: the game never asks for flip, so its blt
+request is no fallback to tell apart.
+
 ## Open
 
 - Untested in game. Order of the passes after the tonemapper (SMAA, upscale, menu background) to be traced.

@@ -744,6 +744,7 @@ bool initialized = false;
 
 constexpr uint32_t LUT_BUILDER_HASH = 0x7016F292;  // t00, PPComputeLUT (HDR and SDR LUTs)
 constexpr uint32_t SIGHT_HASH = 0xA3A4EC44;        // outlines00, EoCSight_HDR: binds PerView b12
+constexpr uint32_t ORTHO_SIGHT_HASH = 0x5C4137E2;  // outlines02, the orthographic camera's EoCSight_HDR
 
 // Each replaced shader's first use is logged once (the "applied" lines of a data run); a bit per custom shader.
 std::atomic_uint64_t applied_shaders = 0;
@@ -888,6 +889,36 @@ void ConfigureAddon() {
       settings.push_back(setting);
   }
 
+  // Experimental, off (D2-8b): the game keeps its scene (lighting, forward passes, bloom, PPApplyLUT's input) in
+  // R11G11B10_FLOAT, 6 / 6 / 5 mantissa bits. On, its back-buffer-shaped R11G11B10F render targets are created as RGBA16F
+  // with cloned views (read at the next start). Cloned views need resource cloning, which also routes the back buffer
+  // through the swap chain proxy. Alpha: those targets had none; a pass that reads it gets the written alpha instead of
+  // 1 (both to check in game).
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "HigherPrecisionScene",
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Higher Precision Scene (Experimental)",
+        .section = "Output (Restart Required)",
+        .tooltip = "16-bit scene colour instead of the game's 11-bit: smoother skies and highlights. Restart the game.",
+        .is_global = true,
+        .is_visible = IsAdvancedSettings,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    if (setting->GetValue() != 0.f) {
+      renodx::mods::swapchain::use_resource_cloning = true;
+      renodx::mods::swapchain::resource_upgrade_infos.push_back({
+          .old_format = reshade::api::format::r11g11b10_float,
+          .new_format = reshade::api::format::r16g16b16a16_float,
+          .use_resource_view_cloning = true,
+          .aspect_ratio = renodx::mods::swapchain::SwapChainUpgradeTarget::BACK_BUFFER,
+          .usage_include = reshade::api::resource_usage::render_target | reshade::api::resource_usage::copy_dest,
+      });
+    }
+    settings.push_back(setting);
+  }
+
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
@@ -979,9 +1010,12 @@ void ConfigureAddon() {
                           "device bits: 1.4e-45 = HDR)");
           break;
         case SIGHT_HASH:
+        case ORTHO_SIGHT_HASH:
           AppendConstants(cmd_list, false, 12, 15,
-                          "PerView b12 at EoCSight_HDR (c0-3 View, c4-7 Projection, c8-11 ViewProjection, c12 ViewPos, "
-                          "c13 ViewInfo: far, near, width, height, c14 ScaleAndBias)");
+                          std::string("PerView b12 at ") +
+                              (hash == SIGHT_HASH ? "EoCSight_HDR" : "the orthographic EoCSight_HDR") +
+                              " (c0-3 View, c4-7 Projection, c8-11 ViewProjection, c12 ViewPos, c13 ViewInfo: far, "
+                              "near, width, height, c14 ScaleAndBias)");
           break;
         default:
           break;

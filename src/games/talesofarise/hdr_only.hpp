@@ -43,6 +43,7 @@ struct AmbientOcclusionBindings {
   float* thickness;
   float* quality;
   float* directions;
+  float* auto_thickness;  // 1: each occluder as thick as it is wide, Thickness the least
 };
 
 inline std::vector<renodx::utils::settings::Setting*> AmbientOcclusionRows(const AmbientOcclusionBindings& b) {
@@ -115,6 +116,17 @@ inline std::vector<renodx::utils::settings::Setting*> AmbientOcclusionRows(const
           .section = "Ambient Occlusion",
           .tooltip = "Directions per pixel: less noise. Heavier.",
           .labels = {"1", "2", "4", "8"},
+          .is_enabled = gtvbao,
+      },
+      new Setting{
+          .key = "ssao_auto_thickness",
+          .binding = b.auto_thickness,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Auto Thickness (Experimental)",
+          .section = "Ambient Occlusion",
+          .tooltip = "Guesses each object's thickness from its width, Thickness as the least:\n"
+                     "poles and branches stay thin, walls and hills block fully.",
           .is_enabled = gtvbao,
       },
   };

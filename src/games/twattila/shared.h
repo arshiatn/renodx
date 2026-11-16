@@ -145,20 +145,20 @@ struct ShaderInjectData {
 #define SI shader_injection
 // SDR output (displays without HDR): the display's white is the game's and the UI's.
 #define ATTILA_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
-// Peak relative to Paper White.
-#define HDR_PEAK (ATTILA_SDR_OUTPUT ? 1.f : SI.peak_white_nits / SI.diffuse_white_nits)
+// Peak relative to Paper White, at least 1 (Paper White can be set above Peak).
+#define HDR_PEAK (ATTILA_SDR_OUTPUT ? 1.f : max(SI.peak_white_nits / SI.diffuse_white_nits, 1.f))
 // Paper White relative to UI.
 #define ATTILA_PAPER_WHITE (ATTILA_SDR_OUTPUT ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)
 
 // PsychoV30 keeps a fixed 1.0 exposure, 0.18 input/output anchors, full target
-// gamut projection, BT.2020 target volume, and automatic compression. The
+// gamut projection, BT.2020 target volume (BT.709 on Output SDR), and automatic compression. The
 // compatibility-only parameters between purity and cone response stay neutral.
 // Last: highlight hue shift (SI.hue_shift).
 #define ApplyAttilaPsychoV30(color)                                               \
   renodx_custom::tonemap::psycho30::psychotm_test30(                             \
       (color), HDR_PEAK, 1.f, SI.highlights, SI.shadows, SI.contrast,            \
       SI.purity_scale, 1.f, 100.f, 1.f, 1.f, 0, SI.cone_response_exponent,       \
-      0.18f, 0.18f, 1.f, 1, 1.f, 0.f, SI.hue_shift)
+      0.18f, 0.18f, 1.f, (ATTILA_SDR_OUTPUT ? 0 : 1), 1.f, 0.f, SI.hue_shift)
 
 
 // For the modded auto exposure

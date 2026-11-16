@@ -8,14 +8,14 @@
 // SDR mode: stock LUT headroom; the tonemappers apply the stock target clip and Paper White / UI.
 // HDR modes (sRGB output device only, alpha tag 1 for the tonemappers): the curve is replaced on the
 // graded AP1 color (without UE's Expand Gamut), the SDR LUTs and post grade (incl. fades) are kept:
-//   Extended: marat569's UE Filmic Extended from RenoDX UE Extended (./ue_extended.hlsli).
+//   Extended: marat569's UE Filmic Extended from RenoDX UE Extended (../talesofarise/ue_extended.hlsli, shared).
 //   PsychoV31, like Pharaoh: Dynasties: the artist's grading + PsychoV31 only (optionally the game's toe).
 // Both: sRGB-on-2.2 display emulation (GammaSafe), gamma 2.2 encoded.
 
 #include "./shared.h"
-#include "./psycho_test31.hlsli"
+#include "../twattila/psycho_test31.hlsli"
 #include "../twattila/psycho35.hlsli"
-#include "./ue_extended.hlsli"
+#include "../talesofarise/ue_extended.hlsli"
 
 cbuffer cb0 : register(b0)
 {

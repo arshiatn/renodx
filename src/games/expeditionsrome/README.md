@@ -43,7 +43,7 @@ clips) nor DLSS ("Stock TAA: unsupported source/output texture layout") applies.
 | Mode | What it does |
 |---|---|
 | SDR | The game's native SDR tonemapper (UE4 Filmic) and LUT headroom. The original UNORM clipping stages are emulated, then the scene is scaled by Paper White. FP16 and original 10-bit LUT quantization are not identical. |
-| HDR (UE Extended) | Default (v16). marat569's UE Filmic Extended from RenoDX UE Extended (`src/games/ue-extended`), ported at its defaults in `ue_extended.hlsli`: Pumbo's blue correction (0.6, exact inverse), film black clip 0, the film curve below mid gray and its mid-gray tangent above (no shoulder), blended 37.5% back to the curve (Blend Factor 50), the game's post grade (incl. fades), then a per-channel C-infinity shoulder in blue-corrected AP1 from the tone mapped mid gray to Peak. Brighter than SDR above mid gray (UE defaults: scene 1 -> 1.08 vs SDR 0.72). Kept: the game's gamma (cb0[27].y), which UE Extended leaves out. Optional grading sliders (v17, Advanced: Exposure, Highlights, Shadows, Contrast, Saturation, Highlight Saturation) run PsychoV31 grading before the curve, on the mid gray anchor too; all at 1 they are skipped. Like RenoDX's UE Extended addon, always UE's film curve (also if a scene used UE's legacy tonemapper; v23, before: fell back to PsychoV31). Replaced the Pharaoh-style Extended (SDR-matched colors, v15 and older). |
+| HDR (UE Extended) | Default (v16). marat569's UE Filmic Extended from RenoDX UE Extended (`src/games/ue-extended`), ported at its defaults in `ue_extended.hlsli` (Tales of Arise's copy, shared since 2026-11-15): Pumbo's blue correction (0.6, exact inverse), film black clip 0, the film curve below mid gray and its mid-gray tangent above (no shoulder), blended 37.5% back to the curve (Blend Factor 50), the game's post grade (incl. fades), then a per-channel C-infinity shoulder in blue-corrected AP1 from the tone mapped mid gray to Peak. Brighter than SDR above mid gray (UE defaults: scene 1 -> 1.08 vs SDR 0.72). Kept: the game's gamma (cb0[27].y), which UE Extended leaves out. Optional grading sliders (v17, Advanced: Exposure, Highlights, Shadows, Contrast, Saturation, Highlight Saturation) run PsychoV31 grading before the curve, on the mid gray anchor too; all at 1 they are skipped. Like RenoDX's UE Extended addon, always UE's film curve (also if a scene used UE's legacy tonemapper; v23, before: fell back to PsychoV31). Replaced the Pharaoh-style Extended (SDR-matched colors, v15 and older). |
 | HDR (PsychoV31) | Recommended (Presets → Recommended). Replaces the game's tonemapper with PsychoV31, like Pharaoh: Dynasties' Psycho mode: only the artist's grading (white balance, color grading, fades) is kept, with PsychoV31's own contrast (1), shadows and colors, anchored on the game's mid gray. No film curve or ACES parts. **Game Shadows** (the game's toe below mid gray) is commented out (ATN: shadows looked like SDR / Extended, colors desaturated). |
 | HDR (PsychoV35) | Recommended (2026-11-12). Musa's custom PsychoV35 (`twattila/psycho_test35.hlsli`, shared with Attila and WH3) with its own sliders (`v35_*`) and **Hue Clip Emulation** (`twattila/psycho35.hlsli`, `psycho35_settings.hpp`), anchored on the game curve's mid gray; Hue Clip Emulation (default 70) toward the game's curve on each channel, clipped. Recommended (Deeper shadows): V35 Shadows 0. Hue Clip default from test/tw_psychov35 part 5 (WARP): its kind of stock curve on the scene, PsychoV35 right after, the OkLab hue error against the per-channel SDR clip where it clips; not measured on this game's own chain (UE's film curve). Built only, not run in game. |
 
@@ -76,6 +76,15 @@ their clone.
 UE4 caches D3D state, so the swap chain proxy restores it after its draw
 (`swapchain_proxy_revert_state`). Without that, UI-only frames such as the
 options menu lose alpha blending.
+
+## Device and swap chain (ReShade.log of the 2026-11-15 data run)
+
+64-bit. Three probe devices first (`D3D11CreateDevice` Flags 0x21 = single-threaded + BGRA, feature level 11_0; the
+third on the Microsoft Basic Render Driver, skipped), the add-on loaded and unloaded with each; then the game's device:
+Flags 0x20 (BGRA, not single-threaded), 11_0. One swap chain (`IDXGIFactory::CreateSwapChain`): flip discard (SwapEffect
+4), 2 buffers, R10G10B10A2_UNORM at the display size, windowed, Flags 0x802 (mode switch, tearing). No exclusive
+fullscreen (only `SetFullscreenState(FALSE)` at exit). After a GPU reset (`twattila/device_loss.hpp`) a blt request for
+the same window is the game's fallback and stays as the game asked (SDR until a restart).
 
 ## Verification and remaining limits
 

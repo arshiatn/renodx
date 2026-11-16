@@ -188,13 +188,8 @@ class RayReconstruction12 {
   // (also when it could not run, so the game never waits for nothing). False: it did not run.
   bool Evaluate(const Request& request) {
     if (!fence_ || !queue_) return false;
-    // The GPU harness's RENODX_TW_TEST_DEVICE_REMOVAL=<evaluations>: the device removed at the process's evaluation of that
-    // number, as a GPU hang removes it (main.cpp makes a new one).
-    static const int test_removal_at = [] {
-      std::array<wchar_t, 16> value = {};
-      return (GetEnvironmentVariableW(L"RENODX_TW_TEST_DEVICE_REMOVAL", value.data(), static_cast<DWORD>(value.size())) != 0) ? _wtoi(value.data()) : 0;
-    }();
-    static int test_evaluations = 0;
+    static const long test_removal_at = TestRemovalAt(L"RENODX_TW_TEST_DEVICE_REMOVAL");
+    static long test_evaluations = 0;
     if (++test_evaluations == test_removal_at) {
       if (ComPtr<ID3D12Device5> device5; SUCCEEDED(device_.As(&device5))) device5->RemoveDevice();
     }

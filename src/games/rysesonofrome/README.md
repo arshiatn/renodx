@@ -338,6 +338,69 @@ lerp gives the probes times the occlusion (alpha 1 - occlusion x (1 - alpha), co
 rays already stand in for the probes where they meet something. Without the helper the section shows its download note
 alone. Not yet: the Debug View (Ryse has no hook for it before the data run shows where its tone mapper's output is).
 
+fix57 (draft, 2026-11-15 night parity round, built only, not run in game): the non-TW skills audit's Ryse gaps.
+**Time Each Pass (One Frame)** (Graphics 1 of 2, Advanced; `twattila/pass_timing.hpp`, the add-on's first draw hooks):
+one frame's GPU time per pass and shader into `ryse_pass_timing.txt` next to the exe. **Scripted runs**
+(`twattila/test_hooks.hpp`, log name `[Ryse]`): `RENODX_TW_SET` / `SHOT` / `PROFILE` (or the same lines in
+`renodx_test_hooks.txt` next to the exe), clock from the first present; PROFILE is Record Ray Tracing Profile; SET's
+`trace` key writes the `renodx_trace_now` file the present already polls for (the one-frame trace). Only the renodx page's
+keys are reachable (the `[Ryse AA]` / `[Ryse Game Settings]` rows are drawn by `graphics.hpp`, not settings).
+`RENODX_TW_CVARS=<name>=<value>[;...]` (shell or that file) sets console variables once the game draws its world, through
+the console (system.cfg's lines come before the cvars exist), each logged: `sys_spec=1` for a Low run,
+`r_ShadersLogCacheMisses=1`; the quality options then take them as the game's.
+**Ray tracing**: the **Debug View** (Sun Shadows, Ambient Occlusion, Light Bounce, Reflections, Specular Occlusion, All;
+saved as its row's item, All = rt_core's 9) drawn over tonemap00's output (its RGBA16F target at the render size) by
+rt_core's `DrawDebugView`, tonemap00's on_drawn set only with the ray tracing installed (no replayed draw otherwise), and
+the **Scene Test** with it; the rows Attila has and Ryse lacked: **Ray-Traced AO Rays** (`RayTracedAORays`, 1-8, default 2:
+the rays as before), **Reflection Reuse** (`RayTracedReflectionReuse`: From ReSTIR GI with path tracing, Own ReSTIR),
+**Ray-Traced Light Bounce Resolution** (`RayTracedLightBounceResolution`: the traced bounce at its own resolution, no
+Checkerboard under rays, as Attila's), **AO under Ray Reconstruction** (`RayTracedAoReblur`: Light History as before, or
+REBLUR). The **RT/PT** button writes the section's defaults, then the one list every game's RT/PT writes
+(`twattila/rays_preset.hpp`, `graphics_page::RAYS_PRESET`; keys Ryse lacks are skipped), then Ryse's own keys (the Light
+Bounce on and traced, Path Tracing, Light Bounce 1, ray-traced AO over the game's SSDO: no path-traced ambient here).
+New from the list: the traced bounce at full resolution and Own ReSTIR reflection reuse. Left out: Path-Traced Ambient,
+its Sky Apart and Kept Cube (nothing takes the game's ambient out of the tiled lighting; the two act only with it).
+**Light Bounce**: Temporal Smoothing (on: as before), Checkerboard, Back-Face Rejection and Auto Thickness (Experimental,
+off; the shared passes' constants). **Ambient Occlusion**: AO Auto Thickness for GT-VBAO (Experimental, off;
+`bitmask.hlsli`'s occluders, as Attila's). **Texture LOD Bias on All Textures** (Experimental, off): the game's wrapping
+trilinear samplers take the bias too. **Half-resolution particles** (Graphics 2 of 2, Experimental, in-game by default):
+the game's `r_ParticlesHalfRes` (flags 0x30080: the console sets it; `r_ParticlesHalfResForce` is refused, 0x800000).
+Tooltips without the maintainer's name; the full-download note names FSR and XeSS (`twattila/credits.hpp`'s).
+tonemap00 includes `twattila/psycho_test31.hlsli` (Ryse's copy was the same function). Ryse's facts from the R0 data
+run's `ReShade.log` (the game's requests as ReShade logs them, before the add-ons change the chain): 64-bit, ReShade
+6.8.0 as `dxgi.dll`; three probe devices (`D3D11CreateDevice`, 6 feature levels) before the game's own (1 level, 11_0),
+all Flags 0 (multithreaded); its swap chain from `IDXGIFactory::CreateSwapChain`: windowed, R8G8B8A8_UNORM, 3 buffers,
+SwapEffect 0 (DISCARD: blt), Flags 0x2 (ALLOW_MODE_SWITCH), then `SetFullscreenState(TRUE)` and `ResizeBuffers` to the
+display (the swap chain mod fakes the fullscreen); one deferred context. Tests: `test/tw_ryse_tonemap` (Rendering Mode
+SDR against the game's bytes on WARP), `test/tw_device_loss` 3b (Ryse's chain and output hook).
+
+fix58 (draft, 2026-11-16 rys_ round, built only, not run in game): **Skip the Game's Sun Shadow Maps (Experimental)**
+(Ray Tracing, `RayTracedSkipSunShadowMaps`: Off / Past the Near Ones / All; acts live with Ray-Traced Sun Shadows on and
+the ray tracing on at launch; `shadow_skip.hpp`). The game stops drawing its sun shadow maps and the rays alone shadow the
+sun. Census of the R0 traces (`tools/nontw/ryse/r0/shadow_readers.py`: the bound maps against each shader's declared
+slots): the sun has three cascades redrawn every frame plus the character's own map (all 8192, R16) and a kept far map
+(drawn only when it moves); the 16384 atlas is the lights' shadow pool (torches, fires), not the sun's, and stays. The
+maps' readers: the mask passes (sunshadow00-04, which the rays already join at the tiled lighting), the hair's blended
+strands (six forward permutations sampling depthMapSampler0 / 1 themselves) and the fog volumes (ps 0x91A72BC2, all four
+maps); everything else (eyes, the hair's first pass, particles) reads the mask. Past the Near Ones leaves out the middle
+cascade (72-80% of the sun's caster draws in the nine traces): near you hair, fog and what is out of view keep the game's
+shadows. All leaves out every map but the kept far one: hair strands and fog volumes lose the sun's shadow, and things
+out of view cast none (the rays see only what is drawn on screen). Under the skip a frame without the rays' shadow draws
+the maps again. Test: `test/tw_ryse_shadow_skip` (WARP: the game's five mask passes and the built ones, PCSS too, write
+no shadow on a map cleared to 1, full shadow with a caster).
+**Path-Traced Ambient (Experimental, off; RT/PT keeps it off)** with Attila's two sub-rows (Own Sky Rays, Steady Bounce
+Light), live, with Path Tracing and the Light Bounce on. fix57's "nothing takes the game's ambient out of the tiled
+lighting" was wrong: the decompile of cs 0x897232B5 takes its diffuse ambient from the probes alone (the lightType 1 loop:
+DiffuseCubeArray t34 x the entry's colour and falloff, then x the SSDO and colour bleeding), so while the paths bring the
+sky (Attila's gate: 150 frames of paths, last frame bounced) `ray_tracing.hpp` binds a one-layer black cube at t34 for the
+dispatch (the raised light-limit cs takes the game's bindings too) and the Light Bounce's apply adds the paths' light x
+albedo in its place; the probes' reflections (t33) and the eyes', hair's and particles' forward ambient stay the game's.
+The paths' sky: `rt_probe_sky` writes the level's widest probe before the sun (the list's last frame entry) toward the six
+axes into the sun texture's ambient cube (texels 3-8, zeros without the row). Ray-traced AO is off under it, as Attila's.
+Test: `test/tw_ryse_path_ambient` (WARP: the game's and the raised lighting with only probe lights and their reflections
+black give a lit scene with the game's cubes and exactly 0 in u1 and u2 with the black cube; with the reflections on the
+black cube keeps them; `rt_probe_sky` picks the widest probe before the sun and writes zeros without a list).
+
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
 

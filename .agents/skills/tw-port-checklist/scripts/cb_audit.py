@@ -1,4 +1,5 @@
-"""Replaced game shaders against the game's originals: python -I cb_audit.py [game ...] (default twattila).
+"""Replaced game shaders against the game's originals: python -I cb_audit.py [game ...] [--embed <our .cso folder>]
+(default twattila; Tales of Arise and Expeditions: Rome read their runtime dumps, see DUMPS).
 1. Which constant buffer components the original reads that our build no longer reads, and which it reads that the original does
    not (the decompiler's mix-ups show up as one of each). Names from the original's reflection.
 2. Instructions: which constants each instruction of the original reads, component by destination component, and whether our
@@ -90,11 +91,26 @@ def same_dots(text):
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 DECOMPILER = ROOT / 'bin/cmd_Decompiler-1.3.16'
-for game in sys.argv[1:] or ['twattila']:
-    dump = DECOMPILER / ('dump_shader_shogun2_pack' if game == 'twshogun2completeedition' else f'dump_shader_{game}_pack') / 'cso'
+# Dumps outside the TW packs' dump_shader_<game>_pack/cso form (runtime dumps: 0x<CRC>.<target>.cso, several folders;
+# Ryse's: 3Dmigoto's runtime dump, its csos at the top).
+DUMPS = {
+    'twshogun2completeedition': ['dump_shader_shogun2_pack/cso'],
+    'talesofarise': ['dump_shaders_tales_of_arise', 'dump_shaders_tales_of_arise/New_1'],
+    'expeditionsrome': ['dump_shaders_Expeditions_rome/all_shaders_', 'dump_shaders_Expeditions_rome'],
+    'rysesonofrome': ['dump_shader_ryse'],
+}
+# --embed <folder>: our compiled shaders from elsewhere (one game), instead of the newest build / build32 embed.
+arguments = sys.argv[1:]
+embed_override = None
+if '--embed' in arguments:
+    at = arguments.index('--embed')
+    embed_override = pathlib.Path(arguments[at + 1])
+    del arguments[at:at + 2]
+for game in arguments or ['twattila']:
+    dumps = [DECOMPILER / folder for folder in DUMPS.get(game, [f'dump_shader_{game}_pack/cso'])]
     embeds = [root / f'{game}.include/embed' for root in (ROOT / 'build32', ROOT / 'build')]
     newest = sorted((e for e in embeds if e.exists()), key=lambda e: max((p.stat().st_mtime for p in e.glob('*.cso')), default=0))
-    embed = newest[-1]
+    embed = embed_override or newest[-1]
     folder = ROOT / 'src/games' / game
     shaders = sorted(folder.glob('shaders/*_0x*.hlsl'))
     print('=====', game, embed)
@@ -108,7 +124,7 @@ for game in sys.argv[1:] or ['twattila']:
     for source in shaders:
         crc_in_name = re.search(r'_(0x[0-9A-Fa-f]{8})\.', source.name)
         crc = crc_in_name[1] if crc_in_name else re.search(r"the game's (0x[0-9A-Fa-f]{8})", source.read_text(errors='replace'))[1]
-        originals = list(dump.glob(f'{crc}.*.cso'))
+        originals = [path for dump in dumps for path in dump.glob(f'{crc}.*.cso')]
         built = embed / f'{crc if crc_in_name else source.name.split(".")[0]}.cso'
         if not originals or not built.exists():
             missing.append(source.name + (' no original' if not originals else ' no build'))
