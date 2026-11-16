@@ -65,6 +65,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -156,7 +157,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
 - Skills update 2 (tools/tw/round_notes/skill_lessons_1116b.md, 11 lessons) by sk2 ... | sk2_ / coordinator
 - Which other games need the window-switch fix (release_flip_chains_before_recreat ... | survey agent, then coordinator
-- PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator
+- PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator ATN 02:5x: only the RUNNING agents finish (lg_ l
+- AFTER THE RESTART, in order (nothing of this started before it): 1. Build all (b ... | coordinator
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
@@ -1372,6 +1374,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         02:3x. Owner: survey agent, then coordinator
       - [ ] PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, everything is merged, pushed and
         HANDOFF is current (no running build / GPU job / game); installs after the restart. Owner: coordinator
+        ATN 02:5x: only the RUNNING agents finish (lg_ lens flares + 2.2 gamma, rrf_ R.U.S.E. review fixes, sk2_ skills 2,
+        the switch-fix survey); nothing new starts; merge them, rebuild the skills zip, push, then ping ATN.
+      - [ ] AFTER THE RESTART, in order (nothing of this started before it):
+        1. Build all (build32: Attila / Rome II / Thrones; build: the rest incl. Ryse / Tales / Expeditions / Div1 / Div2 /
+           R.U.S.E.; the helper from atn-mods), stamp, install every game with tw_install (dry run, fresh backups, hashes):
+           the newest merged state for ATN's Attila test.
+        2. R.U.S.E.: re-run H1-H3 if rrf_ changed the bridge after its own run, then the T-run with ATN loading a battle
+           (list in the "R.U.S.E. T-run list" box).
+        3. Window-switch fix for other games per the survey's table (opt-ins + tests), if any.
+        4. GPU round 2: the radiance cache item (f); after the install a fresh Nsight capture of Attila at ATN's rows.
+        5. Data runs with ATN: Ryse (shadow-map skip Off / Near / All + PT ambient look, new rows), Tales / Expeditions
+           (Bend + GT-VBGI look -> defaults on, E9 -d3d12, Low start), Divinity 2 (gamma 1.2, ortho camera, Higher
+           Precision Scene A/B), Divinity 1 (SSREnabled, second mode cycle, R7 offline).
+        6. ATN's in-game checks list: Near ReSTIR, HDR bug fixes (SDR colours, Shogun 2 highlights + flares, WH2 FXAA, DOF),
+           Divinity 2 V35 look (press Recommended), Attila / Thrones 2.2 gamma.
+        Owner: coordinator
       - [ ] In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), Shogun 2 highlights (V35 top
         now reaches Peak), WH2 with FXAA on; a trace that the DOF chain draws (Attila / Thrones / WH1) and its targets are
         16-bit; README lines for the fixes at release. Owner: next TW data runs / release round
