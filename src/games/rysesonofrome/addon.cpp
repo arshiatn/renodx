@@ -249,6 +249,8 @@ struct RtSliders {
   float scene_test = 0.f;
 } rt_sliders;
 bool ray_tracing_installed = false;
+// The rays' AO went into this frame's lighting (render thread; read at the present).
+std::atomic_bool rays_ambient_applied = false;
 constexpr uint32_t RAYS_TINT = 0x6BE0D8;
 
 // Path-Traced Ambient: with path tracing on the Light Bounce (its paths bring the sky), in place of the ray-traced AO too.
@@ -271,7 +273,7 @@ const PresetValues RAYS_OFF = {
 };
 // The list's methods in this section's keys: the Light Bounce on and traced (one row here, Attila's 2 the paths), path
 // tracing its own row, the Light Bounce's strength `light_bounce`; Path-Traced Ambient off (Experimental, until it is tested
-// in game): ray-traced AO over the game's SSDO, as Attila's page does where a game has none.
+// in game): ray-traced AO in place of the game's SSDO amount.
 const PresetValues RAYS_OWN_KEYS = {
     {"RayTracedLightBounce", 1.f}, {"PathTracing", 1.f}, {"light_bounce", 1.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f},
     {"RayTracedPathAmbient", 0.f},
@@ -350,17 +352,18 @@ void BuildRuntimeData() {
         if (rt_sliders.ambient_occlusion != 0.f && !PathAmbientWanted()) ambient_visibility = ambient;
       }
     }
+    // The rays' AO in place of the game's SSDO amount while ssdo00 left it out (the AO method 2), else the darker.
+    const auto applied = rysesonofrome::contact_shadows::Apply(cmd_list,
+                                                               {
+                                                                   .length = shader_injection.contact_shadow_length,
+                                                                   .thickness = shader_injection.contact_shadow_thickness,
+                                                                   .strength = shader_injection.contact_shadows,
+                                                                   .frame = shader_injection.ssao_frame,
+                                                               },
+                                                               sun_visibility, ambient_visibility, shader_injection.ao_method == 2.f);
     // Skip the Game's Sun Shadow Maps: the next frame's maps only with the rays' in this one's mask.
-    if (rysesonofrome::contact_shadows::Apply(cmd_list,
-                                              {
-                                                  .length = shader_injection.contact_shadow_length,
-                                                  .thickness = shader_injection.contact_shadow_thickness,
-                                                  .strength = shader_injection.contact_shadows,
-                                                  .frame = shader_injection.ssao_frame,
-                                              },
-                                              sun_visibility, ambient_visibility)) {
-      rysesonofrome::shadow_skip::NoteRays();
-    }
+    if (applied.sun) rysesonofrome::shadow_skip::NoteRays();
+    rays_ambient_applied.store(applied.ambient, std::memory_order_relaxed);
     if (context != nullptr) rysesonofrome::ray_tracing::BindLightingInputs(context);
     return true;
   };
@@ -862,8 +865,9 @@ void BuildRuntimeData() {
           .label = "Ambient Occlusion",
           .section = "Ambient Occlusion",
           .tooltip = "GT-VBAO: contact shading that lets light pass behind thin things (railings, spears, grass)\n"
-                     "instead of the game's dark halos. Experimental.",
+                     "instead of the game's dark halos. Experimental. Ray-traced AO and Path-Traced Ambient replace it.",
           .labels = {"Game's (SSDO)", "GT-VBAO"},
+          .is_enabled = [] { return !(ray_tracing_installed && (rt_sliders.ambient_occlusion != 0.f || PathAmbientWanted())); },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_radius",
@@ -875,7 +879,7 @@ void BuildRuntimeData() {
           .min = 0.25f,
           .max = 4.f,
           .format = "%.2f m",
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_strength",
@@ -887,7 +891,7 @@ void BuildRuntimeData() {
           .min = 0.f,
           .max = 3.f,
           .format = "%.2f",
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_thickness",
@@ -899,7 +903,7 @@ void BuildRuntimeData() {
           .min = 0.01f,
           .max = 1.f,
           .format = "%.2f m",
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_quality",
@@ -910,7 +914,7 @@ void BuildRuntimeData() {
           .section = "Ambient Occlusion",
           .tooltip = "Samples per side: more catch thin things. Heavier.",
           .labels = {"8", "16", "32", "64"},
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_directions",
@@ -921,7 +925,7 @@ void BuildRuntimeData() {
           .section = "Ambient Occlusion",
           .tooltip = "Directions per pixel: less noise. Heavier.",
           .labels = {"1", "2", "4", "8"},
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       new renodx::utils::settings::Setting{
           .key = "ssao_auto_thickness",
@@ -933,7 +937,7 @@ void BuildRuntimeData() {
           .tooltip = "Guesses each object's thickness from its width, AO Thickness as the least:\n"
                      "spears stay thin, walls and pillars block fully.",
           .labels = {"Off", "On"},
-          .is_enabled = [] { return shader_injection.ssao_mode == 1.f; },
+          .is_enabled = [] { return shader_injection.ao_method == 1.f; },
       },
       // Contact Shadows (contact_shadows.hpp): short screen-space shadows toward the sun, into its shadow mask.
       new renodx::utils::settings::Setting{
@@ -1185,7 +1189,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .label = "Ray-Traced Ambient Occlusion (restart)",
           .section = "Ray Tracing (Experimental)",
-          .tooltip = "Shade in corners and under things from rays, with the game's.\n"
+          .tooltip = "Shade in corners and under things from rays, in place of the game's.\n"
                      "Restart the game after turning on.",
           .labels = {"Off", "On"},
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
@@ -1589,6 +1593,16 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
   twattila::pass_timing::OnPresent(queue, "ryse");
   // GT-VBAO's noise moves every frame (the game's SSDO blur and TAA / DLSS settle it).
   shader_injection.ssao_frame = static_cast<float>((static_cast<uint32_t>(shader_injection.ssao_frame) + 1u) % 4096u);
+  // The next frame's one AO method (ours replaces the game's; a saved GT-VBAO with a ray-traced one runs the rays alone):
+  // Path-Traced Ambient, else the ray-traced AO (the game's SSDO amount left out once the rays' went into a lighting,
+  // the game's SSDO back after a frame without them), else the row's.
+  if (ray_tracing_installed && PathAmbientWanted()) {
+    shader_injection.ao_method = 3.f;
+  } else if (ray_tracing_installed && rt_sliders.ambient_occlusion != 0.f) {
+    shader_injection.ao_method = (rays_ambient_applied.exchange(false, std::memory_order_relaxed) ? 2.f : 0.f);
+  } else {
+    shader_injection.ao_method = shader_injection.ssao_mode;
+  }
   // What the helper serves this frame (graphics.hpp adds the upscaler and frame generation): the ray tracing, its guides
   // with the reflections or paths, Ray Reconstruction while a ray-traced effect is on.
   const auto back_buffer = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
