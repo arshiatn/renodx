@@ -930,8 +930,8 @@ static bool CheckCutOuts(const std::string& dump_root, const std::string& build3
 //    v9.x < v9.z discards nothing), t0 a 256 x 1 R8G8B8A8_UNORM ramp (alpha x / 255), point samplers, nothing else bound. Each
 //    discards exactly the columns whose alpha is below its game's cut-off: the units' 128 / 255 (their literal 0xBF008081,
 //    the disassembly's -0.501961: alpha 0 - 127 / 255, as the helper's 0.5), 17CAF4B6's 0.35 (0 - 89 / 255). Printed beside
-//    it: what the rays' cut-offs leave apart (the units at the helper's 0.5; the rigid rows at their alpha_cutoff 0.35,
-//    RT_OWN_CUTOFF; at 0.5 before). CONTROLS: the overlay without its clip
+//    it: what the rays' cut-offs leave apart (the units at the helper's 0.5; the rigid rows at their alpha_cutoff 0.35:
+//    rt_core's RT_OWN_CUTOFF, a cut-out counting as foliage there). CONTROLS: the overlay without its clip
 //    (ps30_alpha_overlay_no_clip_no_faction_colour 418A12B2) discards no column; 17CAF4B6 at the units' cut-off differs.
 static bool CheckCutOutAlphaTests(const std::string& dump_root) {
   using Microsoft::WRL::ComPtr;
@@ -1072,10 +1072,10 @@ static bool CheckCutOutAlphaTests(const std::string& dump_root) {
   const bool passed = made && units == static_cast<int>(UNIT_CUT_OUT_PIXEL_SHADERS.size()) && units_apart == 0 && rigid_apart == 0 && control_discarded == 0
                       && rigid_at_units > 0;
   std::printf("L Rome II cut-out alpha tests: %d of %zu unit PS discard exactly alpha < 128 / 255 (%d columns apart), 17CAF4B6 alpha < %g "
-              "(%d apart); the rays: units at the helper's %g at most %d column apart, rigid at %g (before) %d apart; CONTROLS 418A12B2 (no clip) "
-              "discards %d of %u, 17CAF4B6 at the units' cut-off %d apart\n  %s\n",
-              units, UNIT_CUT_OUT_PIXEL_SHADERS.size(), units_apart, RIGID_CUTOFF, rigid_apart, HELPER_CUTOFF, helper_apart, HELPER_CUTOFF,
-              rigid_at_helper, control_discarded, COLUMNS, rigid_at_units, passed ? "PASSED" : "FAILED");
+              "(%d apart, the rigid rows' alpha_cutoff; at the helper's %g it would be %d); the units at the helper's %g at most %d column apart; "
+              "CONTROLS 418A12B2 (no clip) discards %d of %u, 17CAF4B6 at the units' cut-off %d apart\n  %s\n",
+              units, UNIT_CUT_OUT_PIXEL_SHADERS.size(), units_apart, RIGID_CUTOFF, rigid_apart, HELPER_CUTOFF, rigid_at_helper, HELPER_CUTOFF,
+              helper_apart, control_discarded, COLUMNS, rigid_at_units, passed ? "PASSED" : "FAILED");
   return passed;
 }
 

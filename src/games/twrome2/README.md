@@ -8,8 +8,8 @@
   (test/tw_rays_captures K): the 12 captures' UV = the game's to half a step; CONTROL the plain captures differ.
 - The cut-offs (test/tw_rays_captures L, the dump's bytes on an alpha ramp): all 88 unit shaders (the 16 alpha_overlay
   ones too) cut below 128 / 255, the same 8-bit alphas as the rays' 0.5 (0 apart); the rigid alpha test cuts below 0.35,
-  and so do the rays now (before: at 0.5, alphas 90 - 127 / 255 cut more). CONTROLS: the overlay without a clip cuts
-  nothing; the rigid test at the units' cut-off is 38 alphas apart.
+  as the rays do there (the rows' own cut-off, which the rays take for a cut-out as for leaves; 0 apart). CONTROLS: the
+  overlay without a clip cuts nothing; the rigid test at the units' cut-off is 38 alphas apart.
 - The fix round's "Not done" line, corrected: Batched Unit Capture never showed here (its row needs the bone pack hook
   Rome II doesn't have; the page dump has it in no state).
 - Still not done: grass past every LOD skipping DrawScrub and the Grass Trace button (a Rome II DrawScrub / ScrubUpdate
