@@ -14,6 +14,7 @@
 #define DEBUG_LEVEL_0
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
@@ -21,8 +22,11 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <string>
+#include <string_view>
+#include <span>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -41,8 +45,14 @@
 #include "../../utils/trace.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../../utils/vtable.hpp"
+#include "../twattila/credits.hpp"
+#include "../twattila/frame_generation.hpp"
 #include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
+#include "../twattila/reflex.hpp"
+#include "./bridge.hpp"
+#include "./bridge_replay.hpp"
+#include "./ray_tracing.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -51,7 +61,7 @@ constexpr char BUILD_TIME[] = __TIME__;
 namespace {
 
 ShaderInjectData shader_injection;
-static_assert(sizeof(ShaderInjectData) == 10 * 4 * sizeof(float), "Keep the DX9 c200-c209 injection layout in sync.");
+static_assert(sizeof(ShaderInjectData) == 11 * 4 * sizeof(float), "Keep the DX9 c200-c210 injection layout in sync.");
 // Capture controls once for all replaced draws in a host frame. Presentation
 // uses a fixed nit reference, so UI changes cannot rescale an older scene frame.
 ShaderInjectData frame_injection;
@@ -64,12 +74,156 @@ bool frame_trace_enabled = false;
 bool frame_trace_requested = false;
 std::filesystem::path frame_trace_marker;
 
+// The whole-package round's first pieces (plan.md 10b W1, D1), restart rows for the test run: with Frame Trace on, every
+// resource the game makes goes to ReShade.log (pools, usages, formats, samples: the B0 trace saw none); Readable Scene
+// Depth makes the game's back-buffer-sized single-sample depth surfaces INTZ textures (ReShade's generic depth add-on does
+// the same on D3D9), the upscalers' and the ground shadows' depth.
+bool readable_depth_enabled = false;
+uint32_t back_buffer_width = 0;
+uint32_t back_buffer_height = 0;
+
+// Frame generation through the helper (bridge.hpp's HUD-less image, twattila/frame_generation.hpp) and Reflex on the
+// proxy's device (twattila/reflex.hpp): Attila's rows. The game's D3D9Ex queue one frame deep while either paces it.
+struct GenerationSliders {
+  float frame_generation = 0.f;  // off, 2x-6x, Dynamic
+  float reflex = 0.f;            // off, on, on + boost
+  float frame_limit = 0.f;       // rendered frames per second (0: none)
+  float hud_recomposition = 1.f;
+  float preset = 0.f;            // the driver's, A, B, C
+  float debug_view = 0.f;        // off, the HUD-less image, the UI layer
+} generation_sliders;
+UINT host_frame_latency = 3u;  // IDirect3DDevice9Ex's default
+
+void OnLogResource(reshade::api::device* device, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
+                   reshade::api::resource_usage, reshade::api::resource resource) {
+  if (device->get_api() != reshade::api::device_api::d3d9) return;
+  reshade::log::message(
+      reshade::log::level::info,
+      std::format("[R.U.S.E.] resource 0x{:x}: type {} {} heap {} usage 0x{:x} flags 0x{:x}", resource.handle,
+                  static_cast<uint32_t>(desc.type),
+                  (desc.type == reshade::api::resource_type::buffer)
+                      ? std::format("{} bytes stride {}", desc.buffer.size, desc.buffer.stride)
+                      : std::format("{}x{} levels {} format {} samples {}", desc.texture.width, desc.texture.height,
+                                    desc.texture.levels, static_cast<uint32_t>(desc.texture.format), desc.texture.samples),
+                  static_cast<uint32_t>(desc.heap), static_cast<uint32_t>(desc.usage), static_cast<uint32_t>(desc.flags))
+          .c_str());
+}
+
+// The bridge's events (bridge.hpp), registered with the Anti-Aliasing row: the INTZ depths, the bound target / depth / scene
+// texture, the game's constants and every draw (the jitter).
+void OnInitDepthResource(reshade::api::device* device, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
+                         reshade::api::resource_usage, reshade::api::resource resource) {
+  if (desc.texture.format == reshade::api::format::intz) {
+    ruse::bridge::state.intz_depths.insert(resource.handle);
+    ruse::bridge::state.host_device = device;
+  }
+}
+
+void OnBridgeBindTargets(reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view* targets,
+                         reshade::api::resource_view depth_stencil) {
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return;
+  auto& bridge = ruse::bridge::state;
+  bridge.depth_stencil = depth_stencil.handle;
+  bridge.render_target = (count > 0) ? targets[0].handle : 0u;
+  D3DSURFACE_DESC desc = {};
+  bridge.render_target_is_frame_sized =
+      bridge.render_target != 0u && SUCCEEDED(reinterpret_cast<IDirect3DSurface9*>(bridge.render_target)->GetDesc(&desc))
+      && desc.Width == back_buffer_width && desc.Height == back_buffer_height;
+}
+
+void OnBridgePushDescriptors(reshade::api::command_list*, reshade::api::shader_stage stages, reshade::api::pipeline_layout,
+                             uint32_t layout_param, const reshade::api::descriptor_table_update& update) {
+  // ReShade's D3D9 layout: parameter 1 the pixel samplers with their textures.
+  if (layout_param != 1 || update.binding != 0 || update.count == 0
+      || update.type != reshade::api::descriptor_type::sampler_with_resource_view) {
+    return;
+  }
+  ruse::bridge::state.pixel_texture_0 = static_cast<const reshade::api::sampler_with_resource_view*>(update.descriptors)[0].view.handle;
+}
+
+void OnBridgePushConstants(reshade::api::command_list*, reshade::api::shader_stage, reshade::api::pipeline_layout,
+                           uint32_t layout_param, uint32_t first, uint32_t count, const void* values) {
+  ruse::bridge::OnPushConstants(layout_param, first, count, values);
+  if (ruse::replay::state.enabled) {
+    ruse::replay::OnPushConstants(layout_param, first, count, values);
+  }
+}
+
+bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t, uint32_t first_index, int32_t vertex_offset,
+                         uint32_t) {
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return false;
+  if (ruse::bridge::state.post_surface) {
+    ruse::bridge::KeepHudless(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()));
+  }
+  if (ruse::ray_tracing::Shading() && ruse::bridge::IsSceneDraw()) {
+    ruse::ray_tracing::OnSceneDraw(cmd_list);
+  }
+  ruse::bridge::OnDraw(cmd_list);
+  if (ruse::replay::state.enabled && ruse::bridge::IsSceneDraw()) {
+    ruse::replay::Record(cmd_list, index_count, first_index, vertex_offset);
+  }
+  return false;
+}
+
+// Frame generation: the UI's first draw when it isn't indexed (the HUD-less image before it).
+bool OnBridgeDraw(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
+  if (cmd_list->get_device()->get_api() == reshade::api::device_api::d3d9 && ruse::bridge::state.post_surface) {
+    ruse::bridge::KeepHudless(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()));
+  }
+  return false;
+}
+
+// The proxy's device going: frame generation's and Reflex's objects on it with it; the game's: the next one starts at
+// its default frame latency.
+void OnDestroyGenerationDevice(reshade::api::device* device) {
+  if (device->get_api() == reshade::api::device_api::d3d9) {
+    host_frame_latency = 3u;
+    return;
+  }
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  twattila::frame_generation::OnDestroyDevice(native);
+  twattila::reflex::OnDestroyDevice(native);
+}
+
+bool OnCreateDepthResource(reshade::api::device* device, reshade::api::resource_desc& desc, reshade::api::subresource_data*,
+                           reshade::api::resource_usage) {
+  if (device->get_api() != reshade::api::device_api::d3d9) return false;
+  // Surfaces only: a D24 texture may be sampled as a hardware shadow map (PCF), which INTZ would break.
+  if (desc.type != reshade::api::resource_type::surface || (desc.usage & reshade::api::resource_usage::depth_stencil) == 0) return false;
+  if (desc.texture.samples > 1 || desc.texture.width != back_buffer_width || desc.texture.height != back_buffer_height) return false;
+  if (desc.texture.format != reshade::api::format::d24_unorm_s8_uint && desc.texture.format != reshade::api::format::d24_unorm_x8_uint) {
+    return false;
+  }
+  desc.texture.format = reshade::api::format::intz;
+  desc.usage |= reshade::api::resource_usage::shader_resource;
+  reshade::log::message(reshade::log::level::info,
+                        std::format("[R.U.S.E.] depth {}x{} made readable (INTZ)", desc.texture.width, desc.texture.height).c_str());
+  return true;
+}
+
 // Graphics 2 of 2 (ATN Q7): values the game reads from its Option.ini ([advanced_video]: the ClusterLoadSaverOptions
 // list) above what its menu sets. The game reads the file at start and writes it only when its options menu applies
 // (SaveCommandName) or the file fails to load (ForceSaveIfNotOk): a row writes the file when it changes and at each start,
 // so it applies after a restart. The game's own value waits in ReShade.ini [RUSE Option.ini] for the row's return to
 // Game's; a value the menu wrote since replaces it.
 constexpr char GRAPHICS_2_SECTION[] = "Game Settings Above the Menu (Experimental, Restart Required)";
+// Graphics 1 of 2 (Attila's graphics_page sections, in this order): the rays' presets and tests, then one section a job.
+constexpr char RAYS_SECTION[] = "Ray Tracing (Experimental, Restart Required)";
+constexpr char AA_SECTION[] = "Anti-Aliasing and Upscaling";
+constexpr char SHADOWS_SECTION[] = "Shadows";
+constexpr char AO_SECTION[] = "Ambient Occlusion";
+constexpr char GI_SECTION[] = "Global Illumination";
+constexpr char REFLECTIONS_SECTION[] = "Reflections and Water";
+constexpr std::array<std::string_view, 6> GRAPHICS_1_SECTIONS = {RAYS_SECTION, AA_SECTION, SHADOWS_SECTION, AO_SECTION, GI_SECTION,
+                                                                 REFLECTIONS_SECTION};
+
+// The ray tracing presets (R.U.S.E. has no path tracing): RT/PT every ray-traced row on, No RT/PT every one off.
+const std::vector<std::pair<std::string, float>> RAYS_ON = {
+    {"RuseRayTracedGroundShadows", 1.f}, {"RuseRayTracedObjectShadows", 1.f}, {"RuseRayTracedGroundOcclusion", 1.f}};
+const std::vector<std::pair<std::string, float>> RAYS_OFF = {
+    {"RuseRayTracedGroundShadows", 0.f}, {"RuseRayTracedObjectShadows", 0.f}, {"RuseRayTracedGroundOcclusion", 0.f}};
 constexpr char OPTION_INI_CONFIG[] = "RUSE Option.ini";
 struct GameOption {
   std::vector<std::string> option_keys;  // [advanced_video]
@@ -398,13 +552,18 @@ bool OnFrameShaderDraw(reshade::api::command_list* cmd_list) {
 }
 
 void OnPresentFrame(
-    reshade::api::command_queue*, reshade::api::swapchain* swapchain,
+    reshade::api::command_queue* queue, reshade::api::swapchain* swapchain,
     const reshade::api::rect*, const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   auto* device = swapchain->get_device();
   // The nested DX11 proxy Present must not start a new host frame.
   if (device->get_api() != reshade::api::device_api::d3d9) {
     if (presenting_host != nullptr && renodx::utils::device_proxy::IsProxyDevice(device)) {
+      ruse::ray_tracing::state.proxy_queue = queue;
       proxy_present_started = true;
+      twattila::reflex::Update(swapchain, static_cast<uint32_t>(generation_sliders.reflex), static_cast<uint32_t>(generation_sliders.frame_limit));
+      auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
+      renodx::utils::directx::TryNativeFromReShadeProxy(&context);
+      ruse::bridge::KeepFrame(context);
       if (proxy_present_slot.installed_address == nullptr) {
         proxy_present_slot = {
             .object = reinterpret_cast<IDXGISwapChain*>(swapchain->get_native()),
@@ -423,14 +582,42 @@ void OnPresentFrame(
     return;
   }
   presenting_host = reinterpret_cast<IDirect3DDevice9*>(device->get_native());
+  ruse::bridge::OnPresent(presenting_host);
+  const float multiplier = generation_sliders.frame_generation;
+  twattila::frame_generation::Update({
+      // 2-6 frames shown per rendered frame, 1 Dynamic, 0 off (twattila/feature_settings.hpp AaSettings).
+      .multiplier = (!ruse::bridge::state.enabled ? 0u
+                     : multiplier >= 6.f          ? 1u
+                     : multiplier >= 1.f          ? static_cast<uint32_t>(multiplier) + 1u
+                                                  : 0u),
+      .reflex_boost = generation_sliders.reflex == 2.f,
+      .frame_limit = static_cast<uint32_t>(generation_sliders.frame_limit),
+      .preset = static_cast<uint32_t>(generation_sliders.preset),
+      .hud_recomposition = generation_sliders.hud_recomposition != 0.f,
+      .debug_view = static_cast<uint32_t>(generation_sliders.debug_view),
+      .sdr_output = shader_injection.swap_chain_encoding == static_cast<float>(twattila::output_encoding::SDR),
+  });
+  if (const UINT latency = ((generation_sliders.reflex != 0.f || twattila::frame_generation::Wanted()) ? 1u : 3u);
+      latency != host_frame_latency) {
+    host_frame_latency = latency;
+    if (Microsoft::WRL::ComPtr<IDirect3DDevice9Ex> host_ex; SUCCEEDED(presenting_host->QueryInterface(IID_PPV_ARGS(host_ex.GetAddressOf())))) {
+      host_ex->SetMaximumFrameLatency(latency);
+    }
+  }
+  if (ruse::ray_tracing::state.ground) {
+    ruse::ray_tracing::OnPresent();
+  }
   if (frame_trace_enabled) {
     std::error_code ignored;
     if (frame_trace_requested || std::filesystem::remove(frame_trace_marker, ignored)) {
       frame_trace_requested = false;
       renodx::utils::trace::trace_scheduled_device = device;
       reshade::log::message(reshade::log::level::info, "R.U.S.E.: frame trace scheduled.");
+      ruse::replay::state.log_next = true;
     }
   }
+  ruse::replay::Replay(ruse::bridge::state.camera_valid ? std::span<const float>(ruse::bridge::state.camera).subspan(16, 16)
+                                                       : std::span<const float>());
   native_gui_phase = false;
   skip_host_present = false;
   proxy_present_started = false;
@@ -587,6 +774,15 @@ void BuildRuntimeData() {
   for (auto& [hash, shader] : custom_shaders) {
     shader.on_draw = OnFrameShaderDraw;
   }
+  // The bridge (bridge.hpp): the final post's HDRParam (c11.x) for the next frame's write-back, its target for frame
+  // generation's HUD-less image.
+  for (const uint32_t post : {0x232EB5DFu, 0x2D5EFDE2u, 0x44550114u, 0x7E93D12Fu, 0xC3EBA3CAu, 0xFB692F37u, 0x0106B253u}) {
+    custom_shaders[post].on_draw = [](reshade::api::command_list* cmd_list) {
+      ruse::bridge::state.hdr_param = ruse::bridge::state.pixel_registers[44];
+      ruse::bridge::OnFinalPost(cmd_list);
+      return OnFrameShaderDraw(cmd_list);
+    };
+  }
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   settings = {
@@ -597,7 +793,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .can_reset = false,
           .label = "Settings Mode",
-          .labels = {"Simple", "Advanced", "Graphics 2 of 2"},
+          .labels = {"Simple", "Advanced", "Graphics 1 of 2", "Graphics 2 of 2"},
           .is_global = true,
       },
       new renodx::utils::settings::Setting{
@@ -971,6 +1167,7 @@ void ConfigureAddon() {
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = static_cast<int>(setting->GetValue()),
         .first_start_without_hdr = []() { ApplyDefaultLook(0.f); },
+        .first_start_key = "rendering_mode",
         .recommended_preset = &ApplyPsychoRecommended,
         .log_name = "[R.U.S.E.]",
     });
@@ -1004,6 +1201,366 @@ void ConfigureAddon() {
         .on_change = []() { frame_trace_requested = true; },
         .is_visible = []() { return frame_trace_enabled && IsAdvancedSettings(); },
     });
+  }
+  // Graphics 1 of 2's ray tracing presets; the rays need the helper beside the add-on (its full download).
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = twattila::credits::FULL_DOWNLOAD_NOTE,
+          .section = RAYS_SECTION,
+          .tint = 0xFF5050,
+          .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "RT/PT",
+          .section = RAYS_SECTION,
+          .group = "rays-presets",
+          .tooltip = "Every ray-traced effect on (restart the game).\n"
+                     "The rays need Anti-Aliasing: the game's becomes DLAA (FSR Native AA on AMD and Intel).",
+          .on_change = [] {
+            renodx::utils::settings::UpdateSettings(RAYS_ON);
+            if (auto* anti_aliasing = renodx::utils::settings::FindSetting("RuseAntiAliasing");
+                anti_aliasing != nullptr && anti_aliasing->GetValue() == 0.f) {
+              renodx::utils::settings::UpdateSetting("RuseAntiAliasing", twattila::dlaa_bridge::OnNvidia() ? 1.f : 2.f);
+            }
+          },
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "No RT/PT (Recommended)",
+          .section = RAYS_SECTION,
+          .group = "rays-presets",
+          .tooltip = "Every ray-traced effect off (restart the game).",
+          .on_change = [] { renodx::utils::settings::UpdateSettings(RAYS_OFF); },
+      },
+  });
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "ReadableDepth",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Readable Scene Depth (Testing)",
+        .section = RAYS_SECTION,
+        .tooltip = "For testing: makes the game's depth readable for the upcoming anti-aliasing and shadows.\n"
+                   "Needs the in-game anti-aliasing off. Off (default) changes nothing. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    readable_depth_enabled = (setting->GetValue() != 0.f);
+    settings.push_back(setting);
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseAntiAliasing",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Anti-Aliasing (Experimental)",
+        .section = AA_SECTION,
+        .tooltip = "NVIDIA DLAA, AMD FSR or Intel XeSS at native resolution instead of the game's anti-aliasing.\n"
+                   "Needs the in-game anti-aliasing off and the helper beside the add-on. Restart after changing this setting.",
+        .labels = {"Game's", "DLAA", "FSR Native AA", "XeSS Native AA"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    const int choice = static_cast<int>(setting->GetValue());
+    ruse::bridge::state.enabled = choice != 0 && twattila::dlaa_bridge::HelperInstalled();
+    ruse::bridge::state.upscaler = (choice == 2) ? twattila::dlaa_bridge::UPSCALER_FSR
+                                                 : ((choice == 3) ? twattila::dlaa_bridge::UPSCALER_XESS : twattila::dlaa_bridge::UPSCALER_DLSS);
+    readable_depth_enabled = readable_depth_enabled || ruse::bridge::state.enabled;
+    if (ruse::bridge::state.enabled) {
+      // The bloom's first pass: the upscaler on the scene it reads.
+      for (const uint32_t bloom : {0x41B68A24u, 0xF663E47Eu}) {
+        custom_shaders[bloom] = {.crc32 = bloom, .on_draw = [](reshade::api::command_list* cmd_list) {
+                                   ruse::bridge::Evaluate(cmd_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
+                                   ruse::ray_tracing::OnBloom(cmd_list);
+                                   return true;
+                                 }};
+      }
+    }
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseAntiAliasingGpuSync",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Anti-Aliasing GPU Sync (Experimental)",
+        .section = AA_SECTION,
+        .tooltip = "The GPU waits for the anti-aliasing instead of the CPU (faster when it works).\n"
+                   "Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    ruse::bridge::state.gpu_sync = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
+  }
+  // Frame generation and Reflex (live): Attila's rows and keys.
+  const auto generating = [] { return ruse::bridge::state.enabled && generation_sliders.frame_generation != 0.f; };
+  settings.insert(settings.end(), {
+      new renodx::utils::settings::Setting{
+          .key = "FrameGeneration",
+          .binding = &generation_sliders.frame_generation,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Frame Generation (Experimental)",
+          .section = AA_SECTION,
+          .tooltip = "Frames shown per rendered frame. Turn the game's VSync off.\n"
+                     "NVIDIA DLSS Frame Generation (2x: RTX 40 or newer; 3x to 6x and Dynamic: RTX 50), else AMD's or Intel's.\n"
+                     "Needs Anti-Aliasing at DLAA, FSR or XeSS and a windowed or borderless game.",
+          .labels = {"Off", "2x", "3x", "4x", "5x", "6x", "Dynamic"},
+          .is_enabled = [] { return ruse::bridge::state.enabled; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "Reflex",
+          .binding = &generation_sliders.reflex,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "NVIDIA Reflex",
+          .section = AA_SECTION,
+          .tooltip = "Less input lag on NVIDIA GPUs: each frame starts only as the GPU needs it.\n"
+                     "Boost also keeps the GPU's clocks up. Always on with frame generation.",
+          .labels = {"Off", "On", "On + Boost"},
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FrameGenerationFrameLimit",
+          .binding = &generation_sliders.frame_limit,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Frame Rate Limit",
+          .section = AA_SECTION,
+          .tooltip = "Caps the rendered frame rate with NVIDIA Reflex (frame generation multiplies it).\n"
+                     "Needs Reflex or frame generation on. 0: off.",
+          .min = 0.f,
+          .max = 240.f,
+          .format = "%d fps",
+          .is_enabled = [generating] { return generation_sliders.reflex != 0.f || generating(); },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FrameGenerationHudRecomposition",
+          .binding = &generation_sliders.hud_recomposition,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "HUD Recomposition",
+          .section = AA_SECTION,
+          .tooltip = "Lays the HUD over the generated frames instead of warping it with the scene (no HUD smears).",
+          .labels = {"Off", "On"},
+          .is_enabled = generating,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FrameGenerationPreset",
+          .binding = &generation_sliders.preset,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Frame Generation Preset",
+          .section = AA_SECTION,
+          .tooltip = "NVIDIA's frame generation presets. Driver's: HUD Recomposition as set above.\n"
+                     "A: HUD recomposition off. B: on. C (Lite): lighter, lower quality.\n"
+                     "Applies after restarting the game.",
+          .labels = {"Driver's", "A", "B", "C"},
+          .is_enabled = generating,
+      },
+      new renodx::utils::settings::Setting{
+          .key = "FrameGenerationDebugView",
+          .binding = &generation_sliders.debug_view,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Frame Generation Debug View",
+          .section = AA_SECTION,
+          .tooltip = "What frame generation gets, shown while the ReShade menu is closed.\n"
+                     "HUD-less Image: the picture without the HUD. UI Layer: the HUD over the generated frames, in magenta.",
+          .labels = {"Off", "HUD-less Image", "UI Layer"},
+          .is_enabled = generating,
+      },
+  });
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseSceneReplay",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Scene Replay (Testing)",
+        .section = RAYS_SECTION,
+        .tooltip = "For testing: draws the scene's geometry a second time for the upcoming ray-traced shadows (costs CPU time).\n"
+                   "Needs the in-game anti-aliasing off. Off (default) changes nothing. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    ruse::replay::state.enabled = setting->GetValue() != 0.f;
+    ruse::replay::state.log_next = ruse::replay::state.enabled;
+    readable_depth_enabled = readable_depth_enabled || ruse::replay::state.enabled;
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseRayTracedGroundShadows",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Ray-Traced Ground Shadows (Experimental)",
+        .section = SHADOWS_SECTION,
+        .tooltip = "Ray-traced sun shadows on the ground, added to the game's (costs CPU and GPU time).\n"
+                   "Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The rays trace the scene the replay captured, in the helper the anti-aliasing starts.
+    ruse::ray_tracing::state.ground = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
+    ruse::bridge::state.ray_tracing = ruse::ray_tracing::state.ground;
+    ruse::replay::state.rays = ruse::ray_tracing::state.ground;
+    ruse::replay::state.enabled = ruse::replay::state.enabled || ruse::ray_tracing::state.ground;
+    readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.ground;
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseRayTracedObjectShadows",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Ray-Traced Object Shadows (Experimental)",
+        .section = SHADOWS_SECTION,
+        .tooltip = "Ray-traced sun shadows on buildings, units and trees, added to the game's (costs GPU time).\n"
+                   "Moving units' shadows are a frame late. Needs Ray-Traced Ground Shadows. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The object shaders with the rays' visibility in their shadow (each proved the game's with it at 1).
+    ruse::ray_tracing::state.objects = ruse::ray_tracing::state.ground && setting->GetValue() != 0.f;
+    if (ruse::ray_tracing::state.objects) {
+      for (const auto& [hash, code] : ruse::ray_tracing::OBJECT_SHADOW_SHADERS) {
+        custom_shaders[hash] = {.crc32 = hash, .code = code};
+      }
+    }
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseRayTracedGroundOcclusion",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Ray-Traced Ground Ambient Occlusion (Experimental)",
+        .section = AO_SECTION,
+        .tooltip = "Ray-traced ambient occlusion on the ground: softly darker under buildings, units and trees (costs GPU time).\n"
+                   "Needs Ray-Traced Ground Shadows. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The terrain shaders with the rays' occlusion in their ambient (each proved the game's with it at 1).
+    ruse::ray_tracing::state.ambient = ruse::ray_tracing::state.ground && setting->GetValue() != 0.f;
+    if (ruse::ray_tracing::state.ambient) {
+      for (const auto& [hash, code] : ruse::ray_tracing::GROUND_AMBIENT_SHADERS) {
+        custom_shaders[hash] = {.crc32 = hash, .code = code};
+      }
+    }
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseScreenSpaceGroundShadows",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Screen-Space Ground Shadows (Experimental)",
+        .section = SHADOWS_SECTION,
+        .tooltip = "Bend Studio's screen-space sun shadows on the ground: hills and slopes shadow what lies behind them, added to\n"
+                   "the game's (costs GPU time). Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off.\n"
+                   "Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The ground's depth and its mask as the ray-traced ground shadows have them, the march on the bridge's device.
+    ruse::ray_tracing::state.bend = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
+    readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.bend;
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseScreenSpaceGroundOcclusion",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Screen-Space Ground Ambient Occlusion (Experimental)",
+        .section = AO_SECTION,
+        .tooltip = "GT-VBAO ambient occlusion on the ground: softly darker in hollows and at the foot of slopes (costs GPU time).\n"
+                   "Works without the helper; the ray-traced ground ambient occlusion replaces it where it runs.\n"
+                   "Needs the in-game anti-aliasing off. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The ground's depth as the ground shadows have it, GT-VBAO on the proxy's device into the terrain shaders' ambient
+    // (the ray-traced ambient occlusion's shaders and texture).
+    ruse::ray_tracing::state.vbao = setting->GetValue() != 0.f;
+    readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.vbao;
+    if (ruse::ray_tracing::state.vbao) {
+      for (const auto& [hash, code] : ruse::ray_tracing::GROUND_AMBIENT_SHADERS) {
+        custom_shaders[hash] = {.crc32 = hash, .code = code};
+      }
+    }
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseGroundLightBounce",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Ground Light Bounce (Experimental)",
+        .section = GI_SECTION,
+        .tooltip = "GT-VBGI bounced light on the ground: sunlit slopes, walls and fields light what lies beside them (costs GPU time).\n"
+                   "Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off. Restart after changing this setting.",
+        .labels = {"Off", "On"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // GT-VBGI over the ground's depth with last frame's scene (the bridge's colour) as the light; the terrain shaders with
+    // the ambient occlusion and the bounced light from one texel (each proved the game's with it at (1, 0, 0, 0)) replace
+    // the ambient occlusion's; the occlusion rides in that texel (the rays', else GT-VBAO's, else 1).
+    ruse::ray_tracing::state.bounce = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
+    readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.bounce;
+    if (ruse::ray_tracing::state.bounce) {
+      for (const auto& [hash, code] : ruse::ray_tracing::GROUND_LIGHT_SHADERS) {
+        custom_shaders[hash] = {.crc32 = hash, .code = code};
+      }
+    }
+  }
+  {
+    auto* setting = new renodx::utils::settings::Setting{
+        .key = "RuseWaterReflections",
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Water Reflections (Experimental)",
+        .section = REFLECTIONS_SECTION,
+        .tooltip = "Screen-space reflections of the banks, buildings and units on rivers, lakes and the sea, over the game's sky\n"
+                   "reflection (costs GPU time). Needs Anti-Aliasing at DLAA, FSR or XeSS and the in-game anti-aliasing off.\n"
+                   "Restart after changing this setting.",
+        .labels = {"Off", "Screen-Space"},
+        .is_global = true,
+    };
+    renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    settings.push_back(setting);
+    // The march over the ground's depth with last frame's main depth (the water's surface) in it, hits from last frame's
+    // scene; the water shaders blend it over their cube map (each proved the game's with its share at 0).
+    ruse::ray_tracing::state.reflections = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
+    readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.reflections;
+    if (ruse::ray_tracing::state.reflections) {
+      for (const auto& [hash, code] : ruse::ray_tracing::WATER_REFLECTION_SHADERS) {
+        custom_shaders[hash] = {.crc32 = hash, .code = code};
+      }
+    }
+  }
+  if (ruse::bridge::state.enabled || ruse::replay::state.enabled || ruse::ray_tracing::state.vbao) {
+    // The camera pass: its matrices (c0-c8) as it drew (the bridge's motion, the replay's placements).
+    custom_shaders[0x88292FC6] = {.crc32 = 0x88292FC6, .on_draw = [](reshade::api::command_list*) {
+                                    std::memcpy(ruse::bridge::state.camera.data(), ruse::bridge::state.pixel_registers.data(),
+                                                sizeof(ruse::bridge::state.camera));
+                                    ruse::bridge::state.camera_valid = true;
+                                    ruse::ray_tracing::OnCameraPass();
+                                    return true;
+                                  }};
   }
 
   twattila::psycho35::InsertBefore(&settings, "Extra", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
@@ -1089,7 +1646,8 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
-                   "and PsychoV35.",
+                   "and PsychoV35.\n"
+                   "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -1124,12 +1682,25 @@ void ConfigureAddon() {
       },
   });
 
-  // Settings Mode's pages: Simple and Advanced the HDR rows, Graphics 2 of 2 the game's settings; About on every page.
+  // Settings Mode's pages: Simple and Advanced the HDR rows (and the output's), Graphics 1 of 2 the add-on's graphics in
+  // their sections' order (each block above added its rows where its restart logic needed them: a stable sort keeps
+  // every other page's order), Graphics 2 of 2 the game's settings; About on every page.
+  const auto graphics_1_rank = [](const renodx::utils::settings::Setting* setting) {
+    if (setting->key == "SettingsMode") return -1;
+    return static_cast<int>(std::ranges::find(GRAPHICS_1_SECTIONS, setting->section) - GRAPHICS_1_SECTIONS.begin());
+  };
+  std::ranges::stable_sort(settings, std::less{}, graphics_1_rank);
   for (auto* setting : settings) {
     if (setting->key == "SettingsMode" || setting->section == "About") continue;
-    const bool game_settings = (setting->section == GRAPHICS_2_SECTION);
-    setting->is_visible = [game_settings, shown = setting->is_visible] {
-      return ((current_settings_mode == 2.f) == game_settings) && (shown == nullptr || shown());
+    float page = -1.f;
+    if (setting->section == GRAPHICS_2_SECTION) {
+      page = 3.f;
+    } else if (graphics_1_rank(setting) < static_cast<int>(GRAPHICS_1_SECTIONS.size())) {
+      page = 2.f;
+    }
+    setting->is_visible = [page, shown = setting->is_visible] {
+      const bool on_page = (page < 0.f ? current_settings_mode < 2.f : current_settings_mode == page);
+      return on_page && (shown == nullptr || shown());
     };
   }
 
@@ -1137,12 +1708,17 @@ void ConfigureAddon() {
 }
 
 // The game's DX9 swap chain, before the swapchain mod's create_swapchain (registered after this) and its DX11 proxy.
-// output_encoding hands an SDR target to the swapchain mod alone (shared step S2): the proxy takes it from here.
-bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_desc&, void* hwnd) {
+bool OnCreateSwapchain(reshade::api::device_api api, reshade::api::swapchain_desc& desc, void* hwnd) {
   if (api != reshade::api::device_api::d3d9) return false;
+  back_buffer_width = desc.back_buffer.texture.width;
+  back_buffer_height = desc.back_buffer.texture.height;
+  ruse::bridge::state.width = back_buffer_width;
+  ruse::bridge::state.height = back_buffer_height;
+  shader_injection.rays_texel_x = 1.f / static_cast<float>(std::max(back_buffer_width, 1u));
+  shader_injection.rays_texel_y = 1.f / static_cast<float>(std::max(back_buffer_height, 1u));
+  shader_injection.rays_half_texel_x = 0.5f * shader_injection.rays_texel_x;
+  shader_injection.rays_half_texel_y = 0.5f * shader_injection.rays_texel_y;
   twattila::output_encoding::Decide(static_cast<HWND>(hwnd));
-  renodx::utils::device_proxy::SetTargetFormat(renodx::mods::swapchain::target_format);
-  renodx::utils::device_proxy::SetTargetColorSpace(renodx::mods::swapchain::target_color_space);
   // Graphics 2 of 2 at each start, for the next one (the game read Option.ini before making its device).
   static bool game_options_written = false;
   if (!game_options_written) {
@@ -1173,7 +1749,51 @@ bool AttachAddon() {
 
   if (frame_trace_enabled) {
     renodx::utils::trace::Use(DLL_PROCESS_ATTACH);
+    reshade::register_event<reshade::addon_event::init_resource>(OnLogResource);
   }
+  if (readable_depth_enabled) {
+    reshade::register_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
+    reshade::register_event<reshade::addon_event::init_resource>(OnInitDepthResource);
+  }
+  if (ruse::bridge::state.enabled || ruse::replay::state.enabled || ruse::ray_tracing::state.vbao) {
+    reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
+    reshade::register_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
+    reshade::register_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
+    reshade::register_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);
+    reshade::register_event<reshade::addon_event::destroy_device>(ruse::bridge::OnDestroyDevice);
+  }
+  if (ruse::replay::state.enabled) {
+    // Before the game's device: ReShade hooks the buffers' Lock / Unlock once an add-on asks for map / unmap.
+    reshade::register_event<reshade::addon_event::map_buffer_region>(ruse::replay::OnMapBuffer);
+    reshade::register_event<reshade::addon_event::unmap_buffer_region>(ruse::replay::OnUnmapBuffer);
+    reshade::register_event<reshade::addon_event::destroy_resource>(ruse::replay::OnDestroyResource);
+    reshade::register_event<reshade::addon_event::init_pipeline>(ruse::replay::OnInitPipeline);
+    reshade::register_event<reshade::addon_event::destroy_pipeline>(ruse::replay::OnDestroyPipeline);
+    reshade::register_event<reshade::addon_event::bind_pipeline>(ruse::replay::OnBindPipeline);
+    reshade::register_event<reshade::addon_event::bind_vertex_buffers>(ruse::replay::OnBindVertexBuffers);
+    reshade::register_event<reshade::addon_event::bind_index_buffer>(ruse::replay::OnBindIndexBuffer);
+    reshade::register_event<reshade::addon_event::bind_pipeline_states>(ruse::replay::OnBindPipelineStates);
+    reshade::register_event<reshade::addon_event::destroy_device>(ruse::replay::OnDestroyDevice);
+  }
+  if (ruse::ray_tracing::state.ground) {
+    twattila::rt_scene::InstallReplayedScene(ruse::ray_tracing::HOST);
+  }
+  if (ruse::ray_tracing::Shading()) {
+    reshade::register_event<reshade::addon_event::copy_texture_region>(ruse::ray_tracing::OnCopyTextureRegion);
+    reshade::register_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
+  }
+  if (ruse::bridge::state.gpu_sync) {
+    renodx::utils::gpu_fence::Use(DLL_PROCESS_ATTACH);
+  }
+  // Frame generation (the helper presents; the HUD-less image through the proxy's swap chain shader, the frame's
+  // controls at b13) with the bridge; Reflex on the proxy's presents.
+  if (ruse::bridge::state.enabled) {
+    reshade::register_event<reshade::addon_event::draw>(OnBridgeDraw);
+    twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &frame_injection,
+                                        sizeof(frame_injection), __fg_hdr10);
+  }
+  twattila::reflex::Install();
+  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyGenerationDevice);
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &frame_injection);
 
@@ -1197,6 +1817,35 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::reshade_open_overlay>(OnOpenReShadeOverlay);
   reshade::unregister_event<reshade::addon_event::reshade_overlay>(OnReShadeOverlay);
   reshade::unregister_event<reshade::addon_event::reshade_present>(OnReShadePresent);
+  reshade::unregister_event<reshade::addon_event::init_resource>(OnLogResource);
+  reshade::unregister_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
+  reshade::unregister_event<reshade::addon_event::init_resource>(OnInitDepthResource);
+  reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
+  reshade::unregister_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
+  reshade::unregister_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
+  reshade::unregister_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::bridge::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::map_buffer_region>(ruse::replay::OnMapBuffer);
+  reshade::unregister_event<reshade::addon_event::unmap_buffer_region>(ruse::replay::OnUnmapBuffer);
+  reshade::unregister_event<reshade::addon_event::destroy_resource>(ruse::replay::OnDestroyResource);
+  reshade::unregister_event<reshade::addon_event::init_pipeline>(ruse::replay::OnInitPipeline);
+  reshade::unregister_event<reshade::addon_event::destroy_pipeline>(ruse::replay::OnDestroyPipeline);
+  reshade::unregister_event<reshade::addon_event::bind_pipeline>(ruse::replay::OnBindPipeline);
+  reshade::unregister_event<reshade::addon_event::bind_vertex_buffers>(ruse::replay::OnBindVertexBuffers);
+  reshade::unregister_event<reshade::addon_event::bind_index_buffer>(ruse::replay::OnBindIndexBuffer);
+  reshade::unregister_event<reshade::addon_event::bind_pipeline_states>(ruse::replay::OnBindPipelineStates);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::replay::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::copy_texture_region>(ruse::ray_tracing::OnCopyTextureRegion);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
+  if (ruse::bridge::state.gpu_sync) {
+    renodx::utils::gpu_fence::Use(DLL_PROCESS_DETACH);
+  }
+  reshade::unregister_event<reshade::addon_event::draw>(OnBridgeDraw);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyGenerationDevice);
+  twattila::reflex::Uninstall();
+  if (ruse::bridge::state.enabled) {
+    twattila::frame_generation::Uninstall();
+  }
   UninstallPresentHooks();
 
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &frame_injection);
@@ -1226,6 +1875,7 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE) {
 
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE) {
   DetachAddon();
+  twattila::dlaa_bridge::Shutdown();
   if (addon_registered) {
     reshade::unregister_addon(addon_module);
     addon_registered = false;

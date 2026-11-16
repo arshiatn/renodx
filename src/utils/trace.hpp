@@ -739,7 +739,7 @@ static void OnPushConstants(
   for (uint32_t i = 0; i < count; i++) {
     s << std::hex << static_cast<const uint32_t*>(values)[i] << std::dec << ", ";
   }
-  s << " })";
+  s << " }, first: " << first << ")";
 
   reshade::log::message(reshade::log::level::info, s.str().c_str());
 }

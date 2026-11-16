@@ -113,8 +113,8 @@ float4 main(float2 v0 : TEXCOORD0, float2 v1 : TEXCOORD1, float2 v2 : TEXCOORD2)
 #if !RUSE_POSTPROCESS_SIMPLE
   float2 edge = min(1.f - v0, v0);
   float t = saturate(sqrt(edge.x * edge.y) / VignettageExtent);
-  // The CSO's dp2add has no _sat modifier; the FX decompilation adds one incorrectly.
-  float vignette = (MinVignettage - 1.f) * t * t + (2.f - 2.f * MinVignettage) * t + MinVignettage;
+  // The shipped CSO's dp2add saturates (census 0x232EB5DF: dp2add_sat_pp); a no-op for the maps' MinVignettage <= 0.05.
+  float vignette = saturate((MinVignettage - 1.f) * t * t + (2.f - 2.f * MinVignettage) * t + MinVignettage);
   if (hdr) vignette = 1.f - saturate((1.f - vignette) * SI.vignette);
   color *= vignette;
 #endif
