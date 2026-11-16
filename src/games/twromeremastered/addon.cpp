@@ -742,8 +742,11 @@ void BuildRuntimeData() {
                             .on_drawn = [](reshade::api::command_list* cmd_list) {
                               twromeremastered::dlaa::KeepDepth(cmd_list, false);
                               if (test_sun_shadows_off != 0.f) { ClearOutputToOne(cmd_list, false, &logged_test_shadows, "the sun's shadow mask"); }
-                              twromeremastered::ray_tracing::Multiply(cmd_list, false);
-                              twromeremastered::contact_shadows::Apply(cmd_list);
+                              // One sun-shadow method (Attila's addon.cpp:1481): Bend's contact shadows only where the rays
+                              // didn't shadow this frame (its rows stay set: they come back without an upscaler or a trace).
+                              if (!twromeremastered::ray_tracing::Multiply(cmd_list, false)) {
+                                twromeremastered::contact_shadows::Apply(cmd_list);
+                              }
                             }};
   }
   for (const uint32_t hash : TONE_MAPPER_SHADERS) {
