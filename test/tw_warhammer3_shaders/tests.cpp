@@ -18,8 +18,8 @@
 //    (2 stops) stays within 5% of the frame without the fire. CONTROL: ours with the row on differs from the game's.
 // 4. Bend / the rays over the kept maps: the sun mask E6BCBA8A's contact march off through the add-on's sss copy (flag 0 at
 //    byte 28) = the game's with the flag 0. CONTROL: the game's flag 1 shadows pixels.
-// 5. Torch shadows under the rays: the 4 light PS that read the game's point shadow map with the map lit = their unshadowed
-//    twins (the game's and ours). CONTROL: a random map differs.
+// 5. Torch shadows under the rays: the 4 light PS that read the game's point shadow map keep the map for a light the rays don't
+//    trace and take the rays' shadow in place of it for one they do. CONTROL: their unshadowed twin differs from the map's light.
 // 6. Ray-Traced Specular Occlusion (a third argument: an older build's csos): reflection00's cubes dimmed by t46 alone, not
 //    by the AO too. CONTROL: the older build's take the AO.
 #include <windows.h>
@@ -936,13 +936,15 @@ static void TestSunMaskMarch(const std::string& pack) {
   CHECK(shadowed > 0 && DifferentValues(reference, game_march) > 0, "sun mask: CONTROL the march shadows nothing");
 }
 
-// 5. The light PS that read the game's point shadow map against their unshadowed twins (twwarhammer3/addon.cpp BuildRuntimeData:
-//    the twin's copy runs in their place under the rays): the scene of BuildPassScene, a light 4 m ahead at 1.5 m, reach 9 m,
-//    G-buffer channels 1 - 3 (and the aux one) fixed noise, the depth the scene's; soft edges 0 and 1 (the two branches). The
-//    game's shadowed PS with its whole map lit (a 1 x 1 x 6 map at FLT_MAX: no blocker, every compare passed) = the game's twin bit
-//    for bit, and
-//    the add-on's built twin (nothing at t42: visibility 1) within 1e-5 of the game's twin. CONTROL: the shadowed PS with a
-//    32 x 32 x 6 map of random depths differs from its twin.
+// 5. The light PS that read the game's point shadow map under the rays (twwarhammer3/addon.cpp traced_lights, their copies through
+//    rt_local_lights.hlsli RtLocalLightTraced): the scene of BuildPassScene, a light 4 m ahead at 1.5 m, reach 9 m, G-buffer
+//    channels 1 - 3 (and the aux one) fixed noise, the depth the scene's, a 32 x 32 x 6 map of random depths; soft edges 0 and 1
+//    (the two branches). The game's shadowed PS with its whole map lit (a 1 x 1 x 6 map at FLT_MAX: every compare passed) = the
+//    game's unshadowed twin bit for bit. Ours (within 1e-5 of the value): nothing at t42, or the rays tracing only a light 1 m away
+//    = the game's shadowed PS with its map (an untraced light keeps the game's shadow); the rays tracing this light, reached = the
+//    game's twin (the rays' shadow in place of the map's), blocked = no light, a shadow ratio of 0.5 (Torch and Fire Shadows from
+//    the Light Bounce) = half the twin's. Our unshadowed twins within 1e-5 of the game's. CONTROL: the twin (what the 11-16 route
+//    ran for every light under the rays) differs from the game's shadowed PS with its map.
 static void TestPointShadowTwins(const std::string& pack, const std::string& built) {
   struct Twin {
     const char* shadowed;
@@ -984,12 +986,50 @@ static void TestPointShadowTwins(const std::string& pack, const std::string& bui
   device->CreateSamplerState(&point_desc, &point);
   // The light: its colour, its place and reach.
   constexpr std::array<float, 8> LIGHT = {1.f, 0.7f, 0.4f, 0.f, 0.5f, 1.5f, 7.f, 9.f};
+  // rt_local_lights.hlsli's t42 (every pixel the same word) and b9 (one traced light at `place`; w 1: the word is a shadow ratio).
+  const auto mask_view = [&](uint32_t word) {
+    const std::vector<uint32_t> words(pixels, word);
+    const D3D11_TEXTURE2D_DESC desc = {.Width = PASS_WIDTH, .Height = PASS_HEIGHT, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_UINT,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = words.data(), .SysMemPitch = PASS_WIDTH * 4};
+    ComPtr<ID3D11Texture2D> texture;
+    device->CreateTexture2D(&desc, &data, &texture);
+    ComPtr<ID3D11ShaderResourceView> view;
+    device->CreateShaderResourceView(texture.Get(), nullptr, &view);
+    return view;
+  };
+  const auto lights_buffer = [](const std::array<float, 3>& place, bool ratio) {
+    std::array<uint32_t, (128 + 1 + 128) * 4> values = {};
+    for (int k = 0; k < 3; ++k) values[k] = std::bit_cast<uint32_t>(place[k]);
+    values[3] = std::bit_cast<uint32_t>(9.f);
+    values[128 * 4] = 1u;
+    values[128 * 4 + 3] = ratio ? 1u : 0u;
+    for (int k = 0; k < 3; ++k) values[129 * 4 + k] = std::bit_cast<uint32_t>(1.f);
+    return ConstantBuffer(values.data(), sizeof(values));
+  };
+  const ComPtr<ID3D11Buffer> this_light = lights_buffer({LIGHT[4], LIGHT[5], LIGHT[6]}, false);
+  const ComPtr<ID3D11Buffer> other_light = lights_buffer({LIGHT[4] + 1.f, LIGHT[5], LIGHT[6]}, false);
+  const ComPtr<ID3D11Buffer> this_light_ratio = lights_buffer({LIGHT[4], LIGHT[5], LIGHT[6]}, true);
+  const auto reached_mask = mask_view(1u);
+  const auto blocked_mask = mask_view(0u);
+  const auto half_mask = mask_view(std::bit_cast<uint32_t>(0.5f));
+  // Our copies are decompiles: a few values round in the last bits. The largest difference, relative to the value.
+  const auto apart = [](const std::vector<float>& a, const std::vector<float>& b, float scale) {
+    if (a.size() != b.size()) return std::numeric_limits<float>::infinity();
+    float largest = 0.f;
+    for (size_t i = 0; i < a.size(); ++i) {
+      const float expected = ((i % 4) == 3) ? b[i] : (b[i] * scale);
+      largest = std::max(largest, std::abs(a[i] - expected) / std::max(std::abs(expected), 1e-3f));
+    }
+    return largest;
+  };
   for (const auto& twin : TWINS) {
     const std::vector<uint8_t> shadowed = ReadFile(pack + "\\0x" + twin.shadowed + ".ps_5_0.cso");
     const std::vector<uint8_t> game_twin = ReadFile(pack + "\\0x" + twin.twin + ".ps_5_0.cso");
-    const std::vector<uint8_t> ours = ReadFile(built + "\\0x" + twin.twin + ".cso");
-    CHECK(!shadowed.empty() && !game_twin.empty() && !ours.empty(), "point shadows %s: no code", twin.shadowed);
-    if (shadowed.empty() || game_twin.empty() || ours.empty()) continue;
+    const std::vector<uint8_t> ours_shadowed = ReadFile(built + "\\0x" + twin.shadowed + ".cso");
+    const std::vector<uint8_t> ours_twin = ReadFile(built + "\\0x" + twin.twin + ".cso");
+    CHECK(!shadowed.empty() && !game_twin.empty() && !ours_shadowed.empty() && !ours_twin.empty(), "point shadows %s: no code", twin.shadowed);
+    if (shadowed.empty() || game_twin.empty() || ours_shadowed.empty() || ours_twin.empty()) continue;
     for (const float soft_edges : {0.f, 1.f}) {
       // pointlight_shadowmap_cb: a 32-texel map, bias 0.02, soft edges, the cube's depth 10 cm to 10 m, light width 5 cm, sample bias 1.
       const std::array<float, 12> shadow_constants = {32.f, 32.f, 1.f / 32.f, 1.f / 32.f, 0.02f, soft_edges, 1.0101f, -0.10101f, 0.05f, 1.f, 0.f, 0.f};
@@ -999,26 +1039,56 @@ static void TestPointShadowTwins(const std::string& pack, const std::string& bui
       const std::vector<ID3D11Buffer*> constants = {camera.Get(), dynamic_light.Get(), shadow_buffer.Get()};
       const std::vector<ID3D11SamplerState*> samplers = {comparison.Get(), point.Get()};
       const auto twin_light = RunPass(game_twin, views, constants, samplers, LIGHT);
-      const auto ours_light = RunPass(ours, views, constants, samplers, LIGHT);
+      const auto ours_twin_light = RunPass(ours_twin, views, constants, samplers, LIGHT);
       views.push_back(lit_map.Get());
       const auto lit_light = RunPass(shadowed, views, constants, samplers, LIGHT);
       views.back() = random_map.Get();
       const auto shadowed_light = RunPass(shadowed, views, constants, samplers, LIGHT);
+      const auto ours_untraced = RunPass(ours_shadowed, views, constants, samplers, LIGHT);
+      // Ours with the rays' mask at t42 and their lights at b9.
+      const auto traced = [&](ID3D11ShaderResourceView* mask, ID3D11Buffer* lights) {
+        std::vector<ID3D11ShaderResourceView*> traced_views = views;
+        traced_views.resize(43, nullptr);
+        traced_views[42] = mask;
+        std::vector<ID3D11Buffer*> traced_constants = constants;
+        traced_constants.resize(10, nullptr);
+        traced_constants[9] = lights;
+        return RunPass(ours_shadowed, traced_views, traced_constants, samplers, LIGHT);
+      };
+      const auto ours_other = traced(reached_mask.Get(), other_light.Get());
+      const auto ours_reached = traced(reached_mask.Get(), this_light.Get());
+      const auto ours_blocked = traced(blocked_mask.Get(), this_light.Get());
+      const auto ours_half = traced(half_mask.Get(), this_light_ratio.Get());
       int lighted = 0;
-      for (size_t i = 0; i < pixels; ++i) lighted += (twin_light[i * 4] > 0.f || twin_light[i * 4 + 1] > 0.f || twin_light[i * 4 + 2] > 0.f) ? 1 : 0;
-      // Our copies are decompiles: the aux pair's rounds a few values in the last bits.
-      float ours_apart = 0.f;
-      for (size_t i = 0; i < twin_light.size(); ++i) {
-        ours_apart = std::max(ours_apart, std::abs(ours_light[i] - twin_light[i]) / std::max(std::abs(twin_light[i]), 1e-3f));
+      int shadowed_pixels = 0;
+      int blocked_lit = 0;
+      for (size_t i = 0; i < pixels; ++i) {
+        const bool twin_lit = twin_light[i * 4] > 0.f || twin_light[i * 4 + 1] > 0.f || twin_light[i * 4 + 2] > 0.f;
+        lighted += twin_lit ? 1 : 0;
+        shadowed_pixels += (twin_lit && shadowed_light[i * 4] < twin_light[i * 4]) ? 1 : 0;
+        blocked_lit += (ours_blocked[i * 4] != 0.f || ours_blocked[i * 4 + 1] != 0.f || ours_blocked[i * 4 + 2] != 0.f || ours_blocked[i * 4 + 3] != 1.f) ? 1 : 0;
       }
-      std::printf("point shadows %s (twin %s), soft edges %.0f: %d of %zu pixels lit by the twin; the game's with its map lit %d values apart, "
-                  "ours (twin) %d (largest %.2g of the value); CONTROL a random map: %d values apart\n",
-                  twin.shadowed, twin.twin, soft_edges, lighted, pixels, DifferentValues(twin_light, lit_light),
-                  DifferentValues(twin_light, ours_light), ours_apart, DifferentValues(twin_light, shadowed_light));
+      const float untraced_apart = apart(ours_untraced, shadowed_light, 1.f);
+      const float other_apart = apart(ours_other, shadowed_light, 1.f);
+      const float reached_apart = apart(ours_reached, twin_light, 1.f);
+      const float half_apart = apart(ours_half, twin_light, 0.5f);
+      const float twin_apart = apart(ours_twin_light, twin_light, 1.f);
+      std::printf("point shadows %s (twin %s), soft edges %.0f: %d of %zu pixels lit by the twin, %d darker with the game's map; the game's with "
+                  "its map lit %d values apart from the twin; ours (largest apart of the value): untraced %.2g and another light traced %.2g "
+                  "from the game's with its map, traced reached %.2g from the twin, blocked %d pixels lit, ratio 0.5 %.2g from half the twin; "
+                  "our twin %.2g; CONTROL the twin under the rays: %d values apart from the game's with its map\n",
+                  twin.shadowed, twin.twin, soft_edges, lighted, pixels, shadowed_pixels, DifferentValues(twin_light, lit_light), untraced_apart,
+                  other_apart, reached_apart, blocked_lit, half_apart, twin_apart, DifferentValues(twin_light, shadowed_light));
       CHECK(lighted > 0, "point shadows %s: the light reaches nothing", twin.shadowed);
       CHECK(DifferentValues(twin_light, lit_light) == 0, "point shadows %s: lit map not the twin", twin.shadowed);
-      CHECK(ours_light.size() == twin_light.size() && ours_apart < 1e-5f, "point shadows %s: our twin not the game's", twin.twin);
-      CHECK(DifferentValues(twin_light, shadowed_light) > 0, "point shadows %s: CONTROL a random map is the twin", twin.shadowed);
+      CHECK(untraced_apart < 1e-5f, "point shadows %s: ours untraced not the game's map", twin.shadowed);
+      CHECK(other_apart < 1e-5f, "point shadows %s: ours with another light traced not the game's map", twin.shadowed);
+      CHECK(reached_apart < 1e-5f, "point shadows %s: ours traced and reached not the twin", twin.shadowed);
+      CHECK(blocked_lit == 0, "point shadows %s: ours traced and blocked still lit", twin.shadowed);
+      CHECK(half_apart < 1e-5f, "point shadows %s: ours at ratio 0.5 not half the twin", twin.shadowed);
+      CHECK(twin_apart < 1e-5f, "point shadows %s: our twin not the game's", twin.twin);
+      CHECK(shadowed_pixels > 0 && DifferentValues(twin_light, shadowed_light) > 0, "point shadows %s: CONTROL the twin is the game's with its map",
+            twin.shadowed);
     }
   }
 }
