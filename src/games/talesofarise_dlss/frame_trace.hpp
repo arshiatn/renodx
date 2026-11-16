@@ -334,11 +334,15 @@ inline std::string Status() {
   return internal::state.status;
 }
 
-// Present: ends a traced frame (writes the file), starts a requested one. renodx_trace_now next to the exe (a data run,
-// or RENODX_TW_SET's "trace" key) asks for the next frame: looked for each 60 presents, removed.
+// Present: ends a traced frame (writes the file), starts a requested one. In a scripted run (twattila/test_hooks.hpp's
+// RENODX_TW_SET, _SHOT or _PROFILE set, as every data run's renodx_test_hooks.txt sets them before the first present)
+// renodx_trace_now next to the exe (the run's script, or RENODX_TW_SET's "trace" key) asks for the next frame: looked
+// for each 60 presents, removed. Otherwise nothing is looked for: the buttons call Request.
 inline void OnPresent() {
   auto& state = internal::state;
-  if (static uint32_t presents = 0; ++presents % 60 == 0
+  static const bool scripted = GetEnvironmentVariableA("RENODX_TW_SET", nullptr, 0) != 0 || GetEnvironmentVariableA("RENODX_TW_SHOT", nullptr, 0) != 0
+                               || GetEnvironmentVariableA("RENODX_TW_PROFILE", nullptr, 0) != 0;
+  if (static uint32_t presents = 0; scripted && ++presents % 60 == 0
                                     && DeleteFileW((internal::ExecutableFolder() / L"renodx_trace_now").c_str()) != 0) {
     Request();
   }
