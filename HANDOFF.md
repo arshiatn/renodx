@@ -66,6 +66,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -156,7 +157,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R.U.S.E. T-run list (ATN loads a battle, one row at a time with PresentMon): DLA ... | coordinator (after the Fable review fixes)
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
 - Skills update 2 (tools/tw/round_notes/skill_lessons_1116b.md, 11 lessons) by sk2 ... | sk2_ / coordinator
-- Which other games need the window-switch fix (release_flip_chains_before_recreat ... | survey agent, then coordinator
+- Window-switch tests (after the restart, with ATN): Attila / Thrones / WH1 / WH2 ... | coordinator (data runs)
 - PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator ATN 02:5x: only the RUNNING agents finish (lg_ l
 - AFTER THE RESTART, in order (nothing of this started before it): 1. Build all (b ... | coordinator
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
@@ -1370,8 +1371,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         Vanilla (0.027-0.035); the R6 bloom smoothing in SDR (up to 22 in WH2 t00). Make Vanilla = the game? Owner: ATN
       - [ ] Skills update 2 (tools/tw/round_notes/skill_lessons_1116b.md, 11 lessons) by sk2_, then rebuild the zip.
         Owner: sk2_ / coordinator
-      - [ ] Which other games need the window-switch fix (release_flip_chains_before_recreate opt-in): survey started
-        02:3x. Owner: survey agent, then coordinator
+      - [x] SURVEY DONE 02:5x (all ReShade logs under tools, deduplicated): only Divinity 1 makes a second chain on the same
+        live device and gets 0x80070005; no other game needs the opt-in on current evidence. Game flip already (not
+        exposed): WH3, Troy, Pharaoh, Shogun 2, Rome Remastered, Expeditions, Divinity 2. blt -> flip but 1 chain per
+        session seen: Attila, Thrones, WH1, WH2 (alt-tab = SetFullscreenState), Rome II (settings apply rebuilds the device
+        cleanly), Tales (ResizeBuffers), Ryse (SetFullscreenState + ResizeBuffers). R.U.S.E.: the proxy's second flip chain
+        hits "Flip swapchain already exists for this window, aborting modification" (no crash; SDR fallback possible).
+      - [ ] Window-switch tests (after the restart, with ATN): Attila / Thrones / WH1 / WH2 options Windowed <-> Fullscreen +
+        a resolution change; Tales Display Mode / resolution; Ryse r_FullscreenWindow + resolution; R.U.S.E. display mode +
+        resolution (if the proxy falls back to SDR: release the old proxy chain in utils::device_proxy). Opt in only where
+        one crashes. Owner: coordinator (data runs)
       - [ ] PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, everything is merged, pushed and
         HANDOFF is current (no running build / GPU job / game); installs after the restart. Owner: coordinator
         ATN 02:5x: only the RUNNING agents finish (lg_ lens flares + 2.2 gamma, rrf_ R.U.S.E. review fixes, sk2_ skills 2,
