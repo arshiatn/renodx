@@ -812,7 +812,8 @@ void BuildRuntimeData() {
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.",
+        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() { ApplyRecommendedPreset(); },
     },
     new renodx::utils::settings::Setting{
@@ -820,7 +821,8 @@ void BuildRuntimeData() {
         .label = "Reset",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.",
+        .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() {
           ApplyResetPreset();
         },
