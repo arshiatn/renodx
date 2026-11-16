@@ -1445,6 +1445,7 @@ void ConfigureAddon() {
           .tooltip = "Less input lag on NVIDIA GPUs: each frame starts only as the GPU needs it.\n"
                      "Boost also keeps the GPU's clocks up. Always on with frame generation.",
           .labels = {"Off", "On", "On + Boost"},
+          .is_visible = [] { return twattila::dlaa_bridge::OnNvidia(); },
       },
       new renodx::utils::settings::Setting{
           .key = "FrameGenerationFrameLimit",
@@ -1453,12 +1454,17 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Frame Rate Limit",
           .section = AA_SECTION,
-          .tooltip = "Caps the rendered frame rate with NVIDIA Reflex (frame generation multiplies it).\n"
+          .tooltip = "Caps the rendered frame rate with NVIDIA Reflex or Xe Low Latency (frame generation multiplies it). A\n"
+                     "cap the game always reaches keeps the frame rate steady: less VRR flicker on OLED displays.\n"
                      "Needs Reflex or frame generation on. 0: off.",
           .min = 0.f,
           .max = 240.f,
           .format = "%d fps",
           .is_enabled = [generating] { return generation_sliders.reflex != 0.f || generating(); },
+          // Attila's: what paces it, Reflex on NVIDIA's GPUs or XeSS frame generation's Xe Low Latency.
+          .is_visible = [] {
+            return twattila::dlaa_bridge::OnNvidia() || twattila::dlaa_bridge::FrameGenerationBackend() == twattila::dlaa_bridge::FG_BACKEND_XESS;
+          },
       },
       new renodx::utils::settings::Setting{
           .key = "FrameGenerationHudRecomposition",
