@@ -2422,8 +2422,12 @@ bool AttachAddon() {
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
   twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // The point lights (ATN's session 3: two instanced draws a frame, VS 6CFF8F83 with PS 143A02ED after the sun draw; 64-byte
-  // instances, the light's position at POSITION2.xyz): shaders/pointlight00 reads the rays' bits (Pharaoh's fire02 form).
-  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x143A02ED});
+  // instances, the light's position at POSITION2.xyz): shaders/pointlight00 reads the rays' bits (Pharaoh's fire02 form). The
+  // game's other 7 builds of it (names.tsv: smooth / linear falloff, slm / skinlm, with and without the point shadow map;
+  // level B, in no trace) the same, pointlight01-07: the shadowed 4 take the rays' shadow in place of the map's for each
+  // light the rays trace at the pixel and keep the map for the rest (rt_local_lights.hlsli RtLocalLightTraced). WARP on
+  // the game's bytes with nothing bound: 0 values apart (tw2_ ps_compare).
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 8>{0x143A02ED, 0x027D250D, 0x58B3C96F, 0x4E7D9E2D, 0xC8345238, 0xD60958F1, 0xFB4A7ED0, 0x5DAF337D});
   // The fires: their particle lights' draws, the lights streamed (PARTICLE_LIGHTS); shaders/particlelight00 reads the bits.
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x643FC156}, twattila::rt_scene::internal::NO_LIGHT_CONSTANTS, &PARTICLE_LIGHTS);
   // Log Details' light count: the point lights and the night siege's fires (particle lights 643FC156, VS F5CE48CC: one draw,
