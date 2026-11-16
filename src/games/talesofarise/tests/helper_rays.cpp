@@ -7,7 +7,8 @@
  * ScreenToWorld rows; ViewCamera's metres against TranslatedWorldToClip on (centimetres + PreViewTranslation). Controls:
  * the direction negated (what TowardSun without its sign test gives in about half the cases), the camera without
  * PreViewTranslation, both caught.
- * From an x64 VS developer prompt at the repository root, after the talesofarise target (join these lines):
+ * Run by test/tw_tales_unit (after the talesofarise target), or from an x64 VS developer prompt at the repository root
+ * (join these lines):
  * clang-cl /nologo /std:c++20 /EHsc /MTd /DWIN32=1 /D_WINDOWS /D_DEBUG /D_ITERATOR_DEBUG_LEVEL=0 /DNOMINMAX /w
  *   /I. /Ibuild/talesofarise.include /Iexternal/reshade /Iexternal/reshade/include /Iexternal/Detours/include
  *   src/games/talesofarise/tests/helper_rays.cpp /Febuild/helper_rays.exe
