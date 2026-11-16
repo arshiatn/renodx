@@ -250,7 +250,10 @@ struct BendSettings {
   float edge_threshold = 0.02f;
   float hard_samples = 4.f;
   float fade_samples = 8.f;
-  float ignore_edges = 0.f;
+  // Bend's IgnoreEdgePixels, as it recommends for large flat surfaces: on far ground the rows' depth steps pass its edge
+  // threshold, and a row's sample read at its centre (no bilinear push back) sat one window in front of the ray from the
+  // pixel beside it: single shadowed pixels on lit ground (tests 6c: 46-48 at 256 x 144; at 4K near the horizon).
+  float ignore_edges = 1.f;
   float precision_offset = 0.f;
   float sample_along_ray = 0.f;
   float softness = 0.f;
@@ -1058,6 +1061,10 @@ inline void OnBloom(reshade::api::command_list* cmd_list) {
   ComPtr<ID3D11DeviceContext> context;
   reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native())->GetImmediateContext(context.GetAddressOf());
   context->CopyResource(state.kept_depth.Get(), bridge.depth.proxy.Get());
+  // The next frame's ground depth goes into the same shared depth (ShadeGround's copy, D3D9) before D3D11 waits for D3D9
+  // again: the D3D9 queue waits for this copy (without it the copy could read that depth: no unit, tree or building in
+  // O1's start depth, Bend's march over it all lit; tw_ruse_bridge 6c: 0 of 452 shadow pixels, 427 with it).
+  bridge::HandToHost(reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native()), context.Get(), host);
   std::memcpy(state.kept_inverse.data(), bridge.camera.data() + 16, sizeof(state.kept_inverse));
   const std::array<float, 2> drawn_jitter = bridge::DrawnJitter();
   state.kept_jitter = {2.f * drawn_jitter[0] / static_cast<float>(bridge.width), -2.f * drawn_jitter[1] / static_cast<float>(bridge.height)};
