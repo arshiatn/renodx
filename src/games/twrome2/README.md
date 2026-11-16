@@ -1,5 +1,41 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
+### Fix round (2026-11-16; built only, not run in game)
+
+New:
+- **Recommended** preset (first in the presets): HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default; Output
+  Auto turns HDR on with it. ATN's peak presets as before.
+- **Time Each Pass (One Frame)**, as Attila's: every pass's GPU time into rome2_pass_timing.txt next to the game's exe.
+- Torch and Fire Shadows now on every point light without the game's point shadow map: low-detail lights, the linear
+  falloff and the shader model 4.1 / 3.0 builds (26 shaders, before 2).
+- Water Clarity, Caustics and Skip the Shadow Maps' water now on every water build: every Water Quality, shadow method and
+  shader model (17 waters, 15 shadow readers; before 3 each). The 18 shader model 3.0 water shadow readers stay lit under
+  Skip the Shadow Maps.
+- Smoke Shadows on every shader model and quality of the three smoke effects (14 shaders, before 7).
+
+Fixed:
+- Screen-Space Shadows (Bend) are off under ray-traced sun shadows: one shadow method, as Attila's.
+- Modded Auto Exposure: Sensitivity is now in stops (1-8, default 4, as Attila's); it acted in tenfold steps (1.0 was 3.3
+  stops). ATN's presets and saved values convert to the same look.
+- Unit/Building Indicator Brightness acts in HDR only (Rendering Mode SDR is the game's picture), Attila's label.
+- The campaign map's object motion at the campaign's world scale (city walls smeared with a still camera, Attila's v120 bug).
+- The in-game Gamma / Brightness line first on page 1; Video AutoHDR / Dithering greyed out at Output SDR; Reset and the
+  peak presets say Peak, Paper White, UI, Settings Mode and Output are kept; tooltip typos; credits (Bjorn Ottosson).
+- Torch light hook: one atomic without the rays (CPU); DllMain returns TRUE when ReShade's registration fails.
+
+Proven offline (WARP against the game's bytes, failing controls): tools/tw/rome2/lights_r3 (26 of 26), water_r2 (67 of
+67), smoke_r3, page1_r4 (auto exposure, indicators); test/tw_unit_shadows part 8 (the shadow cascades pattern once in the
+shipped DLL); test/tw_vanilla_exact (56 replaced shaders, before 21; the rest and why in its table); test/tw_psychov35
+part 4b (the toe: PsychoV35 the game's from 5% grey up, 10% darker at 1%).
+
+Not done: unit cut-outs in the rays (Rome II's captures have no cut-out versions yet); Batched Unit Capture (its row
+shows but does nothing here: no Rome II bone pack hook); morefire00 draws at 0.2 x the game's at VFX Fire Brightness 1
+also in Rendering Mode SDR (ATN's look, his call).
+
+In game: a battle and the campaign with Torch and Fire Shadows, Water Clarity / Caustics and Smoke Shadows at Shader Model
+3.0 and 4.1 and Water Quality Low; Motion Debug View on a campaign city with a still camera; Modded Auto Exposure on at 1.3
+against the old 0.4 (same look); Time Each Pass in a battle.
+
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
 - **Ray-Traced AO and Path-Traced AO replace the game's HBAO and GT-VBAO** (ATN: never on top of them), as Attila's and
@@ -115,7 +151,8 @@ Fixed:
 - Smoke Shadows' smoke took its texture one level blurrier than the game draws it (the effects' viewport read as half its size).
 
 Not done:
-- Torch shadows from the low-detail and older-GPU light shaders (in no run) and under in-game MSAA (no rays there).
+- Torch shadows from the low-detail and older-GPU light shaders (in no run): done in the Fix round (2026-11-16); under
+  in-game MSAA none (no rays there).
 - Smoke shadows from artillery trails: in no run yet.
 - Cutscene Point Light Shadows: High: the game never reads that value.
 
