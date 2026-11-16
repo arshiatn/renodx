@@ -71,11 +71,13 @@ dropped every triangle as garbage (past 200 km) and nothing cast a shadow. Ours 
 | Ray-Traced Ground Shadows | The traced sun visibility with the game's shadow-map term in the ground mask, the darker of the two (the pre-pass `0x8588D239` writes only that term into the red of the mask the 110 terrain and 94 water shaders read by screen position). A frame without a trace keeps the game's. |
 | Ray-Traced Object Shadows | 642 object pixel shaders, patched in their bytecode (`ru_scene_patches.py`): after their shadow-map factor's off-map select, `cmp rD, -rT.w, rD, rT.x` with s15 the visibility (its alpha 1: the rays in place of the factor, where they found the sun blocked; an alpha-0 texel when untraced: the game's). Moving units are a frame late (last frame's main depth reprojected). |
 | Screen-Space Ground Shadows | Bend Studio's march with the game's shadow maps (the darker of the two in the ground mask). Off under the ground rays. |
+| Screen-space rows' depth | Bend, GT-VBAO and GT-VBGI march over O1's start depth: last frame's main depth (kept at the bloom) reprojected over the ground pre-pass's. The pre-pass draws the terrain alone; on its depth they found only its relief, which the shadow maps already shade (run_rn3: no visible change for +1.1 / +2.5 / +2.6 ms GPU). Without the anti-aliasing's bridge (GT-VBAO alone) there is no main depth: the terrain's. |
 | Ray-Traced Ground Ambient Occlusion / Screen-Space Ground Ambient Occlusion | The rays' AO, else GT-VBAO, into the 108 terrain shaders' ambient (s14). Both skipped once Path-Traced Light Bounce replaces the ambient. |
 | Ground Light Bounce | Screen-Space: GT-VBGI on the ground. Ray-Traced / Path-Traced: the helper's Light Bounce through guides the patched terrain and object shaders write (oC1 albedo, oC2 normal), into the same s14 texel; Path-Traced brings the sky in place of the game's flat ambient on the ground and the objects (Lean and Near ReSTIR Reuse on). |
 | Water Reflections | Screen-Space: a march over the start depth, its hits in last frame's scene; Ray-Traced: the helper's reflections; the 120 water shaders blend it over their cube by its share (s13). |
 | Rays Replace Shadow Maps (live, Experimental, off) | On: the rays alone, in place of the game's shadow-map term (ground) and factor (objects). Off: the rays keep the maps until a run proves they hold the maps' casters (ours replaces the game's where proven). |
 | Units Ray Tracing Range (live) | Moving units (the replay's compact draws) farther than this out of the scene; 0 m: all. |
+| Ground Debug View (live) | Over the scene at the bloom: the ground mask's red (the game's term with ours), our sun visibility (rays or Bend), the ground's occlusion (rays or GT-VBAO); black shadowed, magenta where that frame made none. |
 
 Not covered: 2 object shaders whose shadow select writes an output, 60 lit object shaders the guides can't patch, 12
 terrain shaders (they keep the game's shading). The game's shadow-map pass still draws (its readers: water, sprites,
@@ -137,8 +139,10 @@ Offline checks (tools/nontw/ruse/scripts, outside the repo):
   device, with a refused control).
 - `test/tw_psychov35` part 6 (WARP): grey, slope, markers and Extended's ramp for the three grades.
 - `test/tw_ruse_bridge` (GPU): H1 INTZ, shared textures, the 10-bit round trip and jitter; H2 the helper's DLAA / FSR /
-  XeSS and frame generation on synthetic frames; H3 the replay against the census VS.
+  XeSS and frame generation on synthetic frames, the rays end to end at the game's coordinates (case 12); 6b O1's
+  reprojection and the screen-space rows over it; H3 the replay against the census VS.
 
 In game: in-game AA becomes 1x after the first start with Anti-Aliasing on (check the log's `Option.ini MainRTAA 8.5 ->
-1`), the next start logs `Anti-aliasing: DLAA ready` and `... applied`; with the rays, `Ray tracing: tracing (...)`.
+1`), the next start logs `Anti-aliasing: DLAA ready` and `... applied`; with any ground row `Ground passes ready at
+WxH: ...`; with the rays, `Ray tracing: tracing (...)`.
 Compare each row off / on in one battle (F1 takes the HDR runtime's screenshot).

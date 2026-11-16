@@ -23,7 +23,16 @@
 //    camera's 13.6 degree pitch about one sector of 32 at the horizon goes, 0.969; 0.9975 facing the camera), darker on the
 //    ground beside the plateau on screen, and the same shader over the same depth and constants on WARP within one
 //    sector's share (1 / 128) at 99% of the pixels; released as at a D3D9 Reset and made again: the same occlusion. Then
-//    Bend's screen-space ground shadows (no helper) with a low sun: ground beside the plateau shadowed, open ground lit.
+//    Bend's screen-space ground shadows (no helper) with a low sun: open ground lit; the plateau's shadow printed (a
+//    floating sheet is no caster for its march: 2-3 of 1,294 pixels; the old "20 shadowed" passed on stray pixels).
+// 6b. The screen-space rows over O1's start depth (and H3's O1 reprojection on the GPU): the pre-pass's depth holds the
+//    ground alone (the game draws units, trees and buildings in the main pass), the plateau is only in the main depth
+//    the bridge's prepare pass writes at the bloom (OnBloom keeps it). The next frame, from a camera moved 500 units:
+//    the start depth holds the plateau where the CPU projects it (95% of its inner pixels nearer its depth than the
+//    ground's: the forward scatter leaves cracks that keep the ground's) and the ground elsewhere (99%); GT-VBAO darker
+//    beside it (Bend's printed, as in 6). The frame before (the ground's depth alone, every frame before this change)
+//    hasn't: the control. Then the Ground Debug View over a frame-sized target: the occlusion and the visibility
+//    exactly, magenta for the mask (not copied this frame).
 // 9. Guides (ray_tracing.hpp BindGuides: the rays' bounce and reflections): the three guide targets made by D3D9Ex and
 //    opened by D3D11 (B8G8R8A8, RGBA16F x 2) as render targets 1-3 beside a 10-bit scene target: ColorFill clears them
 //    (RGBA16F too), each target's write mask holds, a blended draw (SRCALPHA / INVSRCALPHA: D3D9's one blend state)
@@ -926,20 +935,271 @@ int main(int argc, char** argv) {
       const std::vector<uint8_t> visibility = ReadHost(host, rays.visibility.host_surface.Get(), 4);
       size_t shadowed = 0;
       size_t lit = 0;
+      size_t in_shadow = 0;
+      size_t shadowed_in = 0;
+      size_t beside_plateau = 0;  // of the shadowed pixels outside the shadow: within 3 pixels of the plateau's
+      size_t near_edge = 0;       // within 5 % of the ground's edge
       double lowest = 1;
       for (UINT y = 0; y < HEIGHT; ++y) {
         for (UINT x = 0; x < WIDTH; ++x) {
           const size_t index = (static_cast<size_t>(y) * WIDTH) + x;
-          if (on_plateau[index] != 0 || HitGround(inverse, ground, x, y).inside < 0.01) continue;
+          const GroundHit hit = HitGround(inverse, ground, x, y);
+          if (on_plateau[index] != 0 || hit.inside < 0.01) continue;
+          const double rise = (plateau.height - ground.height) / rays.toward_sun[2];
+          const double margin = 0.02 * (plateau.box_max[0] - plateau.box_min[0]);
+          const double sun_x = hit.point[0] + (rise * rays.toward_sun[0]);
+          const double sun_y = hit.point[1] + (rise * rays.toward_sun[1]);
+          const bool blocked = sun_x > plateau.box_min[0] + margin && sun_x < plateau.box_max[0] - margin && sun_y > plateau.box_min[1] + margin
+                               && sun_y < plateau.box_max[1] - margin;
           const double value = Float(visibility, index);
           lowest = std::min(lowest, value);
-          if (value < 0.5) ++shadowed;
+          if (blocked) ++in_shadow;
+          if (value < 0.5) {
+            ++shadowed;
+            if (blocked) {
+              ++shadowed_in;
+            } else {
+              bool beside = false;
+              for (int dy = -3; dy <= 3; ++dy) {
+                for (int dx = -3; dx <= 3; ++dx) {
+                  const int sx = static_cast<int>(x) + dx;
+                  const int sy = static_cast<int>(y) + dy;
+                  if (sx >= 0 && sy >= 0 && sx < static_cast<int>(WIDTH) && sy < static_cast<int>(HEIGHT)
+                      && on_plateau[(static_cast<size_t>(sy) * WIDTH) + sx] != 0) {
+                    beside = true;
+                  }
+                }
+              }
+              if (beside) ++beside_plateau;
+              if (hit.inside < 0.05) ++near_edge;
+            }
+          }
           if (value > 0.99) ++lit;
         }
       }
-      // RTX 5090 2026-11-16: 41-43 shadowed, lowest 0; the passes' old order: 0, lowest 1.
-      std::printf("Bend: ground pixels shadowed %zu, lit %zu, lowest visibility %.3f\n", shadowed, lit, lowest);
-      CHECK(shadowed >= 20 && lit > 1000);
+      // RTX 5090 2026-11-16: 41-43 shadowed, lowest 0; the passes' old order: 0, lowest 1. Of them only 2-3 lie in the
+      // plateau's shadow (1,294 pixels): a floating sheet is no caster for a screen-space march (the ray passes under it,
+      // past the surface's thickness); the rest are single pixels on open ground (9 near its edge). Printed, not checked
+      // (the old check, 20 shadowed, passed on those): the march running and not darkening the ground.
+      std::printf("Bend: ground pixels shadowed %zu (%zu of %zu in the plateau's shadow; outside it %zu beside the plateau, %zu near the ground's "
+                  "edge), lit %zu, lowest visibility %.3f\n",
+                  shadowed, shadowed_in, in_shadow, beside_plateau, near_edge, lit, lowest);
+      CHECK(lit > 1000);
+    }
+
+    // 6b. The screen-space rows over O1's start depth.
+    {
+      ruse::ray_tracing::ReleaseHost();
+      const ComPtr<IDirect3DTexture9> ground_only = MakeTarget(host, INTZ, D3DUSAGE_DEPTHSTENCIL);
+      const ComPtr<IDirect3DTexture9> main_depth_a = MakeTarget(host, INTZ, D3DUSAGE_DEPTHSTENCIL);
+      const ComPtr<IDirect3DTexture9> debug_target = MakeTarget(host, D3DFMT_A16B16G16R16F);
+      REQUIRE(ground_only != nullptr && main_depth_a != nullptr && debug_target != nullptr);
+      const ComPtr<IDirect3DSurface9> ground_only_surface = Level(ground_only.Get());
+      const ComPtr<IDirect3DSurface9> main_depth_a_surface = Level(main_depth_a.Get());
+      bridge::OnInitDepthView(&host_device, {reinterpret_cast<uint64_t>(ground_only.Get())}, reshade::api::resource_usage::depth_stencil,
+                              reshade::api::resource_view_desc(reshade::api::resource_view_type::texture_2d, reshade::api::format::intz, 0, 1, 0, 1),
+                              {reinterpret_cast<uint64_t>(ground_only_surface.Get())});
+      // Camera B: the world 500 units along +x in its view (about 6 pixels here).
+      Matrix view_projection_b = view_projection;
+      for (size_t row = 0; row < 4; ++row) view_projection_b[(row * 4) + 3] += view_projection[row * 4] * 500.0;
+      const std::array<float, 16> camera_b = ToFloat(view_projection_b);
+      const std::array<float, 16> inverse_b_float = ToFloat(Inverse(ToDouble(camera_b)));
+      const Matrix inverse_b = ToDouble(inverse_b_float);
+      const auto draw_depth = [&](IDirect3DSurface9* depth, const std::array<float, 16>& camera, bool with_plateau) {
+        host->SetRenderTarget(0, scratch_surface.Get());
+        host->SetDepthStencilSurface(depth);
+        REQUIRE(SUCCEEDED(host->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0, 1.f, 0)));
+        DrawGround(host, ground_draw, flat_ps.Get(), ground, &camera, camera);
+        if (with_plateau) DrawGround(host, ground_draw, flat_ps.Get(), plateau, &camera, camera);
+        host->SetDepthStencilSurface(nullptr);
+      };
+      const auto shade = [&] {
+        host->BeginScene();
+        const bool shaded = ruse::ray_tracing::ShadeGround(&command_list);
+        host->EndScene();
+        return shaded;
+      };
+      // GT-VBAO's mean on open ground and beside the plateau, Bend's shadowed ground pixels: test 6's measures in a camera.
+      struct GroundStats {
+        double open_mean = 0;
+        double beside_mean = 0;
+        size_t beside = 0;
+        size_t shadowed = 0;
+        size_t in_shadow = 0;  // where the plateau blocks the sun (rays.toward_sun), 2 % inside its edges
+        size_t shadowed_in = 0;
+      };
+      const auto measure = [&](const Matrix& camera_inverse) {
+        const std::vector<uint8_t> occlusion = ReadHost(host, rays.occlusion.host_surface.Get(), 4);
+        const std::vector<uint8_t> visibility = ReadHost(host, rays.visibility.host_surface.Get(), 4);
+        std::vector<uint8_t> plateau_pixels(static_cast<size_t>(WIDTH) * HEIGHT);
+        for (UINT y = 0; y < HEIGHT; ++y) {
+          for (UINT x = 0; x < WIDTH; ++x) plateau_pixels[(y * WIDTH) + x] = HitGround(camera_inverse, plateau, x, y).inside > -0.01 ? 1 : 0;
+        }
+        GroundStats stats;
+        size_t open = 0;
+        for (int y = 0; y < static_cast<int>(HEIGHT); ++y) {
+          for (int x = 0; x < static_cast<int>(WIDTH); ++x) {
+            const size_t index = (static_cast<size_t>(y) * WIDTH) + x;
+            const GroundHit hit = HitGround(camera_inverse, ground, x, y);
+            if (plateau_pixels[index] != 0 || hit.inside < 0.01) continue;
+            const double rise = (plateau.height - ground.height) / rays.toward_sun[2];
+            const double margin = 0.02 * (plateau.box_max[0] - plateau.box_min[0]);
+            const double sun_x = hit.point[0] + (rise * rays.toward_sun[0]);
+            const double sun_y = hit.point[1] + (rise * rays.toward_sun[1]);
+            const bool blocked = sun_x > plateau.box_min[0] + margin && sun_x < plateau.box_max[0] - margin && sun_y > plateau.box_min[1] + margin
+                                 && sun_y < plateau.box_max[1] - margin;
+            if (blocked) ++stats.in_shadow;
+            if (Float(visibility, index) < 0.5) {
+              ++stats.shadowed;
+              if (blocked) ++stats.shadowed_in;
+            }
+            int nearest = 1 << 20;
+            for (int dy = -24; dy <= 24; ++dy) {
+              for (int dx = -24; dx <= 24; ++dx) {
+                const int sx = x + dx;
+                const int sy = y + dy;
+                if (sx < 0 || sy < 0 || sx >= static_cast<int>(WIDTH) || sy >= static_cast<int>(HEIGHT)) continue;
+                if (plateau_pixels[(static_cast<size_t>(sy) * WIDTH) + sx] != 0) nearest = std::min(nearest, std::max(std::abs(dx), std::abs(dy)));
+              }
+            }
+            if (nearest > 24) {
+              ++open;
+              stats.open_mean += Float(occlusion, index);
+            } else if (nearest <= 3) {
+              ++stats.beside;
+              stats.beside_mean += Float(occlusion, index);
+            }
+          }
+        }
+        stats.open_mean /= static_cast<double>(std::max<size_t>(open, 1));
+        stats.beside_mean /= static_cast<double>(std::max<size_t>(stats.beside, 1));
+        return stats;
+      };
+      // Frame A: the pre-pass's depth the ground alone, the plateau only in the main depth.
+      rays.bend = true;
+      draw_depth(ground_only_surface.Get(), VIEW_PROJECTION, false);
+      draw_depth(main_depth_a_surface.Get(), VIEW_PROJECTION, true);
+      rays.prepass_depth = reinterpret_cast<uint64_t>(ground_only_surface.Get());
+      rays.ground_mask = reinterpret_cast<uint64_t>(scratch.Get());
+      const bool shaded_a = shade();
+      REQUIRE(shaded_a);
+      const GroundStats before = measure(inverse);
+      // The bloom: the bridge's prepare pass writes the main depth into its shared depth, OnBloom keeps it.
+      const std::array<IDirect3DSurface9*, 1> shared_depth = {state.depth.host_surface.Get()};
+      const std::array<IDirect3DBaseTexture9*, 1> main_source = {main_depth_a.Get()};
+      host->BeginScene();
+      bridge::DrawQuad(host, shared_depth, rays.depth_copy.Get(), main_source, {});
+      host->EndScene();
+      bridge::WaitHost(host);
+      state.depth_frame = state.frame;
+      ruse::ray_tracing::OnBloom(&command_list);
+      const bool kept = rays.kept_frame == state.frame;
+      {
+        // The kept depth against the CPU's plateau in camera A (the main depth's).
+        const std::vector<uint8_t> shared = ReadProxy(devices, state.depth.proxy.Get(), 4);
+        const std::vector<uint8_t> kept_pixels = ReadProxy(devices, rays.kept_depth.Get(), 4);
+        size_t inner = 0;
+        size_t shared_plateau = 0;
+        size_t kept_plateau = 0;
+        double kept_sum = 0;
+        for (UINT y = 0; y < HEIGHT; ++y) {
+          for (UINT x = 0; x < WIDTH; ++x) {
+            const GroundHit on_plateau = HitGround(inverse, plateau, x, y);
+            if (on_plateau.inside < 0.05) continue;
+            std::array<double, 4> clip = {};
+            for (size_t row = 0; row < 4; ++row) {
+              for (size_t k = 0; k < 4; ++k) clip[row] += view_projection[(row * 4) + k] * on_plateau.point[k];
+            }
+            const double want = clip[2] / clip[3];
+            const size_t index = (static_cast<size_t>(y) * WIDTH) + x;
+            ++inner;
+            if (std::abs(Float(shared, index) - want) < 1e-4) ++shared_plateau;
+            if (std::abs(Float(kept_pixels, index) - want) < 1e-4) ++kept_plateau;
+            kept_sum += Float(kept_pixels, index) - want;
+          }
+        }
+        std::printf("O1 kept depth (camera A): plateau in the shared depth %zu, in the kept %zu of %zu (mean kept - plateau %.2e); jitter A %.3f %.3f, "
+                    "ready %d\n",
+                    shared_plateau, kept_plateau, inner, kept_sum / static_cast<double>(std::max<size_t>(inner, 1)), rays.kept_jitter[0],
+                    rays.kept_jitter[1], state.ready ? 1 : 0);
+      }
+      // Frame B, from camera B (its inverse in c4-c7, camera A's view-projection as last frame's).
+      bridge::OnPresent(host);
+      state.jitter = {};
+      std::ranges::copy(inverse_b_float, state.camera.begin() + 16);
+      std::ranges::copy(VIEW_PROJECTION, state.camera.begin());
+      draw_depth(ground_only_surface.Get(), camera_b, false);
+      const bool shaded_b = shade();
+      REQUIRE(shaded_b);
+      const GroundStats after = measure(inverse_b);
+      // The start depth against the CPU's: the plateau's depth or the ground's, whichever the pixel's value is nearer.
+      const std::vector<uint8_t> start = ReadProxy(devices, rays.start_depth.Get(), 4);
+      const auto depth_at = [&](const Vector& point) {
+        std::array<double, 4> clip = {};
+        for (size_t row = 0; row < 4; ++row) {
+          for (size_t k = 0; k < 4; ++k) clip[row] += view_projection_b[(row * 4) + k] * point[k];
+        }
+        return clip[2] / clip[3];
+      };
+      size_t plateau_inner = 0;
+      size_t plateau_right = 0;
+      size_t ground_open = 0;
+      size_t ground_right = 0;
+      for (UINT y = 0; y < HEIGHT; ++y) {
+        for (UINT x = 0; x < WIDTH; ++x) {
+          const GroundHit on_plateau = HitGround(inverse_b, plateau, x, y);
+          const GroundHit on_ground = HitGround(inverse_b, ground, x, y);
+          if (on_ground.inside < 0.02) continue;
+          const double measured = Float(start, (static_cast<size_t>(y) * WIDTH) + x);
+          const bool nearer_plateau = std::abs(measured - depth_at(on_plateau.point)) < std::abs(measured - depth_at(on_ground.point));
+          if (on_plateau.inside > 0.05) {
+            ++plateau_inner;
+            if (nearer_plateau) ++plateau_right;
+          } else if (on_plateau.inside < -0.1) {
+            ++ground_open;
+            if (!nearer_plateau) ++ground_right;
+          }
+        }
+      }
+      std::printf("O1 start depth (camera moved): kept %d; plateau %zu of %zu inner pixels, ground %zu of %zu open pixels\n", kept ? 1 : 0, plateau_right,
+                  plateau_inner, ground_right, ground_open);
+      std::printf("Screen-space rows, the plateau in the main depth alone: GT-VBAO beside it %.4f (open %.4f) before, %.4f (open %.4f) from O1's "
+                  "start depth; Bend's shadowed ground pixels %zu before (%zu of %zu in the plateau's shadow), %zu after (%zu of %zu)\n",
+                  before.beside_mean, before.open_mean, after.beside_mean, after.open_mean, before.shadowed, before.shadowed_in, before.in_shadow,
+                  after.shadowed, after.shadowed_in, after.in_shadow);
+      CHECK(kept && plateau_inner > 500 && plateau_right * 100 >= plateau_inner * 95 && ground_right * 100 >= ground_open * 99);
+      // Before (the pre-pass's depth: the terrain alone): no darkening beside it (the control); after: GT-VBAO's. Bend's
+      // printed: the floating plateau is no caster for its march (test 6).
+      CHECK(before.beside > 100 && after.beside > 100 && after.beside_mean < before.beside_mean - 0.03 && after.beside_mean < after.open_mean - 0.03);
+
+      // The Ground Debug View over the scene (here a frame-sized RGBA16F target): the occlusion, the visibility, and
+      // magenta for the ground mask (not copied this frame).
+      state.pixel_texture_0 = reinterpret_cast<uint64_t>(debug_target.Get());
+      const ComPtr<IDirect3DSurface9> debug_surface = Level(debug_target.Get());
+      size_t shown_wrong = 0;
+      for (const auto& [view, source] : {std::pair{3.f, rays.occlusion.host_surface.Get()}, std::pair{2.f, rays.visibility.host_surface.Get()}}) {
+        rays.debug_view = view;
+        ruse::ray_tracing::OnBloom(&command_list);
+        const std::vector<uint8_t> expected = ReadHost(host, source, 4);
+        const std::vector<uint8_t> shown = ReadHost(host, debug_surface.Get(), 8);
+        for (size_t index = 0; index < static_cast<size_t>(WIDTH) * HEIGHT; ++index) {
+          if (std::abs(Half(shown, index * 4) - Float(expected, index)) > 2e-3 || std::abs(Half(shown, (index * 4) + 1) - Float(expected, index)) > 2e-3) {
+            ++shown_wrong;
+          }
+        }
+      }
+      rays.debug_view = 1.f;
+      ruse::ray_tracing::OnBloom(&command_list);
+      const std::vector<uint8_t> magenta = ReadHost(host, debug_surface.Get(), 8);
+      size_t magenta_wrong = 0;
+      for (size_t index = 0; index < static_cast<size_t>(WIDTH) * HEIGHT; ++index) {
+        if (std::abs(Half(magenta, index * 4) - 0.6f) > 2e-3 || Half(magenta, (index * 4) + 1) != 0.f) ++magenta_wrong;
+      }
+      std::printf("Ground Debug View: occlusion and visibility shown, %zu pixels wrong; magenta without a mask copy, %zu wrong\n", shown_wrong, magenta_wrong);
+      CHECK(shown_wrong == 0 && magenta_wrong == 0);
+      rays.debug_view = 0.f;
+      state.pixel_texture_0 = 0;
+      std::ranges::copy(inverse_float, state.camera.begin() + 16);
     }
     rays.bend = false;
 
@@ -1470,7 +1730,7 @@ int main(int argc, char** argv) {
       mirror(INDICES, {reinterpret_cast<const uint8_t*>(QUAD_INDICES.data()), reinterpret_cast<const uint8_t*>(QUAD_INDICES.data()) + sizeof(QUAD_INDICES)});
       const auto ground_shader = std::ranges::lower_bound(ruse::replay::SHADERS, ruse::replay::GROUND_SHADER, {}, &ruse::replay::ReplayShader::hash);
       REQUIRE(ground_shader != ruse::replay::SHADERS.end() && ground_shader->hash == ruse::replay::GROUND_SHADER);
-      const auto record = [&](const Ground& box) {
+      const auto record = [&](const Ground& box, uint64_t vertices = CORNERS, uint64_t indices = INDICES, uint32_t index_count = 6) {
         std::array<float, 13 * 4> constants = {};
         std::ranges::copy(VIEW_PROJECTION, constants.begin());
         constants[(7 * 4) + 3] = 1.f;  // SUN_VIEW's last element (DrawGround's c4-c7)
@@ -1482,8 +1742,8 @@ int main(int argc, char** argv) {
         const size_t at = replay.constants.size();
         replay.constants.insert(replay.constants.end(), constants.begin(), constants.begin() + (ground_shader->registers * 4));
         ++replay.counts.recorded;
-        replay.draws.push_back({.shader = &*ground_shader, .declaration = DECLARATION, .streams = {CORNERS}, .offsets = {}, .strides = {8},
-                                .index_buffer = INDICES, .index_offset = 0, .index_size = 2, .index_count = 6, .first_index = 0,
+        replay.draws.push_back({.shader = &*ground_shader, .declaration = DECLARATION, .streams = {vertices}, .offsets = {}, .strides = {8},
+                                .index_buffer = indices, .index_offset = 0, .index_size = 2, .index_count = index_count, .first_index = 0,
                                 .vertex_offset = 0, .topology = static_cast<uint32_t>(reshade::api::primitive_topology::triangle_list),
                                 .constants = at});
       };

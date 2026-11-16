@@ -1591,6 +1591,19 @@ void ConfigureAddon() {
                  "Off: both, the darker of the two (no shadow of the game's is lost).",
       .is_enabled = [] { return ruse::ray_tracing::state.ground; },
   });
+  // What the ground's passes made this frame, over the scene (live).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RuseGroundDebugView",
+      .binding = &ruse::ray_tracing::state.debug_view,
+      .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+      .default_value = 0.f,
+      .label = "Ground Debug View",
+      .section = SHADOWS_SECTION,
+      .tooltip = "Shows what the ground's shadow and ambient occlusion rows made this frame (black: shadowed or occluded;\n"
+                 "magenta: nothing made).",
+      .labels = {"Off", "Ground Shadow Mask", "Sun Visibility", "Ambient Occlusion"},
+      .is_enabled = [] { return ruse::ray_tracing::Shading(); },
+  });
   // Attila's row (live): the helper leaves out the moving replayed draws (the replay's compact ones, rt_core's units)
   // past the range (metres: ray_tracing.hpp HELPER_METRES).
   settings.push_back(new renodx::utils::settings::Setting{
@@ -1635,9 +1648,9 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Screen-Space Ground Shadows (Experimental)",
         .section = SHADOWS_SECTION,
-        .tooltip = "Bend Studio's screen-space sun shadows on the ground: hills and slopes shadow what lies behind them, with the\n"
-                   "game's shadow maps (costs GPU time). Off under Ray-Traced Ground Shadows. Needs Anti-Aliasing at DLAA, FSR or\n"
-                   "XeSS. Restart after changing this setting.",
+        .tooltip = "Bend Studio's screen-space sun shadows on the ground: hills, buildings, units and trees shadow what lies behind\n"
+                   "them, with the game's shadow maps (costs GPU time). Off under Ray-Traced Ground Shadows. Needs Anti-Aliasing at\n"
+                   "DLAA, FSR or XeSS. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
     };
@@ -1655,8 +1668,9 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Screen-Space Ground Ambient Occlusion (Experimental)",
         .section = AO_SECTION,
-        .tooltip = "GT-VBAO ambient occlusion on the ground: softly darker in hollows and at the foot of slopes (costs GPU time).\n"
-                   "Works without the helper; the ray-traced ground ambient occlusion replaces it where it runs.\n"
+        .tooltip = "GT-VBAO ambient occlusion on the ground: softly darker in hollows, at the foot of slopes and around buildings,\n"
+                   "units and trees (costs GPU time). Without Anti-Aliasing at DLAA, FSR or XeSS: hollows and slopes alone.\n"
+                   "The ray-traced ground ambient occlusion replaces it where it runs.\n"
                    "Needs the in-game anti-aliasing at 1x. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
