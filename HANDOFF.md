@@ -1803,6 +1803,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         R.U.S.E. has no Gamma Correction row. Reports runs2_1116/tales.md, ruse.md. RUNS 11-16 MORNING (rn2_, brief tools/tw/round_notes/runs2_1116/brief.md, after the 08:04 install): Tales Bend /
         GT-VBGI look shots with a title click, then the R.U.S.E. T-run; reports runs2_1116/tales.md, ruse.md. Morning
         report: tools/tw/round_notes/morning_report_1116.md. Owner: rn2_, then coordinator
+      - [x] rur_ MERGED 8bfea722d (proof A from run_rn2_rt_084045's one-frame trace): with MainRTAA 1 the main pass
+        shares the pre-pass depth, and OnSceneDraw's `depth_stencil == prepass_depth` return (written for the MSAA B0
+        trace) blocked every draw, so no trace was ever asked; GT-VBAO / Bend / GT-VBGI / SSR never ran in game either.
+        Fixes: the trace point is also the main pass's clear of that depth after the mask copy; scene draws only at
+        frame-sized viewports and the replay skips VS reading fewer than c0-c3 (2,572 -> 2,399 draws, no sprite atlas /
+        bloom); while no ray traces, one try per 60 frames and the depth copy / guides skipped (bench record + replay
+        0.35 ms -> 0.00 gated). tw_ruse_bridge cases 5 / 10 / 11 PASS. Not gated (can't be): buffer mirrors, bind events,
+        per-draw sun lookup, the 642 patched shaders' pushes. Installed 09:3x: Tales v77 + R.U.S.E. u4 (helper116).
+        Reruns: rn3_ (runs3_1116/brief.md). Optional: rt_core.hpp:4059 prints an empty status before any request.
       - [x] tgi_ MERGED 46bb1c8a1: causes measured on run_080739 (PQ-decoded): no double occlusion; the GI-off path halved
         the fill light (0.001 / 0.002 = 0.5 per channel); 10 stock toon lighting passes read the skipped chain's output at
         t28-t30 (stale pooled texture: characters / foliage); the biggest part is by design: Bandai's GI adds a lit
