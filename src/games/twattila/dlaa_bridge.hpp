@@ -87,7 +87,7 @@ struct TraceRequest {
   uint32_t shadow_rays = 1;   // v18: rays a pixel toward the sun and each light
   float sway_range = 0.f;     // v18: swaying copies within these metres of the camera (0: everywhere)
   float grass_shadow_range = 0.f;  // v18: pixels farther (metres) trace without grass (0: every pixel with it)
-  float grass_range = 0.f;  // Shared::rt_grass_range: placed grass farther (metres) out of the scene (0: all of it in)
+  float grass_range = 0.f;  // Shared::rt_grass_range: grass (placed or drawn) farther (metres) out of the scene (0: all of it in)
   float units_range = 0.f;  // Shared::rt_units_range: RT_UNIT draws' instances farther (metres) out of the scene (0: all in)
   uint32_t scene_flags = 0;  // Shared::rt_scene_flags: RT_SCENE_*
   float leaf_cutoff = 0.f;   // Shared::rt_leaf_cutoff: RT_OWN_CUTOFF's alpha cut-off (0: the helper's 0.5)

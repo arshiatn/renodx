@@ -419,6 +419,26 @@ Tests: `test/tw_ryse_path_ambient` parts 3-4 (WARP on the game's ssdo00 and ligh
 SDR output against the game's bytes), `test/tw_ryse_patterns` (every byte pattern once in `Bin64\ryse_image.bin`, with a
 one-byte CONTROL), `test/tw_ryse_shadow_skip` events.cpp (the skip under rt_core's replay).
 
+fix60 (draft, 2026-11-16 rys2_ round, built only, not run in game): **Rays Replace Shadow Maps** (Ray Tracing,
+`RayTracedReplaceShadowMaps`, the TW games' key; off by default until an in-game coverage run, Off = the darker of the rays' and the game's as before):
+`rt_sun_keep` multiplies the sun's mask channels by 0 (the others and the sky by 1) right before 0x52C5E003's max, so
+the sun's channels hold the rays' shadow alone; what is out of view casts no sun shadow then (the rays see the
+G-buffer's draws). Ambient Occlusion's methods also in ssdo00's two dumped permutations (0xC17645D2: depth samples from
+t5; 0xA65B60AF: no LSDO), one function (`RyseSsdoTerm`); the tiled lighting's permutations 0x488BF732 / 0xCDB59F36 get
+the rays, contact shadows and Light Bounce. The game's edge mask (ps 0x292F2865, quarter size, 16 taps) is left out
+under Sun Shadow Softness (PCSS doesn't read it; six unreplaced near-mask permutations bring it back). Texture LOD bias:
+the shared `twattila::texture_lod_bias` with a main-view gate (shadow maps keep the game's levels), also with AA mode
+Off while the game renders below the display (Native Upscaling); Texture LOD Bias on All Textures on by default. DLSS
+"Dark tones for L / M" (Experimental, off: the square-root feed of the TW games). "No RT/PT + Screen-Space
+(Experimental)" beside No RT/PT. Into windowed: the game's own size at once. No per-frame work for debug features: the
+frame trace is a button (renodx_trace_now only in scripted runs), the jitter diagnostics only while the AA section
+shows, back_buffer_fix matches a bind by its view. rt_specular_merge exact where open. `rt_probe_sky` writes texel 6's
+w 0: the helper's open sky takes Ryse's cube at the normal as it is (w 1 stretched y, Attila's y-up habit). Tests (WARP,
+all PASS): `test/tw_ryse_sun_replace`, `test/tw_ryse_specular_merge`, `test/tw_ryse_shadow_skip` part 2,
+`test/tw_ryse_path_ambient` 2 and 3a (three SSDO shaders), `test/tw_ryse_tonemap` (V35 against the game below white:
+2.05x the game's grey at 0.1 nits at the shipped defaults; fit Contrast 1.15 / Shadows 1.35 within 4.8 %, ATN decides),
+`test/tw_vanilla_exact` Ryse (14 replaced shaders exact with their control).
+
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
 

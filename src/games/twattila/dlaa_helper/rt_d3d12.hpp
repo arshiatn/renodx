@@ -73,6 +73,8 @@
 #include "rt_fog_omm.h"           // dxc -Fh (build.ps1)
 #include "rt_path.h"              // dxc -Fh (build.ps1)
 #include "rt_path_omm.h"          // dxc -Fh (build.ps1)
+#include "rt_path_one.h"          // dxc -Fh (build.ps1)
+#include "rt_path_one_omm.h"      // dxc -Fh (build.ps1)
 #include "rt_path_ser.h"          // dxc -Fh (build.ps1)
 #include "rt_place.h"             // dxc -Fh (build.ps1)
 #include "rt_omm_uvs.h"           // dxc -Fh (build.ps1)
@@ -103,6 +105,12 @@
 #include "rt_sharc_resolve.h"
 #include "rt_sharc_update.h"
 #define RENODX_SHARC 1
+#endif
+// RENODX_TW_PATH_PROBE (tests only: build.ps1 compiles these with RENODX_TW_PATH_PROBE_BUILD set): rt_path.hlsli ProbeTexel.
+#if __has_include("rt_path_probe.h")
+#include "rt_path_probe.h"
+#include "rt_path_probe_omm.h"
+#define RENODX_PATH_PROBE 1
 #endif
 
 // The DLAA helper's ray tracing (bridge v4-v6; the addon's rt_scene.hpp): DXR needs a 64-bit process, the Total War
@@ -657,10 +665,15 @@ class RtScene12 {
                  : pipeline(RT_REUSE_NEAR, sizeof(RT_REUSE_NEAR), &reuse_near_pipeline_))) {
       reuse_near_pipeline_.Reset();
     }
-    // The reflections' build for one sample a pixel (REFLECT_ONE_SAMPLE; none: the general build).
+    // The reflections' build for one sample a pixel (REFLECT_ONE_SAMPLE) and the paths' for one ray a texel
+    // (PATH_ONE_SAMPLE; none: the general build).
     if (!(dxr12_ ? pipeline(RT_REFLECT_ONE_OMM, sizeof(RT_REFLECT_ONE_OMM), &reflect_one_pipeline_)
                  : pipeline(RT_REFLECT_ONE, sizeof(RT_REFLECT_ONE), &reflect_one_pipeline_))) {
       reflect_one_pipeline_.Reset();
+    }
+    if (!(dxr12_ ? pipeline(RT_PATH_ONE_OMM, sizeof(RT_PATH_ONE_OMM), &path_one_pipeline_)
+                 : pipeline(RT_PATH_ONE, sizeof(RT_PATH_ONE), &path_one_pipeline_))) {
+      path_one_pipeline_.Reset();
     }
     clusters_ = clusters_ && pipeline(RT_COMPACT, sizeof(RT_COMPACT), &compact_pipeline_);
     // DXR 1.2: the paths and reflections as ray generation shaders for Path Tracing SER (none: their compute shaders).
@@ -697,6 +710,12 @@ class RtScene12 {
       }
     }
     if (clusters_ && !pipeline(RT_SWAY, sizeof(RT_SWAY), &sway_pipeline_)) sway_pipeline_.Reset();
+#if defined(RENODX_PATH_PROBE)
+    if (!(dxr12_ ? pipeline(RT_PATH_PROBE_OMM, sizeof(RT_PATH_PROBE_OMM), &path_probe_pipeline_)
+                 : pipeline(RT_PATH_PROBE, sizeof(RT_PATH_PROBE), &path_probe_pipeline_))) {
+      path_probe_pipeline_.Reset();
+    }
+#endif
 #if defined(RENODX_SHARC)
     // SHaRC Radiance Cache (shader model 6.9 here: 64-bit atomics, 16-bit types): its pipelines, or none (the status says
     // which failed).
@@ -1619,6 +1638,17 @@ class RtScene12 {
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
+#if defined(RENODX_PATH_PROBE)
+        // RENODX_TW_PATH_PROBE=<mode>[,<rays a texel>] (tests): the paths' probe build at the bounce texels (rt_path.hlsli ProbeTexel).
+        static const uint32_t probe_mode = [] {
+          std::array<wchar_t, 32> value = {};
+          if (GetEnvironmentVariableW(L"RENODX_TW_PATH_PROBE", value.data(), static_cast<DWORD>(value.size())) == 0) return 0u;
+          wchar_t* rays = nullptr;
+          const auto mode = static_cast<uint32_t>(std::wcstoul(value.data(), &rays, 10));
+          return mode | (static_cast<uint32_t>((*rays == L',') ? std::wcstoul(rays + 1, nullptr, 10) : 64u) << 8);
+        }();
+        constants.probe_mode = path_probe_pipeline_ ? probe_mode : 0u;
+#endif
         std::memcpy(slot.paths_data, &constants, sizeof(constants));
         list->SetComputeRootConstantBufferView(ROOT_PATHS, slot.paths->GetGPUVirtualAddress());
         // The radiance cache once a frame: filled (from the prepared light, else last frame's colour), resolved.
@@ -1684,13 +1714,20 @@ class RtScene12 {
           };
           list->DispatchRays(&rays);
         };
+#if defined(RENODX_PATH_PROBE)
+        if (path_traced && constants.probe_mode != 0) {
+          list->SetPipelineState(path_probe_pipeline_.Get());
+          list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
+        } else
+#endif
         if (path_traced && sharc) {
           list->SetPipelineState(sharc_path_pipeline_.Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
         } else if (path_traced && ser) {
           dispatch_rays(0, shared.rt_bounce_width, shared.rt_bounce_height);
         } else if (path_traced) {
-          list->SetPipelineState(path_pipeline_.Get());
+          // One ray a texel: its own build (the same picture in fewer registers).
+          list->SetPipelineState(((constants.samples == 1 && path_one_pipeline_) ? path_one_pipeline_ : path_pipeline_).Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
         } else if (fills_cache) {
           Mark(list, L"bounce");
@@ -2141,6 +2178,9 @@ class RtScene12 {
     uint32_t previous_square_root = 0;  // RT_PATH_COLOR_SQUARE_ROOT
     uint32_t previous_positions_slice = 0;  // kept_positions_' slice with last frame's
     uint32_t lights_in_bounce = 0;  // rt_camera.hlsli LIGHTS_*: the mode (RT_PATH_LIGHTS_IN_BOUNCE 1, with RT_PATH_LIGHT_RATIO 3), the ratio's set and validity
+#if defined(RENODX_PATH_PROBE)
+    uint32_t probe_mode = 0;  // RENODX_TW_PATH_PROBE: rt_path.hlsli ProbeTexel's mode | its rays a texel << 8
+#endif
   };
   // Torch and Fire Light in the Light Bounce for the harness without an addon asking (RENODX_TW_LIGHTS_IN_BOUNCE: 1 as asked,
   // 2 the bounce holding only the lights' light: a measurement, 3 Torch and Fire Shadows from the Light Bounce); 0 none.
@@ -3674,11 +3714,13 @@ class RtScene12 {
         slot->capture_flags.insert(slot->capture_flags.end(), compact_flags.begin(), compact_flags.end());
       }
       // In rows of 65535 groups (D3D12's most along x: a frame of over 4.2 M triangles went past it).
-      const std::array<uint32_t, 4> scene_dispatch = {capture_count, scene_triangles, std::bit_cast<uint32_t>(own_cutoff), 0};
+      // Grass Ray Tracing Range for grass captured as drawn: the view-projection's row 3.
+      const std::array<uint32_t, 4> scene_dispatch = {capture_count, scene_triangles, std::bit_cast<uint32_t>(own_cutoff), std::bit_cast<uint32_t>(grass_range)};
       const uint32_t scene_groups = (scene_triangles + 63) / 64;
       Mark(list, L"scene data");
       list->SetPipelineState(scene_data_pipeline_.Get());
       list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 4, scene_dispatch.data(), 0);
+      list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 4, shared.rt_view_projection + 12, 4);
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_DATA, vertex_buffer_->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_MICROMAP_INDICES, slot->left_out->GetGPUVirtualAddress());
       list->Dispatch(std::min(scene_groups, 65535u), (scene_groups + 65534) / 65535, 1);
@@ -6233,6 +6275,10 @@ class RtScene12 {
   bool kept_copy_wanted_ = false;
   uint32_t kept_copy_frame_ = UINT32_MAX;
   ComPtr<ID3D12PipelineState> path_pipeline_;
+  ComPtr<ID3D12PipelineState> path_one_pipeline_;  // its build for one ray a texel (PATH_ONE_SAMPLE)
+#if defined(RENODX_PATH_PROBE)
+  ComPtr<ID3D12PipelineState> path_probe_pipeline_;  // RENODX_TW_PATH_PROBE's (tests)
+#endif
   ComPtr<ID3D12PipelineState> reflect_pipeline_;
   ComPtr<ID3D12PipelineState> reflect_one_pipeline_;  // its build for one sample a pixel (REFLECT_ONE_SAMPLE)
   // Path Tracing SER (DXR 1.2; null: unavailable): the paths' and reflections' ray generation shaders, their records (the

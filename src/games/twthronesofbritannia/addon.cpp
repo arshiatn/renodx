@@ -1700,7 +1700,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   shader_injection.ssao_scale = twattila::ao_pass::ResolutionScale(shader_injection.ssao_resolution);
   // The rays' AO or the paths' in place of the game's (ssao00) and GT-VBAO's (not drawn), as Attila's.
-  shader_injection.rt_ambient_alone = (rt_settings.ambient_occlusion || rt_settings.path_ambient) ? 1.f : 0.f;
+  shader_injection.rt_ambient_alone = twattila::rt_scene::AmbientReplaced() ? 1.f : 0.f;
   shader_injection.ssao_frame =
       twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f && shader_injection.rt_ambient_alone == 0.f,
                                 shader_injection.ssao_temporal != 0.f, shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
@@ -1916,6 +1916,19 @@ void ConfigureAddon() {
     const auto reflections = twattila::feature_settings::SsrSettings(&shader_injection, &ssr_denoiser);
     settings.insert(settings.end(), reflections.begin(), reflections.end());
   }
+  // Sharp Ray-Traced Reflections (Experimental, off: the game's look, also in Reset and every preset; ATN 2026-11-16):
+  // ssr00 / ssr01 leave the reflections blur's roughness step at 0 where the rays reflect (test/tw_thrones_ssr part H).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSharpReflections",
+      .binding = &shader_injection.rays_sharp_reflections,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Sharp Ray-Traced Reflections (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Ray-traced reflections without the game's blur on top of them: sharper.\n"
+                 "Off: the game's look.",
+      .is_visible = [] { return rt_sliders.reflections != 0.f && twattila::feature_settings::Upscaling(aa_sliders); },
+  });
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .key = "ssr_quality",

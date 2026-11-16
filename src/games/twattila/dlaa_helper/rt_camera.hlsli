@@ -23,8 +23,11 @@ cbuffer Paths : register(b3) {
   float sky_range;         // metres: what blocks Path-Traced Ambient's sky (the AO's reach, as Ray-Traced AO)
   uint previous_square_root;  // 1: last frame's colour holds the light's square root (rt_path.hlsli PreviousLight)
   uint previous_positions_slice;  // last frame's positions' slice of previous_positions (rt_path.hlsli)
-#if defined(TORCHES_IN_BOUNCE)
+#if defined(TORCHES_IN_BOUNCE) || defined(PATH_PROBE)
   uint lights_in_bounce;          // Torch and Fire Light in the Light Bounce: LIGHTS_* below (rt_path.hlsli, rt_lights)
+#endif
+#if defined(PATH_PROBE)
+  uint probe_mode;  // RENODX_TW_PATH_PROBE (tests): rt_path.hlsli ProbeTexel's mode, its rays a texel << 8
 #endif
 };
 #if defined(TORCHES_IN_BOUNCE)
