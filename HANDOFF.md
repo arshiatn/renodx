@@ -247,8 +247,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
 - Ryse ray costs (RT shadows +1.0 ms, PT +2.7 ms at 4K DLSS Quality): Nsight work ... | a later GPU round
 - RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan ... | ATN (go-ahead), then a Ryse round
-- RUNS 11-16 MORNING (rn2_, brief tools/tw/round_notes/runs2_1116/brief.md, after ... | rn2_, then coordinator
-- Tales Bend / GT-VBGI look shots: rerun tales\g1g2\run.ps1 -Bend with a mouse cli ... | coordinator
+- FIX 11-16 MORNING: tgi_ (why GT-VBGI darkens Tales -4..-8 %: game SSGI skipped, ... | tgi_, rur_, then coordinator (merge, rebuild, install, then 
 - REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cos ... | coordinator, Ryse fix agent
 - RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
 - Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, G ... | rao_, then the next replace round
@@ -1790,10 +1789,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         shadows); (4) RT skin subsurface (RTX Character Rendering's Burley + single scattering) replacing the game's skin
         SSS; (5) smoke / particles lit and shadowed by the rays (Attila's smoke shadows, particle light). With (1) + (2) the
         shadow-map skip All loses nothing near you. Licence: NVIDIA RTX SDK terms. Owner: ATN (go-ahead), then a Ryse round
-      - [ ] RUNS 11-16 MORNING (rn2_, brief tools/tw/round_notes/runs2_1116/brief.md, after the 08:04 install): Tales Bend /
+      - [x] DONE 08:5x (rn2_): Tales run_080739: the title click works (keys.ps1 Click token), SaveData_006 loaded, four
+        states shot, every restore 0 different, no save changed; PresentMon frame ms: game 7.11, Bend 7.62 (+0.52), Bend +
+        GT-VBGI 7.85 (+0.74), GT-VBGI 7.33 (+0.22); Bend -0.1..-0.5 %, GT-VBGI DARKER -4..-8 % (fix agent tgi_).
+        R.U.S.E. (u0 run_rn2_*): CAMPAIGN -> CONTINUE by clicks; MainRTAA 1x row works (8.5 -> 1, next start DLAA applied,
+        +0.2 ms frame / +1.5 ms CPU); RT shadows: 642 shaders patched but the rays never trace (empty status
+        rt_core.hpp:4059, helper drops its scene after 10 s) while capture / replay cost CPU 8.8 ms (p99 16.8) (fix agent
+        rur_); Units range set live 100 / 20 / 0 m (no effect without rays); zoomed out = map table (mid zoom needed);
+        R.U.S.E. has no Gamma Correction row. Reports runs2_1116/tales.md, ruse.md. RUNS 11-16 MORNING (rn2_, brief tools/tw/round_notes/runs2_1116/brief.md, after the 08:04 install): Tales Bend /
         GT-VBGI look shots with a title click, then the R.U.S.E. T-run; reports runs2_1116/tales.md, ruse.md. Morning
         report: tools/tw/round_notes/morning_report_1116.md. Owner: rn2_, then coordinator
-      - [ ] Tales Bend / GT-VBGI look shots: rerun tales\g1g2\run.ps1 -Bend with a mouse click on the title (ATN allows it)
+      - [ ] FIX 11-16 MORNING: tgi_ (why GT-VBGI darkens Tales -4..-8 %: game SSGI skipped, double occlusion or combine
+        domain; fix with proof) and rur_ (why R.U.S.E.'s rays never trace; gate the capture / replay CPU cost when no ray
+        runs). Owner: tgi_, rur_, then coordinator (merge, rebuild, install, then a short rerun of each)
+      - [x] DONE 08:2x (rn2_ run_080739). Tales Bend / GT-VBGI look shots: rerun tales\g1g2\run.ps1 -Bend with a mouse click on the title (ATN allows it)
         after the fix round's install. Owner: coordinator
       - [ ] REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cost_050544 + run_r2pt_053054
         (r2_cost.ps1: keyboard Continue, PresentMon + nvidia-smi + pass copy per state, light_bounce=1). Skip 1 / 2 removed
