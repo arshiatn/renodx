@@ -60,6 +60,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -149,7 +150,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
 - R.U.S.E. T-run list (ATN loads a battle, one row at a time with PresentMon): DLA ... | coordinator (after the Fable review fixes)
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
-- vf_ (started 02:0x): fix the Vanilla-exact FAILs: Shogun 2 flare00 / 02 / 03 spr ... | vf_
 - PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
@@ -1335,7 +1335,9 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own SetTargetFormat lines) and
         Divinity 1 (`.first_start_key = "tonemap_type"`, drop the override at addon.cpp:989-993); in-game check of S2 SDR
         output through the R.U.S.E. proxy and S3 SET / SHOT. Owner: ru6_ / d1_, then the R.U.S.E. T-run
-      - [ ] vf_ (started 02:0x): fix the Vanilla-exact FAILs: Shogun 2 flare00 / 02 / 03 sprite rotation (0.70-0.74), Rome
+      - [x] MERGED 02:4x (vf_ 047d1b06 Shogun 2 flare rotation, 3f51dfcc Rome R bloom01 dither, 61000221 run.ps1
+        -Architecture): suite 172 EXACT / 32 R6 / 8 FAIL (only Attila / Thrones lensflare00-03, lg_ fixing) on amd64 AND x86
+        (first x86 run, same verdicts). LEFT: Shogun 2 sun-flare sprites by eye in game. vf_ (started 02:0x): fix the Vanilla-exact FAILs: Shogun 2 flare00 / 02 / 03 sprite rotation (0.70-0.74), Rome
         Remastered bloom01 dither cast (0.0052); confirm Div1 FXAA EXACT after 35a37ac4; whole suite amd64 + x86. Owner: vf_
       - [x] ATN ANSWERED 02:1x: fix the Attila / Thrones lens flares (frame's own gamma, Vanilla exact); give Attila / Thrones
         the 2.2 Gamma Correction in HDR like the other TW games; keep the bloom smoothing (R6 accepted as intended); keep
