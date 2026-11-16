@@ -2,14 +2,15 @@
 # Shadows Only; Two Shadow Cascades Under Rays over the shadow setup's code in Attila's empire.retail.dll (Steam folder),
 # then in Thrones of Britannia's where it is installed.
 # Needs the Attila addon built in build32 (rt_scene.hpp includes its embedded shaders: build32\
-# twattila.include). Run as x86 (the game's) and amd64.
-param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86')
+# twattila.include). Run as x86 (the game's) and amd64. Part 8: Rome II's shadow cascades over its DLL where installed.
+# -OutDir: where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\.
+param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [string]$OutDir = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_unit_shadows'
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation
-$testBuild = Join-Path $repairRoot "build\tw_unit_shadows_test_$Architecture"
+$testBuild = Join-Path $(if ($OutDir) { $OutDir } else { Join-Path $repairRoot 'build' }) "tw_unit_shadows_test_$Architecture"
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }

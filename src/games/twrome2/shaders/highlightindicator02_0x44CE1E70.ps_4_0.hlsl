@@ -73,6 +73,6 @@ void main(
   r0.yzw = g_spline_colour.xyz * sun_colour.xyz;
   r0.xyz = r0.yzw * r0.xxx;
   o0.xyz = float3(0.5, 0.5, 0.5) * r0.xyz;
-  o0.xyz *= SI.someindicators;
+  if (HDR >= 1.f) o0.xyz *= SOMEINDICATORS;  // SDR stays stock
   return;
 }

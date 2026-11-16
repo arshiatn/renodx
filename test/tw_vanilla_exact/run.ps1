@@ -49,7 +49,17 @@ $table = [ordered]@{
                      Shaders = '^(fog|vignette|video|uiresolve|uifigure|sun|projectiletrail|glowmesh|vfxoverlay|dissolve|campaignwater)\d+_|^vfxglow01_' }
   'Attila'      = $attilaShaders + @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'
                                       Shaders = '^((t|bloom|lensflare|sky|markersbattle|cutscene|vignette|autoexposure|ssao)\d+|ssr0[01]|grass02)_' }
-  'RomeII'      = @{ Folder = 'twrome2'; Dump = 'dump_shader_twrome2_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2' }
+  # Rome II (fix round 11-16): the tone mappers, bloom and lens flares and each family this driver sees, its VFX rows at 1.
+  # Left out: the point lights (drawn only with the rays: tools/tw/rome2/lights_r3 on the game's bytes); bloodsplash00 (its
+  # cso in no dump); dof01 / dof02 (compute, UAV output: nothing to compare); morefire00 (x 0.2 at VFX Fire Brightness 1 in
+  # every mode, ATN's look since 09-30: 0.75 off); burning, explosion, smokefromarrow, snowflakes, torches, ui00,
+  # historicalbattlemap00, ssao01 (EXACT, but the output-swap control isn't seen with these inputs: no proof; ssao01's own:
+  # test/tw_rome2_shaders part 3). The video (video00) is made for a 2.2 screen, as Attila's cutscenes: Gamma Correction on,
+  # no Gamma Correction check.
+  'RomeII'      = @{ Folder = 'twrome2'; Dump = 'dump_shader_twrome2_pack\cso'; FrameGamma = '2'
+                     Shaders = '^(t|bloom|lensflare|artillaryfire|artillarysmoke|autoexposure|battlefog|cloudunits|dof0[0345]|explosionsmoke|firearrow|highlightindicator|normalarrow|pagetouch|rain|sandstorm|sky|video|vignette|waterreflection)\d+v?\d*_'
+                     Settings = 'vfxfirebrightness=1,vfxbloodsplash=1,vfxrain=1,vfxsnow=1,vfxfogbrightness=1,sky_smooth_strength=1,ssr_quality=1'
+                     ShaderSettings = @{ '^video\d+_' = 'gamma_correction=1' }; NoGamma = '^video\d+_' }
   'Thrones'     = $attilaShaders + @{ Folder = 'twthronesofbritannia'; Dump = 'dump_shader_twthronesofbritannia_pack\cso'
                                       Shaders = '^((t|bloom|lensflare|sky|markersbattle|cutscenes|vignette|autoexposure|ssao)\d+|ssr0[01]|grass02)_' }
   # Warhammer I / II: also the sky and the vignette (WH2: the legacy battle fog 04 - 06); their other shaders in

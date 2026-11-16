@@ -40,6 +40,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/engine_code.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/shadow_pass.hpp"
 #include "../twattila/smoke_map.hpp"
@@ -48,6 +49,7 @@
 #include "../twattila/water_effects.hpp"
 #include "./more_tests.h"
 #include "./engine_tweaks.hpp"
+#include "./shadow_cascades.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./rt_particle_quads_085DDEDD_gs.h"
 #include "./rt_particle_quads_18FE5E2B_gs.h"
@@ -79,8 +81,16 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 3.f;
 }
 
+// Output HDR10 or scRGB (not SDR), as Attila's.
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != 2.f;
+}
+
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, a luminance curve then the clip).
 constexpr float HUE_CLIP_DEFAULT = 80.f;
+
+// Modded Auto Exposure: Sensitivity's default, in stops above the frame average (Attila's).
+constexpr float AUTO_EXPOSURE_HEADROOM_DEFAULT = 4.f;
 
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f;
@@ -179,7 +189,7 @@ void ApplyResetPreset(float rendering_mode) {
       1.0f,  // filmgrain
       1.0f,  // some_indicators
       0.0f,  // auto_exposure_highlight_protection
-      1.0f,  // auto_exposure_highlight_headroom_stops
+      AUTO_EXPOSURE_HEADROOM_DEFAULT,  // auto_exposure_highlight_headroom_stops
       1.0f,  // vfx_fire_brightness
       1.0f,  // vfx_blood_splash_brightness
       1.0f,  // vfx_fog_brightness
@@ -187,6 +197,13 @@ void ApplyResetPreset(float rendering_mode) {
       1.0f,  // vfxrain
       1.0f   // hue_shift
   );
+}
+
+// Recommended (ATN 2026-11-12: every recommended preset in PsychoV35): Reset in PsychoV35, Video AutoHDR 0.20 (WH1's). Also
+// Output Auto's preset when it turns HDR on (output_encoding's recommended_preset).
+void ApplyRecommendedPreset() {
+  ApplyResetPreset(3.f);
+  renodx::utils::settings::UpdateSettings({{"video_autohdr", 0.2f}});
 }
 
 // SDR monitors (as Attila's): Reset's controls in Rendering Mode SDR (the game's own picture), no video AutoHDR (the button
@@ -219,40 +236,61 @@ void ApplySdrPreset() {
       },                                                                                              \
   }
 
-// The point lights without the game's cube shadow maps, the only ones drawn in ATN's runs (A1, A2, C1, N1, L1, L2, S1: 802 and
-// 784 draws): pointlightsmoothfalloff ps30 slm_highdef and skinlm_highdef (point shadows hardware gather 5.0). The two with the
-// maps (3B5C9DAF, D2F190A8) keep them. Ours (shaders/pointlight00-01: the game's code x the light's traced visibility) draw
-// only where the rays are bound (OnLightShadowsDraw): 7CB7BB8A's copy compiles up to 0.12% apart from the game's bytes (WARP
-// tools/tw/rome2/lights_r3), so without the rays the game's own.
-constexpr std::array<uint32_t, 2> POINT_LIGHT_SHADERS = {0xEB8E5349, 0x7CB7BB8A};
-constexpr std::array<std::span<const uint8_t>, 2> RAY_TRACED_LIGHT_SHADERS = {__0xEB8E5349, __0x7CB7BB8A};
+// The point lights without the game's cube shadow maps: pointlightsmoothfalloff ps30 slm_highdef and skinlm_highdef (point
+// shadows hardware gather 5.0), the only ones drawn in ATN's runs (A1, A2, C1, N1, L1, L2, S1: 802 and 784 draws), and every
+// other live build without a point shadow map in its RDEF (in no trace, level B: the low-detail lights, the linear falloff, the
+// shader model 4.1 and 3.0 builds; the MSAA ones stay out, no rays under the game's MSAA). The 16 with the maps (3B5C9DAF,
+// D2F190A8, ...) keep them. Ours (shaders/pointlight00-25: the game's code x the light's traced visibility) draw only where
+// the rays are bound (OnLightShadowsDraw), so without the rays the game's own; WARP tools/tw/rome2/lights_r3 on each against
+// the game's bytes.
+constexpr std::array<uint32_t, 26> POINT_LIGHT_SHADERS = {
+    0xEB8E5349, 0x7CB7BB8A, 0x04DC39EE, 0x9D4260BA, 0xE021B167, 0xE5D3E58F, 0x977F794E, 0xB8658A9B, 0x35C55373,
+    0xE6CBBA92, 0x7D38EDEC, 0x1C5F3E24, 0xBFB1B8BE, 0xEEA0895B, 0x7668C232, 0x25EAE821, 0xAED219EE, 0xED9F7ABE,
+    0x9BDD40BF, 0xBE13FD5C, 0x4B8CE904, 0xFE570665, 0x357EA6B1, 0xCB257BE6, 0x8B834C92, 0xEF102757};
+constexpr std::array<std::span<const uint8_t>, POINT_LIGHT_SHADERS.size()> RAY_TRACED_LIGHT_SHADERS = {
+    __0xEB8E5349, __0x7CB7BB8A, __0x04DC39EE, __0x9D4260BA, __0xE021B167, __0xE5D3E58F, __0x977F794E, __0xB8658A9B, __0x35C55373,
+    __0xE6CBBA92, __0x7D38EDEC, __0x1C5F3E24, __0xBFB1B8BE, __0xEEA0895B, __0x7668C232, __0x25EAE821, __0xAED219EE, __0xED9F7ABE,
+    __0x9BDD40BF, __0xBE13FD5C, __0x4B8CE904, __0xFE570665, __0x357EA6B1, __0xCB257BE6, __0x8B834C92, __0xEF102757};
 
 // Smoke Shadows' particles (Experimental, off): each smoke effect has its own generated vertex and pixel shader (drawn only
 // together) and draws each particle as an instance of a quad (6 indices). In ATN's runs (proof level A):
 // impact_hit_generic_heavy 7DF7491E / 18FE5E2B (shaders/smokefromarrow00), fire_smoke_loop and campaign_fire_smoke_loop
 // AF6C187A / 085DDEDD, destruction_spawnmesh_heavy B6F63295 / B5D63E8A (explosionsmoke00); one rt_particle_quads build a
-// pair, with its pixel shader's alpha (WARP tools/tw/rome2/smoke_r3). The permutations of other shadow modes, 31C72F52 /
-// 7115DE09 (18FE5E2B's) and 803E1461 / CC3CB1B7 (B5D63E8A's), in no trace: the same slots and alpha (B, and on WARP). Fire
-// (explosion_heavy), the units' dust (terrain_impact, entity_terrain), trails and torches stay out.
+// pair, with its pixel shader's alpha (WARP tools/tw/rome2/smoke_r3). Every other shader model and quality of the three
+// (live in data_rome2.pack, in no trace: level B, on WARP): the same slots and alpha, they differ only in the fog's distance
+// clamp and in registers (fxc /dumpbin): impact_hit 31C72F52 / 7115DE09 (ps30_main_high_quality 4.1 / 3.0) and 7E4C1E86 /
+// 957E6AB7 / 88F69BA2 (ps30_main 5.0 / 4.1 / 3.0), campaign_fire_smoke_loop 8803D82E / BEDE8BDC (4.1 / 3.0), destruction
+// 803E1461 / CC3CB1B7 (ps30_main 3.0 / 4.1) and 449320EB / 414C76BF (high quality 3.0 / 4.1). fire_smoke_loop's own builds
+// (754C32FA, 1B14BAB1, E7DE2900, 4B3E94AE, 8B60D8A8; in no trace) draw with AF6C187A too but weigh only type 0 by
+// TEXCOORD2's w: they need a quad shader of their own (one a pixel shader: shared rt_core). Fire (explosion_heavy), the
+// units' dust (terrain_impact, entity_terrain), trails and torches stay out.
 constexpr std::array<twattila::rt_scene::SmokeVertexShader, 3> SMOKE_VERTEX_SHADERS = {{
     {.hash = 0x7DF7491E, .quad_shader = __rt_particle_quads_18FE5E2B},
     {.hash = 0xAF6C187A, .quad_shader = __rt_particle_quads_085DDEDD},
     {.hash = 0xB6F63295, .quad_shader = __rt_particle_quads_B5D63E8A},
 }};
-constexpr std::array<twattila::rt_scene::SmokePixelShader, 7> SMOKE_PIXEL_SHADERS = {
-    {{.hash = 0x18FE5E2B}, {.hash = 0x31C72F52}, {.hash = 0x7115DE09}, {.hash = 0x085DDEDD}, {.hash = 0xB5D63E8A}, {.hash = 0x803E1461}, {.hash = 0xCC3CB1B7}}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 14> SMOKE_PIXEL_SHADERS = {{
+    {.hash = 0x18FE5E2B}, {.hash = 0x31C72F52}, {.hash = 0x7115DE09}, {.hash = 0x7E4C1E86}, {.hash = 0x957E6AB7}, {.hash = 0x88F69BA2},
+    {.hash = 0x085DDEDD}, {.hash = 0x8803D82E}, {.hash = 0xBEDE8BDC},
+    {.hash = 0xB5D63E8A}, {.hash = 0x803E1461}, {.hash = 0xCC3CB1B7}, {.hash = 0x449320EB}, {.hash = 0x414C76BF},
+}};
+
+// Ray tracing's (twattila/rt_scene.hpp).
+twattila::rt_scene::Sliders rt_sliders;
 
 // Torch and Fire Shadows: in a light draw where rt_scene's light hook (InstallPointLights, registered before this) bound this
 // frame's lit bits at t42, ours draws in the game's place and the game's is bound again after it (finalize).
 struct LightShadows {
   std::shared_mutex mutex;
   ID3D11Device* device = nullptr;  // ours' (compared only)
-  std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, 2> ours;  // RAY_TRACED_LIGHT_SHADERS'
+  std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, POINT_LIGHT_SHADERS.size()> ours;  // RAY_TRACED_LIGHT_SHADERS'
   Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;          // bound again after the draw
   bool logged = false;
 };
 LightShadows light_shadows;
 constexpr auto OnLightShadowsDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  // Every light draw comes here (42 in A2's trace_24): without the rays or their torch row, on one atomic.
+  if (!twattila::rt_scene::internal::active.load(std::memory_order_relaxed) || rt_sliders.local_lights == 0.f) return {};
   if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
@@ -528,6 +566,13 @@ void BuildRuntimeData() {
         .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
     },
+    // Page 1's first line, the full-download note after it (Attila's order).
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "Use these in-game settings: Gamma 22 and Brightness 10.",
+        .section = "General",
+        .tint = 0xFFD23C,
+    },
     twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
                                   [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
     // Gamma Correction //////////////////////////////////////////////////////////////////////////////////////
@@ -564,13 +609,7 @@ void BuildRuntimeData() {
     //     .section = "Peak",
     //     .tooltip = "3 rectangles within a large one.\n\n- Left: Not Visible.\n- Middle: Barely Visible.\n- Right: Easily Visible.\n\n(Ofc, you can always set lower to personal pref.)",
     // },
-    
-    new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::TEXT,
-        .label = "Use these in-game settings: Gamma 22 and Brightness 10.",
-        .section = "General",
-        .tint = 0xFFD23C,
-    },
+
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
@@ -647,12 +686,22 @@ void BuildRuntimeData() {
                    "Off: gamma 2.0; Rendering Mode SDR keeps the in-game Gamma.",
         .labels = {"Off (In-game Gamma value)", "On (Gamma 2.2)"},
     },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "Recommended",
+        .section = "Presets",
+        .group = "preset-line-1",
+        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output encoding are kept.",
+        .on_change = []() { ApplyRecommendedPreset(); },
+    },
       new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
         .label = "My settings for 2500nits peak",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "Settings, I would use with a 2500nits screen.",
+        .tooltip = "Settings, I would use with a 2500nits screen.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output encoding are kept.",
         .on_change = []() {
           ApplyHDRPreset(
               3.f, 0.2f,  // rendering mode, video AutoHDR
@@ -670,7 +719,7 @@ void BuildRuntimeData() {
               0.0f,  // filmgrain
               1.0f,  // some_indicators
               1.0f,  // auto_exposure_highlight_protection
-              0.4f,  // auto_exposure_highlight_headroom_stops
+              1.3288f,  // auto_exposure_highlight_headroom_stops (0.4 decades before: the same look)
               6.0f,  // vfx_fire_brightness
               6.0f,  // vfx_blood_splash_brightness
               0.7f,  // vfx_fog_brightness
@@ -685,7 +734,8 @@ void BuildRuntimeData() {
         .label = "My settings for 1000nits peak",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "Settings, I would use with a 1000nits screen.",
+        .tooltip = "Settings, I would use with a 1000nits screen.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output encoding are kept.",
         .on_change = []() {
           ApplyHDRPreset(
               3.f, 0.2f,  // rendering mode, video AutoHDR
@@ -703,7 +753,7 @@ void BuildRuntimeData() {
               0.0f,  // filmgrain
               1.0f,  // some_indicators
               1.0f,  // auto_exposure_highlight_protection
-              0.4f,  // auto_exposure_highlight_headroom_stops
+              1.3288f,  // auto_exposure_highlight_headroom_stops (0.4 decades before: the same look)
               2.5f,  // vfx_fire_brightness
               3.0f,  // vfx_blood_splash_brightness
               0.7f,  // vfx_fog_brightness
@@ -718,7 +768,8 @@ void BuildRuntimeData() {
         .label = "Reset",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.",
+        .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output encoding are kept.",
         // No Extended mode here: PsychoV35 (ATN).
         .on_change = []() { ApplyResetPreset(3.f); },
     },
@@ -881,7 +932,7 @@ void BuildRuntimeData() {
         .default_value = 1.0f,
         .label = "Highlight Hue Shift",
         .section = "Psycho V30",
-        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30 default (like my old addons), 2 = full.",
+        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30's default, 2 = full.",
         .min = 0.00f,
         .max = 2.00f,
         .format = "%.2f",
@@ -973,7 +1024,7 @@ void BuildRuntimeData() {
         .default_value = 1.f,
         .label = "Lensflare",
         .section = "Extra",
-        .tooltip = "Multiplier on Lenslfare. ",
+        .tooltip = "Multiplier on lens flares.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
@@ -1039,12 +1090,13 @@ void BuildRuntimeData() {
         .binding = &shader_injection.someindicators,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.0f,
-        .label = "Brightness of some Unit/Building Indicator ",
+        .label = "Unit/Building Indicator Brightness",
         .section = "Extra",
         .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
         .min = 0.1f,
         .max = 2.0f,
         .format = "%.1f",
+        .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
         .key = "fog_strength",
@@ -1069,7 +1121,7 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 1.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput(); },
     },
     new renodx::utils::settings::Setting{
         .key = "video_dithering",
@@ -1081,7 +1133,7 @@ void BuildRuntimeData() {
         .tooltip = "Fine noise that hides banding in the brightened videos.\n"
                    "Only with Video AutoHDR above 0.",
         .labels = {"Off", "On"},
-        .is_enabled = [] { return IsHDRMode() && shader_injection.video_autohdr > 0.f; },
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput() && shader_injection.video_autohdr > 0.f; },
     },
     
 
@@ -1101,12 +1153,12 @@ void BuildRuntimeData() {
         .key = "auto_exposure_highlight_headroom_stops",
         .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-        .default_value = 1.0f,
+        .default_value = AUTO_EXPOSURE_HEADROOM_DEFAULT,
         .label = "Modded Auto Exposure: Sensitivity",
         .section = "Extra (Experimental)",
         .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
-        .min = 0.0f,
-        .max = 2.0f,
+        .min = 1.0f,
+        .max = 8.0f,
         .format = "%.1f",
         .is_enabled = IsModdedAutoExposureEnabled,
     },
@@ -1152,7 +1204,7 @@ void BuildRuntimeData() {
         .default_value = 1.0f,
         .label = "VFX Brightness: fire/smoke/unit's dust",
         .section = "VFX",
-        .tooltip = "Fire, embers, sparks, smoke, and .... Recommmendation is max 10 with modded auto exposure.",
+        .tooltip = "Fire, embers, sparks, smoke and the units' dust. At most 10 recommended, with Modded Auto Exposure on.",
         .min = 1.0f,
         .max = 30.0f,
         .format = "%.0f",
@@ -1164,7 +1216,7 @@ void BuildRuntimeData() {
         .default_value = 1.0f,
         .label = "VFX Brightness: Blood splash",
         .section = "VFX",
-        .tooltip = "Bloodsplash brightness. Recommmendation is max 10.",
+        .tooltip = "Brightness of blood splashes. At most 10 recommended.",
         .min = 1.0f,
         .max = 30.0f,
         .format = "%.0f",
@@ -1176,7 +1228,7 @@ void BuildRuntimeData() {
         .default_value = 1.0f,
         .label = "VFX Brightness: Storms (Sand/Fog)",
         .section = "VFX",
-        .tooltip = "Brightness of the fog color applied to particles. Recommmendation is max 1.",
+        .tooltip = "Brightness of the fog colour on particles (sand and fog storms). At most 1 recommended.",
         .min = 0.1f,
         .max = 4.0f,
         .format = "%.1f",
@@ -1188,7 +1240,7 @@ void BuildRuntimeData() {
         .default_value = 1.0f,
         .label = "VFX Brightness: Snowflakes",
         .section = "VFX",
-        .tooltip = "Brightness of snow. Recommmendation is max 5.",
+        .tooltip = "Brightness of snowflakes. At most 5 recommended.",
         .min = 0.1f,
         .max = 20.0f,
         .format = "%.1f",
@@ -1200,7 +1252,7 @@ void BuildRuntimeData() {
         .default_value = 1.0f,
         .label = "VFX Brightness: rain",
         .section = "VFX",
-        .tooltip = "Brightness of rain. Recommmendation is max 5.",
+        .tooltip = "Brightness of rain. At most 5 recommended.",
         .min = 0.1f,
         .max = 20.0f,
         .format = "%.1f",
@@ -1422,24 +1474,7 @@ float small_soldiers_as_sprites = 0.f;
 float sprite_size = 20.f;  // pixels on screen
 // Shadow Map Size: the game's shadowmap_extreme_quality (8192 at the highest Shadows setting).
 tw::engine_tweaks::Option shadow_map = {.scale = 0.f};
-// Two Shadow Cascades Under Rays (Experimental, off; Attila's row): Rome II's shadow quality switch (empire.retail.dll
-// +0x142fcdd, one match from `dec esi` to the shared count write; code read, level B: tools/tw/rome2/p2r2_cascades.txt) sets
-// the sun atlas's size (+0x924 / +0x928), cascade size (+0x84), cascade count (+0x88) and tier (+0x74) per
-// gfx_shadow_quality: 1-2 two cascades tier 0, 3 three tier 1, 4 and 5 four tier 2 / 3. With Skip the Shadow Maps, 3-5's
-// counts and tiers as 1-2's (their sizes kept), read when the game sets its shadows up: from the next start.
-constexpr std::string_view SHADOW_CASCADES_CODE =
-    "4E 83 FE 04 0F 87 ?? ?? ?? ?? FF 24 B5 ?? ?? ?? ?? C7 87 24 09 00 00 00 00 00 45 C7 87 28 09 00 00 00 00 80 44 "
-    "C7 87 84 00 00 00 00 04 00 00 C7 87 88 00 00 00 02 00 00 00 C7 47 74 00 00 00 00 E9 ?? ?? ?? ?? C7 87 24 09 00 00 "
-    "00 00 00 45 C7 87 28 09 00 00 00 00 00 45 C7 87 84 00 00 00 00 04 00 00 C7 87 88 00 00 00 03 00 00 00 C7 47 74 01 "
-    "00 00 00 E9 ?? ?? ?? ?? C7 87 24 09 00 00 00 00 80 45 C7 87 28 09 00 00 00 00 80 45 C7 87 84 00 00 00 00 08 00 00 "
-    "C7 47 74 02 00 00 00 EB ?? 80 3D ?? ?? ?? ?? 00 74 ?? 84 DB 75 ?? 81 F9 00 20 00 00 72 ?? 3D 00 20 00 00 72 ?? F3 "
-    "0F 10 05 ?? ?? ?? ?? B8 00 10 00 00 EB ?? F3 0F 10 05 ?? ?? ?? ?? B8 00 08 00 00 F3 0F 11 87 24 09 00 00 F3 0F 11 "
-    "87 28 09 00 00 89 87 84 00 00 00 C7 47 74 03 00 00 00 C7 87 88 00 00 00 04 00 00 00";
-constexpr size_t SHADOW_CASCADES_CODE_SIZE = 255;
-// 3's count and tier, 4's tier, 5's tier, the count 4 and 5 share.
-constexpr std::array<size_t, 5> SHADOW_CASCADES_OFFSETS = {105, 112, 154, 241, 251};
-constexpr std::array<uint32_t, 5> GAME_SHADOW_CASCADES = {3, 1, 2, 3, 4};
-constexpr std::array<uint32_t, 5> TWO_SHADOW_CASCADES = {2, 0, 0, 0, 2};
+// Two Shadow Cascades Under Rays (Experimental, off; Attila's row): Rome II's shadow quality switch (shadow_cascades.hpp).
 float shadow_cascades_row = 0.f;
 uint8_t* shadow_cascades_code = nullptr;  // null: not found, or its values another mod's
 bool shadow_cascades_searched = false;
@@ -1452,25 +1487,17 @@ void SetShadowCascades(bool two) {
   if (!shadow_cascades_searched) {
     shadow_cascades_searched = true;
     if (HMODULE module = GetModuleHandleW(L"empire.retail.dll"); module != nullptr) {
-      shadow_cascades_code = tw::engine_tweaks::FindPattern(tw::engine_tweaks::ModuleSections(module).code, SHADOW_CASCADES_CODE);
-    }
-    for (size_t index = 0; shadow_cascades_code != nullptr && index < SHADOW_CASCADES_OFFSETS.size(); ++index) {
-      uint32_t value;
-      std::memcpy(&value, shadow_cascades_code + SHADOW_CASCADES_OFFSETS[index], sizeof(value));
-      if (value != GAME_SHADOW_CASCADES[index]) shadow_cascades_code = nullptr;
+      shadow_cascades_code = twrome2::shadow_cascades::Find(tw::engine_tweaks::ModuleSections(module).code);
     }
     renodx::utils::log::i("[Total War] Graphics: shadow cascades ",
                           shadow_cascades_code != nullptr ? "found" : "not found, or changed by another mod");
   }
   if (shadow_cascades_code == nullptr) return;
   DWORD protection;
-  if (VirtualProtect(shadow_cascades_code, SHADOW_CASCADES_CODE_SIZE, PAGE_EXECUTE_READWRITE, &protection) == FALSE) return;
-  const auto& values = (two ? TWO_SHADOW_CASCADES : GAME_SHADOW_CASCADES);
-  for (size_t index = 0; index < SHADOW_CASCADES_OFFSETS.size(); ++index) {
-    std::memcpy(shadow_cascades_code + SHADOW_CASCADES_OFFSETS[index], &values[index], sizeof(values[index]));
-  }
-  VirtualProtect(shadow_cascades_code, SHADOW_CASCADES_CODE_SIZE, protection, &protection);
-  FlushInstructionCache(GetCurrentProcess(), shadow_cascades_code, SHADOW_CASCADES_CODE_SIZE);
+  if (VirtualProtect(shadow_cascades_code, twrome2::shadow_cascades::CODE_SIZE, PAGE_EXECUTE_READWRITE, &protection) == FALSE) return;
+  twrome2::shadow_cascades::Write(shadow_cascades_code, two);
+  VirtualProtect(shadow_cascades_code, twrome2::shadow_cascades::CODE_SIZE, protection, &protection);
+  FlushInstructionCache(GetCurrentProcess(), shadow_cascades_code, twrome2::shadow_cascades::CODE_SIZE);
   two_shadow_cascades_written = two;
 }
 // Every engine option above, then the tests' (Graphics 2 of 2: more_tests.h, twattila/engine_tests.hpp).
@@ -1483,8 +1510,6 @@ twattila::feature_settings::SssSliders sss_sliders;
 // Smoke Shadows without rays (Experimental, off; twattila/smoke_map.hpp): the particles Smoke Shadows' quad shaders stream.
 twattila::smoke_map::Sliders smoke_map_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
-// Ray tracing's (twattila/rt_scene.hpp).
-twattila::rt_scene::Sliders rt_sliders;
 // Skip the Shadow Maps (Experimental, off): Ray-Traced Shadows Only with the rays' sun shadows (rt_scene InstallShadowsOnly).
 float rays_skip_cascades_row = 0.f;
 float shadow_pass_row = 0.f;  // Skip the Game's Shadow Map Work (twattila/shadow_pass.hpp: Rome II's one-argument Render)
@@ -1506,7 +1531,7 @@ bool graphics_hooks_installed = false;
 // pass (whose replacement is the game's code only).
 constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
     {.shader_hash = 0x1ED22F9C, .bitmask = __ao_bitmask01, .upsample = __ao_upsample01, .resolve = __ao_resolve01,
-     .denoise = __ao_denoise01},  // ssao01
+     .denoise = __ao_denoise01, .blurs = {0x41894C1F, 0x7DDD84A3}},  // ssao01, its blurs (the shared round's census)
 }};
 
 // Its camera constants at their places in Attila's camera_VS_PS (frame_history::AttilaCamera) for the
@@ -1647,6 +1672,19 @@ constexpr std::array<twattila::rt_scene::SceneShader, 46> SCENE_SHADERS = {{
     {.hash = 0xAAFE8EAB, .capture_shader = __rt_capture_campaign_tree, .rows_shader = __rt_rows_campaign_tree, .foliage = true, .still = true},
 }};
 
+// What only the campaign map draws (each in all 12 of ATN's campaign traces C1_06 / 08-18 and in none of the 21 battle traces
+// A1 and C1_01 / 02): its borders (campaignborder vs30_border 98BED65B), the shroud's plane (shroud_plane vs30_shroud_main
+// 8CE6B7F1) and its sea (waterplane vs30_main_campaign D96751C9). Their frames take the campaign map's world scale
+// (frame_history::campaign_frames: the object motion's placement cells, rt_positions' sea), as Attila's.
+constexpr std::array<uint32_t, 3> CAMPAIGN_SHADERS = {0x98BED65B, 0x8CE6B7F1, 0xD96751C9};
+std::atomic_bool campaign_logged = false;
+constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (twattila::frame_history::campaign_frames.exchange(2, std::memory_order_relaxed) == 0 && !campaign_logged.exchange(true)) {
+    renodx::utils::log::i("[Total War] First run: the campaign map drawn, its frames at the campaign's world scale.");
+  }
+  return {};
+};
+
 // The screen-space shadows' Light Through Banners: cloth and sails (as the rays), the unit banners with Light Through All
 // Banners (rays_banner_light_row's).
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{
@@ -1676,17 +1714,42 @@ constexpr std::array<twattila::view_share::RegionRead, 5> RENDER_SCALE_READS = {
     {.shader_hash = 0x024D3FCB, .slots = 0b1, .whole = true},   // water refraction (4 channels)
 }};
 
-// Water Clarity and Caustics (twattila/water_effects.hpp): the battle water drawn in ATN's runs (A1, C1, A2), lighting_VS_PS's
-// g_sea_bed_light_scatter at c10 as Attila's (its RDEF). The campaign's sea 3DCC4AED, lake F5A45F91 and river ED0C5F47 never
-// read it. Caustics' patch: WARP tools/tw/rome2/water_r2 (the game's bytes and the render scale's patch first: t51 unbound
-// bit-identical, t51 = k the refraction x (1 + k)).
-constexpr std::array<twattila::water_effects::WaterShader, 3> WATER_SHADERS = {{
+// Water Clarity and Caustics (twattila/water_effects.hpp): every live battle water and river PS that uses lighting_VS_PS's
+// g_sea_bed_light_scatter (c10, as Attila's; their RDEF): the three drawn in ATN's runs (A1, C1, A2) and, in no trace (level
+// B), the other shader models, shadow forms and Water Qualities (waterplane's world position at TEXCOORD3 = v3, rigidriver's
+// at TEXCOORD0 = v1, s_terrain_refraction at t1, lighting_VS_PS at b2 with shadows, b1 without). The other water PS (the
+// campaign's sea, lake and rivers, the battle sea) never read it. Caustics' patch: WARP tools/tw/rome2/water_r2 on each
+// (the game's bytes and the render scale's patch first: t51 unbound bit-identical, t51 = k the refraction x (1 + k)).
+constexpr std::array<twattila::water_effects::WaterShader, 17> WATER_SHADERS = {{
     {.hash = 0x58DC6E12, .lighting_slot = 2, .world_input = 3, .refraction_slot = 1},  // battle plane, Water Quality Ultra
     {.hash = 0xB0A1E151, .lighting_slot = 1, .world_input = 3, .refraction_slot = 1},  // battle plane, High
     {.hash = 0x3ECFEAF5, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // battle river
+    {.hash = 0xBB6C2E17, .lighting_slot = 2, .world_input = 3, .refraction_slot = 1},  // plane Ultra, shader model 4.1
+    {.hash = 0x06B5BB38, .lighting_slot = 2, .world_input = 3, .refraction_slot = 1},  // plane Ultra, 3.0 fetch4
+    {.hash = 0x4D90F8A9, .lighting_slot = 2, .world_input = 3, .refraction_slot = 1},  // plane Ultra, 3.0 pcf
+    {.hash = 0xCF39F205, .lighting_slot = 2, .world_input = 3, .refraction_slot = 1},  // plane Ultra, 3.0 software
+    {.hash = 0x06DE957F, .lighting_slot = 1, .world_input = 3, .refraction_slot = 1},  // plane Low / Medium
+    {.hash = 0xCB209741, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 4.1 gather
+    {.hash = 0x02FFA958, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 4.1 software
+    {.hash = 0x302DB6C3, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 4.1 fetch4
+    {.hash = 0xC505972E, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 4.1 pcf
+    {.hash = 0x176FFE86, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 3.0 fetch4
+    {.hash = 0x23B7EAC3, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 3.0 pcf
+    {.hash = 0xBB7158F7, .lighting_slot = 2, .world_input = 1, .refraction_slot = 1},  // river, 3.0 software
+    {.hash = 0x324CBBD2, .lighting_slot = 1, .world_input = 1, .refraction_slot = 1},  // river without shadows, 4.1
+    {.hash = 0x33C21B87, .lighting_slot = 1, .world_input = 1, .refraction_slot = 1},  // river without shadows, 3.0
 }};
-// The sun's per-frame atlas's readers besides the sun draws (A1, C1, A2): the battle water Ultra and river, the campaign's sea.
-constexpr std::array<uint32_t, 3> SHADOW_READER_SHADERS = {0x58DC6E12, 0x3ECFEAF5, 0x3DCC4AED};
+// The sun's per-frame atlas's readers besides the sun draws: the battle water Ultra and river and the campaign's sea (A1, C1,
+// A2), and in no trace (B) their other shader models with a comparison the shared forward patch finds (water_r2: t49 unbound
+// bit-identical, t49 = 1 equals every comparison failing) and the battle sea's (ocean high / ultra). Their shader model 3.0
+// builds (fetch4 / pcf / software: 18 PS, water_r2's list) have no such comparison: under Skip the Shadow Maps they read the
+// casterless atlas (lit) until the shared patch has a route for them.
+constexpr std::array<uint32_t, 15> SHADOW_READER_SHADERS = {
+    0x58DC6E12, 0x3ECFEAF5, 0x3DCC4AED,              // drawn
+    0xBB6C2E17, 0xCB209741, 0x02FFA958, 0x302DB6C3, 0xC505972E,  // battle plane / river, 4.1
+    0x1077B1F5, 0x2962631F, 0xB6E14CD7,              // campaign sea 4.1 high / medium, 5.0 medium
+    0x809D7997, 0xB4BAD934, 0xD627B33B, 0xF5A1526C,  // battle sea, 5.0 / 4.1 high and ultra
+};
 
 constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {{
     {.shader_hash = 0x0AF04E16, .standard = true, .sun_direction = 0},
@@ -1777,6 +1840,9 @@ void OnInitDevice(reshade::api::device*) {
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
+    campaign_frames.fetch_sub(1, std::memory_order_relaxed);
+  }
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
   // preset's is XeSS on Intel's, else FSR.
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -1784,7 +1850,6 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
   // The game's MSAA keeps DLAA / DLSS from running (A2_185833: its 2-sample sun draws 006F587A / FCD6C263 keep no camera):
   // the rays and frame generation, which need them, off with it (the rays' scene captures nothing multisampled).
   const bool game_msaa = twattila::anti_aliasing::GameMsaa();
@@ -1793,6 +1858,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     rays_aa.method = 0.f;
   }
   auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, rays_aa, shader_injection.light_bounce_strength);
+  // Ray-traced sun shadows replace Bend's too (one shadow method, as Attila's): the sun draws' mask from the rays alone.
+  auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
+  sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
+  twattila::screen_space_shadows::Update(swapchain, sss_settings);
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   rt_settings.shadows_only = rt_settings.shadows_only && rays_skip_cascades_row != 0.f;
   SetShadowCascades(shadow_cascades_row != 0.f && rt_settings.shadows_only);
@@ -2226,6 +2295,7 @@ void ConfigureAddon() {
   // ray-traced reflections (TraceWaterReflections): their rows, the water's too.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
   twattila::rt_scene::internal::water_pass = true;
+  settings.push_back(twattila::pass_timing::Button(twattila::feature_settings::AA_SECTION));
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
@@ -2274,7 +2344,7 @@ void ConfigureAddon() {
           return frame_generation ? twattila::output_encoding::HDR10 : twattila::output_encoding::SCRGB;
         },
         .first_start_without_hdr = &ApplySdrPreset,
-        .recommended_preset = [] { ApplyResetPreset(3.f); },
+        .recommended_preset = &ApplyRecommendedPreset,
     });
     settings.push_back(setting);
   }
@@ -2283,12 +2353,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                   "PsychoV31 and PsychoV35. Visibility "
-                   "Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque and Gilet (2023) on "
-                   "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024). Screen-space shadows: "
-                   "Bend Studio (Apache 2.0, Sony Interactive Entertainment). SMAA (MIT, Jimenez et al.), CMAA2 "
-                   "(Apache 2.0, Intel), reflections: AMD FidelityFX SSSR (MIT).",
+          .label = twattila::credits::Methods({.gtvbao = true, .gtvbgi = true, .auto_thickness = true, .bend = true, .smaa = true,
+                                               .cmaa2 = true, .sssr = true, .detours = true}),
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -2419,6 +2485,9 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  // Time Each Pass: its draw, dispatch and present events before any other hook of the addon's (registration order is run
+  // order); its file rome2_pass_timing.txt.
+  twattila::pass_timing::Install("rome2");
 
   // Failed native-hook removal can retain this DLL across host unload/reload.
   graphics_found = false;
@@ -2444,7 +2513,7 @@ bool AttachAddon() {
   // Rows saved at an old default, cleared once per revision. 1: Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
   // here until what they act on is hooked: they show then at ATN's values. 2 (parity round): rows saved hidden at
   // SetRaysPresetDefaults' or the shared row's value, shown now at a default of their own here (Experimental, off).
-  constexpr int SETTINGS_REVISION = 2;
+  constexpr int SETTINGS_REVISION = 3;
   if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
     const auto clear = [](std::initializer_list<const char*> keys) {
       for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
@@ -2457,7 +2526,17 @@ bool AttachAddon() {
       clear({"RayTracedFarTreeShadows", "RayTracedLightImportance", "RayTracedPathKeptCube", "RayTracedSmokeQuality",
              "RayTracedSpriteShadows", "RayTracedSwayRange"});
     }
-    clear({"RayTracedFarTreeShadows", "RayTracedLightGlow", "RayTracedSpriteShadows", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
+    if (revision < 2) {
+      clear({"RayTracedFarTreeShadows", "RayTracedLightGlow", "RayTracedSpriteShadows", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
+    }
+    // 3: Modded Auto Exposure: Sensitivity was in decades of luminance, now stops: a saved value x log2(10), the same look.
+    if (revision < 3) {
+      for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
+        if (float decades = 0.f; reshade::get_config_value(nullptr, preset, "auto_exposure_highlight_headroom_stops", decades)) {
+          reshade::set_config_value(nullptr, preset, "auto_exposure_highlight_headroom_stops", decades * 3.32192809f);
+        }
+      }
+    }
     reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
   }
 
@@ -2526,6 +2605,10 @@ bool AttachAddon() {
   // views are no G-buffer to write them from.
   rt_host.rewrite_guides = [](ID3D11DeviceContext*) {};
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, rt_host);
+  for (const uint32_t shader_hash : CAMPAIGN_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnCampaignDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyWaterRaysDevice);
   // Torch and Fire Shadows: one draw a light (VS E98DDC06, POSITION0 only: a 792-index sphere), the light in point_light_PS b2
   // (c0 position, c1 colour and reach); ours drawn in place of the light shaders without the game's cube shadows where the
@@ -2565,6 +2648,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twattila::test_hooks::Uninstall();
+  twattila::pass_timing::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
@@ -2575,6 +2659,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  renodx::utils::command_action::Unregister(OnCampaignDraw);
   renodx::utils::command_action::Unregister(OnLightShadowsDraw);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyLightShadowsDevice);
   OnDestroyLightShadowsDevice(nullptr);
@@ -2631,8 +2716,9 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH:
       addon_module_handle = h_module;
-      if (!reshade::register_addon(h_module)) return FALSE;
-      addon_registered = true;
+      // Not FALSE when it fails (a host whose ReShade refuses add-ons): after a FALSE the CRT's thread_local cleanup faults in
+      // the loader (Warhammer III's add-on in the helper's process: ntdll c0000005 each start). AddonInit fails instead.
+      addon_registered = reshade::register_addon(h_module);
       break;
 
     case DLL_PROCESS_DETACH:

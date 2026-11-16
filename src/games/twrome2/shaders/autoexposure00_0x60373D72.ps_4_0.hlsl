@@ -41,9 +41,10 @@ void main(
     float highlight_protection = saturate(AutoExposureHighlightProtection);
     float highlight_headroom_stops = clamp(AutoExposureHighlightHeadroomStops, 0.f, 16.f);
 
-    // Rome 2 is already in Log2 space unlike Attila so no need for exp(...)
+    // Rome II meters log10 luminance (exp2(3.32192802 x) = 10^x below), so the frame average x 2^stops (Attila's) is
+    // + stops x log10(2).
     float frame_average_logY = r0.z;
-    float protected_max_logY = min(r0.y, frame_average_logY + highlight_headroom_stops);
+    float protected_max_logY = min(r0.y, frame_average_logY + highlight_headroom_stops * 0.30103f);
 
     r0.y = lerp(r0.y, protected_max_logY, highlight_protection);
   }

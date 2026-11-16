@@ -87,6 +87,6 @@ void main(
   r0.w = cmp(0 < g_hdr_on);
   r0.w = r0.w ? 30 : 1;
   o0.xyz = r0.xyz * r0.www;
-  o0.xyz *= SI.someindicators;
+  if (HDR >= 1.f) o0.xyz *= SOMEINDICATORS;  // SDR stays stock
   return;
 }

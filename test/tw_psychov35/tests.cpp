@@ -42,8 +42,8 @@
 // 7. Gamma Correction in every mode (Rome II, Warhammer I / II / III, Troy, Pharaoh: twattila/frame_gamma.hlsli) on each
 //    one's hdr_to_screen t01 (WH3: t00) against 242d6101's: off and Rendering Mode SDR the same picture, on the 2.2
 //    display's decode within Peak (TestGammaCorrection). WH3 at the game's gamma 2.0.
-// 8. Report: PsychoV35's toe against Vanilla below white (Attila, Thrones of Britannia, Warhammer III): Recommended
-//    against Rendering Mode SDR, grey in shadows and mid tones and colour at equal lightness (ReportToe).
+// 8. Report: PsychoV35's toe against Vanilla below white (Attila, Thrones of Britannia, Rome II, Warhammer III):
+//    Recommended against Rendering Mode SDR, grey in shadows and mid tones and colour at equal lightness (ReportToe).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -1348,6 +1348,8 @@ static void ReportToe(const Chain& chain) {
          return RunAttila(chain, scene, si, false);
        }},
       {"Thrones of Britannia, identity S-curve", [&](float mode) { return RunThrones(chain, scene, ThronesInjection(mode, 1.f)); }},
+      // Rome II's Recommended: Hue Clip 0.8 (its HUE_CLIP_DEFAULT 80), the identity curve (RunRome2).
+      {"Rome II, identity curve", [&](float mode) { return RunRome2(chain, scene, mode, (mode == 0.f) ? 0.f : 0.8f); }},
       {"Warhammer III, burn 0.3", [&](float mode) {
          auto si = Wh3Injection(mode, 1.f);
          si.hue_clip = 1.f;
