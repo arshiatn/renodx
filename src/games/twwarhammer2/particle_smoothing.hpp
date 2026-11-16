@@ -28,7 +28,9 @@
 // (twattila/particle_history.hpp on light_bounce.hlsli's rows, the game's own camera's) is bound at t0 for the game's upsample,
 // the game's layer put back after it. The layer's part is the draw's viewport halved: below 100% the view sits in the top-left,
 // its particles too (960 x 540 of 1920 x 1080 at DLSS Performance in the traces); the rest of the smoothed layer is copied from
-// the game's, which the upsample's bilinear reads at the view's edge.
+// the game's, which the upsample's bilinear reads at the view's edge. Warhammer's upsample E88CBE3C binds the same (t0 the
+// layer R16G16B16A16F at half size, t1 / t2 the depths, the camera at b0 with the same layout; its traces: 1920 x 1080 of 3840 x
+// 2160), Install's hash.
 namespace twwarhammer2::particle_smoothing {
 
 using Microsoft::WRL::ComPtr;
@@ -110,7 +112,7 @@ constexpr auto OnComposite = []<typename Context>(Context& command) -> renodx::u
   native->PSSetShaderResources(0, 1, &smoothed[0]);
   if (!state.applied_logged) {
     state.applied_logged = true;
-    renodx::utils::log::i("[Warhammer II] Smooth Half-Size Particles: the first upsample smoothed (", region.Width, " x ", region.Height,
+    renodx::utils::log::i("[Total War] Smooth Half-Size Particles: the first upsample smoothed (", region.Width, " x ", region.Height,
                           " of the half layer).");
   }
   return {.finalize_callback = [](Context& post, const void*) {
@@ -124,9 +126,10 @@ constexpr auto OnComposite = []<typename Context>(Context& command) -> renodx::u
 
 }  // namespace internal
 
-inline void Install() {
+// `composite_pixel_shader`: the game's cross-bilateral upsample (Warhammer II's by default).
+inline void Install(uint32_t composite_pixel_shader = internal::COMPOSITE_PS) {
   renodx::utils::command_action::Register(
-      internal::OnComposite, {.shader_hash = internal::COMPOSITE_PS, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+      internal::OnComposite, {.shader_hash = composite_pixel_shader, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
 }
 
 inline void Uninstall() {

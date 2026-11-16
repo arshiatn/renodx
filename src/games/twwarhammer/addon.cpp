@@ -51,6 +51,7 @@
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
+#include "../twwarhammer2/particle_smoothing.hpp"
 #include "../twwarhammer2/shadow_cascades.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
@@ -1165,6 +1166,17 @@ void BuildRuntimeData() {
         .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
+        .key = "VfxParticleSmoothing",
+        .binding = &twwarhammer2::particle_smoothing::row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Half-Size Particles (Experimental)",
+        .section = "Extra",
+        .tooltip = "Smoke, fire and dust the game draws at half size flicker less.\n"
+                   "Small cost.",
+        .labels = {"Off", "On"},
+    },
+    new renodx::utils::settings::Setting{
         .key = "video_autohdr",
         .binding = &shader_injection.video_autohdr,
         .default_value = 0.f,
@@ -1819,6 +1831,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
+  twwarhammer2::particle_smoothing::OnPresent();
   talesofarise::pixel_trace::OnPresent(queue);
   twattila::pass_timing::OnPresent(queue, "warhammer");
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
@@ -2473,6 +2486,9 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
+  // Smooth Half-Size Particles at the alpha composition's cross-bilateral upsample E88CBE3C (34 of ATN's 36 traces).
+  reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
+  twwarhammer2::particle_smoothing::Install(0xE88CBE3C);
 
   // Rows saved at an old default, cleared once: Ray-Traced Water Reflections was hidden at 1 (it did nothing) before the
   // water pass, Sprite Soldier Shadows at RT/PT's 1 (SetRaysPresetDefaults) before the sprite soldiers were in the rays; now
@@ -2620,6 +2636,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
+  twwarhammer2::particle_smoothing::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
