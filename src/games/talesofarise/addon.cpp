@@ -170,6 +170,8 @@ bool LoadPostFilters(reshade::api::command_list*) {
   shader_injection.ssao_quality = filters.ao_quality;
   shader_injection.ssao_frame = filters.ao_frame;
   shader_injection.ssao_auto_thickness = filters.ao_auto_thickness;
+  shader_injection.screen_space_shadows = filters.screen_space_shadows;
+  shader_injection.gtvbgi = filters.gtvbgi;
   return true;
 }
 
@@ -276,6 +278,7 @@ void BuildRuntimeData() {
       PostFilterShader(0xFC1A93FE),         // aoblur07
       CustomShaderEntry(0xD09F3430),        // volumetric00 (sun visibility per cell: Smooth Volumetric Light weights its shadow lookups)
       PostFilterShader(0x2084C889),         // sunshadow00 (sun shadow mask: Smooth Sun Shadows above the game's sun shadow distance)
+      PostFilterShader(0x95802ADA),         // contactshadow00 (Bandai's character contact shadows: Bend's in place of its march toward the sun)
       PostFilterShader(0x66DC643D),         // painterly00 (painterly filter + its sharpening)
       PostFilterShader(0x2483CE26),         // painterly01 (painterly blur, horizontal)
       PostFilterShader(0x773EABCB),         // painterly02 (painterly blur, vertical)
@@ -745,6 +748,8 @@ void ConfigureAddon() {
 
   // The former DLSS add-on's [Tales AA] keys into the page's, once, before the settings load (settings::Use).
   talesofarise::dlss_graphics::Migrate();
+  // GT-VBGI joins Global Illumination: presets that had it off keep it off (SettingsRevision 2).
+  talesofarise::ue_light_bounce::KeepSavedGiOff(2);
   BuildRuntimeData();
   // Without the helper (the HDR-only snapshot), after Settings Mode.
   settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote());

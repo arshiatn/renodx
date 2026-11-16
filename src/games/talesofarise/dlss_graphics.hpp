@@ -67,6 +67,8 @@
 #include "../talesofarise_dlss/engine_hooks.hpp"
 #include "../talesofarise_dlss/post_filters.hpp"
 #include "../talesofarise_dlss/rt_shadows.hpp"
+#include "../talesofarise_dlss/ue_light_bounce.hpp"
+#include "../talesofarise_dlss/ue_screen_space_shadows.hpp"
 #include "../talesofarise_dlss/upscaling.hpp"
 #include "../twattila/frame_generation.hpp"
 
@@ -172,8 +174,11 @@ talesofarise::dlss::constants::ViewMipBias applied_mip_bias;  // the one the con
 // The page's rows (Graphics 1 of 2: graphics_page.hpp, Upscaling and Tools), read into the state above at each present.
 twattila::feature_settings::AaSliders aa_sliders;
 twattila::rt_scene::Sliders rt_sliders;
-twattila::feature_settings::SssSliders no_screen_space_shadows;  // graphics_page's Bend rows: none here
-float light_bounce_strength = 1.f;
+// Bend's screen-space shadows and GT-VBGI in place of Bandai's contact shadows' march toward the sun and its screen-space
+// GI (talesofarise_dlss/ue_screen_space_shadows.hpp, ue_light_bounce.hpp); both off by default. GI's Strength is also
+// the rays' bounce light's.
+twattila::feature_settings::SssSliders screen_space_shadows_rows;
+talesofarise::ue_light_bounce::Rows gi_rows;
 float live_scale_row = 1.f;
 float camera_jitter_row = 1.f;
 float replace_taa_row = 1.f;
@@ -288,6 +293,18 @@ struct GBufferCopy {
   std::array<ComPtr<ID3D11ShaderResourceView>, 3> srvs;
   uint64_t frame = UINT64_MAX;
 } gbuffer;
+
+// Bend's and GT-VBGI's settings from the page's rows (each present) for the sun shadow mask and the lighting pass, and
+// this frame's GT-VBGI (it runs at the frame's first lighting draw, the others reuse it).
+struct UeEffects {
+  std::shared_mutex mutex;
+  twattila::screen_space_shadows::Settings shadows;
+  LightBounceConstants bounce = {};
+  bool denoise = false;
+  float render_share = 1.f;
+  uint64_t bounce_frame = UINT64_MAX;
+  ID3D11ShaderResourceView* bounce_view = nullptr;
+} ue_effects;
 
 // Frame generation's inputs from this frame's upscaling (KeepFrame after the tone mapper), around the camera (UE's
 // translated world); the last frame's view-projection and translation (its camera's step moves it).
@@ -1795,15 +1812,42 @@ constexpr auto OnDepthPrepass = []<DrawCommand Command>(Command&) -> renodx::uti
   return {.post_callback = CaptureDepthDraw<Command>};
 };
 
+// Bend's screen-space shadows (ue_screen_space_shadows.hpp) from the sun shadow mask's scene depth (t0), sun (its b0,
+// ue_sss_setup.cs_5_0.hlsl) and View (b1), at t41 for the HDR part's sunshadow00, which multiplies 1 - them into the sun's
+// shadowing; unbound after it with the rays' (t40).
+constexpr UINT SCREEN_SPACE_SHADOWS_SLOT = 41;
+
 constexpr auto OnSunShadowMask = [](Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&context);
-  if (context == nullptr || !talesofarise::rt_shadows::Trace(context)) return {};
+  ComPtr<ID3D11DeviceContext1> context1;
+  if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
+  const bool traced = talesofarise::rt_shadows::Trace(context);
+  twattila::screen_space_shadows::Settings shadows;
+  BoundViews<ID3D11ShaderResourceView, 1> depth;
+  talesofarise::ue_screen_space_shadows::Inputs inputs;
+  {
+    const std::shared_lock lock(ue_effects.mutex);
+    shadows = ue_effects.shadows;
+    inputs.render_share = ue_effects.render_share;
+  }
+  ID3D11ShaderResourceView* occlusion = nullptr;
+  if (shadows.enabled) {
+    context->CSGetShaderResources(0, 1, depth.views.data());
+    inputs.depth = depth.views[0];
+    context1->CSGetConstantBuffers1(0, 1, inputs.sun.buffer.GetAddressOf(), &inputs.sun.first, &inputs.sun.count);
+    context1->CSGetConstantBuffers1(1, 1, inputs.view.buffer.GetAddressOf(), &inputs.view.first, &inputs.view.count);
+    occlusion = talesofarise::ue_screen_space_shadows::Compute(context, inputs, shadows);
+  }
+  if (occlusion == nullptr && !traced) return {};
+  context->CSSetShaderResources(SCREEN_SPACE_SHADOWS_SLOT, 1, &occlusion);
   return {.post_callback = [](Context& command, const void*) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
     renodx::utils::directx::TryNativeFromReShadeProxy(&context);
     if (context != nullptr) {
       talesofarise::rt_shadows::Unbind(context);
+      ID3D11ShaderResourceView* none = nullptr;
+      context->CSSetShaderResources(SCREEN_SPACE_SHADOWS_SLOT, 1, &none);
     }
   }};
 };
@@ -1934,7 +1978,36 @@ constexpr auto OnLightingDraw = []<DrawCommand Command>(Command& command) -> ren
     lighting = talesofarise::rt_shadows::TraceLighting(context, gbuffer_views.views);
   }
   const auto ambient = talesofarise::rt_shadows::AmbientOcclusion();
-  const auto bounce = lighting.bounce ? lighting.bounce : talesofarise::rt_shadows::BounceLight();
+  ComPtr<ID3D11ShaderResourceView> bounce = lighting.bounce ? lighting.bounce : talesofarise::rt_shadows::BounceLight();
+  // Without the rays' bounce light, GT-VBGI's (ue_light_bounce.hpp: off at Strength 0) at the frame's first lighting draw:
+  // from the sun's light (t4), the scene depth (t0), the G-buffer (t1-t3) and the View (b1) at the draw's viewport.
+  if (!bounce) {
+    const uint64_t frame = CurrentFrame();
+    const std::unique_lock lock(ue_effects.mutex);
+    ComPtr<ID3D11DeviceContext1> context1;
+    if (ue_effects.bounce_frame != frame && ue_effects.bounce.strength > 0.f
+        && SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) {
+      BoundViews<ID3D11ShaderResourceView, 5> views;
+      context->PSGetShaderResources(0, static_cast<UINT>(views.views.size()), views.views.data());
+      D3D11_VIEWPORT viewport = {};
+      UINT viewport_count = 1;
+      context->RSGetViewports(&viewport_count, &viewport);
+      talesofarise::ue_light_bounce::Inputs inputs = {
+          .light = views.views[4],
+          .depth = views.views[0],
+          .gbuffer_a = views.views[1],
+          .gbuffer_b = views.views[2],
+          .gbuffer_c = views.views[3],
+          .render_size = {static_cast<UINT>(viewport.Width), static_cast<UINT>(viewport.Height)},
+      };
+      context1->PSGetConstantBuffers1(1, 1, inputs.view.buffer.GetAddressOf(), &inputs.view.first, &inputs.view.count);
+      ue_effects.bounce_view = talesofarise::ue_light_bounce::Apply(context, inputs, ue_effects.bounce, ue_effects.denoise, nullptr);
+      ue_effects.bounce_frame = frame;
+    }
+    if (ue_effects.bounce_frame == frame) {
+      bounce = ue_effects.bounce_view;
+    }
+  }
   if (ambient || bounce || lighting.reflection || lighting.specular_occlusion) {
     const std::array<ID3D11ShaderResourceView*, 4> views = {ambient.Get(), bounce.Get(), lighting.reflection.Get(),
                                                             lighting.specular_occlusion.Get()};
@@ -2089,6 +2162,15 @@ void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   talesofarise::rt_shadows::Release();
   {
+    auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+    const std::unique_lock lock(ue_effects.mutex);
+    talesofarise::ue_screen_space_shadows::Release(native);
+    talesofarise::ue_light_bounce::Release(native);
+    ue_effects.bounce_frame = UINT64_MAX;
+    ue_effects.bounce_view = nullptr;
+  }
+  {
     const std::unique_lock lock(spark_motion.mutex);
     spark_motion.vertex_shaders = {};
     spark_motion.pixel_shader.Reset();
@@ -2160,7 +2242,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     }
     // The rays (rt_shadows.hpp) with an upscaler on (rt_scene::SettingsOf; none without the helper); path tracing replaces the
     // bounce light. An effect turned on tries again after a failed start.
-    const auto rays = upscaling ? twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, light_bounce_strength) : twattila::rt_scene::Settings{};
+    const auto rays = upscaling ? twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, gi_rows.light_bounce_strength) : twattila::rt_scene::Settings{};
     bool turned_on = false;
     for (const auto& [effect, on] : std::to_array<std::pair<std::atomic_bool*, bool>>({
              {&talesofarise::rt_shadows::enabled, rays.sun_shadows},
@@ -2177,7 +2259,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     talesofarise::rt_shadows::character_shadows.store(character_shadows_row != 0.f);
     talesofarise::rt_shadows::ambient_range.store(std::clamp(rays.ambient_range, 0.5f, 10.001733f) * 100.f);
     talesofarise::rt_shadows::ambient_rays.store(std::clamp(rays.ambient_rays, 1u, 8u));
-    talesofarise::rt_shadows::bounce_strength.store(std::clamp(light_bounce_strength, 0.f, 4.f));
+    talesofarise::rt_shadows::bounce_strength.store(std::clamp(gi_rows.light_bounce_strength, 0.f, 4.f));
     talesofarise::rt_shadows::bounce_range.store(std::clamp(rays.light_bounce_range, 1.f, 50.012573f) * 100.f);
     talesofarise::rt_shadows::bounce_rays.store(std::clamp(rays.light_bounce_rays, 1u, 8u));
     talesofarise::rt_shadows::path_bounces.store(rays.path_bounces);
@@ -2563,6 +2645,23 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                         ? sun_distance.written / sun_distance.game_value
                                         : 1.f);
   ao_frame = (ao_frame + 1u) % 64u;
+  // Bend's screen-space shadows (not under the rays' sun shadows) and GT-VBGI (not with the rays' bounce light: Global
+  // Illumination's method), the passes' thickness the AO's; the HDR part leaves Bandai's own out while they run.
+  auto shadows = twattila::feature_settings::SssSettings(screen_space_shadows_rows);
+  shadows.enabled = shadows.enabled && !talesofarise::rt_shadows::enabled.load();
+  gi_rows.ssao_thickness = ao_thickness;
+  const auto gi = twattila::lighting_settings::LightBounceSliders(gi_rows);
+  auto bounce = talesofarise::ue_light_bounce::ConstantsOf(gi, ao_frame);
+  if (rt_sliders.light_bounce != 0.f) {
+    bounce.strength = 0.f;
+  }
+  {
+    const std::unique_lock lock(ue_effects.mutex);
+    ue_effects.shadows = shadows;
+    ue_effects.bounce = bounce;
+    ue_effects.denoise = gi.denoise != 0.f;
+    ue_effects.render_share = render_scale;
+  }
   talesofarise::post_filters::Store({
       .scale = render_scale,
       .sharpening = ((mode != AAMode::OFF && !keep_game_sharpening) ? 0.f : 1.f),
@@ -2576,6 +2675,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       .ao_quality = static_cast<float>(ao_quality),
       .ao_frame = static_cast<float>(ao_frame),
       .ao_auto_thickness = ao_auto_thickness,
+      .screen_space_shadows = (shadows.enabled ? 1.f : 0.f),
+      .gtvbgi = ((bounce.strength > 0.f) ? 1.f : 0.f),
   });
   talesofarise::engine_hooks::Update();
 }
@@ -2720,17 +2821,21 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .in_game_aa_note = "In-game Anti-Aliasing must be TAA for DLSS, FSR, XeSS and Frame Generation.",
     .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its shadows, AO and reflections.\n"
                      "The rest at its default.",
-    .no_rays_tooltip = "No ray tracing: the game's shadows, ambient occlusion and reflections. The rest of this page at its default.",
+    .no_rays_tooltip = "No ray tracing: Bend Screen-Space Shadows and GT-VBGI in place of the game's contact shadows and Global\n"
+                       "Illumination, the game's ambient occlusion and reflections. The rest of this page at its default.",
     .rays_tooltip = "Ray-traced shadows, ambient occlusion and reflections, path-traced Global Illumination at my settings. The\n"
                     "rest of this page at its default. Needs an upscaler (Anti-Aliasing above) and a DXR GPU; on NVIDIA also\n"
                     "turns DLSS Ray Reconstruction on.",
-    .shadow_tooltip = "Game's Shadow Maps: the original. DXR: buildings, terrain, rocks, leaves and grass also cast ray-traced sun\n"
+    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows (Experimental): those plus fine sun shadows\n"
+                      "from what is on screen (Bend Studio's; characters, grass, small details), in place of the game's contact\n"
+                      "shadows toward the sun. DXR: buildings, terrain, rocks, leaves and grass also cast ray-traced sun\n"
                       "shadows, at any distance (the darker of the game's and the rays'). Heavy. Needs an upscaler and a DXR GPU.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game ambient occlusion on.\n"
                   "Game's SSAO: the original. GT-VBAO: contact shading that lets light pass behind thin things (grass,\n"
                   "poles, characters) instead of dark halos.\n"
                   "RTAO: large-scale shading from buildings, terrain and rocks, with the game's. Heavy. Needs an upscaler and a\n"
                   "DXR GPU.",
+    .gi_tooltip_end = "\nGT-VBGI takes the place of the game's own Global Illumination.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, fog, light shafts, reflections, clouds, effects, skin and shadows\n"
                                  "keep their 100% detail. Looks better, can cost some performance.",
     .dlss_preset_tooltip = "NVIDIA's models: K the first transformer, M the second (default), L the sharpest and heaviest (small fast\n"
@@ -2779,7 +2884,8 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
          "AntiAliasingDebugView"});
   // The rays (talesofarise_dlss/rt_shadows.hpp: sun shadows, AO, the bounce light and its paths, reflections, specular
   // occlusion); not the light bounce's resolution (its own).
-  twattila::rt_scene::AppendSettings(settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION, &light_bounce_strength);
+  twattila::rt_scene::AppendSettings(settings, &rt_sliders, &aa_sliders, false, true, twattila::feature_settings::AA_SECTION,
+                                     &gi_rows.light_bounce_strength);
   erase({"RayTracedLightBounceResolution"});
   for (Setting* setting : *settings) {
     // The former overlay's defaults and ranges: preset M, the AO's 2 m, 1-8 bounce rays a pixel (1).
@@ -2809,21 +2915,16 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
       .tooltip = "The GPU's time of every pass of the next frame into talesofarise_pass_timing.txt next to the game's exe.",
       .on_change = [] { twattila::pass_timing::Request(); },
   });
-  settings->push_back(new Setting{
-      .key = "light_bounce_strength",
-      .binding = &light_bounce_strength,
-      .default_value = 1.f,
-      .label = "Strength",
-      .section = twattila::lighting_settings::GI_SECTION,
-      .tooltip = "How much bounced light is added.",
-      .max = 4.f,
-      .format = "%.2f",
-  });
+  // GT-VBGI's rows (Global Illumination; its Strength also the rays' bounce light's), the screen-space search's off
+  // under the rays; Bend's rows without those of the Total War games' own sun shaders.
+  talesofarise::ue_light_bounce::AppendRows(settings, &gi_rows, [] { return rt_sliders.light_bounce != 0.f; });
+  twattila::feature_settings::AppendSss(settings, &screen_space_shadows_rows);
+  erase({"ScreenSpaceShadowsDistanceSoftness", "ScreenSpaceShadowsDebugView"});
   twattila::graphics_page::Apply(settings, {.aa = &aa_sliders,
-                                            .sss = &no_screen_space_shadows,
+                                            .sss = &screen_space_shadows_rows,
                                             .rt = &rt_sliders,
                                             .ssao_mode = &ao_method,
-                                            .light_bounce_strength = &light_bounce_strength,
+                                            .light_bounce_strength = &gi_rows.light_bounce_strength,
                                             .texts = &PAGE_TEXTS,
                                             .aa_methods = AA_METHODS,
                                             .upscaler_status = &UpscalerStatus,
@@ -2831,8 +2932,6 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                             .has_path_ambient = false,
                                             .rays_replace_ao = false,
                                             .rays_multiply_maps = true,
-                                            .has_screen_space_shadows = false,
-                                            .has_gtvbgi = false,
                                             .rays_tested = false,
                                             .every_row = false});
   // What the in-process ray tracing has no part of (the helper's: Rays a Pixel, its filters and caches, micromaps, its

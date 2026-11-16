@@ -16,6 +16,11 @@ Texture2D<float4> t0 : register(t0);
 // bound only while it runs.
 Texture2D<float> t40 : register(t40);
 
+// Bend's screen-space shadows in place of Bandai's contact shadows (talesofarise_dlss/ue_screen_space_shadows.hpp,
+// Experimental): their occlusion (1 - the shadow term) multiplies the sun's shadowing in both kinds of tile, after the
+// rays'; bound only while they run (unbound reads 0: the game's).
+Texture2D<float> t41 : register(t41);
+
 SamplerState s4_s : register(s4);
 
 SamplerState s3_s : register(s3);
@@ -206,7 +211,8 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
       r3.x = 1 + -r3.y;
       r2.z = r3.x;
     }
-    r2.z = r2.w * r2.z;
+    // A tile the shadow map lights fully: Bend's shadows alone (t41).
+    r2.z = r2.w * r2.z * (1.f - t41.Load(int3(vThreadID.xy, 0)));
     r4.xyz = sqrt(r2.zzz);
     r4.w = sqrt(r3.x);
   }
@@ -298,6 +304,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
       if (traced_width != 0u) {
         r2.w = min(r2.w, t40.Load(int3(vThreadID.xy, 0)));
       }
+      r2.w *= 1.f - t41.Load(int3(vThreadID.xy, 0));
       r0.x = cmp(cb0[40].w == 0.000000);
       if (r0.x != 0) {
         r2.x = 1;
