@@ -252,6 +252,9 @@ struct RtSliders {
 bool ray_tracing_installed = false;
 // The rays' AO went into this frame's lighting (render thread; read at the present).
 std::atomic_bool rays_ambient_applied = false;
+// A near shadow mask permutation we don't replace (ShaderCache.pak: edgeMaskS at t5) drew since the start: the game's
+// edge mask (ps 0x292F2865) is drawn again for good (render thread).
+std::atomic_bool edge_mask_game_reader = false;
 constexpr uint32_t RAYS_TINT = 0x6BE0D8;
 
 // Path-Traced Ambient: with path tracing on the Light Bounce (its paths bring the sky), in place of the ray-traced AO too.
@@ -403,6 +406,23 @@ void BuildRuntimeData() {
   for (const uint32_t tiled_lighting : {0x897232B5u, 0x488BF732u, 0xCDB59F36u}) {
     custom_shaders[tiled_lighting] = {.crc32 = tiled_lighting, .on_replace = keep_shader, .on_draw = contact_shadows, .on_drawn = light_bounce};
   }
+  // ps 0x292F2865 (R0 traces: three draws a frame at a quarter of the render size, before the near cascades' masks; two
+  // blurs after): the game's contact-hardening estimate, the blockers' mean distance over 16 map taps, into the edge mask
+  // that only the near mask passes read (t5 edgeMaskS) to widen their kernel. Under Sun Shadow Softness our sunshadow00 /
+  // 01 take PCSS's lit share in place of that kernel's, so the estimate goes unread: left out. Its permutations' unreplaced
+  // readers (the near masks with 8 / 4 taps or a per-pixel kernel scale) keep it for good once one draws.
+  const auto game_edge_reader = [](reshade::api::command_list*) {
+    if (!edge_mask_game_reader.exchange(true, std::memory_order_relaxed)) {
+      renodx::utils::log::i("[Ryse] A sun shadow mask pass the add-on doesn't replace reads the edge mask: ps 0x292F2865 draws always now.");
+    }
+    return true;
+  };
+  for (const uint32_t game_reader : {0x361344F1u, 0x3017167Du, 0x3D8309D7u, 0x51BA8CEAu, 0x954DEA3Cu, 0xC7EEE343u}) {
+    custom_shaders[game_reader] = {.crc32 = game_reader, .on_replace = keep_shader, .on_draw = game_edge_reader};
+  }
+  custom_shaders[0x292F2865] = {.crc32 = 0x292F2865, .on_replace = keep_shader, .on_draw = [](reshade::api::command_list*) {
+                                  return shader_injection.sun_shadow_softness == 0.f || edge_mask_game_reader.load(std::memory_order_relaxed);
+                                }};
   // The screen-space reflections' trace: left out while the traced reflections take its place.
   const auto reflection_trace = [](reshade::api::command_list*) {
     return !ray_tracing_installed || rysesonofrome::ray_tracing::OnReflectionTrace();
