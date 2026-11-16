@@ -2209,7 +2209,7 @@ void BuildRuntimeData() {
                  "Own ReSTIR: their own samples, reused over frames and between neighbours.",
                  reflections),
       ray_choice("RayTracedWaterReflections", &rt_sliders.water_reflections, 0.f, "Ray-traced water reflections (Experimental)", off_on,
-                 "The sea, rivers and lakes reflect ships, shores and units with rays (water quality High or Ultra).", reflections),
+                 "The sea, rivers and lakes reflect ships, shores and units with rays.", reflections),
       ray_choice("RayTracedWaterSteady", &rt_sliders.water_steady, 0.f, "Steadier water reflections (Experimental)", off_on,
                  "Fewer flickering dots in calm water's reflections: each pixel stays within what the water around it shows.", water),
       ray_choice("RayTracedWaterSoft", &rt_sliders.water_soft, 0.f, "Softer water reflections (Experimental)", off_on,
