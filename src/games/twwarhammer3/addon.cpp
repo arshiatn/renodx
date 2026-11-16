@@ -1350,6 +1350,10 @@ void OnResolved(reshade::api::command_list* cmd_list) {
 // rt_scene's hook has just bound the rays' texture; otherwise the game's bytes do, and nothing here touches the picture.
 // The sun's mask (E6BCBA8A, before the sun draw and this frame's trace) the same, while rays cast the sun's shadow: lit cascades, no
 // contact march; smoke, clouds and the terrain's map stay. Fog, portraits and forward passes read the maps, so the casters still draw.
+// With the maps kept under ours (Bend Screen-Space Shadows, or the rays with Rays Replace Shadow Maps off) the game's own bytes draw
+// the mask without their contact march, the one method per effect: its sss constants (b3) as a copy with
+// sss_screen_space_shadows_enabled (byte 28) 0, the game with its in-game screen-space shadows off; the game's buffer bound again
+// after the draw.
 // Fog Strength off 1 too on what no upsample scales: the 3 full-resolution fog lights and the legacy fog (the half-resolution lights go
 // through 78E4CBF2; the extinction 34719E09 is every map's). None of the 4 drew in any run: level B.
 namespace traced_lights {
@@ -1361,15 +1365,21 @@ constexpr size_t POINT_LIGHT_SHADERS = 8;
 constexpr size_t FOG_SHADERS = 6;
 constexpr size_t SUN_MASK = POINT_LIGHT_SHADERS + FOG_SHADERS;
 constexpr size_t LEGACY_FOG = SUN_MASK + 1;
+constexpr UINT SSS_MARCH_OFFSET = 28;
 float rays_replace_maps_row = 1.f;
+std::atomic_bool bend_runs = false;  // Bend's mask this frame (OnPresent)
 std::array<std::span<const uint8_t>, SHADERS.size()> codes = {};
 std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, SHADERS.size()> ours = {};
 std::array<std::atomic_bool, SHADERS.size()> logged = {};
 std::atomic_bool shadow_constants_logged = false;
+std::atomic_bool march_off_logged = false;
 Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;
 Microsoft::WRL::ComPtr<ID3D11Buffer> fog_strength_buffer;  // b8: the slider minus 1
 float fog_strength_written = 1.f;
 Microsoft::WRL::ComPtr<ID3D11Buffer> game_b8;
+Microsoft::WRL::ComPtr<ID3D11Buffer> sss_without_march;  // b3's copy
+Microsoft::WRL::ComPtr<ID3D11Buffer> zeros;
+Microsoft::WRL::ComPtr<ID3D11Buffer> game_b3;
 ID3D11Device* own_device = nullptr;  // what `ours` and fog_strength_buffer were made on (DeviceChanged)
 
 void OnDestroyDevice(reshade::api::device*) {
@@ -1377,6 +1387,9 @@ void OnDestroyDevice(reshade::api::device*) {
   game_shader.Reset();
   fog_strength_buffer.Reset();
   game_b8.Reset();
+  sss_without_march.Reset();
+  zeros.Reset();
+  game_b3.Reset();
 }
 
 // Registered after rt_scene's hooks, so run after them: their texture is bound by now, or isn't this frame.
@@ -1422,7 +1435,55 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
     OnDestroyDevice(nullptr);
   }
   if (index == SUN_MASK) {
-    if (rays_replace_maps_row == 0.f || !twattila::frame_history::MainViewport(native) || !twattila::rt_scene::SunShadowsTraced()) return {};
+    if (!twattila::frame_history::MainViewport(native)) return {};
+    const bool traced = twattila::rt_scene::SunShadowsTraced();
+    if (!traced && !bend_runs.load(std::memory_order_relaxed)) return {};
+    if (!traced || rays_replace_maps_row == 0.f) {
+      native->PSGetConstantBuffers(3, 1, game_b3.ReleaseAndGetAddressOf());
+      D3D11_BUFFER_DESC desc = {};
+      if (game_b3) {
+        game_b3->GetDesc(&desc);
+      }
+      if (desc.ByteWidth < SSS_MARCH_OFFSET + sizeof(uint32_t)) {
+        game_b3.Reset();
+        return {};
+      }
+      D3D11_BUFFER_DESC copy_desc = {};
+      if (sss_without_march) {
+        sss_without_march->GetDesc(&copy_desc);
+      }
+      if (copy_desc.ByteWidth != desc.ByteWidth || !zeros) {
+        Microsoft::WRL::ComPtr<ID3D11Device> device;
+        native->GetDevice(device.GetAddressOf());
+        constexpr std::array<uint32_t, 4> ZEROS = {};
+        const D3D11_BUFFER_DESC copy = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        const D3D11_BUFFER_DESC zeros_desc = {.ByteWidth = sizeof(ZEROS), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        const D3D11_SUBRESOURCE_DATA zeros_data = {.pSysMem = ZEROS.data()};
+        if (FAILED(device->CreateBuffer(&copy, nullptr, sss_without_march.ReleaseAndGetAddressOf()))
+            || FAILED(device->CreateBuffer(&zeros_desc, &zeros_data, zeros.ReleaseAndGetAddressOf()))) {
+          sss_without_march.Reset();
+          game_b3.Reset();
+          return {};
+        }
+      }
+      // A constant buffer takes no update of a part: the game's whole, then the flag from the buffer of zeros.
+      native->CopyResource(sss_without_march.Get(), game_b3.Get());
+      const D3D11_BOX flag = {.left = 0, .top = 0, .front = 0, .right = sizeof(uint32_t), .bottom = 1, .back = 1};
+      native->CopySubresourceRegion(sss_without_march.Get(), 0, SSS_MARCH_OFFSET, 0, 0, zeros.Get(), 0, &flag);
+      native->PSSetConstantBuffers(3, 1, sss_without_march.GetAddressOf());
+      if (!march_off_logged.exchange(true, std::memory_order_relaxed)) {
+        renodx::utils::log::i(std::format("[Warhammer III] Applied: the game's contact march off in the sun mask ({} shadows the sun).",
+                                          traced ? "the rays over the shadow maps" : "Bend"));
+      }
+      return {.post_callback = [](Context& post, const void*) {
+        auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+        renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
+        if (post_native != nullptr) {
+          post_native->PSSetConstantBuffers(3, 1, game_b3.GetAddressOf());
+        }
+        game_b3.Reset();
+      }};
+    }
   } else {
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> bound;
     // rt_local_lights.hlsli's mask, rt_fog.hlsli's fog.
@@ -3007,7 +3068,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                     "this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
-                      "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
+                      "what is on screen in place of the game's own (Bend Studio's; soldiers, weapons, grass; needs in-game\n"
+                      "shadows on).\n"
                       "DXR: DirectX Raytracing, the sun's shadow from rays in place of the game's and Bend's.\n"
                       "Needs an upscaler.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep the in-game ambient occlusion on.\n"
@@ -3444,6 +3506,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
   twattila::screen_space_shadows::Update(swapchain, sss_settings);
+  traced_lights::bend_runs.store(sss_settings.enabled, std::memory_order_relaxed);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp); none under the rays'
   // AO, which leaves GT-VBAO's setting as it was (graphics_page's rays_replace_ao) and skips it with the game's passes.
   const bool bitmask_ao = shader_injection.ssao_mode >= 1.f && !SkipGameSsao();

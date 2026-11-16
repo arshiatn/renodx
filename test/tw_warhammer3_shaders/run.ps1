@@ -1,14 +1,16 @@
 # Warhammer III's shaders against the game's on WARP (tests.cpp): the rays' dynamic casters (03298FD5, 1C3500F0, 70F4C9F9)
-# and Reflection Quality's water march (EF6B7767 against ssr_game_march).
+# Reflection Quality's water march (EF6B7767 against ssr_game_march), Modded Auto Exposure, the sun mask's contact march off
+# (E6BCBA8A) and the point light shadow twins.
 # -GameShaders: the folder of the game's dumped csos, only read. -Built: the add-on's compiled shaders
 # (build\twwarhammer3.include\embed after a twwarhammer3 build). Holds tools/tw's GPU job lock while it runs when -Lock names
-# it. amd64 only (Warhammer III is 64-bit).
-param([string]$GameShaders = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\dump_shader_twwarhammer3_pack\cso', [string]$Built = '', [string]$Lock = '')
+# it. -OutDir: where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\.
+# amd64 only (Warhammer III is 64-bit).
+param([string]$GameShaders = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\dump_shader_twwarhammer3_pack\cso', [string]$Built = '', [string]$Lock = '', [string]$OutDir = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 if ($Built -eq '') { $Built = Join-Path $repairRoot 'build\twwarhammer3.include\embed' }
 $testRoot = Join-Path $repairRoot 'test\tw_warhammer3_shaders'
-$testBuild = Join-Path $repairRoot 'build\tw_warhammer3_shaders_test_amd64'
+$testBuild = if ($OutDir) { Join-Path $OutDir 'tw_warhammer3_shaders_amd64' } else { Join-Path $repairRoot 'build\tw_warhammer3_shaders_test_amd64' }
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
