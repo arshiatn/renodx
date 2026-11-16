@@ -1304,7 +1304,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         ReflectPixel; Experimental rows; branch ruse-gi. Owner: ru7_ (started 01:2x)
       - [x] DONE a98b1871 02:0x (sk_ 6b854be3 + 67e7e62d, all 17 lessons placed; zip rebuilt: Downloads\RenoDX_skills_2026-11-15.zip,
         48 files). Skills update from tonight's 17 lessons (tools/tw/round_notes/skill_lessons_1116.md) + rebuilt skills zip.
-      - [ ] R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA passes H1 + H2 first), Fable 5.2
+      - [x] ruh_ GPU TESTS PASS + MERGED df26e42c 02:2x: af61a7ae real bug (the bridge could never start: D3D9Ex opens
+        D3D11-made shared textures only as RGBA16F / RGB10A2 / BGRA8; now D3D9Ex makes them, compute writes via D3D11 work
+        textures + copy); H1 PASS (INTZ 1e-5, 10-bit 0 of 36,864 differ, jitter restored bit for bit), H2 PASS (DLSS / FSR
+        3.1.6 / XeSS 2.0.2 24/24), GT-VBAO GPU = WARP (6.4e-7; flat ground 0.969 at 13.6 deg pitch: look note), FG hand-over
+        300/300 (DLSS-G 2x in 7 of 11 runs: flaky, not R.U.S.E.'s), H3 39/39 WARP + GPU. Stop rule met. Fable 5.2 High
+        review of the bridge started 02:2x (ATN asked). R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA passes H1 + H2 first), Fable 5.2
         High review of the bridge (ATN asked), T-run with ATN loading the battle (water depth, world up, units, cube-map
         brightness, bounce double count, GPU cost, G1 / O1 / AO / Bend checks, FG / Reflex, MainRTDivider). Owner: coordinator
       - [x] sh_ MERGED c04da639 01:1x: S1 Config::first_start_key (default "tonemapper", every game unchanged); S2 Apply's
