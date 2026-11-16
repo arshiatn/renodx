@@ -40,9 +40,9 @@
 // clip space, current at camera +0x394, previous at +0x39c) only while a TAA object is active (+0xdf8, +0xe08, or
 // +0xe18 and a global flag), so with DLSS the camera never jitters and DLSS gets 0 (traces debug2: TAA jitters,
 // DLSS not). JITTER_CONDITION's first test is patched into a jump to the jitter while the game's DLSS runs.
-// Render scale (v4): the feature is recreated with the render size as input (the game's holder's handle cleared; its
-// quality immediate set to match), evaluated with that render subrect, and the jitter is the addon's Halton (2, 3)
-// in render pixels with 8 / scale^2 phases (at least 16); render_scale.hpp makes the 3D image that size.
+// Render scale (v4): the feature is recreated with the render size as input (the old one released by the game's own
+// release; its quality immediate set to match), evaluated with that render subrect, and the jitter is the addon's
+// Halton (2, 3) in render pixels with 8 / scale^2 phases (at least 16); render_scale.hpp makes the 3D image that size.
 // The game passes FSR's reactive mask (its G-buffer's SV_Target4: grass writes its vertex alpha there, the leaves
 // nothing) to DLSS as pInIsParticleMask (pass +0x1ad16e9, render targets +0xe8; FSR's reactive at +0x1ad1a73).
 namespace twshogun2::game_dlss {
@@ -70,8 +70,16 @@ constexpr std::string_view JITTER_FUNCTION =
     "48 8B C4 48 81 EC 88 00 00 00 F3 0F 10 1D ?? ?? ?? ?? 83 E2 0F 0F 28 05 ?? ?? ?? ?? 0F 28 D3 0F 28 0D ?? ?? ?? ?? "
     "0F 29 04 24";
 constexpr size_t CAMERA_JITTER = 0x394;
-// The game's DLSS pass: "cmp qword [rip + holder], 0" (no feature yet: create it). +0x1ad159d.
+// The game's DLSS pass: "cmp qword [rip + holder], 0" (no feature yet: create it). +0x1ad159d. The holder: the
+// feature's handle, then its NGX parameters (CreateFeature allocates new ones every time, +0x1abc78d).
 constexpr std::string_view DLSS_PASS = "48 83 3D ?? ?? ?? ?? 00 48 8B DA 48 8B 05 ?? ?? ?? ?? 48 8B F9 8B 70 10";
+// void ReleaseFeature(): the game's own release of its DLSS (a vtable slot at +0x23dfc50; `this` unused): with a
+// handle, NVSDK_NGX_D3D11_ReleaseFeature(holder[0]) (+0x2080ae0) and NVSDK_NGX_D3D11_DestroyParameters(holder[1])
+// (+0x20807b0), then both zeroed. +0x1ad0a90; its "mov rcx, [rip + holder]" ends at +11.
+constexpr std::string_view RELEASE_FEATURE =
+    "48 83 EC 28 48 8B 0D ?? ?? ?? ?? 48 85 C9 74 1C E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 0F 57 C0 "
+    "F3 0F 7F 05 ?? ?? ?? ?? 48 83 C4 28 C3";
+constexpr size_t RELEASE_HOLDER = 7;
 // CreateFeature +0x1aa: mov r8d, PerfQualityValue (5, DLAA).
 constexpr size_t QUALITY_IMMEDIATE = 0x1aa;
 constexpr std::array<uint8_t, 3> QUALITY_OPCODE = {0x41, 0xB8, 0x05};
@@ -89,6 +97,7 @@ using Jitter = void (*)(uint8_t* camera, int32_t frame, int32_t width, int32_t h
 using Evaluate = NVSDK_NGX_Result (*)(ID3D11DeviceContext* context, NVSDK_NGX_Handle* handle,
                                       NVSDK_NGX_Parameter* parameters, NVSDK_NGX_D3D11_DLSS_Eval_Params* eval);
 using SetUI = void (*)(NVSDK_NGX_Parameter* parameters, const char* name, unsigned int value);
+using ReleaseFeature = void (*)();
 
 struct State {
   std::shared_mutex mutex;
@@ -105,6 +114,7 @@ struct State {
   std::array<uint8_t, JITTER_PATCH.size()> jitter_original = {};
   bool jitter_patched = false;
   uint64_t* holder = nullptr;        // the game's feature handle (0: the pass creates one)
+  ReleaseFeature release = nullptr;  // the game's release of that holder (null: not found, the handle only cleared)
   uint8_t* quality_value = nullptr;  // CreateFeature's PerfQualityValue immediate
   std::array<uint8_t*, FLAGS_IMMEDIATES.size()> flags_values = {};  // its feature flags immediates
 };
@@ -255,6 +265,13 @@ inline void Install() {
   if (uint8_t* pass = engine::FindPattern(internal::DLSS_PASS)) {
     state.holder = reinterpret_cast<uint64_t*>(engine::RipTarget(pass + 3, pass + 8));
   }
+  // Only the release of the pass's own holder.
+  if (uint8_t* release = engine::FindPattern(internal::RELEASE_FEATURE);
+      release != nullptr && state.holder != nullptr
+      && engine::RipTarget(release + internal::RELEASE_HOLDER, release + internal::RELEASE_HOLDER + 4)
+             == reinterpret_cast<uint8_t*>(state.holder)) {
+    state.release = reinterpret_cast<internal::ReleaseFeature>(release);
+  }
   if (create != nullptr
       && std::memcmp(create + internal::QUALITY_IMMEDIATE, internal::QUALITY_OPCODE.data(), internal::QUALITY_OPCODE.size()) == 0) {
     state.quality_value = create + internal::QUALITY_IMMEDIATE + 2;
@@ -293,10 +310,11 @@ inline void Install() {
                                    : std::string("not found"));
       };
       state.status = std::format(
-          "hooked (create {}, evaluate {}, jitter {}, jitter condition {}, holder {}, quality {}, flags {} / {}, "
+          "hooked (create {}, evaluate {}, jitter {}, jitter condition {}, holder {}, release {}, quality {}, flags {} / {}, "
           "presets {})",
           offset(create), offset(evaluate), offset(jitter), offset(state.jitter_site), offset(state.holder),
-          offset(state.quality_value), offset(state.flags_values[0]), offset(state.flags_values[1]), offset(set_ui));
+          offset(reinterpret_cast<const void*>(state.release)), offset(state.quality_value), offset(state.flags_values[0]),
+          offset(state.flags_values[1]), offset(set_ui));
     } catch (const std::exception& error) {
       state.hooks.clear();
       state.status = std::format("hook failed: {}", error.what());
@@ -340,23 +358,33 @@ inline uint32_t Preset() {
   return internal::active_preset.load(std::memory_order_relaxed);
 }
 
-// Present: a new scale or preset clears the game's feature handle, so its DLSS pass creates the feature again with the
-// new input size and preset hints (the old feature is left: NGX's release is not hooked). Returns the scale in effect.
+// Present (the render thread, between the game's DLSS passes): a new scale or preset releases the game's feature and
+// its parameters through the game's own release (clears the handle where it wasn't found: that feature then stays
+// allocated), so its DLSS pass creates the feature again with the new input size and preset hints. Returns the scale
+// in effect.
 inline float UpdateFeature() {
   auto& state = internal::state;
   const float scale = internal::requested_scale.load();
   const uint32_t preset = internal::requested_preset.load();
-  if (scale != internal::active_scale.load() || preset != internal::active_preset.load()) {
+  if (scale == internal::active_scale.load() && preset == internal::active_preset.load()) return scale;
+  internal::ReleaseFeature release = nullptr;
+  {
     const std::unique_lock lock(state.mutex);
-    if (state.holder != nullptr) {
-      internal::active_scale.store(scale);
-      internal::active_preset.store(preset);
+    if (state.holder == nullptr) return internal::active_scale.load();
+    internal::active_scale.store(scale);
+    internal::active_preset.store(preset);
+    release = state.release;
+    if (release == nullptr) {
       *state.holder = 0;
-      renodx::utils::log::i(std::format("[Shogun 2 DLSS] Render scale {:.3f}, preset {}: the game's DLSS is created again",
-                                        scale, preset));
     }
   }
-  return internal::active_scale.load();
+  // Outside the lock: NGX's release frees D3D11 resources, and ReShade's destroy events run inside it.
+  if (release != nullptr) {
+    release();
+  }
+  renodx::utils::log::i(std::format("[Shogun 2 DLSS] Render scale {:.3f}, preset {}: the game's DLSS is {} and created again",
+                                    scale, preset, (release != nullptr ? "released" : "left (no release found)")));
+  return scale;
 }
 
 // The display size the game's feature outputs (0 x 0 before it is created).

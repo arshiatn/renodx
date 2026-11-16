@@ -1,6 +1,8 @@
 // The add-on's grade after the curve (shaders/tonemappers.hlsli GradeAfterCurve) alone, for tests.cpp: run.ps1 compiles
-// it with the add-on's shader folder as the include path, entry `main`. Entry `control` is the grade it replaced (a
-// hard knee at 1: graded at the brightest channel's 1 and scaled back), the failing control of check 4's slope test.
+// it with the add-on's shader folder as the include path. Entry `main`: Smooth Grade Shoulder on (the Experimental row);
+// entry `off`: the row off (the default). Entry `control` is the grade as it was before the shoulder (a hard knee at 1:
+// graded at the brightest channel's 1 and scaled back), the failing control of check 4's slope test and what `off`
+// must equal.
 #include "tonemappers.hlsli"
 
 struct GradeCase {
@@ -17,7 +19,14 @@ RWStructuredBuffer<float4> results : register(u0);
 void main(uint3 id : SV_DispatchThreadID) {
   const GradeCase test = cases[id.x];
   results[id.x] = divinity_tonemap::GradeAfterCurve(test.color.rgb, test.color_matrix, test.source_color.rgb,
-                                                    test.target_color.rgb);
+                                                    test.target_color.rgb, true);
+}
+
+[numthreads(64, 1, 1)]
+void off(uint3 id : SV_DispatchThreadID) {
+  const GradeCase test = cases[id.x];
+  results[id.x] = divinity_tonemap::GradeAfterCurve(test.color.rgb, test.color_matrix, test.source_color.rgb,
+                                                    test.target_color.rgb, false);
 }
 
 [numthreads(64, 1, 1)]
