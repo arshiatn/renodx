@@ -1642,19 +1642,19 @@ constexpr auto OnSkyDomeGuides = []<typename Context>(Context& command) -> renod
   return {};
 };
 
-// Rays Replace Shadow Maps (on by default: ours replaces the game's, ATN 2026-11-16; sun_test V54 below: P1-P3 0 of
-// 2,752,512 values, CONTROL P3c 1,486,680): the sun draws reading the per-frame atlas (g_tShadowBuffer_SM50 t3 through
+// The rays replace the per-frame shadow maps' sun shadow, always (one method: ATN 2026-11-16, no Multiply row; sun_test V54
+// below: P1-P3 0 of 2,752,512 values, CONTROL P3c 1,486,680): the sun draws reading the per-frame atlas (g_tShadowBuffer_SM50 t3 through
 // sShadowBuffer_SM50 s2, its only reads of s2; the other 13 sun shaders read the kept baked map alone or no map, and all
 // of them sample another texture with s2) take every comparison there as lit (an ALWAYS sampler) where the rays' shadow is
 // bound at t49, so their patched comparisons (screen_space_shadows.hpp Patch, each x the rays' visibility) give the rays'
 // shadow alone. The kept baked map (t1 by s1: what the game baked for the map, from about 200 m) stays the game's, and so do
 // the atlas's other readers (water, rivers, particles, the fog without Fog Shadows). The game's sampler is bound again after
-// the draw (finalize: the Light Bounce draws the sun draw itself and bypasses). Skip the Shadow Maps (under it): rt_scene's
+// the draw (finalize: the Light Bounce draws the sun draw itself and bypasses). Skip the Shadow Maps: rt_scene's
 // Ray-Traced Shadows Only skips the atlas's draws (its learned map is Host::cascade_target's, so never the baked one). WARP on
 // the game's bytes with the traces' constants: tools\tw\pharaoh\sun_test (P). The hook: twattila/sun_replace_maps.hpp.
 constexpr std::array<uint32_t, 12> ATLAS_SUN_SHADERS = {0xF883F5B2, 0xFA856110, 0x1549C88A, 0xE238D4C7, 0x24FD1318, 0x6AFC2ACA,
                                                         0xC701CDD0, 0xE5A6A379, 0x3323BDCC, 0x47DDD6EE, 0x955658C3, 0xF4E19A48};
-float rays_replace_maps_row = 0.f;
+constexpr float RAYS_REPLACE_MAPS = 1.f;  // sun_replace_maps' row, always on
 float rays_skip_cascades_row = 0.f;
 // Rarer Objects in the Rays (Experimental, as Attila's): families drawn in no trace (SCENE_SHADERS' held_row).
 float rays_untraced_casters_row = 0.f;
@@ -2237,12 +2237,11 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
                             false);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   twattila::particle_layer::Update(swapchain);
-  // As Warhammer III's rows (the game's shadow maps under the rays shadow from behind the camera already: without Rays Replace
-  // Shadow Maps the casters are for the other rays).
+  // As Warhammer III's rows (the rays replace the game's shadow maps, so behind the camera only these casters shadow).
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (SettingsOf: with the rays' sun shadows alone).
-  rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
+  rt_settings.shadows_only = rt_settings.sun_shadows && rays_skip_cascades_row != 0.f;
   // Fog Shadows alone light no surface: no Ray Reconstruction for them (as Warhammer III's).
   rt_settings.cheap_fog_alone = true;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
@@ -2285,8 +2284,8 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows replace the per-frame shadow maps
-// (Rays Replace Shadow Maps; off: they multiply them through the sun shaders' patched comparisons), ray-traced AO in place
-// of the game's SSAO; point lights, the fog, the smoke and the water's reflections hooked.
+// (always: no Rays Replace Shadow Maps row), ray-traced AO in place of the game's SSAO; point lights, the fog, the smoke and
+// the water's reflections hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -2319,9 +2318,6 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                            "buildings, trees and hills, measured over the first 400 m. Some fog stays as the game draws it.",
     .light_glow_label = "Torch and Fire Light in Fog (Experimental)",
     .light_glow_tooltip = "Torches and fires light the fog around them, with their shafts and shadows in it. Needs Fog Shadows. 0: off.",
-    .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Water, effects and the shadows the game\n"
-                            "baked for the map (past about 200 m) keep the game's. Use with Shadow Casters Out of View.\n"
-                            "Off: the rays' shadows on top of the game's shadow maps.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, ambient occlusion, Light Bounce and shadow softness keep\n"
                                  "their 100% detail. Looks better, can cost some performance.",
     .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
@@ -2938,7 +2934,6 @@ void ConfigureAddon() {
                                              .smoke_strength = &smoke_map_sliders.strength,
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
-                                             .rays_replace_maps = &rays_replace_maps_row,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
@@ -2994,7 +2989,7 @@ bool AttachAddon() {
 
   // Rows saved at an old default, cleared once: Smoke Shadows and Sprite Soldier Shadows were saved hidden at RT/PT's 1
   // (SetRaysPresetDefaults) until they showed, Experimental and off. Rays Replace Shadow Maps was saved at its old
-  // Experimental 0; now on by default. Sky Debanding was saved at its old Medium (default, Reset and every Recommended);
+  // Experimental 0; the row is gone since (the rays always replace) and nothing reads the key. Sky Debanding was saved at its old Medium (default, Reset and every Recommended);
   // now off in every preset, as Attila's.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSmokeShadows"});
   twattila::graphics_page::ClearSavedRows(2, {"RayTracedSpriteShadows"});
@@ -3038,9 +3033,9 @@ bool AttachAddon() {
   // The game's contact shadows off where ours shadow: after the screen-space shadows' (they bind ours at t49), before the Light
   // Bounce's (it draws the sun draw itself with the constants bound then).
   twattila::contact_shadows_off::Install(LIGHT_BOUNCE_DRAWS);
-  // Rays Replace Shadow Maps: also after the screen-space shadows' and before the Light Bounce's. Skip the Shadow Maps through
-  // Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
-  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &rays_replace_maps_row);
+  // The rays replace the atlas's sun shadow: also after the screen-space shadows' and before the Light Bounce's. Skip the
+  // Shadow Maps through Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
+  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS);
   twattila::rt_scene::InstallShadowsOnly();
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also
   // at 100% (twattila/frame_trace.hpp). The sun light draws' (standard and skin) and the tone mapper's constants once

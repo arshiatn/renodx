@@ -48,8 +48,8 @@ constexpr uint32_t SLICES = 4;
 constexpr uint64_t CONSTANTS_BYTES = 640;
 
 static float row = 0.f;  // 0: the game's maps; 1: twice their size, from the next time the game makes them
-// Shadow Maps Under Rays: 0 the game's; 1 2048, 2 1024 while Rays Replace Shadow Maps is on at the start (its readers left:
-// water, lit effects, the particles' fog and shadows).
+// Shadow Maps Under Rays: 0 the game's; 1 2048, 2 1024 from the start (the rays replace the maps' sun shadow; their readers
+// left: water, lit effects, the particles' fog and shadows).
 static float smaller_row = 0.f;
 // The size the maps are made at (Install; the game's: none made).
 static uint32_t made_size = GAME_SIZE;
@@ -234,11 +234,10 @@ static void OnBindScissorRects(reshade::api::command_list* cmd_list, uint32_t fi
   AreaBound(native, static_cast<float>(rects[0].right - rects[0].left), static_cast<float>(rects[0].bottom - rects[0].top));
 }
 
-// At the addon's attach, once its settings are read (`rays_replace`: Rays Replace Shadow Maps on, for smaller_row). With
-// the rows off then, nothing is registered: no call of the game's passes by here, and turning a row on needs a restart
-// anyway (the maps are made at the game's start).
-static void Install(bool rays_replace) {
-  made_size = (row != 0.f) ? GAME_SIZE * 2 : ((smaller_row != 0.f && rays_replace) ? GAME_SIZE >> static_cast<uint32_t>(std::clamp(smaller_row, 1.f, 2.f)) : GAME_SIZE);
+// At the addon's attach, once its settings are read. With the rows off then, nothing is registered: no call of the game's
+// passes by here, and turning a row on needs a restart anyway (the maps are made at the game's start).
+static void Install() {
+  made_size = (row != 0.f) ? GAME_SIZE * 2 : ((smaller_row != 0.f) ? GAME_SIZE >> static_cast<uint32_t>(std::clamp(smaller_row, 1.f, 2.f)) : GAME_SIZE);
   if (made_size == GAME_SIZE) return;
   reshade::register_event<reshade::addon_event::create_resource>(OnCreateResource);
   reshade::register_event<reshade::addon_event::init_resource>(OnInitResource);
