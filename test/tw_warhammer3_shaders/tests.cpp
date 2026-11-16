@@ -18,10 +18,12 @@
 //    (2 stops) stays within 5% of the frame without the fire. CONTROL: ours with the row on differs from the game's.
 // 4. Bend / the rays over the kept maps: the sun mask E6BCBA8A's contact march off through the add-on's sss copy (flag 0 at
 //    byte 28) = the game's with the flag 0. CONTROL: the game's flag 1 shadows pixels.
-// 5. Torch shadows under the rays: the 4 light PS that read the game's point shadow map with the map lit = their unshadowed
-//    twins (the game's and ours). CONTROL: a random map differs.
+// 5. Torch shadows under the rays: the 4 light PS that read the game's point shadow map keep the map for a light the rays don't
+//    trace and take the rays' shadow in place of it for one they do. CONTROL: their unshadowed twin differs from the map's light.
 // 6. Ray-Traced Specular Occlusion (a third argument: an older build's csos): reflection00's cubes dimmed by t46 alone, not
 //    by the AO too. CONTROL: the older build's take the AO.
+// 7. Skip the Game's Reflection Passes: under the rays everywhere reflection00 reads neither the hits nor the light's mips 1-7.
+//    CONTROLS: the rays' light, the light's mip 0 alpha and, without the rays, the hits change the output.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -936,13 +938,15 @@ static void TestSunMaskMarch(const std::string& pack) {
   CHECK(shadowed > 0 && DifferentValues(reference, game_march) > 0, "sun mask: CONTROL the march shadows nothing");
 }
 
-// 5. The light PS that read the game's point shadow map against their unshadowed twins (twwarhammer3/addon.cpp BuildRuntimeData:
-//    the twin's copy runs in their place under the rays): the scene of BuildPassScene, a light 4 m ahead at 1.5 m, reach 9 m,
-//    G-buffer channels 1 - 3 (and the aux one) fixed noise, the depth the scene's; soft edges 0 and 1 (the two branches). The
-//    game's shadowed PS with its whole map lit (a 1 x 1 x 6 map at FLT_MAX: no blocker, every compare passed) = the game's twin bit
-//    for bit, and
-//    the add-on's built twin (nothing at t42: visibility 1) within 1e-5 of the game's twin. CONTROL: the shadowed PS with a
-//    32 x 32 x 6 map of random depths differs from its twin.
+// 5. The light PS that read the game's point shadow map under the rays (twwarhammer3/addon.cpp traced_lights, their copies through
+//    rt_local_lights.hlsli RtLocalLightTraced): the scene of BuildPassScene, a light 4 m ahead at 1.5 m, reach 9 m, G-buffer
+//    channels 1 - 3 (and the aux one) fixed noise, the depth the scene's, a 32 x 32 x 6 map of random depths; soft edges 0 and 1
+//    (the two branches). The game's shadowed PS with its whole map lit (a 1 x 1 x 6 map at FLT_MAX: every compare passed) = the
+//    game's unshadowed twin bit for bit. Ours (within 1e-5 of the value): nothing at t42, or the rays tracing only a light 1 m away
+//    = the game's shadowed PS with its map (an untraced light keeps the game's shadow); the rays tracing this light, reached = the
+//    game's twin (the rays' shadow in place of the map's), blocked = no light, a shadow ratio of 0.5 (Torch and Fire Shadows from
+//    the Light Bounce) = half the twin's. Our unshadowed twins within 1e-5 of the game's. CONTROL: the twin (what the 11-16 route
+//    ran for every light under the rays) differs from the game's shadowed PS with its map.
 static void TestPointShadowTwins(const std::string& pack, const std::string& built) {
   struct Twin {
     const char* shadowed;
@@ -984,12 +988,50 @@ static void TestPointShadowTwins(const std::string& pack, const std::string& bui
   device->CreateSamplerState(&point_desc, &point);
   // The light: its colour, its place and reach.
   constexpr std::array<float, 8> LIGHT = {1.f, 0.7f, 0.4f, 0.f, 0.5f, 1.5f, 7.f, 9.f};
+  // rt_local_lights.hlsli's t42 (every pixel the same word) and b9 (one traced light at `place`; w 1: the word is a shadow ratio).
+  const auto mask_view = [&](uint32_t word) {
+    const std::vector<uint32_t> words(pixels, word);
+    const D3D11_TEXTURE2D_DESC desc = {.Width = PASS_WIDTH, .Height = PASS_HEIGHT, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_UINT,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = words.data(), .SysMemPitch = PASS_WIDTH * 4};
+    ComPtr<ID3D11Texture2D> texture;
+    device->CreateTexture2D(&desc, &data, &texture);
+    ComPtr<ID3D11ShaderResourceView> view;
+    device->CreateShaderResourceView(texture.Get(), nullptr, &view);
+    return view;
+  };
+  const auto lights_buffer = [](const std::array<float, 3>& place, bool ratio) {
+    std::array<uint32_t, (128 + 1 + 128) * 4> values = {};
+    for (int k = 0; k < 3; ++k) values[k] = std::bit_cast<uint32_t>(place[k]);
+    values[3] = std::bit_cast<uint32_t>(9.f);
+    values[128 * 4] = 1u;
+    values[128 * 4 + 3] = ratio ? 1u : 0u;
+    for (int k = 0; k < 3; ++k) values[129 * 4 + k] = std::bit_cast<uint32_t>(1.f);
+    return ConstantBuffer(values.data(), sizeof(values));
+  };
+  const ComPtr<ID3D11Buffer> this_light = lights_buffer({LIGHT[4], LIGHT[5], LIGHT[6]}, false);
+  const ComPtr<ID3D11Buffer> other_light = lights_buffer({LIGHT[4] + 1.f, LIGHT[5], LIGHT[6]}, false);
+  const ComPtr<ID3D11Buffer> this_light_ratio = lights_buffer({LIGHT[4], LIGHT[5], LIGHT[6]}, true);
+  const auto reached_mask = mask_view(1u);
+  const auto blocked_mask = mask_view(0u);
+  const auto half_mask = mask_view(std::bit_cast<uint32_t>(0.5f));
+  // Our copies are decompiles: a few values round in the last bits. The largest difference, relative to the value.
+  const auto apart = [](const std::vector<float>& a, const std::vector<float>& b, float scale) {
+    if (a.size() != b.size()) return std::numeric_limits<float>::infinity();
+    float largest = 0.f;
+    for (size_t i = 0; i < a.size(); ++i) {
+      const float expected = ((i % 4) == 3) ? b[i] : (b[i] * scale);
+      largest = std::max(largest, std::abs(a[i] - expected) / std::max(std::abs(expected), 1e-3f));
+    }
+    return largest;
+  };
   for (const auto& twin : TWINS) {
     const std::vector<uint8_t> shadowed = ReadFile(pack + "\\0x" + twin.shadowed + ".ps_5_0.cso");
     const std::vector<uint8_t> game_twin = ReadFile(pack + "\\0x" + twin.twin + ".ps_5_0.cso");
-    const std::vector<uint8_t> ours = ReadFile(built + "\\0x" + twin.twin + ".cso");
-    CHECK(!shadowed.empty() && !game_twin.empty() && !ours.empty(), "point shadows %s: no code", twin.shadowed);
-    if (shadowed.empty() || game_twin.empty() || ours.empty()) continue;
+    const std::vector<uint8_t> ours_shadowed = ReadFile(built + "\\0x" + twin.shadowed + ".cso");
+    const std::vector<uint8_t> ours_twin = ReadFile(built + "\\0x" + twin.twin + ".cso");
+    CHECK(!shadowed.empty() && !game_twin.empty() && !ours_shadowed.empty() && !ours_twin.empty(), "point shadows %s: no code", twin.shadowed);
+    if (shadowed.empty() || game_twin.empty() || ours_shadowed.empty() || ours_twin.empty()) continue;
     for (const float soft_edges : {0.f, 1.f}) {
       // pointlight_shadowmap_cb: a 32-texel map, bias 0.02, soft edges, the cube's depth 10 cm to 10 m, light width 5 cm, sample bias 1.
       const std::array<float, 12> shadow_constants = {32.f, 32.f, 1.f / 32.f, 1.f / 32.f, 0.02f, soft_edges, 1.0101f, -0.10101f, 0.05f, 1.f, 0.f, 0.f};
@@ -999,26 +1041,56 @@ static void TestPointShadowTwins(const std::string& pack, const std::string& bui
       const std::vector<ID3D11Buffer*> constants = {camera.Get(), dynamic_light.Get(), shadow_buffer.Get()};
       const std::vector<ID3D11SamplerState*> samplers = {comparison.Get(), point.Get()};
       const auto twin_light = RunPass(game_twin, views, constants, samplers, LIGHT);
-      const auto ours_light = RunPass(ours, views, constants, samplers, LIGHT);
+      const auto ours_twin_light = RunPass(ours_twin, views, constants, samplers, LIGHT);
       views.push_back(lit_map.Get());
       const auto lit_light = RunPass(shadowed, views, constants, samplers, LIGHT);
       views.back() = random_map.Get();
       const auto shadowed_light = RunPass(shadowed, views, constants, samplers, LIGHT);
+      const auto ours_untraced = RunPass(ours_shadowed, views, constants, samplers, LIGHT);
+      // Ours with the rays' mask at t42 and their lights at b9.
+      const auto traced = [&](ID3D11ShaderResourceView* mask, ID3D11Buffer* lights) {
+        std::vector<ID3D11ShaderResourceView*> traced_views = views;
+        traced_views.resize(43, nullptr);
+        traced_views[42] = mask;
+        std::vector<ID3D11Buffer*> traced_constants = constants;
+        traced_constants.resize(10, nullptr);
+        traced_constants[9] = lights;
+        return RunPass(ours_shadowed, traced_views, traced_constants, samplers, LIGHT);
+      };
+      const auto ours_other = traced(reached_mask.Get(), other_light.Get());
+      const auto ours_reached = traced(reached_mask.Get(), this_light.Get());
+      const auto ours_blocked = traced(blocked_mask.Get(), this_light.Get());
+      const auto ours_half = traced(half_mask.Get(), this_light_ratio.Get());
       int lighted = 0;
-      for (size_t i = 0; i < pixels; ++i) lighted += (twin_light[i * 4] > 0.f || twin_light[i * 4 + 1] > 0.f || twin_light[i * 4 + 2] > 0.f) ? 1 : 0;
-      // Our copies are decompiles: the aux pair's rounds a few values in the last bits.
-      float ours_apart = 0.f;
-      for (size_t i = 0; i < twin_light.size(); ++i) {
-        ours_apart = std::max(ours_apart, std::abs(ours_light[i] - twin_light[i]) / std::max(std::abs(twin_light[i]), 1e-3f));
+      int shadowed_pixels = 0;
+      int blocked_lit = 0;
+      for (size_t i = 0; i < pixels; ++i) {
+        const bool twin_lit = twin_light[i * 4] > 0.f || twin_light[i * 4 + 1] > 0.f || twin_light[i * 4 + 2] > 0.f;
+        lighted += twin_lit ? 1 : 0;
+        shadowed_pixels += (twin_lit && shadowed_light[i * 4] < twin_light[i * 4]) ? 1 : 0;
+        blocked_lit += (ours_blocked[i * 4] != 0.f || ours_blocked[i * 4 + 1] != 0.f || ours_blocked[i * 4 + 2] != 0.f || ours_blocked[i * 4 + 3] != 1.f) ? 1 : 0;
       }
-      std::printf("point shadows %s (twin %s), soft edges %.0f: %d of %zu pixels lit by the twin; the game's with its map lit %d values apart, "
-                  "ours (twin) %d (largest %.2g of the value); CONTROL a random map: %d values apart\n",
-                  twin.shadowed, twin.twin, soft_edges, lighted, pixels, DifferentValues(twin_light, lit_light),
-                  DifferentValues(twin_light, ours_light), ours_apart, DifferentValues(twin_light, shadowed_light));
+      const float untraced_apart = apart(ours_untraced, shadowed_light, 1.f);
+      const float other_apart = apart(ours_other, shadowed_light, 1.f);
+      const float reached_apart = apart(ours_reached, twin_light, 1.f);
+      const float half_apart = apart(ours_half, twin_light, 0.5f);
+      const float twin_apart = apart(ours_twin_light, twin_light, 1.f);
+      std::printf("point shadows %s (twin %s), soft edges %.0f: %d of %zu pixels lit by the twin, %d darker with the game's map; the game's with "
+                  "its map lit %d values apart from the twin; ours (largest apart of the value): untraced %.2g and another light traced %.2g "
+                  "from the game's with its map, traced reached %.2g from the twin, blocked %d pixels lit, ratio 0.5 %.2g from half the twin; "
+                  "our twin %.2g; CONTROL the twin under the rays: %d values apart from the game's with its map\n",
+                  twin.shadowed, twin.twin, soft_edges, lighted, pixels, shadowed_pixels, DifferentValues(twin_light, lit_light), untraced_apart,
+                  other_apart, reached_apart, blocked_lit, half_apart, twin_apart, DifferentValues(twin_light, shadowed_light));
       CHECK(lighted > 0, "point shadows %s: the light reaches nothing", twin.shadowed);
       CHECK(DifferentValues(twin_light, lit_light) == 0, "point shadows %s: lit map not the twin", twin.shadowed);
-      CHECK(ours_light.size() == twin_light.size() && ours_apart < 1e-5f, "point shadows %s: our twin not the game's", twin.twin);
-      CHECK(DifferentValues(twin_light, shadowed_light) > 0, "point shadows %s: CONTROL a random map is the twin", twin.shadowed);
+      CHECK(untraced_apart < 1e-5f, "point shadows %s: ours untraced not the game's map", twin.shadowed);
+      CHECK(other_apart < 1e-5f, "point shadows %s: ours with another light traced not the game's map", twin.shadowed);
+      CHECK(reached_apart < 1e-5f, "point shadows %s: ours traced and reached not the twin", twin.shadowed);
+      CHECK(blocked_lit == 0, "point shadows %s: ours traced and blocked still lit", twin.shadowed);
+      CHECK(half_apart < 1e-5f, "point shadows %s: ours at ratio 0.5 not half the twin", twin.shadowed);
+      CHECK(twin_apart < 1e-5f, "point shadows %s: our twin not the game's", twin.twin);
+      CHECK(shadowed_pixels > 0 && DifferentValues(twin_light, shadowed_light) > 0, "point shadows %s: CONTROL the twin is the game's with its map",
+            twin.shadowed);
     }
   }
 }
@@ -1029,11 +1101,15 @@ static void TestPointShadowTwins(const std::string& pack, const std::string& bui
 //    A: t46 unbound, ours = the older build (`older`: the csos before this fix) bit for bit. B: t46 random 0.2 - 1: the shown
 //    cubes with the random AO within 1e-5 of those with the white AO (one occlusion: t46). C: at the white AO ours = the older
 //    build's within 1e-5. CONTROL: the older build's shown cubes with the random AO differ from its white-AO ones.
-static void TestReflectionOcclusion(const std::string& built, const std::string& older) {
+// 7. Skip the Game's Reflection Passes: the same scene, half the pixels water (flags 64), half the resolve's other surfaces, under
+//    the rays everywhere (t47 bound, b10 x 1: the water's too, Pass::RAYS): other hits (t10, every level) and other light mips
+//    1-7 (t11) change 0 values, so the hits' mip chain after the march goes with it. CONTROLS: other rays' light changes values;
+//    t11 mip 0's alpha (the lit scene's sun shadow, 3AC630DF's copy: it stays) changes values; without the rays other hits do.
+static void TestReflectionResolve(const std::string& built, const std::string& older) {
   const std::vector<uint8_t> ours = ReadFile(built + "\\0x89AF6FF5.cso");
-  const std::vector<uint8_t> before = ReadFile(older + "\\0x89AF6FF5.cso");
-  CHECK(!ours.empty() && !before.empty(), "reflection occlusion: no code");
-  if (ours.empty() || before.empty()) return;
+  const std::vector<uint8_t> before = older.empty() ? std::vector<uint8_t>() : ReadFile(older + "\\0x89AF6FF5.cso");
+  CHECK(!ours.empty() && (older.empty() || !before.empty()), "reflection resolve: no code");
+  if (ours.empty()) return;
   const PassScene scene = BuildPassScene();
   const size_t pixels = static_cast<size_t>(PASS_WIDTH) * PASS_HEIGHT;
   std::mt19937 random(1357);
@@ -1116,15 +1192,21 @@ static void TestReflectionOcclusion(const std::string& built, const std::string&
   staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
   ComPtr<ID3D11Texture2D> staging;
   device->CreateTexture2D(&staging_desc, nullptr, &staging);
-  // The resolve's output (rgb per pixel) with this AO and t46 (nullptr: unbound).
-  const auto run = [&](const std::vector<uint8_t>& code, ID3D11ShaderResourceView* ao, ID3D11ShaderResourceView* occlusion) {
+  // The resolve's views: t0 the cube, t1 the AO, t5-t11 the scene (t10 the hits, t11 the light), t46 the occlusion, t47 the rays
+  // (nullptr: unbound).
+  using Views = std::array<ID3D11ShaderResourceView*, 48>;
+  const auto views_with = [&](ID3D11ShaderResourceView* ao, ID3D11ShaderResourceView* occlusion) {
+    Views views = {cube_view.Get(), ao};
+    for (size_t k = 0; k < scene_views.size(); ++k) views[5 + k] = scene_views[k].Get();
+    views[46] = occlusion;
+    return views;
+  };
+  // The resolve's output (rgb per pixel) with these views and b10 (the add-on's flags; nullptr: unbound).
+  const auto run = [&](const std::vector<uint8_t>& code, const Views& views, ID3D11Buffer* flags = nullptr) {
     ComPtr<ID3D11ComputeShader> shader;
     CHECK(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, &shader)), "reflection shader");
     std::vector<float> rgb(pixels * 3, 0.f);
     if (shader == nullptr) return rgb;
-    std::array<ID3D11ShaderResourceView*, 47> views = {cube_view.Get(), ao};
-    for (size_t k = 0; k < scene_views.size(); ++k) views[5 + k] = scene_views[k].Get();
-    views[46] = occlusion;
     constexpr std::array<float, 4> CLEAR = {-7.f, -7.f, -7.f, -7.f};
     context->ClearState();
     context->ClearUnorderedAccessViewFloat(out_view.Get(), CLEAR.data());
@@ -1132,6 +1214,7 @@ static void TestReflectionOcclusion(const std::string& built, const std::string&
     context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
     const std::array<ID3D11Buffer*, 4> raw_constants = {constants[0].Get(), constants[1].Get(), constants[2].Get(), constants[3].Get()};
     context->CSSetConstantBuffers(0, static_cast<UINT>(raw_constants.size()), raw_constants.data());
+    if (flags != nullptr) context->CSSetConstantBuffers(10, 1, &flags);
     context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
     context->CSSetUnorderedAccessViews(0, 1, out_view.GetAddressOf(), nullptr);
     context->Dispatch(PASS_WIDTH / 8, PASS_HEIGHT / 8, 1);
@@ -1150,8 +1233,8 @@ static void TestReflectionOcclusion(const std::string& built, const std::string&
   };
   // The cubes a frame shows: the output over the sun light's cubes (= minus the output with t46 0).
   const auto shown = [&](const std::vector<uint8_t>& code, ID3D11ShaderResourceView* ao) {
-    std::vector<float> cubes = run(code, ao, random_occlusion.Get());
-    const std::vector<float> closed = run(code, ao, closed_occlusion.Get());
+    std::vector<float> cubes = run(code, views_with(ao, random_occlusion.Get()));
+    const std::vector<float> closed = run(code, views_with(ao, closed_occlusion.Get()));
     for (size_t i = 0; i < cubes.size(); ++i) cubes[i] -= closed[i];
     return cubes;
   };
@@ -1166,22 +1249,94 @@ static void TestReflectionOcclusion(const std::string& built, const std::string&
     }
     return std::pair{largest, values};
   };
-  const int unbound_apart = DifferentValues(run(ours, random_ao.Get(), nullptr), run(before, random_ao.Get(), nullptr));
-  const auto ours_white = shown(ours, white_ao.Get());
-  const auto [one_largest, one_values] = apart(shown(ours, random_ao.Get()), ours_white);
-  const auto [white_largest, white_values] = apart(ours_white, shown(before, white_ao.Get()));
-  const auto [control_largest, control_values] = apart(shown(before, random_ao.Get()), shown(before, white_ao.Get()));
-  int reached = 0;
-  for (size_t i = 0; i < pixels; ++i) reached += (ours_white[i * 3] > 1e-3f || ours_white[i * 3 + 1] > 1e-3f || ours_white[i * 3 + 2] > 1e-3f) ? 1 : 0;
-  std::printf("reflection occlusion: %d of %zu pixels show cubes; A t46 unbound %d values apart from the older build; B the random AO "
-              "against the white largest %.2g of the value (%d values over 1e-3); C the white AO against the older build %.2g (%d); "
-              "CONTROL the older build's random AO against its white %.2g (%d values over 1e-3)\n",
-              reached, pixels, unbound_apart, one_largest, one_values, white_largest, white_values, control_largest, control_values);
-  CHECK(reached > static_cast<int>(pixels) / 2, "reflection occlusion: the cubes reach %d pixels", reached);
-  CHECK(unbound_apart == 0, "reflection occlusion: A without t46 not the older build");
-  CHECK(one_largest < 1e-5f, "reflection occlusion: B the AO still dims the cubes t46 dims");
-  CHECK(white_largest < 1e-5f, "reflection occlusion: C the white AO not the older build's");
-  CHECK(control_values > 0, "reflection occlusion: CONTROL the older build's AO dims nothing");
+  // The pixels whose rgb isn't 0.
+  const auto lit = [&](const std::vector<float>& rgb) {
+    int count = 0;
+    for (size_t i = 0; i < pixels; ++i) count += (rgb[i * 3] > 1e-3f || rgb[i * 3 + 1] > 1e-3f || rgb[i * 3 + 2] > 1e-3f) ? 1 : 0;
+    return count;
+  };
+  if (!before.empty()) {
+    const int unbound_apart = DifferentValues(run(ours, views_with(random_ao.Get(), nullptr)), run(before, views_with(random_ao.Get(), nullptr)));
+    const auto ours_white = shown(ours, white_ao.Get());
+    const auto [one_largest, one_values] = apart(shown(ours, random_ao.Get()), ours_white);
+    const auto [white_largest, white_values] = apart(ours_white, shown(before, white_ao.Get()));
+    const auto [control_largest, control_values] = apart(shown(before, random_ao.Get()), shown(before, white_ao.Get()));
+    const int reached = lit(ours_white);
+    std::printf("reflection occlusion: %d of %zu pixels show cubes; A t46 unbound %d values apart from the older build; B the random AO "
+                "against the white largest %.2g of the value (%d values over 1e-3); C the white AO against the older build %.2g (%d); "
+                "CONTROL the older build's random AO against its white %.2g (%d values over 1e-3)\n",
+                reached, pixels, unbound_apart, one_largest, one_values, white_largest, white_values, control_largest, control_values);
+    CHECK(reached > static_cast<int>(pixels) / 2, "reflection occlusion: the cubes reach %d pixels", reached);
+    CHECK(unbound_apart == 0, "reflection occlusion: A without t46 not the older build");
+    CHECK(one_largest < 1e-5f, "reflection occlusion: B the AO still dims the cubes t46 dims");
+    CHECK(white_largest < 1e-5f, "reflection occlusion: C the white AO not the older build's");
+    CHECK(control_values > 0, "reflection occlusion: CONTROL the older build's AO dims nothing");
+  }
+
+  // 7. A PASS_WIDTH x PASS_HEIGHT mip chain down to 1 x 1 of noise, channel c in low[c] .. high[c]; level 0 `top` when given.
+  const auto chain = [&](const std::array<float, 4>& low, const std::array<float, 4>& high, const std::vector<float>* top) {
+    const UINT levels = std::bit_width(std::max(PASS_WIDTH, PASS_HEIGHT));
+    std::vector<std::vector<float>> texels(levels);
+    std::vector<D3D11_SUBRESOURCE_DATA> data(levels);
+    for (UINT level = 0; level < levels; ++level) {
+      const UINT width = std::max(1u, PASS_WIDTH >> level);
+      const UINT height = std::max(1u, PASS_HEIGHT >> level);
+      if (level == 0 && top != nullptr) {
+        texels[0] = *top;
+      } else {
+        texels[level].resize(static_cast<size_t>(width) * height * 4);
+        for (size_t i = 0; i < texels[level].size(); ++i) texels[level][i] = low[i % 4] + (high[i % 4] - low[i % 4]) * unit(random);
+      }
+      data[level] = {.pSysMem = texels[level].data(), .SysMemPitch = width * 16};
+    }
+    const D3D11_TEXTURE2D_DESC desc = {.Width = PASS_WIDTH, .Height = PASS_HEIGHT, .MipLevels = levels, .ArraySize = 1,
+                                       .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                       .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    ComPtr<ID3D11Texture2D> texture;
+    device->CreateTexture2D(&desc, data.data(), &texture);
+    ComPtr<ID3D11ShaderResourceView> view;
+    device->CreateShaderResourceView(texture.Get(), nullptr, &view);
+    return view;
+  };
+  std::vector<float> mixed = material;
+  for (size_t i = 0; i < pixels; ++i) mixed[i * 4 + 3] = (((i % 2) == 0) ? 64.f : 1.f) / 255.f;
+  const auto mixed_material = PassTexture(mixed);
+  // The hits: x the march's confidence (x 0.125), y its distance (x 1 / 65504), in the ranges where the game's blend is below 1.
+  constexpr std::array<float, 4> HIT_LOW = {0.f, 100.f, 0.f, 0.f};
+  constexpr std::array<float, 4> HIT_HIGH = {1.2f, 60000.f, 1.f, 1.f};
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 2> hits_chains = {chain(HIT_LOW, HIT_HIGH, nullptr), chain(HIT_LOW, HIT_HIGH, nullptr)};
+  constexpr std::array<float, 4> LIGHT_LOW = {0.f, 0.f, 0.f, 0.f};
+  constexpr std::array<float, 4> LIGHT_HIGH = {2.f, 2.f, 2.f, 1.f};
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 2> light_chains = {chain(LIGHT_LOW, LIGHT_HIGH, &radiance), chain(LIGHT_LOW, LIGHT_HIGH, &radiance)};
+  std::vector<float> shadowed_radiance = radiance;
+  for (size_t i = 0; i < pixels; ++i) shadowed_radiance[i * 4 + 3] = 0.1f + 0.8f * unit(random);
+  const auto shadowed_light = chain(LIGHT_LOW, LIGHT_HIGH, &shadowed_radiance);
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 2> rays = {PassTexture(noise(0.2f, 1.f)), PassTexture(noise(0.2f, 1.f))};
+  constexpr std::array<uint32_t, 8> WATER_RAYS = {1u};
+  const auto flags = ConstantBuffer(WATER_RAYS.data(), sizeof(WATER_RAYS));
+  const auto skip_views = [&](ID3D11ShaderResourceView* hits, ID3D11ShaderResourceView* light, ID3D11ShaderResourceView* traced) {
+    Views views = views_with(white_ao.Get(), nullptr);
+    views[7] = mixed_material.Get();
+    views[10] = hits;
+    views[11] = light;
+    views[47] = traced;
+    return views;
+  };
+  const auto traced = run(ours, skip_views(hits_chains[0].Get(), light_chains[0].Get(), rays[0].Get()), flags.Get());
+  const int skip_apart = DifferentValues(traced, run(ours, skip_views(hits_chains[1].Get(), light_chains[1].Get(), rays[0].Get()), flags.Get()));
+  const int rays_apart = DifferentValues(traced, run(ours, skip_views(hits_chains[0].Get(), light_chains[0].Get(), rays[1].Get()), flags.Get()));
+  const int alpha_apart = DifferentValues(traced, run(ours, skip_views(hits_chains[0].Get(), shadowed_light.Get(), rays[0].Get()), flags.Get()));
+  const int march_apart = DifferentValues(run(ours, skip_views(hits_chains[0].Get(), light_chains[0].Get(), nullptr)),
+                                          run(ours, skip_views(hits_chains[1].Get(), light_chains[0].Get(), nullptr)));
+  const int traced_lit = lit(traced);
+  std::printf("reflection skip: under the rays %d of %zu pixels lit, other hits and light mips 1-7 %d values apart; CONTROLS other rays' "
+              "light %d, light mip 0's alpha %d, other hits without the rays %d values apart\n",
+              traced_lit, pixels, skip_apart, rays_apart, alpha_apart, march_apart);
+  CHECK(traced_lit > static_cast<int>(pixels) / 2, "reflection skip: the rays reach %d pixels", traced_lit);
+  CHECK(skip_apart == 0, "reflection skip: the hits or the light's mips still matter under the rays");
+  CHECK(rays_apart > 0, "reflection skip: CONTROL the rays' light changes nothing");
+  CHECK(alpha_apart > 0, "reflection skip: CONTROL the light's mip 0 alpha changes nothing");
+  CHECK(march_apart > 0, "reflection skip: CONTROL without the rays the hits change nothing");
 }
 
 int main(int argc, char** argv) {
@@ -1198,7 +1353,7 @@ int main(int argc, char** argv) {
   TestAutoExposure(argv[1], argv[2]);
   TestSunMaskMarch(argv[1]);
   TestPointShadowTwins(argv[1], argv[2]);
-  if (argc > 3) TestReflectionOcclusion(argv[2], argv[3]);
+  TestReflectionResolve(argv[2], (argc > 3) ? argv[3] : "");
   std::printf("%s (%d failures)\n", failures == 0 ? "PASS" : "FAIL", failures);
   return failures == 0 ? 0 : 1;
 }

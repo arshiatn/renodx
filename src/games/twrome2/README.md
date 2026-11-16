@@ -1,5 +1,18 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
+### Cut-outs in the rays (2026-11-16 next round; built only, not run in game)
+
+- New: **holes in ray-traced shadows**: soldiers' cloaks, plumes, hair and banners and the rigid objects' alpha-tested
+  parts (fences, leaves on props) now cut out of the rays' shadows as Attila's do: the unit and rigid captures pass the
+  UV, the 88 unit pixel shaders that clip and the shadow pass's alpha test give the masks. WARP
+  (test/tw_rays_captures K): the 12 captures' UV = the game's to half a step; CONTROL the plain captures differ.
+- The fix round's "Not done" line, corrected: Batched Unit Capture never showed here (its row needs the bone pack hook
+  Rome II doesn't have; the page dump has it in no state).
+- Still not done: grass past every LOD skipping DrawScrub and the Grass Trace button (a Rome II DrawScrub / ScrubUpdate
+  hook in the shared graphics hooks, then a grassy battle); the particle rows' fire / smoke at 50 % (a trace of
+  97D98192's b3 in a 50 % battle first); smoke shadows from artillery trails (a battle with artillery).
+- In game: a battle with RT shadows: cloaks and banners in the sun, a fence's shadow with gaps.
+
 ### Fix round (2026-11-16; built only, not run in game)
 
 New:

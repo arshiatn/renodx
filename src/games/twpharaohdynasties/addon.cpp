@@ -3108,8 +3108,12 @@ bool AttachAddon() {
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
   twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // The point lights (siege trace: one instanced draw, VS E19549A1 with PS E318CE77, after the sun draw F883F5B2; fire02 reads
-  // the rays' bits). Log Details' light count also counts the particle lights (5AD46115).
-  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0xE318CE77});
+  // the rays' bits). Log Details' light count also counts the particle lights (5AD46115). The game's other 7 builds of it
+  // (names.tsv: smooth / linear falloff, slm / skinlm, with and without the point shadow map; level B, in no trace) the same,
+  // pointlight01-07: the shadowed 4 take the rays' shadow in place of the map's for each light the rays trace at the pixel
+  // and keep the map for the rest (rt_local_lights.hlsli RtLocalLightTraced). WARP on the game's bytes with nothing bound:
+  // 0 values apart (tw2_ ps_compare).
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 8>{0xE318CE77, 0xE6468FBB, 0xF8E063A1, 0x30261389, 0x0FDBE2A7, 0xE6AC22D7, 0x4D9F5B28, 0x663B02B9});
   // The fires: their particle lights' draws, the lights streamed (PARTICLE_LIGHTS, behind its own row); particlelight00 reads
   // the bits.
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x5AD46115}, twattila::rt_scene::internal::NO_LIGHT_CONSTANTS, &PARTICLE_LIGHTS);
