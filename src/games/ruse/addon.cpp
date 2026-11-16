@@ -1465,7 +1465,7 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Ray-Traced Ground Shadows (Experimental)",
         .section = SHADOWS_SECTION,
-        .tooltip = "Ray-traced sun shadows on the ground, added to the game's (costs CPU and GPU time).\n"
+        .tooltip = "Ray-traced sun shadows on the ground in place of the game's shadow maps (costs CPU and GPU time).\n"
                    "Needs Anti-Aliasing at DLAA, FSR or XeSS. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
@@ -1486,14 +1486,15 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Ray-Traced Object Shadows (Experimental)",
         .section = SHADOWS_SECTION,
-        .tooltip = "Ray-traced sun shadows on buildings, units and trees, added to the game's (costs GPU time).\n"
+        .tooltip = "Ray-traced sun shadows on buildings, units and trees in place of the game's shadow maps (costs GPU time).\n"
                    "Moving units' shadows are a frame late. Needs Ray-Traced Ground Shadows. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
-    // The object shaders with the rays' visibility in their shadow (each proved the game's with it at 1).
+    // The object shaders with the rays' visibility in place of their shadow-map factor (each proved the game's with its
+    // alpha at 0, and free of the shadow map at 1).
     ruse::ray_tracing::state.objects = ruse::ray_tracing::state.ground && setting->GetValue() != 0.f;
     if (ruse::ray_tracing::state.objects) {
       for (const auto& [hash, code] : ruse::ray_tracing::OBJECT_SHADOW_SHADERS) {
@@ -1530,16 +1531,17 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Screen-Space Ground Shadows (Experimental)",
         .section = SHADOWS_SECTION,
-        .tooltip = "Bend Studio's screen-space sun shadows on the ground: hills and slopes shadow what lies behind them, added to\n"
-                   "the game's (costs GPU time). Needs Anti-Aliasing at DLAA, FSR or XeSS.\n"
-                   "Restart after changing this setting.",
+        .tooltip = "Bend Studio's screen-space sun shadows on the ground: hills and slopes shadow what lies behind them, with the\n"
+                   "game's shadow maps (costs GPU time). Off under Ray-Traced Ground Shadows. Needs Anti-Aliasing at DLAA, FSR or\n"
+                   "XeSS. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
     settings.push_back(setting);
-    // The ground's depth and its mask as the ray-traced ground shadows have them, the march on the bridge's device.
-    ruse::ray_tracing::state.bend = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
+    // The ground's depth and its mask as the ray-traced ground shadows have them, the march on the bridge's device; off
+    // under the rays (they shadow the ground in place of the maps: one method).
+    ruse::ray_tracing::state.bend = ruse::bridge::state.enabled && setting->GetValue() != 0.f && !ruse::ray_tracing::state.ground;
     readable_depth_enabled = readable_depth_enabled || ruse::ray_tracing::state.bend;
   }
   {
