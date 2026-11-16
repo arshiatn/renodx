@@ -57,6 +57,8 @@ struct State {
   uint32_t upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;
   bool gpu_sync = false;  // the GPU Sync row (restart): gpu_fence's attached before the game's device
   bool ray_tracing = false;  // the helper started with its ray tracing (ray_tracing.hpp's row, restart)
+  bool guides = false;  // with the helper's guides (ray_tracing.hpp's traced bounce or reflections, restart)
+  bool reflections = false;  // with the helper's reflections (ray_tracing.hpp's traced reflections, restart)
   bool failed = false;   // a step failed for good: no jitter, the game's picture
   bool ready = false;
   bool in_scene = false;  // between the first scene draw and the bloom
@@ -219,8 +221,8 @@ inline void DrawQuad(IDirect3DDevice9* host, std::span<IDirect3DSurface9* const>
 // present saw (none while it is off) and its backend the helper's choice; again each evaluation (made again when the
 // format changes).
 inline bool PrepareHelper(ID3D11Device* proxy) {
-  return twattila::dlaa_bridge::Prepare(proxy, state.width, state.height, false, state.ray_tracing, twattila::frame_generation::Format(),
-                                        false, state.upscaler, twattila::dlaa_bridge::FG_BACKEND_AUTO);
+  return twattila::dlaa_bridge::Prepare(proxy, state.width, state.height, state.guides, state.ray_tracing, twattila::frame_generation::Format(),
+                                        state.reflections, state.upscaler, twattila::dlaa_bridge::FG_BACKEND_AUTO);
 }
 
 // A perspective view-projection's projection from its rows (acting on column vectors, a unit view: P00 x right, P11 x up,
