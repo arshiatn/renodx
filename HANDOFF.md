@@ -158,15 +158,15 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] C: Rome Remastered Modded Auto Exposure Sensitivity default 1 instead of 2? (battle-like scene: +0.014 stops at 2, +0.19 at 1, +0.29 at 0.6; the row is off by default) (from: "s2r_ not done ...")
 - [ ] B: Shogun 2 decals under Ray-Traced AO now take the rays' AO like the ground around them (before: the game's SSAO): look right? (from: "s2r_ not done ...")
 - [x] ANSWERED 22:1x (ATN: "Idk, if you can add a row and its default should be what we have right now": an Experimental row, off = today's blur; code box below, owner tw1_) C: Attila / Thrones under RT reflections: the game's reflection blur still widens the rays' reflection by roughness (up to 2 texels x effects share; the rays already follow a roughness lobe). Keep it (today's look) or skip it where the rays reflect (sharper, an Experimental row)? (from: tw1_ 11-16 A4)
-- [ ] C: Troy menuvideo01 now matches the game's look exactly (up to 0.037 of the encoded value) instead of the old sRGB decode: keep? (from: tw2_ 11-16)
+- [x] ANSWERED 22:3x (ATN: "Sure, any reason not do it?": kept as is, c87f82630) C: Troy menuvideo01 now matches the game's look exactly (up to 0.037 of the encoded value) instead of the old sRGB decode: keep? (from: tw2_ 11-16)
 - [ ] C: Rome II cut-outs: include the 16 alpha_overlay pixel shaders too? (rigid parts use the game's 0.35 threshold, units 0.5) (from: tw2_ 11-16)
-- [ ] C: Pharaoh pools under RT AO: open AO on the pools now, or wait for the shared AO-reader list? (from: tw2_ 11-16)
+- [x] ANSWERED 22:3x (ATN: "If it was a bug or something that exists in all the games, then lets fix it for everything": the shared AO-reader list for every game, shs2_; Pharaoh keeps the game's SSAO under RT AO until then) C: Pharaoh pools under RT AO: open AO on the pools now, or wait for the shared AO-reader list? (from: tw2_ 11-16)
 - [ ] C: WH3 sun shadows Multiply row: keep it as the off switch (Replace is the default)? (from: tw2_ 11-16)
 - [ ] C: Expeditions No Distance Field AO Under Ours (Experimental, off): on by default? Lighter under overhangs, saves 0.298 ms. (from: tpa_ 11-16)
 - [ ] C: Expeditions 192686A0 keeps the game's AO on baked light under RT AO (two methods): move our trace earlier, or a deferred multiply? (from: tpa_ 11-16)
-- [ ] C: R.U.S.E. Rays Replace Shadow Maps: off now (darker of the two) until the A/B run shows the rays hold the maps' casters (sprite imposters, off-screen casters); then on, per your replace rule? (from: rur2_ 11-16)
+- [x] ANSWERED 22:3x (ATN: "No shadow maps should run when RT Shadows is being used. To save performance and VRAM": Replace on + the game's sun shadow maps skipped under RT shadows after the coverage run, rur2_; the rule for every game is boxed below) C: R.U.S.E. Rays Replace Shadow Maps: off now (darker of the two) until the A/B run shows the rays hold the maps' casters (sprite imposters, off-screen casters); then on, per your replace rule? (from: rur2_ 11-16)
 - [ ] C: R.U.S.E. map table: rays cost 24.58 ms (41 fps) vs 6.56 with DLAA alone. Keep them, or rays off above an eye height (a look change at the table)? (from: rur2_ 11-16)
-- [ ] C: R.U.S.E. Bend: +1.1 ms, no caster shadow in the harness. If Ground Debug View 2 shows nothing in game either, drop the row? (from: rur2_ 11-16)
+- [x] ANSWERED 22:3x (ATN: "there must a way to fix it. We probably are doing something wrong": fix, not drop; rur2_) C: R.U.S.E. Bend: +1.1 ms, no caster shadow in the harness. If Ground Debug View 2 shows nothing in game either, drop the row? (from: rur2_ 11-16)
 - [ ] C: Ryse V35 defaults: at the shipped defaults V35's grey is x2.05 the game's at 0.1 nit, x1.48 at 1, x1.18 at 5, x1.03 at 15 (chroma 4.1 % off); Contrast 1.15 / Shadows 1.35 / Saturation 1.00 lands within 4.8 % (x0.98-1.04, level B). Ship the fitted defaults? (from: rys2_ 11-16)
 - [ ] C: Ryse "Dark tones for L / M" (Experimental, off; Ryse's default preset is M): WH3 harness linear / sqrt: L 0.911 / 0.930, M 0.922 / 0.904, L dark detail 0.59 / 0.86. On for L only, both, or off? (from: rys2_ 11-16)
 - [ ] C: Ryse "No RT/PT + Screen-Space (Experimental)" button (GT-VBAO, Light Bounce, Contact Shadows, rys2_ 66594cc8e): should it become No RT/PT itself? (from: A7)
@@ -305,6 +305,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (tpa_: D1f Expeditions tests build + 7/7 PASS 42a1b3b70 (UE SDR WARP ramp left); ... | those rounds
 - NEXT ROUNDS 11-16 (ATN ~10:4x: "start doing everything that is in next game and ... | coordinator
 - (Tales + Expeditions Path-Traced Ambient DONE tpa_ 99b372c7a / 170aa2058, Experi ... | tpa_, next Divinity rounds
+- SHADOW MAPS UNDER RT SHADOWS, every game (ATN 22:3x: "No shadow maps should run ... | rur2_ (R
+- V35 FIT, every game (ATN 22:3x: "Does the skill say to do it? If yes, then let's ... | rys2_ (Ryse), V35 fit round (the rest)
 - RYSE RUN (rys2_ 11-16 NEEDS A RUN): rays + RR with a moving camera (shots + vide ... | coordinator (one game at a time)
 - Ryse next (rys2_ 11-16): upgraded-target reader census needs a log line per upgr ... | next Ryse round, shared round
 - R.U.S.E. RUN (rur2_ 11-16, near / map table / mid as run_rn3): 1. rays on vs DLA ... | coordinator (one game at a time)
@@ -1965,6 +1967,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         (kept only under the Open Sky row); Divinity 1 / 2 have no ray tracing at all yet (rt_core host: the D1 steps
         9-10 box + a D2 one below); R.U.S.E. has a path-traced ground bounce, no separate PT AO. Owner: tpa_, next
         Divinity rounds
+      - [ ] SHADOW MAPS UNDER RT SHADOWS, every game (ATN 22:3x: "No shadow maps should run when RT Shadows is being used.
+        To save performance and VRAM"): per game, the game's sun shadow-map passes skipped under RT shadows once a reader
+        census shows nothing else needs them (volumetric fog / smoke / forward passes keep them only where the rays don't
+        cover them, ATN's Ryse note); each after its in-game coverage check (skill rule). Owner: rur2_ (R.U.S.E.), rys2_
+        (Ryse, after the caster capture), per-game rounds (TW: Skip the Shadow Maps rows, Shogun 2, Rome Remastered,
+        Expeditions, Tales, Divinity)
+      - [ ] V35 FIT, every game (ATN 22:3x: "Does the skill say to do it? If yes, then let's do that for v35"; the skill:
+        defaults match the vanilla look as closely as practical): per game, V35's grey / chroma below white vs the game's
+        SDR, fitted Contrast / Shadows / Saturation defaults with traced constants (Ryse first, level B now: x2.05 at 0.1
+        nit -> within 4.8 %; Shogun 2 x2.5-6.2 lift, RomeR fine), WARP proof per game. Owner: rys2_ (Ryse), V35 fit round
+        (the rest)
       - [ ] RYSE RUN (rys2_ 11-16 NEEDS A RUN): rays + RR with a moving camera (shots + video, RR on / off); the cvar run
         list (Low / Medium, every AA mode, supersampling, r_ShadersLogCacheMisses / r_LogShaders); DLAA + DLSS Quality with
         presets K / M / L in one scene, PresentMon + RENODX_TW_PROFILE; FG pacing: RENODX_TW_PROFILE + PresentMon on both
