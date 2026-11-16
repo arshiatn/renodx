@@ -56,6 +56,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -139,7 +140,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R.U.S.E. D3D9 bridge Fable 5.2 High review when ru_ finishes it (ATN asked). Own ... | coordinator
 - ATN at the end (R.U.S.E.): Extended replacing V31 Native Tone or beside it; Hue ... | ATN
 - ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 ... | coordinator
-- Divinity 1 R1 run (now possible): the start crash + fullscreen -> fake fullscree ... | coordinator (data run, ATN loads the save)
+- Divinity 1 window-switch crash: d1f_ (started 01:5x) finds what holds the old fl ... | d1f_
+- Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp cand ... | next Divinity 1 agent
+- tw_install.py's include scanner counts includes inside an #ifndef the add-on def ... | coordinator (tools)
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
 - R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI ... | ru7_ (started 01:2x)
 - R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA pas ... | coordinator
@@ -1238,7 +1241,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         shaders + FXAA 0x35F39F1D FIXED (decompiler wrote Gather for GatherGreen: FXAA was broken for AntiAliasing 1
         players). tw_d1_swapchain PASS (control E_ACCESSDENIED -> S_OK), tw_device_loss 3c PASS, tw_divinity1 2c PASS; all
         12 device_loss consumers built. Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div1 R4 peak clamp + R13 tests.
-      - [ ] Divinity 1 R1 run (now possible): the start crash + fullscreen -> fake fullscreen switch with the fix; PCSS /
+      - [ ] Divinity 1 window-switch crash: d1f_ (started 01:5x) finds what holds the old flip chain (view clones,
+        ReShade refs), releases it at destroy_swapchain, adds an E_ACCESSDENIED safety net (retry as the game's blt chain),
+        extends tw_d1_swapchain; then a vanilla control run (no ReShade) and a re-run of the switch with ATN. Owner: d1f_
+      - [ ] Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp candidates, torch / fire values,
+        PCSS constants; SSREnabled 1 + a second mode cycle at the next run. Owner: next Divinity 1 agent
+      - [ ] tw_install.py's include scanner counts includes inside an #ifndef the add-on defines (rt_scene.hpp via
+        test_hooks.hpp:31 for Divinity 1) and refuses a current build. Owner: coordinator (tools)
+      - [x] RAN 01:40-01:47 (d1 v1 stamped + installed, ATN loaded the Act 2/3 save; run_r1_014005): START CLEAN (9 swap
+        chains S_OK, no E_ACCESSDENIED); FULLSCREEN -> FAKE FULLSCREEN STILL CRASHES at EoCApp+0xF7C532 (fresh factory,
+        BufferCount 1 Windowed DISCARD upgraded to flip -> 0x80070005; ReShade "Reference count inconsistent (1)" at every
+        release; our back-buffer view clone suspected). Captured: menu + save traces (torches), pass timing 3.185 ms GPU,
+        7 mode shots, PresentMon 120 fps / 8.33 ms (CPU 8.30 = CPU-bound, paused). ATN's files restored, 0 differ.
+        Divinity 1 R1 run (now possible): the start crash + fullscreen -> fake fullscreen switch with the fix; PCSS /
         0xCB4B3BA6 other branches' constants; R7 RGBA8-upgrade readers; 8 census clamp candidates; steps 9-13. Limit: a
         view of the old back buffer held by another add-on still fails (no blt fallback). ATN by eye: Hue Clip 70, Sun
         Shadow Softness, legacy V30 / Pragmap. Owner: coordinator (data run, ATN loads the save)
