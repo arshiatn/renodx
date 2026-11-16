@@ -13,6 +13,7 @@
 //    unresolved, its entry point never called: nothing of it runs) so FindPattern finds it by its name; each pattern
 //    matches its executable sections exactly once, where FindPattern points. CONTROL: each with its first fixed byte
 //    changed matches nowhere and FindPattern gives null.
+// 5. The game's DLSS release (game_dlss RELEASE_FEATURE, R21) frees the DLSS pass's own holder and its parameters.
 // tests.exe <empire.retail.x64.dll> <s2_tweaks_1114.txt>
 #include <windows.h>
 
@@ -188,6 +189,7 @@ int main(int argc, char** argv) {
       {"game_dlss JITTER_CONDITION", twshogun2::game_dlss::internal::JITTER_CONDITION},
       {"game_dlss JITTER_FUNCTION", twshogun2::game_dlss::internal::JITTER_FUNCTION},
       {"game_dlss DLSS_PASS", twshogun2::game_dlss::internal::DLSS_PASS},
+      {"game_dlss RELEASE_FEATURE", twshogun2::game_dlss::internal::RELEASE_FEATURE},
       {"grass_distance UPDATE", twshogun2::grass_distance::internal::UPDATE},
       {"model_detail SELECT_LOD", twshogun2::model_detail::internal::SELECT_LOD},
       {"model_detail LOD_FADE", twshogun2::model_detail::internal::LOD_FADE},
@@ -216,6 +218,26 @@ int main(int argc, char** argv) {
   }
   std::printf("4. %zu byte patterns: each once in the executable sections, where FindPattern points; CONTROL each with a changed byte: "
               "none\n", std::size(patterns));
+
+  // 5. The game's DLSS release (R21) releases the DLSS pass's own holder: RELEASE_FEATURE's "mov rcx, [rip + x]" and
+  //    DLSS_PASS's "cmp qword [rip + x], 0" name one address, its second load holder + 8 (the parameters). CONTROL: the
+  //    displacement read one byte off names another address.
+  {
+    auto* pass = twshogun2::engine::FindPattern(twshogun2::game_dlss::internal::DLSS_PASS);
+    auto* release = twshogun2::engine::FindPattern(twshogun2::game_dlss::internal::RELEASE_FEATURE);
+    CHECK(pass != nullptr && release != nullptr);
+    const uint8_t* holder = twshogun2::engine::RipTarget(pass + 3, pass + 8);
+    constexpr size_t at = twshogun2::game_dlss::internal::RELEASE_HOLDER;
+    const uint8_t* released = twshogun2::engine::RipTarget(release + at, release + at + 4);
+    const uint8_t* released_parameters = twshogun2::engine::RipTarget(release + 24, release + 28);
+    CHECK(released == holder && released_parameters == holder + 8);
+    // CONTROL: the displacement read one byte off names another address.
+    CHECK(twshogun2::engine::RipTarget(release + at + 1, release + at + 5) != holder);
+    std::printf("5. the game's DLSS release at +0x%zx: handle +0x%zx and parameters +0x%zx = DLSS_PASS's holder and holder + 8; "
+                "CONTROL one byte off: another address\n",
+                static_cast<size_t>(release - image_base), static_cast<size_t>(holder - image_base),
+                static_cast<size_t>(released_parameters - image_base));
+  }
   FreeLibrary(image);
   FreeLibrary(mapped);
   std::printf("PASS\n");
