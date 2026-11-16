@@ -44,6 +44,7 @@
 #include "../twattila/device_loss.hpp"
 #include "../twattila/credits.hpp"
 #include "../twattila/lighting_settings.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/settings_pages.hpp"
 #include "../twattila/texture_lod_bias.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
@@ -1743,6 +1744,14 @@ void BuildRuntimeData() {
       },
       new Setting{
           .value_type = SettingValueType::BUTTON,
+          .label = "Time Each Pass (One Frame)",
+          .section = aa_section,
+          .tooltip = "The GPU's time of every pass of the next frame into shogun2_pass_timing.txt next to the game's exe.",
+          .on_change = [] { twattila::pass_timing::Request(); },
+          .is_visible = [] { return more_aa; },
+      },
+      new Setting{
+          .value_type = SettingValueType::BUTTON,
           .label = "Capture DLSS inputs (4 frames, shogun2_dlss_capture_* next to the exe)",
           .section = aa_section,
           .tooltip = "Saves DLSS's color, motion and depth inputs of 4 frames (about 60 MB at 33%).",
@@ -2364,8 +2373,9 @@ void ApplyGameRows() {
   twshogun2::shadow_resolution::Set(scale_of(SHADOW_MAP_SIZES, graphics_rows.shadow_map_resolution));
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  twattila::pass_timing::OnPresent(queue, "shogun2");
   // Before any setting is read this frame: the helper's DLSS never starts on another vendor's GPU, a saved one or a
   // preset's is its XeSS on Intel's, else its FSR (Attila's; HelperUpscaler's slider places 2 and 3, parsed to 6 and 7).
   // The game's DLSS (0) stays: the game runs it or not itself.
@@ -2746,6 +2756,8 @@ namespace {
 
 bool AttachAddon() {
   if (attached) return true;
+  // Its draw and dispatch events before any other of the add-on's (pass_timing.hpp: their run order is registration order).
+  twattila::pass_timing::Install();
 
   ConfigureAddon();
 
@@ -2955,6 +2967,7 @@ void DetachAddon() {
   renodx::mods::shader::Use(DLL_PROCESS_DETACH, custom_shaders, &shader_injection);
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
+  twattila::pass_timing::Uninstall();
 
   attached = false;
 }
