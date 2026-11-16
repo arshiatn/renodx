@@ -4088,6 +4088,14 @@ void ConfigureAddon() {
   }
   // ATN's RT/PT preset (Attila's page, 2026-11-12) as the defaults of what the methods leave.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  // Experimental rows start off, as Pharaoh's (Reset and No RT/PT write these defaults; RT/PT turns them on, as ATN's list
+  // does): Fog Shadows and Specular Occlusion ran rays with no ray method chosen, Water Caustics was a look change for every
+  // player that no game run has shown.
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedSpecularOcclusion" || setting->key == "WaterCaustics") {
+      setting->default_value = 0.f;
+    }
+  }
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &reflections::all_surfaces_row,
@@ -4205,8 +4213,9 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
 
   // Rows saved at an old default, cleared once. Before v32 both hidden: fog's light nobody has seen at night, and dark
-  // patches on rivers under rays. Before v45: NRD when Ray Reconstruction is off, the banners' light and colour on.
-  constexpr int SETTINGS_REVISION = 33;
+  // patches on rivers under rays. Before v45: NRD when Ray Reconstruction is off, the banners' light and colour on. Before
+  // revision 34: Fog Shadows, Specular Occlusion and Water Caustics on at the RT/PT preset's default.
+  constexpr int SETTINGS_REVISION = 34;
   if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
     for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
       if (revision < 32) {
@@ -4214,7 +4223,12 @@ bool AttachAddon() {
           reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
         }
       }
-      for (const char* key : {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"}) {
+      if (revision < 33) {
+        for (const char* key : {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"}) {
+          reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
+        }
+      }
+      for (const char* key : {"RayTracedFogShadows", "RayTracedSpecularOcclusion", "WaterCaustics"}) {
         reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
       }
     }
