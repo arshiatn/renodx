@@ -1784,7 +1784,6 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  twattila::screen_space_shadows::Update(swapchain, twattila::feature_settings::SssSettings(sss_sliders));
   // The game's MSAA keeps DLAA / DLSS from running (A2_185833: its 2-sample sun draws 006F587A / FCD6C263 keep no camera):
   // the rays and frame generation, which need them, off with it (the rays' scene captures nothing multisampled).
   const bool game_msaa = twattila::anti_aliasing::GameMsaa();
@@ -1793,6 +1792,10 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
     rays_aa.method = 0.f;
   }
   auto rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, rays_aa, shader_injection.light_bounce_strength);
+  // Ray-traced sun shadows replace Bend's too (one shadow method, as Attila's): the sun draws' mask from the rays alone.
+  auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
+  sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
+  twattila::screen_space_shadows::Update(swapchain, sss_settings);
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   rt_settings.shadows_only = rt_settings.shadows_only && rays_skip_cascades_row != 0.f;
   SetShadowCascades(shadow_cascades_row != 0.f && rt_settings.shadows_only);
