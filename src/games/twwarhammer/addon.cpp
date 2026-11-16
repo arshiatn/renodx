@@ -70,6 +70,11 @@ bool IsHDRMode() {
   return shader_injection.hdr >= 1.f;
 }
 
+// The swap chain's output not SDR (Attila's): at Output SDR the video AutoHDR does nothing (shared.h).
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != 2.f;
+}
+
 bool IsPsychoV30Mode() {
   return shader_injection.hdr == 1.f;
 }
@@ -1190,7 +1195,7 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 1.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput(); },
     },
     new renodx::utils::settings::Setting{
         .key = "video_dithering",
@@ -1202,7 +1207,7 @@ void BuildRuntimeData() {
         .tooltip = "Fine noise that hides banding in the brightened videos.\n"
                    "Only with Video AutoHDR above 0.",
         .labels = {"Off", "On"},
-        .is_enabled = [] { return IsHDRMode() && shader_injection.video_autohdr > 0.f; },
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput() && shader_injection.video_autohdr > 0.f; },
     },
     new renodx::utils::settings::Setting{
         .key = "sky_smooth_strength",
@@ -1867,7 +1872,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
-  aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
+  aa_settings.sdr_output = !IsHdrOutput();
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   // After the at-start tests' thread (one writer at a time).
