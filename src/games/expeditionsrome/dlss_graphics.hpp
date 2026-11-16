@@ -413,7 +413,8 @@ constexpr size_t SSGI_QUALITY = SettingIndex(L"r.SSGI.Quality");
 // Unreal's AO levels: 1 under GT-VBAO (the lower levels, 0.57 ms at 4K, feed only the levels' result GT-VBAO
 // replaces; the one-level pass ao01 has the same GT-VBAO as ao00).
 constexpr size_t AO_LEVELS = SettingIndex(L"r.AmbientOcclusionLevels");
-// Unreal's distance field AO (the sky light's large-scale occlusion, 0.30 ms at 4K): 0 under ours with its row.
+// Unreal's distance field AO (the sky light's large-scale occlusion, 0.30 ms at 4K): 0 while ours runs (one AO method,
+// ATN 2026-11-16: never the game's on top of ours).
 constexpr size_t AO_QUALITY = SettingIndex(L"r.AOQuality");
 static_assert(SUN_SHADOW_CASCADES < SUN_SHADOW_RESOLUTION && SUN_SHADOW_RESOLUTION < GRAPHICS_SETTINGS.size());
 static_assert(VOLUMETRIC_FOG < GRAPHICS_SETTINGS.size() && SSGI_QUALITY < GRAPHICS_SETTINGS.size() && AO_LEVELS < GRAPHICS_SETTINGS.size()
@@ -470,7 +471,6 @@ static float live_scale_row = 1.f;
 static float replace_taa_row = 1.f;
 static float contact_shadows_row = 0.f;  // percent of the screen
 static float shadow_cascades_row = 0.f;  // Two Shadow Cascades Under Rays
-static float distance_field_ao_row = 0.f;  // No Distance Field AO Under Ours
 
 // UE 4.23's View rows the upscalers and frame generation read (Tales' 4.21 rows + 4: ClipToWorld came before them):
 // TranslatedWorldToView, ViewToClipNoAA, the camera's axes, TranslatedWorldCameraOrigin, PreViewTranslation.
@@ -1558,7 +1558,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     const OutputScaling scaling = ((effects_at_output && upscaling) ? OUTPUT_SCALING[index] : OutputScaling::NONE);
     const float current = entry.cvar.Get();
     const bool replaced = (index == SSGI_QUALITY && our_gi) || (index == SUN_SHADOW_CASCADES && two_cascades)
-                          || (index == AO_LEVELS && gtvbao) || (index == AO_QUALITY && distance_field_ao_row != 0.f && our_ao);
+                          || (index == AO_LEVELS && gtvbao) || (index == AO_QUALITY && our_ao);
     if (std::isnan(preset_value) && scaling == OutputScaling::NONE && !replaced) {
       if (entry.controlling) {
         entry.cvar.Set(entry.game_value);
@@ -1852,18 +1852,6 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
       .section = "Graphics (Experimental)",
       .tooltip = "With ray-traced sun shadows: the game draws 2 sun shadow cascades instead of up to 4, and the rays shadow\n"
                  "the rest. Fewer shadow draws; shadows of things off screen reach less far.",
-      .labels = {"Off", "On"},
-  });
-  // Unreal's distance field AO off while ours runs (one AO method; a look change: Experimental).
-  settings->push_back(new Setting{
-      .key = "NoDistanceFieldAO",
-      .binding = &distance_field_ao_row,
-      .value_type = SettingValueType::BOOLEAN,
-      .default_value = 0.f,
-      .label = "No Distance Field AO Under Ours (Experimental)",
-      .section = "Graphics (Experimental)",
-      .tooltip = "With GT-VBAO, ray-traced AO or Path-Traced Ambient: the game's large-scale ambient occlusion (distance\n"
-                 "fields) off, ours alone. Lighter under large overhangs; a little faster.",
       .labels = {"Off", "On"},
   });
   // One frame's GPU time of every pass (twattila/pass_timing.hpp, the add-on's first draw hooks).

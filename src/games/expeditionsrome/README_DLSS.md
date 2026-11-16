@@ -999,3 +999,7 @@ pass ao01 BD381E21 has the same GT-VBAO as ao00). New **No Distance Field AO Und
 r.AOQuality 0 under GT-VBAO, the rays' AO or Path-Traced Ambient (DFAO 0.30 ms; skylight01 / 02 are the sky light
 passes without it). The 8-bit targets before the tone mapper carry no HDR colour (SSAO levels, the screen shadow
 mask, HZB): nothing to unclamp.
+
+ATN 2026-11-16 23:0x ("Let's not stack the game's on top of ours"): the distance field AO is off whenever GT-VBAO,
+the rays' AO or Path-Traced Ambient runs, always (the Experimental row is gone; r.AOQuality the game's value back
+after).
