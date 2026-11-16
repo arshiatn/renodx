@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Private ray tracing shader (ray_tracing.hpp), not a game replacement registration: the ray-traced light bounce's
-// resolve over frames. Each bounce texel (scale x scale render pixels, its centre's surface) keeps the light arriving there
+// A host's own ray tracing shader (its ray_tracing.hpp; Expeditions: Rome's 0x7A1E0D49, Divinity 2's rt_bounce_resolve
+// include this), not a game replacement registration: the ray-traced light bounce's resolve over frames. Each bounce texel (scale x scale render pixels, its centre's surface) keeps the light arriving there
 // averaged over up to `frames` frames: last frame's where its camera saw the same surface (bilinear, each tap only where
 // its surface lies within 2% of the distance), else this frame's alone. World positions in metres (the helper's).
 Texture2D<float4> traced : register(t0);              // this frame's arriving light, the distance from the camera

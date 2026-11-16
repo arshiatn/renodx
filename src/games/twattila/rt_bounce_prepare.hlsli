@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Private ray tracing shader (ray_tracing.hpp), not a game replacement registration: the ray-traced light bounce's
-// prepared light, the light leaving what the camera sees (the scene colour right after the sun's deferred light draw),
+// A host's own ray tracing shader (its ray_tracing.hpp; Expeditions: Rome's 0x7A1E0D48, Divinity 2's rt_bounce_prepare
+// include this), not a game replacement registration: the ray-traced light bounce's prepared light, the light leaving what the camera sees (the scene colour right after the sun's deferred light draw),
 // one texel per scale x scale render pixels (their average; non-finite ones left out).
 Texture2D<float4> scene : register(t0);
 
