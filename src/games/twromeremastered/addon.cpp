@@ -1905,8 +1905,8 @@ void ConfigureAddon() {
           .label = "Ray Tracing Battle Objects (Test)",
           .section = twattila::feature_settings::AA_SECTION,
           .tooltip = "Which battle objects the rays see. Tested: the campaign map's kinds only. Solid: also the battle's\n"
-                     "terrain, buildings and props. All: also its trees and plants. Solid and All are untested: they log\n"
-                     "details, and after a ray tracing restart they stay off until the game restarts.",
+                     "terrain, buildings and props. All: also its trees and plants. Solid and All: Experimental; after a\n"
+                     "ray tracing restart they stay off until the game restarts.",
           .labels = {"Tested", "Solid", "All"},
           .is_visible = [] {
             return twromeremastered::ray_tracing::sliders.sun_shadows != 0.f || twromeremastered::ray_tracing::sliders.ambient_occlusion != 0.f;
