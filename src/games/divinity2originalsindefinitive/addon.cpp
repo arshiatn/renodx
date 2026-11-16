@@ -827,11 +827,10 @@ void AppendConstants(reshade::api::command_list* cmd_list, bool compute, UINT sl
   talesofarise::frame_trace::internal::Append(line);
 }
 
-// Time Each Pass's frame and the frame trace's.
-void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
+// The frame trace's frame (Time Each Pass has its own present event).
+void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
-  twattila::pass_timing::OnPresent(queue, "divinity2");
-  talesofarise::frame_trace::OnPresent();
+  talesofarise::frame_trace::OnPresent("divinity2");
 }
 
 }  // namespace
@@ -1087,7 +1086,7 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
       // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
-      twattila::pass_timing::Install();
+      twattila::pass_timing::Install("divinity2");
 
       if (!initialized) {
         ConfigureAddon();

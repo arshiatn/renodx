@@ -1234,7 +1234,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   // Debug: also renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt).
-  talesofarise::frame_trace::OnPresent();
+  talesofarise::frame_trace::OnPresent("expeditions");
   // Before any row is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS on
   // Intel's, else FSR (as Attila's).
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -1314,6 +1314,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     state.copied_per_frame = copied - state.copied_bytes;
     state.copied_bytes = copied;
   }
+  talesofarise::dlss::constants::SetCounting(false);
   if (changed) Reset();
   if (mode == AAMode::OFF) {
     SetStatus("Off — original game TAA");
@@ -1757,6 +1758,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .reflections_tooltip = "Reflections on water, metal and wet ground. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. DXR: from rays, also what is off screen. Needs an upscaler. Restart the game\n"
                            "after turning it on.",
+    .units_range_label = "Characters Ray Tracing Range (Experimental)",
+    .units_range_tooltip = "Characters farther than this are left out of the ray tracing (their shadows there are a few pixels):\n"
+                           "faster in big battles. 0 m: all characters.",
 };
 // The page's anti-aliasing: the game's TAA, DLSS, FSR, XeSS.
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
@@ -1896,6 +1900,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
               const std::shared_lock lock(state.mutex);
               overlay_frame.store(state.frame + 1);
             }
+            talesofarise::dlss::constants::SetCounting(true);
             uint64_t completed;
             uint32_t temporal_shader_hash;
             uint64_t copied_per_frame;

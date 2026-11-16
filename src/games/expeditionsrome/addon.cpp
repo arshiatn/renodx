@@ -586,10 +586,9 @@ void ConfigureAddon() {
 }
 
 // GT-VBAO's noise moves every frame (the game's TAA / DLSS settle it). The helper's frame generation and Reflex (the page's
-// rows), its frames SDR with the SDR output; Time Each Pass's frame.
+// rows), its frames SDR with the SDR output.
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
-  twattila::pass_timing::OnPresent(queue, "expeditionsrome");
   shader_injection.ssao_frame = std::fmod(shader_injection.ssao_frame + 1.f, 64.f);
   const auto& sliders = expeditionsrome::dlss_graphics::aa_sliders;
   const auto aa = twattila::feature_settings::AaSettings(sliders);
@@ -617,7 +616,7 @@ void OnDestroyHelperDevice(reshade::api::device* device) {
 bool AttachAddon() {
   if (attached) return true;
   // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
-  twattila::pass_timing::Install();
+  twattila::pass_timing::Install("expeditionsrome");
 
   ConfigureAddon();
 

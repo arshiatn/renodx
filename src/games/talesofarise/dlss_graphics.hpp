@@ -2242,7 +2242,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   talesofarise::pixel_trace::OnPresent(queue);
   talesofarise::engine_hooks::UpdateSun();
-  talesofarise::frame_trace::OnPresent();
+  talesofarise::frame_trace::OnPresent("tales");
   // Before any row is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS on
   // Intel's, else FSR (as Attila's).
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -2344,6 +2344,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     state.biased_per_frame = biased - state.biased_uploads;
     state.biased_uploads = biased;
   }
+  talesofarise::dlss::constants::SetCounting(false);
   {
     const std::unique_lock lock(post.mutex);
     post.last = {post.passes, post.upscales};
@@ -3146,6 +3147,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
               const std::shared_lock lock(state.mutex);
               overlay_frame.store(state.frame + 1);
             }
+            talesofarise::dlss::constants::SetCounting(true);
             uint64_t completed;
             uint32_t temporal_shader_hash;
             uint64_t copied_per_frame;

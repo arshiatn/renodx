@@ -955,7 +955,8 @@ inline bool Initialize(ID3D11Device* game_device) {
     return Fail("needs a GPU and driver with DXR 1.1.");
   }
   D3D12_FEATURE_DATA_SHADER_MODEL shader_model = {.HighestShaderModel = D3D_SHADER_MODEL_6_9};
-  gpu.dxr12 = options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_2
+  // RENODX_TW_NO_DXR12 (a test switch, as the helper's): the DXR 1.1 path other GPUs take (no micromaps, no reordering).
+  gpu.dxr12 = GetEnvironmentVariableW(L"RENODX_TW_NO_DXR12", nullptr, 0) == 0 && options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_2
               && SUCCEEDED(device12->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shader_model, sizeof(shader_model)))
               && shader_model.HighestShaderModel >= D3D_SHADER_MODEL_6_9;
   gpu.device = device;
@@ -1571,6 +1572,10 @@ inline bool Trace(ID3D11DeviceContext* context) {
   state.scene_depth = depth_resource.Get();
   if (!internal::Initialize(device.Get())) return false;
   auto* device12 = gpu.device12.Get();
+  // RENODX_TW_TEST_REMOVAL (a test switch, as the helper's): this device removed at the process's third trace, as a GPU
+  // hang removes it (its fences then read all ones, the next list reset fails: the ray tracing off, said).
+  static uint32_t test_traces = 0;
+  if (++test_traces == 3 && GetEnvironmentVariableW(L"RENODX_TW_TEST_REMOVAL", nullptr, 0) != 0) device12->RemoveDevice();
 
   // Release what the GPU is done with: old BLASes, outgrown scratch, released meshes' records and pool ranges.
   const uint64_t completed = gpu.fence12->GetCompletedValue();
