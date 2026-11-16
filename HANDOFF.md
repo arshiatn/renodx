@@ -67,6 +67,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -156,7 +157,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FABLE 5.2 HIGH REVIEW OF THE R.U.S.E. BRIDGE DONE 02:4x (read-only, 12 findings; ... | rrf_
 - R.U.S.E. T-run list (ATN loads a battle, one row at a time with PresentMon): DLA ... | coordinator (after the Fable review fixes)
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
-- Skills update 2 (tools/tw/round_notes/skill_lessons_1116b.md, 11 lessons) by sk2 ... | sk2_ / coordinator
 - Window-switch tests (after the restart, with ATN): Attila / Thrones / WH1 / WH2 ... | coordinator (data runs)
 - PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator ATN 02:5x: only the RUNNING agents finish (lg_ l
 - AFTER THE RESTART, in order (nothing of this started before it): 1. Build all (b ... | coordinator
@@ -1369,8 +1369,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         Gamma Correction on in the others. lg_ started 02:1x. (was) ATN DECIDES (Vanilla not exactly the game, by design today): Attila / Thrones lens flares decode 2.2 / encode 2.0
         in every mode (0.035); Gamma Correction on by default re-encodes 2.0 -> 2.2 in Rome II / WH1 / WH2 / Troy / Pharaoh
         Vanilla (0.027-0.035); the R6 bloom smoothing in SDR (up to 22 in WH2 t00). Make Vanilla = the game? Owner: ATN
-      - [ ] Skills update 2 (tools/tw/round_notes/skill_lessons_1116b.md, 11 lessons) by sk2_, then rebuild the zip.
-        Owner: sk2_ / coordinator
+      - [x] DONE 3d7c63ed 03:0x (sk2_ 6c22b57d, 11 lessons placed; zip rebuilt: Downloads\RenoDX_skills_2026-11-15.zip, 48
+        files). Skills update 2 (tools/tw/round_notes/skill_lessons_1116b.md, 11 lessons) by sk2_, then rebuild the zip.
       - [x] SURVEY DONE 02:5x (all ReShade logs under tools, deduplicated): only Divinity 1 makes a second chain on the same
         live device and gets 0x80070005; no other game needs the opt-in on current evidence. Game flip already (not
         exposed): WH3, Troy, Pharaoh, Shogun 2, Rome Remastered, Expeditions, Divinity 2. blt -> flip but 1 chain per
