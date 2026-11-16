@@ -23,6 +23,8 @@
 //    column-major row 0 (CONTROL: its registers' first three floats point elsewhere).
 // 7. The overlays (decals, the ground's surfaces, water) left out of the rays' scene by their shipped pixel shaders'
 //    bytes (CONTROL: an opaque material's shader).
+// 8. Skip the Game's Shadow Maps: the draws into the cascades' atlas (learned at the replaced mask's draw) skipped under
+//    the rays' sun (CONTROLS: another depth target, the row off, no trace this frame).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -724,6 +726,75 @@ int main(int argc, char** argv) {
     CHECK(shipped == static_cast<int>(rays::internal::OVERLAY_PIXEL_SHADERS.size()));
     CHECK(surface_noted && decal_noted && surface_let_go);
     CHECK(!wall_noted);
+  }
+
+  // 8. Skip the Game's Shadow Maps: the mask's draw (the cascades' atlas at its t1) under the rays' sun writes the
+  //    visibility and notes the atlas; then binding the atlas as the depth target skips the draws into it (an indirect
+  //    dispatch not). CONTROLS: the scene's depth bound, the row off, no trace this frame: drawn.
+  {
+    auto& runtime = twattila::rt_scene::internal::runtime;
+    auto& bridge = twattila::dlaa_bridge::bridge;
+    std::vector<uint8_t> visibility(static_cast<size_t>(WIDTH) * HEIGHT);
+    for (size_t at = 0; at < visibility.size(); ++at) visibility[at] = static_cast<uint8_t>((at * 53) % 256);
+    const auto visibility_texture = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R8_UNORM, D3D11_BIND_SHADER_RESOURCE, visibility.data(), WIDTH);
+    bridge.rt_visibility.srv = Srv(visibility_texture.Get());
+    runtime.traced_frame = runtime.frame;
+    rays::sliders.sun_shadows = 1.f;
+    rays::skip_shadow_maps = 1.f;
+    dlaa::rays = true;
+    state.depth_size = {WIDTH, HEIGHT};
+    const auto make_depth = [&](UINT size) {
+      const D3D11_TEXTURE2D_DESC desc = {.Width = size, .Height = size, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R16_TYPELESS,
+                                         .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                         .BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE};
+      ComPtr<ID3D11Texture2D> texture;
+      REQUIRE(SUCCEEDED(device->CreateTexture2D(&desc, nullptr, texture.GetAddressOf())));
+      return texture;
+    };
+    const auto atlas = make_depth(128);
+    const auto scene_depth = make_depth(64);
+    const D3D11_DEPTH_STENCIL_VIEW_DESC dsv_desc = {.Format = DXGI_FORMAT_D16_UNORM, .ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D};
+    ComPtr<ID3D11DepthStencilView> atlas_dsv;
+    ComPtr<ID3D11DepthStencilView> scene_dsv;
+    REQUIRE(SUCCEEDED(device->CreateDepthStencilView(atlas.Get(), &dsv_desc, atlas_dsv.GetAddressOf())));
+    REQUIRE(SUCCEEDED(device->CreateDepthStencilView(scene_depth.Get(), &dsv_desc, scene_dsv.GetAddressOf())));
+    const D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = {.Format = DXGI_FORMAT_R16_UNORM, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
+                                                      .Texture2D = {.MipLevels = 1}};
+    ComPtr<ID3D11ShaderResourceView> atlas_srv;
+    REQUIRE(SUCCEEDED(device->CreateShaderResourceView(atlas.Get(), &srv_desc, atlas_srv.GetAddressOf())));
+    const auto mask = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R8_UNORM, D3D11_BIND_RENDER_TARGET);
+    const auto mask_rtv = Rtv(mask.Get());
+    context->PSSetShaderResources(1, 1, atlas_srv.GetAddressOf());
+    context->OMSetRenderTargets(1, mask_rtv.GetAddressOf(), nullptr);
+    const bool replaced = rays::ReplaceSunMask(&mock_list);
+    const bool mask_exact = ReadBack<uint8_t>(mask.Get(), WIDTH, HEIGHT) == visibility;
+    const bool atlas_noted = rays::internal::shadow_atlas_address.load() == reinterpret_cast<uintptr_t>(atlas.Get());
+    ID3D11ShaderResourceView* no_view = nullptr;
+    context->PSSetShaderResources(1, 1, &no_view);
+    context->OMSetRenderTargets(0, nullptr, nullptr);
+    const auto bound = [&](ID3D11DepthStencilView* dsv) {
+      rays::internal::OnBindTargets(&mock_list, 0, nullptr, {reinterpret_cast<uint64_t>(dsv)});
+      return rays::internal::OnCasterDraw(&mock_list, 3, 1, 0, 0) && rays::internal::OnCasterDrawIndexed(&mock_list, 3, 1, 0, 0, 0);
+    };
+    const bool skipped = bound(atlas_dsv.Get());
+    const bool dispatch_skipped = rays::internal::OnCasterDrawIndirect(&mock_list, reshade::api::indirect_command::dispatch, {}, 0, 1, 0);
+    const bool indirect_skipped = rays::internal::OnCasterDrawIndirect(&mock_list, reshade::api::indirect_command::draw_indexed, {}, 0, 1, 0);
+    const bool scene_skipped = bound(scene_dsv.Get());
+    rays::skip_shadow_maps = 0.f;
+    const bool row_off_skipped = bound(atlas_dsv.Get());
+    rays::skip_shadow_maps = 1.f;
+    runtime.traced_frame = runtime.frame - 1;
+    const bool untraced_skipped = bound(atlas_dsv.Get());
+    std::printf("shadow maps: mask %s, atlas noted %d; atlas bound: draws skipped %d (indirect draw %d, indirect dispatch %d); CONTROLS "
+                "the scene's depth %d, row off %d, no trace this frame %d\n",
+                (replaced && mask_exact ? "the rays' visibility" : "NOT REPLACED"), atlas_noted, skipped, indirect_skipped, dispatch_skipped,
+                scene_skipped, row_off_skipped, untraced_skipped);
+    CHECK(replaced && mask_exact && atlas_noted);
+    CHECK(skipped && indirect_skipped && !dispatch_skipped);
+    CHECK(!scene_skipped && !row_off_skipped && !untraced_skipped);
+    bound(nullptr);
+    bridge.rt_visibility.srv.Reset();
+    dlaa::rays = false;
   }
 
   std::printf("%s: %d failure(s)\n", (failures == 0 ? "PASS" : "FAIL"), failures);

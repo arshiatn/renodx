@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <shared_mutex>
@@ -39,7 +40,8 @@
 // (b13, column-major: LightPropertyMatrix row 0 = c0-c2's x, toward the sun) at the lighting draw, for the next trace.
 // Ours replaces the game's (ATN 2026-11-16): under Ray-Traced Sun Shadows the mask draw writes the traced visibility in
 // place of the game's filter; under Ray-Traced AO the AO chain isn't drawn and its two blurs write the traced visibility
-// into their targets (the texture both readers take). Off, or not traced this frame: the game's passes as they are. Its
+// into their targets (the texture both readers take); Skip the Game's Shadow Maps leaves the cascades' draws out under the
+// rays' sun. Off, or not traced this frame: the game's passes as they are. Its
 // scene's shaders' code is kept from the game's start: Install only when a row is on at launch.
 namespace divinity2::ray_tracing {
 
@@ -47,6 +49,10 @@ using Microsoft::WRL::ComPtr;
 
 // The rows (rt_scene::AppendSettings', on the graphics page; restart after turning sun shadows or AO on).
 static twattila::rt_scene::Sliders sliders;
+// Skip the Game's Shadow Maps (Experimental, off): under Ray-Traced Shadows nothing is drawn into the cascades' atlas
+// (R1's city: 962 of the frame's 3,526 draws); its only reader in the census by name (Shadow at t1) is the mask the rays
+// replace.
+static float skip_shadow_maps = 0.f;
 
 namespace internal {
 
@@ -102,6 +108,39 @@ static bool installed = false;
 // destroy_pipeline also fires inside D3D11 calls made under state.mutex.
 static std::shared_mutex overlay_mutex;
 static std::unordered_set<uint64_t> overlay_pixel_shaders;
+// The cascades' atlas (the sun mask's t1, R1: R16 4096 x 4096), learned at the mask's draw and held so its address stays
+// its own; the draws while it is the bound depth target are skipped (the render thread's).
+static std::mutex atlas_mutex;
+static ComPtr<ID3D11Resource> shadow_atlas;
+static std::atomic<uintptr_t> shadow_atlas_address = 0;
+static std::atomic_bool skipping_casters = false;
+
+// A depth target bound: the cascades' atlas under Skip the Game's Shadow Maps, with this frame's traced sun (the trace at
+// LinearizeDepth comes before the cascades), skips the draws into it until the next bind.
+inline void OnBindTargets(reshade::api::command_list*, uint32_t, const reshade::api::resource_view*, reshade::api::resource_view dsv) {
+  bool skip = false;
+  const uintptr_t atlas = shadow_atlas_address.load(std::memory_order_relaxed);
+  if (skip_shadow_maps != 0.f && sliders.sun_shadows != 0.f && dsv.handle != 0 && atlas != 0) {
+    ComPtr<ID3D11Resource> resource;
+    reinterpret_cast<ID3D11View*>(dsv.handle)->GetResource(resource.GetAddressOf());
+    skip = reinterpret_cast<uintptr_t>(resource.Get()) == atlas && twattila::rt_scene::Visibilities()[0] != nullptr;
+  }
+  skipping_casters.store(skip, std::memory_order_relaxed);
+}
+
+inline bool OnCasterDraw(reshade::api::command_list*, uint32_t, uint32_t, uint32_t, uint32_t) {
+  return skipping_casters.load(std::memory_order_relaxed);
+}
+
+inline bool OnCasterDrawIndexed(reshade::api::command_list*, uint32_t, uint32_t, uint32_t, int32_t, uint32_t) {
+  return skipping_casters.load(std::memory_order_relaxed);
+}
+
+inline bool OnCasterDrawIndirect(reshade::api::command_list*, reshade::api::indirect_command type, reshade::api::resource, uint64_t,
+                                 uint32_t, uint32_t) {
+  return (type == reshade::api::indirect_command::draw || type == reshade::api::indirect_command::draw_indexed)
+         && skipping_casters.load(std::memory_order_relaxed);
+}
 
 inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_layout, uint32_t subobject_count,
                            const reshade::api::pipeline_subobject* subobjects, reshade::api::pipeline pipeline) {
@@ -156,8 +195,13 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-  const std::unique_lock lock(state.mutex);
-  if (state.objects.device.Get() == native) state.objects = {};
+  {
+    const std::unique_lock lock(state.mutex);
+    if (state.objects.device.Get() == native) state.objects = {};
+  }
+  const std::unique_lock lock(atlas_mutex);
+  shadow_atlas_address.store(0, std::memory_order_relaxed);
+  shadow_atlas.Reset();
 }
 
 inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
@@ -287,6 +331,18 @@ inline bool ReplaceSunMask(reshade::api::command_list* cmd_list) {
   if (sliders.sun_shadows == 0.f) return false;
   ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
   if (native == nullptr) return false;
+  // The cascades' atlas it reads (t1), for Skip the Game's Shadow Maps from the next frame on.
+  {
+    ComPtr<ID3D11ShaderResourceView> atlas_view;
+    native->PSGetShaderResources(1, 1, atlas_view.GetAddressOf());
+    ComPtr<ID3D11Resource> atlas;
+    if (atlas_view) atlas_view->GetResource(atlas.GetAddressOf());
+    if (atlas && reinterpret_cast<uintptr_t>(atlas.Get()) != internal::shadow_atlas_address.load(std::memory_order_relaxed)) {
+      const std::unique_lock lock(internal::atlas_mutex);
+      internal::shadow_atlas = atlas;
+      internal::shadow_atlas_address.store(reinterpret_cast<uintptr_t>(atlas.Get()), std::memory_order_relaxed);
+    }
+  }
   ID3D11ShaderResourceView* visibility = twattila::rt_scene::Visibilities()[0];
   ComPtr<ID3D11RenderTargetView> target;
   native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
@@ -329,6 +385,10 @@ inline void Install() {
   reshade::register_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   reshade::register_event<reshade::addon_event::present>(internal::OnPresent);
   reshade::register_event<reshade::addon_event::destroy_device>(internal::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindTargets);
+  reshade::register_event<reshade::addon_event::draw>(internal::OnCasterDraw);
+  reshade::register_event<reshade::addon_event::draw_indexed>(internal::OnCasterDrawIndexed);
+  reshade::register_event<reshade::addon_event::draw_or_dispatch_indirect>(internal::OnCasterDrawIndirect);
 }
 
 inline void Uninstall() {
@@ -340,6 +400,10 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
   reshade::unregister_event<reshade::addon_event::present>(internal::OnPresent);
   reshade::unregister_event<reshade::addon_event::destroy_device>(internal::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindTargets);
+  reshade::unregister_event<reshade::addon_event::draw>(internal::OnCasterDraw);
+  reshade::unregister_event<reshade::addon_event::draw_indexed>(internal::OnCasterDrawIndexed);
+  reshade::unregister_event<reshade::addon_event::draw_or_dispatch_indirect>(internal::OnCasterDrawIndirect);
 }
 
 }  // namespace divinity2::ray_tracing

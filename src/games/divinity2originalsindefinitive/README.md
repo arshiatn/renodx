@@ -223,11 +223,11 @@ Total War helper (`renodx-tw-dlaa64.exe` and its DLLs next to `EoCApp.exe`):
   shadows: the traced visibility in the full-screen mask's place (every filter
   and cascade count). AO: the SAO chain not drawn, its two blurs write the
   traced visibility into the texture PPApplyAO and ClusteredLightingWithSSAO
-  read.
+  read. Skip the Game's Shadow Maps (Experimental, off): under the rays' sun
+  nothing is drawn into the cascades' atlas (learned at the mask's draw).
 
 Not yet: render scale below 100%, the game's settings above its maximum,
-path-traced ambient, GI and reflections (they need the G-buffer guides),
-Ray Reconstruction, skipping the shadow cascades under ray-traced shadows.
+path-traced ambient, GI and reflections, Ray Reconstruction.
 
 ## Data runs and installing
 

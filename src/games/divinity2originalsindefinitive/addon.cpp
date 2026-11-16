@@ -1197,6 +1197,16 @@ void ConfigureAddon() {
   // (rt_scene::AppendSettings: sun shadows and AO here), shown in Advanced (Settings Mode).
   twattila::feature_settings::AppendAa(&settings, &divinity2::dlaa::sliders, false, false, true);
   twattila::rt_scene::AppendSettings(&settings, &divinity2::ray_tracing::sliders, &divinity2::dlaa::sliders);
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSkipShadowPass",
+      .binding = &divinity2::ray_tracing::skip_shadow_maps,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Skip the Game's Shadow Maps (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "With ray-traced shadows: nothing is drawn into the game's sun shadow maps, the rays replace them. Faster.",
+      .labels = {"Off", "On"},
+  });
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   twattila::graphics_page::Apply(&settings, {.aa = &divinity2::dlaa::sliders,
                                              .sss = &no_screen_space_shadows,
