@@ -1639,9 +1639,10 @@ void BuildRuntimeData() {
       choice("FrameGenerationDebugView", &aa_sliders.frame_debug_view, 0.f, "Frame generation debug view", aa_section,
              "What frame generation gets, shown while this menu is closed: the picture without the HUD, or the HUD in magenta.",
              {"Off", "HUD-less image", "UI layer"}, {}, generation_rows),
+      // On NVIDIA's GPUs only (OnPresent reads the vendor first), the limit also with XeSS's frame generation (Xe Low Latency).
       choice("Reflex", &aa_sliders.reflex, 0.f, "NVIDIA Reflex", aa_section,
              "Less input lag on NVIDIA GPUs: each frame starts only as the GPU needs it. Always on with frame generation.",
-             {"Off", "On", "On + Boost"}),
+             {"Off", "On", "On + Boost"}, {}, [] { return twattila::dlaa_bridge::OnNvidia(); }),
       new Setting{
           .key = "FrameGenerationFrameLimit",
           .binding = &aa_sliders.frame_limit,
@@ -1649,10 +1650,16 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .label = "Frame rate limit",
           .section = aa_section,
-          .tooltip = "Caps the rendered frame rate with Reflex (frame generation multiplies it). 0: off.",
+          .tooltip = "Caps the rendered frame rate with NVIDIA Reflex or Xe Low Latency (frame generation multiplies it). A\n"
+                     "cap the game always reaches keeps the frame rate steady: less VRR flicker on OLED displays.\n"
+                     "Needs Reflex or frame generation on. 0: off.",
           .min = 0.f,
           .max = 240.f,
           .format = "%d fps",
+          .is_enabled = [] { return aa_sliders.reflex != 0.f || (HelperUpscaling() && aa_sliders.frame_generation != 0.f); },
+          .is_visible = [] {
+            return twattila::dlaa_bridge::OnNvidia() || twattila::dlaa_bridge::FrameGenerationBackend() == twattila::dlaa_bridge::FG_BACKEND_XESS;
+          },
       },
       choice("TextureLodBias", &aa_sliders.texture_lod_bias, 2.f, "Texture LOD bias", aa_section,
              "Texture sharpness below 100%. Matched: as at your resolution; Sharper / Sharpest: more.",
