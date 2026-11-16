@@ -112,6 +112,16 @@ $table = [ordered]@{
   'TalesGIOpenSky' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^lighting\d+_'
                         Settings = 'filter_scale=1,sun_shadow_distance=1,shadow_edge_color=1,sun_haze=1,gtvbgi=2' }
   'Expeditions' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^(t|lut)\d+_' }
+  # The four newer SDR presets (Reset, Rendering Mode SDR, Output SDR: the button, and a first start without Windows HDR):
+  # the tone mappers on the scene ramp at Output SDR (Peak, Paper White and UI white 100 nits) with Gamma Correction as
+  # Reset leaves it, against the game's bytes.
+  'TroySdr'     = @{ Folder = 'twtroy'; Dump = 'dump_shader_twtroy_pack\cso'; Shaders = '^t\d+_'; Settings = 'swap_chain_encoding=2,gamma_correction=1' }
+  'WH2Sdr'      = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^t\d+_'
+                     Settings = 'swap_chain_encoding=2,gamma_correction=1' }
+  'RomeRSdr'    = @{ Folder = 'twromeremastered'; Dump = 'dump_shader_twromeremastered_pack\cso'; Shaders = '^t\d+_'
+                     Settings = 'swap_chain_encoding=2,gamma_correction=1'
+                     Registers = @{ '^t\d+_' = 'cb0[0]=u64,u48,0,1;cb0[1]=2.2,1,1,0.2;cb0[2]=11,0.9,1.2,2;cb0[3]=0.5,0.6,0,1;cb0[4]=1,1,1,0.8' } }
+  'Shogun2Sdr'  = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'; Shaders = '^tonemap\d+_'; Settings = 'swap_chain_encoding=2' }
 }
 
 # The build's flags (CMakeLists.txt): fxc with the target's major / minor, NDEBUG, /Gec, /O3.
