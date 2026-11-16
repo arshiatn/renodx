@@ -28,6 +28,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <deps/imgui/imgui.h>
@@ -95,6 +96,13 @@ bool IsPsychoV35Mode() {
 
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, Hable on each channel).
 constexpr float HUE_CLIP_DEFAULT = 80.f;
+
+// PsychoV35's defaults that follow the game's response (shared.h): Hable's darker shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", RYSE_V35_CONTRAST},
+    {"v35_shadows", RYSE_V35_SHADOWS},
+    {"v35_saturation", RYSE_V35_SATURATION},
+};
 
 bool IsHdrOutput() {
   return shader_injection.swap_chain_encoding != 2.f;
@@ -179,6 +187,7 @@ void ApplyResetPreset() {
   renodx::utils::settings::UpdateSettings(FIRE_OPTION_1);
   renodx::utils::settings::UpdateSettings(EXT_FIRE_OPTION_1);
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 // The game's own picture (Rendering Mode SDR); the button also sets Output SDR, a first start on a display without HDR
@@ -611,8 +620,8 @@ void BuildRuntimeData() {
           .label = "Recommended",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended look: HDR (PsychoV35), no film grain, no motion blur,\n"
-                     "no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.25.\n"
+          .tooltip = "Recommended look: HDR (PsychoV35) with the game's shadows and colours, no film grain,\n"
+                     "no motion blur, no chromatic aberration. Sharpening at 0.25, depth of field at 2, Video AutoHDR at 0.25.\n"
                      "Peak, Paper White, UI brightness, Settings Mode and output are kept.",
           .on_change = []() { ApplyRecommendedPreset(); },
       },
@@ -621,12 +630,12 @@ void BuildRuntimeData() {
           .label = "Recommended (with Deeper Shadows)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "As Recommended, with deeper shadows closer to the game's\n"
-                     "(PsychoV35 Shadows 0.75; in PsychoV31 Shadows 0.75, Flare 0.25).",
+          .tooltip = "As Recommended, with deeper shadows closer to the game's in PsychoV31\n"
+                     "(Shadows 0.75, Flare 0.25). PsychoV35 follows the game's shadows already.",
           .on_change = []() {
             ApplyResetPreset();
             renodx::utils::settings::UpdateSettings(LESS_POST_PROCESSING);
-            renodx::utils::settings::UpdateSettings({{"shadows", 0.75f}, {"flare", 0.25f}, {"v35_shadows", 0.75f}});
+            renodx::utils::settings::UpdateSettings({{"shadows", 0.75f}, {"flare", 0.25f}});
           },
       },
       new renodx::utils::settings::Setting{
@@ -1527,7 +1536,15 @@ void BuildRuntimeData() {
           .is_visible = [] { return twattila::dlaa_bridge::HelperInstalled() && AnyRays(); },
       },
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 }
 
 // The execution skull above enemies: the largest 0x1B59F534 draw, missing from frames without it (F9 logs, 4K).
