@@ -109,16 +109,8 @@ void OnLogResource(reshade::api::device* device, const reshade::api::resource_de
           .c_str());
 }
 
-// The bridge's events (bridge.hpp), registered with the Anti-Aliasing row: the INTZ depths, the bound target / depth / scene
-// texture, the game's constants and every draw (the jitter).
-void OnInitDepthResource(reshade::api::device* device, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
-                         reshade::api::resource_usage, reshade::api::resource resource) {
-  if (desc.texture.format == reshade::api::format::intz) {
-    ruse::bridge::state.intz_depths.insert(resource.handle);
-    ruse::bridge::state.host_device = device;
-  }
-}
-
+// The bridge's events (bridge.hpp), registered with the Anti-Aliasing row: the bound target / depth / scene texture, the
+// game's constants and every draw (the jitter).
 void OnBridgeBindTargets(reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view* targets,
                          reshade::api::resource_view depth_stencil) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return;
@@ -475,6 +467,13 @@ void UninstallPresentHooks() {
 void OnDestroyGameSwapchain(reshade::api::swapchain* swapchain, bool) {
   if (swapchain->get_device()->get_api() != reshade::api::device_api::d3d9
       && !renodx::utils::device_proxy::IsProxyDevice(swapchain->get_device())) return;
+  // A D3D9 Reset (a resolution change, a lost device) ends the game's swap chain, not its device: the bridge's and the
+  // rays' objects at the old size go (made again at the new one). The replay's buffer mirrors stay (managed buffers
+  // survive a Reset).
+  if (swapchain->get_device() == ruse::bridge::state.host_device) {
+    ruse::ray_tracing::ReleaseHost();
+    ruse::bridge::Release();
+  }
   UninstallPresentHooks();
   frame_latched = false;
 }
@@ -781,8 +780,8 @@ void BuildRuntimeData() {
   for (auto& [hash, shader] : custom_shaders) {
     shader.on_draw = OnFrameShaderDraw;
   }
-  // The bridge (bridge.hpp): the final post's HDRParam (c11.x) for the next frame's write-back, its target for frame
-  // generation's HUD-less image.
+  // The bridge (bridge.hpp): the final post's HDRParam (c11.x) for the next frame's write-back, its depth (no scene
+  // depth), its target for frame generation's HUD-less image.
   for (const uint32_t post : {0x232EB5DFu, 0x2D5EFDE2u, 0x44550114u, 0x7E93D12Fu, 0xC3EBA3CAu, 0xFB692F37u, 0x0106B253u}) {
     custom_shaders[post].on_draw = [](reshade::api::command_list* cmd_list) {
       ruse::bridge::state.hdr_param = ruse::bridge::state.pixel_registers[44];
@@ -1788,7 +1787,8 @@ bool AttachAddon() {
   }
   if (readable_depth_enabled) {
     reshade::register_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
-    reshade::register_event<reshade::addon_event::init_resource>(OnInitDepthResource);
+    reshade::register_event<reshade::addon_event::init_resource_view>(ruse::bridge::OnInitDepthView);
+    reshade::register_event<reshade::addon_event::destroy_resource_view>(ruse::bridge::OnDestroyDepthView);
   }
   if (ruse::bridge::state.enabled || ruse::replay::state.enabled || ruse::ray_tracing::state.vbao) {
     reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
@@ -1854,7 +1854,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::reshade_present>(OnReShadePresent);
   reshade::unregister_event<reshade::addon_event::init_resource>(OnLogResource);
   reshade::unregister_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
-  reshade::unregister_event<reshade::addon_event::init_resource>(OnInitDepthResource);
+  reshade::unregister_event<reshade::addon_event::init_resource_view>(ruse::bridge::OnInitDepthView);
+  reshade::unregister_event<reshade::addon_event::destroy_resource_view>(ruse::bridge::OnDestroyDepthView);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
   reshade::unregister_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
   reshade::unregister_event<reshade::addon_event::push_constants>(OnBridgePushConstants);

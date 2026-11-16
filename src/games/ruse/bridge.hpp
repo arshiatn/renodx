@@ -65,7 +65,7 @@ struct State {
   bool reflections = false;  // with the helper's reflections (ray_tracing.hpp's traced reflections, restart)
   bool failed = false;   // a step failed for good: no jitter, the game's picture
   bool ready = false;
-  bool in_scene = false;  // between the first scene draw and the bloom
+  bool scene_closed = false;  // from the bloom to the present: no scene draws (the final post's and the UI's)
   bool jitter_written = false;
   bool reset = true;
   uint32_t frame = 0;
@@ -81,6 +81,9 @@ struct State {
   uint64_t render_target = 0;
   uint64_t depth_stencil = 0;
   uint64_t scene_depth = 0;  // the INTZ depth the last scene draw used
+  // The final post's depth (the back buffer's, INTZ too: back-buffer-sized), never a scene depth: the water simulation
+  // draws with it into the frame-sized pre-pass target at the frame's start (B0 trace).
+  uint64_t post_depth = 0;
   uint64_t pixel_texture_0 = 0;  // the pixel shader's s0 as last bound
   bool render_target_is_frame_sized = false;
   std::unordered_set<uint64_t> intz_depths;
@@ -153,8 +156,9 @@ inline void WaitProxy(ID3D11Device* proxy, ID3D11DeviceContext* context) {
   ComPtr<ID3D11Query> query;
   if (FAILED(proxy->CreateQuery(&desc, query.GetAddressOf()))) return;
   context->End(query.Get());
+  // S_OK: done; an error (a removed device) never becomes S_OK.
   BOOL done = FALSE;
-  while (context->GetData(query.Get(), &done, sizeof(done), 0) == S_FALSE || done == FALSE) {
+  while (context->GetData(query.Get(), &done, sizeof(done), 0) == S_FALSE) {
     YieldProcessor();
   }
 }
@@ -330,7 +334,7 @@ inline bool Ready(IDirect3DDevice9* host, std::span<const uint8_t> quad, std::sp
 // the game's picture.
 inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8_t> quad, std::span<const uint8_t> prepare,
                      std::span<const uint8_t> writeback) {
-  state.in_scene = false;
+  state.scene_closed = true;
   if (!state.enabled || state.failed || !state.camera_valid || state.pixel_texture_0 == 0 || state.scene_depth == 0) return;
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
   if (!Ready(host, quad, prepare, writeback)) return;
@@ -346,7 +350,11 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   auto* proxy = reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native());
   ComPtr<ID3D11DeviceContext> context;
   proxy->GetImmediateContext(context.GetAddressOf());
-  if (!PrepareHelper(proxy)) return;
+  // The helper gone: no result, so no jitter from the next frame (OnPresent) until one comes again.
+  if (!PrepareHelper(proxy)) {
+    state.reset = true;
+    return;
+  }
   // W3: the destination's GPU waits for the source's writes (GPU Sync), else the CPU for the source's queue.
   const auto hand_over = [](auto* source, renodx::utils::gpu_fence::Fence* fence, auto* destination) {
     if (fence == nullptr) return false;
@@ -424,22 +432,40 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   DrawQuad(host, target, state.writeback.Get(), result, constants);
 }
 
-// The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth.
+// Readable Scene Depth's INTZ depths by the handle the binds give: ReShade's init_resource names an INTZ depth by its
+// texture (the surface's replacement), bind_render_targets_and_depth_stencil by its level-0 surface, as its view
+// (d3d9_device.cpp: CreateDepthStencilSurface, the auto depth-stencil, SetDepthStencilSurface).
+inline void OnInitDepthView(reshade::api::device* device, reshade::api::resource, reshade::api::resource_usage usage_type,
+                            const reshade::api::resource_view_desc& desc, reshade::api::resource_view view) {
+  if (usage_type != reshade::api::resource_usage::depth_stencil || desc.format != reshade::api::format::intz) return;
+  state.intz_depths.insert(view.handle);
+  state.host_device = device;
+}
+
+inline void OnDestroyDepthView(reshade::api::device*, reshade::api::resource_view view) {
+  state.intz_depths.erase(view.handle);
+  if (view.handle == state.post_depth) {
+    state.post_depth = 0;
+  }
+}
+
+// The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth, before the bloom.
 inline bool IsSceneDraw() {
-  return state.render_target_is_frame_sized && state.intz_depths.contains(state.depth_stencil);
+  return state.render_target_is_frame_sized && !state.scene_closed && state.depth_stencil != state.post_depth
+         && state.intz_depths.contains(state.depth_stencil);
 }
 
 // D3: the scene draws' camera (c0-c3, row-major MVP: clip_i = row_i . position) moved by the jitter: rows 0 and 1 +=
-// offset x row 3 (clip.xy += offset x clip.w), the game's values back on every other draw.
+// offset x row 3 (clip.xy += offset x clip.w), the game's values back on every other draw. None after a reset (no
+// result yet, or the helper lost): the game's picture is shown then.
 inline void OnDraw(reshade::api::command_list* cmd_list) {
   if (!state.enabled || state.failed) return;
   const bool scene_draw = IsSceneDraw();
   if (scene_draw) {
-    state.in_scene = true;
     state.scene_depth = state.depth_stencil;
   }
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
-  if (scene_draw && state.ready) {
+  if (scene_draw && state.ready && !state.reset) {
     std::array<float, 16> jittered = state.vertex_camera;
     const float offset_x = 2.f * state.jitter[0] / static_cast<float>(state.width);
     const float offset_y = -2.f * state.jitter[1] / static_cast<float>(state.height);
@@ -472,11 +498,9 @@ inline void OnPushConstants(uint32_t layout_param, uint32_t first, uint32_t coun
   }
 }
 
-// The game's D3D9 device (its INTZ depths with it) or the proxy's D3D11 device going: the bridge's objects go too; Ready
-// makes them again with the next ones, the helper's set with the proxy's.
-inline void OnDestroyDevice(reshade::api::device* device) {
-  const bool proxy = device->get_api() == reshade::api::device_api::d3d11;
-  if (!proxy && device != state.host_device) return;
+// The bridge's objects on both devices (its passes, the shared textures at its size, the fences) with either device, and
+// at the game's swap chain's end (a D3D9 Reset ends it, not the device: the size may change); Ready makes them again.
+inline void Release() {
   state.host_fence.reset();
   state.proxy_fence.reset();
   state.color = {};
@@ -497,17 +521,29 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   state.camera_valid = false;
   state.pixel_texture_0 = 0;
   state.scene_depth = 0;
+  state.depth_frame = UINT32_MAX;
+}
+
+// The game's D3D9 device (its INTZ depths with it) or the proxy's D3D11 device going (no other device: overlays and
+// helpers make their own): the bridge's objects go too, the helper's set with the proxy's. host_device stays for the
+// replay's and the rays' handlers after this one (the next device's first INTZ depth replaces it).
+inline void OnDestroyDevice(reshade::api::device* device) {
+  const bool proxy = renodx::utils::device_proxy::IsProxyDevice(device);
+  if (!proxy && device != state.host_device) return;
+  Release();
   if (proxy) {
     twattila::dlaa_bridge::Release();
   } else {
     state.intz_depths.clear();
-    state.host_device = nullptr;
   }
 }
 
-// The final post's draw (frame generation on): its target, the back buffer's clone the swap chain mod binds in the
-// game's back buffer's place, as the device holds it.
+// The final post's draw: its depth (unless the scene's own); with frame generation its target, the back buffer's clone
+// the swap chain mod binds in the game's back buffer's place, as the device holds it.
 inline void OnFinalPost(reshade::api::command_list* cmd_list) {
+  if (state.depth_stencil != state.scene_depth) {
+    state.post_depth = state.depth_stencil;
+  }
   if (!state.ready || state.hudless_failed || !twattila::frame_generation::Wanted()) return;
   state.post_surface.Reset();
   reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native())->GetRenderTarget(0, state.post_surface.GetAddressOf());
@@ -550,9 +586,12 @@ inline void KeepFrame(ID3D11DeviceContext* context) {
 inline void OnPresent(IDirect3DDevice9* host) {
   KeepHudless(host);
   state.generation_ready = state.hudless_frame == state.frame && state.generation_frame == state.frame;
-  state.in_scene = false;
+  state.scene_closed = false;
+  state.scene_depth = 0;  // this frame's: the next Evaluate takes the next frame's scene draws' (none in a menu)
   ++state.frame;
-  state.jitter = {Halton((state.frame % 8) + 1, 2) - 0.5f, Halton((state.frame % 8) + 1, 3) - 0.5f};
+  // After a reset the next frame draws unjittered (OnDraw): Evaluate, the rays and the motion take 0 then.
+  state.jitter = (state.reset ? std::array<float, 2>{}
+                              : std::array<float, 2>{Halton((state.frame % 8) + 1, 2) - 0.5f, Halton((state.frame % 8) + 1, 3) - 0.5f});
 }
 
 }  // namespace ruse::bridge

@@ -30,6 +30,7 @@
 #include "../../utils/device_proxy.hpp"
 #include "../../utils/state.hpp"
 #include "../twattila/rt_core.hpp"
+#include "./bridge.hpp"
 #include "./replay_shaders.h"
 
 // R.U.S.E.'s draw replay (tools/nontw/ruse/plan.md 10b A1, A3, A4): the game's scene draws again on the DX11 proxy's
@@ -52,14 +53,22 @@ constexpr UINT STREAMS = 4;
 // place while its translation stays within PLACE_TOLERANCE world units; unseen for PLACE_RELEASE_FRAMES it is forgotten.
 constexpr double PLACE_TOLERANCE = 32.0;
 constexpr uint64_t PLACE_RELEASE_FRAMES = 600;
-// CaptureScene's b2 slices (16 constants each), one a placement in turn: rt_core's key holds b1-b4 and their offsets.
-constexpr UINT IDENTITY_SLOTS = 4096;
+// A rigid draw at its placement this many frames since it was made is still: a static mesh for ray tracing (CaptureScene);
+// before, and a draw that moves on more than PLACE_TOLERANCE in that time (2 units a frame), it is captured as drawn.
+constexpr uint64_t PLACE_STILL_FRAMES = 16;
+// The ground pre-pass's vertex shader: its 32 patches are the terrain; the main pass draws it again layer by layer
+// (300-odd draws in the same vertex declaration on the B0 trace, each a part of the patches), so those stay out (Record).
+constexpr uint32_t GROUND_SHADER = 0xF01502EA;
 
 struct Placement {
   std::array<double, 3> translation = {};
-  uint64_t frame = 0;      // the last frame a draw had it
-  uint64_t scene_key = 0;  // ray tracing's key for its capture (0: not captured yet)
-  uint32_t slot = 0;       // its b2 slice
+  uint64_t frame = 0;        // the last frame a draw had it
+  uint64_t made_frame = 0;   // the frame it was made
+  uint64_t scene_key = 0;    // ray tracing's key for its static capture (0: none yet)
+  // Never reused (0: none): its static capture's first instance, which rt_core's keys hold (both its short and its full
+  // one), so one mesh at two places, at a new place or with its buffer written again is a new static mesh.
+  uint32_t serial = 0;
+  bool unusable = false;  // CaptureScene skipped it (a strip, no layout, an unmirrored buffer): not tried again
 };
 
 struct Mirror {
@@ -128,6 +137,7 @@ struct Counts {
   uint32_t no_layout = 0;
   uint32_t no_buffer = 0;
   uint32_t fan = 0;
+  uint32_t ground_layers = 0;
 };
 
 struct State {
@@ -148,13 +158,14 @@ struct State {
   uint32_t index_offset = 0;
   uint32_t index_size = 2;
   uint32_t topology = 4;
+  uint64_t ground_declaration = 0;  // this frame's ground pre-pass's (0: not drawn yet)
   std::array<float, 1024> vertex_constants = {};
   std::vector<Draw> draws;
   std::vector<float> constants;
   Counts counts;
   uint64_t frame = 0;
   std::unordered_map<uint64_t, std::vector<Placement>> placements;
-  uint32_t next_slot = 0;
+  uint32_t serials = 0;
   // The last frame's draws, constants and inverse view-projection, for this frame's trace (rays).
   std::vector<Draw> previous;
   std::vector<float> previous_constants;
@@ -166,19 +177,24 @@ struct State {
   ComPtr<ID3D11Buffer> game_constants;  // b0: c0-c255
   ComPtr<ID3D11Buffer> positions;      // the stream output
   ComPtr<ID3D11Query> statistics;
-  ComPtr<ID3D11Buffer> identity;                   // CaptureScene's b2 (never read)
   ComPtr<ID3D11DepthStencilView> capture_depth;    // bound for rt_core's test of the main view (nothing drawn into it)
+  std::array<UINT, 2> capture_size = {};           // capture_depth's: the helper's
 };
 inline State state;
 
-// A1: the game's writes (map_buffer_region fires after Lock with its pointer, unmap before Unlock).
-inline void OnMapBuffer(reshade::api::device*, reshade::api::resource resource, uint64_t offset, uint64_t size,
+// A1: the game's writes (map_buffer_region fires after Lock with its pointer, unmap before Unlock); the D3D9 device's
+// alone (none of the proxy's or another D3D11 device's resources in the mirrors).
+inline void OnMapBuffer(reshade::api::device* device, reshade::api::resource resource, uint64_t offset, uint64_t size,
                         reshade::api::map_access access, void** data) {
-  if (access == reshade::api::map_access::read_only || data == nullptr || *data == nullptr) return;
+  if (device->get_api() != reshade::api::device_api::d3d9 || access == reshade::api::map_access::read_only || data == nullptr
+      || *data == nullptr) {
+    return;
+  }
   state.mappings.insert_or_assign(resource.handle, Mapping{.offset = offset, .size = size, .data = *data});
 }
 
 inline void OnUnmapBuffer(reshade::api::device* device, reshade::api::resource resource) {
+  if (device->get_api() != reshade::api::device_api::d3d9) return;
   Mapping mapping;
   if (!state.mappings.erase_if(resource.handle, [&](const auto& entry) {
         mapping = entry.second;
@@ -207,7 +223,8 @@ inline void OnUnmapBuffer(reshade::api::device* device, reshade::api::resource r
       });
 }
 
-inline void OnDestroyResource(reshade::api::device*, reshade::api::resource resource) {
+inline void OnDestroyResource(reshade::api::device* device, reshade::api::resource resource) {
+  if (device->get_api() != reshade::api::device_api::d3d9) return;
   state.mirrors.erase(resource.handle);
   state.mappings.erase(resource.handle);
 }
@@ -276,6 +293,12 @@ inline void Record(reshade::api::command_list* cmd_list, uint32_t index_count, u
   const auto found = std::ranges::lower_bound(SHADERS, hash, {}, &ReplayShader::hash);
   if (found == SHADERS.end() || found->hash != hash) {
     ++state.counts.no_shader;
+    return;
+  }
+  if (hash == GROUND_SHADER) {
+    state.ground_declaration = state.declaration;
+  } else if (state.ground_declaration != 0 && state.declaration == state.ground_declaration) {
+    ++state.counts.ground_layers;
     return;
   }
   const ReplayShader* shader = &*found;
@@ -393,6 +416,7 @@ inline ID3D11Buffer* GetBuffer(ID3D11Device* device, ID3D11DeviceContext* contex
 // shaders into `positions` (triangles of clip positions in draw order), the proxy's state as it was after.
 inline void Replay(std::span<const float> inverse_view_projection) {
   auto* proxy_reshade = renodx::utils::device_proxy::proxy_device_reshade;
+  state.ground_declaration = 0;
   if (!state.enabled || proxy_reshade == nullptr || state.draws.empty()) {
     state.draws.clear();
     state.constants.clear();
@@ -459,7 +483,7 @@ inline void Replay(std::span<const float> inverse_view_projection) {
       // A new place, in a placement unseen for PLACE_RELEASE_FRAMES if the key has one.
       found = std::ranges::find_if(candidates, [](const Placement& placement) { return placement.frame + PLACE_RELEASE_FRAMES < state.frame; });
       if (found == candidates.end()) found = candidates.insert(candidates.end(), Placement{});
-      *found = {.translation = translation, .frame = state.frame, .slot = (state.next_slot++) % IDENTITY_SLOTS};
+      *found = {.translation = translation, .frame = state.frame, .made_frame = state.frame, .serial = ++state.serials};
     }
     draw.place_key = key;
     draw.place_index = static_cast<uint32_t>(found - candidates.begin());
@@ -574,11 +598,11 @@ inline void Replay(std::span<const float> inverse_view_projection) {
     const Counts& counts = state.counts;
     reshade::log::message(reshade::log::level::info,
                           std::format("[R.U.S.E.] Scene Replay: {} scene draws, {} at their earlier place, {} replayed ({} triangles, {} "
-                                      "needed), skipped: {} unknown shader, {} no layout, {} unmirrored buffer, {} fan; {} mirrored "
-                                      "buffers, {} placement keys",
+                                      "needed), skipped: {} unknown shader, {} no layout, {} unmirrored buffer, {} fan, {} ground layers (the pre-pass's "
+                                      "patches hold them); {} mirrored buffers, {} placement keys",
                                       counts.recorded, counts.placed, counts.replayed, written.NumPrimitivesWritten,
                                       written.PrimitivesStorageNeeded, counts.no_shader, counts.no_layout, counts.no_buffer, counts.fan,
-                                      state.mirrors.size(), state.placements.size())
+                                      counts.ground_layers, state.mirrors.size(), state.placements.size())
                               .c_str());
     state.log_next = false;
   }
@@ -589,35 +613,33 @@ inline void Replay(std::span<const float> inverse_view_projection) {
 
 // A5, at this frame's trace (ray_tracing.hpp; rays): the last frame's scene draws into rt_core's scene in this frame's
 // camera (their c0-c3 x the camera's move: `view_projection`, rows acting on column vectors, x the last frame's inverse),
-// bound natively on the proxy's device. A rigid draw at a placement rt_core still has is only marked drawn; the others are
-// captured, each at its own key: b2 holds its placement's slice of `identity` (one mesh at two places is two meshes),
-// and a skinned draw is its own capture (its bones are in b0, outside rt_core's key).
+// bound natively on the proxy's device. A still rigid draw at a placement rt_core still has is only marked drawn; a still
+// one not captured yet becomes a static mesh at its placement's key (Placement::serial); the others (skinned: their bones
+// are in b0, outside rt_core's key; moving, new or unplaced) are captured as drawn each frame.
 inline void CaptureScene(reshade::api::command_list* cmd_list, const std::array<double, 16>& view_projection) {
   auto* proxy_reshade = renodx::utils::device_proxy::proxy_device_reshade;
   if (!state.rays || proxy_reshade == nullptr || !state.previous_valid || state.previous.empty()) return;
   auto* device = reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native());
   ComPtr<ID3D11DeviceContext> context;
   device->GetImmediateContext(context.GetAddressOf());
-  ComPtr<ID3D11DeviceContext1> context1;
-  if (FAILED(context.As(&context1))) return;
-  if (state.capture_depth == nullptr) {
+  // The depth at the helper's size (rt_core's main view), made again when that size changes (a resolution change).
+  const std::array<UINT, 2> helper_size = {twattila::dlaa_bridge::bridge.width, twattila::dlaa_bridge::bridge.height};
+  if (state.capture_depth == nullptr || state.capture_size != helper_size) {
     const D3D11_BUFFER_DESC constants = {.ByteWidth = 256 * 16, .Usage = D3D11_USAGE_DYNAMIC, .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
                                          .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
-    const D3D11_BUFFER_DESC identity = {.ByteWidth = IDENTITY_SLOTS * 16 * 16, .Usage = D3D11_USAGE_DEFAULT,
-                                        .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
-    const D3D11_TEXTURE2D_DESC depth = {.Width = twattila::dlaa_bridge::bridge.width, .Height = twattila::dlaa_bridge::bridge.height,
+    const D3D11_TEXTURE2D_DESC depth = {.Width = helper_size[0], .Height = helper_size[1],
                                         .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_D32_FLOAT, .SampleDesc = {.Count = 1},
                                         .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_DEPTH_STENCIL};
     ComPtr<ID3D11Texture2D> depth_texture;
     if ((state.game_constants == nullptr && FAILED(device->CreateBuffer(&constants, nullptr, state.game_constants.GetAddressOf())))
-        || FAILED(device->CreateBuffer(&identity, nullptr, state.identity.GetAddressOf()))
         || FAILED(device->CreateTexture2D(&depth, nullptr, depth_texture.GetAddressOf()))
-        || FAILED(device->CreateDepthStencilView(depth_texture.Get(), nullptr, state.capture_depth.GetAddressOf()))) {
+        || FAILED(device->CreateDepthStencilView(depth_texture.Get(), nullptr, state.capture_depth.ReleaseAndGetAddressOf()))) {
       reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Ray tracing: the scene's objects weren't made: off");
       state.capture_depth.Reset();
       state.rays = false;
       return;
     }
+    state.capture_size = helper_size;
   }
   std::array<double, 16> move = {};
   for (int row = 0; row < 4; ++row) {
@@ -630,8 +652,6 @@ inline void CaptureScene(reshade::api::command_list* cmd_list, const std::array<
   context->OMSetRenderTargets(0, nullptr, state.capture_depth.Get());
   context->PSSetShader(nullptr, nullptr, 0);
   ID3D11Buffer* const game_constants = state.game_constants.Get();
-  ID3D11Buffer* const identity = state.identity.Get();
-  constexpr UINT IDENTITY_CONSTANTS = 16;
   uint32_t kept = 0;
   uint32_t captured = 0;
   uint32_t skipped = 0;
@@ -645,6 +665,10 @@ inline void CaptureScene(reshade::api::command_list* cmd_list, const std::array<
       ++kept;
       continue;
     }
+    if (placement != nullptr && placement->unusable) {
+      ++skipped;
+      continue;
+    }
     const Layout* layout = GetLayout(device, draw);
     std::array<ID3D11Buffer*, STREAMS> streams = {};
     ID3D11Buffer* indices = GetBuffer(device, context.Get(), draw.index_buffer);
@@ -654,6 +678,10 @@ inline void CaptureScene(reshade::api::command_list* cmd_list, const std::array<
       if ((layout->streams & (1u << stream)) == 0) continue;
       streams[stream] = GetBuffer(device, context.Get(), draw.streams[stream]);
       usable = streams[stream] != nullptr;
+    }
+    // Its reason stays while its placement does (a buffer the game writes later, or written again, is a new placement).
+    if (!usable && placement != nullptr) {
+      placement->unusable = true;
     }
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (!usable || FAILED(context->Map(game_constants, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
@@ -675,22 +703,26 @@ inline void CaptureScene(reshade::api::command_list* cmd_list, const std::array<
     context->Unmap(game_constants, 0);
     const std::array<ID3D11Buffer*, 2> constant_buffers = {game_constants, layout->conversion.Get()};
     context->VSSetConstantBuffers(0, 2, constant_buffers.data());
-    const UINT first_constant = ((placement != nullptr) ? placement->slot : 0u) * IDENTITY_CONSTANTS;
-    context1->VSSetConstantBuffers1(2, 1, &identity, &first_constant, &IDENTITY_CONSTANTS);
     context->IASetInputLayout(layout->layout.Get());
     context->IASetVertexBuffers(0, STREAMS, streams.data(), draw.strides.data(), draw.offsets.data());
     context->IASetIndexBuffer(indices, (draw.index_size == 4) ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R16_UINT, draw.index_offset);
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    // Still: a static mesh with its placement's serial as the first instance (the replay's layouts are per vertex: the
+    // same draw); else captured as drawn, each draw its own.
+    const bool still = !draw.skinned && placement != nullptr && state.frame >= placement->made_frame + PLACE_STILL_FRAMES;
     const uint64_t key = twattila::rt_scene::CaptureReplayed(
         cmd_list,
         {.hash = draw.shader->hash, .capture_shader = draw.shader->code,
-         .terrain = draw.shader->hash == 0xF01502EA || draw.shader->hash == 0xF28418A2, .dynamic = draw.skinned, .every_draw = draw.skinned},
-        {.index_count = draw.index_count, .instance_count = 1, .first_index = draw.first_index, .vertex_offset = draw.vertex_offset});
-    if (placement != nullptr && !draw.skinned) placement->scene_key = key;
+         .terrain = draw.shader->hash == GROUND_SHADER || draw.shader->hash == 0xF28418A2, .dynamic = !still, .every_draw = !still},
+        {.index_count = draw.index_count, .instance_count = 1, .first_index = draw.first_index, .vertex_offset = draw.vertex_offset,
+         .first_instance = (still ? placement->serial : 0u)});
+    if (still) {
+      placement->scene_key = key;
+    }
     ++captured;
   }
-  const std::array<ID3D11Buffer*, 3> no_constants = {};
-  context->VSSetConstantBuffers(0, 3, no_constants.data());
+  const std::array<ID3D11Buffer*, 2> no_constants = {};
+  context->VSSetConstantBuffers(0, 2, no_constants.data());
   context->OMSetRenderTargets(0, nullptr, nullptr);
   context->IASetInputLayout(nullptr);
   const std::array<ID3D11Buffer*, STREAMS> no_streams = {};
@@ -708,9 +740,9 @@ inline void CaptureScene(reshade::api::command_list* cmd_list, const std::array<
 }
 
 // The game's D3D9 device going: its buffers and declarations with it; the proxy's: its objects (made again on the next
-// replay).
+// replay); no other device's.
 inline void OnDestroyDevice(reshade::api::device* device) {
-  if (device->get_api() == reshade::api::device_api::d3d9) {
+  if (device == bridge::state.host_device) {
     state.mirrors.clear();
     state.mappings.clear();
     state.declarations.clear();
@@ -720,13 +752,12 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.placements.clear();
     return;
   }
-  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  if (!renodx::utils::device_proxy::IsProxyDevice(device)) return;
   state.shaders.clear();
   state.layouts.clear();
   state.game_constants.Reset();
   state.positions.Reset();
   state.statistics.Reset();
-  state.identity.Reset();
   state.capture_depth.Reset();
   state.mirrors.for_each_m([](auto& entry) {
     auto& [handle, mirror] = entry;

@@ -256,9 +256,14 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     return false;
   }
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
-  // The anti-aliasing's bridge once it runs; without it (GT-VBAO alone) its shared textures and passes only.
-  if (!bridge.ready && (bridge.enabled || !state.vbao || !bridge::MakeObjects(host, __bridge_quad, __bridge_prepare, __bridge_writeback))) {
-    return false;
+  // The anti-aliasing's bridge once it runs; without it (GT-VBAO alone) its shared textures and passes only, tried once.
+  if (!bridge.ready) {
+    if (bridge.enabled || !state.vbao) return false;
+    if (!bridge::MakeObjects(host, __bridge_quad, __bridge_prepare, __bridge_writeback)) {
+      state.failed = true;
+      reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Ground ambient occlusion: the shared textures weren't made: off");
+      return false;
+    }
   }
   auto* proxy = reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native());
   ComPtr<ID3D11DeviceContext> context;
@@ -570,13 +575,19 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   }
   const auto [visibility, occlusion] = (traced ? twattila::rt_scene::Visibilities() : std::array<ID3D11ShaderResourceView*, 2>{});
   if (visibility == nullptr && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;
+  constexpr std::array<ID3D11ShaderResourceView*, 3> NO_VIEWS = {};
+  constexpr std::array<ID3D11UnorderedAccessView*, 2> NO_OUTPUTS = {};
+  constexpr std::array<ID3D11Buffer*, 4> NO_CONSTANTS = {};
   // 8 x 8 groups over the bridge's size: `shader` from `source` into `destination` (the helper's R8 results into the
-  // shared textures' work copies, R32F; Bend's occlusion into the visibility), copied into the shared ones after.
+  // shared textures' work copies, R32F; Bend's occlusion into the visibility), copied into the shared ones after. The
+  // output first and unbound after: D3D11 binds a view of a resource still bound as an output as null (a pass reading
+  // the one before it read nothing: Bend's combine, GT-VBGI's occlusion).
   const auto run = [&](ID3D11ComputeShader* shader, ID3D11ShaderResourceView* source, ID3D11UnorderedAccessView* destination) {
     context->CSSetShader(shader, nullptr, 0);
-    context->CSSetShaderResources(0, 1, &source);
     context->CSSetUnorderedAccessViews(0, 1, &destination, nullptr);
+    context->CSSetShaderResources(0, 1, &source);
     context->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+    context->CSSetUnorderedAccessViews(0, 1, NO_OUTPUTS.data(), nullptr);
   };
   if (visibility != nullptr) {
     run(state.copy.Get(), visibility, state.visibility.work_uav.Get());
@@ -584,9 +595,6 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     constexpr std::array<FLOAT, 4> LIT = {1.f, 1.f, 1.f, 1.f};
     context->ClearUnorderedAccessViewFloat(state.visibility.work_uav.Get(), LIT.data());
   }
-  constexpr std::array<ID3D11ShaderResourceView*, 3> NO_VIEWS = {};
-  constexpr std::array<ID3D11UnorderedAccessView*, 2> NO_OUTPUTS = {};
-  constexpr std::array<ID3D11Buffer*, 4> NO_CONSTANTS = {};
   // The bounce and the reflections read last frame's scene: the bridge's colour, written at its bloom.
   const bool light_kept = bridge.depth_frame + 1 == bridge.frame;
   const bool rays_occlusion = state.ambient && occlusion != nullptr;
@@ -595,8 +603,11 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     state.occlusion_frame = bridge.frame;
   }
   // The rays' Light Bounce: the light leaving what each texel shows (last frame's scene there) to the helper, its bounce
-  // into the s14 texel. Path tracing: the paths' sky is the game's ambient (last frame's, linear) in the helper's ambient
-  // cube, and once the helper replaces the ambient with it (its frames of history) the texel's x takes the game's away.
+  // into the s14 texel (below, with the occlusion). Path tracing: the paths' sky is the game's ambient (last frame's,
+  // linear) in the helper's ambient cube, and once the helper replaces the ambient with it (its frames of history) the
+  // texel's x takes the game's away.
+  const UINT bounce_width = (bridge.width + BOUNCE_SCALE - 1) / BOUNCE_SCALE;
+  const UINT bounce_height = (bridge.height + BOUNCE_SCALE - 1) / BOUNCE_SCALE;
   bool bounced = false;
   if (traced && state.traced_bounce != 0 && light_kept) {
     if (state.traced_bounce == 2 && state.ambient_frame != UINT32_MAX && helper.rt_sun.texture) {
@@ -609,8 +620,6 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       const D3D11_BOX cube_texels = {.left = 3, .top = 0, .front = 0, .right = 9, .bottom = 1, .back = 1};
       context->UpdateSubresource(helper.rt_sun.texture.Get(), 0, &cube_texels, cube.data(), static_cast<UINT>(cube.size() * sizeof(float)), 0);
     }
-    const UINT bounce_width = (bridge.width + BOUNCE_SCALE - 1) / BOUNCE_SCALE;
-    const UINT bounce_height = (bridge.height + BOUNCE_SCALE - 1) / BOUNCE_SCALE;
     std::array<float, 24> light_settings = {};
     std::ranges::copy(to_previous, light_settings.begin());
     std::ranges::copy(size, light_settings.begin() + 16);
@@ -627,20 +636,6 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     context->CSSetUnorderedAccessViews(0, 1, NO_OUTPUTS.data(), nullptr);
     bounced = twattila::rt_scene::internal::TraceLightBounce(context.Get(), state.prepared_light.Get(), bounce_width, bounce_height, BOUNCE_SCALE,
                                                              state.traced_light.Get());
-    if (bounced) {
-      const bool replaced = state.traced_bounce == 2 && twattila::rt_scene::internal::runtime.path_ambient_on;
-      std::array<float, 12> texel_settings = {BOUNCE_STRENGTH};
-      const std::array<UINT, 8> counts = {bounce_width, bounce_height, BOUNCE_SCALE, bridge.width, (replaced ? 1u : 0u), (rays_occlusion ? 1u : 0u),
-                                          bridge.height, 0u};
-      std::memcpy(texel_settings.data() + 4, counts.data(), sizeof(counts));
-      context->UpdateSubresource(state.texel_settings.Get(), 0, nullptr, texel_settings.data(), 0, 0);
-      context->CSSetConstantBuffers(0, 1, state.texel_settings.GetAddressOf());
-      const std::array<ID3D11ShaderResourceView*, 2> bounce_inputs = {helper.rt_positions.srv.Get(), occlusion};
-      context->CSSetShaderResources(1, 2, bounce_inputs.data());
-      run(state.texels_shader.Get(), state.traced_light_view.Get(), state.ground_light.work_uav.Get());
-      context->CSSetShaderResources(0, 3, NO_VIEWS.data());
-      state.bounce_frame = bridge.frame;
-    }
   }
   // The rays' reflections (after the bounce: their hits read its prepared light), the share that met a surface with them.
   bool reflected = false;
@@ -676,6 +671,26 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     }
     context->CSSetShaderResources(0, 3, NO_VIEWS.data());
     context->CSSetConstantBuffers(0, 1, NO_CONSTANTS.data());
+  }
+  // The rays' bounce into the s14 texel with the occlusion: the rays', else GT-VBAO's just above (its own work copy).
+  if (bounced) {
+    const bool replaced = state.traced_bounce == 2 && twattila::rt_scene::internal::runtime.path_ambient_on;
+    ID3D11ShaderResourceView* bounce_occlusion = occlusion;
+    if (!rays_occlusion) {
+      bounce_occlusion = ((state.occlusion_frame == bridge.frame) ? state.occlusion_view.Get() : nullptr);
+    }
+    std::array<float, 12> texel_settings = {BOUNCE_STRENGTH};
+    const std::array<UINT, 8> counts = {bounce_width, bounce_height, BOUNCE_SCALE, bridge.width, (replaced ? 1u : 0u),
+                                        (bounce_occlusion != nullptr ? 1u : 0u), bridge.height, 0u};
+    std::memcpy(texel_settings.data() + 4, counts.data(), sizeof(counts));
+    context->UpdateSubresource(state.texel_settings.Get(), 0, nullptr, texel_settings.data(), 0, 0);
+    context->CSSetConstantBuffers(0, 1, state.texel_settings.GetAddressOf());
+    const std::array<ID3D11ShaderResourceView*, 2> bounce_inputs = {helper.rt_positions.srv.Get(), bounce_occlusion};
+    context->CSSetShaderResources(1, 2, bounce_inputs.data());
+    run(state.texels_shader.Get(), state.traced_light_view.Get(), state.ground_light.work_uav.Get());
+    context->CSSetShaderResources(0, 3, NO_VIEWS.data());
+    context->CSSetConstantBuffers(0, 1, NO_CONSTANTS.data());
+    state.bounce_frame = bridge.frame;
   }
   // Water reflections: the march's matrices act on offsets from this frame's eye (world coordinates near 2e6): this
   // frame's clip to an offset (rt's relative rows, the inverse's w row), an offset to this frame's clip and to last
@@ -929,10 +944,39 @@ inline void OnPresent() {
   });
 }
 
-// The proxy's device (rt_core's objects, ours on it) or the game's (its shaders, the mask) going.
+// The game's device's objects (its shaders, the mask, the shared textures, the white texels) with its device and at its
+// swap chain's end (a D3D9 Reset: the size may change): the next ShadeGround makes them again, its D3D11 ones with them
+// at the bridge's size; last frame's depth is gone with them.
+inline void ReleaseHost() {
+  state.depth_copy.Reset();
+  state.shadows.Reset();
+  state.unshadowed.Reset();
+  state.unlit.Reset();
+  state.bound_frame = UINT32_MAX;
+  state.kept_frame = UINT32_MAX;
+  state.visibility = {};
+  state.occlusion = {};
+  state.ground_light = {};
+  state.reflection = {};
+  state.guide_albedo = {};
+  state.guide_normal = {};
+  state.guide_water = {};
+  state.guides_closed = true;
+  state.guides_bound = false;
+  state.ground_mask = 0;
+  state.mask_frame = UINT32_MAX;
+  state.prepass_depth = 0;
+  state.prepass_target = 0;
+  state.failed = false;
+}
+
+// The proxy's device (rt_core's objects, ours on it) or the game's (its shaders, the mask) going; no other device (rt_core
+// forgets its scene at any D3D11 device's end).
 inline void OnDestroyDevice(reshade::api::device* device) {
-  twattila::rt_scene::OnDestroyDevice(device);
-  if (device->get_api() == reshade::api::device_api::d3d11) {
+  const bool proxy = renodx::utils::device_proxy::IsProxyDevice(device);
+  if (!proxy && device != bridge::state.host_device) return;
+  if (proxy) {
+    twattila::rt_scene::OnDestroyDevice(device);
     state.visibility = {};
     state.depth_view.Reset();
     state.copy.Reset();
@@ -972,26 +1016,10 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.texels_shader.Reset();
     state.reflection_texels_shader.Reset();
     state.texel_settings.Reset();
-  } else if (device->get_api() == reshade::api::device_api::d3d9) {
-    state.depth_copy.Reset();
-    state.shadows.Reset();
-    state.unshadowed.Reset();
-    state.unlit.Reset();
-    state.bound_frame = UINT32_MAX;
-    state.visibility = {};
-    state.occlusion = {};
-    state.ground_light = {};
-    state.reflection = {};
-    state.guide_albedo = {};
-    state.guide_normal = {};
-    state.guide_water = {};
-    state.guides_closed = true;
-    state.guides_bound = false;
-    state.ground_mask = 0;
-    state.prepass_depth = 0;
-    state.prepass_target = 0;
+    state.failed = false;
+  } else {
+    ReleaseHost();
   }
-  state.failed = false;
 }
 
 }  // namespace ruse::ray_tracing

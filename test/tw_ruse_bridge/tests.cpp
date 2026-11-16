@@ -13,7 +13,8 @@
 // 4. Motion: prepare's camera motion from that depth (c4-c7 the inverse view-projection, c0-c3 a previous one with the
 //    camera moved) against the CPU's reprojection of the same depth (worst 0.05 px or 0.3%); with the game's velocity
 //    (s2 .yz, c9.w 1): an object's patch takes its own, the rest the camera's.
-// 5. Jitter: OnDraw on a scene draw writes rows 0 / 1 of c0-c3 + offset x row 3 (read back from the device), the census
+// 5. Jitter: OnDraw on a scene draw (its INTZ depth registered as ReShade's init_resource_view reports it: the bound
+//    level-0 surface, not the texture) writes rows 0 / 1 of c0-c3 + offset x row 3 (read back from the device), the census
 //    VS drawn with them moves clip.xy by offset x clip.w (worst 1% of the offset), the next non-scene draw gets the game's
 //    c0-c3 back bit for bit.
 // 6. GT-VBAO (ray_tracing.hpp ShadeGround with the Screen-Space Ground Ambient Occlusion row alone: no helper, the
@@ -21,7 +22,8 @@
 //    terrain shaders read (the shared R32F, read back on D3D9) near 1 on open ground (mean over 0.95: seen at the trace
 //    camera's 13.6 degree pitch about one sector of 32 at the horizon goes, 0.969; 0.9975 facing the camera), darker on the
 //    ground beside the plateau on screen, and the same shader over the same depth and constants on WARP within one
-//    sector's share (1 / 128) at 99% of the pixels.
+//    sector's share (1 / 128) at 99% of the pixels; released as at a D3D9 Reset and made again: the same occlusion. Then
+//    Bend's screen-space ground shadows (no helper) with a low sun: ground beside the plateau shadowed, open ground lit.
 // 9. Guides (ray_tracing.hpp BindGuides: the rays' bounce and reflections): the three guide targets made by D3D9Ex and
 //    opened by D3D11 (B8G8R8A8, RGBA16F x 2) as render targets 1-3 beside a 10-bit scene target: ColorFill clears them
 //    (RGBA16F too), each target's write mask holds, a blended draw (SRCALPHA / INVSRCALPHA: D3D9's one blend state)
@@ -478,6 +480,13 @@ int main(int argc, char** argv) {
   const ComPtr<IDirect3DTexture9> depth_texture = MakeTarget(host, INTZ, D3DUSAGE_DEPTHSTENCIL);
   REQUIRE(depth_texture != nullptr);
   const ComPtr<IDirect3DSurface9> depth_surface = Level(depth_texture.Get());
+  // Made readable as ReShade reports it: init_resource_view with the texture as the resource and its level-0 surface as
+  // the view, the handle the binds give.
+  const auto register_depth = [&] {
+    bridge::OnInitDepthView(&host_device, {reinterpret_cast<uint64_t>(depth_texture.Get())}, reshade::api::resource_usage::depth_stencil,
+                            reshade::api::resource_view_desc(reshade::api::resource_view_type::texture_2d, reshade::api::format::intz, 0, 1, 0, 1),
+                            {reinterpret_cast<uint64_t>(depth_surface.Get())});
+  };
   const ComPtr<IDirect3DTexture9> scratch = MakeTarget(host, D3DFMT_A8R8G8B8);
   const ComPtr<IDirect3DSurface9> scratch_surface = Level(scratch.Get());
   host->SetRenderTarget(0, scratch_surface.Get());
@@ -625,9 +634,11 @@ int main(int argc, char** argv) {
   state.enabled = true;
   state.failed = false;
   state.ready = true;
+  state.reset = false;  // a frame after a result
   state.render_target_is_frame_sized = true;
   state.depth_stencil = reinterpret_cast<uint64_t>(depth_surface.Get());
-  state.intz_depths = {state.depth_stencil};
+  register_depth();
+  CHECK(bridge::IsSceneDraw());
   state.vertex_camera = VIEW_PROJECTION;
   state.jitter = {0.3125f, -0.2f};
   host->SetVertexShaderConstantF(0, VIEW_PROJECTION.data(), 4);
@@ -668,6 +679,49 @@ int main(int argc, char** argv) {
   host->GetVertexShaderConstantF(0, written.data(), 4);
   CHECK(std::memcmp(written.data(), VIEW_PROJECTION.data(), sizeof(written)) == 0);
   CHECK(!state.jitter_written);
+  // The scene's depth goes at the present (none left for the next frame's Evaluate), an INTZ depth with its view.
+  state.render_target_is_frame_sized = true;
+  bridge::OnDraw(&command_list);
+  CHECK(state.scene_depth == state.depth_stencil);
+  bridge::OnPresent(host);
+  CHECK(state.scene_depth == 0);
+  bridge::OnDestroyDepthView(&host_device, {state.depth_stencil});
+  CHECK(!bridge::IsSceneDraw());
+  register_depth();
+  // No scene draws from the bloom (Evaluate, here returning at once) to the present, none with the final post's depth
+  // (another INTZ depth: the back buffer's), the scene's own depth never the post's.
+  CHECK(bridge::IsSceneDraw());
+  state.camera_valid = false;
+  bridge::Evaluate(&command_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
+  CHECK(!bridge::IsSceneDraw());
+  bridge::OnPresent(host);
+  CHECK(bridge::IsSceneDraw());
+  const uint64_t scene_depth_handle = state.depth_stencil;
+  constexpr uint64_t POST_DEPTH = 0x7E57D00Du;
+  bridge::OnInitDepthView(&host_device, {}, reshade::api::resource_usage::depth_stencil,
+                          reshade::api::resource_view_desc(reshade::api::resource_view_type::texture_2d, reshade::api::format::intz, 0, 1, 0, 1),
+                          {POST_DEPTH});
+  bridge::OnDraw(&command_list);
+  state.depth_stencil = POST_DEPTH;
+  bridge::OnFinalPost(&command_list);
+  CHECK(!bridge::IsSceneDraw());
+  state.depth_stencil = scene_depth_handle;
+  bridge::OnFinalPost(&command_list);
+  CHECK(state.post_depth == POST_DEPTH && bridge::IsSceneDraw());
+  bridge::OnDestroyDepthView(&host_device, {POST_DEPTH});
+  CHECK(state.post_depth == 0);
+  state.render_target_is_frame_sized = false;
+  bridge::OnDraw(&command_list);
+  // After a reset (no result yet, or the helper lost) the next frame's jitter is 0 and the scene draws keep the game's c0-c3.
+  state.reset = true;
+  bridge::OnPresent(host);
+  CHECK(state.jitter[0] == 0.f && state.jitter[1] == 0.f);
+  state.render_target_is_frame_sized = true;
+  host->SetVertexShaderConstantF(0, VIEW_PROJECTION.data(), 4);
+  bridge::OnDraw(&command_list);
+  host->GetVertexShaderConstantF(0, written.data(), 4);
+  CHECK(std::memcmp(written.data(), VIEW_PROJECTION.data(), sizeof(written)) == 0 && !state.jitter_written);
+  state.render_target_is_frame_sized = false;
 
   // 6. GT-VBAO without the helper.
   {
@@ -678,7 +732,7 @@ int main(int argc, char** argv) {
     std::ranges::copy(inverse_float, state.camera.begin() + 16);
     state.camera[32] = RENDER_DT;
     state.camera_valid = true;
-    state.intz_depths = {reinterpret_cast<uint64_t>(depth_surface.Get())};
+    register_depth();
     auto& rays = ruse::ray_tracing::state;
     rays.vbao = true;
     rays.prepass_depth = reinterpret_cast<uint64_t>(depth_surface.Get());
@@ -802,6 +856,58 @@ int main(int argc, char** argv) {
     std::printf("GT-VBAO against WARP: mean difference %.2e, largest %.4f, %zu of %zu within 1 / 128\n", difference_sum / pixels, difference_most, within,
                 pixels);
     CHECK(within * 100 >= pixels * 99);
+
+    // The game's swap chain ending (a D3D9 Reset: addon.cpp's destroy_swapchain): the bridge's and the rays' objects go,
+    // and after the next frame's camera pass and mask copy ShadeGround makes them again (the same size here: the same
+    // occlusion).
+    ruse::ray_tracing::ReleaseHost();
+    bridge::Release();
+    CHECK(rays.occlusion.host == nullptr && rays.shadows == nullptr && state.output.host == nullptr && !state.camera_valid);
+    state.camera_valid = true;
+    rays.prepass_depth = reinterpret_cast<uint64_t>(depth_surface.Get());
+    rays.ground_mask = reinterpret_cast<uint64_t>(scratch.Get());
+    host->BeginScene();
+    const bool shaded_again = ruse::ray_tracing::ShadeGround(&command_list);
+    host->EndScene();
+    CHECK(shaded_again && rays.occlusion.host != nullptr && state.output.host != nullptr);
+    if (shaded_again) {
+      const bool same = ReadHost(host, rays.occlusion.host_surface.Get(), 4) == occlusion;
+      std::printf("GT-VBAO after the objects' release: made again, the same occlusion %d\n", same ? 1 : 0);
+      CHECK(same);
+    }
+
+    // Bend's ground shadows over the same depth (its march needs no helper), a low sun over +x: the floating plateau
+    // shades the ground on its -x side. Its combine reads the march's occlusion, which D3D11 bound as null while the
+    // march still held it as its output (no pixel shadowed then).
+    ruse::ray_tracing::ReleaseHost();
+    rays.bend = true;
+    rays.toward_sun = {0.894427f, 0.f, 0.447214f};
+    rays.prepass_depth = reinterpret_cast<uint64_t>(depth_surface.Get());
+    rays.ground_mask = reinterpret_cast<uint64_t>(scratch.Get());
+    host->BeginScene();
+    const bool bent = ruse::ray_tracing::ShadeGround(&command_list);
+    host->EndScene();
+    CHECK(bent);
+    if (bent) {
+      const std::vector<uint8_t> visibility = ReadHost(host, rays.visibility.host_surface.Get(), 4);
+      size_t shadowed = 0;
+      size_t lit = 0;
+      double lowest = 1;
+      for (UINT y = 0; y < HEIGHT; ++y) {
+        for (UINT x = 0; x < WIDTH; ++x) {
+          const size_t index = (static_cast<size_t>(y) * WIDTH) + x;
+          if (on_plateau[index] != 0 || HitGround(inverse, ground, x, y).inside < 0.01) continue;
+          const double value = Float(visibility, index);
+          lowest = std::min(lowest, value);
+          if (value < 0.5) ++shadowed;
+          if (value > 0.99) ++lit;
+        }
+      }
+      // RTX 5090 2026-11-16: 41-43 shadowed, lowest 0; the passes' old order: 0, lowest 1.
+      std::printf("Bend: ground pixels shadowed %zu, lit %zu, lowest visibility %.3f\n", shadowed, lit, lowest);
+      CHECK(shadowed >= 20 && lit > 1000);
+    }
+    rays.bend = false;
   }
 
   // 9. Guides.
@@ -893,9 +999,8 @@ int main(int argc, char** argv) {
     state.camera[32] = RENDER_DT;
     state.camera_valid = true;
     state.pixel_texture_0 = reinterpret_cast<uint64_t>(scene.Get());
-    state.scene_depth = reinterpret_cast<uint64_t>(depth_surface.Get());
-    state.depth_stencil = state.scene_depth;
-    state.intz_depths = {state.scene_depth};
+    state.depth_stencil = reinterpret_cast<uint64_t>(depth_surface.Get());
+    register_depth();
     constexpr float BACKGROUND = 0.2f;
     constexpr float FOREGROUND = 0.8f;
     const auto draw_frame = [&](bool jittered) {
