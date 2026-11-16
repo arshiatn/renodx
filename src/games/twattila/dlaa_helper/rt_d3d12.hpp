@@ -73,6 +73,8 @@
 #include "rt_fog_omm.h"           // dxc -Fh (build.ps1)
 #include "rt_path.h"              // dxc -Fh (build.ps1)
 #include "rt_path_omm.h"          // dxc -Fh (build.ps1)
+#include "rt_path_one.h"          // dxc -Fh (build.ps1)
+#include "rt_path_one_omm.h"      // dxc -Fh (build.ps1)
 #include "rt_path_ser.h"          // dxc -Fh (build.ps1)
 #include "rt_place.h"             // dxc -Fh (build.ps1)
 #include "rt_omm_uvs.h"           // dxc -Fh (build.ps1)
@@ -657,10 +659,15 @@ class RtScene12 {
                  : pipeline(RT_REUSE_NEAR, sizeof(RT_REUSE_NEAR), &reuse_near_pipeline_))) {
       reuse_near_pipeline_.Reset();
     }
-    // The reflections' build for one sample a pixel (REFLECT_ONE_SAMPLE; none: the general build).
+    // The reflections' build for one sample a pixel (REFLECT_ONE_SAMPLE) and the paths' for one ray a texel
+    // (PATH_ONE_SAMPLE; none: the general build).
     if (!(dxr12_ ? pipeline(RT_REFLECT_ONE_OMM, sizeof(RT_REFLECT_ONE_OMM), &reflect_one_pipeline_)
                  : pipeline(RT_REFLECT_ONE, sizeof(RT_REFLECT_ONE), &reflect_one_pipeline_))) {
       reflect_one_pipeline_.Reset();
+    }
+    if (!(dxr12_ ? pipeline(RT_PATH_ONE_OMM, sizeof(RT_PATH_ONE_OMM), &path_one_pipeline_)
+                 : pipeline(RT_PATH_ONE, sizeof(RT_PATH_ONE), &path_one_pipeline_))) {
+      path_one_pipeline_.Reset();
     }
     clusters_ = clusters_ && pipeline(RT_COMPACT, sizeof(RT_COMPACT), &compact_pipeline_);
     // DXR 1.2: the paths and reflections as ray generation shaders for Path Tracing SER (none: their compute shaders).
@@ -1690,7 +1697,8 @@ class RtScene12 {
         } else if (path_traced && ser) {
           dispatch_rays(0, shared.rt_bounce_width, shared.rt_bounce_height);
         } else if (path_traced) {
-          list->SetPipelineState(path_pipeline_.Get());
+          // One ray a texel: its own build (the same picture in fewer registers).
+          list->SetPipelineState(((constants.samples == 1 && path_one_pipeline_) ? path_one_pipeline_ : path_pipeline_).Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
         } else if (fills_cache) {
           Mark(list, L"bounce");
@@ -6233,6 +6241,7 @@ class RtScene12 {
   bool kept_copy_wanted_ = false;
   uint32_t kept_copy_frame_ = UINT32_MAX;
   ComPtr<ID3D12PipelineState> path_pipeline_;
+  ComPtr<ID3D12PipelineState> path_one_pipeline_;  // its build for one ray a texel (PATH_ONE_SAMPLE)
   ComPtr<ID3D12PipelineState> reflect_pipeline_;
   ComPtr<ID3D12PipelineState> reflect_one_pipeline_;  // its build for one sample a pixel (REFLECT_ONE_SAMPLE)
   // Path Tracing SER (DXR 1.2; null: unavailable): the paths' and reflections' ray generation shaders, their records (the

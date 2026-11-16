@@ -749,7 +749,13 @@ void PathTraceTexel(uint2 id) {
     if (sky_kept) own_sky[sky_set][id] = 0.f;
     return;
   }
+#if defined(PATH_ONE_SAMPLE)
+  // Its build for a request of one ray a texel (rt_path_one): the loop's sums and the reservoir are not kept across the
+  // path (128 registers a thread at 4K, 29% occupancy).
+  const uint samples = 1u;
+#else
   const uint samples = max(path_samples, 1u);
+#endif
   const float3 sky_calibration = SkyCalibration(normal);
   // Path-Traced Ambient's sky blocked as Ray-Traced AO's (within its reach, grass within GRASS_AMBIENT_RANGE): past it the
   // sky (ATN 2026-10-30: the Light Bounce's 50 m made it far darker than RT AO's 6 m); the light bounced within it stays.
