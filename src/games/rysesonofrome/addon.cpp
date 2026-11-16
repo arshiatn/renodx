@@ -214,6 +214,7 @@ renodx::utils::settings::Settings settings;
 struct RtSliders {
   float sun_shadows = 0.f;
   float softness = 0.5f;  // degrees of the sun's disk
+  float replace_sun_maps = 1.f;  // the rays' sun shadow alone in the mask's sun channels (contact_shadows.hpp)
   float skip_sun_maps = 0.f;  // shadow_skip.hpp's Choice
   float ambient_occlusion = 0.f;
   float ambient_range = 2.f;  // metres
@@ -284,6 +285,7 @@ const PresetValues RAYS_OWN_KEYS = {
 };
 const PresetValues RAYS_RESET = {
     {"RayTracedShadowSoftness", 0.5f},
+    {"RayTracedReplaceShadowMaps", 1.f},
     {"RayTracedSkipSunShadowMaps", 0.f},
     {"RayTracedAmbientRange", 2.f},
     {"RayTracedAOQuarter", 0.f},
@@ -357,7 +359,8 @@ void BuildRuntimeData() {
         if (rt_sliders.ambient_occlusion != 0.f && !PathAmbientWanted()) ambient_visibility = ambient;
       }
     }
-    // The rays' AO in place of the game's SSDO amount while ssdo00 left it out (the AO method 2), else the darker.
+    // The rays' AO in place of the game's SSDO amount while ssdo00 left it out (the AO method 2), else the darker; their
+    // sun shadow in place of the game's cascades' with Rays Replace Shadow Maps.
     const auto applied = rysesonofrome::contact_shadows::Apply(cmd_list,
                                                                {
                                                                    .length = shader_injection.contact_shadow_length,
@@ -365,7 +368,8 @@ void BuildRuntimeData() {
                                                                    .strength = shader_injection.contact_shadows,
                                                                    .frame = shader_injection.ssao_frame,
                                                                },
-                                                               sun_visibility, ambient_visibility, shader_injection.ao_method == 2.f);
+                                                               sun_visibility, ambient_visibility, shader_injection.ao_method == 2.f,
+                                                               rt_sliders.replace_sun_maps != 0.f);
     // Skip the Game's Sun Shadow Maps: the next frame's maps only with the rays' in this one's mask.
     if (applied.sun) rysesonofrome::shadow_skip::NoteRays();
     rays_ambient_applied.store(applied.ambient, std::memory_order_relaxed);
@@ -1187,7 +1191,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .label = "Ray-Traced Sun Shadows (restart)",
           .section = "Ray Tracing (Experimental)",
-          .tooltip = "Sun shadows from rays, with the game's: also where its shadow maps miss things.\n"
+          .tooltip = "Sun shadows from rays in place of the game's shadow maps.\n"
                      "Needs an RTX GPU and renodx-tw-dlaa64.exe next to the addon. Restart the game after turning on.",
           .labels = {"Off", "On"},
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
@@ -1202,6 +1206,21 @@ void BuildRuntimeData() {
           .min = 0.f,
           .max = 3.f,
           .format = "%.2f",
+          .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
+      },
+      // contact_shadows.hpp's replaces_sun: on by default (ours replaces the game's, one method per effect; ATN
+      // 2026-11-16 "RT Shadows should replace them"); off, the darker of the two as before. test/tw_ryse_sun_replace.
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedReplaceShadowMaps",
+          .binding = &rt_sliders.replace_sun_maps,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 1.f,
+          .label = "Rays Replace Shadow Maps",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "On: the sun's shadow from the rays alone. Off: the darker of the rays' and the game's.\n"
+                     "On, what is out of view casts no sun shadow (the rays see what is on screen).",
+          .labels = {"Off", "On"},
           .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
