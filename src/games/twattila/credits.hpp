@@ -14,7 +14,7 @@ constexpr const char* RENODX_PSYCHO_V30_V35 =
     "RenoDX, PsychoV30, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV30 and "
     "PsychoV35.";
 
-constexpr const char* FULL_DOWNLOAD_NOTE ="DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
+constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
 
 // What ships with the Total War helper (renodx-tw-dlaa64.exe; Shogun 2's, Ryse's and Expeditions: Rome's ray tracing too).
 constexpr const char* HELPER =
