@@ -25,8 +25,8 @@ Fixed:
 
 Proven offline (WARP against the game's bytes, failing controls): tools/tw/rome2/lights_r3 (26 of 26), water_r2 (67 of
 67), smoke_r3, page1_r4 (auto exposure, indicators); test/tw_unit_shadows part 8 (the shadow cascades pattern once in the
-shipped DLL); test/tw_vanilla_exact (56 replaced shaders, before 21; the rest and why in its table); test/tw_psychov35
-part 4b (the toe: PsychoV35 the game's from 5% grey up, 10% darker at 1%).
+shipped DLL); test/tw_vanilla_exact (57 replaced shaders, before 21; the rest and why in its table); test/tw_psychov35
+part 8 (the toe: PsychoV35 the game's from 5% grey up, darker below 1%, where the SDR curve's log toe lifts the shadows).
 
 Not done: unit cut-outs in the rays (Rome II's captures have no cut-out versions yet); Batched Unit Capture (its row
 shows but does nothing here: no Rome II bone pack hook); morefire00 draws at 0.2 x the game's at VFX Fire Brightness 1
