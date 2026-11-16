@@ -19,8 +19,9 @@
 // Control (must fail): the game's bytes with each write to an output reading other components (x <-> y, or the next
 // component) against the game's own. Report: the game's float constants (arithmetic only) x 1.02 one at a time, how many the exact set sees.
 // Gamma Correction (games whose manifest line names their frame's gamma: Attila, Thrones of Britannia, Rome II, Warhammer
-// I / II, Troy, Pharaoh): the add-on's shader alone, in every Rendering Mode (the manifest's list: 0 - 3, Warhammer II,
-// Troy and Pharaoh 0 - 4 with Extended) at Paper White = UI and at twice UI, Gamma Correction off at the Peak the tone
+// I / II / III (its g_gamma_output 2.0 here, below), Troy, Pharaoh): the add-on's shader alone, in every Rendering Mode
+// (the manifest's list: 0 - 3, Warhammer II / III, Troy and Pharaoh 0 - 4 with Extended) at Paper White = UI and at
+// twice UI, Gamma Correction off at the Peak the tone
 // mappers then take (Peak^(1 / 1.1) of Paper White) and on at Peak. Where it acts, on decoded at 2.2 must be
 // Paper White x (off decoded at the frame's gamma / Paper White)^1.1 at every texel as the swap chain proxy shows it (in
 // BT.2020, below 0 clipped: a colour the grade or Extended leaves outside BT.2020; GAMMA_TOLERANCE of its brightest

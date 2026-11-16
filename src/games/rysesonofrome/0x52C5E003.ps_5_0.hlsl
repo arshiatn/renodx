@@ -7,8 +7,9 @@
 // something covers the ray (in front of it by less than the thickness) the pixel is in shadow. Max-blended into the
 // sun's shadow mask slice before the tiled lighting (cs 0x897232B5) reads it (1 = shadow), in the sun's channels only.
 // With ray tracing (t2 bound: the traced sun's visibility, ray_tracing.hpp) its shadow too, the darker. Its ambient
-// visibility (t3 bound) goes into the second target, the tiled lighting's directional occlusion (t5), max-blended into
-// its w (alpha written only), which it reads as 1 - w x SSDOParams.z: the darker of the two.
+// visibility (t3 bound) goes into the second target, the tiled lighting's directional occlusion (t5), into its w (alpha
+// written only), which it reads as 1 - w x SSDOParams.z: added where ssdo00 left the game's SSDO amount out (the rays'
+// amount in its place, the terrain's large-scale one kept), else max-blended (the darker of the two).
 // Its constants are the tiled lighting's own (b0) and the addon's (b1).
 cbuffer PerBatch : register(b0) {
   float4 frustum_top_left;     // the far plane's corners from the camera (world)

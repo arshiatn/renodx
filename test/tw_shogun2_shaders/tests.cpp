@@ -17,7 +17,8 @@
 //     0xF7EDF855 / 0x4E3EE717, wind / weighted / grass / far_tree_3k against 0xEDCD8445 / 0x1E0425DE / 0xF6CBD06E / 0x63E273F4
 //     (TestCascadeLeaves).
 // 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
-// 13. Coloured Shadows in shaders/sunlight00-03 (TestSunTint).
+// 13. Coloured Shadows, the rays' AO and (Rays Replace Shadow Maps) sun visibility in place of the game's in
+//     shaders/sunlight00-03 (TestSunTint).
 // 14. autoexposure00's Modded Auto Exposure against the game's 0x8233E11F (TestAutoExposure).
 // 15. indicator00-02's Indicator Brightness against the game's 0xD12FA660 / 0xC454C1EA / 0xC57C222D (TestIndicators).
 // 16. campaignoverlay00 at 33% against 100% and the game's 0xD7E27B35 (TestCampaignOverlay).
@@ -27,6 +28,8 @@
 // 19. sss_soft_mask (SSS Softness, Softer Away from the Caster, Debug View) on synthetic masks (TestSoftMask).
 // 20. Light Through Banners' replay against the game's cloth G-buffer draw 0xBDFF60D4 + 0x0FBCC65A (TestBannerReplay; the csos'
 //     folder third).
+// 21. ssrresolve00 against the game's 0xF87ECE85: unbound the game's, the rays' AO in place of the game's, one occlusion on
+//     the environment under Ray-Traced Specular Occlusion (TestResolve; the csos' folder third).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -1978,6 +1981,9 @@ static void TestLeafFade(const std::string& games, const std::string& folder) {
 //     G-buffer, depth, shadow, AO, probes and lighting: the filter 1 everywhere (all of the sun's colour taken out) gives what
 //     the sun colour (lighting c1) 0 gives unbound, so every use of the sun's colour is filtered; unbound the sun lights the
 //     picture (it differs from c1 0). CONTROL: a filter of 0.5 differs from both.
+//     The rays' AO (t41, rt_sun.hlsli RtInPlace): bound at 0.37 over the random t_ssao, the picture is t_ssao 0.37's with t41
+//     unbound, to the bit (the traced value in place of the game's, ATN 2026-11-16). CONTROL: the random t_ssao's unbound
+//     picture differs (the AO shows in the output).
 struct SunShader {
   const wchar_t* file;
   UINT lighting_slot;
@@ -1986,6 +1992,8 @@ struct SunShader {
   std::vector<UINT> harmonics_slots;  // 9 x 9
   UINT textures;  // t0.. bound (the rest 16 x 16 RGBA)
   UINT samplers;
+  UINT ao_slot;  // t_ssao
+  UINT shadow_slot;  // t_shadow (the game's mask)
 };
 
 static void TestSunTint(const std::string& games) {
@@ -2053,11 +2061,16 @@ static void TestSunTint(const std::string& games) {
   device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
   const std::wstring path(games.begin(), games.end());
   const std::array<SunShader, 4> shaders = {{
-      {.file = L"sunlight00_0xED1BED93", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4},
-      {.file = L"sunlight01_0x5496DE73", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4},
-      {.file = L"sunlight02_0xC3E0E939", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6},
-      {.file = L"sunlight03_0xD5FDDE8F", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6},
+      {.file = L"sunlight00_0xED1BED93", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4,
+       .ao_slot = 5, .shadow_slot = 11},
+      {.file = L"sunlight01_0x5496DE73", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4,
+       .ao_slot = 5, .shadow_slot = 11},
+      {.file = L"sunlight02_0xC3E0E939", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6,
+       .ao_slot = 7, .shadow_slot = 13},
+      {.file = L"sunlight03_0xD5FDDE8F", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6,
+       .ao_slot = 7, .shadow_slot = 13},
   }};
+  const auto traced_ambient = filter(0.37f);
   for (const auto& shader : shaders) {
     ComPtr<ID3DBlob> code;
     FolderInclude include(path + L"/twshogun2completeedition/shaders");
@@ -2091,7 +2104,11 @@ static void TestSunTint(const std::string& games) {
       }
     }
     const std::vector<ID3D11SamplerState*> samplers(shader.samplers, sampler.Get());
-    const auto run = [&](ID3D11Buffer* lighting_buffer, ID3D11ShaderResourceView* tint) {
+    // `ambient`: t41 (the rays' AO); `ssao`: in place of the random t_ssao; `sun`: t40 (the darker), `alone`: t51 (the rays'
+    // sun in place of the game's mask); `shadow`: in place of the random t_shadow.
+    const auto run = [&](ID3D11Buffer* lighting_buffer, ID3D11ShaderResourceView* tint, ID3D11ShaderResourceView* ambient = nullptr,
+                         ID3D11ShaderResourceView* ssao = nullptr, ID3D11ShaderResourceView* sun = nullptr,
+                         ID3D11ShaderResourceView* alone = nullptr, ID3D11ShaderResourceView* shadow = nullptr) {
       const auto output = Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET);
       ComPtr<ID3D11RenderTargetView> target;
       device->CreateRenderTargetView(output.Get(), nullptr, target.GetAddressOf());
@@ -2101,12 +2118,17 @@ static void TestSunTint(const std::string& games) {
       buffers[shader.lighting_slot] = lighting_buffer;
       std::vector<ID3D11ShaderResourceView*> bound(views.size());
       for (size_t slot = 0; slot < views.size(); ++slot) bound[slot] = views[slot].Get();
+      if (ssao != nullptr) bound[shader.ao_slot] = ssao;
+      if (shadow != nullptr) bound[shader.shadow_slot] = shadow;
       const D3D11_VIEWPORT viewport = {.Width = SIZE, .Height = SIZE, .MaxDepth = 1.f};
       context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
       context->VSSetShader(vertex.Get(), nullptr, 0);
       context->PSSetShader(pixel.Get(), nullptr, 0);
       context->PSSetShaderResources(0, static_cast<UINT>(bound.size()), bound.data());
-      context->PSSetShaderResources(50, 1, &tint);
+      const std::array<ID3D11ShaderResourceView*, 2> traced = {sun, ambient};
+      context->PSSetShaderResources(40, static_cast<UINT>(traced.size()), traced.data());
+      const std::array<ID3D11ShaderResourceView*, 2> tint_and_alone = {tint, alone};
+      context->PSSetShaderResources(50, static_cast<UINT>(tint_and_alone.size()), tint_and_alone.data());
       context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
       context->PSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
       context->RSSetViewports(1, &viewport);
@@ -2137,6 +2159,40 @@ static void TestSunTint(const std::string& games) {
     CHECK(between > 0, "CONTROL %s: half the filter gave the unfiltered or the sunless picture", name.c_str());
     std::printf("%s Coloured Shadows: the filter 1 gives the sun colour 0's picture; %zu of %zu values sunlit unbound, %zu between at half\n",
                 name.c_str(), sunlit, unbound.size(), between);
+    const auto in_place = run(lit_buffer.Get(), nullptr, traced_ambient.Get());
+    const auto game_at_traced = run(lit_buffer.Get(), nullptr, nullptr, traced_ambient.Get());
+    size_t ao_apart = 0, ao_bits = 0, ao_shown = 0;
+    for (size_t value = 0; value < unbound.size(); ++value) {
+      ao_apart += same(in_place[value], game_at_traced[value]) ? 0 : 1;
+      ao_bits += (std::bit_cast<uint32_t>(in_place[value]) == std::bit_cast<uint32_t>(game_at_traced[value])) ? 0 : 1;
+      ao_shown += same(in_place[value], unbound[value]) ? 0 : 1;
+    }
+    CHECK(ao_apart == 0, "%s: %zu values of t41 0.37 differ from t_ssao 0.37 unbound", name.c_str(), ao_apart);
+    CHECK(ao_shown > 0, "CONTROL %s: t41 0.37 left the random t_ssao's picture", name.c_str());
+    std::printf("%s AO in place: t41 0.37 = t_ssao 0.37 (%zu apart, %zu not to the bit); the random t_ssao's picture %zu values apart\n",
+                name.c_str(), ao_apart, ao_bits, ao_shown);
+    // Rays Replace Shadow Maps: t51 0.37 over the game's mask 0.2 (t40 bound too: it then is not read) = the game's with
+    // t_shadow 0.37; CONTROL: the darker (t40 0.37 without t51, min(0.2, 0.37)) differs from it. g_Shadow_low_clamp
+    // (lighting c15.x) 0 here: the random one could lift both above 0.37.
+    auto unclamped = lighting;
+    unclamped[60] = 0.f;
+    const auto unclamped_buffer = Constants(unclamped.data(), sizeof(unclamped));
+    const auto traced_sun = filter(0.37f);
+    const auto darker_mask = filter(0.2f);
+    const auto alone = run(unclamped_buffer.Get(), nullptr, nullptr, nullptr, traced_sun.Get(), traced_sun.Get(), darker_mask.Get());
+    const auto game_at_sun = run(unclamped_buffer.Get(), nullptr, nullptr, nullptr, nullptr, nullptr, traced_sun.Get());
+    const auto darker = run(unclamped_buffer.Get(), nullptr, nullptr, nullptr, traced_sun.Get(), nullptr, darker_mask.Get());
+    size_t sun_apart = 0, sun_bits = 0, darker_shown = 0;
+    for (size_t value = 0; value < unbound.size(); ++value) {
+      sun_apart += same(alone[value], game_at_sun[value]) ? 0 : 1;
+      sun_bits += (std::bit_cast<uint32_t>(alone[value]) == std::bit_cast<uint32_t>(game_at_sun[value])) ? 0 : 1;
+      darker_shown += same(alone[value], darker[value]) ? 0 : 1;
+    }
+    CHECK(sun_apart == 0, "%s: %zu values of t51 0.37 over the mask 0.2 differ from t_shadow 0.37 unbound", name.c_str(), sun_apart);
+    CHECK(darker_shown > 0, "CONTROL %s: t51 0.37 gave the darker's picture (min with the mask 0.2)", name.c_str());
+    std::printf("%s sun in place: t51 0.37 over the mask 0.2 = t_shadow 0.37 (%zu apart, %zu not to the bit); the darker's picture %zu values "
+                "apart\n",
+                name.c_str(), sun_apart, sun_bits, darker_shown);
   }
 }
 
@@ -3208,6 +3264,194 @@ static void TestBannerReplay(const std::string& games, const std::string& folder
               game_counts.hole, strict_counts.visible_matched);
 }
 
+// 21. shaders/ssrresolve00 (environment_specular_light cs50_resolve) against the game's 0xF87ECE85 on a 16 x 16 render with
+//     random G-buffer, depth, environment, BRDF and AO (flags 1, 65, 129, 193: lit, with the AO-free 64 and 128 bits):
+//     (a) nothing of ours bound: the game's output; (b) the rays' AO at t41 (0.37) over the random t_ssao: the game's with
+//     t_ssao 0.37; (c) Ray-Traced Specular Occlusion at t46 (0.6) with no confidence (hit 0): the environment the sun light
+//     draws added (the game's output with full confidence and no reflection: G1 = -environment) taken off, 0.6 x the open
+//     one (the same with t_ssao 1: G1') put back: G1 - 0.6 G1'. CONTROL: the version before (0.6 x the AO'd environment:
+//     G1 x 0.4, the game's AO under the rays' occlusion) differs. (d) With t46 bound the reflection's hit (full confidence,
+//     the random t9 less the black one's output) is the same over the random t_ssao and t_ssao 1: no AO on it. CONTROL:
+//     without t46 (the game's) the random AO changes it.
+static void TestResolve(const std::string& games, const std::string& folder) {
+  std::ifstream file(folder + "/0xF87ECE85.cs_5_0.cso", std::ios::binary);
+  const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const std::wstring path(games.begin(), games.end());
+  FolderInclude include(path + L"/twshogun2completeedition/shaders");
+  ComPtr<ID3DBlob> ours_code;
+  ComPtr<ID3DBlob> errors;
+  if (game_code.empty()
+      || FAILED(D3DCompileFromFile((path + L"/twshogun2completeedition/shaders/ssrresolve00_0xF87ECE85.cs_5_0.hlsl").c_str(), nullptr, &include,
+                                   "main", "cs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, ours_code.GetAddressOf(), errors.GetAddressOf()))) {
+    std::printf("missing 0xF87ECE85, or %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "");
+    std::exit(2);
+  }
+  ComPtr<ID3D11ComputeShader> game;
+  ComPtr<ID3D11ComputeShader> ours;
+  device->CreateComputeShader(game_code.data(), game_code.size(), nullptr, game.GetAddressOf());
+  device->CreateComputeShader(ours_code->GetBufferPointer(), ours_code->GetBufferSize(), nullptr, ours.GetAddressOf());
+  constexpr UINT SIZE = 16;
+  std::mt19937 random(21);
+  std::uniform_real_distribution<float> unit(0.05f, 0.95f);
+  const auto values = [&](size_t count) {
+    std::vector<float> filled(count);
+    for (auto& value : filled) value = unit(random);
+    return filled;
+  };
+  const auto plain = [](UINT width, const std::vector<float>& texels) {
+    return Srv(Texture(width, width, DXGI_FORMAT_R32G32B32A32_FLOAT, texels.data(), width * 16, D3D11_BIND_SHADER_RESOURCE).Get());
+  };
+  const auto flat = [&](float x, float y) {
+    std::vector<float> texels(SIZE * SIZE * 4);
+    for (size_t texel = 0; texel < SIZE * SIZE; ++texel) {
+      texels[texel * 4] = x;
+      texels[(texel * 4) + 1] = y;
+    }
+    return plain(SIZE, texels);
+  };
+  // The camera: every matrix the identity, near 0.1 and far 1000, the render (screen, viewport, target) 16 x 16.
+  std::array<float, 44 * 4> camera = {};
+  for (int matrix = 0; matrix < 8; ++matrix) {
+    for (int row = 0; row < 4; ++row) camera[((2 + (matrix * 4) + row) * 4) + row] = 1.f;
+  }
+  camera[34 * 4] = 0.1f;
+  camera[(34 * 4) + 1] = 1000.f;
+  for (const int at : {37, 38, 40}) {
+    camera[(at * 4) + 0] = camera[(at * 4) + 1] = SIZE;
+    camera[(at * 4) + 2] = camera[(at * 4) + 3] = 1.f / SIZE;
+  }
+  std::array<float, 7 * 4> environment = {0.3f, -0.8f, 0.5f, 0.f, 1.f, 10.f, 0.8f, 0.5f, 1.f, 1.f, 1.f, 1.f, -20.f, -20.f, 20.f, 20.f};
+  environment[16] = std::bit_cast<float>(2u);  // g_probe_grid_size
+  environment[17] = 1.f;                       // g_specular_probes_count
+  environment[18] = 0.5f;                      // g_specular_probe_lerp (the previous cubes too)
+  const std::array<ComPtr<ID3D11Buffer>, 2> buffers = {Constants(camera.data(), sizeof(camera)), Constants(environment.data(), sizeof(environment))};
+  // t0 / t1: four cubes each; t2 the BRDF table; t4-t7 the G-buffer (t6.w the flags byte), depth; t9 the lit scene.
+  std::array<ComPtr<ID3D11ShaderResourceView>, 10> views;
+  for (const UINT slot : {0u, 1u}) {
+    const D3D11_TEXTURE2D_DESC desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = 24, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                       .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE};
+    std::vector<std::vector<float>> face_texels(24);
+    std::vector<D3D11_SUBRESOURCE_DATA> initial(24);
+    for (UINT face = 0; face < 24; ++face) {
+      face_texels[face] = values(64);
+      initial[face] = {.pSysMem = face_texels[face].data(), .SysMemPitch = 64};
+    }
+    ComPtr<ID3D11Texture2D> cubes;
+    device->CreateTexture2D(&desc, initial.data(), cubes.GetAddressOf());
+    const D3D11_SHADER_RESOURCE_VIEW_DESC view = {.Format = desc.Format, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY,
+                                                  .TextureCubeArray = {.MipLevels = 1, .NumCubes = 4}};
+    device->CreateShaderResourceView(cubes.Get(), &view, views[slot].GetAddressOf());
+  }
+  for (const UINT slot : {2u, 3u, 4u, 5u, 7u, 9u}) views[slot] = plain(SIZE, values(SIZE * SIZE * 4));
+  auto constants_texels = values(SIZE * SIZE * 4);
+  constexpr std::array<float, 4> FLAGS = {1.f, 65.f, 129.f, 193.f};
+  for (size_t texel = 0; texel < SIZE * SIZE; ++texel) constants_texels[(texel * 4) + 3] = FLAGS[texel % FLAGS.size()] / 255.f;
+  views[6] = plain(SIZE, constants_texels);
+  const auto full_confidence = flat(8.f, 32768.f);
+  const auto no_confidence = flat(0.f, 32768.f);
+  const auto black = plain(SIZE, std::vector<float>(SIZE * SIZE * 4, 0.f));
+  const auto traced_ambient = plain(SIZE, std::vector<float>(SIZE * SIZE * 4, 0.37f));
+  const auto open = plain(SIZE, std::vector<float>(SIZE * SIZE * 4, 1.f));
+  const auto occlusion = plain(SIZE, std::vector<float>(SIZE * SIZE * 4, 0.6f));
+  const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> sampler;
+  device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
+  const std::array<ID3D11SamplerState*, 4> samplers = {sampler.Get(), sampler.Get(), sampler.Get(), sampler.Get()};
+  struct Inputs {
+    ID3D11ShaderResourceView* ssao = nullptr;  // else the random t3
+    ID3D11ShaderResourceView* hit = nullptr;
+    ID3D11ShaderResourceView* radiance = nullptr;  // else the random t9
+    ID3D11ShaderResourceView* ambient = nullptr;   // t41
+    ID3D11ShaderResourceView* specular_occlusion = nullptr;  // t46
+  };
+  const auto run = [&](ID3D11ComputeShader* shader, const Inputs& inputs) {
+    const auto output = Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
+    const auto output_view = Uav(output.Get());
+    std::array<ID3D11ShaderResourceView*, 10> bound = {};
+    for (size_t slot = 0; slot < views.size(); ++slot) bound[slot] = views[slot].Get();
+    if (inputs.ssao != nullptr) bound[3] = inputs.ssao;
+    bound[8] = inputs.hit;
+    if (inputs.radiance != nullptr) bound[9] = inputs.radiance;
+    const std::array<ID3D11Buffer*, 2> constant_buffers = {buffers[0].Get(), buffers[1].Get()};
+    context->CSSetShader(shader, nullptr, 0);
+    context->CSSetConstantBuffers(0, 2, constant_buffers.data());
+    context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+    context->CSSetShaderResources(0, static_cast<UINT>(bound.size()), bound.data());
+    context->CSSetShaderResources(41, 1, &inputs.ambient);
+    context->CSSetShaderResources(46, 1, &inputs.specular_occlusion);
+    context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
+    context->Dispatch(1, 1, 1);
+    context->ClearState();
+    const auto bytes = Read(output.Get(), 16);
+    std::vector<float> result(SIZE * SIZE * 3);
+    for (size_t texel = 0; texel < SIZE * SIZE; ++texel) std::memcpy(&result[texel * 3], bytes.data() + (texel * 16), 12);
+    return result;
+  };
+  const auto same = [](float x, float y) { return std::fabs(x - y) <= (2e-5f * std::max(std::fabs(x), std::fabs(y))) + 1e-6f; };
+  const auto apart = [&](const std::vector<float>& a, const std::vector<float>& b) {
+    size_t count = 0;
+    for (size_t value = 0; value < a.size(); ++value) count += same(a[value], b[value]) ? 0 : 1;
+    return count;
+  };
+  // (a)
+  const Inputs lit = {.hit = full_confidence.Get()};
+  const auto game_lit = run(game.Get(), lit);
+  const size_t unbound_apart = apart(run(ours.Get(), lit), game_lit);
+  const size_t lit_values = static_cast<size_t>(std::ranges::count_if(game_lit, [](float value) { return value != 0.f; }));
+  CHECK(unbound_apart == 0 && lit_values > 0, "unbound: %zu of %zu values off the game's (%zu not 0)", unbound_apart, game_lit.size(), lit_values);
+  // (b)
+  const size_t ambient_apart = apart(run(ours.Get(), {.hit = full_confidence.Get(), .ambient = traced_ambient.Get()}),
+                                     run(game.Get(), {.ssao = traced_ambient.Get(), .hit = full_confidence.Get()}));
+  const size_t ambient_shown = apart(run(game.Get(), {.ssao = traced_ambient.Get(), .hit = full_confidence.Get()}), game_lit);
+  CHECK(ambient_apart == 0 && ambient_shown > 0, "t41 0.37: %zu values off the game's with t_ssao 0.37 (%zu apart from the random AO's)",
+        ambient_apart, ambient_shown);
+  // (c)
+  const auto environment_ao = run(game.Get(), {.hit = full_confidence.Get(), .radiance = black.Get()});
+  const auto environment_open = run(game.Get(), {.ssao = open.Get(), .hit = full_confidence.Get(), .radiance = black.Get()});
+  const auto occluded = run(ours.Get(), {.hit = no_confidence.Get(), .specular_occlusion = occlusion.Get()});
+  std::vector<float> expected(occluded.size());
+  std::vector<float> stacked(occluded.size());
+  for (size_t value = 0; value < occluded.size(); ++value) {
+    expected[value] = environment_ao[value] - (0.6f * environment_open[value]);
+    stacked[value] = environment_ao[value] * 0.4f;
+  }
+  const size_t occlusion_apart = apart(occluded, expected);
+  const size_t stacked_apart = apart(occluded, stacked);
+  CHECK(occlusion_apart == 0, "t46 0.6: %zu of %zu values off G1 - 0.6 G1'", occlusion_apart, occluded.size());
+  CHECK(stacked_apart > 0, "CONTROL: t46 0.6 gave 0.6 x the AO'd environment");
+  // (d) The hit's share: the output with the random t9 less the one with t9 black, at each AO.
+  const auto hit_apart = [&](ID3D11ShaderResourceView* specular_occlusion) {
+    const Inputs random_ao = {.hit = full_confidence.Get(), .specular_occlusion = specular_occlusion};
+    const Inputs open_ao = {.ssao = open.Get(), .hit = full_confidence.Get(), .specular_occlusion = specular_occlusion};
+    Inputs random_black = random_ao;
+    Inputs open_black = open_ao;
+    random_black.radiance = open_black.radiance = black.Get();
+    const auto a = run(ours.Get(), random_ao);
+    const auto a_black = run(ours.Get(), random_black);
+    const auto b = run(ours.Get(), open_ao);
+    const auto b_black = run(ours.Get(), open_black);
+    size_t count = 0, shown = 0;
+    for (size_t value = 0; value < a.size(); ++value) {
+      const float tolerance = (1e-5f * (std::fabs(a[value]) + std::fabs(a_black[value]) + std::fabs(b[value]) + std::fabs(b_black[value]))) + 1e-6f;
+      count += (std::fabs((a[value] - a_black[value]) - (b[value] - b_black[value])) <= tolerance) ? 0 : 1;
+      shown += (std::fabs(b[value] - b_black[value]) > tolerance) ? 1 : 0;
+    }
+    return std::pair{count, shown};
+  };
+  const auto [hit_occluded_apart, hit_shown] = hit_apart(occlusion.Get());
+  const auto [hit_game_apart, hit_game_shown] = hit_apart(nullptr);
+  CHECK(hit_occluded_apart == 0 && hit_shown > 0, "t46 0.6: the hit over the random AO %zu values off its share with AO 1 (%zu shown)",
+        hit_occluded_apart, hit_shown);
+  CHECK(hit_game_apart > 0, "CONTROL: without t46 the random AO left the hit as with AO 1");
+  std::printf("ssrresolve00: unbound the game's (%zu of %zu values lit, 0 apart); t41 0.37 = t_ssao 0.37 (%zu apart; %zu apart from the random "
+              "AO); t46 0.6 the open environment x 0.6 (%zu apart; the AO'd one's %zu apart); t46: the hit without the AO (%zu of %zu shown "
+              "apart; without t46 %zu apart)\n",
+              lit_values, game_lit.size(), ambient_apart, ambient_shown, occlusion_apart, stacked_apart, hit_occluded_apart, hit_shown,
+              hit_game_apart);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -3246,6 +3490,7 @@ int main(int argc, char** argv) {
     TestCampaignOverlay(games, argv[3]);
     TestPatches(games, argv[3]);
     TestBannerReplay(games, argv[3]);
+    TestResolve(games, argv[3]);
   }
   TestSunTint(games);
   TestParticleQuads(games);

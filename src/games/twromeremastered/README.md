@@ -2,6 +2,21 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+### Fix round (2026-11-16; built only, not run in game)
+
+- New: **FSR and XeSS (Experimental)** through the helper in DLSS's place (Anti-Aliasing: FSR, XeSS); frame generation
+  backends as Attila's.
+- New: **Time Each Pass (One Frame)** under Tools, and the test hooks (RENODX_TW_SHOT / PROFILE / SET) as every other
+  TW add-on.
+- Fixed: a saved DLSS is XeSS on Intel's GPUs, else FSR, off NVIDIA (the vendor read first, then the rows; Reflex shows
+  on NVIDIA only).
+- Fixed: one sun-shadow method: Bend's contact shadows are off where the rays shadowed this frame.
+- Fixed: frame trace marks are formatted only while a frame is traced (no per-frame strings).
+- Credits for every method the add-on ships (Light Bounce's Visibility Bitmask, SMAA, CMAA2, FidelityFX SSSR, Detours).
+- Not done: the rays still multiply the game's cascades (units, grass and banners are not in the rays yet: one battle
+  trace with `[renodx] FrameTraceReads=1` first); Modded Auto Exposure (Feral's auto exposure compute) and the texture
+  LOD bias wait for their traces.
+
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
 - **Ray-Traced AO replaces ASSAO and the trees' own AO** (ATN: never on top of them): after ASSAO's apply its target is

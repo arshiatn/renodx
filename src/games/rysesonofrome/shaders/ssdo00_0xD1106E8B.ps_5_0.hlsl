@@ -3,8 +3,9 @@
 // 2 x 2 pattern) give the direction toward what covers it (camera space, then world) and its amount, plus the
 // terrain's large-scale occlusion (LSDO, from the heightmap _texB): out 0.5 + 0.175 x the direction, 0.35 x the amount,
 // which the game blurs (0x2822C42B) and its tiled lighting (cs 0x897232B5, t5) turns into ambient, light and
-// reflection occlusion. Ambient Occlusion GT-VBAO (SI.ssao_mode 1): the SSDO term from the visibility bitmask instead
-// (ssdo_bitmask.hlsli); the terrain's LSDO is added as the game's.
+// reflection occlusion. This frame's AO method (SI.ao_method, one at a time): GT-VBAO (1) the SSDO term from the
+// visibility bitmask instead (ssdo_bitmask.hlsli); the ray-traced AO (2) the SSDO's amount 0, its direction kept (the
+// rays' amount is added at the tiled lighting, contact_shadows.hpp); the terrain's LSDO is added as the game's.
 #include "../shared.h"
 #include "../ssdo_bitmask.hlsli"
 
@@ -199,7 +200,7 @@ void main(
   r4.z = dot(SSDO_CameraMatrixInv._m20_m21_m22, r0.xyz);
   // Ambient Occlusion GT-VBAO: the SSDO term (r4: the direction in world space, the amount) from the visibility
   // bitmask, the G-buffer normal in the same camera space as the game's.
-  if (SI.ssao_mode == 1.f) {
+  if (SI.ao_method == 1.f) {
     float3 normal = _tex0.Sample(_tex0_s, v1.xy).xyz * 2.f - 1.f;
     normal = float3(dot(SSDO_CameraMatrix._m00_m01_m02, normal), dot(SSDO_CameraMatrix._m10_m11_m12, normal),
                     dot(SSDO_CameraMatrix._m20_m21_m22, normal));
@@ -210,6 +211,7 @@ void main(
     r4.z = dot(SSDO_CameraMatrixInv._m20_m21_m22, occlusion.xyz);
     r4.w = occlusion.w;
   }
+  if (SI.ao_method == 2.f) r4.w = 0.f;
   r0.xy = -LSDO_TexToWorldTranslation.xy + r1.wx;
   r0.xy = r0.xy / LSDO_TexToWorldScale.xy;
   r0.z = 15 * vInvShadowMapSize.x;

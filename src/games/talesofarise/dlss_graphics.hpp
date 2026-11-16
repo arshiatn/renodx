@@ -295,7 +295,8 @@ struct GBufferCopy {
 } gbuffer;
 
 // Bend's and GT-VBGI's settings from the page's rows (each present) for the sun shadow mask and the lighting pass, and
-// this frame's GT-VBGI (it runs at the frame's first lighting draw, the others reuse it).
+// this frame's GT-VBGI (it runs at the frame's first lighting draw, the others reuse it); the last frame the rays' bounce
+// light or path tracing reached the lighting pass (Bandai's GI stays off while it did recently).
 struct UeEffects {
   std::shared_mutex mutex;
   twattila::screen_space_shadows::Settings shadows;
@@ -304,7 +305,21 @@ struct UeEffects {
   float render_share = 1.f;
   uint64_t bounce_frame = UINT64_MAX;
   ID3D11ShaderResourceView* bounce_view = nullptr;
+  uint64_t rays_bounce_frame = UINT64_MAX;
 } ue_effects;
+
+// Bandai's screen-space GI chain (17CE7BCD from last frame's light, 13BDD599, 86CBF00A down to 20 x 12, 746654CA x 2: the
+// R11G11B10F textures lighting00-05 read at t11-t13 / t8-t10 behind their GI switch; in the 20 G1 / G2 traces their only
+// readers that declare the slots, tools/nontw/tales/census/t16_ssgi_readers.txt) is skipped while ours replaces Bandai's GI
+// (game_gi_replaced, each present). Readers the census could not read bind its textures too: six single-target lighting
+// permutations of the dump's New_1 (never traced) and two translucency PS (not dumped). One drawn (game_gi_reader_drawn)
+// runs the chain again for the next half second (the textures' last content is read in that first frame).
+constexpr std::array<uint32_t, 4> GAME_GI_SHADERS = {0x17CE7BCDu, 0x13BDD599u, 0x86CBF00Au, 0x746654CAu};
+constexpr std::array<uint32_t, 8> GAME_GI_UNREAD_READERS = {0x0E8ACF10u, 0x198E7382u, 0x2022424Eu, 0x62A8AE0Cu,
+                                                            0x71953DD2u, 0xCFA29C59u, 0xC1747FE1u, 0x58A0BC60u};
+std::atomic<bool> game_gi_replaced = false;
+std::atomic<bool> game_gi_reader_drawn = false;
+uint64_t game_gi_reader_frame = UINT64_MAX;  // the present thread's
 
 // Frame generation's inputs from this frame's upscaling (KeepFrame after the tone mapper), around the camera (UE's
 // translated world); the last frame's view-projection and translation (its camera's step moves it).
@@ -354,6 +369,13 @@ std::atomic<uint64_t> seen_input = 0;
 std::atomic<uint64_t> seen_frames = 0;
 // Present (+1) at which the page's Upscaling Details were last drawn; timings are measured only then.
 std::atomic<uint64_t> overlay_frame = 0;
+
+// Upscaling Details drawn within the last 120 presents of `frame`: its timings and counters run only then (no per-frame
+// counters otherwise).
+inline bool DetailsShown(uint64_t frame) {
+  const uint64_t overlay = overlay_frame.load(std::memory_order_relaxed);
+  return overlay != 0 && frame + 1 - overlay < 120;
+}
 
 // Why NVIDIA's history restarted, and UE's jitter pattern length (frames until its first
 // offset repeats); NVIDIA wants at least 8 * (output / input)^2.
@@ -962,15 +984,20 @@ bool Evaluate(Frame* frame, bool replace) {
     }
   }
   frame->values_validated = true;
-  if (const std::array<float, 2> jitter = pixel_jitter; diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 4096) {
-    if (diagnostics.jitter_frames > 4096) diagnostics.jitter_phases.store(0);
-    diagnostics.first_jitter = jitter;
-    diagnostics.jitter_frames = 1;
-  } else if (jitter == diagnostics.first_jitter) {
-    diagnostics.jitter_phases.store(diagnostics.jitter_frames);
-    diagnostics.jitter_frames = 1;
-  } else {
-    ++diagnostics.jitter_frames;
+  // The jitter's cycle only while Upscaling Details is drawn.
+  if (const std::array<float, 2> jitter = pixel_jitter; frame->measuring) {
+    if (diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 4096) {
+      if (diagnostics.jitter_frames > 4096) {
+        diagnostics.jitter_phases.store(0);
+      }
+      diagnostics.first_jitter = jitter;
+      diagnostics.jitter_frames = 1;
+    } else if (jitter == diagnostics.first_jitter) {
+      diagnostics.jitter_phases.store(diagnostics.jitter_frames);
+      diagnostics.jitter_frames = 1;
+    } else {
+      ++diagnostics.jitter_frames;
+    }
   }
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
@@ -1545,8 +1572,7 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
     state.claimed_frame = state.frame;
   }
   // Timings only while the overlay is open, and not for one-time shader/NGX initialization.
-  const uint64_t overlay = overlay_frame.load();
-  frame->measuring = overlay != 0 && frame->frame + 1 - overlay < 120;
+  frame->measuring = DetailsShown(frame->frame);
   frame->sample_cpu = frame->measuring && runtime.last_frame != UINT64_MAX;
   if (frame->sample_cpu) runtime.performance.Begin(frame->context.Get());
   if (frame->from_mirror && replace_taa.load()) {
@@ -1720,7 +1746,9 @@ void DrawAtOutputSize(Command& command, const void*) {
   context->RSSetViewports(viewport_count, viewports.data());
   context->RSSetScissorRects(scissor_count, scissors.data());
   copy->frame = frame;
-  ++post.passes;
+  if (DetailsShown(frame)) {
+    ++post.passes;
+  }
   if (twattila::frame_generation::Wanted() && std::ranges::find(TONEMAPPER_SHADERS, command.matched_shader_hash) != TONEMAPPER_SHADERS.end()) {
     KeepFrame(context, copy->resource.Get());
   }
@@ -1948,6 +1976,16 @@ void DrawSparkMotion(Command& command, const void*) {
   context->VSSetShader(game_vertex_shader.Get(), nullptr, 0);
 }
 
+constexpr auto OnGameGi = []<typename Command>(Command&) -> renodx::utils::command_action::CallbackResult<Command> {
+  if (!game_gi_replaced.load(std::memory_order_relaxed)) return {};
+  return {.bypass = true};
+};
+
+constexpr auto OnGameGiReader = []<typename Command>(Command&) -> renodx::utils::command_action::CallbackResult<Command> {
+  game_gi_reader_drawn.store(true, std::memory_order_relaxed);
+  return {};
+};
+
 constexpr auto OnSpriteDraw = []<DrawCommand Command>(Command&) -> renodx::utils::command_action::CallbackResult<Command> {
   if (!spark_fix.load() || requested_mode.load() == AAMode::OFF) return {};
   return {.post_callback = DrawSparkMotion<Command>};
@@ -1981,7 +2019,11 @@ constexpr auto OnLightingDraw = []<DrawCommand Command>(Command& command) -> ren
   ComPtr<ID3D11ShaderResourceView> bounce = lighting.bounce ? lighting.bounce : talesofarise::rt_shadows::BounceLight();
   // Without the rays' bounce light, GT-VBGI's (ue_light_bounce.hpp: off at Strength 0) at the frame's first lighting draw:
   // from the sun's light (t4), the scene depth (t0), the G-buffer (t1-t3) and the View (b1) at the draw's viewport.
-  if (!bounce) {
+  if (bounce) {
+    const uint64_t frame = CurrentFrame();
+    const std::unique_lock lock(ue_effects.mutex);
+    ue_effects.rays_bounce_frame = frame;
+  } else {
     const uint64_t frame = CurrentFrame();
     const std::unique_lock lock(ue_effects.mutex);
     ComPtr<ID3D11DeviceContext1> context1;
@@ -2111,7 +2153,9 @@ constexpr auto OnUpscale = []<DrawCommand Command>(Command& command) -> renodx::
   } else {
     context1->PSSetConstantBuffers1(0, 1, &game_buffer, &first_constant, &constant_count);
   }
-  ++post.upscales;
+  if (DetailsShown(frame)) {
+    ++post.upscales;
+  }
   return {.bypass = true};
 };
 
@@ -2169,6 +2213,7 @@ void OnDestroyDevice(reshade::api::device* device) {
     talesofarise::ue_light_bounce::Release(native);
     ue_effects.bounce_frame = UINT64_MAX;
     ue_effects.bounce_view = nullptr;
+    ue_effects.rays_bounce_frame = UINT64_MAX;
   }
   {
     const std::unique_lock lock(spark_motion.mutex);
@@ -2197,7 +2242,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   talesofarise::pixel_trace::OnPresent(queue);
   talesofarise::engine_hooks::UpdateSun();
-  talesofarise::frame_trace::OnPresent();
+  talesofarise::frame_trace::OnPresent("tales");
+  // Before any row is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS on
+  // Intel's, else FSR (as Attila's).
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
   // The page's rows (Anti-Aliasing and Upscaling Mode: DLAA, Ultra Quality, Quality, Balanced, Performance, Ultra
   // Performance, Custom; the rays; Upscaling and Tools) into the state the passes read.
   {
@@ -2293,6 +2344,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     state.biased_per_frame = biased - state.biased_uploads;
     state.biased_uploads = biased;
   }
+  talesofarise::dlss::constants::SetCounting(false);
   {
     const std::unique_lock lock(post.mutex);
     post.last = {post.passes, post.upscales};
@@ -2579,7 +2631,15 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     }
   }
   bool wrote = false;
-  const float render_scale = (upscaling ? static_cast<float>(expected[0]) / static_cast<float>(width) : 1.f);
+  // The size the game renders at: the upscaler's, else the game's own below 100% (its menu's DrawScale, r.ScreenPercentage
+  // as found; UE renders ceil(size x percentage)), for Bandai's screen filters, Bend and the texture LOD bias.
+  std::array<uint32_t, 2> render_size = expected;
+  if (const auto current = (finder.phase() == Phase::FOUND ? finder.Get() : std::nullopt); !upscaling && current && *current > 0.f && *current < 100.f) {
+    render_size = {static_cast<uint32_t>(std::ceil(static_cast<float>(width) * *current / 100.f)),
+                   static_cast<uint32_t>(std::ceil(static_cast<float>(height) * *current / 100.f))};
+  }
+  const bool below_native = render_size[0] != 0 && (render_size[0] < width || render_size[1] < height);
+  const float render_scale = (below_native ? static_cast<float>(render_size[0]) / static_cast<float>(width) : 1.f);
   for (size_t index = 0; graphics.available && index < GRAPHICS_SETTINGS.size(); ++index) {
     auto& entry = graphics.entries[index];
     if (entry.cvar.values[0] == nullptr) continue;
@@ -2626,13 +2686,14 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     entry.written = desired;
   }
   if (wrote) graphics.console.Refresh();
-  // Texture LOD bias while upscaling, from the next View upload on.
+  // Texture LOD bias at every render scale below 100%, from the next View upload on: the row's choice while upscaling,
+  // log2(scale) (Matched) at the game's own scale.
   talesofarise::dlss::constants::ViewMipBias mip_bias = {.size_vector = VIEW_SIZE_AND_INV_SIZE, .bias_vector = VIEW_MATERIAL_TEXTURE_MIP_BIAS};
-  if (upscaling && texture_lod_bias != 0) {
-    mip_bias.width = expected[0];
-    mip_bias.height = expected[1];
-    mip_bias.bias = std::log2(std::min(static_cast<float>(expected[0]) / static_cast<float>(width), static_cast<float>(expected[1]) / static_cast<float>(height)))
-                    - static_cast<float>(texture_lod_bias - 1);
+  if (below_native && texture_lod_bias != 0) {
+    mip_bias.width = render_size[0];
+    mip_bias.height = render_size[1];
+    mip_bias.bias = std::log2(std::min(static_cast<float>(render_size[0]) / static_cast<float>(width), static_cast<float>(render_size[1]) / static_cast<float>(height)))
+                    - (upscaling ? static_cast<float>(texture_lod_bias - 1) : 0.f);
   }
   if (mip_bias.width != applied_mip_bias.width || mip_bias.height != applied_mip_bias.height || mip_bias.bias != applied_mip_bias.bias) {
     talesofarise::dlss::constants::SetViewMipBias(mip_bias);
@@ -2655,13 +2716,25 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (rt_sliders.light_bounce != 0.f) {
     bounce.strength = 0.f;
   }
+  // One GI method (ATN 2026-11-16): lighting00-05 take Bandai's GI-off path while GT-VBGI runs, or while the rays' bounce
+  // light or path tracing reached the lighting pass within the last half second (their light in place of Bandai's, never
+  // added to it; a frame the rays miss stays on that path).
+  constexpr uint64_t RECENT_FRAMES = 30;
+  const uint64_t frame = CurrentFrame();
+  bool rays_gi = false;
   {
     const std::unique_lock lock(ue_effects.mutex);
     ue_effects.shadows = shadows;
     ue_effects.bounce = bounce;
     ue_effects.denoise = gi.denoise != 0.f;
     ue_effects.render_share = render_scale;
+    rays_gi = rt_sliders.light_bounce != 0.f && ue_effects.rays_bounce_frame != UINT64_MAX && ue_effects.rays_bounce_frame + RECENT_FRAMES >= frame;
   }
+  if (game_gi_reader_drawn.exchange(false, std::memory_order_relaxed)) {
+    game_gi_reader_frame = frame;
+  }
+  game_gi_replaced.store((bounce.strength > 0.f || rays_gi) && (game_gi_reader_frame == UINT64_MAX || game_gi_reader_frame + RECENT_FRAMES < frame),
+                         std::memory_order_relaxed);
   talesofarise::post_filters::Store({
       .scale = render_scale,
       .sharpening = ((mode != AAMode::OFF && !keep_game_sharpening) ? 0.f : 1.f),
@@ -2676,7 +2749,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       .ao_frame = static_cast<float>(ao_frame),
       .ao_auto_thickness = ao_auto_thickness,
       .screen_space_shadows = (shadows.enabled ? 1.f : 0.f),
-      .gtvbgi = ((bounce.strength > 0.f) ? 1.f : 0.f),
+      .gtvbgi = ((bounce.strength > 0.f || rays_gi) ? 1.f : 0.f),
   });
   talesofarise::engine_hooks::Update();
 }
@@ -2819,15 +2892,15 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
                   "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
     .in_game_aa_note = "In-game Anti-Aliasing must be TAA for DLSS, FSR, XeSS and Frame Generation.",
-    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its shadows, AO and reflections.\n"
-                     "The rest at its default.",
+    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling at its default: Bend Screen-Space Shadows and\n"
+                     "GT-VBGI, the game's ambient occlusion and reflections.",
     .no_rays_tooltip = "No ray tracing: Bend Screen-Space Shadows and GT-VBGI in place of the game's contact shadows and Global\n"
                        "Illumination, the game's ambient occlusion and reflections. The rest of this page at its default.",
     .rays_tooltip = "Ray-traced shadows, ambient occlusion and reflections, path-traced Global Illumination at my settings. The\n"
                     "rest of this page at its default. Needs an upscaler (Anti-Aliasing above) and a DXR GPU; on NVIDIA also\n"
                     "turns DLSS Ray Reconstruction on.",
-    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows (Experimental): those plus fine sun shadows\n"
-                      "from what is on screen (Bend Studio's; characters, grass, small details), in place of the game's contact\n"
+    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine sun shadows from what is on\n"
+                      "screen (Bend Studio's; characters, grass, small details), in place of the game's contact\n"
                       "shadows toward the sun. DXR: buildings, terrain, rocks, leaves and grass also cast ray-traced sun\n"
                       "shadows, at any distance (the darker of the game's and the rays'). Heavy. Needs an upscaler and a DXR GPU.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game ambient occlusion on.\n"
@@ -2920,6 +2993,16 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
   talesofarise::ue_light_bounce::AppendRows(settings, &gi_rows, [] { return rt_sliders.light_bounce != 0.f; });
   twattila::feature_settings::AppendSss(settings, &screen_space_shadows_rows);
   erase({"ScreenSpaceShadowsDistanceSoftness", "ScreenSpaceShadowsDebugView"});
+  // Bend (Length 480, as No RT/PT) and GT-VBGI on by default (ATN 2026-11-16), in place of Bandai's contact shadows toward
+  // the sun and its Global Illumination; before Apply (the page's Reset reads the defaults as it is built).
+  for (Setting* setting : *settings) {
+    if (setting->key == "ScreenSpaceShadows" || setting->key == "light_bounce_strength") {
+      setting->default_value = 1.f;
+    }
+    if (setting->key == "ScreenSpaceShadowsLength") {
+      setting->default_value = 3.f;
+    }
+  }
   twattila::graphics_page::Apply(settings, {.aa = &aa_sliders,
                                             .sss = &screen_space_shadows_rows,
                                             .rt = &rt_sliders,
@@ -3064,6 +3147,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
               const std::shared_lock lock(state.mutex);
               overlay_frame.store(state.frame + 1);
             }
+            talesofarise::dlss::constants::SetCounting(true);
             uint64_t completed;
             uint32_t temporal_shader_hash;
             uint64_t copied_per_frame;
@@ -3440,6 +3524,18 @@ inline bool Install(HMODULE module) {
                                                                 .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
                                                             });
   }
+  for (const uint32_t game_gi_shader : GAME_GI_SHADERS) {
+    renodx::utils::command_action::Register(OnGameGi, {
+                                                          .shader_hash = game_gi_shader,
+                                                          .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH,
+                                                      });
+  }
+  for (const uint32_t reader_shader : GAME_GI_UNREAD_READERS) {
+    renodx::utils::command_action::Register(OnGameGiReader, {
+                                                                .shader_hash = reader_shader,
+                                                                .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
+                                                            });
+  }
   for (const auto& [sprite_shader, motion_shader] : SPRITE_SHADERS) {
     renodx::utils::command_action::Register(OnSpriteDraw, {
                                                               .shader_hash = sprite_shader,
@@ -3498,6 +3594,8 @@ inline void Uninstall() {
     renodx::utils::command_action::Unregister(OnUpscale);
     renodx::utils::command_action::Unregister(OnTranslucencyComposite);
     renodx::utils::command_action::Unregister(OnSpriteDraw);
+    renodx::utils::command_action::Unregister(OnGameGi);
+    renodx::utils::command_action::Unregister(OnGameGiReader);
     renodx::utils::command_action::Unregister(OnLightingDraw);
     renodx::utils::command_action::Unregister(OnDepthPrepass);
     renodx::utils::command_action::Unregister(OnSunShadowMask);

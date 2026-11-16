@@ -1,12 +1,41 @@
 # RenoDX — Total War: SHOGUN 2 Complete Edition (DX11)
 
+### Fix round (2026-11-16; built only, not run in game)
+
+- New: **Rays Replace Shadow Maps (Experimental, off)** under Ray-traced sun shadows: the sun's shadows from the rays
+  alone, without the game's shadow maps and screen-space shadows (one sun-shadow method). Far soldiers and far trees need
+  their shadow rows on; grass casts no contact shadows. The game still draws its shadow maps (no cost saved yet).
+- New: **Torch Shadows Follow the Camera (Experimental, off)**, Attila's row, under Torch and fire shadows from path
+  tracing.
+- New: **Time Each Pass (One Frame)** under the anti-aliasing's More Options, as Attila's.
+- Changed: **Lean ReSTIR Reuse on by default** (ATN): Attila's Nsight at 4K 2.72 -> 1.02 ms for the reuse, the same
+  picture in the quality scorer. Path tracing SER's tooltip says what the tests found: slower.
+- Changed: RT/PT writes the one list every game's RT/PT writes (128 torch and fire shadow lights now) plus Shogun 2's
+  own rows.
+- Fixed: one AO method: GT-VBAO is off under Path-Traced AO too (it stayed on there), and comes back without the rays.
+- Fixed: the reflections' resolve (ssrresolve00): one occlusion a term. The environment it takes off the scene is the one
+  the sun draws added (the rays' AO in place of the game's there too); under Ray-traced specular occlusion the
+  environment takes the rays' occlusion alone and the reflection's hit no AO on top (as Attila's and Thrones').
+- Fixed: a saved helper DLSS is the helper's XeSS on Intel's GPUs, else FSR, off NVIDIA. NVIDIA Reflex shows on NVIDIA
+  only; Frame rate limit with NVIDIA or XeSS frame generation, enabled with Reflex or frame generation on.
+- Credits: Visibility Bitmask AO / GI (Therrien, Levesque and Gilet; GTAO; Mirko Salm; Ottosson), UE Extended by Marat.
+- In game: Ray-traced specular occlusion on: shiny armour and metal no longer take the screen-space AO on top (brighter
+  in creases). Rays Replace Shadow Maps on: every sun shadow from the rays (check far units and trees with their rows).
+- Proven offline: test/tw_shogun2_shaders parts 13 (sun / AO in place, 0 of 1024 apart in sunlight00-03) and 21 (the
+  resolve: unbound the game's, t41 = t_ssao, t46 the open environment, the hit without the AO; each with a CONTROL);
+  test/tw_shogun2_tweaks part 4 (all 12 byte patterns once in empire.retail.x64.dll, at FindPattern's address; CONTROL
+  a changed byte: none).
+- Double work (costs need Time Each Pass in game): the game's line-sweep SSAO (ssao00 / ssao01) still runs under the
+  rays' AO (its readers: the sun draws' t5 and the resolve's t3, both replaced while the rays' AO is bound); the SSR
+  march and HiZ run under ray-traced reflections (the resolve takes the rays' light); the cascades and sss00-02 run
+  under Rays Replace Shadow Maps (nothing reads them in the sun draws then).
+
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
 - **Ray-Traced AO replaces the game's SSAO and GT-VBAO** (ATN: never on top of them): the four sun draws (sunlight00-03)
   take the traced visibility (t41) in place of their t_ssao while it is bound (rt_sun.hlsli RtInPlace), before the darker
   of the two (RtDarker); GT-VBAO isn't drawn while the Ray-Traced AO row is on (one AO method at present; a saved GT-VBAO
-  comes back without it). The cube reflection's resolve (ssrresolve00) still multiplies the game's AO with the rays'
-  specular occlusion.
+  comes back without it).
 - In game: Ray-Traced AO: corners lighter than before; GT-VBAO and the game's SSAO unchanged without rays.
 
 ### One add-on (2026-11-15; built, not run in game)

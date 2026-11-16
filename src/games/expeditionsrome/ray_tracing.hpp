@@ -60,11 +60,15 @@ constexpr uint32_t REFLECTION_SHADER = 0xE36ED33E;
 
 namespace internal {
 
-// Unreal 4.23's View: WorldToClip (rows 4-7), WorldCameraOrigin (63).
+// Unreal 4.23's View: WorldToClip (rows 4-7), WorldCameraOrigin (63), the scale the light pass's output takes (129.y: the
+// sun's PS C38C91CD ends o0.xyz = cb0[129].yyy x its light).
 constexpr uint32_t VIEW_WORLD_TO_CLIP = 4;
 constexpr uint32_t VIEW_WORLD_CAMERA_ORIGIN = 63;
-// FDeferredLightUniformStruct: ShadowedBits (c2.x), the direction toward the light (c5.xyz); bound 144 - 256 bytes.
+constexpr uint32_t VIEW_LIGHT_OUTPUT_SCALE = 129;
+// FDeferredLightUniformStruct: ShadowedBits (c2.x), the light's colour (c4.xyz), the direction toward the light (c5.xyz);
+// bound 144 - 256 bytes.
 constexpr uint32_t LIGHT_SHADOWED_BITS = 2;
+constexpr uint32_t LIGHT_COLOR = 4;
 constexpr uint32_t LIGHT_DIRECTION = 5;
 constexpr UINT MIN_LIGHT_BYTES = 144;
 constexpr UINT MAX_LIGHT_BYTES = 256;
@@ -112,6 +116,7 @@ struct State {
   std::array<twattila::dlaa_bridge::Texture, 2> resolved_positions;
   uint32_t resolved_index = 0;
   uint64_t resolved_frame = UINT64_MAX;
+  uint64_t shadowed_frame = UINT64_MAX;  // the rays' sun shadows' last draw
   std::array<float, 16> view_projection = {};
   std::array<float, 16> previous_view_projection = {};
 };
@@ -353,7 +358,10 @@ void OnSunLit(Context& command, const void*) {
     context->Dispatch((bounce_size[0] + 7) / 8, (bounce_size[1] + 7) / 8, 1);
   }
   state.resolved_index = current;
-  state.resolved_frame = frame;
+  {
+    const std::unique_lock lock(state.mutex);
+    state.resolved_frame = frame;
+  }
   state.previous_view_projection = state.view_projection;
   // The G-buffer the light read (its t2 - t4).
   std::array<ComPtr<ID3D11ShaderResourceView>, 3> gbuffer;
@@ -395,8 +403,8 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   buffers[1]->GetDesc(&light_desc);
   const UINT light_first = std::min(first_constants[1] * 16, light_desc.ByteWidth);
   const UINT light_bytes = std::min(light_desc.ByteWidth - light_first, constant_counts[1] * 16);
-  if (light_bytes < MIN_LIGHT_BYTES || light_bytes > MAX_LIGHT_BYTES || constant_counts[0] <= VIEW_WORLD_CAMERA_ORIGIN) return {};
-  std::array<std::array<float, 4>, VIEW_WORLD_CAMERA_ORIGIN + 1> view = {};
+  if (light_bytes < MIN_LIGHT_BYTES || light_bytes > MAX_LIGHT_BYTES || constant_counts[0] <= VIEW_LIGHT_OUTPUT_SCALE) return {};
+  std::array<std::array<float, 4>, VIEW_LIGHT_OUTPUT_SCALE + 1> view = {};
   std::array<std::array<float, 4>, LIGHT_DIRECTION + 1> light = {};
   talesofarise::dlss::constants::Watch(buffers[0].Get(), (first_constants[0] * 16) + static_cast<uint32_t>(sizeof(view)));
   talesofarise::dlss::constants::Watch(buffers[1].Get(), light_first + static_cast<uint32_t>(sizeof(light)));
@@ -467,7 +475,15 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
       .position = {static_cast<float>(origin[0] / CENTIMETRES), static_cast<float>(origin[1] / CENTIMETRES),
                    static_cast<float>(origin[2] / CENTIMETRES)},
   };
-  twattila::rt_scene::WriteSun(context, {direction[0] / direction_length, direction[1] / direction_length, direction[2] / direction_length});
+  // The sun's diffuse light with its direction (WriteSun's texel 2, w 1), the paths' sun as twattila/rt_sun.cs_5_0.hlsl
+  // writes it for the Total War games: the light lights the G-buffer's diffuse colour (the guides' base x (1 - metallic)) by
+  // the colour times N.L times the shadow. C38C91CD's default lit: DiffuseColor x 0.318309873 (1 / pi) x LightColor (c4) x
+  // its shadow and N.L, x View 129.y at its output.
+  constexpr float INVERSE_PI = 0.318309873f;
+  const float scale = INVERSE_PI * view[VIEW_LIGHT_OUTPUT_SCALE][1];
+  const auto& color = light[LIGHT_COLOR];
+  twattila::rt_scene::WriteSun(context, {direction[0] / direction_length, direction[1] / direction_length, direction[2] / direction_length},
+                               {color[0] * scale, color[1] * scale, color[2] * scale, 1.f});
   auto& bridge = twattila::dlaa_bridge::bridge;
   if (guides && bridge.guides) {
     const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
@@ -523,6 +539,8 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
       const std::array<ID3D11Buffer*, 2> constant_buffers = {buffers[0].Get(), buffers[1].Get()};
       FullScreen(context1.Get(), target, state.multiply_blue.Get(), state.shadow.Get(), views, constant_buffers, first_constants, constant_counts);
       contact_shadows::ray_traced.store(true, std::memory_order_relaxed);
+      const std::unique_lock lock(state.mutex);
+      state.shadowed_frame = frame;
     }
   }
   // The traced ambient: in place of the AO where the game made one (not its 1 x 1 default; R8, its one channel the AO).
@@ -600,6 +618,7 @@ inline const twattila::rt_scene::Host HOST = {
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
     .skinned_code = internal::Skinned,
+    .characters_dynamic = true,
 };
 
 // Every present: the settings (the addon's; the light bounce's strength) and a new frame.
@@ -611,6 +630,21 @@ inline void Update(const twattila::rt_scene::Settings& settings, float bounce_st
     ++internal::state.frame;
   }
   twattila::rt_scene::Update(settings);
+}
+
+enum class Traced : uint8_t {
+  SUN_SHADOWS,
+  LIGHT_BOUNCE,  // path traced or not
+};
+
+// Whether the rays' `effect` reached the scene within the last half second: the game's own method stays off meanwhile
+// (Unreal's screen-space GI under the light bounce; its far sun cascades under the sun shadows with Two Shadow Cascades
+// Under Rays).
+inline bool TracedRecently(Traced effect) {
+  constexpr uint64_t RECENT_FRAMES = 30;
+  const std::unique_lock lock(internal::state.mutex);
+  const uint64_t traced = (effect == Traced::SUN_SHADOWS ? internal::state.shadowed_frame : internal::state.resolved_frame);
+  return traced != UINT64_MAX && traced + RECENT_FRAMES >= internal::state.frame;
 }
 
 // At the temporal pass: its scene colour (`color`, the render pixels at its top-left) is the helper's last frame's

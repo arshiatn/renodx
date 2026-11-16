@@ -352,23 +352,24 @@ inline bool AmbientReplaced() {
   return sliders.ambient_occlusion != 0.f && twattila::rt_scene::Visibilities()[1] != nullptr;
 }
 
-// After ASSAO's apply (`ambient`) or the shadow mask's resolve: this frame's traced visibility multiplies the target's red.
-// ASSAO's target is cleared to open first: the rays' AO in place of the game's, never on top of it (ATN 2026-11-16; its 372
-// readers in the dump read its red only).
-inline void Multiply(reshade::api::command_list* cmd_list, bool ambient) {
-  if ((ambient ? sliders.ambient_occlusion : sliders.sun_shadows) == 0.f) return;
+// After ASSAO's apply (`ambient`) or the shadow mask's resolve: this frame's traced visibility multiplies the target's red
+// (true: it did). ASSAO's target is cleared to open first: the rays' AO in place of the game's, never on top of it (ATN
+// 2026-11-16; its 372 readers in the dump read its red only).
+inline bool Multiply(reshade::api::command_list* cmd_list, bool ambient) {
+  if ((ambient ? sliders.ambient_occlusion : sliders.sun_shadows) == 0.f) return false;
   ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
-  if (native == nullptr) return;
+  if (native == nullptr) return false;
   ID3D11ShaderResourceView* visibility = twattila::rt_scene::Visibilities()[ambient ? 1 : 0];
   ComPtr<ID3D11RenderTargetView> target;
   native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
   ComPtr<ID3D11DeviceContext1> native1;
-  if (visibility == nullptr || !target || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
+  if (visibility == nullptr || !target || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return false;
   if (ambient) {
     constexpr std::array<float, 4> OPEN = {1.f, 1.f, 1.f, 1.f};
     native->ClearRenderTargetView(target.Get(), OPEN.data());
   }
   internal::DrawMultiply(native1.Get(), target.Get(), visibility, false);
+  return true;
 }
 
 // At the addon's start, with a row on (the scene's shaders kept from the game's start).

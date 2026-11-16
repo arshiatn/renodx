@@ -65,7 +65,7 @@ struct Rows {
   float light_bounce_multi_bounce = 0.f;
   float light_bounce_checkerboard = 1.f;
   float light_bounce_backface = 0.f;
-  float light_bounce_auto_thickness = 1.f;
+  float light_bounce_auto_thickness = 0.f;
 };
 
 // Global Illumination's GT-VBGI rows (lighting_settings::Append's, with its presets) onto `settings`, bound to `rows`;

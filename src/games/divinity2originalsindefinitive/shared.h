@@ -77,6 +77,9 @@ struct ShaderInjectData {
 
   // Experimental, 0 = off: t01 samples a modded LUT at its texel centres (the game's addressing is half a texel off).
   float exact_lut_sampling;
+
+  // Experimental, 1 = the game's: the PCSS sun shadows' light size (tan of the sun's angle) x this.
+  float sun_shadow_softness;
 };
 
 #define SI shader_injection
