@@ -29,8 +29,6 @@
 
 Texture2D<float3> light : register(t9);               // the prepared light (bounce texels; PATH_LIGHT_FINAL: the light buffer, render pixels)
 Texture2D<float4> previous_color : register(t10);     // last frame's scene colour (render pixels)
-// Last frame's world positions at slice previous_positions_slice; the other slice takes this frame's for the next.
-Texture2DArray<float4> previous_positions : register(t11);
 Texture2D<float4> guide_normals : register(t12);      // world normals (x 0: none)
 Texture2D<float4> guide_albedo : register(t13);       // diffuse albedo
 Texture2D<float> guide_roughness : register(t14);

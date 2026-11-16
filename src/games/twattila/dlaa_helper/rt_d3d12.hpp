@@ -914,6 +914,7 @@ class RtScene12 {
     guide_albedo_.Reset();
     guide_roughness_.Reset();
     kept_positions_.Reset();
+    trace_positions_slice_ = NO_SLICE;
     water_positions_.Reset();
     reflection_.Reset();
     specular_.Reset();
@@ -1368,27 +1369,53 @@ class RtScene12 {
         const uint32_t height = std::max(shared.rt_height, 1u);
         const bool first_paths_request = frame != paths_frame_;
         if (first_paths_request) {
-          history_valid_ = copied_frame_ != UINT32_MAX && copied_frame_ + 1 == frame && previous_color_;
-          // The slice that took the last copy is last frame's now, the other takes this frame's: one copy a frame (the two
-          // textures before took two, 0.15 ms of a 4K frame each).
-          previous_positions_slice_ = copied_slice_;
-          copied_slice_ = 1u - copied_slice_;
+          history_valid_ = paths_copied_frame_ != UINT32_MAX && paths_copied_frame_ + 1 == frame && previous_color_;
+          // This frame's trace copied the positions into copied_slice_ for both histories (and turned the slices): a Light
+          // Bounce takes its copy (the positions are still the trace's: the water's replace them at the reflections' pass,
+          // after it); a reflections request first (the water's may be in them now) hands the trace's copy to
+          // ambient_positions_ and makes its own.
+          const bool trace_copied = copied_frame_ == frame && trace_positions_slice_ == copied_slice_;
           const D3D12_BOX region = {.left = 0, .top = 0, .front = 0, .right = width, .bottom = height, .back = 1};
-          std::array<D3D12_RESOURCE_BARRIER, 2> to_copy = {
-              Transition(kept_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST),
-              Transition(positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
-          };
-          to_copy[0].Transition.Subresource = copied_slice_;
-          list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
-          const D3D12_TEXTURE_COPY_LOCATION to = {.pResource = kept_positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
-                                                  .SubresourceIndex = copied_slice_};
-          const D3D12_TEXTURE_COPY_LOCATION from = {.pResource = positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
-          list->CopyTextureRegion(&to, 0, 0, 0, &from, &region);
-          for (auto& barrier : to_copy) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
-          list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
+          if (trace_copied && reflections) {
+            std::array<D3D12_RESOURCE_BARRIER, 2> to_trace = {
+                Transition(kept_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE),
+                Transition(ambient_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST),
+            };
+            to_trace[0].Transition.Subresource = copied_slice_;
+            list->ResourceBarrier(static_cast<UINT>(to_trace.size()), to_trace.data());
+            const D3D12_TEXTURE_COPY_LOCATION to = {.pResource = ambient_positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+            const D3D12_TEXTURE_COPY_LOCATION from = {.pResource = kept_positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                                                      .SubresourceIndex = copied_slice_};
+            list->CopyTextureRegion(&to, 0, 0, 0, &from, &region);
+            for (auto& barrier : to_trace) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+            list->ResourceBarrier(static_cast<UINT>(to_trace.size()), to_trace.data());
+            trace_positions_slice_ = NO_SLICE;
+          }
+          if (!trace_copied) {
+            // The slice that took the last copy is last frame's now, the other takes this frame's: one copy a frame (the two
+            // textures before took two, 0.15 ms of a 4K frame each).
+            previous_positions_slice_ = copied_slice_;
+            copied_slice_ = 1u - copied_slice_;
+            if (trace_positions_slice_ == copied_slice_) trace_positions_slice_ = NO_SLICE;
+          }
+          if (!trace_copied || reflections) {
+            std::array<D3D12_RESOURCE_BARRIER, 2> to_copy = {
+                Transition(kept_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST),
+                Transition(positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
+            };
+            to_copy[0].Transition.Subresource = copied_slice_;
+            list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
+            const D3D12_TEXTURE_COPY_LOCATION to = {.pResource = kept_positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                                                    .SubresourceIndex = copied_slice_};
+            const D3D12_TEXTURE_COPY_LOCATION from = {.pResource = positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+            list->CopyTextureRegion(&to, 0, 0, 0, &from, &region);
+            for (auto& barrier : to_copy) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+            list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
+            copied_frame_ = frame;
+          }
           std::copy_n(current_view_projection_.begin(), 16, previous_view_projection_.begin());
           std::copy_n(shared.rt_view_projection, 16, current_view_projection_.begin());
-          copied_frame_ = frame;
+          paths_copied_frame_ = frame;
           paths_frame_ = frame;
         }
         // Softer Water Reflections (RT_REFLECTIONS_WATER_POSITIONS): the addon wrote the water's surface over the positions
@@ -1405,6 +1432,7 @@ class RtScene12 {
                 Transition(water_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE),
             };
             to_previous_copy[0].Transition.Subresource = previous_positions_slice_;
+            if (trace_positions_slice_ == previous_positions_slice_) trace_positions_slice_ = NO_SLICE;
             list->ResourceBarrier(static_cast<UINT>(to_previous_copy.size()), to_previous_copy.data());
             const D3D12_TEXTURE_COPY_LOCATION previous = {.pResource = kept_positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
                                                           .SubresourceIndex = previous_positions_slice_};
@@ -2066,6 +2094,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_AMBIENT_PARITY = 32768;
   static constexpr uint32_t PATH_TINT = 1048576;  // rt_camera.hlsli
   static constexpr uint32_t PATH_TINT_GUIDES = 2097152;
+  static constexpr uint32_t PATH_AMBIENT_KEPT = 65536;  // rt_camera.hlsli (the paths' PATH_PERMUTE: another request's word)
   static constexpr uint32_t PATH_LIGHT_HISTORY = 131072;
   static constexpr uint32_t PATH_PERMUTE = 65536;
   static constexpr uint32_t PATH_AMBIENT = 262144;  // rt_path.hlsli
@@ -2810,7 +2839,9 @@ class RtScene12 {
           device_->CreateShaderResourceView(kept_positions_.Get(), &view, Descriptor(PREVIOUS_POSITIONS));
         }
         copied_frame_ = UINT32_MAX;
+        paths_copied_frame_ = UINT32_MAX;
         paths_frame_ = UINT32_MAX;
+        trace_positions_slice_ = NO_SLICE;
         return true;
       case HISTORY_REUSE:
         // ReSTIR GI's two sets of reservoirs (the path-traced Light Bounce's) and the bounce texels' surfaces (rt_path.hlsli
@@ -2917,6 +2948,7 @@ class RtScene12 {
         Written(ambient_history_[1].Get(), DXGI_FORMAT_R16_FLOAT, AMBIENT_HISTORY + 1);
         Written(ambient_positions_.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, AMBIENT_POSITIONS);
         ambient_frame_ = UINT32_MAX;
+        trace_positions_slice_ = NO_SLICE;
         return true;
       case HISTORY_LIGHTS:
         // The local lights' bits: two sets in turn (the ambient's parity, its positions), their tiles' lists below them
@@ -2955,6 +2987,7 @@ class RtScene12 {
     if (kept_positions_ && unused(HISTORY_PATHS)) {
       device_->CreateShaderResourceView(nullptr, &NO_KEPT_POSITIONS, Descriptor(PREVIOUS_POSITIONS));
       release("paths' positions", {std::addressof(kept_positions_)}, {});
+      trace_positions_slice_ = NO_SLICE;
     }
     if (water_positions_ && unused(HISTORY_WATER)) release("water's positions", {std::addressof(water_positions_)}, {});
     if (reuse_samples_[0] && unused(HISTORY_REUSE)) {
@@ -4851,6 +4884,13 @@ class RtScene12 {
     const bool lights_kept = local_lights && version >= 11 && EnsureHistory(HISTORY_LIGHTS, frame);
     const bool ambient_kept = version >= 11 && (((shared.rt_flags & dlaa_bridge::RT_AMBIENT_OCCLUSION) != 0 && !nrd_ambient) || lights_kept)
                               && EnsureHistory(HISTORY_AMBIENT, frame);
+    // The last trace's positions: ambient_positions_, or kept_positions_' slice trace_positions_slice_ where that trace's copy
+    // was the paths' too. This trace's copy goes to the paths' next slice when the frame's Light Bounce will take it (one
+    // took the last frame's: Paths takes this one), else to ambient_positions_: one render-size RGBA32F copy a frame less
+    // with both histories.
+    const bool history_kept = ambient_kept && kept_positions_ && trace_positions_slice_ != NO_SLICE;
+    const bool copy_kept = ambient_kept && kept_positions_ && copied_frame_ != frame && light_frame_ != UINT32_MAX && light_frame_ + 1 == frame;
+    if (history_kept || copy_kept) history_used_[HISTORY_PATHS] = frame;
     {
       // RENODX_TW_NO_TRACE_HISTORY=1 (the quality scorer's raw AO and torches with every other history kept: frame numbers
       // two apart turned off the paths' and the reflections' too): neither history is applied, both still written.
@@ -4859,7 +4899,8 @@ class RtScene12 {
       PathConstants constants = {.flags = (last_frame ? PATH_AMBIENT_HISTORY : 0u) | (((shared.rt_flags & dlaa_bridge::RT_START_PAST) != 0) ? PATH_START_PAST : 0u)
                                           | (lights_kept && last_frame && lights_frame_ + 1 == frame && lights_mode == lights_mode_traced_ ? PATH_LIGHT_HISTORY : 0u)
                                           | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u) | (tint ? PATH_TINT : 0u)
-                                          | (tint_guides ? PATH_TINT_GUIDES : 0u),
+                                          | (tint_guides ? PATH_TINT_GUIDES : 0u) | (history_kept ? PATH_AMBIENT_KEPT : 0u),
+                                 .previous_positions_slice = history_kept ? trace_positions_slice_ : 0u,
                                  // The last bounce's shadow ratio: its texels, the set it wrote.
                                  .lights_in_bounce = light_ratio ? (3u | ((ratio_parity_ == 0) ? 16u : 0u) | (ratio_kept ? 32u : 0u)) : 0u};
       if (light_ratio) {
@@ -4872,10 +4913,13 @@ class RtScene12 {
       std::memcpy(slot->paths_data, &constants, sizeof(constants));
       list->SetComputeRootConstantBufferView(ROOT_PATHS, slot->paths->GetGPUVirtualAddress());
     }
-    if (ambient_kept) {
-      const auto to_uav = Transition(ambient_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-      list->ResourceBarrier(1, &to_uav);
+    // The last trace's positions for the trace's and the local lights' dispatches.
+    D3D12_RESOURCE_BARRIER history_read = Transition(ambient_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    if (history_kept) {
+      history_read = Transition(kept_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+      history_read.Transition.Subresource = trace_positions_slice_;
     }
+    if (ambient_kept) list->ResourceBarrier(1, &history_read);
     Mark(list, L"trace");
     list->SetPipelineState(trace_pipeline_.Get());
     if (profiling_) {
@@ -4897,22 +4941,30 @@ class RtScene12 {
       list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
     }
     if (ambient_kept) {
-      // This trace's positions for the next one.
-      const std::array<D3D12_RESOURCE_BARRIER, 2> to_copy = {
-          Transition(ambient_positions_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+      // This trace's positions for the next one (copy_kept: in the slices' turn, as the paths' first request's copy).
+      std::swap(history_read.Transition.StateBefore, history_read.Transition.StateAfter);
+      list->ResourceBarrier(1, &history_read);
+      if (copy_kept) {
+        previous_positions_slice_ = copied_slice_;
+        copied_slice_ = 1u - copied_slice_;
+        copied_frame_ = frame;
+      }
+      ID3D12Resource* const kept = copy_kept ? kept_positions_.Get() : ambient_positions_.Get();
+      const UINT kept_subresource = copy_kept ? copied_slice_ : 0u;
+      std::array<D3D12_RESOURCE_BARRIER, 2> to_copy = {
+          Transition(kept, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST),
           Transition(positions_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
       };
+      to_copy[0].Transition.Subresource = kept_subresource;
       list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
-      const D3D12_TEXTURE_COPY_LOCATION to = {.pResource = ambient_positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+      const D3D12_TEXTURE_COPY_LOCATION to = {.pResource = kept, .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, .SubresourceIndex = kept_subresource};
       const D3D12_TEXTURE_COPY_LOCATION from = {.pResource = positions_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
       const D3D12_BOX region = {.left = 0, .top = 0, .front = 0, .right = std::max(shared.rt_width, 1u), .bottom = std::max(shared.rt_height, 1u),
                                 .back = 1};
       list->CopyTextureRegion(&to, 0, 0, 0, &from, &region);
-      const std::array<D3D12_RESOURCE_BARRIER, 2> back = {
-          Transition(ambient_positions_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON),
-          Transition(positions_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-      };
-      list->ResourceBarrier(static_cast<UINT>(back.size()), back.data());
+      for (auto& barrier : to_copy) std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+      list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
+      trace_positions_slice_ = copy_kept ? copied_slice_ : NO_SLICE;
       std::copy_n(shared.rt_view_projection, 16, ambient_view_projection_.begin());
       ambient_frame_ = frame;
       ambient_parity_ ^= 1u;
@@ -6138,6 +6190,10 @@ class RtScene12 {
   ComPtr<ID3D12Resource> kept_positions_;
   uint32_t copied_slice_ = 0;
   uint32_t previous_positions_slice_ = 0;
+  // The slice the last trace's copy is in (one copy for the trace's history and the paths': rt_camera.hlsli
+  // PATH_AMBIENT_KEPT), NO_SLICE: in ambient_positions_.
+  static constexpr uint32_t NO_SLICE = UINT32_MAX;
+  uint32_t trace_positions_slice_ = NO_SLICE;
   // Softer Water Reflections: the positions at the reflections request of frame water_frame_ (the water's surface).
   ComPtr<ID3D12Resource> water_positions_;
   uint32_t water_frame_ = UINT32_MAX;
@@ -6218,7 +6274,8 @@ class RtScene12 {
   std::array<float, 16> current_view_projection_ = {};
   std::array<float, 16> previous_view_projection_ = {};
   uint32_t paths_frame_ = UINT32_MAX;     // the frame of the last path request (the history copied then)
-  uint32_t copied_frame_ = UINT32_MAX;    // the frame kept_positions_' copied_slice_ holds
+  uint32_t copied_frame_ = UINT32_MAX;    // the frame kept_positions_' copied_slice_ holds (the trace's or the paths' copy)
+  uint32_t paths_copied_frame_ = UINT32_MAX;  // the last frame the paths took a copy (their own or the trace's): their history
   uint32_t light_frame_ = UINT32_MAX;     // the frame the prepared light is from
   uint32_t cache_frame_ = UINT32_MAX;     // the frame the cache was last filled
   uint32_t specular_frame_ = UINT32_MAX;  // the frame of the last reflections

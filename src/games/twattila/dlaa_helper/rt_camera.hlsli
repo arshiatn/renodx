@@ -49,7 +49,17 @@ static const uint PATH_LIGHT_HISTORY = 131072u;   // the last trace's positions 
 static const uint PATH_TINT = 1048576u;           // Coloured Shadows: the trace writes its filter (rt_trace's tint)
 static const uint PATH_TINT_GUIDES = 2097152u;    // with the diffuse albedo guide's colours
 
-RWTexture2D<float4> ambient_positions : register(u30);  // the last trace's positions (its histories')
+RWTexture2D<float4> ambient_positions : register(u30);  // the last trace's positions (its histories'), but with PATH_AMBIENT_KEPT
+// Last frame's world positions at slice previous_positions_slice (the paths'); the other slice takes this frame's for the
+// next. With PATH_AMBIENT_KEPT in a trace's flags the last trace's positions are there, at that slice: its copy was the
+// frame's Light Bounce's too (rt_d3d12.hpp: one copy a frame for both histories).
+Texture2DArray<float4> previous_positions : register(t11);
+static const uint PATH_AMBIENT_KEPT = 65536u;  // path_flags in the trace (the paths' PATH_PERMUTE: another request's word)
+
+// The last trace's position (view depth in w) at its pixel.
+float4 LastTracePosition(uint2 pixel) {
+  return ((path_flags & PATH_AMBIENT_KEPT) != 0u) ? previous_positions[uint3(pixel, previous_positions_slice)] : ambient_positions[pixel];
+}
 
 float4 ClipOf(float3 world, float4 registers[4]) {
   const float4 position = float4(world, 1.f);
@@ -63,7 +73,7 @@ bool SeenByLastTrace(float3 world, out uint2 seen_pixel) {
   const float2 uv = clip.xy / max(clip.w, 9.998928e-7f) * float2(0.5f, -0.5f) + 0.5f;
   if (clip.w <= 0.f || any(uv < 0.f) || any(uv >= 1.f)) return false;
   seen_pixel = min(uint2(uv * float2(width, height)), uint2(width, height) - 1u);
-  const float4 seen = ambient_positions[seen_pixel];
+  const float4 seen = LastTracePosition(seen_pixel);
   return seen.w > 0.f && distance(seen.xyz, world) < 0.030005185f + 0.01f * seen.w;
 }
 
