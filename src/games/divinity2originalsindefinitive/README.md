@@ -247,6 +247,15 @@ Total War helper (`renodx-tw-dlaa64.exe` and its DLLs next to `EoCApp.exe`):
   Specular Occlusion. The game's screen-space reflections (DeferredSSR and
   its combine) are left out under them: one method.
 
+Without the helper (`screen_space.hpp`, Experimental, off until a game run):
+
+- **GT-VBAO** (Ambient Occlusion's method; keep in-game SSAO on): PPSAO's four
+  draws are not drawn and the reinterleave's draw runs `ao_vbao` (the
+  visibility bitmask on LinearizeDepth's depth in PerView's camera, GBuffer1's
+  normal) in its pixel shader's place: the game's two blurs, PPApplyAO and
+  ClusteredLightingWithSSAO read it as the game's AO. Ray-traced AO and
+  Path-Traced Ambient take the chain over: one method.
+
 Not yet: render scale below 100%, the game's settings above its maximum.
 
 ## Data runs and installing
@@ -299,7 +308,9 @@ cone response): press Reset before comparing defaults.
   DeferredSky the paths' sky, its black diffuse under the paths and the GI's
   diffuse factor, the G-buffer guides against its own diffuse / specular,
   the reflections over its own IBL specular and the screen-space reflections
-  left out (the game's DeferredSSRCombine bytes), each with a control that
+  left out (the game's DeferredSSRCombine bytes), GT-VBAO in the game's
+  reinterleave's place (its depth channel the game's bit for bit, open ground
+  and a corner) and the game's own blur over it, each with a control that
   must fail.
 - `test/tw_psychov30_nan`, `test/tw_output_encoding`, `test/tw_device_loss`,
   `test/tw_draw_dispatch`: the shared PsychoV30 guards, the not-configured

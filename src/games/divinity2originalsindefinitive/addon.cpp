@@ -43,6 +43,7 @@
 #include "../twattila/reflex.hpp"
 #include "./dlaa.hpp"
 #include "./ray_tracing.hpp"
+#include "./screen_space.hpp"
 #include "./shared.h"
 
 const std::string build_date = __DATE__;
@@ -810,31 +811,36 @@ constexpr uint32_t REFLECTION_COMBINE_HASH = 0x0FA22D5A;
 
 // The graphics page's anti-aliasing: the game's, the helper's DLSS, FSR and XeSS (dlaa.hpp: in DLSS's place).
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
-// What the page reads that this game has no row for (GT-VBAO, Bend): 0 / off.
-float no_game_row = 0.f;
+// What the page reads that this game has no row for (Bend): off.
 twattila::feature_settings::SssSliders no_screen_space_shadows;
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = {"Game's", "", "", "", "", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
-    .aa_tooltip = "Game's: the game's own (SMAA, FXAA or off).\n"
-                  "DLSS: NVIDIA's DLAA (RTX), in place of the game's SMAA or FXAA. FSR: AMD's, FSR 4 on Radeon RX 6000 and\n"
-                  "newer, else 3.1. XeSS: Intel's, any GPU. Both in DLSS's place. Ray tracing needs one of them.\n"
-                  "Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
+    .aa_tooltip =
+        "Game's: the game's own (SMAA, FXAA or off).\n"
+        "DLSS: NVIDIA's DLAA (RTX), in place of the game's SMAA or FXAA. FSR: AMD's, FSR 4 on Radeon RX 6000 and\n"
+        "newer, else 3.1. XeSS: Intel's, any GPU. Both in DLSS's place. Ray tracing needs one of them.\n"
+        "Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
     .in_game_aa_note = "DLSS, FSR and XeSS take the place of the game's SMAA or FXAA: any in-game Anti-Aliasing works.",
     .reset_tooltip = "Everything on this page but Anti-Aliasing back to its default: the game's shadows and AO.",
     .no_rays_tooltip = "The game's own shadows and ambient occlusion. The rest of this page at its default.",
-    .rays_tooltip = "Ray-traced sun shadows, ambient occlusion, global illumination and reflections at my settings. The rest of\n"
-                    "this page at its default.\n"
-                    "Needs an upscaler (Anti-Aliasing above). Restart the game after turning ray tracing on.",
-    .shadow_tooltip = "Game's Shadow Maps: the original. DXR: ray-traced sun shadows in their place (keep in-game\n"
-                      "shadows on). Needs an upscaler. Restart the game after turning it on.",
-    .ao_tooltip = "Soft shadows in corners and where objects meet the ground.\n"
-                  "Game's SSAO: the original. RTAO: from rays through the scene, in its place (keep in-game SSAO on).\n"
-                  "Path-Traced: the sky's light itself from Global Illumination's paths, its shade included.\n"
-                  "Needs an upscaler. Restart the game after turning it on.",
+    .rays_tooltip =
+        "Ray-traced sun shadows, ambient occlusion, global illumination and reflections at my settings. The rest of\n"
+        "this page at its default.\n"
+        "Needs an upscaler (Anti-Aliasing above). Restart the game after turning ray tracing on.",
+    .shadow_tooltip =
+        "Game's Shadow Maps: the original. DXR: ray-traced sun shadows in their place (keep in-game\n"
+        "shadows on). Needs an upscaler. Restart the game after turning it on.",
+    .ao_tooltip =
+        "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on.\n"
+        "Game's SSAO: the original. GT-VBAO (Experimental): in its place, objects have a thickness, so light\n"
+        "gets behind thin ones. RTAO: from rays through the scene, in its place.\n"
+        "Path-Traced: the sky's light itself from Global Illumination's paths, its shade included.\n"
+        "The last two need an upscaler. Restart the game after turning them on.",
     .gi_tooltip_end = "\nRestart the game after turning it on.",
-    .reflections_tooltip = "Reflections on metal, water and polished floors.\n"
-                           "Game's SSR: the original (its light probes, with in-game SSR its screen-space reflections). DXR: from\n"
-                           "rays, also what is off screen or hidden, in their place. Needs an upscaler. Restart the game after turning it on.",
+    .reflections_tooltip =
+        "Reflections on metal, water and polished floors.\n"
+        "Game's SSR: the original (its light probes, with in-game SSR its screen-space reflections). DXR: from\n"
+        "rays, also what is off screen or hidden, in their place. Needs an upscaler. Restart the game after turning it on.",
 };
 
 // Each replaced shader's first use is logged once (the "applied" lines of a data run); a bit per custom shader.
@@ -1209,6 +1215,16 @@ void ConfigureAddon() {
         .on_draw = [](reshade::api::command_list* cmd_list) { return !divinity2::ray_tracing::SkipAmbientChain(cmd_list); },
     };
   }
+  // GT-VBAO (screen_space.hpp) where the rays leave the chain drawn: PPSAO not drawn, the reinterleave its pass.
+  custom_shaders[divinity2::screen_space::internal::SAO_SHADER].on_draw = [](reshade::api::command_list* cmd_list) {
+    return !divinity2::ray_tracing::SkipAmbientChain(cmd_list) && !divinity2::screen_space::SkipSao(cmd_list);
+  };
+  custom_shaders[divinity2::screen_space::internal::REINTERLEAVE_SHADER].on_draw = [](reshade::api::command_list* cmd_list) {
+    if (divinity2::ray_tracing::SkipAmbientChain(cmd_list)) return false;
+    divinity2::screen_space::OnReinterleave(cmd_list);
+    return true;
+  };
+  custom_shaders[divinity2::screen_space::internal::REINTERLEAVE_SHADER].on_drawn = divinity2::screen_space::OnReinterleaveDrawn;
   custom_shaders[divinity2::ray_tracing::internal::AO_BLUR_SHADER] = {
       .crc32 = divinity2::ray_tracing::internal::AO_BLUR_SHADER,
       .on_draw = [](reshade::api::command_list* cmd_list) { return !divinity2::ray_tracing::ReplaceAmbientBlur(cmd_list); },
@@ -1250,11 +1266,92 @@ void ConfigureAddon() {
       .max = 4.f,
       .format = "%.2f",
   });
+  // GT-VBAO's rows (screen_space.hpp; the page's method slider writes ssao_mode).
+  {
+    using renodx::utils::settings::Setting;
+    using renodx::utils::settings::SettingValueType;
+    auto& ao = divinity2::screen_space::ao;
+    const std::string& section = twattila::feature_settings::AA_SECTION;
+    settings.insert(settings.end(), {
+                                        new Setting{
+                                            .key = "ssao_mode",
+                                            .binding = &ao.mode,
+                                            .value_type = SettingValueType::INTEGER,
+                                            .default_value = 0.f,
+                                            .label = "Ambient Occlusion",
+                                            .section = section,
+                                            .labels = {"Game's", "GT-VBAO"},
+                                        },
+                                        new Setting{
+                                            .key = "ssao_strength",
+                                            .binding = &ao.strength,
+                                            .default_value = 1.f,
+                                            .label = "Strength",
+                                            .section = section,
+                                            .tooltip = "How dark it gets. 1: physically correct; higher: darker.",
+                                            .min = 0.f,
+                                            .max = 3.f,
+                                            .format = "%.2f",
+                                        },
+                                        new Setting{
+                                            .key = "ssao_radius",
+                                            .binding = &ao.radius,
+                                            .default_value = 1.f,
+                                            .label = "Radius",
+                                            .section = section,
+                                            .tooltip = "How far it reaches. Larger: wider shading, heavier (raise Quality with it).",
+                                            .min = 0.25f,
+                                            .max = 4.f,
+                                            .format = "%.2f m",
+                                        },
+                                        new Setting{
+                                            .key = "ssao_thickness",
+                                            .binding = &ao.thickness,
+                                            .default_value = 0.1f,
+                                            .label = "Thickness",
+                                            .section = section,
+                                            .min = 0.01f,
+                                            .max = 1.f,
+                                            .format = "%.2f m",
+                                        },
+                                        new Setting{
+                                            .key = "ssao_quality",
+                                            .binding = &ao.quality,
+                                            .value_type = SettingValueType::INTEGER,
+                                            .default_value = 1.f,
+                                            .label = "Quality",
+                                            .section = section,
+                                            .tooltip = "Samples per direction. More: thin things still count at a large Radius. Heavier.",
+                                            .labels = {"Normal (8)", "High (16)", "Ultra (32)", "64"},
+                                        },
+                                        new Setting{
+                                            .key = "ssao_directions",
+                                            .binding = &ao.directions,
+                                            .value_type = SettingValueType::INTEGER,
+                                            .default_value = 1.f,
+                                            .label = "Directions",
+                                            .section = section,
+                                            .tooltip = "Directions searched around each pixel. More: less noise, heavier.",
+                                            .labels = {"1", "2", "4", "8"},
+                                        },
+                                        new Setting{
+                                            .key = "ssao_auto_thickness",
+                                            .binding = &ao.auto_thickness,
+                                            .value_type = SettingValueType::BOOLEAN,
+                                            .default_value = 0.f,
+                                            .label = "Auto Thickness (Experimental)",
+                                            .section = section,
+                                            .tooltip = "Guesses each object's thickness from its width, Thickness as the least:\n"
+                                                       "thin poles stay thin, walls and pillars block fully.",
+                                            .labels = {"Off", "On"},
+                                        },
+                                    });
+  }
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   twattila::graphics_page::Apply(&settings, {.aa = &divinity2::dlaa::sliders,
                                              .sss = &no_screen_space_shadows,
                                              .rt = &divinity2::ray_tracing::sliders,
-                                             .ssao_mode = &no_game_row,
+                                             .ssao_mode = &divinity2::screen_space::ao.mode,
                                              .light_bounce_strength = &divinity2::ray_tracing::light_bounce_strength,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
@@ -1262,7 +1359,6 @@ void ConfigureAddon() {
                                              .has_foliage_light = false,
                                              .rays_preset_as_attila = true,
                                              .path_ambient_tested = false,
-                                             .has_gtvbao = false,
                                              .has_screen_space_shadows = false,
                                              .has_gtvbgi = false,
                                              .rays_tested = false,
@@ -1291,6 +1387,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
   reshade::register_event<reshade::addon_event::present>(OnPresent);
   divinity2::dlaa::Install();
+  divinity2::screen_space::Install();
   // Frame generation's HUD-less frame through the swap chain shader, its constants at b10 (shared.h's shader_injection).
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,
                                       sizeof(shader_injection), __fg_hdr10, 10);
@@ -1326,6 +1423,7 @@ void DetachAddon() {
   talesofarise::frame_trace::Stop();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
   divinity2::dlaa::Uninstall();
+  divinity2::screen_space::Uninstall();
   divinity2::ray_tracing::Uninstall();
   twattila::frame_generation::Uninstall();
   twattila::reflex::Uninstall();

@@ -40,6 +40,12 @@
 //    bit, Specular Occlusion alone dims it by the open share (CONTROL: the rotation transposed); DeferredSSR not drawn and
 //    DeferredSSRCombine (0x0FA22D5A) replaced by its scene bit for bit under them (CONTROLS: the game's combine changes
 //    the scene; the reflections off: both the game's).
+// 10. GT-VBAO (screen_space.hpp) against the game's PPSAO_Reinterleave (0x2CA00ABD) and PPSAO_Blur (0x6FFB511E), the
+//    census's bytes, on a scene through CITY's camera at 256 x 144 (the ground 15 m below the eye, a wall facing it): PPSAO's
+//    four draws skipped, the reinterleave's draw with GT-VBAO's shader writes the game's own depth (green) in every pixel
+//    and a visibility near 1 on open ground, dark in the corner; the game's shader and bindings back after; the game's blur
+//    keeps them so (CONTROLS: GT-VBAO off, the game's reinterleave writes its slices' AO; the world normal in GBuffer1
+//    (no View rotation) darkens open ground; the blur changed the texture).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -52,11 +58,13 @@
 #include <fstream>
 #include <iterator>
 #include <mutex>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
 #include "src/games/divinity2originalsindefinitive/dlaa.hpp"
 #include "src/games/divinity2originalsindefinitive/ray_tracing.hpp"
+#include "src/games/divinity2originalsindefinitive/screen_space.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
 
 // utils/settings.hpp's (the graphics page's modules through dlaa.hpp)
@@ -1486,6 +1494,256 @@ int main(int argc, char** argv) {
     runtime.path_ambient_on = false;
     ray_state.settings.path_ambient = false;
     dlaa::rays = false;
+  }
+
+  // 10. GT-VBAO in the game's SSAO's place.
+  {
+    namespace screen = divinity2::screen_space;
+    constexpr UINT AO_WIDTH = 256;
+    constexpr UINT AO_HEIGHT = 144;
+    constexpr size_t AO_PIXELS = static_cast<size_t>(AO_WIDTH) * AO_HEIGHT;
+    const std::string census = std::string(argv[1]).substr(0, std::string(argv[1]).find_last_of("\\/") + 1);
+    const auto game_shader = [&](const std::string& name, uint32_t hash) {
+      std::vector<uint8_t> code;
+      {
+        std::ifstream file(census + name, std::ios::binary);
+        code.assign(std::istreambuf_iterator<char>(file), {});
+      }
+      REQUIRE(!code.empty() && renodx::utils::hash::ComputeCRC32(code.data(), code.size()) == hash);
+      ComPtr<ID3D11PixelShader> shader;
+      REQUIRE(SUCCEEDED(device->CreatePixelShader(code.data(), code.size(), nullptr, shader.GetAddressOf())));
+      return shader;
+    };
+    const auto reinterleave = game_shader("0x2CA00ABD.ps_5_0.cso", 0x2CA00ABD);
+    const auto blur = game_shader("0x6FFB511E.ps_5_0.cso", 0x6FFB511E);
+    // The post passes' vertex outputs as the game's pixel shaders read them: SV_Position, TexCoord0 (uv).
+    const char* vertex_source =
+        "void main(uint id : SV_VertexID, out float4 position : SV_Position0, out float2 uv : TexCoord0) {"
+        " uv = float2((id << 1) & 2, id & 2); position = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1); }";
+    ComPtr<ID3DBlob> vertex_blob;
+    REQUIRE(SUCCEEDED(D3DCompile(vertex_source, std::strlen(vertex_source), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vertex_blob.GetAddressOf(), nullptr)));
+    ComPtr<ID3D11VertexShader> post_vertex;
+    REQUIRE(SUCCEEDED(device->CreateVertexShader(vertex_blob->GetBufferPointer(), vertex_blob->GetBufferSize(), nullptr, post_vertex.GetAddressOf())));
+    const D3D11_SAMPLER_DESC point_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                           .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+    ComPtr<ID3D11SamplerState> point_clamp;
+    REQUIRE(SUCCEEDED(device->CreateSamplerState(&point_desc, point_clamp.GetAddressOf())));
+    // The scene through CITY's camera (unjittered): the ground 15 m below the eye, a wall facing the camera 2 m past where
+    // the screen's centre ray meets the ground. LinearizeDepth's view z / 100; GBuffer1 as the game's G-buffer writes it
+    // (View's rows times the world normal, n.xy / (1 + n.z) x 0.281262308 + 0.5), and the world normal so encoded.
+    const Matrix view = Rows(CITY.data());
+    const Matrix to_world = Inverse(Rows(CITY.data() + 32));
+    const std::array<double, 3> eye = {CITY[48], CITY[49], CITY[50]};
+    const double ground_y = eye[1] - 15.;
+    const auto ray_of = [&](double x, double y) {
+      const auto near_point = Apply(to_world, {x, y, 0., 1.});
+      const auto far_point = Apply(to_world, {x, y, 1., 1.});
+      std::array<double, 3> direction = {};
+      for (int k = 0; k < 3; ++k) direction[k] = (far_point[k] / far_point[3]) - (near_point[k] / near_point[3]);
+      const double length = std::sqrt((direction[0] * direction[0]) + (direction[1] * direction[1]) + (direction[2] * direction[2]));
+      for (double& value : direction) value /= length;
+      return direction;
+    };
+    const double across_length = std::hypot(CITY[8], CITY[10]);
+    const std::array<double, 3> across = {CITY[8] / across_length, 0., CITY[10] / across_length};
+    const auto centre_ray = ray_of(0., 0.);
+    const double centre_t = (ground_y - eye[1]) / centre_ray[1];
+    std::array<double, 3> wall_point = {};
+    for (int k = 0; k < 3; ++k) wall_point[k] = eye[k] + (centre_t * centre_ray[k]) + (2. * across[k]);
+    const std::array<double, 3> wall_normal = {-across[0], 0., -across[2]};
+    const auto dot3 = [](const std::array<double, 3>& a, const std::array<double, 3>& b) { return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]); };
+    std::vector<float> depth_texels(AO_PIXELS, 1.f);
+    std::vector<std::array<uint16_t, 2>> normal_texels(AO_PIXELS);
+    std::vector<std::array<uint16_t, 2>> world_texels(AO_PIXELS);
+    std::vector<int> kind(AO_PIXELS, 0);  // 1 the ground 3 m or more from the wall (open), 2 within 0.25 m of the corner
+    for (UINT py = 0; py < AO_HEIGHT; ++py) {
+      for (UINT px = 0; px < AO_WIDTH; ++px) {
+        const auto direction = ray_of(((px + .5) / AO_WIDTH * 2.) - 1., 1. - ((py + .5) / AO_HEIGHT * 2.));
+        double t = 1e30;
+        std::array<double, 3> normal = {0., 1., 0.};
+        if (direction[1] < 0.) t = (ground_y - eye[1]) / direction[1];
+        const double facing = dot3(direction, wall_normal);
+        bool on_wall = false;
+        if (facing < 0.) {
+          const double wall_t = dot3({wall_point[0] - eye[0], wall_point[1] - eye[1], wall_point[2] - eye[2]}, wall_normal) / facing;
+          if (wall_t > 0. && wall_t < t) {
+            t = wall_t;
+            normal = wall_normal;
+            on_wall = true;
+          }
+        }
+        if (t > 1e29) continue;
+        const std::array<double, 3> hit = {eye[0] + (t * direction[0]), eye[1] + (t * direction[1]), eye[2] + (t * direction[2])};
+        const size_t at = (static_cast<size_t>(py) * AO_WIDTH) + px;
+        depth_texels[at] = static_cast<float>(((view[8] * hit[0]) + (view[9] * hit[1]) + (view[10] * hit[2]) + view[11]) / 100.);
+        const auto encode = [&](bool rotated) {
+          std::array<double, 3> n = normal;
+          if (rotated) {
+            for (int row = 0; row < 3; ++row) n[row] = (view[row * 4] * normal[0]) + (view[(row * 4) + 1] * normal[1]) + (view[(row * 4) + 2] * normal[2]);
+          }
+          return std::array<uint16_t, 2>{ToHalf(static_cast<float>((n[0] / (1. + n[2]) * 0.281262308) + .5)),
+                                          ToHalf(static_cast<float>((n[1] / (1. + n[2]) * 0.281262308) + .5))};
+        };
+        normal_texels[at] = encode(true);
+        world_texels[at] = encode(false);
+        if (on_wall) {
+          if (hit[1] - ground_y < .25) kind[at] = 2;
+        } else {
+          const double from_wall = dot3({hit[0] - wall_point[0], hit[1] - wall_point[1], hit[2] - wall_point[2]}, wall_normal);
+          kind[at] = (from_wall >= 3.) ? 1 : ((from_wall < .25) ? 2 : 0);
+        }
+      }
+    }
+    const auto depth = Srv(MakeTexture(AO_WIDTH, AO_HEIGHT, DXGI_FORMAT_R32_FLOAT, D3D11_BIND_SHADER_RESOURCE, depth_texels.data(), AO_WIDTH * 4).Get());
+    const auto normals = Srv(MakeTexture(AO_WIDTH, AO_HEIGHT, DXGI_FORMAT_R16G16_FLOAT, D3D11_BIND_SHADER_RESOURCE, normal_texels.data(), AO_WIDTH * 4).Get());
+    const auto world_normals = Srv(MakeTexture(AO_WIDTH, AO_HEIGHT, DXGI_FORMAT_R16G16_FLOAT, D3D11_BIND_SHADER_RESOURCE, world_texels.data(), AO_WIDTH * 4).Get());
+    // PPSAO's four slices (R8, half size): 0.5, what the game's reinterleave writes as its AO.
+    const std::vector<uint8_t> slice_texels(static_cast<size_t>(AO_WIDTH / 2) * (AO_HEIGHT / 2), 128);
+    std::array<ComPtr<ID3D11ShaderResourceView>, 4> slices;
+    for (auto& slice : slices) slice = Srv(MakeTexture(AO_WIDTH / 2, AO_HEIGHT / 2, DXGI_FORMAT_R8_UNORM, D3D11_BIND_SHADER_RESOURCE, slice_texels.data(), AO_WIDTH / 2).Get());
+    PerView ao_view = CITY;
+    ao_view[54] = static_cast<float>(AO_WIDTH);
+    ao_view[55] = static_cast<float>(AO_HEIGHT);
+    const auto constant_buffer = [&](const void* data, UINT bytes) {
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = bytes, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = data};
+      ComPtr<ID3D11Buffer> buffer;
+      REQUIRE(SUCCEEDED(device->CreateBuffer(&desc, &initial, buffer.GetAddressOf())));
+      return buffer;
+    };
+    const auto per_view = constant_buffer(ao_view.data(), 240);
+    const auto other_buffer = constant_buffer(CITY.data(), 240);
+    const auto target_of = [&] {
+      return MakeTexture(AO_WIDTH, AO_HEIGHT, DXGI_FORMAT_R10G10B10A2_UNORM, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE);
+    };
+    const auto first = target_of();
+    const auto second = target_of();
+    const auto third = target_of();
+    const D3D11_VIEWPORT ao_viewport = {.Width = AO_WIDTH, .Height = AO_HEIGHT, .MaxDepth = 1.f};
+    const auto post_pass = [&](ID3D11PixelShader* shader, std::span<ID3D11ShaderResourceView* const> views, ID3D11Texture2D* target) {
+      const auto rtv = Rtv(target);
+      context->IASetInputLayout(nullptr);
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->VSSetShader(post_vertex.Get(), nullptr, 0);
+      context->PSSetShader(shader, nullptr, 0);
+      context->PSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+      context->PSSetSamplers(0, 1, point_clamp.GetAddressOf());
+      context->RSSetState(nullptr);
+      context->RSSetViewports(1, &ao_viewport);
+      context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+      context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+    };
+    const auto unbind = [&] {
+      const std::array<ID3D11ShaderResourceView*, 6> no_views = {};
+      context->PSSetShaderResources(0, static_cast<UINT>(no_views.size()), no_views.data());
+      context->OMSetRenderTargets(0, nullptr, nullptr);
+      ID3D11Buffer* no_buffer = nullptr;
+      context->PSSetConstantBuffers(12, 1, &no_buffer);
+    };
+    // PPSAO's four draws (GBuffer1 at t0, PerView at b12) through SkipSao, then the reinterleave's draw (its depth, slices,
+    // point sampler and target; another buffer at b12) through OnReinterleave / OnReinterleaveDrawn: the texels, how many
+    // PPSAO draws were skipped, and whether the game's shader and bindings are back after.
+    struct AoRun {
+      std::vector<uint32_t> texels;
+      int skipped = 0;
+      bool restored = false;
+    };
+    const auto run_chain = [&](ID3D11ShaderResourceView* gbuffer1, float mode) {
+      AoRun run;
+      screen::ao.mode = mode;
+      context->PSSetShaderResources(0, 1, &gbuffer1);
+      context->PSSetConstantBuffers(12, 1, per_view.GetAddressOf());
+      for (int draw = 0; draw < 4; ++draw) run.skipped += screen::SkipSao(&mock_list) ? 1 : 0;
+      context->PSSetConstantBuffers(12, 1, other_buffer.GetAddressOf());
+      const std::array<ID3D11ShaderResourceView*, 5> views = {depth.Get(), slices[0].Get(), slices[1].Get(), slices[2].Get(), slices[3].Get()};
+      post_pass(reinterleave.Get(), views, first.Get());
+      screen::OnReinterleave(&mock_list);
+      context->Draw(3, 0);
+      screen::OnReinterleaveDrawn(&mock_list);
+      ComPtr<ID3D11PixelShader> bound;
+      context->PSGetShader(bound.GetAddressOf(), nullptr, nullptr);
+      ComPtr<ID3D11ShaderResourceView> normals_slot;
+      context->PSGetShaderResources(5, 1, normals_slot.GetAddressOf());
+      ComPtr<ID3D11Buffer> settings_slot;
+      ComPtr<ID3D11Buffer> view_slot;
+      context->PSGetConstantBuffers(1, 1, settings_slot.GetAddressOf());
+      context->PSGetConstantBuffers(12, 1, view_slot.GetAddressOf());
+      run.restored = bound.Get() == reinterleave.Get() && !normals_slot && !settings_slot && view_slot.Get() == other_buffer.Get();
+      unbind();
+      run.texels = ReadBack<uint32_t>(first.Get(), AO_WIDTH, AO_HEIGHT);
+      return run;
+    };
+    const auto red = [](uint32_t texel) { return static_cast<double>(texel & 1023u) / 1023.; };
+    // The mean visibility over the open ground and the corner, and the corner's most.
+    struct AoStats {
+      double open = 0.;
+      double corner = 0.;
+      double corner_most = 0.;
+    };
+    const auto stats_of = [&](const std::vector<uint32_t>& texels) {
+      AoStats stats;
+      int open_count = 0;
+      int corner_count = 0;
+      for (size_t at = 0; at < AO_PIXELS; ++at) {
+        if (kind[at] == 1) {
+          stats.open += red(texels[at]);
+          ++open_count;
+        } else if (kind[at] == 2) {
+          stats.corner += red(texels[at]);
+          stats.corner_most = std::max(stats.corner_most, red(texels[at]));
+          ++corner_count;
+        }
+      }
+      REQUIRE(open_count > 100 && corner_count > 20);
+      stats.open /= open_count;
+      stats.corner /= corner_count;
+      return stats;
+    };
+    screen::ao = {.radius = 2.f};
+    const AoRun ours = run_chain(normals.Get(), 1.f);
+    const AoRun game = run_chain(normals.Get(), 0.f);
+    const AoRun wrong_frame = run_chain(world_normals.Get(), 1.f);
+    size_t depth_differs = 0;
+    for (size_t at = 0; at < AO_PIXELS; ++at) depth_differs += ((ours.texels[at] >> 10) & 1023u) != ((game.texels[at] >> 10) & 1023u) ? 1 : 0;
+    const AoStats ours_stats = stats_of(ours.texels);
+    const AoStats game_stats = stats_of(game.texels);
+    const AoStats wrong_stats = stats_of(wrong_frame.texels);
+    std::printf("GT-VBAO in the reinterleave's place: PPSAO skipped %d / 4, the game's bindings back %d, its depth (green) the game's in all but %zu "
+                "pixels; visibility: open ground %.3f, the corner %.3f (most %.3f); CONTROLS the game's (off: %d skipped) %.3f / %.3f, the "
+                "world normal in GBuffer1: open ground %.3f\n",
+                ours.skipped, ours.restored, depth_differs, ours_stats.open, ours_stats.corner, ours_stats.corner_most, game.skipped,
+                game_stats.open, game_stats.corner, wrong_stats.open);
+    CHECK(ours.skipped == 4 && ours.restored && game.skipped == 0 && game.restored && depth_differs == 0);
+    CHECK(ours_stats.open >= .97 && ours_stats.corner <= .7);
+    CHECK(std::abs(game_stats.open - (128. / 255.)) < 1e-3 && std::abs(game_stats.corner - (128. / 255.)) < 1e-3 && wrong_stats.open < .9);
+    // The game's PPSAO_Blur twice over GT-VBAO's target (DeltaUV across, then down): the open ground stays open, the corner
+    // dark; CONTROL: the blur changed the texture (it ran on it).
+    const std::array<float, 4> across_delta = {1.f / AO_WIDTH, 0.f, 0.f, 0.f};
+    const std::array<float, 4> down_delta = {0.f, 1.f / AO_HEIGHT, 0.f, 0.f};
+    const auto across_buffer = constant_buffer(across_delta.data(), 16);
+    const auto down_buffer = constant_buffer(down_delta.data(), 16);
+    const auto blur_pass = [&](ID3D11Texture2D* source, ID3D11Buffer* delta, ID3D11Texture2D* target) {
+      const auto source_view = Srv(source);
+      ID3D11ShaderResourceView* view_pointer = source_view.Get();
+      post_pass(blur.Get(), std::span(&view_pointer, 1), target);
+      context->PSSetConstantBuffers(0, 1, &delta);
+      context->Draw(3, 0);
+      unbind();
+    };
+    run_chain(normals.Get(), 1.f);
+    blur_pass(first.Get(), across_buffer.Get(), second.Get());
+    blur_pass(second.Get(), down_buffer.Get(), third.Get());
+    const auto blurred = ReadBack<uint32_t>(third.Get(), AO_WIDTH, AO_HEIGHT);
+    const AoStats blurred_stats = stats_of(blurred);
+    double blur_changed = 0.;
+    for (size_t at = 0; at < AO_PIXELS; ++at) blur_changed = std::max(blur_changed, std::abs(red(blurred[at]) - red(ours.texels[at])));
+    std::printf("the game's blur over it: open ground %.3f, the corner %.3f; CONTROL it changed the texture by up to %.3f\n", blurred_stats.open,
+                blurred_stats.corner, blur_changed);
+    CHECK(blurred_stats.open >= .97 && blurred_stats.corner <= .7 && blur_changed > .02);
+    screen::ao = {};
+    screen::internal::state.device.Reset();
+    screen::internal::state.vbao.Reset();
+    screen::internal::state.ao_constants.Reset();
   }
 
   std::printf("%s: %d failure(s)\n", (failures == 0 ? "PASS" : "FAIL"), failures);
