@@ -610,12 +610,12 @@ const Values GRAPHICS_RESET = {
 const Values AO_DEFAULTS = {
     {"AmbientOcclusion", 1.f}, {"AmbientOcclusionStrength", 1.f}, {"AmbientOcclusionRadius", 12.5f}, {"AmbientOcclusionThickness", 0.1f},
     {"AmbientOcclusionQuality", 2.f}, {"AmbientOcclusionDirections", 0.f}, {"AmbientOcclusionResolution", 0.f},
-    {"AmbientOcclusionAutoThickness", 1.f}, {"ssao_temporal", 0.f}, {"ssao_edge_fix", 0.f}, {"ssao_denoise", 0.f},
+    {"AmbientOcclusionAutoThickness", 0.f}, {"ssao_temporal", 0.f}, {"ssao_edge_fix", 0.f}, {"ssao_denoise", 0.f},
 };
 const Values GI_DEFAULTS = {
     {"LightBounceStrength", 0.f}, {"LightBounceRadius", 20.f}, {"LightBounceResolution", 2.f}, {"LightBounceQuality", 3.f},
     {"LightBounceDirections", 0.f}, {"LightBounceTemporal", 1.f}, {"LightBounceDenoise", 1.f}, {"LightBounceMultiBounce", 0.f},
-    {"LightBounceCheckerboard", 1.f}, {"LightBounceBackFace", 0.f}, {"LightBounceAutoThickness", 1.f},
+    {"LightBounceCheckerboard", 1.f}, {"LightBounceBackFace", 0.f}, {"LightBounceAutoThickness", 0.f},
 };
 const std::string RAYS_SECTION = "Ray Tracing (Experimental, restart after turning on)";
 constexpr uint32_t RAYS_TINT = 0x6BE0D8;
@@ -784,11 +784,14 @@ void BuildRuntimeData() {
   // Ambient Occlusion: Visibility Bitmask: the line sweep skipped (its camera kept), the addon's own shader in place of
   // the collect (ao_bitmask_collect, with the collect's depth and the sweep's camera at b0); the collect's replacement
   // stays the game's code (Game's costs what it did). The first frame (no camera kept yet): nothing.
+  // Ray-Traced AO: both left out, every reader of their target takes the rays' AO (ray_tracing.hpp
+  // GameAmbientReplaced).
   custom_shaders[0xA00FE3A3].on_draw = [](auto* cmd_list) {
     tw::line_sweep_ao::OnBlur(cmd_list);
-    return !bitmask_ao;
+    return !bitmask_ao && !(ray_tracing_installed && twshogun2::ray_tracing::GameAmbientReplaced());
   };
   custom_shaders[0x98BB1159].on_draw = [](auto* cmd_list) {
+    if (ray_tracing_installed && !twshogun2::ray_tracing::OnGameAmbientCollect(cmd_list)) return false;
     if (!bitmask_ao) return true;
     if (!tw::line_sweep_ao::OnCollect(cmd_list, true, false, 0, 0)) return false;
     tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_collect, &shader_injection, sizeof(shader_injection), false,
@@ -799,8 +802,10 @@ void BuildRuntimeData() {
 
   // Reflections: the ray-traced ones in the resolve (ssrresolve00, twattila/rt_reflection.hlsli), its lit scene kept for
   // the next frame's; while they replace the screen-space march, what only the march reads is left out: its HiZ
-  // (ssrhiz00 and its levels, cs 0xE2CE69ED), the scene's and the hit buffer's mip chains (cs 0x13A7F7D0, 0x4B546569,
-  // 0x80196ECA: generic, left out only between the HiZ and the resolve), the march (ssrray00) and its blurs.
+  // (ssrhiz00 and its levels, cs 0xE2CE69ED), the lit scene's copy into the radiance (cs50_preconvolve_copy 0xBC3CB71D:
+  // read by the scene's mip chain and the resolve's t9 alone, which the rays' light replaces: test/tw_shogun2_shaders
+  // part 21 (e)), the scene's and the hit buffer's mip chains (cs 0x13A7F7D0, 0x4B546569, 0x80196ECA: generic, left out
+  // only between the HiZ and the resolve), the march (ssrray00) and its blurs.
   custom_shaders[0x97624E56].on_draw = [](auto* cmd_list) {
     reflection_passes = ray_tracing_installed;
     if (ray_tracing_installed) twshogun2::ray_tracing::WaterSurface(cmd_list);
@@ -835,7 +840,7 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0x5C0AF498u, 0x13C66077u, 0x073A6CF3u}) {
     custom_shaders[hash].on_draw = [](auto* cmd_list) { return !ray_tracing_installed || twattila::rt_scene::OnReflectionMarch(cmd_list); };
   }
-  for (const uint32_t hash : {0xE2CE69EDu, 0x13A7F7D0u, 0x4B546569u, 0x80196ECAu}) {
+  for (const uint32_t hash : {0xE2CE69EDu, 0xBC3CB71Du, 0x13A7F7D0u, 0x4B546569u, 0x80196ECAu}) {
     custom_shaders[hash] = {
         .crc32 = hash,
         .on_replace = [](reshade::api::command_list*) { return false; },
@@ -1963,7 +1968,7 @@ void BuildRuntimeData() {
              "Directions searched around each pixel. More: less noise, heavier.", {"1", "2", "4", "8"}, ao_on),
       choice("AmbientOcclusionResolution", &shader_injection.ssao_resolution, 0.f, "Resolution", ao_section,
              "Lower: faster, softer; thin things (grass, spears) get less shading.", {"Full", "Half"}, ao_on),
-      choice("AmbientOcclusionAutoThickness", &shader_injection.ssao_auto_thickness, 1.f, "Auto Thickness (Experimental)", ao_section,
+      choice("AmbientOcclusionAutoThickness", &shader_injection.ssao_auto_thickness, 0.f, "Auto Thickness (Experimental)", ao_section,
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",
              off_on, ao_on),
@@ -2027,7 +2032,7 @@ void BuildRuntimeData() {
              off_on, [] { return shader_injection.light_bounce_strength > 0.f && shader_injection.light_bounce_temporal != 0.f; }),
       choice("LightBounceBackFace", &shader_injection.light_bounce_backface, 0.f, "Back-Face Rejection (Experimental)", gi_section,
              "Ignores light from surfaces seen from behind. Heavier; not always better.", off_on, gi_on),
-      choice("LightBounceAutoThickness", &shader_injection.light_bounce_auto_thickness, 1.f, "Auto Thickness (Experimental)", gi_section,
+      choice("LightBounceAutoThickness", &shader_injection.light_bounce_auto_thickness, 0.f, "Auto Thickness (Experimental)", gi_section,
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",
              off_on, gi_on),
@@ -2926,6 +2931,7 @@ void DetachAddon() {
     twshogun2::unit_detail::Uninstall();
     twshogun2::shadow_resolution::Uninstall();
     twshogun2::particle_resolution::Apply(1.f);
+    twshogun2::terrain_detail::Apply(false);
     tw::engine_tweaks::Uninstall(engine_options);
   }
 
