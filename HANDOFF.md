@@ -3,7 +3,8 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
-- [ ] NEW 11-16 ~09:xx TALES GI (you chose GT-VBGI on by default before the look shots): under GT-VBGI lit open ground
+- [ ] NEW 11-16 ~09:xx TALES GI (rerun 10:2x: option 2 = +3.0 % against the game with the warm tint back, the bush +18 %;
+  option 1 = -13.7 %, flatter / greyer; no cost difference) (you chose GT-VBGI on by default before the look shots): under GT-VBGI lit open ground
   is -33 % against the game (Bandai's GI gives lit surfaces their own light back; ours only bounces), characters / foliage
   are fixed. Pick: (1) GT-VBGI on, Game's GI Under the Open Sky off (now: darker open ground); (2) GT-VBGI on + that row on
   (my recommendation: the game's look where AO >= 0.3, plus our bounce near walls); (3) GT-VBGI off by default. Test: the
@@ -1803,6 +1804,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         R.U.S.E. has no Gamma Correction row. Reports runs2_1116/tales.md, ruse.md. RUNS 11-16 MORNING (rn2_, brief tools/tw/round_notes/runs2_1116/brief.md, after the 08:04 install): Tales Bend /
         GT-VBGI look shots with a title click, then the R.U.S.E. T-run; reports runs2_1116/tales.md, ruse.md. Morning
         report: tools/tw/round_notes/morning_report_1116.md. Owner: rn2_, then coordinator
+      - [x] RERUNS DONE ~10:2x (rn3_, runs3_1116/ruse.md + tales.md, every restore 0 different, no save changed).
+        R.U.S.E.: the rays trace now (0.6 s after DLAA applied, no scene release); but under them the tree / unit shadows
+        on the ground are gone (+3.1 % near, +8.4 % mid, dark pixels halve), RT costs CPU 18.8 ms (53 fps, p99 27.1) vs
+        6.5 DLAA alone, the map table keeps tracing (24.6 ms), the trace counted 1,806 scene draws; GT-VBAO +2.5 / Bend
+        +1.1 / GT-VBGI +2.6 ms GPU with no visible change at the aerial view (all Experimental off by default). Fix agent
+        rur2_ running. Tales (run_101408, -GiSky): GI Off = the game (+0.1 %); GT-VBGI -13.7 % whole, open ground -33 %,
+        flatter / greyer; GT-VBGI + Open Sky +3.0 % whole, warm tint back, bush +18 %; Open Sky row costs nothing measurable
+        (7.35 ms both). keys.ps1 Click / Wheel, Tales -GiSky timeline, compare.py --pq (backups *.bak_rn3).
       - [x] rur_ MERGED 8bfea722d (proof A from run_rn2_rt_084045's one-frame trace): with MainRTAA 1 the main pass
         shares the pre-pass depth, and OnSceneDraw's `depth_stencil == prepass_depth` return (written for the MSAA B0
         trace) blocked every draw, so no trace was ever asked; GT-VBAO / Bend / GT-VBGI / SSR never ran in game either.
