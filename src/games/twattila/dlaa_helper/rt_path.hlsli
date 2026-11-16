@@ -257,7 +257,18 @@ void CacheSetAlbedo(float3 world, float3 normal, float3 albedo) {
   cache_albedo[entry] = uint2(bytes.r | (bytes.g << 8) | (bytes.b << 16) | (255u << 24), frame + 1u);
 }
 
-// The pixel's normal: the G-buffer's when the guides hold it, else from the positions.
+// The pixel's normal: the G-buffer's (`guide`, read when the guides hold it) when it holds one, else from the positions.
+float3 PixelNormalOf(uint2 pixel, float4 position, float3 guide, Neighbours neighbours) {
+  if ((path_flags & PATH_GUIDES) != 0u && dot(guide, guide) > 0.5f) return normalize(guide);
+  return SurfaceNormalOf(int2(pixel), position, neighbours);
+}
+
+// The G-buffer's normal at a pixel when the guides hold this frame's (else none).
+float3 GuideNormal(uint2 pixel) {
+  return ((path_flags & PATH_GUIDES) != 0u) ? guide_normals[pixel].xyz : 0.f;
+}
+
+// PixelNormalOf's with its loads where needed: the neighbours only without a guide normal.
 float3 PixelNormal(uint2 pixel, float4 position) {
   if ((path_flags & PATH_GUIDES) != 0u) {
     const float3 guide = guide_normals[pixel].xyz;
@@ -703,12 +714,15 @@ float ReuseJacobian(Reservoir other, float3 other_origin, float3 origin) {
 // The surface a bounce texel shows: its render pixel, world position (w: depth; 0: the sky), normal, rays' origin.
 float4 TexelSurface(uint2 id, out float3 normal, out float3 origin) {
   const uint2 pixel = min(id * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u);
+  // Its screen loads at once (LoadNeighbours).
   const float4 position = positions[pixel];
+  const float3 guide = GuideNormal(pixel);
+  const Neighbours neighbours = LoadNeighbours(int2(pixel));
   normal = 0.f;
   origin = position.xyz;
   if (position.w <= 0.f) return position;
-  normal = PixelNormal(pixel, position);
-  origin = StartPast(RayOrigin(position, normal, Planar(int2(pixel), position, normal)), position);
+  normal = PixelNormalOf(pixel, position, guide, neighbours);
+  origin = StartPast(RayOrigin(position, normal, PlanarOf(position, normal, neighbours)), position);
   return position;
 }
 

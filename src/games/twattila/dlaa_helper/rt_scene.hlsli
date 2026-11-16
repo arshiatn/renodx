@@ -320,13 +320,33 @@ float3 HitNormal(uint record_index, uint primitive, float3 direction, float3x4 o
   return (dot(normal, direction) > 0.f) ? -normal : normal;
 }
 
-// The surface's normal from the neighbour nearer in depth on each axis (none across depth edges), facing the camera.
-float3 SurfaceNormal(int2 pixel, float4 position) {
+// A pixel's four neighbours' positions (clamped to the screen): what SurfaceNormal and Planar read. Loaded with the pixel's
+// own position, they cost one wait, not one after each test (Nsight at 4K: the paths' and the reflections' starts waited
+// for their screen loads two and three times over, 17% and 22% of the passes).
+struct Neighbours {
+  float4 left;
+  float4 right;
+  float4 above;
+  float4 below;
+};
+
+Neighbours LoadNeighbours(int2 pixel) {
   const int2 last = int2(width, height) - 1;
-  const float4 left = positions[clamp(pixel - int2(1, 0), 0, last)];
-  const float4 right = positions[clamp(pixel + int2(1, 0), 0, last)];
-  const float4 above = positions[clamp(pixel - int2(0, 1), 0, last)];
-  const float4 below = positions[clamp(pixel + int2(0, 1), 0, last)];
+  Neighbours neighbours;
+  neighbours.left = positions[clamp(pixel - int2(1, 0), 0, last)];
+  neighbours.right = positions[clamp(pixel + int2(1, 0), 0, last)];
+  neighbours.above = positions[clamp(pixel - int2(0, 1), 0, last)];
+  neighbours.below = positions[clamp(pixel + int2(0, 1), 0, last)];
+  return neighbours;
+}
+
+// The surface's normal from the neighbour nearer in depth on each axis (none across depth edges), facing the camera.
+float3 SurfaceNormalOf(int2 pixel, float4 position, Neighbours neighbours) {
+  const int2 last = int2(width, height) - 1;
+  const float4 left = neighbours.left;
+  const float4 right = neighbours.right;
+  const float4 above = neighbours.above;
+  const float4 below = neighbours.below;
   // At the screen's edge the neighbour past it is the pixel itself: the one inside (else no normal, and a reflection's ray turned
   // back toward the camera: a black line down each side of the water, ATN 2026-11-03).
   const float3 along_x = (pixel.x == 0 || (pixel.x != last.x && abs(right.w - position.w) < abs(left.w - position.w))) ? right.xyz - position.xyz : position.xyz - left.xyz;
@@ -338,6 +358,10 @@ float3 SurfaceNormal(int2 pixel, float4 position) {
   return (dot(normal, to_camera) < 0.f) ? -normal : normal;
 }
 
+float3 SurfaceNormal(int2 pixel, float4 position) {
+  return SurfaceNormalOf(pixel, position, LoadNeighbours(pixel));
+}
+
 // Off a surface by 3 mm plus 0.1% of the depth (depth precision and coarser far geometry grow with distance). The rays leave
 // by this along the normal and again toward the sun: at 2 cm they started past cheek guards and helmet rims, the sun came
 // through them (ATN's debug35).
@@ -347,6 +371,18 @@ float SurfaceOffset(float depth) {
 
 // Whether the four neighbours lie on the pixel's surface (`normal`: its plane): not a corner, crack or edge, where the
 // normal from the depth can be wrong.
+bool PlanarOf(float4 position, float3 normal, Neighbours neighbours) {
+  const float4 sides[4] = {neighbours.left, neighbours.right, neighbours.above, neighbours.below};
+  [unroll]
+  for (uint side = 0u; side < 4u; ++side) {
+    const float4 neighbour = sides[side];
+    const float3 to_neighbour = neighbour.xyz - position.xyz;
+    if (neighbour.w <= 0.f || abs(dot(to_neighbour, normal)) > 0.2f * length(to_neighbour)) return false;
+  }
+  return true;
+}
+
+// PlanarOf's with each neighbour loaded only when the one before passed.
 bool Planar(int2 pixel, float4 position, float3 normal) {
   static const int2 SIDES[4] = {int2(-1, 0), int2(1, 0), int2(0, -1), int2(0, 1)};
   const int2 last = int2(width, height) - 1;
