@@ -45,6 +45,7 @@ struct ShaderInjectData {
 
   float ext_hue_clip;              // HDR (Extended)'s Hue Clip Emulation, 0 - 1
   float sun_shadow_softness;       // the sun's PCSS light size x this, 1 the game's
+  float grade_shoulder;            // Smooth Grade Shoulder (Experimental): 1 a smooth shoulder from 0.8, 0 the knee at 1
 };
 
 #define SI shader_injection
