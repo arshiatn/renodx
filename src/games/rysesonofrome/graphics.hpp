@@ -1107,9 +1107,9 @@ const char* ChoiceName(const QualityOption& option, int choice) {
 // 1 (Sharper) or 2 (Sharpest), in the main view only: the shadow maps keep the game's levels (their alpha-tested leaves
 // would cut sharper holes, Shogun 2 v7-v9). The render size: the AA mode's Rendering Resolution or, with AA mode Off,
 // the game's own below the display (Native Upscaling, fullscreen).
-// Texture LOD Bias on All Textures (Experimental; the page's AntiAliasingTextureLodBiasTrilinear row, as Attila's): the
+// Texture LOD Bias on All Textures (the page's AntiAliasingTextureLodBiasTrilinear row, on by default as Attila's): the
 // game's wrapping trilinear samplers biased too. 1: on.
-float lod_bias_all_textures = 0.f;
+float lod_bias_all_textures = 1.f;
 int texture_lod_bias_choice = 2;  // Present thread (the overlay runs in it): 0 off, 1 matched, 2 sharper, 3 sharpest
 // While biased: the main view's size (width << 32 | height; 0: no bias) and whether the immediate context's viewport is
 // the main view's now (OnBindViewports).

@@ -2231,11 +2231,11 @@ void ConfigureAddon() {
           .key = "AntiAliasingTextureLodBiasTrilinear",
           .binding = &rysesonofrome::graphics::lod_bias_all_textures,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Texture LOD Bias on All Textures (Experimental)",
+          .default_value = 1.f,
+          .label = "Texture LOD Bias on All Textures",
           .section = AA_SECTION,
-          .tooltip = "Texture LOD bias also on the textures the game filters without anisotropy.\n"
-                     "Can shimmer.",
+          .tooltip = "Texture LOD Bias also on the textures the game filters without anisotropy (terrain, buildings).\n"
+                     "Off: those stay blurrier while the game renders below 100%.",
           .labels = {"Off", "On"},
           .is_visible = [] { return twattila::dlaa_bridge::HelperInstalled() && IsAdvancedSettings(); },
       },
