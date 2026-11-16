@@ -79,6 +79,8 @@
 #include "rt_reflect.h"           // dxc -Fh (build.ps1)
 #include "rt_reflect_filter.h"    // dxc -Fh (build.ps1)
 #include "rt_reflect_omm.h"       // dxc -Fh (build.ps1)
+#include "rt_reflect_one.h"       // dxc -Fh (build.ps1)
+#include "rt_reflect_one_omm.h"   // dxc -Fh (build.ps1)
 #include "rt_reuse.h"             // dxc -Fh (build.ps1)
 #include "rt_reuse_omm.h"         // dxc -Fh (build.ps1)
 #include "rt_reuse_lights.h"      // dxc -Fh (build.ps1)
@@ -654,6 +656,11 @@ class RtScene12 {
     if (!(dxr12_ ? pipeline(RT_REUSE_NEAR_OMM, sizeof(RT_REUSE_NEAR_OMM), &reuse_near_pipeline_)
                  : pipeline(RT_REUSE_NEAR, sizeof(RT_REUSE_NEAR), &reuse_near_pipeline_))) {
       reuse_near_pipeline_.Reset();
+    }
+    // The reflections' build for one sample a pixel (REFLECT_ONE_SAMPLE; none: the general build).
+    if (!(dxr12_ ? pipeline(RT_REFLECT_ONE_OMM, sizeof(RT_REFLECT_ONE_OMM), &reflect_one_pipeline_)
+                 : pipeline(RT_REFLECT_ONE, sizeof(RT_REFLECT_ONE), &reflect_one_pipeline_))) {
+      reflect_one_pipeline_.Reset();
     }
     clusters_ = clusters_ && pipeline(RT_COMPACT, sizeof(RT_COMPACT), &compact_pipeline_);
     // DXR 1.2: the paths and reflections as ray generation shaders for Path Tracing SER (none: their compute shaders).
@@ -1736,7 +1743,8 @@ class RtScene12 {
           if (ser) {
             dispatch_rays(PATH_SER_RECORD, width, height);
           } else {
-            list->SetPipelineState(reflect_pipeline_.Get());
+            // One sample a pixel: its own build (the same picture; the general one spilled registers at 4K).
+            list->SetPipelineState(((constants.samples == 1 && reflect_one_pipeline_) ? reflect_one_pipeline_ : reflect_pipeline_).Get());
             list->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
           }
           list->ResourceBarrier(1, &uav_barrier);
@@ -6226,6 +6234,7 @@ class RtScene12 {
   uint32_t kept_copy_frame_ = UINT32_MAX;
   ComPtr<ID3D12PipelineState> path_pipeline_;
   ComPtr<ID3D12PipelineState> reflect_pipeline_;
+  ComPtr<ID3D12PipelineState> reflect_one_pipeline_;  // its build for one sample a pixel (REFLECT_ONE_SAMPLE)
   // Path Tracing SER (DXR 1.2; null: unavailable): the paths' and reflections' ray generation shaders, their records (the
   // paths' at 0, the reflections' at PATH_SER_RECORD).
   ComPtr<ID3D12StateObject> path_ser_;
