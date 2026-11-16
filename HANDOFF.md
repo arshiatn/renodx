@@ -3,6 +3,9 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 05:2x: which of the 17 Attila features missing from the skills to add (my pick: all 17), and 2 stale-line
+  choices (V31 hue shift after PsychoV: rule exception (my pick) or drop it; K / M / L numbers in the tooltip: drop from
+  the skill (my pick)). List: tools/tw/round_notes/attila_vs_skills_1116.md. Owner: ATN, then coordinator
 - [ ] Rome Remastered battle with rays at Battle Objects Tested, then Solid + restart, then All + restart: any GPU reset? (send renodx-tw-dlaa64.log + ReShade.log) (from: "Rome Remastered battle GPU resets: safe-side fix a8afd660 ...")
   Detail (from its ticked duplicate "Rome Remastered battle GPU resets: safe-side fix a8afd660"): fix a8afd660 (rays
   take only the tested capture kinds; banners out; row Ray Tracing Battle Objects (Test): Tested / Solid / All = v11;
@@ -159,6 +162,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R.U.S.E. runs (notes): the game ignores window close in battle (two tries, then ... | coordinator (notes for runs)
 - Attila / Thrones 2.2 GC in HDR: ATN's in-game look (scene, UI, flares, video, FG ... | ATN
 - AFTER THE RESTART, in order (nothing of this started before it): 1. DONE (non-TW ... | coordinator (steps 2, 4, 5), ATN (step 6)
+- Attila has no frame trace `on_demand` / `at_100` (Pharaoh, Rome II, WH3 have bot ... | next Attila round
+- Ryse / Tales / Expeditions lack Output Auto's first-start path + the HDR-on / of ... | next non-TW round
+- grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound i ... | next Attila round
 - Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, G ... | rao_, then the next replace round
 - Attila features vs skills: sk3_ is comparing; then ATN decides which to add. Own ... | sk3_, then ATN
 - Tonight's run analysis: an_ is writing tools/tw/round_notes/runs_1116_analysis.m ... | coordinator
@@ -1462,6 +1468,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         LEFT (11-16 audit): step 2 (the rest of the "R.U.S.E. T-run list" box), step 4 (GPU round 2 + the Nsight
         capture), step 5's analysis (an_) and redo (own box "Ryse redo: per-state GPU cost"), step 6 (ATN's checks).
         Owner: coordinator (steps 2, 4, 5), ATN (step 6)
+      - [ ] Attila has no frame trace `on_demand` / `at_100` (Pharaoh, Rome II, WH3 have both; Thrones, Troy, WH1, WH2, Rome
+        Remastered, Divinity 1 have on_demand): port to the reference. Owner: next Attila round
+      - [ ] Ryse / Tales / Expeditions lack Output Auto's first-start path + the HDR-on / off preset switch
+        (twattila/output_encoding.hpp, test/tw_output_encoding). Owner: next non-TW round
+      - [ ] grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound is the game's" (100 m fade).
+        Owner: next Attila round
       - [ ] Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, GT-VBGI, RT GI, PT GI, RT
         Shadows should always replace the game's own version"; skills c4ebedb8). AO: rao_ is fixing `rays_replace_ao =
         false` in Expeditions, Tales, Pharaoh, Rome II, Rome Remastered, Troy, WH1, WH2, WH3 (+ Ryse, Shogun 2,
