@@ -740,3 +740,5 @@ size; then:
   tools/nontw/tales/census/t16_ssgi_readers.txt); a saved DLSS becomes XeSS on Intel, else FSR; texture LOD bias and the
   screen filters' scale at the game's own DrawScale below 100% too; Upscaling Details' counts only while it is shown;
   About credits GT-VBAO / GT-VBGI, Bend, SMAA / CMAA2 / FidelityFX SSSR and Detours; tooltips name Graphics 1 / 2 of 2.
+  Then: page 1's first line "Use this in-game setting: Brightness 50." (the option's default, 0-100 into Bandai's
+  curve for r.ScreenGammaScaleTO14, default 1); test/tw_ue_patterns runs every byte pattern on tales_image.bin.

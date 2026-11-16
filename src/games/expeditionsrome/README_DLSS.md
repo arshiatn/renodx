@@ -978,4 +978,7 @@ once, SettingsRevision 3); one GI method: r.SSGI.Quality 0 while GT-VBGI or the 
 game's value back after); a saved DLSS becomes XeSS on Intel, else FSR; the sun's diffuse light (LightColor x View 129.y /
 pi) into the rays' sun texture texel 2 (used once the helper is told it is given); Trace One Frame calls the tracer
 directly; the jitter cycle counts only while Upscaling Details is shown; About credits GT-VBAO / GT-VBGI, Bend, SMAA /
-CMAA2 / FidelityFX SSSR and Detours; Peak / Paper White / UI hidden under Output SDR.
+CMAA2 / FidelityFX SSSR and Detours; Peak / Paper White / UI hidden under Output SDR. Then: page 1's first line "Use this
+in-game setting: Brightness 40." (the game's display gamma is 1 + 0.03 x Brightness, its default 50 = 2.5; 40 = Unreal's
+2.2, the LUT's gamma 1); Two Shadow Cascades Under Rays (Experimental, off: r.Shadow.CSM.MaxCascades at most 2 while the
+rays' sun shadows run); test/tw_ue_patterns runs the add-on's byte patterns on the Shipping exe.
