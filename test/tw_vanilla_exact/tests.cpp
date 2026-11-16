@@ -22,8 +22,9 @@
 // shader alone, in Rendering Modes 0 - 3 at Paper White = UI and at twice UI, Gamma Correction off at the Peak the tone
 // mappers then take (Peak^(1 / 1.1) of Paper White) and on at Peak. Where it acts, on decoded at 2.2 must be
 // Paper White x (off decoded at the frame's gamma / Paper White)^1.1 at every texel (GAMMA_TOLERANCE of its brightest
-// channel): a 2.2 display's decode of the game's gamma 2.0 picture, Peak landing on Peak. Control (must fail): on = off
-// (no 2.2 decode) at the scene's grey.
+// channel): a 2.2 display's decode of the game's gamma 2.0 picture, Peak landing on Peak; where that is past Peak in
+// BT.2020 (a saturated highlight the power lifted), within Peak at its luminance. Control (must fail): on = off (no 2.2
+// decode) at the scene's grey.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -1080,6 +1081,7 @@ int main(int argc, char** argv) {
       bool acted = false;
       bool control_caught = true;
       double worst = 0.0;
+      size_t limited = 0;  // texels past Peak in BT.2020 after the power: checked within Peak at their luminance
       char worst_at[192] = "";
       std::array<double, 3> grey = {};  // Rendering Mode 3, Paper White = UI: off, on, the 2.2 decode of off's value (nits)
       for (const float mode : {0.f, 1.f, 2.f, 3.f}) {
@@ -1117,6 +1119,24 @@ int main(int argc, char** argv) {
               brightest = std::max(brightest, std::abs(expected[c]));
             }
             if (!usable) continue;
+            // Past Peak in BT.2020 (a saturated highlight the power lifted): within Peak at its luminance instead.
+            const auto bt2020_max = [](const std::array<double, 3>& c) {
+              return std::max({0.6274040 * c[0] + 0.3292820 * c[1] + 0.0433136 * c[2], 0.0690970 * c[0] + 0.9195400 * c[1] + 0.0113612 * c[2],
+                               0.0163916 * c[0] + 0.0880132 * c[1] + 0.8955950 * c[2]});
+            };
+            const auto luminance = [](const std::array<double, 3>& c) { return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+            const double peak_frame = std::max(PEAK, DIFFUSE) / graphics;
+            if (bt2020_max(expected) > peak_frame) {
+              const double error = std::max(bt2020_max(on_linear) / peak_frame - 1.0,
+                                            std::abs(luminance(on_linear) - std::min(luminance(expected), peak_frame)) / peak_frame);
+              if (error > worst) {
+                worst = error;
+                std::snprintf(worst_at, sizeof(worst_at), " (worst: mode %.0f, Paper White %.0fx, texel %zu past Peak: BT.2020 %.6g, Y %.6g of %.6g)",
+                              mode, paper_white, texel / 4, bt2020_max(on_linear), luminance(on_linear), luminance(expected));
+              }
+              ++limited;
+              continue;
+            }
             for (size_t c = 0; c < 3; ++c) {
               const double error = std::abs(on_linear[c] - expected[c]) / brightest;
               if (error <= worst) continue;
@@ -1140,9 +1160,9 @@ int main(int argc, char** argv) {
         ++gamma_checked;
         if (!passed) ++gamma_failed;
         char line[768];
-        std::snprintf(line, sizeof(line), "%-12s %-34s %-4s worst %-8s grey (Rendering Mode 3, %.0f nits): off %.3f, on %.3f nits = 2.2 decode of off's value %.3f%s%s",
+        std::snprintf(line, sizeof(line), "%-12s %-34s %-4s worst %-8s grey (Rendering Mode 3, %.0f nits): off %.3f, on %.3f nits = 2.2 decode of off's value %.3f; %zu texels limited to Peak%s%s",
                       entry.game.c_str(), entry.shader.c_str(), passed ? "ok" : "FAIL", Number(worst).c_str(), DIFFUSE, grey[0], grey[1], grey[2],
-                      control_caught ? "" : " CONTROL NOT CAUGHT", passed ? "" : worst_at);
+                      limited, control_caught ? "" : " CONTROL NOT CAUGHT", passed ? "" : worst_at);
         gamma_lines.emplace_back(line);
       }
     }

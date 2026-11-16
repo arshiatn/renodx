@@ -76,10 +76,10 @@ float4 HdrToScreenOutput(float3 hdr_color, float alpha)
       color = ApplyAttilaPsychoV30(graded_hdr);
     }
   }
-  // Gamma Correction: the game's gamma 2.0 picture as the frame's 2.2 decode shows it (x^1.1; off, 2.0: as it is).
+  // Gamma Correction: the game's gamma 2.0 picture as the frame's 2.2 decode shows it (off, 2.0: as it is).
   [branch]
   if (TW_FRAME_GAMMA != 2.f) {
-    color = DecodeFrame(renodx::color::gamma::EncodeSafe(color, 2.f));
+    color = EmulateFrameGamma(color, HDR_PEAK);
   }
   return float4(EncodeFrame(color * ATTILA_PAPER_WHITE), saturate(alpha));
 }

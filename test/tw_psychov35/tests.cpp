@@ -5,7 +5,8 @@
 // 1. Every other mode gives the same bits as d3d6425b: Attila SDR / PsychoV30 / PsychoV31, WH3 SDR / Extended /
 //    PsychoV30 / PsychoV31, at HDR10, scRGB and SDR output, sliders at their defaults and moved, Hue Clip at 0.7 and
 //    PsychoV35's sliders moved (which must do nothing there). 64 colours (every hue, greys, negative channels, black) x
-//    48 brightness steps.
+//    48 brightness steps. Attila's hdr_to_screen (t01 - t08): V30 / V31 with Gamma Correction off (since 2026-11-16 it
+//    acts in every mode; tw_vanilla_exact checks it and Rendering Mode SDR).
 // 2. Hue Clip alone (twattila/psycho35.hlsli's HueClip, every game's): fire orange and sky blue move their middle
 //    channel toward the clip's place, the smallest and largest channel keep their ratio, BT.709 luminance is kept; grey
 //    and strength 0 unchanged; a negative channel keeps its sign; a dark colour (far below the clip) about unchanged.
@@ -486,7 +487,7 @@ static Bindings Wh3ToneMapper(const std::vector<Float4>& scene, bool identity_gr
   return b;
 }
 
-// The tone mappers' outputs as linear BT.709 relative to the UI's white: Attila 2.0-encoded, WH3 2.2.
+// The tone mappers' outputs as linear BT.709 relative to the UI's white: Attila in its frame's gamma (RunAttila), WH3 2.2.
 static Float3 Decode(const Float4& o, float gamma) {
   Float3 c;
   for (int i = 0; i < 3; ++i) c[i] = std::copysign(std::pow(std::abs(o[i]), gamma), o[i]);
@@ -626,7 +627,11 @@ static void TestBits(const std::map<std::string, Pair>& shaders) {
     if (name.starts_with("r_")) continue;
     const bool wh3_shader = name.starts_with("w_");
     const bool tone_mapper = (name == "a_t00" || name == "a_t09" || name == "a_t10");
-    const std::vector<float> modes = (wh3_shader ? std::vector<float>{0.f, 1.f, 2.f, 3.f} : std::vector<float>{0.f, 1.f, 2.f});
+    // Attila's hdr_to_screen since 2026-11-16: Gamma Correction acts in every Rendering Mode and Rendering Mode SDR's
+    // Paper White is scaled in the frame's gamma (tw_vanilla_exact checks both); the HDR modes without it keep their bits.
+    const bool attila_output = !wh3_shader && !tone_mapper;
+    const std::vector<float> modes = (wh3_shader ? std::vector<float>{0.f, 1.f, 2.f, 3.f}
+                                                 : (attila_output ? std::vector<float>{1.f, 2.f} : std::vector<float>{0.f, 1.f, 2.f}));
     int different = 0;
     for (const float mode : modes) {
       for (const float encoding : {0.f, 1.f, 2.f}) {
@@ -642,6 +647,7 @@ static void TestBits(const std::map<std::string, Pair>& shaders) {
             bindings = (tone_mapper ? AttilaToneMapper(scene, set == 0, 0.002f, 1.6f) : AttilaHdrToScreen(scene, set == 0));
             auto si = AttilaInjection(mode, encoding);
             MoveAttilaSliders(&si, set);
+            if (attila_output) si.gamma_correction = 0.f;
             bindings.injection = Bytes(si);
           }
           const std::string label = name + " mode " + std::to_string(static_cast<int>(mode)) + " output " +
@@ -651,7 +657,8 @@ static void TestBits(const std::map<std::string, Pair>& shaders) {
         }
       }
     }
-    std::printf("1. %s: modes %s, %d pixels different\n", name.c_str(), wh3_shader ? "SDR / Extended / V30 / V31" : "SDR / V30 / V31", different);
+    std::printf("1. %s: modes %s, %d pixels different\n", name.c_str(),
+                wh3_shader ? "SDR / Extended / V30 / V31" : (attila_output ? "V30 / V31 (Gamma Correction off)" : "SDR / V30 / V31"), different);
     total_different += different;
   }
   std::printf("1. %d draws of %u pixels on each side, %d pixels different\n", draws, WIDTH * HEIGHT, total_different);
@@ -786,8 +793,12 @@ static std::vector<Float3> RunAttila(const Chain& chain, const std::vector<Float
   Bindings second = AttilaHdrToScreen(handoff, true);
   second.injection = Bytes(si);
   const auto output = Draw(chain.attila_hdr_to_screen->after, second);
+  // Decoded as the swap chain proxy does, with the frame's gamma (twattila/shared.h TW_FRAME_GAMMA): 2.2 with Gamma
+  // Correction, 2.0 without; Rendering Mode SDR on an SDR display the other way round.
+  const bool sdr_mode_on_sdr = (si.swap_chain_encoding == 2.f && si.hdr < 0.5f);
+  const float frame_gamma = ((si.gamma_correction != 0.f) != sdr_mode_on_sdr) ? 2.2f : 2.f;
   std::vector<Float3> linear;
-  for (const auto& o : output) linear.push_back(Decode(o, 2.f));
+  for (const auto& o : output) linear.push_back(Decode(o, frame_gamma));
   return linear;
 }
 

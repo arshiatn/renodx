@@ -72,10 +72,10 @@ float4 HdrToScreenOutput(float3 hdr_color, float alpha)
   } else {
     color = ApplyPsychoV30(graded_hdr);
   }
-  // Gamma Correction: the game's gamma 2.0 picture as the frame's 2.2 decode shows it (x^1.1; off, 2.0: as it is).
+  // Gamma Correction: the game's gamma 2.0 picture as the frame's 2.2 decode shows it (off, 2.0: as it is).
   [branch]
   if (TW_FRAME_GAMMA != 2.f) {
-    color = DecodeFrame(renodx::color::gamma::EncodeSafe(color, 2.f));
+    color = EmulateFrameGamma(color, HDR_PEAK);
   }
   return float4(EncodeFrame(color * (SI.diffuse_white_nits / SI.graphics_white_nits)), alpha);
 }
