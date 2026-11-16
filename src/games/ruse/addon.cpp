@@ -796,7 +796,8 @@ void ApplyDefaultLook(float rendering_mode) {
 
 // ATN 2026-11-12: Musa's PsychoV35 at its defaults; PsychoV31's sliders as before, for its modes.
 void ApplyPsychoRecommended() {
-  // The look rows (Motion Blur off: ATN decides, skill audit 11-16); Peak, Paper White, UI and Output kept.
+  // The look rows (Motion Blur off: ATN decides, skill audit 11-16; Video AutoHDR 0.2, hdr-review-rules); Peak, Paper
+  // White, UI and Output kept.
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
   renodx::utils::settings::UpdateSettings({
       {"rendering_mode", 3.f},
@@ -815,6 +816,8 @@ void ApplyPsychoRecommended() {
       {"vignette", 1.f},
       {"motion_blur",0.f},
       {"depth_of_field",1.f},
+      {"video_autohdr", 0.2f},
+      {"video_dithering", 1.f},
   });
 }
 
@@ -929,7 +932,7 @@ void BuildRuntimeData() {
           .label = "Recommended (PsychoV35)",
           .section = "Presets",
           .group = "preset-line-2",
-          .tooltip = "Selects HDR (PsychoV35) with its controls at their defaults, Motion Blur off.\n"
+          .tooltip = "Selects HDR (PsychoV35) with its controls at their defaults, Motion Blur off, Video AutoHDR 0.2.\n"
                      "Peak, Paper White, UI and Output are kept.",
           .on_change = []() {
             ApplyPsychoRecommended();
