@@ -31,7 +31,9 @@
 #include "../../utils/settings.hpp"
 #include "../talesofarise_dlss/frame_trace.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/device_loss.hpp"
 #include "../twattila/draw_dispatch.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
@@ -798,8 +800,10 @@ void AppendConstants(reshade::api::command_list* cmd_list, bool compute, UINT sl
   talesofarise::frame_trace::internal::Append(line);
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
+// Time Each Pass's frame and the frame trace's.
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
+  twattila::pass_timing::OnPresent(queue, "divinity2");
   talesofarise::frame_trace::OnPresent();
 }
 
@@ -941,6 +945,14 @@ void ConfigureAddon() {
           .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Time Each Pass (One Frame)",
+          .section = "Debug",
+          .tooltip = "The GPU's time of every pass of the next frame into divinity2_pass_timing.txt next to the game's exe.",
+          .on_change = []() { twattila::pass_timing::Request(); },
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = twattila::credits::RENODX_PSYCHO_V30_V35,
           .section = "About",
@@ -1047,6 +1059,8 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
+      // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
+      twattila::pass_timing::Install();
 
       if (!initialized) {
         ConfigureAddon();
@@ -1055,9 +1069,13 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
         twattila::test_hooks::Install(&settings, true, "[Divinity 2]");
         initialized = true;
       }
+      // Before the swap chain mod (below): a removed device's chain let go, the no-frame limit and stall log after it. The
+      // output stays HDR10 (no Output choice to decide, no flip chain let go before the next).
+      twattila::device_loss::Install();
 
       break;
     case DLL_PROCESS_DETACH:
+      twattila::device_loss::Uninstall();
       twattila::test_hooks::Uninstall();
       reshade::unregister_event<reshade::addon_event::present>(OnPresent);
       talesofarise::frame_trace::Stop();
@@ -1076,6 +1094,9 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   renodx::mods::shader::Use(fdw_reason, custom_shaders, &shader_injection);
   if (fdw_reason == DLL_PROCESS_ATTACH) {
     twattila::draw_dispatch::Use(fdw_reason);
+    twattila::device_loss::InstallLast();
+  } else if (fdw_reason == DLL_PROCESS_DETACH) {
+    twattila::pass_timing::Uninstall();
   }
 
   return TRUE;

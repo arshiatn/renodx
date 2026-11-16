@@ -33,6 +33,8 @@ constexpr int SDR = 2;  // 10-bit, gamma 2.2
 constexpr int AUTO = 3;
 
 struct Config {
+  // Null: never configured (an addon without this Output setting, as Divinity 2's on the game's own HDR10 chain with
+  // device_loss): Decide and Apply leave the output as the addon set it.
   float* shader_encoding = nullptr;
   int setting = AUTO;
   // The HDR output of a setting other than SDR. Null: HDR10 where chosen, else scRGB.
@@ -86,6 +88,7 @@ inline int Encoding(int setting, const WindowsHdr& windows_hdr, std::optional<in
 }
 
 inline void Apply(int encoding) {
+  if (config.shader_encoding == nullptr) return;
   *config.shader_encoding = static_cast<float>(encoding);
   if (encoding == SDR) {
     renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
@@ -110,6 +113,7 @@ inline void Configure(const Config& game_config) {
 
 // A new swap chain, with what Windows says of the display its window is on.
 inline void Decide(const WindowsHdr& windows_hdr) {
+  if (config.shader_encoding == nullptr) return;
   const int encoding = Encoding(config.setting, windows_hdr, decided);
   Apply(encoding);
   constexpr const char* NAMES[] = {"HDR10", "scRGB", "SDR"};
