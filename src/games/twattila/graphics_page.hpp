@@ -94,6 +94,8 @@ struct Texts {
   const char* replace_maps_tooltip =
       "The sun's shadows from rays alone, so Softness shows in full. Smoke, clouds and hills keep the game's.\n"
       "Off: the rays' shadows on top of the game's shadow maps and contact shadows.";
+  // Global Illumination's first line (what bounces), then its methods (GT-VBGI's only where the game has it), then the end.
+  const char* gi_tooltip_start = "Sunlit ground, walls and soldiers bounce their light and colour into nearby shadows.\n";
   const char* gi_tooltip_end = "";
   const char* coloured_shadows_tooltip = "";      // Empty: the row's own.
   const char* rays_a_pixel_shadows_tooltip = "";  // Empty: the row's own.
@@ -1211,10 +1213,13 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     std::vector<std::string> gi_places;
     for (const int method : gi_methods) gi_places.push_back(gi_labels[method]);
     page.Add(MethodSlider(section,
-                          std::string("Sunlit ground, walls and soldiers bounce their light and colour into nearby shadows.\n"
-                                      "GT-VBGI (visibility bitmask): from what is on screen. One Bounce: DXR rays through the scene,\n"
-                                      "nothing guessed behind what the camera sees. ReSTIR GI: path tracing, several bounces, also from off\n"
-                                      "screen, its samples reused over frames and between neighbours. Heavy. The last two need an upscaler.")
+                          std::string(b.texts->gi_tooltip_start)
+                              + (b.has_gtvbgi ? "GT-VBGI (visibility bitmask): from what is on screen. One Bounce: DXR rays through the scene,\n"
+                                                "nothing guessed behind what the camera sees. ReSTIR GI: path tracing, several bounces, also from off\n"
+                                                "screen, its samples reused over frames and between neighbours. Heavy. The last two need an upscaler."
+                                              : "One Bounce: DXR rays through the scene, nothing guessed behind what the camera sees.\n"
+                                                "ReSTIR GI: path tracing, several bounces, also from off screen, its samples reused over frames\n"
+                                                "and between neighbours. Heavy. Both need an upscaler.")
                               + b.texts->gi_tooltip_end,
                           std::move(gi_places),
                           [b, gi_methods] {

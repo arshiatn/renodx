@@ -827,6 +827,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: the original. RTAO: from rays through the scene, in its place (keep in-game SSAO on).\n"
                   "Path-Traced: the sky's light itself from Global Illumination's paths, its shade included.\n"
                   "Needs an upscaler. Restart the game after turning it on.",
+    .gi_tooltip_start = "Sunlit ground, walls and characters bounce their light and colour into nearby shadows.\n",
     .gi_tooltip_end = "\nRestart the game after turning it on.",
 };
 

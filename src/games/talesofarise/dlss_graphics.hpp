@@ -2911,6 +2911,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Path-Traced: with Path Tracing Global Illumination, the share of the sky's light that reaches each spot.\n"
                   "Needs an upscaler and a DXR GPU.",
     .ao_paths_label = "Path-Traced",
+    .gi_tooltip_start = "Sunlit ground, walls and characters bounce their light and colour into nearby shadows.\n",
     .gi_tooltip_end = "\nGT-VBGI takes the place of the game's own Global Illumination.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, fog, light shafts, reflections, clouds, effects, skin and shadows\n"
                                  "keep their 100% detail. Looks better, can cost some performance.",
