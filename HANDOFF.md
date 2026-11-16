@@ -3,6 +3,8 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 (R.U.S.E. round): Recommended motion blur 0?; RT/PT scope; upscaler sub-rows; Ray Reconstruction for the
+  rays (today DLAA preset K + our own denoise). Owner: ATN
 - [ ] NEW 11-16 (WH1 / WH2 round), in game: a river or lava with RT/PT (WH2 RT Water Reflections); wet stone with
   Specular Occlusion (reflections darker only once); WH2 Modded Auto Exposure; WH1 Smoke Shadows without rays + Smooth
   Particles; Time Each Pass before / after the new skips; WH1 / WH2 into the Gamma Correction look checks. Decide (C):
@@ -226,6 +228,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ryf_ not done: row 9 e_GsmLodsNum under the rays' sun (trace: which lod is the c ... | next Ryse round / data run
 - tpf_ not done: Torch / Fire Shadows on the 7 other point-light PS per game (14 W ... | next Troy / Pharaoh round, data run
 - w12_ not done: Rays Replace Shadow Maps as default (no WARP proof of the replace ... | next WH1 / WH2 round
+- rux_ not done: RT debug view, moving units under DLAA, combined O1 variant, Time ... | next R
 - ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
 - Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
@@ -1685,6 +1688,21 @@ heading text are in HANDOFF_ARCHIVE.md)
           zero output), FXAA (alpha 1), sharpening / pointlight00 (zero output); psycho_test31 copies differ (a merge changes
           the look); WH2 depth downsample F1CE6943 kept (an untraced blur may read it); GI + contact-shadow replace audit not
           done; Grass RT range for dynamic grass (shared, boxed). Owner: next WH1 / WH2 round
+        - [x] R.U.S.E. MERGED 5c43d8f95 (rux_, 26 commits; amd64 PASS): the AA row writes Option.ini MainRTAA 1 (1x) so the
+          bridge runs (a multisampled start keeps it off with one log line and a red row); status lines on change (<= 9 a
+          start); RT ground / object shadows replace the map term (cmp; 1,185 patched shaders proven, D3D9 NULLREF 1185 /
+          1185, refused control); Bend off under the rays; PT bounce without O1; AO rays + GT-VBAO skipped under PT ambient;
+          Near + Lean ReSTIR with PT; credits::Methods; Recommended Video AutoHDR 0.2; ComPtr fix (1x1 textures were rebuilt
+          every frame); vendor fallback (DLAA on NVIDIA only); Reflex NVIDIA-only; Units RT Range (max 600 m, 16-bit);
+          replay re-uploads call OnIndexWrite (tw_cluster_rewrite case 8, control "marked 0"); mirror width fix (buffers not a
+          multiple of 16 B were recreated every upload); test hooks. Tests: psychov35 part 6 (V35 = SDR exactly), ru_c1_verify,
+          ru_post_vanilla 7 / 7, page dump, static_checks 0. dump_any.py now links MinHook + d3d9 (coordinator; backup
+          dump_any.py.bak_minhook).
+        - [ ] rux_ not done: RT debug view, moving units under DLAA, combined O1 variant, Time Each Pass (D3D9 queries); shared:
+          utils/device_proxy has no removed-device path (+ WARP test; ledger row reopened). T-run checks (with ATN or a
+          click-loaded Continue): MainRTAA 1x against an all-off start; is MainRTDivider a render scale (then D6 + LOD bias);
+          Gamma Correction (U1 box); shadow-map pass skip (off-screen casters / imposters); Units range zoomed out (is a world
+          unit a centimetre?). Owner: next R.U.S.E. round, shared round, coordinator (T-run)
         - [ ] ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB73442 / D9123DE1, vanilla coverage
           of pointlight00-39 / UI sprites / grass00-01 (the generic driver can't feed them); view_share Classify 24 unclear
           sun-PS rows a game (NEEDS A TRACE). The t46 x AO double-occlusion check was sent to WH3, WH1 / WH2, Troy / Pharaoh,
