@@ -991,3 +991,11 @@ its diffuse part out of the sky light passes skylight00-02 (6C9A1DD0, 62008428, 
 term stay. The rays' AO is off under it (one AO method). Experimental and off (path_ambient_tested = false).
 test/tw_vanilla_exact: ExpeditionsSky (off = the game's bytes), ExpeditionsSkyPaths (the switch on: only the diffuse
 sky gone).
+
+AO round 2026-11-16 (tpa_, untested in game): one AO method at present: GT-VBAO's constant 0 while the rays' AO or
+Path-Traced Ambient runs (the row keeps its value); under GT-VBAO r.AmbientOcclusionLevels at most 1 (its lower levels
+2491478D / A45907DE and their setups, 0.57 ms at 4K DLAA, feed only the levels' result GT-VBAO replaces; the one-level
+pass ao01 BD381E21 has the same GT-VBAO as ao00). New **No Distance Field AO Under Ours (Experimental)** (off):
+r.AOQuality 0 under GT-VBAO, the rays' AO or Path-Traced Ambient (DFAO 0.30 ms; skylight01 / 02 are the sky light
+passes without it). The 8-bit targets before the tone mapper carry no HDR colour (SSAO levels, the screen shadow
+mask, HZB): nothing to unclamp.

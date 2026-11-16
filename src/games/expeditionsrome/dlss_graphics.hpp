@@ -410,8 +410,11 @@ constexpr size_t SUN_SHADOW_RESOLUTION = SettingIndex(L"r.Shadow.MaxCSMResolutio
 constexpr size_t VOLUMETRIC_FOG = SettingIndex(L"r.VolumetricFog");
 // Unreal's own screen-space GI: 0 while ours replaces it (one GI method, ATN 2026-11-16).
 constexpr size_t SSGI_QUALITY = SettingIndex(L"r.SSGI.Quality");
+// Unreal's AO levels: 1 under GT-VBAO (the lower levels, 0.57 ms at 4K, feed only the levels' result GT-VBAO
+// replaces; the one-level pass ao01 has the same GT-VBAO as ao00).
+constexpr size_t AO_LEVELS = SettingIndex(L"r.AmbientOcclusionLevels");
 static_assert(SUN_SHADOW_CASCADES < SUN_SHADOW_RESOLUTION && SUN_SHADOW_RESOLUTION < GRAPHICS_SETTINGS.size());
-static_assert(VOLUMETRIC_FOG < GRAPHICS_SETTINGS.size() && SSGI_QUALITY < GRAPHICS_SETTINGS.size());
+static_assert(VOLUMETRIC_FOG < GRAPHICS_SETTINGS.size() && SSGI_QUALITY < GRAPHICS_SETTINGS.size() && AO_LEVELS < GRAPHICS_SETTINGS.size());
 // "Effects at output resolution" (on by default, as Tales): while DLSS renders below 100%, settings sized in render
 // pixels follow the render scale s (render / output), so these effects keep the detail they have at 100%: cell sizes
 // and resolution divisors x s (nearest, at least 1), shadow texels per pixel / s (Unreal sizes object, spot, point and
@@ -1547,7 +1550,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     const float preset_value = (entry.choice == 0 ? KEEP : entry.choices[entry.choice - 1]);
     const OutputScaling scaling = ((effects_at_output && upscaling) ? OUTPUT_SCALING[index] : OutputScaling::NONE);
     const float current = entry.cvar.Get();
-    const bool replaced = (index == SSGI_QUALITY && our_gi) || (index == SUN_SHADOW_CASCADES && two_cascades);
+    const bool gtvbao = ao_method_constant != nullptr && *ao_method_constant >= 1.f;
+    const bool replaced = (index == SSGI_QUALITY && our_gi) || (index == SUN_SHADOW_CASCADES && two_cascades) || (index == AO_LEVELS && gtvbao);
     if (std::isnan(preset_value) && scaling == OutputScaling::NONE && !replaced) {
       if (entry.controlling) {
         entry.cvar.Set(entry.game_value);
@@ -1561,8 +1565,12 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     float desired = (std::isnan(preset_value) ? entry.game_value : preset_value);
     if (setting.better == Better::HIGHER) desired = std::max(entry.game_value, desired);
     if (setting.better == Better::LOWER) desired = std::min(entry.game_value, desired);
-    if (replaced) {
-      desired = (index == SUN_SHADOW_CASCADES ? std::min(desired, 2.f) : 0.f);
+    if (index == SUN_SHADOW_CASCADES && replaced) {
+      desired = std::min(desired, 2.f);
+    } else if (index == AO_LEVELS && replaced) {
+      desired = std::min(desired, 1.f);
+    } else if (replaced) {
+      desired = 0.f;
     }
     switch (scaling) {
       case OutputScaling::CELL_OR_DIVISOR:
