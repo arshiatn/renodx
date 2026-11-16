@@ -1580,7 +1580,7 @@ void ConfigureAddon() {
     }
   }
   // Attila's row (live): the helper leaves out the moving replayed draws (the replay's compact ones, rt_core's units)
-  // past the range; it takes 65,535 world units at most (655 m at a centimetre a unit).
+  // past the range (metres: ray_tracing.hpp HELPER_METRES).
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedUnitsRange",
       .binding = &ruse::ray_tracing::state.units_range,

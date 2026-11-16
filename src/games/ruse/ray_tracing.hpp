@@ -65,9 +65,13 @@
 // light becomes the s14 texel; its reflections (a mirror on the water) the s13 texel.
 namespace ruse::ray_tracing {
 
-// The rays' ambient range in world units: 2 m if a unit is a centimetre (eye heights near 67,000 on the B0 trace; the
-// T-run checks).
-constexpr float AMBIENT_RANGE = 200.f;
+// A world unit is a centimetre (the terrain's box 2,621,440 units square and 84,421 high: a 26 km map with 844 m of
+// relief; the haze's eye height capped at 750,000); the helper's scene, rays and ranges are in metres (its scene data
+// drops a vertex past 200 km as garbage, its ray offsets and reaches are metres). Its camera and ranges take world units
+// times this: R.U.S.E.'s centimetres near 2e6 left every captured triangle out (run_rn3_rt_093315: no shadow traced).
+constexpr double HELPER_METRES = 0.01;
+// The rays' ambient range, metres.
+constexpr float AMBIENT_RANGE = 2.f;
 // GT-VBAO's radius and its samples' thickness, world units (the hollows and slopes of terrain: ten times the rays'; the
 // T-run checks).
 constexpr float VBAO_RADIUS = 2000.f;
@@ -79,10 +83,10 @@ constexpr float BOUNCE_STRENGTH = 1.f;
 constexpr float REFLECTION_REACH = 100000.f;
 constexpr float REFLECTION_THICKNESS = 500.f;
 // The rays' Light Bounce: a texel each BOUNCE_SCALE x BOUNCE_SCALE pixels, paths a texel, their reach past the first
-// surface in world units (10 m if a unit is a centimetre; the T-run checks).
+// surface in metres.
 constexpr UINT BOUNCE_SCALE = 2;
 constexpr uint32_t BOUNCE_RAYS = 2;
-constexpr float BOUNCE_RANGE = 1000.f;
+constexpr float BOUNCE_RANGE = 10.f;
 // After a frame without rays (the helper didn't trace, or no trace point) the next try this many frames on: the replay
 // records the frame before a try and the try's own, not every frame.
 constexpr uint32_t RAYS_RETRY_FRAMES = 60;
@@ -504,21 +508,26 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   bridge::DrawQuad(host, depth_target, state.depth_copy.Get(), depth_source, {});
   bridge::WaitHost(host);
 
-  // The camera: the camera pass's inverse view-projection (rows acting on column vectors) and its inverse.
+  // The camera: the camera pass's inverse view-projection (rows acting on column vectors) and its inverse. The helper's
+  // in metres (HELPER_METRES): the view-projection takes them (its x, y, z columns / the scale), the inverse gives them
+  // (its x, y, z rows x the scale), and so do Host::clip_relative's rows: a clip position's offset from the eye (the
+  // inverse's row less its w row x the eye), the eye below them. The water march's offset rows are the same in world units.
   const float* inverse = bridge.camera.data() + 16;
   std::array<double, 16> view_projection = {};
   std::array<double, 3> eye = {};
   if (!bridge::CurrentCamera(&view_projection, &eye)) return false;
   twattila::rt_scene::Camera camera = {};
   for (size_t index = 0; index < 16; ++index) {
-    camera.view_projection[index] = static_cast<float>(view_projection[index]);
-    camera.inverse_view_projection[index] = inverse[index];
+    camera.view_projection[index] = static_cast<float>(view_projection[index] / ((index % 4) < 3 ? HELPER_METRES : 1.0));
+    camera.inverse_view_projection[index] = static_cast<float>(inverse[index] * (index < 12 ? HELPER_METRES : 1.0));
   }
-  // Host::clip_relative's rows: a clip position's offset from the eye (the inverse's row less its w row x the eye).
+  std::array<float, 12> offset_rows = {};
   for (size_t axis = 0; axis < 3; ++axis) {
-    camera.position[axis] = static_cast<float>(eye[axis]);
+    camera.position[axis] = static_cast<float>(eye[axis] * HELPER_METRES);
     for (size_t k = 0; k < 4; ++k) {
-      camera.relative_inverse[(axis * 4) + k] = static_cast<float>(inverse[(axis * 4) + k] - (inverse[12 + k] * eye[axis]));
+      const double offset = inverse[(axis * 4) + k] - (inverse[12 + k] * eye[axis]);
+      offset_rows[(axis * 4) + k] = static_cast<float>(offset);
+      camera.relative_inverse[(axis * 4) + k] = static_cast<float>(offset * HELPER_METRES);
     }
     camera.relative_inverse[12 + axis] = camera.position[axis];
   }
@@ -761,7 +770,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   // frame's (the view-projections with the eye's translation folded in, in doubles).
   if (state.reflections && light_kept && !reflected) {
     std::array<float, 60> settings = {};
-    std::copy_n(camera.relative_inverse.begin(), 12, settings.begin());
+    std::ranges::copy(offset_rows, settings.begin());
     std::copy_n(inverse + 12, 4, settings.begin() + 12);
     std::ranges::copy(to_clip, settings.begin() + 16);
     std::ranges::copy(to_previous_clip, settings.begin() + 32);
@@ -1049,8 +1058,7 @@ inline void OnPresent() {
       .path_tracing = state.traced_bounce == 2,
       .path_ambient = state.traced_bounce == 2,
       .reflections = state.traced_reflections,
-      // Metres to world units (a unit a centimetre, as the ranges above; the T-run checks).
-      .units_range = state.units_range * 100.f,
+      .units_range = state.units_range,
       // Lean and Near ReSTIR Reuse with path tracing: faster, the same look in tests (Lean on by default: ATN 11-16; Near
       // as Ryse's and Shogun 2's defaults, reuse -46 %).
       .reuse_lean = state.traced_bounce == 2,

@@ -62,7 +62,9 @@ Frame Rate Limit on NVIDIA's or under XeSS frame generation (Xe Low Latency).
 
 The rays trace the scene a D3D9 draw replay captures on the proxy's D3D11 device (`rt_core.hpp`'s clip-space host): the
 275 census vertex shaders transpiled to vs_5_0 with stream output (`shaders/replay`, each proved against the game's
-vs_3_0 on an SM3 vertex interpreter), static draws placed once. Ours replaces the game's, one method an effect:
+vs_3_0 on an SM3 vertex interpreter), static draws placed once. The helper works in metres: the camera and the ranges go
+to it at 0.01 a world unit (a centimetre: the map's terrain box is 26 km square); in centimetres near 2e6 its scene data
+dropped every triangle as garbage (past 200 km) and nothing cast a shadow. Ours replaces the game's, one method an effect:
 
 | Row | What it does |
 |---|---|
@@ -72,7 +74,7 @@ vs_3_0 on an SM3 vertex interpreter), static draws placed once. Ours replaces th
 | Ray-Traced Ground Ambient Occlusion / Screen-Space Ground Ambient Occlusion | The rays' AO, else GT-VBAO, into the 108 terrain shaders' ambient (s14). Both skipped once Path-Traced Light Bounce replaces the ambient. |
 | Ground Light Bounce | Screen-Space: GT-VBGI on the ground. Ray-Traced / Path-Traced: the helper's Light Bounce through guides the patched terrain and object shaders write (oC1 albedo, oC2 normal), into the same s14 texel; Path-Traced brings the sky in place of the game's flat ambient on the ground and the objects (Lean and Near ReSTIR Reuse on). |
 | Water Reflections | Screen-Space: a march over the start depth, its hits in last frame's scene; Ray-Traced: the helper's reflections; the 120 water shaders blend it over their cube by its share (s13). |
-| Units Ray Tracing Range (live) | Moving units (the replay's compact draws) farther than this out of the scene; 0 m: all (a world unit taken as a centimetre: the T-run checks). |
+| Units Ray Tracing Range (live) | Moving units (the replay's compact draws) farther than this out of the scene; 0 m: all. |
 
 Not covered: 2 object shaders whose shadow select writes an output, 60 lit object shaders the guides can't patch, 12
 terrain shaders (they keep the game's shading). The game's shadow-map pass still draws (its readers: water, sprites,
