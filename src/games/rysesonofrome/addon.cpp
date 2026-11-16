@@ -1740,6 +1740,7 @@ namespace back_buffer_fix {
 struct Data {
   reshade::api::device* device = nullptr;
   std::vector<uint64_t> old_buffers;  // earlier back buffers, the newest last
+  std::vector<uint64_t> views;        // the game's render target views of the back buffers (current and earlier)
   reshade::api::resource current = {0u};
   reshade::api::resource target = {0u};  // RenoDX's clone of the current back buffer, else itself
   reshade::api::resource_view rtv = {0u};
@@ -1751,13 +1752,19 @@ Data data;
 std::mutex mutex;
 std::atomic_bool check_after_present = false;
 // Read without the mutex on every bind and draw (the mutex only for back buffer binds): the current and earlier back
-// buffers (data.current, data.old_buffers), the immediate context and the game's last binding on it.
+// buffers (data.current, data.old_buffers), the game's views of them (data.views: a bind is matched by its view, no
+// lookup of the view's resource a bind), the immediate context and the game's last binding on it.
 constexpr size_t MAX_BACK_BUFFERS = 16;
+constexpr size_t MAX_BACK_BUFFER_VIEWS = 32;
 std::array<std::atomic<uint64_t>, MAX_BACK_BUFFERS> back_buffers = {};
+std::array<std::atomic<uint64_t>, MAX_BACK_BUFFER_VIEWS> back_buffer_views = {};
+// More of the game's back buffer views than back_buffer_views holds: each bind's view looked up again (as before).
+std::atomic_bool too_many_views = false;
 std::atomic<uint64_t> immediate_context = 0u;
 std::atomic_bool bound_back_buffer = false;
 
-// Caller holds the mutex: back_buffers from data (the oldest earlier ones dropped beyond MAX_BACK_BUFFERS).
+// Caller holds the mutex: back_buffers and back_buffer_views from data (the oldest earlier buffers dropped beyond
+// MAX_BACK_BUFFERS).
 void PublishBackBuffers() {
   if (data.old_buffers.size() >= MAX_BACK_BUFFERS) {
     data.old_buffers.erase(data.old_buffers.begin(), data.old_buffers.end() - (MAX_BACK_BUFFERS - 1));
@@ -1766,6 +1773,10 @@ void PublishBackBuffers() {
   back_buffers[index++].store(data.current.handle, std::memory_order_relaxed);
   for (const uint64_t buffer : data.old_buffers) back_buffers[index++].store(buffer, std::memory_order_relaxed);
   while (index < MAX_BACK_BUFFERS) back_buffers[index++].store(0u, std::memory_order_relaxed);
+  too_many_views.store(data.views.size() > MAX_BACK_BUFFER_VIEWS, std::memory_order_relaxed);
+  for (index = 0; index < MAX_BACK_BUFFER_VIEWS; ++index) {
+    back_buffer_views[index].store((index < data.views.size() ? data.views[index] : 0u), std::memory_order_relaxed);
+  }
 }
 
 // Caller holds the mutex.
@@ -1793,6 +1804,12 @@ void DestroyView() {
 bool IsBackBuffer(uint64_t resource) {
   return resource != 0u && std::ranges::any_of(back_buffers, [&](const std::atomic<uint64_t>& buffer) {
            return buffer.load(std::memory_order_relaxed) == resource;
+         });
+}
+
+bool IsBackBufferView(uint64_t view) {
+  return view != 0u && std::ranges::any_of(back_buffer_views, [&](const std::atomic<uint64_t>& known) {
+           return known.load(std::memory_order_relaxed) == view;
          });
 }
 
@@ -1856,17 +1873,38 @@ void OnInitResource(
   PublishBackBuffers();
 }
 
+// The game's render target views of a back buffer: its binds are known by the view.
+void OnInitResourceView(reshade::api::device*, reshade::api::resource resource, reshade::api::resource_usage usage_type,
+                        const reshade::api::resource_view_desc&, reshade::api::resource_view view) {
+  if (usage_type != reshade::api::resource_usage::render_target || !IsBackBuffer(resource.handle)) return;
+  const std::scoped_lock lock(mutex);
+  if (std::ranges::find(data.views, view.handle) == data.views.end()) data.views.push_back(view.handle);
+  PublishBackBuffers();
+}
+
+// A view's address may come back as another resource's view.
+void OnDestroyResourceView(reshade::api::device*, reshade::api::resource_view view) {
+  if (!IsBackBufferView(view.handle) && !too_many_views.load(std::memory_order_relaxed)) return;
+  const std::scoped_lock lock(mutex);
+  if (std::erase(data.views, view.handle) != 0) PublishBackBuffers();
+}
+
 void OnBindRenderTargets(
     reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view* rtvs,
     reshade::api::resource_view dsv) {
   auto* device = cmd_list->get_device();
   if (device->get_api() != reshade::api::device_api::d3d11) return;
-  const uint64_t bound = (count != 0 && rtvs[0].handle != 0u) ? device->get_resource_from_view(rtvs[0]).handle : 0u;
-  const bool back_buffer = IsBackBuffer(bound);
+  const uint64_t view = (count != 0 ? rtvs[0].handle : 0u);
+  const bool back_buffer = (too_many_views.load(std::memory_order_relaxed)
+                                ? (view != 0u && IsBackBuffer(device->get_resource_from_view(rtvs[0]).handle))
+                                : IsBackBufferView(view));
   if (cmd_list->get_native() == immediate_context.load(std::memory_order_relaxed)) {
     bound_back_buffer.store(back_buffer, std::memory_order_relaxed);
   }
   if (!back_buffer) return;
+  // A view of a back buffer dropped from back_buffers (beyond MAX_BACK_BUFFERS) is no back buffer any more.
+  const uint64_t bound = device->get_resource_from_view(rtvs[0]).handle;
+  if (!IsBackBuffer(bound)) return;
 
   const std::scoped_lock lock(mutex);
 
@@ -2277,6 +2315,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_swapchain>(back_buffer_fix::OnDestroySwapchain);
   reshade::register_event<reshade::addon_event::init_resource>(back_buffer_fix::OnInitResource);
+  reshade::register_event<reshade::addon_event::init_resource_view>(back_buffer_fix::OnInitResourceView);
+  reshade::register_event<reshade::addon_event::destroy_resource_view>(back_buffer_fix::OnDestroyResourceView);
   reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(back_buffer_fix::OnBindRenderTargets);
   reshade::register_event<reshade::addon_event::present>(back_buffer_fix::OnPresent);
   reshade::register_event<reshade::addon_event::draw>(back_buffer_fix::OnDraw);
@@ -2300,6 +2340,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_swapchain>(back_buffer_fix::OnDestroySwapchain);
   reshade::unregister_event<reshade::addon_event::init_resource>(back_buffer_fix::OnInitResource);
+  reshade::unregister_event<reshade::addon_event::init_resource_view>(back_buffer_fix::OnInitResourceView);
+  reshade::unregister_event<reshade::addon_event::destroy_resource_view>(back_buffer_fix::OnDestroyResourceView);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(back_buffer_fix::OnBindRenderTargets);
   reshade::unregister_event<reshade::addon_event::present>(back_buffer_fix::OnPresent);
   reshade::unregister_event<reshade::addon_event::draw>(back_buffer_fix::OnDraw);
