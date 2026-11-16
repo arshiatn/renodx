@@ -230,6 +230,7 @@ struct RtSliders {
   float denoiser = 0.f;    // RayTracingDenoiser: built-in, NRD (with the helper's upscaler)
   float sharc = 0.f;       // with path tracing
   float reuse_lean = 0.f;  // with path tracing
+  float reuse_near = 0.f;  // with path tracing
   float path_ser = 0.f;    // the paths' and reflections' rays
   float output_rays = 0.f;  // Rays a Pixel: 1, Match Output, 2-8
   float rays_shadows = 1.f;
@@ -286,6 +287,7 @@ const PresetValues RAYS_RESET = {
     {"RayTracingDenoiser", 0.f},
     {"RayTracedSharc", 0.f},
     {"RayTracedReuseLean", 0.f},
+    {"RayTracedReuseNear", 0.f},
     {"RayTracedPathSer", 0.f},
     {"RayTracingOutputResolution", 0.f},
     {"RayTracingRaysShadows", 1.f},
@@ -1381,6 +1383,8 @@ void BuildRuntimeData() {
                  "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).", paths),
       ray_choice("RayTracedReuseLean", &rt_sliders.reuse_lean, "Lean ReSTIR reuse (Experimental)", off_on,
                  "A faster ReSTIR GI for path tracing, with the same look.", paths),
+      ray_choice("RayTracedReuseNear", &rt_sliders.reuse_near, "Near ReSTIR reuse (Experimental)", off_on,
+                 "A faster ReSTIR GI for path tracing: fewer, nearer neighbours share their light.", paths),
       ray_choice("RayTracedPathSer", &rt_sliders.path_ser, "Path tracing SER (Experimental)", off_on,
                  "Shader execution reordering for path tracing and ray-traced reflections (DXR 1.2, RTX 40 / 50 series): may be faster.",
                  [] { return rt_sliders.light_bounce != 0.f || rt_sliders.reflections != 0.f; }),
@@ -1625,6 +1629,7 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
     rays.path_ser = rt_sliders.path_ser != 0.f;
     rays.sharc = path_tracing && rt_sliders.sharc != 0.f;
     rays.reuse_lean = path_tracing && rt_sliders.reuse_lean != 0.f;
+    rays.reuse_near = path_tracing && rt_sliders.reuse_near != 0.f;
     rays.nrd = rt_sliders.denoiser != 0.f && rysesonofrome::graphics::requested_mode.load() != rysesonofrome::graphics::AAMode::OFF;
     rays.ao_reblur = rt_sliders.ao_reblur != 0.f;
     rays.debug_view = static_cast<uint32_t>(rt_sliders.debug_view);

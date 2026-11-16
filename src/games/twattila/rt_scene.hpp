@@ -98,6 +98,7 @@ struct Sliders {
   float path_ser = 0.f;
   float sharc = 0.f;
   float reuse_lean = 0.f;
+  float reuse_near = 0.f;
   float light_importance = 0.f;
   float light_steady = 0.f;
   // Torch and Fire Light / Shadows from Path Tracing (graphics_page.hpp Bindings::lights_in_bounce, light_ratio).
@@ -223,6 +224,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .path_ser = sliders.path_ser != 0.f,
       .sharc = sliders.sharc != 0.f,
       .reuse_lean = sliders.reuse_lean != 0.f,
+      .reuse_near = sliders.reuse_near != 0.f,
       .light_importance = sliders.light_importance != 0.f,
       .light_steady = sliders.light_steady != 0.f,
       .lights_in_bounce = sliders.lights_in_bounce != 0.f,
@@ -2428,6 +2430,17 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .label = "Lean ReSTIR Reuse (Experimental)",
           .section = section,
           .tooltip = "A faster ReSTIR GI for Path Tracing: the same look in tests.",
+          .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedReuseNear",
+          .binding = &sliders->reuse_near,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Near ReSTIR Reuse (Experimental)",
+          .section = section,
+          .tooltip = "A faster ReSTIR GI for Path Tracing: fewer, nearer neighbours share their light.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
       },

@@ -113,8 +113,15 @@ static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // W at most (kajiya's RESTIR_RESERVOIR_W_CLAMP)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
+#if defined(REUSE_NEAR)
+// Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
+// scored better, its pass about half the cost).
+static const uint REUSE_NEIGHBOURS = 3u;
+static const float REUSE_RADIUS = 6.f;        // bounce texels
+#else
 static const uint REUSE_NEIGHBOURS = 5u;
 static const float REUSE_RADIUS = 12.f;       // bounce texels
+#endif
 
 static const uint CACHE_ENTRIES = 1u << 20;
 static const uint CACHE_PROBES = 8u;

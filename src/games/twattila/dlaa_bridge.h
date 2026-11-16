@@ -292,6 +292,8 @@ constexpr uint32_t RT_PATH_REUSE_LEAN = 1u << 24;
 // With RT_PATH_LIGHT_RATIO (older helpers ignore it): the shadow ratio's history shorter while the camera moves (Torch and
 // Fire Shadows from the Light Bounce trailed a moving camera at Half).
 constexpr uint32_t RT_PATH_RATIO_FOLLOW = 1u << 25;
+// Near ReSTIR Reuse (as RT_PATH_REUSE_LEAN's, older helpers ignore it; before it): three neighbours within half the reach.
+constexpr uint32_t RT_PATH_REUSE_NEAR = 1u << 26;
 // Scene flags (Shared::rt_scene_flags, a trace request's). Smoke BLAS Fast Build (helpers before 113 ignore it): the smoke's
 // BLAS, built anew each request, built for a fast build, not fast rays (which particles a ray meets first, and so counts, can
 // change: Smoke Shadow Quality's count).
