@@ -17,7 +17,8 @@
 // 4. Report: PsychoV35's hue (OkLab) against the game's own SDR picture (the same chain in its SDR mode) where SDR
 //    reaches its clip, for fire, sky blue and 48 hues, Hue Clip 0 to 1 (sky to 2): what the default comes from. Rome II's
 //    own chain too (t00 EE1DA45C -> t01 850AEE44, Rendering Mode 3: its SDR curve is on xyY luminance, then each channel
-//    clipped, not Attila's curve per channel; an identity curve as Attila's, black 10^-4, white 1).
+//    clipped, not Attila's curve per channel; an identity curve as Attila's, black 10^-4, white 1). 4b: Rome II's toe,
+//    PsychoV35 over SDR at 1 / 5 / 18% grey and 48 hues (luminance, OkLab chroma).
 // 5. The same for the other games' kinds of stock curve (hue_curves.hlsl: a luminance curve then each channel clipped,
 //    or a curve on each channel), PsychoV35 right after Hue Clip as their shaders call it. Its WH3 form agrees with part
 //    4's WH3 (1.00); WH2's own t00 (curve 6: its anchored handoff, at burns 0.1, 0.3 and 0.5) too (1.00); WH1's tone
@@ -1194,6 +1195,42 @@ static void ReportHue(const Chain& chain) {
   }
 }
 
+// 4b. Rome II's toe: PsychoV35 (Hue Clip 0.8, HUE_CLIP_DEFAULT) against its SDR picture at 1 / 5 / 18% of white (Paper
+// White = the SDR picture's white): grey's luminance and the 48 hues' luminance and OkLab chroma, V35 over SDR.
+static void ReportRome2Toe(const Chain& chain) {
+  constexpr std::array<float, 3> LEVELS = {0.01f, 0.05f, 0.18f};
+  std::vector<Float4> scene(WIDTH * HEIGHT, Float4{0.f, 0.f, 0.f, 1.f});
+  for (UINT level = 0; level < LEVELS.size(); ++level) {
+    for (UINT x = 0; x < 49; ++x) {
+      const Float3 c = (x == 0) ? Float3{1.f, 1.f, 1.f} : Hue(static_cast<float>((x - 1) / 2) * 15.f, ((x - 1) % 2 == 0) ? 0.8f : 0.95f);
+      const float scale = LEVELS[level] / Luminance(c);
+      scene[level * WIDTH + x] = {c[0] * scale, c[1] * scale, c[2] * scale, 1.f};
+    }
+  }
+  const auto sdr = RunRome2(chain, scene, 0.f, 0.f);
+  const auto v35 = RunRome2(chain, scene, 3.f, 0.8f);
+  std::printf("4b. Rome II's toe, PsychoV35 over its SDR picture (x 1.00 = the same):\n"
+              "    of white   grey's luminance   hues' luminance (mean, min-max)   hues' OkLab chroma, mean: SDR -> PsychoV35\n");
+  for (UINT level = 0; level < LEVELS.size(); ++level) {
+    const size_t row = level * WIDTH;
+    double luminance_sum = 0, chroma_sdr = 0, chroma_v35 = 0;
+    float luminance_low = 1e9f, luminance_high = 0.f;
+    for (UINT x = 1; x < 49; ++x) {
+      const float luminance = Luminance(v35[row + x]) / Luminance(sdr[row + x]);
+      const Float3 lab_v35 = OkLab(v35[row + x]);
+      const Float3 lab_sdr = OkLab(sdr[row + x]);
+      luminance_sum += luminance;
+      chroma_sdr += std::hypot(lab_sdr[1], lab_sdr[2]);
+      chroma_v35 += std::hypot(lab_v35[1], lab_v35[2]);
+      luminance_low = std::min(luminance_low, luminance);
+      luminance_high = std::max(luminance_high, luminance);
+    }
+    std::printf("    %7.0f%%   x %.3f            x %.3f (%.3f-%.3f)              %.4f -> %.4f\n", LEVELS[level] * 100.f,
+                Luminance(v35[row]) / Luminance(sdr[row]), luminance_sum / 48.0, luminance_low, luminance_high, chroma_sdr / 48.0,
+                chroma_v35 / 48.0);
+  }
+}
+
 // 6. R.U.S.E.'s grey, slope and markers ///////////////////////////////////////////////////////////////////////////
 
 struct RuseMode {
@@ -1528,6 +1565,7 @@ int main(int argc, char** argv) {
   const Chain chain = {&shaders["a_t00"], &shaders["a_t01"], &shaders["w_t00"], &curves, &shaders["r_t00"], &shaders["r_t01"], &ruse_post};
   if (!report_only) TestPsychoV35(chain);
   ReportHue(chain);
+  ReportRome2Toe(chain);
   if (!report_only) TestRuse(ruse_post);
   if (!report_only) {
     const Bindings gamma = GammaBindings(Scene(PatternColumns(), -6.f, 0.4f, 1.f));
