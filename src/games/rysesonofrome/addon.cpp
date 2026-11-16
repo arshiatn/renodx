@@ -285,7 +285,7 @@ const PresetValues RAYS_OWN_KEYS = {
 };
 const PresetValues RAYS_RESET = {
     {"RayTracedShadowSoftness", 0.5f},
-    {"RayTracedReplaceShadowMaps", 1.f},
+    {"RayTracedReplaceShadowMaps", 0.f},
     {"RayTracedSkipSunShadowMaps", 0.f},
     {"RayTracedAmbientRange", 2.f},
     {"RayTracedAOQuarter", 0.f},
@@ -1211,13 +1211,13 @@ void BuildRuntimeData() {
           .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
-      // contact_shadows.hpp's replaces_sun: on by default (ours replaces the game's, one method per effect; ATN
-      // 2026-11-16 "RT Shadows should replace them"); off, the darker of the two as before. test/tw_ryse_sun_replace.
+      // contact_shadows.hpp's replaces_sun (test/tw_ryse_sun_replace): off until an in-game coverage run shows the
+      // rays keep the casters out of view (the rays see the G-buffer's draws only); off, the darker of the two.
       new renodx::utils::settings::Setting{
           .key = "RayTracedReplaceShadowMaps",
           .binding = &rt_sliders.replace_sun_maps,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 1.f,
+          .default_value = 0.f,
           .label = "Rays Replace Shadow Maps",
           .section = "Ray Tracing (Experimental)",
           .tooltip = "On: the sun's shadow from the rays alone. Off: the darker of the rays' and the game's.\n"

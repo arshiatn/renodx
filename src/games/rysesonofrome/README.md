@@ -420,7 +420,7 @@ SDR output against the game's bytes), `test/tw_ryse_patterns` (every byte patter
 one-byte CONTROL), `test/tw_ryse_shadow_skip` events.cpp (the skip under rt_core's replay).
 
 fix60 (draft, 2026-11-16 rys2_ round, built only, not run in game): **Rays Replace Shadow Maps** (Ray Tracing,
-`RayTracedReplaceShadowMaps`, the TW games' key; on by default, Off = the darker of the rays' and the game's as before):
+`RayTracedReplaceShadowMaps`, the TW games' key; off by default until an in-game coverage run, Off = the darker of the rays' and the game's as before):
 `rt_sun_keep` multiplies the sun's mask channels by 0 (the others and the sky by 1) right before 0x52C5E003's max, so
 the sun's channels hold the rays' shadow alone; what is out of view casts no sun shadow then (the rays see the
 G-buffer's draws). Ambient Occlusion's methods also in ssdo00's two dumped permutations (0xC17645D2: depth samples from
