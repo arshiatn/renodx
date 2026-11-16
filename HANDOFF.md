@@ -54,6 +54,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -125,7 +126,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Divinity 2: the orthographic EoCSight_HDR 0x5C4137E2 (50-nit constants vs 300) n ... | d2_ after R1b
 - Divinity 2 later: D2-8b scene R11G11B10F -> RGBA16F (view cloning, Experimental ... | d2_ after R1b
 - Divinity 2 R1b leftovers: the gamma slider at 1.2 (needs ATN's clicks); no menu ... | next Divinity 2 run
-- ATN ANSWERED 01:0x "Yes, match the game": V35 keeps the game's darker shadows an ... | ATN
 - Divinity 2 next run: what triggers the orthographic camera (tactical toggle?); A ... | next Divinity 2 run / ht_
 - ATN at the end (Divinity 2): mid grey row's default; old presets / V30 keep or d ... | ATN
 - R.U.S.E. whole package in ONE implementation round, plan.md 10b order, all Exper ... | ru_ (implementation round)
@@ -138,7 +138,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R.U.S.E. D3D9 bridge Fable 5.2 High review when ru_ finishes it (ATN asked). Own ... | coordinator
 - ATN at the end (R.U.S.E.): Extended replacing V31 Native Tone or beside it; Hue ... | ATN
 - ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 ... | coordinator
-- d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div ... | d1_
+- Divinity 1 R1 run (now possible): the start crash + fullscreen -> fake fullscree ... | coordinator (data run, ATN loads the save)
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
 - R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI ... | ru7_ (started 01:2x)
 - R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA pas ... | coordinator
@@ -1120,8 +1120,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         stand-in was off by 137), part 6 on the R1b cb0s, Off t00 + t01 bit-exact with failing controls (x86 + amd64
         PASS); 2435eb92 "Higher Precision Scene (Experimental)" off. ATN's UI Brightness is 203 (not 50; 50 is the game's
         own HDRPaperWhite, ignored in modded modes). Divinity 2 after R1b: D2-8, ortho EoCSight, D2-8b.
-      - [ ] ATN ANSWERED 01:0x "Yes, match the game": V35 keeps the game's darker shadows and stronger colours (V30 /
-        Tweaked unchanged); d2c_ implementing + part 6 check (Hue Clip default still ATN's). Owner: d2c_
+      - [x] MERGED a318ef72 02:1x (d2c_ e7ea6056 + 012424bc): V35's own sliders default to the game's response (Contrast
+        1.42, Shadows 0.43, Saturation 0.93, Highlight Contrast 0.87; one curve, nothing before V35); grey 0.05-1 nits x3.1
+        ..x6.9 -> x0.97..x1.04 of the game, mid-tone chroma x0.81 -> x1.03, highlights within 7 % of V35's own; part 6
+        section 10 PASS with a failing control. Saved V35 sliders stay: press Recommended. ATN ANSWERED 01:0x "Yes, match the game": V35 keeps the game's darker shadows and stronger colours (V30 /
+        Tweaked unchanged).
         (was) ATN DECIDES (Divinity 2, from the R1b shots): V30 / V35 shadows ~5x brighter than Off (0.05-1 nit pixels) and
         mid tones ~23 % less saturated (flatter than the game's ACES toe); Hue Clip default (80 kept; 60 closest on
         average, 80 best for fire / red). Owner: ATN
@@ -1229,7 +1232,16 @@ heading text are in HANDOFF_ARCHIVE.md)
     tools/tw/round_notes/gated_build.ps1 (one build at a time via tools\tw\build_job.lock, waits while Committed Bytes
     > 45 GB: MHR running, 8.7 GB RAM free at 20:5x). Agents commit on their branches; the coordinator merges one at a
     time, then the GPU harness, build all, stamp, install.
-      - [ ] d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div1 R4 peak clamp + R13 tests. Owner: d1_
+      - [x] d1_ MERGED 411a3dd5 02:1x: b2fb01c2 device_loss release_flip_chains_before_recreate (opt-in, off for other
+        games; unbind + Flush when a flip chain goes) + 516388e9 Divinity opts in, first_start_key "tonemap_type";
+        f92a1aca Peak clamp; 22f873f3 "Sun Shadow Softness (Experimental)"; 35a37ac4 test/tw_d1_post 17/17 vs the game's
+        shaders + FXAA 0x35F39F1D FIXED (decompiler wrote Gather for GatherGreen: FXAA was broken for AntiAliasing 1
+        players). tw_d1_swapchain PASS (control E_ACCESSDENIED -> S_OK), tw_device_loss 3c PASS, tw_divinity1 2c PASS; all
+        12 device_loss consumers built. Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div1 R4 peak clamp + R13 tests.
+      - [ ] Divinity 1 R1 run (now possible): the start crash + fullscreen -> fake fullscreen switch with the fix; PCSS /
+        0xCB4B3BA6 other branches' constants; R7 RGBA8-upgrade readers; 8 census clamp candidates; steps 9-13. Limit: a
+        view of the old back buffer held by another add-on still fails (no blt fallback). ATN by eye: Hue Clip 70, Sun
+        Shadow Softness, legacy V30 / Pragmap. Owner: coordinator (data run, ATN loads the save)
       - [ ] ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + R4 SDR gamut + R13 final post
         test; H1 / H2 / T-run LEFT for after the game. Owner: ru_
         20:5x on branch ruse-whole-package (not built): 01029a12 R4 V31 gamut BT.709 on SDR; 618a347a R13 final post
