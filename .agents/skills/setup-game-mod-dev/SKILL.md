@@ -128,6 +128,7 @@ When working on mods, assume debug build artifacts. Use release presets only for
    - `mcp_bridge`
 4. Build the game target named `{mod}`.
 5. If a build fails because the output `.addon64`/`.addon32` is locked, stop the game and rebuild; do not work around it by renaming random artifacts.
+6. A ninja build with no compiler child process and flat CPU is hung: end it before starting another, since on a shared machine it blocks every build queued behind it. Do not pipe builds through PowerShell's `Select-Object -Last`; it holds all output back until the build ends, so a hang looks like a slow build.
 
 ## Game-folder ReShade and addon links
 
