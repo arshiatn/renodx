@@ -308,6 +308,8 @@ renodx::utils::settings::Settings settings = {
         .label = "Recommended (PsychoV30)",
         .section = "Presets",
         .group = "preset-buttons-1",
+        .tooltip = "Vanilla+ (PsychoV30) with Fire Colour Correction, Bloom 0.44.\n"
+                   "Peak, Paper White, UI, Settings Mode and Output are kept.",
         .on_change = []() {
             renodx::utils::settings::UpdateSetting("tonemap_type", 3.f);
             renodx::utils::settings::UpdateSetting("exposure", 1.00f);
@@ -326,6 +328,8 @@ renodx::utils::settings::Settings settings = {
         .label = "Recommended (Tweaked ACES)",
         .section = "Presets",
         .group = "preset-buttons-1",
+        .tooltip = "Vanilla+ (Tweaked ACES) with a little less contrast, Fire Colour Correction, Bloom 0.44.\n"
+                   "Peak, Paper White, UI, Settings Mode and Output are kept.",
         .on_change = []() {
             renodx::utils::settings::UpdateSetting("tonemap_type", 2.f);
             renodx::utils::settings::UpdateSetting("aces_tweaked_exposure", 1.f);
@@ -344,6 +348,8 @@ renodx::utils::settings::Settings settings = {
         .label = "Closer to Native (PsychoV30)",
         .section = "Presets",
         .group = "preset-buttons-2",
+        .tooltip = "Vanilla+ (PsychoV30) with contrast and colour closer to the game's, Bloom 0.44.\n"
+                   "Peak, Paper White, UI, Settings Mode and Output are kept.",
         .on_change = []() {
             renodx::utils::settings::UpdateSetting("tonemap_type", 3.f);
             renodx::utils::settings::UpdateSetting("exposure", 1.00f);
