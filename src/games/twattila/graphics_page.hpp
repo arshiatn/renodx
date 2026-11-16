@@ -647,11 +647,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .key = "AntiAliasingTextureLodBiasTrilinear",
           .binding = b.lod_bias_trilinear,
           .value_type = SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Texture LOD Bias on All Textures (Experimental)",
+          .default_value = 1.f,
+          .label = "Texture LOD Bias on All Textures",
           .section = section,
-          .tooltip = "Texture LOD Bias also on the textures the game filters without anisotropy.\n"
-                     "Can shimmer.",
+          .tooltip = "Texture LOD Bias also on the textures the game filters without anisotropy (terrain, buildings).\n"
+                     "Off: those stay blurrier while the upscaler renders below 100%.",
           .is_visible = more(&more_aa, below_100_rows),
       });
     }
