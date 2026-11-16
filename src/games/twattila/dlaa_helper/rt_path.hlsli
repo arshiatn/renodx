@@ -183,7 +183,10 @@ void CacheCell(float3 world, float3 normal, out uint slot, out uint key) {
   const float size = CacheCellSize(world);
   const float3 magnitude = abs(normal);
   const uint axis = (magnitude.x >= max(magnitude.y, magnitude.z)) ? 0u : ((magnitude.y >= magnitude.z) ? 1u : 2u);
-  const uint face = axis * 2u + ((normal[axis] < 0.f) ? 1u : 0u);
+  // The axis's component by selects: indexed by a variable (normal[axis]) the normal went to a local array, a stack store
+  // and load in every cache lookup (DXIL alloca; NVIDIA's local memory).
+  const float along = (axis == 0u) ? normal.x : ((axis == 1u) ? normal.y : normal.z);
+  const uint face = axis * 2u + ((along < 0.f) ? 1u : 0u);
   // The size is a power of two: its low mantissa bits are free for the face.
   const uint4 value = uint4(asuint(int3(floor(world / size))), asuint(size) | face);
   slot = CacheHash(value) & (CACHE_ENTRIES - 1u);
