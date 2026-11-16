@@ -1720,7 +1720,7 @@ void DrawAtOutputSize(Command& command, const void*) {
   context->RSSetViewports(viewport_count, viewports.data());
   context->RSSetScissorRects(scissor_count, scissors.data());
   copy->frame = frame;
-  ++post.passes;
+  if (talesofarise::dlss::constants::Counting()) ++post.passes;
   if (twattila::frame_generation::Wanted() && std::ranges::find(TONEMAPPER_SHADERS, command.matched_shader_hash) != TONEMAPPER_SHADERS.end()) {
     KeepFrame(context, copy->resource.Get());
   }
@@ -2111,7 +2111,7 @@ constexpr auto OnUpscale = []<DrawCommand Command>(Command& command) -> renodx::
   } else {
     context1->PSSetConstantBuffers1(0, 1, &game_buffer, &first_constant, &constant_count);
   }
-  ++post.upscales;
+  if (talesofarise::dlss::constants::Counting()) ++post.upscales;
   return {.bypass = true};
 };
 
@@ -2293,6 +2293,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     state.biased_per_frame = biased - state.biased_uploads;
     state.biased_uploads = biased;
   }
+  talesofarise::dlss::constants::SetCounting(false);
   {
     const std::unique_lock lock(post.mutex);
     post.last = {post.passes, post.upscales};
@@ -3064,6 +3065,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
               const std::shared_lock lock(state.mutex);
               overlay_frame.store(state.frame + 1);
             }
+            talesofarise::dlss::constants::SetCounting(true);
             uint64_t completed;
             uint32_t temporal_shader_hash;
             uint64_t copied_per_frame;

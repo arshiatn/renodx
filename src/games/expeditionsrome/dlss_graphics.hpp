@@ -1300,6 +1300,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     state.copied_per_frame = copied - state.copied_bytes;
     state.copied_bytes = copied;
   }
+  talesofarise::dlss::constants::SetCounting(false);
   if (changed) Reset();
   if (mode == AAMode::OFF) {
     SetStatus("Off — original game TAA");
@@ -1850,6 +1851,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
               const std::shared_lock lock(state.mutex);
               overlay_frame.store(state.frame + 1);
             }
+            talesofarise::dlss::constants::SetCounting(true);
             uint64_t completed;
             uint32_t temporal_shader_hash;
             uint64_t copied_per_frame;
