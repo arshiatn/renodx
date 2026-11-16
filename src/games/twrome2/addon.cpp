@@ -681,7 +681,8 @@ void BuildRuntimeData() {
         .label = "My settings for 2500nits peak",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "Settings, I would use with a 2500nits screen.",
+        .tooltip = "Settings, I would use with a 2500nits screen.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output encoding are kept.",
         .on_change = []() {
           ApplyHDRPreset(
               3.f, 0.2f,  // rendering mode, video AutoHDR
@@ -723,7 +724,8 @@ void BuildRuntimeData() {
         .label = "My settings for 1000nits peak",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "Settings, I would use with a 1000nits screen.",
+        .tooltip = "Settings, I would use with a 1000nits screen.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output encoding are kept.",
         .on_change = []() {
           ApplyHDRPreset(
               3.f, 0.2f,  // rendering mode, video AutoHDR
@@ -756,7 +758,8 @@ void BuildRuntimeData() {
         .label = "Reset",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.",
+        .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output encoding are kept.",
         // No Extended mode here: PsychoV35 (ATN).
         .on_change = []() { ApplyResetPreset(3.f); },
     },
