@@ -247,6 +247,30 @@ Total War helper (`renodx-tw-dlaa64.exe` and its DLLs next to `EoCApp.exe`):
   Specular Occlusion. The game's screen-space reflections (DeferredSSR and
   its combine) are left out under them: one method.
 
+Without the helper (`screen_space.hpp`, Experimental, off until a game run):
+
+- **GT-VBAO** (Ambient Occlusion's method; keep in-game SSAO on): PPSAO's four
+  draws are not drawn and the reinterleave's draw runs `ao_vbao` (the
+  visibility bitmask on LinearizeDepth's depth in PerView's camera, GBuffer1's
+  normal) in its pixel shader's place: the game's two blurs, PPApplyAO and
+  ClusteredLightingWithSSAO read it as the game's AO. Ray-traced AO and
+  Path-Traced Ambient take the chain over: one method.
+- **GT-VBGI** (Global Illumination's method, Strength above 0 with the rays'
+  bounce off): the Total War games' passes (`talesofarise_dlss/ue_light_bounce.hpp`;
+  `bounce_gbuffer.hlsli` reads GBuffer1-3 and LinearizeDepth's depth through
+  the main camera, the last frame's for its history) right after
+  ClusteredLightingWithSSAO, from the scene it lit, added to it times each
+  pixel's diffuse colour: where the rays' bounce goes.
+- **Bend's screen-space shadows** (Shadows' method): Bend Studio's passes
+  (`talesofarise_dlss/ue_screen_space_shadows.hpp`; `ue_sss_depth` on the
+  G-buffer pass's D24S8 depth, `ue_sss_setup` on PerView and PerFrame's sun)
+  after the game's sun mask is drawn, the occlusion multiplied into it: fine
+  contact shadows over the game's maps. Under the rays' sun shadows the mask
+  is theirs.
+
+No RT/PT (Recommended) leaves GT-VBGI and Bend off until a game run shows them
+here.
+
 Not yet: render scale below 100%, the game's settings above its maximum.
 
 ## Data runs and installing
@@ -299,8 +323,12 @@ cone response): press Reset before comparing defaults.
   DeferredSky the paths' sky, its black diffuse under the paths and the GI's
   diffuse factor, the G-buffer guides against its own diffuse / specular,
   the reflections over its own IBL specular and the screen-space reflections
-  left out (the game's DeferredSSRCombine bytes), each with a control that
-  must fail.
+  left out (the game's DeferredSSRCombine bytes), GT-VBAO in the game's
+  reinterleave's place (its depth channel the game's bit for bit, open ground
+  and a corner) and the game's own blur over it, GT-VBGI by a lit wall and
+  its view of the G-buffer (positions, normals, diffuse colour, the last
+  frame's pixel), Bend's contact shadow by a wall in the sun's mask, each with
+  a control that must fail.
 - `test/tw_psychov30_nan`, `test/tw_output_encoding`, `test/tw_device_loss`,
   `test/tw_draw_dispatch`: the shared PsychoV30 guards, the not-configured
   Output, device loss and the fast draw dispatch.
