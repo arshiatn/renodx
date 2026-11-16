@@ -2283,14 +2283,12 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     // War ambient cube): with the paths, the ambient rays weighted by the game's sky light in place of Bandai's AO under its
     // ambient (Bandai's sky light comes from its base pass inside the scene colour the lighting passes read: no input to
     // zero there, so the paths' share of it enters where its AO does), the paths' bounce at t42 as before.
-    // Ray Tracing in the Helper: its sun shadows, AO, reflections and specular occlusion (ray_tracing.hpp), nothing in
-    // process.
+    // Ray Tracing in the Helper: its sun shadows, AO, reflections, specular occlusion, light bounce and paths
+    // (ray_tracing.hpp; Path-Traced Ambient its AO under the paths), nothing in process.
     const auto all_rays = upscaling ? twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, gi_rows.light_bounce_strength) : twattila::rt_scene::Settings{};
     if (helper_rays_installed) {
       auto helper_rays = all_rays;
       helper_rays.ambient_occlusion = all_rays.ambient_occlusion || (all_rays.path_tracing && rt_sliders.path_ambient != 0.f);
-      helper_rays.light_bounce = false;
-      helper_rays.path_tracing = false;
       helper_rays.path_ambient = false;
       helper_rays.local_lights = false;
       talesofarise::dlss::ray_tracing::Update(helper_rays);
@@ -2721,7 +2719,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   gi_rows.ssao_thickness = ao_thickness;
   const auto gi = twattila::lighting_settings::LightBounceSliders(gi_rows);
   auto bounce = talesofarise::ue_light_bounce::ConstantsOf(gi, ao_frame);
-  if (rt_sliders.light_bounce != 0.f) {
+  // The rays' bounce light: in process its own (GT-VBGI off); in the helper GT-VBGI's passes with the rays' trace in
+  // place of its own (ray_tracing.hpp), at the rays' resolution and every texel each frame (as the Total War games'
+  // light_bounce::SetRayTraced).
+  if (helper_rays.light_bounce) {
+    bounce.scale = twattila::light_bounce::internal::PowerOfTwo(helper_rays.light_bounce_resolution, 2.f);
+    bounce.checkerboard = 0.f;
+  } else if (rt_sliders.light_bounce != 0.f) {
     bounce.strength = 0.f;
   }
   // One GI method (ATN 2026-11-16): lighting00-05 leave out Bandai's GI add while GT-VBGI runs, or while the rays' bounce
@@ -3104,8 +3108,8 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                            .value_type = SettingValueType::BOOLEAN,
                                            .default_value = 0.f,
                                            .label = "Ray Tracing in the Helper (Experimental)",
-                                           .tooltip = "Sun shadows, ambient occlusion, reflections and specular occlusion traced in the helper,\n"
-                                                      "as in the Total War games (no light bounce or path tracing there yet).\n"
+                                           .tooltip = "The ray-traced effects traced in the helper, as in the Total War games\n"
+                                                      "(no torch shadows there yet).\n"
                                                       "Restart the game after changing it.",
                                            .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders); },
                                        });
@@ -3598,7 +3602,7 @@ inline bool Install(HMODULE module) {
   // Ray Tracing in the Helper: installed when on at launch with the helper there and an effect it traces on.
   helper_rays_installed = twattila::dlaa_bridge::HelperInstalled() && helper_rays_row != 0.f
                           && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
-                              || rt_sliders.specular_occlusion != 0.f);
+                              || rt_sliders.specular_occlusion != 0.f || rt_sliders.light_bounce != 0.f);
   if (helper_rays_installed) talesofarise::dlss::ray_tracing::Install();
   renodx::utils::command_action::Register(OnSunShadowMask, {
                                                                .shader_hash = talesofarise::rt_shadows::SUN_SHADOW_SHADER,

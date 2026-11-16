@@ -40,6 +40,17 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
   at the anti-aliasing): a small double cost left for the equality round. tests/helper_kept (WARP): the kept copies
   give each render pixel its own traced texel through rt_ambient.hlsli's read (exact; the bridge's texture read the
   same way: off by up to 52 texels, caught).
+- One method in this mode too: Bend's screen-space shadows off under the helper's sun shadows, GT-VBAO under its AO,
+  the game's SSR under its reflections (the gates read only the in-process rays before).
+- Step 3: the **light bounce and the paths** in the helper, as the Total War games: GT-VBGI's passes
+  (`ue_light_bounce.hpp`: the prepare from the lighting pass's light, the resolve, the light arriving x Strength into
+  the add-on's texture for t42) with the rays' trace in place of its own (rt_scene's TraceLightBounce through
+  `twattila::light_bounce::SetRayTracedTrace`), at the rays' resolution and every texel each frame. **Path-Traced
+  Ambient** stays the rays' AO under the paths here: Bandai's sky light is inside the scene colour the lighting passes
+  read, so nothing could leave it out for the helper's sky (the helper's PT Ambient needs that); the in-process rays'
+  sky-weighted AO has no helper equivalent yet. test/tw_ue_sss_gi: a stub trace's green replaces the wall's red
+  (Tales 0.210 green, 0.037 red left; Rome 0.106 / 0.019); a trace returning nothing gives GT-VBGI's own back (red
+  0.178 / 0.090).
 
 ## Install
 

@@ -24,6 +24,7 @@
 #include "../talesofarise_dlss/native_state.hpp"
 #include "../talesofarise_dlss/rt_shadows.hpp"
 #include "../talesofarise_dlss/upscaling.hpp"
+#include "../twattila/light_bounce.hpp"
 #include "../twattila/rt_core.hpp"
 
 // Ray Tracing in the Helper (Experimental; off: rt_shadows.hpp's rays on the add-on's own D3D12 device): Tales of
@@ -39,7 +40,12 @@
 // by UV), in rt_shadows' place. At the frame's first lighting or toon draw (its G-buffer at t1-t3, the View at b1): the
 // G-buffer guides into the bridge (WriteGuides, the anti-aliasing's 0x7A1E0D31), then the reflections and the specular
 // occlusion traced (rt_scene::Reflections; their hits light from last frame's colour, the bridge's), copied for t43 /
-// t44. The move's steps (ATN 2026-11-16): 1 the sun shadows and the AO, 2 the reflections and specular occlusion.
+// t44. The light bounce and the paths: GT-VBGI's passes (talesofarise_dlss/ue_light_bounce.hpp: the prepare from the
+// lighting pass's light, the resolve, the light arriving x Strength at t42) with the rays' trace in place of its own
+// (rt_scene's TraceLightBounce through twattila::light_bounce::SetRayTracedTrace), as the Total War games. Path-Traced
+// Ambient stays the rays' AO under the paths: Bandai's sky light is inside the scene colour the lighting passes read (no
+// input to leave out), so the helper's paths bring no sky (its sky texels stay zero). The move's steps (ATN 2026-11-16):
+// 1 the sun shadows and the AO, 2 the reflections and specular occlusion, 3 the light bounce and the paths.
 namespace talesofarise::dlss::ray_tracing {
 
 using Microsoft::WRL::ComPtr;
@@ -423,9 +429,11 @@ inline bool AmbientTracedLastFrame() {
 
 inline void Install() {
   twattila::rt_scene::InstallScene({}, HOST);
+  twattila::light_bounce::SetRayTracedTrace(twattila::rt_scene::internal::TraceLightBounce);
 }
 
 inline void Uninstall() {
+  twattila::light_bounce::SetRayTracedTrace(nullptr);
   twattila::rt_scene::UninstallScene();
 }
 
