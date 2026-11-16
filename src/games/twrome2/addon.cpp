@@ -1838,9 +1838,8 @@ void OnInitDevice(reshade::api::device*) {
                     && twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).shadows_only);
 }
 
-void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  twattila::pass_timing::OnPresent(queue, "rome2");
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
@@ -2296,13 +2295,7 @@ void ConfigureAddon() {
   // ray-traced reflections (TraceWaterReflections): their rows, the water's too.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
   twattila::rt_scene::internal::water_pass = true;
-  settings.push_back(new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-      .label = "Time Each Pass (One Frame)",
-      .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "The GPU's time of every pass of the next frame into rome2_pass_timing.txt next to the game's exe.",
-      .on_change = [] { twattila::pass_timing::Request(); },
-  });
+  settings.push_back(twattila::pass_timing::Button(twattila::feature_settings::AA_SECTION));
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
@@ -2497,8 +2490,9 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
-  // Time Each Pass: its draw and dispatch events before any other hook of the addon's (registration order is run order).
-  twattila::pass_timing::Install();
+  // Time Each Pass: its draw, dispatch and present events before any other hook of the addon's (registration order is run
+  // order); its file rome2_pass_timing.txt.
+  twattila::pass_timing::Install("rome2");
 
   // Failed native-hook removal can retain this DLL across host unload/reload.
   graphics_found = false;
