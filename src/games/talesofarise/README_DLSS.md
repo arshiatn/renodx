@@ -764,3 +764,10 @@ size; then:
   the sky's light that reaches a spot. The rays' AO row is on under it (one AO method), GT-VBAO off while either runs
   (post_filters ao_method 0). Experimental and off (graphics_page path_ambient_tested = false). test/tw_vanilla_exact:
   TalesLightingRays (lighting00-05 reading t41 in t5's place against the game reading the same).
+- Toon round 2026-11-16 (tpa_, untested in game): the ten stock toon lighting passes (toon00-09: 0A9D482A, DF1B494D,
+  F6334BA2, 1C8D11B6, 36E08F9A traced; 1FE8B2B6, 4E695056, 4E8218FE, 8CCA5153, 90EF2450 from the dump) are the
+  add-on's: their AO reads (t6) take the rays' AO (t41), and under our GI their Bandai GI add goes and ours (t42) takes
+  its place (TOA_GAME_GI_SHARE, as lighting00-05); the lighting draw hook binds t41-t44 for them too (GT-VBGI from their
+  t7). Bandai's SSGI chain keeps running: lighting00-05's fill colour and the toon passes' tint of the lit colour and
+  their rims read it (terms ours does not replace), so skipping it (about 0.07 ms in run_101408) would change the look.
+  test/tw_vanilla_exact: TalesToon (off = the game's bytes), TalesToonRays (t41 in t6's place).

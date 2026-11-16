@@ -289,6 +289,10 @@ struct SparkMotion {
 // Ray Reconstruction: UE's G-buffer A / B / C (normal; metallic, specular, roughness; base colour), which Bandai's
 // lighting pass (its 6 permutations) reads at t1-t3, copied at its first draw each frame for the guides.
 constexpr std::array<uint32_t, 6> LIGHTING_SHADERS = {0xF2A6E883u, 0x6513DC8Eu, 0xC28D2F1Eu, 0xB2726B44u, 0x81E3CED2u, 0xF95FABAAu};
+// Bandai's toon lighting (characters, foliage: the HDR part's toon00-09), drawn before lighting00-05 with the same
+// G-buffer at t1-t3, the base pass's light at t7 (lighting00-05: t4): our AO and GI bound for them too.
+constexpr std::array<uint32_t, 10> TOON_SHADERS = {0x0A9D482Au, 0xDF1B494Du, 0xF6334BA2u, 0x1C8D11B6u, 0x36E08F9Au,
+                                                   0x1FE8B2B6u, 0x4E695056u, 0x4E8218FEu, 0x8CCA5153u, 0x90EF2450u};
 struct GBufferCopy {
   std::shared_mutex mutex;
   std::array<ComPtr<ID3D11Texture2D>, 3> textures;
@@ -1972,7 +1976,7 @@ constexpr auto OnSpriteDraw = []<DrawCommand Command>(Command&) -> renodx::utils
 
 // Ray-traced ambient occlusion, bounce light (or path tracing), reflections and specular occlusion (rt_shadows.hpp; the
 // lighting pass's own traced here, from the G-buffer at t1-t3): bound at t41 / t42 / t43 / t44 for the HDR addon's
-// lighting pass, unbound after it.
+// lighting and toon lighting passes (whichever draws first traces; TOON_SHADERS), unbound after each.
 constexpr UINT AMBIENT_SLOT = 41;
 template <DrawCommand Command>
 void UnbindAmbient(Command& command, const void*) {
@@ -2008,13 +2012,14 @@ constexpr auto OnLightingDraw = []<DrawCommand Command>(Command& command) -> ren
     ComPtr<ID3D11DeviceContext1> context1;
     if (ue_effects.bounce_frame != frame && ue_effects.bounce.strength > 0.f
         && SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) {
-      BoundViews<ID3D11ShaderResourceView, 5> views;
+      BoundViews<ID3D11ShaderResourceView, 8> views;
       context->PSGetShaderResources(0, static_cast<UINT>(views.views.size()), views.views.data());
+      const bool toon = std::ranges::find(TOON_SHADERS, command.matched_shader_hash) != TOON_SHADERS.end();
       D3D11_VIEWPORT viewport = {};
       UINT viewport_count = 1;
       context->RSGetViewports(&viewport_count, &viewport);
       talesofarise::ue_light_bounce::Inputs inputs = {
-          .light = views.views[4],
+          .light = views.views[toon ? 7 : 4],
           .depth = views.views[0],
           .gbuffer_a = views.views[1],
           .gbuffer_b = views.views[2],
@@ -2703,9 +2708,10 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // One GI method (ATN 2026-11-16): lighting00-05 leave out Bandai's GI add while GT-VBGI runs, or while the rays' bounce
   // light or path tracing reached the lighting pass within the last half second (their light in place of Bandai's, never
   // added to it; a frame the rays miss stays so); Bandai's GI still colours their fill light (shared.h TOA_GAME_GI_SHARE:
-  // the menu's GI-off path also halved that fill). Bandai's SSGI chain (17CE7BCD, 13BDD599, 86CBF00A, 746654CA)
-  // still runs: ten stock toon lighting permutations (characters, foliage; 0A9D482A and its siblings, behind their own
-  // switch cb0[59].w) read its 10 x 6 texture at t25-t30, and a skipped chain left them a stale pooled texture.
+  // the menu's GI-off path also halved that fill). The ten toon lighting passes (toon00-09) the same: their GI add goes,
+  // ours in its place. Bandai's SSGI chain (17CE7BCD, 13BDD599, 86CBF00A, 746654CA) still runs under ours: lighting00-05's
+  // fill colour and the toon passes' tint of the lit colour and their rims read its 10 x 6 texture (t25-t30 there),
+  // terms ours does not replace; a skipped chain left them a stale pooled texture.
   constexpr uint64_t RECENT_FRAMES = 30;
   const uint64_t frame = CurrentFrame();
   bool rays_gi = false;
@@ -3512,11 +3518,13 @@ inline bool Install(HMODULE module) {
                                                                        .shader_hash = TRANSLUCENCY_COMPOSITE_SHADER,
                                                                        .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
                                                                    });
-  for (const uint32_t lighting_shader : LIGHTING_SHADERS) {
-    renodx::utils::command_action::Register(OnLightingDraw, {
-                                                                .shader_hash = lighting_shader,
-                                                                .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
-                                                            });
+  for (const auto& shaders : {std::span<const uint32_t>(LIGHTING_SHADERS), std::span<const uint32_t>(TOON_SHADERS)}) {
+    for (const uint32_t lighting_shader : shaders) {
+      renodx::utils::command_action::Register(OnLightingDraw, {
+                                                                  .shader_hash = lighting_shader,
+                                                                  .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW,
+                                                              });
+    }
   }
   for (const auto& [sprite_shader, motion_shader] : SPRITE_SHADERS) {
     renodx::utils::command_action::Register(OnSpriteDraw, {
