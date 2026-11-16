@@ -379,7 +379,10 @@ std::atomic<uint64_t> last_dlss_frame = UINT64_MAX;
 // The game's own Rendering Resolution while the addon sets it (ReShade.ini; 0: not set), restored on the next start
 // if the game ended with the addon's.
 std::array<int, 2> saved_game_size = {};
+// The last frame (+ 1; 0: never) the page drew Advanced's diagnostics (the GPU timers, the particle counts), and the AA
+// section at all (the jitter's warnings: its pattern measured while they show).
 std::atomic<uint64_t> overlay_frame = 0;
+std::atomic<uint64_t> aa_page_frame = 0;
 std::string saved_image;  // debug: where the game's image was saved (overlay only)
 std::string saved_particle_names;  // debug: where the particle effects' names were saved (overlay only)
 // Debug: save the enemy attack patterns when the game next starts (attack_patterns.hpp; ReShade.ini, cleared once saved).
@@ -1134,11 +1137,10 @@ std::array<RendererPin, 2> renderer_pins = {{
 }};  // Present thread
 bool attached = false;
 
-// The game's projection jitter (r_PostAAMode): latest value in pixels, pattern length (frames until the
-// first offset repeats; NVIDIA wants at least 8 * (output / input)^2), first frames logged.
+// The game's projection jitter (r_PostAAMode): whether it was found, pattern length (frames until the first offset
+// repeats; NVIDIA wants at least 8 * (output / input)^2), first frames logged. The pattern and the uploads are
+// measured only while Advanced shows them.
 struct Diagnostics {
-  std::atomic<float> jitter_x = 0.f;
-  std::atomic<float> jitter_y = 0.f;
   std::atomic_bool jitter_found = false;
   std::array<float, 2> first_jitter = {};
   uint32_t jitter_frames = 0;
@@ -1149,11 +1151,9 @@ struct Diagnostics {
   std::atomic<uint32_t> camera_uploads = 0;
   std::atomic<uint32_t> jittered_uploads = 0;
   std::atomic_bool from_upload = false;
-  // Any TAA seen (also measured while DLSS is off); jitter on at the last one (logged when it changes);
-  // TAA frames (a summary every 600).
+  // Any TAA measured (also while the AA mode is Off); jitter on at the last one (logged when it changes).
   std::atomic_bool measured = false;
   bool jittering = false;
-  uint64_t taa_frames = 0;
   std::atomic<uint64_t> restarts = 0;
   std::atomic<uint64_t> skipped_frames = 0;
 } diagnostics;
@@ -1740,11 +1740,11 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
       frame = state.frame;
     }
     taa_frame.store(frame, std::memory_order_relaxed);
-    // Off: the game's jitter measured only while Advanced shows it (the overlay drew within 120 frames); else no work and
-    // no log lines a frame.
-    if (const uint64_t overlay = overlay_frame.load(std::memory_order_relaxed); !active && !(overlay != 0 && frame + 1 - overlay < 120)) {
-      return {};
-    }
+    // The jitter's diagnostics (its positions, the camera uploads, their log line) only while the page shows them (it drew
+    // the AA section within 120 frames). Off: then no work at all a frame.
+    const uint64_t page = aa_page_frame.load(std::memory_order_relaxed);
+    const bool diagnostics_shown = page != 0 && frame + 1 - page < 120;
+    if (!active && !diagnostics_shown) return {};
     const auto fail = [active](std::string_view message) -> command_action::CallbackResult<Context> {
       if (active) SetStatus(message);
       return {};
@@ -1863,51 +1863,47 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
         jitter_ndc_x = 0.f;
         jitter_ndc_y = 0.f;
       }
-      diagnostics.camera_uploads.store(uploads);
-      diagnostics.jittered_uploads.store(jittered);
-      diagnostics.from_upload.store(use_upload);
+      if (diagnostics_shown) {
+        diagnostics.camera_uploads.store(uploads);
+        diagnostics.jittered_uploads.store(jittered);
+        diagnostics.from_upload.store(use_upload);
+      }
     }
     // NDC up, pixels down. DLSS: the sample offset in render pixels.
     const float jitter_x = jitter_ndc_x * 0.5f * width;
     const float jitter_y = -jitter_ndc_y * 0.5f * height;
-    diagnostics.jitter_x.store(jitter_x);
-    diagnostics.jitter_y.store(jitter_y);
     diagnostics.jitter_found.store(jitter_found);
-    // Positions until the first one repeats; more than 1024: no repeat (random). Below 1/200 pixel (float
-    // noise of an unjittered matrix): not jittering.
-    diagnostics.measured.store(true);
-    const bool jittering = std::abs(jitter_x) > .005f || std::abs(jitter_y) > .005f;
-    if (!jittering) {
-      diagnostics.jitter_phases.store(1);
-      diagnostics.jitter_frames = 0;
-    } else if (diagnostics.jitter_frames != 0 && std::abs(jitter_x - diagnostics.first_jitter[0]) < .01f
-               && std::abs(jitter_y - diagnostics.first_jitter[1]) < .01f) {
-      diagnostics.jitter_phases.store(diagnostics.jitter_frames);
-      diagnostics.jitter_frames = 1;
-    } else if (diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 1024) {
-      if (diagnostics.jitter_frames > 1024) diagnostics.jitter_phases.store(diagnostics.jitter_frames);
-      diagnostics.first_jitter = {jitter_x, jitter_y};
-      diagnostics.jitter_frames = 1;
-    } else {
-      ++diagnostics.jitter_frames;
+    if (diagnostics_shown) {
+      // Positions until the first one repeats; more than 1024: no repeat (random). Below 1/200 pixel (float
+      // noise of an unjittered matrix): not jittering.
+      diagnostics.measured.store(true);
+      const bool jittering = std::abs(jitter_x) > .005f || std::abs(jitter_y) > .005f;
+      if (!jittering) {
+        diagnostics.jitter_phases.store(1);
+        diagnostics.jitter_frames = 0;
+      } else if (diagnostics.jitter_frames != 0 && std::abs(jitter_x - diagnostics.first_jitter[0]) < .01f
+                 && std::abs(jitter_y - diagnostics.first_jitter[1]) < .01f) {
+        diagnostics.jitter_phases.store(diagnostics.jitter_frames);
+        diagnostics.jitter_frames = 1;
+      } else if (diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 1024) {
+        if (diagnostics.jitter_frames > 1024) diagnostics.jitter_phases.store(diagnostics.jitter_frames);
+        diagnostics.first_jitter = {jitter_x, jitter_y};
+        diagnostics.jitter_frames = 1;
+      } else {
+        ++diagnostics.jitter_frames;
+      }
+      if (jittering != diagnostics.jittering) {
+        diagnostics.jittering = jittering;
+        renodx::utils::log::i("[Ryse DLSS] frame ", frame, ": the game's jitter ", (jittering ? "started" : "stopped"), " (r_PostAAMode ",
+                              postaamode.load(), ", DLAA ", (active ? "on" : "off"), ", camera uploads ", diagnostics.camera_uploads.load(),
+                              ", jittered main camera ", diagnostics.jittered_uploads.load(), ")");
+      }
     }
-    if (jittering != diagnostics.jittering) {
-      diagnostics.jittering = jittering;
-      renodx::utils::log::i("[Ryse DLSS] frame ", frame, ": the game's jitter ", (jittering ? "started" : "stopped"), " (r_PostAAMode ",
-                            postaamode.load(), ", DLAA ", (active ? "on" : "off"), ", camera uploads ", diagnostics.camera_uploads.load(),
-                            ", jittered main camera ", diagnostics.jittered_uploads.load(), ")");
-    }
-    if (++diagnostics.taa_frames % 600 == 0) {
-      renodx::utils::log::i("[Ryse DLSS] frame ", frame, ": jitter (", jitter_x, ", ", jitter_y, ") pixels, ",
-                            diagnostics.jitter_phases.load(), " positions, r_PostAAMode ", postaamode.load(), ", DLAA ",
-                            (active ? "on" : "off"));
-    }
+    // The first frames' jitter, once a session (the log's proof that it was found).
     if (diagnostics.logged < 32) {
       ++diagnostics.logged;
       renodx::utils::log::i("[Ryse DLSS] frame ", frame, " jitter ", (jitter_found ? "" : "(not found) "), "ndc (", jitter_ndc_x,
-                            ", ", jitter_ndc_y, ") pixels (", jitter_x, ", ", jitter_y, "); camera uploads ",
-                            diagnostics.camera_uploads.load(), ", jittered main camera ", diagnostics.jittered_uploads.load(),
-                            (diagnostics.from_upload.load() ? ", from an earlier upload" : ""));
+                            ", ", jitter_ndc_y, ") pixels (", jitter_x, ", ", jitter_y, ")");
     }
     if (!active) return {};
 
@@ -3387,11 +3383,12 @@ inline void UpdateHelper(reshade::api::swapchain* swapchain, upscaling::BridgeUs
 // Settings mode now the page's): the upscaler, frame generation and their status; with Advanced the diagnostics and
 // the debug buttons. Without the helper only these (its download note above).
 inline void DrawAntiAliasing(bool advanced) {
-  if (advanced) {
+  {
     const std::shared_lock lock(state.mutex);
-    overlay_frame.store(state.frame + 1);
-    rysesonofrome::particle_counts::KeepCounting();
+    aa_page_frame.store(state.frame + 1);
+    if (advanced) overlay_frame.store(state.frame + 1);
   }
+  if (advanced) rysesonofrome::particle_counts::KeepCounting();
   const bool helper = twattila::dlaa_bridge::HelperInstalled();
   auto mode = requested_mode.load();
   // A choice of `items` saved as `key` ([Ryse AA]).
