@@ -1604,7 +1604,7 @@ float rays_banner_light_row = 0.f;
 // Rarer Objects in the Rays (Experimental, off): the scene's families drawn in no trace (level B: SCENE_SHADERS' held_row).
 float rays_untraced_casters_row = 0.f;
 // The rays' cut-outs (rt_scene::InstallCutOuts, as Attila's): the unit pixel shaders that clip at their diffuse's alpha
-// (sample t0 at TEXCOORD1, discard below 0.501961; names.tsv, the bytes): the weighted* families' ps30_gbuffer* and
+// (sample t0 at TEXCOORD1, discard below 128 / 255; names.tsv, the bytes): the weighted* families' ps30_gbuffer* and
 // ps30_alpha_overlay* entries (data_rome2.pack's, its overrides of data.pack left out); 18 drawn with a unit VS in ATN's 71
 // traces (level A: DDDFEBA6, 4AD298CF, 1B291719, 42990BB4, 4AB12059, 437EE18A, 5EDD098A, 6B283703, FA1FD9E1, EBD4C46F and
 // the overlays 398DB3E5, A68033F9, 51507813, 4DD4A158, 0281025B, 18709598, C655E116, BDB29482), the rest level B. Not the
@@ -1621,8 +1621,10 @@ constexpr std::array<uint32_t, 88> UNIT_CUT_OUT_PIXEL_SHADERS = {
     0xC655E116, 0xC6AC4399, 0xC745B3D0, 0xCB1560CE, 0xDCAFC814, 0xDDDFEBA6, 0xDE8841DF, 0xE2041D57, 0xE6B857F9,
     0xEBD4C46F, 0xEC8A8869, 0xF138735D, 0xF94DFB49, 0xF99FFC44, 0xFA1FD9E1, 0xFED3F26F};
 // The units' and rigid objects' cut-out captures (cut_out_shader): the plain capture with the UV (RT_CAPTURE_UV, o2.xy =
-// TEXCOORD1); the rigid rows' at the game's own alpha test, 0.35 (rigidcommon ps30_shadow_alpha_test 17CAF4B6), the units' at
-// the helper's 0.5 (theirs 0.501961). The plain captures' programs are unchanged (fxc disassembly, 12 of 12).
+// TEXCOORD1). The units' at the helper's 0.5: the game's 128 / 255 cuts the same 8-bit alphas (all 88, WARP:
+// test/tw_rays_captures L). The rigid rows' at their alpha_cutoff (RT_OWN_CUTOFF), the game's own alpha test, 0.35
+// (rigidcommon ps30_shadow_alpha_test 17CAF4B6: the same 8-bit alphas; at 0.5, 38 apart). The plain captures' programs are
+// unchanged (fxc disassembly, 12 of 12).
 constexpr std::array<twattila::rt_scene::SceneShader, 46> SCENE_SHADERS = {{
     {.hash = 0x83AB3AFC, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true},
     // The terrain with the game's Tessellation on (rigidterrain vs50_geom B1C7E29F, HS BE9FC167, DS 93979D65: 3-control-point

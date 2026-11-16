@@ -831,6 +831,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: the original. RTAO: from rays through the scene, in its place (keep in-game SSAO on).\n"
                   "Path-Traced: the sky's light itself from Global Illumination's paths, its shade included.\n"
                   "Needs an upscaler. Restart the game after turning it on.",
+    .gi_tooltip_start = "Sunlit ground, walls and characters bounce their light and colour into nearby shadows.\n",
     .gi_tooltip_end = "\nRestart the game after turning it on.",
     .reflections_tooltip = "Reflections on metal, water and polished floors.\n"
                            "Game's SSR: the original (its light probes, with in-game SSR its screen-space reflections). DXR: from\n"
@@ -1266,6 +1267,7 @@ void ConfigureAddon() {
                                              .has_screen_space_shadows = false,
                                              .has_gtvbgi = false,
                                              .rays_tested = false,
+                                             .has_fog_shadows = false,
                                              .every_row = false});
   const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
   for (auto* setting : settings) {

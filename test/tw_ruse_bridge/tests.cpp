@@ -33,6 +33,13 @@
 //    beside it (Bend's printed, as in 6). The frame before (the ground's depth alone, every frame before this change)
 //    hasn't: the control. Then the Ground Debug View over a frame-sized target: the occlusion and the visibility
 //    exactly, magenta for the mask (not copied this frame).
+// 6c. Bend over solid casters (BENDBOX_VS: world positions through c0-c3): a building (half the ground's width, 10 m
+//    tall) and a tank (6 x 3 x 3 m) standing on the ground, the low sun over +x. Ground pixels whose way to the sun
+//    crosses a box shrunk by a quarter of its smallest side (1.5 m at most) are its shadow, those missing it grown by
+//    1.5 m lit; Bend's visibility < 0.5 counted in each (bend_6c_<case>.ppm: grey Bend, red the shadow, blue the boxes,
+//    yellow shadowed lit ground). Cases: the ground alone; the boxes in the depth Bend marches, with ShadeGround's window
+//    and x 15 (its width in pixels at 3840 wide: at 256 x 144 a ray climbing a wall passes the default 0.5 % between two
+//    pixels); the boxes in the main depth alone (O1's start depth, as 6b: the units, trees and buildings in the game).
 // 9. Guides (ray_tracing.hpp BindGuides: the rays' bounce and reflections): the three guide targets made by D3D9Ex and
 //    opened by D3D11 (B8G8R8A8, RGBA16F x 2) as render targets 1-3 beside a 10-bit scene target: ColorFill clears them
 //    (RGBA16F too), each target's write mask holds, a blended draw (SRCALPHA / INVSRCALPHA: D3D9's one blend state)
@@ -47,6 +54,10 @@
 //    traces): 125 frames try at 0, 60, 120 and record 0, 59, 60, 119, 120 (a try's frame and the one before), GT-VBAO in
 //    every frame; GT-VBAO off: the ground's depth copied in the try's frame alone; a due frame without a trace point
 //    tries nothing and moves the try 60 frames on; one "not tracing" log line in all of it.
+//    Rays Off Above at 600 m, the eye at 672 m: no try and nothing recorded in 70 frames, no "not tracing" line; at 0 m
+//    the next frame tries; a line with the eye's height at each change.
+//    Rays Replace Shadow Maps' skip (SkipsShadowMapDraw), its target set as learned (the mock list has no shader hash):
+//    a draw into it skipped, kept under each of its 7 conditions.
 // H2 (renodx-tw-dlaa64.exe beside this exe; argv[2] dlss / fsr / xess):
 // 7. Evaluate on a synthetic aliased frame (the ground quad's hard edges drawn with each frame's jitter) for 24 frames:
 //    a result each frame after the first, written back into the scene; flat pixels within 3 codes of the aliased
@@ -432,6 +443,14 @@ float4 main(float3 current : TEXCOORD1, float3 previous : TEXCOORD2) : COLOR0 {
   return float4((current.xy - previous.xy) / previous.z, previous.z, 1);
 })";
 
+// 6c's boxes: world positions through c0-c3 (rows acting on column vectors).
+constexpr char BENDBOX_VS[] = R"(
+float4 rows[4] : register(c0);
+float4 main(float3 position : POSITION) : POSITION {
+  const float4 world = float4(position, 1);
+  return float4(dot(rows[0], world), dot(rows[1], world), dot(rows[2], world), dot(rows[3], world));
+})";
+
 constexpr char FLAT_PS[] = R"(
 float4 colour : register(c0);
 float4 main() : COLOR0 { return colour; })";
@@ -693,9 +712,12 @@ int main(int argc, char** argv) {
   std::array<float, 16> atlas_rows = {};
   host->GetVertexShaderConstantF(0, atlas_rows.data(), 4);
   CHECK(atlas_rows == VIEW_PROJECTION && !state.jitter_written);
+  // The jitter the frame's scene draws took (the rays' camera, O1's kept depth): none until a scene draw takes it.
+  CHECK(bridge::DrawnJitter() == (std::array<float, 2>{}));
   state.viewport_is_frame_sized = true;
   CHECK(bridge::IsSceneDraw());
   bridge::OnDraw(&command_list);
+  CHECK(bridge::DrawnJitter() == state.jitter);
   std::array<float, 16> written = {};
   host->GetVertexShaderConstantF(0, written.data(), 4);
   const float offset_x = 2.f * state.jitter[0] / WIDTH;
@@ -1211,6 +1233,205 @@ int main(int argc, char** argv) {
       state.pixel_texture_0 = 0;
       std::ranges::copy(inverse_float, state.camera.begin() + 16);
     }
+
+    // 6c. Bend over solid casters.
+    {
+      ruse::ray_tracing::ReleaseHost();
+      rays.bend = true;
+      rays.toward_sun = {0.894427f, 0.f, 0.447214f};
+      const ComPtr<IDirect3DTexture9> box_depth = MakeTarget(host, INTZ, D3DUSAGE_DEPTHSTENCIL);
+      const ComPtr<IDirect3DTexture9> main_box_depth = MakeTarget(host, INTZ, D3DUSAGE_DEPTHSTENCIL);
+      REQUIRE(box_depth != nullptr && main_box_depth != nullptr);
+      const ComPtr<IDirect3DSurface9> box_depth_surface = Level(box_depth.Get());
+      const ComPtr<IDirect3DSurface9> main_box_depth_surface = Level(main_box_depth.Get());
+      bridge::OnInitDepthView(&host_device, {reinterpret_cast<uint64_t>(box_depth.Get())}, reshade::api::resource_usage::depth_stencil,
+                              reshade::api::resource_view_desc(reshade::api::resource_view_type::texture_2d, reshade::api::format::intz, 0, 1, 0, 1),
+                              {reinterpret_cast<uint64_t>(box_depth_surface.Get())});
+      rays.prepass_depth = reinterpret_cast<uint64_t>(box_depth_surface.Get());
+      rays.ground_mask = reinterpret_cast<uint64_t>(scratch.Get());
+      const ComPtr<ID3DBlob> box_code = Compile(BENDBOX_VS, "vs_3_0");
+      ComPtr<IDirect3DVertexShader9> box_vs;
+      REQUIRE(SUCCEEDED(host->CreateVertexShader(static_cast<const DWORD*>(box_code->GetBufferPointer()), box_vs.GetAddressOf())));
+      struct Box {
+        std::array<double, 3> low;
+        std::array<double, 3> high;
+      };
+      const double size_x = ground.box_max[0] - ground.box_min[0];
+      const double size_y = ground.box_max[1] - ground.box_min[1];
+      const std::array<Box, 2> boxes = {{
+          {.low = {ground.box_min[0] + (0.25 * size_x), ground.box_min[1] + (0.25 * size_y), ground.height},
+           .high = {ground.box_max[0] - (0.25 * size_x), ground.box_max[1] - (0.25 * size_y), ground.height + 1000.0}},
+          {.low = {ground.box_min[0] + (0.08 * size_x) - 300.0, ground.box_min[1] + (0.5 * size_y) - 150.0, ground.height},
+           .high = {ground.box_min[0] + (0.08 * size_x) + 300.0, ground.box_min[1] + (0.5 * size_y) + 150.0, ground.height + 300.0}},
+      }};
+      // The parameter where a ray (origin, direction) enters `box` grown by `grow` (shrunk when negative), -1 if it misses.
+      const auto enter = [](const std::array<double, 3>& origin, const std::array<double, 3>& direction, const Box& box, double grow) {
+        double entry = 0;
+        double leave = 1e30;
+        for (size_t axis = 0; axis < 3; ++axis) {
+          const double low = box.low[axis] - grow;
+          const double high = box.high[axis] + grow;
+          if (std::abs(direction[axis]) < 1e-12) {
+            if (origin[axis] < low || origin[axis] > high) return -1.0;
+            continue;
+          }
+          const double a = (low - origin[axis]) / direction[axis];
+          const double b = (high - origin[axis]) / direction[axis];
+          entry = std::max(entry, std::min(a, b));
+          leave = std::min(leave, std::max(a, b));
+        }
+        return entry <= leave ? entry : -1.0;
+      };
+      // The ground and (with_boxes) the boxes into `depth`.
+      const auto draw_scene = [&](IDirect3DSurface9* depth, bool with_boxes) {
+        host->SetRenderTarget(0, scratch_surface.Get());
+        host->SetDepthStencilSurface(depth);
+        REQUIRE(SUCCEEDED(host->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0, 1.f, 0)));
+        host->SetRenderState(D3DRS_ZENABLE, TRUE);
+        host->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
+        DrawGround(host, ground_draw, flat_ps.Get(), ground, &VIEW_PROJECTION, VIEW_PROJECTION);
+        host->SetVertexShader(box_vs.Get());
+        host->SetPixelShader(flat_ps.Get());
+        host->SetFVF(D3DFVF_XYZ);
+        host->SetVertexShaderConstantF(0, VIEW_PROJECTION.data(), 4);
+        host->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+        for (const Box& box : boxes) {
+          if (!with_boxes) break;
+          std::array<std::array<float, 3>, 8> corners = {};
+          for (size_t index = 0; index < 8; ++index) {
+            corners[index] = {static_cast<float>((index & 1) != 0 ? box.high[0] : box.low[0]), static_cast<float>((index & 2) != 0 ? box.high[1] : box.low[1]),
+                              static_cast<float>((index & 4) != 0 ? box.high[2] : box.low[2])};
+          }
+          // The top and the four walls, two triangles each (corner index bits: x 1, y 2, z 4).
+          constexpr std::array<int, 30> FACES = {4, 5, 6, 6, 5, 7, 0, 2, 4, 4, 2, 6, 1, 5, 3, 3, 5, 7, 0, 4, 1, 1, 4, 5, 2, 3, 6, 6, 3, 7};
+          std::vector<float> vertices;
+          for (const int index : FACES) vertices.insert(vertices.end(), corners[index].begin(), corners[index].end());
+          host->BeginScene();
+          host->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 10, vertices.data(), 3 * sizeof(float));
+          host->EndScene();
+        }
+        host->SetDepthStencilSurface(nullptr);
+      };
+      // ShadeGround with Bend's window (SurfaceThickness) `window_scale` times ShadeGround's (its objects made by the first).
+      const auto shade = [&](float window_scale) {
+        if (rays.bend_objects.settings != nullptr) {
+          ruse::ray_tracing::BendSettings settings = {
+              .width = static_cast<float>(WIDTH),
+              .height = static_cast<float>(HEIGHT),
+              .inverse_width = 1.f / static_cast<float>(WIDTH),
+              .inverse_height = 1.f / static_cast<float>(HEIGHT),
+              .render_width = static_cast<float>(WIDTH),
+              .render_height = static_cast<float>(HEIGHT),
+          };
+          settings.thickness *= window_scale;
+          devices.context->UpdateSubresource(rays.bend_objects.settings.Get(), 0, nullptr, &settings, 0, 0);
+        }
+        host->BeginScene();
+        const bool bent = ruse::ray_tracing::ShadeGround(&command_list);
+        host->EndScene();
+        REQUIRE(bent);
+      };
+      struct BendCount {
+        std::array<size_t, 2> in_shadow = {};
+        std::array<size_t, 2> shadowed_in = {};
+        size_t lit_ground = 0;
+        size_t stray = 0;
+      };
+      const auto count_case = [&](const char* name, bool with_boxes) {
+        const std::vector<uint8_t> visibility = ReadHost(host, rays.visibility.host_surface.Get(), 4);
+        const std::array<double, 3> sun = {rays.toward_sun[0], rays.toward_sun[1], rays.toward_sun[2]};
+        BendCount count;
+        std::vector<uint8_t> picture(static_cast<size_t>(WIDTH) * HEIGHT * 3);
+        for (UINT y = 0; y < HEIGHT; ++y) {
+          for (UINT x = 0; x < WIDTH; ++x) {
+            const size_t index = (static_cast<size_t>(y) * WIDTH) + x;
+            const double value = Float(visibility, index);
+            uint8_t* pixel = picture.data() + (index * 3);
+            const auto grey = static_cast<uint8_t>(std::clamp(value, 0.0, 1.0) * 200.0);
+            pixel[0] = grey;
+            pixel[1] = grey;
+            pixel[2] = grey;
+            const GroundHit hit = HitGround(inverse, ground, x, y);
+            if (hit.inside < 0.01) continue;
+            const Vector eye_point = Unproject(inverse, (2.0 * x / WIDTH) - 1.0, 1.0 - (2.0 * y / HEIGHT), 0);
+            const std::array<double, 3> view = {hit.point[0] - eye_point[0], hit.point[1] - eye_point[1], hit.point[2] - eye_point[2]};
+            bool covered = false;
+            for (const Box& box : boxes) {
+              const double entry = enter({eye_point[0], eye_point[1], eye_point[2]}, view, box, 0.0);
+              covered = covered || (with_boxes && entry >= 0.0 && entry < 1.0);
+            }
+            if (covered) {
+              pixel[2] = 255;
+              continue;
+            }
+            const std::array<double, 3> start = {hit.point[0], hit.point[1], hit.point[2]};
+            bool lit = true;
+            for (size_t which = 0; which < boxes.size() && with_boxes; ++which) {
+              const Box& box = boxes[which];
+              const double smallest = std::min({box.high[0] - box.low[0], box.high[1] - box.low[1], box.high[2] - box.low[2]});
+              if (enter(start, sun, box, -std::min(150.0, 0.25 * smallest)) > 0.0) {
+                ++count.in_shadow[which];
+                pixel[0] = 255;
+                if (value < 0.5) ++count.shadowed_in[which];
+              }
+              lit = lit && enter(start, sun, box, 150.0) < 0.0;
+            }
+            if (!lit) continue;
+            ++count.lit_ground;
+            if (value >= 0.5) continue;
+            ++count.stray;
+            pixel[0] = 255;
+            pixel[1] = 255;
+            pixel[2] = 0;
+          }
+        }
+        if (std::FILE* file = std::fopen(std::format("bend_6c_{}.ppm", name).c_str(), "wb"); file != nullptr) {
+          std::fprintf(file, "P6\n%u %u\n255\n", WIDTH, HEIGHT);
+          std::fwrite(picture.data(), 1, picture.size(), file);
+          std::fclose(file);
+        }
+        std::printf("Bend over solid casters (%s): the building's shadow %zu of %zu pixels, the tank's %zu of %zu; lit ground %zu, %zu of them "
+                    "shadowed\n",
+                    name, count.shadowed_in[0], count.in_shadow[0], count.shadowed_in[1], count.in_shadow[1], count.lit_ground, count.stray);
+        return count;
+      };
+      draw_scene(box_depth_surface.Get(), false);
+      shade(1.f);
+      const BendCount alone = count_case("ground", false);
+      draw_scene(box_depth_surface.Get(), true);
+      shade(1.f);
+      const BendCount solid = count_case("boxes", true);
+      shade(15.f);
+      const BendCount wide = count_case("boxes_4k_window", true);
+      // O1: frame A's pre-pass depth the ground alone, the boxes only in its main depth (the bridge's prepare pass writes
+      // it at the bloom, OnBloom keeps it); frame B, the same camera: Bend over the kept depth reprojected over the ground.
+      draw_scene(box_depth_surface.Get(), false);
+      draw_scene(main_box_depth_surface.Get(), true);
+      shade(15.f);
+      const std::array<IDirect3DSurface9*, 1> shared_depth = {state.depth.host_surface.Get()};
+      const std::array<IDirect3DBaseTexture9*, 1> main_source = {main_box_depth.Get()};
+      host->BeginScene();
+      bridge::DrawQuad(host, shared_depth, rays.depth_copy.Get(), main_source, {});
+      host->EndScene();
+      bridge::WaitHost(host);
+      state.depth_frame = state.frame;
+      ruse::ray_tracing::OnBloom(&command_list);
+      REQUIRE(rays.kept_frame == state.frame);
+      bridge::OnPresent(host);
+      state.jitter = {};
+      draw_scene(box_depth_surface.Get(), false);
+      shade(15.f);
+      const BendCount kept = count_case("o1_4k_window", true);
+      // The ground alone: no shadowed pixel (Bend's IgnoreEdgePixels: before it, 46-48 single pixels, the far rows' depth
+      // steps taken as edges). The boxes: the building's shadow nearly whole at the 4K window, as much over O1's start
+      // depth (OnBloom's hand-off: without it 0); the tank's in both; at most 1% of the lit ground shadowed at that
+      // window (occluders 15 times as thick here: the shadow's end runs past the building's corner).
+      CHECK(alone.lit_ground > 5000 && alone.stray == 0);
+      CHECK(solid.in_shadow[0] > 300 && solid.shadowed_in[0] * 100 >= solid.in_shadow[0] * 20);
+      CHECK(wide.shadowed_in[0] * 100 >= wide.in_shadow[0] * 90 && wide.in_shadow[1] > 0 && wide.shadowed_in[1] * 2 >= wide.in_shadow[1]);
+      CHECK(kept.in_shadow == wide.in_shadow && kept.shadowed_in[0] * 100 >= wide.shadowed_in[0] * 95 && kept.shadowed_in[1] * 2 >= kept.in_shadow[1]);
+      CHECK(wide.stray * 100 <= wide.lit_ground && kept.stray * 100 <= kept.lit_ground);
+    }
     rays.bend = false;
 
     // 10. The trace point (GT-VBAO alone as its ground row).
@@ -1377,6 +1598,64 @@ int main(int argc, char** argv) {
     std::printf("Rays' gate, no trace point at a due frame: no try %d, the next try %u frames on %d; \"not tracing\" lines %td\n", skipped ? 1 : 0,
                 ruse::ray_tracing::RAYS_RETRY_FRAMES, pushed ? 1 : 0, not_tracing);
     CHECK(skipped && pushed && not_tracing == 1);
+    // Rays Off Above (the map table; the trace camera's eye at 672 m): under a 600 m ceiling no try in 70 frames, nothing
+    // recorded, no "not tracing" line; back at 0 m the next frame tries; a line with the eye's height at each change.
+    logged.clear();
+    rays.rays_ceiling = 600.f;
+    size_t high_tries = 0;
+    size_t high_recorded = 0;
+    for (int index = 0; index < 70; ++index) {
+      frame(true);
+      high_tries += (rays.tried_frame == state.frame) ? 1u : 0u;
+      high_recorded += replay.recording ? 1u : 0u;
+    }
+    const bool was_above = rays.above_ceiling;
+    rays.rays_ceiling = 0.f;
+    frame(true);
+    const bool back = !rays.above_ceiling && rays.tried_frame == state.frame;
+    const auto count_lines = [&](const char* start) {
+      return std::ranges::count_if(logged, [start](const std::string& line) { return line.find(start) == 0; });
+    };
+    const auto ceiling_lines = count_lines("[R.U.S.E.] Rays Off Above");
+    std::printf("Rays Off Above 600 m, the eye at 672 m: %zu tries and %zu frames recorded in 70; at 0 m tried at once %d; its lines %td, \"not "
+                "tracing\" lines %td\n",
+                high_tries, high_recorded, back ? 1 : 0, ceiling_lines, count_lines("[R.U.S.E.] Ray tracing: not tracing"));
+    CHECK(was_above && high_tries == 0 && high_recorded == 0 && back && ceiling_lines == 2 && count_lines("[R.U.S.E.] Ray tracing: not tracing") == 0);
+    // Rays Replace Shadow Maps' skip (SkipsShadowMapDraw), its conditions, the target set as learned (learning asks the
+    // bound pixel shader's hash: the mock list has none): its draws skipped while last frame's rays were shown, this
+    // frame's recording whole and the eye under Rays Off Above; none into another target, a frame-sized one, with the row
+    // off or without the object shadows (the object shaders read the map then).
+    {
+      rays.replace_maps = 1.f;
+      rays.objects = true;
+      state.render_target = reinterpret_cast<uint64_t>(scratch_surface.Get());
+      state.render_target_is_frame_sized = false;
+      const auto skips = [&] { return ruse::ray_tracing::SkipsShadowMapDraw(&command_list); };
+      rays.shadow_map_target = state.render_target;
+      rays.visibility_frame = state.frame - 1;
+      replay.previous_whole = true;
+      const bool skipped_draw = skips();
+      size_t kept_draws = 0;
+      const auto kept_when = [&](auto* field, auto value) {
+        const auto old = *field;
+        *field = value;
+        kept_draws += skips() ? 0u : 1u;
+        *field = old;
+      };
+      kept_when(&rays.visibility_frame, state.frame - 2);
+      kept_when(&replay.previous_whole, false);
+      kept_when(&rays.above_ceiling, true);
+      kept_when(&state.render_target, reinterpret_cast<uint64_t>(main_surface.Get()));
+      kept_when(&state.render_target_is_frame_sized, true);
+      kept_when(&rays.replace_maps, 0.f);
+      kept_when(&rays.objects, false);
+      std::printf("Rays Replace Shadow Maps: a draw into the map skipped %d, kept under each of 7 conditions %zu\n", skipped_draw ? 1 : 0, kept_draws);
+      CHECK(skipped_draw && kept_draws == 7);
+      rays.replace_maps = 0.f;
+      rays.objects = false;
+      rays.shadow_map_target = 0;
+      rays.visibility_frame = UINT32_MAX;
+    }
     rays.ground = false;
     rays.proxy_queue = nullptr;
     state.ready = false;
@@ -1896,6 +2175,7 @@ int main(int argc, char** argv) {
             drawn[column] += 2.f * state.jitter[0] / static_cast<float>(WIDTH) * VIEW_PROJECTION[12 + column];
             drawn[4 + column] -= 2.f * state.jitter[1] / static_cast<float>(HEIGHT) * VIEW_PROJECTION[12 + column];
           }
+          state.jittered_frame = state.frame;
         }
         host->SetRenderTarget(0, scratch_surface.Get());
         host->SetDepthStencilSurface(depth_surface.Get());

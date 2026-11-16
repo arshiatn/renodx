@@ -30,7 +30,8 @@ if (-not $Fxc) {
 # where the game's bytes carry no names (tests.cpp, GameConstants); FrameGamma: the frame's gamma whose 2.2 decode Gamma
 # Correction gives in every Rendering Mode (tests.cpp's Gamma Correction check), none for NoGamma's shaders; Modes: those
 # Rendering Modes where not 0 - 3; Binds: the add-on's own inputs bound (tests.cpp MakeBinds: t<slot>=<value> a switch,
-# t<add-on slot>>t<game slot> read in place of the game's input, which the game then reads).
+# t<add-on slot>>t<game slot> read in place of the game's input, which the game then reads); Inputs (by shader name): a
+# pixel shader's interpolants at given values (tests.cpp VertexShaderFor: "TEXCOORD2=x,y,z,w;...").
 # Attila and Thrones (the same table): every replaced shader the generic inputs exercise; ssr02-07 have tw_thrones_ssr,
 # vfx and battlefog tw_attila_builds, dof tw_dof_blurs. Left out: pointlight00-39 (their light's place and reach are vertex
 # inputs, so no texel is lit here: the control is never caught; their WARP proof is tools/tw/testbin/g4_point_shadows),
@@ -49,14 +50,18 @@ $table = [ordered]@{
   # viewport from the camera, the game's from g_viewport_offset_scale: the whole screen at 100%, tests.cpp's
   # GameConstants). pointlight00 / 01 with their light's colour and a reach past every texel (point_light_PS c1: noise put
   # every texel out of reach, a black output the output-swap control can't see). sunlight00-03 (the four sun light draws;
-  # the rays' t40 / t41 / t50 / t51 unbound, as without rays) with Foliage Sun Glints at the game's 1. Not here:
-  # treevelocity00-03 (by design: the previous position divided by its w, the game's read with w = 1); particlelight00 and
-  # vfxglow00 (exact, but the generated TEXCOORDs put the particles behind the depth: nearly every pixel discarded, the
-  # control missed: 0 and 1.7e-6 on 11-16; they need per-input values this driver doesn't give).
+  # the rays' t40 / t41 / t50 / t51 unbound, as without rays) with Foliage Sun Glints at the game's 1. particlelight00 and
+  # vfxglow00 with their particle's depth in front of the scene's (Inputs: the generated TEXCOORDs put every particle
+  # behind it, nearly every pixel discarded, the control missed on 11-16): particlelight00's clip-space TEXCOORD2 at z 0
+  # and its light's reach (TEXCOORD0.x) past every texel, vfxglow00's view depth (TEXCOORD3.z) far in front, its blend
+  # weight (.w) 0.5 and an ambient lift (TEXCOORD4.w -0.5: the lit colour away from 0), the campaign shroud off in both
+  # (noise turned it on: an unbound shroud texture discards every pixel). Not here: treevelocity00-03 (by
+  # design: the previous position divided by its w, the game's read with w = 1).
   'Shogun2PS'   = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'
-                     Shaders = '^(fog|vignette|video|uiresolve|uifigure|sun|sunlight|projectiletrail|glowmesh|vfxoverlay|dissolve|campaignwater|highlight|ssrcopy|ribbon|pointlight)\d+_|^vfxglow01_'
+                     Shaders = '^(fog|vignette|video|uiresolve|uifigure|sun|sunlight|projectiletrail|glowmesh|vfxoverlay|dissolve|campaignwater|highlight|ssrcopy|ribbon|pointlight)\d+_|^(vfxglow0[01]|particlelight00)_'
                      ShaderSettings = @{ '^(highlight|ssrcopy)\d+_' = 'screen_uv=1'; '^sunlight\d+_' = 'foliage_glints=1' }
-                     Registers = @{ '^pointlight\d+_' = 'point_light_PS[1]=0.9,0.5,0.2,1000000' } }
+                     Registers = @{ '^pointlight\d+_' = 'point_light_PS[1]=0.9,0.5,0.2,1000000'; '^(particlelight00|vfxglow00)_' = 'shroud_PS[0]=0,0,0,0' }
+                     Inputs = @{ '^particlelight00_' = 'TEXCOORD0=1000000,0.5,0.5,1;TEXCOORD2=0.3,0.6,0,1'; '^vfxglow00_' = 'TEXCOORD3=0.3,0.6,-1000000,0.5;TEXCOORD4=0.5,0.3,4,-0.5' } }
   'Attila'      = $attilaShaders + @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'
                                       Shaders = '^((t|bloom|lensflare|sky|markersbattle|cutscene|vignette|autoexposure|ssao)\d+|ssr0[01]|grass02)_' }
   # Rome II (fix round 11-16): the tone mappers, bloom and lens flares and each family this driver sees, its VFX rows at 1.
@@ -149,6 +154,16 @@ $table = [ordered]@{
   'TalesLocalLight' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^locallight\d+_'
                          Registers = @{ '^locallight\d+_' = 'cb1[0]=0,0,0,0.000001;cb1[1]=1,0.8,0.6,0;cb1[2]=0,0,1,0;cb1[4]=-2,1,1,0;cb0[123]=64,48,0.015625,0.020833334' } }
   'Expeditions' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^(t|lut)\d+_' }
+  # The four newer SDR presets (Reset, Rendering Mode SDR, Output SDR: the button, and a first start without Windows HDR):
+  # the tone mappers on the scene ramp at Output SDR (Peak, Paper White and UI white 100 nits) with Gamma Correction as
+  # Reset leaves it, against the game's bytes.
+  'TroySdr'     = @{ Folder = 'twtroy'; Dump = 'dump_shader_twtroy_pack\cso'; Shaders = '^t\d+_'; Settings = 'swap_chain_encoding=2,gamma_correction=1' }
+  'WH2Sdr'      = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^t\d+_'
+                     Settings = 'swap_chain_encoding=2,gamma_correction=1' }
+  'RomeRSdr'    = @{ Folder = 'twromeremastered'; Dump = 'dump_shader_twromeremastered_pack\cso'; Shaders = '^t\d+_'
+                     Settings = 'swap_chain_encoding=2,gamma_correction=1'
+                     Registers = @{ '^t\d+_' = 'cb0[0]=u64,u48,0,1;cb0[1]=2.2,1,1,0.2;cb0[2]=11,0.9,1.2,2;cb0[3]=0.5,0.6,0,1;cb0[4]=1,1,1,0.8' } }
+  'Shogun2Sdr'  = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'; Shaders = '^tonemap\d+_'; Settings = 'swap_chain_encoding=2' }
   # Expeditions' sky light passes (skylight00-02): Path-Traced Ambient's switch (t120) unbound, the game's bytes. The View's
   # BufferSizeAndInvSize (cb1[127]) the test's frame: skylight00's distance field AO upsample divides by its half (noise: NaN).
   'ExpeditionsSky' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^skylight\d+_'
@@ -196,7 +211,8 @@ foreach ($game in $table.Keys) {
     $registers = if ($entry.Registers) { ($entry.Registers.Keys | Where-Object { $file.Name -match $_ } | ForEach-Object { $entry.Registers[$_] }) -join ';' } else { '' }
     $settings = @($entry.Settings) + @(if ($entry.ShaderSettings) { $entry.ShaderSettings.Keys | Where-Object { $file.Name -match $_ } | ForEach-Object { $entry.ShaderSettings[$_] } })
     $frameGamma = if ($entry.NoGamma -and $file.Name -match $entry.NoGamma) { '' } else { $entry.FrameGamma }
-    $manifest += "$game`t$($file.BaseName -replace '\.\w+_\d_\d$', '')`t$gameCso`t$addonCso`t$(($settings | Where-Object { $_ }) -join ',')`t$registers`t$frameGamma`t$($entry.Modes)`t$($entry.Binds)"
+    $inputs = if ($entry.Inputs) { ($entry.Inputs.Keys | Where-Object { $file.Name -match $_ } | ForEach-Object { $entry.Inputs[$_] }) -join ';' } else { '' }
+    $manifest += "$game`t$($file.BaseName -replace '\.\w+_\d_\d$', '')`t$gameCso`t$addonCso`t$(($settings | Where-Object { $_ }) -join ',')`t$registers`t$frameGamma`t$($entry.Modes)`t$($entry.Binds)`t$inputs"
   }
 }
 $manifestPath = Join-Path $testBuild 'manifest.tsv'
