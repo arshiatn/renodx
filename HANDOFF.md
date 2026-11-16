@@ -3,6 +3,11 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 ~09:xx TALES GI (you chose GT-VBGI on by default before the look shots): under GT-VBGI lit open ground
+  is -33 % against the game (Bandai's GI gives lit surfaces their own light back; ours only bounces), characters / foliage
+  are fixed. Pick: (1) GT-VBGI on, Game's GI Under the Open Sky off (now: darker open ground); (2) GT-VBGI on + that row on
+  (my recommendation: the game's look where AO >= 0.3, plus our bounce near walls); (3) GT-VBGI off by default. Test: the
+  G1 rail-track save, GI Off vs GT-VBGI vs GT-VBGI + the row. Owner: ATN
 - [ ] NEW 11-16 08:04 INSTALLED (not run in game): all 16 games on helper116 after the fix round, tree daa56e6a7: Attila
   v165, WH3 v64, Pharaoh v72, Rome II r8, Thrones r9, WH2 v55, Shogun 2 v78, Rome Remastered v16, Troy v59, WH1 r10, Ryse
   fix59, Tales v76, Expeditions v34, Divinity 1 v3, Divinity 2 v3, R.U.S.E. u3. Checked first: all 16 built,
@@ -247,7 +252,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
 - Ryse ray costs (RT shadows +1.0 ms, PT +2.7 ms at 4K DLSS Quality): Nsight work ... | a later GPU round
 - RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan ... | ATN (go-ahead), then a Ryse round
-- FIX 11-16 MORNING: tgi_ (why GT-VBGI darkens Tales -4..-8 %: game SSGI skipped, ... | tgi_, rur_, then coordinator (merge, rebuild, install, then 
 - REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cos ... | coordinator, Ryse fix agent
 - RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
 - Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, G ... | rao_, then the next replace round
@@ -1799,7 +1803,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         R.U.S.E. has no Gamma Correction row. Reports runs2_1116/tales.md, ruse.md. RUNS 11-16 MORNING (rn2_, brief tools/tw/round_notes/runs2_1116/brief.md, after the 08:04 install): Tales Bend /
         GT-VBGI look shots with a title click, then the R.U.S.E. T-run; reports runs2_1116/tales.md, ruse.md. Morning
         report: tools/tw/round_notes/morning_report_1116.md. Owner: rn2_, then coordinator
-      - [ ] FIX 11-16 MORNING: tgi_ (why GT-VBGI darkens Tales -4..-8 %: game SSGI skipped, double occlusion or combine
+      - [x] tgi_ MERGED 46bb1c8a1: causes measured on run_080739 (PQ-decoded): no double occlusion; the GI-off path halved
+        the fill light (0.001 / 0.002 = 0.5 per channel); 10 stock toon lighting passes read the skipped chain's output at
+        t28-t30 (stale pooled texture: characters / foliage); the biggest part is by design: Bandai's GI adds a lit
+        surface's own light back (1.24x direct on one pixel), GT-VBGI only bounces (open ground -33 %). Fixes: the chain
+        runs again (~0.07 ms), only Bandai's add goes under our GI, new row Game's GI Under the Open Sky (Experimental,
+        off); vanilla_exact 43 EXACT, controls caught; skill engines.md updated 6355c4c79. Left: port the 10 toon shaders
+        onto our GI (then the chain can be skipped again: ledger DO NOW). FIX 11-16 MORNING: tgi_ (why GT-VBGI darkens Tales -4..-8 %: game SSGI skipped, double occlusion or combine
         domain; fix with proof) and rur_ (why R.U.S.E.'s rays never trace; gate the capture / replay CPU cost when no ray
         runs). Owner: tgi_, rur_, then coordinator (merge, rebuild, install, then a short rerun of each)
       - [x] DONE 08:2x (rn2_ run_080739). Tales Bend / GT-VBGI look shots: rerun tales\g1g2\run.ps1 -Bend with a mouse click on the title (ATN allows it)
