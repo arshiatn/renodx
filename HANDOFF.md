@@ -3,7 +3,7 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
-- [ ] NEW 11-16 05:2x: which of the 17 Attila features missing from the skills to add (my pick: all 17), and 2 stale-line
+- [x] ANSWERED 05:3x (ATN "Please do everything and the things that are left": my picks applied, sk4_ adding all 17 + V31 exception + no tooltip numbers; revert any in the morning). NEW 11-16 05:2x: which of the 17 Attila features missing from the skills to add (my pick: all 17), and 2 stale-line
   choices (V31 hue shift after PsychoV: rule exception (my pick) or drop it; K / M / L numbers in the tooltip: drop from
   the skill (my pick)). List: tools/tw/round_notes/attila_vs_skills_1116.md. Owner: ATN, then coordinator
 - [ ] Rome Remastered battle with rays at Battle Objects Tested, then Solid + restart, then All + restart: any GPU reset? (send renodx-tw-dlaa64.log + ReShade.log) (from: "Rome Remastered battle GPU resets: safe-side fix a8afd660 ...")
