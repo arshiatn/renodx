@@ -48,7 +48,7 @@ namespace twromeremastered::dlaa {
 using Microsoft::WRL::ComPtr;
 
 // The page's anti-aliasing rows (feature_settings::AppendAa, graphics_page.hpp): method 0 the game's, 5 DLSS (DLAA, or
-// DLSS below 100%); its preset, frame generation and Reflex.
+// DLSS below 100%), 6 FSR, 7 XeSS (the helper's, in DLSS's place); DLSS's preset, frame generation and Reflex.
 static twattila::feature_settings::AaSliders sliders;
 // Ray tracing (ray_tracing.hpp) is on: the main camera and the scene's depth are kept without DLAA too, the bridge made
 // with its ray tracing textures and kept.
@@ -355,15 +355,17 @@ inline void KeepDepth(reshade::api::command_list* cmd_list, bool compute) {
 }
 
 // The bridge for a render of `width` x `height` (DLSS's output's size: OutputSize) as DLAA, the rays and frame generation
-// want it (one set of arguments for all: any other makes its textures again).
+// want it (one set of arguments for all: any other makes its textures again). The page's 6 and 7 are the helper's FSR and
+// XeSS (dlaa_bridge::UPSCALER_*: the method less 5, as Attila's).
 inline bool PrepareBridge(ID3D11Device* device, UINT width, UINT height) {
   std::array<UINT, 2> output = {};
   {
     const std::shared_lock lock(internal::state.mutex);
     output = internal::OutputSize(width, height);
   }
-  return twattila::dlaa_bridge::Prepare(device, output[0], output[1], false, rays, twattila::frame_generation::Format(), false,
-                                        twattila::dlaa_bridge::UPSCALER_DLSS, twattila::feature_settings::AaSettings(sliders).frame_backend);
+  const uint32_t upscaler = (sliders.method >= 6.f) ? static_cast<uint32_t>(std::min(sliders.method, 7.f)) - 5u : twattila::dlaa_bridge::UPSCALER_DLSS;
+  return twattila::dlaa_bridge::Prepare(device, output[0], output[1], false, rays, twattila::frame_generation::Format(), false, upscaler,
+                                        twattila::feature_settings::AaSettings(sliders).frame_backend);
 }
 
 // The kept scene depth's size (the render's; 0 before one was kept).
@@ -530,9 +532,12 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     return;
   }
 
-  // DLSS's presets L and M crush dark tones on a linear frame: its square root for them (Attila's c243f7c4).
+  // DLSS's presets L and M crush dark tones on a linear frame: its square root for them (Attila's c243f7c4). FSR and XeSS
+  // take the frame as it is, and the camera's near, far and field of view from its projection (the game's rows, as the
+  // helper reads them; without the jitter).
+  const bool dlss = sliders.method == 5.f;
   const uint32_t preset = twattila::feature_settings::AaSettings(sliders).dlaa_preset;
-  const bool square_root = preset == 12u || preset == 13u;
+  const bool square_root = dlss && (preset == 12u || preset == 13u);
   // aa_dlaa_prepare at the tone mapper's size, aa_dlaa_finish at the output's (the input size its Debug View's).
   const auto update_settings = [&](UINT pass_width, UINT pass_height) {
     const float pass_width_f = static_cast<float>(pass_width);
@@ -583,7 +588,8 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
        {bridge.color.uav.Get(), bridge.depth.uav.Get(), bridge.motion.uav.Get()});
   native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
   bind(nullptr, {}, {});
-  const bool resolved = twattila::dlaa_bridge::Evaluate(native, width, height, camera.jitter[0], -camera.jitter[1], !continued, preset);
+  const bool resolved = twattila::dlaa_bridge::Evaluate(native, width, height, camera.jitter[0], -camera.jitter[1], !continued, preset,
+                                                        nullptr, (dlss ? nullptr : &camera.projection));
   const bool upscaled = output[0] != width;
   if (resolved) {
     update_settings(output[0], output[1]);

@@ -667,25 +667,26 @@ void ClearOutputToOne(reshade::api::command_list* cmd_list, bool compute, std::a
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
-// The graphics page's anti-aliasing: the game's, DLSS.
-constexpr std::array<int, 2> AA_METHODS = {0, 5};
+// The graphics page's anti-aliasing: the game's, the helper's DLSS, FSR and XeSS (dlaa.hpp: in DLSS's place).
+constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
 // What the page reads that this game has no row for (GT-VBAO, Light Bounce): 0.
 float no_game_row = 0.f;
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
-    .aa_labels = {"Game's", "", "", "", "", "DLSS", "", ""},
+    .aa_labels = {"Game's", "", "", "", "", "DLSS", "FSR (Experimental)", "XeSS (Experimental)"},
     .aa_tooltip = "Game's: the game's own (SMAA, FXAA or off).\n"
                   "DLSS: NVIDIA's (RTX): DLAA at 100% Resolution Scale, below it in place of the game's upscaler. It replaces\n"
-                  "the game's SMAA. Ray tracing needs it. Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
-    .in_game_aa_note = "In-game FXAA must be Off for DLSS and Frame Generation.",
+                  "the game's SMAA. FSR: AMD's, FSR 4 on Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU. Both in\n"
+                  "DLSS's place. Ray tracing needs one of them. Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
+    .in_game_aa_note = "In-game FXAA must be Off for DLSS, FSR, XeSS and Frame Generation.",
     .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to its default: the game's shadows and AO.",
     .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480). The rest of this page at its default.",
     .rays_tooltip = "Ray-traced sun shadows and ambient occlusion at my settings. The rest of this page at its default.\n"
-                    "Needs DLSS (Anti-Aliasing above). Restart the game after turning ray tracing on.",
+                    "Needs an upscaler (Anti-Aliasing above). Restart the game after turning ray tracing on.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons; needs in-game shadows on).\n"
-                      "DXR: ray-traced sun shadows over the game's. Needs DLSS. Restart the game after turning it on.",
+                      "DXR: ray-traced sun shadows over the game's. Needs an upscaler. Restart the game after turning it on.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground.\n"
-                  "Game's SSAO: the original. RTAO: from rays through the scene, in place of the game's. Needs DLSS.\n"
+                  "Game's SSAO: the original. RTAO: from rays through the scene, in place of the game's. Needs an upscaler.\n"
                   "Restart the game after turning it on.",
 };
 
