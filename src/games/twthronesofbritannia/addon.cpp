@@ -140,6 +140,7 @@ void ApplyResetPreset() {
       {"gamma_correction", 1.f},
       {"sky_smooth", 0.f},
       {"sky_smooth_strength", 1.f},
+      {"sky_deband", 0.f},
       {"fog_strength", 1.f},
 
       // PsychoV30
