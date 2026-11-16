@@ -226,6 +226,12 @@ inline bool Shading() {
   return state.ground || state.bend || state.vbao || state.bounce || state.reflections;
 }
 
+// Path-Traced Light Bounce once the helper replaces the game's ambient with the paths' (their frames of history): the
+// paths' blocked rays are the occlusion, so the AO rays and GT-VBAO, whose result the s14 texel drops then, don't run.
+inline bool PathsReplaceAmbient() {
+  return state.traced_bounce == 2 && twattila::rt_scene::internal::runtime.path_ambient_on;
+}
+
 inline const twattila::rt_scene::Host HOST = {
     .render_size = [] { return std::array<UINT, 2>{bridge::state.width, bridge::state.height}; },
     .guides_written = [] { return state.gathered_frame == bridge::state.frame; },
@@ -674,8 +680,9 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   const bool bouncing = state.bounce && light_kept && !bounced;
   // GT-VBAO where the rays' ambient occlusion didn't run this frame; with the bounce GT-VBGI's march instead, its light
   // and the occlusion (the rays', else its own with the GT-VBAO row) in one texel. Their noise still without the upscaler
-  // (no frames to settle it). The bounce's light: this frame's clip to last frame's (c0-c3 x c4-c7, in doubles).
-  if (bouncing || (state.vbao && !rays_occlusion)) {
+  // (no frames to settle it). The bounce's light: this frame's clip to last frame's (c0-c3 x c4-c7, in doubles). Not
+  // GT-VBAO under the paths' ambient.
+  if (bouncing || (state.vbao && !rays_occlusion && !PathsReplaceAmbient())) {
     std::array<float, 32> settings = {
         p00, p11, depth_scale, depth_offset, size[0], size[1], size[2], size[3], VBAO_RADIUS, VBAO_THICKNESS, static_cast<float>(bridge.enabled ? (bridge.frame % 64u) : 0u), BOUNCE_STRENGTH,
     };
@@ -697,7 +704,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   }
   // The rays' bounce into the s14 texel with the occlusion: the rays', else GT-VBAO's just above (its own work copy).
   if (bounced) {
-    const bool replaced = state.traced_bounce == 2 && twattila::rt_scene::internal::runtime.path_ambient_on;
+    const bool replaced = PathsReplaceAmbient();
     ID3D11ShaderResourceView* bounce_occlusion = occlusion;
     if (!rays_occlusion) {
       bounce_occlusion = ((state.occlusion_frame == bridge.frame) ? state.occlusion_view.Get() : nullptr);
@@ -961,11 +968,11 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
   }
 }
 
-// The game's present: rt_core's new frame.
+// The game's present: rt_core's new frame (its AO rays off while the paths' ambient stands in for the occlusion).
 inline void OnPresent() {
   twattila::rt_scene::Update({
       .sun_shadows = state.ground,
-      .ambient_occlusion = state.ambient,
+      .ambient_occlusion = state.ambient && !PathsReplaceAmbient(),
       .ambient_range = AMBIENT_RANGE,
       .light_bounce = state.traced_bounce != 0,
       .light_bounce_rays = BOUNCE_RAYS,
