@@ -511,6 +511,20 @@ bool HitLight(float3 hit, float3 hit_normal, out float3 light_there, bool cached
 #endif
 }
 
+#if defined(REFLECT_ONE_SAMPLE)
+// A path's first surface the screen never saw, for its radiance cache add when the path ends (PathRadiance). The
+// reflections of one sample a pixel keep it in group memory, not in registers across every bounce (Nsight GPU Trace at 4K:
+// 29 -> 36% occupancy). A thread's slot by its pixel (`seed` is ReflectPixel's id; groups of 8 x 8, rt_path.cs_6_5.hlsl).
+// The paths' build gained nothing so (gpu2_'s c3: still 128 registers there): theirs stays in registers.
+struct UnseenSurface {
+  float3 position;
+  float3 normal;
+  float3 throughput;
+  float3 radiance_before;
+};
+groupshared UnseenSurface unseen_surfaces[64];
+#endif
+
 // The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal;
 // `sky_calibration`: SkyCalibration's, for the sky it meets first; `may_relearn`: CACHE_RELEARN of its hits leave the cache
 // out).
@@ -522,10 +536,14 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
   float3 throughput = 1.f;
   const float4 shade = float4(KeptShade(), light_kept[1].w);  // w: the sun's light known
   bool unseen = false;
+#if defined(REFLECT_ONE_SAMPLE)
+  const uint unseen_slot = (seed.y & 7u) * 8u + (seed.x & 7u);
+#else
   float3 unseen_position = 0.f;
   float3 unseen_normal = 0.f;
   float3 unseen_throughput = 1.f;
   float3 radiance_before = 0.f;
+#endif
   [loop]
   for (uint vertex = 0u; vertex <= path_bounces; ++vertex) {
     RayDesc ray;
@@ -589,10 +607,15 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     const float3 emitted = UnseenLight(surface, behind, normal, albedo, transmittance, seed, frame * 64u + path * 8u + vertex * 2u);
     if (!unseen) {
       unseen = true;
+#if defined(REFLECT_ONE_SAMPLE)
+      const UnseenSurface first_unseen = {position, normal, throughput, radiance};
+      unseen_surfaces[unseen_slot] = first_unseen;
+#else
       unseen_position = position;
       unseen_normal = normal;
       unseen_throughput = throughput;
       radiance_before = radiance;
+#endif
     }
     if (vertex == path_bounces) {
       radiance += throughput * (emitted + albedo * shade.rgb);
@@ -606,9 +629,18 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
                                 Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 8193u)));
   }
   // The first unseen surface's light feeds the cache once the sun's light is known (the game's, or learned).
+#if defined(REFLECT_ONE_SAMPLE)
+  if (unseen && shade.w > 0.f) {
+    const UnseenSurface unseen_surface = unseen_surfaces[unseen_slot];
+    if (all(unseen_surface.throughput > 1.0000807e-3f)) {
+      CacheAdd(unseen_surface.position, unseen_surface.normal, (radiance - unseen_surface.radiance_before) / unseen_surface.throughput);
+    }
+  }
+#else
   if (unseen && shade.w > 0.f && all(unseen_throughput > 1.0000807e-3f)) {
     CacheAdd(unseen_position, unseen_normal, (radiance - radiance_before) / unseen_throughput);
   }
+#endif
   return radiance;
 }
 
