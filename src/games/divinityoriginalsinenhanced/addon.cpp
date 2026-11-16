@@ -68,6 +68,8 @@ twattila::rt_scene::Sliders rt_sliders;
 twattila::feature_settings::SssSliders no_screen_space_shadows;
 float no_gtvbao = 0.f;
 float no_light_bounce = 0.f;
+// The game's own SSR (its settings object's byte 0x4E, which no setting of the game writes: README "Engine facts").
+float game_ssr = 0.f;
 // Installed when an effect is on at launch (the scene's shaders are kept from the game's start) and the helper is there.
 bool ray_tracing_installed = false;
 
@@ -969,6 +971,18 @@ renodx::utils::settings::Settings settings = {
         .is_visible = [] { return ShowExtendedSettings() || ShowPsychoV35Settings(); },
     },
     new renodx::utils::settings::Setting{
+        .key = "GameScreenSpaceReflections",
+        .binding = &game_ssr,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Game's Screen-Space Reflections (Experimental)",
+        .section = "Game-Specific Settings",
+        .tooltip = "The game's own screen-space reflections, which its menu does not offer. Restart the game after\n"
+                   "changing it.",
+        .labels = {"Off", "On"},
+        .is_visible = IsAdvancedSettings,
+    },
+    new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
         .label = "Trace One Frame",
         .section = "Tools",
@@ -1073,6 +1087,18 @@ void OnDestroyHelperDevice(reshade::api::device* device) {
 }
 
 void OnInitSwapchain(reshade::api::swapchain* swapchain, bool resize) {
+  // The game's SSR before its renderer starts (it reads the byte at its start and at each settings apply): only in the
+  // exe the addresses were read from (README "Engine facts": the Steam EoCApp.exe, linked 0x56FD2C80).
+  if (game_ssr != 0.f) {
+    const auto* image = reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr));
+    const auto* headers = reinterpret_cast<const IMAGE_NT_HEADERS64*>(image + reinterpret_cast<const IMAGE_DOS_HEADER*>(image)->e_lfanew);
+    if (headers->FileHeader.TimeDateStamp == 0x56FD2C80u && headers->OptionalHeader.SizeOfImage > 0x12E3E38u) {
+      if (auto* settings_object = *reinterpret_cast<uint8_t* const*>(image + 0x12E3E30); settings_object != nullptr) {
+        settings_object[0x4E] = 1;
+        renodx::utils::log::i("[Divinity] Game's Screen-Space Reflections: on in the game's graphics settings.");
+      }
+    }
+  }
   auto peak = renodx::utils::swapchain::GetPeakNits(swapchain);
   if (!peak.has_value()) {
     peak = 1000.f;

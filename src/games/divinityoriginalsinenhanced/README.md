@@ -29,7 +29,9 @@ All four keep Peak, Paper White, UI, Settings Mode and Output (SDR also sets Out
 - Extended: Hue Clip Emulation. PsychoV30 / Pragmap rows only in their modes (Advanced).
 - Extra: Bloom, Vignette, Godrays. Game-Specific: UI, Player Light Intensity (lights with shadows: point and spot
   shadow passes), Local Light Intensity (lights without), Sun Shadow Softness (Experimental: the PCSS light size x
-  the row, Ultra shadows), Smooth Grade Shoulder (Experimental, off; Extended and PsychoV35).
+  the row, Ultra shadows), Smooth Grade Shoulder (Experimental, off; Extended and PsychoV35), Game's Screen-Space
+  Reflections (Experimental, off, restart: writes the settings object's SSR byte at swap chain creation, see Engine
+  facts; only in the exe those addresses were read from).
 - Output (restart): Auto (default: scRGB with Windows HDR on, else SDR), HDR10, scRGB, SDR. Decided again at every
   new swap chain (`twattila/output_encoding.hpp`).
 - Tools (Advanced): Trace One Frame (`tw_frame_trace.txt`), Time Each Pass (One Frame) (`divinity_pass_timing.txt`).
@@ -83,7 +85,8 @@ The Steam exe, 21,605,888 bytes, SHA-256 f7c759e7...33d88, ASLR on (addresses at
   writes at exit should lose the line (a run keeping that lsx confirms it). The settings object (pointer at 0x1412E3E30, built at 0x1407E34C0 / 0x14085E96E: dword
   0x01000101 at 0x4C) keeps byte 0x4E, SSR, at 0. The renderer reads that byte at its start (0x1408225F8) and in its
   settings apply (0x140820990, vtable slot 0x141064570). On a change it creates SSR (0x140820040) or releases it
-  (0x14081FEB0). So SSR can only be turned on by writing that byte in the game's memory.
+  (0x14081FEB0). So SSR can only be turned on by writing that byte in the game's memory (the Game's Screen-Space
+  Reflections row).
 
 ## Credits
 
