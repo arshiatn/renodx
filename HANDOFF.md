@@ -253,6 +253,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
 - Ryse ray costs (RT shadows +1.0 ms, PT +2.7 ms at 4K DLSS Quality): Nsight work ... | a later GPU round
 - RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan ... | ATN (go-ahead), then a Ryse round
+- ATN 10:3x "Where are PT AO / PT GI for all the games?": every TW game, Shogun 2, ... | tpa_, next Divinity rounds
+- Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask ... | next Divinity 2 round
+- END-OF-BATCH BENCH (eob_, tools/tw/bench/end_of_batch_1116.md): helper115 vs hel ... | eob_, then coordinator
 - REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cos ... | coordinator, Ryse fix agent
 - RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
 - Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, G ... | rao_, then the next replace round
@@ -1804,6 +1807,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         R.U.S.E. has no Gamma Correction row. Reports runs2_1116/tales.md, ruse.md. RUNS 11-16 MORNING (rn2_, brief tools/tw/round_notes/runs2_1116/brief.md, after the 08:04 install): Tales Bend /
         GT-VBGI look shots with a title click, then the R.U.S.E. T-run; reports runs2_1116/tales.md, ruse.md. Morning
         report: tools/tw/round_notes/morning_report_1116.md. Owner: rn2_, then coordinator
+      - [ ] ATN 10:3x "Where are PT AO / PT GI for all the games?": every TW game, Shogun 2, Rome Remastered and Ryse have
+        both; Tales + Expeditions have PT GI but Path-Traced Ambient does nothing (has_path_ambient false): tpa_ wires it
+        (one method, WARP proof, Experimental off) + ports Tales' 10 toon shaders so Bandai's GI chain can be skipped again
+        (kept only under the Open Sky row); Divinity 1 / 2 have no ray tracing at all yet (rt_core host: the D1 steps
+        9-10 box + a D2 one below); R.U.S.E. has a path-traced ground bounce, no separate PT AO. Owner: tpa_, next
+        Divinity rounds
+      - [ ] Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask, RT AO / PT ambient replacing
+        PPApplyAO, RT / PT GI replacing the IBL diffuse, RT reflections replacing IBL_Specular; the ledger's stacking lines)
+        as Divinity 1's steps 9-10. Owner: next Divinity 2 round
+      - [ ] END-OF-BATCH BENCH (eob_, tools/tw/bench/end_of_batch_1116.md): helper115 vs helper116 at ATN's rows (GPU round
+        2 in game), torch-128 night / burning city, Rarer Objects if a siege-tower / ship scene exists. Report
+        tools/tw/bench/end_of_batch_1116_report.md. Owner: eob_, then coordinator
+      - [x] Skills 10:3x: game-port-method lessons c5b64d3f5 (gate per AA mode, a missing status line, in-game coverage
+        before a replace default, cost without a visible change, load screenshots) + engines.md 6355c4c79 (Tales GI);
+        zip Downloads\RenoDX_skills_2026-11-16.zip (48 files).
       - [x] RERUNS DONE ~10:2x (rn3_, runs3_1116/ruse.md + tales.md, every restore 0 different, no save changed).
         R.U.S.E.: the rays trace now (0.6 s after DLAA applied, no scene release); but under them the tree / unit shadows
         on the ground are gone (+3.1 % near, +8.4 % mid, dark pixels halve), RT costs CPU 18.8 ms (53 fps, p99 27.1) vs
