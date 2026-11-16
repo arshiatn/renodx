@@ -3,6 +3,12 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 (WH3 round): in game (B): one trace of t00's g_gamma_output (GC level B until then), GC on / off in SDR +
+  HDR, Bend + kept maps (contact shadows once), torch-lit scenes under rays (untraced lights are now unshadowed), metal with
+  Spec Occlusion on. ATN decides (C): the Multiply row (Rays Replace off); terrain t7 kept under the rays;
+  RayTracedWaterReflections' dead default lines; texture LOD bias under the game's own scale; Auto Thickness's
+  "(Experimental)" label; reflection00 still multiplies the rays' reflection by AO (Attila exempts smooth surfaces); V35's
+  toe lifts WH3 shadows (grey 0.05-1 nits x1.27-1.39, 1-15 nits x1.03-1.25; Attila x1.00). Owner: ATN
 - [ ] NEW 11-16 (Tales + Expeditions round, ATN decides / checks): the look of Bend + GT-VBGI on by default; Tales camp
   still runs the SSGI chain (an unproven reader there); RT shadows replacing the maps is unproven in both games, so
   min(map, rays) stays for now: accept until a proof?; Expeditions Brightness 40 (neutral, the page-1 line) or 50 (the
@@ -191,6 +197,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator 06:xx rao_ merged ad541a4f (RT AO replaces the g
 - dvf_ not done: VFX / indicator Experimental rows in both games (D1 633 FX_MAT an ... | next Divinity round / runs, ATN (VFX scope, C rows)
 - tex_ not done: Expeditions Video AutoHDR (NV12 convert ps 0x524CDCDF; needs one ... | next UE round, coordinator (release), shs_
+- w3f_ not done: vanilla_exact over every WH3 shader + a lensflare00 control (~20 ... | next WH3 round, shs_
 - ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
 - Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
@@ -1557,6 +1564,18 @@ heading text are in HANDOFF_ARCHIVE.md)
           + a shared credits template (coordinator, release round); shared rows (WriteSun sun light, constant_mirror LOD bias
           replaces c133.x instead of adding, frame_trace poll / name / slots, post_filters comment) sent to shs_. Owner: next
           UE round, coordinator (release), shs_
+        - [x] WH3 MERGED f357bba3f (w3f_, 10 commits; amd64 build OK on the merged tree): Fog Shadows / Spec Occlusion /
+          Caustics default 0 (revision 34); Bend and rays over kept maps turn the game's contact march off (b3 copy, byte 28
+          = 0; part 4: 0 apart, CONTROL 4491 px); the 4 shadowed point-light PS run their unshadowed twins under the rays,
+          one shadow per light (part 5: 0 apart, CONTROL 20850+; the 4 shadowed copies deleted; the game's bytes without
+          rays); Recommended sky_deband 0; Reset writes the 4 VFX rows; reflection00 one occlusion (part 6); 2.2 gamma in
+          every mode from t00's g_gamma_output; psychov35 part 8. Tests: tw_warhammer3_shaders 1-6 PASS, tw_vanilla_exact
+          WH3 6 EXACT, psychov35 amd64 + x86 PASS, parity_check wh3 open 0.
+        - [ ] w3f_ not done: vanilla_exact over every WH3 shader + a lensflare00 control (~20 shaders need Vanilla bindings,
+          own round); the game's point shadow maps are still drawn (fog / portraits / forward passes read them: cost);
+          Grass RT range (row 16, boxed in the 17-row leftovers). Shared rows (contact_shadows_off route, per-light traced
+          flag, RAY_METHODS, frame_gamma comment, DLSS scaled decode 2.2 vs WH3's 2.0) sent to shs_. Owner: next WH3 round,
+          shs_
         - [ ] ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB73442 / D9123DE1, vanilla coverage
           of pointlight00-39 / UI sprites / grass00-01 (the generic driver can't feed them); view_share Classify 24 unclear
           sun-PS rows a game (NEEDS A TRACE). The t46 x AO double-occlusion check was sent to WH3, WH1 / WH2, Troy / Pharaoh,
