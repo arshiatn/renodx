@@ -5,8 +5,8 @@
 
 // DLAA (anti_aliasing.hpp, dlaa_bridge.hpp): NVIDIA's inputs from the tone mapper's output (t0, 2.0 encoded, signed;
 // linear with TW_AA_FRAME_LINEAR) and the scene's depth (t1): the colour linear for its HDR model (u0: squared, sign
-// kept, in BT.2020 so wide colours stay positive), the depth (u1), and the motion in pixels to where each pixel was last
-// frame (u2, x right, y down):
+// kept; decoded at 2.2 with aa.hlsli AaFrameGamma22; in BT.2020 so wide colours stay positive), the depth (u1), and the
+// motion in pixels to where each pixel was last frame (u2, x right, y down):
 // objects' own where their depth is the final one (t3 / t4: written by the game's draws themselves, object_motion.hpp
 // in-draw; else t2: drawn again, motion.hlsli MotionTexel), the rest the camera's, from the depth and both frames'
 // cameras without the jitter (the game has no motion vectors of its own); 0 after a reset.
@@ -34,7 +34,8 @@ void main(uint2 pixel : SV_DispatchThreadID)
   const int2 size = int2(g_aa_metrics.zw);
   if (any(int2(pixel) >= size)) return;
   const float4 current = t_current.Load(int3(pixel, 0));
-  const float3 bt709 = (TW_AA_FRAME_LINEAR ? current.rgb : (sign(current.rgb) * current.rgb * current.rgb));
+  const float3 bt709 = (TW_AA_FRAME_LINEAR ? current.rgb
+                                           : (AaFrameGamma22() ? AaDecodeFrame22(current.rgb) : (sign(current.rgb) * current.rgb * current.rgb)));
   const float3 bt2020 = mul(float3x3(0.6274040f, 0.3292820f, 0.0433136f,
                                      0.0690970f, 0.9195400f, 0.0113612f,
                                      0.0163916f, 0.0880132f, 0.8955950f), bt709);

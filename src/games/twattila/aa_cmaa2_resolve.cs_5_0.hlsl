@@ -4,7 +4,8 @@
  */
 
 // CMAA2's result (u0): the pixels it blended (the working copy, t0, no longer what aa_cmaa2_prepare wrote) back to the
-// tone mapper's encoding (2.0; linear with TW_AA_FRAME_LINEAR); every other pixel the original (t1), untouched.
+// tone mapper's encoding (2.0, 2.2 with aa.hlsli AaFrameGamma22; linear with TW_AA_FRAME_LINEAR); every other pixel the
+// original (t1), untouched.
 #include "./aa.hlsli"
 #include "./shared.h"
 
@@ -24,7 +25,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
   const float4 color = t_aa_color[pixel];
   const float3 work = t_aa_work[pixel].rgb;
   // As the prepare stored it (16-bit).
-  const float3 bt709 = (TW_AA_FRAME_LINEAR ? color.rgb : renodx::color::gamma::DecodeSafe(color.rgb, 2.f));
+  const float3 bt709 = (TW_AA_FRAME_LINEAR ? color.rgb : (AaFrameGamma22() ? AaDecodeFrame22(color.rgb) : renodx::color::gamma::DecodeSafe(color.rgb, 2.f)));
   const float3 prepared = f16tof32(f32tof16(max(renodx::color::bt2020::from::BT709(bt709), 0.f)));
   [branch]
   if (all(work == prepared))
@@ -34,6 +35,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
   else
   {
     const float3 blended = renodx::color::bt709::from::BT2020(work);
-    t_rw_result[pixel] = float4((TW_AA_FRAME_LINEAR ? blended : renodx::color::gamma::EncodeSafe(blended, 2.f)), color.a);
+    t_rw_result[pixel] =
+        float4((TW_AA_FRAME_LINEAR ? blended : (AaFrameGamma22() ? AaEncodeFrame22(blended) : renodx::color::gamma::EncodeSafe(blended, 2.f))), color.a);
   }
 }
