@@ -2650,6 +2650,15 @@ void SaveCaptures() {
 void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   if (swapchain->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   Reset();
+  // A saved DLSS on another vendor's GPU (DLSS starts on NVIDIA's only): XeSS on Intel, else FSR, saved (Attila's).
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (upscaler.load() == static_cast<int>(twattila::dlaa_bridge::UPSCALER_DLSS) && !twattila::dlaa_bridge::OnNvidia()) {
+    const auto fallback = static_cast<int>(twattila::dlaa_bridge::gpu_vendor.load() == 0x8086 ? twattila::dlaa_bridge::UPSCALER_XESS
+                                                                                              : twattila::dlaa_bridge::UPSCALER_FSR);
+    upscaler.store(fallback);
+    reshade::set_config_value(nullptr, "Ryse AA", "Upscaler", fallback);
+    renodx::utils::log::i("[Ryse DLSS] DLSS needs NVIDIA: the upscaler is ", UPSCALERS[fallback]);
+  }
   const auto desc = swapchain->get_device()->get_resource_desc(swapchain->get_back_buffer(0));
   const std::unique_lock lock(state.mutex);
   state.device = swapchain->get_device();
