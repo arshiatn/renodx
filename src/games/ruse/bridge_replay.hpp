@@ -30,6 +30,7 @@
 #include "../../utils/device_proxy.hpp"
 #include "../../utils/state.hpp"
 #include "../twattila/rt_core.hpp"
+#include "./bridge.hpp"
 #include "./replay_shaders.h"
 
 // R.U.S.E.'s draw replay (tools/nontw/ruse/plan.md 10b A1, A3, A4): the game's scene draws again on the DX11 proxy's
@@ -708,9 +709,9 @@ inline void CaptureScene(reshade::api::command_list* cmd_list, const std::array<
 }
 
 // The game's D3D9 device going: its buffers and declarations with it; the proxy's: its objects (made again on the next
-// replay).
+// replay); no other device's.
 inline void OnDestroyDevice(reshade::api::device* device) {
-  if (device->get_api() == reshade::api::device_api::d3d9) {
+  if (device == bridge::state.host_device) {
     state.mirrors.clear();
     state.mappings.clear();
     state.declarations.clear();
@@ -720,7 +721,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.placements.clear();
     return;
   }
-  if (device->get_api() != reshade::api::device_api::d3d11) return;
+  if (!renodx::utils::device_proxy::IsProxyDevice(device)) return;
   state.shaders.clear();
   state.layouts.clear();
   state.game_constants.Reset();

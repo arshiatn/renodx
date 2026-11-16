@@ -929,10 +929,13 @@ inline void OnPresent() {
   });
 }
 
-// The proxy's device (rt_core's objects, ours on it) or the game's (its shaders, the mask) going.
+// The proxy's device (rt_core's objects, ours on it) or the game's (its shaders, the mask) going; no other device (rt_core
+// forgets its scene at any D3D11 device's end).
 inline void OnDestroyDevice(reshade::api::device* device) {
-  twattila::rt_scene::OnDestroyDevice(device);
-  if (device->get_api() == reshade::api::device_api::d3d11) {
+  const bool proxy = renodx::utils::device_proxy::IsProxyDevice(device);
+  if (!proxy && device != bridge::state.host_device) return;
+  if (proxy) {
+    twattila::rt_scene::OnDestroyDevice(device);
     state.visibility = {};
     state.depth_view.Reset();
     state.copy.Reset();
@@ -972,7 +975,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.texels_shader.Reset();
     state.reflection_texels_shader.Reset();
     state.texel_settings.Reset();
-  } else if (device->get_api() == reshade::api::device_api::d3d9) {
+  } else {
     state.depth_copy.Reset();
     state.shadows.Reset();
     state.unshadowed.Reset();
