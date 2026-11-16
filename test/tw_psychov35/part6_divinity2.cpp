@@ -13,7 +13,9 @@
 //    15 nits; the grey check has to say so.
 // 4. Report: PsychoV35's hue (OkLab) against the SDR ACES stand-in where the stand-in reaches its clip, for fire, red, sky,
 //    green and 48 hues, Hue Clip 0 to 1: where Hue Clip Emulation's default comes from until the game's SDR LUT is traced.
-// 5. Report (with the game's folder): Off against the game's own t00 bytes, in 16-bit LUT units.
+// 5. With the game's folder (R13, Vanilla exact): Off against the game's own t00 bytes, every 16-bit LUT channel within
+//    OFF_CODES of the game's, HDR and SDR LUT; control (must fail): the game's bytes with its LUT store's coordinates
+//    swapped (test/tw_vanilla_exact/mutants.h).
 // 6. Vanilla's Per-Channel Highlights (on by default): at Peak 600 (compressed) grey unchanged, within Peak, fire's core
 //    whiter above the knee; at Peak 2500 (expanded) the same bits as off. Part 1 runs Vanilla with it off: the
 //    brightest-channel shoulder keeps its bits.
@@ -38,6 +40,8 @@
 #include <string>
 #include <vector>
 
+#include "test/tw_vanilla_exact/mutants.h"
+
 namespace dos2 {
 #include "src/games/divinity2originalsindefinitive/shared.h"
 }  // namespace dos2
@@ -56,6 +60,7 @@ constexpr UINT EXPOSURES = 48;
 constexpr UINT GREY_ROW = 20;  // exposure 2^0: the scene's 0.18
 constexpr float SHAPER_LOW = 5.4931616e-6f;
 constexpr float SHAPER_HIGH = 1516.4874f;
+constexpr int OFF_CODES = 0;  // part 5: Off's LUT against the game's, 16-bit codes (bit-exact on WARP, 2026-11-16)
 
 static ComPtr<ID3D11Device> device;
 static ComPtr<ID3D11DeviceContext> context;
@@ -596,18 +601,29 @@ int main(int argc, char** argv) {
   TestExactSampling(t00_after.Get(), t01_before.Get(), t01_after.Get(), direct_shader.Get(), base.Get(), ramp);
   ReportHue(direct_shader.Get(), ramp);
   if (argc >= 4) {
-    // 5. Off against the game's own bytes (the decompile is not bit-exact by design: report only).
-    const auto game = LoadCompute(std::filesystem::path(argv[3]) / "0x7016F292.cs_5_0.cso");
-    for (const bool hdr : {true, false}) {
-      const auto a = BuildLut(game.Get(), DXGI_FORMAT_R16G16B16A16_UNORM, GameConstants(hdr), Injection(0.f));
-      const auto b = BuildLut(t00_after.Get(), DXGI_FORMAT_R16G16B16A16_UNORM, GameConstants(hdr), Injection(0.f));
+    // 5. Off against the game's own bytes, and the control: the game's bytes with its LUT store's coordinates swapped.
+    const auto game_path = std::filesystem::path(argv[3]) / "0x7016F292.cs_5_0.cso";
+    const auto game = LoadCompute(game_path);
+    const auto game_code = ReadFile(game_path);
+    const auto swapped = mutants::SwapOutputSwizzle(std::vector<uint8_t>(game_code.begin(), game_code.end()));
+    REQUIRE(!swapped.empty());
+    ComPtr<ID3D11ComputeShader> control;
+    REQUIRE(SUCCEEDED(device->CreateComputeShader(swapped.data(), swapped.size(), nullptr, &control)));
+    const auto worst_codes = [](const Lut& a, const Lut& b) {
       int worst = 0;
       for (size_t i = 0; i + 1 < a.bytes.size(); i += 2) {
-        const int x = a.bytes[i] | (a.bytes[i + 1] << 8);
-        const int y = b.bytes[i] | (b.bytes[i + 1] << 8);
-        worst = std::max(worst, std::abs(x - y));
+        worst = std::max(worst, std::abs((a.bytes[i] | (a.bytes[i + 1] << 8)) - (b.bytes[i] | (b.bytes[i + 1] << 8))));
       }
-      std::printf("5. Off, %s LUT: the add-on's t00 against the game's own bytes: max %d of 65535\n", hdr ? "HDR" : "SDR", worst);
+      return worst;
+    };
+    for (const bool hdr : {true, false}) {
+      const auto reference = BuildLut(game.Get(), DXGI_FORMAT_R16G16B16A16_UNORM, GameConstants(hdr), Injection(0.f));
+      const int worst = worst_codes(reference, BuildLut(t00_after.Get(), DXGI_FORMAT_R16G16B16A16_UNORM, GameConstants(hdr), Injection(0.f)));
+      const int wrong = worst_codes(reference, BuildLut(control.Get(), DXGI_FORMAT_R16G16B16A16_UNORM, GameConstants(hdr), Injection(0.f)));
+      std::printf("5. Off, %s LUT: the add-on's t00 against the game's own bytes: max %d of 65535 (limit %d); control (coordinates swapped) %d\n",
+                  hdr ? "HDR" : "SDR", worst, OFF_CODES, wrong);
+      CHECK(worst <= OFF_CODES);
+      CHECK(wrong > OFF_CODES);
     }
   }
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
