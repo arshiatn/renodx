@@ -116,6 +116,7 @@ struct State {
   std::array<twattila::dlaa_bridge::Texture, 2> resolved_positions;
   uint32_t resolved_index = 0;
   uint64_t resolved_frame = UINT64_MAX;
+  uint64_t shadowed_frame = UINT64_MAX;  // the rays' sun shadows' last draw
   std::array<float, 16> view_projection = {};
   std::array<float, 16> previous_view_projection = {};
 };
@@ -542,6 +543,8 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
       const std::array<ID3D11Buffer*, 2> constant_buffers = {buffers[0].Get(), buffers[1].Get()};
       FullScreen(context1.Get(), target, state.multiply_blue.Get(), state.shadow.Get(), views, constant_buffers, first_constants, constant_counts);
       contact_shadows::ray_traced.store(true, std::memory_order_relaxed);
+      const std::unique_lock lock(state.mutex);
+      state.shadowed_frame = frame;
     }
   }
   // The traced ambient: in place of the AO where the game made one (not its 1 x 1 default; R8, its one channel the AO).
@@ -632,12 +635,19 @@ inline void Update(const twattila::rt_scene::Settings& settings, float bounce_st
   twattila::rt_scene::Update(settings);
 }
 
-// Whether the light bounce (path traced or not) reached the scene within the last half second: Unreal's own screen-space
-// GI stays off meanwhile (one GI method).
-inline bool BouncingRecently() {
+enum class Traced : uint8_t {
+  SUN_SHADOWS,
+  LIGHT_BOUNCE,  // path traced or not
+};
+
+// Whether the rays' `effect` reached the scene within the last half second: the game's own method stays off meanwhile
+// (Unreal's screen-space GI under the light bounce; its far sun cascades under the sun shadows with Two Shadow Cascades
+// Under Rays).
+inline bool TracedRecently(Traced effect) {
   constexpr uint64_t RECENT_FRAMES = 30;
   const std::unique_lock lock(internal::state.mutex);
-  return internal::state.resolved_frame != UINT64_MAX && internal::state.resolved_frame + RECENT_FRAMES >= internal::state.frame;
+  const uint64_t traced = (effect == Traced::SUN_SHADOWS ? internal::state.shadowed_frame : internal::state.resolved_frame);
+  return traced != UINT64_MAX && traced + RECENT_FRAMES >= internal::state.frame;
 }
 
 // At the temporal pass: its scene colour (`color`, the render pixels at its top-left) is the helper's last frame's

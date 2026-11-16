@@ -460,6 +460,7 @@ static const float* ao_thickness_row = nullptr;
 static float live_scale_row = 1.f;
 static float replace_taa_row = 1.f;
 static float contact_shadows_row = 0.f;  // percent of the screen
+static float shadow_cascades_row = 0.f;  // Two Shadow Cascades Under Rays
 
 // UE 4.23's View rows the upscalers and frame generation read (Tales' 4.21 rows + 4: ClipToWorld came before them):
 // TranslatedWorldToView, ViewToClipNoAA, the camera's axes, TranslatedWorldCameraOrigin, PreViewTranslation.
@@ -1513,7 +1514,12 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     gi.strength = 0.f;
   }
   const bool our_gi = gi.strength > 0.f
-                      || (ray_tracing_installed && ray_tracing_settings.light_bounce && expeditionsrome::dlss::ray_tracing::BouncingRecently());
+                      || (ray_tracing_installed && ray_tracing_settings.light_bounce
+                          && expeditionsrome::dlss::ray_tracing::TracedRecently(expeditionsrome::dlss::ray_tracing::Traced::LIGHT_BOUNCE));
+  // Two Shadow Cascades Under Rays: Unreal's sun cascades at most 2 while the rays' sun shadows reached the scene within
+  // the last half second (the rays shadow the rest; the game's count back after).
+  const bool two_cascades = shadow_cascades_row != 0.f && ray_tracing_installed && ray_tracing_settings.sun_shadows
+                            && expeditionsrome::dlss::ray_tracing::TracedRecently(expeditionsrome::dlss::ray_tracing::Traced::SUN_SHADOWS);
   bool wrote = false;
   const bool upscaling = live.controlling && render_percentage > 0.f && render_percentage < 100.f;
   const float render_scale = (upscaling ? render_percentage / 100.f : 1.f);
@@ -1524,7 +1530,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     const float preset_value = (entry.choice == 0 ? KEEP : entry.choices[entry.choice - 1]);
     const OutputScaling scaling = ((effects_at_output && upscaling) ? OUTPUT_SCALING[index] : OutputScaling::NONE);
     const float current = entry.cvar.Get();
-    const bool replaced = index == SSGI_QUALITY && our_gi;
+    const bool replaced = (index == SSGI_QUALITY && our_gi) || (index == SUN_SHADOW_CASCADES && two_cascades);
     if (std::isnan(preset_value) && scaling == OutputScaling::NONE && !replaced) {
       if (entry.controlling) {
         entry.cvar.Set(entry.game_value);
@@ -1539,7 +1545,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     if (setting.better == Better::HIGHER) desired = std::max(entry.game_value, desired);
     if (setting.better == Better::LOWER) desired = std::min(entry.game_value, desired);
     if (replaced) {
-      desired = 0.f;
+      desired = (index == SUN_SHADOW_CASCADES ? std::min(desired, 2.f) : 0.f);
     }
     switch (scaling) {
       case OutputScaling::CELL_OR_DIVISOR:
@@ -1798,6 +1804,18 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
     if (setting->key == "RayTracedLeafMicromaps" || setting->key == "RayTracedGpuMicromaps") setting->default_value = 0.f;
     if (setting->key == "AntiAliasingDebugView") setting->labels = {"Off", "Motion Vectors"};
   }
+  // Unreal's sun cascades at most 2 under the rays' sun shadows (graphics_page.hpp places it with the rays' rows).
+  settings->push_back(new Setting{
+      .key = "RayTracedShadowCascades",
+      .binding = &shadow_cascades_row,
+      .value_type = SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Two Shadow Cascades Under Rays (Experimental)",
+      .section = "Graphics (Experimental)",
+      .tooltip = "With ray-traced sun shadows: the game draws 2 sun shadow cascades instead of up to 4, and the rays shadow\n"
+                 "the rest. Fewer shadow draws; shadows of things off screen reach less far.",
+      .labels = {"Off", "On"},
+  });
   // One frame's GPU time of every pass (twattila/pass_timing.hpp, the add-on's first draw hooks).
   settings->push_back(new Setting{
       .value_type = SettingValueType::BUTTON,
