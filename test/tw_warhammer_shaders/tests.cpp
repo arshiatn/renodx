@@ -147,6 +147,11 @@
 //    the hierarchical depth FD885574 / 73BA2BE9 and both mip chains' downscale and blurs (9733C5E0 / 7C650AD9 / BFD99540)
 //    go with the march; t8's mip 0 alpha (the lit scene's sun shadow, written by the preconvolve copy 07966BBA) is still read,
 //    so the copy stays. CONTROLS: without the rays the hits and mips change the output; under the rays mip 0's alpha does.
+// 28. Warhammer II's one occlusion a reflection (the same resolve, as Attila's 6c6c7559): the final reflection (the scene's
+//    share with the game's AO taken off, plus the resolve's output) under Ray-Traced Specular Occlusion (t46 0.5) the same at
+//    AO 0.5 and 1 with the march's light (confidence 1), and with the cubes' light alone (confidence 0) the environment x t46,
+//    no AO. CONTROLS: without t46 the game's AO changes it; the resolve as it was (the cubes' light x AO x t46) changes with
+//    the AO.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -3675,6 +3680,73 @@ static std::vector<Float4> RunWh2Resolve(ID3D11ComputeShader* shader, const Wh2R
   return Read(output.Get());
 }
 
+// Part 28: the reflection as the scene ends up with it, the scene's environment share with the game's AO (what the sun draws
+// added, the resolve's rt_environment) plus the resolve's output. rt_environment from the output itself: at t46 0 and AO 1 the
+// output is minus the unoccluded environment E; at t46 1 and no confidence E minus rt_environment.
+static void TestWh2OneOcclusion(const std::string& games) {
+  const std::string path = games + "/twwarhammer2/shaders/ssr00_0x7E1CDD0A.cs_5_0.hlsl";
+  const std::string source = ReadText(path);
+  const auto ours = ComputeShader(source, path);
+  // The resolve as it was: the cubes' light under t46 with the game's AO too, the march's light with the AO.
+  const auto before = ComputeShader(Without(Without(source, "rt_occlusion ? rt_unoccluded : r0.yzw", "r0.yzw"), "if (rt_reflected || rt_occlusion) r0.x = 1;", ""),
+                                    path + " (before)");
+  if (ours == nullptr || before == nullptr) {
+    CHECK(false, "WH2 one occlusion: ssr00_0x7E1CDD0A compiles (and its control)");
+    return;
+  }
+  const auto unoccluded = RunWh2Resolve(ours.Get(), {.occlusion = 0.f, .confidence = 0.f});
+  // The scene's share at `ao`, then the final reflection of `shader` at `ao`, t46 `occlusion` (unbound below 0), `confidence`.
+  const auto final_reflection = [&](ID3D11ComputeShader* shader, float ao, float occlusion, float confidence) {
+    const auto open = RunWh2Resolve(shader, {.ao = ao, .occlusion = 1.f, .confidence = 0.f});
+    const auto output = RunWh2Resolve(shader, {.ao = ao, .occlusion = occlusion, .confidence = confidence});
+    std::vector<Float4> result(output.size());
+    for (size_t at = 0; at < output.size(); ++at) {
+      for (size_t channel = 0; channel < 3; ++channel) {
+        const float scene = -unoccluded[at][channel] - open[at][channel];
+        result[at][channel] = scene + output[at][channel];
+      }
+    }
+    return result;
+  };
+  int independent = 0;
+  int occluded_once = 0;
+  int control = 0;
+  int scene_ao = 0;
+  int twice = 0;
+  const auto dark_march = final_reflection(ours.Get(), 0.5f, 0.5f, 1.f);
+  const auto light_march = final_reflection(ours.Get(), 1.f, 0.5f, 1.f);
+  const auto dark_environment = final_reflection(ours.Get(), 0.5f, 0.5f, 0.f);
+  const auto dark_game = final_reflection(ours.Get(), 0.5f, -1.f, 1.f);
+  const auto light_game = final_reflection(ours.Get(), 1.f, -1.f, 1.f);
+  const auto dark_before = final_reflection(before.Get(), 0.5f, 0.5f, 0.f);
+  const auto light_before = final_reflection(before.Get(), 1.f, 0.5f, 0.f);
+  const auto open_scene = RunWh2Resolve(ours.Get(), {.ao = 0.5f, .occlusion = 1.f, .confidence = 0.f});
+  for (size_t at = 0; at < dark_march.size(); ++at) {
+    bool same = true;
+    bool once = true;
+    bool differs = false;
+    for (size_t channel = 0; channel < 3; ++channel) {
+      same = same && Near(dark_march[at][channel], light_march[at][channel], 1e-5f);
+      once = once && Near(dark_environment[at][channel], -0.5f * unoccluded[at][channel], 1e-5f);
+      differs = differs || !Near(dark_game[at][channel], light_game[at][channel], 1e-3f);
+      scene_ao += (open_scene[at][channel] != 0.f) ? 1 : 0;
+      twice += Near(dark_before[at][channel], light_before[at][channel], 1e-3f) ? 0 : 1;
+    }
+    independent += same ? 1 : 0;
+    occluded_once += once ? 1 : 0;
+    control += differs ? 1 : 0;
+  }
+  const int pixels = static_cast<int>(dark_march.size());
+  CHECK(independent == pixels && occluded_once == pixels && control > pixels / 2 && scene_ao > pixels && twice > pixels,
+        "WH2 one occlusion: AO-free under t46 %d of %d, environment x t46 alone %d, CONTROLS the game's AO without t46 %d, the resolve as it was %d values, "
+        "AO in the scene's share %d",
+        independent, pixels, occluded_once, control, twice, scene_ao);
+  std::printf("WH2 one occlusion a reflection: under Ray-Traced Specular Occlusion (t46 0.5) the final reflection the same at AO 0.5 and 1 in %d of %d, "
+              "the environment E x t46 alone (no AO) in %d; CONTROLS: without t46 the game's AO changes %d; the resolve as it was (AO and t46) changes "
+              "%d values with the AO; the scene's share took the AO in %d values\n",
+              independent, pixels, occluded_once, control, twice, scene_ao);
+}
+
 static void TestWh2ReflectionSkip(const std::string& games) {
   const std::string path = games + "/twwarhammer2/shaders/ssr00_0x7E1CDD0A.cs_5_0.hlsl";
   const auto ours = ComputeShader(ReadText(path), path);
@@ -3749,6 +3821,7 @@ int main(int argc, char** argv) {
   TestLuma(argv[1], argv[2]);
   TestBitmaskSkips(argv[1], argv[2]);
   TestWh2ReflectionSkip(games);
+  TestWh2OneOcclusion(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
