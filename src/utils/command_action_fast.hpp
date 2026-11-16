@@ -597,11 +597,22 @@ inline void Use(DWORD fdw_reason) {
       internal::shared.RegisterModule();
       auto* data = internal::shared.data;
       if (data == nullptr) return;
+      bool table_full = false;
       {
         const std::unique_lock lock(data->mutex);
-        assert(data->module_count < internal::MAX_MODULES);
-        if (data->module_count == internal::MAX_MODULES) return;
-        data->modules[data->module_count++] = cross_addon::internal::GetModuleToken();
+        table_full = (data->module_count == internal::MAX_MODULES);
+        if (!table_full) {
+          data->modules[data->module_count++] = cross_addon::internal::GetModuleToken();
+        }
+      }
+      // Out of room the module stays without the opt-in: attached to command_action but not here, it turns the fast
+      // dispatch off for every module (RunCallbacks: correct, only slower). MAX_MODULES is part of SharedData's layout
+      // (a new size needs a new uuid). The detach finds no opt-in, so the registration is balanced here.
+      if (table_full) {
+        reshade::log::message(reshade::log::level::warning,
+                              "utils::command_action fast dispatch: all module slots taken, this module stays without the fast dispatch (off for all).");
+        internal::shared.UnregisterModule();
+        return;
       }
       const auto token = reinterpret_cast<uintptr_t>(cross_addon::internal::GetModuleToken());
       internal::cache_guid = {0x9b, 0x41, 0x0e, 0x7c, 0x2d, 0x55, 0x4a, 0x63};

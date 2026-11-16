@@ -2,6 +2,7 @@
 // the proxy's answers RENODX_TW_SET / SHOT / PROFILE. Without a proxy (every D3D11 game) or with a proxy that could not be
 // made, the game's own runtime answers as before. The hooks read their environment once: one mode per run (proxy,
 // noproxy, failed). `control`: the proxy's expectations without a proxy, so the game's runtime answers; it must fail.
+// A button by its label presses every button with it, by "<group>/<label>" only that group's.
 #include <windows.h>
 
 #include <algorithm>
@@ -196,15 +197,22 @@ namespace hooks = twattila::test_hooks;
 namespace proxy = renodx::utils::device_proxy;
 
 static float bloom = 1.f;
+// Two buttons with one label (every page's Reset): "Reset" presses both, "page-presets/Reset" only its group's.
+static int page_resets = 0;
+static int ao_resets = 0;
 static renodx::utils::settings::Settings rows = {
     new renodx::utils::settings::Setting{.key = "bloom", .binding = &bloom, .default_value = 1.f, .max = 2.f},
+    new renodx::utils::settings::Setting{.value_type = renodx::utils::settings::SettingValueType::BUTTON, .label = "Reset",
+                                         .group = "page-presets", .on_change = [] { ++page_resets; }},
+    new renodx::utils::settings::Setting{.value_type = renodx::utils::settings::SettingValueType::BUTTON, .label = "Reset",
+                                         .group = "ao-presets", .on_change = [] { ++ao_resets; }},
 };
 
 int main(int argc, char** argv) {
   const std::string mode = (argc > 1) ? argv[1] : "proxy";
   // A D3D9 game behind the proxy, the case the filter is for; the control expects it without the proxy.
   const bool expect_proxy = (mode == "proxy" || mode == "control");
-  SetEnvironmentVariableA("RENODX_TW_SET", "0:bloom=0.5;0:shot=1");
+  SetEnvironmentVariableA("RENODX_TW_SET", "0:bloom=0.5;0:shot=1;0:page-presets/Reset=1;0:Reset=1");
   SetEnvironmentVariableA("RENODX_TW_SHOT", "1,1");
   SetEnvironmentVariableA("RENODX_TW_PROFILE", "1");
 
@@ -232,6 +240,7 @@ int main(int argc, char** argv) {
   hooks::internal::OnReshadePresent(answering);
   CHECK(hooks::internal::clock_start.load() != 0);
   CHECK(bloom == 0.5f && answering->screenshots == 1 && profiles == 0);
+  CHECK(page_resets == 2 && ao_resets == 1);
 
   hooks::internal::clock_start.store(GetTickCount64() - 2000);
   if (expect_proxy) {

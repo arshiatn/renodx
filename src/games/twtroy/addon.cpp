@@ -1533,13 +1533,13 @@ float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
 // Rarer Objects in the Rays (Experimental): the scene's families drawn in no trace (level B: SCENE_SHADERS' held_row).
 float rays_untraced_casters_row = 0.f;
-// Rays Replace Shadow Maps (Graphics 1 of 2, on by default: ours replaces the game's, ATN 2026-11-16) and Skip the Shadow
-// Maps under it (Experimental): twattila/sun_replace_maps.hpp on the sun draws reading the per-frame atlas through s2: the
+// The rays replace the per-frame shadow maps' sun shadow, always (one method: ATN 2026-11-16, no Multiply row), and Skip the
+// Shadow Maps (Experimental): twattila/sun_replace_maps.hpp on the sun draws reading the per-frame atlas through s2: the
 // twins of Pharaoh's 12 (same names; tools\tw\troy\troy_atlas_twins.py). WARP on the game's bytes with the traces'
 // constants, tools\tw\troy\sun_test v54: P1-P3 0 of 2,752,512 values (the rays' shadow alone), CONTROL P3c 1,264,414.
 constexpr std::array<uint32_t, 12> ATLAS_SUN_SHADERS = {0x049C3CFB, 0x2599D799, 0xD38FA7E4, 0x66D6229E, 0x5B17424A, 0xEB98DED2,
                                                         0x707B069C, 0x6D3D2B69, 0xE1707311, 0x089D1B5B, 0x5835F96C, 0xE885C018};
-float rays_replace_maps_row = 0.f;
+constexpr float RAYS_REPLACE_MAPS = 1.f;  // sun_replace_maps' row, always on
 float rays_skip_cascades_row = 0.f;
 
 void SyncEarlyLoad() { twattila::engine_tests::SyncEarlyLoad(addon_module_handle, engine_tests); }
@@ -1834,7 +1834,7 @@ constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {
 void OnInitDevice(reshade::api::device*) {
   const bool sun_shadows = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).sun_shadows;
   twtroy::shadow_map::Install(SHADOW_MAP_SIZES[static_cast<size_t>(shadow_map_size)],
-                              shadow_cascades_row != 0.f && sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f);
+                              shadow_cascades_row != 0.f && sun_shadows && rays_skip_cascades_row != 0.f);
 }
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
@@ -1865,7 +1865,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
-  rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
+  rt_settings.shadows_only = rt_settings.sun_shadows && rays_skip_cascades_row != 0.f;
   // The game's reflections fall on the water alone (its apply 00645DA1, as Pharaoh's): twattila/water_reflections.hpp's gate.
   twattila::water_reflections::GateSettings(&rt_settings);
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
@@ -1966,8 +1966,7 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows replace the per-frame shadow maps
-// (Rays Replace Shadow Maps; off: they multiply them through the sun shaders' patched comparisons), ray-traced AO in
-// place of the game's SSAO, the paths take the sky from the sun
+// (always: no Rays Replace Shadow Maps row), ray-traced AO in place of the game's SSAO, the paths take the sky from the sun
 // shaders' ambient cube; point lights (143A02ED), smoke (F5CE48CC), the water's Clarity and Caustics and its ray-traced
 // reflections (the game's reflections fall on the water alone, Pharaoh's texts) hooked, no fog.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
@@ -1997,9 +1996,6 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .water_reflections_label = "Water Reflections (Experimental)",
     .water_reflections_tooltip = "Rivers and the sea reflect what the rays find, also off screen. Needs in-game Screen Space\n"
                                  "Reflections on. Off: the game's reflections.",
-    .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Water, effects and the shadows the game\n"
-                            "baked for the map (past about 200 m) keep the game's. Use with Shadow Casters Out of View.\n"
-                            "Off: the rays' shadows on top of the game's shadow maps.",
     .reflections_tooltip = "Reflections on water. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. DXR: from rays, also what is off screen or hidden (turn Water Reflections\n"
                            "on below). Needs an upscaler.",
@@ -2219,7 +2215,7 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (as Pharaoh's), ATN's RT/PT preset as the defaults of what the methods leave, then Settings
   // Mode's pages. Only what this game hooks: the paths' sky from the sun shaders' ambient cube (InstallSunDraws' 24),
   // foliage in the screen-space shadows (bit 128) and casters out of view (the shadow pass's; both Experimental, off: no
-  // game run has shown them here), Rays Replace Shadow Maps, point lights, smoke, the water's Clarity and Caustics and its
+  // game run has shown them here), point lights, smoke, the water's Clarity and Caustics and its
   // ray-traced reflections (Experimental, off); no fog (its rows stay hidden).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it (hidden: not hooked here) and Smoke Shadows (no game run has shown the particles'
@@ -2275,7 +2271,6 @@ void ConfigureAddon() {
                                              .smoke_strength = &smoke_map_sliders.strength,
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
-                                             .rays_replace_maps = &rays_replace_maps_row,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
@@ -2337,7 +2332,7 @@ bool AttachAddon() {
 
   // Rows saved at an old default, cleared once: Sprite Soldier Shadows was saved hidden at RT/PT's 1 (SetRaysPresetDefaults)
   // until the sprite soldiers were in the rays; now Experimental, off. Rays Replace Shadow Maps was saved at its old
-  // Experimental 0; now on by default.
+  // Experimental 0; the row is gone since (the rays always replace) and nothing reads the key.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSpriteShadows"});
   twattila::graphics_page::ClearSavedRows(2, {"RayTracedReplaceShadowMaps"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
@@ -2385,9 +2380,9 @@ bool AttachAddon() {
   // (troy_sun_rdef.py), its 8-step march under one if_nz cb[0].y (049C3CFB). After the screen-space shadows' (t49), before the
   // Light Bounce's. WARP: tools\tw\troy\sun_test v51.
   twattila::contact_shadows_off::Install(LIGHT_BOUNCE_DRAWS);
-  // Rays Replace Shadow Maps: after the screen-space shadows' (t49) and before the Light Bounce's. Skip the Shadow Maps through
-  // Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
-  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &rays_replace_maps_row);
+  // The rays replace the atlas's sun shadow: after the screen-space shadows' (t49) and before the Light Bounce's. Skip the
+  // Shadow Maps through Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
+  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS);
   twattila::rt_scene::InstallShadowsOnly();
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also at
   // 100% (twattila/frame_trace.hpp). Constants once each, b0-b5 up to 1 KB (the sun PS's environment b0, camera b1 with

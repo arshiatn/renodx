@@ -48,6 +48,9 @@ struct Config {
   void (*recommended_preset)() = nullptr;
   // The addon's log prefix.
   const char* log_name = "[Total War]";
+  // The game makes its own output chain (Divinity 2's HDR10 swap chain): Apply writes only shader_encoding, never the swap
+  // chain's or the D3D11 proxy's format and colour space; Decide still runs the first start's SDR preset and Auto's switch.
+  bool game_owned_output = false;
 };
 
 static Config config;
@@ -90,6 +93,7 @@ inline int Encoding(int setting, const WindowsHdr& windows_hdr, std::optional<in
 inline void Apply(int encoding) {
   if (config.shader_encoding == nullptr) return;
   *config.shader_encoding = static_cast<float>(encoding);
+  if (config.game_owned_output) return;
   if (encoding == SDR) {
     renodx::mods::swapchain::target_format = reshade::api::format::r10g10b10a2_unorm;
     renodx::mods::swapchain::target_color_space = reshade::api::color_space::srgb_nonlinear;

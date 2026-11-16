@@ -821,25 +821,22 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .in_game_aa_note = "DLSS, FSR and XeSS take the place of the game's SMAA or FXAA: any in-game Anti-Aliasing works.",
     .reset_tooltip = "Everything on this page but Anti-Aliasing back to its default: the game's shadows and AO.",
     .no_rays_tooltip = "The game's own shadows and ambient occlusion. The rest of this page at its default.",
-    .rays_tooltip =
-        "Ray-traced sun shadows, ambient occlusion, global illumination and reflections at my settings. The rest of\n"
-        "this page at its default.\n"
-        "Needs an upscaler (Anti-Aliasing above). Restart the game after turning ray tracing on.",
-    .shadow_tooltip =
-        "Game's Shadow Maps: the original. Bend Screen-Space (Experimental): fine contact shadows from what is on\n"
-        "screen over the game's maps. DXR: ray-traced sun shadows in their place (keep in-game shadows on).\n"
-        "Needs an upscaler. Restart the game after turning it on.",
-    .ao_tooltip =
-        "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on.\n"
-        "Game's SSAO: the original. GT-VBAO (Experimental): in its place, objects have a thickness, so light\n"
-        "gets behind thin ones. RTAO: from rays through the scene, in its place.\n"
-        "Path-Traced: the sky's light itself from Global Illumination's paths, its shade included.\n"
-        "The last two need an upscaler. Restart the game after turning them on.",
+    .rays_tooltip = "Ray-traced sun shadows, ambient occlusion, global illumination and reflections at my settings. The rest of\n"
+                    "this page at its default.\n"
+                    "Needs an upscaler (Anti-Aliasing above). Restart the game after turning ray tracing on.",
+    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space (Experimental): fine contact shadows from what is on\n"
+                      "screen over the game's maps. DXR: ray-traced sun shadows in their place (keep in-game shadows on).\n"
+                      "Needs an upscaler. Restart the game after turning it on.",
+    .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on.\n"
+                  "Game's SSAO: the original. GT-VBAO (Experimental): in its place, objects have a thickness, so light\n"
+                  "gets behind thin ones. RTAO: from rays through the scene, in its place.\n"
+                  "Path-Traced: the sky's light itself from Global Illumination's paths, its shade included.\n"
+                  "The last two need an upscaler. Restart the game after turning them on.",
+    .gi_tooltip_start = "Sunlit ground, walls and characters bounce their light and colour into nearby shadows.\n",
     .gi_tooltip_end = "\nGT-VBGI is Experimental here. Restart the game after turning the rays' or the paths' on.",
-    .reflections_tooltip =
-        "Reflections on metal, water and polished floors.\n"
-        "Game's SSR: the original (its light probes, with in-game SSR its screen-space reflections). DXR: from\n"
-        "rays, also what is off screen or hidden, in their place. Needs an upscaler. Restart the game after turning it on.",
+    .reflections_tooltip = "Reflections on metal, water and polished floors.\n"
+                           "Game's SSR: the original (its light probes, with in-game SSR its screen-space reflections). DXR: from\n"
+                           "rays, also what is off screen or hidden, in their place. Needs an upscaler. Restart the game after turning it on.",
 };
 
 // Each replaced shader's first use is logged once (the "applied" lines of a data run); a bit per custom shader.
@@ -1374,6 +1371,7 @@ void ConfigureAddon() {
                                              .rays_preset_as_attila = true,
                                              .path_ambient_tested = false,
                                              .rays_tested = false,
+                                             .has_fog_shadows = false,
                                              .every_row = false});
   const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
   for (auto* setting : settings) {

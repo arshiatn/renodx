@@ -70,6 +70,7 @@
 #include "../talesofarise_dlss/ue_light_bounce.hpp"
 #include "../talesofarise_dlss/ue_screen_space_shadows.hpp"
 #include "../talesofarise_dlss/upscaling.hpp"
+#include "./ray_tracing.hpp"
 #include "../twattila/frame_generation.hpp"
 
 namespace talesofarise::dlss_graphics {
@@ -189,6 +190,10 @@ float game_sharpening_row = 0.f;
 float character_shadows_row = 1.f;
 float path_samples_row = 1.f;
 float path_reorder_row = 0.f;
+// Ray Tracing in the Helper (ray_tracing.hpp; a restart: its scene's shaders are read as the game makes them), and whether
+// it was installed at launch (on, with the helper and a sun shadow or AO row on).
+float helper_rays_row = 0.f;
+bool helper_rays_installed = false;
 
 struct Texture {
   ComPtr<ID3D11Texture2D> resource;
@@ -1212,31 +1217,9 @@ bool Evaluate(Frame* frame, bool replace) {
     }
     const bool reconstruct = gbuffer_views[0] && gbuffer_views[1] && gbuffer_views[2];
     if (reconstruct) {
-      struct GuideConstants {
-        std::array<std::array<float, 4>, 3> world_to_view;
-        std::array<float, 2> projection;
-        std::array<uint32_t, 2> extent;
-      } guide_constants = {
-          .world_to_view = {frame->view[VIEW_TRANSLATED_WORLD_TO_VIEW], frame->view[VIEW_TRANSLATED_WORLD_TO_VIEW + 1],
-                            frame->view[VIEW_TRANSLATED_WORLD_TO_VIEW + 2]},
-          .projection = {frame->view[VIEW_VIEW_TO_CLIP][0], frame->view[VIEW_VIEW_TO_CLIP + 1][1]},
-          .extent = {frame->render_width, frame->render_height},
-      };
-      static_assert(sizeof(guide_constants) == 64);
-      context->UpdateSubresource(runtime.guide_constants.Get(), 0, nullptr, &guide_constants, 0, 0);
-      ID3D11Buffer* guide_buffers[] = {runtime.guide_constants.Get()};
-      ID3D11ShaderResourceView* guide_inputs[] = {gbuffer_views[0].Get(), gbuffer_views[1].Get(), gbuffer_views[2].Get()};
-      ID3D11UnorderedAccessView* guide_outputs[] = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
-                                                    bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
-      context->CSSetShader(runtime.guide_shader.Get(), nullptr, 0);
-      context->CSSetConstantBuffers(0, 1, guide_buffers);
-      context->CSSetShaderResources(0, 3, guide_inputs);
-      context->CSSetUnorderedAccessViews(0, 4, guide_outputs, nullptr);
-      context->Dispatch((frame->render_width + 7) / 8, (frame->render_height + 7) / 8, 1);
-      constexpr std::array<ID3D11ShaderResourceView*, 3> NO_GUIDE_INPUTS = {};
-      constexpr std::array<ID3D11UnorderedAccessView*, 4> NO_GUIDE_OUTPUTS = {};
-      context->CSSetShaderResources(0, 3, NO_GUIDE_INPUTS.data());
-      context->CSSetUnorderedAccessViews(0, 4, NO_GUIDE_OUTPUTS.data(), nullptr);
+      talesofarise::dlss::ray_tracing::WriteGuides(context, runtime.guide_shader.Get(), runtime.guide_constants.Get(),
+                                                   {gbuffer_views[0].Get(), gbuffer_views[1].Get(), gbuffer_views[2].Get()}, frame->view,
+                                                   {frame->render_width, frame->render_height});
     }
     // The scene colour is not pre-exposed (the tonemapper does not scale it); FSR and XeSS get the forward projection.
     const twattila::dlaa_bridge::RayReconstruction reconstruction = {.preset = (use.ray_reconstruction != 0) ? use.ray_reconstruction - 1 : 0u,
@@ -1845,7 +1828,10 @@ constexpr UINT SCREEN_SPACE_SHADOWS_SLOT = 41;
 constexpr std::array<uint32_t, 3> GAME_AO_SHADERS = {0xE243580Fu, 0x8D9AC9A4u, 0x8C5387E3u};
 
 constexpr auto OnGameAo = [](Context&) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (!talesofarise::rt_shadows::AmbientOcclusionTracedLastFrame()) return {};
+  if (!(helper_rays_installed ? talesofarise::dlss::ray_tracing::AmbientTracedLastFrame()
+                              : talesofarise::rt_shadows::AmbientOcclusionTracedLastFrame())) {
+    return {};
+  }
   return {.bypass = true};
 };
 
@@ -1854,7 +1840,7 @@ constexpr auto OnSunShadowMask = [](Context& command) -> renodx::utils::command_
   renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   ComPtr<ID3D11DeviceContext1> context1;
   if (context == nullptr || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
-  const bool traced = talesofarise::rt_shadows::Trace(context);
+  const bool traced = helper_rays_installed ? talesofarise::dlss::ray_tracing::Trace(context) : talesofarise::rt_shadows::Trace(context);
   twattila::screen_space_shadows::Settings shadows;
   BoundViews<ID3D11ShaderResourceView, 1> depth;
   talesofarise::ue_screen_space_shadows::Inputs inputs;
@@ -2009,7 +1995,12 @@ constexpr auto OnLightingDraw = []<DrawCommand Command>(Command& command) -> ren
     context->PSGetShaderResources(1, 3, gbuffer_views.views.data());
     lighting = talesofarise::rt_shadows::TraceLighting(context, gbuffer_views.views);
   }
-  const auto ambient = talesofarise::rt_shadows::AmbientOcclusion();
+  if (helper_rays_installed) {
+    const auto reflected = talesofarise::dlss::ray_tracing::Reflections(context);
+    lighting.reflection = reflected[0];
+    lighting.specular_occlusion = reflected[1];
+  }
+  const auto ambient = helper_rays_installed ? talesofarise::dlss::ray_tracing::Ambient() : talesofarise::rt_shadows::AmbientOcclusion();
   ComPtr<ID3D11ShaderResourceView> bounce = lighting.bounce ? lighting.bounce : talesofarise::rt_shadows::BounceLight();
   // Without the rays' bounce light, GT-VBGI's (ue_light_bounce.hpp: off at Strength 0) at the frame's first lighting draw:
   // from the sun's light (t4), the scene depth (t0), the G-buffer (t1-t3) and the View (b1) at the draw's viewport.
@@ -2200,6 +2191,7 @@ void OnDestroySwapchain(reshade::api::swapchain* swapchain, bool) {
 void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   talesofarise::rt_shadows::Release();
+  if (helper_rays_installed) talesofarise::dlss::ray_tracing::Release(device);
   {
     auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
     renodx::utils::directx::TryNativeFromReShadeProxy(&native);
@@ -2291,7 +2283,16 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     // War ambient cube): with the paths, the ambient rays weighted by the game's sky light in place of Bandai's AO under its
     // ambient (Bandai's sky light comes from its base pass inside the scene colour the lighting passes read: no input to
     // zero there, so the paths' share of it enters where its AO does), the paths' bounce at t42 as before.
-    const auto rays = upscaling ? twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, gi_rows.light_bounce_strength) : twattila::rt_scene::Settings{};
+    // Ray Tracing in the Helper: all its effects (ray_tracing.hpp; Path-Traced Ambient its AO under the paths), nothing in
+    // process.
+    const auto all_rays = upscaling ? twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, gi_rows.light_bounce_strength) : twattila::rt_scene::Settings{};
+    if (helper_rays_installed) {
+      auto helper_rays = all_rays;
+      helper_rays.ambient_occlusion = all_rays.ambient_occlusion || (all_rays.path_tracing && rt_sliders.path_ambient != 0.f);
+      helper_rays.path_ambient = false;
+      talesofarise::dlss::ray_tracing::Update(helper_rays);
+    }
+    const auto rays = helper_rays_installed ? twattila::rt_scene::Settings{} : all_rays;
     const bool path_ambient = rays.path_tracing && rt_sliders.path_ambient != 0.f;
     bool turned_on = false;
     for (const auto& [effect, on] : std::to_array<std::pair<std::atomic_bool*, bool>>({
@@ -2648,7 +2649,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     const float preset_value = (entry.choice == 0 ? KEEP : entry.choices[entry.choice - 1]);
     const OutputScaling scaling = ((effects_at_output && upscaling) ? OUTPUT_SCALING[index] : OutputScaling::NONE);
     const float current = entry.cvar.Get();
-    const bool replaced = index == SSR_QUALITY && talesofarise::rt_shadows::ReflectingRecently();
+    const bool replaced = index == SSR_QUALITY
+                          && (talesofarise::rt_shadows::ReflectingRecently()
+                              || (helper_rays_installed && talesofarise::dlss::ray_tracing::ReflectingRecently()));
     if (std::isnan(preset_value) && scaling == OutputScaling::NONE && !replaced) {
       if (entry.controlling) {
         entry.cvar.Set(entry.game_value);
@@ -2710,11 +2713,18 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // Bend's screen-space shadows (not under the rays' sun shadows) and GT-VBGI (not with the rays' bounce light: Global
   // Illumination's method), the passes' thickness the AO's; the HDR part leaves Bandai's own out while they run.
   auto shadows = twattila::feature_settings::SssSettings(screen_space_shadows_rows);
-  shadows.enabled = shadows.enabled && !talesofarise::rt_shadows::enabled.load();
+  const auto helper_rays = helper_rays_installed ? talesofarise::dlss::ray_tracing::CurrentSettings() : twattila::rt_scene::Settings{};
+  shadows.enabled = shadows.enabled && !talesofarise::rt_shadows::enabled.load() && !helper_rays.sun_shadows;
   gi_rows.ssao_thickness = ao_thickness;
   const auto gi = twattila::lighting_settings::LightBounceSliders(gi_rows);
   auto bounce = talesofarise::ue_light_bounce::ConstantsOf(gi, ao_frame);
-  if (rt_sliders.light_bounce != 0.f) {
+  // The rays' bounce light: in process its own (GT-VBGI off); in the helper GT-VBGI's passes with the rays' trace in
+  // place of its own (ray_tracing.hpp), at the rays' resolution and every texel each frame (as the Total War games'
+  // light_bounce::SetRayTraced).
+  if (helper_rays.light_bounce) {
+    bounce.scale = twattila::light_bounce::internal::PowerOfTwo(helper_rays.light_bounce_resolution, 2.f);
+    bounce.checkerboard = 0.f;
+  } else if (rt_sliders.light_bounce != 0.f) {
     bounce.strength = 0.f;
   }
   // One GI method (ATN 2026-11-16): lighting00-05 leave out Bandai's GI add while GT-VBGI runs, or while the rays' bounce
@@ -2741,7 +2751,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       .ambient_occlusion = static_cast<float>(ambient_occlusion),
       .sun_shadow_distance = sun_distance_ratio,
       // One AO method (ao-gi.md rule 6): GT-VBAO off while the rays' AO or Path-Traced Ambient takes the AO's place.
-      .ao_method = (talesofarise::rt_shadows::ambient_occlusion.load(std::memory_order_relaxed) ? 0.f : static_cast<float>(ao_method)),
+      .ao_method = ((talesofarise::rt_shadows::ambient_occlusion.load(std::memory_order_relaxed) || helper_rays.ambient_occlusion)
+                        ? 0.f
+                        : static_cast<float>(ao_method)),
       .ao_radius = ao_radius,
       .ao_strength = ao_strength,
       .ao_thickness = ao_thickness,
@@ -2911,6 +2923,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Path-Traced: with Path Tracing Global Illumination, the share of the sky's light that reaches each spot.\n"
                   "Needs an upscaler and a DXR GPU.",
     .ao_paths_label = "Path-Traced",
+    .gi_tooltip_start = "Sunlit ground, walls and characters bounce their light and colour into nearby shadows.\n",
     .gi_tooltip_end = "\nGT-VBGI takes the place of the game's own Global Illumination.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, fog, light shafts, reflections, clouds, effects, skin and shadows\n"
                                  "keep their 100% detail. Looks better, can cost some performance.",
@@ -3089,6 +3102,16 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                                      "Same picture; faster or slower depending on the GPU.",
                                           .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders) && rt_sliders.light_bounce == 2.f; },
                                       });
+  insert_after("PathTracingReorder", new Setting{
+                                           .key = "RayTracingInHelper",
+                                           .binding = &helper_rays_row,
+                                           .value_type = SettingValueType::BOOLEAN,
+                                           .default_value = 0.f,
+                                           .label = "Ray Tracing in the Helper (Experimental)",
+                                           .tooltip = "The ray-traced effects traced in the helper, as in the Total War games.\n"
+                                                      "Restart the game after changing it.",
+                                           .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders); },
+                                       });
   insert_after("light_bounce_multi_bounce", new Setting{
                                                 .key = "GlobalIlluminationGameOpenSky",
                                                 .binding = &game_gi_open_sky_row,
@@ -3575,6 +3598,11 @@ inline bool Install(HMODULE module) {
                                                           .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH,
                                                       });
   }
+  // Ray Tracing in the Helper: installed when on at launch with the helper there and an effect it traces on.
+  helper_rays_installed = twattila::dlaa_bridge::HelperInstalled() && helper_rays_row != 0.f
+                          && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
+                              || rt_sliders.specular_occlusion != 0.f || rt_sliders.light_bounce != 0.f);
+  if (helper_rays_installed) talesofarise::dlss::ray_tracing::Install();
   renodx::utils::command_action::Register(OnSunShadowMask, {
                                                                .shader_hash = talesofarise::rt_shadows::SUN_SHADOW_SHADER,
                                                                .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH,
@@ -3616,6 +3644,7 @@ inline void Uninstall() {
     renodx::utils::command_action::Unregister(OnDepthPrepass);
     renodx::utils::command_action::Unregister(OnSunShadowMask);
     renodx::utils::command_action::Unregister(OnGameAo);
+    if (helper_rays_installed) talesofarise::dlss::ray_tracing::Uninstall();
     talesofarise::dlss::constants::Use(DLL_PROCESS_DETACH);
     talesofarise::post_filters::Store({});
     reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);

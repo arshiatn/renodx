@@ -1363,7 +1363,7 @@ void OnResolved(reshade::api::command_list* cmd_list) {
 // for the lights they don't (rt_local_lights.hlsli RtLocalLightTraced): one shadow per light.
 // The sun's mask (E6BCBA8A, before the sun draw and this frame's trace) the same, while rays cast the sun's shadow: lit cascades, no
 // contact march; smoke, clouds and the terrain's map stay. Fog, portraits and forward passes read the maps, so the casters still draw.
-// With the maps kept under ours (Bend Screen-Space Shadows, or the rays with Rays Replace Shadow Maps off) the game's own bytes draw
+// With the maps kept under ours (Bend Screen-Space Shadows; the rays always replace them, ATN 11-16) the game's own bytes draw
 // the mask without their contact march, the one method per effect: its sss constants (b3) as a copy with
 // sss_screen_space_shadows_enabled (byte 28) 0, the game with its in-game screen-space shadows off; the game's buffer bound again
 // after the draw.
@@ -1379,7 +1379,6 @@ constexpr size_t FOG_SHADERS = 6;
 constexpr size_t SUN_MASK = POINT_LIGHT_SHADERS + FOG_SHADERS;
 constexpr size_t LEGACY_FOG = SUN_MASK + 1;
 constexpr UINT SSS_MARCH_OFFSET = 28;
-float rays_replace_maps_row = 1.f;
 std::atomic_bool bend_runs = false;  // Bend's mask this frame (OnPresent)
 std::array<std::span<const uint8_t>, SHADERS.size()> codes = {};
 std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, SHADERS.size()> ours = {};
@@ -1451,7 +1450,7 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
     if (!twattila::frame_history::MainViewport(native)) return {};
     const bool traced = twattila::rt_scene::SunShadowsTraced();
     if (!traced && !bend_runs.load(std::memory_order_relaxed)) return {};
-    if (!traced || rays_replace_maps_row == 0.f) {
+    if (!traced) {
       native->PSGetConstantBuffers(3, 1, game_b3.ReleaseAndGetAddressOf());
       D3D11_BUFFER_DESC desc = {};
       if (game_b3) {
@@ -1485,8 +1484,7 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
       native->CopySubresourceRegion(sss_without_march.Get(), 0, SSS_MARCH_OFFSET, 0, 0, zeros.Get(), 0, &flag);
       native->PSSetConstantBuffers(3, 1, sss_without_march.GetAddressOf());
       if (!march_off_logged.exchange(true, std::memory_order_relaxed)) {
-        renodx::utils::log::i(std::format("[Warhammer III] Applied: the game's contact march off in the sun mask ({} shadows the sun).",
-                                          traced ? "the rays over the shadow maps" : "Bend"));
+        renodx::utils::log::i("[Warhammer III] Applied: the game's contact march off in the sun mask (Bend shadows the sun).");
       }
       return {.post_callback = [](Context& post, const void*) {
         auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
@@ -2955,7 +2953,7 @@ float rays_branch_cut_outs_row = 0.f;
 float rays_faded_parts_row = 0.f;
 float rays_trunks_as_drawn_row = 0.f;
 // The trees' draws into the cascades: 52 M of the shadow pass's indices on the replay's first view, 36 M in the siege (traces c1a, bm_siege).
-// Only fog, forward passes and the UI read the maps under Rays Replace Shadow Maps, the sun's shadow comes from rays. fx_rigidbranch_v3,
+// Only fog, forward passes and the UI read the maps under the rays' sun shadows, the sun's shadow comes from rays. fx_rigidbranch_v3,
 // fx_rigidleaf_v3; drawn in no other target in any trace (b5_census: no render target).
 // Every other caster of the shadow pass after them (batch 6 P4, the 93 traces' census): far tree cards, standing and moving rigid meshes,
 // vertexpush, flags, units, tentacles. With the sun's mask from rays and the fog's shadows from rays (Fog Shadows: battlefog02 and 03
@@ -2977,8 +2975,7 @@ constexpr auto OnCascadeCaster = []<typename Context>(Context& command) -> renod
   const uint32_t* caster = &command.template GetCallbackData<uint32_t>();
   const bool kept_copy = caster == &CASCADE_CASTER_SHADERS.back();
   const bool tree = static_cast<size_t>(caster - CASCADE_CASTER_SHADERS.data()) < CASCADE_TREE_SHADERS;
-  if (!kept_copy && ((rays_skip_cascades_row == 0.f && (rays_skip_cascade_trees_row == 0.f || !tree)) || traced_lights::rays_replace_maps_row == 0.f
-                     || !twattila::rt_scene::SunShadowsTraced())) {
+  if (!kept_copy && ((rays_skip_cascades_row == 0.f && (rays_skip_cascade_trees_row == 0.f || !tree)) || !twattila::rt_scene::SunShadowsTraced())) {
     return {};
   }
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
@@ -3565,8 +3562,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twwarhammer3::game_gi::sky_only.store(own_global_illumination && twwarhammer3::game_gi::sky_row != 0.f, std::memory_order_relaxed);
   twwarhammer3::game_gi::off.store(own_global_illumination && twwarhammer3::game_gi::sky_row == 0.f, std::memory_order_relaxed);
   // The row's reach only for this write: the slider keeps the player's 0.
-  const bool farther_trees = rays_tree_reach_row != 0.f && rays_skip_cascades_row != 0.f && traced_lights::rays_replace_maps_row != 0.f
-                             && rt_settings.casters_out_of_view && first_map_reach != nullptr && first_map_reach->scale == 0.f;
+  const bool farther_trees = rays_tree_reach_row != 0.f && rays_skip_cascades_row != 0.f && rt_settings.casters_out_of_view
+                             && first_map_reach != nullptr && first_map_reach->scale == 0.f;
   if (farther_trees) {
     first_map_reach->scale = TREE_REACH_METRES;
     if (first_map_reach->tweaks.front().value != nullptr && !tree_reach_logged.exchange(true, std::memory_order_relaxed)) {
@@ -3844,8 +3841,8 @@ void ConfigureAddon() {
       setting->is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders); };
     }
   }
-  // Shadow Map Size (shadow_map_size.hpp): the page shows it where the game's shadow maps shadow (rays too, with Rays
-  // Replace Shadow Maps off), and no preset writes it.
+  // Shadow Map Size (shadow_map_size.hpp): the page shows it where the game's shadow maps shadow (not under the rays' sun
+  // shadows), and no preset writes it.
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "GraphicsShadowMapSize",
       .binding = &twwarhammer3::shadow_map_size::row,
@@ -3864,10 +3861,9 @@ void ConfigureAddon() {
       .default_value = 0.f,
       .label = "Shadow Maps Under Rays (Experimental)",
       .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "With Rays Replace Shadow Maps: the game's shadow maps smaller, for what still reads them (water, lit\n"
-                 "effects, the particles). Less video memory. Applies after a restart, and stays until the next one.",
+      .tooltip = "The game's shadow maps smaller, for what still reads them under ray-traced shadows (water, lit effects,\n"
+                 "the particles). Less video memory. Applies after a restart, and stays until the next one.",
       .labels = {"4096 (Game's)", "2048", "1024"},
-      .is_enabled = [] { return traced_lights::rays_replace_maps_row != 0.f; },
   });
   // Reflection Quality: the water march's step cap (reflections::OnMarch).
   settings.push_back(new renodx::utils::settings::Setting{
@@ -3914,7 +3910,7 @@ void ConfigureAddon() {
       .tooltip = "With Skip the Shadow Maps: trees behind the camera keep their ray-traced shadows up to 150 m away,\n"
                  "also after ray tracing was off for a while. Smoke's shadows near the camera get softer.",
       .labels = {"Off", "On"},
-      .is_enabled = [] { return rays_skip_cascades_row != 0.f && traced_lights::rays_replace_maps_row != 0.f; },
+      .is_enabled = [] { return rays_skip_cascades_row != 0.f; },
   });
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedPointLightShadows",
@@ -4205,7 +4201,6 @@ void ConfigureAddon() {
                                              .below_100_detail = &below_100_detail_row,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .placed_objects = &placed_objects_row,
-                                             .rays_replace_maps = &traced_lights::rays_replace_maps_row,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .rays_skip_cascade_trees = &rays_skip_cascade_trees_row,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
@@ -4424,7 +4419,7 @@ bool AttachAddon() {
 #endif
   reshade::register_event<reshade::addon_event::present>(OnPresent);
   twwarhammer3::game_gi::Install();
-  twwarhammer3::shadow_map_size::Install(traced_lights::rays_replace_maps_row != 0.f);
+  twwarhammer3::shadow_map_size::Install();
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::depth_levels::OnDestroyDevice);

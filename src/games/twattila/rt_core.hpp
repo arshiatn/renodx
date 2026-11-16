@@ -748,6 +748,18 @@ class CpuTime {
 // frames: 30 % darker than the same paused view 60 s later (R1's log); what's wrong in them isn't known.
 constexpr uint32_t PATH_AMBIENT_FRAMES = 150;
 
+// Frames without the rays after which the game's ambient is its own again: a frame the helper missed now and then keeps
+// what stands in for it (no flicker), rays that stay off (the game's MSAA, the helper gone) give it back within half a
+// second. rt_scene::AmbientReplaced (the game's AO) and the paths' run for Path-Traced Ambient (PathFrames).
+constexpr uint64_t AMBIENT_REPLACED_FRAMES = 30;
+
+// The paths' run at a Light Bounce request: one frame more while they were traced within AMBIENT_REPLACED_FRAMES
+// (`bounced_frame`: the last), else none. Path-Traced Ambient waits for PATH_AMBIENT_FRAMES of it: one missed frame no
+// longer gives the game's ambient back for those 150 frames (test/tw_path_frames).
+inline uint32_t PathFrames(uint32_t path_frames, bool path_tracing, uint64_t bounced_frame, uint64_t frame) {
+  return (path_tracing && bounced_frame != UINT64_MAX && bounced_frame + AMBIENT_REPLACED_FRAMES >= frame) ? path_frames + 1 : 0u;
+}
+
 // rt_positions.cs's constants: world positions from a depth.
 struct PositionConstants {
   std::array<float, 16> inverse_view_projection;
@@ -3391,7 +3403,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
   }
   const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = width, .bottom = height, .back = 1};
   native->CopySubresourceRegion(bridge.rt_light.texture.Get(), 0, 0, 0, 0, prepared_light, 0, &region);
-  runtime.path_frames = (runtime.settings.path_tracing && runtime.bounced_frame + 1 == runtime.frame) ? runtime.path_frames + 1 : 0u;
+  runtime.path_frames = PathFrames(runtime.path_frames, runtime.settings.path_tracing, runtime.bounced_frame, runtime.frame);
   runtime.path_ambient_on = runtime.settings.path_ambient && runtime.path_frames >= PATH_AMBIENT_FRAMES;
   const dlaa_bridge::BounceRequest request = {
       .frame = static_cast<uint32_t>(runtime.frame),

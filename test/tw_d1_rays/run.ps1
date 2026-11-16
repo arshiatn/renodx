@@ -15,7 +15,8 @@ if (-not (Test-Path -LiteralPath $sunPass)) { throw "The game's sun pass is not 
 $fxc = (Select-String -LiteralPath (Join-Path $repairRoot 'build\CMakeCache.txt') -Pattern '^FXC_BIN:FILEPATH=(.*)$').Matches[0].Groups[1].Value
 $shaders = [ordered]@{
   'd1_upscale_inputs' = 'cs_5_0'; 'd1_upscale_output' = 'ps_5_0'; 'd1_rt_inputs' = 'cs_5_0'; 'd1_rt_guides' = 'cs_5_0'
-  'd1_rt_shadow' = 'ps_5_0'; 'd1_rt_ambient' = 'ps_5_0'; 'light_bounce_vs' = 'vs_5_0'
+  'd1_rt_shadow' = 'ps_5_0'; 'd1_rt_ambient' = 'ps_5_0'; 'light_bounce_vs' = 'vs_5_0'; 'd1_rt_sky' = 'cs_5_0'
+  'd1_rt_bounce_apply' = 'ps_5_0'
 }
 $arguments = @($sunPass)
 foreach ($name in $shaders.Keys) {

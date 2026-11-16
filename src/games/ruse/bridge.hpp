@@ -96,6 +96,7 @@ struct State {
   UINT width = 0;
   UINT height = 0;
   std::array<float, 2> jitter = {};  // pixels, x right, y down
+  uint32_t jittered_frame = UINT32_MAX;  // the last frame whose scene draws took `jitter` (OnDraw)
   std::array<float, 16> vertex_camera = {};  // the game's c0-c3 as it set them
   std::array<float, 48> pixel_registers = {};  // the game's PS c0-c11 as last set
   std::array<float, 36> camera = {};  // 0x88292FC6's c0-c8: previous view-projection, inverse view-projection, RenderDt
@@ -533,6 +534,12 @@ inline bool IsSceneDraw() {
          && state.depth_stencil != state.post_depth && state.intz_depths.contains(state.depth_stencil);
 }
 
+// This frame's jitter as its scene draws took it (OnDraw: none before the anti-aliasing's first result or after a reset):
+// the depth's and the scene's, pixels.
+inline std::array<float, 2> DrawnJitter() {
+  return (state.jittered_frame == state.frame) ? state.jitter : std::array<float, 2>{};
+}
+
 // D3: the scene draws' camera (c0-c3, row-major MVP: clip_i = row_i . position) moved by the jitter: rows 0 and 1 +=
 // offset x row 3 (clip.xy += offset x clip.w), the game's values back on every other draw. None after a reset (no
 // result yet, or the helper lost): the game's picture is shown then.
@@ -553,6 +560,7 @@ inline void OnDraw(reshade::api::command_list* cmd_list) {
     }
     host->SetVertexShaderConstantF(0, jittered.data(), 4);
     state.jitter_written = true;
+    state.jittered_frame = state.frame;
   } else if (state.jitter_written) {
     host->SetVertexShaderConstantF(0, state.vertex_camera.data(), 4);
     state.jitter_written = false;
