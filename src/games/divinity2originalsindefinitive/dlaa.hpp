@@ -51,6 +51,10 @@ static twattila::feature_settings::AaSliders sliders;
 // Ray tracing (ray_tracing.hpp) is on: the main camera and the scene's depth are kept without DLAA too, the bridge made
 // with its ray tracing textures and kept.
 static bool rays = false;
+// The rays want the G-buffer guides (Ray Reconstruction, the paths, the reflections) and the reflections' textures in the
+// bridge (ray_tracing.hpp's present, as `rays`).
+static bool guides = false;
+static bool reflections = false;
 
 namespace internal {
 
@@ -121,6 +125,7 @@ struct State {
   std::array<float, 16> evaluated_previous_view_projection = {};
   bool evaluated_continued = false;
   bool upload_seen = false;
+  uint64_t guides_frame = 0;      // the rays wrote the G-buffer guides (NoteGuides)
   std::vector<std::string> said;  // each status line once
 };
 static State state;
@@ -376,7 +381,7 @@ inline void KeepDepth(reshade::api::command_list* cmd_list) {
 // less 5, as Attila's).
 inline bool PrepareBridge(ID3D11Device* device, UINT width, UINT height) {
   const uint32_t upscaler = (sliders.method >= 6.f) ? static_cast<uint32_t>(std::min(sliders.method, 7.f)) - 5u : twattila::dlaa_bridge::UPSCALER_DLSS;
-  return twattila::dlaa_bridge::Prepare(device, width, height, false, rays, twattila::frame_generation::Format(), false, upscaler,
+  return twattila::dlaa_bridge::Prepare(device, width, height, rays && guides, rays, twattila::frame_generation::Format(), reflections, upscaler,
                                         twattila::feature_settings::AaSettings(sliders).frame_backend);
 }
 
@@ -389,6 +394,12 @@ inline ComPtr<ID3D11ShaderResourceView> SceneDepth() {
 inline std::array<UINT, 2> SceneSize() {
   const std::shared_lock lock(internal::state.mutex);
   return internal::state.depth_size;
+}
+
+// The rays wrote this frame's G-buffer guides (Ray Reconstruction may run on them at PPApplyLUT).
+inline void NoteGuides() {
+  const std::unique_lock lock(internal::state.mutex);
+  internal::state.guides_frame = internal::state.frame;
 }
 
 // The main view's camera uploaded this frame; false: none yet this frame.
@@ -436,6 +447,7 @@ inline void OnApplyLut(reshade::api::command_list* cmd_list) {
   std::array<float, 16> previous_view_projection = {};
   bool continued = false;
   bool camera_seen = false;
+  bool guides_written = false;
   {
     const std::unique_lock lock(state.mutex);
     camera = state.camera;
@@ -445,6 +457,7 @@ inline void OnApplyLut(reshade::api::command_list* cmd_list) {
     if (state.depth_frame == state.frame && state.depth_size[0] == width && state.depth_size[1] == height) depth = state.depth;
     previous_view_projection = state.previous_view_projection;
     continued = state.evaluated_frame + 1 == state.frame;
+    guides_written = state.guides_frame == state.frame;
   }
   if (!depth) {
     report("off: no scene depth this frame (LinearizeDepth didn't run).");
@@ -510,7 +523,8 @@ inline void OnApplyLut(reshade::api::command_list* cmd_list) {
   // take the frame as it is, and the camera's near, far and field of view from its projection (row vectors: the rows'
   // transpose, without the jitter).
   const bool dlss = sliders.method == 5.f;
-  const uint32_t preset = twattila::feature_settings::AaSettings(sliders).dlaa_preset;
+  const auto aa = twattila::feature_settings::AaSettings(sliders);
+  const uint32_t preset = aa.dlaa_preset;
   const bool square_root = dlss && (preset == 12u || preset == 13u);
   const float width_f = static_cast<float>(width);
   const float height_f = static_cast<float>(height);
@@ -557,8 +571,15 @@ inline void OnApplyLut(reshade::api::command_list* cmd_list) {
   native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
   bind(nullptr, {}, {});
   const std::array<float, 16> view_to_clip = internal::Transposed(camera.projection);
-  const bool resolved = twattila::dlaa_bridge::Evaluate(native, width, height, camera.jitter[0], -camera.jitter[1], !continued, preset, nullptr,
-                                                        (dlss ? nullptr : &view_to_clip));
+  // Ray Reconstruction only on the guides the rays wrote this frame (ray_tracing.hpp), the camera as row vectors.
+  const twattila::dlaa_bridge::RayReconstruction reconstruction = {
+      .preset = aa.ray_reconstruction_preset,
+      .world_to_view = internal::Transposed(camera.view),
+      .view_to_clip = view_to_clip,
+  };
+  const bool reconstructing = aa.ray_reconstruction && guides_written && bridge.guides;
+  const bool resolved = twattila::dlaa_bridge::Evaluate(native, width, height, camera.jitter[0], -camera.jitter[1], !continued, preset,
+                                                        (reconstructing ? &reconstruction : nullptr), (dlss ? nullptr : &view_to_clip));
   if (resolved) {
     bind(objects.finish.Get(), {bridge.output.srv.Get(), input.Get(), bridge.motion.srv.Get()}, {objects.result_uav.Get()});
     native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);

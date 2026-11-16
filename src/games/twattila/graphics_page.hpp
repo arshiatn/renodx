@@ -94,6 +94,8 @@ struct Texts {
   const char* replace_maps_tooltip =
       "The sun's shadows from rays alone, so Softness shows in full. Smoke, clouds and hills keep the game's.\n"
       "Off: the rays' shadows on top of the game's shadow maps and contact shadows.";
+  // Global Illumination's first line (what bounces), then its methods (GT-VBGI's only where the game has it), then the end.
+  const char* gi_tooltip_start = "Sunlit ground, walls and soldiers bounce their light and colour into nearby shadows.\n";
   const char* gi_tooltip_end = "";
   const char* coloured_shadows_tooltip = "";      // Empty: the row's own.
   const char* rays_a_pixel_shadows_tooltip = "";  // Empty: the row's own.
@@ -163,13 +165,14 @@ struct Bindings {
   float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
   float* lod_bias_trilinear = nullptr;  // texture_lod_bias.hpp SetWrappingTrilinear; null: no such row
   float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
-  // The sun's shadow from rays alone where they'd multiply its mask (off: Shadow Map Size under the rays too); null: no such row.
+  // The sun's shadow from rays alone where they'd multiply its mask (off: Shadow Map Size under the rays too); null: no such row
+  // (the rays replace the maps unless rays_multiply_maps).
   float* rays_replace_maps = nullptr;
   bool rays_replace_maps_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
   float* rays_units_out_of_view = nullptr;  // Casters from the shadow maps' draws, with rays' sun shadows; null: no such row
   bool units_out_of_view_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
-  float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
-  float* rays_skip_cascades = nullptr;  // Under rays_replace_maps (without one: the rays' sun shadows): nothing drawn into the shadow maps; null: no such row
+  float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps (if any): trees left out of the shadow maps; null: no such row
+  float* rays_skip_cascades = nullptr;  // Under rays_replace_maps (if any; the rays' sun shadows): nothing drawn into the shadow maps; null: no such row
   float* rays_one_at_a_place = nullptr;  // A kept caster goes where another mesh is placed (dlaa_bridge.h RT_ONE_AT_A_PLACE); null: no such row
   float* rays_cascade_unit_cut_outs = nullptr;  // Units from the shadow maps' draws cut out by their mask; null: no such row
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
@@ -238,6 +241,9 @@ struct Bindings {
   // run has shown them in this game yet; the Unreal games).
   bool rays_tested = true;
   bool has_gi = true;      // Global Illumination's section; false: none, the rows it would hold kept hidden (Rome Remastered)
+  // A fog the rays shade (rt_scene::InstallFogShadows or the game's own hook); false: the Fog Shadows row kept hidden and
+  // left out of RT/PT (Divinity 2).
+  bool has_fog_shadows = true;
   bool every_row = true;   // false: a row this page lists that the game lacks is no mistake, no log line (Rome Remastered)
 };
 
@@ -749,6 +755,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
     // Without Global Illumination nothing of it to turn on.
     if (!b.has_gi) std::erase_if(rays_values, [](const Values::value_type& preset) { return preset.first == "RayTracedLightBounce"; });
+    if (!b.has_fog_shadows) std::erase_if(rays_values, [](const Values::value_type& preset) { return preset.first == "RayTracedFogShadows"; });
     if (b.rays_preset_as_attila) {
       rays_values.insert(rays_values.end(), {{"ScreenSpaceShadowsFoliage", FOLIAGE_LIGHT_DEFAULT},
                                              {"SmokeShadowMapStrength", SMOKE_MAP_DEFAULT},
@@ -956,9 +963,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .default_value = 0.f,
           .label = "Skip Trees in Shadow Maps (Experimental)",
           .section = section,
-          .tooltip = "With Rays Replace Shadow Maps: faster in forests. Water, smoke and lit effects lose the trees' shadows;\n"
-                     "the fog too without Fog Shadows.",
-          .is_enabled = [replace = b.rays_replace_maps] { return *replace != 0.f; },
+          .tooltip = "Faster in forests. Water, smoke and lit effects lose the trees' shadows; the fog too without Fog Shadows.",
+          .is_enabled = [replace = b.rays_replace_maps] { return replace == nullptr || *replace != 0.f; },
           .is_visible = more_rays,
       });
     }
@@ -970,11 +976,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .default_value = 0.f,
           .label = "Skip the Shadow Maps (Experimental)",
           .section = section,
-          .tooltip = (b.rays_replace_maps != nullptr)
-                         ? "With Rays Replace Shadow Maps: nothing is drawn into the game's shadow maps. Faster with many units and\n"
-                           "buildings. Water, smoke and lit effects lose the sun's shadow; the fog too without Fog Shadows."
-                         : "Nothing is drawn into the game's near shadow map: there the sun's shadow comes from the rays alone, the\n"
-                           "water's too. Faster with many units and buildings.",
+          .tooltip = b.rays_multiply_maps
+                         ? "Nothing is drawn into the game's near shadow map: there the sun's shadow comes from the rays alone, the\n"
+                           "water's too. Faster with many units and buildings."
+                         : "Nothing is drawn into the game's shadow maps. Faster with many units and buildings. Water, smoke and\n"
+                           "lit effects lose the sun's shadow; the fog too without Fog Shadows.",
           .is_enabled = [replace = b.rays_replace_maps] { return replace == nullptr || *replace != 0.f; },
           .is_visible = more_rays,
       });
@@ -1223,10 +1229,13 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     std::vector<std::string> gi_places;
     for (const int method : gi_methods) gi_places.push_back(gi_labels[method]);
     page.Add(MethodSlider(section,
-                          std::string("Sunlit ground, walls and soldiers bounce their light and colour into nearby shadows.\n"
-                                      "GT-VBGI (visibility bitmask): from what is on screen. One Bounce: DXR rays through the scene,\n"
-                                      "nothing guessed behind what the camera sees. ReSTIR GI: path tracing, several bounces, also from off\n"
-                                      "screen, its samples reused over frames and between neighbours. Heavy. The last two need an upscaler.")
+                          std::string(b.texts->gi_tooltip_start)
+                              + (b.has_gtvbgi ? "GT-VBGI (visibility bitmask): from what is on screen. One Bounce: DXR rays through the scene,\n"
+                                                "nothing guessed behind what the camera sees. ReSTIR GI: path tracing, several bounces, also from off\n"
+                                                "screen, its samples reused over frames and between neighbours. Heavy. The last two need an upscaler."
+                                              : "One Bounce: DXR rays through the scene, nothing guessed behind what the camera sees.\n"
+                                                "ReSTIR GI: path tracing, several bounces, also from off screen, its samples reused over frames\n"
+                                                "and between neighbours. Heavy. Both need an upscaler.")
                               + b.texts->gi_tooltip_end,
                           std::move(gi_places),
                           [b, gi_methods] {
@@ -1296,6 +1305,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       page.Take({.match = "RayTracedReflectionFaster", .section = section, .shown = rays, .only_some_games = true});
       page.Take({.match = "RayTracedSpecularOcclusion", .section = section, .shown = always, .label = b.texts->specular_occlusion_label});
       page.Take({.match = "RayTracedSkipGameReflections", .section = section, .shown = rays, .only_some_games = true});
+      page.Take({.match = "RayTracedSharpReflections", .section = section, .shown = rays, .only_some_games = true});
     }
     page.Take({.match = "WaterClarity", .section = section, .shown = always, .only_some_games = true});
     page.Take({.match = "WaterCaustics", .section = section, .shown = always, .label = b.texts->water_caustics_label, .only_some_games = true});
@@ -1305,7 +1315,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   // What every ray-traced effect shares.
   {
     const std::string& section = RT_SECTION;
-    page.Take({.match = "RayTracedFogShadows", .section = section, .shown = upscaling, .label = b.texts->fog_shadows_label, .tooltip = b.texts->fog_shadows_tooltip});
+    if (b.has_fog_shadows) {
+      page.Take({.match = "RayTracedFogShadows", .section = section, .shown = upscaling, .label = b.texts->fog_shadows_label, .tooltip = b.texts->fog_shadows_tooltip});
+    } else {
+      page.Keep("RayTracedFogShadows");
+    }
     page.Add(Note("Needs an upscaler (Anti-Aliasing above).", section, MORE_TINT, no_upscaler));
     page.Add(MoreOptions(section, &more_rt, [b, upscaling] { return upscaling() || b.engine_code != nullptr; }));
     const auto more_rt_rows = more(&more_rt, upscaling);

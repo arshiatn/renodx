@@ -421,18 +421,18 @@ constexpr std::array<twattila::rt_scene::SmokePixelShader, 3> SMOKE_PIXEL_SHADER
     {.hash = 0x687378DB, .view_shift = 1, .sampler_shift = 1},
 }};
 
-// Rays Replace Shadow Maps (on by default: ours replaces the game's, ATN 2026-11-16; WARP test/tw_warhammer_shaders part 29;
-// Pharaoh's way): the six sun shaders whose shadow the screen-space shadows
+// The rays replace the shadow maps' sun shadow, always (one method: ATN 2026-11-16, no Rays Replace Shadow Maps row; WARP
+// test/tw_warhammer_shaders part 29; Pharaoh's way): the six sun shaders whose shadow the screen-space shadows
 // patched (the data run's log: hardware gather 5.0, standard and skin, single-sampled and MSAA) read the sun's atlas
 // (g_tShadowBuffer_SM50 t1, 12288 x 12288 R32) only through s1, 28 gather4_c each, s1's only reads; there is no baked map.
 // Where the rays' shadow is bound at t49 an ALWAYS sampler at s1 makes every comparison lit, so their patched comparisons
 // (each x the rays' visibility) give the rays' shadow alone; the cloud shadows stay the game's. The game's sampler is bound
 // again after the draw (finalize: the Light Bounce draws the sun draw itself and bypasses; twattila/sun_replace_maps.hpp at s1).
-// Skip the Shadow Maps (under it): rt_scene's Ray-Traced Shadows Only skips the atlas's draws (the atlas is the sun draw's square
+// Skip the Shadow Maps (under the rays' sun shadows): rt_scene's Ray-Traced Shadows Only skips the atlas's draws (the atlas is the sun draw's square
 // R32 map).
 constexpr std::array<uint32_t, 6> ATLAS_SUN_SHADERS = {0x1AB80044, 0x37237EC7, 0x060623DD, 0xD7990748, 0xCEEE8017, 0xDF071F9D};
 constexpr UINT ATLAS_SAMPLER_SLOT = 1;
-float rays_replace_maps_row = 0.f;
+constexpr float RAYS_REPLACE_MAPS = 1.f;  // sun_replace_maps' row, always on
 float rays_skip_cascades_row = 0.f;
 // The shadow pass's casters in the rays' scene (SCENE_SHADERS' cascade_keep entries): Shadow Casters Out of View, and Hills Out of
 // View for its terrain (Experimental, off: no game run has shown them yet).
@@ -1722,7 +1722,7 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
 void OnInitDevice(reshade::api::device*) {
   const bool sun_shadows = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).sun_shadows;
   twwarhammer2::shadow_cascades::Set(&shadow_cascades,
-                                     shadow_cascades_row != 0.f && sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f,
+                                     shadow_cascades_row != 0.f && sun_shadows && rays_skip_cascades_row != 0.f,
                                      shadow_map.scale);
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
@@ -1967,7 +1967,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
   // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
-  rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
+  rt_settings.shadows_only = rt_settings.sun_shadows && rays_skip_cascades_row != 0.f;
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
   // Fog Shadows alone light no surface: no Ray Reconstruction for them (as Warhammer's, Warhammer III's and Pharaoh's).
@@ -2026,8 +2026,7 @@ constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {
 }};
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows replace the game's shadow maps
-// (Rays Replace Shadow Maps; off: they multiply them through the sun shaders' patched comparisons), ray-traced AO in place of
-// the game's SSAO; reflections on the game's SSR resolve;
+// (always: no Rays Replace Shadow Maps row), ray-traced AO in place of the game's SSAO; reflections on the game's SSR resolve;
 // the paths' sky from the game's spherical harmonics (rt_sun); Water Clarity and Caustics on the water's own draws.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
@@ -2056,8 +2055,6 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                            "sun's light in the shadow of buildings, trees and hills. Further on, the game's shadow maps.",
     .light_glow_label = "Torch and Fire Light in Fog (Experimental)",
     .light_glow_tooltip = "Torches and fires light the fog around them, with their shafts and shadows in it. Needs Fog Shadows. 0: off.",
-    .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Cloud shadows stay the game's;\n"
-                            "what is outside the view casts none. Off: the rays' shadows on top of the game's shadow maps.",
     .reflections_tooltip = "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
 };
@@ -2594,7 +2591,6 @@ void ConfigureAddon() {
                                              .smoke_strength = &smoke_map_sliders.strength,
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
-                                             .rays_replace_maps = &rays_replace_maps_row,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
@@ -2653,7 +2649,8 @@ bool AttachAddon() {
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSpriteShadows"});
   // Ray-Traced Water Reflections was saved hidden at RT/PT's 1 before the water pass (it did nothing): now Experimental, off.
   twattila::graphics_page::ClearSavedRows(2, {"RayTracedWaterReflections"});
-  // Rays Replace Shadow Maps was saved at its old Experimental 0; now on by default.
+  // Rays Replace Shadow Maps was saved at its old Experimental 0; the row is gone since (the rays always replace) and nothing
+  // reads the key.
   twattila::graphics_page::ClearSavedRows(3, {"RayTracedReplaceShadowMaps"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -2712,9 +2709,9 @@ bool AttachAddon() {
   // (B3758A01) and the banners' and blend meshes' 76B5602C write 128, grass (2315FFAB) 144, the campaign's terrain-blend
   // objects (41FD3F65) 255; the others 0-64 (tools/tw/wh2/material_writes_wh2.txt).
   twattila::screen_space_shadows::foliage_material_bit = 128;
-  // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's. Skip the Shadow Maps through
-  // Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
-  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &rays_replace_maps_row, ATLAS_SAMPLER_SLOT);
+  // The rays replace the atlas's sun shadow: after the screen-space shadows' and before the Light Bounce's. Skip the Shadow
+  // Maps through Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
+  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS, ATLAS_SAMPLER_SLOT);
   twattila::rt_scene::InstallShadowsOnly();
   // The data run's frame traces (tools\tw\wh2\plan_1114.md; twattila/frame_trace.hpp): on demand (renodx_trace_now next to the
   // exe) and at 100% too. The camera's g_screen_size / g_viewport_dimensions at c27 / c29 as Attila's (the sun PS's camera RDEF).

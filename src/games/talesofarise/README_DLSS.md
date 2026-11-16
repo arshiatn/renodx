@@ -19,6 +19,47 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
   yet).
 - In game: Ray-Traced AO: corners lighter than before (no game AO under the rays' AO); rays off: unchanged.
 
+### Ray Tracing in the Helper, step 1 (2026-11-16; built only, not run in game)
+
+- New **Ray Tracing in the Helper (Experimental)** (off, a restart): the rays' sun shadows and AO traced in the Total
+  War helper (`ray_tracing.hpp`, an rt_core host as Expeditions'), not on the add-on's own D3D12 device
+  (`rt_shadows.hpp`, still the default until the helper's rays prove equal offline). Scene: the depth prepass into the
+  scene depth (the opaque prepass's six vertex shaders, the masked prepass by rt_core's pixel-shader coverage); trace
+  at the sun shadow mask 0x2084C889 with the camera from TranslatedWorldToClip + PreViewTranslation in metres and the
+  sun from ScreenToShadow (0x7A1E0D12's TowardSun on the CPU); the traced sun at t40 for sunshadow00, the traced
+  ambient copied to the scene depth's size at t41 (same contract as the in-process rays). Reflections, the bounce,
+  the paths, the sky texels (c155-c162) and torches (038D003A) stay in process for now (off in this mode).
+- Known differences to prove offline: masks read at a scaled UV (some of the 89 masked shaders) are left out, and the
+  helper cuts alpha at 0.5 where the game does at 0.333 (rt_core's host route has no cutoff of its own yet).
+- tests/helper_rays (WARP + CPU): TowardSun equals sun_direction.hlsli's, the camera equals TranslatedWorldToClip.
+- Step 2: the **reflections and specular occlusion** in the helper too. At the frame's first lighting or toon draw the
+  G-buffer guides go into the bridge from its t1-t3 and View (the anti-aliasing's 0x7A1E0D31, one `WriteGuides` for
+  both, in the add-on's own context state there), then rt_scene::Reflections traces them; both are copied to the scene
+  depth's size for t43 / t44 (rt_ambient.hlsli reads them by UV, as the in-process rays'). The hits light from last
+  frame's colour (the bridge's input colour). With Ray Reconstruction on the guides are written twice a frame (here and
+  at the anti-aliasing): a small double cost left for the equality round. tests/helper_kept (WARP): the kept copies
+  give each render pixel its own traced texel through rt_ambient.hlsli's read (exact; the bridge's texture read the
+  same way: off by up to 52 texels, caught).
+- One method in this mode too: Bend's screen-space shadows off under the helper's sun shadows, GT-VBAO under its AO,
+  the game's SSR under its reflections (the gates read only the in-process rays before).
+- Step 3: the **light bounce and the paths** in the helper, as the Total War games: GT-VBGI's passes
+  (`ue_light_bounce.hpp`: the prepare from the lighting pass's light, the resolve, the light arriving x Strength into
+  the add-on's texture for t42) with the rays' trace in place of its own (rt_scene's TraceLightBounce through
+  `twattila::light_bounce::SetRayTracedTrace`), at the rays' resolution and every texel each frame. **Path-Traced
+  Ambient** stays the rays' AO under the paths here: Bandai's sky light is inside the scene colour the lighting passes
+  read, so nothing could leave it out for the helper's sky (the helper's PT Ambient needs that); the in-process rays'
+  sky-weighted AO has no helper equivalent yet. test/tw_ue_sss_gi: a stub trace's green replaces the wall's red
+  (Tales 0.210 green, 0.037 red left; Rome 0.106 / 0.019); a trace returning nothing gives GT-VBGI's own back (red
+  0.178 / 0.090).
+- Step 4: **torch shadows** in the helper. Bandai's deferred local lights (ps 038D003A, now `shaders/locallight00`,
+  vanilla exact on WARP) give each light (FDeferredLightUniformStruct at b1: position c0.xyz, 1 / radius c0.w, colour
+  c1.xyz; in metres) to the next frame's trace (rt_core AddLocalLight) and read this frame's lit bits (t42 / b9,
+  `twattila/rt_local_lights.hlsli`): where the rays traced the light at the pixel, their visibility in place of the
+  game's shadow (its light attenuation .z where the light casts shadows, ShadowedBits): one method; elsewhere, or
+  nothing bound (in process, rays off), the game's own. The Torch Shadows rows are rt_scene's (Count, Range, Softness,
+  Importance-Sampled, Steady). test/tw_vanilla_exact TalesLocalLight: EXACT 0 against the game's bytes with a white
+  point light lighting the test frame (control: the game's output swizzle swapped, 1, caught).
+
 ## Install
 
 1. Put `renodx-talesofarise_dlss.addon64` and NVIDIA's latest `nvngx_dlss.dll` (310.5 or newer) in

@@ -428,6 +428,10 @@ struct Host {
   // world position to an output): the game's constants stay, the geometry shader takes the main view's matrix at its b0[10-13] and
   // streams out world positions (a foliage draw's UV in w), so the scene stays a world-space one.
   bool cascade_world = false;
+  // Without cascade_world: the shadow vertex shader's constant buffer and row that take the main view's matrix (Warhammer III: b0,
+  // c10-13; Ryse: PER_FRAME b2's g_VS_ViewProjMatr, c0-3). The buffer's other rows are 0 there.
+  UINT cascade_view_slot = 0;
+  UINT cascade_view_row = 10;
   // Whether a cascade draw's depth target is the game's per-frame sun shadow map (null: a square array of 4, Warhammer III's cascades;
   // the same shaders may draw a UI's small view). Also the map Ray-Traced Shadows Only skips the casters of (null: the sun draws'
   // last square depth texture).
@@ -746,6 +750,18 @@ class CpuTime {
 // Path-Traced Ambient: the paths' frames with the game's ambient before it goes (the helper learns its sky's scale). 30 kept a battle's very first
 // frames: 30 % darker than the same paused view 60 s later (R1's log); what's wrong in them isn't known.
 constexpr uint32_t PATH_AMBIENT_FRAMES = 150;
+
+// Frames without the rays after which the game's ambient is its own again: a frame the helper missed now and then keeps
+// what stands in for it (no flicker), rays that stay off (the game's MSAA, the helper gone) give it back within half a
+// second. rt_scene::AmbientReplaced (the game's AO) and the paths' run for Path-Traced Ambient (PathFrames).
+constexpr uint64_t AMBIENT_REPLACED_FRAMES = 30;
+
+// The paths' run at a Light Bounce request: one frame more while they were traced within AMBIENT_REPLACED_FRAMES
+// (`bounced_frame`: the last), else none. Path-Traced Ambient waits for PATH_AMBIENT_FRAMES of it: one missed frame no
+// longer gives the game's ambient back for those 150 frames (test/tw_path_frames).
+inline uint32_t PathFrames(uint32_t path_frames, bool path_tracing, uint64_t bounced_frame, uint64_t frame) {
+  return (path_tracing && bounced_frame != UINT64_MAX && bounced_frame + AMBIENT_REPLACED_FRAMES >= frame) ? path_frames + 1 : 0u;
+}
 
 // rt_positions.cs's constants: world positions from a depth.
 struct PositionConstants {
@@ -2260,7 +2276,7 @@ void Capture(Context& command, const SceneShader& shader) {
   if (cascade_draw) {
     if (runtime.cascade_camera_frame != runtime.frame) {
       std::array<float, 36 * 4> cascade_constants = {};
-      std::ranges::copy(runtime.main_view_projection, cascade_constants.begin() + (10 * 4));
+      std::ranges::copy(runtime.main_view_projection, cascade_constants.begin() + (host.cascade_view_row * 4));
       native->UpdateSubresource(objects.cascade_camera.Get(), 0, nullptr, cascade_constants.data(), 0, 0);
       runtime.cascade_camera_frame = runtime.frame;
     }
@@ -2270,8 +2286,8 @@ void Capture(Context& command, const SceneShader& shader) {
       native1->GSGetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
       native->GSSetConstantBuffers(0, 1, objects.cascade_camera.GetAddressOf());
     } else {
-      native1->VSGetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
-      native->VSSetConstantBuffers(0, 1, objects.cascade_camera.GetAddressOf());
+      native1->VSGetConstantBuffers1(host.cascade_view_slot, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
+      native->VSSetConstantBuffers(host.cascade_view_slot, 1, objects.cascade_camera.GetAddressOf());
     }
   }
   if (!place || sway) {
@@ -2429,7 +2445,7 @@ void Capture(Context& command, const SceneShader& shader) {
     ID3D11Buffer* rows_target = objects.captured.Get();
     const UINT rows_offset = rows_vertex * 16;
     // A new mesh's first rows go whole: its BLAS's build rows are its first instance's, in the view or not.
-    if (cascade_draw && !place) native->VSSetConstantBuffers(0, 1, objects.cascade_no_view.GetAddressOf());
+    if (cascade_draw && !place) native->VSSetConstantBuffers(host.cascade_view_slot, 1, objects.cascade_no_view.GetAddressOf());
     native->VSSetShader((faded ? objects.faded_rows_shaders : objects.rows_shaders)[index].Get(), nullptr, 0);
     native->GSSetShader((faded ? objects.faded_rows_outputs : objects.rows_outputs)[index].Get(), nullptr, 0);
     native->SOSetTargets(1, &rows_target, &rows_offset);
@@ -2490,9 +2506,9 @@ void Capture(Context& command, const SceneShader& shader) {
     }
   } else if (cascade_draw) {
     if (game_camera_first == 0) {
-      native->VSSetConstantBuffers(0, 1, game_camera.GetAddressOf());
+      native->VSSetConstantBuffers(host.cascade_view_slot, 1, game_camera.GetAddressOf());
     } else {
-      native1->VSSetConstantBuffers1(0, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
+      native1->VSSetConstantBuffers1(host.cascade_view_slot, 1, game_camera.GetAddressOf(), &game_camera_first, &game_camera_count);
     }
   }
   ID3D11Buffer* output = game_output.Get();
@@ -3390,7 +3406,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
   }
   const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = width, .bottom = height, .back = 1};
   native->CopySubresourceRegion(bridge.rt_light.texture.Get(), 0, 0, 0, 0, prepared_light, 0, &region);
-  runtime.path_frames = (runtime.settings.path_tracing && runtime.bounced_frame + 1 == runtime.frame) ? runtime.path_frames + 1 : 0u;
+  runtime.path_frames = PathFrames(runtime.path_frames, runtime.settings.path_tracing, runtime.bounced_frame, runtime.frame);
   runtime.path_ambient_on = runtime.settings.path_ambient && runtime.path_frames >= PATH_AMBIENT_FRAMES;
   const dlaa_bridge::BounceRequest request = {
       .frame = static_cast<uint32_t>(runtime.frame),

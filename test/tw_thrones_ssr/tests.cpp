@@ -4,8 +4,9 @@
 // but every 16th pixel), the add-on's settings at b13 (SSR Quality 1, Effects at Output Resolution's share 1: the game's
 // look), the rays' textures (t46, t47) and the hierarchical march's (t10) unbound.
 // tests.exe <the game's dumped csos> <the add-on's built csos (build32\<game>.include\embed)> <ssr_quality's float in b13>
-//           <effects_share's float in b13> <rays_sharp_reflections' float in b13>
-//           [<an older build's csos: part F's CONTROL, "-": none>] [<the build before part H's row: its reference>]
+//           <effects_share's float in b13> <rays_sharp_reflections' float in b13> <reflection_occlusion's float in b13>
+//           [<an older build's csos: part F's CONTROL, "-": none>] [<the build before part H's row: its reference, "-": none>]
+//           [<the build before part I's row: its reference>]
 // Shader Model 5 (66006BEA, 47D75349: ssr00 / ssr01) and 4 / 4.1 (485F33D7, 0AC579F6, 8E734BAA, C8BD2B2F: their code at
 // those shader models):
 // A. 100%: the replacement (nothing at b12) and the game's shader: o0 and o1.y bit for bit, o1.x (the blur's step, x
@@ -33,6 +34,12 @@
 //    off. Numbers: the step in texels ((o1.x x 1.9 + 0.1), reflections_blur) before / after, its 9 taps' reach
 //    (+-(4 x step + 0.5) texels), and the game's own blur_x (AEA114D4, the game's bytes) with each o1 over a checkerboard of
 //    8-texel squares in place of the reflection: how far the blurred board is from the board (mean |blur - board|).
+// I. Path-Traced Reflection Occlusion (b13's reflection_occlusion: the add-on writes 1 with the row at 0, without
+//    Path-Traced Ambient and with Ray-Traced Specular Occlusion's own row; the row's value when it traces t46 for it): at 1
+//    o0 and o1 bit for bit the build before it (today's) with t46 unbound and bound, the scene's light buffer and AO and
+//    Path-Traced Ambient's (light buffer black: the environment alone; AO white). CONTROL: 0.5 with t46 bound differs.
+//    Numbers under Path-Traced Ambient: the reflection (o0 x o1.y) with t46 over without, as t46 to a power (1: the
+//    occlusion once, 2 twice, 0 none), at 1 and at 0.5 (against 0.5 + 0.5 x t46), and o1.y the same as without t46.
 // The march's share of the picture: pixels whose result changes at 100% with the light buffer black (it reflects there).
 #include <windows.h>
 #include <d3d11.h>
@@ -346,9 +353,9 @@ static void Invert(const double (&m)[4][4], double (&out)[4][4]) {
 }
 
 int main(int argc, char** argv) {
-  if (argc < 6) {
+  if (argc < 7) {
     std::printf("usage: tests.exe <the game's dumped csos> <the add-on's built csos> <ssr_quality's float in b13> <effects_share's>"
-                " <rays_sharp_reflections'> [<an older build's csos>]\n");
+                " <rays_sharp_reflections'> <reflection_occlusion's> [<an older build's csos>] [<part H's reference>] [<part I's>]\n");
     return 2;
   }
   const std::string game_folder = argv[1];
@@ -356,8 +363,10 @@ int main(int argc, char** argv) {
   const int ssr_quality = std::atoi(argv[3]);
   const int effects_share = std::atoi(argv[4]);
   const int sharp_reflections = std::atoi(argv[5]);
-  const std::string older_folder = (argc > 6 && std::string(argv[6]) != "-") ? argv[6] : "";
-  const std::string reference_folder = (argc > 7) ? argv[7] : "";
+  const int reflection_occlusion = std::atoi(argv[6]);
+  const std::string older_folder = (argc > 7 && std::string(argv[7]) != "-") ? argv[7] : "";
+  const std::string reference_folder = (argc > 8 && std::string(argv[8]) != "-") ? argv[8] : "";
+  const std::string today_folder = (argc > 9) ? argv[9] : "";
   const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
                                context.GetAddressOf()))) {
@@ -470,17 +479,20 @@ int main(int argc, char** argv) {
   const auto camera_100 = camera_for(WIDTH, HEIGHT);
   const auto camera_50 = camera_for(WIDTH * 2, HEIGHT * 2);
 
-  // The add-on's settings (b13): SSR Quality 1, Effects at Output Resolution's share 1 (the game's look), or SSR Quality 2.
-  const auto settings_for = [&](float quality, float sharp = 0.f) {
+  // The add-on's settings (b13): SSR Quality 1, Effects at Output Resolution's share 1 (the game's look), the specular
+  // occlusion whole (as the add-on writes it but under Path-Traced Reflection Occlusion), or SSR Quality 2.
+  const auto settings_for = [&](float quality, float sharp = 0.f, float occlusion = 1.f) {
     std::vector<float> values(256 * 4, 0.f);
     values[ssr_quality] = quality;
     values[effects_share] = 1.f;
     values[sharp_reflections] = sharp;
+    values[reflection_occlusion] = occlusion;
     return Constants(values.data(), static_cast<UINT>(values.size() * 4));
   };
   const auto settings = settings_for(1.f);
   const auto settings_2 = settings_for(2.f);
   const auto settings_sharp = settings_for(1.f, 1.f);
+  const auto settings_half_occlusion = settings_for(1.f, 0.f, 0.5f);
   // Part H's measure: the game's reflections blur_x and its parameters (g_min_normal_dot 0.9, g_buffers_scale 1).
   ComPtr<ID3D11PixelShader> blur_x;
   if (const auto blur_code = ReadFile(game_folder + "\\0xAEA114D4.ps_4_0.cso"); !blur_code.empty()) {
@@ -693,6 +705,81 @@ int main(int argc, char** argv) {
       CHECK(stepped > 0, "%s: control H (on) does not differ", pair.name);
       CHECK(kept == 0 && h_no_rays == 0, "%s: Sharp Ray-Traced Reflections changes more than the step where the rays reflect", pair.name);
       CHECK(blur_off < 0.0 || blur_on < blur_off, "%s: the blur is not narrower with Sharp Ray-Traced Reflections", pair.name);
+      // I: Path-Traced Reflection Occlusion, against the build before it.
+      ComPtr<ID3D11PixelShader> today;
+      if (const auto today_code = today_folder.empty() ? std::vector<char>() : ReadFile(today_folder + "\\" + pair.replacement);
+          !today_code.empty()) {
+        device->CreatePixelShader(today_code.data(), today_code.size(), nullptr, today.GetAddressOf());
+      }
+      auto scene_path = scene_black;
+      scene_path[7] = white_ssao.Get();
+      const auto occlusion_draw = [&](ID3D11PixelShader* shader, const std::array<ID3D11ShaderResourceView*, 10>& textures, ID3D11Buffer* b13,
+                                      ID3D11ShaderResourceView* occlusion) {
+        return Draw(shader, view_w, view_h, view_w, view_h, textures, buffers_100, nullptr, b13, occlusion);
+      };
+      // The scene's and Path-Traced Ambient's, each with t46 unbound and bound.
+      std::array<UINT, 4> i_today = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
+      size_t draw = 0;
+      for (const auto* textures : std::array<const std::array<ID3D11ShaderResourceView*, 10>*, 2>{&scene_100, &scene_path}) {
+        for (ID3D11ShaderResourceView* occlusion : {static_cast<ID3D11ShaderResourceView*>(nullptr), specular_occlusion.Get()}) {
+          if (today) i_today[draw] = Differ(occlusion_draw(replacement.Get(), *textures, settings.Get(), occlusion), occlusion_draw(today.Get(), *textures, settings.Get(), occlusion));
+          ++draw;
+        }
+      }
+      const Targets path_open = occlusion_draw(replacement.Get(), scene_path, settings.Get(), nullptr);
+      const Targets path_whole = occlusion_draw(replacement.Get(), scene_path, settings.Get(), specular_occlusion.Get());
+      const Targets path_half = occlusion_draw(replacement.Get(), scene_path, settings_half_occlusion.Get(), specular_occlusion.Get());
+      const UINT i_control = Differ(path_half, path_whole);
+      UINT measured = 0;
+      UINT o1y_changed = 0;
+      double power_sum = 0.0;
+      double power_min = 1e9;
+      double power_max = -1e9;
+      double half_error = 0.0;
+      double open_luminance = 0.0;
+      double whole_luminance = 0.0;
+      for (UINT y = 0; y < view_h; ++y) {
+        for (UINT x = 0; x < view_w; ++x) {
+          const size_t pixel = static_cast<size_t>(y) * view_w + x;
+          if (path_open.o1[pixel * 4] == SENTINEL) continue;
+          o1y_changed += (std::memcmp(&path_open.o1[pixel * 4 + 1], &path_whole.o1[pixel * 4 + 1], 4) != 0) ? 1u : 0u;
+          // t46 at the render pixel the shader loads (v0 / g_buffers_scale); the water (drawn after the G-buffer the rays left
+          // from, no water rays here) keeps the game's AO: left out.
+          const auto texel_x = static_cast<UINT>((x + 0.5f) / buffers_scale);
+          const auto texel_y = static_cast<UINT>((y + 0.5f) / buffers_scale);
+          const size_t texel = (static_cast<size_t>(texel_y) * WIDTH + texel_x) * 4;
+          if (scene.channel3[texel + 3] != 0.f && scene.stencil[texel + 1] == 1u) continue;
+          const double t = open[texel];
+          double reflection_open = 0.0;
+          double reflection_whole = 0.0;
+          double reflection_half = 0.0;
+          for (size_t channel = 0; channel < 3; ++channel) {
+            reflection_open += path_open.o0[pixel * 4 + channel] * path_open.o1[pixel * 4 + 1];
+            reflection_whole += path_whole.o0[pixel * 4 + channel] * path_whole.o1[pixel * 4 + 1];
+            reflection_half += path_half.o0[pixel * 4 + channel] * path_half.o1[pixel * 4 + 1];
+          }
+          open_luminance += reflection_open;
+          whole_luminance += reflection_whole;
+          if (reflection_open < 1e-4 || t > 0.95) continue;
+          ++measured;
+          const double power = std::log(reflection_whole / reflection_open) / std::log(t);
+          power_sum += power;
+          power_min = std::min(power_min, power);
+          power_max = std::max(power_max, power);
+          half_error = std::max(half_error, std::fabs(reflection_half / reflection_open - (0.5 + 0.5 * t)));
+        }
+      }
+      std::printf("%s, g_buffers_scale %.1f: I Path-Traced Reflection Occlusion: at 1 vs the build before it: %u / %u differ (the scene's, "
+                  "t46 unbound / bound), %u / %u (Path-Traced Ambient's); CONTROL 0.5: %u differ; under Path-Traced Ambient with t46: "
+                  "the reflection = without x t46^%.4f (mean; %.4f - %.4f, %u pixels off the water), at 0.5 at most %.2e from 0.5 + "
+                  "0.5 x t46, o1.y changed in %u; the reflections' sum %.1f -> %.1f\n",
+                  pair.name, buffers_scale, i_today[0], i_today[1], i_today[2], i_today[3], i_control, measured > 0 ? power_sum / measured : 0.0,
+                  power_min, power_max, measured, half_error, o1y_changed, open_luminance, whole_luminance);
+      CHECK(i_today == (std::array<UINT, 4>{}), "%s: Path-Traced Reflection Occlusion at 1 is not the build before it (or none given)", pair.name);
+      CHECK(i_control > 0, "%s: control I (0.5) does not differ", pair.name);
+      CHECK(measured > 0 && std::fabs(power_sum / measured - 1.0) < 1e-3 && power_min > 0.99 && power_max < 1.01,
+            "%s: the occlusion is not applied once", pair.name);
+      CHECK(half_error < 1e-4 && o1y_changed == 0, "%s: the strength does not scale the occlusion alone", pair.name);
     }
   }
   std::printf("%s\n", failures == 0 ? "PASS" : "FAIL");

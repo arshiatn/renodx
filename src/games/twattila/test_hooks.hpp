@@ -37,8 +37,9 @@
 // RENODX_TW_SHOT=<seconds>[,<count>[,<gap>]] ReShade screenshots (its save path, "auto"; by default a second 5 s later),
 // RENODX_TW_PROFILE=<seconds> Record Ray Tracing Profile,
 // RENODX_TW_SET=<seconds>:<key>=<value>[;<seconds>:<key>=<value>...] settings changed then, as their sliders would; a
-// button's label as the key presses it; the key "shot" takes a screenshot, the key "trace" writes renodx_trace_now next to
-// the exe (the frame traces' on-demand marker).
+// button's label as the key presses it (every button with that label: several pages have a Reset), "<group>/<label>"
+// only that group's (page-presets/Reset); the key "shot" takes a screenshot, the key "trace" writes renodx_trace_now
+// next to the exe (the frame traces' on-demand marker).
 // A game that restarts itself through Steam (Tales of Arise's SteamStub) doesn't inherit the launching shell's
 // environment: the same NAME=value lines in renodx_test_hooks.txt next to the exe set them for the process (and the helper
 // it starts). The first present deletes the file, so a stub process that relaunches leaves it for the game and the next
@@ -55,11 +56,11 @@ static std::filesystem::path exe_folder;
 constexpr const wchar_t* HOOKS_FILE = L"renodx_test_hooks.txt";
 
 inline void Change(const std::string& key, float value) {
-  bool found = false;
+  size_t found = 0;
   for (auto* setting : *settings) {
     const bool button = setting->value_type == renodx::utils::settings::SettingValueType::BUTTON;
-    if (button ? setting->label != key : setting->key != key) continue;
-    found = true;
+    if (button ? (setting->label != key && setting->group + "/" + setting->label != key) : setting->key != key) continue;
+    ++found;
     if (button) {
       setting->on_change();
       renodx::utils::log::i(std::format("{} Test: {} pressed.", log_name, key));
@@ -75,7 +76,8 @@ inline void Change(const std::string& key, float value) {
     }
     renodx::utils::log::i(std::format("{} Test: {} set to {}{}.", log_name, key, setting->GetValue(), (setting->binding == nullptr ? " (it has no binding)" : "")));
   }
-  if (!found) renodx::utils::log::w(std::format("{} Test: no setting {}, nothing changed.", log_name, key));
+  if (found == 0) renodx::utils::log::w(std::format("{} Test: no setting {}, nothing changed.", log_name, key));
+  if (found > 1) renodx::utils::log::w(std::format("{} Test: {} matched {} buttons (one alone: <group>/<label>).", log_name, key, found));
 }
 
 inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {

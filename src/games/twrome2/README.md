@@ -6,6 +6,10 @@
   parts (fences, leaves on props) now cut out of the rays' shadows as Attila's do: the unit and rigid captures pass the
   UV, the 88 unit pixel shaders that clip and the shadow pass's alpha test give the masks. WARP
   (test/tw_rays_captures K): the 12 captures' UV = the game's to half a step; CONTROL the plain captures differ.
+- The cut-offs (test/tw_rays_captures L, the dump's bytes on an alpha ramp): all 88 unit shaders (the 16 alpha_overlay
+  ones too) cut below 128 / 255, the same 8-bit alphas as the rays' 0.5 (0 apart); the rigid alpha test cuts below 0.35,
+  as the rays do there (the rows' own cut-off, which the rays take for a cut-out as for leaves; 0 apart). CONTROLS: the
+  overlay without a clip cuts nothing; the rigid test at the units' cut-off is 38 alphas apart.
 - The fix round's "Not done" line, corrected: Batched Unit Capture never showed here (its row needs the bone pack hook
   Rome II doesn't have; the page dump has it in no state).
 - Still not done: grass past every LOD skipping DrawScrub and the Grass Trace button (a Rome II DrawScrub / ScrubUpdate

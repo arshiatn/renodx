@@ -521,10 +521,6 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
 
 namespace internal {
 
-// Frames without a trace after which the game's AO is its own again: a frame the helper missed now and then keeps the
-// rays' (no flicker), a bridge that stays off (the game's MSAA) gives it back within half a second.
-constexpr uint64_t AMBIENT_REPLACED_FRAMES = 30;
-
 // AmbientReplaced's without the lock: the rows' ray-traced AO or Path-Traced Ambient, and the rays traced lately.
 inline bool AmbientReplacedNow() {
   return (runtime.settings.ambient_occlusion || runtime.settings.path_ambient) && runtime.traced_frame != UINT64_MAX

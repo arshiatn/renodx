@@ -26,6 +26,8 @@ bytes; alpha tests: run ps_discards on the listed pixel shaders (a discard of t0
 
 Whole-dump verdicts per vertex shader (family from names.tsv's source file, pass from its entry point, else from the bytes):
   held                 in SCENE_SHADERS (cascade_keep: out of view too), a smoke table, or a main-pass caster under a scene_draw host
+                       (minus the lists its SceneDraw leaves out, and only its default list where it has one: Rome Remastered's
+                       depth prepass; Feral's names, Unit.hlsl_p<n>_sm_5_0__vs_VSMain, read as file and entry point)
   in view only         a shadow, depth or point-light pass VS whose family's main pass is held: out of view needs a cascade_keep row
   NOT HELD             a caster family's world-space geometry the rays never get, ranked by family; in no trace = level B (one
                        trace, or a WARP check of its capture, before it ships); "addon names it": the addon mentions the hash
@@ -170,6 +172,19 @@ rt_scene_path = os.path.join(os.path.dirname(args.addon), '..', 'twattila', 'rt_
 if 'rt_scene::PARTICLE_VERTEX_SHADERS' in addon and os.path.exists(rt_scene_path):
     smoke |= {hash_.upper() for hash_ in re.findall(r'PARTICLE_VERTEX_SHADER = 0x([0-9A-Fa-f]{8})', open(rt_scene_path, encoding='utf-8').read())}
 scene_draw = re.search(r'\.scene_draw = \w', addon) is not None
+# A scene_draw host's own lists in its SceneDraw (Rome Remastered's depth prepass): a table it leaves out
+# (find(TABLE, shader->hash) != TABLE.end() ... return false) and a table it lets in by default (== TABLE.end(): the rest
+# only behind a test row).
+host_left_out, host_default = set(), None
+host_body = re.search(r'bool SceneDraw\([^)]*\)\s*\{(.*?)\n\}', addon, re.S)
+for table, test in (re.findall(r'std::ranges::find\(([\w:]+), shader->hash\) (!=|==) \1\.end\(\)', host_body.group(1))
+                    if scene_draw and host_body else []):
+    array = re.search(r'\b' + table.split('::')[-1] + r' = \{(.*?)\};', addon, re.S)
+    hashes = {hash_.upper() for hash_ in re.findall(r'0x([0-9A-Fa-f]{8})', re.sub(r'//[^\n]*', '', array.group(1)))} if array else set()
+    if test == '!=':
+        host_left_out |= hashes
+    else:
+        host_default = (host_default or set()) | hashes
 # Hashes the addon names elsewhere (a skip list, a comment giving why it stays out): read that before calling a gap.
 named = {}
 table = None
@@ -191,32 +206,37 @@ MAIN = ('main', 'GS/HS')  # passes that draw what the view sees
 FAMILIES = [
     ('skinned', r'weighted'),
     ('cloth', r'cloth|sail|banner|flag|rope|wind_plane|curtain|awning'),
-    ('ui', r'^sprite$|font|^ui_|_ui_|indicator|outline|cursor|minimap|loadingscreen|stance|selection|tutorial|campaignborder'),
+    ('ui', r'^sprite$|font|^ui_|_ui_|indicator|outline|cursor|minimap|loadingscreen|stance|selection|tutorial|campaignborder|'
+           r'^ui(3d)?$|^antialiasedlines$'),
     ('post', r'blur|hdr|tone_?mapper|bloom|glow|depth_?of_?field|fxaa|smaa|ssao|(^|_)a?oit|compression|passthrough|clear|^fade$|texturedebug|'
-             r'virtualtexture|downsample|deferred|full_?screen|lense?_?flare|distortionview|alpha_blend|quadonly|post_?process'),
+             r'virtualtexture|downsample|deferred|full_?screen|lense?_?flare|distortionview|alpha_blend|quadonly|post_?process|'
+             r'^heathaze$|^billboardgen$'),
     ('debug', r'debug|editor|terry|collision|gizmo|visibility|grid|^test|_test|testdata|example'),
     ('light', r'(point|spot|directional|sun|sky|environment_specular_|ambient_)light|gobo|light_?probe'),
     ('sky and fog', r'sky|cloud|^sun$|star|shroud|aurora|vortex|godray|mist|fog'),
-    ('water', r'ocean|water|river|^sea|_sea|seainteraction|wake|lake|splash|bowwave|lava|fluid|ice_?berg|maelstorm'),
-    ('decal', r'decal|spline|footprint|road|border|trade_route|coast|blood|ground_plane|deployment|projected'),
-    ('effects', r'particle|vfx|trail|(^|_)rain|smoke|flame|fire_base|feedback|ribbon|projectile|spark|soul|portal|beam|lightning|weather'),
+    ('water', r'ocean|water|river|^sea|_sea|seainteraction|wake|lake|splash|bowwave|lava|fluid|ice_?berg|maelstorm|^feralshorelines$'),
+    ('decal', r'decal|spline|footprint|road|border|trade_route|coast|blood|ground_plane|deployment|projected|'
+              r'^aerialmap(extents|scorchedearth|overlay)$'),
+    ('effects', r'particle|vfx|trail|(^|_)rain|smoke|flame|fire_base|feedback|ribbon|projectile|spark|soul|portal|beam|lightning|weather|'
+                r'^fire$'),
     ('far cards', r'treebillboard|tree_billboard|billboard'),
     ('sprites', r'imposter'),
     ('grass', r'grass'),
     ('leaves', r'leaf|vegetation|foliage|shrub|bush|plant|fern|hedge'),
     ('trees', r'branch|tree|trunk|palm'),
     ('skinned', r'skin(?!lm)|horse'),
-    ('terrain', r'^rigidterrain$|terraintile|tessellation|campaignterrain|terrain_global|terrain_stencil|^terrain|ground_mesh'),
+    ('terrain', r'^rigidterrain$|terraintile|tessellation|campaignterrain|terrain_global|terrain_stencil|^terrain|ground_mesh|^aerialmap$'),
     ('rigid', r'rigid|building|prop|rock|wall|static|standard|alphablend|default|mesh|basic|simple|ambientmap|common|anisotropic|'
-              r'vertexpush|tint|metal|glass|crystal|stone|wood|tent|gate|ship|siege|statue|mountain|cliff|parallax|tiling|zup'),
+              r'vertexpush|tint|metal|glass|crystal|stone|wood|tent|gate|ship|siege|statue|mountain|cliff|parallax|tiling|zup|^pbr$'),
 ]
 CAMERA = re.compile(r'^(view_projection|view|projection|world_view_projection|g_world_view|g_projection|g_world_view_projection|'
                     r'g_frustum_points|g_overlay_view_projection)$')
 
 
 def name_parts(name):
-    """(source file, entry point) of a short name: rigidleafcommon_v3 / vs30_shadow; no entry in Warhammer III's names."""
-    found = re.match(r'(?:sm_\d_\d_)?(?:default_)?(.*?)(?:\.hlsl_(?:sm_\d_\d__)?vs_(\w+))?$', name)
+    """(source file, entry point) of a short name: rigidleafcommon_v3 / vs30_shadow; no entry in Warhammer III's names. Feral's
+    (Rome Remastered) carry a permutation before the model: Unit.hlsl_p161114399_sm_5_0__vs_VSMain is unit / vsmain."""
+    found = re.match(r'(?:sm_\d_\d_)?(?:default_)?(.*?)(?:\.hlsl_(?:p\d+_)?(?:sm_\d_\d__)?vs_(\w+))?$', name)
     file = re.sub(r'^(fx_+|shaders_+)', '', found.group(1).replace('.xml', '').replace('_xml', ''))
     return file.lower(), (found.group(2) or '').lower()
 
@@ -278,8 +298,8 @@ def classify(vs, text):
         world = bytes_['camera'] or bytes_['bones'] or bytes_['instanced']
         family = 'world (unknown)' if world else 'screen (unknown)'
     entries = collections.Counter(
-        'point' if 'pointlight' in entry else 'shadow' if 'shadow' in entry else 'depth' if 'depth' in entry else 'main'
-        for _, entry in parts if entry)
+        'point' if 'pointlight' in entry else 'shadow' if 'shadow' in entry else 'depth' if 'depth' in entry or file == 'depthonly' else 'main'
+        for file, entry in parts if entry)
     if entries:
         pass_ = 'main' if 'main' in entries else entries.most_common(1)[0][0]
     elif not bytes_['position']:
@@ -305,7 +325,8 @@ for vs, text in asm.items():
 held_main_files = set()
 for vs, row in rows.items():
     main = row['pass'].startswith(MAIN)
-    if vs in held or vs in smoke or (scene_draw and main and row['family'] in CASTERS):
+    host_holds = vs not in host_left_out and (host_default is None or vs in host_default)
+    if vs in held or vs in smoke or (scene_draw and main and row['family'] in CASTERS and host_holds):
         row['verdict'] = 'held'
         row['why'] = (', '.join(tag for tag, pattern in KINDS if re.search(pattern, flags.get(vs, ''))) or 'scene' if vs in held
                       else 'smoke table' if vs in smoke else 'scene_draw (every main-pass G-buffer draw)')
@@ -324,6 +345,9 @@ for vs, row in rows.items():
         row['verdict'] = 'NOT HELD'
         row['why'] = ('level A gap: drawn in a trace' if seen.get(vs) else 'level B: in no trace') + ('' if row['pass'].startswith(MAIN)
                                                                                                    else '; no held main pass')
+        if scene_draw and row['pass'].startswith(MAIN):
+            row['why'] += ('; the scene_draw host leaves it out' if vs in host_left_out
+                           else '; the scene_draw host takes it only behind its test row' if host_default is not None else '')
         row['why'] += f'; addon names it in {named[vs]}' if vs in named else ''
 
 counts = collections.Counter(row['verdict'] for row in rows.values())
