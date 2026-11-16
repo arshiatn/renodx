@@ -235,6 +235,7 @@ bool CacheLookup(float3 world, float3 normal, out float3 radiance) {
   return kept.w > 0.f;
 }
 
+// The fill adds its texels' lights by wave as this adds one (rt_cache_fill.cs_6_5.hlsl CacheAddInWave).
 bool CacheAdd(float3 world, float3 normal, float3 light_there) {
   uint entry;
   if (!CacheClaim(world, normal, entry)) return false;
@@ -253,13 +254,6 @@ bool CacheAlbedo(float3 world, float3 normal, out float3 albedo) {
   const uint packed = cache_albedo[entry].x;
   albedo = float3(packed & 0xFFu, (packed >> 8) & 0xFFu, (packed >> 16) & 0xFFu) / 255.f;
   return (packed >> 24) != 0u;
-}
-
-void CacheSetAlbedo(float3 world, float3 normal, float3 albedo) {
-  uint entry;
-  if (!CacheClaim(world, normal, entry)) return;
-  const uint3 bytes = (uint3)(saturate(albedo) * 255.f + 0.5f);
-  cache_albedo[entry] = uint2(bytes.r | (bytes.g << 8) | (bytes.b << 16) | (255u << 24), frame + 1u);
 }
 
 // The pixel's normal: the G-buffer's (`guide`, read when the guides hold it) when it holds one, else from the positions.
