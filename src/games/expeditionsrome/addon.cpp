@@ -441,6 +441,8 @@ void ConfigureAddon() {
 
   // The former DLSS add-on's [Rome AA] keys into the page's, once, before the settings load (settings::Use).
   expeditionsrome::dlss_graphics::Migrate();
+  // GT-VBGI joins Global Illumination: presets that had it off keep it off (SettingsRevision 2).
+  talesofarise::ue_light_bounce::KeepSavedGiOff(2);
   BuildRuntimeData();
   // Without the helper (the HDR-only snapshot), after Settings Mode.
   settings.insert(settings.begin() + 1, talesofarise::hdr_only::FullDownloadNote());
@@ -454,7 +456,7 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({"General", "Presets", "UE Extended", "PsychoV35", "PsychoV31", "Extra", "Extra (Probably not used)",
                                         "Output (Restart Required)", "About"},
                                        engine_sections);
-  expeditionsrome::dlss_graphics::AppendPage(&settings, &shader_injection.ssao_mode);
+  expeditionsrome::dlss_graphics::AppendPage(&settings, &shader_injection.ssao_mode, &shader_injection.ssao_thickness);
 
   // Shaders cb
   renodx::mods::shader::expected_constant_buffer_space = 50;
