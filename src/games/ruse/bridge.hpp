@@ -350,7 +350,11 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   auto* proxy = reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native());
   ComPtr<ID3D11DeviceContext> context;
   proxy->GetImmediateContext(context.GetAddressOf());
-  if (!PrepareHelper(proxy)) return;
+  // The helper gone: no result, so no jitter from the next frame (OnPresent) until one comes again.
+  if (!PrepareHelper(proxy)) {
+    state.reset = true;
+    return;
+  }
   // W3: the destination's GPU waits for the source's writes (GPU Sync), else the CPU for the source's queue.
   const auto hand_over = [](auto* source, renodx::utils::gpu_fence::Fence* fence, auto* destination) {
     if (fence == nullptr) return false;
@@ -452,7 +456,8 @@ inline bool IsSceneDraw() {
 }
 
 // D3: the scene draws' camera (c0-c3, row-major MVP: clip_i = row_i . position) moved by the jitter: rows 0 and 1 +=
-// offset x row 3 (clip.xy += offset x clip.w), the game's values back on every other draw.
+// offset x row 3 (clip.xy += offset x clip.w), the game's values back on every other draw. None after a reset (no
+// result yet, or the helper lost): the game's picture is shown then.
 inline void OnDraw(reshade::api::command_list* cmd_list) {
   if (!state.enabled || state.failed) return;
   const bool scene_draw = IsSceneDraw();
@@ -460,7 +465,7 @@ inline void OnDraw(reshade::api::command_list* cmd_list) {
     state.scene_depth = state.depth_stencil;
   }
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
-  if (scene_draw && state.ready) {
+  if (scene_draw && state.ready && !state.reset) {
     std::array<float, 16> jittered = state.vertex_camera;
     const float offset_x = 2.f * state.jitter[0] / static_cast<float>(state.width);
     const float offset_y = -2.f * state.jitter[1] / static_cast<float>(state.height);
@@ -577,7 +582,9 @@ inline void OnPresent(IDirect3DDevice9* host) {
   state.scene_closed = false;
   state.scene_depth = 0;  // this frame's: the next Evaluate takes the next frame's scene draws' (none in a menu)
   ++state.frame;
-  state.jitter = {Halton((state.frame % 8) + 1, 2) - 0.5f, Halton((state.frame % 8) + 1, 3) - 0.5f};
+  // After a reset the next frame draws unjittered (OnDraw): Evaluate, the rays and the motion take 0 then.
+  state.jitter = (state.reset ? std::array<float, 2>{}
+                              : std::array<float, 2>{Halton((state.frame % 8) + 1, 2) - 0.5f, Halton((state.frame % 8) + 1, 3) - 0.5f});
 }
 
 }  // namespace ruse::bridge

@@ -633,6 +633,7 @@ int main(int argc, char** argv) {
   state.enabled = true;
   state.failed = false;
   state.ready = true;
+  state.reset = false;  // a frame after a result
   state.render_target_is_frame_sized = true;
   state.depth_stencil = reinterpret_cast<uint64_t>(depth_surface.Get());
   register_depth();
@@ -710,6 +711,16 @@ int main(int argc, char** argv) {
   CHECK(state.post_depth == 0);
   state.render_target_is_frame_sized = false;
   bridge::OnDraw(&command_list);
+  // After a reset (no result yet, or the helper lost) the next frame's jitter is 0 and the scene draws keep the game's c0-c3.
+  state.reset = true;
+  bridge::OnPresent(host);
+  CHECK(state.jitter[0] == 0.f && state.jitter[1] == 0.f);
+  state.render_target_is_frame_sized = true;
+  host->SetVertexShaderConstantF(0, VIEW_PROJECTION.data(), 4);
+  bridge::OnDraw(&command_list);
+  host->GetVertexShaderConstantF(0, written.data(), 4);
+  CHECK(std::memcmp(written.data(), VIEW_PROJECTION.data(), sizeof(written)) == 0 && !state.jitter_written);
+  state.render_target_is_frame_sized = false;
 
   // 6. GT-VBAO without the helper.
   {
