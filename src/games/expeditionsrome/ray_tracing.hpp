@@ -475,20 +475,16 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
       .position = {static_cast<float>(origin[0] / CENTIMETRES), static_cast<float>(origin[1] / CENTIMETRES),
                    static_cast<float>(origin[2] / CENTIMETRES)},
   };
-  twattila::rt_scene::WriteSun(context, {direction[0] / direction_length, direction[1] / direction_length, direction[2] / direction_length});
+  // The sun's diffuse light with its direction (WriteSun's texel 2, w 1), the paths' sun as twattila/rt_sun.cs_5_0.hlsl
+  // writes it for the Total War games: the light lights the G-buffer's diffuse colour (the guides' base x (1 - metallic)) by
+  // the colour times N.L times the shadow. C38C91CD's default lit: DiffuseColor x 0.318309873 (1 / pi) x LightColor (c4) x
+  // its shadow and N.L, x View 129.y at its output.
+  constexpr float INVERSE_PI = 0.318309873f;
+  const float scale = INVERSE_PI * view[VIEW_LIGHT_OUTPUT_SCALE][1];
+  const auto& color = light[LIGHT_COLOR];
+  twattila::rt_scene::WriteSun(context, {direction[0] / direction_length, direction[1] / direction_length, direction[2] / direction_length},
+                               {color[0] * scale, color[1] * scale, color[2] * scale, 1.f});
   auto& bridge = twattila::dlaa_bridge::bridge;
-  // The sun's diffuse light into the sun texture's texel 2 (w 1), the paths' sun as twattila/rt_sun.cs_5_0.hlsl writes it for
-  // the Total War games: the light lights the G-buffer's diffuse colour (the guides' base x (1 - metallic)) by the colour
-  // times N.L times the shadow. C38C91CD's default lit: DiffuseColor x 0.318309873 (1 / pi) x LightColor (c4) x its shadow
-  // and N.L, x View 129.y at its output.
-  if (bridge.rt_sun.texture) {
-    constexpr float INVERSE_PI = 0.318309873f;
-    const float scale = INVERSE_PI * view[VIEW_LIGHT_OUTPUT_SCALE][1];
-    const auto& color = light[LIGHT_COLOR];
-    const std::array<float, 4> sun_light = {color[0] * scale, color[1] * scale, color[2] * scale, 1.f};
-    const D3D11_BOX texel = {.left = 2, .top = 0, .front = 0, .right = 3, .bottom = 1, .back = 1};
-    context->UpdateSubresource(bridge.rt_sun.texture.Get(), 0, &texel, sun_light.data(), 16, 0);
-  }
   if (guides && bridge.guides) {
     const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
     const std::array<UINT, 4> size = {render_size[0], render_size[1], 0, 0};
