@@ -20,8 +20,8 @@ Auto (default: scRGB with Windows HDR on, else SDR; `twattila/output_encoding.hp
 (Peak, Paper White and UI at the back buffer's 203-nit white). A first start without Windows HDR takes the SDR preset;
 Output Auto switches to Recommended and back as Windows HDR changes.
 
-Presets: Reset (Extended), SDR (Rendering Mode SDR and Output SDR), Recommended (PsychoV35). They write the look rows
-only, never Peak, Paper White or UI.
+Presets: Reset (Extended), SDR (Rendering Mode SDR and Output SDR), Recommended (PsychoV35, Motion Blur off, Video
+AutoHDR 0.2). They write the look rows only, never Peak, Paper White or UI.
 
 ## Settings pages
 
@@ -45,7 +45,8 @@ Each frame, before the bloom's first pass reads the resolved main target: a D3D9
 INTZ depth (Readable Scene Depth: the back-buffer-sized single-sample D24 surfaces made INTZ) and the camera's motion
 (the camera pass `0x88292FC6`'s matrices); the helper runs; a second pass writes the result back in the game's
 encoding. The scene draws get a Halton jitter in their camera registers c0-c3. GPU Sync waits on shared fences instead
-of the CPU.
+of the CPU. The GPU's vendor comes from the proxy's device: off NVIDIA's GPUs the row lists Game's / FSR / XeSS, and a
+saved DLAA runs (and is saved) as XeSS Native AA on Intel's, else FSR Native AA (one log line).
 
 The row sets the game's own MSAA to 1x (`Option.ini` MainRTAA 1: RUSE.exe pairs 1, 2, 4, 8, 8.5, 16, 16.5 with "1x"
 ... "16x MSAA"; ATN's 8.5 is "8x MSAA"), when it changes and at each start, for the game's next start; Game's gives the
@@ -54,7 +55,8 @@ pre-pass would be the only readable depth): one log line and a red line in the s
 
 Frame Generation (2x-6x, Dynamic), NVIDIA Reflex, Frame Rate Limit, HUD Recomposition and the FG preset use
 `twattila/frame_generation.hpp` and `reflex.hpp`: the HUD-less image is the final post's target copied before the
-first UI draw; Reflex runs on the proxy's presents and the D3D9Ex queue is one frame deep.
+first UI draw; Reflex runs on the proxy's presents and the D3D9Ex queue is one frame deep. Reflex shows on NVIDIA's GPUs;
+Frame Rate Limit on NVIDIA's or under XeSS frame generation (Xe Low Latency).
 
 ## Ray tracing and the screen-space rows (`ray_tracing.hpp`, `bridge_replay.hpp`)
 
@@ -70,6 +72,7 @@ vs_3_0 on an SM3 vertex interpreter), static draws placed once. Ours replaces th
 | Ray-Traced Ground Ambient Occlusion / Screen-Space Ground Ambient Occlusion | The rays' AO, else GT-VBAO, into the 108 terrain shaders' ambient (s14). Both skipped once Path-Traced Light Bounce replaces the ambient. |
 | Ground Light Bounce | Screen-Space: GT-VBGI on the ground. Ray-Traced / Path-Traced: the helper's Light Bounce through guides the patched terrain and object shaders write (oC1 albedo, oC2 normal), into the same s14 texel; Path-Traced brings the sky in place of the game's flat ambient on the ground and the objects (Lean and Near ReSTIR Reuse on). |
 | Water Reflections | Screen-Space: a march over the start depth, its hits in last frame's scene; Ray-Traced: the helper's reflections; the 120 water shaders blend it over their cube by its share (s13). |
+| Units Ray Tracing Range (live) | Moving units (the replay's compact draws) farther than this out of the scene; 0 m: all (a world unit taken as a centimetre: the T-run checks). |
 
 Not covered: 2 object shaders whose shadow select writes an output, 60 lit object shaders the guides can't patch, 12
 terrain shaders (they keep the game's shading). The game's shadow-map pass still draws (its readers: water, sprites,
