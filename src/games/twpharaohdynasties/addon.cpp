@@ -841,7 +841,7 @@ void BuildRuntimeData() {
         .default_value = 1.00f,
         .label = "Highlight Hue Shift",
         .section = "Psycho V30",
-        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30 default (like my old addons), 2 = full.",
+        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30's default, 2 = full.",
         .min = 0.00f,
         .max = 2.00f,
         .format = "%.2f",
@@ -1127,10 +1127,6 @@ void BuildRuntimeData() {
         .label = "Distortion",
         .section = "Extra",
         .tooltip = "Multiplier on distortion. Needs haze to be on.",
-        // .tooltip = "Multiplier on distortion. YOU NEED TO CHOOSE PRESET ULTRA\n"
-        //            "THEN YOUR OWN CUSTOME SETTINGS for the hidden distortion\n"
-        //            "to get turned on. \n"
-        //            "It was probably hidden because it is not getting used anymore!",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
@@ -1163,7 +1159,7 @@ void BuildRuntimeData() {
         .binding = &shader_injection.someindicators,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.0f,
-        .label = "Brightness of some Unit/Building Indicator ",
+        .label = "Unit / Building Indicator Brightness",
         .section = "Extra",
         .tooltip = "Brightness of selected highlight indicators.",
         .min = 0.0f,
@@ -1230,10 +1226,9 @@ void BuildRuntimeData() {
         .binding = &shader_injection.vfxfirebrightness,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.0f,
-        .label = "Brightness boost: torches/burning houses/etc.",
+        .label = "Fire Brightness",
         .section = "Extra (Experimental)",
-        .tooltip = "torches/burning houses/etc. Recommmendation is max 10\n"
-                   "Experimental! Find your sweets spot! ",
+        .tooltip = "Brightness of torches, fires and burning buildings and of the light they cast. 1: the game's.",
         .min = 1.0f,
         .max = 30.0f,
         .format = "%.1f",
@@ -1244,10 +1239,10 @@ void BuildRuntimeData() {
         .binding = &shader_injection.vfxbasebrightness,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.0f,
-        .label = "VFX Brightness boost: All of them!",
+        .label = "VFX Brightness",
         .section = "Extra (Experimental)",
-        .tooltip = "Brightness of every single VFX effect. Recommendation: 2.5 for 1000nits, 6 for 2500nits.\n"
-                   "Probably not usable in desert storms. Experimental! Find your sweets spot! ",
+        .tooltip = "Brightness of every particle effect: smoke, dust, sand storms, fire, sparks. 1: the game's.\n"
+                   "About 2.5 at 1000 nits, 6 at 2500 nits; sand storms brighten with it.",
         .min = 1.0f,
         .max = 20.0f,
         .format = "%.1f",
@@ -1304,12 +1299,9 @@ void BuildRuntimeData() {
         .key = "filmgrain",
         .binding = &shader_injection.filmgrain,
         .default_value = 0.f,
-        .label = "Filmgrain (probably isn't used)",
+        .label = "Filmgrain",
         .section = "Extra (Experimental)",
-        .tooltip = "Multiplier on filmgrain. YOU NEED TO CHOOSE PRESET HIGH/ULTRA\n"
-                   "THEN YOUR OWN CUSTOME SETTINGS for the hidden filmgrain\n"
-                   "to get turned on. \n"
-                   "It was probably hidden because it is not getting used anymore!",
+        .tooltip = "Multiplier on the game's film grain. The game draws it only after its High or Ultra preset.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
