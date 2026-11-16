@@ -3201,7 +3201,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         // (of the smaller back buffer) shrank it again, down to the minimum. The game's own size there, as chosen in
         // its menu.
         const bool windowed = GetCvar(rendering.fullscreen) == 0 && GetCvar(rendering.fullscreen_window) == 0;
-        if (windowed != rendering.windowed) {
+        const bool switched = windowed != rendering.windowed;
+        if (switched) {
           rendering.windowed = windowed;
           renodx::utils::log::i("[Ryse DLSS] ",
                                 (windowed ? "Windowed: the game's own Rendering Resolution" : "Fullscreen: the mode's Rendering Resolution"));
@@ -3210,7 +3211,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         const std::array<int, 2> desired = ((windowed || rendering.native_off) ? rendering.game_size : mode_size);
         if (desired != rendering.pending) {
           rendering.pending = desired;
-          rendering.pending_presents = 0;
+          // Into or out of windowed: at once (the new window took the Rendering Resolution as it was: waiting showed the
+          // window at the mode's size for SETTLE_PRESENTS presents). The Custom slider's sizes settle first.
+          rendering.pending_presents = (switched ? SETTLE_PRESENTS : 0);
         } else {
           ++rendering.pending_presents;
         }
