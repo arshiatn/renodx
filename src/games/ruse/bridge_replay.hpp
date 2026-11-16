@@ -144,6 +144,10 @@ struct Counts {
 struct State {
   bool enabled = false;  // the Scene Replay row (restart)
   bool rays = false;     // ray_tracing.hpp's row (restart): the draws go to the next frame's trace (CaptureScene)
+  // This frame's draws recorded (with the rays only for a try that takes them: addon.cpp sets it at each present), and
+  // whether `previous` holds a frame recorded from its start (the next trace's scene whole).
+  bool recording = true;
+  bool previous_whole = false;
   bool log_next = false;
   bool log_capture = false;
   renodx::utils::data::ParallelNodeHashMap<uint64_t, Mirror, std::shared_mutex> mirrors;
@@ -289,6 +293,7 @@ inline void OnPushConstants(uint32_t layout_param, uint32_t first, uint32_t coun
 
 // A4: a scene draw (the bridge's test: back-buffer-sized target, an INTZ depth) recorded with what it reads.
 inline void Record(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t first_index, int32_t vertex_offset) {
+  if (!state.recording) return;
   ++state.counts.recorded;
   const uint32_t hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader);
   const auto found = std::ranges::lower_bound(SHADERS, hash, {}, &ReplayShader::hash);
@@ -440,6 +445,7 @@ inline void Replay(std::span<const float> inverse_view_projection) {
     state.draws.clear();
     state.constants.clear();
     state.previous.clear();
+    state.previous_whole = false;
     state.counts = {};
     return;
   }
@@ -521,6 +527,7 @@ inline void Replay(std::span<const float> inverse_view_projection) {
     if (state.previous_valid) std::ranges::copy(inverse_view_projection, state.previous_inverse.begin());
     state.previous = std::move(state.draws);
     state.previous_constants = std::move(state.constants);
+    state.previous_whole = state.recording;
     state.draws.clear();
     state.constants.clear();
     state.counts = {};
@@ -768,6 +775,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.draws.clear();
     state.constants.clear();
     state.previous.clear();
+    state.previous_whole = false;
     state.placements.clear();
     return;
   }

@@ -704,6 +704,9 @@ void OnPresentFrame(
   }
   ruse::replay::Replay(ruse::bridge::state.camera_valid ? std::span<const float>(ruse::bridge::state.camera).subspan(16, 16)
                                                        : std::span<const float>());
+  // With the rays the next frame's scene draws are recorded only for a try that takes them: no replay work while they
+  // don't trace.
+  ruse::replay::state.recording = !ruse::replay::state.rays || ruse::ray_tracing::SceneWanted();
   native_gui_phase = false;
   skip_host_present = false;
   proxy_present_started = false;

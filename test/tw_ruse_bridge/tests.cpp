@@ -34,6 +34,10 @@
 //    0x0C1E65C0): a main-pass draw (OnSceneDraw) never shades, the clear (OnClearDepthStencilView, outside a scene) does
 //    once over the ground's depth (test 6's occlusion exactly), nothing after D3D9's clear does again; with a main depth of
 //    its own (the B0 trace's layout) its clear doesn't, its first draw does.
+// 11. The rays' gate (ray_tracing.hpp rays_frame / SceneWanted, the replay's recording) with no helper (rt_core never
+//    traces): 125 frames try at 0, 60, 120 and record 0, 59, 60, 119, 120 (a try's frame and the one before), GT-VBAO in
+//    every frame; GT-VBAO off: the ground's depth copied in the try's frame alone; a due frame without a trace point
+//    tries nothing and moves the try 60 frames on; one "not tracing" log line in all of it.
 // H2 (renodx-tw-dlaa64.exe beside this exe; argv[2] dlss / fsr / xess):
 // 7. Evaluate on a synthetic aliased frame (the ground quad's hard edges drawn with each frame's jitter) for 24 frames:
 //    a result each frame after the first, written back into the scene; flat pixels within 3 codes of the aliased
@@ -74,9 +78,11 @@
 #include "src/games/ruse/shared.h"
 #include "test/tw_particle_history/mock_reshade.hpp"
 
+static std::vector<std::string> logged;
 extern "C" __declspec(dllexport) const char* const NAME = "R.U.S.E. bridge test";
 extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) {
   std::printf("  log: %s\n", message);
+  logged.emplace_back(message);
 }
 
 using Microsoft::WRL::ComPtr;
@@ -995,6 +1001,99 @@ int main(int argc, char** argv) {
                 own_cleared_shaded ? 1 : 0, own_drawn_shaded ? 1 : 0);
     CHECK(!own_cleared_shaded && own_drawn_shaded);
     bridge::OnDestroyDepthView(&host_device, {own_depth});
+
+    // 11. The rays' gate with a helper that never traces (none here: rt_core's Trace answers false).
+    struct ProxyQueue : reshade::api::command_queue {
+      reshade::api::command_list* list = nullptr;
+      uint64_t get_native() const override { return 0; }
+      void get_private_data(const uint8_t[16], uint64_t*) const override {}
+      void set_private_data(const uint8_t[16], const uint64_t) override {}
+      reshade::api::device* get_device() override { return nullptr; }
+      reshade::api::command_queue_type get_type() const override { return reshade::api::command_queue_type::graphics; }
+      void wait_idle() const override {}
+      void flush_immediate_command_list() const override {}
+      reshade::api::command_list* get_immediate_command_list() override { return list; }
+      void begin_debug_event(const char*, const float[4]) override {}
+      void end_debug_event() override {}
+      void insert_debug_marker(const char*, const float[4]) override {}
+      bool wait(reshade::api::fence, uint64_t) override { return false; }
+      bool signal(reshade::api::fence, uint64_t) override { return false; }
+      uint64_t get_timestamp_frequency() const override { return 0; }
+    } proxy_queue;
+    proxy_queue.list = &command_list;
+    auto& replay = ruse::replay::state;
+    rays.ground = true;
+    rays.proxy_queue = &proxy_queue;
+    state.ready = true;  // the bridge running, as the rays' rows need it
+    replay.enabled = true;
+    replay.rays = true;
+    replay.recording = true;
+    logged.clear();
+    // The game's present (rt_core's frame, the replay, this frame's recording as addon.cpp sets it), the pre-pass, then the
+    // trace point at the main pass's clear unless `trace_point` is false (a menu, the map table). The shared depth filled
+    // with 0.25 before the trace point: true when the trace point's passes copied the ground's depth into it.
+    const auto frame = [&](bool trace_point) {
+      prepass(prepass_depth);
+      ruse::ray_tracing::OnPresent();
+      ruse::replay::Replay({});
+      replay.recording = ruse::ray_tracing::SceneWanted();
+      CHECK(SUCCEEDED(host->ColorFill(state.depth.host_surface.Get(), nullptr, D3DCOLOR_COLORVALUE(0.25f, 0.f, 0.f, 0.f))));
+      if (trace_point) {
+        ruse::ray_tracing::OnClearDepthStencilView(&command_list, {prepass_depth}, &far_depth, nullptr, 0, nullptr);
+      }
+      bridge::WaitHost(host);
+      const std::vector<uint8_t> shared_depth = ReadHost(host, state.depth.host_surface.Get(), 4);
+      bool copied = false;
+      for (size_t index = 0; index < shared_depth.size() / 4 && !copied; ++index) copied = std::abs(Float(shared_depth, index) - 0.25f) > 0.01f;
+      return copied;
+    };
+    // GT-VBAO on: its pass each frame whatever the rays do.
+    std::vector<uint32_t> tries;
+    std::vector<uint32_t> recorded;
+    uint32_t occluded = 0;
+    const uint32_t first = state.frame + 1;
+    rays.rays_frame = first;  // the first try (the game's presents before this test never ran rt_core's frame)
+    rays.tried_frame = UINT32_MAX;
+    for (uint32_t index = 0; index < 125; ++index) {
+      frame(true);
+      if (rays.tried_frame == state.frame) tries.push_back(state.frame - first);
+      if (replay.recording) recorded.push_back(state.frame - first);
+      occluded += (rays.occlusion_frame == state.frame) ? 1u : 0u;
+    }
+    // A try's own frame and the frame before each later one recorded (the try takes the last frame's draws).
+    const bool tries_right = tries == std::vector<uint32_t>{0, 60, 120};
+    const bool recorded_right = recorded == std::vector<uint32_t>{0, 59, 60, 119, 120};
+    std::printf("Rays' gate, a helper that never traces: %zu tries in 125 frames (frames %u %u %u), %zu frames recorded, GT-VBAO in %u\n",
+                tries.size(), tries.empty() ? 0u : tries[0], tries.size() > 1 ? tries[1] : 0u, tries.size() > 2 ? tries[2] : 0u, recorded.size(),
+                occluded);
+    CHECK(tries_right && recorded_right && occluded == 125);
+    // GT-VBAO off: between tries nothing runs (the shared depth untouched), a try copies the ground's depth.
+    rays.vbao = false;
+    std::vector<uint32_t> copied;
+    for (uint32_t index = 125; index < 185; ++index) {
+      if (frame(true)) copied.push_back(state.frame - first);
+    }
+    std::printf("Rays' gate without another ground row: the depth copied in frames %zu (frame %u)\n", copied.size(), copied.empty() ? 0u : copied[0]);
+    CHECK(copied == std::vector<uint32_t>{180});
+    // A frame due to try without a trace point: no try, the next RAYS_RETRY_FRAMES on; one "not tracing" line in all of
+    // it (the first answer; no change after it).
+    for (uint32_t index = 185; index < 240; ++index) frame(true);
+    REQUIRE(rays.rays_frame == state.frame + 1);
+    frame(false);
+    const bool skipped = rays.tried_frame != state.frame;
+    frame(true);
+    const bool pushed = rays.rays_frame == state.frame - 1 + ruse::ray_tracing::RAYS_RETRY_FRAMES && rays.tried_frame != state.frame;
+    const auto not_tracing = std::ranges::count_if(logged, [](const std::string& line) { return line.find("[R.U.S.E.] Ray tracing: not tracing") == 0; });
+    std::printf("Rays' gate, no trace point at a due frame: no try %d, the next try %u frames on %d; \"not tracing\" lines %td\n", skipped ? 1 : 0,
+                ruse::ray_tracing::RAYS_RETRY_FRAMES, pushed ? 1 : 0, not_tracing);
+    CHECK(skipped && pushed && not_tracing == 1);
+    rays.ground = false;
+    rays.proxy_queue = nullptr;
+    state.ready = false;
+    replay.enabled = false;
+    replay.rays = false;
+    replay.recording = true;
+    twattila::rt_scene::Update({});
   }
 
   // 9. Guides.
