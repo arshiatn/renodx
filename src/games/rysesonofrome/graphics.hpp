@@ -104,14 +104,19 @@ constexpr uint32_t TILED_LIGHTING_SHADER = 0x897232B5;
 // The game's Rendering Resolution (its menu: 50-100% in steps of 10; the cvars take any size): r_Width / r_Height with
 // Native Upscaling (r_FullscreenNativeRes). The game renders into targets of that size; its native upscale stretches
 // the result to the back buffer. The renderer (the object RT_RenderScene's start passes, lea at 20) keeps the cvars
-// (ICVar*) at +0xb828 / +0xb830 / +0xf540; its display check reads them every frame and resizes the targets.
-// ICVar: GetIVal vtable +0x10, Set(int) +0x38. (v13-v19 used the game's dynamic resolution, osm_*, which renders
-// into a corner of full-size targets: the PC game's motion blur, depth of field and particles break with it.)
+// (ICVar*) at +0xb828 / +0xb830 / +0xf540, r_Fullscreen at +0xb838 and r_FullscreenWindow at +0xf538 (its cvar setup
+// at +0x1733A60); its display check (+0x16FAF60) reads them every frame and resizes the targets. It upscales natively
+// only with r_FullscreenNativeRes and r_Fullscreen or r_FullscreenWindow: windowed, the back buffer and the window
+// are the Rendering Resolution. ICVar: GetIVal vtable +0x10, Set(int) +0x38. (v13-v19 used the game's dynamic
+// resolution, osm_*, which renders into a corner of full-size targets: the PC game's motion blur, depth of field and
+// particles break with it.)
 constexpr std::string_view RENDER_SCENE =
     "48 8B 05 ?? ?? ?? ?? 44 8B F2 48 8B 15 ?? ?? ?? ?? 4C 8B E1 48 8D 0D ?? ?? ?? ?? 4D 8B F9 49 8B F0 FF 90 50 0C 00 00";
 constexpr size_t WIDTH_CVAR = 0xb828;
 constexpr size_t HEIGHT_CVAR = 0xb830;
 constexpr size_t NATIVE_RES_CVAR = 0xf540;
+constexpr size_t FULLSCREEN_CVAR = 0xb838;
+constexpr size_t FULLSCREEN_WINDOW_CVAR = 0xf538;
 constexpr size_t CVAR_GET_INT = 0x10;
 constexpr size_t CVAR_SET_INT = 0x38;
 // Presents a mode's resolution stays unchanged before it is set (the Custom slider; each change resizes the targets).
@@ -1475,6 +1480,8 @@ struct RenderResolution {
   void* width = nullptr;  // the game's ICVar* (RENDER_SCENE)
   void* height = nullptr;
   void* native_res = nullptr;
+  void* fullscreen = nullptr;
+  void* fullscreen_window = nullptr;
   bool controlling = false;
   std::array<int, 2> game_size = {};  // the game's own (its menu)
   std::array<int, 2> target = {};     // set by the addon, as the game took it
@@ -1484,6 +1491,7 @@ struct RenderResolution {
   uint32_t writes = 0;  // the game's own sets in the current window
   uint32_t window = 0;  // presents in the current window
   bool native_off = false;  // the mode's is below the display size, but Native Upscaling is off
+  bool windowed = false;    // the game's windowed mode: no native upscale, the window is the Rendering Resolution
   std::string problem;      // stopped (not found, or the game keeps setting its own)
 } resolution;
 
@@ -3152,14 +3160,18 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         rendering.width = *reinterpret_cast<void* const*>(renderer + WIDTH_CVAR);
         rendering.height = *reinterpret_cast<void* const*>(renderer + HEIGHT_CVAR);
         rendering.native_res = *reinterpret_cast<void* const*>(renderer + NATIVE_RES_CVAR);
+        rendering.fullscreen = *reinterpret_cast<void* const*>(renderer + FULLSCREEN_CVAR);
+        rendering.fullscreen_window = *reinterpret_cast<void* const*>(renderer + FULLSCREEN_WINDOW_CVAR);
       }
-      if (rendering.width == nullptr || rendering.height == nullptr || rendering.native_res == nullptr) {
+      if (rendering.width == nullptr || rendering.height == nullptr || rendering.native_res == nullptr
+          || rendering.fullscreen == nullptr || rendering.fullscreen_window == nullptr) {
         rendering.width = nullptr;
         rendering.problem = std::format("the game's Rendering Resolution was not found (RT_RenderScene {})", details);
         renodx::utils::log::w("[Ryse DLSS] ", rendering.problem);
       } else {
         renodx::utils::log::i("[Ryse DLSS] Rendering Resolution ", GetCvar(rendering.width), "x", GetCvar(rendering.height),
-                              ", Native Upscaling ", GetCvar(rendering.native_res), " (RT_RenderScene ", details, ")");
+                              ", Native Upscaling ", GetCvar(rendering.native_res), ", Fullscreen ", GetCvar(rendering.fullscreen),
+                              ", Fullscreen Window ", GetCvar(rendering.fullscreen_window), " (RT_RenderScene ", details, ")");
         // The last session ended with the addon's: the game's own comes from ReShade.ini.
         if (saved) {
           rendering.controlling = true;
@@ -3204,7 +3216,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         // The display's exact aspect ratio: steps of its reduced ratio (16x9 at 4K; the HDR addon upgrades only textures
         // of that ratio, v20: 2227x1253 stayed 8-bit), each axis rounded where the steps are too coarse. At least the
         // game's minimum (512x300: it renders smaller sizes at that). Below the display size only with Native Upscaling
-        // (else the game changes the display mode).
+        // (else the game changes the display mode) and not windowed.
         const float scale = (mode == AAMode::DLAA ? 1.f : ModeScale(mode));
         const uint32_t divisor = std::gcd(display_width, display_height);
         std::array<int, 2> mode_size;
@@ -3223,8 +3235,17 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           };
         }
         const bool full = mode_size[0] == static_cast<int>(display_width) && mode_size[1] == static_cast<int>(display_height);
-        rendering.native_off = !full && GetCvar(rendering.native_res) == 0;
-        const std::array<int, 2> desired = (rendering.native_off ? rendering.game_size : mode_size);
+        // Windowed the back buffer is the Rendering Resolution: a smaller one shrank the window, and the next mode size
+        // (of the smaller back buffer) shrank it again, down to the minimum. The game's own size there, as chosen in
+        // its menu.
+        const bool windowed = GetCvar(rendering.fullscreen) == 0 && GetCvar(rendering.fullscreen_window) == 0;
+        if (windowed != rendering.windowed) {
+          rendering.windowed = windowed;
+          renodx::utils::log::i("[Ryse DLSS] ",
+                                (windowed ? "Windowed: the game's own Rendering Resolution" : "Fullscreen: the mode's Rendering Resolution"));
+        }
+        rendering.native_off = !full && !windowed && GetCvar(rendering.native_res) == 0;
+        const std::array<int, 2> desired = ((windowed || rendering.native_off) ? rendering.game_size : mode_size);
         if (desired != rendering.pending) {
           rendering.pending = desired;
           rendering.pending_presents = 0;
@@ -3237,8 +3258,11 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           set(rendering.game_size);
           rendering.controlling = false;
           save({});
-        } else if (rendering.pending_presents >= SETTLE_PRESENTS && (!rendering.controlling || desired != now)) {
+        } else if (rendering.pending_presents >= SETTLE_PRESENTS
+                   && (!rendering.controlling || desired != now || rendering.target != now)) {
           if (!rendering.controlling) save(rendering.game_size);
+          // A size of the game's own that is the desired one (windowed: its menu's) becomes the target too: the LOD bias
+          // and the vegetation pin follow it, and a later size of its own equal to an older target still counts as its own.
           if (desired != now) {
             set(desired);
           } else {
@@ -3533,6 +3557,9 @@ inline void DrawAntiAliasing(bool advanced) {
   if (mode != AAMode::OFF) {
     if (!rendering.problem.empty()) {
       ImGui::TextWrapped("The addon does not set the Rendering Resolution: %s.", rendering.problem.c_str());
+    } else if (rendering.windowed && ModeScale(mode) < 1.f) {
+      ImGui::TextWrapped("Windowed: the game renders at the window size (it upscales only in fullscreen), so this mode runs at "
+                         "100%% like DLAA. Fullscreen for the render scale.");
     } else if (rendering.native_off) {
       ImGui::TextWrapped("Turn on Native Upscaling in the game's options: DLSS renders below the display resolution only with it.");
     }
@@ -3585,7 +3612,7 @@ inline void DrawAntiAliasing(bool advanced) {
   }
   ImGui::TextWrapped("Presets: E is the last CNN model, K the first transformer, M and L the second; L is the heaviest and in Ryse looks like M (the default).");
   ImGui::TextWrapped("The AA modes replace the game's TAA pass (and its SMAA) with the RenoDX helper's upscaler (renodx-tw-dlaa64.exe). "
-                     "Below 100%% they set the game's Rendering Resolution for the mode (any size; needs Native Upscaling on; each change "
+                     "Below 100%% they set the game's Rendering Resolution for the mode (any size; needs Native Upscaling on and fullscreen; each change "
                      "resizes the game's textures) and the result goes through the game's post effects (sharpening, film grain, lens "
                      "flares) at the display resolution, in place of the game's upscale. The game's own Rendering Resolution comes back "
                      "with AA mode Off.");

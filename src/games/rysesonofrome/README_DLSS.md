@@ -115,8 +115,10 @@ Part of the one Ryse add-on since the rym_ merge round (2026-11-15): `graphics.h
   display check resizes the targets (a short hitch). Set once a mode's size stayed unchanged for 30 presents (the
   Custom slider), again whenever the game sets its own (its menu), back to the game's own with AA Off; stops if the
   game keeps setting its own. Below the display size only with Native Upscaling on (else the game would change the
-  display mode). The game's own is kept in ReShade.ini (`GameRenderWidth` / `GameRenderHeight`) while the addon's is
-  set and restored on the next start if the game ended with the addon's. Sizes keep the display's exact aspect ratio
+  display mode) and in fullscreen (`r_Fullscreen` or `r_FullscreenWindow`, renderer +0xb838 / +0xf538, as the game's
+  display check at +0x16FAF60 decides its native upscale): windowed, the back buffer and the window are the Rendering
+  Resolution, so the addon keeps the game's own there. The game's own is kept in ReShade.ini (`GameRenderWidth` /
+  `GameRenderHeight`) while the addon's is set and restored on the next start if the game ended with the addon's. Sizes keep the display's exact aspect ratio
   (steps of its reduced ratio, 16x9 at 4K: Quality 2560x1440, Balanced 2224x1251, Ultra Quality 2960x1665; the HDR
   addon upgrades only textures of that ratio, v20: 2227x1253 stayed 8-bit and clipped HDR), at least the game's
   minimum (it renders smaller sizes at 512x300: 544x306 at 4K, Custom 14%). The jitter uses 8 x (display / render)^2
@@ -965,3 +967,19 @@ shaders' bytecode (when an addon keeps it). Found the sun shadow mask's cascade 
   skipped the game's dispatch, so the HDR addon's pass after the lighting never ran: the Light Bounce (HDR fix49) was
   never added. The addon now swaps its shader into the game's dispatch (replayed, the game's shader put back after), so
   the HDR addon's passes before and after it run (its ray tracing, contact shadows, Light Bounce).
+
+## Windowed mode keeps its size (2026-11-16)
+
+- Fix (ATN, DLSS Custom 85%): after switching to windowed the window shrank every 2 s (ReShade.log ResizeBuffers
+  3264x1836, 2768x1557 ... 544x306, each 0.85x the last). The mode's size came from the back buffer, but windowed the
+  game has no native upscale (its display check upscales only with `r_FullscreenNativeRes` and `r_Fullscreen` or
+  `r_FullscreenWindow`): the window and the back buffer became the smaller size, and the next mode size was taken from
+  that. Windowed (both 0) the addon now keeps the game's own Rendering Resolution (the window's size from its menu), so
+  every mode renders at the window size there (as DLAA); fullscreen and `r_FullscreenWindow` borderless keep the
+  mode's scale. A size the game sets that equals the desired one also becomes the addon's target (the texture LOD bias
+  and the vegetation pin follow it). The overlay says so in windowed mode below 100%; ReShade.log
+  `[Ryse DLSS] Windowed: ...` / `Fullscreen: ...` at each switch, and the startup line has `Fullscreen` and
+  `Fullscreen Window`.
+- Check: windowed at 85% stays one size (no ResizeBuffers after the switch beyond the game's own); a new resolution
+  in windowed takes that size; back to fullscreen 3840x2160 renders at 3264x1836 again; `r_FullscreenWindow=1`
+  (system.cfg) keeps 3840x2160 with the mode's size.
