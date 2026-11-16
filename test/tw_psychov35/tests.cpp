@@ -20,8 +20,7 @@
 //    reaches its clip, for fire, sky blue and 48 hues, Hue Clip 0 to 1 (sky to 2): what the default comes from. Rome II's
 //    own chain too (t00 EE1DA45C -> t01 850AEE44, Rendering Mode 3: its SDR curve is on xyY luminance, then each channel
 //    clipped, not Attila's curve per channel; an identity curve as Attila's, black 10^-4, white 1), and Thrones of
-//    Britannia's (its t00 8BF6B657 -> t01 D0FAF089, Thrones' builds). 4b: Rome II's toe,
-//    PsychoV35 over SDR at 1 / 5 / 18% grey and 48 hues (luminance, OkLab chroma).
+//    Britannia's (its t00 8BF6B657 -> t01 D0FAF089, Thrones' builds).
 // 5. The same for the other games' kinds of stock curve (hue_curves.hlsl: a luminance curve then each channel clipped,
 //    or a curve on each channel), PsychoV35 right after Hue Clip as their shaders call it. Its WH3 form agrees with part
 //    4's WH3 (1.00); WH2's own t00 (curve 6: its anchored handoff, at burns 0.1, 0.3 and 0.5) too (1.00); WH1's tone
@@ -39,8 +38,8 @@
 // 7. Gamma Correction in every mode (Rome II, Warhammer I / II / III, Troy, Pharaoh: twattila/frame_gamma.hlsli) on each
 //    one's hdr_to_screen t01 (WH3: t00) against 242d6101's: off and Rendering Mode SDR the same picture, on the 2.2
 //    display's decode within Peak (TestGammaCorrection). WH3 at the game's gamma 2.0.
-// 8. Report: PsychoV35's toe against Vanilla below white (Attila, Thrones of Britannia, Warhammer III): Recommended
-//    against Rendering Mode SDR, grey in shadows and mid tones and colour at equal lightness (ReportToe).
+// 8. Report: PsychoV35's toe against Vanilla below white (Attila, Thrones of Britannia, Rome II, Warhammer III):
+//    Recommended against Rendering Mode SDR, grey in shadows and mid tones and colour at equal lightness (ReportToe).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -1311,42 +1310,6 @@ static void ReportHue(const Chain& chain) {
   }
 }
 
-// 4b. Rome II's toe: PsychoV35 (Hue Clip 0.8, HUE_CLIP_DEFAULT) against its SDR picture at 1 / 5 / 18% of white (Paper
-// White = the SDR picture's white): grey's luminance and the 48 hues' luminance and OkLab chroma, V35 over SDR.
-static void ReportRome2Toe(const Chain& chain) {
-  constexpr std::array<float, 3> LEVELS = {0.01f, 0.05f, 0.18f};
-  std::vector<Float4> scene(WIDTH * HEIGHT, Float4{0.f, 0.f, 0.f, 1.f});
-  for (UINT level = 0; level < LEVELS.size(); ++level) {
-    for (UINT x = 0; x < 49; ++x) {
-      const Float3 c = (x == 0) ? Float3{1.f, 1.f, 1.f} : Hue(static_cast<float>((x - 1) / 2) * 15.f, ((x - 1) % 2 == 0) ? 0.8f : 0.95f);
-      const float scale = LEVELS[level] / Luminance(c);
-      scene[level * WIDTH + x] = {c[0] * scale, c[1] * scale, c[2] * scale, 1.f};
-    }
-  }
-  const auto sdr = RunRome2(chain, scene, 0.f, 0.f);
-  const auto v35 = RunRome2(chain, scene, 3.f, 0.8f);
-  std::printf("4b. Rome II's toe, PsychoV35 over its SDR picture (x 1.00 = the same):\n"
-              "    of white   grey's luminance   hues' luminance (mean, min-max)   hues' OkLab chroma, mean: SDR -> PsychoV35\n");
-  for (UINT level = 0; level < LEVELS.size(); ++level) {
-    const size_t row = level * WIDTH;
-    double luminance_sum = 0, chroma_sdr = 0, chroma_v35 = 0;
-    float luminance_low = 1e9f, luminance_high = 0.f;
-    for (UINT x = 1; x < 49; ++x) {
-      const float luminance = Luminance(v35[row + x]) / Luminance(sdr[row + x]);
-      const Float3 lab_v35 = OkLab(v35[row + x]);
-      const Float3 lab_sdr = OkLab(sdr[row + x]);
-      luminance_sum += luminance;
-      chroma_sdr += std::hypot(lab_sdr[1], lab_sdr[2]);
-      chroma_v35 += std::hypot(lab_v35[1], lab_v35[2]);
-      luminance_low = std::min(luminance_low, luminance);
-      luminance_high = std::max(luminance_high, luminance);
-    }
-    std::printf("    %7.0f%%   x %.3f            x %.3f (%.3f-%.3f)              %.4f -> %.4f\n", LEVELS[level] * 100.f,
-                Luminance(v35[row]) / Luminance(sdr[row]), luminance_sum / 48.0, luminance_low, luminance_high, chroma_sdr / 48.0,
-                chroma_v35 / 48.0);
-  }
-}
-
 // 8. PsychoV35's toe against Vanilla below white ///////////////////////////////////////////////////////////////////
 
 // Attila's and Thrones' Recommended (PsychoV35 at its defaults, Hue Clip 40; Warhammer III's: Hue Clip 100, its t00 at
@@ -1379,6 +1342,8 @@ static void ReportToe(const Chain& chain) {
          return RunAttila(chain, scene, si, false);
        }},
       {"Thrones of Britannia, identity S-curve", [&](float mode) { return RunThrones(chain, scene, ThronesInjection(mode, 1.f)); }},
+      // Rome II's Recommended: Hue Clip 0.8 (its HUE_CLIP_DEFAULT 80), the identity curve (RunRome2).
+      {"Rome II, identity curve", [&](float mode) { return RunRome2(chain, scene, mode, (mode == 0.f) ? 0.f : 0.8f); }},
       {"Warhammer III, burn 0.3", [&](float mode) {
          auto si = Wh3Injection(mode, 1.f);
          si.hue_clip = 1.f;
@@ -1791,7 +1756,6 @@ int main(int argc, char** argv) {
                        &shaders["th_t00"], &shaders["th_t01"]};
   if (!report_only) TestPsychoV35(chain);
   ReportHue(chain);
-  ReportRome2Toe(chain);
   ReportToe(chain);
   if (!report_only) TestRuse(ruse_post);
   if (!report_only) {
