@@ -72,6 +72,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -165,7 +166,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator 03:3x: lg_ / rrf_ / sk2_ / survey merged + pushe
 - CORRECTION (lg_): Rome II / WH1 / WH2 / Troy / Pharaoh have NO Gamma Correction ... | an agent AFTER THE RESTART (step 1b)
 - Attila / Thrones 2.2 GC in HDR: ATN's in-game look (scene, UI, flares, video, FG ... | ATN
-- AFTER THE RESTART, in order (nothing of this started before it): 1. Build all (b ... | coordinator PROGRESS 11-16 (after the restart 03:1x
+- AFTER THE RESTART, in order (nothing of this started before it): 1. Build all (b ... | coordinator Expeditions run g1/run_epic_041035 (menu scene, 
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
@@ -1434,6 +1435,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         -Bend (game / Bend / Bend+GI / GI), divinity2 r1b run.ps1 -Ini / -CycleStart. ATN doing the window-switch tests by
         hand (Attila, Thrones, WH1, WH2, Tales, Ryse, R.U.S.E.). R.U.S.E. test hooks: twattila/test_hooks.hpp can't be
         included there (rt_scene.hpp pulls Attila's light_bounce shaders): reverted, ini + restarts instead.
+        03:4x WINDOW-SWITCH TESTS (ATN by hand, menu, fullscreen <-> windowed / borderless + a resolution change): NO CRASH
+        in Attila, Thrones, WH1, WH2, Tales, Ryse, R.U.S.E. Logs: tools/tw/round_notes/winswitch_1116 (no 0x80070005; R.U.S.E.
+        5x "Flip swapchain already exists" for the proxy's new chain at each Reset, SetColorSpace1(1) after: ATN to confirm
+        HDR). No opt-in needed. Ryse windowed: the window shrank 0.85x every 2 s (render scale applied to the back buffer
+        the game then sizes the window to): ryw_ fix d52aa32e merged 6e1c247b (windowed = the game's own size, scale only
+        fullscreen / borderless; window model 145 PASS), ryse fix58 installed; ATN re-checks windowed. ATN reset Attila's
+        Graphics 2 of 2 by mistake: ReShade.ini restored from backups/20261115_134847 (unchanged since 11-14 18:07; reset
+        copy in winswitch_1116/attila_ReShade.ini.after_reset).
+        Ryse run r0/run_r1rays_034623 (ATN's save, 3 cycles, 18 shots): every change applied; Ryse runs at its 60 fps cap so
+        Time Each Pass totals stay ~16.8 ms (the file is overwritten: only the last state kept). REDO the per-state GPU cost
+        with PresentMon GPU busy + per-state timing copies (overnight, keys load). Owner: coordinator
+        Tales run g1g2/run_035823 (ATN's save outside the town; rays off): GPU busy game 4.80 / Bend 5.10 / Bend+GT-VBGI 5.40
+        / GT-VBGI 5.09 ms; NO shots (schedule had none; fixed: each segment shoots the one before). ATN's new save
+        SaveData_006 (made during the run, moved aside) put back. REDO the look shots overnight (keys). Owner: coordinator
+        Expeditions run g1/run_epic_041035 (menu scene, ATN's wish: heavier): GPU busy 8.34 / Bend 9.23 / Bend+GI 9.72 /
+        GI 8.84 / back 8.35 ms; 5 shots, traces + timings per state.
       - [ ] In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), Shogun 2 highlights (V35 top
         now reaches Peak), WH2 with FXAA on; a trace that the DOF chain draws (Attila / Thrones / WH1) and its targets are
         16-bit; README lines for the fixes at release. Owner: next TW data runs / release round
