@@ -54,6 +54,10 @@ using Microsoft::WRL::ComPtr;
 // Global Illumination's strength (the graphics page's light_bounce_strength; 0: off): the rays' light bounce (One Bounce)
 // or the paths' (ReSTIR GI), and with them Path-Traced Ambient.
 static float light_bounce_strength = 0.f;
+// Skip the Game's Shadow Maps (Experimental, off): under Ray-Traced Shadows, this frame traced before the casters (at
+// DownsampleDepth), nothing is drawn into the sun's shadow atlas (R1 T1: 705 draws, 0.331 ms of GPU); its only reader
+// there is the shadow filter the rays replace.
+static float skip_shadow_maps = 0.f;
 
 // The sun's shadow filters (one a ShadowQuality: PCSS, unfiltered, VSM), each writing the RGBA8 mask the sun pass reads.
 constexpr std::array<uint32_t, 3> SHADOW_FILTER_SHADERS = {0x8F114E47, 0x7697084B, 0x1C0323E3};
@@ -146,6 +150,46 @@ struct State {
   bool failed = false;
 };
 static State state;
+// The sun's shadow atlas (the shadow filter's t1; R1: R32F 2048 x 4096, its casters' render target), learned at the
+// filter's draw and held so its address stays its own; the draws while it is the bound render target are skipped under
+// Skip the Game's Shadow Maps.
+static ComPtr<ID3D11Resource> shadow_atlas;
+static std::atomic<uintptr_t> shadow_atlas_address = 0;
+static std::atomic_bool skipping_casters = false;
+
+// Render targets bound: the sun's shadow atlas under Skip the Game's Shadow Maps with this frame's traced sun skips the
+// draws into it until the next bind.
+inline void OnBindTargets(reshade::api::command_list*, uint32_t count, const reshade::api::resource_view* targets, reshade::api::resource_view) {
+  bool skip = false;
+  const uintptr_t atlas = shadow_atlas_address.load(std::memory_order_relaxed);
+  if (skip_shadow_maps != 0.f && atlas != 0 && count != 0 && targets[0].handle != 0) {
+    ComPtr<ID3D11Resource> resource;
+    reinterpret_cast<ID3D11View*>(targets[0].handle)->GetResource(resource.GetAddressOf());
+    if (reinterpret_cast<uintptr_t>(resource.Get()) == atlas) {
+      bool sun_shadows = false;
+      {
+        const std::unique_lock lock(state.mutex);
+        sun_shadows = state.settings.sun_shadows;
+      }
+      skip = sun_shadows && twattila::rt_scene::Visibilities()[0] != nullptr;
+    }
+  }
+  skipping_casters.store(skip, std::memory_order_relaxed);
+}
+
+inline bool OnCasterDraw(reshade::api::command_list*, uint32_t, uint32_t, uint32_t, uint32_t) {
+  return skipping_casters.load(std::memory_order_relaxed);
+}
+
+inline bool OnCasterDrawIndexed(reshade::api::command_list*, uint32_t, uint32_t, uint32_t, int32_t, uint32_t) {
+  return skipping_casters.load(std::memory_order_relaxed);
+}
+
+inline bool OnCasterDrawIndirect(reshade::api::command_list*, reshade::api::indirect_command type, reshade::api::resource, uint64_t, uint32_t,
+                                 uint32_t) {
+  return (type == reshade::api::indirect_command::draw || type == reshade::api::indirect_command::draw_indexed)
+         && skipping_casters.load(std::memory_order_relaxed);
+}
 
 // A G-buffer draw: five targets, gBuffer1 (R32F linear depth) at rt1, the depth written, rt0 unblended; its pixel shader's
 // alpha test (rt_core's SceneCoverage), its vertex shader skinned or not.
@@ -408,6 +452,17 @@ constexpr auto OnShadowFilter = []<typename Context>(Context& command) -> renodx
   ID3D11DeviceContext* context = nullptr;
   ComPtr<ID3D11DeviceContext1> context1;
   if (!NativeContext(command.cmd_list, &context, &context1)) return {};
+  // The atlas it reads (t1), for Skip the Game's Shadow Maps from the next frame on.
+  {
+    ComPtr<ID3D11ShaderResourceView> atlas_view;
+    context->PSGetShaderResources(1, 1, atlas_view.GetAddressOf());
+    ComPtr<ID3D11Resource> atlas;
+    if (atlas_view) atlas_view->GetResource(atlas.GetAddressOf());
+    if (atlas && reinterpret_cast<uintptr_t>(atlas.Get()) != shadow_atlas_address.load(std::memory_order_relaxed)) {
+      shadow_atlas = atlas;
+      shadow_atlas_address.store(reinterpret_cast<uintptr_t>(atlas.Get()), std::memory_order_relaxed);
+    }
+  }
   Trace(context, context1.Get(), 0);
   bool sun_shadows = false;
   std::array<UINT, 2> size;
@@ -734,6 +789,10 @@ inline void Install() {
                                                                  .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   renodx::utils::command_action::Register(internal::OnFog, {.shader_hash = FOG_SHADER,
                                                             .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindTargets);
+  reshade::register_event<reshade::addon_event::draw>(internal::OnCasterDraw);
+  reshade::register_event<reshade::addon_event::draw_indexed>(internal::OnCasterDrawIndexed);
+  reshade::register_event<reshade::addon_event::draw_or_dispatch_indirect>(internal::OnCasterDrawIndirect);
 }
 
 inline void Uninstall() {
@@ -743,6 +802,10 @@ inline void Uninstall() {
   renodx::utils::command_action::Unregister(internal::OnSsao);
   renodx::utils::command_action::Unregister(internal::OnSsaoBlur);
   renodx::utils::command_action::Unregister(internal::OnFog);
+  reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindTargets);
+  reshade::unregister_event<reshade::addon_event::draw>(internal::OnCasterDraw);
+  reshade::unregister_event<reshade::addon_event::draw_indexed>(internal::OnCasterDrawIndexed);
+  reshade::unregister_event<reshade::addon_event::draw_or_dispatch_indirect>(internal::OnCasterDrawIndirect);
   twattila::rt_scene::UninstallScene();
 }
 
@@ -779,6 +842,8 @@ inline void Release(reshade::api::device* device) {
     state.kept_frame.Reset();
     state.bounce = {};
     state.failed = false;
+    internal::shadow_atlas_address.store(0, std::memory_order_relaxed);
+    internal::shadow_atlas.Reset();
   }
   twattila::rt_scene::OnDestroyDevice(device);
 }

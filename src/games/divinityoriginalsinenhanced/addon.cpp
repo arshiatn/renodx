@@ -1261,6 +1261,16 @@ void ConfigureAddon() {
       .max = 4.f,
       .format = "%.2f",
   });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSkipShadowPass",
+      .binding = &divinity::ray_tracing::skip_shadow_maps,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Skip the Game's Shadow Maps (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "With ray-traced shadows: nothing is drawn into the game's sun shadow maps, the rays replace them. Faster.",
+      .labels = {"Off", "On"},
+  });
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     // The helper's opacity micromaps over the game's cut-out masks: off until a run shows them in this game.

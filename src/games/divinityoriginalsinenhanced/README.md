@@ -57,7 +57,9 @@ Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); 
   with their cut-out); the frame is traced at DownsampleDepth (0xEB741AE5: the G-buffer done, before SSAO and the
   shadow casters; else at the shadow filter or the sun pass). Ray-Traced Shadows replace the sun's shadow filter
   (CascadedPCSS / Unfiltered / VSM are left out; `d1_rt_shadow` writes the mask the sun pass and the forward materials
-  read). Ray-Traced AO is drawn over the SSAO
+  read); Skip the Game's Shadow Maps (Experimental, off) leaves out every draw into the sun's shadow atlas while the
+  frame was traced before them (R1 T1: 705 draws, 0.331 ms of GPU; the atlas's only reader in R1's traces is the filter
+  the rays replace). Ray-Traced AO is drawn over the SSAO
   result (`d1_rt_ambient`), so the sun pass and the forward materials read the rays' AO alone (the game's SSAO must
   stay on). Ray Reconstruction gets the G-buffer guides (`d1_rt_guides`). The RT/PT preset is Attila's.
   Global Illumination (Strength, off by default; the rays' One Bounce or the paths' ReSTIR GI, Experimental): before
