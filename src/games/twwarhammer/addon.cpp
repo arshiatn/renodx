@@ -51,6 +51,7 @@
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
+#include "../twwarhammer2/modded_auto_exposure.hpp"
 #include "../twwarhammer2/particle_smoothing.hpp"
 #include "../twwarhammer2/shadow_cascades.hpp"
 #include "../twattila/psycho35_settings.hpp"
@@ -439,30 +440,6 @@ void OnDestroyAtlasLitDevice(reshade::api::device* device) {
   state.device = nullptr;
 }
 
-// Modded Auto Exposure (Experimental, off): the game meters its exposure on the CPU from compute_luma_stats 96BCFCBB's
-// minimum / maximum / sum (ATN's traces: clear_luma_stats 166E783A, then 96BCFCBB, the buffer copied out after it; one buffer
-// for every frame of a device). With the row on, the sum it still holds at the clear (last frame's) is copied into `sum` first,
-// and our 96BCFCBB (shaders/autoexposure00) reads it at t1 to cap the metered maximum.
-struct LumaLastSum {
-  std::shared_mutex mutex;
-  ID3D11Device* device = nullptr;  // its buffer's (compared only)
-  Microsoft::WRL::ComPtr<ID3D11Buffer> sum;
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> view;
-  bool logged = false;
-};
-LumaLastSum luma_last_sum;
-
-// Its buffer's device (nullptr: the addon's end, DetachAddon).
-void OnDestroyLumaSumDevice(reshade::api::device* device) {
-  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
-  auto& state = luma_last_sum;
-  const std::unique_lock lock(state.mutex);
-  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
-  state.view.Reset();
-  state.sum.Reset();
-  state.device = nullptr;
-}
-
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
@@ -541,63 +518,25 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0x7AA39EE9u, 0x4D96DAB5u, 0xF9870DE2u, 0xE7A82FC2u, 0x53E74A97u}) {
     custom_shaders[hash].on_draw = [](auto*) { return !reflection_passes_skipped; };
   }
-  // Modded Auto Exposure: last frame's sum copied out of the luma statistics before the game's clear, then bound at our
-  // 96BCFCBB's t1 (nothing there in ATN's traces) and unbound after it.
+  // Modded Auto Exposure (twwarhammer2/modded_auto_exposure.hpp): last frame's sum copied out of the luma statistics
+  // before the game's clear 166E783A, then bound at our 96BCFCBB's t1 and unbound after it.
   custom_shaders[0x166E783A].on_draw = [](auto* cmd_list) {
-    if (!IsModdedAutoExposureEnabled()) return true;
-    auto* native = twattila::rt_scene::internal::NativeContext(cmd_list);
-    if (native == nullptr) return true;
-    Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> stats_view;
-    native->CSGetUnorderedAccessViews(0, 1, stats_view.GetAddressOf());
-    if (!stats_view) return true;
-    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
-    stats_view->GetResource(resource.GetAddressOf());
-    Microsoft::WRL::ComPtr<ID3D11Buffer> stats;
-    if (FAILED(resource.As(&stats))) return true;
-    D3D11_BUFFER_DESC stats_desc = {};
-    stats->GetDesc(&stats_desc);
-    if (stats_desc.ByteWidth < 12) return true;
-    Microsoft::WRL::ComPtr<ID3D11Device> device;
-    native->GetDevice(device.GetAddressOf());
-    auto& state = luma_last_sum;
-    const std::unique_lock lock(state.mutex);
-    if (state.device != device.Get()) {
-      state.view.Reset();
-      state.sum.Reset();
-      state.device = nullptr;
-      const D3D11_BUFFER_DESC desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
-                                      .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
-      const D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX,
-                                                         .BufferEx = {.FirstElement = 0, .NumElements = 4, .Flags = D3D11_BUFFEREX_SRV_FLAG_RAW}};
-      if (FAILED(device->CreateBuffer(&desc, nullptr, state.sum.GetAddressOf()))
-          || FAILED(device->CreateShaderResourceView(state.sum.Get(), &view_desc, state.view.GetAddressOf()))) {
-        state.view.Reset();
-        state.sum.Reset();
-        return true;
-      }
-      state.device = device.Get();
-    }
-    const D3D11_BOX sum_bytes = {.left = 8, .top = 0, .front = 0, .right = 12, .bottom = 1, .back = 1};
-    native->CopySubresourceRegion(state.sum.Get(), 0, 0, 0, 0, stats.Get(), 0, &sum_bytes);
-    if (!std::exchange(state.logged, true)) {
-      renodx::utils::log::i("[Total War] First run: Modded Auto Exposure: last frame's luma sum kept for the metered maximum.");
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::OnClear(cmd_list);
     }
     return true;
-  };
-  static constexpr auto bind_luma_sum = [](reshade::api::command_list* cmd_list, bool bind) {
-    if (!IsModdedAutoExposureEnabled()) return;
-    auto* native = twattila::rt_scene::internal::NativeContext(cmd_list);
-    if (native == nullptr) return;
-    auto& state = luma_last_sum;
-    const std::shared_lock lock(state.mutex);
-    ID3D11ShaderResourceView* view = bind ? state.view.Get() : nullptr;
-    native->CSSetShaderResources(1, 1, &view);  // t1: t_luma_last_sum
   };
   custom_shaders[0x96BCFCBB].on_draw = [](auto* cmd_list) {
-    bind_luma_sum(cmd_list, true);
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::BindLastSum(cmd_list, true);
+    }
     return true;
   };
-  custom_shaders[0x96BCFCBB].on_drawn = [](auto* cmd_list) { bind_luma_sum(cmd_list, false); };
+  custom_shaders[0x96BCFCBB].on_drawn = [](auto* cmd_list) {
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::BindLastSum(cmd_list, false);
+    }
+  };
   // The point lights' shaders: ours only while the rays are bound (RaysShader above).
   PointLightRays::Take(&custom_shaders);
   LinearPointLightRays::Take(&custom_shaders);
@@ -1273,7 +1212,7 @@ void BuildRuntimeData() {
 
 
     // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
-    // Attila's rows (Experimental, off): the metered maximum capped at last frame's average (shaders/autoexposure00, LumaLastSum;
+    // Attila's rows (Experimental, off): the metered maximum capped at last frame's average (shaders/autoexposure00, twwarhammer2/modded_auto_exposure.hpp;
     // test/tw_warhammer_shaders part 25).
     new renodx::utils::settings::Setting{
         .key = "auto_exposure_highlight_protection",
@@ -2562,7 +2501,7 @@ bool AttachAddon() {
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 1.f);
   // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's.
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
-  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyLumaSumDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
   for (const uint32_t shader_hash : ATLAS_SUN_SHADERS) {
     renodx::utils::command_action::Register(
         OnSunReplaceMaps, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -2655,8 +2594,8 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(OnSunReplaceMaps);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
   OnDestroyAtlasLitDevice(nullptr);
-  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyLumaSumDevice);
-  OnDestroyLumaSumDevice(nullptr);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
+  tw::modded_auto_exposure::OnDestroyDevice(nullptr);
   reshade::unregister_event<reshade::addon_event::destroy_device>(PointLightRays::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(LinearPointLightRays::OnDestroyDevice);
   twattila::engine_tests::StopAtStart(&at_start_stop);
