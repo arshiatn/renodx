@@ -56,10 +56,11 @@ struct ShaderInjectData {
 #define TONEMAP_PSYCHO35 4.f
 #define TONEMAP_MODE (SI.tonemap_type)
 #define HDR (TONEMAP_MODE == TONEMAP_SDR ? 0.f : 1.f)
-#define HDR_PEAK (SI.peak_white_nits / SI.diffuse_white_nits)
+// Peak over Paper White, never under 1: the sliders allow Peak 400 with Paper White 500.
+#define HDR_PEAK max(SI.peak_white_nits / SI.diffuse_white_nits, 1.f)
 // Output SDR: the HDR modes fitted into an SDR display (Peak 1, BT.709).
 #define DIVINITY_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
-#define DIVINITY_PEAK (DIVINITY_SDR_OUTPUT ? 1.f : max(HDR_PEAK, 1.f))
+#define DIVINITY_PEAK (DIVINITY_SDR_OUTPUT ? 1.f : HDR_PEAK)
 // Scene white over UI white; SDR output: both the display's white.
 #define HDR_INTSCALING (DIVINITY_SDR_OUTPUT ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)
 
