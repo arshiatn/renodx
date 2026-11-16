@@ -339,16 +339,18 @@ twattila::rt_scene::Sliders rt_sliders;
 // copy, the first of them, for the frame.
 float rays_skip_reflection_passes_row = 1.f;
 bool reflection_passes_skipped = false;
-// Rays' AO Alone (Experimental, off; Warhammer III's way): the rays' AO in place of the game's SSAO, not on top of it. The SSAO's
-// one reader is the sun draws' t_ssao red (the census; rt_ambient_combine multiplies the rays' in): while the rays feed it (this
-// frame's trace or the last: these passes come before it), its four passes are left out and the collect's output, what the
-// sun reads, cleared to open (test part 15).
-float rays_ao_alone_row = 0.f;
+// The rays' AO in place of the game's SSAO and GT-VBAO, never on top of them (ATN 2026-11-16; Warhammer III's way, no row: a
+// saved RayTracedAOAlone is ignored). The SSAO's one reader is the sun draws' t_ssao red (the census; rt_ambient_combine
+// multiplies the rays' in): while the rays feed it (this frame's trace or the last: these passes come before it), its four
+// passes are left out and the collect's output, what the sun reads, cleared to open (test part 15).
 bool SkipGameSsao() {
   const auto& runtime = twattila::rt_scene::internal::runtime;
-  return rays_ao_alone_row != 0.f && runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
+  return runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
          && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
 }
+// GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone; under the paths the
+// game's SSAO stays in t_ssao, as when the page turned GT-VBAO off with them).
+bool bitmask_ao = false;
 // Light Through Banners: the sails (as the rays, Attila's sails; part 10: SV_Position first) and the banners with their row.
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{
     {.hash = 0xE4B46D0E},
@@ -465,7 +467,7 @@ void BuildRuntimeData() {
   // game's AO stays, never an unwritten one.
   custom_shaders[0xE3DA9A8D].on_draw = [](auto* cmd_list) {
     if (SkipGameSsao()) return false;
-    if (shader_injection.ssao_mode < 1.f) return true;
+    if (!bitmask_ao) return true;
     return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
                                                false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
   };
@@ -1798,15 +1800,15 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   reflection_passes_skipped = false;
+  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
+  bitmask_ao = shader_injection.ssao_mode >= 1.f && !rt_settings.ambient_occlusion && !rt_settings.path_ambient;
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
-  const bool bitmask_ao = shader_injection.ssao_mode >= 1.f;
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
       (bitmask_ao && shader_injection.ssao_temporal != 0.f) ? static_cast<float>(++ao_frame % 64) : 0.f;
   twattila::ao_filter::Update(swapchain, {.temporal = bitmask_ao && shader_injection.ssao_temporal != 0.f,
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
-  twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
   rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
@@ -1854,7 +1856,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
-                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.",
+                  "RTAO: from rays through the scene, in place of the game's. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
     .specular_occlusion_label = "Ray-Traced Specular Occlusion (Experimental)",
     .water_caustics_label = "Water Caustics (Experimental)",
@@ -2195,7 +2197,7 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
   // Ray-Traced Water Reflections' rows shown: the water pass at F2CCEF86.
   twattila::rt_scene::internal::water_pass = true;
   settings.push_back(new renodx::utils::settings::Setting{
@@ -2218,16 +2220,6 @@ void ConfigureAddon() {
       .tooltip = "Rippling light on river and lake beds in battles. 0: off.",
       .max = 2.f,
       .format = "%.2f",
-  });
-  settings.push_back(new renodx::utils::settings::Setting{
-      .key = "RayTracedAOAlone",
-      .binding = &rays_ao_alone_row,
-      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-      .default_value = 0.f,
-      .label = "Rays' AO Alone (Experimental)",
-      .section = twattila::feature_settings::AA_SECTION,
-      .tooltip = "The rays' ambient occlusion in place of the game's SSAO, not on top of it: lighter shade in corners.\n"
-                 "Leaves out the game's SSAO (a little faster).",
   });
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedSkipGameReflections",
@@ -2377,8 +2369,7 @@ void ConfigureAddon() {
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .rays_preset_as_attila = true,
-                                             .lights_own_row = true,
-                                             .rays_replace_ao = false});
+                                             .lights_own_row = true});
   // Skip the Shadow Maps here: the water and the forward-lit units take the rays' shadow (SHADOW_READER_SHADERS).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedSkipCascades") {

@@ -1,5 +1,19 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
+
+- **Ray-Traced AO replaces the game's SSAO and GT-VBAO** (ATN: never on top of them): the former Rays' AO Alone row
+  (Experimental, off) is now always on and gone, a saved value ignored, as Warhammer III's. While the rays feed the sun's
+  `t_ssao`, the game's four SSAO passes are left out and its collect's output cleared to open, so the sun reads the rays'
+  AO alone (the AO reader census: the sun draws only). The page's AO method keeps GT-VBAO's setting under the rays (as
+  Attila's): GT-VBAO isn't drawn under Ray-Traced or Path-Traced AO; under Path-Traced AO the game's SSAO still occludes
+  the sun's cube reflection, as before.
+- Proven offline: test/tw_warhammer_shaders part 15 (the cleared target gives the combine the traced visibility exactly;
+  the combine's in-place path keeps the AO's other channels bit for bit; CF0C5118 / 230F2241 read t_ssao's red only), and
+  the dump: all 30 sun draws with an AO slot read only its red.
+- In game: a battle with Ray-Traced AO: corners lighter than before (no SSAO under the rays' AO), no frame without AO when
+  turning the camera; GT-VBAO and the game's SSAO unchanged without rays.
+
 ### Gamma Correction in every mode (2026-11-16; built only, not run in game)
 
 - **Gamma Correction** (same row, on by default) now also acts in the HDR modes, as Attila's and Thrones': the game's
