@@ -80,6 +80,11 @@ bool IsPsychoV35Mode() {
   return shader_injection.hdr == 3.f;
 }
 
+// Output HDR10 or scRGB (not SDR), as Attila's.
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != 2.f;
+}
+
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, a luminance curve then the clip).
 constexpr float HUE_CLIP_DEFAULT = 80.f;
 
@@ -560,6 +565,13 @@ void BuildRuntimeData() {
         .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
     },
+    // Page 1's first line, the full-download note after it (Attila's order).
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "Use these in-game settings: Gamma 22 and Brightness 10.",
+        .section = "General",
+        .tint = 0xFFD23C,
+    },
     twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
                                   [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
     // Gamma Correction //////////////////////////////////////////////////////////////////////////////////////
@@ -596,13 +608,7 @@ void BuildRuntimeData() {
     //     .section = "Peak",
     //     .tooltip = "3 rectangles within a large one.\n\n- Left: Not Visible.\n- Middle: Barely Visible.\n- Right: Easily Visible.\n\n(Ofc, you can always set lower to personal pref.)",
     // },
-    
-    new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::TEXT,
-        .label = "Use these in-game settings: Gamma 22 and Brightness 10.",
-        .section = "General",
-        .tint = 0xFFD23C,
-    },
+
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
@@ -1114,7 +1120,7 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 1.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput(); },
     },
     new renodx::utils::settings::Setting{
         .key = "video_dithering",
@@ -1126,7 +1132,7 @@ void BuildRuntimeData() {
         .tooltip = "Fine noise that hides banding in the brightened videos.\n"
                    "Only with Video AutoHDR above 0.",
         .labels = {"Off", "On"},
-        .is_enabled = [] { return IsHDRMode() && shader_injection.video_autohdr > 0.f; },
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput() && shader_injection.video_autohdr > 0.f; },
     },
     
 
