@@ -552,6 +552,12 @@ void BuildRuntimeData() {
         .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
     },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "Use these in-game settings: Gamma 22 and Brightness 10.",
+        .section = "General",
+        .tint = 0xFFD23C,
+    },
     twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
                                   [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
     // Gamma Correction //////////////////////////////////////////////////////////////////////////////////////
@@ -588,13 +594,6 @@ void BuildRuntimeData() {
     //     .section = "Peak",
     //     .tooltip = "3 rectangles within a large one.\n\n- Left: Not Visible.\n- Middle: Barely Visible.\n- Right: Easily Visible.\n\n(Ofc, you can always set lower to personal pref.)",
     // },
-    
-    new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::TEXT,
-        .label = "Use these in-game settings: Gamma 22 and Brightness 10.",
-        .section = "General",
-        .tint = 0xFFD23C,
-    },
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
