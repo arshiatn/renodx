@@ -95,6 +95,8 @@ constexpr uint32_t RAYS_RETRY_FRAMES = 60;
 // Without Rays Replace Shadow Maps the object shaders take the rays only where they found the sun blocked (below this
 // visibility: their umbra), the game's shadow-map factor elsewhere.
 constexpr float OBJECT_BLOCKED = 1.f / 16.f;
+// The game's sun shadow-map pass's pixel shaders (the census's "shadow map render" family; sorted).
+constexpr std::array<uint32_t, 8> SHADOW_MAP_SHADERS = {0x338AA7E8, 0x55DC36D4, 0x74025FE8, 0x88D38D93, 0x8EF277DA, 0x920A6850, 0x976EA15C, 0xE046E148};
 
 using Microsoft::WRL::ComPtr;
 
@@ -114,6 +116,8 @@ struct State {
   // The Rays Replace Shadow Maps row (live): the rays in place of the game's shadow-map term; off, the darker of the two
   // on the ground and the rays' umbra over the game's factor on objects (until a run proves the rays hold the maps' casters).
   float replace_maps = 0.f;
+  // With it, the game's sun shadow map's render target (its pass's first draw's), whose draws are skipped.
+  uint64_t shadow_map_target = 0;
   // The Rays Off Above row (live; the map table): over this eye height (metres) no trace, the game's shadows; 0 none.
   // The last trace point's eye over it; the row's value and the eye's height lines this start (a few, never one a frame).
   float rays_ceiling = 0.f;
@@ -348,6 +352,29 @@ inline void SetTracing(bool tracing, const std::string& why_not) {
 // frame or the next, the one that takes them.
 inline bool SceneWanted() {
   return state.ground && !state.above_ceiling && bridge::state.frame + 1 >= state.rays_frame;
+}
+
+// Rays Replace Shadow Maps: whether a D3D9 draw goes into the game's sun shadow map (its target learned from the first
+// draw of SHADOW_MAP_SHADERS into a target that isn't frame-sized) while the rays stand in for every reader the census
+// found (the ground mask's pre-pass and the 642 patched object and water shaders): last frame's rays shown, this frame's
+// recording whole (its trace shown), the eye under Rays Off Above. The game's clear and resolves stay: a frame whose
+// trace fails shades from the cleared map; the next draws the map again.
+inline bool SkipsShadowMapDraw(reshade::api::command_list* cmd_list) {
+  const auto& bridge = bridge::state;
+  if (state.replace_maps == 0.f || !state.objects || bridge.render_target == 0u || bridge.render_target_is_frame_sized) return false;
+  if (state.shadow_map_target == 0u) {
+    if (!std::ranges::binary_search(SHADOW_MAP_SHADERS, renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader))) {
+      return false;
+    }
+    state.shadow_map_target = bridge.render_target;
+    reshade::log::message(reshade::log::level::info,
+                          std::format("[R.U.S.E.] Rays Replace Shadow Maps: the sun shadow map's pass found (target 0x{:x}), skipped while the rays "
+                                      "are shown",
+                                      state.shadow_map_target)
+                              .c_str());
+  }
+  return bridge.render_target == state.shadow_map_target && state.visibility_frame != UINT32_MAX && state.visibility_frame + 1 == bridge.frame
+         && replay::state.previous_whole && !state.above_ceiling;
 }
 
 // The ground's sun shadows once a frame (the rays, Bend's march or both) into the ground mask, before the main pass draws
@@ -1285,6 +1312,7 @@ inline void ReleaseHost() {
   state.mask_frame = UINT32_MAX;
   state.prepass_depth = 0;
   state.prepass_target = 0;
+  state.shadow_map_target = 0;
   state.failed = false;
 }
 

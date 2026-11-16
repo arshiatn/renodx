@@ -56,6 +56,8 @@
 //    tries nothing and moves the try 60 frames on; one "not tracing" log line in all of it.
 //    Rays Off Above at 600 m, the eye at 672 m: no try and nothing recorded in 70 frames, no "not tracing" line; at 0 m
 //    the next frame tries; a line with the eye's height at each change.
+//    Rays Replace Shadow Maps' skip (SkipsShadowMapDraw), its target set as learned (the mock list has no shader hash):
+//    a draw into it skipped, kept under each of its 7 conditions.
 // H2 (renodx-tw-dlaa64.exe beside this exe; argv[2] dlss / fsr / xess):
 // 7. Evaluate on a synthetic aliased frame (the ground quad's hard edges drawn with each frame's jitter) for 24 frames:
 //    a result each frame after the first, written back into the scene; flat pixels within 3 codes of the aliased
@@ -1619,6 +1621,41 @@ int main(int argc, char** argv) {
                 "tracing\" lines %td\n",
                 high_tries, high_recorded, back ? 1 : 0, ceiling_lines, count_lines("[R.U.S.E.] Ray tracing: not tracing"));
     CHECK(was_above && high_tries == 0 && high_recorded == 0 && back && ceiling_lines == 2 && count_lines("[R.U.S.E.] Ray tracing: not tracing") == 0);
+    // Rays Replace Shadow Maps' skip (SkipsShadowMapDraw), its conditions, the target set as learned (learning asks the
+    // bound pixel shader's hash: the mock list has none): its draws skipped while last frame's rays were shown, this
+    // frame's recording whole and the eye under Rays Off Above; none into another target, a frame-sized one, with the row
+    // off or without the object shadows (the object shaders read the map then).
+    {
+      rays.replace_maps = 1.f;
+      rays.objects = true;
+      state.render_target = reinterpret_cast<uint64_t>(scratch_surface.Get());
+      state.render_target_is_frame_sized = false;
+      const auto skips = [&] { return ruse::ray_tracing::SkipsShadowMapDraw(&command_list); };
+      rays.shadow_map_target = state.render_target;
+      rays.visibility_frame = state.frame - 1;
+      replay.previous_whole = true;
+      const bool skipped_draw = skips();
+      size_t kept_draws = 0;
+      const auto kept_when = [&](auto* field, auto value) {
+        const auto old = *field;
+        *field = value;
+        kept_draws += skips() ? 0u : 1u;
+        *field = old;
+      };
+      kept_when(&rays.visibility_frame, state.frame - 2);
+      kept_when(&replay.previous_whole, false);
+      kept_when(&rays.above_ceiling, true);
+      kept_when(&state.render_target, reinterpret_cast<uint64_t>(main_surface.Get()));
+      kept_when(&state.render_target_is_frame_sized, true);
+      kept_when(&rays.replace_maps, 0.f);
+      kept_when(&rays.objects, false);
+      std::printf("Rays Replace Shadow Maps: a draw into the map skipped %d, kept under each of 7 conditions %zu\n", skipped_draw ? 1 : 0, kept_draws);
+      CHECK(skipped_draw && kept_draws == 7);
+      rays.replace_maps = 0.f;
+      rays.objects = false;
+      rays.shadow_map_target = 0;
+      rays.visibility_frame = UINT32_MAX;
+    }
     rays.ground = false;
     rays.proxy_queue = nullptr;
     state.ready = false;

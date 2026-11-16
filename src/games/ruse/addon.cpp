@@ -159,6 +159,7 @@ void OnBridgePushConstants(reshade::api::command_list*, reshade::api::shader_sta
 bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t, uint32_t first_index, int32_t vertex_offset,
                          uint32_t) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return false;
+  if (ruse::ray_tracing::SkipsShadowMapDraw(cmd_list)) return true;
   if (ruse::bridge::state.post_surface) {
     ruse::bridge::KeepHudless(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()));
   }
@@ -178,6 +179,7 @@ bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_co
 // Frame generation: the UI's first draw when it isn't indexed (the HUD-less image before it).
 bool OnBridgeDraw(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return false;
+  if (ruse::ray_tracing::SkipsShadowMapDraw(cmd_list)) return true;
   if (ruse::bridge::state.post_surface) {
     ruse::bridge::KeepHudless(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()));
   }
@@ -1597,7 +1599,7 @@ void ConfigureAddon() {
       .default_value = 0.f,
       .label = "Rays Replace Shadow Maps (Experimental)",
       .section = SHADOWS_SECTION,
-      .tooltip = "On: the ray-traced shadows alone, in place of the game's shadow maps.\n"
+      .tooltip = "On: the ray-traced shadows alone, in place of the game's shadow maps (their pass skipped: less GPU time).\n"
                  "Off: both, the darker of the two (no shadow of the game's is lost).",
       .is_enabled = [] { return ruse::ray_tracing::state.ground; },
   });
