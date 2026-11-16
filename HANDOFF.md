@@ -226,7 +226,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - w3f_ not done: vanilla_exact over every WH3 shader + a lensflare00 control (~20 ... | next WH3 round, shs_
 - s2r_ not done: Rome Remastered Modded Auto Exposure (Feral's AE compute not iden ... | next Shogun 2 / Rome Remastered rounds and data runs
 - gpu2_ next wins: (1) paths at 128 registers (split trace / shade, or SASS livene ... | next GPU round, next ReSTIR round, tools owner
-- CALL-SITE PASS (csp_, running): credits::Methods in Thrones / WH3 / Rome Remaste ... | csp_, per-game agents
 - Shared leftovers (shs_ / ryf_): rt_core OnAnyDraw replays every draw while trace ... | next shared round, next WH3 round, release round
 - ryf_ not done: row 9 e_GsmLodsNum under the rays' sun (trace: which lod is the c ... | next Ryse round / data run
 - tpf_ not done: Torch / Fire Shadows on the 7 other point-light PS per game (14 W ... | next Troy / Pharaoh round, data run
@@ -1653,7 +1652,10 @@ heading text are in HANDOFF_ARCHIVE.md)
           trap, RT AO in place of SSDO's amount, specular occlusion once, r_SSII off under Light Bounce, video AutoHDR off at
           SDR output (tw_ryse_video 0), vendor fallback, Reflex with any AA + limit gates, Lean on (RAYS_RESET), Characters
           RT Range (Exp off), tw_ryse_patterns 18/18, credits, AA Off without per-frame jitter diagnostics, README fix59.
-        - [ ] CALL-SITE PASS (csp_, running): credits::Methods in Thrones / WH3 / Rome Remastered / Shogun 2 / Ryse / Tales /
+        - [x] DONE daa56e6a7 (csp_, 8 commits; every add-on built, page dumps: only About rows differ; largest gate use 4 of 8
+          (Ryse), a full table now logs a warning, tw_draw_dispatch case 10; DLSS_ADDON -> NGX_HEADER; run scripts read
+          <game>_frame_trace.txt; page_dump drivers dump_ta / dump_exr / page_dump_ry_body.h fixed for the renamed rows,
+          backups *.bak_csp). CALL-SITE PASS (csp_, running): credits::Methods in Thrones / WH3 / Rome Remastered / Shogun 2 / Ryse / Tales /
           Expeditions; credits::DLSS_ADDON stale; fast MAX_GATES 8 headroom (Ryse adds 2) with a check; run scripts read
           <game>_frame_trace.txt. Rome II / WH1 / WH2 / Troy / Pharaoh / R.U.S.E. told to do Methods + pass_timing in their
           rounds. Owner: csp_, per-game agents
