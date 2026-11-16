@@ -484,6 +484,8 @@ bool bitmask_ao = false;
 // the collect (only its dispatch is skipped).
 bool bitmask_collect_drawn = false;
 bool bitmask_collect_last_frame = false;
+// Ray tracing's (twattila/rt_scene.hpp); here for the hooks BuildRuntimeData sets (the water row at FD885574).
+twattila::rt_scene::Sliders rt_sliders;
 // Skip the Game's Reflection Passes (on by default): decided at the hierarchical depth's copy for the frame (BuildRuntimeData).
 float rays_skip_reflection_passes_row = 1.f;
 bool reflection_passes_skipped = false;
@@ -539,7 +541,19 @@ void BuildRuntimeData() {
   // chains' downscale and blurs (9733C5E0 / 7C650AD9 / BFD99540) go with the march (test/tw_warhammer_shaders part 27). The
   // preconvolve copy 07966BBA stays: the resolve reads its mip 0's alpha (the lit scene's sun shadow) under the rays too.
   // Decided at the hierarchical depth's copy, the chain's first pass, for the frame.
+  // Ray-Traced Water Reflections (Experimental, off; Warhammer's water pass): the battle water 8686041E draws into the
+  // G-buffer (the sun draws' t5-t7) and the depth after the sun draws (ATN's traces, e.g. trace_21 lines 3487 / 3805 / 3808),
+  // so the frame's rays left from the bed under it; the copy FD885574 reads that depth at t0: the rays traced there leave
+  // from the water (its positions, and the guides again: RewriteSunGuides).
   custom_shaders[0xFD885574].on_draw = [](auto* cmd_list) {
+    if (rt_sliders.water_reflections != 0.f && twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) {
+      if (auto* native = twattila::rt_scene::internal::NativeContext(cmd_list); native != nullptr) {
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> depth;
+        native->CSGetShaderResources(0, 1, depth.GetAddressOf());
+        const twattila::rt_scene::internal::ComputeState kept(native);
+        twattila::rt_scene::Reflections(native, depth.Get());
+      }
+    }
     reflection_passes_skipped = rays_skip_reflection_passes_row != 0.f && !twattila::rt_scene::OnReflectionMarch(cmd_list);
     return !reflection_passes_skipped;
   };
@@ -1596,8 +1610,6 @@ std::atomic<bool> at_start_stop = false;
 HMODULE addon_module_handle = nullptr;
 twattila::feature_settings::SssSliders sss_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
-// Ray tracing's (twattila/rt_scene.hpp).
-twattila::rt_scene::Sliders rt_sliders;
 // Texture LOD Bias on All Textures (Graphics 1 of 2, Experimental): the trilinear samplers too
 // (texture_lod_bias.hpp SetWrappingTrilinear).
 float lod_bias_trilinear_row = 0.f;
@@ -2358,6 +2370,8 @@ void ConfigureAddon() {
       .tooltip = "The GPU's time of every pass of the next frame into warhammer2_pass_timing.txt next to the game's exe.",
       .on_change = [] { twattila::pass_timing::Request(); },
   });
+  // Ray-Traced Water Reflections' rows shown: the water pass at FD885574.
+  twattila::rt_scene::internal::water_pass = true;
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedSkipGameReflections",
       .binding = &rays_skip_reflection_passes_row,
@@ -2458,13 +2472,14 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Pharaoh's and Warhammer III's), ATN's RT/PT preset as the defaults of what the methods
-  // leave, then Settings Mode's pages. Only what this game hooks: no water pass for the rays (its rows stay hidden).
+  // leave, then Settings Mode's pages. The rays' water pass at FD885574 (water_pass: its rows shown).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it, Sprite Soldier and Far Tree Shadows and Smoke Shadows start off (Experimental: no
-  // game run has shown them here yet), Specular Occlusion too; RT/PT turns them on, as Attila's (rays_preset_as_attila).
+  // game run has shown them here yet), Specular Occlusion and Ray-Traced Water Reflections too; RT/PT turns them on, as
+  // Attila's (rays_preset_as_attila).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
-        || setting->key == "RayTracedSpecularOcclusion") {
+        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedWaterReflections") {
       setting->default_value = 0.f;
     } else if (setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
@@ -2578,6 +2593,8 @@ bool AttachAddon() {
   // Rows saved at an old default, cleared once: Sprite Soldier Shadows was saved hidden at RT/PT's 1 (SetRaysPresetDefaults)
   // until the sprite soldiers were in the rays; now Experimental, off.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSpriteShadows"});
+  // Ray-Traced Water Reflections was saved hidden at RT/PT's 1 before the water pass (it did nothing): now Experimental, off.
+  twattila::graphics_page::ClearSavedRows(2, {"RayTracedWaterReflections"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
   // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).
@@ -2598,6 +2615,9 @@ bool AttachAddon() {
   rt_host.cascade_target = [](const D3D11_TEXTURE2D_DESC& desc) {
     return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
   };
+  // Ray-Traced Water Reflections (FD885574): the guides again from the sun draw's G-buffer channels, the water drawn into
+  // them since (TW_HOST's RewriteGuides reads PS slots 0-2: the reflection pass is compute).
+  rt_host.rewrite_guides = twattila::anti_aliasing::RewriteSunGuides;
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
   twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // Torch and Fire Shadows: the point lights (one instanced draw a frame, VS D2A0FF23 with PS D96A8DC3; its instances
