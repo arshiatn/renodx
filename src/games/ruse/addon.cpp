@@ -1988,6 +1988,7 @@ bool AttachAddon() {
   }
   if (ruse::ray_tracing::Shading()) {
     reshade::register_event<reshade::addon_event::copy_texture_region>(ruse::ray_tracing::OnCopyTextureRegion);
+    reshade::register_event<reshade::addon_event::clear_depth_stencil_view>(ruse::ray_tracing::OnClearDepthStencilView);
     reshade::register_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
   }
   if (ruse::bridge::state.gpu_sync) {
@@ -2045,6 +2046,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::bind_pipeline_states>(ruse::replay::OnBindPipelineStates);
   reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::replay::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(ruse::ray_tracing::OnCopyTextureRegion);
+  reshade::unregister_event<reshade::addon_event::clear_depth_stencil_view>(ruse::ray_tracing::OnClearDepthStencilView);
   reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
   if (ruse::bridge::state.gpu_sync) {
     renodx::utils::gpu_fence::Use(DLL_PROCESS_DETACH);

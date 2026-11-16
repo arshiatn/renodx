@@ -38,7 +38,8 @@
 // scene the draw replay captured (rt_core.hpp, a clip-space host on the DX11 proxy's device: InstallReplayedScene). The
 // ground's sun shadow is a screen-space mask: the pre-pass (the 32 terrain patches and the camera pass 0x88292FC6) draws
 // it, StretchRect copies it into a texture whose red the 110 terrain and 94 water pixel shaders read by screen position
-// and multiply into the sun's colour alone. Right after that copy, at the main pass's first draw: the pre-pass's depth
+// and multiply into the sun's colour alone. After that copy, before the main pass draws (with the game's AA off at its
+// clear of the pre-pass's depth, which it draws into too; else at its first draw): the pre-pass's depth
 // (INTZ) into the bridge's shared depth, the last frame's draws into the scene in this frame's camera (CaptureScene), the
 // trace, and the traced visibility into the mask's red in place of the game's shadow-map term (the pre-pass writes only
 // that term there; a frame without a trace keeps the game's).
@@ -911,8 +912,49 @@ inline void OnGuideDraw(reshade::api::command_list* cmd_list) {
   host->SetRenderState(D3DRS_COLORWRITEENABLE3, water ? 0xF : 0);
 }
 
+// The trace point, once a frame after the mask's copy and before the main pass draws: the ground's rows over the
+// pre-pass's depth, the patched shaders' textures, this frame's guides opened.
+inline void ShadeBeforeMainPass(reshade::api::command_list* cmd_list) {
+  state.traced_frame = bridge::state.frame;
+  auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
+  if (state.guides_bound) {
+    BindGuides(host, false);
+  }
+  if (ShadeGround(cmd_list)) {
+    BindTraced(host, true);
+  }
+  // This frame's guides from here to the bloom (the gather above read last frame's and the proxy waited for it).
+  if (state.guides && state.guide_water.host_surface != nullptr) {
+    for (IDirect3DSurface9* guide : {state.guide_albedo.host_surface.Get(), state.guide_normal.host_surface.Get(), state.guide_water.host_surface.Get()}) {
+      host->ColorFill(guide, nullptr, D3DCOLOR_ARGB(0, 0, 0, 0));
+    }
+    state.guides_frame = bridge::state.frame;
+    state.guides_closed = false;
+  }
+}
+
+// The game's AA off (MainRTAA 1x, the bridge's case): the main pass draws into the pre-pass's own depth and clears it
+// first (run_rn2_rt_084045's frame trace: 0x0C1E65C0 bound by both, cleared twice after the mask's copy), so the ground's
+// depth is there only until that clear, which ReShade reports before D3D9 runs it: the trace point then.
+inline bool OnClearDepthStencilView(reshade::api::command_list* cmd_list, reshade::api::resource_view depth_stencil, const float*, const uint8_t*,
+                                    uint32_t, const reshade::api::rect*) {
+  if (state.mask_frame != bridge::state.frame || state.traced_frame == bridge::state.frame || depth_stencil.handle != state.prepass_depth) {
+    return false;
+  }
+  // A clear may come between two of the game's scenes, and D3D9 draws only inside one: the trace point's passes in a
+  // scene of their own then (BeginScene fails inside one, changing nothing).
+  auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
+  const bool own_scene = SUCCEEDED(host->BeginScene());
+  ShadeBeforeMainPass(cmd_list);
+  if (own_scene) {
+    host->EndScene();
+  }
+  return false;
+}
+
 // Each scene draw (D3D9): the sun from the first pixel shader this frame that holds it (sun_shaders.h: the light's
-// direction, so toward the sun its negative), and the trace at the main pass's first draw after the mask's copy.
+// direction, so toward the sun its negative), and the trace point at the main pass's first draw after the mask's copy
+// when that pass has a depth of its own (the B0 trace's layout, the game's AA on); with the pre-pass's depth, its clear.
 inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
   auto& bridge = bridge::state;
   if (state.sun_frame != bridge.frame) {
@@ -953,21 +995,7 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
     }
   }
   if (state.mask_frame != bridge.frame || state.traced_frame == bridge.frame || bridge.depth_stencil == state.prepass_depth) return;
-  state.traced_frame = bridge.frame;
-  if (state.guides_bound) {
-    BindGuides(host, false);
-  }
-  if (ShadeGround(cmd_list)) {
-    BindTraced(host, true);
-  }
-  // This frame's guides from here to the bloom (the gather above read last frame's and the proxy waited for it).
-  if (state.guides && state.guide_water.host_surface != nullptr) {
-    for (IDirect3DSurface9* guide : {state.guide_albedo.host_surface.Get(), state.guide_normal.host_surface.Get(), state.guide_water.host_surface.Get()}) {
-      host->ColorFill(guide, nullptr, D3DCOLOR_ARGB(0, 0, 0, 0));
-    }
-    state.guides_frame = bridge.frame;
-    state.guides_closed = false;
-  }
+  ShadeBeforeMainPass(cmd_list);
 }
 
 // The game's present: rt_core's new frame (its AO rays off while the paths' ambient stands in for the occlusion).

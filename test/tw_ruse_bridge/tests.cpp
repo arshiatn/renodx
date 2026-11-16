@@ -29,6 +29,11 @@
 //    (RGBA16F too), each target's write mask holds, a blended draw (SRCALPHA / INVSRCALPHA: D3D9's one blend state)
 //    lerps the normal by the alpha (its w oC0's) and keeps the water's position whole (rgb / w, oC3.w 1), D3D11 reads
 //    what D3D9 wrote; unbound again after.
+// 10. The trace point (ray_tracing.hpp ShadeBeforeMainPass, GT-VBAO as its row): with the game's AA off the pre-pass and
+//    the main pass bind one depth and the main pass clears it after the mask's copy (run_rn2_rt_084045's frame trace,
+//    0x0C1E65C0): a main-pass draw (OnSceneDraw) never shades, the clear (OnClearDepthStencilView, outside a scene) does
+//    once over the ground's depth (test 6's occlusion exactly), nothing after D3D9's clear does again; with a main depth of
+//    its own (the B0 trace's layout) its clear doesn't, its first draw does.
 // H2 (renodx-tw-dlaa64.exe beside this exe; argv[2] dlss / fsr / xess):
 // 7. Evaluate on a synthetic aliased frame (the ground quad's hard edges drawn with each frame's jitter) for 24 frames:
 //    a result each frame after the first, written back into the scene; flat pixels within 3 codes of the aliased
@@ -908,6 +913,78 @@ int main(int argc, char** argv) {
       CHECK(shadowed >= 20 && lit > 1000);
     }
     rays.bend = false;
+
+    // 10. The trace point (GT-VBAO alone as its ground row).
+    ruse::ray_tracing::ReleaseHost();
+    const ComPtr<IDirect3DTexture9> main_target = MakeTarget(host, D3DFMT_A2R10G10B10);
+    const ComPtr<IDirect3DTexture9> main_depth = MakeTarget(host, INTZ, D3DUSAGE_DEPTHSTENCIL);
+    REQUIRE(main_target != nullptr && main_depth != nullptr);
+    const ComPtr<IDirect3DSurface9> main_surface = Level(main_target.Get());
+    const ComPtr<IDirect3DSurface9> main_depth_surface = Level(main_depth.Get());
+    bridge::OnInitDepthView(&host_device, {reinterpret_cast<uint64_t>(main_depth.Get())}, reshade::api::resource_usage::depth_stencil,
+                            reshade::api::resource_view_desc(reshade::api::resource_view_type::texture_2d, reshade::api::format::intz, 0, 1, 0, 1),
+                            {reinterpret_cast<uint64_t>(main_depth_surface.Get())});
+    const auto prepass_depth = reinterpret_cast<uint64_t>(depth_surface.Get());
+    const float far_depth = 1.f;
+    // A frame's pre-pass as the game draws it: its target and depth bound, the camera pass, the mask's copy, then the
+    // main pass's target bound with `main_depth_handle`.
+    const auto prepass = [&](uint64_t main_depth_handle) {
+      bridge::OnPresent(host);
+      rays.sun_frame = state.frame;  // the sun's shaders aren't drawn here
+      state.render_target = reinterpret_cast<uint64_t>(scratch_surface.Get());
+      state.depth_stencil = prepass_depth;
+      ruse::ray_tracing::OnCameraPass();
+      ruse::ray_tracing::OnCopyTextureRegion(&command_list, {state.render_target}, 0, nullptr, {reinterpret_cast<uint64_t>(scratch.Get())}, 0, nullptr,
+                                             reshade::api::filter_mode::min_mag_mip_linear);
+      state.render_target = reinterpret_cast<uint64_t>(main_surface.Get());
+      state.depth_stencil = main_depth_handle;
+    };
+    const auto main_draw = [&] {
+      host->BeginScene();
+      ruse::ray_tracing::OnSceneDraw(&command_list);
+      host->EndScene();
+    };
+    const auto occlusion_now = [&] { return ReadHost(host, rays.occlusion.host_surface.Get(), 4); };
+    // The game's AA off: one depth for both passes, the main pass's draws after its clear of it. Its draws never shade
+    // (the build of run_rn2_rt_084045 had only them: no trace); its clear (outside a scene here) does once, over the
+    // ground's depth; nothing after the clear does again.
+    prepass(prepass_depth);
+    main_draw();
+    const bool drawn_shaded = rays.traced_frame == state.frame;
+    ruse::ray_tracing::OnClearDepthStencilView(&command_list, {prepass_depth}, &far_depth, nullptr, 0, nullptr);
+    const bool cleared_shaded = rays.traced_frame == state.frame && rays.occlusion_frame == state.frame;
+    const bool same_at_clear = cleared_shaded && occlusion_now() == occlusion;
+    host->SetRenderTarget(0, main_surface.Get());
+    host->SetDepthStencilSurface(depth_surface.Get());
+    REQUIRE(SUCCEEDED(host->Clear(0, nullptr, D3DCLEAR_ZBUFFER, 0, far_depth, 0)));
+    host->SetDepthStencilSurface(nullptr);
+    const uint32_t shaded_frame = rays.occlusion_frame;
+    ruse::ray_tracing::OnClearDepthStencilView(&command_list, {prepass_depth}, &far_depth, nullptr, 0, nullptr);
+    main_draw();
+    const bool once = rays.occlusion_frame == shaded_frame && occlusion_now() == occlusion;
+    std::printf("Trace point, one depth for both passes: main-pass draw shaded %d, the clear shaded %d (the occlusion test 6's: %d), "
+                "nothing after it %d\n", drawn_shaded ? 1 : 0, cleared_shaded ? 1 : 0, same_at_clear ? 1 : 0, once ? 1 : 0);
+    CHECK(!drawn_shaded && cleared_shaded && same_at_clear && once);
+    // A main pass with its own depth (the B0 trace's layout): the clear of that depth isn't the trace point, its first
+    // draw is (the ground's depth drawn again: the clear above took it).
+    host->SetRenderTarget(0, scratch_surface.Get());
+    host->SetDepthStencilSurface(depth_surface.Get());
+    REQUIRE(SUCCEEDED(host->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0, far_depth, 0)));
+    host->SetRenderState(D3DRS_ZENABLE, TRUE);
+    host->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
+    DrawGround(host, ground_draw, flat_ps.Get(), ground, &VIEW_PROJECTION, VIEW_PROJECTION);
+    DrawGround(host, ground_draw, flat_ps.Get(), plateau, &VIEW_PROJECTION, VIEW_PROJECTION);
+    host->SetDepthStencilSurface(nullptr);
+    const auto own_depth = reinterpret_cast<uint64_t>(main_depth_surface.Get());
+    prepass(own_depth);
+    ruse::ray_tracing::OnClearDepthStencilView(&command_list, {own_depth}, &far_depth, nullptr, 0, nullptr);
+    const bool own_cleared_shaded = rays.traced_frame == state.frame;
+    main_draw();
+    const bool own_drawn_shaded = rays.traced_frame == state.frame && rays.occlusion_frame == state.frame && occlusion_now() == occlusion;
+    std::printf("Trace point, the main pass's own depth: its clear shaded %d, its first draw shaded (the same occlusion) %d\n",
+                own_cleared_shaded ? 1 : 0, own_drawn_shaded ? 1 : 0);
+    CHECK(!own_cleared_shaded && own_drawn_shaded);
+    bridge::OnDestroyDepthView(&host_device, {own_depth});
   }
 
   // 9. Guides.
