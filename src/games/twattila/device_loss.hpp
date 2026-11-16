@@ -8,6 +8,7 @@
 #include <d3d11.h>
 #include <dxgi.h>
 #include <windows.h>
+#include <wrl/client.h>
 
 #include <minidumpapiset.h>
 #include <psapi.h>
@@ -86,6 +87,17 @@ static bool resizing = false;  // the next create_swapchain is a ResizeBuffers
 static bool keep_game_desc = false;
 static reshade::api::swapchain_desc game_desc = {};
 static HWND native_flip_window = nullptr;  // the game itself asked for a flip chain for it
+// A game that makes a new chain for its window on the same live device (Divinity: Original Sin EE: 2-4 times a start and
+// at each window-mode change; WARP: test/tw_d1_swapchain, test/tw_device_loss): the flip chain the swapchain mod made
+// outlives the game's last Release while the immediate context binds its back buffer, and D3D11 destroys it only at
+// that context's next Flush; until then the window answers the next flip chain with 0x80070005. Opt-in (off: as
+// before): a flip chain's end unbinds the context's views (not ClearState: the game's samplers and shaders stay) and
+// flushes, and the window's next chain flushes again (the chain's last release comes after destroy_swapchain). A view
+// of the old back buffer still held elsewhere keeps the window all the same, and no reference count shows it (neither
+// the chain's nor the buffer's): no fallback is chosen ahead of CreateSwapChain.
+static bool release_flip_chains_before_recreate = false;
+static HWND released_flip_window = nullptr;           // destroy / create swap chain on the game's thread
+static ID3D11Device* released_flip_device = nullptr;  // not owned: cleared at its destroy_device
 static std::atomic<HWND> game_window = nullptr;
 static std::atomic_uint64_t last_present_tick = 0;
 static std::atomic_uint32_t present_thread = 0;
@@ -552,6 +564,10 @@ static void BeforeDestroyDevice(reshade::api::device* device) {
 static void OnDestroyDevice(reshade::api::device* device) {
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* native = reinterpret_cast<ID3D11Device*>(device->get_native());
+  if (released_flip_device == native) {
+    released_flip_device = nullptr;
+    released_flip_window = nullptr;
+  }
   native->AddRef();
   renodx::utils::log::i(std::format("[Total War] References on the game's device: {} as its end began, {} after the addon's releases.",
                                     references_at_destroy, native->Release()));
@@ -571,8 +587,32 @@ static void OnDestroyDevice(reshade::api::device* device) {
   if (last_device) StopWatch();
 }
 
-static void OnDestroySwapchain(reshade::api::swapchain*, bool resize) {
+static void OnDestroySwapchain(reshade::api::swapchain* swapchain, bool resize) {
   resizing = resize;
+  if (resize || !release_flip_chains_before_recreate || swapchain->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  auto* chain = reinterpret_cast<IDXGISwapChain*>(swapchain->get_native());
+  DXGI_SWAP_CHAIN_DESC chain_desc = {};
+  if (FAILED(chain->GetDesc(&chain_desc))
+      || (chain_desc.SwapEffect != DXGI_SWAP_EFFECT_FLIP_DISCARD && chain_desc.SwapEffect != DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL)) {
+    return;
+  }
+  auto* device = reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native());
+  Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+  device->GetImmediateContext(context.GetAddressOf());
+  ID3D11RenderTargetView* no_targets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+  ID3D11ShaderResourceView* no_resources[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+  ID3D11UnorderedAccessView* no_uavs[D3D11_PS_CS_UAV_REGISTER_COUNT] = {};
+  context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, no_targets, nullptr);
+  context->VSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->HSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->DSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->GSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->CSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->CSSetUnorderedAccessViews(0, D3D11_PS_CS_UAV_REGISTER_COUNT, no_uavs, nullptr);
+  context->Flush();
+  released_flip_window = chain_desc.OutputWindow;
+  released_flip_device = device;
 }
 
 static void OnInitSwapchain(reshade::api::swapchain*, bool) {
@@ -601,6 +641,14 @@ static bool BeforeSwapchainMod(reshade::api::device_api, reshade::api::swapchain
     }
   }
   if (!std::exchange(resizing, false)) {
+    // The window's last flip chain (release_flip_chains_before_recreate): destroyed at this Flush after its last release.
+    if (released_flip_device != nullptr && window == released_flip_window) {
+      Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+      released_flip_device->GetImmediateContext(context.GetAddressOf());
+      context->Flush();
+      released_flip_device = nullptr;
+      released_flip_window = nullptr;
+    }
     if (desc.present_mode == DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL || desc.present_mode == DXGI_SWAP_EFFECT_FLIP_DISCARD) {
       native_flip_window = window;
     }

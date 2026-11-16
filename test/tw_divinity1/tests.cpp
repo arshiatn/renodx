@@ -10,6 +10,7 @@
 //    Hable(W) for the live A / B / D) within 1%; the grey ramp never gets darker; finite; BT.2020 within Peak.
 //    Control (must fail): today's mode 1 (UC2 Extended + UpgradeToneMap + PsychoV30 on its result).
 //    Output SDR (2b): both modes within BT.709 0 - 1, grey still on the game's mid gray.
+//    Peak under Paper White (2c, 400 / 500): every HDR mode as at Peak = Paper White.
 // 3. Extended: equal to the game's Hable below its pivot (within 1e-3); fire (1, 0.4, 0.1) turns yellow / white above 1
 //    (G / R rises toward 1 as SDR's clip does), the per-channel shoulder.
 // 4. The grade alone (grade.hlsl, GradeAfterCurve): the stock's grade below 1 (ColorMatrix identity, saturation 1.97 and
@@ -234,6 +235,7 @@ static divinity::ShaderInjectData Injection(float mode, float peak_nits, float h
       .v35_highlights = 1.f, .v35_shadows = 1.f, .v35_contrast = 1.f, .v35_highlight_contrast = 1.f,
       .v35_shadow_contrast = 1.f, .v35_flare = 0.f, .v35_saturation = 1.f, .v35_dechroma = 0.f,
       .v35_highlight_saturation = 1.f, .v35_roll_off = 1.f, .v35_gamut_compression = 1.f, .ext_hue_clip = hue_clip,
+      .sun_shadow_softness = 1.f,
   };
 }
 
@@ -414,6 +416,24 @@ int main(int argc, char** argv) {
     }
     std::printf("2b. Output SDR, mode %.0f: BT.709 within 0 - 1 %d, grey on mid gray %d\n", mode, inside, mid_gray);
     CHECK(inside && mid_gray);
+  }
+
+  // 2c. Peak under Paper White (the sliders allow 400 with 500): every HDR mode as at Peak = Paper White (Peak over Paper
+  //     White never under 1; before, PsychoV30 and Pragmap got 0.8).
+  for (const float mode : {1.f, 2.f, 3.f, 4.f}) {
+    auto under = Injection(mode, 400.f, 0.7f);
+    under.diffuse_white_nits = 500.f;
+    auto equal = Injection(mode, 500.f, 0.7f);
+    equal.diffuse_white_nits = 500.f;
+    const Globals globals = MakeGlobals(ATMOSPHERES[0], 1.f, false);
+    const auto ours_under = Draw(addon.Get(), globals, under);
+    const auto ours_equal = Draw(addon.Get(), globals, equal);
+    float worst = 0.f;
+    for (size_t i = 0; i < ours_under.size(); ++i) {
+      for (int c = 0; c < 4; ++c) worst = std::max(worst, std::abs(ours_under[i][c] - ours_equal[i][c]));
+    }
+    std::printf("2c. Mode %.0f, Peak 400 / Paper White 500 against 500 / 500: largest difference %.3g\n", mode, worst);
+    CHECK(worst <= 1e-6f);
   }
 
   // 3. Extended's fire: G / R rises toward 1 above the clip.

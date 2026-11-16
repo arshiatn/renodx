@@ -44,6 +44,7 @@ struct ShaderInjectData {
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
 
   float ext_hue_clip;              // HDR (Extended)'s Hue Clip Emulation, 0 - 1
+  float sun_shadow_softness;       // the sun's PCSS light size x this, 1 the game's
 };
 
 #define SI shader_injection
@@ -56,10 +57,11 @@ struct ShaderInjectData {
 #define TONEMAP_PSYCHO35 4.f
 #define TONEMAP_MODE (SI.tonemap_type)
 #define HDR (TONEMAP_MODE == TONEMAP_SDR ? 0.f : 1.f)
-#define HDR_PEAK (SI.peak_white_nits / SI.diffuse_white_nits)
+// Peak over Paper White, never under 1: the sliders allow Peak 400 with Paper White 500.
+#define HDR_PEAK max(SI.peak_white_nits / SI.diffuse_white_nits, 1.f)
 // Output SDR: the HDR modes fitted into an SDR display (Peak 1, BT.709).
 #define DIVINITY_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
-#define DIVINITY_PEAK (DIVINITY_SDR_OUTPUT ? 1.f : max(HDR_PEAK, 1.f))
+#define DIVINITY_PEAK (DIVINITY_SDR_OUTPUT ? 1.f : HDR_PEAK)
 // Scene white over UI white; SDR output: both the display's white.
 #define HDR_INTSCALING (DIVINITY_SDR_OUTPUT ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)
 
@@ -74,6 +76,7 @@ struct ShaderInjectData {
 
 //extra
 #define GODRAYS SI.godrays
+#define SUN_SHADOW_SOFTNESS SI.sun_shadow_softness
 #define LOCAL_LIGHT_INTENSITY (HDR == 1.f ? SI.local_light_intensity : 1.f)
 #define PLAYER_LIGHT_INTENSITY (HDR == 1.f ? SI.player_light_intensity : 1.f)
 
