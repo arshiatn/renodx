@@ -97,7 +97,7 @@ struct Sliders {
   float batched_units = 1.f;       // Batched Unit Capture (games whose scene shaders have batch versions)
   float path_ser = 0.f;
   float sharc = 0.f;
-  float reuse_lean = 0.f;
+  float reuse_lean = 1.f;
   float reuse_near = 1.f;
   float light_importance = 0.f;
   float light_steady = 0.f;
@@ -2426,10 +2426,10 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .key = "RayTracedReuseLean",
           .binding = &sliders->reuse_lean,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Lean ReSTIR Reuse (Experimental)",
+          .default_value = 1.f,
+          .label = "Lean ReSTIR Reuse",
           .section = section,
-          .tooltip = "A faster ReSTIR GI for Path Tracing: the same look in tests.",
+          .tooltip = "A faster ReSTIR GI for Path Tracing: the same look.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
       },
