@@ -1579,7 +1579,7 @@ void ConfigureAddon() {
         .tooltip = "Bounced light: sunlit slopes, walls and fields light what lies beside them (costs GPU time).\n"
                    "Screen-Space: GT-VBGI on the ground. Ray-Traced: rays on the ground, buildings, units and trees.\n"
                    "Path-Traced: paths bring the sky's light in place of the game's flat ambient light, and its bounces.\n"
-                   "Ray-Traced and Path-Traced need Ray-Traced Ground Shadows (and Object Shadows for the objects).\n"
+                   "Ray-Traced and Path-Traced need Ray-Traced Ground Shadows.\n"
                    "Needs Anti-Aliasing at DLAA, FSR or XeSS. Restart after changing this setting.",
         .labels = {"Off", "Screen-Space", "Ray-Traced", "Path-Traced"},
         .is_global = true,
@@ -1590,7 +1590,9 @@ void ConfigureAddon() {
     // the ambient occlusion and the bounced light from one texel (each proved the game's with it at (1, 0, 0, 0)) replace
     // the ambient occlusion's; the occlusion rides in that texel (the rays', else GT-VBAO's, else 1).
     // Ray-Traced / Path-Traced: the helper's Light Bounce over the same texel; those terrain and object shaders also
-    // write the guides (oC1 / oC2), the objects' with O1's shadow in them (each proved the game's at (1, 0, 0, 0) and 1).
+    // write the guides (oC1 / oC2), the objects' with the shadow patch in them (each proved the game's at (1, 0, 0, 0)
+    // and s15's alpha 0): the objects too whatever Ray-Traced Object Shadows says (their shadow maps' factor then), so
+    // Path-Traced never leaves them the game's flat ambient beside the ground's paths.
     const int bounce = static_cast<int>(setting->GetValue());
     ruse::ray_tracing::state.bounce = ruse::bridge::state.enabled && bounce != 0;
     ruse::ray_tracing::state.traced_bounce =
@@ -1600,10 +1602,8 @@ void ConfigureAddon() {
       for (const auto& [hash, code] : ruse::ray_tracing::GROUND_LIGHT_GUIDE_SHADERS) {
         custom_shaders[hash] = {.crc32 = hash, .code = code};
       }
-      if (ruse::ray_tracing::state.objects) {
-        for (const auto& [hash, code] : ruse::ray_tracing::OBJECT_LIGHT_SHADERS) {
-          custom_shaders[hash] = {.crc32 = hash, .code = code};
-        }
+      for (const auto& [hash, code] : ruse::ray_tracing::OBJECT_LIGHT_SHADERS) {
+        custom_shaders[hash] = {.crc32 = hash, .code = code};
       }
     } else if (ruse::ray_tracing::state.bounce) {
       for (const auto& [hash, code] : ruse::ray_tracing::GROUND_LIGHT_SHADERS) {

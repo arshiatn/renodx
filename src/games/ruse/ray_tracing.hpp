@@ -805,7 +805,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   return true;
 }
 
-// The patched shaders' textures, read by VPOS (point, clamped: one texel a pixel): s15 the sun visibility (O1's object
+// The patched shaders' textures, read by VPOS (point, clamped: one texel a pixel): s15 the sun visibility (the object
 // shaders' shadow: the rays' where its alpha is 1, the R32F texture's), s14 the ambient
 // occlusion (the terrain's; with the bounce x it, yzw the light), s13 the reflection (the water's); white or
 // (1, 0, 0, 0) (the game's shading: alpha 0 keeps its shadow maps) unless `traced` this frame.
@@ -819,8 +819,11 @@ inline void BindTraced(IDirect3DDevice9* host, bool traced) {
     host->SetSamplerState(stage, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
     host->SetSamplerState(stage, D3DSAMP_SRGBTEXTURE, FALSE);
   };
-  if (state.objects) {
-    bind(15, (traced && state.visibility_frame == bridge::state.frame) ? state.visibility.host.Get() : state.unlit.Get());
+  // The object shaders with the shadow patch: O1's, or the object light set's with the rays' Light Bounce (the game's
+  // shadow maps there without O1).
+  if (state.objects || state.traced_bounce != 0) {
+    const bool shadowed = state.objects && traced && state.visibility_frame == bridge::state.frame;
+    bind(15, shadowed ? state.visibility.host.Get() : state.unlit.Get());
   }
   if (state.bounce) {
     bind(14, (traced && state.bounce_frame == bridge::state.frame) ? state.ground_light.host.Get() : state.unlit.Get());
@@ -892,7 +895,7 @@ inline void OnGuideDraw(reshade::api::command_list* cmd_list) {
     const auto found = std::ranges::lower_bound(table, pixel_shader, {}, &PatchedShader::hash);
     return found != table.end() && found->hash == pixel_shader;
   };
-  const bool lit = state.traced_bounce != 0 && (listed(GROUND_LIGHT_GUIDE_SHADERS) || (state.objects && listed(OBJECT_LIGHT_SHADERS)));
+  const bool lit = state.traced_bounce != 0 && (listed(GROUND_LIGHT_GUIDE_SHADERS) || listed(OBJECT_LIGHT_SHADERS));
   const bool water = state.traced_reflections && listed(WATER_REFLECTION_GUIDE_SHADERS);
   host->SetRenderState(D3DRS_COLORWRITEENABLE1, lit ? 0xF : 0);
   host->SetRenderState(D3DRS_COLORWRITEENABLE2, (lit || water) ? 0xF : 0);
