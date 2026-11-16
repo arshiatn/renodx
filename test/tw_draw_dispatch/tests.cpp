@@ -19,6 +19,8 @@
 //    this module goes on drawing; that late Unregister must move the epoch.
 // 9. A gate's module learns of a pipeline after command_action's init callback (view_share's order): stale until it
 //    calls fast::Invalidate(), then the same callbacks again.
+// 10. Gates full: every gate taken, one more SetGate is refused with a warning and its callback stays ungated (gated as
+//     never active while it acts, it would show a difference were the gate kept).
 // CONTROL: a gate that says "inactive" while its callback acts must show a difference.
 // The fast dispatch must have taken the commands it should (counted), else the comparison proves nothing.
 #include <windows.h>
@@ -31,6 +33,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "src/utils/command_action_fast.hpp"
@@ -50,13 +53,16 @@ constexpr const wchar_t* PARTNER_DLL = L"fast_draws_partner_amd64.dll";
 constexpr const wchar_t* PARTNER_DLL = L"fast_draws_partner_x86.dll";
 #endif
 
-// ---- ReShade: the exports the utilities call, the event lists, private data.
+// ---- ReShade: the exports the utilities call, the event lists, private data, the log's warnings.
 static std::array<std::vector<void*>, 512> event_lists;
+static std::vector<std::string> warnings;
 extern "C" __declspec(dllexport) const char* const NAME = "Draw dispatch test";
 extern "C" {
 __declspec(dllexport) bool ReShadeRegisterAddon(void*, uint32_t) { return true; }
 __declspec(dllexport) void ReShadeUnregisterAddon(void*) {}
-__declspec(dllexport) void ReShadeLogMessage(void*, int, const char*) {}
+__declspec(dllexport) void ReShadeLogMessage(void*, int level, const char* message) {
+  if (level == static_cast<int>(reshade::log::level::warning)) warnings.emplace_back(message);
+}
 __declspec(dllexport) bool ReShadeGetConfigValue(void*, void*, const char*, const char*, char*, size_t*) { return false; }
 __declspec(dllexport) void ReShadeSetConfigValue(void*, void*, const char*, const char*, const char*) {}
 __declspec(dllexport) void ReShadeRegisterEvent(api_event ev, void* callback) { event_lists[static_cast<size_t>(ev)].push_back(callback); }
@@ -178,6 +184,15 @@ constexpr auto SCALED_COMMAND = []<typename Context>(Context& context) -> action
 // CONTROL: gated as never active, yet it acts.
 constexpr auto LYING_COMMAND = []<typename Context>(Context&) -> action::CallbackResult<Context> {
   log_lines.emplace_back("lying");
+  return {};
+};
+
+// Case 10: the gates' fillers (a gate each: one type each) and the callback past the last gate, which acts while its
+// gate says never.
+template <size_t N>
+constexpr auto FILLER_COMMAND = []<typename Context>(Context&) -> action::CallbackResult<Context> { return {}; };
+constexpr auto OVERFLOW_COMMAND = []<typename Context>(Context&) -> action::CallbackResult<Context> {
+  log_lines.emplace_back("overflow");
   return {};
 };
 
@@ -512,7 +527,29 @@ int main() {
               differences);
   CHECK(stale_differences == 1u && differences == 0u);
 
-  std::printf("all: %zu commands, %zu callback lines, fast taken %zu (basic %zu), declined %zu, differences %zu\n", commands, callbacks_seen,
+  // 10. Gates full: fillers take every gate left (SCALED_COMMAND holds one), then OVERFLOW_COMMAND's is refused.
+  const size_t free_gates = fast::internal::MAX_GATES - fast::internal::shared.data->gate_count;
+  const auto fillers = std::make_index_sequence<fast::internal::MAX_GATES>{};
+  [&]<size_t... N>(std::index_sequence<N...>) {
+    (..., [&] {
+      if (N < free_gates) {
+        fast::SetGate(FILLER_COMMAND<N>, {.active = [](command_list*) { return false; }});
+      }
+    }());
+  }(fillers);
+  const size_t warnings_before = warnings.size();
+  CHECK(fast::internal::shared.data->gate_count == fast::internal::MAX_GATES);
+  action::Register(OVERFLOW_COMMAND, {.command_types = action::COMMAND_TYPE_DRAW_INDEXED});
+  fast::SetGate(OVERFLOW_COMMAND, {.active = [](command_list*) { return false; }});
+  for (int i = 0; i < 6; ++i) Command(list, static_cast<Kind>(i % 2));
+  std::printf("10. gates full: %zu of %zu taken, %zu warning (\"%s\"), differences %zu\n", fast::internal::shared.data->gate_count,
+              fast::internal::MAX_GATES, warnings.size() - warnings_before, warnings.empty() ? "" : warnings.back().c_str(), differences);
+  CHECK(warnings.size() == warnings_before + 1u && differences == 0u);
+  [&]<size_t... N>(std::index_sequence<N...>) { (fast::ClearGate(FILLER_COMMAND<N>), ...); }(fillers);
+  action::Unregister(OVERFLOW_COMMAND);
+  CHECK(fast::internal::shared.data->gate_count == fast::internal::MAX_GATES - free_gates);
+
+  std::printf("all:%zu commands, %zu callback lines, fast taken %zu (basic %zu), declined %zu, differences %zu\n", commands, callbacks_seen,
               fast_taken, taken_basic, fast_declined, differences);
 
   // CONTROL: a gate that lies.

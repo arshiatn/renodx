@@ -538,9 +538,13 @@ inline void SetGate(const Callback& callback, const Gate& gate) {
     const auto gates = std::span(data->gates.data(), data->gate_count);
     const size_t index = std::ranges::find(gates, callback_identity, &internal::GateEntry::callback) - gates.begin();
     if (index == data->gate_count) {
-      // Out of room the callback stays ungated: called on every command, as RunCallbacks does.
-      assert(data->gate_count < internal::MAX_GATES);
-      if (data->gate_count == internal::MAX_GATES) return;
+      // Out of room the callback stays ungated: called on every command, as RunCallbacks does (correct, only slower).
+      // MAX_GATES counts every module's gates and is part of SharedData's layout (a new size needs a new uuid).
+      if (data->gate_count == internal::MAX_GATES) {
+        reshade::log::message(reshade::log::level::warning,
+                              "utils::command_action fast dispatch: all gates taken, a command-wide callback stays ungated.");
+        return;
+      }
       ++data->gate_count;
     }
     data->gates[index] = {.callback = callback_identity, .gate = gate};

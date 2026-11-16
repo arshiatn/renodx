@@ -558,11 +558,10 @@ void ConfigureAddon() {
 
   settings.push_back(new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::TEXT,
-      .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
-               "and PsychoV35. UE Extended by Marat.",
+      .label = twattila::credits::Methods(talesofarise::hdr_only::SHIPPED_METHODS),
       .section = "About",
   });
-  for (const char* line : {twattila::credits::ACES, talesofarise::hdr_only::EFFECTS_CREDITS, twattila::credits::HELPER}) {
+  for (const char* line : {twattila::credits::ACES, twattila::credits::HELPER}) {
     settings.push_back(new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::TEXT,
         .label = line,
