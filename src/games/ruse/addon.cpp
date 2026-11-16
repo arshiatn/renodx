@@ -1781,6 +1781,7 @@ bool AttachAddon() {
   if (readable_depth_enabled) {
     reshade::register_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
     reshade::register_event<reshade::addon_event::init_resource_view>(ruse::bridge::OnInitDepthView);
+    reshade::register_event<reshade::addon_event::destroy_resource_view>(ruse::bridge::OnDestroyDepthView);
   }
   if (ruse::bridge::state.enabled || ruse::replay::state.enabled || ruse::ray_tracing::state.vbao) {
     reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
@@ -1847,6 +1848,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_resource>(OnLogResource);
   reshade::unregister_event<reshade::addon_event::create_resource>(OnCreateDepthResource);
   reshade::unregister_event<reshade::addon_event::init_resource_view>(ruse::bridge::OnInitDepthView);
+  reshade::unregister_event<reshade::addon_event::destroy_resource_view>(ruse::bridge::OnDestroyDepthView);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
   reshade::unregister_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
   reshade::unregister_event<reshade::addon_event::push_constants>(OnBridgePushConstants);

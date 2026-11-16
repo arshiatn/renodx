@@ -677,6 +677,17 @@ int main(int argc, char** argv) {
   host->GetVertexShaderConstantF(0, written.data(), 4);
   CHECK(std::memcmp(written.data(), VIEW_PROJECTION.data(), sizeof(written)) == 0);
   CHECK(!state.jitter_written);
+  // The scene's depth goes at the present (none left for the next frame's Evaluate), an INTZ depth with its view.
+  state.render_target_is_frame_sized = true;
+  bridge::OnDraw(&command_list);
+  CHECK(state.scene_depth == state.depth_stencil);
+  bridge::OnPresent(host);
+  CHECK(state.scene_depth == 0);
+  bridge::OnDestroyDepthView(&host_device, {state.depth_stencil});
+  CHECK(!bridge::IsSceneDraw());
+  register_depth();
+  state.render_target_is_frame_sized = false;
+  bridge::OnDraw(&command_list);
 
   // 6. GT-VBAO without the helper.
   {

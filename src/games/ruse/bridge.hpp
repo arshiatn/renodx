@@ -435,6 +435,10 @@ inline void OnInitDepthView(reshade::api::device* device, reshade::api::resource
   state.host_device = device;
 }
 
+inline void OnDestroyDepthView(reshade::api::device*, reshade::api::resource_view view) {
+  state.intz_depths.erase(view.handle);
+}
+
 // The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth.
 inline bool IsSceneDraw() {
   return state.render_target_is_frame_sized && state.intz_depths.contains(state.depth_stencil);
@@ -562,6 +566,7 @@ inline void OnPresent(IDirect3DDevice9* host) {
   KeepHudless(host);
   state.generation_ready = state.hudless_frame == state.frame && state.generation_frame == state.frame;
   state.in_scene = false;
+  state.scene_depth = 0;  // this frame's: the next Evaluate takes the next frame's scene draws' (none in a menu)
   ++state.frame;
   state.jitter = {Halton((state.frame % 8) + 1, 2) - 0.5f, Halton((state.frame % 8) + 1, 3) - 0.5f};
 }
