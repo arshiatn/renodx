@@ -643,10 +643,20 @@ int main(int argc, char** argv) {
   state.render_target_is_frame_sized = true;
   state.depth_stencil = reinterpret_cast<uint64_t>(depth_surface.Get());
   register_depth();
-  CHECK(bridge::IsSceneDraw());
   state.vertex_camera = VIEW_PROJECTION;
   state.jitter = {0.3125f, -0.2f};
   host->SetVertexShaderConstantF(0, VIEW_PROJECTION.data(), 4);
+  // The sprite atlas's draws (and the bloom's first pass) with the game's AA off: the pre-pass's frame-sized target and the
+  // scene's depth, a smaller viewport (run_rn2_rt_084045's frame trace: 2048 x 2048, 1920 x 1080): no scene draws, the
+  // game's c0-c3.
+  state.viewport_is_frame_sized = false;
+  CHECK(!bridge::IsSceneDraw());
+  bridge::OnDraw(&command_list);
+  std::array<float, 16> atlas_rows = {};
+  host->GetVertexShaderConstantF(0, atlas_rows.data(), 4);
+  CHECK(atlas_rows == VIEW_PROJECTION && !state.jitter_written);
+  state.viewport_is_frame_sized = true;
+  CHECK(bridge::IsSceneDraw());
   bridge::OnDraw(&command_list);
   std::array<float, 16> written = {};
   host->GetVertexShaderConstantF(0, written.data(), 4);
@@ -1077,6 +1087,7 @@ int main(int argc, char** argv) {
     state.camera_valid = true;
     state.pixel_texture_0 = reinterpret_cast<uint64_t>(scene.Get());
     state.depth_stencil = reinterpret_cast<uint64_t>(depth_surface.Get());
+    state.viewport_is_frame_sized = true;
     register_depth();
     constexpr float BACKGROUND = 0.2f;
     constexpr float FOREGROUND = 0.8f;

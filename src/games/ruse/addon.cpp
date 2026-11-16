@@ -131,6 +131,13 @@ void OnBridgeBindTargets(reshade::api::command_list* cmd_list, uint32_t count, c
       && desc.Width == back_buffer_width && desc.Height == back_buffer_height;
 }
 
+void OnBridgeBindViewports(reshade::api::command_list* cmd_list, uint32_t first, uint32_t count, const reshade::api::viewport* viewports) {
+  if (first != 0 || count == 0 || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return;
+  ruse::bridge::state.viewport_is_frame_sized = viewports[0].x == 0.f && viewports[0].y == 0.f
+                                                && viewports[0].width == static_cast<float>(back_buffer_width)
+                                                && viewports[0].height == static_cast<float>(back_buffer_height);
+}
+
 void OnBridgePushDescriptors(reshade::api::command_list*, reshade::api::shader_stage stages, reshade::api::pipeline_layout,
                              uint32_t layout_param, const reshade::api::descriptor_table_update& update) {
   // ReShade's D3D9 layout: parameter 1 the pixel samplers with their textures.
@@ -1965,6 +1972,7 @@ bool AttachAddon() {
   }
   if (ruse::bridge::state.enabled || ruse::replay::state.enabled || ruse::ray_tracing::state.vbao) {
     reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
+    reshade::register_event<reshade::addon_event::bind_viewports>(OnBridgeBindViewports);
     reshade::register_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
     reshade::register_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
     reshade::register_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);
@@ -2031,6 +2039,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_resource_view>(ruse::bridge::OnInitDepthView);
   reshade::unregister_event<reshade::addon_event::destroy_resource_view>(ruse::bridge::OnDestroyDepthView);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
+  reshade::unregister_event<reshade::addon_event::bind_viewports>(OnBridgeBindViewports);
   reshade::unregister_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
   reshade::unregister_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
   reshade::unregister_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);

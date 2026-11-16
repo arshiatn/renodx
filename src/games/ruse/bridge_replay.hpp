@@ -134,6 +134,7 @@ struct Counts {
   uint32_t placed = 0;
   uint32_t replayed = 0;
   uint32_t no_shader = 0;
+  uint32_t screen_quads = 0;
   uint32_t no_layout = 0;
   uint32_t no_buffer = 0;
   uint32_t fan = 0;
@@ -293,6 +294,13 @@ inline void Record(reshade::api::command_list* cmd_list, uint32_t index_count, u
   const auto found = std::ranges::lower_bound(SHADERS, hash, {}, &ReplayShader::hash);
   if (found == SHADERS.end() || found->hash != hash) {
     ++state.counts.no_shader;
+    return;
+  }
+  // Its clip position from fewer registers than c0-c3: a screen pass's quad (the camera pass's VS 0xF3556541, a scene draw
+  // with the game's AA off: run_rn2_rt_084045's frame trace) or a flat projection, nothing CaptureScene can move into
+  // this frame's camera (it moves c0-c3).
+  if (found->registers < 4) {
+    ++state.counts.screen_quads;
     return;
   }
   if (hash == GROUND_SHADER) {
@@ -609,10 +617,10 @@ inline void Replay(std::span<const float> inverse_view_projection) {
     const Counts& counts = state.counts;
     reshade::log::message(reshade::log::level::info,
                           std::format("[R.U.S.E.] Scene Replay: {} scene draws, {} at their earlier place, {} replayed ({} triangles, {} "
-                                      "needed), skipped: {} unknown shader, {} no layout, {} unmirrored buffer, {} fan, {} ground layers (the pre-pass's "
-                                      "patches hold them); {} mirrored buffers, {} placement keys",
+                                      "needed), skipped: {} unknown shader, {} screen quads, {} no layout, {} unmirrored buffer, {} fan, {} ground "
+                                      "layers (the pre-pass's patches hold them); {} mirrored buffers, {} placement keys",
                                       counts.recorded, counts.placed, counts.replayed, written.NumPrimitivesWritten,
-                                      written.PrimitivesStorageNeeded, counts.no_shader, counts.no_layout, counts.no_buffer, counts.fan,
+                                      written.PrimitivesStorageNeeded, counts.no_shader, counts.screen_quads, counts.no_layout, counts.no_buffer, counts.fan,
                                       counts.ground_layers, state.mirrors.size(), state.placements.size())
                               .c_str());
     state.log_next = false;
