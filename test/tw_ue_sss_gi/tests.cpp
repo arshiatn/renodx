@@ -15,7 +15,9 @@
 // 2. GT-VBGI: a red-lit wall beside black ground, 16 frames: the ground near the wall gets red light (its mean over 0.05,
 //    10 x its green), more than ground farther (the search reaches a quarter of the view's height); the sky none;
 //    Strength 0: no pass, the target untouched. Rome: metallic ground (no diffuse colour) none. Tales: the light arriving
-//    (Rome's x the ground's diffuse colour 0.5), the same on metallic ground.
+//    (Rome's x the ground's diffuse colour 0.5), the same on metallic ground. Then the rays' trace in place of its own
+//    (SetRayTracedTrace, Tales' Ray Tracing in the Helper): a stub's green light replaces the wall's red; a stub tracing
+//    nothing gives GT-VBGI's own trace back (CONTROL: the red returns).
 // 3. Tales: contactshadow00 (Bandai's character contact shadows, both marches) with SI.screen_space_shadows 0 as the
 //    game's own (the dumped cso) within 1e-5 on the box scene with character pixels; CONTROL: with it 1 (Bend's in place
 //    of its march toward the light) it must differ.
@@ -474,6 +476,98 @@ static void TestBounce() {
   }
   std::printf("GT-VBGI: the sky's most %.6f\n", sky);
   CHECK(sky == 0.f);
+
+  // The rays' trace in place of GT-VBGI's (twattila::light_bounce::SetRayTracedTrace: Tales' Ray Tracing in the Helper):
+  // a stub giving every texel green light 0.25 for 32 frames (the screen-space frames' history fading out): the ground
+  // beside the wall gets the stub's green and loses the wall's red; then one tracing nothing (false) for 16 frames:
+  // GT-VBGI's own trace again (the red back).
+  // The stub keeps each texel's alpha (its surface's distance, as the helper's trace writes it) from the last screen-space
+  // trace, in its own context state.
+  static std::array<UINT, 2> traced_size = {};
+  static bool trace_rays = true;
+  twattila::light_bounce::SetRayTracedTrace([](ID3D11DeviceContext* native, ID3D11Texture2D* prepared, UINT width, UINT height, UINT,
+                                               ID3D11Texture2D* traced) {
+    static ComPtr<ID3DDeviceContextState> stub_state;
+    static ComPtr<ID3D11VertexShader> full_screen;
+    static ComPtr<ID3D11PixelShader> green;
+    static ComPtr<ID3D11Texture2D> kept;
+    static ComPtr<ID3D11ShaderResourceView> kept_view;
+    ComPtr<ID3D11DeviceContext1> native1;
+    if (!trace_rays || prepared == nullptr || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return false;
+    if (!stub_state) {
+      const std::string vs = "float4 main(uint id : SV_VertexID) : SV_Position { const float2 uv = float2((id << 1) & 2, id & 2);"
+                             " return float4(uv * float2(2.f, -2.f) + float2(-1.f, 1.f), 0.f, 1.f); }";
+      const std::string ps = "Texture2D<float4> kept : register(t0); float4 main(float4 p : SV_Position) : SV_Target"
+                             " { return float4(0.f, 0.25f, 0.f, kept.Load(int3(p.xy, 0)).a); }";
+      ComPtr<ID3DBlob> vs_code;
+      ComPtr<ID3DBlob> ps_code;
+      D3D11_TEXTURE2D_DESC desc = {};
+      traced->GetDesc(&desc);
+      desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+      const auto feature_level = device->GetFeatureLevel();
+      REQUIRE(SUCCEEDED(D3DCompile(vs.data(), vs.size(), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, vs_code.GetAddressOf(), nullptr)));
+      REQUIRE(SUCCEEDED(D3DCompile(ps.data(), ps.size(), nullptr, nullptr, nullptr, "main", "ps_5_0", 0, 0, ps_code.GetAddressOf(), nullptr)));
+      REQUIRE(SUCCEEDED(device->CreateVertexShader(vs_code->GetBufferPointer(), vs_code->GetBufferSize(), nullptr, full_screen.GetAddressOf())));
+      REQUIRE(SUCCEEDED(device->CreatePixelShader(ps_code->GetBufferPointer(), ps_code->GetBufferSize(), nullptr, green.GetAddressOf())));
+      REQUIRE(SUCCEEDED(device->CreateTexture2D(&desc, nullptr, kept.GetAddressOf())));
+      REQUIRE(SUCCEEDED(device->CreateShaderResourceView(kept.Get(), nullptr, kept_view.GetAddressOf())));
+      ComPtr<ID3D11Device1> device1;
+      REQUIRE(SUCCEEDED(device.As(&device1)));
+      REQUIRE(SUCCEEDED(device1->CreateDeviceContextState(0, &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr,
+                                                         stub_state.GetAddressOf())));
+    }
+    ComPtr<ID3D11RenderTargetView> target_view;
+    REQUIRE(SUCCEEDED(device->CreateRenderTargetView(traced, nullptr, target_view.GetAddressOf())));
+    native->CopyResource(kept.Get(), traced);
+    const talesofarise::dlss::ContextStateScope scope(native1.Get(), stub_state.Get());
+    D3D11_TEXTURE2D_DESC desc = {};
+    traced->GetDesc(&desc);
+    const D3D11_VIEWPORT viewport = {.Width = static_cast<FLOAT>(desc.Width), .Height = static_cast<FLOAT>(desc.Height), .MaxDepth = 1.f};
+    native->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+    native->RSSetViewports(1, &viewport);
+    native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    native->VSSetShader(full_screen.Get(), nullptr, 0);
+    native->PSSetShader(green.Get(), nullptr, 0);
+    native->PSSetShaderResources(0, 1, kept_view.GetAddressOf());
+    native->Draw(3, 0);
+    ID3D11ShaderResourceView* const none = nullptr;
+    native->PSSetShaderResources(0, 1, &none);
+    native->OMSetRenderTargets(0, nullptr, nullptr);
+    traced_size = {width, height};
+    return true;
+  });
+  const auto run = [&](uint64_t first, uint64_t frames) {
+    for (uint64_t frame = first; frame < first + frames; ++frame) {
+      context->ClearRenderTargetView(target.rtv.Get(), ZERO.data());
+#ifdef UE_GAME_ROME
+      talesofarise::ue_light_bounce::Apply(context.Get(), inputs, talesofarise::ue_light_bounce::ConstantsOf(sliders, frame), true, target.rtv.Get());
+#else
+      ID3D11ShaderResourceView* irradiance =
+          talesofarise::ue_light_bounce::Apply(context.Get(), inputs, talesofarise::ue_light_bounce::ConstantsOf(sliders, frame), true, nullptr);
+      REQUIRE(irradiance != nullptr);
+      ComPtr<ID3D11Resource> resource;
+      irradiance->GetResource(resource.GetAddressOf());
+      bounce = Read(resource.Get(), 4);
+#endif
+    }
+#ifdef UE_GAME_ROME
+    bounce = Read(target.texture.Get(), 4);
+#endif
+  };
+  run(16, 32);
+  const float rays_green = mean(-1.4f, -0.6f, 1);
+  const float rays_red = mean(-1.4f, -0.6f, 0);
+  trace_rays = false;
+  run(48, 16);
+  twattila::light_bounce::SetRayTracedTrace(nullptr);
+  const float back_red = mean(-1.4f, -0.6f, 0);
+  std::printf("GT-VBGI with the rays' trace: ground beside the wall green %.4f red %.4f (traced %u x %u); its own trace again: red %.4f\n",
+              rays_green, rays_red, traced_size[0], traced_size[1], back_red);
+  CHECK(rays_green > 0.08f);
+  CHECK(rays_red < 0.25f * rays_green);
+  CHECK(rays_green > 10.f * near_green);
+  CHECK(traced_size[0] == (WIDTH + 3) / 4 && traced_size[1] == (HEIGHT + 3) / 4);
+  CHECK(back_red > 0.05f);
 
   // Strength 0: nothing drawn.
   const std::array<FLOAT, 4> mark = {0.25f, 0.5f, 0.75f, 1.f};
