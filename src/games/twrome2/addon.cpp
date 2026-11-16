@@ -40,6 +40,7 @@
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/engine_code.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/shadow_pass.hpp"
 #include "../twattila/smoke_map.hpp"
@@ -1778,8 +1779,9 @@ void OnInitDevice(reshade::api::device*) {
                     && twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).shadows_only);
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  twattila::pass_timing::OnPresent(queue, "rome2");
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
   // preset's is XeSS on Intel's, else FSR.
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -2233,6 +2235,13 @@ void ConfigureAddon() {
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
   twattila::rt_scene::internal::water_pass = true;
   settings.push_back(new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+      .label = "Time Each Pass (One Frame)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "The GPU's time of every pass of the next frame into rome2_pass_timing.txt next to the game's exe.",
+      .on_change = [] { twattila::pass_timing::Request(); },
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
       .binding = &twattila::water_effects::water_clarity,
       .default_value = 1.f,
@@ -2426,6 +2435,8 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  // Time Each Pass: its draw and dispatch events before any other hook of the addon's (registration order is run order).
+  twattila::pass_timing::Install();
 
   // Failed native-hook removal can retain this DLL across host unload/reload.
   graphics_found = false;
@@ -2572,6 +2583,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twattila::test_hooks::Uninstall();
+  twattila::pass_timing::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
