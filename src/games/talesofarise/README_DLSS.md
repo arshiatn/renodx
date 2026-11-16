@@ -733,3 +733,10 @@ size; then:
 - v109 (2026-11-15 UE4 round, untested in game): the fast draw dispatch opt-in; engine_cvars.hpp, engine_scale.hpp,
   constant_readback.hpp, performance.hpp, native_state.hpp, code_patch.hpp and constant_mirror.hpp are shared with
   Expeditions: Rome's DLSS add-on (engine_cvars: one Engine table per exe, UE_4_21 here); no change in this add-on.
+- Fix round 2026-11-16 (untested in game): Bend Screen-Space Shadows and GT-VBGI on by default (ATN; rows saved off
+  cleared once, SettingsRevision 3); one GI method: lighting00-05 take Bandai's GI-off path under GT-VBGI and under the
+  rays' bounce light / path tracing too, and Bandai's SSGI dispatches (17CE7BCD / 13BDD599 / 86CBF00A / 746654CA) are
+  skipped meanwhile, back for 30 frames when one of the eight shaders the census could not read draws (census
+  tools/nontw/tales/census/t16_ssgi_readers.txt); a saved DLSS becomes XeSS on Intel, else FSR; texture LOD bias and the
+  screen filters' scale at the game's own DrawScale below 100% too; Upscaling Details' counts only while it is shown;
+  About credits GT-VBAO / GT-VBGI, Bend, SMAA / CMAA2 / FidelityFX SSSR and Detours; tooltips name Graphics 1 / 2 of 2.

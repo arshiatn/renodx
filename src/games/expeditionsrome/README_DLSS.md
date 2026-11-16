@@ -972,3 +972,10 @@ rows never resolved); its registration default is 0 (off), the renderer draws it
   The fast draw dispatch opt-in. The live cvars (engine_cvars.hpp, its UE_4_23 table: FindConsoleVariable 0xA0 + bool,
   AsVariable 9 / 10, Ref getters 15 / 16), engine_scale, constant_readback, performance, native_state, code_patch and
   constant_mirror are Tales of Arise's DLSS add-on's copies (one place for both games); log lines keep [Rome AA ...].
+
+Fix round 2026-11-16 (untested in game): Bend Screen-Space Shadows and GT-VBGI on by default (ATN; rows saved off cleared
+once, SettingsRevision 3); one GI method: r.SSGI.Quality 0 while GT-VBGI or the rays' light bounce / paths replace it (the
+game's value back after); a saved DLSS becomes XeSS on Intel, else FSR; the sun's diffuse light (LightColor x View 129.y /
+pi) into the rays' sun texture texel 2 (used once the helper is told it is given); Trace One Frame calls the tracer
+directly; the jitter cycle counts only while Upscaling Details is shown; About credits GT-VBAO / GT-VBGI, Bend, SMAA /
+CMAA2 / FidelityFX SSSR and Detours; Peak / Paper White / UI hidden under Output SDR.
