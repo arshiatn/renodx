@@ -2277,17 +2277,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
   // The data run's switches (RENODX_TW_SET / SHOT / PROFILE; nothing hooked without them), timed from the first sun draw.
-  // Epic starts the game through its launchers, so a run script's environment may never reach it: then they come from
-  // ReShade.ini [renodx] TestSet / TestShot / TestProfile (read here, at start; the environment first).
-  for (const auto& [key, variable] : {std::pair{"TestSet", "RENODX_TW_SET"}, std::pair{"TestShot", "RENODX_TW_SHOT"},
-                                      std::pair{"TestProfile", "RENODX_TW_PROFILE"}}) {
-    std::array<char, 8192> value = {};
-    size_t size = value.size();
-    if (GetEnvironmentVariableA(variable, nullptr, 0) == 0 && reshade::get_config_value(nullptr, "renodx", key, value.data(), &size)) {
-      SetEnvironmentVariableA(variable, value.data());
-      renodx::utils::log::i(std::string("[Troy] Test: ") + variable + " from ReShade.ini's " + key + ".");
-    }
-  }
+  // Epic starts the game through its launchers, so a run script's environment may never reach it: test_hooks reads the same
+  // lines from renodx_test_hooks.txt next to the exe.
   twattila::test_hooks::Install(&settings, false);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
