@@ -1,6 +1,6 @@
 # Expeditions: Rome's own tests (src/games/expeditionsrome/tests, no CMake target): each compiled with clang-cl as its
 # header says (the add-on's generated headers from build\expeditionsrome.include: configure and build the add-on first)
-# and run. utility_shaders.exe gets the add-on's source folder. -OutDir: where the exes are built and run (ATN's
+# and run with the add-on's source folder (utility_shaders and base_pass_ao read it). -OutDir: where the exes are built and run (ATN's
 # antivirus-excluded test folder, tools\tw\testbin); else build\. -Tests: a subset (file names without .cpp, A,B).
 param([string]$OutDir = '', [string]$Tests = '')
 $ErrorActionPreference = 'Stop'
@@ -31,7 +31,7 @@ foreach ($name in $names) {
   if ($LASTEXITCODE -ne 0) { "COMPILE FAIL $name"; $failed += $name; continue }
   Push-Location -LiteralPath $testBuild
   try {
-    if ($name -eq 'utility_shaders') { & $exe $source } else { & $exe }
+    & $exe $source
     if ($LASTEXITCODE -ne 0) { "FAIL $name (exit $LASTEXITCODE)"; $failed += $name } else { "PASS $name" }
   } finally { Pop-Location }
 }
