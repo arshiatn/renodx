@@ -12,6 +12,8 @@
 // 5. copy_buffer_region into the range, copy_resource over the whole buffer and a deferred update: marked as an update is.
 // 6. An index buffer the GPU may write (stream output bind): no set (its triangles captured).
 // 7. The hook's cost with no index buffer held (one atomic) and for constant buffer updates while one is (two COM calls).
+// 8. R.U.S.E.'s draw replay (ruse/bridge_replay.hpp GetBuffer): a mirrored index buffer uploaded again with the native
+//    UpdateSubresource, which no hook hears: GetBuffer tells rt_core, the set is marked and made again from the new indices.
 // tests.exe
 #include <windows.h>
 #include <d3d11.h>
@@ -25,6 +27,7 @@
 #include <string>
 #include <vector>
 #include "src/games/twattila/rt_scene.hpp"
+#include "src/games/ruse/bridge_replay.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
 
 using Microsoft::WRL::ComPtr;
@@ -232,6 +235,34 @@ int main() {
     const bool none = mesh != runtime.cluster_meshes.end() && mesh->second.failed && !mesh->second.remap;
     std::printf("6. stream-output index buffer: no set %d\n", none ? 1 : 0);
     CHECK(none);
+  }
+
+  // 8. R.U.S.E.'s draw replay: the proxy's mirror of a D3D9 index buffer, uploaded again by GetBuffer's native
+  //    UpdateSubresource (ReShade hears none of it; case 2 is the control). The game's write (its bytes, its unmap count)
+  //    then the next GetBuffer: the same buffer, the set marked, made again from B.
+  {
+    renodx::utils::device_proxy::proxy_device_reshade = &device;
+    constexpr uint64_t GAME_BUFFER = 1;
+    std::vector<uint16_t> initial(BUFFER_INDICES, 0);
+    std::ranges::copy(to_r16(indices_a), initial.begin() + FIRST_INDEX);
+    ruse::replay::state.mirrors.try_emplace(GAME_BUFFER, ruse::replay::Mirror{
+        .bytes = std::vector<uint8_t>(reinterpret_cast<const uint8_t*>(initial.data()), reinterpret_cast<const uint8_t*>(initial.data() + initial.size())),
+        .written = 1});
+    ID3D11Buffer* buffer = ruse::replay::GetBuffer(device.native.Get(), context.Get(), GAME_BUFFER);
+    CHECK(buffer != nullptr && wait_made(buffer, 40));
+    const std::vector<uint16_t> b = to_r16(indices_b);
+    ruse::replay::state.mirrors.modify_if(GAME_BUFFER, [&](auto& entry) {
+      std::memcpy(entry.second.bytes.data() + (FIRST_INDEX * 2), b.data(), b.size() * 2);
+      ++entry.second.written;
+    });
+    const bool same_buffer = ruse::replay::GetBuffer(device.native.Get(), context.Get(), GAME_BUFFER) == buffer;
+    const bool marked = !usable(buffer);
+    const bool remade = wait_made(buffer, 60) && made(buffer)->data == set_of(indices_b);
+    std::printf("8. R.U.S.E.'s replay mirror uploaded again: the same buffer %d, the set marked %d, made again from B %d\n", same_buffer ? 1 : 0,
+                marked ? 1 : 0, remade ? 1 : 0);
+    CHECK(same_buffer && marked && remade);
+    ruse::replay::state.mirrors.clear();
+    renodx::utils::device_proxy::proxy_device_reshade = nullptr;
   }
 
   {
