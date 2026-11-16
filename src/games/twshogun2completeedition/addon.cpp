@@ -610,7 +610,8 @@ const Values GRAPHICS_RESET = {
 const Values AO_DEFAULTS = {
     {"AmbientOcclusion", 1.f}, {"AmbientOcclusionStrength", 1.f}, {"AmbientOcclusionRadius", 12.5f}, {"AmbientOcclusionThickness", 0.1f},
     {"AmbientOcclusionQuality", 2.f}, {"AmbientOcclusionDirections", 0.f}, {"AmbientOcclusionResolution", 0.f},
-    {"AmbientOcclusionAutoThickness", 0.f}, {"ssao_temporal", 0.f}, {"ssao_edge_fix", 0.f}, {"ssao_denoise", 0.f},
+    {"AmbientOcclusionAutoThickness", 0.f}, {"AmbientOcclusionExactDepth", 0.f}, {"ssao_temporal", 0.f}, {"ssao_edge_fix", 0.f},
+    {"ssao_denoise", 0.f},
 };
 const Values GI_DEFAULTS = {
     {"LightBounceStrength", 0.f}, {"LightBounceRadius", 20.f}, {"LightBounceResolution", 2.f}, {"LightBounceQuality", 3.f},
@@ -1972,6 +1973,8 @@ void BuildRuntimeData() {
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",
              off_on, ao_on),
+      choice("AmbientOcclusionExactDepth", &shader_injection.ssao_exact_depth, 0.f, "Exact Depth Samples (Experimental)", ao_section,
+             twattila::lighting_settings::EXACT_DEPTH_TOOLTIP, off_on, ao_on),
       choice("ssao_temporal", &ao_filter_rows.temporal, 0.f, "Temporal Smoothing (Experimental)", ao_section,
              "Averages the last frames: much less noise. Off: the noise stands still.", off_on, ao_on),
       choice("ssao_edge_fix", &ao_filter_rows.edge_fix, 0.f, "Temporal Edge Fix (Experimental)", ao_section,

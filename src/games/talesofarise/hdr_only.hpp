@@ -44,6 +44,7 @@ struct AmbientOcclusionBindings {
   float* quality;
   float* directions;
   float* auto_thickness;  // 1: each occluder as thick as it is wide, Thickness the least
+  float* exact_depth;     // 1: each sample's depth at its own place (twattila/bitmask.hlsli BitmaskPlaneDepth)
 };
 
 inline std::vector<renodx::utils::settings::Setting*> AmbientOcclusionRows(const AmbientOcclusionBindings& b) {
@@ -127,6 +128,17 @@ inline std::vector<renodx::utils::settings::Setting*> AmbientOcclusionRows(const
           .section = "Ambient Occlusion",
           .tooltip = "Guesses each object's thickness from its width, Thickness as the least:\n"
                      "poles and branches stay thin, walls and hills block fully.",
+          .is_enabled = gtvbao,
+      },
+      new Setting{
+          .key = "ssao_exact_depth",
+          .binding = b.exact_depth,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Exact Depth Samples (Experimental)",
+          .section = "Ambient Occlusion",
+          .tooltip = "Each sample takes the depth at its own spot between pixels:\n"
+                     "open ground seen at a low angle no longer shades itself. Off: the nearest pixel's depth.",
           .is_enabled = gtvbao,
       },
   };

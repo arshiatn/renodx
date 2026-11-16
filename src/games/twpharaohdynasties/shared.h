@@ -144,6 +144,7 @@ struct ShaderInjectData {
   float fog_strength;  // Fog Strength: the fog's last passes x this at their cb8 (fog_strength.hpp), 1 the game's; no shader here reads it
   float sky_smooth;           // Fog & Sky Smoothing on the legacy fog's sky cube (twattila/sky_smooth.hlsli): 0 off, 1 Low, 2 Medium, 3 High
   float sky_smooth_strength;  // how wide, x 0 to 2
+  float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
 };
 
 #define SI shader_injection

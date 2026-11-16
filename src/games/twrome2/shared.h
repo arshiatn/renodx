@@ -135,6 +135,7 @@ struct ShaderInjectData {
   float fog_strength;              // battlefog00's opacity x this (1: the game's), as Attila's
   float ssr_quality;               // waterreflection00: x the game's quality_factor (1: the game's), Attila's Reflection Quality
   float rt_ambient_alone;          // ssao01: 1 no ambient occlusion of its own (the ray-traced one replaces it), as Attila
+  float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
 };
 
 #define SI shader_injection

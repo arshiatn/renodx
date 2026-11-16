@@ -143,6 +143,7 @@ struct ShaderInjectData {
   // Appended (fix round 2026-11-16): Modded Auto Exposure (shaders/autoexposure00, Warhammer's).
   float auto_exposure_highlight_protection;     // 0: the game's, 1: the metered maximum capped
   float auto_exposure_highlight_headroom_stops; // the cap: last frame's average x 2^this
+  float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
 };
 
 #define SI shader_injection

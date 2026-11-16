@@ -1193,7 +1193,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                           "Lower: light gets behind thin things; higher: darker behind them.",
                .enabled = always});
     const auto more_gtvbao = more(&more_ao, gtvbao);
-    for (const auto* key : {"ssao_quality", "ssao_directions", "ssao_auto_thickness", "ssao_temporal", "ssao_edge_fix", "ssao_denoise"}) {
+    for (const auto* key : {"ssao_quality", "ssao_directions", "ssao_auto_thickness"}) {
+      page.Take({.match = key, .section = section, .shown = more_gtvbao});
+    }
+    page.Take({.match = "ssao_exact_depth", .section = section, .shown = more_gtvbao, .only_some_games = true});
+    for (const auto* key : {"ssao_temporal", "ssao_edge_fix", "ssao_denoise"}) {
       page.Take({.match = key, .section = section, .shown = more_gtvbao});
     }
     page.Add(EmptyLine(section));

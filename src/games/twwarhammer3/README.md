@@ -1,5 +1,12 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### Shared round 2 (2026-11-17; built only, not run in game)
+
+- New: **Exact Depth Samples (Experimental, off)**, under GT-VBAO's More Options: each sample takes the depth at its own
+  place between pixels (where the four pixels around it lie on one plane), so open ground seen at a low angle no longer
+  shades itself. Off: the nearest pixel's depth, as before. `tw_gtvbao_exact` (WARP): off the build before's bits;
+  CONTROL on changes 304 values (both collect builds).
+
 ### Torch shadows per light, two passes less (2026-11-16 next round; built only, not run in game)
 
 - Fixed: **torch shadows under the rays, per light**: the 4 point-light shaders with the game's point shadow map take the

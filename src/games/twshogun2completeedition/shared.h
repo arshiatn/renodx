@@ -142,6 +142,7 @@ struct ShaderInjectData {
   float sss_distance_softness;
   // Attila's SSS Light Through Banners: the sun's share through the banners' shadows, 0 off (the extended pass with their depth).
   float sss_banner_light;
+  float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
 };
 
 // The penumbra's most for Softer Away from the Caster, render pixels at 2160 rendered lines (Attila's SOFT_RADIUS_2160).

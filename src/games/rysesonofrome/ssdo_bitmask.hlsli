@@ -72,11 +72,26 @@ float4 RyseBitmaskOcclusion(float2 uv, uint2 pixel, float3 normal, Texture2D<flo
       distance = max(distance * distance, 1.f / radius_pixels);
       [unroll]
       for (int side = -1; side <= 1; side += 2) {
-        const float2 sample_uv = (floor((uv + side * step_uv * distance) * depth_size) + 0.5f) * texel;
+        const float2 place_uv = uv + side * step_uv * distance;
+        const float2 sample_uv = (floor(place_uv * depth_size) + 0.5f) * texel;
         // Off the screen: nothing known there (the edge's depth would make a false occluder).
         if (any(sample_uv != saturate(sample_uv))) continue;
         const float sample_depth = depth_texture.SampleLevel(depth_sampler, sample_uv, 0).x * far;
-        const float3 sample_position = RyseAoPosition(sample_uv, sample_depth, view_space_params);
+        float3 sample_position = RyseAoPosition(sample_uv, sample_depth, view_space_params);
+        // Exact Depth Samples (SI.ssao_exact_depth): at the sample's own place, its depth between the four texels around
+        // it where they lie on one plane (twattila/bitmask.hlsli BitmaskPlaneDepth); else its texel's, as before.
+        [branch]
+        if (SI.ssao_exact_depth != 0.f) {
+          const float2 place = place_uv * depth_size - 0.5f;
+          const float2 base = floor(place);
+          const float2 last = float2(depth_size) - 1.f;
+          const float4 depths = float4(depth_texture.SampleLevel(depth_sampler, (clamp(base, 0.f, last) + 0.5f) * texel, 0).x,
+                                       depth_texture.SampleLevel(depth_sampler, (clamp(base + float2(1.f, 0.f), 0.f, last) + 0.5f) * texel, 0).x,
+                                       depth_texture.SampleLevel(depth_sampler, (clamp(base + float2(0.f, 1.f), 0.f, last) + 0.5f) * texel, 0).x,
+                                       depth_texture.SampleLevel(depth_sampler, (clamp(base + 1.f, 0.f, last) + 0.5f) * texel, 0).x);
+          float plane_depth;
+          if (BitmaskPlaneDepth(depths, place - base, plane_depth)) sample_position = RyseAoPosition(place_uv, plane_depth * far, view_space_params);
+        }
         float sample_thickness = thickness;
         BitmaskOccluder occluder = occluder_minus;
         if (side > 0) occluder = occluder_plus;

@@ -25,7 +25,8 @@ cbuffer vbao_settings : register(b0) {
   float4 size;        // width, height, 1 / width, 1 / height
   float4 range;       // radius (world units), thickness (world units), noise frame, the bounced light's strength
   row_major float4x4 to_previous;  // this frame's clip to last frame's (the bounce's light)
-  float4 options;     // x: the occlusion beside the light: 0 none (1), 1 this march's (GT-VBAO), 2 the rays' (t2)
+  float4 options;     // x: the occlusion beside the light: 0 none (1), 1 this march's (GT-VBAO), 2 the rays' (t2);
+                      // y: 1 Exact Depth Samples
 };
 
 static const uint SLICES = 4u;
@@ -96,7 +97,23 @@ void main(uint3 id : SV_DispatchThreadID) {
         for (int side = -1; side <= 1; side += 2) {
           const float2 sample_pixel = pixel + 0.5f + side * offset;
           if (any(sample_pixel < 0.f) || any(sample_pixel >= size.xy)) continue;
-          const float3 sample_position = ViewPosition(int2(sample_pixel));
+          float3 sample_position = ViewPosition(int2(sample_pixel));
+          // Exact Depth Samples (options.y 1): at the sample's own place, its depth between the four texels around it
+          // where they lie on one plane (twattila/bitmask.hlsli BitmaskPlaneDepth); else its texel's, as before.
+          [branch]
+          if (options.y != 0.f) {
+            const float2 place = sample_pixel - 0.5f;
+            const int2 base = int2(floor(place));
+            const int2 last = int2(size.xy) - 1;
+            const float4 depths = float4(t_depth.Load(int3(clamp(base, 0, last), 0)), t_depth.Load(int3(clamp(base + int2(1, 0), 0, last), 0)),
+                                         t_depth.Load(int3(clamp(base + int2(0, 1), 0, last), 0)), t_depth.Load(int3(clamp(base + 1, 0, last), 0)));
+            float depth;
+            if (BitmaskPlaneDepth(depths, place - base, depth) && depth < 1.f) {
+              const float z = projection.w / min(depth - projection.z, -1e-9f);
+              const float2 ndc = float2(sample_pixel.x * size.z * 2.f - 1.f, 1.f - sample_pixel.y * size.w * 2.f);
+              sample_position = float3(ndc * z / projection.xy, z);
+            }
+          }
           if (sample_position.z <= 0.f) continue;
           const float3 delta = sample_position - position;
           const float delta_length = length(delta);

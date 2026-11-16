@@ -13,8 +13,8 @@
 // screen comes from where its plane crosses the pixel's depth, so the view space's handedness does not matter. Depth Levels
 // (twattila/depth_levels.hlsli, when the addon binds them for the pass): samples far from the pixel read the depth at a
 // lower resolution, so they stay in the texture cache.
-// The includer defines (after its shared.h, with SI.ssao_thickness, SI.ssao_quality, SI.ssao_directions and
-// SI.ssao_auto_thickness):
+// The includer defines (after its shared.h, with SI.ssao_thickness, SI.ssao_quality, SI.ssao_directions,
+// SI.ssao_auto_thickness and SI.ssao_exact_depth):
 //   float AoDepth(float2 uv)                       the depth there (any kind AoViewPosition takes)
 //   float3 AoViewPosition(float2 uv, float depth)  the view-space position
 #ifndef AO_NOISE_FRAME
@@ -125,7 +125,22 @@ float BitmaskVisibility(float2 pixel_uv, uint2 pixel, float2 region_texel, float
       const uint level = BitmaskSampleLevel(length(offset / depth_texel), levels.count);
       [unroll]
       for (int side = -1; side <= 1; side += 2) {
-        const float3 sample_position = AoSamplePosition(uv + side * offset, depth_texel, levels, level);
+        const float2 sample_uv = uv + side * offset;
+        float3 sample_position = AoSamplePosition(sample_uv, depth_texel, levels, level);
+        // Exact Depth Samples (SI.ssao_exact_depth): at the sample's own place, its depth between the four texels around
+        // it where they lie on one plane (twattila/bitmask.hlsli BitmaskPlaneDepth); else its texel's, as before.
+        [branch]
+        if (SI.ssao_exact_depth != 0.f && level == 0u) {
+          const float2 place = sample_uv / depth_texel - 0.5f;
+          const float2 base = floor(place);
+          const float2 last = round(1.f / depth_texel) - 1.f;
+          const float4 depths = float4(AoDepth((clamp(base, 0.f, last) + 0.5f) * depth_texel),
+                                       AoDepth((clamp(base + float2(1.f, 0.f), 0.f, last) + 0.5f) * depth_texel),
+                                       AoDepth((clamp(base + float2(0.f, 1.f), 0.f, last) + 0.5f) * depth_texel),
+                                       AoDepth((clamp(base + 1.f, 0.f, last) + 0.5f) * depth_texel));
+          float plane_depth;
+          if (BitmaskPlaneDepth(depths, place - base, plane_depth)) sample_position = AoViewPosition(sample_uv, plane_depth);
+        }
         float sample_thickness = thickness;
         BitmaskOccluder occluder = occluder_minus;
         if (side > 0) occluder = occluder_plus;

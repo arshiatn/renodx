@@ -137,6 +137,7 @@ struct ShaderInjectData {
   // Modded Auto Exposure (shaders/autoexposure00, 96BCFCBB): 1 the metered maximum capped at last frame's average x 2^stops.
   float auto_exposure_highlight_protection;
   float auto_exposure_highlight_headroom_stops;
+  float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
 };
 
 #define SI shader_injection
