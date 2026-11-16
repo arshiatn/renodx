@@ -1088,7 +1088,13 @@ void ReflectPixel(uint2 id) {
   const bool mirror = roughness < 0.05f;
   const bool traced = (path_flags & PATH_REFLECTIONS) != 0u && roughness <= ROUGH_LIMIT;
   const bool occlusion = (path_flags & PATH_SPECULAR_OCCLUSION) != 0u && !traced;
+#if defined(REFLECT_ONE_SAMPLE)
+  // Its build for a request of one sample a pixel (rt_reflect_one): the loop's sums and the lobe's basis are not kept across
+  // the sample's path, and the pass fits the registers (the general build spilled them to local memory at 4K).
+  const uint samples = 1u;
+#else
   const uint samples = mirror ? 1u : max(path_samples, 1u);
+#endif
   const float3x3 basis = Basis(normal);
   const float3 view_local = float3(dot(view, basis[0]), dot(view, basis[1]), n_dot_v);
   float3 gathered = 0.f;
@@ -1159,7 +1165,10 @@ void ReflectPixel(uint2 id) {
   // keep only those).
   if ((path_flags & PATH_REFLECT_OWN) != 0u && traced && !mirror && alpha >= REFLECT_REUSE_ALPHA) {
     const uint set = ((path_flags & PATH_REFLECT_PARITY) != 0u) ? 1u : 0u;
-    Reservoir candidates[REFLECT_NEIGHBOURS + 1u];
+    // A neighbour's reservoir is loaded again to be merged, not kept from its tests: five of them with their receivers did
+    // not fit the registers (Nsight GPU Trace at 4K: spilled to local memory).
+    uint2 texels[REFLECT_NEIGHBOURS + 1u];
+    float counts[REFLECT_NEIGHBOURS + 1u];  // 0: not a candidate
     float3 receivers[REFLECT_NEIGHBOURS + 1u];
     float3 receiver_normals[REFLECT_NEIGHBOURS + 1u];
     float3 receiver_views[REFLECT_NEIGHBOURS + 1u];
@@ -1167,7 +1176,8 @@ void ReflectPixel(uint2 id) {
     float total_count = 0.f;
     [unroll]
     for (uint neighbour = 0u; neighbour <= REFLECT_NEIGHBOURS; ++neighbour) {
-      candidates[neighbour] = (Reservoir)0;
+      texels[neighbour] = 0u;
+      counts[neighbour] = 0.f;
       receivers[neighbour] = origin;
       receiver_normals[neighbour] = normal;
       receiver_views[neighbour] = view;
@@ -1189,26 +1199,28 @@ void ReflectPixel(uint2 id) {
       // Its sample seen from here at an angle within this lobe's width (near a wall neighbours a few pixels apart see it
       // far apart).
       if (neighbour != 0u && distance(other_position.xyz, position.xyz) > REFLECT_SHIFT * alpha * distance(other.hit, origin)) continue;
-      candidates[neighbour] = other;
+      texels[neighbour] = uint2(texel);
+      counts[neighbour] = other.count;
       receivers[neighbour] = other_position.xyz;
       receiver_normals[neighbour] = other_normal;
       receiver_views[neighbour] = normalize(Camera() - other_position.xyz);
       receiver_alphas[neighbour] = ReflectAlpha(other_roughness);
-      total_count += candidates[neighbour].count;
+      total_count += counts[neighbour];
     }
     Reservoir combined = (Reservoir)0;
     float weight_sum = 0.f;
     float counted = 0.f;
     [unroll]
     for (uint index = 0u; index <= REFLECT_NEIGHBOURS; ++index) {
-      const Reservoir other = candidates[index];
-      if (other.count <= 0.f || other.weight <= 0.f) continue;
+      if (counts[index] <= 0.f) continue;
+      const Reservoir other = LoadReservoir(reflect_samples[set], reflect_data[set], texels[index]);
+      if (other.weight <= 0.f) continue;
       const float jacobian = ReuseJacobian(other, receivers[index], origin);
       if (!(jacobian > 0.1f && jacobian < 10.f)) continue;
       float densities = 0.f;
       [unroll]
       for (uint source = 0u; source <= REFLECT_NEIGHBOURS; ++source) {
-        densities += candidates[source].count
+        densities += counts[source]
                      * LobeDensity(receivers[source], receiver_normals[source], receiver_views[source], receiver_alphas[source], other.hit);
       }
       if (densities <= 0.f) continue;
