@@ -53,6 +53,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -140,7 +141,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div ... | d1_
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
 - R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI ... | ru7_ (started 01:2x)
-- Skills update from tonight's 17 lessons (tools/tw/round_notes/skill_lessons_1116 ... | sk_ (started 01:3x), coordinator merges
 - R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA pas ... | coordinator
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
@@ -148,7 +148,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
 - tl_ (started 01:1x): UE port of Bend SSS + GT-VBGI, Tales first then Expeditions ... | ATN
-- gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: g ... | gr_
+- ATN DECIDES: Near ReSTIR Reuse on by default (faster AND scores better through R ... | ATN
+- Radiance cache item (f) from the Nsight list. Owner: next GPU round | next GPU round
 - Both D3D12 devices (Streamline FG + RR) removed at the same moment: every order ... | next helper round
 - Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device re ... | coordinator
 - REVIEWS + FIXES MERGED 8ee4ab2f 20:5x (left: GPU harness after ATN's game, build ... | coordinator
@@ -1269,8 +1270,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI would be a huge upgrade";
         doubts "needs a G-buffer"): guides via MRT from the patched game shaders, then rt_core light bounce / paths +
         ReflectPixel; Experimental rows; branch ruse-gi. Owner: ru7_ (started 01:2x)
-      - [ ] Skills update from tonight's 17 lessons (tools/tw/round_notes/skill_lessons_1116.md) + rebuilt skills zip.
-        Owner: sk_ (started 01:3x), coordinator merges
+      - [x] DONE a98b1871 02:0x (sk_ 6b854be3 + 67e7e62d, all 17 lessons placed; zip rebuilt: Downloads\RenoDX_skills_2026-11-15.zip,
+        48 files). Skills update from tonight's 17 lessons (tools/tw/round_notes/skill_lessons_1116.md) + rebuilt skills zip.
       - [ ] R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA passes H1 + H2 first), Fable 5.2
         High review of the bridge (ATN asked), T-run with ATN loading the battle (water depth, world up, units, cube-map
         brightness, bounce double count, GPU cost, G1 / O1 / AO / Bend checks, FG / Reflex, MainRTDivider). Owner: coordinator
@@ -1331,7 +1332,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         SSGI? (double work: tools/nontw/tales/census/t13_double_work.txt; both need a UE port). AO temporal / edge /
         denoise for Tales / Expeditions: not wanted per ATN's 00:0x "ignore Attila's own SSAO" (UE GT-VBAO leaves noise to
         TAA / DLSS). Owner: ATN
-      - [ ] gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: gr_
+      - [x] gr_ MERGED 16ef0b28 02:0x: a-c on (proven: 0 of 240 harness outputs changed, 40 modes): radiance-cache selects,
+        batched texel loads in paths (0.339 -> 0.324 ms) + reflections (1.070 -> 1.034), one positions copy a frame (copy
+        0.32 -> 0.17, bounce 0.97 -> 0.83); Nsight frame 6.48 -> 6.17 ms; (e) "Near ReSTIR Reuse (Experimental)" off (reuse
+        -46 %, frame -0.16 ms, RR rRMSE 2.19 -> 1.96 % = better); (d) half-precision ReSTIR NOT TAKEN (not faster; branch
+        gr-half-restir-wip ac78a3ed); (f) radiance cache not started. Helper build\gr_final BD968BB67FF4 (includes fx3's
+        fixes? -> the install round rebuilds the helper from atn-mods). gr_ (still waiting for "GPU free"): Nsight's untried speedups measured.
+      - [ ] ATN DECIDES: Near ReSTIR Reuse on by default (faster AND scores better through RR, but a look change)? Owner: ATN
+      - [ ] Radiance cache item (f) from the Nsight list. Owner: next GPU round
       - 23:4x ATN DONE PLAYING ("I am done with the game"): committed 38.8 GB, the gated builds started (d1_ first); gr_
         told GPU free; fx_ resumed for its harness checks on atn-mods (gpu_job.lock per job).
       - 23:5x ATN closed the leftover game processes (some Attila ones won't end; committed 38.8 -> 28.5 GB) and allowed
