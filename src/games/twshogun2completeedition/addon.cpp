@@ -2637,7 +2637,9 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31\n"
-                   "and PsychoV35.\n"
+                   "and PsychoV35. UE Extended by Marat. Visibility Bitmask ambient occlusion and Light Bounce: the method of\n"
+                   "Therrien, Levesque and Gilet (2023) on GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm\n"
+                   "(2024); auto thickness after Bjorn Ottosson.\n"
                    "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0\n"
                    "(APACHE_LICENSE-2.0.txt).",
           .section = "About",
