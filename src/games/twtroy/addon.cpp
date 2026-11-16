@@ -24,6 +24,7 @@
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
 #include "../../utils/command_action.hpp"
+#include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
@@ -376,6 +377,17 @@ renodx::utils::settings::Settings settings;
 // in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO stays
 // there, as when the page turned GT-VBAO off with them.
 bool bitmask_ao = false;
+// The game's SSAO 2 (ssao2: downsample B320992B, generate D42C3523, blur_x 7F637259, blur_y BFD285BD back into the generate's
+// target) has one reader in 27 traces, the sun draws' t_ssao: no draw, dispatch, copy or clear touches its three targets outside
+// the chain, none reads them before it (per frame), and t_ssao is declared by exactly the 24 sun shaders, each reading its red
+// once (their bytes). The rays' AO stands alone in the sun's slot (rt_ambient_combine), so while the rays feed it (this frame's
+// trace or the last: these draws come before it) the chain doesn't run and the generate's target, what the sun reads, is
+// cleared to open (Warhammer's way, test/tw_warhammer_shaders part 15). Rays off: the game's draws.
+bool SkipGameSsao() {
+  const auto& runtime = twattila::rt_scene::internal::runtime;
+  return runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing
+         && (runtime.traced_frame == runtime.frame || runtime.traced_frame + 1 == runtime.frame);
+}
 
 void BuildRuntimeData() {
   custom_shaders = {
@@ -411,6 +423,22 @@ void BuildRuntimeData() {
     return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
                                                false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
   };
+  // SSAO 2 under the rays' AO (SkipGameSsao): left out, the generate's target cleared to open in its place.
+  custom_shaders[0xB320992B] = {.crc32 = 0xB320992B, .on_inject = [](auto*) { return false; }, .on_draw = [](auto*) { return !SkipGameSsao(); }};
+  custom_shaders[0xD42C3523].on_draw = [](auto* cmd_list) {
+    if (!SkipGameSsao()) return true;
+    auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+    if (native == nullptr) return true;
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> output;
+    native->OMGetRenderTargets(1, output.GetAddressOf(), nullptr);
+    if (!output) return true;
+    constexpr std::array<float, 4> OPEN = {1.f, 1.f, 1.f, 1.f};
+    native->ClearRenderTargetView(output.Get(), OPEN.data());
+    return false;
+  };
+  custom_shaders[0x7F637259].on_draw = [](auto*) { return !SkipGameSsao(); };
+  custom_shaders[0xBFD285BD].on_draw = [](auto*) { return !SkipGameSsao(); };
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.
@@ -2422,8 +2450,12 @@ bool AttachAddon() {
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
   twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // The point lights (ATN's session 3: two instanced draws a frame, VS 6CFF8F83 with PS 143A02ED after the sun draw; 64-byte
-  // instances, the light's position at POSITION2.xyz): shaders/pointlight00 reads the rays' bits (Pharaoh's fire02 form).
-  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x143A02ED});
+  // instances, the light's position at POSITION2.xyz): shaders/pointlight00 reads the rays' bits (Pharaoh's fire02 form). The
+  // game's other 7 builds of it (names.tsv: smooth / linear falloff, slm / skinlm, with and without the point shadow map;
+  // level B, in no trace) the same, pointlight01-07: the shadowed 4 take the rays' shadow in place of the map's for each
+  // light the rays trace at the pixel and keep the map for the rest (rt_local_lights.hlsli RtLocalLightTraced). WARP on
+  // the game's bytes with nothing bound: 0 values apart (tw2_ ps_compare).
+  twattila::rt_scene::InstallPointLights(std::array<uint32_t, 8>{0x143A02ED, 0x027D250D, 0x58B3C96F, 0x4E7D9E2D, 0xC8345238, 0xD60958F1, 0xFB4A7ED0, 0x5DAF337D});
   // The fires: their particle lights' draws, the lights streamed (PARTICLE_LIGHTS); shaders/particlelight00 reads the bits.
   twattila::rt_scene::InstallPointLights(std::array<uint32_t, 1>{0x643FC156}, twattila::rt_scene::internal::NO_LIGHT_CONSTANTS, &PARTICLE_LIGHTS);
   // Log Details' light count: the point lights and the night siege's fires (particle lights 643FC156, VS F5CE48CC: one draw,

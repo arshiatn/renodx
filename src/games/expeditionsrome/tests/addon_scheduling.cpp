@@ -185,7 +185,7 @@ int main() {
     EvaluateFrame(command, valid.get());
     expect(valid->values_validated && !valid->committed && valid->taa[0][0] == 0 && valid->view[0][0] == 0,
            "valid same-frame candidate passes real CB gate without SDK submission");
-    expect(!valid->runtime->private_state && !valid->runtime->prepare_shader && !valid->runtime->output.resource,
+    expect(!valid->runtime->private_state && !valid->runtime->prepare_shader && !valid->runtime->merged.resource,
            "prefilled matching runtime prevents pipeline/texture initialization");
     FinishFrame(command, valid.release());
     expect(state.runtime.get() == valid_runtime && state.claimed_frame == state.frame && state.completed == 0,
@@ -210,7 +210,7 @@ int main() {
     expect(upscaled->values_validated && upscaled->render_width == 2573 && upscaled->render_height == 1448
                && upscaled->taa[19][0] == 2576 && upscaled->taa[20][0] == 3840 && !upscaled->committed,
            "Quality accepts actual lower-resolution rectangle, padded source, and full output");
-    expect(!upscaled->runtime->private_state && !upscaled->runtime->prepare_shader && !upscaled->runtime->output.resource,
+    expect(!upscaled->runtime->private_state && !upscaled->runtime->prepare_shader && !upscaled->runtime->merged.resource,
            "Quality callback fixture does not initialize private pipelines or NVIDIA");
     FinishFrame(command, upscaled.release());
     expect(state.runtime.get() == upscaled_runtime && state.claimed_frame == state.frame && state.completed == 0,
@@ -278,7 +278,7 @@ int main() {
         {"Custom 99 percent rounded and padded", {.output = {3840, 2160}, .source = {3808, 2144}, .render = {3802, 2139}, .mode = AAMode::DLSS_CUSTOM}, true},
         {"Custom 100 percent native pass", {.output = {3840, 2160}, .source = {3840, 2160}, .render = {3840, 2160}, .mode = AAMode::DLSS_CUSTOM}, true},
         {"Custom 100 percent stale upscale flag", {.output = {3840, 2160}, .source = {3840, 2160}, .render = {3840, 2160}, .mode = AAMode::DLSS_CUSTOM, .temporal_upscaling = true}, true},
-        {"Custom below 33 percent", {.output = {1000, 1000}, .source = {320, 320}, .render = {320, 320}, .mode = AAMode::DLSS_CUSTOM}, false},
+        {"Custom 32 percent (Custom is 1-100%)", {.output = {1000, 1000}, .source = {320, 320}, .render = {320, 320}, .mode = AAMode::DLSS_CUSTOM}, true},
         {"Custom above 100 percent", {.output = {1000, 1000}, .source = {1016, 1016}, .render = {1010, 1010}, .mode = AAMode::DLSS_CUSTOM}, false},
         {"Custom mismatched aspect", {.output = {3840, 2160}, .source = {3072, 1512}, .render = {3072, 1512}, .mode = AAMode::DLSS_CUSTOM}, false},
         {"Custom reduced input overrides stale native flag", {.output = {3840, 2160}, .source = {3072, 1728}, .render = {3072, 1728}, .mode = AAMode::DLSS_CUSTOM, .temporal_upscaling = false}, true},
@@ -305,7 +305,7 @@ int main() {
                  && !candidate->runtime->constant_readback.pending_context,
              std::string(label) + ": exact GPU constants validate or reject before NVIDIA submission");
       expect(!candidate->runtime->private_state && !candidate->runtime->prepare_shader
-                 && !candidate->runtime->output.resource,
+                 && !candidate->runtime->merged.resource,
              std::string(label) + ": no private pipeline or SDK initialization");
       if (accepted) {
         expect(candidate->temporal_upscaling == (layout.render != layout.output),
@@ -344,7 +344,7 @@ int main() {
                    && candidate->temporal_upscaling == (percentage < 100),
                label + ": integer active subrectangle passes the actual post-callback guard");
         expect(!candidate->runtime->private_state && !candidate->runtime->prepare_shader
-                   && !candidate->runtime->output.resource,
+                   && !candidate->runtime->merged.resource,
                label + ": no private pipeline or SDK initialization");
         FinishFrame(command, candidate.release());
         expect(state.runtime.get() == candidate_runtime && state.claimed_frame == state.frame && state.completed == 0,
@@ -373,7 +373,7 @@ int main() {
                    && !candidate->runtime->constant_readback.pending_context,
                "same-hash 100/85 percent transition replaces stale flag with validated active extents");
         expect(!candidate->runtime->private_state && !candidate->runtime->prepare_shader
-                   && !candidate->runtime->output.resource,
+                   && !candidate->runtime->merged.resource,
                "same-hash scale regression does not initialize private pipelines or NVIDIA");
         FinishFrame(command, candidate.release());
         expect(state.runtime.get() == candidate_runtime && state.claimed_frame == state.frame && state.completed == 0,
@@ -464,7 +464,7 @@ int main() {
     state.runtime.reset();
     std::cout << "PASS: actual addon EvaluateFrame/FinishFrame callbacks; invalid-first/valid-second candidate; "
                  "nonfinite matrix; Quality/Balanced/Performance/Ultra Performance bounds; all integer Custom 33..100 with UE four-pixel "
-                 "allocations in Ultra/Fast TAA; captured Fast 33 percent input and padded source; below33 rejection; "
+                 "allocations in Ultra/Fast TAA; captured Fast 33 percent input and padded source; Custom 32 accepted (1-100%); "
                  "captured 85 percent 29/201 contracts; same-hash 100/85 transitions and stale "
                  "flag correction for every compute contract; exact/eight-pixel padding; six-entry temporal registration mapping; "
                  "mode scale and aspect/finite/padding guards; new mode transitions; changed mode; advanced Present; "

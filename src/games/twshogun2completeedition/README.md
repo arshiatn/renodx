@@ -1,5 +1,29 @@
 # RenoDX — Total War: SHOGUN 2 Complete Edition (DX11)
 
+### Next round (2026-11-16 tw3_; built only, not run in game)
+
+- Fixed: one AO method for every surface: under Ray-traced AO the terrain decals, rain skirts, burning panels, rivers
+  and terrain tiles (29 shaders read the game's SSAO, not only the sun draws) take the rays' AO too: it is copied into
+  the game's SSAO target after the sun draw, and the game's line-sweep SSAO (sweep and collect) no longer runs under it
+  (faster). Where the rays have no AO for a frame the target reads open (no occlusion), never the old frame's.
+- Faster: under Ray-traced reflections the lit scene's copy into the reflections' radiance (cs50_preconvolve_copy) is
+  left out too, as its HiZ, mip chains, march and blurs were (the rays' light replaces what it fed).
+- Changed: Auto Thickness (Experimental) off by default in Ambient Occlusion and Global Illumination, as the other
+  games.
+- Fixed: changing the render scale or the DLSS preset releases the game's DLSS feature and its parameters through the
+  game's own release before it is made again (they were left allocated each time).
+- Fixed: Terrain detail gives the game's values back when the add-on unloads.
+- Proven offline: test/tw_shogun2_shaders parts 21 (e) (the resolve doesn't read the radiance under the rays: 0 of 768
+  apart; CONTROL without them 768) and 22 (the rays' AO into the game's target: 143 render pixels the traced value, 113
+  others open; CONTROL a shifted copy 132 of 132 apart), test/tw_shogun2_tweaks parts 4-6 (the release pattern once,
+  its holder the DLSS pass's; terrain detail off back to the game's values), tw_vanilla_exact Shogun2PS with
+  highlight00, ssrcopy00, ribbon00, pointlight00 / 01 and sunlight00-03 exact, each control caught.
+- Measured (test/tw_shogun2_romer_toe, 1000 / 203 nits): Recommended (PsychoV35) is x2.5 - 6.2 the SDR picture where
+  SDR is under 1 nit and up to x2.3 at 1 - 15 nits (the game's film toe is steep; mid grey matched); the SDR-like
+  preset x1.4 - 2.1 and up to x1.4. Not changed: ATN decides.
+- In game: Ray-traced AO on in a battle with terrain decals (roads, scorch marks): decals darken in corners as the
+  ground around them; Time Each Pass shows no ssao00 / ssao01 and no preconvolve copy under the rays.
+
 ### Fix round (2026-11-16; built only, not run in game)
 
 - New: **Rays Replace Shadow Maps (Experimental, off)** under Ray-traced sun shadows: the sun's shadows from the rays
@@ -25,10 +49,9 @@
   resolve: unbound the game's, t41 = t_ssao, t46 the open environment, the hit without the AO; each with a CONTROL);
   test/tw_shogun2_tweaks part 4 (all 12 byte patterns once in empire.retail.x64.dll, at FindPattern's address; CONTROL
   a changed byte: none).
-- Double work (costs need Time Each Pass in game): the game's line-sweep SSAO (ssao00 / ssao01) still runs under the
-  rays' AO (its readers: the sun draws' t5 and the resolve's t3, both replaced while the rays' AO is bound); the SSR
-  march and HiZ run under ray-traced reflections (the resolve takes the rays' light); the cascades and sss00-02 run
-  under Rays Replace Shadow Maps (nothing reads them in the sun draws then).
+- Double work (costs need Time Each Pass in game): the cascades and sss00-02 run under Rays Replace Shadow Maps
+  (nothing reads them in the sun draws then). (The line-sweep SSAO under the rays' AO and the reflections' preconvolve
+  copy under the rays' reflections are left out since the next round, above.)
 
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 

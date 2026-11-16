@@ -216,6 +216,8 @@ struct Bindings {
   // Casters Out of View on (as Warhammer III's). Their defaults and labels stay the game's.
   bool rays_preset_as_attila = false;
   bool has_path_ambient = true;  // The paths can take the sky's light from the game's ambient (rt_scene::InstallSunDraws).
+  // false: Path-Traced Ambient left out of RT/PT (the ray-traced AO there, as without it): no game run has shown it here yet.
+  bool path_ambient_tested = true;
   // Point light shadows have their own row (RT/PT turns it on); Fog Shadows, light in the fog and RIS stay off in that preset.
   bool lights_own_row = false;
   // Ray-traced reflections (rt_scene::AppendSettings' reflection_pass); false: the Reflections section only with FidelityFX
@@ -742,7 +744,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                            {{"ScreenSpaceShadows", 1.f}, {"ScreenSpaceShadowsLength", 3.f}, {"light_bounce_strength", 1.f}}));
     Values rays_values = RAYS_PRESET;
     // No paths for the sky's light here: ray-traced AO, over the game's.
-    if (!b.has_path_ambient) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
+    if (!b.has_path_ambient || !b.path_ambient_tested) rays_values.insert(rays_values.end(), {{"RayTracedPathAmbient", 0.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f}});
     // Without the add-on's GT-VBAO gate (ChooseAo's Path-Traced): GT-VBAO goes off with the paths, else it ran hidden under them.
     if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
     // Without Global Illumination nothing of it to turn on.

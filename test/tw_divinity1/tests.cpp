@@ -13,12 +13,16 @@
 //    Peak under Paper White (2c, 400 / 500): every HDR mode as at Peak = Paper White.
 // 3. Extended: equal to the game's Hable below its pivot (within 1e-3); fire (1, 0.4, 0.1) turns yellow / white above 1
 //    (G / R rises toward 1 as SDR's clip does), the per-channel shoulder.
-// 4. The grade alone (grade.hlsl, GradeAfterCurve): the stock's grade below the shoulder's start 0.8 (ColorMatrix
-//    identity, saturation 1.97 and 0.34, Black Cove's colours) within 1e-4, its slope continuous through the shoulder;
-//    control (must fail): the hard knee at 1 it replaced. The change against it by brightness band (report).
+// 4. The grade alone (grade.hlsl, GradeAfterCurve) with Smooth Grade Shoulder (Experimental) on: the stock's grade below
+//    the shoulder's start 0.8 (ColorMatrix identity, saturation 1.97 and 0.34, Black Cove's colours) within 1e-4, its
+//    slope continuous through the shoulder; control (must fail): the hard knee at 1. The change against it by brightness
+//    band (report: the row's look change). The row off (its default) equals the knee at 1 bit for bit.
 // 5. Report: luminance falls along the ramps against the game's own, OkLab distance to the game's SDR picture below its
 //    clip, and fire / sky hue at Hue Clip 0 - 1 for both modes (the defaults come from it).
-// tests.exe <game cso> <add-on cso> <grade cso> <grade control cso>.
+// 6. Smooth Grade Shoulder off = the add-on's tone map before the shoulder (a6762afab^, built by run.ps1) bit for bit in
+//    SDR (Native), Extended and PsychoV35 (every atmosphere, grade, fade, Hue Clip 0 / 0.7, Output HDR10 / SDR); control
+//    (must fail): the row on differs.
+// tests.exe <game cso> <add-on cso> <grade cso> <grade control cso> <grade off cso> <add-on before the shoulder cso>.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -236,7 +240,7 @@ static divinity::ShaderInjectData Injection(float mode, float peak_nits, float h
       .v35_highlights = 1.f, .v35_shadows = 1.f, .v35_contrast = 1.f, .v35_highlight_contrast = 1.f,
       .v35_shadow_contrast = 1.f, .v35_flare = 0.f, .v35_saturation = 1.f, .v35_dechroma = 0.f,
       .v35_highlight_saturation = 1.f, .v35_roll_off = 1.f, .v35_gamut_compression = 1.f, .ext_hue_clip = hue_clip,
-      .sun_shadow_softness = 1.f,
+      .sun_shadow_softness = 1.f, .grade_shoulder = 0.f,
   };
 }
 
@@ -341,7 +345,7 @@ static OnSceneResult CheckOnScene(ID3D11PixelShader* shader, float mode, float p
 }
 
 int main(int argc, char** argv) {
-  REQUIRE(argc >= 5);
+  REQUIRE(argc >= 7);
   REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context)));
   // A full-screen triangle with the stock's interface (SV_Position, TexCoord0).
   constexpr char VERTEX[] =
@@ -496,6 +500,12 @@ int main(int argc, char** argv) {
     }
     const auto results = RunGrade(argv[3], cases);
     const auto control = RunGrade(argv[4], cases);
+    const auto off = RunGrade(argv[5], cases);
+    // The row off: the knee at 1 itself, every case bit for bit.
+    size_t off_unequal = 0;
+    for (size_t i = 0; i < cases.size(); ++i) off_unequal += (std::memcmp(&off[i], &control[i], sizeof(Float4)) != 0) ? 1 : 0;
+    std::printf("4. grade, Smooth Grade Shoulder off against the knee at 1: %zu of %zu cases not bit-equal\n", off_unequal, cases.size());
+    CHECK(off_unequal == 0);
     // The slope's change at one point: (y(+2) - y(+1)) - (y(-1) - y(-2)) over one step, relative to the brightest channel.
     const auto slope_change = [&](const std::vector<Float4>& out, size_t first) {
       float brightest = 1e-3f;
@@ -608,6 +618,48 @@ int main(int argc, char** argv) {
                     HueDegrees(Linear(At(ours, FIRE, bright))), HueDegrees(Linear(At(ours, SKY, bright))));
       }
     }
+  }
+
+  // 6. Smooth Grade Shoulder off against the tone map before the shoulder (bit for bit); the row on the control.
+  {
+    const auto before = LoadPixelShader(argv[6]);
+    size_t texels_off = 0;
+    size_t unequal_off = 0;
+    std::array<float, 3> worst_on = {};  // SDR (Native), Extended, PsychoV35
+    constexpr std::array<float, 3> MODES = {0.f, 3.f, 4.f};
+    for (const Atmosphere& atmosphere : ATMOSPHERES) {
+      for (const float saturation : {1.f, 1.97f, 0.34f}) {
+        for (const bool black_cove : {false, true}) {
+          Globals globals = MakeGlobals(atmosphere, saturation, black_cove);
+          for (const float fade : {0.f, 0.35f}) {
+            globals.params[3] = fade;
+            for (size_t mode = 0; mode < MODES.size(); ++mode) {
+              for (const float hue_clip : {0.f, 0.7f}) {
+                for (const float output : {0.f, 2.f}) {
+                  auto injection = Injection(MODES[mode], 1000.f, hue_clip, output);
+                  const auto old = Draw(before.Get(), globals, injection);
+                  const auto ours = Draw(addon.Get(), globals, injection);
+                  injection.grade_shoulder = 1.f;
+                  const auto shoulder = Draw(addon.Get(), globals, injection);
+                  for (size_t i = 0; i < old.size(); ++i) {
+                    ++texels_off;
+                    unequal_off += (std::memcmp(&old[i], &ours[i], sizeof(Float4)) != 0) ? 1 : 0;
+                    for (int c = 0; c < 4; ++c) worst_on[mode] = std::max(worst_on[mode], std::abs(old[i][c] - shoulder[i][c]));
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    std::printf("6. Smooth Grade Shoulder off against the tone map before it (a6762afab^): %zu of %zu texels not bit-equal\n",
+                unequal_off, texels_off);
+    std::printf("   control, the row on: largest difference SDR (Native) %.3g, Extended %.3g, PsychoV35 %.3g\n", worst_on[0], worst_on[1],
+                worst_on[2]);
+    CHECK(unequal_off == 0);
+    CHECK(worst_on[0] == 0.f);
+    CHECK(worst_on[1] > 1e-3f && worst_on[2] > 1e-3f);
   }
 
   std::printf(failures == 0 ? "tw_divinity1: all checks passed\n" : "tw_divinity1: %d checks failed\n", failures);

@@ -21,6 +21,11 @@
 // F. one occlusion a reflection: o1.y (the AO the reflection is multiplied by; ssr01: times its reflectance) bit for bit
 //    the same as with a white AO and t46 unbound, and o0 apart from A's somewhere (t46 reaches the environment). CONTROL:
 //    the older build's (else the game's) o1.y with t46 bound differs from the white-AO one (the AO on top).
+// ssr00 / ssr01 with Ray-Traced Reflections (t47 bound: the rays' light, the share that met a surface 0.3 - 1):
+// G. one reflection method: with the water's own rays (b10.x 1) o0 is bit for bit the same with the light buffer black, so
+//    the screen-space march (its only reader; the hierarchical march's t10 under the same branch) is left out; without them
+//    (b10 unbound) only the water's pixels (material flag 4) keep it. CONTROL: without t47 the light buffer reaches the
+//    pixels that reflect it.
 // The march's share of the picture: pixels whose result changes at 100% with the light buffer black (it reflects there).
 #include <windows.h>
 #include <d3d11.h>
@@ -160,10 +165,11 @@ struct Targets {
 
 // One draw of `shader` (a full-screen triangle) into two RGBA float targets of `width` x `height`, its viewport the
 // top-left `view_width` x `view_height`; `textures` t0-t9, b0-b2 the camera / lighting / parameters, b12 `render_scale` or none,
-// b13 the add-on's settings, t46 `specular_occlusion` or none.
+// b13 the add-on's settings, t46 `specular_occlusion` or none, t47 `reflection` and b10 `reflection_flags` or none.
 static Targets Draw(ID3D11PixelShader* shader, UINT width, UINT height, UINT view_width, UINT view_height,
                     const std::array<ID3D11ShaderResourceView*, 10>& textures, const std::array<ID3D11Buffer*, 3>& buffers,
-                    ID3D11Buffer* render_scale, ID3D11Buffer* settings, ID3D11ShaderResourceView* specular_occlusion = nullptr) {
+                    ID3D11Buffer* render_scale, ID3D11Buffer* settings, ID3D11ShaderResourceView* specular_occlusion = nullptr,
+                    ID3D11ShaderResourceView* reflection = nullptr, ID3D11Buffer* reflection_flags = nullptr) {
   static ComPtr<ID3D11VertexShader> vertex_shader;
   if (!vertex_shader) {
     constexpr char SOURCE[] = "float4 main(uint id : SV_VertexID) : SV_Position { return float4(float2((id << 1) & 2, id & 2) * float2(2, -2) + float2(-1, 1), 0, 1); }";
@@ -191,6 +197,8 @@ static Targets Draw(ID3D11PixelShader* shader, UINT width, UINT height, UINT vie
   context->PSSetShader(shader, nullptr, 0);
   context->PSSetShaderResources(0, 10, textures.data());
   context->PSSetShaderResources(46, 1, &specular_occlusion);
+  context->PSSetShaderResources(47, 1, &reflection);
+  context->PSSetConstantBuffers(10, 1, &reflection_flags);
   context->PSSetConstantBuffers(0, 3, buffers.data());
   context->PSSetConstantBuffers(12, 1, &render_scale);
   context->PSSetConstantBuffers(13, 1, &settings);
@@ -230,7 +238,7 @@ static Targets Draw(ID3D11PixelShader* shader, UINT width, UINT height, UINT vie
   }
   ID3D11ShaderResourceView* none[10] = {};
   context->PSSetShaderResources(0, 10, none);
-  context->PSSetShaderResources(46, 1, none);
+  context->PSSetShaderResources(46, 2, none);
   return out;
 }
 
@@ -424,6 +432,12 @@ int main(int argc, char** argv) {
   std::vector<float> open(WIDTH * HEIGHT * 4);
   for (UINT i = 0; i < open.size(); ++i) open[i] = 0.2f + 0.8f * Hash(i / 4, 11, 9);
   const auto specular_occlusion = Texture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, open.data());
+  // Part G's reflections at the render pixels (rgb the light, a the share that met a surface) and the water's flag (b10.x).
+  std::vector<float> traced(WIDTH * HEIGHT * 4);
+  for (UINT i = 0; i < traced.size(); ++i) traced[i] = (i % 4 == 3) ? 0.3f + 0.7f * Hash(i / 4, 13, 10) : Hash(i, 17, 11);
+  const auto rays_reflection = Texture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, traced.data());
+  const std::array<uint32_t, 4> water_rays = {1u, 0u, 0u, 0u};
+  const auto water_flags = Constants(water_rays.data(), 16);
   const auto shared_jitter = Texture(64, 64, DXGI_FORMAT_R32G32B32A32_FLOAT, jitter.data());
   const auto shared_terrain = Texture(64, 64, DXGI_FORMAT_R32G32B32A32_FLOAT, terrain.data());
   constexpr auto FLOATS = DXGI_FORMAT_R32G32B32A32_FLOAT;
@@ -568,6 +582,30 @@ int main(int argc, char** argv) {
       CHECK(f == 0, "%s: the AO still multiplies the reflection under the specular occlusion", pair.name);
       CHECK(dimmed > 0, "%s: the specular occlusion does not reach the environment", pair.name);
       CHECK(f_control > 0, "%s: control F does not fail", pair.name);
+      // G: the rays' reflections in place of the march.
+      const auto rays = [&](const std::array<ID3D11ShaderResourceView*, 10>& textures, ID3D11ShaderResourceView* reflection,
+                            ID3D11Buffer* flags) {
+        return Draw(replacement.Get(), view_w, view_h, view_w, view_h, textures, buffers_100, nullptr, settings.Get(), nullptr,
+                    reflection, flags);
+      };
+      const UINT g = colour_differ(rays(scene_100, rays_reflection.Get(), water_flags.Get()),
+                                   rays(scene_black, rays_reflection.Get(), water_flags.Get()));
+      const UINT g_water = colour_differ(rays(scene_100, rays_reflection.Get(), nullptr), rays(scene_black, rays_reflection.Get(), nullptr));
+      const UINT g_control = colour_differ(ours_100, Draw(replacement.Get(), view_w, view_h, view_w, view_h, scene_black, buffers_100,
+                                                          nullptr, settings.Get()));
+      UINT water = 0;
+      for (UINT y = 0; y < view_h; ++y) {
+        for (UINT x = 0; x < view_w; ++x) {
+          const UINT at = (static_cast<UINT>(y / buffers_scale) * WIDTH + static_cast<UINT>(x / buffers_scale)) * 4;
+          water += (scene.channel3[at + 3] != 0.f && scene.stencil[at + 1] == 1u) ? 1u : 0u;
+        }
+      }
+      std::printf("%s, g_buffers_scale %.1f: G the rays' reflections: o0 %u differ with the light buffer black (the water's rays on); "
+                  "%u without the water's (of %u water pixels); CONTROL without the rays: %u differ\n",
+                  pair.name, buffers_scale, g, g_water, water, g_control);
+      CHECK(g == 0, "%s: the march still reaches the picture under the rays' reflections", pair.name);
+      CHECK(g_water <= water, "%s: more than the water keeps the march without the water's rays", pair.name);
+      CHECK(g_control > 0, "%s: control G does not fail", pair.name);
     }
   }
   std::printf("%s\n", failures == 0 ? "PASS" : "FAIL");
