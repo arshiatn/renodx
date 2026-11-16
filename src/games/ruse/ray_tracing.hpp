@@ -603,8 +603,11 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     state.occlusion_frame = bridge.frame;
   }
   // The rays' Light Bounce: the light leaving what each texel shows (last frame's scene there) to the helper, its bounce
-  // into the s14 texel. Path tracing: the paths' sky is the game's ambient (last frame's, linear) in the helper's ambient
-  // cube, and once the helper replaces the ambient with it (its frames of history) the texel's x takes the game's away.
+  // into the s14 texel (below, with the occlusion). Path tracing: the paths' sky is the game's ambient (last frame's,
+  // linear) in the helper's ambient cube, and once the helper replaces the ambient with it (its frames of history) the
+  // texel's x takes the game's away.
+  const UINT bounce_width = (bridge.width + BOUNCE_SCALE - 1) / BOUNCE_SCALE;
+  const UINT bounce_height = (bridge.height + BOUNCE_SCALE - 1) / BOUNCE_SCALE;
   bool bounced = false;
   if (traced && state.traced_bounce != 0 && light_kept) {
     if (state.traced_bounce == 2 && state.ambient_frame != UINT32_MAX && helper.rt_sun.texture) {
@@ -617,8 +620,6 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       const D3D11_BOX cube_texels = {.left = 3, .top = 0, .front = 0, .right = 9, .bottom = 1, .back = 1};
       context->UpdateSubresource(helper.rt_sun.texture.Get(), 0, &cube_texels, cube.data(), static_cast<UINT>(cube.size() * sizeof(float)), 0);
     }
-    const UINT bounce_width = (bridge.width + BOUNCE_SCALE - 1) / BOUNCE_SCALE;
-    const UINT bounce_height = (bridge.height + BOUNCE_SCALE - 1) / BOUNCE_SCALE;
     std::array<float, 24> light_settings = {};
     std::ranges::copy(to_previous, light_settings.begin());
     std::ranges::copy(size, light_settings.begin() + 16);
@@ -635,20 +636,6 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     context->CSSetUnorderedAccessViews(0, 1, NO_OUTPUTS.data(), nullptr);
     bounced = twattila::rt_scene::internal::TraceLightBounce(context.Get(), state.prepared_light.Get(), bounce_width, bounce_height, BOUNCE_SCALE,
                                                              state.traced_light.Get());
-    if (bounced) {
-      const bool replaced = state.traced_bounce == 2 && twattila::rt_scene::internal::runtime.path_ambient_on;
-      std::array<float, 12> texel_settings = {BOUNCE_STRENGTH};
-      const std::array<UINT, 8> counts = {bounce_width, bounce_height, BOUNCE_SCALE, bridge.width, (replaced ? 1u : 0u), (rays_occlusion ? 1u : 0u),
-                                          bridge.height, 0u};
-      std::memcpy(texel_settings.data() + 4, counts.data(), sizeof(counts));
-      context->UpdateSubresource(state.texel_settings.Get(), 0, nullptr, texel_settings.data(), 0, 0);
-      context->CSSetConstantBuffers(0, 1, state.texel_settings.GetAddressOf());
-      const std::array<ID3D11ShaderResourceView*, 2> bounce_inputs = {helper.rt_positions.srv.Get(), occlusion};
-      context->CSSetShaderResources(1, 2, bounce_inputs.data());
-      run(state.texels_shader.Get(), state.traced_light_view.Get(), state.ground_light.work_uav.Get());
-      context->CSSetShaderResources(0, 3, NO_VIEWS.data());
-      state.bounce_frame = bridge.frame;
-    }
   }
   // The rays' reflections (after the bounce: their hits read its prepared light), the share that met a surface with them.
   bool reflected = false;
@@ -684,6 +671,26 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     }
     context->CSSetShaderResources(0, 3, NO_VIEWS.data());
     context->CSSetConstantBuffers(0, 1, NO_CONSTANTS.data());
+  }
+  // The rays' bounce into the s14 texel with the occlusion: the rays', else GT-VBAO's just above (its own work copy).
+  if (bounced) {
+    const bool replaced = state.traced_bounce == 2 && twattila::rt_scene::internal::runtime.path_ambient_on;
+    ID3D11ShaderResourceView* bounce_occlusion = occlusion;
+    if (!rays_occlusion) {
+      bounce_occlusion = ((state.occlusion_frame == bridge.frame) ? state.occlusion_view.Get() : nullptr);
+    }
+    std::array<float, 12> texel_settings = {BOUNCE_STRENGTH};
+    const std::array<UINT, 8> counts = {bounce_width, bounce_height, BOUNCE_SCALE, bridge.width, (replaced ? 1u : 0u),
+                                        (bounce_occlusion != nullptr ? 1u : 0u), bridge.height, 0u};
+    std::memcpy(texel_settings.data() + 4, counts.data(), sizeof(counts));
+    context->UpdateSubresource(state.texel_settings.Get(), 0, nullptr, texel_settings.data(), 0, 0);
+    context->CSSetConstantBuffers(0, 1, state.texel_settings.GetAddressOf());
+    const std::array<ID3D11ShaderResourceView*, 2> bounce_inputs = {helper.rt_positions.srv.Get(), bounce_occlusion};
+    context->CSSetShaderResources(1, 2, bounce_inputs.data());
+    run(state.texels_shader.Get(), state.traced_light_view.Get(), state.ground_light.work_uav.Get());
+    context->CSSetShaderResources(0, 3, NO_VIEWS.data());
+    context->CSSetConstantBuffers(0, 1, NO_CONSTANTS.data());
+    state.bounce_frame = bridge.frame;
   }
   // Water reflections: the march's matrices act on offsets from this frame's eye (world coordinates near 2e6): this
   // frame's clip to an offset (rt's relative rows, the inverse's w row), an offset to this frame's clip and to last

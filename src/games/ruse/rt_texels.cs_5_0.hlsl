@@ -15,14 +15,14 @@ Texture2D<float4> t_reflection : register(t0);
 #else
 Texture2D<float4> t_bounce : register(t0);
 Texture2D<float4> t_positions : register(t1);  // the helper's world positions, w their distance from the camera (0: the sky)
-Texture2D<float> t_occlusion : register(t2);   // the rays' ambient occlusion (flags.y 1)
+Texture2D<float> t_occlusion : register(t2);   // the ambient occlusion, the rays' or else GT-VBAO's (flags.y 1)
 #endif
 RWTexture2D<float4> u_texel : register(u0);
 
 cbuffer texel_settings : register(b0) {
   float4 strength;  // x: the light's
   uint4 texels;   // bounce width, height, scale; render width
-  uint4 flags;    // x 1: the ambient replaced; y 1: the rays' occlusion; z render height
+  uint4 flags;    // x 1: the ambient replaced; y 1: an occlusion in t2; z render height
 };
 
 [numthreads(8, 8, 1)]
