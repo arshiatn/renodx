@@ -1,4 +1,4 @@
-// lenseflare.hlsl ps30_flare_3: lense_flare_3 (its turn at 0 degrees a second is none). flare.hlsli.
+// lenseflare.hlsl ps30_flare_3: lense_flare_3, turned at 0 degrees a second (a fixed quarter turn). flare.hlsli.
 #include "./flare.hlsli"
 
 SamplerState lense_flare_3_sampler_s : register(s0);
@@ -10,5 +10,5 @@ void main(
   float2 v2 : TEXCOORD0,
   out float4 o0 : SV_Target0)
 {
-  o0 = Flare(lense_flare_3_sampler, lense_flare_3_sampler_s, v1, v2, 0.0f);
+  o0 = Flare(lense_flare_3_sampler, lense_flare_3_sampler_s, v1, v2, true, 0.0f);
 }

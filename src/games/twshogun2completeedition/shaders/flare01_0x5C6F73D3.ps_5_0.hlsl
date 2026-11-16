@@ -10,5 +10,5 @@ void main(
   float2 v2 : TEXCOORD0,
   out float4 o0 : SV_Target0)
 {
-  o0 = Flare(lense_flare_2_sampler, lense_flare_2_sampler_s, v1, v2, 0.0f);
+  o0 = Flare(lense_flare_2_sampler, lense_flare_2_sampler_s, v1, v2, false, 0.0f);
 }
