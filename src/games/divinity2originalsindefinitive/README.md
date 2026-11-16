@@ -30,6 +30,26 @@ scale): within 0.32 8-bit codes of the game's own SDR LUT (RenoDX ACES alone,
 the earlier stand-in, missed it by up to 137 codes). The SDR picture's mid gray
 is 0.0996 of white (Mid Gray "Game's SDR": 20.2 nits at Paper White 203).
 
+PsychoV35 keeps the game's darker shadows and stronger colours (ATN, 2026-11-16):
+four of its sliders default to the game's own response, the rest keep Musa's
+defaults (`shared.h` `DOS2_V35_*`, Recommended and Reset set them too):
+Contrast 1.42 (the game's ACES contrast around mid gray, per cone as the game's
+curve is per channel), Shadows 0.43 (its toe), Saturation 0.93 (its colour at
+equal lightness after that contrast) and Highlight Contrast 0.87 (PsychoV35's
+own highlights above it). Fitted on WARP against the game's own t00 through its
+LUT and t01 (test/tw_psychov35 part 6, 10.), Peak 1000 / Paper White 203:
+
+| Against the game (Off) | PsychoV35's own sliders | These defaults |
+|---|---:|---:|
+| Grey where the game is 0.05 - 1 nits | x3.1 .. x6.9 | x0.97 .. x1.04 |
+| Grey where the game is 1 - 15 nits | x1.09 .. x2.40 | x0.98 .. x1.03 |
+| Colour (OkLab chroma at equal lightness), the game's 1 - 30 nits | x0.81 | x1.03 |
+| Grey at +5 .. +8 stops against PsychoV35's own (Peak 1000 / 203, 2500 / 275) | x1 | x0.95 .. x1.07 |
+
+One curve, once: these are PsychoV35's own parameters on the untonemapped
+scene, not a curve before it. Between mid gray and +4 stops the picture follows
+the game (brighter than PsychoV35's own); its roll-off to Peak stays PsychoV35's.
+
 These are neutral scene-linear 0.18 inputs at the tone-mapping stage, with
 neutral user controls. Authored grading, exposure and other user adjustments
 can change actual scene pixels. Matching gray does not make the curves or

@@ -50,6 +50,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
+
+
+
+
+
+
+
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -121,7 +130,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Divinity 2: the orthographic EoCSight_HDR 0x5C4137E2 (50-nit constants vs 300) n ... | d2_ after R1b
 - Divinity 2 later: D2-8b scene R11G11B10F -> RGBA16F (view cloning, Experimental ... | d2_ after R1b
 - Divinity 2 R1b leftovers: the gamma slider at 1.2 (needs ATN's clicks); no menu ... | next Divinity 2 run
-- ATN ANSWERED 01:0x "Yes, match the game": V35 keeps the game's darker shadows an ... | ATN
 - Divinity 2 next run: what triggers the orthographic camera (tactical toggle?); A ... | next Divinity 2 run / ht_
 - ATN at the end (Divinity 2): mid grey row's default; old presets / V30 keep or d ... | ATN
 - R.U.S.E. whole package in ONE implementation round, plan.md 10b order, all Exper ... | ru_ (implementation round)
@@ -134,26 +142,31 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R.U.S.E. D3D9 bridge Fable 5.2 High review when ru_ finishes it (ATN asked). Own ... | coordinator
 - ATN at the end (R.U.S.E.): Extended replacing V31 Native Tone or beside it; Hue ... | ATN
 - ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 ... | coordinator
-- d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div ... | d1_
+- Divinity 1 window-switch crash: d1f_ (started 01:5x) finds what holds the old fl ... | d1f_
+- Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp cand ... | next Divinity 1 agent
+- tw_install.py's include scanner counts includes inside an #ifndef the add-on def ... | coordinator (tools)
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
+- R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI ... | ru7_ (started 01:2x)
+- R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA pas ... | coordinator
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
+- vf_ (started 02:0x): fix the Vanilla-exact FAILs: Shogun 2 flare00 / 02 / 03 spr ... | vf_
+- PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
-- ATN DECIDES (Tales): Bend SSS instead of Bandai's contact shadows 0x95802ADA? GT ... | ATN
-- gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: g ... | gr_
+- tl_ (started 01:1x): UE port of Bend SSS + GT-VBGI, Tales first then Expeditions ... | ATN
+- GPU round 2 (after the Divinity 1 run + ruh_'s R.U.S.E. GPU tests free the GPU): ... | coordinator (next GPU round)
 - Both D3D12 devices (Streamline FG + RR) removed at the same moment: every order ... | next helper round
 - Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device re ... | coordinator
 - REVIEWS + FIXES MERGED 8ee4ab2f 20:5x (left: GPU harness after ATN's game, build ... | coordinator
 - [B] R7 no reader inventory for Shogun 2's broad upgrade (addon.cpp:2576-2594), D ... | HDR bug round (inventory from traces)
 - [B] R10 unproven 8-bit links (never traced): Pharaoh FXAA 0xA6756C1F, WH2 dof00/ ... | next data run per game
-- [B] R13 Vanilla-exact tests with a failing control (only Div1 0x30A1D40D has one ... | HDR test round (after the fix merge)
 - [B] R14 variants not replaced (traces decide if they draw): Attila / Thrones D91 ... | next data run per game, then the HDR bug round
 - [P] ATN DECIDES R1 Div1 mode 1 "UC2 Extended / PsychoV30" = UpgradeToneMap then ... | ATN
 - [P] ATN DECIDES R1 shoulders not identity below their start: Neutwo from 0 (grad ... | ATN
 - [P] ATN DECIDES R2 Shogun 2 pointlight01_0x57139F8D:258 saturate after HDR Firel ... | ATN
-- [P] ATN DECIDES R3 Attila + Thrones HDR show the gamma-2.0 picture as linear (no ... | ATN
+- ANSWERED 02:1x (2.2 in HDR, lg_ implementing). Owner: lg_. [P] ATN DECIDES R3 At ... | ATN
 - [P] ATN DECIDES R5 hue settings after PsychoV in legacy V30 / V31 modes (all TW ... | ATN
 - [P] ATN DECIDES R6 bloom: smoothing also in Rendering Mode SDR (Vanilla != game: ... | ATN
 - [P] ATN DECIDES Extended Saturation = RGB blend to grey, not OKLab chroma (WH2 : ... | ATN
@@ -1113,8 +1126,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         stand-in was off by 137), part 6 on the R1b cb0s, Off t00 + t01 bit-exact with failing controls (x86 + amd64
         PASS); 2435eb92 "Higher Precision Scene (Experimental)" off. ATN's UI Brightness is 203 (not 50; 50 is the game's
         own HDRPaperWhite, ignored in modded modes). Divinity 2 after R1b: D2-8, ortho EoCSight, D2-8b.
-      - [ ] ATN ANSWERED 01:0x "Yes, match the game": V35 keeps the game's darker shadows and stronger colours (V30 /
-        Tweaked unchanged); d2c_ implementing + part 6 check (Hue Clip default still ATN's). Owner: d2c_
+      - [x] MERGED a318ef72 02:1x (d2c_ e7ea6056 + 012424bc): V35's own sliders default to the game's response (Contrast
+        1.42, Shadows 0.43, Saturation 0.93, Highlight Contrast 0.87; one curve, nothing before V35); grey 0.05-1 nits x3.1
+        ..x6.9 -> x0.97..x1.04 of the game, mid-tone chroma x0.81 -> x1.03, highlights within 7 % of V35's own; part 6
+        section 10 PASS with a failing control. Saved V35 sliders stay: press Recommended. ATN ANSWERED 01:0x "Yes, match the game": V35 keeps the game's darker shadows and stronger colours (V30 /
+        Tweaked unchanged).
         (was) ATN DECIDES (Divinity 2, from the R1b shots): V30 / V35 shadows ~5x brighter than Off (0.05-1 nit pixels) and
         mid tones ~23 % less saturated (flatter than the game's ACES toe); Hue Clip default (80 kept; 60 closest on
         average, 80 best for fire / red). Owner: ATN
@@ -1222,7 +1238,30 @@ heading text are in HANDOFF_ARCHIVE.md)
     tools/tw/round_notes/gated_build.ps1 (one build at a time via tools\tw\build_job.lock, waits while Committed Bytes
     > 45 GB: MHR running, 8.7 GB RAM free at 20:5x). Agents commit on their branches; the coordinator merges one at a
     time, then the GPU harness, build all, stamp, install.
-      - [ ] d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div1 R4 peak clamp + R13 tests. Owner: d1_
+      - [x] d1_ MERGED 411a3dd5 02:1x: b2fb01c2 device_loss release_flip_chains_before_recreate (opt-in, off for other
+        games; unbind + Flush when a flip chain goes) + 516388e9 Divinity opts in, first_start_key "tonemap_type";
+        f92a1aca Peak clamp; 22f873f3 "Sun Shadow Softness (Experimental)"; 35a37ac4 test/tw_d1_post 17/17 vs the game's
+        shaders + FXAA 0x35F39F1D FIXED (decompiler wrote Gather for GatherGreen: FXAA was broken for AntiAliasing 1
+        players). tw_d1_swapchain PASS (control E_ACCESSDENIED -> S_OK), tw_device_loss 3c PASS, tw_divinity1 2c PASS; all
+        12 device_loss consumers built. Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div1 R4 peak clamp + R13 tests.
+      - CONTROL RUNS 01:49-01:5x (ATN, inside the Act 2/3 save, fullscreen -> fake fullscreen -> fullscreen): VANILLA no
+        crash, RESHADE ONLY no crash, with our add-on CRASH (R1) -> the cause is ours (sent to d1f_).
+      - [ ] Divinity 1 window-switch crash: d1f_ (started 01:5x) finds what holds the old flip chain (view clones,
+        ReShade refs), releases it at destroy_swapchain, adds an E_ACCESSDENIED safety net (retry as the game's blt chain),
+        extends tw_d1_swapchain; then a vanilla control run (no ReShade) and a re-run of the switch with ATN. Owner: d1f_
+      - [ ] Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp candidates, torch / fire values,
+        PCSS constants; SSREnabled 1 + a second mode cycle at the next run. Owner: next Divinity 1 agent
+      - [ ] tw_install.py's include scanner counts includes inside an #ifndef the add-on defines (rt_scene.hpp via
+        test_hooks.hpp:31 for Divinity 1) and refuses a current build. Owner: coordinator (tools)
+      - [x] RAN 01:40-01:47 (d1 v1 stamped + installed, ATN loaded the Act 2/3 save; run_r1_014005): START CLEAN (9 swap
+        chains S_OK, no E_ACCESSDENIED); FULLSCREEN -> FAKE FULLSCREEN STILL CRASHES at EoCApp+0xF7C532 (fresh factory,
+        BufferCount 1 Windowed DISCARD upgraded to flip -> 0x80070005; ReShade "Reference count inconsistent (1)" at every
+        release; our back-buffer view clone suspected). Captured: menu + save traces (torches), pass timing 3.185 ms GPU,
+        7 mode shots, PresentMon 120 fps / 8.33 ms (CPU 8.30 = CPU-bound, paused). ATN's files restored, 0 differ.
+        Divinity 1 R1 run (now possible): the start crash + fullscreen -> fake fullscreen switch with the fix; PCSS /
+        0xCB4B3BA6 other branches' constants; R7 RGBA8-upgrade readers; 8 census clamp candidates; steps 9-13. Limit: a
+        view of the old back buffer held by another add-on still fails (no blt fallback). ATN by eye: Hue Clip 70, Sun
+        Shadow Softness, legacy V30 / Pragmap. Owner: coordinator (data run, ATN loads the save)
       - [ ] ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + R4 SDR gamut + R13 final post
         test; H1 / H2 / T-run LEFT for after the game. Owner: ru_
         20:5x on branch ruse-whole-package (not built): 01029a12 R4 V31 gamut BT.709 on SDR; 618a347a R13 final post
@@ -1255,6 +1294,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         (Experimental)" GT-VBAO without the helper (WARP PASS). ru6_ started 00:1x: water reflections (259 PS read
         uniDefaultEnvMap once) + ground GI as Experimental rows. LEFT after: gated build fixes, H1 / H2 / H3 GPU, T-run,
         Fable 5.2 High review of bridge.hpp / bridge_replay.hpp / ray_tracing.hpp / rt_core replay API / reflex.hpp.
+        ru6_ DONE 01:3x, BUILT (ruse amd64 0 errors at 01:07, tip 995b4183): 774ee417 + 7f0d1e82 "Water Reflections
+        (Experimental)" Off / Screen-Space (120 water PS, 116 proved) + "Ground Light Bounce (Experimental)" (GT-VBGI, 108 /
+        112 terrain PS); D3D9 runtime accepts 974 / 974 patched shaders; WARP mirror hits 16,186 / 16,186; S1 / S2 adopted
+        (027e08d6 + 995b4183). Not possible yet: RT water reflections + RT GI (no G-buffer guides / albedo; route in 11b,
+        M); lit objects' reflections need a combined O1 variant. ruh_ started 01:4x: H1 / H2 / H3 on the GPU.
+      - [ ] R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI would be a huge upgrade";
+        doubts "needs a G-buffer"): guides via MRT from the patched game shaders, then rt_core light bounce / paths +
+        ReflectPixel; Experimental rows; branch ruse-gi. Owner: ru7_ (started 01:2x)
+      - [x] DONE a98b1871 02:0x (sk_ 6b854be3 + 67e7e62d, all 17 lessons placed; zip rebuilt: Downloads\RenoDX_skills_2026-11-15.zip,
+        48 files). Skills update from tonight's 17 lessons (tools/tw/round_notes/skill_lessons_1116.md) + rebuilt skills zip.
+      - [x] ruh_ GPU TESTS PASS + MERGED df26e42c 02:2x: af61a7ae real bug (the bridge could never start: D3D9Ex opens
+        D3D11-made shared textures only as RGBA16F / RGB10A2 / BGRA8; now D3D9Ex makes them, compute writes via D3D11 work
+        textures + copy); H1 PASS (INTZ 1e-5, 10-bit 0 of 36,864 differ, jitter restored bit for bit), H2 PASS (DLSS / FSR
+        3.1.6 / XeSS 2.0.2 24/24), GT-VBAO GPU = WARP (6.4e-7; flat ground 0.969 at 13.6 deg pitch: look note), FG hand-over
+        300/300 (DLSS-G 2x in 7 of 11 runs: flaky, not R.U.S.E.'s), H3 39/39 WARP + GPU. Stop rule met. Fable 5.2 High
+        review of the bridge started 02:2x (ATN asked). R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA passes H1 + H2 first), Fable 5.2
+        High review of the bridge (ATN asked), T-run with ATN loading the battle (water depth, world up, units, cube-map
+        brightness, bounce double count, GPU cost, G1 / O1 / AO / Bend checks, FG / Reflex, MainRTDivider). Owner: coordinator
       - [x] sh_ MERGED c04da639 01:1x: S1 Config::first_start_key (default "tonemapper", every game unchanged); S2 Apply's
         SDR branch sets the proxy's target format / colour space; S3 test hooks answer only on the D3D11 proxy's runtime;
         tw_output_encoding x86 + amd64 ALL PASS (+ FirstStartKeys, ProxyTarget), new test/tw_test_hooks PASS. Divinity 2
@@ -1264,6 +1321,15 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own SetTargetFormat lines) and
         Divinity 1 (`.first_start_key = "tonemap_type"`, drop the override at addon.cpp:989-993); in-game check of S2 SDR
         output through the R.U.S.E. proxy and S3 SET / SHOT. Owner: ru6_ / d1_, then the R.U.S.E. T-run
+      - [ ] vf_ (started 02:0x): fix the Vanilla-exact FAILs: Shogun 2 flare00 / 02 / 03 sprite rotation (0.70-0.74), Rome
+        Remastered bloom01 dither cast (0.0052); confirm Div1 FXAA EXACT after 35a37ac4; whole suite amd64 + x86. Owner: vf_
+      - [x] ATN ANSWERED 02:1x: fix the Attila / Thrones lens flares (frame's own gamma, Vanilla exact); give Attila / Thrones
+        the 2.2 Gamma Correction in HDR like the other TW games; keep the bloom smoothing (R6 accepted as intended); keep
+        Gamma Correction on in the others. lg_ started 02:1x. (was) ATN DECIDES (Vanilla not exactly the game, by design today): Attila / Thrones lens flares decode 2.2 / encode 2.0
+        in every mode (0.035); Gamma Correction on by default re-encodes 2.0 -> 2.2 in Rome II / WH1 / WH2 / Troy / Pharaoh
+        Vanilla (0.027-0.035); the R6 bloom smoothing in SDR (up to 22 in WH2 t00). Make Vanilla = the game? Owner: ATN
+      - [ ] PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, everything is merged, pushed and
+        HANDOFF is current (no running build / GPU job / game); installs after the restart. Owner: coordinator
       - [ ] In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), Shogun 2 highlights (V35 top
         now reaches Peak), WH2 with FXAA on; a trace that the DOF chain draws (Attila / Thrones / WH1) and its targets are
         16-bit; README lines for the fixes at release. Owner: next TW data runs / release round
@@ -1304,11 +1370,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         bias, auto thickness). Owner: next Ryse data run
       - [x] npu_ MERGED a0057296 01:2x (11 commits; built amd64; cb_audit.py conflict with npr_ resolved: list DUMPS +
         Ryse, --embed): see the NON-TW SKILLS AUDIT boxes. npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe.
-      - [ ] ATN DECIDES (Tales): Bend SSS instead of Bandai's contact shadows 0x95802ADA? GT-VBGI instead of Bandai's own
+      - [x] ATN ANSWERED 01:1x "Yes, ours. Ours should be much better": Bend SSS + GT-VBGI replace Bandai's contact shadows
+        + SSGI in Tales (then Expeditions, shared UE port); rows off until an in-game look check, then on by default.
+      - [ ] tl_ (started 01:1x): UE port of Bend SSS + GT-VBGI, Tales first then Expeditions, replacing Bandai's passes;
+        WARP tests; then in-game look + GPU cost, then defaults on. Owner: tl_
+        (was) ATN DECIDES (Tales): Bend SSS instead of Bandai's contact shadows 0x95802ADA? GT-VBGI instead of Bandai's own
         SSGI? (double work: tools/nontw/tales/census/t13_double_work.txt; both need a UE port). AO temporal / edge /
         denoise for Tales / Expeditions: not wanted per ATN's 00:0x "ignore Attila's own SSAO" (UE GT-VBAO leaves noise to
         TAA / DLSS). Owner: ATN
-      - [ ] gr_ (still waiting for "GPU free"): Nsight's untried speedups measured. Owner: gr_
+      - [x] gr_ MERGED 16ef0b28 02:0x: a-c on (proven: 0 of 240 harness outputs changed, 40 modes): radiance-cache selects,
+        batched texel loads in paths (0.339 -> 0.324 ms) + reflections (1.070 -> 1.034), one positions copy a frame (copy
+        0.32 -> 0.17, bounce 0.97 -> 0.83); Nsight frame 6.48 -> 6.17 ms; (e) "Near ReSTIR Reuse (Experimental)" off (reuse
+        -46 %, frame -0.16 ms, RR rRMSE 2.19 -> 1.96 % = better); (d) half-precision ReSTIR NOT TAKEN (not faster; branch
+        gr-half-restir-wip ac78a3ed); (f) radiance cache not started. Helper build\gr_final BD968BB67FF4 (includes fx3's
+        fixes? -> the install round rebuilds the helper from atn-mods). gr_ (still waiting for "GPU free"): Nsight's untried speedups measured.
+      - [x] DONE 2f0d8152 (ATN 02:2x "Sure, worst case ... I tell you to turn it off"): Near ReSTIR Reuse on by default
+        (Attila's page = every TW game, Ryse, Shogun 2; label without "Experimental"). In-game check with ATN's tests.
+      - [ ] GPU round 2 (after the Divinity 1 run + ruh_'s R.U.S.E. GPU tests free the GPU): radiance cache item (f) from
+        the Nsight list; then, after the install, a fresh Nsight capture of Attila at ATN's preset for the next wins.
+        Owner: coordinator (next GPU round)
       - 23:4x ATN DONE PLAYING ("I am done with the game"): committed 38.8 GB, the gated builds started (d1_ first); gr_
         told GPU free; fx_ resumed for its harness checks on atn-mods (gpu_job.lock per job).
       - 23:5x ATN closed the leftover game processes (some Attila ones won't end; committed 38.8 -> 28.5 GB) and allowed
@@ -1360,7 +1440,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] [B] R10 unproven 8-bit links (never traced): Pharaoh FXAA 0xA6756C1F, WH2 dof00/01 C337D8E3 / 91B4F89A,
         Shogun 2 dofblur02_0x6531CCC3 (unorm). Owner: next data run per game
       - [x] DONE 73c0d40c (hb_, merged 8bb28f1f): [B] R12 Pharaoh t00_0x976C1C74:132 max(0) before the bypass lerp (:224). Owner: HDR bug round
-      - [ ] [B] R13 Vanilla-exact tests with a failing control (only Div1 0x30A1D40D has one): TW tone mappers /
+      - [x] DONE 78622e74 (ht_ test/tw_vanilla_exact: 212 shaders vs the game's bytes on WARP amd64; 167 EXACT, 32 known R6,
+        13 FAIL, controls 212/212 caught; part 6 conflict kept atn-mods' (d2b_ had the same Div2 check)). [B] R13 Vanilla-exact tests with a failing control (only Div1 0x30A1D40D has one): TW tone mappers /
         hdr_to_screen / bloom / lens flare, Shogun 2 tonemap00/01 first (rewritten from source), Ryse (ledger DO NOW),
         Tales / Expeditions (no harness source to re-run their WARP claim), Div1 bloom / god rays / UI / AA, Div2 t01 /
         bloom00 / ui00 (t00 report-only), Rome R, RUSE. Owner: HDR test round (after the fix merge)
@@ -1378,7 +1459,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: ATN
       - [ ] [P] ATN DECIDES R2 Shogun 2 pointlight01_0x57139F8D:258 saturate after HDR Firelight (low-quality lights).
         Owner: ATN
-      - [ ] [P] ATN DECIDES R3 Attila + Thrones HDR show the gamma-2.0 picture as linear (no 2.2 emulation; Shogun 2
+      - [ ] ANSWERED 02:1x (2.2 in HDR, lg_ implementing). Owner: lg_. [P] ATN DECIDES R3 Attila + Thrones HDR show the gamma-2.0 picture as linear (no 2.2 emulation; Shogun 2
         emulates it). Owner: ATN
       - [ ] [P] ATN DECIDES R5 hue settings after PsychoV in legacy V30 / V31 modes (all TW games, Rome R, Shogun 2, Ryse
         + Fire Hue, Tales, Div2 ApplyFireColor): V35 is fine everywhere. Owner: ATN

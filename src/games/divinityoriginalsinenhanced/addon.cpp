@@ -120,6 +120,7 @@ void ApplyResetPreset() {
       {"ui", 1.f},
       {"playerLightIntensity", 1.f},
       {"playerLightRadius", 1.f},
+      {"sun_shadow_softness", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -875,6 +876,18 @@ renodx::utils::settings::Settings settings = {
         .is_visible = ShowHDRSettings,
     },
     new renodx::utils::settings::Setting{
+        .key = "sun_shadow_softness",
+        .binding = &shader_injection.sun_shadow_softness,
+        .default_value = 1.f,
+        .label = "Sun Shadow Softness (Experimental)",
+        .section = "Game-Specific Settings",
+        .tooltip = "How soft the sun's shadows get away from what casts them (Ultra shadows). 1: the game's.",
+        .min = 0.25f,
+        .max = 3.f,
+        .format = "%.2f",
+        .is_visible = IsAdvancedSettings,
+    },
+    new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
         .label = "Trace One Frame",
         .section = "Tools",
@@ -983,14 +996,10 @@ void ConfigureAddon() {
         .shader_encoding = &shader_injection.swap_chain_encoding,
         .setting = static_cast<int>(setting->GetValue()),
         .first_start_without_hdr = &ApplySdrPreset,
+        .first_start_key = "tonemap_type",
         .recommended_preset = &ApplyRecommendedPreset,
         .log_name = "[Divinity]",
     });
-    // A first start is one without a saved Rendering Mode: this add-on's key is tonemap_type (Configure looks for the
-    // other add-ons' tonemapper).
-    float saved_mode = 0.f;
-    twattila::output_encoding::first_start =
-        !reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), "tonemap_type", saved_mode);
     settings.push_back(setting);
   }
 
@@ -1065,7 +1074,9 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
           .at_100 = true,
           .blend_hashes = {0xED93F883, 0x93AEBB93, 0x20163A55},
       });
-      // Before the swap chain mod: a removed device's chain let go, each new chain's output decided.
+      // Before the swap chain mod: a removed device's chain let go, each new chain's output decided. The game makes a
+      // new chain for its window 2-4 times a start and at each window-mode change: the last flip chain is let go first.
+      twattila::device_loss::release_flip_chains_before_recreate = true;
       twattila::device_loss::Install();
       reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);  // peak nits
       reshade::register_event<reshade::addon_event::present>(OnPresent);

@@ -164,6 +164,8 @@ struct Settings {
   bool sharc = false;
   // Lean ReSTIR Reuse (Experimental, with Path Tracing; helper112, bridge RT_PATH_REUSE_LEAN): ReSTIR GI's reuse with fewer fetches.
   bool reuse_lean = false;
+  // Near ReSTIR Reuse (Experimental, with Path Tracing; bridge RT_PATH_REUSE_NEAR): three neighbours within half the reach.
+  bool reuse_near = false;
   // Importance-Sampled Torch Shadows (Experimental): two shadow rays a pixel toward the local lights, picked by their light.
   bool light_importance = false;
   // Steady Torch Shadows (Experimental): every light a pixel reaches traced every frame, each soft ray to the same disk point.
@@ -3389,6 +3391,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
                                                      | (runtime.settings.path_ser ? dlaa_bridge::RT_PATH_SER : 0u)
                                                      | (runtime.settings.sharc ? dlaa_bridge::RT_PATH_SHARC : 0u)
                                                      | (runtime.settings.reuse_lean ? dlaa_bridge::RT_PATH_REUSE_LEAN : 0u)
+                                                     | (runtime.settings.reuse_near ? dlaa_bridge::RT_PATH_REUSE_NEAR : 0u)
                                                      | ((runtime.lights_in_bounce != 0) ? dlaa_bridge::RT_PATH_LIGHTS_IN_BOUNCE : 0u)
                                                      | ((runtime.lights_in_bounce == 3) ? dlaa_bridge::RT_PATH_LIGHT_RATIO : 0u)
                                                      | ((runtime.lights_in_bounce == 3 && runtime.settings.light_ratio_follow) ? dlaa_bridge::RT_PATH_RATIO_FOLLOW : 0u)

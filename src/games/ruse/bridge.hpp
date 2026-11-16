@@ -33,7 +33,7 @@
 
 // R.U.S.E.'s D3D9 bridge (tools/nontw/ruse/plan.md 10b W2, W3, D2-D5): DLAA, FSR or XeSS (native) through the TW helper
 // on the DX11 proxy's device. The game's D3D9Ex device (the swap chain mod's upgrade) and the proxy share four textures
-// (D3D11 makes them with a KMT handle, D3D9Ex opens it). Each frame, before the bloom reads the resolved main target: one
+// (D3D9Ex makes them with a KMT handle, D3D11 opens it). Each frame, before the bloom reads the resolved main target: one
 // D3D9 pass writes the scene as light, the INTZ depth and the camera's motion into them; the proxy copies them into the
 // helper's textures, the upscaler runs, and a second D3D9 pass writes the result back into the resolved target in the
 // game's encoding.
@@ -50,6 +50,10 @@ struct SharedTexture {
   ComPtr<ID3D11Texture2D> proxy;
   ComPtr<IDirect3DTexture9> host;
   ComPtr<IDirect3DSurface9> host_surface;
+  // Written by compute on the proxy (MakeShared's unordered_access): there into its own texture, copied into `proxy`
+  // before the game's device reads it (the shared texture opens on D3D11 without unordered access).
+  ComPtr<ID3D11Texture2D> work;
+  ComPtr<ID3D11UnorderedAccessView> work_uav;
 };
 
 struct State {
@@ -113,26 +117,25 @@ inline float Halton(uint32_t index, uint32_t base) {
   return result;
 }
 
-inline bool MakeShared(ID3D11Device* proxy, IDirect3DDevice9Ex* host, DXGI_FORMAT proxy_format, D3DFORMAT host_format,
-                       SharedTexture* texture, UINT bind_flags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET) {
-  const D3D11_TEXTURE2D_DESC desc = {
-      .Width = state.width,
-      .Height = state.height,
-      .MipLevels = 1,
-      .ArraySize = 1,
-      .Format = proxy_format,
-      .SampleDesc = {.Count = 1},
-      .Usage = D3D11_USAGE_DEFAULT,
-      .BindFlags = bind_flags,
-      .MiscFlags = D3D11_RESOURCE_MISC_SHARED,
-  };
-  ComPtr<IDXGIResource> resource;
+// D3D9Ex makes the shared texture and the proxy opens it (a render target and shader resource there): one the proxy
+// makes opens in D3D9Ex only in surface sharing's few formats (RGBA16F, RGB10A2, BGRA8; R32F and RG16F refused,
+// E_INVALIDARG: test/tw_ruse_bridge H1, 2026-11-16).
+inline bool MakeShared(ID3D11Device* proxy, IDirect3DDevice9Ex* host, D3DFORMAT host_format, SharedTexture* texture,
+                       bool unordered_access = false) {
   HANDLE handle = nullptr;
-  return SUCCEEDED(proxy->CreateTexture2D(&desc, nullptr, texture->proxy.GetAddressOf()))
-         && SUCCEEDED(texture->proxy.As(&resource)) && SUCCEEDED(resource->GetSharedHandle(&handle))
-         && SUCCEEDED(host->CreateTexture(state.width, state.height, 1, D3DUSAGE_RENDERTARGET, host_format, D3DPOOL_DEFAULT,
-                                          texture->host.GetAddressOf(), &handle))
-         && SUCCEEDED(texture->host->GetSurfaceLevel(0, texture->host_surface.GetAddressOf()));
+  if (FAILED(host->CreateTexture(state.width, state.height, 1, D3DUSAGE_RENDERTARGET, host_format, D3DPOOL_DEFAULT,
+                                 texture->host.ReleaseAndGetAddressOf(), &handle))
+      || FAILED(texture->host->GetSurfaceLevel(0, texture->host_surface.ReleaseAndGetAddressOf()))
+      || FAILED(proxy->OpenSharedResource(handle, IID_PPV_ARGS(texture->proxy.ReleaseAndGetAddressOf())))) {
+    return false;
+  }
+  if (!unordered_access) return true;
+  D3D11_TEXTURE2D_DESC desc = {};
+  texture->proxy->GetDesc(&desc);
+  desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+  desc.MiscFlags = 0;
+  return SUCCEEDED(proxy->CreateTexture2D(&desc, nullptr, texture->work.ReleaseAndGetAddressOf()))
+         && SUCCEEDED(proxy->CreateUnorderedAccessView(texture->work.Get(), nullptr, texture->work_uav.ReleaseAndGetAddressOf()));
 }
 
 // W3: the D3D9 queue drained (an event query), before D3D11 reads what it wrote, or the other way round.
@@ -286,10 +289,10 @@ inline bool MakeObjects(IDirect3DDevice9* host, std::span<const uint8_t> quad, s
                     && SUCCEEDED(host->CreatePixelShader(reinterpret_cast<const DWORD*>(prepare.data()), state.prepare.ReleaseAndGetAddressOf()))
                     && SUCCEEDED(host->CreatePixelShader(reinterpret_cast<const DWORD*>(writeback.data()), state.writeback.ReleaseAndGetAddressOf()))
                     && SUCCEEDED(host->CreateVertexDeclaration(LAYOUT.data(), state.quad_layout.ReleaseAndGetAddressOf()))
-                    && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.color)
-                    && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.depth)
-                    && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16_FLOAT, D3DFMT_G16R16F, &state.motion)
-                    && MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.output);
+                    && MakeShared(proxy, host_ex.Get(), D3DFMT_A16B16G16R16F, &state.color)
+                    && MakeShared(proxy, host_ex.Get(), D3DFMT_R32F, &state.depth)
+                    && MakeShared(proxy, host_ex.Get(), D3DFMT_G16R16F, &state.motion)
+                    && MakeShared(proxy, host_ex.Get(), D3DFMT_A16B16G16R16F, &state.output);
   if (!made) state.output = {};
   return made;
 }
@@ -521,7 +524,7 @@ inline void KeepHudless(IDirect3DDevice9* host) {
     auto* proxy = reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native());
     if (FAILED(source->GetDesc(&desc)) || desc.Format != D3DFMT_A16B16G16R16F || desc.Width != state.width || desc.Height != state.height
         || FAILED(host->QueryInterface(IID_PPV_ARGS(host_ex.GetAddressOf())))
-        || !MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.hudless)) {
+        || !MakeShared(proxy, host_ex.Get(), D3DFMT_A16B16G16R16F, &state.hudless)) {
       state.hudless = {};
       state.hudless_failed = true;
       reshade::log::message(reshade::log::level::warning,

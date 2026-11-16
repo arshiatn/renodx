@@ -3,7 +3,7 @@
 // pre-pass's; argv[1] the census cso folder) and the B0 trace's constants (u1_trace_200820, trace2 3654: the camera pass's
 // c0-c8, the ground VS's c0-c12).
 // H1 (no helper):
-// 1. Shared pairs: the four textures made by D3D11 (a KMT handle) and opened by D3D9Ex; prepare (D3D9) writes colour /
+// 1. Shared pairs: the four textures made by D3D9Ex (a KMT handle) and opened by D3D11; prepare (D3D9) writes colour /
 //    depth / motion that D3D11 reads, D3D11 writes the output that writeback (D3D9) reads.
 // 2. INTZ: the ground quad drawn by the census VS into an INTZ depth; prepare's depth (oC1, R32F) read on D3D11 = the
 //    CPU's z / w of that plane at each pixel's D3D9 centre (worst 1e-4), 1 (cleared) off the quad.
@@ -16,10 +16,24 @@
 // 5. Jitter: OnDraw on a scene draw writes rows 0 / 1 of c0-c3 + offset x row 3 (read back from the device), the census
 //    VS drawn with them moves clip.xy by offset x clip.w (worst 1% of the offset), the next non-scene draw gets the game's
 //    c0-c3 back bit for bit.
+// 6. GT-VBAO (ray_tracing.hpp ShadeGround with the Screen-Space Ground Ambient Occlusion row alone: no helper, the
+//    anti-aliasing off): the ground quad and a plateau 1,000 units over its middle into the INTZ depth; the occlusion the
+//    terrain shaders read (the shared R32F, read back on D3D9) near 1 on open ground (mean over 0.95: seen at the trace
+//    camera's 13.6 degree pitch about one sector of 32 at the horizon goes, 0.969; 0.9975 facing the camera), darker on the
+//    ground beside the plateau on screen, and the same shader over the same depth and constants on WARP within one
+//    sector's share (1 / 128) at 99% of the pixels.
 // H2 (renodx-tw-dlaa64.exe beside this exe; argv[2] dlss / fsr / xess):
-// 6. Evaluate on a synthetic aliased frame (the ground quad's hard edges drawn with each frame's jitter) for 24 frames:
+// 7. Evaluate on a synthetic aliased frame (the ground quad's hard edges drawn with each frame's jitter) for 24 frames:
 //    a result each frame after the first, written back into the scene; flat pixels within 3 codes of the aliased
 //    reference (99%), at least half of the edge pixels between the two colours.
+// 8. Frame generation (argv[2] dlss: the helper's Auto backend, DLSS-G here) over this window, 300 frames at about 60 a
+//    second (the D3D9Ex device presenting under it as the game's does): the final
+//    post's FP16 target into the shared HUD-less texture at the next draw (KeepHudless), the frame ready at the present,
+//    KeepFrame's HUD-less pass through the proxy's swap chain shader (HDR10: its PQ code of the post's grey within 2), the
+//    inputs Evaluate kept (near 5,000 and far 5e7 from the trace camera, its forward axis), and the requests the
+//    proxy's present makes (frame_generation's OnReshadePresent, without ReShade's runtime) all answered once the first
+//    is, frame generation not failed. The frames DLSS-G shows a rendered one are printed, not checked: over this
+//    small test window it showed 2 in 7 of 11 runs and 1 ("no generated frames presented yet", no failure) in 4.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d9.h>
@@ -40,7 +54,12 @@
 #include <embed/bridge_prepare.h>
 #include <embed/bridge_quad.h>
 #include <embed/bridge_writeback.h>
+#include <embed/fg_hdr10.h>
+#include <embed/swap_chain_proxy_pixel_shader_dx11.h>
+#include <embed/swap_chain_proxy_vertex_shader_dx11.h>
 #include "src/games/ruse/bridge.hpp"
+#include "src/games/ruse/ray_tracing.hpp"
+#include "src/games/ruse/shared.h"
 #include "test/tw_particle_history/mock_reshade.hpp"
 
 extern "C" __declspec(dllexport) const char* const NAME = "R.U.S.E. bridge test";
@@ -134,7 +153,8 @@ static Vector Unproject(const Matrix& inverse, double x, double y, double z) {
 }
 
 // The ground quad (the census VS maps SHORT4 0..32767 into WorldBoundingBox c11-c12): a square on the plane z = height,
-// 15,000 units in front of the near plane along the view's centre, its half size a quarter of the view there.
+// 15,000 units in front of the near plane along the view's centre, its half size the view's half height there (seen
+// at the camera's 13.6 degree pitch it covers about a sixth of the frame).
 struct Ground {
   std::array<float, 4> box_min = {};
   std::array<float, 4> box_max = {};
@@ -148,7 +168,7 @@ static Ground MakeGround(const Matrix& inverse) {
   const double length = std::sqrt((direction[0] * direction[0]) + (direction[1] * direction[1]) + (direction[2] * direction[2]));
   for (double& axis : direction) axis /= length;
   constexpr double DISTANCE = 15000;
-  const double half = 0.25 * (DISTANCE + 5000) * 0.414;
+  const double half = (DISTANCE + 5000) * 0.414;
   const std::array<double, 3> hit = {near_point[0] + (DISTANCE * direction[0]), near_point[1] + (DISTANCE * direction[1]),
                                      near_point[2] + (DISTANCE * direction[2])};
   return {
@@ -351,7 +371,10 @@ static void DrawGround(IDirect3DDevice9Ex* host, const GroundDraw& draw, IDirect
   host->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
   host->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
   constexpr std::array<int16_t, 16> CORNERS = {0, 0, 0, 1, 32767, 0, 0, 1, 0, 32767, 0, 1, 32767, 32767, 0, 1};
+  // D3D9 draws only inside a scene (D3DERR_INVALIDCALL outside): in the game the bridge's passes are in the game's.
+  host->BeginScene();
   host->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, CORNERS.data(), 4 * sizeof(int16_t));
+  host->EndScene();
 }
 
 constexpr char JITTER_PS[] = R"(
@@ -424,10 +447,10 @@ int main(int argc, char** argv) {
   const Ground ground = MakeGround(inverse);
 
   // 1. Shared pairs.
-  REQUIRE(bridge::MakeShared(devices.proxy.Get(), host, DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.color));
-  REQUIRE(bridge::MakeShared(devices.proxy.Get(), host, DXGI_FORMAT_R32_FLOAT, D3DFMT_R32F, &state.depth));
-  REQUIRE(bridge::MakeShared(devices.proxy.Get(), host, DXGI_FORMAT_R16G16_FLOAT, D3DFMT_G16R16F, &state.motion));
-  REQUIRE(bridge::MakeShared(devices.proxy.Get(), host, DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.output));
+  REQUIRE(bridge::MakeShared(devices.proxy.Get(), host, D3DFMT_A16B16G16R16F, &state.color));
+  REQUIRE(bridge::MakeShared(devices.proxy.Get(), host, D3DFMT_R32F, &state.depth));
+  REQUIRE(bridge::MakeShared(devices.proxy.Get(), host, D3DFMT_G16R16F, &state.motion));
+  REQUIRE(bridge::MakeShared(devices.proxy.Get(), host, D3DFMT_A16B16G16R16F, &state.output));
 
   // 2. INTZ: the ground into the game's (readable) depth, read through prepare.
   const ComPtr<IDirect3DTexture9> depth_texture = MakeTarget(host, INTZ, D3DUSAGE_DEPTHSTENCIL);
@@ -479,7 +502,9 @@ int main(int argc, char** argv) {
       const std::array<float, 40> constants = PrepareConstants(previous_float, inverse_float, hdr_param, game_velocity);
       const std::array<IDirect3DSurface9*, 3> inputs = {state.color.host_surface.Get(), state.depth.host_surface.Get(), state.motion.host_surface.Get()};
       const std::array<IDirect3DBaseTexture9*, 3> sources = {scene.Get(), depth_texture.Get(), velocity.Get()};
+      host->BeginScene();
       bridge::DrawQuad(host, inputs, state.prepare.Get(), sources, constants);
+      host->EndScene();
       bridge::WaitHost(host);
 
       // 3. The colour as light (D3D11 reads what D3D9 wrote).
@@ -559,7 +584,9 @@ int main(int argc, char** argv) {
       const ComPtr<IDirect3DSurface9> scene_surface = Level(scene.Get());
       const std::array<IDirect3DSurface9*, 1> target = {scene_surface.Get()};
       const std::array<IDirect3DBaseTexture9*, 1> result = {state.output.host.Get()};
+      host->BeginScene();
       bridge::DrawQuad(host, target, state.writeback.Get(), result, constants);
+      host->EndScene();
       const std::vector<uint8_t> back = ReadHost(host, scene_surface.Get(), 4);
       size_t differing = 0;
       for (size_t index = 0; index < pattern.size(); ++index) {
@@ -608,8 +635,8 @@ int main(int argc, char** argv) {
   for (size_t index = 0; index < static_cast<size_t>(WIDTH) * HEIGHT; ++index) {
     if (Float(moved_pixels, (index * 4) + 3) != 1.f) continue;
     ++covered;
-    worst_jitter = std::max({worst_jitter, std::abs(Float(moved_pixels, index * 4) - offset_x) / std::abs(offset_x),
-                             std::abs(Float(moved_pixels, (index * 4) + 1) - offset_y) / std::abs(offset_y)});
+    worst_jitter = std::max({worst_jitter, static_cast<double>(std::abs(Float(moved_pixels, index * 4) - offset_x) / std::abs(offset_x)),
+                             static_cast<double>(std::abs(Float(moved_pixels, (index * 4) + 1) - offset_y) / std::abs(offset_y))});
   }
   std::printf("jitter: %zu pixels, worst %.2e of the offset\n", covered, worst_jitter);
   CHECK(covered > 1000);
@@ -620,7 +647,142 @@ int main(int argc, char** argv) {
   CHECK(std::memcmp(written.data(), VIEW_PROJECTION.data(), sizeof(written)) == 0);
   CHECK(!state.jitter_written);
 
-  // 6. H2: the helper's anti-aliasing on an aliased frame drawn with each frame's jitter.
+  // 6. GT-VBAO without the helper.
+  {
+    state = bridge::State{};
+    state.width = WIDTH;
+    state.height = HEIGHT;
+    std::ranges::copy(VIEW_PROJECTION, state.camera.begin());
+    std::ranges::copy(inverse_float, state.camera.begin() + 16);
+    state.camera[32] = RENDER_DT;
+    state.camera_valid = true;
+    state.intz_depths = {reinterpret_cast<uint64_t>(depth_surface.Get())};
+    auto& rays = ruse::ray_tracing::state;
+    rays.vbao = true;
+    rays.prepass_depth = reinterpret_cast<uint64_t>(depth_surface.Get());
+    rays.ground_mask = reinterpret_cast<uint64_t>(scratch.Get());
+    const float quarter_x = 0.25f * (ground.box_max[0] - ground.box_min[0]);
+    const float quarter_y = 0.25f * (ground.box_max[1] - ground.box_min[1]);
+    const Ground plateau = {
+        .box_min = {ground.box_min[0] + quarter_x, ground.box_min[1] + quarter_y, ground.box_min[2] + 1000.f, 1.f},
+        .box_max = {ground.box_max[0] - quarter_x, ground.box_max[1] - quarter_y, ground.box_max[2] + 1000.f, 1.f},
+        .height = ground.height + 1000.0,
+    };
+    host->SetRenderTarget(0, scratch_surface.Get());
+    host->SetDepthStencilSurface(depth_surface.Get());
+    REQUIRE(SUCCEEDED(host->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0, 1.f, 0)));
+    host->SetRenderState(D3DRS_ZENABLE, TRUE);
+    host->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
+    DrawGround(host, ground_draw, flat_ps.Get(), ground, &VIEW_PROJECTION, VIEW_PROJECTION);
+    DrawGround(host, ground_draw, flat_ps.Get(), plateau, &VIEW_PROJECTION, VIEW_PROJECTION);
+    host->SetDepthStencilSurface(nullptr);
+    host->BeginScene();
+    const bool shaded = ruse::ray_tracing::ShadeGround(&command_list);
+    host->EndScene();
+    REQUIRE(shaded);
+    const std::vector<uint8_t> occlusion = ReadHost(host, rays.occlusion.host_surface.Get(), 4);
+
+    // Plateau pixels (its top seen first), then each ground pixel's screen distance to the nearest of them.
+    std::vector<uint8_t> on_plateau(static_cast<size_t>(WIDTH) * HEIGHT);
+    for (UINT y = 0; y < HEIGHT; ++y) {
+      for (UINT x = 0; x < WIDTH; ++x) on_plateau[(y * WIDTH) + x] = HitGround(inverse, plateau, x, y).inside > -0.01 ? 1 : 0;
+    }
+    double open_sum = 0;
+    double open_lowest = 1;
+    size_t open = 0;
+    double beside_sum = 0;
+    size_t beside = 0;
+    for (int y = 0; y < static_cast<int>(HEIGHT); ++y) {
+      for (int x = 0; x < static_cast<int>(WIDTH); ++x) {
+        const size_t index = (static_cast<size_t>(y) * WIDTH) + x;
+        if (on_plateau[index] != 0 || HitGround(inverse, ground, x, y).inside < 0.01) continue;
+        int nearest = 1 << 20;
+        for (int dy = -24; dy <= 24; ++dy) {
+          for (int dx = -24; dx <= 24; ++dx) {
+            const int sx = x + dx;
+            const int sy = y + dy;
+            if (sx < 0 || sy < 0 || sx >= static_cast<int>(WIDTH) || sy >= static_cast<int>(HEIGHT)) continue;
+            if (on_plateau[(static_cast<size_t>(sy) * WIDTH) + sx] != 0) nearest = std::min(nearest, std::max(std::abs(dx), std::abs(dy)));
+          }
+        }
+        const double value = Float(occlusion, index);
+        if (nearest > 24) {
+          ++open;
+          open_sum += value;
+          open_lowest = std::min(open_lowest, value);
+        } else if (nearest <= 3) {
+          ++beside;
+          beside_sum += value;
+        }
+      }
+    }
+    const double open_mean = open_sum / std::max<size_t>(open, 1);
+    const double beside_mean = beside_sum / std::max<size_t>(beside, 1);
+    std::printf("GT-VBAO: open ground %zu pixels, mean %.4f, lowest %.4f; beside the plateau %zu pixels, mean %.4f\n", open, open_mean, open_lowest,
+                beside, beside_mean);
+    CHECK(open > 1000 && open_mean > 0.95);
+    CHECK(beside > 100 && beside_mean < open_mean - 0.03);
+
+    // The same shader on WARP over the depth and constants this GPU had.
+    ComPtr<ID3D11Device> warp;
+    ComPtr<ID3D11DeviceContext> warp_context;
+    REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, warp.GetAddressOf(), nullptr,
+                                        warp_context.GetAddressOf())));
+    const std::vector<uint8_t> start_depth = ReadProxy(devices, state.depth.proxy.Get(), 4);
+    D3D11_BUFFER_DESC settings_desc = {};
+    rays.vbao_settings->GetDesc(&settings_desc);
+    settings_desc.Usage = D3D11_USAGE_STAGING;
+    settings_desc.BindFlags = 0;
+    settings_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Buffer> settings_copy;
+    REQUIRE(SUCCEEDED(devices.proxy->CreateBuffer(&settings_desc, nullptr, settings_copy.GetAddressOf())));
+    devices.context->CopyResource(settings_copy.Get(), rays.vbao_settings.Get());
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    REQUIRE(SUCCEEDED(devices.context->Map(settings_copy.Get(), 0, D3D11_MAP_READ, 0, &mapped)));
+    std::vector<uint8_t> settings(settings_desc.ByteWidth);
+    std::memcpy(settings.data(), mapped.pData, settings.size());
+    devices.context->Unmap(settings_copy.Get(), 0);
+    const D3D11_TEXTURE2D_DESC depth_desc = {.Width = WIDTH, .Height = HEIGHT, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
+                                             .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    const D3D11_SUBRESOURCE_DATA depth_data = {.pSysMem = start_depth.data(), .SysMemPitch = WIDTH * 4};
+    D3D11_TEXTURE2D_DESC output_desc = depth_desc;
+    output_desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+    const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = settings_desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const D3D11_SUBRESOURCE_DATA constants_data = {.pSysMem = settings.data()};
+    ComPtr<ID3D11Texture2D> warp_depth;
+    ComPtr<ID3D11ShaderResourceView> warp_depth_view;
+    ComPtr<ID3D11Texture2D> warp_output;
+    ComPtr<ID3D11UnorderedAccessView> warp_output_view;
+    ComPtr<ID3D11Buffer> warp_constants;
+    ComPtr<ID3D11ComputeShader> warp_shader;
+    REQUIRE(SUCCEEDED(warp->CreateTexture2D(&depth_desc, &depth_data, warp_depth.GetAddressOf()))
+            && SUCCEEDED(warp->CreateShaderResourceView(warp_depth.Get(), nullptr, warp_depth_view.GetAddressOf()))
+            && SUCCEEDED(warp->CreateTexture2D(&output_desc, nullptr, warp_output.GetAddressOf()))
+            && SUCCEEDED(warp->CreateUnorderedAccessView(warp_output.Get(), nullptr, warp_output_view.GetAddressOf()))
+            && SUCCEEDED(warp->CreateBuffer(&constants_desc, &constants_data, warp_constants.GetAddressOf()))
+            && SUCCEEDED(warp->CreateComputeShader(__ground_vbao.data(), __ground_vbao.size(), nullptr, warp_shader.GetAddressOf())));
+    warp_context->CSSetShader(warp_shader.Get(), nullptr, 0);
+    warp_context->CSSetShaderResources(0, 1, warp_depth_view.GetAddressOf());
+    warp_context->CSSetUnorderedAccessViews(0, 1, warp_output_view.GetAddressOf(), nullptr);
+    warp_context->CSSetConstantBuffers(0, 1, warp_constants.GetAddressOf());
+    warp_context->Dispatch((WIDTH + 7) / 8, (HEIGHT + 7) / 8, 1);
+    const std::vector<uint8_t> reference = ReadProxy({.proxy = warp, .context = warp_context}, warp_output.Get(), 4);
+    double difference_sum = 0;
+    double difference_most = 0;
+    size_t within = 0;
+    for (size_t index = 0; index < static_cast<size_t>(WIDTH) * HEIGHT; ++index) {
+      const double difference = std::abs(Float(occlusion, index) - Float(reference, index));
+      difference_sum += difference;
+      difference_most = std::max(difference_most, difference);
+      if (difference <= (1.0 / 128) + 1e-4) ++within;
+    }
+    const size_t pixels = static_cast<size_t>(WIDTH) * HEIGHT;
+    std::printf("GT-VBAO against WARP: mean difference %.2e, largest %.4f, %zu of %zu within 1 / 128\n", difference_sum / pixels, difference_most, within,
+                pixels);
+    CHECK(within * 100 >= pixels * 99);
+  }
+
+  // 7. H2: the helper's anti-aliasing on an aliased frame drawn with each frame's jitter.
   if (!twattila::dlaa_bridge::HelperInstalled()) {
     std::printf("H2: no renodx-tw-dlaa64.exe beside the test: skipped\n");
   } else {
@@ -661,15 +823,30 @@ int main(int argc, char** argv) {
     };
     draw_frame(false);
     const std::vector<uint8_t> aliased = ReadHost(host, scene_surface.Get(), 4);
+    // The helper starts in the background (its D3D12 device, the upscaler): frames until its first result (at most 20 s),
+    // then every frame must have one.
+    const ULONGLONG started = GetTickCount64();
+    int waited = 0;
     int evaluated = 0;
-    for (int frame = 0; frame < 24; ++frame) {
-      bridge::OnPresent();
+    int missed = 0;
+    while (evaluated + missed < 24 && GetTickCount64() - started < 20000) {
+      bridge::OnPresent(host);
       draw_frame(true);
+      host->BeginScene();
       bridge::Evaluate(&command_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
-      if (!state.reset) ++evaluated;
+      host->EndScene();
+      if (!state.reset) {
+        ++evaluated;
+      } else if (evaluated > 0) {
+        ++missed;
+      } else {
+        ++waited;
+        Sleep(10);
+      }
     }
-    std::printf("H2 %s: %d of 24 frames evaluated, ready %d, failed %d\n", upscaler.c_str(), evaluated, state.ready ? 1 : 0, state.failed ? 1 : 0);
-    CHECK(evaluated >= 23);
+    std::printf("H2 %s: first result after %d frames (%llu ms), then %d evaluated, %d missed; ready %d, failed %d, %s\n", upscaler.c_str(), waited,
+                GetTickCount64() - started, evaluated, missed, state.ready ? 1 : 0, state.failed ? 1 : 0, twattila::dlaa_bridge::bridge.status.c_str());
+    CHECK(evaluated == 24 && missed == 0);
     const std::vector<uint8_t> result = ReadHost(host, scene_surface.Get(), 4);
     const auto red = [](const std::vector<uint8_t>& pixels, int x, int y) {
       uint32_t pixel = 0;
@@ -705,6 +882,136 @@ int main(int argc, char** argv) {
     std::printf("H2 %s: flat %zu (kept %zu), edge %zu (between the colours %zu)\n", upscaler.c_str(), flat, flat_kept, edge, edge_between);
     CHECK(flat > 1000 && flat_kept >= flat * 99 / 100);
     CHECK(edge > 50 && edge_between * 2 >= edge);
+
+    // 8. Frame generation through R.U.S.E.'s hand-over (frame_generation.hpp's Install and present event need ReShade:
+    // their state set here, the present's request made as OnReshadePresent makes it).
+    if (upscaler == "dlss") {
+      namespace generation = twattila::frame_generation;
+      auto& generation_state = generation::internal::state;
+      auto& helper = twattila::dlaa_bridge::bridge;
+      const ShaderInjectData injection = {.peak_white_nits = 1000.f, .diffuse_white_nits = 203.f, .graphics_white_nits = 203.f, .swap_chain_encoding = 0.f};
+      generation_state.vertex_code = __swap_chain_proxy_vertex_shader_dx11;
+      generation_state.pixel_code = __swap_chain_proxy_pixel_shader_dx11;
+      generation_state.hdr10_pixel_code = __fg_hdr10;
+      generation_state.injection = &injection;
+      generation_state.injection_bytes = sizeof(injection);
+      generation_state.format = DXGI_FORMAT_R10G10B10A2_UNORM;  // the proxy's HDR10 back buffer, as its first present sets it
+      generation::Update({.multiplier = 2});
+      RECT frame_rect = {0, 0, static_cast<LONG>(WIDTH), static_cast<LONG>(HEIGHT)};
+      AdjustWindowRect(&frame_rect, WS_OVERLAPPEDWINDOW, FALSE);
+      // Topmost while it runs: covered by another window, DLSS-G presents no generated frames.
+      SetWindowPos(devices.window, HWND_TOPMOST, 40, 40, frame_rect.right - frame_rect.left, frame_rect.bottom - frame_rect.top, SWP_NOACTIVATE);
+      ShowWindow(devices.window, SW_SHOW);
+      SetForegroundWindow(devices.window);
+      const ComPtr<IDirect3DTexture9> post = MakeTarget(host, D3DFMT_A16B16G16R16F);
+      REQUIRE(post != nullptr);
+      const ComPtr<IDirect3DSurface9> post_surface = Level(post.Get());
+      const D3D11_TEXTURE2D_DESC back_desc = {.Width = WIDTH, .Height = HEIGHT, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R10G10B10A2_UNORM,
+                                              .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_RENDER_TARGET};
+      ComPtr<ID3D11Texture2D> back;
+      ComPtr<ID3D11RenderTargetView> back_view;
+      REQUIRE(SUCCEEDED(devices.proxy->CreateTexture2D(&back_desc, nullptr, back.GetAddressOf()))
+              && SUCCEEDED(devices.proxy->CreateRenderTargetView(back.Get(), nullptr, back_view.GetAddressOf())));
+      auto* context = devices.context.Get();
+      uint32_t frame_index = 0;
+      int ready_frames = 0;
+      int requests = 0;
+      int presented = 0;
+      int refused = 0;  // after the first presented
+      for (int frame = 0; frame < 300; ++frame) {
+        MSG message;
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&message);
+        draw_frame(true);
+        host->BeginScene();
+        bridge::Evaluate(&command_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
+        host->EndScene();
+        // The final post into the back buffer's FP16 clone (grey, gamma 2.2), then the UI's first draw, then the present.
+        host->SetRenderTarget(0, post_surface.Get());
+        host->Clear(0, nullptr, D3DCLEAR_TARGET, D3DCOLOR_COLORVALUE(0.5f, 0.5f, 0.5f, 1.f), 1.f, 0);
+        // In the game both run inside its scene (the UI draw's event): StretchRect there.
+        host->BeginScene();
+        bridge::OnFinalPost(&command_list);
+        bridge::KeepHudless(host);
+        host->EndScene();
+        bridge::OnPresent(host);
+        host->PresentEx(nullptr, nullptr, nullptr, nullptr, 0);
+        if (state.generation_ready) ++ready_frames;
+        // The proxy's present: KeepFrame, then frame_generation's present event with the proxy's back buffer.
+        bridge::KeepFrame(context);
+        const std::array<float, 4> back_colour = {0.25f, 0.3f, 0.35f, 1.f};
+        context->ClearRenderTargetView(back_view.Get(), back_colour.data());
+        const bool kept = std::exchange(generation_state.kept, false);
+        if (!helper.fg_frame || helper.fg_format != generation_state.format || helper.width != WIDTH || helper.height != HEIGHT) continue;
+        twattila::dlaa_bridge::BeforeSharedWrites(context);
+        context->CopyResource(helper.fg_frame.Get(), back.Get());
+        const generation::Inputs& inputs = generation_state.inputs;
+        twattila::dlaa_bridge::FrameRequest request = {.window = devices.window, .multiplier = 2, .hud_recomposition = true,
+                                                       .hudless = kept && std::exchange(generation_state.hudless, false), .inputs = kept,
+                                                       .frame_index = ++frame_index};
+        if (kept) {
+          request.width = inputs.width;
+          request.height = inputs.height;
+          request.jitter_x = inputs.jitter_x;
+          request.jitter_y = inputs.jitter_y;
+          request.reset = inputs.reset;
+          request.view_to_clip = inputs.view_to_clip;
+          request.view_projection = inputs.view_projection;
+          request.previous_view_projection = inputs.previous_view_projection;
+          request.camera = inputs.camera;
+          request.near_plane = inputs.near_plane;
+          request.far_plane = inputs.far_plane;
+        }
+        ++requests;
+        if (twattila::dlaa_bridge::PresentFrame(context, request)) {
+          ++presented;
+        } else if (presented > 0) {
+          ++refused;
+        }
+        if (frame % 60 == 59) {
+          std::printf("FG frame %d: %u shown a rendered frame; %s\n", frame + 1, twattila::dlaa_bridge::FrameGenerationPresented() & 0xFFu,
+                      twattila::dlaa_bridge::FrameGenerationStatus().c_str());
+        }
+        Sleep(16);
+      }
+      // The HUD-less image the helper got: the post's grey (128 / 255) through the swap chain shader's HDR10 (gamma 2.2,
+      // 203 nits, PQ).
+      const double light = std::pow(128.0 / 255.0, 2.2) * 203.0 / 10000.0;
+      const double m1 = 0.1593017578125;
+      const double m2 = 78.84375;
+      const double powered = std::pow(light, m1);
+      const double expected_code = std::pow((0.8359375 + (18.8515625 * powered)) / (1.0 + (18.6875 * powered)), m2) * 1023.0;
+      const std::vector<uint8_t> hudless = ReadProxy(devices, helper.fg_hudless.Get(), 4);
+      double worst_code = 0;
+      for (size_t index = 0; index < hudless.size() / 4; ++index) {
+        uint32_t pixel = 0;
+        std::memcpy(&pixel, hudless.data() + (index * 4), 4);
+        for (const uint32_t code : {pixel & 1023u, (pixel >> 10) & 1023u, (pixel >> 20) & 1023u}) {
+          worst_code = std::max(worst_code, std::abs(static_cast<double>(code) - expected_code));
+        }
+      }
+      const generation::Inputs& inputs = generation_state.inputs;
+      std::printf("FG: %d frames ready, %d requests, %d presented, %d refused after, failed %d, %u shown a rendered frame; HUD-less worst %.1f codes from %.1f; near %.1f, "
+                  "far %.4g, eye (%.0f, %.0f, %.0f), forward (%.3f, %.3f, %.3f); %s\n",
+                  ready_frames, requests, presented, refused, twattila::dlaa_bridge::FrameGenerationFailed() ? 1 : 0,
+                  twattila::dlaa_bridge::FrameGenerationPresented() & 0xFFu, worst_code, expected_code, inputs.near_plane, inputs.far_plane, inputs.camera[0],
+                  inputs.camera[1], inputs.camera[2], inputs.camera[9], inputs.camera[10], inputs.camera[11],
+                  twattila::dlaa_bridge::FrameGenerationStatus().c_str());
+      const Vector eye = Unproject(inverse, 0, 0, 0);
+      const Vector far_eye = Unproject(inverse, 0, 0, 1);
+      std::array<double, 3> forward = {far_eye[0] - eye[0], far_eye[1] - eye[1], far_eye[2] - eye[2]};
+      const double forward_length = std::sqrt((forward[0] * forward[0]) + (forward[1] * forward[1]) + (forward[2] * forward[2]));
+      double forward_error = 0;
+      for (int axis = 0; axis < 3; ++axis) forward_error = std::max(forward_error, std::abs((forward[axis] / forward_length) - inputs.camera[9 + axis]));
+      CHECK(ready_frames >= 298);
+      CHECK(requests >= 298 && presented >= 280 && refused == 0);
+      CHECK(!twattila::dlaa_bridge::FrameGenerationFailed());
+      CHECK(worst_code <= 2.0);
+      CHECK(std::abs(inputs.near_plane - 5000.0) < 5.0 && std::abs(inputs.far_plane / 5e7 - 1.0) < 0.05);
+      CHECK(forward_error < 1e-3);
+      generation::Update({});
+      SetWindowPos(devices.window, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+      ShowWindow(devices.window, SW_HIDE);
+    }
     state = bridge::State{};
     twattila::dlaa_bridge::Shutdown();
   }

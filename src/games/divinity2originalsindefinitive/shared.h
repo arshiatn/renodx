@@ -98,6 +98,14 @@ struct ShaderInjectData {
 #define DOS2_GRAY_INPUT 0.18f
 #define DOS2_GRAY_OUTPUT (15.f / 203.f)
 
+// PsychoV35's slider defaults here: the game's own response (its ACES contrast around mid gray and toe below it, its
+// colour at equal lightness), Highlight Contrast keeping PsychoV35's highlights. Fitted on WARP against the game's t00
+// through its LUT and t01 (test/tw_psychov35 part 6, 10.); the other PsychoV35 sliders keep Musa's defaults.
+#define DOS2_V35_CONTRAST 1.42f
+#define DOS2_V35_SHADOWS 0.43f
+#define DOS2_V35_SATURATION 0.93f
+#define DOS2_V35_HIGHLIGHT_CONTRAST 0.87f
+
 // Apply PsychoV30 from Test30.
 #define ApplyPsychoV30(color)                                                       \
   renodx_custom::tonemap::psycho30::psychotm_test30(                                \

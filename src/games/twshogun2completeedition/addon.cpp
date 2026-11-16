@@ -330,6 +330,7 @@ struct RaySliders {
   float path_bounces = 2.f;
   float sharc = 0.f;
   float reuse_lean = 0.f;
+  float reuse_near = 1.f;
   float lights_in_bounce = 0.f;
   float light_ratio = 0.f;
   float path_ambient = 0.f;
@@ -418,6 +419,7 @@ twattila::rt_scene::Settings RaySettings() {
   rays.path_bounces = count(rows.path_bounces, 1, 2);
   rays.sharc = rays.path_tracing && on(rows.sharc);
   rays.reuse_lean = rays.path_tracing && on(rows.reuse_lean);
+  rays.reuse_near = rays.path_tracing && on(rows.reuse_near);
   // Torch and Fire Light / Shadows from Path Tracing (Attila's keys; rt_core.hpp Settings::lights_in_bounce, light_ratio).
   rays.lights_in_bounce = on(rows.lights_in_bounce);
   rays.light_ratio = on(rows.light_ratio);
@@ -690,6 +692,7 @@ const Values RAYS_RESET = {
     {"PathTracingBounces", 2.f},
     {"RayTracedSharc", 0.f},
     {"RayTracedReuseLean", 0.f},
+    {"RayTracedReuseNear", 1.f},
     {"RayTracedLightsInBounce", 0.f},
     {"RayTracedLightShadowRatio", 0.f},
     {"RayTracedPathSkyApart", 0.f},
@@ -2230,6 +2233,8 @@ void BuildRuntimeData() {
                  "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).", paths),
       ray_choice("RayTracedReuseLean", &rt_sliders.reuse_lean, 0.f, "Lean ReSTIR reuse (Experimental)", off_on,
                  "A faster ReSTIR GI for path tracing: the same look in tests.", paths),
+      ray_choice("RayTracedReuseNear", &rt_sliders.reuse_near, 1.f, "Near ReSTIR reuse", off_on,
+                 "A faster ReSTIR GI for path tracing: fewer, nearer neighbours share their light (also a little cleaner).", paths),
       // Attila's torch rows from Path Tracing (graphics_page.hpp's): with Ray-traced point light shadows on.
       ray_choice("RayTracedLightsInBounce", &rt_sliders.lights_in_bounce, 0.f, "Torch and fire light from path tracing (Experimental)", off_on,
                  "Torches and fires lit by the path-traced Global Illumination instead of their own shadow rays: faster with many fires.\n"
