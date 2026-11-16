@@ -257,6 +257,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN DECIDES: Shogun 2 Recommended Video AutoHDR is 0.25, the skill says 0.2 (Tal ... | ATN
 - Ryse ray costs (RT shadows +1.0 ms, PT +2.7 ms at 4K DLSS Quality): Nsight work ... | a later GPU round
 - RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan ... | ATN (go-ahead), then a Ryse round
+- ATN 11-16 ~11:4x BUG: Attila path-traced GI: wall corners off screen (Constantin ... | gpu3_, then coordinator (all PT games share the helper)
 - AUDIT 11-16 (hca_, tools/tw/round_notes/handoff_audit_1116.md: ATN 10:5x "forgot ... | ?
 - A1a Divinity 1 SSR: keep the exe's lsx after exit + static read of the SSREnable ... | div1_ (read), coordinator (run)
 - A1b Divinity 1 next run: Sun Shadow Softness 1 / 2 in a sunlit still view. Owner ... | coordinator (D1 run)
@@ -1847,6 +1848,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         R.U.S.E. has no Gamma Correction row. Reports runs2_1116/tales.md, ruse.md. RUNS 11-16 MORNING (rn2_, brief tools/tw/round_notes/runs2_1116/brief.md, after the 08:04 install): Tales Bend /
         GT-VBGI look shots with a title click, then the R.U.S.E. T-run; reports runs2_1116/tales.md, ruse.md. Morning
         report: tools/tw/round_notes/morning_report_1116.md. Owner: rn2_, then coordinator
+      - [ ] ATN 11-16 ~11:4x BUG: Attila path-traced GI: wall corners off screen (Constantinople) are over-bright until they
+        become visible, "basically happens everywhere". Sent to gpu3_ as top priority: a seen-vs-unseen consistency test
+        in the 4K harness (screen-route light vs the unseen route at the same points) + a brute-force reference; suspects
+        (a) double counting (UnseenLight's learned shade + the path's own bounces + the last vertex's albedo x shade), (b)
+        HitAlbedo fallbacks, (c) the radiance cache keeping the first unseen value (1800 frames, 12.5 % relearn), (d)
+        disocclusion history. Owner: gpu3_, then coordinator (all PT games share the helper)
       - [ ] AUDIT 11-16 (hca_, tools/tw/round_notes/handoff_audit_1116.md: ATN 10:5x "forgotten some stuff ... because of not
         having enough ticks?"): 49 items had no box, 7 ticks claimed too much, 11 of your answers were still asked or not
         in code, 15 boxes had no round. Fixed above (ticks, answers) and boxed here; every box sent to its round.
