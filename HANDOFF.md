@@ -1528,7 +1528,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan per row, each replaces the
         game's method): (1) ray shadows for the hair's blended strands: a second small mask from the strands' own depth
         (the hair's solid first pass already reads the ray mask); RTX Character Rendering's LSS strands need strand curves
-        the game doesn't have (its hair is textured cards), so trace the cards as alpha-tested triangles; (2) ray fog shadows
+        the game likely doesn't have (its hair looks like textured cards: check in a trace), so trace the cards as alpha-tested triangles; (2) ray fog shadows
         replacing the fog volumes' map march (ps 0x91A72BC2), Attila's Fog Shadows port, then a path-traced fog step (sun
         shafts + torch light in the fog through the PT light list); no standalone NVIDIA volumetrics SDK found, RTX Remix /
         NvRTX have it built in; (3) ray shadows for torches / fires replacing the 16384 light atlas (Attila's TW point light
