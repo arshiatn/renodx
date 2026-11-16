@@ -1,8 +1,9 @@
 // Ryse's tonemap00 (HDRFinalPass, 0xB9B672AA) on WARP: Rendering Mode SDR (the add-on's built shader, hdr 0) against the
 // game's own bytes over an exposure ramp of grey and coloured rows, with the same constants and textures: the SDR encode
 // (Hable, sRGB, the sun shafts' screen, the 16^3 colour chart) must be the game's. Control: HDR (Extended) on the same
-// inputs must differ (else the test could not see a change). Then PsychoV35 against the game below white (grey, chroma)
-// and a minimax fit of its sliders, reported (Extended must match the game there). Arguments: the repository (its
+// inputs must differ (else the test could not see a change). Then PsychoV35 against the game below white (grey, chroma):
+// Ryse's slider defaults within 5 % and the minimax fit's best, Musa's own must fail (Extended must match the game
+// there). Arguments: the repository (its
 // build's embedded csos) and the game's dumped 0xB9B672AA.ps_5_0.cso; both only read.
 #include <windows.h>
 
@@ -295,13 +296,14 @@ int main(int argc, char** argv) {
     std::printf("Control, HDR (Extended), Output scRGB: largest difference %.3g (scene %.4g): must be large\n", worst, level);
     CHECK(worst > 1e-2f);
   }
-  // PsychoV35 against the game (hdr-review-rules.md "PsychoV calls": V35 fitted to the game's chain; report, the defaults
-  // are the maintainer's): Rendering Mode PsychoV35, Output scRGB, 1000 / 203, Hue Clip off, both outputs decoded with
-  // 2.2 (the game's SDR white at Paper White). Grey (row 0): the largest |V35 / game - 1| where the game puts it at 0.05 - 1
-  // and 1 - 15 nits; colour (rows 1-3): the mean |OkLab chroma ratio - 1| where the game's luminance is 1 - 30 nits. Then a
-  // minimax grid of Contrast / Shadows / Saturation (Highlight Contrast 1: these ranges sit below Hable's mid grey).
+  // PsychoV35 against the game (hdr-review-rules.md "PsychoV calls": V35 fitted to the game's chain): Rendering Mode
+  // PsychoV35, Output scRGB, 1000 / 203, Hue Clip off, both outputs decoded with 2.2 (the game's SDR white at Paper White).
+  // Grey (row 0): the largest |V35 / game - 1| where the game puts it at 0.05 - 1 and 1 - 15 nits; colour (rows 1-3): the
+  // mean |OkLab chroma ratio - 1| where the game's luminance is 1 - 30 nits. The shipped defaults (shared.h RYSE_V35_*)
+  // must sit within 5 % on all three and be the minimax grid's best of Contrast / Shadows / Saturation (Highlight Contrast
+  // 1: these ranges sit below Hable's mid grey); control: Musa's own sliders (1, 1, 1) must fail the 5 %.
   // The curve alone: no bloom and no sun shafts here (their adds lift the game's black to ~5 nits with this test's
-  // values). Level B: the constants are this test's, not traced ones.
+  // values). Level B: the constants are this test's, not traced ones (the frame trace logs the game's PER_BATCH).
   {
     const std::array<float, 4> nothing = {0.f, 0.f, 0.f, 1.f};
     views[2] = Texture(device.Get(), 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, nothing.data(), 16);
@@ -361,12 +363,23 @@ int main(int argc, char** argv) {
     v35.v35_highlight_saturation = 1.f;
     v35.v35_roll_off = 1.f;
     v35.v35_gamut_compression = 1.f;
-    const auto shipped = errors(draw(built_shader.Get(), v35));
-    std::printf("PsychoV35 at the shipped defaults against the game: grey %.1f %% (0.05 - 1 nits), %.1f %% (1 - 15 nits) worst; "
-                "colour chroma %.1f %% mean (1 - 30 nits)\n",
-                100.0 * shipped[0], 100.0 * shipped[1], 100.0 * shipped[2]);
-    CHECK(std::isfinite(shipped[0]) && std::isfinite(shipped[1]) && std::isfinite(shipped[2]));
-    double best_score = std::max({shipped[0], shipped[1], shipped[2]});
+    ShaderInjectData shipped_v35 = v35;
+    shipped_v35.v35_contrast = RYSE_V35_CONTRAST;
+    shipped_v35.v35_shadows = RYSE_V35_SHADOWS;
+    shipped_v35.v35_saturation = RYSE_V35_SATURATION;
+    const auto own = errors(draw(built_shader.Get(), v35));
+    const auto shipped = errors(draw(built_shader.Get(), shipped_v35));
+    for (const auto& [name, measured] : {std::pair{"Musa's own sliders (before)", own}, std::pair{"Ryse's defaults (after)", shipped}}) {
+      std::printf("PsychoV35 at %s against the game: grey %.1f %% (0.05 - 1 nits), %.1f %% (1 - 15 nits) worst; colour "
+                  "chroma %.1f %% mean (1 - 30 nits)\n",
+                  name, 100.0 * measured[0], 100.0 * measured[1], 100.0 * measured[2]);
+      CHECK(std::isfinite(measured[0]) && std::isfinite(measured[1]) && std::isfinite(measured[2]));
+    }
+    const double shipped_score = std::max({shipped[0], shipped[1], shipped[2]});
+    CHECK(shipped_score < 0.05);
+    std::printf("Control, Musa's own sliders: worst %.1f %%: must fail the 5 %%\n", 100.0 * std::max({own[0], own[1], own[2]}));
+    CHECK(std::max({own[0], own[1], own[2]}) > 0.05);
+    double best_score = std::max({own[0], own[1], own[2]});
     std::array<float, 3> best = {1.f, 1.f, 1.f};
     for (int contrast = 0; contrast <= 12; ++contrast) {
       for (int shadows = 0; shadows <= 20; ++shadows) {
@@ -385,13 +398,11 @@ int main(int argc, char** argv) {
     }
     std::printf("  minimax fit (Contrast 0.7 - 1.3, Shadows 0.5 - 1.5, Saturation 0.8 - 1.4, steps 0.05): Contrast %.2f, Shadows "
                 "%.2f, Saturation %.2f, worst %.1f %% (the shipped defaults: %.1f %%)\n",
-                best[0], best[1], best[2], 100.0 * best_score, 100.0 * std::max({shipped[0], shipped[1], shipped[2]}));
+                best[0], best[1], best[2], 100.0 * best_score, 100.0 * shipped_score);
+    // The defaults are the grid's best (within 0.5 %: a tie a step away).
+    CHECK(shipped_score <= best_score + 0.005);
     // V35 / game on the grey row where the game first reaches 0.1, 1, 5 and 15 nits (above 1: V35 brighter).
-    ShaderInjectData fitted = v35;
-    fitted.v35_contrast = best[0];
-    fitted.v35_shadows = best[1];
-    fitted.v35_saturation = best[2];
-    for (const auto& [name, pixels] : {std::pair{"shipped", draw(built_shader.Get(), v35)}, std::pair{"fitted", draw(built_shader.Get(), fitted)}}) {
+    for (const auto& [name, pixels] : {std::pair{"Musa's own", draw(built_shader.Get(), v35)}, std::pair{"Ryse's defaults", draw(built_shader.Get(), shipped_v35)}}) {
       std::printf("  grey V35 / game, %s:", name);
       for (const float nits : {0.1f, 1.f, 5.f, 15.f}) {
         for (UINT x = 0; x < WIDTH; ++x) {
