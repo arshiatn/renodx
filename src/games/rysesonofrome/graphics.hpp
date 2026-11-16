@@ -144,14 +144,14 @@ struct ModeSettings {
 
 constexpr std::array<ModeSettings, 8> AA_MODES = {{
     {.label = "Off (game TAA)", .name = "Off", .scale = 1.f},
-    {.label = "DLAA (100%)", .name = "DLAA", .scale = 1.f},
-    {.label = "DLSS Quality (67%)", .name = "DLSS Quality", .scale = 2.f / 3.f},
-    {.label = "DLSS Balanced (58%)", .name = "DLSS Balanced", .scale = .58f},
-    {.label = "DLSS Performance (50%)", .name = "DLSS Performance", .scale = .5f},
-    {.label = "DLSS Ultra Performance (33%)", .name = "DLSS Ultra Performance", .scale = 1.f / 3.f},
+    {.label = "Native AA (DLAA, 100%)", .name = "DLAA", .scale = 1.f},
+    {.label = "Quality (67%)", .name = "DLSS Quality", .scale = 2.f / 3.f},
+    {.label = "Balanced (58%)", .name = "DLSS Balanced", .scale = .58f},
+    {.label = "Performance (50%)", .name = "DLSS Performance", .scale = .5f},
+    {.label = "Ultra Performance (33%)", .name = "DLSS Ultra Performance", .scale = 1.f / 3.f},
     // Not an NVIDIA SDK mode: the common 77%.
-    {.label = "DLSS Ultra Quality (77%)", .name = "DLSS Ultra Quality", .scale = .77f},
-    {.label = "DLSS Custom (14-100%)", .name = "DLSS Custom", .scale = .5f},
+    {.label = "Ultra Quality (77%)", .name = "DLSS Ultra Quality", .scale = .77f},
+    {.label = "Custom (14-100%)", .name = "DLSS Custom", .scale = .5f},
 }};
 
 // Menu order; AAMode values stay as saved in ReShade.ini.
@@ -1914,7 +1914,7 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
       display_height = (state.display_height != 0 ? state.display_height : height);
     }
     if (width > display_width || height > display_height) {
-      SetStatus("Game TAA: the render size is above the display size (supersampling): DLSS needs it at or below");
+      SetStatus("Game TAA: the render size is above the display size (supersampling): the upscaler needs it at or below");
       return {};
     }
     // Below the display size (the native upscale follows) the helper upscales to it (any size: the mode's, or another
@@ -3508,10 +3508,10 @@ inline void DrawAntiAliasing(bool advanced) {
                               "Sharpest {:.1f}.",
                               std::round(scale * 100.f), matched, matched - 1.f, matched - 2.f);
       }
-      ImGui::SetTooltip("How sharp textures are while DLSS renders below 100%%.\n"
+      ImGui::SetTooltip("How sharp textures are while the upscaler renders below 100%%.\n"
                         "Matched: as sharp as at your output resolution.\n"
                         "Sharper / Sharpest: one / two steps sharper (more detail, can shimmer).\n"
-                        "DLAA and Off are not affected.%s",
+                        "Native AA and Off are not affected.%s",
                         example.c_str());
     }
     if (int filter = (gbuffer_filter.load() ? 1 : 0);
@@ -3526,7 +3526,7 @@ inline void DrawAntiAliasing(bool advanced) {
                         "On (Vanilla, as with TAA): weaker highlights, less flickering and shimmering.");
     }
     ImGui::PopStyleColor();
-    ImGui::TextWrapped("Unlike the game's TAA, DLSS / DLAA also filters trees, foliage and fences anisotropically and turns "
+    ImGui::TextWrapped("Unlike the game's TAA, these AA modes also filter trees, foliage and fences anisotropically and turn "
                        "the G-buffer filter off (unless set to On).");
     ImGui::TextWrapped("Changing the AA mode or render scale briefly resets the game's exposure and reloads textures.");
   }
@@ -3585,10 +3585,10 @@ inline void DrawAntiAliasing(bool advanced) {
       ImGui::TextWrapped("Windowed: the game renders at the window size (it upscales only in fullscreen), so this mode runs at "
                          "100%% like DLAA. Fullscreen for the render scale.");
     } else if (rendering.native_off) {
-      ImGui::TextWrapped("Turn on Native Upscaling in the game's options: DLSS renders below the display resolution only with it.");
+      ImGui::TextWrapped("Turn on Native Upscaling in the game's options: the upscaler renders below the display resolution only with it.");
     }
     if (const uint64_t unshown = unshown_frames.load(); advanced && unshown != 0) {
-      ImGui::TextWrapped("Frames DLSS upscaled but the game showed its own (no native upscale or post pass seen): %llu",
+      ImGui::TextWrapped("Frames upscaled but the game showed its own (no native upscale or post pass seen): %llu",
                          static_cast<unsigned long long>(unshown));
     }
   }
@@ -3610,7 +3610,7 @@ inline void DrawAntiAliasing(bool advanced) {
   if (active && (!diagnostics.jitter_found.load() || (phases != 0 && phases < 8))) {
     if (control.searched && control.value == nullptr) {
       ImGui::TextWrapped("The game's camera jitter is %s, and the addon could not find r_PostAAMode in the game (details in "
-                         "ReShade.log). DLSS needs 8 or more positions.", jitter.c_str());
+                         "ReShade.log). The upscaler needs 8 or more positions.", jitter.c_str());
     } else if (!own_jitter.load()) {
       ImGui::TextWrapped("The game's camera jitter is %s: the game stops it in slow motion, hit stops and pauses. Choose "
                          "Jitter: the addon's own (Advanced).", jitter.c_str());
@@ -3618,9 +3618,9 @@ inline void DrawAntiAliasing(bool advanced) {
       ImGui::TextWrapped("The game's camera jitter is %s, and the addon could not take it over: %s.", jitter.c_str(),
                          control.jitter_setup.details.c_str());
     } else if (diagnostics.jittered_uploads.load() == 0) {
-      ImGui::TextWrapped("The game is not jittering its camera right now (jitter %s). DLSS then only smooths edges.", jitter.c_str());
+      ImGui::TextWrapped("The game is not jittering its camera right now (jitter %s). The upscaler then only smooths edges.", jitter.c_str());
     } else {
-      ImGui::TextWrapped("The game's camera jitter is %s. DLSS needs 8 or more positions.", jitter.c_str());
+      ImGui::TextWrapped("The game's camera jitter is %s. The upscaler needs 8 or more positions.", jitter.c_str());
     }
   }
   if (!advanced) return;
@@ -3697,10 +3697,10 @@ inline void DrawAntiAliasing(bool advanced) {
   }
   if (ImGui::Button("Save two upscaled frames' stages (debug, PNGs next to the exe)")) {
     capture_requested.store(true);
-    capture_result = "Waiting for an upscaled frame (a DLSS mode below 100%)";
+    capture_result = "Waiting for an upscaled frame (an AA mode below 100%)";
   }
   if (!capture_result.empty()) ImGui::TextWrapped("%s", capture_result.c_str());
-  if (ImGui::Button("Capture DLSS inputs (debug, 4 frames, ryse_dlss_capture_* next to the exe)")) {
+  if (ImGui::Button("Capture the upscaler's inputs (debug, 4 frames, ryse_dlss_capture_* next to the exe)")) {
     rysesonofrome::dlss_capture::Request();
   }
   if (ImGui::IsItemHovered()) {
@@ -3889,7 +3889,7 @@ inline void DrawAntiAliasing(bool advanced) {
       const void* width = GetGameCvar(console, "r_Width");
       saved_cvars = std::format("Saved {} console variables to {}{}; con_restricted {}; GetCVar(r_Width) {} ({}){}", count,
                                 reinterpret_cast<const char*>(path.u8string().c_str()), problem, restricted, width,
-                                (width == resolution.width ? "the renderer's" : "not the renderer's, or DLSS was never on"),
+                                (width == resolution.width ? "the renderer's" : "not the renderer's, or an AA mode was never on"),
                                 (file ? "" : "; writing failed"));
     }
     renodx::utils::log::i("[Ryse DLSS] ", saved_cvars);
