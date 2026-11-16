@@ -67,6 +67,10 @@ bool IsHDRMode() {
   return shader_injection.hdr >= 1.f;
 }
 
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != 2.f;
+}
+
 bool IsPsychoV30Mode() {
   return shader_injection.hdr == 1.f;
 }
@@ -860,7 +864,7 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 1.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput(); },
     },
     new renodx::utils::settings::Setting{
         .key = "video_dithering",
@@ -872,7 +876,7 @@ void BuildRuntimeData() {
         .tooltip = "Fine noise that hides banding in the brightened videos.\n"
                    "Only with Video AutoHDR above 0.",
         .labels = {"Off", "On"},
-        .is_enabled = [] { return IsHDRMode() && shader_injection.video_autohdr > 0.f; },
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput() && shader_injection.video_autohdr > 0.f; },
     },
     new renodx::utils::settings::Setting{
         .key = "fog_strength",
