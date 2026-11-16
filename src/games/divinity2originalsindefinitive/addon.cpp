@@ -1252,6 +1252,7 @@ void ConfigureAddon() {
                                              .has_screen_space_shadows = false,
                                              .has_gtvbgi = false,
                                              .rays_tested = false,
+                                             .has_fog_shadows = false,
                                              .every_row = false});
   const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
   for (auto* setting : settings) {

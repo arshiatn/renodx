@@ -240,6 +240,9 @@ struct Bindings {
   // run has shown them in this game yet; the Unreal games).
   bool rays_tested = true;
   bool has_gi = true;      // Global Illumination's section; false: none, the rows it would hold kept hidden (Rome Remastered)
+  // A fog the rays shade (rt_scene::InstallFogShadows or the game's own hook); false: the Fog Shadows row kept hidden and
+  // left out of RT/PT (Divinity 2).
+  bool has_fog_shadows = true;
   bool every_row = true;   // false: a row this page lists that the game lacks is no mistake, no log line (Rome Remastered)
 };
 
@@ -751,6 +754,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     if (!b.rays_replace_ao) rays_values.emplace_back("ssao_mode", 0.f);
     // Without Global Illumination nothing of it to turn on.
     if (!b.has_gi) std::erase_if(rays_values, [](const Values::value_type& preset) { return preset.first == "RayTracedLightBounce"; });
+    if (!b.has_fog_shadows) std::erase_if(rays_values, [](const Values::value_type& preset) { return preset.first == "RayTracedFogShadows"; });
     if (b.rays_preset_as_attila) {
       rays_values.insert(rays_values.end(), {{"ScreenSpaceShadowsFoliage", FOLIAGE_LIGHT_DEFAULT},
                                              {"SmokeShadowMapStrength", SMOKE_MAP_DEFAULT},
@@ -1299,7 +1303,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   // What every ray-traced effect shares.
   {
     const std::string& section = RT_SECTION;
-    page.Take({.match = "RayTracedFogShadows", .section = section, .shown = upscaling, .label = b.texts->fog_shadows_label, .tooltip = b.texts->fog_shadows_tooltip});
+    if (b.has_fog_shadows) {
+      page.Take({.match = "RayTracedFogShadows", .section = section, .shown = upscaling, .label = b.texts->fog_shadows_label, .tooltip = b.texts->fog_shadows_tooltip});
+    } else {
+      page.Keep("RayTracedFogShadows");
+    }
     page.Add(Note("Needs an upscaler (Anti-Aliasing above).", section, MORE_TINT, no_upscaler));
     page.Add(MoreOptions(section, &more_rt, [b, upscaling] { return upscaling() || b.engine_code != nullptr; }));
     const auto more_rt_rows = more(&more_rt, upscaling);
