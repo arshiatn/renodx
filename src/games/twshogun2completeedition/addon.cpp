@@ -337,6 +337,7 @@ struct RaySliders {
   float lights_in_bounce = 0.f;
   float light_ratio = 0.f;
   float light_ratio_follow = 0.f;
+  float path_torch_light = 0.f;
   float path_ambient = 0.f;
   float path_sky_apart = 0.f;
   float path_kept_cube = 0.f;
@@ -430,6 +431,8 @@ twattila::rt_scene::Settings RaySettings() {
   rays.light_ratio = on(rows.light_ratio);
   // Torch Shadows Follow the Camera (Attila's key; rt_core's RT_PATH_RATIO_FOLLOW, with the shadows from path tracing).
   rays.light_ratio_follow = on(rows.light_ratio_follow);
+  // Torch Light in Path-Traced GI (Attila's key; rt_core's RT_PATH_TORCH_LIGHT).
+  rays.path_torch_light = on(rows.path_torch_light);
   rays.path_ser = on(rows.path_ser);
   rays.micromaps = on(rows.micromaps);
   rays.gpu_micromaps = on(rows.gpu_micromaps);
@@ -673,6 +676,7 @@ const Values RAYS_RESET = {
     {"RayTracedLightsInBounce", 0.f},
     {"RayTracedLightShadowRatio", 0.f},
     {"RayTracedLightRatioFollow", 0.f},
+    {"RayTracedPathTorchLight", 0.f},
     {"RayTracedPathSkyApart", 0.f},
     {"RayTracedPathKeptCube", 0.f},
     {"RayTracedPathSer", 0.f},
@@ -2256,6 +2260,10 @@ void BuildRuntimeData() {
                  "Those torch and fire shadows trail less behind a moving camera. Best at Half resolution and with\n"
                  "Ray Reconstruction; at Full resolution without it a little noisier.",
                  [paths] { return paths() && rt_sliders.local_lights != 0.f; }, [] { return rt_sliders.light_ratio != 0.f; }),
+      ray_choice("RayTracedPathTorchLight", &rt_sliders.path_torch_light, 0.f, "Torch light in path-traced GI (Experimental)", off_on,
+                 "Torches and fires also light the walls and ground the path-traced bounce reflects: warmer light\n"
+                 "around fires. Costs more with many fires.",
+                 [paths] { return paths() && rt_sliders.local_lights != 0.f; }),
       ray_choice("RayTracedPathAmbient", &rt_sliders.path_ambient, 0.f, "Path-traced AO (Experimental)", off_on,
                  "The paths bring the sky's light in place of the game's ambient: shade wherever the sky can't reach.\n"
                  "In battles, in place of ray-traced AO (the campaign map keeps it). Needs Ray-traced Global Illumination.",
