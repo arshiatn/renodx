@@ -402,6 +402,23 @@ Test: `test/tw_ryse_path_ambient` (WARP: the game's and the raised lighting with
 black give a lit scene with the game's cubes and exactly 0 in u1 and u2 with the black cube; with the reflections on the
 black cube keeps them; `rt_probe_sky` picks the widest probe before the sun and writes zeros without a list).
 
+fix59 (draft, 2026-11-16 fix round ryf_, built only, not run in game): **one method per effect**. Ray-traced AO in place
+of the game's SSDO amount (`shader_injection.ao_method`, set at each present: Path-Traced Ambient, else the rays' AO once
+they went into a lighting, else the row's SSDO / GT-VBAO; ssdo00 writes the SSDO amount 0 under it, LSDO and the direction
+kept, and the contact shadows' pass adds the rays' amount onto t5's alpha). The lighting's own SSDO reflection occlusion is
+left out while the traced reflections or specular occlusion are bound (a copy of PER_BATCH with SSDOParams.y 0). The
+game's Indirect light (r_SSII) is off while the Light Bounce runs. Skip the Game's Sun Shadow Maps now really leaves the
+draws out (command_action's bypass: rt_core replays every draw while the scene is traced, so a draw event's skip was
+defeated: the R2 cost runs counted 862 draws in every state); the HUD / highlight / skull hotkeys likewise. Kept textures
+no longer remade every frame (`std::addressof`, not ComPtr's releasing `&`). Video Highlights and Dithering only on an HDR
+output. A saved DLSS becomes XeSS on Intel, else FSR. NVIDIA Reflex is its own row with any AA mode; the frame rate limit
+shows on NVIDIA or under XeSS frame generation. Lean ReSTIR on by default (ATN). Characters Ray Tracing Range
+(Experimental, off: rt_core's units_range). AA modes labelled by scale; Ryse's own Scene Test list; the About page's
+bitmask credit; with the AA mode Off no jitter diagnostics a frame unless Advanced is open; Tales' FG shaders dropped.
+Tests: `test/tw_ryse_path_ambient` parts 3-4 (WARP on the game's ssdo00 and lighting bytes), `test/tw_ryse_video` (WARP:
+SDR output against the game's bytes), `test/tw_ryse_patterns` (every byte pattern once in `Bin64\ryse_image.bin`, with a
+one-byte CONTROL), `test/tw_ryse_shadow_skip` events.cpp (the skip under rt_core's replay).
+
 
 ### F1 helper lifetime repair (2026-11-09, GPT-6 Astra)
 
