@@ -29,7 +29,8 @@
 // 20. Light Through Banners' replay against the game's cloth G-buffer draw 0xBDFF60D4 + 0x0FBCC65A (TestBannerReplay; the csos'
 //     folder third).
 // 21. ssrresolve00 against the game's 0xF87ECE85: unbound the game's, the rays' AO in place of the game's, one occlusion on
-//     the environment under Ray-Traced Specular Occlusion (TestResolve; the csos' folder third).
+//     the environment under Ray-Traced Specular Occlusion, the radiance (t9) unread under the rays' reflections (TestResolve;
+//     the csos' folder third).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -3272,7 +3273,10 @@ static void TestBannerReplay(const std::string& games, const std::string& folder
 //     one (the same with t_ssao 1: G1') put back: G1 - 0.6 G1'. CONTROL: the version before (0.6 x the AO'd environment:
 //     G1 x 0.4, the game's AO under the rays' occlusion) differs. (d) With t46 bound the reflection's hit (full confidence,
 //     the random t9 less the black one's output) is the same over the random t_ssao and t_ssao 1: no AO on it. CONTROL:
-//     without t46 (the game's) the random AO changes it.
+//     without t46 (the game's) the random AO changes it. (e) With the rays' reflections at t47 (and the sea's mask at t45
+//     both ways: 0 and 1) the output is the same over the random t9 and a black one: the preconvolve copy (cs50_preconvolve_copy
+//     0xBC3CB71D, t9's only writer; its other readers the mip chain left out under the rays) is unread then. CONTROL:
+//     without t47 the random t9 changes the output.
 static void TestResolve(const std::string& games, const std::string& folder) {
   std::ifstream file(folder + "/0xF87ECE85.cs_5_0.cso", std::ios::binary);
   const std::vector<char> game_code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -3365,6 +3369,8 @@ static void TestResolve(const std::string& games, const std::string& folder) {
     ID3D11ShaderResourceView* radiance = nullptr;  // else the random t9
     ID3D11ShaderResourceView* ambient = nullptr;   // t41
     ID3D11ShaderResourceView* specular_occlusion = nullptr;  // t46
+    ID3D11ShaderResourceView* reflection = nullptr;          // t47 (the rays' reflections)
+    ID3D11ShaderResourceView* water = nullptr;               // t45 (the sea's mask)
   };
   const auto run = [&](ID3D11ComputeShader* shader, const Inputs& inputs) {
     const auto output = Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_UNORDERED_ACCESS);
@@ -3381,6 +3387,8 @@ static void TestResolve(const std::string& games, const std::string& folder) {
     context->CSSetShaderResources(0, static_cast<UINT>(bound.size()), bound.data());
     context->CSSetShaderResources(41, 1, &inputs.ambient);
     context->CSSetShaderResources(46, 1, &inputs.specular_occlusion);
+    context->CSSetShaderResources(47, 1, &inputs.reflection);
+    context->CSSetShaderResources(45, 1, &inputs.water);
     context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
     context->Dispatch(1, 1, 1);
     context->ClearState();
@@ -3445,11 +3453,24 @@ static void TestResolve(const std::string& games, const std::string& folder) {
   CHECK(hit_occluded_apart == 0 && hit_shown > 0, "t46 0.6: the hit over the random AO %zu values off its share with AO 1 (%zu shown)",
         hit_occluded_apart, hit_shown);
   CHECK(hit_game_apart > 0, "CONTROL: without t46 the random AO left the hit as with AO 1");
+  // (e)
+  const auto traced_reflection = plain(SIZE, values(SIZE * SIZE * 4));
+  const auto sea = plain(SIZE, std::vector<float>(SIZE * SIZE * 4, 1.f));
+  size_t radiance_apart = 0;
+  for (ID3D11ShaderResourceView* water : {black.Get(), sea.Get()}) {
+    const Inputs rays = {.hit = full_confidence.Get(), .reflection = traced_reflection.Get(), .water = water};
+    Inputs rays_black = rays;
+    rays_black.radiance = black.Get();
+    radiance_apart += apart(run(ours.Get(), rays), run(ours.Get(), rays_black));
+  }
+  const size_t radiance_shown = apart(run(ours.Get(), lit), run(ours.Get(), {.hit = full_confidence.Get(), .radiance = black.Get()}));
+  CHECK(radiance_apart == 0 && radiance_shown > 0, "t47 bound: the random t9 %zu values off a black t9 (without t47 %zu)", radiance_apart,
+        radiance_shown);
   std::printf("ssrresolve00: unbound the game's (%zu of %zu values lit, 0 apart); t41 0.37 = t_ssao 0.37 (%zu apart; %zu apart from the random "
               "AO); t46 0.6 the open environment x 0.6 (%zu apart; the AO'd one's %zu apart); t46: the hit without the AO (%zu of %zu shown "
-              "apart; without t46 %zu apart)\n",
+              "apart; without t46 %zu apart); t47: t9 unread (%zu apart over the sea's mask 0 and 1; without t47 %zu apart)\n",
               lit_values, game_lit.size(), ambient_apart, ambient_shown, occlusion_apart, stacked_apart, hit_occluded_apart, hit_shown,
-              hit_game_apart);
+              hit_game_apart, radiance_apart, radiance_shown);
 }
 
 int main(int argc, char** argv) {

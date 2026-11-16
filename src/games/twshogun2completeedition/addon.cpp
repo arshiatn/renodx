@@ -799,8 +799,10 @@ void BuildRuntimeData() {
 
   // Reflections: the ray-traced ones in the resolve (ssrresolve00, twattila/rt_reflection.hlsli), its lit scene kept for
   // the next frame's; while they replace the screen-space march, what only the march reads is left out: its HiZ
-  // (ssrhiz00 and its levels, cs 0xE2CE69ED), the scene's and the hit buffer's mip chains (cs 0x13A7F7D0, 0x4B546569,
-  // 0x80196ECA: generic, left out only between the HiZ and the resolve), the march (ssrray00) and its blurs.
+  // (ssrhiz00 and its levels, cs 0xE2CE69ED), the lit scene's copy into the radiance (cs50_preconvolve_copy 0xBC3CB71D:
+  // read by the scene's mip chain and the resolve's t9 alone, which the rays' light replaces: test/tw_shogun2_shaders
+  // part 21 (e)), the scene's and the hit buffer's mip chains (cs 0x13A7F7D0, 0x4B546569, 0x80196ECA: generic, left out
+  // only between the HiZ and the resolve), the march (ssrray00) and its blurs.
   custom_shaders[0x97624E56].on_draw = [](auto* cmd_list) {
     reflection_passes = ray_tracing_installed;
     if (ray_tracing_installed) twshogun2::ray_tracing::WaterSurface(cmd_list);
@@ -835,7 +837,7 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0x5C0AF498u, 0x13C66077u, 0x073A6CF3u}) {
     custom_shaders[hash].on_draw = [](auto* cmd_list) { return !ray_tracing_installed || twattila::rt_scene::OnReflectionMarch(cmd_list); };
   }
-  for (const uint32_t hash : {0xE2CE69EDu, 0x13A7F7D0u, 0x4B546569u, 0x80196ECAu}) {
+  for (const uint32_t hash : {0xE2CE69EDu, 0xBC3CB71Du, 0x13A7F7D0u, 0x4B546569u, 0x80196ECAu}) {
     custom_shaders[hash] = {
         .crc32 = hash,
         .on_replace = [](reshade::api::command_list*) { return false; },
