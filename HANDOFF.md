@@ -314,8 +314,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEPS (tw2_ 11-16): AO-reader list beside LIGHT_BOUNCE_DRAWS (Pharaoh poo ... | next shared round
 - TW2 next (tw2_ 11-16): the -pi literal (0xc0490fdb) elsewhere: WH3 reflection00 ... | per-game rounds (-pi + int-AND: one sweep, shared round)
 - UE next (tpa_ 11-16): Expeditions 192686A0 (BasePassAO) keeps the game's AO on b ... | next UE round, coordinator (runs)
-- Attila + Thrones row (ATN 22:1x): skip the game's reflection blur where the rays ... | tw1_ (resumed 22:1x)
-- TW1 RUNS (tw1_ 11-16 NEEDS A RUN): 1. WH1 / WH2 battle, Shadows DXR, Replace on ... | coordinator (one game at a time)
+- TW1 RUNS (tw1_ 11-16 NEEDS A RUN): 0. a battle with RT reflections on wet stone ... | coordinator (one game at a time)
 - WH next (tw1_ 11-16): psychov35 part 6 WH t00 driver (traced t00 constants, S-cu ... | next WH1 / WH2 round
 - SHARED STEP (tw1_ 11-16): screen_space_shadows.hpp Patch for WH1's 12 SM 4.1 sun ... | next shared round
 - Shogun 2 / Rome Remastered next (tw3_ 11-16): Shogun 2 smoke shadow map without ... | next Shogun 2 / Rome Remastered round
@@ -2014,9 +2013,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         A10a harness; Tales landscape LOD bias (sampler clones on 44 PS, big, low value). ATN checks: Tales PT Ambient in G1 / G2, characters under GT-VBGI / rays, SSAO-skip timing, the SER
         row; Expeditions PT Ambient (no double sky), GT-VBAO at Levels 1, the DFAO row. Owner: next UE round, coordinator
         (runs)
-      - [ ] Attila + Thrones row (ATN 22:1x): skip the game's reflection blur where the rays reflect, Experimental, OFF by
+      - [x] DONE tw1_ 40271c78a ("Sharp Ray-Traced Reflections (Experimental)", off, in Reset / No RT/PT / RT/PT; the blur's
+        roughness step 0 where the rays reflect, half-texel spread kept; part H off 0 apart, on taps +-0.9 vs +-1.8 (max
+        +-5.6) texels, 26 % less blur on a checkerboard; the screenshot pair is in TW1 RUNS) Attila + Thrones row (ATN 22:1x): skip the game's reflection blur where the rays reflect, Experimental, OFF by
         default (= today's look) and in Reset / presets; WARP off = today's bytes + control. Owner: tw1_ (resumed 22:1x)
-      - [ ] TW1 RUNS (tw1_ 11-16 NEEDS A RUN): 1. WH1 / WH2 battle, Shadows DXR, Replace on / off at each in-game shadow
+      - [ ] TW1 RUNS (tw1_ 11-16 NEEDS A RUN): 0. a battle with RT reflections on wet stone / armour, Sharp Ray-Traced
+        Reflections off / on (screenshot pair, ATN judges); 1. WH1 / WH2 battle, Shadows DXR, Replace on / off at each in-game shadow
         quality: which sun PS draws (FrameTraceReads) + screenshot pairs; 2. WH2 each SSAO quality with GT-VBAO:
         FrameTraceReads + Time Each Pass, do C7B1F6F7 / 901C2215 draw, their readers; 3. WH1 wet stone / metal with Specular
         Occlusion + RT reflections: t45 bound at 6B80E35B, darker only once; 4. WH2 Time Each Pass with RT AO on, no frame
