@@ -575,13 +575,19 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   }
   const auto [visibility, occlusion] = (traced ? twattila::rt_scene::Visibilities() : std::array<ID3D11ShaderResourceView*, 2>{});
   if (visibility == nullptr && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;
+  constexpr std::array<ID3D11ShaderResourceView*, 3> NO_VIEWS = {};
+  constexpr std::array<ID3D11UnorderedAccessView*, 2> NO_OUTPUTS = {};
+  constexpr std::array<ID3D11Buffer*, 4> NO_CONSTANTS = {};
   // 8 x 8 groups over the bridge's size: `shader` from `source` into `destination` (the helper's R8 results into the
-  // shared textures' work copies, R32F; Bend's occlusion into the visibility), copied into the shared ones after.
+  // shared textures' work copies, R32F; Bend's occlusion into the visibility), copied into the shared ones after. The
+  // output first and unbound after: D3D11 binds a view of a resource still bound as an output as null (a pass reading
+  // the one before it read nothing: Bend's combine, GT-VBGI's occlusion).
   const auto run = [&](ID3D11ComputeShader* shader, ID3D11ShaderResourceView* source, ID3D11UnorderedAccessView* destination) {
     context->CSSetShader(shader, nullptr, 0);
-    context->CSSetShaderResources(0, 1, &source);
     context->CSSetUnorderedAccessViews(0, 1, &destination, nullptr);
+    context->CSSetShaderResources(0, 1, &source);
     context->Dispatch((bridge.width + 7) / 8, (bridge.height + 7) / 8, 1);
+    context->CSSetUnorderedAccessViews(0, 1, NO_OUTPUTS.data(), nullptr);
   };
   if (visibility != nullptr) {
     run(state.copy.Get(), visibility, state.visibility.work_uav.Get());
@@ -589,9 +595,6 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     constexpr std::array<FLOAT, 4> LIT = {1.f, 1.f, 1.f, 1.f};
     context->ClearUnorderedAccessViewFloat(state.visibility.work_uav.Get(), LIT.data());
   }
-  constexpr std::array<ID3D11ShaderResourceView*, 3> NO_VIEWS = {};
-  constexpr std::array<ID3D11UnorderedAccessView*, 2> NO_OUTPUTS = {};
-  constexpr std::array<ID3D11Buffer*, 4> NO_CONSTANTS = {};
   // The bounce and the reflections read last frame's scene: the bridge's colour, written at its bloom.
   const bool light_kept = bridge.depth_frame + 1 == bridge.frame;
   const bool rays_occlusion = state.ambient && occlusion != nullptr;

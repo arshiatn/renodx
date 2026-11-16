@@ -22,7 +22,8 @@
 //    terrain shaders read (the shared R32F, read back on D3D9) near 1 on open ground (mean over 0.95: seen at the trace
 //    camera's 13.6 degree pitch about one sector of 32 at the horizon goes, 0.969; 0.9975 facing the camera), darker on the
 //    ground beside the plateau on screen, and the same shader over the same depth and constants on WARP within one
-//    sector's share (1 / 128) at 99% of the pixels; released as at a D3D9 Reset and made again: the same occlusion.
+//    sector's share (1 / 128) at 99% of the pixels; released as at a D3D9 Reset and made again: the same occlusion. Then
+//    Bend's screen-space ground shadows (no helper) with a low sun: ground beside the plateau shadowed, open ground lit.
 // 9. Guides (ray_tracing.hpp BindGuides: the rays' bounce and reflections): the three guide targets made by D3D9Ex and
 //    opened by D3D11 (B8G8R8A8, RGBA16F x 2) as render targets 1-3 beside a 10-bit scene target: ColorFill clears them
 //    (RGBA16F too), each target's write mask holds, a blended draw (SRCALPHA / INVSRCALPHA: D3D9's one blend state)
@@ -874,6 +875,38 @@ int main(int argc, char** argv) {
       std::printf("GT-VBAO after the objects' release: made again, the same occlusion %d\n", same ? 1 : 0);
       CHECK(same);
     }
+
+    // Bend's ground shadows over the same depth (its march needs no helper), a low sun over +x: the floating plateau
+    // shades the ground on its -x side. Its combine reads the march's occlusion, which D3D11 bound as null while the
+    // march still held it as its output (no pixel shadowed then).
+    ruse::ray_tracing::ReleaseHost();
+    rays.bend = true;
+    rays.toward_sun = {0.894427f, 0.f, 0.447214f};
+    rays.prepass_depth = reinterpret_cast<uint64_t>(depth_surface.Get());
+    rays.ground_mask = reinterpret_cast<uint64_t>(scratch.Get());
+    host->BeginScene();
+    const bool bent = ruse::ray_tracing::ShadeGround(&command_list);
+    host->EndScene();
+    CHECK(bent);
+    if (bent) {
+      const std::vector<uint8_t> visibility = ReadHost(host, rays.visibility.host_surface.Get(), 4);
+      size_t shadowed = 0;
+      size_t lit = 0;
+      double lowest = 1;
+      for (UINT y = 0; y < HEIGHT; ++y) {
+        for (UINT x = 0; x < WIDTH; ++x) {
+          const size_t index = (static_cast<size_t>(y) * WIDTH) + x;
+          if (on_plateau[index] != 0 || HitGround(inverse, ground, x, y).inside < 0.01) continue;
+          const double value = Float(visibility, index);
+          lowest = std::min(lowest, value);
+          if (value < 0.5) ++shadowed;
+          if (value > 0.99) ++lit;
+        }
+      }
+      std::printf("Bend: ground pixels shadowed %zu, lit %zu, lowest visibility %.3f\n", shadowed, lit, lowest);
+      CHECK(shadowed > 50 && lit > 1000);
+    }
+    rays.bend = false;
   }
 
   // 9. Guides.
