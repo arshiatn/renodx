@@ -1,10 +1,10 @@
 #ifndef SRC_TWATTILA_FRAME_GAMMA_HLSLI_
 #define SRC_TWATTILA_FRAME_GAMMA_HLSLI_
 
-// The frame's gamma (Attila, Thrones of Britannia, Rome II, Warhammer I / II, Troy, Pharaoh: their shared.h includes this
-// after SI, HDR and HDR_PEAK), the swap chain proxy's decode: Gamma Correction on, 2.2, the game's gamma 2.0 picture as a
-// 2.2 display shows it (x^1.1), in every Rendering Mode; off, 2.0. Rendering Mode SDR on an SDR display the other way
-// round: off hands the game's picture to the display as it is.
+// The frame's gamma (Attila, Thrones of Britannia, Rome II, Warhammer I / II / III, Troy, Pharaoh: their shared.h
+// includes this after SI, HDR and HDR_PEAK), the swap chain proxy's decode: Gamma Correction on, 2.2, the game's gamma
+// 2.0 picture as a 2.2 display shows it (x^1.1), in every Rendering Mode; off, 2.0. Rendering Mode SDR on an SDR display
+// the other way round: off hands the game's picture to the display as it is.
 #define TW_FRAME_GAMMA (((SI.gamma_correction != 0.f) != (SI.swap_chain_encoding == 2.f && HDR < 0.5f)) ? 2.2f : 2.f)
 // The HDR tone mappers' Peak, pre-corrected for the frame's 2.2 decode of their gamma 2.0 output: their top still lands
 // on Peak.
