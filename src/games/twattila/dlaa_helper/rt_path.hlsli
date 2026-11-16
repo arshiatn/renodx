@@ -399,10 +399,15 @@ float3 SunLit(float3 surface, float3 behind, float3 normal, float3 albedo, float
 }
 
 // The light a surface the screen never saw sends back (its base colour lit): the sun's (SunLit) and with the local lights
-// two of them picked (less noise from fires and torches than one) by `light_seed`.
+// two of them picked (less noise from fires and torches than one) by `light_seed`. Not theirs where a surface the screen
+// shows sends none of theirs back (SeenDiffuseLight, with the game's sun light): a surface out of sight sent more than
+// it did once seen, the torches' share (the paths' probe, 640 x 360 at ATN's rows: the unseen route x1.17 the seen
+// route's light over the screen's surfaces, x1.77 where the lights gave 30% of it, x0.98 without them; ATN 2026-11-16:
+// wall corners out of sight too bright until seen, the radiance cache keeping their light).
 float3 UnseenLight(float3 surface, float3 behind, float3 normal, float3 albedo, float transmittance, uint2 seed, uint light_seed) {
   float3 emitted = SunLit(surface, behind, normal, albedo, transmittance, -1.f);
-  if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) {
+  const bool seen_without_lights = SunLightGiven() && (path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == PATH_LIGHT;
+  if ((path_flags & PATH_LOCAL_LIGHTS) != 0u && !seen_without_lights) {
     emitted += albedo * (0.5f * (LocalLight(surface, normal, Random(uint3(seed, light_seed + 16384u)))
                                  + LocalLight(surface, normal, Random(uint3(seed, light_seed + 24576u)))));
   }
