@@ -47,13 +47,14 @@ $table = [ordered]@{
   # with that texcoord the screen's uv and screen-size textures, as the game's quad at 100% (screen_uv); ribbon00 (the
   # viewport from the camera, the game's from g_viewport_offset_scale: the whole screen at 100%, tests.cpp's
   # GameConstants). pointlight00 / 01 with their light's colour and a reach past every texel (point_light_PS c1: noise put
-  # every texel out of reach, a black output the output-swap control can't see). Not here:
+  # every texel out of reach, a black output the output-swap control can't see). sunlight00-03 (the four sun light draws;
+  # the rays' t40 / t41 / t50 / t51 unbound, as without rays) with Foliage Sun Glints at the game's 1. Not here:
   # treevelocity00-03 (by design: the previous position divided by its w, the game's read with w = 1); particlelight00 and
   # vfxglow00 (exact, but the generated TEXCOORDs put the particles behind the depth: nearly every pixel discarded, the
   # control missed: 0 and 1.7e-6 on 11-16; they need per-input values this driver doesn't give).
   'Shogun2PS'   = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'
-                     Shaders = '^(fog|vignette|video|uiresolve|uifigure|sun|projectiletrail|glowmesh|vfxoverlay|dissolve|campaignwater|highlight|ssrcopy|ribbon|pointlight)\d+_|^vfxglow01_'
-                     ShaderSettings = @{ '^(highlight|ssrcopy)\d+_' = 'screen_uv=1' }
+                     Shaders = '^(fog|vignette|video|uiresolve|uifigure|sun|sunlight|projectiletrail|glowmesh|vfxoverlay|dissolve|campaignwater|highlight|ssrcopy|ribbon|pointlight)\d+_|^vfxglow01_'
+                     ShaderSettings = @{ '^(highlight|ssrcopy)\d+_' = 'screen_uv=1'; '^sunlight\d+_' = 'foliage_glints=1' }
                      Registers = @{ '^pointlight\d+_' = 'point_light_PS[1]=0.9,0.5,0.2,1000000' } }
   'Attila'      = $attilaShaders + @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'
                                       Shaders = '^((t|bloom|lensflare|sky|markersbattle|cutscene|vignette|autoexposure|ssao)\d+|ssr0[01]|grass02)_' }
