@@ -1,11 +1,12 @@
 # R13 (hdr-review-rules.md, "Vanilla exact first"): every replaced tone mapper, hdr_to_screen, bloom and lens flare's
 # Vanilla path against the game's own bytes on WARP (tests.cpp, one driver for every game; the table below names each
 # game's shaders). The game's bytes stay out of the repository: -Dumps (the cmd_Decompiler pack and in-game dumps) and
-# -Divinity2 (its shader dump), only read. Each add-on shader is compiled here with the build's flags, its reflection
+# -Divinity1 / -Divinity2 (their shader dumps), only read. Each add-on shader is compiled here with the build's flags, its reflection
 # kept (the test binds by name; the code is the same as /Qstrip_reflect's). -Games: a subset of the table's keys (A,B).
 # -OutDir: where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\.
 # -NoMutants: skip the constant mutants' report. -Dump <part of a name>: that shader's worst texels. amd64.
 param([string]$Dumps = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16',
+      [string]$Divinity1 = (Join-Path $env:USERPROFILE '.claude\projects\D--Dev-renodx\tools\nontw\divinity1\census\cso'),
       [string]$Divinity2 = (Join-Path $env:USERPROFILE '.claude\projects\D--Dev-renodx\tools\nontw\divinity2\shader_dump\dxbc'),
       [string]$Games = '', [string]$Fxc = '', [string]$OutDir = '', [switch]$NoMutants, [string]$Dump = '')
 $ErrorActionPreference = 'Stop'
@@ -42,6 +43,9 @@ $table = [ordered]@{
                      Registers = @{ '^t\d+_' = 'cb0[0]=u64,u48,0,1;cb0[1]=2.2,1,1,0.2;cb0[2]=11,0.9,1.2,2;cb0[3]=0.5,0.6,0,1;cb0[4]=1,1,1,0.8'
                                     '^bloom01_' = 'cb0[0]=0.35,1,8,0;cb0[1]=0.015625,0.0208333,0,0'; '^lensflare00_' = 'cb7[4]=1,0.05,0,0' } }
   'Ryse'        = @{ Folder = 'rysesonofrome'; Dump = 'dump_shader_ryse'; Shaders = '^tonemap\d+_' }
+  # Divinity 1: the tone map (tw_divinity1's), bloom, god rays, UI, FXAA, SMAA, vignette.
+  'Divinity1'   = @{ Folder = 'divinityoriginalsinenhanced'; Dump = $Divinity1
+                     Shaders = '^(bloom|godsrays\d+|ui\d+)_|^0x(30A1D40D|35F39F1D|6AF33A9B|B7FC46C3|FB839D33|DDBCD866)\.' }
   'Divinity2'   = @{ Folder = 'divinity2originalsindefinitive'; Dump = $Divinity2; Shaders = '^(t01|bloom00|ui00)_' }
   'Tales'       = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^(tonemap|lut)\d+_' }
   'Expeditions' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^(t|lut)\d+_' }
@@ -70,13 +74,15 @@ foreach ($game in $table.Keys) {
   $out = Join-Path $testBuild "cso\$game"
   New-Item -ItemType Directory -Force -Path $out | Out-Null
   $sources = Get-ChildItem -LiteralPath (Join-Path $repairRoot "src\games\$($entry.Folder)\shaders") -Filter '*.hlsl' |
-             Where-Object { $_.Name -match $entry.Shaders -and $_.Name -match '_(0x[0-9A-F]{8})\.(\w+_\d_\d)\.hlsl$' } | Sort-Object Name
+             Where-Object { $_.Name -match $entry.Shaders -and $_.Name -match '(^|_)(0x[0-9A-F]{8})\.(\w+_\d_\d)\.hlsl$' } | Sort-Object Name
   foreach ($file in $sources) {
-    $null = $file.Name -match '_(0x[0-9A-F]{8})\.(\w+_\d_\d)\.hlsl$'
-    $gameCso = $csos["$($Matches[1]).$($Matches[2]).cso"]
-    if (-not $gameCso) { $gameCso = Join-Path $folder "$($Matches[1]).$($Matches[2]).cso" }
+    $null = $file.Name -match '(^|_)(0x[0-9A-F]{8})\.(\w+_\d_\d)\.hlsl$'
+    $hash = $Matches[2]
+    $target = $Matches[3]
+    $gameCso = $csos["$hash.$target.cso"]
+    if (-not $gameCso) { $gameCso = Join-Path $folder "$hash.$target.cso" }
     $addonCso = Join-Path $out ($file.BaseName + '.cso')
-    if (-not (Compile-Shader $file.FullName $Matches[2] $addonCso)) { Remove-Item -LiteralPath $addonCso -ErrorAction SilentlyContinue }
+    if (-not (Compile-Shader $file.FullName $target $addonCso)) { Remove-Item -LiteralPath $addonCso -ErrorAction SilentlyContinue }
     $registers = if ($entry.Registers) { ($entry.Registers.Keys | Where-Object { $file.Name -match $_ } | ForEach-Object { $entry.Registers[$_] }) -join ';' } else { '' }
     $manifest += "$game`t$($file.BaseName -replace '\.\w+_\d_\d$', '')`t$gameCso`t$addonCso`t$($entry.Settings)`t$registers"
   }
