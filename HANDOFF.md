@@ -180,6 +180,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 00:1x (ATN: SSR "if it is more correct, add it as on default but an extra slider please": the paths' occlusion on reflections under Path-Traced Ambient, on by default + a strength slider, tw1_; x64 engine memory "in handsoff but let's do it at end of the week or next week if we still got usage left": X64 ENGINE MEMORY box) C: the SSR path-traced occlusion (L1778) and x64 engine_memory (S-list): ATN's call, details in shs2_'s report (from: shs2_ 23:xx)
 - [x] ANSWERED 00:3x (ATN: "If it is on by default, then get rid of that slider": it is on by default (5d9810cd1), row removed in WH1 / WH2; tw1_ after the SSR item) C: WH1 / WH2: remove the Rays Replace Shadow Maps row too (off = Multiply), as WH3 / Troy / Pharaoh now (one method; WH1's 12 SM 4.1 builds keep the game's maps until the shared Patch)? (from: tw2_ 00:0x)
 - [x] ANSWERED 00:4x (ATN: "Let's take your suggestion": the game's shadow map smaller while Replace is on, restart to take effect; rur2_) C: R.U.S.E. VRAM: a smaller ShadowRTSize while Replace is on frees memory (~72 MiB at 1024 vs ~290 MiB at 2048; coarser game shadows where they come back: above Rays Off Above, a failed trace, Replace off)? (from: rur2_ 00:0x)
+- [x] ANSWERED 01:xx (ATN: "Row placement, that sounds good!"; the occlusion source asked, coordinator: keep the specular-occlusion lobe, more correct for reflections) C: Path-Traced Reflection Occlusion: lobe vs sky visibility, row next to Path-Traced Ambient (graphics_page, shs2_)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -317,6 +318,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEPS NEXT (shs2_ 23:xx): every game: a census of its other SSAO readers ... | per-game rounds, gpu3_, next shared round
 - R7 / TEST BOXES (shs2_ 23:xx): R7 clamps: Shogun 2 sea overlay writers C8375A74 ... | per-game rounds, next test round
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
+- DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, co ... | ?
+- CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benc ... | coordinator, after the current merges + install, ATN's go
 - ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
 - STRESS REPLAY stress_test_log2 (ATN 00:3x: "Maybe do a cpu/gpu recording there t ... | coordinator (plan phase 1)
 - (Attila / Thrones DONE tw1_ 6b49f7d47: "Path-Traced Reflection Occlusion" slider ... | tw1_ (Attila / Thrones), per-game rounds for the twins
@@ -2051,6 +2054,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         papers, PT DI with RTXDI code allowed + NVIDIA notice, torches via one DI + GI reservoir, vMF diffuse row after PT
         DI, SER / OMM / PTLAS re-measured); 4 Opus review (xHigh reviewers, High fixers); 5 install + ATN's short list.
         Owner: coordinator
+      - [ ] DEBUG44 (ATN 01:xx, Attila folder debug44, night Constantinople + sea battle, coordinator read every shot):
+        (a) PsychoV35 RED: dark / shadowed pixels turn deep red under V35 (V31 fine, same frame): in Bend shots, path-torch
+        shots and plain night ground: V35 mishandles near-black / negative / NaN input; fix V35 (shared, every game's
+        Recommended) + any producer of negatives; owner bug1_. (b) TORCH AND FIRE LIGHT FROM PATH on with ITS SHADOWS off:
+        walls / ground blown out white (overlay shot 1 vs 2 vs 3: Light on + Shadows off = overbright, both on = normal):
+        unshadowed path torch light (light through walls / double counted with the game's torch light); owner gpu3_. (c)
+        TORCH AND FIRE SHADOWS FROM PATH: bright white lines in stone cracks / concave corners, different every frame
+        (back-to-back shots vs off): light leaking at concave corners (ray offset); owner gpu3_. (d) RT SHADOWS HALO: with
+        RT shadows a light halo around cypress trees against the dark backdrop, the backdrop greyer (Bend shot without);
+        owner bug1_ with the night1 capture. (e) RT SHADOWS BLOCKY: a sail's shadow on the next sail stair-stepped
+        (debug view: big polygon steps) and rope shadows missing, Bend + the game's maps smooth: the rays' sail mesh is
+        coarser than drawn (cloth / LOD) and thin ropes not captured; owner bug1_ with the sea1 capture. (f) SCALING
+        BELOW 100 %: sea battle, DLSS Performance vs DLAA: the ships' selection indicators on the water become big stripes,
+        the wave foam pattern changes: shaders never in our traces (no sea battle traced); a static scan of every shipped
+        shader for screen-space reads (not only traced ones) + the sea1 traces, every TW game with sea battles; owner bug1_
+        after the sea1 capture. (g) LOD BIAS: ATN "For every single game, the LOD bias for everything should be on": the
+        Texture LOD bias on all textures row on by default in every game; owner bug1_.
+      - [ ] CAPTURE RUNS (ATN 01:xx: replays saved: night1 (move the camera as the last benches), sea1 (go back a bit,
+        everything in view), stress_test_log2 (no camera move, it spawns where ATN wants)): per replay one scripted run on
+        the newest install: bench + WPR (ATN's tasks) + Nsight GPU trace + harness frame captures + Time Each Pass; stress
+        also the address space with / without RenoDX (restart crash box); traces for DEBUG44 (d)-(f). Owner: coordinator,
+        after the current merges + install, ATN's go
       - [ ] ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart battle): "Runtime Error! ...
         terminate it in an unusual way". heapfix.log 23:37:58: malloc of 41,998,788 / 48,846,319 bytes FAILED (418 MB free,
         largest free block 37 MB: the 32-bit address space fragmented; the first failed malloc in the whole log), 23:41:42
