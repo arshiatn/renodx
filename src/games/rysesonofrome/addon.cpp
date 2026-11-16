@@ -1452,8 +1452,10 @@ void BuildRuntimeData() {
           .parse = [](float value) { return (value == 6.f ? 9.f : value); },
           .is_visible = [] { return twattila::dlaa_bridge::HelperInstalled() && AnyRays(); },
       },
+      // Ryse's parts of rt_core's scene tests (SCENE_TESTS): no draw is marked terrain (its Terrain Only would be empty),
+      // no placed rows (Objects and Trees Only: what is neither terrain nor skinned), no leaves apart from alpha tests.
       ray_choice("RayTracedSceneTest", &rt_sliders.scene_test, "Ray tracing scene (test)",
-                 {"Everything", "Terrain Only", "Objects and Trees Only", "No Leaves", "Nothing Kept Off-Screen"},
+                 {"Everything", "Static Only (no characters)", "No Alpha-Tested", "Nothing Kept Off-Screen"},
                  "While the Debug View is on: one part of the scene alone, to find what breaks an effect.",
                  [] { return ray_tracing_installed && rt_sliders.debug_view != 0.f; }),
       new renodx::utils::settings::Setting{
@@ -1670,7 +1672,8 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
     rays.nrd = rt_sliders.denoiser != 0.f && rysesonofrome::graphics::requested_mode.load() != rysesonofrome::graphics::AAMode::OFF;
     rays.ao_reblur = rt_sliders.ao_reblur != 0.f;
     rays.debug_view = static_cast<uint32_t>(rt_sliders.debug_view);
-    rays.scene_test = ((rt_sliders.debug_view != 0.f) ? static_cast<uint32_t>(rt_sliders.scene_test) : 0u);
+    constexpr std::array<uint32_t, 4> SCENE_TESTS = {0u, 2u, 3u, 4u};  // the row's items as rt_core's scene tests
+    rays.scene_test = ((rt_sliders.debug_view != 0.f) ? SCENE_TESTS[static_cast<size_t>(std::clamp(rt_sliders.scene_test, 0.f, 3.f))] : 0u);
     rays.debug_log = rt_sliders.debug_log != 0.f;
     rays.units_range = rt_sliders.units_range;
     // Rays a Pixel: Match Output, those of the output pixels a render pixel stands for (at most 8).
