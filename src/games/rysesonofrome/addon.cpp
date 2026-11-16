@@ -280,7 +280,8 @@ bool AnyRays() {
 }
 
 // The Ray Tracing presets: RT/PT writes RAYS_RESET, then the one list every game's RT/PT writes
-// (twattila/rays_preset.hpp; the keys this section lacks are skipped), then RAYS_OWN_KEYS; No RT/PT RAYS_OFF; Reset both.
+// (twattila/rays_preset.hpp; the keys this section lacks are skipped), then RAYS_OWN_KEYS; No RT/PT RAYS_OFF and the
+// screen-space methods; Reset RAYS_OFF and RAYS_RESET.
 using PresetValues = twattila::graphics_page::Values;
 const PresetValues RAYS_OFF = {
     {"RayTracedSunShadows", 0.f}, {"RayTracedAmbientOcclusion", 0.f}, {"RayTracedReflections", 0.f},
@@ -1186,14 +1187,10 @@ void BuildRuntimeData() {
                      reshade::set_config_value(nullptr, "Ryse AA", "RayReconstruction", 4);
                    }
                  }),
-      ray_button("No RT/PT (Recommended)", "Every ray-traced effect off, their sliders kept (restart the game).",
-                 [] { renodx::utils::settings::UpdateSettings(RAYS_OFF); }),
-      // Attila's and Tales' No RT/PT content (their screen-space methods in the rays' place), kept apart until GT-VBAO,
-      // the Light Bounce and the Contact Shadows have their in-game check: then the maintainer decides whether No RT/PT
-      // takes it.
-      ray_button("No RT/PT + Screen-Space (Experimental)",
-                 "Every ray-traced effect off (restart the game), in their place GT-VBAO, the Light Bounce and the\n"
-                 "Contact Shadows on.",
+      // Attila's and Tales' No RT/PT: the screen-space methods in the rays' place (ATN 2026-11-16).
+      ray_button("No RT/PT (Recommended)",
+                 "Every ray-traced effect off, their sliders kept (restart the game); in their place GT-VBAO,\n"
+                 "the Light Bounce and the Contact Shadows on.",
                  [] {
                    renodx::utils::settings::UpdateSettings(RAYS_OFF);
                    renodx::utils::settings::UpdateSettings({{"ssao_mode", 1.f}, {"light_bounce", 1.f}, {"contact_shadows", 1.f}});
