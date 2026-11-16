@@ -1227,6 +1227,12 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   // Debug: also renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt).
   talesofarise::frame_trace::OnPresent();
+  // Before any row is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS on
+  // Intel's, else FSR (as Attila's).
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
   // The page's rows (Upscaling Mode: DLAA, Ultra Quality, Quality, Balanced, Performance, Ultra Performance, Custom).
   {
     constexpr std::array<AAMode, 7> UPSCALING_MODES = {AAMode::DLAA, AAMode::DLSS_ULTRA_QUALITY, AAMode::DLSS_QUALITY, AAMode::DLSS_BALANCED,
