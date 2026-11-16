@@ -23,15 +23,16 @@ cbuffer Paths : register(b3) {
   float sky_range;         // metres: what blocks Path-Traced Ambient's sky (the AO's reach, as Ray-Traced AO)
   uint previous_square_root;  // 1: last frame's colour holds the light's square root (rt_path.hlsli PreviousLight)
   uint previous_positions_slice;  // last frame's positions' slice of previous_positions (rt_path.hlsli)
-#if defined(TORCHES_IN_BOUNCE) || defined(PATH_PROBE)
   uint lights_in_bounce;          // Torch and Fire Light in the Light Bounce: LIGHTS_* below (rt_path.hlsli, rt_lights)
-#endif
 #if defined(PATH_PROBE)
   uint probe_mode;  // RENODX_TW_PATH_PROBE (tests): rt_path.hlsli ProbeTexel's mode, its rays a texel << 8
 #endif
 };
+// lights_in_bounce's LIGHTS_IN_PATHS (a paths request's, every build): Torch Light in Path-Traced GI, the local lights on
+// every surface a path meets, the screen's as well as one nobody saw (rt_path.hlsli SeenDiffuseLight, UnseenLight).
+static const uint LIGHTS_IN_PATHS = 128u;
 #if defined(TORCHES_IN_BOUNCE)
-// lights_in_bounce (only in the TORCHES_IN_BOUNCE builds: every other is helper110's to the byte): its mode (bits 0-1: 1
+// lights_in_bounce in the TORCHES_IN_BOUNCE builds: its mode (bits 0-1: 1
 // a local light's sample a bounce texel, its light in the bounce; 2 the bounce only theirs, a measurement; 3 Torch and
 // Fire Shadows from the Light Bounce: their shadow ratio into light_ratio, the bounce without them), the light_ratio set
 // written (a bounce request's) or read (a trace's), last frame's set valid, the camera moved (RT_PATH_RATIO_FOLLOW: the

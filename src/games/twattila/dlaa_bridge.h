@@ -294,6 +294,9 @@ constexpr uint32_t RT_PATH_REUSE_LEAN = 1u << 24;
 constexpr uint32_t RT_PATH_RATIO_FOLLOW = 1u << 25;
 // Near ReSTIR Reuse (as RT_PATH_REUSE_LEAN's, older helpers ignore it; before it): three neighbours within half the reach.
 constexpr uint32_t RT_PATH_REUSE_NEAR = 1u << 26;
+// Torch Light in Path-Traced GI (Experimental; a path-traced Light Bounce request's with the trace's local lights, older
+// helpers ignore it): the local lights on the screen's surfaces a path meets too, not only on those nobody saw.
+constexpr uint32_t RT_PATH_TORCH_LIGHT = 1u << 27;
 // Scene flags (Shared::rt_scene_flags, a trace request's). Smoke BLAS Fast Build (helpers before 113 ignore it): the smoke's
 // BLAS, built anew each request, built for a fast build, not fast rays (which particles a ray meets first, and so counts, can
 // change: Smoke Shadow Quality's count).
