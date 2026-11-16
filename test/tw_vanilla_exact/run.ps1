@@ -38,10 +38,17 @@ $table = [ordered]@{
   'WH2'         = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'
                      FrameGamma = '2'; Modes = '0,1,2,3,4' }
   'WH3'         = @{ Folder = 'twwarhammer3'; Dump = 'dump_shader_twwarhammer3_pack\cso'; Shaders = '^(t|bloom|lensflare|lensblood)\d+_' }
-  'Troy'        = @{ Folder = 'twtroy'; Dump = 'dump_shader_twtroy_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2'
-                     Modes = '0,1,2,3,4' }
-  'Pharaoh'     = @{ Folder = 'twpharaohdynasties'; Dump = 'dump_shader_twpharaohdynasties_pack\cso'; Shaders = '^(t|bloom|lensflare|lensblood)\d+_'
-                     FrameGamma = '2'; Modes = '0,1,2,3,4' }
+  # Troy and Pharaoh: their tone mappers, bloom and flares, and the other replaced screen passes that pass here with their
+  # control caught (fix round 2026-11-16: tools/tw/troy/vanilla_exact_tp_1116.txt). Left out, each with its reason there:
+  # Troy fxaa00 (0.062 off; its HDR edge threshold the suspect) and menuvideo01 (0.037 off), causes not read yet (B);
+  # Pharaoh highlightindicator00 / 03 (their stock 10x overbright saturated and its division by 0 made safe, on purpose);
+  # the UI, cinematics and fire02 (their control not caught: outputs the inputs here don't move); sharpening, chromatic
+  # aberration, menuvideo00, Troy's ui03 and photo02 / 04 (the Gamma Correction check, made for the tone mappers, on a pass
+  # that takes the tone mapper's output); compute shaders (autoexposure00); passes with their own WARP tests (fog, AO, SSR).
+  'Troy'        = @{ Folder = 'twtroy'; Dump = 'dump_shader_twtroy_pack\cso'; FrameGamma = '2'; Modes = '0,1,2,3,4'
+                     Shaders = '^(t|bloom|lensflare|chromatic|godrays|vignette|skydome|markershighlight)\d+_|^photo0[13]_' }
+  'Pharaoh'     = @{ Folder = 'twpharaohdynasties'; Dump = 'dump_shader_twpharaohdynasties_pack\cso'; FrameGamma = '2'; Modes = '0,1,2,3,4'
+                     Shaders = '^(t|bloom|lensflare|lensblood|godrays|vignette|skydome)\d+_|^(fire0[01]|highlightindicator0[12]|photo0[1-4])_' }
   # Rome Remastered (Feral's port, no names): the resolve (resolve.hlsli: screen size, luma off, brightness 1; gamma 2.2,
   # white scale, exposure, shadow boost; its falloff, the vignette's ellipse and power; its scale and strength; tint, LUT
   # strength), the bright pass (threshold, scale, cap; texel size; its source is a 0 - 1 mask here: no names), the flare
