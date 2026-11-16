@@ -13,11 +13,12 @@
 //    Peak under Paper White (2c, 400 / 500): every HDR mode as at Peak = Paper White.
 // 3. Extended: equal to the game's Hable below its pivot (within 1e-3); fire (1, 0.4, 0.1) turns yellow / white above 1
 //    (G / R rises toward 1 as SDR's clip does), the per-channel shoulder.
-// 4. The grade alone (grade.hlsl, GradeAfterCurve): the stock's grade below 1 (ColorMatrix identity, saturation 1.97 and
-//    0.34, Black Cove's colours) within 1e-4, and continuous where the brightest channel crosses 1.
+// 4. The grade alone (grade.hlsl, GradeAfterCurve): the stock's grade below the shoulder's start 0.8 (ColorMatrix
+//    identity, saturation 1.97 and 0.34, Black Cove's colours) within 1e-4, its slope continuous through the shoulder;
+//    control (must fail): the hard knee at 1 it replaced. The change against it by brightness band (report).
 // 5. Report: luminance falls along the ramps against the game's own, OkLab distance to the game's SDR picture below its
 //    clip, and fire / sky hue at Hue Clip 0 - 1 for both modes (the defaults come from it).
-// tests.exe <game cso> <add-on cso> <grade cso>.
+// tests.exe <game cso> <add-on cso> <grade cso> <grade control cso>.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -340,7 +341,7 @@ static OnSceneResult CheckOnScene(ID3D11PixelShader* shader, float mode, float p
 }
 
 int main(int argc, char** argv) {
-  REQUIRE(argc >= 4);
+  REQUIRE(argc >= 5);
   REQUIRE(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context)));
   // A full-screen triangle with the stock's interface (SV_Position, TexCoord0).
   constexpr char VERTEX[] =
@@ -455,7 +456,10 @@ int main(int argc, char** argv) {
     CHECK(first_over > 0.f && top > first_over + 0.2f && top > 0.75f);
   }
 
-  // 4. The grade alone: the stock's below 1 (within 1e-4), continuous where the brightest channel crosses 1.
+  // 4. The grade alone: the stock's below the shoulder's start 0.8 (within 1e-4); the slope continuous through the
+  //    shoulder (0.8 - 2: the slope's change across 2 x 5e-4 of brightness, relative to the colour's brightest channel,
+  //    under 0.05), where the control (the replaced hard knee at 1) must break it; the look against the control by
+  //    brightness band: the same below 0.8, the change reported above it.
   {
     std::vector<GradeCase> cases;
     std::vector<Globals> grades;
@@ -468,12 +472,22 @@ int main(int argc, char** argv) {
     colours.push_back({0.35f, 0.6f, 1.f});
     colours.push_back({1.f, 1.f, 1.f});
     colours.push_back({1.f, 0.9f, 0.85f});
-    // Each colour at its brightest channel 0.5, just below 1, just above 1, 3.
-    constexpr std::array<float, 4> LEVELS = {0.5f, 1.f - 1e-4f, 1.f + 1e-4f, 3.f};
+    // Each colour at its brightest channel: 0.5 and just below the start (the stock's grade), five steps of 5e-4 around
+    // each slope point, then 64 levels from 1/8 to 16 (the bands).
+    constexpr float SHOULDER_START = 0.8f;
+    constexpr float STEP = 5e-4f;
+    constexpr std::array<float, 5> SLOPE_POINTS = {0.8f, 0.9f, 1.f, 1.25f, 2.f};
+    constexpr size_t SLOPE_FIRST = 2;
+    constexpr size_t RAMP_FIRST = SLOPE_FIRST + SLOPE_POINTS.size() * 5;
+    std::vector<float> levels = {0.5f, SHOULDER_START - 1e-4f};
+    for (const float point : SLOPE_POINTS) {
+      for (int step = -2; step <= 2; ++step) levels.push_back(point * (1.f + step * STEP));
+    }
+    for (int i = 0; i < 64; ++i) levels.push_back(std::exp2(-3.f + 7.f * i / 63.f));
     for (const Globals& globals : grades) {
       for (const Float3& colour : colours) {
         const float colour_max = std::max({colour[0], colour[1], colour[2]});
-        for (const float level : LEVELS) {
+        for (const float level : levels) {
           const float scale = level / colour_max;
           cases.push_back({.color = {colour[0] * scale, colour[1] * scale, colour[2] * scale, 0.f}, .color_matrix = globals.color_matrix,
                            .source_color = globals.source_color, .target_color = globals.target_color});
@@ -481,23 +495,65 @@ int main(int argc, char** argv) {
       }
     }
     const auto results = RunGrade(argv[3], cases);
+    const auto control = RunGrade(argv[4], cases);
+    // The slope's change at one point: (y(+2) - y(+1)) - (y(-1) - y(-2)) over one step, relative to the brightest channel.
+    const auto slope_change = [&](const std::vector<Float4>& out, size_t first) {
+      float brightest = 1e-3f;
+      for (int c = 0; c < 3; ++c) brightest = std::max(brightest, std::abs(out[first + 2][c]));
+      float change = 0.f;
+      for (int c = 0; c < 3; ++c) {
+        const float above = out[first + 4][c] - out[first + 3][c];
+        const float below = out[first + 1][c] - out[first][c];
+        change = std::max(change, std::abs(above - below) / (STEP * brightest));
+      }
+      return change;
+    };
     float worst_stock = 0.f;
-    float worst_jump = 0.f;
-    for (size_t i = 0; i < cases.size(); i += LEVELS.size()) {
-      const Globals& globals = grades[i / (LEVELS.size() * colours.size())];
+    std::array<float, SLOPE_POINTS.size()> slope_addon = {};
+    std::array<float, SLOPE_POINTS.size()> slope_control = {};
+    // Bands of the brightest channel: below the start, 0.8 - 1, 1 - 2, 2 - 4, 4 - 16; OkLab distance over lightness.
+    constexpr std::array<float, 5> BAND_TOPS = {SHOULDER_START, 1.f, 2.f, 4.f, 16.f};
+    std::array<float, BAND_TOPS.size()> band_distance = {};
+    std::array<float, BAND_TOPS.size()> band_alpha = {};
+    float below_start = 0.f;
+    for (size_t i = 0; i < cases.size(); i += levels.size()) {
+      const Globals& globals = grades[i / (levels.size() * colours.size())];
       for (size_t level = 0; level < 2; ++level) {
         const Float3 colour = {cases[i + level].color[0], cases[i + level].color[1], cases[i + level].color[2]};
         const Float3 stock_grade = StockGrade(colour, globals);
         for (int c = 0; c < 3; ++c) worst_stock = std::max(worst_stock, std::abs(stock_grade[c] - results[i + level][c]));
       }
-      for (int c = 0; c < 3; ++c) {
-        worst_jump = std::max(worst_jump, std::abs(results[i + 2][c] - results[i + 1][c]) / std::max(std::abs(results[i + 1][c]), 1e-3f));
+      for (size_t point = 0; point < SLOPE_POINTS.size(); ++point) {
+        slope_addon[point] = std::max(slope_addon[point], slope_change(results, i + SLOPE_FIRST + point * 5));
+        slope_control[point] = std::max(slope_control[point], slope_change(control, i + SLOPE_FIRST + point * 5));
+      }
+      for (size_t level = RAMP_FIRST; level < levels.size(); ++level) {
+        const Float4& ours = results[i + level];
+        const Float4& before = control[i + level];
+        const size_t band = std::ranges::lower_bound(BAND_TOPS, levels[level]) - BAND_TOPS.begin();
+        if (levels[level] < SHOULDER_START) {
+          for (int c = 0; c < 4; ++c) below_start = std::max(below_start, std::abs(ours[c] - before[c]) / std::max(1.f, std::abs(before[c])));
+        }
+        const Float3 a = OkLab({ours[0], ours[1], ours[2]});
+        const Float3 b = OkLab({before[0], before[1], before[2]});
+        const float distance = std::sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]));
+        band_distance[band] = std::max(band_distance[band], distance / std::max(b[0], 1e-3f));
+        band_alpha[band] = std::max(band_alpha[band], std::abs(ours[3] - before[3]));
       }
     }
-    std::printf("4. grade: largest difference to the stock's below 1 %.3g, largest relative jump across 1 %.3g (%zu cases)\n",
-                worst_stock, worst_jump, cases.size());
+    std::printf("4. grade: largest difference to the stock's below the shoulder's start %.3g (%zu cases)\n", worst_stock, cases.size());
+    std::printf("   slope change across 2 x %.0e of brightness at 0.8 / 0.9 / 1 / 1.25 / 2: add-on", STEP);
+    for (const float change : slope_addon) std::printf(" %.4f", change);
+    std::printf("; control (hard knee at 1)");
+    for (const float change : slope_control) std::printf(" %.4f", change);
+    std::printf("\n   against the control: below 0.8 largest difference %.3g; OkLab distance over lightness (alpha) 0.8 - 1 %.4f (%.4f),"
+                " 1 - 2 %.4f (%.4f), 2 - 4 %.4f (%.4f), 4 - 16 %.4f (%.4f)\n",
+                below_start, band_distance[1], band_alpha[1], band_distance[2], band_alpha[2], band_distance[3], band_alpha[3],
+                band_distance[4], band_alpha[4]);
     CHECK(worst_stock <= 1e-4f);
-    CHECK(worst_jump <= 2e-3f);
+    CHECK(*std::ranges::max_element(slope_addon) <= 0.05f);
+    CHECK(slope_control[2] > 0.05f);
+    CHECK(below_start <= 1e-6f);
   }
 
   // Report: luminance falls along the exposure ramps, ours against the game's SDR picture (the selective colour can dim a

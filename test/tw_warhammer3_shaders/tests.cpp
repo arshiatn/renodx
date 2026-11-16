@@ -16,6 +16,12 @@
 //    random luma with 16 focal points, from a last brightness of 0.8 and of 0 (its first frame: 1): with the row off ours gives
 //    the game's bits; with a fire (luma 500) on one focal point's cross the game's brightness falls, ours with the row on
 //    (2 stops) stays within 5% of the frame without the fire. CONTROL: ours with the row on differs from the game's.
+// 4. Bend / the rays over the kept maps: the sun mask E6BCBA8A's contact march off through the add-on's sss copy (flag 0 at
+//    byte 28) = the game's with the flag 0. CONTROL: the game's flag 1 shadows pixels.
+// 5. Torch shadows under the rays: the 4 light PS that read the game's point shadow map with the map lit = their unshadowed
+//    twins (the game's and ours). CONTROL: a random map differs.
+// 6. Ray-Traced Specular Occlusion (a third argument: an older build's csos): reflection00's cubes dimmed by t46 alone, not
+//    by the AO too. CONTROL: the older build's take the AO.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -31,6 +37,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <random>
 #include <string>
@@ -133,6 +140,32 @@ static ComPtr<ID3D11Buffer> ConstantBuffer(const void* data, UINT size) {
   ComPtr<ID3D11Buffer> buffer;
   device->CreateBuffer(&desc, &initial, &buffer);
   return buffer;
+}
+
+// The game's camera buffer (b0 "camera", 66 registers, its matrices row by row) over `width` x `height` targets.
+static std::array<float, 66 * 4> CameraBuffer(const std::array<double, 3>& eye, const Matrix& view, const Matrix& projection, float near_plane,
+                                              float far_plane, UINT width, UINT height) {
+  std::array<float, 66 * 4> camera = {};
+  const auto put = [&camera](int base, const Matrix& m) {
+    for (int k = 0; k < 16; ++k) camera[base * 4 + k] = static_cast<float>(m[k]);
+  };
+  const Matrix view_projection = Multiply(projection, view);
+  for (int k = 0; k < 3; ++k) camera[k] = static_cast<float>(eye[k]);
+  put(2, view);
+  put(6, projection);
+  put(10, view_projection);
+  put(18, Inverse(view));
+  put(26, Inverse(projection));
+  put(30, Inverse(view_projection));
+  camera[34 * 4] = near_plane;
+  camera[34 * 4 + 1] = far_plane;
+  for (int reg : {37, 39, 41}) {
+    camera[reg * 4] = static_cast<float>(width);
+    camera[reg * 4 + 1] = static_cast<float>(height);
+    camera[reg * 4 + 2] = 1.f / static_cast<float>(width);
+    camera[reg * 4 + 3] = 1.f / static_cast<float>(height);
+  }
+  return camera;
 }
 
 // ------------------------------------------------------------------------------------------------------------- casters
@@ -311,26 +344,8 @@ static MarchScene BuildMarchScene() {
   const Matrix view = View(eye, 0.0, 0.2094);
   const Matrix projection = Projection(1.0472, static_cast<double>(MARCH_WIDTH) / MARCH_HEIGHT, 1.0, 2000.0);
   const Matrix view_projection = Multiply(projection, view);
-  const Matrix inverse_view = Inverse(view);
   const Matrix inverse_view_projection = Inverse(view_projection);
-  const auto put = [&scene](int base, const Matrix& m) {
-    for (int k = 0; k < 16; ++k) scene.camera[base * 4 + k] = static_cast<float>(m[k]);
-  };
-  for (int k = 0; k < 3; ++k) scene.camera[k] = static_cast<float>(eye[k]);
-  put(2, view);
-  put(6, projection);
-  put(10, view_projection);
-  put(18, inverse_view);
-  put(26, Inverse(projection));
-  put(30, inverse_view_projection);
-  scene.camera[34 * 4] = 1.f;
-  scene.camera[34 * 4 + 1] = 2000.f;
-  for (int reg : {37, 39, 41}) {
-    scene.camera[reg * 4] = static_cast<float>(MARCH_WIDTH);
-    scene.camera[reg * 4 + 1] = static_cast<float>(MARCH_HEIGHT);
-    scene.camera[reg * 4 + 2] = 1.f / MARCH_WIDTH;
-    scene.camera[reg * 4 + 3] = 1.f / MARCH_HEIGHT;
-  }
+  scene.camera = CameraBuffer(eye, view, projection, 1.f, 2000.f, MARCH_WIDTH, MARCH_HEIGHT);
   // Posts (x, z, width, height) and a wall at z 400, 80 m high; the water at y 0.
   std::mt19937 random(777);
   std::uniform_real_distribution<double> uniform(0.0, 1.0);
@@ -688,9 +703,490 @@ static void TestAutoExposure(const std::string& pack, const std::string& built) 
   CHECK(fire_ours != fire_game, "CONTROL: ours on with the fire is the game's");
 }
 
+// ------------------------------------------------------------------------------------- full-screen pixel shader passes
+constexpr UINT PASS_WIDTH = 160;
+constexpr UINT PASS_HEIGHT = 96;
+
+// A camera 3 m over flat ground looking 20 degrees down, posts ahead (x, z, width, height) and a wall at z 40: the device depth of
+// each pixel (1 where nothing is hit) and the camera buffer.
+struct PassScene {
+  std::vector<float> depth;
+  std::array<float, 66 * 4> camera = {};
+  Matrix view_projection = {};
+  Matrix inverse_view_projection = {};
+};
+
+static PassScene BuildPassScene() {
+  PassScene scene;
+  const std::array<double, 3> eye = {0.0, 3.0, 0.0};
+  const Matrix view = View(eye, 0.0, 0.35);
+  const Matrix projection = Projection(1.0472, static_cast<double>(PASS_WIDTH) / PASS_HEIGHT, 0.5, 500.0);
+  scene.view_projection = Multiply(projection, view);
+  scene.inverse_view_projection = Inverse(scene.view_projection);
+  scene.camera = CameraBuffer(eye, view, projection, 0.5f, 500.f, PASS_WIDTH, PASS_HEIGHT);
+  constexpr std::array<std::array<double, 4>, 6> POSTS = {{{-3.0, 8.0, 0.6, 3.0}, {1.0, 10.0, 0.4, 2.0}, {3.5, 14.0, 1.0, 4.0},
+                                                          {-1.5, 18.0, 0.5, 1.5}, {0.2, 6.0, 0.3, 0.8}, {-6.0, 25.0, 2.0, 6.0}}};
+  scene.depth.assign(static_cast<size_t>(PASS_WIDTH) * PASS_HEIGHT, 1.f);
+  for (UINT y = 0; y < PASS_HEIGHT; ++y) {
+    for (UINT x = 0; x < PASS_WIDTH; ++x) {
+      const double ndc_x = (x + 0.5) / PASS_WIDTH * 2.0 - 1.0;
+      const double ndc_y = 1.0 - (y + 0.5) / PASS_HEIGHT * 2.0;
+      const auto far_point = Transform(scene.inverse_view_projection, {ndc_x, ndc_y, 1.0, 1.0});
+      const std::array<double, 3> direction = {far_point[0] / far_point[3] - eye[0], far_point[1] / far_point[3] - eye[1],
+                                               far_point[2] / far_point[3] - eye[2]};
+      double nearest = 1e30;
+      if (direction[1] < 0.0) nearest = -eye[1] / direction[1];
+      if (direction[2] > 0.0) nearest = std::min(nearest, (40.0 - eye[2]) / direction[2]);
+      for (const auto& post : POSTS) {
+        const std::array<double, 3> low = {post[0], 0.0, post[1]};
+        const std::array<double, 3> high = {post[0] + post[2], post[3], post[1] + post[2]};
+        double enter = 0.0;
+        double leave = 1e30;
+        for (int a = 0; a < 3; ++a) {
+          double t0 = (low[a] - eye[a]) / direction[a];
+          double t1 = (high[a] - eye[a]) / direction[a];
+          if (t0 > t1) std::swap(t0, t1);
+          enter = std::max(enter, t0);
+          leave = std::min(leave, t1);
+        }
+        if (enter <= leave && enter > 0.0) nearest = std::min(nearest, enter);
+      }
+      if (nearest >= 1e29) continue;
+      const auto clip = Transform(scene.view_projection, {eye[0] + nearest * direction[0], eye[1] + nearest * direction[1],
+                                                          eye[2] + nearest * direction[2], 1.0});
+      scene.depth[static_cast<size_t>(y) * PASS_WIDTH + x] = static_cast<float>(clip[2] / clip[3]);
+    }
+  }
+  return scene;
+}
+
+static ComPtr<ID3D11ShaderResourceView> PassTexture(const std::vector<float>& rgba) {
+  const D3D11_TEXTURE2D_DESC desc = {.Width = PASS_WIDTH, .Height = PASS_HEIGHT, .MipLevels = 1, .ArraySize = 1,
+                                     .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                     .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  const D3D11_SUBRESOURCE_DATA data = {.pSysMem = rgba.data(), .SysMemPitch = PASS_WIDTH * 16};
+  ComPtr<ID3D11Texture2D> texture;
+  device->CreateTexture2D(&desc, &data, &texture);
+  ComPtr<ID3D11ShaderResourceView> view;
+  device->CreateShaderResourceView(texture.Get(), nullptr, &view);
+  return view;
+}
+
+// A slices x size x size R32_FLOAT array (the game's point light shadow map: a cube's faces).
+static ComPtr<ID3D11ShaderResourceView> ArrayTexture(UINT size, UINT slices, const std::vector<float>& values) {
+  const D3D11_TEXTURE2D_DESC desc = {.Width = size, .Height = size, .MipLevels = 1, .ArraySize = slices, .Format = DXGI_FORMAT_R32_FLOAT,
+                                     .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  std::vector<D3D11_SUBRESOURCE_DATA> data(slices);
+  for (UINT s = 0; s < slices; ++s) data[s] = {.pSysMem = &values[static_cast<size_t>(s) * size * size], .SysMemPitch = size * 4};
+  ComPtr<ID3D11Texture2D> texture;
+  device->CreateTexture2D(&desc, data.data(), &texture);
+  ComPtr<ID3D11ShaderResourceView> view;
+  device->CreateShaderResourceView(texture.Get(), nullptr, &view);
+  return view;
+}
+
+// A full-screen draw of `code` (a pixel shader) into an R32G32B32A32_FLOAT target: its views at t0.., constants at b0..,
+// samplers at s0..; the vertex shader's TEXCOORD0 the uv, POSITION1 / POSITION2 `light` (a point light's colour, its place and
+// reach). All four channels back.
+static std::vector<float> RunPass(const std::vector<uint8_t>& code, const std::vector<ID3D11ShaderResourceView*>& views,
+                                  const std::vector<ID3D11Buffer*>& constants, const std::vector<ID3D11SamplerState*>& samplers,
+                                  const std::array<float, 8>& light) {
+  static ComPtr<ID3D11VertexShader> full_screen;
+  if (!full_screen) {
+    const char* source =
+        "cbuffer light_vs : register(b0) { float4 colour; float4 place; };"
+        "struct O { float4 position : SV_Position; float4 uv : TEXCOORD0; float4 colour : POSITION1; float4 place : POSITION2; };"
+        "O main(uint id : SV_VertexID) { O o; float2 uv = float2((id << 1) & 2, id & 2);"
+        "o.position = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1); o.uv = float4(uv, 0, 0); o.colour = colour; o.place = place; return o; }";
+    ComPtr<ID3DBlob> blob;
+    if (SUCCEEDED(D3DCompile(source, std::strlen(source), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, &blob, nullptr))) {
+      device->CreateVertexShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &full_screen);
+    }
+  }
+  ComPtr<ID3D11PixelShader> shader;
+  CHECK(full_screen && SUCCEEDED(device->CreatePixelShader(code.data(), code.size(), nullptr, &shader)), "pass shader");
+  if (shader == nullptr) return {};
+  const D3D11_TEXTURE2D_DESC target_desc = {.Width = PASS_WIDTH, .Height = PASS_HEIGHT, .MipLevels = 1, .ArraySize = 1,
+                                            .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                            .BindFlags = D3D11_BIND_RENDER_TARGET};
+  ComPtr<ID3D11Texture2D> target;
+  device->CreateTexture2D(&target_desc, nullptr, &target);
+  ComPtr<ID3D11RenderTargetView> target_view;
+  device->CreateRenderTargetView(target.Get(), nullptr, &target_view);
+  constexpr std::array<float, 4> CLEAR = {-7.f, -7.f, -7.f, -7.f};
+  context->ClearRenderTargetView(target_view.Get(), CLEAR.data());
+  const ComPtr<ID3D11Buffer> light_buffer = ConstantBuffer(light.data(), sizeof(light));
+  const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(PASS_WIDTH), .Height = static_cast<float>(PASS_HEIGHT), .MaxDepth = 1.f};
+  context->ClearState();
+  context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  context->VSSetShader(full_screen.Get(), nullptr, 0);
+  context->VSSetConstantBuffers(0, 1, light_buffer.GetAddressOf());
+  context->PSSetShader(shader.Get(), nullptr, 0);
+  context->PSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+  context->PSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
+  context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+  context->RSSetViewports(1, &viewport);
+  context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+  context->Draw(3, 0);
+  context->ClearState();
+  D3D11_TEXTURE2D_DESC staging_desc = target_desc;
+  staging_desc.BindFlags = 0;
+  staging_desc.Usage = D3D11_USAGE_STAGING;
+  staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  ComPtr<ID3D11Texture2D> staging;
+  device->CreateTexture2D(&staging_desc, nullptr, &staging);
+  context->CopyResource(staging.Get(), target.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  std::vector<float> out(static_cast<size_t>(PASS_WIDTH) * PASS_HEIGHT * 4);
+  for (UINT y = 0; y < PASS_HEIGHT; ++y) {
+    std::memcpy(&out[static_cast<size_t>(y) * PASS_WIDTH * 4], static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(y) * mapped.RowPitch, PASS_WIDTH * 16);
+  }
+  context->Unmap(staging.Get(), 0);
+  return out;
+}
+
+// Values (floats) whose bits differ.
+static int DifferentValues(const std::vector<float>& a, const std::vector<float>& b) {
+  int values = 0;
+  for (size_t i = 0; i < std::min(a.size(), b.size()); ++i) values += (std::memcmp(&a[i], &b[i], 4) != 0) ? 1 : 0;
+  return values + static_cast<int>(std::max(a.size(), b.size()) - std::min(a.size(), b.size()));
+}
+
+// 4. The sun mask E6BCBA8A (the game's bytes) under Bend or the rays over the kept maps: its contact march goes, the rest stays.
+//    The scene of BuildPassScene in a low sun from behind the posts; the mask's other shadows lit (the cascades' and the terrain's
+//    flags 0, no clouds) so only the march can shadow. The add-on's route (twwarhammer3/addon.cpp traced_lights: the game's sss
+//    constants with the flag 1 copied by CopyResource, a zero written at byte 28 by CopySubresourceRegion) against the game with the
+//    flag 0 written on the CPU: 0 values apart. CONTROL: the flag 1 as the game binds it shadows pixels.
+static void TestSunMaskMarch(const std::string& pack) {
+  const std::vector<uint8_t> game = ReadFile(pack + "\\0xE6BCBA8A.ps_5_0.cso");
+  CHECK(!game.empty(), "sun mask: no code");
+  if (game.empty()) return;
+  const PassScene scene = BuildPassScene();
+  const size_t pixels = static_cast<size_t>(PASS_WIDTH) * PASS_HEIGHT;
+  std::vector<float> normals(pixels * 4, 0.5f);
+  std::vector<float> materials(pixels * 4, 0.f);
+  std::vector<float> depth(pixels * 4, 0.f);
+  for (size_t i = 0; i < pixels; ++i) depth[i * 4] = scene.depth[i];
+  const auto normals_view = PassTexture(normals);
+  const auto materials_view = PassTexture(materials);
+  const auto depth_view = PassTexture(depth);
+  // shadowmap_PS (40 registers): one cascade split; lighting_VS_PS (30): the sun's direction at c0.yzw, cloud scale 1 at c12.w.
+  std::array<float, 40 * 4> shadow_map = {};
+  shadow_map[33 * 4 + 3] = 1.f;
+  std::array<float, 30 * 4> lighting = {};
+  const std::array<float, 3> sun = {0.25f, -0.35f, -0.9f};
+  const float sun_length = std::sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
+  for (int k = 0; k < 3; ++k) lighting[1 + k] = sun[k] / sun_length;
+  lighting[12 * 4 + 3] = 1.f;
+  // sss: thickness 0.3 m from 5 m on, +2% a metre; the march (c1.w) as given; the cascades (c2.x) and terrain (c2.y) off.
+  const auto sss = [](uint32_t march) {
+    std::array<float, 3 * 4> values = {0.3f, 5.f, 0.02f, 0.f, 0.f, 0.f, 0.f, std::bit_cast<float>(march), 0.f, 0.f, 0.f, 0.f};
+    return values;
+  };
+  const ComPtr<ID3D11Buffer> camera = ConstantBuffer(scene.camera.data(), sizeof(scene.camera));
+  const ComPtr<ID3D11Buffer> shadow_map_buffer = ConstantBuffer(shadow_map.data(), sizeof(shadow_map));
+  const ComPtr<ID3D11Buffer> lighting_buffer = ConstantBuffer(lighting.data(), sizeof(lighting));
+  const auto without = sss(0u);
+  const auto with = sss(1u);
+  const ComPtr<ID3D11Buffer> march_off = ConstantBuffer(without.data(), sizeof(without));
+  const ComPtr<ID3D11Buffer> march_on = ConstantBuffer(with.data(), sizeof(with));
+  // The add-on's copy of the game's buffer, the flag from a buffer of zeros.
+  D3D11_BUFFER_DESC desc = {};
+  march_on->GetDesc(&desc);
+  const D3D11_BUFFER_DESC copy_desc = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  ComPtr<ID3D11Buffer> copied;
+  device->CreateBuffer(&copy_desc, nullptr, &copied);
+  constexpr std::array<uint32_t, 4> ZEROS = {};
+  const D3D11_BUFFER_DESC zeros_desc = {.ByteWidth = sizeof(ZEROS), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  const D3D11_SUBRESOURCE_DATA zeros_data = {.pSysMem = ZEROS.data()};
+  ComPtr<ID3D11Buffer> zeros;
+  device->CreateBuffer(&zeros_desc, &zeros_data, &zeros);
+  context->CopyResource(copied.Get(), march_on.Get());
+  const D3D11_BOX flag = {.left = 0, .top = 0, .front = 0, .right = 4, .bottom = 1, .back = 1};
+  context->CopySubresourceRegion(copied.Get(), 0, 28, 0, 0, zeros.Get(), 0, &flag);
+  const D3D11_SAMPLER_DESC comparison_desc = {.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                              .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                              .ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL, .MaxLOD = D3D11_FLOAT32_MAX};
+  const D3D11_SAMPLER_DESC linear_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
+                                          .AddressV = D3D11_TEXTURE_ADDRESS_WRAP, .AddressW = D3D11_TEXTURE_ADDRESS_WRAP,
+                                          .ComparisonFunc = D3D11_COMPARISON_NEVER, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> comparison;
+  ComPtr<ID3D11SamplerState> linear;
+  device->CreateSamplerState(&comparison_desc, &comparison);
+  device->CreateSamplerState(&linear_desc, &linear);
+  const std::vector<ID3D11ShaderResourceView*> views = {nullptr, nullptr, nullptr, nullptr, normals_view.Get(), materials_view.Get(), depth_view.Get(), nullptr};
+  const auto run = [&](ID3D11Buffer* sss_buffer) {
+    return RunPass(game, views, {camera.Get(), shadow_map_buffer.Get(), lighting_buffer.Get(), sss_buffer},
+                   {comparison.Get(), linear.Get(), linear.Get()}, {});
+  };
+  const auto reference = run(march_off.Get());
+  const auto ours = run(copied.Get());
+  const auto game_march = run(march_on.Get());
+  int shadowed = 0;
+  int lit = 0;
+  for (size_t i = 0; i < pixels; ++i) {
+    shadowed += (game_march[i * 4] < 0.999f) ? 1 : 0;
+    lit += (reference[i * 4] == 1.f) ? 1 : 0;
+  }
+  std::printf("sun mask: march off through the add-on's copy against the game's with the flag 0: %d values apart; the game's flag 0 lit at %d of %zu "
+              "pixels; CONTROL the game's march on: %d pixels shadowed, %d values apart\n",
+              DifferentValues(reference, ours), lit, pixels, shadowed, DifferentValues(reference, game_march));
+  CHECK(DifferentValues(reference, ours) == 0, "sun mask: the copy's march off is not the game's flag 0");
+  CHECK(shadowed > 0 && DifferentValues(reference, game_march) > 0, "sun mask: CONTROL the march shadows nothing");
+}
+
+// 5. The light PS that read the game's point shadow map against their unshadowed twins (twwarhammer3/addon.cpp BuildRuntimeData:
+//    the twin's copy runs in their place under the rays): the scene of BuildPassScene, a light 4 m ahead at 1.5 m, reach 9 m,
+//    G-buffer channels 1 - 3 (and the aux one) fixed noise, the depth the scene's; soft edges 0 and 1 (the two branches). The
+//    game's shadowed PS with its whole map lit (a 1 x 1 x 6 map at FLT_MAX: no blocker, every compare passed) = the game's twin bit
+//    for bit, and
+//    the add-on's built twin (nothing at t42: visibility 1) within 1e-5 of the game's twin. CONTROL: the shadowed PS with a
+//    32 x 32 x 6 map of random depths differs from its twin.
+static void TestPointShadowTwins(const std::string& pack, const std::string& built) {
+  struct Twin {
+    const char* shadowed;
+    const char* twin;
+    UINT map_slot;  // the shadowed PS's map: after the G-buffer channels (the aux one at t4)
+  };
+  constexpr std::array<Twin, 4> TWINS = {{{"B2453C88", "8AD6BFD4", 4}, {"1315B4F2", "EBF0B0A0", 5}, {"BE7249F1", "2240F035", 4},
+                                         {"EE766574", "F551453C", 5}}};
+  const PassScene scene = BuildPassScene();
+  const size_t pixels = static_cast<size_t>(PASS_WIDTH) * PASS_HEIGHT;
+  std::mt19937 random(2468);
+  std::uniform_real_distribution<float> unit(0.f, 1.f);
+  std::array<ComPtr<ID3D11ShaderResourceView>, 5> gbuffer;
+  for (size_t channel = 0; channel < gbuffer.size(); ++channel) {
+    std::vector<float> values(pixels * 4);
+    for (float& value : values) value = unit(random);
+    if (channel == 3) {
+      for (size_t i = 0; i < pixels; ++i) values[i * 4] = scene.depth[i];
+    }
+    gbuffer[channel] = PassTexture(values);
+  }
+  std::vector<float> lit_values(6, std::numeric_limits<float>::max());
+  const auto lit_map = ArrayTexture(1, 6, lit_values);
+  std::vector<float> random_values(32 * 32 * 6);
+  for (float& value : random_values) value = 0.9f + 0.1f * unit(random);
+  const auto random_map = ArrayTexture(32, 6, random_values);
+  const ComPtr<ID3D11Buffer> camera = ConstantBuffer(scene.camera.data(), sizeof(scene.camera));
+  constexpr std::array<float, 4> VIEWPORT = {0.f, 0.f, 1.f, 1.f};
+  const ComPtr<ID3D11Buffer> dynamic_light = ConstantBuffer(VIEWPORT.data(), sizeof(VIEWPORT));
+  const D3D11_SAMPLER_DESC comparison_desc = {.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                              .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                              .ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL, .MaxLOD = D3D11_FLOAT32_MAX};
+  const D3D11_SAMPLER_DESC point_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                         .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                         .ComparisonFunc = D3D11_COMPARISON_NEVER, .MaxLOD = D3D11_FLOAT32_MAX};
+  ComPtr<ID3D11SamplerState> comparison;
+  ComPtr<ID3D11SamplerState> point;
+  device->CreateSamplerState(&comparison_desc, &comparison);
+  device->CreateSamplerState(&point_desc, &point);
+  // The light: its colour, its place and reach.
+  constexpr std::array<float, 8> LIGHT = {1.f, 0.7f, 0.4f, 0.f, 0.5f, 1.5f, 7.f, 9.f};
+  for (const auto& twin : TWINS) {
+    const std::vector<uint8_t> shadowed = ReadFile(pack + "\\0x" + twin.shadowed + ".ps_5_0.cso");
+    const std::vector<uint8_t> game_twin = ReadFile(pack + "\\0x" + twin.twin + ".ps_5_0.cso");
+    const std::vector<uint8_t> ours = ReadFile(built + "\\0x" + twin.twin + ".cso");
+    CHECK(!shadowed.empty() && !game_twin.empty() && !ours.empty(), "point shadows %s: no code", twin.shadowed);
+    if (shadowed.empty() || game_twin.empty() || ours.empty()) continue;
+    for (const float soft_edges : {0.f, 1.f}) {
+      // pointlight_shadowmap_cb: a 32-texel map, bias 0.02, soft edges, the cube's depth 10 cm to 10 m, light width 5 cm, sample bias 1.
+      const std::array<float, 12> shadow_constants = {32.f, 32.f, 1.f / 32.f, 1.f / 32.f, 0.02f, soft_edges, 1.0101f, -0.10101f, 0.05f, 1.f, 0.f, 0.f};
+      const ComPtr<ID3D11Buffer> shadow_buffer = ConstantBuffer(shadow_constants.data(), sizeof(shadow_constants));
+      std::vector<ID3D11ShaderResourceView*> views;
+      for (UINT slot = 0; slot < twin.map_slot; ++slot) views.push_back(gbuffer[slot].Get());
+      const std::vector<ID3D11Buffer*> constants = {camera.Get(), dynamic_light.Get(), shadow_buffer.Get()};
+      const std::vector<ID3D11SamplerState*> samplers = {comparison.Get(), point.Get()};
+      const auto twin_light = RunPass(game_twin, views, constants, samplers, LIGHT);
+      const auto ours_light = RunPass(ours, views, constants, samplers, LIGHT);
+      views.push_back(lit_map.Get());
+      const auto lit_light = RunPass(shadowed, views, constants, samplers, LIGHT);
+      views.back() = random_map.Get();
+      const auto shadowed_light = RunPass(shadowed, views, constants, samplers, LIGHT);
+      int lighted = 0;
+      for (size_t i = 0; i < pixels; ++i) lighted += (twin_light[i * 4] > 0.f || twin_light[i * 4 + 1] > 0.f || twin_light[i * 4 + 2] > 0.f) ? 1 : 0;
+      // Our copies are decompiles: the aux pair's rounds a few values in the last bits.
+      float ours_apart = 0.f;
+      for (size_t i = 0; i < twin_light.size(); ++i) {
+        ours_apart = std::max(ours_apart, std::abs(ours_light[i] - twin_light[i]) / std::max(std::abs(twin_light[i]), 1e-3f));
+      }
+      std::printf("point shadows %s (twin %s), soft edges %.0f: %d of %zu pixels lit by the twin; the game's with its map lit %d values apart, "
+                  "ours (twin) %d (largest %.2g of the value); CONTROL a random map: %d values apart\n",
+                  twin.shadowed, twin.twin, soft_edges, lighted, pixels, DifferentValues(twin_light, lit_light),
+                  DifferentValues(twin_light, ours_light), ours_apart, DifferentValues(twin_light, shadowed_light));
+      CHECK(lighted > 0, "point shadows %s: the light reaches nothing", twin.shadowed);
+      CHECK(DifferentValues(twin_light, lit_light) == 0, "point shadows %s: lit map not the twin", twin.shadowed);
+      CHECK(ours_light.size() == twin_light.size() && ours_apart < 1e-5f, "point shadows %s: our twin not the game's", twin.twin);
+      CHECK(DifferentValues(twin_light, shadowed_light) > 0, "point shadows %s: CONTROL a random map is the twin", twin.shadowed);
+    }
+  }
+}
+
+// 6. Ray-Traced Specular Occlusion in reflection00 (89AF6FF5, the cubes off water): the resolve's output stands over the sun
+//    light's cubes (with the AO), so the cubes a frame shows = out(t46) - out(t46 = 0). The scene of BuildPassScene, every
+//    surface flagged (not water), one random cube, random G-buffer, no rays (t47 unbound), the AO (t1) random 0.2 - 1 or white.
+//    A: t46 unbound, ours = the older build (`older`: the csos before this fix) bit for bit. B: t46 random 0.2 - 1: the shown
+//    cubes with the random AO within 1e-5 of those with the white AO (one occlusion: t46). C: at the white AO ours = the older
+//    build's within 1e-5. CONTROL: the older build's shown cubes with the random AO differ from its white-AO ones.
+static void TestReflectionOcclusion(const std::string& built, const std::string& older) {
+  const std::vector<uint8_t> ours = ReadFile(built + "\\0x89AF6FF5.cso");
+  const std::vector<uint8_t> before = ReadFile(older + "\\0x89AF6FF5.cso");
+  CHECK(!ours.empty() && !before.empty(), "reflection occlusion: no code");
+  if (ours.empty() || before.empty()) return;
+  const PassScene scene = BuildPassScene();
+  const size_t pixels = static_cast<size_t>(PASS_WIDTH) * PASS_HEIGHT;
+  std::mt19937 random(1357);
+  std::uniform_real_distribution<float> unit(0.f, 1.f);
+  const auto noise = [&](float low, float high) {
+    std::vector<float> values(pixels * 4);
+    for (float& value : values) value = low + (high - low) * unit(random);
+    return values;
+  };
+  std::vector<float> material = noise(0.2f, 0.9f);
+  std::vector<float> depth(pixels * 4, 0.f);
+  for (size_t i = 0; i < pixels; ++i) {
+    material[i * 4 + 3] = 1.f / 255.f;  // the flags: bit 0 (the resolve's surfaces), not water
+    depth[i * 4] = scene.depth[i];
+  }
+  std::vector<float> hits(pixels * 4, 1000.f);
+  std::vector<float> radiance = noise(0.f, 2.f);
+  for (size_t i = 0; i < pixels; ++i) radiance[i * 4 + 3] = 1.f;
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 7> scene_views = {PassTexture(noise(0.3f, 0.7f)), PassTexture(noise(0.f, 1.f)),
+                                                                       PassTexture(material), PassTexture(depth), PassTexture(noise(0.f, 1.f)),
+                                                                       PassTexture(hits), PassTexture(radiance)};
+  const auto random_ao = PassTexture(noise(0.2f, 1.f));
+  const auto white_ao = PassTexture(std::vector<float>(pixels * 4, 1.f));
+  const auto random_occlusion = PassTexture(noise(0.2f, 1.f));
+  const auto closed_occlusion = PassTexture(std::vector<float>(pixels * 4, 0.f));
+  // t0: one 8 x 8 cube of random light.
+  std::vector<float> cube(8 * 8 * 4 * 6);
+  for (float& value : cube) value = 0.2f + 0.8f * unit(random);
+  const D3D11_TEXTURE2D_DESC cube_desc = {.Width = 8, .Height = 8, .MipLevels = 1, .ArraySize = 6, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                          .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                          .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE};
+  std::array<D3D11_SUBRESOURCE_DATA, 6> faces = {};
+  for (size_t face = 0; face < faces.size(); ++face) faces[face] = {.pSysMem = &cube[face * 8 * 8 * 4], .SysMemPitch = 8 * 16};
+  ComPtr<ID3D11Texture2D> cube_texture;
+  device->CreateTexture2D(&cube_desc, faces.data(), &cube_texture);
+  D3D11_SHADER_RESOURCE_VIEW_DESC cube_view_desc = {.Format = cube_desc.Format, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY};
+  cube_view_desc.TextureCubeArray = {.MostDetailedMip = 0, .MipLevels = 1, .First2DArrayFace = 0, .NumCubes = 1};
+  ComPtr<ID3D11ShaderResourceView> cube_view;
+  device->CreateShaderResourceView(cube_texture.Get(), &cube_view_desc, &cube_view);
+  // environment_PS: cube 0 at weight 1; cb_ssao: no overscan; lighting_VS_PS: the sun, no spherical harmonics, cloud scale 1.
+  std::array<float, 48 * 4> environment = {};
+  environment[0] = 1.f;
+  environment[15 * 4 + 1] = 1.f;
+  constexpr std::array<float, 4> SSAO = {1.f, 1.f, 0.f, 0.f};
+  std::array<float, 30 * 4> lighting = {};
+  const std::array<float, 3> sun = {0.3f, -0.8f, 0.5f};
+  const float sun_length = std::sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
+  for (int k = 0; k < 3; ++k) lighting[1 + k] = sun[k] / sun_length;
+  lighting[4] = 2.f;
+  lighting[5] = 1.8f;
+  lighting[6] = 1.5f;
+  lighting[12 * 4 + 3] = 1.f;
+  lighting[18 * 4 + 3] = 1.f;
+  lighting[29 * 4] = 0.2f;
+  lighting[29 * 4 + 2] = 1.f;
+  lighting[29 * 4 + 3] = 1.f;
+  const std::array<ComPtr<ID3D11Buffer>, 4> constants = {ConstantBuffer(environment.data(), sizeof(environment)),
+                                                         ConstantBuffer(scene.camera.data(), sizeof(scene.camera)),
+                                                         ConstantBuffer(SSAO.data(), sizeof(SSAO)), ConstantBuffer(lighting.data(), sizeof(lighting))};
+  const D3D11_SAMPLER_DESC linear_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                          .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                          .ComparisonFunc = D3D11_COMPARISON_NEVER, .MaxLOD = D3D11_FLOAT32_MAX};
+  D3D11_SAMPLER_DESC point_desc = linear_desc;
+  point_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+  ComPtr<ID3D11SamplerState> linear;
+  ComPtr<ID3D11SamplerState> point;
+  device->CreateSamplerState(&linear_desc, &linear);
+  device->CreateSamplerState(&point_desc, &point);
+  const std::array<ID3D11SamplerState*, 5> samplers = {linear.Get(), linear.Get(), linear.Get(), point.Get(), linear.Get()};
+  const D3D11_TEXTURE2D_DESC out_desc = {.Width = PASS_WIDTH, .Height = PASS_HEIGHT, .MipLevels = 1, .ArraySize = 1,
+                                         .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                         .BindFlags = D3D11_BIND_UNORDERED_ACCESS};
+  ComPtr<ID3D11Texture2D> out;
+  device->CreateTexture2D(&out_desc, nullptr, &out);
+  ComPtr<ID3D11UnorderedAccessView> out_view;
+  device->CreateUnorderedAccessView(out.Get(), nullptr, &out_view);
+  D3D11_TEXTURE2D_DESC staging_desc = out_desc;
+  staging_desc.BindFlags = 0;
+  staging_desc.Usage = D3D11_USAGE_STAGING;
+  staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  ComPtr<ID3D11Texture2D> staging;
+  device->CreateTexture2D(&staging_desc, nullptr, &staging);
+  // The resolve's output (rgb per pixel) with this AO and t46 (nullptr: unbound).
+  const auto run = [&](const std::vector<uint8_t>& code, ID3D11ShaderResourceView* ao, ID3D11ShaderResourceView* occlusion) {
+    ComPtr<ID3D11ComputeShader> shader;
+    CHECK(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, &shader)), "reflection shader");
+    std::vector<float> rgb(pixels * 3, 0.f);
+    if (shader == nullptr) return rgb;
+    std::array<ID3D11ShaderResourceView*, 47> views = {cube_view.Get(), ao};
+    for (size_t k = 0; k < scene_views.size(); ++k) views[5 + k] = scene_views[k].Get();
+    views[46] = occlusion;
+    constexpr std::array<float, 4> CLEAR = {-7.f, -7.f, -7.f, -7.f};
+    context->ClearState();
+    context->ClearUnorderedAccessViewFloat(out_view.Get(), CLEAR.data());
+    context->CSSetShader(shader.Get(), nullptr, 0);
+    context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+    const std::array<ID3D11Buffer*, 4> raw_constants = {constants[0].Get(), constants[1].Get(), constants[2].Get(), constants[3].Get()};
+    context->CSSetConstantBuffers(0, static_cast<UINT>(raw_constants.size()), raw_constants.data());
+    context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+    context->CSSetUnorderedAccessViews(0, 1, out_view.GetAddressOf(), nullptr);
+    context->Dispatch(PASS_WIDTH / 8, PASS_HEIGHT / 8, 1);
+    context->ClearState();
+    context->CopyResource(staging.Get(), out.Get());
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    for (UINT y = 0; y < PASS_HEIGHT; ++y) {
+      const auto* row = reinterpret_cast<const float*>(static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(y) * mapped.RowPitch);
+      for (UINT x = 0; x < PASS_WIDTH; ++x) {
+        for (int c = 0; c < 3; ++c) rgb[(static_cast<size_t>(y) * PASS_WIDTH + x) * 3 + c] = row[x * 4 + c];
+      }
+    }
+    context->Unmap(staging.Get(), 0);
+    return rgb;
+  };
+  // The cubes a frame shows: the output over the sun light's cubes (= minus the output with t46 0).
+  const auto shown = [&](const std::vector<uint8_t>& code, ID3D11ShaderResourceView* ao) {
+    std::vector<float> cubes = run(code, ao, random_occlusion.Get());
+    const std::vector<float> closed = run(code, ao, closed_occlusion.Get());
+    for (size_t i = 0; i < cubes.size(); ++i) cubes[i] -= closed[i];
+    return cubes;
+  };
+  // The largest difference of a against b relative to b, and the values more than 1e-3 apart.
+  const auto apart = [](const std::vector<float>& a, const std::vector<float>& b) {
+    float largest = 0.f;
+    int values = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+      const float relative = std::abs(a[i] - b[i]) / std::max(std::abs(b[i]), 1e-3f);
+      largest = std::max(largest, relative);
+      values += (relative > 1e-3f) ? 1 : 0;
+    }
+    return std::pair{largest, values};
+  };
+  const int unbound_apart = DifferentValues(run(ours, random_ao.Get(), nullptr), run(before, random_ao.Get(), nullptr));
+  const auto ours_white = shown(ours, white_ao.Get());
+  const auto [one_largest, one_values] = apart(shown(ours, random_ao.Get()), ours_white);
+  const auto [white_largest, white_values] = apart(ours_white, shown(before, white_ao.Get()));
+  const auto [control_largest, control_values] = apart(shown(before, random_ao.Get()), shown(before, white_ao.Get()));
+  int reached = 0;
+  for (size_t i = 0; i < pixels; ++i) reached += (ours_white[i * 3] > 1e-3f || ours_white[i * 3 + 1] > 1e-3f || ours_white[i * 3 + 2] > 1e-3f) ? 1 : 0;
+  std::printf("reflection occlusion: %d of %zu pixels show cubes; A t46 unbound %d values apart from the older build; B the random AO "
+              "against the white largest %.2g of the value (%d values over 1e-3); C the white AO against the older build %.2g (%d); "
+              "CONTROL the older build's random AO against its white %.2g (%d values over 1e-3)\n",
+              reached, pixels, unbound_apart, one_largest, one_values, white_largest, white_values, control_largest, control_values);
+  CHECK(reached > static_cast<int>(pixels) / 2, "reflection occlusion: the cubes reach %d pixels", reached);
+  CHECK(unbound_apart == 0, "reflection occlusion: A without t46 not the older build");
+  CHECK(one_largest < 1e-5f, "reflection occlusion: B the AO still dims the cubes t46 dims");
+  CHECK(white_largest < 1e-5f, "reflection occlusion: C the white AO not the older build's");
+  CHECK(control_values > 0, "reflection occlusion: CONTROL the older build's AO dims nothing");
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
-    std::printf("usage: tests <the game's csos> <the add-on's built csos>\n");
+    std::printf("usage: tests <the game's csos> <the add-on's built csos> [<the older build's csos>]\n");
     return 2;
   }
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context))) {
@@ -700,6 +1196,9 @@ int main(int argc, char** argv) {
   for (const char* spec : {"03298FD5", "1C3500F0:TEXCOORD:1", "70F4C9F9"}) TestCaster(argv[1], spec);
   TestMarch(argv[1], argv[2]);
   TestAutoExposure(argv[1], argv[2]);
+  TestSunMaskMarch(argv[1]);
+  TestPointShadowTwins(argv[1], argv[2]);
+  if (argc > 3) TestReflectionOcclusion(argv[2], argv[3]);
   std::printf("%s (%d failures)\n", failures == 0 ? "PASS" : "FAIL", failures);
   return failures == 0 ? 0 : 1;
 }

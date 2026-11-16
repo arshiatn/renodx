@@ -132,6 +132,17 @@ inline std::vector<renodx::utils::settings::Setting*> AmbientOcclusionRows(const
   };
 }
 
+// About's line for what both add-ons build in besides RenoDX's (Attila's text, twattila/addon.cpp): GT-VBAO / GT-VBGI,
+// Bend's shadows, the SMAA / CMAA2 / FidelityFX SSSR passes they compile, and Microsoft Detours (the engine hooks).
+constexpr const char* EFFECTS_CREDITS =
+    "Visibility Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque and Gilet (2023) on GTAO "
+    "(Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024); auto thickness after Bjorn Ottosson.\n"
+    "Screen-space shadows: Bend Studio, Copyright 2023 Sony Interactive Entertainment, Apache License 2.0.\n"
+    "SMAA: Jimenez, Echevarria, Masia, Navarro and Gutierrez (2013), MIT License. CMAA2: Filip Strugar, Copyright (c) "
+    "2018 Intel Corporation, Apache License 2.0. Reflections' ray march: AMD FidelityFX SSSR, Copyright (c) 2021 "
+    "Advanced Micro Devices, MIT License.\n"
+    "Hooks: Microsoft Detours, Copyright (c) Microsoft Corporation, MIT License.";
+
 // Ko-fi, the game's NexusMods page (none: no button) and GitHub (Downloads), on one line of the About section.
 inline std::vector<renodx::utils::settings::Setting*> AboutButtons(const std::string& nexus_url) {
   std::vector<renodx::utils::settings::Setting*> buttons = {

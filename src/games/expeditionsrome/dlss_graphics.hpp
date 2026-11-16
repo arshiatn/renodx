@@ -408,8 +408,10 @@ constexpr size_t SUN_SHADOW_CASCADES = SettingIndex(L"r.Shadow.CSM.MaxCascades")
 constexpr size_t SUN_SHADOW_RESOLUTION = SettingIndex(L"r.Shadow.MaxCSMResolution");
 // r.VolumetricFog 0 greys out the r.VolumetricFog.* settings.
 constexpr size_t VOLUMETRIC_FOG = SettingIndex(L"r.VolumetricFog");
+// Unreal's own screen-space GI: 0 while ours replaces it (one GI method, ATN 2026-11-16).
+constexpr size_t SSGI_QUALITY = SettingIndex(L"r.SSGI.Quality");
 static_assert(SUN_SHADOW_CASCADES < SUN_SHADOW_RESOLUTION && SUN_SHADOW_RESOLUTION < GRAPHICS_SETTINGS.size());
-static_assert(VOLUMETRIC_FOG < GRAPHICS_SETTINGS.size());
+static_assert(VOLUMETRIC_FOG < GRAPHICS_SETTINGS.size() && SSGI_QUALITY < GRAPHICS_SETTINGS.size());
 // "Effects at output resolution" (on by default, as Tales): while DLSS renders below 100%, settings sized in render
 // pixels follow the render scale s (render / output), so these effects keep the detail they have at 100%: cell sizes
 // and resolution divisors x s (nearest, at least 1), shadow texels per pixel / s (Unreal sizes object, spot, point and
@@ -458,6 +460,7 @@ static const float* ao_thickness_row = nullptr;
 static float live_scale_row = 1.f;
 static float replace_taa_row = 1.f;
 static float contact_shadows_row = 0.f;  // percent of the screen
+static float shadow_cascades_row = 0.f;  // Two Shadow Cascades Under Rays
 
 // UE 4.23's View rows the upscalers and frame generation read (Tales' 4.21 rows + 4: ClipToWorld came before them):
 // TranslatedWorldToView, ViewToClipNoAA, the camera's axes, TranslatedWorldCameraOrigin, PreViewTranslation.
@@ -705,15 +708,20 @@ inline bool Evaluate(Frame* frame, bool replace) {
     }
   }
   frame->values_validated = true;
-  if (const std::array<float, 2> jitter = {taa[26][0], taa[26][1]}; diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 4096) {
-    if (diagnostics.jitter_frames > 4096) diagnostics.jitter_phases.store(0);
-    diagnostics.first_jitter = jitter;
-    diagnostics.jitter_frames = 1;
-  } else if (jitter == diagnostics.first_jitter) {
-    diagnostics.jitter_phases.store(diagnostics.jitter_frames);
-    diagnostics.jitter_frames = 1;
-  } else {
-    ++diagnostics.jitter_frames;
+  // The jitter's cycle only while Upscaling Details is drawn (no per-frame counters otherwise).
+  if (const std::array<float, 2> jitter = {taa[26][0], taa[26][1]}; frame->measuring) {
+    if (diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 4096) {
+      if (diagnostics.jitter_frames > 4096) {
+        diagnostics.jitter_phases.store(0);
+      }
+      diagnostics.first_jitter = jitter;
+      diagnostics.jitter_frames = 1;
+    } else if (jitter == diagnostics.first_jitter) {
+      diagnostics.jitter_phases.store(diagnostics.jitter_frames);
+      diagnostics.jitter_frames = 1;
+    } else {
+      ++diagnostics.jitter_frames;
+    }
   }
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
@@ -1227,6 +1235,12 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   // Debug: also renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt).
   talesofarise::frame_trace::OnPresent();
+  // Before any row is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS on
+  // Intel's, else FSR (as Attila's).
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
+  }
   // The page's rows (Upscaling Mode: DLAA, Ultra Quality, Quality, Balanced, Performance, Ultra Performance, Custom).
   {
     constexpr std::array<AAMode, 7> UPSCALING_MODES = {AAMode::DLAA, AAMode::DLSS_ULTRA_QUALITY, AAMode::DLSS_QUALITY, AAMode::DLSS_BALANCED,
@@ -1490,6 +1504,23 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
                             details, ".");
     }
   }
+  // GT-VBGI (not with the rays' bounce light: Global Illumination's method), at the sun's light draw; it, the rays' light
+  // bounce or path tracing that reached the scene within the last half second replace Unreal's own SSGI (the Max preset's
+  // Optional row writes 4): r.SSGI.Quality 0 meanwhile, the game's value back after.
+  if (ao_thickness_row != nullptr) {
+    gi_rows.ssao_thickness = *ao_thickness_row;
+  }
+  auto gi = twattila::lighting_settings::LightBounceSliders(gi_rows);
+  if (rt_sliders.light_bounce != 0.f) {
+    gi.strength = 0.f;
+  }
+  const bool our_gi = gi.strength > 0.f
+                      || (ray_tracing_installed && ray_tracing_settings.light_bounce
+                          && expeditionsrome::dlss::ray_tracing::TracedRecently(expeditionsrome::dlss::ray_tracing::Traced::LIGHT_BOUNCE));
+  // Two Shadow Cascades Under Rays: Unreal's sun cascades at most 2 while the rays' sun shadows reached the scene within
+  // the last half second (the rays shadow the rest; the game's count back after).
+  const bool two_cascades = shadow_cascades_row != 0.f && ray_tracing_installed && ray_tracing_settings.sun_shadows
+                            && expeditionsrome::dlss::ray_tracing::TracedRecently(expeditionsrome::dlss::ray_tracing::Traced::SUN_SHADOWS);
   bool wrote = false;
   const bool upscaling = live.controlling && render_percentage > 0.f && render_percentage < 100.f;
   const float render_scale = (upscaling ? render_percentage / 100.f : 1.f);
@@ -1500,7 +1531,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     const float preset_value = (entry.choice == 0 ? KEEP : entry.choices[entry.choice - 1]);
     const OutputScaling scaling = ((effects_at_output && upscaling) ? OUTPUT_SCALING[index] : OutputScaling::NONE);
     const float current = entry.cvar.Get();
-    if (std::isnan(preset_value) && scaling == OutputScaling::NONE) {
+    const bool replaced = (index == SSGI_QUALITY && our_gi) || (index == SUN_SHADOW_CASCADES && two_cascades);
+    if (std::isnan(preset_value) && scaling == OutputScaling::NONE && !replaced) {
       if (entry.controlling) {
         entry.cvar.Set(entry.game_value);
         wrote = true;
@@ -1513,6 +1545,9 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     float desired = (std::isnan(preset_value) ? entry.game_value : preset_value);
     if (setting.better == Better::HIGHER) desired = std::max(entry.game_value, desired);
     if (setting.better == Better::LOWER) desired = std::min(entry.game_value, desired);
+    if (replaced) {
+      desired = (index == SUN_SHADOW_CASCADES ? std::min(desired, 2.f) : 0.f);
+    }
     switch (scaling) {
       case OutputScaling::CELL_OR_DIVISOR:
         desired = std::max(1.f, std::round(desired * render_scale));
@@ -1544,17 +1579,9 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     entry.written = desired;
   }
   if (wrote) graphics.console.Refresh();
-  // Bend's screen-space shadows (not while the rays' sun shadows run) and GT-VBGI (not with the rays' bounce light: Global
-  // Illumination's method) at the sun's light draw.
+  // Bend's screen-space shadows (not while the rays' sun shadows run) at the sun's light draw.
   auto shadows = twattila::feature_settings::SssSettings(screen_space_shadows_rows);
   shadows.enabled = shadows.enabled && !(ray_tracing_installed && ray_tracing_settings.sun_shadows);
-  if (ao_thickness_row != nullptr) {
-    gi_rows.ssao_thickness = *ao_thickness_row;
-  }
-  auto gi = twattila::lighting_settings::LightBounceSliders(gi_rows);
-  if (rt_sliders.light_bounce != 0.f) {
-    gi.strength = 0.f;
-  }
   expeditionsrome::dlss::ue_effects::Update(shadows, gi, render_scale);
 
   const bool below_native = (mode == AAMode::DLSS_CUSTOM ? (live.custom < 100.f)
@@ -1708,15 +1735,15 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Radeon RX 6000 and newer, else 3.1. XeSS: Intel's, any GPU.\n"
                   "Every ray-traced effect needs an upscaler. Needs renodx-tw-dlaa64.exe and its DLLs in the game folder.",
     .in_game_aa_note = "In-game Anti-Aliasing must be Fast or Ultra with Temporal Upscaling on for DLSS, FSR and XeSS.",
-    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to the game's: its shadows, AO and reflections.\n"
-                     "The rest at its default.",
+    .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling at its default: Bend Screen-Space Shadows and\n"
+                     "GT-VBGI, the game's ambient occlusion and reflections.",
     .no_rays_tooltip = "No ray tracing: Bend Screen-Space Shadows and GT-VBGI, the game's ambient occlusion and reflections. The\n"
                        "rest of this page at its default.",
     .rays_tooltip = "Ray-traced shadows, ambient occlusion and reflections, path-traced Global Illumination at my settings. The\n"
                     "rest of this page at its default. Needs an upscaler (Anti-Aliasing above); on NVIDIA also turns DLSS Ray\n"
                     "Reconstruction on. Restart the game after turning ray tracing on.",
-    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows (Experimental): those plus fine sun shadows\n"
-                      "from what is on screen (Bend Studio's; characters, grass, small details), in place of Contact Shadows.\n"
+    .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine sun shadows from what is on\n"
+                      "screen (Bend Studio's; characters, grass, small details), in place of Contact Shadows.\n"
                       "DXR: ray-traced sun shadows with the game's (the darker of both): also where its shadow maps miss things\n"
                       "or end. Needs an upscaler. Restart the game after turning it on.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game ambient occlusion on.\n"
@@ -1781,6 +1808,18 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
     if (setting->key == "RayTracedLeafMicromaps" || setting->key == "RayTracedGpuMicromaps") setting->default_value = 0.f;
     if (setting->key == "AntiAliasingDebugView") setting->labels = {"Off", "Motion Vectors"};
   }
+  // Unreal's sun cascades at most 2 under the rays' sun shadows (graphics_page.hpp places it with the rays' rows).
+  settings->push_back(new Setting{
+      .key = "RayTracedShadowCascades",
+      .binding = &shadow_cascades_row,
+      .value_type = SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Two Shadow Cascades Under Rays (Experimental)",
+      .section = "Graphics (Experimental)",
+      .tooltip = "With ray-traced sun shadows: the game draws 2 sun shadow cascades instead of up to 4, and the rays shadow\n"
+                 "the rest. Fewer shadow draws; shadows of things off screen reach less far.",
+      .labels = {"Off", "On"},
+  });
   // One frame's GPU time of every pass (twattila/pass_timing.hpp, the add-on's first draw hooks).
   settings->push_back(new Setting{
       .value_type = SettingValueType::BUTTON,
@@ -1795,6 +1834,16 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
   talesofarise::ue_light_bounce::AppendRows(settings, &gi_rows, [] { return rt_sliders.light_bounce != 0.f; });
   twattila::feature_settings::AppendSss(settings, &screen_space_shadows_rows);
   erase({"ScreenSpaceShadowsDistanceSoftness", "ScreenSpaceShadowsDebugView"});
+  // Bend (Length 480, as No RT/PT) and GT-VBGI on by default (ATN 2026-11-16), in place of Unreal's Contact Shadows and
+  // screen-space GI; before Apply (the page's Reset reads the defaults as it is built).
+  for (Setting* setting : *settings) {
+    if (setting->key == "ScreenSpaceShadows" || setting->key == "light_bounce_strength") {
+      setting->default_value = 1.f;
+    }
+    if (setting->key == "ScreenSpaceShadowsLength") {
+      setting->default_value = 3.f;
+    }
+  }
   twattila::graphics_page::Apply(settings, {.aa = &aa_sliders,
                                             .sss = &screen_space_shadows_rows,
                                             .rt = &rt_sliders,
@@ -1909,14 +1958,8 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
           .value_type = SettingValueType::BUTTON,
           .label = "Trace One Frame",
           .section = TOOLS_SECTION,
-          .tooltip = "Writes tales_frame_trace.txt next to the game's exe about a second later, for bug reports.",
-          .on_change = [] {
-            // talesofarise_dlss/frame_trace.hpp looks for this marker at its presents.
-            std::wstring exe(32768, L'\0');
-            exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
-            std::ofstream(std::filesystem::path(exe).parent_path() / L"renodx_trace_now", std::ios::binary | std::ios::trunc);
-            renodx::utils::log::i("[Rome] Trace One Frame: renodx_trace_now written.");
-          },
+          .tooltip = "Writes the next frame's draws into a text file next to the game's exe, for bug reports.",
+          .on_change = [] { talesofarise::frame_trace::Request(); },
       },
       new Setting{
           .value_type = SettingValueType::CUSTOM,

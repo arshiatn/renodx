@@ -167,6 +167,10 @@ void ApplyResetPreset() {
       {"ssr_quality", 1.f},
       {"auto_exposure_highlight_protection", 0.f},
       {"auto_exposure_highlight_headroom_stops", 2.f},
+      {"VfxFireAndGlow", 1.f},
+      {"VfxSmokeAndDust", 1.f},
+      {"VfxEffectMeshes", 1.f},
+      {"VfxParticleFog", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -194,7 +198,7 @@ void ApplyPsychoRecommended2500() {
       {"distortion", 1.f},
       {"sharpening", 1.f},
       {"dof", 1.f},
-      {"sky_deband", 2.f},
+      {"sky_deband", 0.f},
   });
 }
 
@@ -1347,9 +1351,14 @@ void OnResolved(reshade::api::command_list* cmd_list) {
 
 // Point light shadows and fog shadows from rays: 8 light PS (fx_pointlight*: linear and smooth falloff, with and without the point
 // shadow map and the aux G-buffer) and the fog's 6 light PS (fx_battlefog, all traced after the sun). Our copies run only where
-// rt_scene's hook has just bound the rays' texture; otherwise the game's bytes do, and nothing here touches the picture.
+// rt_scene's hook has just bound the rays' texture; otherwise the game's bytes do, and nothing here touches the picture. The 4 with
+// the point shadow map run their unshadowed twin's copy (BuildRuntimeData): the rays' shadow replaces the map's.
 // The sun's mask (E6BCBA8A, before the sun draw and this frame's trace) the same, while rays cast the sun's shadow: lit cascades, no
 // contact march; smoke, clouds and the terrain's map stay. Fog, portraits and forward passes read the maps, so the casters still draw.
+// With the maps kept under ours (Bend Screen-Space Shadows, or the rays with Rays Replace Shadow Maps off) the game's own bytes draw
+// the mask without their contact march, the one method per effect: its sss constants (b3) as a copy with
+// sss_screen_space_shadows_enabled (byte 28) 0, the game with its in-game screen-space shadows off; the game's buffer bound again
+// after the draw.
 // Fog Strength off 1 too on what no upsample scales: the 3 full-resolution fog lights and the legacy fog (the half-resolution lights go
 // through 78E4CBF2; the extinction 34719E09 is every map's). None of the 4 drew in any run: level B.
 namespace traced_lights {
@@ -1361,15 +1370,21 @@ constexpr size_t POINT_LIGHT_SHADERS = 8;
 constexpr size_t FOG_SHADERS = 6;
 constexpr size_t SUN_MASK = POINT_LIGHT_SHADERS + FOG_SHADERS;
 constexpr size_t LEGACY_FOG = SUN_MASK + 1;
+constexpr UINT SSS_MARCH_OFFSET = 28;
 float rays_replace_maps_row = 1.f;
+std::atomic_bool bend_runs = false;  // Bend's mask this frame (OnPresent)
 std::array<std::span<const uint8_t>, SHADERS.size()> codes = {};
 std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, SHADERS.size()> ours = {};
 std::array<std::atomic_bool, SHADERS.size()> logged = {};
 std::atomic_bool shadow_constants_logged = false;
+std::atomic_bool march_off_logged = false;
 Microsoft::WRL::ComPtr<ID3D11PixelShader> game_shader;
 Microsoft::WRL::ComPtr<ID3D11Buffer> fog_strength_buffer;  // b8: the slider minus 1
 float fog_strength_written = 1.f;
 Microsoft::WRL::ComPtr<ID3D11Buffer> game_b8;
+Microsoft::WRL::ComPtr<ID3D11Buffer> sss_without_march;  // b3's copy
+Microsoft::WRL::ComPtr<ID3D11Buffer> zeros;
+Microsoft::WRL::ComPtr<ID3D11Buffer> game_b3;
 ID3D11Device* own_device = nullptr;  // what `ours` and fog_strength_buffer were made on (DeviceChanged)
 
 void OnDestroyDevice(reshade::api::device*) {
@@ -1377,6 +1392,9 @@ void OnDestroyDevice(reshade::api::device*) {
   game_shader.Reset();
   fog_strength_buffer.Reset();
   game_b8.Reset();
+  sss_without_march.Reset();
+  zeros.Reset();
+  game_b3.Reset();
 }
 
 // Registered after rt_scene's hooks, so run after them: their texture is bound by now, or isn't this frame.
@@ -1422,7 +1440,55 @@ constexpr auto OnDraw = []<typename Context>(Context& command) -> renodx::utils:
     OnDestroyDevice(nullptr);
   }
   if (index == SUN_MASK) {
-    if (rays_replace_maps_row == 0.f || !twattila::frame_history::MainViewport(native) || !twattila::rt_scene::SunShadowsTraced()) return {};
+    if (!twattila::frame_history::MainViewport(native)) return {};
+    const bool traced = twattila::rt_scene::SunShadowsTraced();
+    if (!traced && !bend_runs.load(std::memory_order_relaxed)) return {};
+    if (!traced || rays_replace_maps_row == 0.f) {
+      native->PSGetConstantBuffers(3, 1, game_b3.ReleaseAndGetAddressOf());
+      D3D11_BUFFER_DESC desc = {};
+      if (game_b3) {
+        game_b3->GetDesc(&desc);
+      }
+      if (desc.ByteWidth < SSS_MARCH_OFFSET + sizeof(uint32_t)) {
+        game_b3.Reset();
+        return {};
+      }
+      D3D11_BUFFER_DESC copy_desc = {};
+      if (sss_without_march) {
+        sss_without_march->GetDesc(&copy_desc);
+      }
+      if (copy_desc.ByteWidth != desc.ByteWidth || !zeros) {
+        Microsoft::WRL::ComPtr<ID3D11Device> device;
+        native->GetDevice(device.GetAddressOf());
+        constexpr std::array<uint32_t, 4> ZEROS = {};
+        const D3D11_BUFFER_DESC copy = {.ByteWidth = desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        const D3D11_BUFFER_DESC zeros_desc = {.ByteWidth = sizeof(ZEROS), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+        const D3D11_SUBRESOURCE_DATA zeros_data = {.pSysMem = ZEROS.data()};
+        if (FAILED(device->CreateBuffer(&copy, nullptr, sss_without_march.ReleaseAndGetAddressOf()))
+            || FAILED(device->CreateBuffer(&zeros_desc, &zeros_data, zeros.ReleaseAndGetAddressOf()))) {
+          sss_without_march.Reset();
+          game_b3.Reset();
+          return {};
+        }
+      }
+      // A constant buffer takes no update of a part: the game's whole, then the flag from the buffer of zeros.
+      native->CopyResource(sss_without_march.Get(), game_b3.Get());
+      const D3D11_BOX flag = {.left = 0, .top = 0, .front = 0, .right = sizeof(uint32_t), .bottom = 1, .back = 1};
+      native->CopySubresourceRegion(sss_without_march.Get(), 0, SSS_MARCH_OFFSET, 0, 0, zeros.Get(), 0, &flag);
+      native->PSSetConstantBuffers(3, 1, sss_without_march.GetAddressOf());
+      if (!march_off_logged.exchange(true, std::memory_order_relaxed)) {
+        renodx::utils::log::i(std::format("[Warhammer III] Applied: the game's contact march off in the sun mask ({} shadows the sun).",
+                                          traced ? "the rays over the shadow maps" : "Bend"));
+      }
+      return {.post_callback = [](Context& post, const void*) {
+        auto* post_native = reinterpret_cast<ID3D11DeviceContext*>(post.cmd_list->get_native());
+        renodx::utils::directx::TryNativeFromReShadeProxy(&post_native);
+        if (post_native != nullptr) {
+          post_native->PSSetConstantBuffers(3, 1, game_b3.GetAddressOf());
+        }
+        game_b3.Reset();
+      }};
+    }
   } else {
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> bound;
     // rt_local_lights.hlsli's mask, rt_fog.hlsli's fog.
@@ -1747,6 +1813,13 @@ void BuildRuntimeData() {
     traced_lights::codes[index] = custom_shaders[hash].code;
     custom_shaders[hash] = {.crc32 = hash, .on_inject = not_injected};
   }
+  // The 4 light PS that read the game's point shadow map (B2453C88, 1315B4F2, BE7249F1, EE766574) take their unshadowed twin's
+  // copy under the rays (8AD6BFD4, EBF0B0A0, 2240F035, F551453C: the same constants, inputs and G-buffer slots, the map's
+  // b2 / t4 or t5 / s0 / s1 left out): the rays' torch shadows in place of the game's maps, not on top of them. The game's
+  // shadowed PS with its whole map lit draws its twin's light (tw_warhammer3_shaders part 5).
+  for (const auto& [shadowed, twin] : {std::pair{2, 0}, std::pair{3, 1}, std::pair{6, 4}, std::pair{7, 5}}) {
+    traced_lights::codes[shadowed] = traced_lights::codes[twin];
+  }
   // Unit/Building Indicator Brightness: fx_indicator's colour passes (names.tsv; its VS 550C70F2), in no trace (no unit selected in
   // them): level B. Ours only off 1 in an HDR mode, else the game's bytes. Not fx_indicator_mboit (E01EE900 writes moments, no colour;
   // our copy of its resolve 492ED8DA wasn't the game's bits at 1 on WARP and lost its early depth test).
@@ -1966,10 +2039,9 @@ void BuildRuntimeData() {
         .default_value = 1.f,
         .label = "Gamma Correction",
         .section = "General",
-        .tooltip = "Rendering Mode SDR: any in-game Gamma shown as gamma 2.2.\n"
-                   "Off: the game's own picture, at the in-game Gamma.",
-        .labels = {"Off (In-game Gamma value)", "On (Gamma 2.2)"},
-        .is_visible = [] { return !IsHDRMode(); },
+        .tooltip = "The game's picture as a gamma 2.2 display shows it, in every Rendering Mode.\n"
+                   "Off: as gamma 2.0. Rendering Mode SDR on an SDR monitor the other way round.",
+        .labels = {"Off (Gamma 2.0)", "On (Gamma 2.2)"},
     },
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
@@ -1987,7 +2059,9 @@ void BuildRuntimeData() {
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-2",
-        .tooltip = "HDR (PsychoV31), Video AutoHDR 0.20 and Bloom 0.25, the rest at its default.\nPeak, Paper White, UI brightness, Settings Mode and output settings are kept.",
+        .tooltip = "HDR (PsychoV35), Video AutoHDR 0.20 and Bloom 0.25; PsychoV30's Highlights 0.85 and Hue Shift 2.\n"
+                   "The rest at its default.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() {
           ApplyPsychoRecommended2500();
         },
@@ -3001,12 +3075,13 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                      "and shadows. The rest at its default.",
     .no_rays_tooltip = "Bend Screen-Space Shadows (Length 480), GT-VBAO and GT-VBGI at their Recommended settings.\n"
                        "The rest of this page at its default.",
-    .rays_tooltip = "Ray-traced shadows, reflections and ambient occlusion, path-traced Global Illumination. The rest of this\n"
-                    "page at its default. Needs an upscaler (Anti-Aliasing above).\n"
+    .rays_tooltip = "Ray-traced shadows and reflections, path-traced ambient occlusion and Global Illumination. The rest of\n"
+                    "this page at its default. Needs an upscaler (Anti-Aliasing above).\n"
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
-                      "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
-                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "what is on screen in place of the game's own (Bend Studio's; soldiers, weapons, grass; needs in-game\n"
+                      "shadows on).\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays in place of the game's and Bend's.\n"
                       "Needs an upscaler.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep the in-game ambient occlusion on.\n"
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
@@ -3441,6 +3516,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
   twattila::screen_space_shadows::Update(swapchain, sss_settings);
+  traced_lights::bend_runs.store(sss_settings.enabled, std::memory_order_relaxed);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp); none under the rays'
   // AO, which leaves GT-VBAO's setting as it was (graphics_page's rays_replace_ao) and skips it with the game's passes.
   const bool bitmask_ao = shader_injection.ssao_mode >= 1.f && !SkipGameSsao();
@@ -4046,8 +4122,8 @@ void ConfigureAddon() {
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's "
                    "custom PsychoV31 and PsychoV35. Visibility Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque "
-                   "and Gilet (2023) on GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024). "
-                   "Screen-space shadows: "
+                   "and Gilet (2023) on GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024); auto "
+                   "thickness after Bjorn Ottosson. Screen-space shadows: "
                    "Bend Studio (Apache 2.0, Sony Interactive Entertainment). SMAA (MIT, Jimenez et al.), CMAA2 "
                    "(Apache 2.0, Intel).",
           .section = "About",
@@ -4087,6 +4163,14 @@ void ConfigureAddon() {
   }
   // ATN's RT/PT preset (Attila's page, 2026-11-12) as the defaults of what the methods leave.
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
+  // Experimental rows start off, as Pharaoh's (Reset and No RT/PT write these defaults; RT/PT turns them on, as ATN's list
+  // does): Fog Shadows and Specular Occlusion ran rays with no ray method chosen, Water Caustics was a look change for every
+  // player that no game run has shown.
+  for (auto* setting : settings) {
+    if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedSpecularOcclusion" || setting->key == "WaterCaustics") {
+      setting->default_value = 0.f;
+    }
+  }
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
                                              .ssr_hierarchical = &reflections::all_surfaces_row,
@@ -4204,8 +4288,10 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
 
   // Rows saved at an old default, cleared once. Before v32 both hidden: fog's light nobody has seen at night, and dark
-  // patches on rivers under rays. Before v45: NRD when Ray Reconstruction is off, the banners' light and colour on.
-  constexpr int SETTINGS_REVISION = 33;
+  // patches on rivers under rays. Before v45: NRD when Ray Reconstruction is off, the banners' light and colour on. Before
+  // revision 34: Fog Shadows, Specular Occlusion and Water Caustics on at the RT/PT preset's default; Sky Debanding at Medium from
+  // Recommended (Output Auto applies it at Windows HDR on), now off in every preset.
+  constexpr int SETTINGS_REVISION = 34;
   if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
     for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
       if (revision < 32) {
@@ -4213,7 +4299,12 @@ bool AttachAddon() {
           reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
         }
       }
-      for (const char* key : {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"}) {
+      if (revision < 33) {
+        for (const char* key : {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"}) {
+          reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
+        }
+      }
+      for (const char* key : {"RayTracedFogShadows", "RayTracedSpecularOcclusion", "WaterCaustics", "sky_deband"}) {
         reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
       }
     }

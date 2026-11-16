@@ -18,18 +18,21 @@ $ErrorActionPreference = 'Continue'
 & $fxc $shader /T ps_5_0 /D __SHADER_TARGET_MAJOR=5 /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /Qstrip_reflect /E main /Fo $addonShader 2>$null | Out-Null
 $ErrorActionPreference = 'Stop'
 if ($LASTEXITCODE -ne 0) { throw 'fxc failed: 0x30A1D40D.ps_5_0.hlsl' }
-# The grade alone, with the add-on's shader folder as the include path.
+# The grade alone, with the add-on's shader folder as the include path; its control (the replaced hard knee) beside it.
 $gradeShader = Join-Path $testBuild 'grade.cso'
-$ErrorActionPreference = 'Continue'
-& $fxc (Join-Path $testRoot 'grade.hlsl') /T cs_5_0 /D __SHADER_TARGET_MAJOR=5 /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /E main `
-    /I (Join-Path $repairRoot 'src\games\divinityoriginalsinenhanced\shaders') /Fo $gradeShader 2>$null | Out-Null
-$ErrorActionPreference = 'Stop'
-if ($LASTEXITCODE -ne 0) { throw 'fxc failed: grade.hlsl' }
+$controlShader = Join-Path $testBuild 'grade_control.cso'
+foreach ($entry in @(@('main', $gradeShader), @('control', $controlShader))) {
+  $ErrorActionPreference = 'Continue'
+  & $fxc (Join-Path $testRoot 'grade.hlsl') /T cs_5_0 /D __SHADER_TARGET_MAJOR=5 /D __SHADER_TARGET_MINOR=0 /DNDEBUG /Gec /nologo /O3 /E $entry[0] `
+      /I (Join-Path $repairRoot 'src\games\divinityoriginalsinenhanced\shaders') /Fo $entry[1] 2>$null | Out-Null
+  $ErrorActionPreference = 'Stop'
+  if ($LASTEXITCODE -ne 0) { throw "fxc failed: grade.hlsl ($($entry[0]))" }
+}
 
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
 Set-Location -LiteralPath $testBuild
 & 'C:\Program Files\LLVM\bin\clang-cl.exe' --target=x86_64-pc-windows-msvc /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 /I $repairRoot "$testRoot\tests.cpp" /Fe:divinity1.exe /link /OPT:REF /OPT:ICF d3d11.lib d3dcompiler.lib
 if ($LASTEXITCODE -ne 0) { throw 'Divinity 1 tone map test compile failed' }
-& (Join-Path $testBuild 'divinity1.exe') $GameShader $addonShader $gradeShader
+& (Join-Path $testBuild 'divinity1.exe') $GameShader $addonShader $gradeShader $controlShader
 if ($LASTEXITCODE -ne 0) { throw 'Divinity 1 tone map test failed' }

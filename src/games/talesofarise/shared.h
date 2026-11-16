@@ -84,9 +84,10 @@ struct ShaderInjectData {
 
   float ssao_auto_thickness;  // GT-VBAO: 1 each occluder as thick as it is wide (ssao_thickness the least)
 
-  // Bend's screen-space shadows and GT-VBGI in place of Bandai's (talesofarise_dlss/ue_screen_space_shadows.hpp,
-  // ue_light_bounce.hpp): 1 while each runs. Bend: contactshadow00 leaves out its march toward the sun; GT-VBGI:
-  // lighting00-05 take the menu's Global Illumination off path (TOA_GAME_GI).
+  // Bend's screen-space shadows and our GI in place of Bandai's (talesofarise_dlss/ue_screen_space_shadows.hpp,
+  // ue_light_bounce.hpp, rt_shadows.hpp): 1 while each runs. Bend: contactshadow00 leaves out its march toward the sun;
+  // GT-VBGI, the rays' bounce light or path tracing: lighting00-05 take the menu's Global Illumination off path
+  // (TOA_GAME_GI).
   float screen_space_shadows;
   float gtvbgi;
 };
@@ -97,7 +98,7 @@ struct ShaderInjectData {
 // SDR output (displays without HDR): the display's white is the game's and the UI's.
 #define TOA_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
 // Bandai's screen-space GI (the menu's Global Illumination, cb0[76].w: its colour from t11-t13 in lighting00-05), off
-// while GT-VBGI takes its place.
+// while ours (GT-VBGI, the rays' bounce light or path tracing) takes its place.
 #define TOA_GAME_GI (cb0[76].w != 0.f && SI.gtvbgi == 0.f)
 // Peak relative to Paper White.
 #define TOA_PEAK (TOA_SDR_OUTPUT ? 1.f : (max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 1.f)))
