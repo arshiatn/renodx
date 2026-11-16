@@ -95,6 +95,8 @@ constexpr uint32_t RAYS_RETRY_FRAMES = 60;
 // Without Rays Replace Shadow Maps the object shaders take the rays only where they found the sun blocked (below this
 // visibility: their umbra), the game's shadow-map factor elsewhere.
 constexpr float OBJECT_BLOCKED = 1.f / 16.f;
+// The game's sun shadow-map pass's pixel shaders (the census's "shadow map render" family; sorted).
+constexpr std::array<uint32_t, 8> SHADOW_MAP_SHADERS = {0x338AA7E8, 0x55DC36D4, 0x74025FE8, 0x88D38D93, 0x8EF277DA, 0x920A6850, 0x976EA15C, 0xE046E148};
 
 using Microsoft::WRL::ComPtr;
 
@@ -115,6 +117,14 @@ struct State {
   // The Rays Replace Shadow Maps row (live): the rays in place of the game's shadow-map term; off, the darker of the two
   // on the ground and the rays' umbra over the game's factor on objects (until a run proves the rays hold the maps' casters).
   float replace_maps = 0.f;
+  // With it, the game's sun shadow map's render target (its pass's first draw's), whose draws are skipped.
+  uint64_t shadow_map_target = 0;
+  // The Rays Off Above row (live; the map table): over this eye height (metres) no trace, the game's shadows; 0 none.
+  // The last trace point's eye over it; the row's value and the eye's height lines this start (a few, never one a frame).
+  float rays_ceiling = 0.f;
+  bool above_ceiling = false;
+  float logged_ceiling = 0.f;
+  uint32_t ceiling_lines = 0;
   bool guides = false;  // either: the guide targets and the helper's guides
   bool failed = false;
   bool tracing = false;  // the last trace's answer, and its changes logged this start (a few: never a line a frame)
@@ -157,7 +167,8 @@ struct State {
   bool steps_timed = false;
   ComPtr<ID3D11ShaderResourceView> depth_view;  // the bridge's shared depth
   ComPtr<ID3D11ComputeShader> copy;
-  // O1: last frame's main depth with its camera (the inverse view-projection) and jitter (NDC), the rays' start depth
+  // O1: last frame's main depth with its camera (the inverse view-projection) and the jitter its draws took (NDC; none
+  // before the anti-aliasing's first result: bridge::DrawnJitter), the rays' start depth
   // (R32 typeless: float to trace, uint to scatter by minimum), the object shaders' s15 when untraced.
   uint32_t kept_frame = UINT32_MAX;
   uint32_t bound_frame = UINT32_MAX;
@@ -250,7 +261,10 @@ struct BendSettings {
   float edge_threshold = 0.02f;
   float hard_samples = 4.f;
   float fade_samples = 8.f;
-  float ignore_edges = 0.f;
+  // Bend's IgnoreEdgePixels, as it recommends for large flat surfaces: on far ground the rows' depth steps pass its edge
+  // threshold, and a row's sample read at its centre (no bilinear push back) sat one window in front of the ray from the
+  // pixel beside it: single shadowed pixels on lit ground (tests 6c: 46-48 at 256 x 144; at 4K near the horizon).
+  float ignore_edges = 1.f;
   float precision_offset = 0.f;
   float sample_along_ray = 0.f;
   float softness = 0.f;
@@ -338,7 +352,30 @@ inline void SetTracing(bool tracing, const std::string& why_not) {
 // Whether this frame's scene draws are recorded (addon.cpp sets the replay's row at the game's present): for a try this
 // frame or the next, the one that takes them.
 inline bool SceneWanted() {
-  return state.ground && bridge::state.frame + 1 >= state.rays_frame;
+  return state.ground && !state.above_ceiling && bridge::state.frame + 1 >= state.rays_frame;
+}
+
+// Rays Replace Shadow Maps: whether a D3D9 draw goes into the game's sun shadow map (its target learned from the first
+// draw of SHADOW_MAP_SHADERS into a target that isn't frame-sized) while the rays stand in for every reader the census
+// found (the ground mask's pre-pass and the 642 patched object and water shaders): last frame's rays shown, this frame's
+// recording whole (its trace shown), the eye under Rays Off Above. The game's clear and resolves stay: a frame whose
+// trace fails shades from the cleared map; the next draws the map again.
+inline bool SkipsShadowMapDraw(reshade::api::command_list* cmd_list) {
+  const auto& bridge = bridge::state;
+  if (state.replace_maps == 0.f || !state.objects || bridge.render_target == 0u || bridge.render_target_is_frame_sized) return false;
+  if (state.shadow_map_target == 0u) {
+    if (!std::ranges::binary_search(SHADOW_MAP_SHADERS, renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader))) {
+      return false;
+    }
+    state.shadow_map_target = bridge.render_target;
+    reshade::log::message(reshade::log::level::info,
+                          std::format("[R.U.S.E.] Rays Replace Shadow Maps: the sun shadow map's pass found (target 0x{:x}), skipped while the rays "
+                                      "are shown",
+                                      state.shadow_map_target)
+                              .c_str());
+  }
+  return bridge.render_target == state.shadow_map_target && state.visibility_frame != UINT32_MAX && state.visibility_frame + 1 == bridge.frame
+         && replay::state.previous_whole && !state.above_ceiling;
 }
 
 // The ground's sun shadows once a frame (the rays, Bend's march or both) into the ground mask, before the main pass draws
@@ -350,9 +387,29 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       || !bridge.camera_valid || !bridge.intz_depths.contains(state.prepass_depth)) {
     return false;
   }
+  std::array<double, 16> view_projection = {};
+  std::array<double, 3> eye = {};
+  if (!bridge::CurrentCamera(&view_projection, &eye)) return false;
+  // Rays Off Above (the map table): over that eye height no trace, the game's shadows. The eye's height into ReShade.log
+  // when the row changes and when the rays go off or come back (the table's height read from it).
+  if (state.ground) {
+    constexpr uint32_t MOST_LINES = 16;
+    const double eye_height = eye[2] * HELPER_METRES;
+    const bool above = state.rays_ceiling > 0.f && eye_height > state.rays_ceiling;
+    if ((above != state.above_ceiling || state.rays_ceiling != state.logged_ceiling) && state.ceiling_lines < MOST_LINES) {
+      ++state.ceiling_lines;
+      reshade::log::message(reshade::log::level::info,
+                            std::format("[R.U.S.E.] Rays Off Above {:.0f} m: the eye at {:.1f} m, the rays {}{}", state.rays_ceiling, eye_height,
+                                        (above ? "off (the game's shadows)" : "on"),
+                                        (state.ceiling_lines == MOST_LINES ? " (no more of these lines this start)" : ""))
+                                .c_str());
+    }
+    state.logged_ceiling = state.rays_ceiling;
+    state.above_ceiling = above;
+  }
   // The rays tried each frame while they trace, else every RAYS_RETRY_FRAMES; between tries without another ground row
   // nothing below runs (the depth's copy and its wait included).
-  const bool rays = state.ground && bridge.frame >= state.rays_frame;
+  const bool rays = state.ground && !state.above_ceiling && bridge.frame >= state.rays_frame;
   if (!rays && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;
   using twattila::rt_scene::internal::CpuTime;
   const CpuTime ground_timed(Timed(&state.steps.ground));
@@ -583,10 +640,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   // a texel left of and above D3D11's (unshifted, every ray started up to 0.69 m under the ground at 200 m at 256 x 144:
   // all blocked, tw_ruse_bridge 12). The captures' rows keep the game's clip (CaptureScene's, unjittered).
   const float* inverse = bridge.camera.data() + 16;
-  std::array<double, 16> view_projection = {};
-  std::array<double, 3> eye = {};
-  if (!bridge::CurrentCamera(&view_projection, &eye)) return false;
-  const std::array<float, 2> drawn_jitter = (bridge.ready ? bridge.jitter : std::array<float, 2>{});
+  const std::array<float, 2> drawn_jitter = bridge::DrawnJitter();
   const std::array<double, 2> shift = {(2.0 * drawn_jitter[0] + 1.0) / bridge.width, -(2.0 * drawn_jitter[1] + 1.0) / bridge.height};
   twattila::rt_scene::Camera camera = {};
   for (size_t row = 0; row < 4; ++row) {
@@ -650,8 +704,8 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     }
     reprojection[16] = state.kept_jitter[0];
     reprojection[17] = state.kept_jitter[1];
-    reprojection[18] = 2.f * bridge.jitter[0] / static_cast<float>(bridge.width);
-    reprojection[19] = -2.f * bridge.jitter[1] / static_cast<float>(bridge.height);
+    reprojection[18] = 2.f * drawn_jitter[0] / static_cast<float>(bridge.width);
+    reprojection[19] = -2.f * drawn_jitter[1] / static_cast<float>(bridge.height);
     reprojection[20] = static_cast<float>(bridge.width);
     reprojection[21] = static_cast<float>(bridge.height);
     reprojection[22] = 1.f / static_cast<float>(bridge.width);
@@ -1059,8 +1113,13 @@ inline void OnBloom(reshade::api::command_list* cmd_list) {
   ComPtr<ID3D11DeviceContext> context;
   reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native())->GetImmediateContext(context.GetAddressOf());
   context->CopyResource(state.kept_depth.Get(), bridge.depth.proxy.Get());
+  // The next frame's ground depth goes into the same shared depth (ShadeGround's copy, D3D9) before D3D11 waits for D3D9
+  // again: the D3D9 queue waits for this copy (without it the copy could read that depth: no unit, tree or building in
+  // O1's start depth, Bend's march over it all lit; tw_ruse_bridge 6c: 0 of 452 shadow pixels, 427 with it).
+  bridge::HandToHost(reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native()), context.Get(), host);
   std::memcpy(state.kept_inverse.data(), bridge.camera.data() + 16, sizeof(state.kept_inverse));
-  state.kept_jitter = {2.f * bridge.jitter[0] / static_cast<float>(bridge.width), -2.f * bridge.jitter[1] / static_cast<float>(bridge.height)};
+  const std::array<float, 2> drawn_jitter = bridge::DrawnJitter();
+  state.kept_jitter = {2.f * drawn_jitter[0] / static_cast<float>(bridge.width), -2.f * drawn_jitter[1] / static_cast<float>(bridge.height)};
   std::array<double, 16> view_projection = {};
   if (bridge::CurrentCamera(&view_projection, &state.kept_eye)) {
     state.kept_frame = bridge.frame;
@@ -1181,9 +1240,10 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
 
 // The game's present (after the bridge's, which counted the frame): rt_core's new frame (its AO rays off while the paths'
 // ambient stands in for the occlusion). A frame that was to ask for the rays and didn't (no trace point: a menu, the
-// map table; or its inputs not ready) asks again RAYS_RETRY_FRAMES on, the replay idle until the frame before.
+// map table; or its inputs not ready) asks again RAYS_RETRY_FRAMES on, the replay idle until the frame before; one over
+// Rays Off Above asks at the next frame under it.
 inline void OnPresent() {
-  if (const uint32_t ended = bridge::state.frame - 1; state.rays_frame <= ended && state.tried_frame != ended) {
+  if (const uint32_t ended = bridge::state.frame - 1; state.rays_frame <= ended && state.tried_frame != ended && !state.above_ceiling) {
     state.rays_frame = ended + RAYS_RETRY_FRAMES;
     SetTracing(false, (state.traced_frame == ended) ? "the trace point's inputs weren't ready: the bridge, the camera pass or the pre-pass's depth"
                                                     : "no trace point: no camera pass and mask copy, or no main pass after them");
@@ -1254,6 +1314,7 @@ inline void ReleaseHost() {
   state.mask_frame = UINT32_MAX;
   state.prepass_depth = 0;
   state.prepass_target = 0;
+  state.shadow_map_target = 0;
   state.failed = false;
 }
 

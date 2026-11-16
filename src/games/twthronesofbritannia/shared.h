@@ -144,6 +144,7 @@ struct ShaderInjectData {
   float auto_exposure_highlight_protection;     // autoexposure00 (5E597EBC): 0 stock, 1 the metered maximum limited (Attila's)
   float auto_exposure_highlight_headroom_stops; // that limit, stops above the frame's average
   float rays_sharp_reflections;    // ssr00 / ssr01: 1 the reflections blur's roughness step 0 where the rays reflect (Experimental)
+  float reflection_occlusion;      // ssr00 / ssr01: the specular occlusion's (t46) strength (Path-Traced Reflection Occlusion; 1 whole)
   float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
 };
 

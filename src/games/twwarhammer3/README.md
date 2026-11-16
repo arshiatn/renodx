@@ -7,6 +7,18 @@
   shades itself. Off: the nearest pixel's depth, as before. `tw_gtvbao_exact` (WARP): off the build before's bits;
   CONTROL on changes 304 values (both collect builds).
 
+### One sun shadow method under the rays (2026-11-16 night; built only, not run in game)
+
+- **Rays Replace Shadow Maps is gone** (ATN: ours replaces the game's): under ray-traced sun shadows the rays always
+  replace the game's shadow maps in the sun's mask; the Multiply choice (the rays over the kept maps) no longer exists,
+  and a saved value of that row is never read. Skip Trees in Shadow Maps, Skip the Shadow Maps, Trees Out of View and
+  Shadow Maps Under Rays work without it. Bend still draws the game's mask without its contact march. Page dump
+  (tools/tw/page_dump page_w_tw2_before / _after): the row gone, every other row and all 1540 states the same, three
+  tooltips without "With Rays Replace Shadow Maps". WARP (tools/tw/warp_tests/lights_wh3 mask mode on this tree's
+  sun_mask_0xE6BCBA8A): the Replace path unchanged, 1 of 98304 values off the game's with every comparison passing, as
+  at B9 (the plain decompile's too); CONTROL the game's own mask 3490 off.
+- In game: a battle with Shadows DXR: the sun's shadows as with the row on before.
+
 ### Torch shadows per light, two passes less (2026-11-16 next round; built only, not run in game)
 
 - Fixed: **torch shadows under the rays, per light**: the 4 point-light shaders with the game's point shadow map take the

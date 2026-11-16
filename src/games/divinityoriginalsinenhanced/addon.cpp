@@ -61,13 +61,12 @@ ShaderInjectData shader_injection = {.tonemap_type = TONEMAP_EXTENDED, .purity_s
 float current_settings_mode = 0.f;
 
 // Graphics 1 of 2 (twattila/graphics_page.hpp): the helper's upscalers and frame generation (upscaling.hpp), the rays
-// (ray_tracing.hpp: sun shadows, AO). The game has no GT-VBAO, GT-VBGI, Bend or ray-traced Light Bounce and reflections
-// yet: those rows bind to values that stay 0 (the page's Bindings say the methods are missing).
+// (ray_tracing.hpp: sun shadows, AO, Global Illumination, Path-Traced Ambient). The game has no GT-VBAO, GT-VBGI, Bend or
+// ray-traced reflections yet: those rows bind to values that stay 0 (the page's Bindings say the methods are missing).
 twattila::feature_settings::AaSliders aa_sliders;
 twattila::rt_scene::Sliders rt_sliders;
 twattila::feature_settings::SssSliders no_screen_space_shadows;
 float no_gtvbao = 0.f;
-float no_light_bounce = 0.f;
 // The game's own SSR (its settings object's byte 0x4E, which no setting of the game writes: README "Engine facts").
 float game_ssr = 0.f;
 // Installed when an effect is on at launch (the scene's shaders are kept from the game's start) and the helper is there.
@@ -84,14 +83,16 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .in_game_aa_note = "In-game Anti-Aliasing (FXAA / SMAA) must be Off for DLSS, FSR, XeSS and Frame Generation.",
     .reset_tooltip = "Everything on this page but Anti-Aliasing and Upscaling back to its default: the game's shadows and SSAO.",
     .no_rays_tooltip = "No ray tracing: the game's shadows and SSAO. The rest of this page at its default.",
-    .rays_tooltip = "Ray-traced sun shadows and ambient occlusion at my settings. The rest of this page at its default.\n"
-                    "Needs an upscaler (Anti-Aliasing above); on NVIDIA also turns DLSS Ray Reconstruction on. Restart the game\n"
-                    "after turning ray tracing on.",
+    .rays_tooltip = "Ray-traced sun shadows, ambient occlusion and global illumination at my settings. The rest of this page at\n"
+                    "its default. Needs an upscaler (Anti-Aliasing above); on NVIDIA also turns DLSS Ray Reconstruction on.\n"
+                    "Restart the game after turning ray tracing on.",
     .shadow_tooltip = "Game's Shadow Maps: the original. DXR: ray-traced sun shadows in place of the game's (needs in-game\n"
                       "shadows on). Needs an upscaler. Restart the game after turning it on.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on.\n"
-                  "Game's SSAO: the original. RTAO: from rays through the scene, in place of the game's. Needs an upscaler.\n"
-                  "Restart the game after turning it on.",
+                  "Game's SSAO: the original. RTAO: from rays through the scene, in place of the game's.\n"
+                  "Path-Traced: the sky's light itself from Global Illumination's paths, its shade included.\n"
+                  "Needs an upscaler. Restart the game after turning it on.",
+    .gi_tooltip_end = "\nRestart the game after turning it on.",
 };
 // The page's anti-aliasing: the game's, DLSS, FSR, XeSS.
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
@@ -1034,14 +1035,19 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   const auto aa = twattila::feature_settings::AaSettings(aa_sliders);
   const bool upscaling = twattila::feature_settings::Upscaling(aa_sliders) && twattila::dlaa_bridge::HelperInstalled();
-  const auto rays = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, 0.f);
-  const bool traced = ray_tracing_installed && upscaling && (rays.sun_shadows || rays.ambient_occlusion);
+  auto rays = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, divinity::ray_tracing::light_bounce_strength);
+  // Path-Traced Ambient for a host without rt_core's ambient cube (Divinity 2's route): the sun pass's sky in the paths
+  // (ray_tracing.hpp), the rays' AO off under it (one AO method).
+  rays.path_ambient = rt_sliders.path_ambient != 0.f && rays.path_tracing;
+  rays.ambient_occlusion = rays.ambient_occlusion && !rays.path_ambient;
+  const bool traced = ray_tracing_installed && upscaling && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce);
   // Ray Reconstruction with a ray-traced effect only (DLSS's).
   const bool ray_reconstruction = traced && aa.ray_reconstruction;
   const auto display = device->get_resource_desc(swapchain->get_current_back_buffer()).texture;
   talesofarise::upscaling::SetUse({
       .ray_tracing = ray_tracing_installed && upscaling,
-      .guides = ray_reconstruction,
+      // The G-buffer guides for Ray Reconstruction and the paths (their surfaces' colours).
+      .guides = ray_reconstruction || (traced && rays.path_tracing),
       .upscaler = upscaling ? (aa_sliders.method == 7.f ? twattila::dlaa_bridge::UPSCALER_XESS
                                                         : (aa_sliders.method == 6.f ? twattila::dlaa_bridge::UPSCALER_FSR
                                                                                     : twattila::dlaa_bridge::UPSCALER_DLSS))
@@ -1232,7 +1238,8 @@ void ConfigureAddon() {
 
   // Graphics 1 of 2: the helper's upscalers at 100% (the game has no render scale of its own), Ray Reconstruction, frame
   // generation and Reflex; not the shader anti-aliasing (TW's) or object motion (the camera's alone here). Then the rays'
-  // rows (ray_tracing.hpp: sun shadows, AO), the rows the methods leave at Attila's RT/PT values, and the page.
+  // rows (ray_tracing.hpp: sun shadows, AO, Global Illumination's strength and methods, Path-Traced Ambient), the rows the
+  // methods leave at Attila's RT/PT values, and the page.
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, false, true, true);
   std::erase_if(settings, [](renodx::utils::settings::Setting* setting) {
     constexpr std::array<std::string_view, 5> SHADER_AA_ROWS = {"AntiAliasingQuality", "AntiAliasingExtraSharpness", "AntiAliasingTaaStrength",
@@ -1242,6 +1249,40 @@ void ConfigureAddon() {
     return true;
   });
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders);
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "light_bounce_strength",
+      .binding = &divinity::ray_tracing::light_bounce_strength,
+      .default_value = 0.f,
+      .label = "Strength",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Lit ground and walls bounce their light and colour into nearby shadows.\n"
+                 "1: physically correct; 0: off.",
+      .min = 0.f,
+      .max = 4.f,
+      .format = "%.2f",
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSkipShadowPass",
+      .binding = &divinity::ray_tracing::skip_shadow_maps,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Skip the Game's Shadow Maps (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "With ray-traced shadows: nothing is drawn into the game's sun shadow maps, the rays replace them. Faster.",
+      .labels = {"Off", "On"},
+  });
+  // The page has no place for it yet: it follows its last section, shown with the rays' AO.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSkipGameSsao",
+      .binding = &divinity::ray_tracing::skip_ssao,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Skip the Game's SSAO (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "With ray-traced AO: the game's SSAO isn't drawn, the rays replace it. Faster.",
+      .labels = {"Off", "On"},
+      .is_visible = [] { return rt_sliders.ambient_occlusion != 0.f; },
+  });
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     // The helper's opacity micromaps over the game's cut-out masks: off until a run shows them in this game.
@@ -1251,20 +1292,19 @@ void ConfigureAddon() {
                                              .sss = &no_screen_space_shadows,
                                              .rt = &rt_sliders,
                                              .ssao_mode = &no_gtvbao,
-                                             .light_bounce_strength = &no_light_bounce,
+                                             .light_bounce_strength = &divinity::ray_tracing::light_bounce_strength,
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .upscaler_status = &UpscalerStatus,
                                              .has_scale_rows = false,
                                              .has_foliage_light = false,
                                              .rays_preset_as_attila = true,
-                                             .has_path_ambient = false,
+                                             .path_ambient_tested = false,
                                              .has_reflections = false,
                                              .has_gtvbao = false,
                                              .has_screen_space_shadows = false,
                                              .has_gtvbgi = false,
                                              .rays_tested = false,
-                                             .has_gi = false,
                                              .every_row = false});
   // Settings Mode's pages: Simple and Advanced the HDR rows (and the output's), Graphics 1 of 2 the page's; About on every
   // page.
@@ -1311,7 +1351,8 @@ bool AttachAddon() {
   twattila::test_hooks::Install(&settings, true, "[Divinity]");
   // The rays when an effect is on at launch (restart to turn the first one on) and the helper is there to trace them;
   // their Debug View over the tone mapper's output.
-  ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled() && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f);
+  ray_tracing_installed = twattila::dlaa_bridge::HelperInstalled()
+                          && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.light_bounce != 0.f);
   if (ray_tracing_installed) {
     custom_shaders[0x30A1D40D].on_drawn = [](reshade::api::command_list* cmd_list) { twattila::rt_scene::OnTonemapDrawn(cmd_list); };
   }

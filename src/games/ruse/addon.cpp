@@ -159,6 +159,7 @@ void OnBridgePushConstants(reshade::api::command_list*, reshade::api::shader_sta
 bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t, uint32_t first_index, int32_t vertex_offset,
                          uint32_t) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return false;
+  if (ruse::ray_tracing::SkipsShadowMapDraw(cmd_list)) return true;
   if (ruse::bridge::state.post_surface) {
     ruse::bridge::KeepHudless(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()));
   }
@@ -178,6 +179,7 @@ bool OnBridgeDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_co
 // Frame generation: the UI's first draw when it isn't indexed (the HUD-less image before it).
 bool OnBridgeDraw(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return false;
+  if (ruse::ray_tracing::SkipsShadowMapDraw(cmd_list)) return true;
   if (ruse::bridge::state.post_surface) {
     ruse::bridge::KeepHudless(reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native()));
   }
@@ -259,6 +261,8 @@ struct GameOption {
   std::vector<float> values;             // one per label after Game's
   bool factors = false;                  // the values scale the game's own
   bool needs_helper = false;             // the game's own value while the helper isn't beside the add-on
+  bool (*replaced)() = nullptr;          // while it answers true, `replacement` in place of the row's value
+  float replacement = 0.f;
 };
 std::vector<std::pair<renodx::utils::settings::Setting*, GameOption>> game_options;
 
@@ -323,7 +327,9 @@ void ApplyGameOption(const GameOption& option, int choice) {
       reshade::get_config_value(nullptr, OPTION_INI_CONFIG, game_key.c_str(), game);
     }
     float wanted = game;
-    if (choice > 0 && choice <= static_cast<int>(option.values.size())) {
+    if (option.replaced != nullptr && option.replaced()) {
+      wanted = option.replacement;
+    } else if (choice > 0 && choice <= static_cast<int>(option.values.size())) {
       wanted = (option.factors ? game * option.values[choice - 1] : option.values[choice - 1]);
     }
     const std::string wanted_text = std::format("{:g}", wanted);
@@ -349,6 +355,20 @@ void ApplyGameOption(const GameOption& option, int choice) {
     if (!file) return;
   }
   MoveFileExW(temporary.c_str(), OPTION_INI.c_str(), MOVEFILE_REPLACE_EXISTING);
+}
+
+// Rays Replace Shadow Maps with both ray-traced shadow rows and the anti-aliasing's helper at the next start: the rays
+// stand in for every reader of the game's sun shadow map (ray_tracing.hpp SkipsShadowMapDraw), so the game makes it at
+// 1024 (Option.ini ShadowRTSize: its render target, MSAA depth and two filtered copies, about 75 MiB against 299 MiB at
+// 2048). Its fallback frames (a failed trace, Rays Off Above) sample it as at any size: every reader maps light-space
+// UVs to it, no texel size in their constants (tw_ruse_bridge 6d).
+bool ShadowMapReplaced() {
+  const auto on = [](const char* key) {
+    const auto* setting = renodx::utils::settings::FindSetting(key);
+    return setting != nullptr && setting->GetValue() != 0.f;
+  };
+  return twattila::dlaa_bridge::HelperInstalled() && on("RuseAntiAliasing") && on("RuseRayTracedGroundShadows")
+         && on("RuseRayTracedObjectShadows") && on("RuseRaysReplaceShadowMaps");
 }
 
 // Every row that writes the game's Option.ini at its current value (at each start, and after a preset set them).
@@ -1325,8 +1345,8 @@ void ConfigureAddon() {
             if (auto* anti_aliasing = renodx::utils::settings::FindSetting("RuseAntiAliasing");
                 anti_aliasing != nullptr && anti_aliasing->GetValue() == 0.f) {
               renodx::utils::settings::UpdateSetting("RuseAntiAliasing", VendorAntiAliasing());
-              ApplyGameOptions();
             }
+            ApplyGameOptions();
           },
       },
       new renodx::utils::settings::Setting{
@@ -1335,7 +1355,10 @@ void ConfigureAddon() {
           .section = RAYS_SECTION,
           .group = "rays-presets",
           .tooltip = "Ray-traced ground and object shadows and ground ambient occlusion off (restart the game).",
-          .on_change = [] { renodx::utils::settings::UpdateSettings(RAYS_OFF); },
+          .on_change = [] {
+            renodx::utils::settings::UpdateSettings(RAYS_OFF);
+            ApplyGameOptions();  // the game's own shadow map size again (ShadowMapReplaced)
+          },
       },
   });
   {
@@ -1392,9 +1415,9 @@ void ConfigureAddon() {
     // The game's MSAA off under ours (Option.ini MainRTAA: RUSE.exe's anti-aliasing list at rva 0x1083AFC pairs 1, 2, 4,
     // 8, 8.5, 16, 16.5 with "1x", "2x", "4x", "8x CSAA", "8x MSAA", "16x CSAA", "16x MSAA"), for the game's next start
     // (it reads the file before its device); its value back with Game's.
-    GameOption main_aa = {.option_keys = {"MainRTAA"}, .values = {1.f, 1.f, 1.f}, .needs_helper = true};
-    setting->on_change_value = [main_aa](float, float current) { ApplyGameOption(main_aa, static_cast<int>(current)); };
-    game_options.emplace_back(setting, std::move(main_aa));
+    // With it the shadow map's size (ShadowMapReplaced): every row's value.
+    setting->on_change_value = [](float, float) { ApplyGameOptions(); };
+    game_options.emplace_back(setting, GameOption{.option_keys = {"MainRTAA"}, .values = {1.f, 1.f, 1.f}, .needs_helper = true});
     settings.push_back(new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::TEXT,
         .label = "The in-game anti-aliasing was on at this start (now 1x): restart the game.",
@@ -1558,6 +1581,7 @@ void ConfigureAddon() {
         .is_global = true,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    setting->on_change_value = [](float, float) { ApplyGameOptions(); };  // the shadow map's size (ShadowMapReplaced)
     settings.push_back(setting);
     // The rays trace the scene the replay captured, in the helper the anti-aliasing starts.
     ruse::ray_tracing::state.ground = ruse::bridge::state.enabled && setting->GetValue() != 0.f;
@@ -1579,6 +1603,7 @@ void ConfigureAddon() {
         .is_global = true,
     };
     renodx::utils::settings::LoadSetting(renodx::utils::settings::global_name, setting);
+    setting->on_change_value = [](float, float) { ApplyGameOptions(); };  // the shadow map's size (ShadowMapReplaced)
     settings.push_back(setting);
     // The object shaders with the rays' visibility in place of their shadow-map factor (each proved the game's with its
     // alpha at 0, and free of the shadow map at 1).
@@ -1597,8 +1622,24 @@ void ConfigureAddon() {
       .default_value = 0.f,
       .label = "Rays Replace Shadow Maps (Experimental)",
       .section = SHADOWS_SECTION,
-      .tooltip = "On: the ray-traced shadows alone, in place of the game's shadow maps.\n"
+      .tooltip = "On: the ray-traced shadows alone, in place of the game's shadow maps (their pass skipped: less GPU time;\n"
+                 "a smaller shadow map from the next start: less video memory).\n"
                  "Off: both, the darker of the two (no shadow of the game's is lost).",
+      .is_enabled = [] { return ruse::ray_tracing::state.ground; },
+      .on_change_value = [](float, float) { ApplyGameOptions(); },
+  });
+  // The map table: over this eye height the game's shadows (ATN reads the table's height from ReShade.log).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RuseRaysOffAbove",
+      .binding = &ruse::ray_tracing::state.rays_ceiling,
+      .default_value = 0.f,
+      .label = "Rays Off Above",
+      .section = SHADOWS_SECTION,
+      .tooltip = "Camera height over which the rays go off and the game's shadows come back (the map table).\n"
+                 "0 m: rays at any height. The camera's height goes to ReShade.log when this changes.",
+      .min = 0.f,
+      .max = 50000.f,
+      .format = "%.0f m",
       .is_enabled = [] { return ruse::ray_tracing::state.ground; },
   });
   // One frame's passes on the game's D3D9 queue, into ReShade.log.
@@ -1822,11 +1863,11 @@ void ConfigureAddon() {
                    .default_value = 0.f,
                    .label = "Shadow Map Size",
                    .section = GRAPHICS_2_SECTION,
-                   .tooltip = "Sharper sun shadows. More video memory.",
+                   .tooltip = "Sharper sun shadows. More video memory.\n1024 while Rays Replace Shadow Maps is on.",
                    .labels = {"Game's", "4096", "8192"},
                    .is_global = true,
                },
-               GameOption{.option_keys = {"ShadowRTSize"}, .values = {4096.f, 8192.f}},
+               GameOption{.option_keys = {"ShadowRTSize"}, .values = {4096.f, 8192.f}, .replaced = ShadowMapReplaced, .replacement = 1024.f},
            },
            std::pair{
                new renodx::utils::settings::Setting{

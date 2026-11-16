@@ -344,10 +344,18 @@ inline ID3D11ShaderResourceView* Apply(ID3D11DeviceContext* context, const Input
   context1->OMSetRenderTargets(2, prepared.data(), nullptr);
   context1->PSSetShader(objects.prepare.Get(), nullptr, 0);
   context1->Draw(3, 0);
+  // The trace through rays where ray tracing gives one (twattila::light_bounce::SetRayTracedTrace: Tales' Ray Tracing in
+  // the Helper), as the Total War games' light_bounce.hpp: the prepared textures no longer targets (it reads the light's
+  // first level); else the levels and the screen-space trace.
+  context1->OMSetRenderTargets(0, nullptr, nullptr);
+  const auto ray_traced = twattila::light_bounce::internal::ray_traced_trace.load(std::memory_order_relaxed);
+  const bool rays = ray_traced != nullptr
+                    && ray_traced(context1.Get(), objects.prepared_light.texture.Get(), static_cast<UINT>(trace_viewport.Width),
+                                  static_cast<UINT>(trace_viewport.Height), scale, objects.traced.texture.Get());
   D3D11_TEXTURE2D_DESC prepared_desc = {};
   objects.prepared_light.texture->GetDesc(&prepared_desc);
   context1->PSSetShader(objects.levels.Get(), nullptr, 0);
-  for (UINT level = 1; level < objects.prepared_levels; ++level) {
+  for (UINT level = 1; level < (rays ? 1u : objects.prepared_levels); ++level) {
     const std::array<ID3D11RenderTargetView*, 2> level_targets = {objects.prepared_light.level_rtvs[level].Get(),
                                                                   objects.prepared_geometry.level_rtvs[level].Get()};
     context1->OMSetRenderTargets(2, level_targets.data(), nullptr);
@@ -379,7 +387,7 @@ inline ID3D11ShaderResourceView* Apply(ID3D11DeviceContext* context, const Input
   views[internal::HISTORY_VIEW] = objects.history[previous_index].srv.Get();
   views[internal::PREPARED_VIEW] = objects.prepared_light.srv.Get();
   views[internal::PREPARED_VIEW + 1] = objects.prepared_geometry.srv.Get();
-  pass(objects.traced, objects.trace.Get(), nullptr);
+  if (!rays) pass(objects.traced, objects.trace.Get(), nullptr);
   views[internal::LIGHT_VIEW] = objects.traced.srv.Get();
   views[internal::FRAMES_VIEW] = objects.history_frames[previous_index].srv.Get();
   pass(objects.history[objects.history_index], objects.resolve.Get(), &objects.history_frames[objects.history_index]);

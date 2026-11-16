@@ -7,6 +7,16 @@
   shades itself. Off: the nearest pixel's depth, as before. `tw_gtvbao_exact` (WARP, a flat view-space plane): off the
   build before's bits; on 0.9917 -> 1.0000 mean (4975 values). The half-size pass: CONTROL 9749.
 
+### One sun shadow method under the rays (2026-11-16 night; built only, not run in game)
+
+- **Rays Replace Shadow Maps is gone** (ATN: ours replaces the game's): under ray-traced sun shadows the rays always
+  replace the per-frame shadow maps; the Multiply choice (the rays on top of the game's maps) no longer exists, and a
+  saved value of that row is never read. Skip the Shadow Maps works without it. Water, effects and the far map the game
+  baked keep the game's shadows, as before. Page dump (tools/tw/page_dump page_t_tw2_before / _after): the row gone, every
+  other row and all 3076 states the same, only Skip the Shadow Maps' tooltip shorter. WARP (tools/tw/troy/sun_test on
+  this tree): the Replace path unchanged, P1-P3 0 of 2,752,512 values, CONTROLS P3c 1,264,414; SUN TROY: ALL PASSED.
+- In game: a battle with Shadows DXR: the sun's shadows as with the row on before.
+
 ### Every point light, one AO, Vanilla (2026-11-16 next round; built only, not run in game)
 
 - **Torch and Fire Shadows on every point light**: the game's 7 other point-light shaders (smooth / linear falloff,

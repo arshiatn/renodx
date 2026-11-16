@@ -165,13 +165,14 @@ struct Bindings {
   float* below_100_detail = nullptr;  // Models as detailed as at 100% below it; null: no such row
   float* lod_bias_trilinear = nullptr;  // texture_lod_bias.hpp SetWrappingTrilinear; null: no such row
   float* placed_objects = nullptr;    // Placed meshes in a clip-space game (rt_core.hpp Host::placed_row); null: no such row
-  // The sun's shadow from rays alone where they'd multiply its mask (off: Shadow Map Size under the rays too); null: no such row.
+  // The sun's shadow from rays alone where they'd multiply its mask (off: Shadow Map Size under the rays too); null: no such row
+  // (the rays replace the maps unless rays_multiply_maps).
   float* rays_replace_maps = nullptr;
   bool rays_replace_maps_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
   float* rays_units_out_of_view = nullptr;  // Casters from the shadow maps' draws, with rays' sun shadows; null: no such row
   bool units_out_of_view_tested = true;  // false: that row Experimental, off by default (no game run has shown it in this game yet)
-  float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps: trees left out of the shadow maps; null: no such row
-  float* rays_skip_cascades = nullptr;  // Under rays_replace_maps (without one: the rays' sun shadows): nothing drawn into the shadow maps; null: no such row
+  float* rays_skip_cascade_trees = nullptr;  // Under rays_replace_maps (if any): trees left out of the shadow maps; null: no such row
+  float* rays_skip_cascades = nullptr;  // Under rays_replace_maps (if any; the rays' sun shadows): nothing drawn into the shadow maps; null: no such row
   float* rays_one_at_a_place = nullptr;  // A kept caster goes where another mesh is placed (dlaa_bridge.h RT_ONE_AT_A_PLACE); null: no such row
   float* rays_cascade_unit_cut_outs = nullptr;  // Units from the shadow maps' draws cut out by their mask; null: no such row
   float* rays_banner_light = nullptr;  // Every banner lets light through; null: no such row
@@ -950,9 +951,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .default_value = 0.f,
           .label = "Skip Trees in Shadow Maps (Experimental)",
           .section = section,
-          .tooltip = "With Rays Replace Shadow Maps: faster in forests. Water, smoke and lit effects lose the trees' shadows;\n"
-                     "the fog too without Fog Shadows.",
-          .is_enabled = [replace = b.rays_replace_maps] { return *replace != 0.f; },
+          .tooltip = "Faster in forests. Water, smoke and lit effects lose the trees' shadows; the fog too without Fog Shadows.",
+          .is_enabled = [replace = b.rays_replace_maps] { return replace == nullptr || *replace != 0.f; },
           .is_visible = more_rays,
       });
     }
@@ -964,11 +964,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .default_value = 0.f,
           .label = "Skip the Shadow Maps (Experimental)",
           .section = section,
-          .tooltip = (b.rays_replace_maps != nullptr)
-                         ? "With Rays Replace Shadow Maps: nothing is drawn into the game's shadow maps. Faster with many units and\n"
-                           "buildings. Water, smoke and lit effects lose the sun's shadow; the fog too without Fog Shadows."
-                         : "Nothing is drawn into the game's near shadow map: there the sun's shadow comes from the rays alone, the\n"
-                           "water's too. Faster with many units and buildings.",
+          .tooltip = b.rays_multiply_maps
+                         ? "Nothing is drawn into the game's near shadow map: there the sun's shadow comes from the rays alone, the\n"
+                           "water's too. Faster with many units and buildings."
+                         : "Nothing is drawn into the game's shadow maps. Faster with many units and buildings. Water, smoke and\n"
+                           "lit effects lose the sun's shadow; the fog too without Fog Shadows.",
           .is_enabled = [replace = b.rays_replace_maps] { return replace == nullptr || *replace != 0.f; },
           .is_visible = more_rays,
       });

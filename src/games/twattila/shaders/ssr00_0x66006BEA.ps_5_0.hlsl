@@ -171,7 +171,11 @@ void main(
   const float2 rt_pixel = v0.xy / g_buffers_scale;
   const bool rt_surface = ((int)r2.y & 4) == 0 || RtWaterReflections();
   const bool rt_reflected = RtReflectionsBound() && rt_surface;
-  if (rt_surface) r1.xyz = RtOccludedEnvironment(rt_pixel, r1.xyz);
+  // Path-Traced Reflection Occlusion (addon.cpp): under Path-Traced Ambient the game's AO is white, so the occlusion is traced
+  // for these reflections alone and taken at the row's strength (SI 1: whole, as Ray-Traced Specular Occlusion's own).
+  // Precise: the compiler's (occlusion x strength - strength) + 1 in its place lost the occlusion's bits at 1.
+  const precise float3 occlusion = RtOccludedEnvironment(rt_pixel, SI.reflection_occlusion) + (1.f - SI.reflection_occlusion);
+  if (rt_surface) r1.xyz *= occlusion;
   if (rt_reflected) o2 = float2(0.f, -2.f);
   r1.w = dot(r5.xyz, -r3.xyw);
   r1.w = max(0, r1.w);

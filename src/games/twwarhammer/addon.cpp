@@ -281,7 +281,8 @@ struct RaysShader {
 using PointLightRays = RaysShader<0xD0C67938, 42>;
 using LinearPointLightRays = RaysShader<0x5D1695BC, 42>;
 
-// Rays Replace Shadow Maps (on by default: ours replaces the game's, ATN 2026-11-16; WARP test/tw_warhammer_shaders part 29):
+// The rays replace the shadow maps' sun shadow, always (one method: ATN 2026-11-16, no Rays Replace Shadow Maps row; WARP
+// test/tw_warhammer_shaders part 29):
 // of the 18 sun shaders that read the sun's atlas (g_tShadowBuffer, t1 in each; tools/tw/wh1/wh1_atlas_reads.py) the 6
 // hardware gather 5.0 builds read it through gather4_c at s1 (CF0C5118 among them), which the screen-space shadows' patch
 // multiplies by the rays' visibility. Where the rays' shadow is bound at t49 a 1 x 1 texture of 1 (the far plane, a cleared
@@ -292,8 +293,7 @@ using LinearPointLightRays = RaysShader<0x5D1695BC, 42>;
 // no comparison in them, so the rays never reach their shadow and they keep the game's maps.
 constexpr std::array<uint32_t, 6> ATLAS_SUN_SHADERS = {0xCF0C5118, 0xB8F4B964, 0x41365626, 0xD9DDB44A, 0x34FEF0FF, 0xA1AF2AEC};
 constexpr UINT ATLAS_SLOT = 1;
-float rays_replace_maps_row = 0.f;
-// Skip the Shadow Maps (Experimental, off; under Rays Replace Shadow Maps): rt_scene's Ray-Traced Shadows Only skips the
+// Skip the Shadow Maps (Experimental, off; under the rays' sun shadows): rt_scene's Ray-Traced Shadows Only skips the
 // atlas's casters. Its other readers in ATN's traces (tools/tw/wh1/atlas_readers_wh1.txt: battle and campaign water,
 // forward-lit units and props, particles, all gather4_c through their comparison sampler) take the rays' shadow instead
 // (screen_space_shadows::PatchForwardShadows with declare_position: 0BF2DB7F / BCB9B1D6 / 7865CDC9 leave SV_Position's xy
@@ -390,7 +390,7 @@ struct AtlasLit {
 };
 AtlasLit atlas_lit;
 constexpr auto OnSunReplaceMaps = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (rays_replace_maps_row == 0.f || command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
@@ -419,7 +419,7 @@ constexpr auto OnSunReplaceMaps = []<typename Context>(Context& command) -> reno
   native->PSGetShaderResources(ATLAS_SLOT, 1, state.game_view.ReleaseAndGetAddressOf());
   native->PSSetShaderResources(ATLAS_SLOT, 1, state.far_plane.GetAddressOf());
   if (!std::exchange(state.logged, true)) {
-    renodx::utils::log::i("[Total War] First run: Rays Replace Shadow Maps: the sun draws' shadow atlas read as lit (the rays shadow).");
+    renodx::utils::log::i("[Total War] First run: the rays replace the shadow maps: the sun draws' shadow atlas read as lit (the rays shadow).");
   }
   return {.finalize_callback = [](Context& drawn, const void*) {
     auto* drawn_native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
@@ -1596,7 +1596,7 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
 void OnInitDevice(reshade::api::device*) {
   const bool sun_shadows = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength).sun_shadows;
   twwarhammer2::shadow_cascades::Set(&shadow_cascades,
-                                     shadow_cascades_row != 0.f && sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f,
+                                     shadow_cascades_row != 0.f && sun_shadows && rays_skip_cascades_row != 0.f,
                                      1.f);
   tw::engine_tweaks::Update(nullptr, graphics_options, nullptr, &graphics_found, graphics_status);
 }
@@ -1811,7 +1811,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   // Skip the Shadow Maps: Ray-Traced Shadows Only's skip of the atlas's casters (with the rays' sun shadows alone).
-  rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
+  rt_settings.shadows_only = rt_settings.sun_shadows && rays_skip_cascades_row != 0.f;
   // Fog Shadows alone light no surface: no Ray Reconstruction for them (as Warhammer III's and Pharaoh's).
   rt_settings.cheap_fog_alone = true;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
@@ -1843,7 +1843,7 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here (as Warhammer II's). The rays' sun shadows replace the
-// game's shadow maps (Rays Replace Shadow Maps; off: they multiply them through the sun shaders' patched comparisons),
+// game's shadow maps (always: no Rays Replace Shadow Maps row; the 12 Shader Model 4.1 sun builds keep the game's maps),
 // ray-traced AO in place of the game's SSAO (its line sweeps);
 // reflections on the game's SSR resolve; point lights, the battle fog, the battle water and the lit particles hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
@@ -1872,8 +1872,6 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .water_reflections_tooltip = "Rivers and lakes reflect what the rays find from their own surface, also off screen.\n"
                                  "Off: the rays start at the bed under the water.",
     .fog_shadows_label = "Fog Shadows (Experimental)",
-    .replace_maps_tooltip = "The sun's shadows from rays alone, so Softness shows in full. Cloud shadows stay the game's;\n"
-                            "what is outside the view casts none. Off: the rays' shadows on top of the game's shadow maps.",
     .reflections_tooltip = "Reflections on water, armour and metal. Need in-game Screen Space Reflections on.\n"
                            "Game's SSR: the original. DXR: from rays, also what is off screen or hidden. Needs an upscaler.",
     .untraced_casters_tooltip = "Objects the game tessellates (its Tessellation on) also cast ray-traced shadows.",
@@ -2388,7 +2386,6 @@ void ConfigureAddon() {
                                              .smoke_strength = &smoke_map_sliders.strength,
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
-                                             .rays_replace_maps = &rays_replace_maps_row,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
@@ -2408,8 +2405,8 @@ void ConfigureAddon() {
   // Skip the Shadow Maps here: the water and the forward-lit units take the rays' shadow (SHADOW_READER_SHADERS).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedSkipCascades") {
-      setting->tooltip = "With Rays Replace Shadow Maps: nothing is drawn into the game's shadow maps. Faster with many units and\n"
-                         "buildings. Water and the other forward-lit surfaces take the rays' shadow too.";
+      setting->tooltip = "Nothing is drawn into the game's shadow maps. Faster with many units and buildings. Water and the\n"
+                         "other forward-lit surfaces take the rays' shadow too.";
     }
   }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
@@ -2447,7 +2444,8 @@ bool AttachAddon() {
   // both Experimental, off.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedWaterReflections"});
   twattila::graphics_page::ClearSavedRows(2, {"RayTracedSpriteShadows"});
-  // Rays Replace Shadow Maps was saved at its old Experimental 0; now on by default.
+  // Rays Replace Shadow Maps was saved at its old Experimental 0; the row is gone since (the rays always replace) and nothing
+  // reads the key.
   twattila::graphics_page::ClearSavedRows(3, {"RayTracedReplaceShadowMaps"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -2507,7 +2505,7 @@ bool AttachAddon() {
   twattila::screen_space_shadows::foliage_material_bit = 128;
   // Light Through Banners' Coloured Shadows: the G-buffer's colour is linear (the sun shaders' diffuse, part 10).
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 1.f);
-  // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's.
+  // The rays replace the atlas's sun shadow: after the screen-space shadows' and before the Light Bounce's.
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
   for (const uint32_t shader_hash : ATLAS_SUN_SHADERS) {

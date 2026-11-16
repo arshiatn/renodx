@@ -9,9 +9,10 @@
 
 ### Replace round (2026-11-16, tw1_; built only, not run in game)
 
-- **Rays Replace Shadow Maps on by default** (ATN: ours replaces the game's): under ray-traced sun shadows the six sun
-  shaders take the rays' shadow alone; the row lost "(Experimental)", a saved 0 is cleared once. WARP part 29: t49 0 / 1 /
-  0.5 bit for bit the game's lit / shadowing / empty atlas in 6 of 6; CONTROL the multiply differs in 6.
+- **The rays always replace the shadow maps** (ATN: ours replaces the game's; "If it is on by default, then get rid of
+  that slider"): under ray-traced sun shadows the six sun shaders take the rays' shadow alone; the Rays Replace Shadow Maps
+  row is gone (a saved value is cleared once and never read). WARP part 29: t49 0 / 1 / 0.5 bit for bit the game's lit /
+  shadowing / empty atlas in 6 of 6; CONTROL the multiply differs in 6.
 - **Ray-Traced AO leaves the game's SSAO out** (one AO method): while the rays' AO feeds the sun, the game's depth
   downsample, sweep, collect and blurs are skipped (census by handle, 41 traces: nothing else reads them) and the SSR
   resolve reads the sun's AO. WARP part 31: the sun rows and the resolve read the AO's red alone (10 of 10, 0 of 4096
