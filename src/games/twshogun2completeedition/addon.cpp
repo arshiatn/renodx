@@ -2142,8 +2142,8 @@ void BuildRuntimeData() {
       ray_amount("RayTracedGrassShadowRange", &rt_sliders.grass_shadow_range, 0.f, "Grass shadow range (Experimental)", 0.f, 200.f, "%.0f m",
                  "Past this distance grass casts no ray-traced shadows (on itself or the ground): faster over fields. 0 m: everywhere.", sun),
       ray_toggle("RayTracedAmbientOcclusion", &rt_sliders.ambient_occlusion, "Ray-traced ambient occlusion",
-                 "Shade in corners and under things from rays, with the game's (the darker).\n"
-                 "Faster: the game's SSAO off, the rays then alone."),
+                 "Shade in corners and under things from rays, in place of the game's ambient occlusion and GT-VBAO.\n"
+                 "Faster: the game's SSAO off in its options."),
       ray_amount("RayTracedAmbientRange", &rt_sliders.ambient_range, 2.f, "Ray-traced AO range", 0.25f, 5.f, "%.2f m",
                  "How far its rays look for what shades a point.", ambient),
       ray_count("RayTracedAORays", &rt_sliders.ambient_rays, 2.f, 8.f, "Ray-traced AO rays", "More rays: less noise. Heavier.", ambient),
@@ -2354,10 +2354,12 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     renodx::utils::settings::UpdateSettings({{"HelperUpscaler", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 3.f : 2.f)}});
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
-  // GT-VBAO not under the rays' AO (one AO method, as Attila's rt_ambient_alone: the sun draws read the rays' AO in place of
-  // the game's, rt_sun.hlsli RtInPlace). Its Temporal Smoothing (its noise moving each frame) and Denoiser
-  // (twattila/ao_filter.hpp), as Warhammer II's.
-  bitmask_ao = shader_injection.ssao_mode >= 1.f && rt_sliders.ambient_occlusion == 0.f;
+  // GT-VBAO not under the rays' AO or Path-Traced AO, where they run (one AO method, as Attila's rt_ambient_alone: the sun
+  // draws read the rays' AO in place of the game's, rt_sun.hlsli RtInPlace; the paths' blocked rays are the occlusion of
+  // the ambient they replace). The game's own AO stays the fallback while nothing is traced. Its Temporal Smoothing (its
+  // noise moving each frame) and Denoiser (twattila/ao_filter.hpp), as Warhammer II's.
+  auto rays = RaySettings();
+  bitmask_ao = shader_injection.ssao_mode >= 1.f && !(ray_tracing_installed && (rays.ambient_occlusion || rays.path_ambient));
   const bool ao_temporal = bitmask_ao && ao_filter_rows.temporal != 0.f;
   const bool ao_denoise = bitmask_ao && ao_filter_rows.denoise != 0.f;
   static uint32_t ao_frame = 0;
@@ -2393,7 +2395,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twattila::reflex::Update(swapchain, reflex, frame_limit);
   const uint32_t upscaler = HelperUpscaling() ? std::min(static_cast<uint32_t>(aa_sliders.method), 7u) - 4u : 0u;
   helper_evaluates.store(upscaler != 0 || frame_generation != 0, std::memory_order_relaxed);
-  auto rays = RaySettings();
   const bool any_rays = ray_tracing_installed
                         && (rays.sun_shadows || rays.ambient_occlusion || rays.light_bounce || rays.reflections || rays.local_lights
                             || rays.fog_shadows || rays.specular_occlusion);

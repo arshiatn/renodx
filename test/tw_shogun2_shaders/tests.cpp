@@ -17,7 +17,7 @@
 //     0xF7EDF855 / 0x4E3EE717, wind / weighted / grass / far_tree_3k against 0xEDCD8445 / 0x1E0425DE / 0xF6CBD06E / 0x63E273F4
 //     (TestCascadeLeaves).
 // 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
-// 13. Coloured Shadows in shaders/sunlight00-03 (TestSunTint).
+// 13. Coloured Shadows and the rays' AO in place of the game's in shaders/sunlight00-03 (TestSunTint).
 // 14. autoexposure00's Modded Auto Exposure against the game's 0x8233E11F (TestAutoExposure).
 // 15. indicator00-02's Indicator Brightness against the game's 0xD12FA660 / 0xC454C1EA / 0xC57C222D (TestIndicators).
 // 16. campaignoverlay00 at 33% against 100% and the game's 0xD7E27B35 (TestCampaignOverlay).
@@ -1978,6 +1978,9 @@ static void TestLeafFade(const std::string& games, const std::string& folder) {
 //     G-buffer, depth, shadow, AO, probes and lighting: the filter 1 everywhere (all of the sun's colour taken out) gives what
 //     the sun colour (lighting c1) 0 gives unbound, so every use of the sun's colour is filtered; unbound the sun lights the
 //     picture (it differs from c1 0). CONTROL: a filter of 0.5 differs from both.
+//     The rays' AO (t41, rt_sun.hlsli RtInPlace): bound at 0.37 over the random t_ssao, the picture is t_ssao 0.37's with t41
+//     unbound, to the bit (the traced value in place of the game's, ATN 2026-11-16). CONTROL: the random t_ssao's unbound
+//     picture differs (the AO shows in the output).
 struct SunShader {
   const wchar_t* file;
   UINT lighting_slot;
@@ -1986,6 +1989,7 @@ struct SunShader {
   std::vector<UINT> harmonics_slots;  // 9 x 9
   UINT textures;  // t0.. bound (the rest 16 x 16 RGBA)
   UINT samplers;
+  UINT ao_slot;  // t_ssao
 };
 
 static void TestSunTint(const std::string& games) {
@@ -2053,11 +2057,16 @@ static void TestSunTint(const std::string& games) {
   device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf());
   const std::wstring path(games.begin(), games.end());
   const std::array<SunShader, 4> shaders = {{
-      {.file = L"sunlight00_0xED1BED93", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4},
-      {.file = L"sunlight01_0x5496DE73", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4},
-      {.file = L"sunlight02_0xC3E0E939", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6},
-      {.file = L"sunlight03_0xD5FDDE8F", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6},
+      {.file = L"sunlight00_0xED1BED93", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4,
+       .ao_slot = 5},
+      {.file = L"sunlight01_0x5496DE73", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4,
+       .ao_slot = 5},
+      {.file = L"sunlight02_0xC3E0E939", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6,
+       .ao_slot = 7},
+      {.file = L"sunlight03_0xD5FDDE8F", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6,
+       .ao_slot = 7},
   }};
+  const auto traced_ambient = filter(0.37f);
   for (const auto& shader : shaders) {
     ComPtr<ID3DBlob> code;
     FolderInclude include(path + L"/twshogun2completeedition/shaders");
@@ -2091,7 +2100,9 @@ static void TestSunTint(const std::string& games) {
       }
     }
     const std::vector<ID3D11SamplerState*> samplers(shader.samplers, sampler.Get());
-    const auto run = [&](ID3D11Buffer* lighting_buffer, ID3D11ShaderResourceView* tint) {
+    // `ambient`: t41 (the rays' AO); `ssao`: in place of the random t_ssao.
+    const auto run = [&](ID3D11Buffer* lighting_buffer, ID3D11ShaderResourceView* tint, ID3D11ShaderResourceView* ambient = nullptr,
+                         ID3D11ShaderResourceView* ssao = nullptr) {
       const auto output = Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET);
       ComPtr<ID3D11RenderTargetView> target;
       device->CreateRenderTargetView(output.Get(), nullptr, target.GetAddressOf());
@@ -2101,11 +2112,13 @@ static void TestSunTint(const std::string& games) {
       buffers[shader.lighting_slot] = lighting_buffer;
       std::vector<ID3D11ShaderResourceView*> bound(views.size());
       for (size_t slot = 0; slot < views.size(); ++slot) bound[slot] = views[slot].Get();
+      if (ssao != nullptr) bound[shader.ao_slot] = ssao;
       const D3D11_VIEWPORT viewport = {.Width = SIZE, .Height = SIZE, .MaxDepth = 1.f};
       context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
       context->VSSetShader(vertex.Get(), nullptr, 0);
       context->PSSetShader(pixel.Get(), nullptr, 0);
       context->PSSetShaderResources(0, static_cast<UINT>(bound.size()), bound.data());
+      context->PSSetShaderResources(41, 1, &ambient);
       context->PSSetShaderResources(50, 1, &tint);
       context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
       context->PSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
@@ -2137,6 +2150,18 @@ static void TestSunTint(const std::string& games) {
     CHECK(between > 0, "CONTROL %s: half the filter gave the unfiltered or the sunless picture", name.c_str());
     std::printf("%s Coloured Shadows: the filter 1 gives the sun colour 0's picture; %zu of %zu values sunlit unbound, %zu between at half\n",
                 name.c_str(), sunlit, unbound.size(), between);
+    const auto in_place = run(lit_buffer.Get(), nullptr, traced_ambient.Get());
+    const auto game_at_traced = run(lit_buffer.Get(), nullptr, nullptr, traced_ambient.Get());
+    size_t ao_apart = 0, ao_bits = 0, ao_shown = 0;
+    for (size_t value = 0; value < unbound.size(); ++value) {
+      ao_apart += same(in_place[value], game_at_traced[value]) ? 0 : 1;
+      ao_bits += (std::bit_cast<uint32_t>(in_place[value]) == std::bit_cast<uint32_t>(game_at_traced[value])) ? 0 : 1;
+      ao_shown += same(in_place[value], unbound[value]) ? 0 : 1;
+    }
+    CHECK(ao_apart == 0, "%s: %zu values of t41 0.37 differ from t_ssao 0.37 unbound", name.c_str(), ao_apart);
+    CHECK(ao_shown > 0, "CONTROL %s: t41 0.37 left the random t_ssao's picture", name.c_str());
+    std::printf("%s AO in place: t41 0.37 = t_ssao 0.37 (%zu apart, %zu not to the bit); the random t_ssao's picture %zu values apart\n",
+                name.c_str(), ao_apart, ao_bits, ao_shown);
   }
 }
 
