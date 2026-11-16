@@ -7,11 +7,13 @@
 # compiled shaders, part F's CONTROL (else the game's). -OutDir: where the test exe is built and run (ATN's
 # antivirus-excluded test folder, tools\tw\testbin); else build\. Holds tools/tw's GPU job lock while it runs when -Lock
 # names it. x86 (the games are 32-bit; the shaders are the same either way).
-# -Reference: the build before Sharp Ray-Traced Reflections (part H: the row off must give its bits).
+# -Reference: the build before Sharp Ray-Traced Reflections (part H: the row off must give its bits). -Today: the build before
+# Path-Traced Reflection Occlusion (part I: its strength 1 must give its bits).
 param([string]$Game = 'twthronesofbritannia', [string]$GameShaders = '', [string]$Built = '', [string]$Older = '', [string]$OutDir = '',
-      [string]$Lock = '', [string]$Reference = '')
-# SSR Quality's, Effects at Output Resolution's and Sharp Ray-Traced Reflections' floats in b13 (the game's shared.h).
-$settings = if ($Game -eq 'twattila') { @(56, 84, 102) } else { @(41, 67, 92) }
+      [string]$Lock = '', [string]$Reference = '', [string]$Today = '')
+# SSR Quality's, Effects at Output Resolution's, Sharp Ray-Traced Reflections' and the reflections' occlusion floats in b13
+# (the game's shared.h).
+$settings = if ($Game -eq 'twattila') { @(56, 84, 102, 103) } else { @(41, 67, 92, 93) }
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 if ($GameShaders -eq '') { $GameShaders = "D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\dump_shader_${Game}_pack\cso" }
@@ -40,9 +42,10 @@ while ($Lock -ne '') {
 }
 try {
   # Also kept in last_run.txt (a failing run's lines survive a caller's pipeline).
-  $arguments = @($GameShaders, $Built, $settings[0], $settings[1], $settings[2])
+  $arguments = @($GameShaders, $Built, $settings[0], $settings[1], $settings[2], $settings[3])
   $arguments += $(if ($Older -ne '') { $Older } else { '-' })
-  if ($Reference -ne '') { $arguments += $Reference }
+  $arguments += $(if ($Reference -ne '') { $Reference } else { '-' })
+  if ($Today -ne '') { $arguments += $Today }
   & (Join-Path $testBuild 'thrones_ssr.exe') @arguments | Tee-Object -FilePath (Join-Path $testBuild "last_run_$Game.txt")
   if ($LASTEXITCODE -ne 0) { throw 'Thrones SSR test failed' }
 } finally {
