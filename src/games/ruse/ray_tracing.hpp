@@ -368,9 +368,9 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
              && bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_A16B16G16R16F, &state.reflection, true);
     }
     if (made && state.guides) {
-      made = bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_B8G8R8A8_UNORM, D3DFMT_A8R8G8B8, &state.guide_albedo)
-             && bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.guide_normal)
-             && bridge::MakeShared(proxy, host_ex.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, D3DFMT_A16B16G16R16F, &state.guide_water)
+      made = bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_A8R8G8B8, &state.guide_albedo)
+             && bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_A16B16G16R16F, &state.guide_normal)
+             && bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_A16B16G16R16F, &state.guide_water)
              && SUCCEEDED(proxy->CreateShaderResourceView(state.guide_albedo.proxy.Get(), nullptr, state.guide_views[0].ReleaseAndGetAddressOf()))
              && SUCCEEDED(proxy->CreateShaderResourceView(state.guide_normal.proxy.Get(), nullptr, state.guide_views[1].ReleaseAndGetAddressOf()))
              && SUCCEEDED(proxy->CreateShaderResourceView(state.guide_water.proxy.Get(), nullptr, state.guide_views[2].ReleaseAndGetAddressOf()))
@@ -637,7 +637,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       context->CSSetConstantBuffers(0, 1, state.texel_settings.GetAddressOf());
       const std::array<ID3D11ShaderResourceView*, 2> bounce_inputs = {helper.rt_positions.srv.Get(), occlusion};
       context->CSSetShaderResources(1, 2, bounce_inputs.data());
-      run(state.texels_shader.Get(), state.traced_light_view.Get(), state.ground_light_uav.Get());
+      run(state.texels_shader.Get(), state.traced_light_view.Get(), state.ground_light.work_uav.Get());
       context->CSSetShaderResources(0, 3, NO_VIEWS.data());
       state.bounce_frame = bridge.frame;
     }
@@ -646,7 +646,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   bool reflected = false;
   if (traced && state.traced_reflections) {
     if (ID3D11ShaderResourceView* reflection = twattila::rt_scene::Reflections(context.Get())[0]; reflection != nullptr) {
-      run(state.reflection_texels_shader.Get(), reflection, state.reflection_uav.Get());
+      run(state.reflection_texels_shader.Get(), reflection, state.reflection.work_uav.Get());
       context->CSSetShaderResources(0, 1, NO_VIEWS.data());
       state.reflection_frame = bridge.frame;
       reflected = true;
