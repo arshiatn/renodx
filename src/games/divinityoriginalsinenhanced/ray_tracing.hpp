@@ -58,6 +58,10 @@ static float light_bounce_strength = 0.f;
 // DownsampleDepth), nothing is drawn into the sun's shadow atlas (R1 T1: 705 draws, 0.331 ms of GPU); its only reader
 // there is the shadow filter the rays replace.
 static float skip_shadow_maps = 0.f;
+// Skip the Game's SSAO (Experimental, off): under Ray-Traced AO, this frame traced before SSAO (at DownsampleDepth),
+// DeferredSSAO and its two blurs aren't drawn (R1 T1: 0.086 ms of GPU); the rays' AO, drawn over their whole result at
+// the sun pass before any reader, is all the sun pass and the forward surfaces take.
+static float skip_ssao = 0.f;
 
 // The sun's shadow filters (one a ShadowQuality: PCSS, unfiltered, VSM), each writing the RGBA8 mask the sun pass reads.
 constexpr std::array<uint32_t, 3> SHADOW_FILTER_SHADERS = {0x8F114E47, 0x7697084B, 0x1C0323E3};
@@ -342,6 +346,17 @@ inline bool PathsBringSky() {
   return twattila::rt_scene::Visibilities()[0] != nullptr;
 }
 
+// The rays' AO stands for SSAO's this frame: Skip the Game's SSAO on, Ray-Traced AO on and traced this frame (the sun
+// pass draws it over SSAO's whole result).
+inline bool SsaoReplaced() {
+  if (skip_ssao == 0.f) return false;
+  {
+    const std::unique_lock lock(state.mutex);
+    if (!state.settings.ambient_occlusion) return false;
+  }
+  return twattila::rt_scene::Visibilities()[1] != nullptr;
+}
+
 // A draw's render target if it is half the G-buffer's size (SSAO's), else null.
 inline ComPtr<ID3D11RenderTargetView> HalfSizeTarget(ID3D11DeviceContext* context) {
   ComPtr<ID3D11RenderTargetView> target;
@@ -608,25 +623,29 @@ constexpr auto OnSunLight = []<typename Context>(Context& command) -> renodx::ut
   return result;
 };
 
-// DeferredSSAO and its first blur (before them): not drawn while the paths bring the sky (true: skipped).
+// DeferredSSAO and its first blur (before them): not drawn while the paths bring the sky or the rays' AO stands for
+// SSAO's (true: skipped).
 constexpr auto OnSsao = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   ID3D11DeviceContext* context = nullptr;
   ComPtr<ID3D11DeviceContext1> context1;
   if (!NativeContext(command.cmd_list, &context, &context1) || !HalfSizeTarget(context)) return {};
-  return {.bypass = PathsBringSky()};
+  return {.bypass = PathsBringSky() || SsaoReplaced()};
 };
 
 // DeferredSSAOBlurV (before it): while the paths bring the sky its target open (1: their blocked rays are the
-// occlusion), the blur skipped.
+// occlusion), the blur skipped; skipped too while the rays' AO stands for SSAO's (the sun pass draws it over the target).
 constexpr auto OnSsaoBlur = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   ID3D11DeviceContext* context = nullptr;
   ComPtr<ID3D11DeviceContext1> context1;
   if (!NativeContext(command.cmd_list, &context, &context1)) return {};
   const ComPtr<ID3D11RenderTargetView> target = HalfSizeTarget(context);
-  if (!target || !PathsBringSky()) return {};
-  constexpr std::array<float, 4> OPEN = {1.f, 1.f, 1.f, 1.f};
-  context->ClearRenderTargetView(target.Get(), OPEN.data());
-  return {.bypass = true};
+  if (!target) return {};
+  if (PathsBringSky()) {
+    constexpr std::array<float, 4> OPEN = {1.f, 1.f, 1.f, 1.f};
+    context->ClearRenderTargetView(target.Get(), OPEN.data());
+    return {.bypass = true};
+  }
+  return {.bypass = SsaoReplaced()};
 };
 
 // DeferredFog (before its draw; t1 the scene lit by the sun and every local light): the light bounce from it

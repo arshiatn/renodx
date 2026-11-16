@@ -61,7 +61,9 @@ Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); 
   frame was traced before them (R1 T1: 705 draws, 0.331 ms of GPU; the atlas's only reader in R1's traces is the filter
   the rays replace). Ray-Traced AO is drawn over the SSAO
   result (`d1_rt_ambient`), so the sun pass and the forward materials read the rays' AO alone (the game's SSAO must
-  stay on). Ray Reconstruction gets the G-buffer guides (`d1_rt_guides`). The RT/PT preset is Attila's.
+  stay on); Skip the Game's SSAO (Experimental, off; after the page's last section until the page has a place for it)
+  leaves DeferredSSAO and its two blurs out while the frame was traced before them (R1 T1: 0.086 ms of GPU; their result
+  has no reader before the sun pass, which draws the rays' AO over all of it). Ray Reconstruction gets the G-buffer guides (`d1_rt_guides`). The RT/PT preset is Attila's.
   Global Illumination (Strength, off by default; the rays' One Bounce or the paths' ReSTIR GI, Experimental): before
   DeferredFog (0xEDA7F8A1) the scene, lit by the sun and every local light, is prepared, traced, resolved over frames
   (Expeditions' `rt_bounce_prepare` / `rt_bounce_resolve`) and added to it times each pixel's diffuse colour

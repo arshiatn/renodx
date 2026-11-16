@@ -27,6 +27,8 @@
 // 9. d1_rt_bounce_apply: a uniform resolved light L on a wall gives L x the diffuse colour x the strength, against the game's
 //    sun pass lighting that G-buffer with an ambient of L (sky = ground); the sky pixels nothing. Control (must fail):
 //    gBuffer4's specular colours in gBuffer3's place.
+// 10. Skip the Game's SSAO: d1_rt_ambient drawn over SSAO's whole result leaves the same bytes whether the game's SSAO
+//    drew it or not. Control (must fail): drawn over half of it.
 // d1_rays.exe <sun pass cso> <upscale_inputs> <upscale_output> <rt_inputs> <rt_guides> <rt_shadow> <rt_ambient> <full-screen vs>
 //   <rt_sky> <rt_bounce_apply>.
 #include <windows.h>
@@ -1004,6 +1006,38 @@ int main(int argc, char** argv) {
     CHECK(worst <= 1e-5);
     CHECK(lit > 1000 && sky_lit == 0);
     CHECK(control > 0.05);
+  }
+
+  // 10. Skip the Game's SSAO: d1_rt_ambient over SSAO's result (half size, RGBA16F as the game's) as ray_tracing.hpp draws
+  //     it (its whole size) leaves nothing of what was there: over a blurred SSAO result and over a texture nobody drew
+  //     this frame, the same bytes. Control (must fail): over the top half only.
+  {
+    const std::array<float, 4> texel = {static_cast<float>(WIDTH) / (WIDTH / 2) / WIDTH, static_cast<float>(HEIGHT) / (HEIGHT / 2) / HEIGHT, 0.f, 0.f};
+    const auto texel_buffer = Constants(texel);
+    const auto over = [&](bool game_drawn, UINT rows) {
+      std::vector<uint16_t> before((WIDTH / 2) * (HEIGHT / 2) * 4);
+      constexpr std::array<uint16_t, 4> HALVES = {0x0000, 0x3400, 0x3800, 0x3C00};  // 0, 0.25, 0.5, 1
+      for (auto& half : before) half = game_drawn ? HALVES[static_cast<size_t>(Random() * 4.f) & 3u] : 0x3C00;
+      const auto target = Texture(DXGI_FORMAT_R16G16B16A16_FLOAT, WIDTH / 2, HEIGHT / 2, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE,
+                                  before.data(), WIDTH * 4);
+      Draw(shaders.full_screen.Get(), shaders.rt_ambient.Get(), Target(target.Get()).Get(), WIDTH / 2, rows, {visibility_view.Get()},
+           {{0, texel_buffer.Get()}});
+      return Read(target.Get(), 8);
+    };
+    const auto after_game = over(true, HEIGHT / 2);
+    const auto after_skip = over(false, HEIGHT / 2);
+    size_t unequal = 0, control_unequal = 0;
+    const auto half_game = over(true, HEIGHT / 4);
+    const auto half_skip = over(false, HEIGHT / 4);
+    for (size_t i = 0; i < after_game.size(); ++i) {
+      unequal += (after_game[i] != after_skip[i]) ? 1 : 0;
+      control_unequal += (half_game[i] != half_skip[i]) ? 1 : 0;
+    }
+    std::printf("10. Skip the Game's SSAO: the rays' AO over a drawn SSAO result against over an undrawn one: %zu of %zu bytes unequal;\n"
+                "    control (over the top half only) %zu unequal\n",
+                unequal, after_game.size(), control_unequal);
+    CHECK(unequal == 0);
+    CHECK(control_unequal > 1000);
   }
 
   std::printf(failures == 0 ? "tw_d1_rays: all checks passed\n" : "tw_d1_rays: %d checks failed\n", failures);

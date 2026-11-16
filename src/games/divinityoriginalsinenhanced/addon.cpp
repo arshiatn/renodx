@@ -1271,6 +1271,18 @@ void ConfigureAddon() {
       .tooltip = "With ray-traced shadows: nothing is drawn into the game's sun shadow maps, the rays replace them. Faster.",
       .labels = {"Off", "On"},
   });
+  // The page has no place for it yet: it follows its last section, shown with the rays' AO.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSkipGameSsao",
+      .binding = &divinity::ray_tracing::skip_ssao,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Skip the Game's SSAO (Experimental)",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "With ray-traced AO: the game's SSAO isn't drawn, the rays replace it. Faster.",
+      .labels = {"Off", "On"},
+      .is_visible = [] { return rt_sliders.ambient_occlusion != 0.f; },
+  });
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     // The helper's opacity micromaps over the game's cut-out masks: off until a run shows them in this game.
