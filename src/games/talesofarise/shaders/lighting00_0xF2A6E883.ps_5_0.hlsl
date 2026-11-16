@@ -233,7 +233,7 @@ void main(
   r1.w = max(0, r1.w);
   r4.w = cmp(r1.w < 0.00999999978);
   if (r4.w != 0) {
-    r6.x = cmp(cb0[76].w == 0.000000);
+    r6.x = cmp(!TOA_GAME_GI);  // GT-VBGI: Bandai's GI off (shared.h)
     if (r6.x != 0) {
       r6.yzw = float3(0.00100000005,0.00100000005,0.00100000005);
       r7.xyzw = float4(0,0,0,0);
@@ -278,7 +278,7 @@ void main(
     r4.w = min(1, r4.w);
     r6.x = -5000 + r2.x;
     r7.w = saturate(0.000199999995 * r6.x);
-    r6.x = cmp(cb0[76].w == 0.000000);
+    r6.x = cmp(!TOA_GAME_GI);  // GT-VBGI: Bandai's GI off (shared.h)
     if (r6.x != 0) {
       r6.yzw = float3(0.00100000005,0.00100000005,0.00100000005);
     }

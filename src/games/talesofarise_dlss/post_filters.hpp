@@ -33,6 +33,9 @@ struct __declspec(uuid("9c1b57b2-0a66-457f-802a-b47ba2c2259a")) SharedData {
   std::atomic<float> ao_frame = 0.f;
   // Appended: GT-VBAO's Auto Thickness.
   std::atomic<float> ao_auto_thickness = 0.f;
+  // Appended: Bend's screen-space shadows and GT-VBGI in place of Bandai's (1 while each runs).
+  std::atomic<float> screen_space_shadows = 0.f;
+  std::atomic<float> gtvbgi = 0.f;
 };
 
 static renodx::utils::cross_addon::Shared<SharedData> shared;
@@ -63,6 +66,8 @@ struct Filters {
   float ao_quality = 1.f;      // 8 x 2^this samples per side
   float ao_frame = 0.f;        // 0-63, the noise's frame
   float ao_auto_thickness = 0.f;  // 1: each occluder as thick as it is wide
+  float screen_space_shadows = 0.f;  // 1: Bend's in place of Bandai's contact shadows' march toward the sun
+  float gtvbgi = 0.f;                // 1: GT-VBGI in place of Bandai's screen-space GI
 };
 
 // DLSS addon: every present; scale and sharpening 1 while it does not upscale, all 1 once it is unloaded.
@@ -80,6 +85,8 @@ inline void Store(const Filters& filters) {
   shared.data->ao_quality.store(filters.ao_quality, std::memory_order_relaxed);
   shared.data->ao_frame.store(filters.ao_frame, std::memory_order_relaxed);
   shared.data->ao_auto_thickness.store(filters.ao_auto_thickness, std::memory_order_relaxed);
+  shared.data->screen_space_shadows.store(filters.screen_space_shadows, std::memory_order_relaxed);
+  shared.data->gtvbgi.store(filters.gtvbgi, std::memory_order_relaxed);
 }
 
 
@@ -99,6 +106,8 @@ inline Filters Load() {
       .ao_quality = shared.data->ao_quality.load(std::memory_order_relaxed),
       .ao_frame = shared.data->ao_frame.load(std::memory_order_relaxed),
       .ao_auto_thickness = shared.data->ao_auto_thickness.load(std::memory_order_relaxed),
+      .screen_space_shadows = shared.data->screen_space_shadows.load(std::memory_order_relaxed),
+      .gtvbgi = shared.data->gtvbgi.load(std::memory_order_relaxed),
   };
 }
 
