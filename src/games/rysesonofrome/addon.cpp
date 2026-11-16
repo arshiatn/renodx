@@ -396,7 +396,13 @@ void BuildRuntimeData() {
                                        },
                                        shader_injection.light_bounce_denoise != 0.f);
   };
-  custom_shaders[0x897232B5] = {.crc32 = 0x897232B5, .on_replace = keep_shader, .on_draw = contact_shadows, .on_drawn = light_bounce};
+  // The same before and after its two permutations in ShaderCache.pak (rym_ census; not in a frame trace yet):
+  // 0x488BF732 (another sun specular term) and 0xCDB59F36 (no screen-space reflections: t6 unread). Their resources,
+  // slots and PER_BATCH are 0x897232B5's (fxc /dumpbin declarations and the cbuffer compared: only t6 missing in the
+  // second). The raised light limit's own lighting cs stays 0x897232B5's alone (graphics.hpp OnLightingDispatch).
+  for (const uint32_t tiled_lighting : {0x897232B5u, 0x488BF732u, 0xCDB59F36u}) {
+    custom_shaders[tiled_lighting] = {.crc32 = tiled_lighting, .on_replace = keep_shader, .on_draw = contact_shadows, .on_drawn = light_bounce};
+  }
   // The screen-space reflections' trace: left out while the traced reflections take its place.
   const auto reflection_trace = [](reshade::api::command_list*) {
     return !ray_tracing_installed || rysesonofrome::ray_tracing::OnReflectionTrace();
