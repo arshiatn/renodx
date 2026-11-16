@@ -3,6 +3,11 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16: Tales' title screen ("Press Any Key") won't take our keyboard input from a script (Enter / Space end in the
+  attract movie), so the Bend / GT-VBGI look shots couldn't be redone. Choose: you load SaveData_006 once during a run, or
+  allow one mouse click on Tales' title screen for scripted runs. Owner: ATN
+- [ ] NEW 11-16: Ryse costs (4K DLSS Quality): RT sun shadows +1.0 ms, path tracing +2.7 ms (+1.7 over RT), Path-Traced
+  Ambient about 0. Need work, or fine? (tools/tw/round_notes/redo_1116.md) Owner: ATN
 - [ ] NEW 11-16: Lean ReSTIR Reuse is faster with the same picture (2.72 -> 1.02 ms, same rRMSE) but still Experimental
   off: on by default under your 11-15 rule "faster + same picture = on"? Owner: ATN
 - [ ] NEW 11-16 06:xx: from the run analysis: Bend + GT-VBGI defaults (Tales +0.31 / +0.27 ms, Expeditions +0.90 / +0.49
@@ -173,6 +178,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator 06:xx rao_ merged ad541a4f (RT AO replaces the g
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
+- REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cos ... | coordinator, Ryse fix agent
 - RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
 - Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, G ... | rao_, then the next replace round
 - Attila features vs skills: sk3_ is comparing; then ATN decides which to add. Own ... | sk3_, then ATN
@@ -1508,6 +1514,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         started again" on the helper's 10 s idle release = info, not WARN; talesofarise_dlss frame_trace.hpp:341 polls
         renodx_trace_now every 60 presents on the game thread; Tales / Expeditions per-frame counters for the details panel.
         Owner: SHARED STEP agent (after rao_)
+      - [ ] REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cost_050544 + run_r2pt_053054
+        (r2_cost.ps1: keyboard Continue, PresentMon + nvidia-smi + pass copy per state, light_bounce=1). Skip 1 / 2 removed
+        NO shadow-map draws (5 passes, 862 draws in every state): sent to the Ryse fix agent. PresentMon GPU busy counts
+        only Ryse's D3D11 queue (not the helper's D3D12): use frame time. Tales redo failed at the title (keyboard). Tales
+        keys.ps1 focus fix without clicks (AttachThreadInput / Alt before SetForegroundWindow) to try. Owner: coordinator,
+        Ryse fix agent
       - [ ] RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116/out): D1 SSR never drew (the
         exe dropped or ignored SSREnabled; keep the game's lsx after exit next time); D2 gamma slider does nothing in HDR
         (PPGammaCorrection never draws); Higher Precision Scene darks +0.000..+0.026 stops, nothing broken, banding not
