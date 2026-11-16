@@ -2652,7 +2652,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     const float preset_value = (entry.choice == 0 ? KEEP : entry.choices[entry.choice - 1]);
     const OutputScaling scaling = ((effects_at_output && upscaling) ? OUTPUT_SCALING[index] : OutputScaling::NONE);
     const float current = entry.cvar.Get();
-    const bool replaced = index == SSR_QUALITY && talesofarise::rt_shadows::ReflectingRecently();
+    const bool replaced = index == SSR_QUALITY
+                          && (talesofarise::rt_shadows::ReflectingRecently()
+                              || (helper_rays_installed && talesofarise::dlss::ray_tracing::ReflectingRecently()));
     if (std::isnan(preset_value) && scaling == OutputScaling::NONE && !replaced) {
       if (entry.controlling) {
         entry.cvar.Set(entry.game_value);
@@ -2714,7 +2716,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // Bend's screen-space shadows (not under the rays' sun shadows) and GT-VBGI (not with the rays' bounce light: Global
   // Illumination's method), the passes' thickness the AO's; the HDR part leaves Bandai's own out while they run.
   auto shadows = twattila::feature_settings::SssSettings(screen_space_shadows_rows);
-  shadows.enabled = shadows.enabled && !talesofarise::rt_shadows::enabled.load();
+  const auto helper_rays = helper_rays_installed ? talesofarise::dlss::ray_tracing::CurrentSettings() : twattila::rt_scene::Settings{};
+  shadows.enabled = shadows.enabled && !talesofarise::rt_shadows::enabled.load() && !helper_rays.sun_shadows;
   gi_rows.ssao_thickness = ao_thickness;
   const auto gi = twattila::lighting_settings::LightBounceSliders(gi_rows);
   auto bounce = talesofarise::ue_light_bounce::ConstantsOf(gi, ao_frame);
@@ -2745,7 +2748,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       .ambient_occlusion = static_cast<float>(ambient_occlusion),
       .sun_shadow_distance = sun_distance_ratio,
       // One AO method (ao-gi.md rule 6): GT-VBAO off while the rays' AO or Path-Traced Ambient takes the AO's place.
-      .ao_method = (talesofarise::rt_shadows::ambient_occlusion.load(std::memory_order_relaxed) ? 0.f : static_cast<float>(ao_method)),
+      .ao_method = ((talesofarise::rt_shadows::ambient_occlusion.load(std::memory_order_relaxed) || helper_rays.ambient_occlusion)
+                        ? 0.f
+                        : static_cast<float>(ao_method)),
       .ao_radius = ao_radius,
       .ao_strength = ao_strength,
       .ao_thickness = ao_thickness,

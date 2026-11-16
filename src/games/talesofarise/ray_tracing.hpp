@@ -401,6 +401,20 @@ inline ComPtr<ID3D11ShaderResourceView> Ambient() {
   return internal::ThisFrame(internal::state.ambient, internal::state.frame);
 }
 
+// The helper's settings this frame (Update's).
+inline twattila::rt_scene::Settings CurrentSettings() {
+  const std::unique_lock lock(internal::state.mutex);
+  return internal::state.settings;
+}
+
+// The traced reflections reached the lighting within the last half second: the game's screen-space reflections stay off.
+inline bool ReflectingRecently() {
+  constexpr uint64_t RECENT_FRAMES = 30;
+  const std::unique_lock lock(internal::state.mutex);
+  const uint64_t reflected = internal::state.reflection.frame;
+  return internal::state.settings.reflections && reflected != UINT64_MAX && reflected + RECENT_FRAMES >= internal::state.frame;
+}
+
 // The traced ambient reached last frame's lighting: Bandai's SSAO (before this frame's trace) may leave the AO to it.
 inline bool AmbientTracedLastFrame() {
   const std::unique_lock lock(internal::state.mutex);
