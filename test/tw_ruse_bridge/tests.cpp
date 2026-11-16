@@ -22,7 +22,7 @@
 //    terrain shaders read (the shared R32F, read back on D3D9) near 1 on open ground (mean over 0.95: seen at the trace
 //    camera's 13.6 degree pitch about one sector of 32 at the horizon goes, 0.969; 0.9975 facing the camera), darker on the
 //    ground beside the plateau on screen, and the same shader over the same depth and constants on WARP within one
-//    sector's share (1 / 128) at 99% of the pixels.
+//    sector's share (1 / 128) at 99% of the pixels; released as at a D3D9 Reset and made again: the same occlusion.
 // 9. Guides (ray_tracing.hpp BindGuides: the rays' bounce and reflections): the three guide targets made by D3D9Ex and
 //    opened by D3D11 (B8G8R8A8, RGBA16F x 2) as render targets 1-3 beside a 10-bit scene target: ColorFill clears them
 //    (RGBA16F too), each target's write mask holds, a blended draw (SRCALPHA / INVSRCALPHA: D3D9's one blend state)
@@ -855,6 +855,25 @@ int main(int argc, char** argv) {
     std::printf("GT-VBAO against WARP: mean difference %.2e, largest %.4f, %zu of %zu within 1 / 128\n", difference_sum / pixels, difference_most, within,
                 pixels);
     CHECK(within * 100 >= pixels * 99);
+
+    // The game's swap chain ending (a D3D9 Reset: addon.cpp's destroy_swapchain): the bridge's and the rays' objects go,
+    // and after the next frame's camera pass and mask copy ShadeGround makes them again (the same size here: the same
+    // occlusion).
+    ruse::ray_tracing::ReleaseHost();
+    bridge::Release();
+    CHECK(rays.occlusion.host == nullptr && rays.shadows == nullptr && state.output.host == nullptr && !state.camera_valid);
+    state.camera_valid = true;
+    rays.prepass_depth = reinterpret_cast<uint64_t>(depth_surface.Get());
+    rays.ground_mask = reinterpret_cast<uint64_t>(scratch.Get());
+    host->BeginScene();
+    const bool shaded_again = ruse::ray_tracing::ShadeGround(&command_list);
+    host->EndScene();
+    CHECK(shaded_again && rays.occlusion.host != nullptr && state.output.host != nullptr);
+    if (shaded_again) {
+      const bool same = ReadHost(host, rays.occlusion.host_surface.Get(), 4) == occlusion;
+      std::printf("GT-VBAO after the objects' release: made again, the same occlusion %d\n", same ? 1 : 0);
+      CHECK(same);
+    }
   }
 
   // 9. Guides.

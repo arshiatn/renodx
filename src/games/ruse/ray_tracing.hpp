@@ -929,6 +929,32 @@ inline void OnPresent() {
   });
 }
 
+// The game's device's objects (its shaders, the mask, the shared textures, the white texels) with its device and at its
+// swap chain's end (a D3D9 Reset: the size may change): the next ShadeGround makes them again, its D3D11 ones with them
+// at the bridge's size; last frame's depth is gone with them.
+inline void ReleaseHost() {
+  state.depth_copy.Reset();
+  state.shadows.Reset();
+  state.unshadowed.Reset();
+  state.unlit.Reset();
+  state.bound_frame = UINT32_MAX;
+  state.kept_frame = UINT32_MAX;
+  state.visibility = {};
+  state.occlusion = {};
+  state.ground_light = {};
+  state.reflection = {};
+  state.guide_albedo = {};
+  state.guide_normal = {};
+  state.guide_water = {};
+  state.guides_closed = true;
+  state.guides_bound = false;
+  state.ground_mask = 0;
+  state.mask_frame = UINT32_MAX;
+  state.prepass_depth = 0;
+  state.prepass_target = 0;
+  state.failed = false;
+}
+
 // The proxy's device (rt_core's objects, ours on it) or the game's (its shaders, the mask) going; no other device (rt_core
 // forgets its scene at any D3D11 device's end).
 inline void OnDestroyDevice(reshade::api::device* device) {
@@ -975,26 +1001,10 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.texels_shader.Reset();
     state.reflection_texels_shader.Reset();
     state.texel_settings.Reset();
+    state.failed = false;
   } else {
-    state.depth_copy.Reset();
-    state.shadows.Reset();
-    state.unshadowed.Reset();
-    state.unlit.Reset();
-    state.bound_frame = UINT32_MAX;
-    state.visibility = {};
-    state.occlusion = {};
-    state.ground_light = {};
-    state.reflection = {};
-    state.guide_albedo = {};
-    state.guide_normal = {};
-    state.guide_water = {};
-    state.guides_closed = true;
-    state.guides_bound = false;
-    state.ground_mask = 0;
-    state.prepass_depth = 0;
-    state.prepass_target = 0;
+    ReleaseHost();
   }
-  state.failed = false;
 }
 
 }  // namespace ruse::ray_tracing

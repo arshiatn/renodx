@@ -467,6 +467,13 @@ void UninstallPresentHooks() {
 void OnDestroyGameSwapchain(reshade::api::swapchain* swapchain, bool) {
   if (swapchain->get_device()->get_api() != reshade::api::device_api::d3d9
       && !renodx::utils::device_proxy::IsProxyDevice(swapchain->get_device())) return;
+  // A D3D9 Reset (a resolution change, a lost device) ends the game's swap chain, not its device: the bridge's and the
+  // rays' objects at the old size go (made again at the new one). The replay's buffer mirrors stay (managed buffers
+  // survive a Reset).
+  if (swapchain->get_device() == ruse::bridge::state.host_device) {
+    ruse::ray_tracing::ReleaseHost();
+    ruse::bridge::Release();
+  }
   UninstallPresentHooks();
   frame_latched = false;
 }

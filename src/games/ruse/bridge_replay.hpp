@@ -169,6 +169,7 @@ struct State {
   ComPtr<ID3D11Query> statistics;
   ComPtr<ID3D11Buffer> identity;                   // CaptureScene's b2 (never read)
   ComPtr<ID3D11DepthStencilView> capture_depth;    // bound for rt_core's test of the main view (nothing drawn into it)
+  std::array<UINT, 2> capture_size = {};           // capture_depth's: the helper's
 };
 inline State state;
 
@@ -601,24 +602,27 @@ inline void CaptureScene(reshade::api::command_list* cmd_list, const std::array<
   device->GetImmediateContext(context.GetAddressOf());
   ComPtr<ID3D11DeviceContext1> context1;
   if (FAILED(context.As(&context1))) return;
-  if (state.capture_depth == nullptr) {
+  // The depth at the helper's size (rt_core's main view), made again when that size changes (a resolution change).
+  const std::array<UINT, 2> helper_size = {twattila::dlaa_bridge::bridge.width, twattila::dlaa_bridge::bridge.height};
+  if (state.capture_depth == nullptr || state.capture_size != helper_size) {
     const D3D11_BUFFER_DESC constants = {.ByteWidth = 256 * 16, .Usage = D3D11_USAGE_DYNAMIC, .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
                                          .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
     const D3D11_BUFFER_DESC identity = {.ByteWidth = IDENTITY_SLOTS * 16 * 16, .Usage = D3D11_USAGE_DEFAULT,
                                         .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
-    const D3D11_TEXTURE2D_DESC depth = {.Width = twattila::dlaa_bridge::bridge.width, .Height = twattila::dlaa_bridge::bridge.height,
+    const D3D11_TEXTURE2D_DESC depth = {.Width = helper_size[0], .Height = helper_size[1],
                                         .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_D32_FLOAT, .SampleDesc = {.Count = 1},
                                         .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_DEPTH_STENCIL};
     ComPtr<ID3D11Texture2D> depth_texture;
     if ((state.game_constants == nullptr && FAILED(device->CreateBuffer(&constants, nullptr, state.game_constants.GetAddressOf())))
-        || FAILED(device->CreateBuffer(&identity, nullptr, state.identity.GetAddressOf()))
+        || (state.identity == nullptr && FAILED(device->CreateBuffer(&identity, nullptr, state.identity.GetAddressOf())))
         || FAILED(device->CreateTexture2D(&depth, nullptr, depth_texture.GetAddressOf()))
-        || FAILED(device->CreateDepthStencilView(depth_texture.Get(), nullptr, state.capture_depth.GetAddressOf()))) {
+        || FAILED(device->CreateDepthStencilView(depth_texture.Get(), nullptr, state.capture_depth.ReleaseAndGetAddressOf()))) {
       reshade::log::message(reshade::log::level::warning, "[R.U.S.E.] Ray tracing: the scene's objects weren't made: off");
       state.capture_depth.Reset();
       state.rays = false;
       return;
     }
+    state.capture_size = helper_size;
   }
   std::array<double, 16> move = {};
   for (int row = 0; row < 4; ++row) {

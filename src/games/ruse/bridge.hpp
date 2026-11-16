@@ -498,13 +498,9 @@ inline void OnPushConstants(uint32_t layout_param, uint32_t first, uint32_t coun
   }
 }
 
-// The game's D3D9 device (its INTZ depths with it) or the proxy's D3D11 device going (no other device: overlays and
-// helpers make their own): the bridge's objects go too; Ready makes them again with the next ones, the helper's set with
-// the proxy's. host_device stays for the replay's and the rays' handlers after this one (the next device's first INTZ
-// depth replaces it).
-inline void OnDestroyDevice(reshade::api::device* device) {
-  const bool proxy = renodx::utils::device_proxy::IsProxyDevice(device);
-  if (!proxy && device != state.host_device) return;
+// The bridge's objects on both devices (its passes, the shared textures at its size, the fences) with either device, and
+// at the game's swap chain's end (a D3D9 Reset ends it, not the device: the size may change); Ready makes them again.
+inline void Release() {
   state.host_fence.reset();
   state.proxy_fence.reset();
   state.color = {};
@@ -525,6 +521,16 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   state.camera_valid = false;
   state.pixel_texture_0 = 0;
   state.scene_depth = 0;
+  state.depth_frame = UINT32_MAX;
+}
+
+// The game's D3D9 device (its INTZ depths with it) or the proxy's D3D11 device going (no other device: overlays and
+// helpers make their own): the bridge's objects go too, the helper's set with the proxy's. host_device stays for the
+// replay's and the rays' handlers after this one (the next device's first INTZ depth replaces it).
+inline void OnDestroyDevice(reshade::api::device* device) {
+  const bool proxy = renodx::utils::device_proxy::IsProxyDevice(device);
+  if (!proxy && device != state.host_device) return;
+  Release();
   if (proxy) {
     twattila::dlaa_bridge::Release();
   } else {
