@@ -153,8 +153,9 @@ inline void WaitProxy(ID3D11Device* proxy, ID3D11DeviceContext* context) {
   ComPtr<ID3D11Query> query;
   if (FAILED(proxy->CreateQuery(&desc, query.GetAddressOf()))) return;
   context->End(query.Get());
+  // S_OK: done; an error (a removed device) never becomes S_OK.
   BOOL done = FALSE;
-  while (context->GetData(query.Get(), &done, sizeof(done), 0) == S_FALSE || done == FALSE) {
+  while (context->GetData(query.Get(), &done, sizeof(done), 0) == S_FALSE) {
     YieldProcessor();
   }
 }
