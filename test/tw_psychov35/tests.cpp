@@ -22,7 +22,8 @@
 //    or a curve on each channel), PsychoV35 right after Hue Clip as their shaders call it. Its WH3 form agrees with part
 //    4's WH3 (1.00); WH2's own t00 (curve 6: its anchored handoff, at burns 0.1, 0.3 and 0.5) too (1.00); WH1's tone
 //    mappers (curve 7: Attila's engine Hue Clip without the highlight limit, the stock whiteout off and 0 to 10); Pharaoh's
-//    t00 (curve 8: its lift, black and mid-gray handoff at burn 0.2 and 0).
+//    t00 (curve 8: its lift, black and mid-gray handoff at burn 0.2 and 0), Troy's t00 the same form (0C12E608, Pharaoh's
+//    976C1C74 twin without post_processing_strength) at the same burn.
 // R.U.S.E.'s final post (ruse/shaders/postprocess00_0x232EB5DF, D3D9 ps_3_0 in the game, compiled here as ps_5_0 /Gec from
 // the same source) runs in parts 3 and 4 too (SDR output: its whites at 203 nits, as addon.cpp latches them), at the
 // median map's grade, and:
@@ -1126,9 +1127,11 @@ static void ReportHue(const Chain& chain) {
   // D275C403's bloom_buffer in ATN's 2026-11-14 battle traces; his campaign's 0.144 / 10).
   curves.emplace_back("5. WH1's tone mappers (D275C403), no whiteout", 7, 0.f);
   curves.emplace_back("5. WH1's tone mappers (D275C403), whiteout 0 to 10", 7, 10.f);
-  // Then Pharaoh's t00 (curve 8) at its traced burn 0.2 (battle and siege, tools/tw/pharaoh/phase2.md) and without one.
-  curves.emplace_back("5. Pharaoh's t00 (976C1C74), burn 0.2", 8, 0.2f);
-  curves.emplace_back("5. Pharaoh's t00 (976C1C74), burn 0", 8, 0.f);
+  // Then Pharaoh's t00 (curve 8) at its traced burn 0.2 (battle and siege, tools/tw/pharaoh/phase2.md) and without one;
+  // Troy's t00 0C12E608 is the same form (its lift, black and handoff; no post_processing_strength), its burn 0.2 in all
+  // 26 traces that draw it (tools/tw/troy/runs, ps b1 c0.y; brightness 1 or 2.2): one row for both.
+  curves.emplace_back("5. Pharaoh's and Troy's t00 (976C1C74, 0C12E608), burn 0.2", 8, 0.2f);
+  curves.emplace_back("5. Pharaoh's and Troy's t00 (976C1C74, 0C12E608), burn 0", 8, 0.f);
   for (const auto& [curve_name, curve, white] : curves) {
     games.push_back({curve_name.c_str(), [&, curve, white](float mode, float hue_clip) {
                        Bindings bindings;
