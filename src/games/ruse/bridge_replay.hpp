@@ -173,14 +173,19 @@ struct State {
 };
 inline State state;
 
-// A1: the game's writes (map_buffer_region fires after Lock with its pointer, unmap before Unlock).
-inline void OnMapBuffer(reshade::api::device*, reshade::api::resource resource, uint64_t offset, uint64_t size,
+// A1: the game's writes (map_buffer_region fires after Lock with its pointer, unmap before Unlock); the D3D9 device's
+// alone (none of the proxy's or another D3D11 device's resources in the mirrors).
+inline void OnMapBuffer(reshade::api::device* device, reshade::api::resource resource, uint64_t offset, uint64_t size,
                         reshade::api::map_access access, void** data) {
-  if (access == reshade::api::map_access::read_only || data == nullptr || *data == nullptr) return;
+  if (device->get_api() != reshade::api::device_api::d3d9 || access == reshade::api::map_access::read_only || data == nullptr
+      || *data == nullptr) {
+    return;
+  }
   state.mappings.insert_or_assign(resource.handle, Mapping{.offset = offset, .size = size, .data = *data});
 }
 
 inline void OnUnmapBuffer(reshade::api::device* device, reshade::api::resource resource) {
+  if (device->get_api() != reshade::api::device_api::d3d9) return;
   Mapping mapping;
   if (!state.mappings.erase_if(resource.handle, [&](const auto& entry) {
         mapping = entry.second;
@@ -209,7 +214,8 @@ inline void OnUnmapBuffer(reshade::api::device* device, reshade::api::resource r
       });
 }
 
-inline void OnDestroyResource(reshade::api::device*, reshade::api::resource resource) {
+inline void OnDestroyResource(reshade::api::device* device, reshade::api::resource resource) {
+  if (device->get_api() != reshade::api::device_api::d3d9) return;
   state.mirrors.erase(resource.handle);
   state.mappings.erase(resource.handle);
 }
