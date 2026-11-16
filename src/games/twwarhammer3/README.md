@@ -1,5 +1,37 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### One method per effect, presets (2026-11-16 fix round; built only, not run in game)
+
+- Fixed: **Bend Screen-Space Shadows** (and the rays with Rays Replace Shadow Maps off) no longer stack on the game's own
+  contact shadows: the sun mask draws with the game's screen-space shadow flag 0 (a copy of its constants), the rest of
+  the mask as the game's. WARP (`test/tw_warhammer3_shaders` 4): the game's flag 0 bit for bit.
+- Fixed: **torch shadows under the rays**: the 4 point-light shaders that read the game's point shadow map run their
+  unshadowed twin, so a traced light gets the rays' shadow alone, not the map's on top (5: the game's shader with its map
+  lit is its twin bit for bit). Lights the rays leave out are unshadowed while the rays run.
+- Fixed: with **Ray-Traced Specular Occlusion** the reflected cubes take the rays' occlusion alone, no longer the AO on
+  top (6: the AO no longer changes them, within 4e-7; the older build's change by up to 92%).
+- Fog Shadows, Specular Occlusion and Water Caustics start off (the RT/PT preset still turns them on); Recommended no
+  longer turns Sky Debanding on; Reset puts the four VFX Brightness rows back to 1. Saved presets: those rows cleared
+  once (settings revision 34).
+- In game: Bend and the rays with the kept maps (contact shadows once), torch-lit walls and soldiers under the rays,
+  metal and wet stone with Specular Occlusion on.
+
+### Gamma Correction in every mode (2026-11-16; built only, not run in game)
+
+- **Gamma Correction** (same row, on by default) now also acts in the HDR modes, as the other TW games': the game's picture
+  as a gamma 2.2 display shows it. How much that changes comes from the game's own gamma, `g_gamma_output` in t00: at 2.0
+  (what the offline tests assume; never logged in a game run) the same as Warhammer II's (deeper shadows; PsychoV35 at
+  Paper White 203: 1 % grey 2.03 -> 1.28 nits, 18 % 36.54 -> 30.78, Peak still Peak), at 2.2 nothing. The row shows in
+  every Rendering Mode. Rendering Mode SDR on an HDR display: On is that 2.2 picture whatever the game's gamma, Off gamma 2.0
+  (before: On the game's picture at its own gamma, Off the 2.2 one); on an SDR display nothing changes. The swap chain proxy
+  decodes the frame with its gamma (twattila/frame_gamma.hlsli: 2.2 on, 2.0 off), the lens flares, the lens blood, the
+  cutscenes and Sharpening encode with it, so at Lens Flare 1 and Paper White = UI the game's own add stays exact.
+- Proven offline: test/tw_vanilla_exact (Vanilla still the game's bytes; the Gamma Correction check on t00, the flares and
+  the lens blood in every Rendering Mode) and test/tw_psychov35 (at the game's gamma 2.2 the picture as before in every mode
+  but Rendering Mode SDR with Gamma Correction off, now gamma 2.0).
+- In game: one trace of t00's `g_gamma_output`; then Rendering Mode SDR and every HDR mode with the row on and off: scene,
+  UI, lens flares, cutscenes, Sharpening.
+
 ### Ray-Traced AO keeps GT-VBAO's setting (2026-11-16; built only, not run in game)
 
 - Ray-Traced and Path-Traced AO already stood in place of the game's SSAO and GT-VBAO here (the game's passes skipped, the

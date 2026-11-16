@@ -2,11 +2,13 @@
 // PsychoV35, Rendering Mode 3) and WH3's t00 (Rendering Mode 4), compiled by run.ps1 from this tree and from its -Before with
 // the build's flags. tests.exe <before_cso> <after_cso>. PsychoV35: Musa's (twattila/psycho_test35.hlsli), its own v35_*
 // sliders.
-// 1. Every other mode gives the same bits as -Before: Attila SDR / PsychoV30 / PsychoV31, WH3 SDR / Extended /
-//    PsychoV30 / PsychoV31, at HDR10, scRGB and SDR output, sliders at their defaults and moved, Hue Clip at 0.7 and
-//    PsychoV35's sliders moved (which must do nothing there). 64 colours (every hue, greys, negative channels, black) x
-//    48 brightness steps. Attila's hdr_to_screen (t01 - t08): V30 / V31 with Gamma Correction off (since 2026-11-16 it
-//    acts in every mode; tw_vanilla_exact checks it and Rendering Mode SDR).
+// 1. Every other mode gives the same bits as -Before: Attila SDR / PsychoV30 / PsychoV31, WH3 Extended / PsychoV30 /
+//    PsychoV31, at HDR10, scRGB and SDR output, sliders at their defaults and moved, Hue Clip at 0.7 and PsychoV35's
+//    sliders moved (which must do nothing there). 64 colours (every hue, greys, negative channels, black) x 48 brightness
+//    steps. Attila's hdr_to_screen (t01 - t08): V30 / V31 with Gamma Correction off (since 2026-11-16 it acts in every
+//    mode; tw_vanilla_exact checks it and Rendering Mode SDR). WH3's t00 the same with Gamma Correction off, its picture
+//    (its frame since 2026-11-16 in the frame's gamma, 2.0 there; -Before's 2.2) within 1e-5 of each pixel's brightest
+//    channel; its Gamma Correction and Rendering Mode SDR in part 7.
 // 2. Hue Clip alone (twattila/psycho35.hlsli's HueClip, every game's): fire orange and sky blue move their middle
 //    channel toward the clip's place, the smallest and largest channel keep their ratio, BT.709 luminance is kept; grey
 //    and strength 0 unchanged; a negative channel keeps its sign; a dark colour (far below the clip) about unchanged.
@@ -33,11 +35,11 @@
 //    Extended, within 2% in V31 Native Tone and V35 (both after the response; Full Replacement's printed). Extended's
 //    ramp within Peak, grey never darker. Markers (the 15 scene draws that undo the post's grade in advance, census C2):
 //    SDR gives their authored colour, Extended the same; the other modes' shift printed.
-// 7. Gamma Correction in every mode (Rome II, Warhammer I / II, Troy, Pharaoh: twattila/frame_gamma.hlsli) on each one's
-//    hdr_to_screen t01 against 242d6101's: off and Rendering Mode SDR the same picture, on the 2.2 display's decode
-//    within Peak (TestGammaCorrection).
-// 8. Report: PsychoV35's toe against Vanilla below white (Attila, Thrones of Britannia): Recommended against Rendering
-//    Mode SDR, grey in shadows and mid tones and colour at equal lightness (ReportToe).
+// 7. Gamma Correction in every mode (Rome II, Warhammer I / II / III, Troy, Pharaoh: twattila/frame_gamma.hlsli) on each
+//    one's hdr_to_screen t01 (WH3: t00) against 242d6101's: off and Rendering Mode SDR the same picture, on the 2.2
+//    display's decode within Peak (TestGammaCorrection). WH3 at the game's gamma 2.0.
+// 8. Report: PsychoV35's toe against Vanilla below white (Attila, Thrones of Britannia, Warhammer III): Recommended
+//    against Rendering Mode SDR, grey in shadows and mid tones and colour at equal lightness (ReportToe).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -567,11 +569,17 @@ static Bindings Wh3ToneMapper(const std::vector<Float4>& scene, bool identity_gr
   return b;
 }
 
-// The tone mappers' outputs as linear BT.709 relative to the UI's white: Attila in its frame's gamma (RunAttila), WH3 2.2.
+// The tone mappers' outputs as linear BT.709 relative to the UI's white, decoded in their frame's gamma (FrameGamma).
 static Float3 Decode(const Float4& o, float gamma) {
   Float3 c;
   for (int i = 0; i < 3; ++i) c[i] = std::copysign(std::pow(std::abs(o[i]), gamma), o[i]);
   return c;
+}
+
+// The frame's gamma, as the swap chain proxy decodes it (twattila/frame_gamma.hlsli TW_FRAME_GAMMA): 2.2 with Gamma
+// Correction, 2.0 without; Rendering Mode SDR on an SDR display the other way round.
+static float FrameGamma(float mode, float encoding, float correction) {
+  return ((correction != 0.f) != (encoding == 2.f && mode < 0.5f)) ? 2.2f : 2.f;
 }
 
 static Float3 Bt709ToBt2020(const Float3& c) {
@@ -699,6 +707,25 @@ static void MoveWh3Sliders(wh3::ShaderInjectData* si, int set) {
 static void TestBits(const std::map<std::string, Pair>& shaders) {
   const auto columns = PatternColumns();
   const auto scene = Scene(columns, -6.f, 0.4f, 1.f);
+  // WH3's t00 since 2026-11-16: its frame in the frame's gamma (2.0 without Gamma Correction, d3d6425b's 2.2): the picture
+  // compared, within 1e-5 of each pixel's brightest channel.
+  const auto different_pictures = [](const char* name, const Pair& pair, const Bindings& bindings, float before_gamma, float after_gamma) {
+    const auto a = Draw(pair.before, bindings);
+    const auto b = Draw(pair.after, bindings);
+    int different = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+      const Float3 before = Decode(a[i], before_gamma);
+      const Float3 after = Decode(b[i], after_gamma);
+      const float brightest = std::max({1e-6f, std::abs(before[0]), std::abs(before[1]), std::abs(before[2])});
+      bool moved = false;
+      for (int c = 0; c < 3; ++c) moved = moved || !(std::abs(after[c] - before[c]) <= 1e-5f * brightest);
+      if (moved && different == 0) {
+        std::printf("  %s pixel %zu: %.9g %.9g %.9g vs %.9g %.9g %.9g\n", name, i, before[0], before[1], before[2], after[0], after[1], after[2]);
+      }
+      if (moved) ++different;
+    }
+    return different;
+  };
   int draws = 0;
   int total_different = 0;
   for (const auto& [name, pair] : shaders) {
@@ -710,7 +737,8 @@ static void TestBits(const std::map<std::string, Pair>& shaders) {
     // Attila's hdr_to_screen since 2026-11-16: Gamma Correction acts in every Rendering Mode and Rendering Mode SDR's
     // Paper White is scaled in the frame's gamma (tw_vanilla_exact checks both); the HDR modes without it keep their bits.
     const bool attila_output = !wh3_shader && !tone_mapper;
-    const std::vector<float> modes = (wh3_shader ? std::vector<float>{0.f, 1.f, 2.f, 3.f}
+    // WH3's Rendering Mode SDR and Gamma Correction: tw_vanilla_exact and part 7.
+    const std::vector<float> modes = (wh3_shader ? std::vector<float>{1.f, 2.f, 3.f}
                                                  : (attila_output ? std::vector<float>{1.f, 2.f} : std::vector<float>{0.f, 1.f, 2.f}));
     int different = 0;
     for (const float mode : modes) {
@@ -722,6 +750,7 @@ static void TestBits(const std::map<std::string, Pair>& shaders) {
             bindings = Wh3ToneMapper(scene, set != 1, 0.9f, set == 0 ? 0.1f : 0.5f);
             auto si = Wh3Injection(mode, encoding);
             MoveWh3Sliders(&si, set);
+            si.gamma_correction = 0.f;
             bindings.injection = Bytes(si);
           } else {
             bindings = (tone_mapper ? AttilaToneMapper(scene, set == 0, 0.002f, 1.6f) : AttilaHdrToScreen(scene, set == 0));
@@ -732,13 +761,15 @@ static void TestBits(const std::map<std::string, Pair>& shaders) {
           }
           const std::string label = name + " mode " + std::to_string(static_cast<int>(mode)) + " output " +
                                     std::to_string(static_cast<int>(encoding)) + " sliders " + std::to_string(set);
-          different += CompareBits(label.c_str(), pair, bindings);
+          different += wh3_shader ? different_pictures(label.c_str(), pair, bindings, 2.2f, 2.f) : CompareBits(label.c_str(), pair, bindings);
           ++draws;
         }
       }
     }
     std::printf("1. %s: modes %s, %d pixels different\n", name.c_str(),
-                wh3_shader ? "SDR / Extended / V30 / V31" : (attila_output ? "V30 / V31 (Gamma Correction off)" : "SDR / V30 / V31"), different);
+                wh3_shader ? "Extended / V30 / V31 (Gamma Correction off, the picture)"
+                           : (attila_output ? "V30 / V31 (Gamma Correction off)" : "SDR / V30 / V31"),
+                different);
     total_different += different;
   }
   std::printf("1. %d draws of %u pixels on each side, %d pixels different\n", draws, WIDTH * HEIGHT, total_different);
@@ -877,10 +908,7 @@ static std::vector<Float3> RunAttila(const Chain& chain, const std::vector<Float
   Bindings second = AttilaHdrToScreen(handoff, true);
   second.injection = Bytes(si);
   const auto output = Draw(chain.attila_hdr_to_screen->after, second);
-  // Decoded as the swap chain proxy does, with the frame's gamma (twattila/shared.h TW_FRAME_GAMMA): 2.2 with Gamma
-  // Correction, 2.0 without; Rendering Mode SDR on an SDR display the other way round.
-  const bool sdr_mode_on_sdr = (si.swap_chain_encoding == 2.f && si.hdr < 0.5f);
-  const float frame_gamma = ((si.gamma_correction != 0.f) != sdr_mode_on_sdr) ? 2.2f : 2.f;
+  const float frame_gamma = FrameGamma(si.hdr, si.swap_chain_encoding, si.gamma_correction);
   std::vector<Float3> linear;
   for (const auto& o : output) linear.push_back(Decode(o, frame_gamma));
   return linear;
@@ -907,8 +935,9 @@ static std::vector<Float3> RunWh3(const Chain& chain, const std::vector<Float4>&
   Bindings bindings = Wh3ToneMapper(scene, true, 1.f, burn);
   bindings.injection = Bytes(si);
   const auto output = Draw(chain.wh3->after, bindings);
+  const float frame_gamma = FrameGamma(si.hdr, si.swap_chain_encoding, si.gamma_correction);
   std::vector<Float3> linear;
-  for (const auto& o : output) linear.push_back(Decode(o, 2.2f));
+  for (const auto& o : output) linear.push_back(Decode(o, frame_gamma));
   return linear;
 }
 
@@ -1283,7 +1312,8 @@ static void ReportHue(const Chain& chain) {
 
 // 8. PsychoV35's toe against Vanilla below white ///////////////////////////////////////////////////////////////////
 
-// Attila's and Thrones' Recommended (PsychoV35 at its defaults, Hue Clip 40) against Rendering Mode SDR through the
+// Attila's and Thrones' Recommended (PsychoV35 at its defaults, Hue Clip 40; Warhammer III's: Hue Clip 100, its t00 at
+// burn 0.3, the scene's white at its SDR white) against Rendering Mode SDR through the
 // same chain, both as a display shows them (Gamma Correction on: decoded at 2.2), at 1000 / 203 nits, below the game's
 // white: grey where SDR is 0.05 - 1 nits (shadows), 1 - 15 (mid tones), 15 - 100 (upper mid tones); colour (OkLab chroma
 // at equal lightness, as part 6 of Divinity 2's) where SDR is 1 - 30 and 30 - 150 nits. The identity S-curve, and
@@ -1298,6 +1328,7 @@ static void ReportToe(const Chain& chain) {
   struct Game {
     const char* name;
     std::function<std::vector<Float3>(float mode)> run;
+    float v35_mode = 3.f;  // PsychoV35's Rendering Mode
   };
   const std::vector<Game> games = {
       {"Attila, identity S-curve", [&](float mode) {
@@ -1311,11 +1342,17 @@ static void ReportToe(const Chain& chain) {
          return RunAttila(chain, scene, si, false);
        }},
       {"Thrones of Britannia, identity S-curve", [&](float mode) { return RunThrones(chain, scene, ThronesInjection(mode, 1.f)); }},
+      {"Warhammer III, burn 0.3", [&](float mode) {
+         auto si = Wh3Injection(mode, 1.f);
+         si.hue_clip = 1.f;
+         return RunWh3(chain, Scene(columns, -10.f, 0.25f, Wh3White(0.3f)), si, 0.3f);
+       },
+       4.f},
   };
   constexpr float NITS = 203.f;
   for (const auto& game : games) {
     const auto sdr = game.run(0.f);
-    const auto v35 = game.run(3.f);
+    const auto v35 = game.run(game.v35_mode);
     struct Range {
       float low = 1e9f, high = 0.f;
     };
@@ -1550,6 +1587,15 @@ static Bindings GammaBindings(const std::vector<Float4>& scene) {
   return b;
 }
 
+// WH3's t00 (its tone mapper and hdr_to_screen in one), burn 0.3, at the game's gamma 2.0 as the others (its g_gamma_output
+// has never been logged in a game run; at 2.2 its Gamma Correction changes nothing, part 1).
+static Bindings Wh3GammaBindings(const std::vector<Float4>& scene) {
+  Bindings b = Wh3ToneMapper(scene, true, 1.f, 0.3f);
+  b.words["g_gamma_output"] = F({2.f});
+  b.words["g_inv_gamma_output"] = F({0.5f});
+  return b;
+}
+
 // a. Gamma Correction off (every mode) and Rendering Mode SDR: 242d6101's picture, the frame decoded with its gamma
 //    (TW_FRAME_GAMMA; 242d6101's frame: 2.2) within 1e-5 of each texel's brightest channel. Rendering Mode SDR on an HDR
 //    display swaps on and off (at in-game gamma 2.0): on is now the 2.2 display's decode, off the game's gamma 2.0 as
@@ -1562,9 +1608,6 @@ static Bindings GammaBindings(const std::vector<Float4>& scene) {
 static void TestGammaCorrection(const std::vector<GammaGame>& games) {
   const auto columns = PatternColumns();
   constexpr UINT GREY = 48;  // PatternColumns' grey
-  const auto frame_gamma = [](float mode, float encoding, float correction) {
-    return ((correction != 0.f) != (encoding == 2.f && mode < 0.5f)) ? 2.2f : 2.f;
-  };
   const auto worst_difference = [](const std::vector<Float3>& a, const std::vector<Float3>& b) {
     double worst = 0.0;
     for (size_t i = 0; i < a.size(); ++i) {
@@ -1586,7 +1629,7 @@ static void TestGammaCorrection(const std::vector<GammaGame>& games) {
     for (const float mode : game.modes) {
       for (const float encoding : {0.f, 1.f, 2.f}) {
         for (const float correction : {0.f, 1.f}) {
-          const auto after = run(game.shader->after, mode, encoding, correction, 1000.f, frame_gamma(mode, encoding, correction));
+          const auto after = run(game.shader->after, mode, encoding, correction, 1000.f, FrameGamma(mode, encoding, correction));
           if (mode >= 0.5f && correction != 0.f) {
             control = std::max(control, worst_difference(after, run(game.shader->before, mode, encoding, correction, 1000.f, 2.2f)));
             continue;
@@ -1607,7 +1650,10 @@ static void TestGammaCorrection(const std::vector<GammaGame>& games) {
     double control_grey = 0.0;
     const auto scene = Scene(columns, -8.f, 20.f / 47.f, 1.f);
     Bindings ramp = game.bindings;
-    ramp.views["frame_sampler"] = ramp.views["frame_texture"] = Texture2D(WIDTH, HEIGHT, scene);
+    const auto ramp_texture = Texture2D(WIDTH, HEIGHT, scene);
+    for (const char* name : {"frame_sampler", "frame_texture", "g_hdr_rgb_texture"}) {
+      if (ramp.views.contains(name)) ramp.views[name] = ramp_texture;
+    }
     for (const auto& [peak, encoding] : {std::pair{1000.f, 1.f}, std::pair{400.f, 0.f}, std::pair{1000.f, 2.f}}) {
       // SDR output: Peak, Paper White and UI all the display's white (the games' OutputShaderInjection).
       const float corrected = 203.f * std::pow(std::max(peak / 203.f, 1.f), 2.f / 2.2f);
@@ -1694,7 +1740,7 @@ int main(int argc, char** argv) {
 
   std::map<std::string, Pair> shaders;
   for (const char* name : {"a_t00", "a_t01", "a_t02", "a_t03", "a_t04", "a_t05", "a_t06", "a_t07", "a_t08", "a_t09", "a_t10", "w_t00", "r_t00",
-                           "r_t01", "g_rome2", "g_wh1", "g_wh2", "g_troy", "g_pharaoh", "th_t00", "th_t01"}) {
+                           "r_t01", "g_rome2", "g_wh1", "g_wh2", "g_troy", "g_pharaoh", "g_wh3", "th_t00", "th_t01"}) {
     shaders[name] = {LoadPixelShader(before / (std::string(name) + ".cso")), LoadPixelShader(after / (std::string(name) + ".cso"))};
   }
   const bool report_only = (argc >= 4 && std::string(argv[3]) == "--report");
@@ -1718,6 +1764,8 @@ int main(int argc, char** argv) {
         {"WH2", &shaders["g_wh2"], {0.f, 1.f, 2.f, 3.f, 4.f}, GammaInjection<wh2::ShaderInjectData>, gamma},
         {"Troy", &shaders["g_troy"], {0.f, 1.f, 2.f, 3.f, 4.f}, GammaInjection<troy::ShaderInjectData>, gamma},
         {"Pharaoh", &shaders["g_pharaoh"], {0.f, 1.f, 2.f, 3.f, 4.f}, GammaInjection<pharaoh::ShaderInjectData>, gamma},
+        {"WH3", &shaders["g_wh3"], {0.f, 1.f, 2.f, 3.f, 4.f}, GammaInjection<wh3::ShaderInjectData>,
+         Wh3GammaBindings(Scene(PatternColumns(), -6.f, 0.4f, 1.f))},
     });
   }
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
