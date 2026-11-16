@@ -913,9 +913,11 @@ void BuildRuntimeData() {
           .label = "SDR",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "For displays without HDR: selects SDR with every look control at its default.",
+          .tooltip = "For displays without HDR: Rendering Mode SDR and Output SDR (restart the game if it was HDR),\n"
+                     "every look control at its default.",
           .on_change = []() {
             ApplyDefaultLook(0.f);
+            renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", static_cast<float>(twattila::output_encoding::SDR)}});
           },
       },
       new renodx::utils::settings::Setting{
@@ -1252,15 +1254,20 @@ void ConfigureAddon() {
         .is_visible = []() { return frame_trace_enabled && IsAdvancedSettings(); },
     });
   }
-  // Graphics 1 of 2's ray tracing presets; the rays need the helper beside the add-on (its full download).
+  // The red line without the helper beside the add-on (its full download): on General, and in the sections whose rows
+  // need it (the HDR-only snapshot's item 3).
+  const auto full_download_note = [](const char* section) {
+    return new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = twattila::credits::FULL_DOWNLOAD_NOTE,
+        .section = section,
+        .tint = 0xFF5050,
+        .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
+    };
+  };
+  // Graphics 1 of 2's ray tracing presets.
   settings.insert(settings.end(), {
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = twattila::credits::FULL_DOWNLOAD_NOTE,
-          .section = RAYS_SECTION,
-          .tint = 0xFF5050,
-          .is_visible = [] { return !twattila::dlaa_bridge::HelperInstalled(); },
-      },
+      full_download_note(RAYS_SECTION),
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
           .label = "RT/PT",
@@ -1302,6 +1309,7 @@ void ConfigureAddon() {
     readable_depth_enabled = (setting->GetValue() != 0.f);
     settings.push_back(setting);
   }
+  settings.push_back(full_download_note(AA_SECTION));
   {
     auto* setting = new renodx::utils::settings::Setting{
         .key = "RuseAntiAliasing",
@@ -1728,11 +1736,14 @@ void ConfigureAddon() {
     game_options.emplace_back(setting, std::move(option));
   }
 
-  // The game's own setting the mod needs, first on General.
-  settings.insert(settings.begin() + 1, new renodx::utils::settings::Setting{
-      .value_type = renodx::utils::settings::SettingValueType::TEXT,
-      .label = "Turn on the in-game HDR setting.",
-      .section = "General",
+  // The game's own setting the mod needs, first on General, then the full download's line.
+  settings.insert(settings.begin() + 1, {
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "Turn on the in-game HDR setting.",
+          .section = "General",
+      },
+      full_download_note("General"),
   });
 
   // Appended Settings (About)
