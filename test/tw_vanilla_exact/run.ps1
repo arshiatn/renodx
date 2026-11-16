@@ -30,6 +30,11 @@ if (-not $Fxc) {
 # gives in every Rendering Mode (tests.cpp's Gamma Correction check); Modes: those Rendering Modes where not 0 - 3.
 $table = [ordered]@{
   'Shogun2'     = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'; Shaders = '^(tonemap|flare|hdrflare)\d+_' }
+  # Shogun 2's other replaced pixel shaders (skill audit 11-16: every replacement against the game's bytes), those exact
+  # with their control caught on 11-16. Not yet: highlight00 / ribbon00 (inf apart), ssrcopy00 (0.79), treevelocity00-03
+  # (1.9 - 2.4), and particlelight00, pointlight00 / 01, vfxglow00 (exact, the control missed): open (fix round 11-16 report).
+  'Shogun2PS'   = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'
+                     Shaders = '^(fog|vignette|video|uiresolve|uifigure|sun|projectiletrail|glowmesh|vfxoverlay|dissolve|campaignwater)\d+_|^vfxglow01_' }
   'Attila'      = @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2' }
   'RomeII'      = @{ Folder = 'twrome2'; Dump = 'dump_shader_twrome2_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2' }
   'Thrones'     = @{ Folder = 'twthronesofbritannia'; Dump = 'dump_shader_twthronesofbritannia_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'
@@ -49,6 +54,8 @@ $table = [ordered]@{
   'RomeR'       = @{ Folder = 'twromeremastered'; Dump = 'dump_shader_twromeremastered_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'
                      Registers = @{ '^t\d+_' = 'cb0[0]=u64,u48,0,1;cb0[1]=2.2,1,1,0.2;cb0[2]=11,0.9,1.2,2;cb0[3]=0.5,0.6,0,1;cb0[4]=1,1,1,0.8'
                                     '^bloom01_' = 'cb0[0]=0.35,1,8,0;cb0[1]=0.015625,0.0208333,0,0'; '^lensflare00_' = 'cb7[4]=1,0.05,0,0' } }
+  # Rome Remastered's other replaced pixel shaders (cutscene, distortion, FXAA, SMAA's last pass).
+  'RomeRPS'     = @{ Folder = 'twromeremastered'; Dump = 'dump_shader_twromeremastered_pack\cso'; Shaders = '^(cutscene|distortion|fxaa|smaa)\d+_' }
   'Ryse'        = @{ Folder = 'rysesonofrome'; Dump = 'dump_shader_ryse'; Shaders = '^tonemap\d+_' }
   # Divinity 1: the tone map (tw_divinity1's), bloom, god rays, UI, FXAA, SMAA, vignette.
   'Divinity1'   = @{ Folder = 'divinityoriginalsinenhanced'; Dump = $Divinity1
