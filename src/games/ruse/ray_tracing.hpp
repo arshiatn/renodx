@@ -18,8 +18,10 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <format>
 #include <initializer_list>
 #include <span>
+#include <string>
 #include <utility>
 
 #include "../../utils/device_proxy.hpp"
@@ -91,6 +93,8 @@ struct State {
   bool traced_reflections = false;  // the Water Reflections row's rays (restart; with the ground's)
   bool guides = false;  // either: the guide targets and the helper's guides
   bool failed = false;
+  bool tracing = false;  // the last trace's answer, and its changes logged this start (a few: never a line a frame)
+  uint32_t changes_logged = 0;
   // This frame's pre-pass (the camera pass's target and depth), where its copy went (an IDirect3DTexture9), the sun.
   uint32_t camera_frame = UINT32_MAX;
   uint32_t mask_frame = UINT32_MAX;
@@ -572,6 +576,20 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     twattila::rt_scene::WriteSun(context.Get(), state.toward_sun);
     replay::CaptureScene(state.proxy_queue->get_immediate_command_list(), view_projection);
     traced = twattila::rt_scene::Trace(context.Get(), start_depth, camera);
+    if (traced != state.tracing && state.changes_logged <= 8) {
+      ++state.changes_logged;
+      reshade::log::message(
+          reshade::log::level::info,
+          std::format("[R.U.S.E.] Ray tracing: {}{}",
+                      (traced ? std::format("tracing (ground shadows{}{}{}{})", (state.objects ? ", object shadows" : ""),
+                                            (state.ambient ? ", ambient occlusion" : ""),
+                                            (state.traced_bounce == 1 ? ", Light Bounce" : (state.traced_bounce == 2 ? ", path-traced Light Bounce" : "")),
+                                            (state.traced_reflections ? ", water reflections" : ""))
+                              : std::string("not tracing (the helper's scene isn't ready): the game's shadows this frame")),
+                      (state.changes_logged > 8 ? " (no more of these lines this start)" : ""))
+              .c_str());
+    }
+    state.tracing = traced;
   }
   const auto [visibility, occlusion] = (traced ? twattila::rt_scene::Visibilities() : std::array<ID3D11ShaderResourceView*, 2>{});
   if (visibility == nullptr && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;

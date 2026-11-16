@@ -23,6 +23,7 @@
 #include <format>
 #include <fstream>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <string>
 #include <string_view>
@@ -93,6 +94,9 @@ struct GenerationSliders {
   float debug_view = 0.f;        // off, the HUD-less image, the UI layer
 } generation_sliders;
 UINT host_frame_latency = 3u;  // IDirect3DDevice9Ex's default
+// Whether the helper presents the frames (frame generation), and its changes logged this start (a few, never a line a frame).
+bool generation_presenting = false;
+uint32_t generation_changes_logged = 0;
 
 void OnLogResource(reshade::api::device* device, const reshade::api::resource_desc& desc, const reshade::api::subresource_data*,
                    reshade::api::resource_usage, reshade::api::resource resource) {
@@ -630,6 +634,19 @@ void OnPresentFrame(
       .debug_view = static_cast<uint32_t>(generation_sliders.debug_view),
       .sdr_output = shader_injection.swap_chain_encoding == static_cast<float>(twattila::output_encoding::SDR),
   });
+  if (const bool presenting = ruse::bridge::state.enabled && twattila::frame_generation::Presenting();
+      presenting != generation_presenting && generation_changes_logged <= 8) {
+    generation_presenting = presenting;
+    ++generation_changes_logged;
+    reshade::log::message(
+        reshade::log::level::info,
+        std::format("[R.U.S.E.] Frame generation: {}{}",
+                    (presenting ? (multiplier >= 6.f ? std::string("the helper presents (Dynamic)")
+                                                     : std::format("the helper presents ({}x)", static_cast<int>(multiplier) + 1))
+                                : std::string("off: the game presents its own frames")),
+                    (generation_changes_logged > 8 ? " (no more of these lines this start)" : ""))
+            .c_str());
+  }
   if (const UINT latency = ((generation_sliders.reflex != 0.f || twattila::frame_generation::Wanted()) ? 1u : 3u);
       latency != host_frame_latency) {
     host_frame_latency = latency;
@@ -1777,6 +1794,29 @@ void ConfigureAddon() {
       const bool on_page = (page < 0.f ? current_settings_mode < 2.f : current_settings_mode == page);
       return on_page && (shown == nullptr || shown());
     };
+  }
+
+  // One line: the patched game shaders each set gave the replacements (a later row's set takes a hash two share).
+  std::string patched;
+  for (const auto& [name, shaders] : std::initializer_list<std::pair<std::string_view, std::span<const ruse::ray_tracing::PatchedShader>>>{
+           {"object shadows", ruse::ray_tracing::OBJECT_SHADOW_SHADERS},
+           {"ground ambient occlusion", ruse::ray_tracing::GROUND_AMBIENT_SHADERS},
+           {"ground light", ruse::ray_tracing::GROUND_LIGHT_SHADERS},
+           {"ground light with guides", ruse::ray_tracing::GROUND_LIGHT_GUIDE_SHADERS},
+           {"object light with guides", ruse::ray_tracing::OBJECT_LIGHT_SHADERS},
+           {"water reflections", ruse::ray_tracing::WATER_REFLECTION_SHADERS},
+           {"water reflections with guides", ruse::ray_tracing::WATER_REFLECTION_GUIDE_SHADERS},
+       }) {
+    const auto installed = std::ranges::count_if(shaders, [](const ruse::ray_tracing::PatchedShader& shader) {
+      const auto found = custom_shaders.find(shader.hash);
+      return found != custom_shaders.end() && found->second.code.data() == shader.code.data();
+    });
+    if (installed != 0) {
+      patched += std::format("{}{} {}", (patched.empty() ? "" : ", "), name, installed);
+    }
+  }
+  if (!patched.empty()) {
+    reshade::log::message(reshade::log::level::info, std::format("[R.U.S.E.] Patched game shaders installed: {}", patched).c_str());
   }
 
   configured = true;
