@@ -981,7 +981,9 @@ inline void OnPresent() {
       .path_tracing = state.traced_bounce == 2,
       .path_ambient = state.traced_bounce == 2,
       .reflections = state.traced_reflections,
-      // Near ReSTIR Reuse with path tracing, as Ryse's and Shogun 2's defaults (faster and cleaner: reuse -46 %).
+      // Lean and Near ReSTIR Reuse with path tracing: faster, the same look in tests (Lean on by default: ATN 11-16; Near
+      // as Ryse's and Shogun 2's defaults, reuse -46 %).
+      .reuse_lean = state.traced_bounce == 2,
       .reuse_near = state.traced_bounce == 2,
   });
 }
