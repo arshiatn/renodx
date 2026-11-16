@@ -332,6 +332,8 @@ void BuildRuntimeData() {
       CustomShaderEntry(0x37ABF6CF),  // video00
       CustomShaderEntry(0xC1F889A4),  // video01 (alpha)
       CustomShaderEntry(0xD1106E8B),  // ssdo00 (SSDO; Ambient Occlusion GT-VBAO)
+      CustomShaderEntry(0xC17645D2),  // ssdo01 (ssdo00 with its depth samples from t5)
+      CustomShaderEntry(0xA65B60AF),  // ssdo02 (SSDO without the terrain's LSDO)
       CustomShaderEntry(0xE9264ADE),  // sunshadow00 (sun shadow mask, near cascades; Sun Shadow Softness)
       CustomShaderEntry(0xB5DC6E36),  // sunshadow01
       CustomShaderEntry(0xF2B4EF30),  // sunshadow02 (middle cascade)

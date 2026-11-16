@@ -198,20 +198,9 @@ void main(
   r4.x = dot(SSDO_CameraMatrixInv._m00_m01_m02, r0.xyz);
   r4.y = dot(SSDO_CameraMatrixInv._m10_m11_m12, r0.xyz);
   r4.z = dot(SSDO_CameraMatrixInv._m20_m21_m22, r0.xyz);
-  // Ambient Occlusion GT-VBAO: the SSDO term (r4: the direction in world space, the amount) from the visibility
-  // bitmask, the G-buffer normal in the same camera space as the game's.
-  if (SI.ao_method == 1.f) {
-    float3 normal = _tex0.Sample(_tex0_s, v1.xy).xyz * 2.f - 1.f;
-    normal = float3(dot(SSDO_CameraMatrix._m00_m01_m02, normal), dot(SSDO_CameraMatrix._m10_m11_m12, normal),
-                    dot(SSDO_CameraMatrix._m20_m21_m22, normal));
-    const float4 occlusion = RyseBitmaskOcclusion(v1.xy, (uint2)v0.xy, normal, _tex1, _tex1_s, PS_NearFarClipDist.y,
-                                                  ViewSpaceParams);
-    r4.x = dot(SSDO_CameraMatrixInv._m00_m01_m02, occlusion.xyz);
-    r4.y = dot(SSDO_CameraMatrixInv._m10_m11_m12, occlusion.xyz);
-    r4.z = dot(SSDO_CameraMatrixInv._m20_m21_m22, occlusion.xyz);
-    r4.w = occlusion.w;
-  }
-  if (SI.ao_method == 2.f) r4.w = 0.f;
+  // This frame's AO method on the SSDO term (r4: the direction in world space, the amount).
+  r4 = RyseSsdoTerm(r4, v1.xy, (uint2)v0.xy, _tex0, _tex0_s, (float3x3)SSDO_CameraMatrix, (float3x3)SSDO_CameraMatrixInv, _tex1,
+                    _tex1_s, PS_NearFarClipDist.y, ViewSpaceParams);
   r0.xy = -LSDO_TexToWorldTranslation.xy + r1.wx;
   r0.xy = r0.xy / LSDO_TexToWorldScale.xy;
   r0.z = 15 * vInvShadowMapSize.x;
