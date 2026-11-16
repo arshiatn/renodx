@@ -51,6 +51,14 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
   sky-weighted AO has no helper equivalent yet. test/tw_ue_sss_gi: a stub trace's green replaces the wall's red
   (Tales 0.210 green, 0.037 red left; Rome 0.106 / 0.019); a trace returning nothing gives GT-VBGI's own back (red
   0.178 / 0.090).
+- Step 4: **torch shadows** in the helper. Bandai's deferred local lights (ps 038D003A, now `shaders/locallight00`,
+  vanilla exact on WARP) give each light (FDeferredLightUniformStruct at b1: position c0.xyz, 1 / radius c0.w, colour
+  c1.xyz; in metres) to the next frame's trace (rt_core AddLocalLight) and read this frame's lit bits (t42 / b9,
+  `twattila/rt_local_lights.hlsli`): where the rays traced the light at the pixel, their visibility in place of the
+  game's shadow (its light attenuation .z where the light casts shadows, ShadowedBits): one method; elsewhere, or
+  nothing bound (in process, rays off), the game's own. The Torch Shadows rows are rt_scene's (Count, Range, Softness,
+  Importance-Sampled, Steady). test/tw_vanilla_exact TalesLocalLight: EXACT 0 against the game's bytes with a white
+  point light lighting the test frame (control: the game's output swizzle swapped, 1, caught).
 
 ## Install
 

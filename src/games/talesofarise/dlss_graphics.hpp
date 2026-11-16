@@ -2283,14 +2283,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     // War ambient cube): with the paths, the ambient rays weighted by the game's sky light in place of Bandai's AO under its
     // ambient (Bandai's sky light comes from its base pass inside the scene colour the lighting passes read: no input to
     // zero there, so the paths' share of it enters where its AO does), the paths' bounce at t42 as before.
-    // Ray Tracing in the Helper: its sun shadows, AO, reflections, specular occlusion, light bounce and paths
-    // (ray_tracing.hpp; Path-Traced Ambient its AO under the paths), nothing in process.
+    // Ray Tracing in the Helper: all its effects (ray_tracing.hpp; Path-Traced Ambient its AO under the paths), nothing in
+    // process.
     const auto all_rays = upscaling ? twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, gi_rows.light_bounce_strength) : twattila::rt_scene::Settings{};
     if (helper_rays_installed) {
       auto helper_rays = all_rays;
       helper_rays.ambient_occlusion = all_rays.ambient_occlusion || (all_rays.path_tracing && rt_sliders.path_ambient != 0.f);
       helper_rays.path_ambient = false;
-      helper_rays.local_lights = false;
       talesofarise::dlss::ray_tracing::Update(helper_rays);
     }
     const auto rays = helper_rays_installed ? twattila::rt_scene::Settings{} : all_rays;
@@ -3108,8 +3107,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                            .value_type = SettingValueType::BOOLEAN,
                                            .default_value = 0.f,
                                            .label = "Ray Tracing in the Helper (Experimental)",
-                                           .tooltip = "The ray-traced effects traced in the helper, as in the Total War games\n"
-                                                      "(no torch shadows there yet).\n"
+                                           .tooltip = "The ray-traced effects traced in the helper, as in the Total War games.\n"
                                                       "Restart the game after changing it.",
                                            .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders); },
                                        });

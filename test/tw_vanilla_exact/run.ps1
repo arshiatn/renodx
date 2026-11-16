@@ -145,6 +145,9 @@ $table = [ordered]@{
   # Bandai's AO (t6), the game's bytes reading that texture as its AO.
   'TalesToon'   = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^toon\d+_' }
   'TalesToonRays' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^toon\d+_'; Binds = 't41>t6' }
+  # Bandai's deferred local lights (locallight00): the helper's torch shadows unbound (t42 / b9), the game's bytes.
+  'TalesLocalLight' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^locallight\d+_'
+                         Registers = @{ '^locallight\d+_' = 'cb1[0]=0,0,0,0.000001;cb1[1]=1,0.8,0.6,0;cb1[2]=0,0,1,0;cb1[4]=-2,1,1,0;cb0[123]=64,48,0.015625,0.020833334' } }
   'Expeditions' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^(t|lut)\d+_' }
   # Expeditions' sky light passes (skylight00-02): Path-Traced Ambient's switch (t120) unbound, the game's bytes. The View's
   # BufferSizeAndInvSize (cb1[127]) the test's frame: skylight00's distance field AO upsample divides by its half (noise: NaN).

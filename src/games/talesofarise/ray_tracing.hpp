@@ -19,6 +19,8 @@
 
 #include <embed/shaders.h>
 
+#include "../../utils/command_action.hpp"
+#include "../../utils/directx.hpp"
 #include "../talesofarise_dlss/constant_mirror.hpp"
 #include "../talesofarise_dlss/matrix.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
@@ -45,10 +47,16 @@
 // (rt_scene's TraceLightBounce through twattila::light_bounce::SetRayTracedTrace), as the Total War games. Path-Traced
 // Ambient stays the rays' AO under the paths: Bandai's sky light is inside the scene colour the lighting passes read (no
 // input to leave out), so the helper's paths bring no sky (its sky texels stay zero). The move's steps (ATN 2026-11-16):
-// 1 the sun shadows and the AO, 2 the reflections and specular occlusion, 3 the light bounce and the paths.
+// 1 the sun shadows and the AO, 2 the reflections and specular occlusion, 3 the light bounce and the paths, 4 the torch
+// shadows: each deferred local light draw (ps 038D003A) gives its light to the next frame's trace (FDeferredLightUniformStruct
+// at ps b1: LightPosition c0.xyz, LightInvRadius c0.w, LightColor c1.xyz; in metres) and reads this frame's lit bits
+// (t42, b9: shaders/locallight00, rt_local_lights.hlsli) in place of its shadow.
 namespace talesofarise::dlss::ray_tracing {
 
 using Microsoft::WRL::ComPtr;
+
+// The deferred local lights' pixel shader (point and spot lights; shaders/locallight00).
+constexpr uint32_t LOCAL_LIGHT_SHADER = 0x038D003A;
 
 namespace internal {
 
@@ -427,12 +435,43 @@ inline bool AmbientTracedLastFrame() {
   return internal::state.settings.ambient_occlusion && internal::state.ambient.frame + 1 == internal::state.frame;
 }
 
+// A deferred local light draw: its light to the next frame's trace, this frame's lit bits bound (unbound after).
+constexpr auto OnLocalLight = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  ComPtr<ID3D11DeviceContext1> native1;
+  if (native == nullptr || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return {};
+  ComPtr<ID3D11Buffer> light;
+  UINT first_constant = 0;
+  UINT constant_count = 0;
+  native1->PSGetConstantBuffers1(1, 1, light.GetAddressOf(), &first_constant, &constant_count);
+  std::array<std::array<float, 4>, 2> rows = {};
+  if (light && constant_count >= rows.size()) {
+    talesofarise::dlss::constants::Watch(light.Get(), (first_constant + static_cast<UINT>(rows.size())) * 16);
+    if (talesofarise::dlss::constants::Read(light.Get(), uint64_t{first_constant} * 16, std::as_writable_bytes(std::span(rows)))
+        && rows[0][3] > 0.f) {
+      constexpr float METRES = 0.01f;
+      twattila::rt_scene::AddLocalLight({.light = {rows[0][0] * METRES, rows[0][1] * METRES, rows[0][2] * METRES, METRES / rows[0][3]},
+                                         .colour = {rows[1][0], rows[1][1], rows[1][2], 0.f}});
+    }
+  }
+  if (!twattila::rt_scene::BindLocalLights(native)) return {};
+  return {.post_callback = [](Context& command, const void*) {
+    auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+    if (native != nullptr) twattila::rt_scene::UnbindLocalLights(native);
+  }};
+};
+
 inline void Install() {
   twattila::rt_scene::InstallScene({}, HOST);
+  renodx::utils::command_action::Register(OnLocalLight, {.shader_hash = LOCAL_LIGHT_SHADER,
+                                                       .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
   twattila::light_bounce::SetRayTracedTrace(twattila::rt_scene::internal::TraceLightBounce);
 }
 
 inline void Uninstall() {
+  renodx::utils::command_action::Unregister(OnLocalLight);
   twattila::light_bounce::SetRayTracedTrace(nullptr);
   twattila::rt_scene::UninstallScene();
 }
