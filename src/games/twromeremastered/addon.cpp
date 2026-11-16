@@ -45,6 +45,7 @@
 #include "../twattila/output_encoding.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/reflex.hpp"
+#include "../twattila/test_hooks.hpp"
 #include "./contact_shadows.hpp"
 #include "./dlaa.hpp"
 #include "./ray_tracing.hpp"
@@ -2101,6 +2102,9 @@ bool AttachAddon() {
   }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  // RENODX_TW_SHOT / PROFILE / SET (or renodx_test_hooks.txt next to the exe): scripted runs' rows, timed from the first
+  // present.
+  twattila::test_hooks::Install(&settings, true, "[Rome Remastered]");
   // A ray tracing row on at launch: its scene's shaders kept from the start.
   if (twromeremastered::ray_tracing::sliders.sun_shadows != 0.f || twromeremastered::ray_tracing::sliders.ambient_occlusion != 0.f) {
     twromeremastered::ray_tracing::Install();
@@ -2133,6 +2137,7 @@ void DetachAddon() {
 
   twattila::device_loss::Uninstall();
   twromeremastered::swap_chain_format::Uninstall();
+  twattila::test_hooks::Uninstall();
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twattila::frame_trace::Uninstall();
