@@ -3,6 +3,10 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 (WH1 / WH2 round), in game: a river or lava with RT/PT (WH2 RT Water Reflections); wet stone with
+  Specular Occlusion (reflections darker only once); WH2 Modded Auto Exposure; WH1 Smoke Shadows without rays + Smooth
+  Particles; Time Each Pass before / after the new skips; WH1 / WH2 into the Gamma Correction look checks. Decide (C):
+  unit-size presets. Owner: ATN
 - [ ] NEW 11-16 (Troy / Pharaoh round): TAA / T2x in Troy / Pharaoh run on the linear frame while Attila's run on 2.0
   (linear: up to 12 % more light at thin lines, flicker 4 % higher, bias 22 % lower); the ready patch
   tools/tw/troy/aa_domain/shared_step_taa.patch matches Attila within 0.004 - apply?; under Rays Replace the baked far
@@ -221,6 +225,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Shared leftovers (shs_ / ryf_): rt_core OnAnyDraw replays every draw while trace ... | next shared round, next WH3 round, release round
 - ryf_ not done: row 9 e_GsmLodsNum under the rays' sun (trace: which lod is the c ... | next Ryse round / data run
 - tpf_ not done: Torch / Fire Shadows on the 7 other point-light PS per game (14 W ... | next Troy / Pharaoh round, data run
+- w12_ not done: Rays Replace Shadow Maps as default (no WARP proof of the replace ... | next WH1 / WH2 round
 - ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
 - Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
@@ -1666,6 +1671,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] tpf_ not done: Torch / Fire Shadows on the 7 other point-light PS per game (14 WARPs; DO NOW in both ledgers);
           Pharaoh Filmgrain c9.z (next data run); Troy fxaa00 (0.062) and menuvideo01 (0.037) differ in Vanilla, causes not
           read; tw_troy_shaders not run (no -OutDir; nothing it tests changed). Owner: next Troy / Pharaoh round, data run
+        - [x] WH1 + WH2 MERGED 2e2e74f63 (w12_, 25 commits; amd64 both exit 0): Reset sky_deband off, credits::Methods (+
+          smaa fb6224f60), Time Each Pass (one-call API), GT-VBAO skips the game's sweep / collect (WH1 part 26 0 of 3072,
+          WH2 sweep 4D2C2BF5), WH1 Smoke Shadows without rays + Smooth Half-Size Particles (both Experimental off), WH2
+          cheap_fog_alone, WH2 Skip the Game's Reflection Passes under the rays (on: hi-Z + mip chains, part 27 0 of 4096,
+          controls 4096), WH2 RT Water Reflections (Experimental off; RT/PT on), WH2 one occlusion per reflection (part 28),
+          WH2 Modded Auto Exposure (Experimental off; off = the game's bits), gamma line first, video rows HDR-only, one
+          psycho_test30 (0 of 87 shaders change bytes). Tests: tw_warhammer_shaders 1-28 PASS, vanilla_exact WH1 / WH2 34
+          EXACT / 7 accepted / 0 FAIL, GC 24 / 0 failed.
+        - [ ] w12_ not done: Rays Replace Shadow Maps as default (no WARP proof of the replace path yet, DO NOW both);
+          WH1 ssr00 one occlusion (the resolve binds no AO and adds AO + t46 - 1: needs the sun's AO at the resolve, DO NOW);
+          psychov35 part 6 for WH t00 (needs a WH driver); vanilla_exact can't check cinematics (WH1 0.035 by design, WH2
+          zero output), FXAA (alpha 1), sharpening / pointlight00 (zero output); psycho_test31 copies differ (a merge changes
+          the look); WH2 depth downsample F1CE6943 kept (an untraced blur may read it); GI + contact-shadow replace audit not
+          done; Grass RT range for dynamic grass (shared, boxed). Owner: next WH1 / WH2 round
         - [ ] ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB73442 / D9123DE1, vanilla coverage
           of pointlight00-39 / UI sprites / grass00-01 (the generic driver can't feed them); view_share Classify 24 unclear
           sun-PS rows a game (NEEDS A TRACE). The t46 x AO double-occlusion check was sent to WH3, WH1 / WH2, Troy / Pharaoh,
