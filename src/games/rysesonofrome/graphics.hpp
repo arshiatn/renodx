@@ -61,6 +61,7 @@
 #include "../twattila/dlaa_bridge.hpp"
 #include "../twattila/frame_generation.hpp"
 #include "../twattila/reflex.hpp"
+#include "../twattila/texture_lod_bias.hpp"
 
 // The anti-aliasing (DLAA / DLSS, FSR or XeSS in place of the game's TAA), frame generation and the game's settings
 // above its High, once the separate DLSS add-on (rysesonofrome_dlss): addon.cpp calls Install after its own attach and
@@ -1096,23 +1097,20 @@ const char* ChoiceName(const QualityOption& option, int choice) {
   return name;
 }
 
-// Texture LOD bias below 100% (DLSS section): the game picks texture levels for its render resolution. Its anisotropic
-// samplers (its material textures; post passes filter linear or point, shadow maps compare) are bound again right after
-// it binds them, as clones with MipLODBias + log2(render / display width), minus 1 (Sharper) or 2 (Sharpest). ReShade
-// raises push_descriptors after PSSetSamplers, so the clones replace them.
-struct BiasedSampler {
-  reshade::api::sampler_desc desc;  // the game's
-  reshade::api::sampler clone = {0};
-  float clone_bias = 0.f;
-  bool trilinear = false;  // a wrapping trilinear sampler: biased with lod_bias_all_textures only
-};
-renodx::utils::data::ParallelFlatHashMap<uint64_t, BiasedSampler, std::shared_mutex> biased_samplers;
-std::atomic<float> texture_lod_bias = 0.f;  // 0: none
+// Texture LOD bias below 100% (DLSS section; twattila/texture_lod_bias.hpp, as the Total War games' and Shogun 2's): the
+// game picks texture levels for the size it renders at. Its anisotropic samplers (its material textures; post passes
+// filter linear or point, shadow maps compare) are bound as clones with MipLODBias + log2(render / display width), minus
+// 1 (Sharper) or 2 (Sharpest), in the main view only: the shadow maps keep the game's levels (their alpha-tested leaves
+// would cut sharper holes, Shogun 2 v7-v9). The render size: the AA mode's Rendering Resolution or, with AA mode Off,
+// the game's own below the display (Native Upscaling, fullscreen).
 // Texture LOD Bias on All Textures (Experimental; the page's AntiAliasingTextureLodBiasTrilinear row, as Attila's): the
 // game's wrapping trilinear samplers biased too. 1: on.
 float lod_bias_all_textures = 0.f;
 int texture_lod_bias_choice = 2;  // Present thread (the overlay runs in it): 0 off, 1 matched, 2 sharper, 3 sharpest
-thread_local bool creating_clone = false;  // the clone's own init_sampler
+// While biased: the main view's size (width << 32 | height; 0: no bias) and whether the immediate context's viewport is
+// the main view's now (OnBindViewports).
+std::atomic<uint64_t> main_view_size = 0;
+std::atomic_bool main_view_bound = false;
 // While DLSS / DLAA runs (AA mode not Off), renderer statics written directly (FindIntCvar; the game's values come
 // back with Off and at unload). r_TexNoAnisoAlphaTest 0: anisotropic filtering also on alpha-tested textures (foliage,
 // fences, cloth; read while drawing, +0x18338EB; its ICVar refuses sets, flags 0x800100). r_DeferredShadingFilterGBuffer
@@ -1370,81 +1368,19 @@ bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, u
   return false;
 }
 
-// Texture LOD bias (biased_samplers): the game's anisotropic samplers and its wrapping trilinear ones.
-void OnInitSampler(reshade::api::device* device, const reshade::api::sampler_desc& desc, reshade::api::sampler sampler) {
-  if (creating_clone || device->get_api() != reshade::api::device_api::d3d11) return;
-  const bool trilinear = desc.filter == reshade::api::filter_mode::min_mag_mip_linear && desc.address_u == reshade::api::texture_address_mode::wrap
-                         && desc.address_v == reshade::api::texture_address_mode::wrap;
-  if (!trilinear && desc.filter != reshade::api::filter_mode::anisotropic
-      && desc.filter != reshade::api::filter_mode::min_mag_anisotropic_mip_point) {
+// Texture LOD bias (twattila::texture_lod_bias, after this): whether the viewport the immediate context binds now is the
+// main view's (the whole render size at 0, 0; the shadow maps, the light pool's tiles, the probes and the reduced passes
+// draw at other sizes).
+void OnBindViewports(reshade::api::command_list* cmd_list, uint32_t first, uint32_t count, const reshade::api::viewport* viewports) {
+  const uint64_t size = main_view_size.load(std::memory_order_relaxed);
+  if (size == 0u || first != 0u || count == 0u || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11
+      || reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native())->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) {
     return;
   }
-  biased_samplers.insert_or_assign(sampler.handle, BiasedSampler{.desc = desc, .trilinear = trilinear});
-}
-
-void OnDestroySampler(reshade::api::device* device, reshade::api::sampler sampler) {
-  reshade::api::sampler clone = {0};
-  biased_samplers.erase_if(sampler.handle, [&](const auto& entry) {
-    clone = entry.second.clone;
-    return true;
-  });
-  if (clone.handle != 0u) {
-    device->destroy_sampler(clone);
-  }
-}
-
-// After the game's PSSetSamplers: its anisotropic samplers bound again as clones at the current bias.
-void OnPushDescriptors(reshade::api::command_list* cmd_list, reshade::api::shader_stage stages, reshade::api::pipeline_layout,
-                       uint32_t, const reshade::api::descriptor_table_update& update) {
-  const float bias = texture_lod_bias.load(std::memory_order_relaxed);
-  if (bias == 0.f || stages != reshade::api::shader_stage::pixel || update.type != reshade::api::descriptor_type::sampler
-      || update.count == 0 || update.binding + update.count > D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT) {
-    return;
-  }
-  auto* device = cmd_list->get_device();
-  if (device->get_api() != reshade::api::device_api::d3d11) return;
-  const auto* samplers = static_cast<const reshade::api::sampler*>(update.descriptors);
-  std::array<ID3D11SamplerState*, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT> bound = {};
-  bool replaced = false;
-  for (uint32_t index = 0; index < update.count; ++index) {
-    bound[index] = reinterpret_cast<ID3D11SamplerState*>(samplers[index].handle);
-    reshade::api::sampler_desc desc = {};
-    reshade::api::sampler clone = {0};
-    bool trilinear = false;
-    const bool biased = biased_samplers.if_contains(samplers[index].handle, [&](const auto& entry) {
-      desc = entry.second.desc;
-      trilinear = entry.second.trilinear;
-      if (entry.second.clone_bias == bias) {
-        clone = entry.second.clone;
-      }
-    });
-    if (!biased || (trilinear && lod_bias_all_textures == 0.f)) continue;
-    if (clone.handle == 0u) {
-      desc.mip_lod_bias += bias;
-      creating_clone = true;
-      const bool created = device->create_sampler(desc, &clone);
-      creating_clone = false;
-      if (!created) continue;
-      reshade::api::sampler previous = {0};
-      const bool kept = biased_samplers.modify_if(samplers[index].handle, [&](auto& entry) {
-        previous = entry.second.clone;
-        entry.second.clone = clone;
-        entry.second.clone_bias = bias;
-      });
-      if (previous.handle != 0u) {
-        device->destroy_sampler(previous);
-      }
-      if (!kept) {
-        device->destroy_sampler(clone);
-        continue;
-      }
-    }
-    bound[index] = reinterpret_cast<ID3D11SamplerState*>(clone.handle);
-    replaced = true;
-  }
-  if (replaced) {
-    reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native())->PSSetSamplers(update.binding, update.count, bound.data());
-  }
+  const auto& viewport = viewports[0];
+  main_view_bound.store(viewport.x == 0.f && viewport.y == 0.f && viewport.width == static_cast<float>(size >> 32)
+                            && viewport.height == static_cast<float>(size & 0xFFFFFFFFu),
+                        std::memory_order_relaxed);
 }
 
 // A copy of the traced frame.
@@ -3164,7 +3100,10 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       rendering.writes = 0;
     }
     const bool saved = saved_game_size[0] > 0 && saved_game_size[1] > 0;
-    if (!rendering.searched && (mode != AAMode::OFF || saved)) {
+    // AA mode Off: the game's own Rendering Resolution for the texture LOD bias, while the helper's rows show it (the
+    // HDR-only download keeps the game's levels).
+    const bool off_bias = mode == AAMode::OFF && texture_lod_bias_choice != 0 && twattila::dlaa_bridge::HelperInstalled();
+    if (!rendering.searched && (mode != AAMode::OFF || saved || off_bias)) {
       rendering.searched = true;
       std::string details;
       if (const uint8_t* scene = rysesonofrome::engine_memory::FindPattern(RENDER_SCENE, &details); scene != nullptr) {
@@ -3299,14 +3238,26 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     // Vegetation detail at the display width while rendering below it (VEGETATION_SCREEN_RES).
     auto& pin = screen_res_pin;
     const bool below = rendering.controlling && rendering.target[0] > 0 && rendering.target[0] < static_cast<int>(display_width);
-    // Texture LOD bias (biased_samplers): below the display width, log2(render / display width), minus 1 (Sharper) or
-    // 2 (Sharpest).
+    // Texture LOD bias below the display width: log2(render / display width), minus 1 (Sharper) or 2 (Sharpest), in the
+    // main view. The render size: the addon's Rendering Resolution, or with AA mode Off the game's own while it upscales
+    // natively (Native Upscaling on, fullscreen or borderless: windowed it renders at the window's size).
+    std::array<int, 2> render_size = {};
+    if (below) {
+      render_size = rendering.target;
+    } else if (off_bias && rendering.width != nullptr && rendering.problem.empty() && GetCvar(rendering.native_res) != 0
+               && (GetCvar(rendering.fullscreen) != 0 || GetCvar(rendering.fullscreen_window) != 0)) {
+      render_size = {GetCvar(rendering.width), GetCvar(rendering.height)};
+    }
     float bias = 0.f;
-    if (below && texture_lod_bias_choice != 0) {
-      bias = std::log2(static_cast<float>(rendering.target[0]) / static_cast<float>(display_width))
+    if (texture_lod_bias_choice != 0 && render_size[0] > 0 && render_size[1] > 0 && render_size[0] < static_cast<int>(display_width)) {
+      bias = std::log2(static_cast<float>(render_size[0]) / static_cast<float>(display_width))
              - static_cast<float>(texture_lod_bias_choice - 1);
     }
-    texture_lod_bias.store(bias, std::memory_order_relaxed);
+    main_view_size.store((bias != 0.f ? (uint64_t{static_cast<uint32_t>(render_size[0])} << 32) | static_cast<uint32_t>(render_size[1]) : 0u),
+                         std::memory_order_relaxed);
+    twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_all_textures != 0.f);
+    twattila::texture_lod_bias::SetTracking(queue, bias != 0.f);
+    twattila::texture_lod_bias::SetBias(bias);
     if (uint8_t* cvars = (rendering.width != nullptr ? EngineCvars() : nullptr); cvars != nullptr) {
       const std::atomic_ref<int> value(*reinterpret_cast<int*>(cvars + SCREEN_RES_CVAR));
       const int current = value.load(std::memory_order_relaxed);
@@ -3505,10 +3456,10 @@ inline void DrawAntiAliasing(bool advanced) {
                               "Sharpest {:.1f}.",
                               std::round(scale * 100.f), matched, matched - 1.f, matched - 2.f);
       }
-      ImGui::SetTooltip("How sharp textures are while the upscaler renders below 100%%.\n"
+      ImGui::SetTooltip("How sharp textures are while the game renders below 100%%: an AA mode's scale, or with Off\n"
+                        "the game's own Rendering Resolution. Shadows keep the game's.\n"
                         "Matched: as sharp as at your output resolution.\n"
-                        "Sharper / Sharpest: one / two steps sharper (more detail, can shimmer).\n"
-                        "Native AA and Off are not affected.%s",
+                        "Sharper / Sharpest: one / two steps sharper (more detail, can shimmer).%s",
                         example.c_str());
     }
     if (int filter = (gbuffer_filter.load() ? 1 : 0);
@@ -3650,8 +3601,7 @@ inline void DrawAntiAliasing(bool advanced) {
                 (diagnostics.from_upload.load() ? "an earlier upload (the bound camera is not jittered)" : "the bound camera"),
                 diagnostics.camera_uploads.load(), diagnostics.jittered_uploads.load());
   }
-  ImGui::Text("Texture LOD bias now: %.2f (game samplers seen: %zu)", texture_lod_bias.load(std::memory_order_relaxed),
-              biased_samplers.size());
+  ImGui::TextWrapped("%s", twattila::texture_lod_bias::Report().c_str());
   for (const auto& pin : renderer_pins) {
     if (pin.address != nullptr) {
       ImGui::Text("%s: %d%s", pin.name, *pin.address, (pin.set ? std::format(" (the game's: {})", pin.game_value).c_str() : ""));
@@ -4114,9 +4064,14 @@ inline void Install(std::span<const uint8_t> vertex_code, std::span<const uint8_
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
-  reshade::register_event<reshade::addon_event::init_sampler>(OnInitSampler);
-  reshade::register_event<reshade::addon_event::destroy_sampler>(OnDestroySampler);
-  reshade::register_event<reshade::addon_event::push_descriptors>(OnPushDescriptors);
+  // The texture LOD bias: the main view learned first, then the shared module's binding.
+  twattila::texture_lod_bias::SetMainView([] { return main_view_bound.load(std::memory_order_relaxed); });
+  reshade::register_event<reshade::addon_event::bind_viewports>(OnBindViewports);
+  reshade::register_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
+  reshade::register_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
+  reshade::register_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
+  reshade::register_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
   command_action::Register(OnTaaDraw, {.shader_hash = TAA_SHADER, .command_types = command_action::COMMAND_TYPE_DIRECT_DRAW});
   for (const uint32_t shader_hash : {SMAA_EDGES_SHADER, SMAA_WEIGHTS_SHADER, SMAA_BLEND_SHADER}) {
     command_action::Register(OnSmaaDraw, {.shader_hash = shader_hash, .command_types = command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -4154,9 +4109,13 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::draw_indexed>(OnDrawIndexed);
   reshade::unregister_event<reshade::addon_event::copy_resource>(OnTraceCopy);
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(OnTraceCopyRegion);
-  reshade::unregister_event<reshade::addon_event::init_sampler>(OnInitSampler);
-  reshade::unregister_event<reshade::addon_event::destroy_sampler>(OnDestroySampler);
-  reshade::unregister_event<reshade::addon_event::push_descriptors>(OnPushDescriptors);
+  reshade::unregister_event<reshade::addon_event::bind_viewports>(OnBindViewports);
+  reshade::unregister_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
+  reshade::unregister_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
+  reshade::unregister_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
+  reshade::unregister_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
+  twattila::texture_lod_bias::Shutdown();
   for (auto& pin : renderer_pins) {
     if (!pin.set) continue;
     std::atomic_ref<int>(*pin.address).store(pin.game_value, std::memory_order_relaxed);
