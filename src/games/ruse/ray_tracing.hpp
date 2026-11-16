@@ -95,6 +95,7 @@ struct State {
   bool reflections = false;  // the Water Reflections row (restart; with the anti-aliasing's bridge)
   uint32_t traced_bounce = 0;  // the Ground Light Bounce row's rays (restart; with the ground's): 1 rays, 2 path tracing
   bool traced_reflections = false;  // the Water Reflections row's rays (restart; with the ground's)
+  float units_range = 0.f;  // the Units Ray Tracing Range row (live), metres; 0: every unit
   bool guides = false;  // either: the guide targets and the helper's guides
   bool failed = false;
   bool tracing = false;  // the last trace's answer, and its changes logged this start (a few: never a line a frame)
@@ -981,6 +982,8 @@ inline void OnPresent() {
       .path_tracing = state.traced_bounce == 2,
       .path_ambient = state.traced_bounce == 2,
       .reflections = state.traced_reflections,
+      // Metres to world units (a unit a centimetre, as the ranges above; the T-run checks).
+      .units_range = state.units_range * 100.f,
       // Lean and Near ReSTIR Reuse with path tracing: faster, the same look in tests (Lean on by default: ATN 11-16; Near
       // as Ryse's and Shogun 2's defaults, reuse -46 %).
       .reuse_lean = state.traced_bounce == 2,

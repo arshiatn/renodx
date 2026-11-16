@@ -1565,6 +1565,21 @@ void ConfigureAddon() {
       }
     }
   }
+  // Attila's row (live): the helper leaves out the moving replayed draws (the replay's compact ones, rt_core's units)
+  // past the range; it takes 65,535 world units at most (655 m at a centimetre a unit).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedUnitsRange",
+      .binding = &ruse::ray_tracing::state.units_range,
+      .default_value = 0.f,
+      .label = "Units Ray Tracing Range (Experimental)",
+      .section = RAYS_SECTION,
+      .tooltip = "Units farther than this are left out of the ray tracing (their shadows there are a few pixels):\n"
+                 "faster in big battles. 0 m: all units.",
+      .min = 0.f,
+      .max = 600.f,
+      .format = "%.0f m",
+      .is_enabled = [] { return ruse::ray_tracing::state.ground; },
+  });
   {
     auto* setting = new renodx::utils::settings::Setting{
         .key = "RuseRayTracedGroundOcclusion",
