@@ -3,6 +3,11 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 (fix round, ATN decides): Thrones' preset turns on Steady Bounce Light and 128 torch lights (both
+  Experimental) and Auto Thickness is on while labelled Experimental: keep or off?; Ryse's Recommended Video AutoHDR 0.25
+  (as Shogun 2's) against the skill's 0.2; Path-Traced Ambient alone leaves the reflections without occlusion: Specular
+  Occlusion with the paths, or keep SSAO for that reader?; Specular Occlusion on makes armour creases a little brighter
+  (look). Owner: ATN
 - [x] ANSWERED 06:xx (ATN: "RT Shadows should replace them (and make them stop to save performance maybe)"): rays
   keep the far shadows (more correct), replace the maps' term, maps only for hair / fog; skip fix in the Ryse fix round. Still open from the run analysis: Ryse far-facade ray shadows (rays darken far facades the maps leave lit, up to 0.67
   stop): keep or limit? Owner: ATN
@@ -179,6 +184,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Attila has no frame trace `on_demand` / `at_100` (Pharaoh, Rome II, WH3 have bot ... | next Attila round
 - grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound i ... | next Attila round
 - SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator 06:xx rao_ merged ad541a4f (RT AO replaces the g
+- ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
+- Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
 - 17-ROW CHECK (ATN 06:xx: the first audits ran before the 17 Attila rows were in ... | coordinator
 - Group 1 leftovers: Grass Ray Tracing Range for grass captured as drawn (Rome II, ... | next GPU round (grass range), next data runs (VFX)
@@ -1510,6 +1517,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         06:xx rao_ merged ad541a4f (RT AO replaces the game's AO in 10 games, AO gates; Ryse in its round). Fix round started
         (brief tools/tw/round_notes/fix_round_1116/brief.md): shs_ (shared), Attila + Thrones, Rome II, WH1 + WH2, WH3, Troy +
         Pharaoh, Shogun 2 + Rome Remastered, Ryse, Tales + Expeditions, R.U.S.E.; dvf_ (Divinity) earlier. Merge one at a time.
+        - [x] Attila + Thrones MERGED 1f5f02e94 (ath_, 10 commits): Thrones Time Each Pass, alpha clamp, battlefog01 MSAA,
+          sky_deband off in its presets, video rows HDR-only; Attila + Thrones ssr00 / ssr01 one occlusion under RT Specular
+          Occlusion (tw_thrones_ssr part F 0 differ, control 27686 / 7168); tw_vanilla_exact 60 EXACT / 8 accepted / 0 FAIL
+          (x86 + amd64); tw_psychov35 part 4 on Thrones (Hue Clip 40 = minimum, 6.31 deg), part 8 (V35 toe: darks
+          x0.996-1.000, chroma 30-150 nits x1.055), default -Before now 4b5099035. Not built on atn-mods yet (rebuild all).
+        - [ ] ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB73442 / D9123DE1, vanilla coverage
+          of pointlight00-39 / UI sprites / grass00-01 (the generic driver can't feed them); view_share Classify 24 unclear
+          sun-PS rows a game (NEEDS A TRACE). The t46 x AO double-occlusion check was sent to WH3, WH1 / WH2, Troy / Pharaoh,
+          Rome II and Shogun 2 agents. Owner: next Attila round / data runs, per-game agents (t46)
+        - [x] 17-ROW CHECK non-TW DONE (ryse / tales / expeditions / divinity1 / divinity2 / ruse _17.md): A rows sent to the
+          Ryse, Tales + Expeditions, R.U.S.E., Divinity agents and shs_ (Units Range for scene_draw hosts, Tales NO_DXR12 /
+          TEST_DEVICE_REMOVAL switches, rt_core index-write event for R.U.S.E.'s replay if needed).
+        - [ ] Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shadows.hpp:1113-1125,
+          rt_path.hlsli:39-48; Attila measured SER slower at every size): a cs_6_9 compute path with micromaps, SER an
+          Experimental row after an Nsight A/B; torch lights in Ryse / Tales / Expeditions (ryse.tsv:47, tales.tsv:44-45,
+          expeditions.tsv:59, traces); R.U.S.E. gamma slider, Divinity 1 / 2 Bink videos, Ryse VFX / sky, Tales VFX / sky /
+          auto exposure, Tales smaa00 input encoding (traces). Owner: next GPU round (SER), next data runs (rest)
       - [ ] From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Pharaoh's and Troy's SMAA / CMAA2
         wrappers decode Attila's gamma 2.0 while their frame is linear there (wrong domain? WARP check); the vendor fallback
         (saved DLSS -> XeSS on Intel, else FSR) is missing in Rome Remastered, Shogun 2, Ryse, Tales, Expeditions;
