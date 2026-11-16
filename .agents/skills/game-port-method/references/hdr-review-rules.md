@@ -36,6 +36,9 @@ Read before any tone mapper, LUT, bloom, hue, gamma or PsychoV change. `handle-s
 - Anchors: mid grey (0.18) unless anchor matching picks another point. The cone exponent is the game's own response
   around the anchor (1 where the game is the identity there).
 - Compression's toe darkens shadows under the anchor: measure against Vanilla below white before keeping the default.
+  Where the game's own toe and saturation are the look (an ACES game's darker shadows), PsychoV reproduces them,
+  measured against the game's LUT on the traced constants, and keeps only its own highlights: Divinity 2's V35 came out
+  with shadows 5x brighter and mid tones 23% paler than Off (the maintainer, 2026-11-16).
 - The output goes unclamped into the swap chain pass.
 - Our PsychoV35 (Musa's, `twattila/psycho_test35.hlsli`) keeps this contract where its arguments match.
 
@@ -55,7 +58,9 @@ Read before any tone mapper, LUT, bloom, hue, gamma or PsychoV change. `handle-s
 ## Targets and bad pixels
 
 - **Vanilla exact first:** every replaced shader has an offline test against the game's own bytes, plus a deliberately
-  wrong copy that must fail. Then any difference under the HDR modes is the mod's, not a porting error.
+  wrong copy that must fail. Then any difference under the HDR modes is the mod's, not a porting error. These tests
+  find real bugs: R.U.S.E.'s vignette had lost a `dp2add_sat`'s saturate, 0.13 to 0.30 off in 6 of 7 permutations
+  (the maintainer, 2026-11-16).
 - **Every 8-bit target between the HDR scene and the tone map clips HDR:** DOF and blur targets, a LUT strip, an AA
   pass's back-buffer-sized input. Upgrade narrowly (exact size and usage, not an aspect tolerance).
 - **MSAA:** upgrade the MSAA surface and its resolve target together. Upgrading only one crashed Arkham City (RGBA8

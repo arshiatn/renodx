@@ -6,6 +6,7 @@ Short facts per engine; Total War's (Warscape) are in `tw-port-checklist`. Each 
 
 - Offline dumps come from the game's unencrypted install packs, or from the maintainer's runtime dumps (`bin/cmd_Decompiler-1.3.16/dump_shader_<game>/`, not in the repo). Never decrypt protected assets or work around a protection (Denuvo, Steam DRM) to read them; code a protection hides is level B only through a runtime dump or an image the add-on saves of its own process (Ryse's and Tales' debug buttons).
 - The decompiler traps in `tw-port-checklist`'s `shaders-ui.md` section 1 hold in every engine. One more from Tales: 3Dmigoto misprints integer literals in compute shaders; check them in the bytecode (`fxc /dumpbin`).
+- A game that ships its shader sources may ship bytecode built from other values: read constants from the bytes. Divinity 2's orthographic EoCSight holds 50 / 100 nits in its bytecode against 240 / 300 in its source.
 
 ## Unreal Engine 4 (Expeditions: Rome 4.23, Tales of Arise 4.21)
 
@@ -17,6 +18,7 @@ Expeditions' exe says `++UE4+Release-4.23-CL-0` (no 4.24+ cvars such as `r.SkyAt
 - Crash traps: every sun cascade shares one CSM atlas (8192 at most; cascades that don't fit are silently not drawn); shadow resolution above 8192 or `r.Shadow.TexelsPerPixel` 4 written live crashed Tales. Bandai's "ScreenScale" cvars are integer divisors (lower is better): read the default from the registration code before choosing a direction. Matrices passed into UE functions must be 16-byte aligned.
 - **Expand Gamut off in HDR modes**: zero the `ExpandGamut` term in the LUT builder (CombineLUTs) for every HDR mode, keep it only for SDR; it oversaturated both HDR modes in Expeditions.
 - **Extended mode**: Expeditions' HDR Extended is a port of UE Extended's UE Filmic Extended (`src/games/expeditionsrome/ue_extended.hlsli`; source `src/games/ue-extended/`); start a UE game's Extended from it. Its shoulder above paper white rolls off per channel (`min(c, 1) + Neutwo(max(c - 1, 0), peak - 1)`), not by the brightest channel, or fire stays flat salmon (Ryse fix32).
+- **The game's own contact shadows or SSGI** (Tales: Bandai's): ours (Bend, GT-VBGI) replace them, never run beside them (no double work); the rows stay off until an in-game look check, then go on by default.
 
 ## CryEngine (Ryse: Son of Rome)
 
@@ -24,3 +26,13 @@ Expeditions' exe says `++UE4+Release-4.23-CL-0` (no 4.24+ cvars such as `r.SkyAt
 - The exe on disk is Steam-DRM encrypted: code offsets come from the image the DLSS add-on saves of its own process (`ryse_image.bin`), never from a decrypted exe.
 - Cvars go through the game's console, past its whitelist (`rysesonofrome/graphics.hpp`).
 - In-place format upgrades lost clamps here: every new add-on uses view cloning (`use_resource_cloning`, `src/mods/swapchain_v1.hpp`); don't retrofit an old one.
+
+## D3D9 games (R.U.S.E.)
+
+- **Patch the game's SM3 bytecode**, don't rewrite its shaders: insert a few instructions after a known read, every other token stays the game's. A generator batches a family's hundreds (R.U.S.E.: 642 object, 112 terrain and 120 water PS; 974 of 974 accepted).
+- **Prove every patch offline**: on an SM3 interpreter, "off" (the neutral value) gives the game's output exactly and other values change it; then create every patched shader on a CPU-only D3D9 NULLREF device. The runtime refuses forms the assembler takes (an `lrp` into a temp that is also one of its sources).
+- **Rays through a D3D11 draw replay** on the presentation proxy's D3D11 device: mirror the buffers at unmap, transpile each vs_3_0 to vs_5_0 with stream output (each proven against the SM3 VS interpreter), place static draws once by a placement key (shader, declaration, streams and their write counts, index range, model rotation, position registers; translation within a tolerance) and replay only skinned or moved ones (R.U.S.E.: 1,783 of 2,223 draws placed once). Capture camera-relative where world coordinates are large (about 3.8e5).
+
+## Divinity: Original Sin 2
+
+- When a profile fails to load, the game creates `Debug_Client_Profile_N` and rewrites that profile's `profile.lsb`, `modsettings.lsx` and `InventorySettings.lsb`: back up every profile folder's files before a run, not only the active one's.
