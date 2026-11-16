@@ -771,3 +771,7 @@ size; then:
   t7). Bandai's SSGI chain keeps running: lighting00-05's fill colour and the toon passes' tint of the lit colour and
   their rims read it (terms ours does not replace), so skipping it (about 0.07 ms in run_101408) would change the look.
   test/tw_vanilla_exact: TalesToon (off = the game's bytes), TalesToonRays (t41 in t6's place).
+- SER round 2026-11-16 (tpa_, untested in game): on DXR 1.2 the paths run as the compute shader with micromaps
+  (0x7A1E0D34: 0x7A1E0D1B at shader model 6.9); the ray generation shader with shader execution reordering
+  (0x7A1E0D1C) is the Experimental row **Path Tracing Reordering** (off): Attila measured reordering slower at every
+  size; Tales still needs its Nsight A/B.

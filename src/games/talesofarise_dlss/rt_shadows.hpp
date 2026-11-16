@@ -230,6 +230,9 @@ static std::atomic_bool specular_occlusion = false;
 static std::atomic_bool path_tracing = false;
 static std::atomic<uint32_t> path_bounces = 2;
 static std::atomic<uint32_t> path_samples = 1;
+// DXR 1.2 (Experimental): the paths as a ray generation shader with shader execution reordering (0x7A1E0D1C); off: the
+// compute paths with micromaps (0x7A1E0D34; Attila measured reordering slower at every size).
+static std::atomic_bool path_reorder = false;
 // The add-on's Agility SDK folder (D3D12Core.dll), set at load; empty or missing: Windows' D3D12 (DXR 1.1).
 static std::string agility_folder;
 
@@ -544,7 +547,7 @@ struct Gpu {
   ComPtr<ID3D12PipelineState> cache_resolve_pipeline;  // 0x7A1E0D16
   ComPtr<ID3D12PipelineState> scene_data_pipeline;    // 0x7A1E0D19
   ComPtr<ID3D12PipelineState> micromap_pipeline;      // 0x7A1E0D1A (DXR 1.2)
-  ComPtr<ID3D12PipelineState> path_pipeline;          // 0x7A1E0D1B (without DXR 1.2)
+  ComPtr<ID3D12PipelineState> path_pipeline;          // 0x7A1E0D1B (0x7A1E0D34 with DXR 1.2)
   ComPtr<ID3D12PipelineState> learn_pipeline;         // 0x7A1E0D1D
   ComPtr<ID3D12PipelineState> specular_pipeline;      // 0x7A1E0D1E
   ComPtr<ID3D12PipelineState> sun_pipeline;           // 0x7A1E0D1F
@@ -1109,14 +1112,14 @@ inline bool Initialize(ID3D11Device* game_device) {
       || !pipeline(__0x7A1E0D16, &gpu.cache_resolve_pipeline) || !pipeline(__0x7A1E0D19, &gpu.scene_data_pipeline)
       || !pipeline(__0x7A1E0D1D, &gpu.learn_pipeline) || !pipeline(__0x7A1E0D1E, &gpu.specular_pipeline)
       || !pipeline(__0x7A1E0D1F, &gpu.sun_pipeline)
-      || (!gpu.dxr12 && !pipeline(__0x7A1E0D1B, &gpu.path_pipeline))
+      || !pipeline(gpu.dxr12 ? std::span<const uint8_t>(__0x7A1E0D34) : std::span<const uint8_t>(__0x7A1E0D1B), &gpu.path_pipeline)
       || FAILED(device12->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(gpu.descriptors.GetAddressOf())))) {
     Fail("the ray query shaders failed (needs shader model 6.5).");
     release();
     return false;
   }
-  // DXR 1.2: the opacity micromaps' bake, and the path tracing as a ray generation shader (shader execution
-  // reordering); without them, the compute path tracing and no micromaps.
+  // DXR 1.2: the opacity micromaps' bake, and the path tracing also as a ray generation shader (shader execution
+  // reordering, the Experimental row); without them, the compute path tracing and no micromaps.
   if (gpu.dxr12) {
     const D3D12_EXPORT_DESC export_desc = {.Name = L"PathTraceRayGen"};
     const D3D12_DXIL_LIBRARY_DESC library = {
@@ -1157,6 +1160,7 @@ inline bool Initialize(ID3D11Device* game_device) {
       gpu.micromap_pipeline.Reset();
       gpu.path_shader_table.Reset();
       gpu.pipeline.Reset();
+      gpu.path_pipeline.Reset();
       if (!pipeline(__0x7A1E0D13, &gpu.pipeline) || !pipeline(__0x7A1E0D1B, &gpu.path_pipeline)) {
         Fail("the ray query shaders failed (needs shader model 6.5).");
         release();
@@ -1257,7 +1261,7 @@ inline bool Initialize(ID3D11Device* game_device) {
   device12->CreateUnorderedAccessView(gpu.triangle_normals.Get(), nullptr, &normals_written, DescriptorAt(TRIANGLE_NORMALS_WRITTEN));
   // The effects' own textures and the radiance cache are made when first on; until then their descriptors are null.
   NullDescriptors();
-  state.status = std::format("Running ({}; {}).", gpu.dxr12 ? "DXR 1.2: opacity micromaps, shader execution reordering" : "DXR 1.1",
+  state.status = std::format("Running ({}; {}).", gpu.dxr12 ? "DXR 1.2: opacity micromaps" : "DXR 1.1",
                              agility ? "Agility SDK" : agility_reason);
   return true;
 }
@@ -2478,11 +2482,11 @@ inline LightingResult TraceLighting(ID3D11DeviceContext* context, const std::arr
   }
   list->SetComputeRoot32BitConstants(internal::ROOT_SETTINGS, static_cast<UINT>(settings.size()), settings.data(), 0);
   const auto uav_barrier = internal::UavBarrier();
-  // Learning (base colours into the cache, the learned lighting's sums), then the paths (SER on DXR 1.2).
+  // Learning (base colours into the cache, the learned lighting's sums), then the paths (SER: DXR 1.2 and the row).
   list->SetPipelineState(gpu.learn_pipeline.Get());
   list->Dispatch((gpu.width / 2 + 7) / 8, (gpu.height / 2 + 7) / 8, 1);
   list->ResourceBarrier(1, &uav_barrier);
-  if (gpu.dxr12) {
+  if (gpu.dxr12 && path_reorder.load(std::memory_order_relaxed)) {
     list->SetPipelineState1(gpu.path_state_object.Get());
     const D3D12_DISPATCH_RAYS_DESC rays = {
         .RayGenerationShaderRecord = {.StartAddress = gpu.path_shader_table->GetGPUVirtualAddress(),

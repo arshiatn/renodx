@@ -188,6 +188,7 @@ float spark_fix_row = 1.f;
 float game_sharpening_row = 0.f;
 float character_shadows_row = 1.f;
 float path_samples_row = 1.f;
+float path_reorder_row = 0.f;
 
 struct Texture {
   ComPtr<ID3D11Texture2D> resource;
@@ -2304,6 +2305,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     talesofarise::rt_shadows::bounce_rays.store(std::clamp(rays.light_bounce_rays, 1u, 8u));
     talesofarise::rt_shadows::path_bounces.store(rays.path_bounces);
     talesofarise::rt_shadows::path_samples.store(static_cast<uint32_t>(std::clamp(path_samples_row, 1.f, 4.f)));
+    talesofarise::rt_shadows::path_reorder.store(path_reorder_row != 0.f);
   }
   {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
@@ -3067,6 +3069,16 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                          .format = "%d",
                                          .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders) && rt_sliders.light_bounce == 2.f; },
                                      });
+  insert_after("PathTracingSamples", new Setting{
+                                          .key = "PathTracingReorder",
+                                          .binding = &path_reorder_row,
+                                          .value_type = SettingValueType::BOOLEAN,
+                                          .default_value = 0.f,
+                                          .label = "Path Tracing Reordering (Experimental)",
+                                          .tooltip = "Regroups the paths by what they hit first (shader execution reordering, newest GPUs and drivers).\n"
+                                                     "Same picture; faster or slower depending on the GPU.",
+                                          .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders) && rt_sliders.light_bounce == 2.f; },
+                                      });
   insert_after("light_bounce_multi_bounce", new Setting{
                                                 .key = "GlobalIlluminationGameOpenSky",
                                                 .binding = &game_gi_open_sky_row,
