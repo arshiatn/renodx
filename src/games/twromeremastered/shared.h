@@ -72,10 +72,6 @@ struct ShaderInjectData {
   // float vfxdebugslice;
   // float vfxdebugmode;
 
-  // Auto-exposure controls are appended so every existing injection offset
-  // remains unchanged.
-  // float auto_exposure_highlight_protection;     // 0: stock, 1: protected
-  // float auto_exposure_highlight_headroom_stops; // 1 - 4 seems to work fine
   float hue_shift;  // PsychoV30 highlight hue shift: 0 none, 1 Test30, 2 full
 
   // PsychoV31 (Rendering Mode 3), appended.
@@ -112,6 +108,10 @@ struct ShaderInjectData {
   float v35_highlight_saturation;
   float v35_roll_off;              // 0 latest, 1 Musa's compression, 2 soonest
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
+
+  // Modded Auto Exposure (HDR modes, Experimental; shaders/autoexposure00), appended.
+  float auto_exposure_highlight_protection;      // 0: stock, 1: protected
+  float auto_exposure_highlight_headroom_stops;  // the metered cap above the frame's average, in stops
 };
 
 #define SI shader_injection
@@ -129,10 +129,6 @@ struct ShaderInjectData {
       SI.saturation, 1.f, 100.f, 1.f, 1.f, 0, SI.cone_response_exponent,       \
       0.18f, 0.18f, 1.f, ((SI.swap_chain_encoding == 2.f) ? 0 : 1), 1.f, 0.f, SI.hue_shift)
 
-
-// // For the modded auto exposure
-// #define AutoExposureHighlightProtection     SI.auto_exposure_highlight_protection
-// #define AutoExposureHighlightHeadroomStops  SI.auto_exposure_highlight_headroom_stops
 
 // FOR VFX AND EXTRA STUFF
 #define HDR                       SI.hdr

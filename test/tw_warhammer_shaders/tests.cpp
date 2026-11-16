@@ -153,6 +153,31 @@
 //    AO 0.5 and 1 with the march's light (confidence 1), and with the cubes' light alone (confidence 0) the environment x t46,
 //    no AO. CONTROLS: without t46 the game's AO changes it; the resolve as it was (the cubes' light x AO x t46) changes with
 //    the AO.
+// 29. Rays Replace Shadow Maps on the sun draws that read the sun's atlas (each addon.cpp's ATLAS_SUN_SHADERS, the game's
+//    bytes patched as the runtime: screen_space_shadows' Patch, then PatchAmbient with the row's ambient sites), drawn as part
+//    8 draws (FORWARD_CONSTANTS: cascade 0; the scene the first fill, sun, glint and height where the atlas's value reaches
+//    the game's output; the MSAA builds need it there, with their G-buffer unbound only Warhammer II's do, and under the
+//    game's MSAA no upscaler and so no rays run). Warhammer (its 6 gather 5.0 builds, the ones the screen-space shadows'
+//    patch multiplies by t49; OnSunReplaceMaps: t1 a 1 x 1 R32 of 1, the far plane): t49 0 bit-identical to the game's
+//    bytes over a lit atlas (4 x 4 of 1); t49 1 to the game's over a shadowing atlas (0: every comparison and read
+//    failing): the rays' shadow alone. Warhammer II (twattila/sun_replace_maps.hpp: an ALWAYS point comparison sampler at
+//    s1): t49 0 bit-identical to the game's bytes with every comparison lit (ALWAYS); t49 1 to the game's with every one
+//    failing (NEVER); t49 0.5 to its patch over an empty atlas (FLT_MAX, the game's sampler): Replace = the multiply over a
+//    map that shades nothing. CONTROL (both): today's multiply with the game's shadowing atlas under t49 0 differs from the
+//    lit reference (the map's shadow is what Replace takes away).
+// 30. Warhammer's one occlusion a reflection (shaders/ssr00_0x6B80E35B, part 2's resolve; the sun draws' AO at t45 / s5, as
+//    the add-on binds it): K = the cubes' light the sun draws add (a water pixel, no march: the whole cube term, nothing
+//    bound), their AO factor f(a) = lerp(1, a, 1 - gloss) (the 31 sun shaders' standard rows: tools/tw/tw1_1116). The final
+//    reflection K x f(a) + the output: under Ray-Traced Specular Occlusion (t46 0.5) the march's light alone (the game's
+//    output + K) at AO 0, 0.5 and 1, and the cubes' light alone K x t46 (confidence 0); under the rays' reflections (t47,
+//    with and without t46) the rays' light x 0.8 + K x f(a) x 0.2 (their light no AO, the cubes' the game's). Without t46
+//    and the rays, t45 bound changes nothing (bit for bit). CONTROLS: the resolve as it was (AO + t46 - 1) changes with the
+//    AO under t46; under the rays it differs from the expected.
+// 31. Warhammer II's SSAO readers (the collect's output, tools/tw/tw1_1116/tw1_reader_census_wh2.txt: the sun draws' t_ssao and
+//    the SSR resolve's t1) read its red alone: every single-sampled row of its LIGHT_BOUNCE_DRAWS with a t_ssao (its bytes,
+//    part 15's ambient cube light) and the resolve replacement (part 27's) give the same bits with t_ssao's other channels 0
+//    and 1, so the rays' combine in its place (part 15: red the traced visibility) leaves the game's passes unread.
+//    CONTROLS: their output follows the red.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -161,6 +186,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -751,6 +777,9 @@ struct ResolveRun {
   float radiance = 0.f;
   bool rays = false;
   float flags = 1.f / 255.f;  // channel 3's alpha: the material's flags (1 SSR, 64 water)
+  float confidence = 1.f;     // the march's hit texture's x (1: confidence 1; 0.4 and below: 0)
+  float occlusion = -1.f;     // t46, Ray-Traced Specular Occlusion (< 0: unbound)
+  float ao = -1.f;            // t45, the sun draws' AO, with a linear sampler at s5 (< 0: unbound)
 };
 
 static std::vector<Float4> RunResolve(ID3D11ComputeShader* shader, const ResolveRun& run) {
@@ -779,7 +808,8 @@ static std::vector<Float4> RunResolve(ID3D11ComputeShader* shader, const Resolve
   const std::array<ID3D11ShaderResourceView*, 7> views = {
       cube_view.Get(), View(size, size, normal).Detach(), View(size, size, specular).Detach(), View(size, size, depth).Detach(),
       View(64, 64, std::vector<Float4>(64 * 64, Float4{1.f, 0.5f, 0.5f, 0.f})).Detach(),
-      View(size / 2, size / 2, std::vector<Float4>((size / 2) * (size / 2), Float4{1.f, run.hit, 0.f, 0.f})).Detach(), View(size, size, radiance).Detach()};
+      View(size / 2, size / 2, std::vector<Float4>((size / 2) * (size / 2), Float4{run.confidence, run.hit, 0.f, 0.f})).Detach(),
+      View(size, size, radiance).Detach()};
   const auto output = Texture(size, size, nullptr, D3D11_BIND_UNORDERED_ACCESS);
   ComPtr<ID3D11UnorderedAccessView> uav;
   device->CreateUnorderedAccessView(output.Get(), nullptr, uav.GetAddressOf());
@@ -821,7 +851,12 @@ static std::vector<Float4> RunResolve(ID3D11ComputeShader* shader, const Resolve
   context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
   const auto rays = View(size, size, std::vector<Float4>(static_cast<size_t>(size) * size, Float4{0.3f, 0.2f, 0.1f, 0.8f}));
   if (run.rays) context->CSSetShaderResources(47, 1, rays.GetAddressOf());
+  const auto occlusion = View(size, size, std::vector<Float4>(static_cast<size_t>(size) * size, Float4{run.occlusion, run.occlusion, run.occlusion, 1.f}));
+  if (run.occlusion >= 0.f) context->CSSetShaderResources(46, 1, occlusion.GetAddressOf());
+  const auto sun_ao = View(size, size, std::vector<Float4>(static_cast<size_t>(size) * size, Float4{run.ao, run.ao, run.ao, 1.f}));
+  if (run.ao >= 0.f) context->CSSetShaderResources(45, 1, sun_ao.GetAddressOf());
   context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+  context->CSSetSamplers(5, 1, linear_sampler.GetAddressOf());
   context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
   context->Dispatch((size + 31) / 32, (size + 31) / 32, 1);
   context->ClearState();
@@ -1297,6 +1332,9 @@ struct ForwardScene {
   std::vector<NamedConstant> constants = {};                // after FORWARD_CONSTANTS, by name
   std::vector<std::pair<std::string, Float4>> textures = {};  // 2D textures by name: uniform
   const ShaderInjectData* injection = nullptr;               // cb13 (nullptr: unbound)
+  UINT atlas_size = 4;                                       // the shadow map's width and height (1: Warhammer's far-plane stand-in)
+  int comparison_slot = -1;                                  // a point comparison sampler with `comparison` there (< 0: none)
+  D3D11_COMPARISON_FUNC comparison = D3D11_COMPARISON_ALWAYS;
 };
 
 // A forward pixel shader's bytes drawn over 4 x 4 pixels: its inputs from a vertex shader made from its input signature
@@ -1397,10 +1435,11 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
       context->PSSetShaderResources(bind.BindPoint, 1, views.back().GetAddressOf());
     } else if (bind.Type == D3D_SIT_TEXTURE && name.find("ShadowBuffer") != std::string::npos) {
       // The atlas as the game's: one R32 float (comparisons need it).
-      const std::vector<float> depths(16, scene.atlas);
-      const D3D11_TEXTURE2D_DESC atlas_desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
-                                               .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
-      const D3D11_SUBRESOURCE_DATA atlas_data = {.pSysMem = depths.data(), .SysMemPitch = 16};
+      const std::vector<float> depths(static_cast<size_t>(scene.atlas_size) * scene.atlas_size, scene.atlas);
+      const D3D11_TEXTURE2D_DESC atlas_desc = {.Width = scene.atlas_size, .Height = scene.atlas_size, .MipLevels = 1, .ArraySize = 1,
+                                               .Format = DXGI_FORMAT_R32_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                               .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+      const D3D11_SUBRESOURCE_DATA atlas_data = {.pSysMem = depths.data(), .SysMemPitch = 4 * scene.atlas_size};
       ComPtr<ID3D11Texture2D> texture;
       device->CreateTexture2D(&atlas_desc, &atlas_data, texture.GetAddressOf());
       views.emplace_back();
@@ -1433,6 +1472,15 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
   if (scene.occlusion >= 0.f) {
     views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.occlusion, scene.occlusion, scene.occlusion, scene.occlusion})));
     context->PSSetShaderResources(49, 1, views.back().GetAddressOf());
+  }
+  if (scene.comparison_slot >= 0) {
+    // As twattila/sun_replace_maps.hpp makes it (point: each comparison exactly 0 or 1).
+    const D3D11_SAMPLER_DESC sampler = {.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                        .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                        .ComparisonFunc = scene.comparison, .MaxLOD = D3D11_FLOAT32_MAX};
+    samplers.emplace_back();
+    device->CreateSamplerState(&sampler, samplers.back().GetAddressOf());
+    context->PSSetSamplers(static_cast<UINT>(scene.comparison_slot), 1, samplers.back().GetAddressOf());
   }
   if (scene.caustics >= 0.f) {
     views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.caustics, scene.caustics, scene.caustics, scene.caustics})));
@@ -3577,6 +3625,7 @@ struct Wh2ResolveRun {
   float ao = 1.f;           // t1 (the game's AO)
   float occlusion = -1.f;   // t46 (the rays' specular occlusion; below 0: unbound)
   float confidence = 1.f;   // t7's x (the march's hit; 0.4 or below: no confidence)
+  float ao_others = -1.f;   // t1's green, blue and alpha (below 0: `ao`)
 };
 
 static std::vector<Float4> RunWh2Resolve(ID3D11ComputeShader* shader, const Wh2ResolveRun& run) {
@@ -3618,7 +3667,8 @@ static std::vector<Float4> RunWh2Resolve(ID3D11ComputeShader* shader, const Wh2R
   const D3D11_SHADER_RESOURCE_VIEW_DESC cube_desc = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY,
                                                      .TextureCubeArray = {.MostDetailedMip = 0, .MipLevels = 1, .First2DArrayFace = 0, .NumCubes = 1}};
   device->CreateShaderResourceView(cube_texture.Get(), &cube_desc, cube_view.GetAddressOf());
-  const auto ssao = View(SIZE, SIZE, std::vector<Float4>(SIZE * SIZE, Float4{run.ao, run.ao, run.ao, run.ao}));
+  const float ao_others = (run.ao_others < 0.f) ? run.ao : run.ao_others;
+  const auto ssao = View(SIZE, SIZE, std::vector<Float4>(SIZE * SIZE, Float4{run.ao, ao_others, ao_others, ao_others}));
   const auto harmonics = View(9, 6, std::vector<Float4>(9 * 6, Float4{}));
   const auto cloud = View(4, 4, std::vector<Float4>(16, Float4{}));
   const auto normal_view = View(SIZE, SIZE, normal);
@@ -3788,6 +3838,256 @@ static void TestWh2ReflectionSkip(const std::string& games) {
               rays_differ, pixels, rays_used, shadow_read, game_differ);
 }
 
+// Part 29: each game's ATLAS_SUN_SHADERS (its addon.cpp), patched as the runtime patches its LIGHT_BOUNCE_DRAWS rows.
+static void TestReplaceMaps(const std::string& games, const std::string& dump, const char* game, int sampler_slot) {
+  const std::string text = ReadText(games + "/" + game + "/addon.cpp");
+  std::smatch listed;
+  std::vector<uint32_t> hashes;
+  if (std::regex_search(text, listed, std::regex(R"(ATLAS_SUN_SHADERS = \{([^}]*)\})"))) {
+    const std::string list = listed[1].str();
+    const std::regex hash(R"(0x([0-9A-F]{8}))");
+    for (auto found = std::sregex_iterator(list.begin(), list.end(), hash); found != std::sregex_iterator(); ++found) {
+      hashes.push_back(static_cast<uint32_t>(std::stoul((*found)[1].str(), nullptr, 16)));
+    }
+  }
+  const auto draws = SunDraws(games, game);
+  const auto same_bits = [](const std::vector<Float4>& a, const std::vector<Float4>& b) {
+    return !a.empty() && a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(Float4)) == 0;
+  };
+  const bool warhammer2 = sampler_slot >= 0;
+  int patched = 0;
+  int reached = 0;
+  int lit_same = 0;
+  int shadowed_same = 0;
+  int empty_same = 0;
+  int controls = 0;
+  int multisampled = 0;
+  int single_missed = 0;
+  for (const uint32_t hash : hashes) {
+    const auto code = GameBytes(dump, hash);
+    const auto row = std::ranges::find(draws, hash, &std::pair<uint32_t, uint32_t>::first);
+    const auto shadow = ambient_patch::Patch(code, false, 1);
+    bool foliage = false;
+    const auto ambient = (row == draws.end()) ? std::vector<uint8_t>()
+                                              : ambient_patch::PatchAmbient(shadow.empty() ? std::span<const uint8_t>(code) : std::span<const uint8_t>(shadow),
+                                                                            &foliage, row->second);
+    const auto& ours = ambient.empty() ? shadow : ambient;
+    if (code.empty() || shadow.empty() || row == draws.end()) {
+      std::printf("  %s %08X: %s\n", game, hash, code.empty() ? "no bytes" : (shadow.empty() ? "no shadow patched" : "not in LIGHT_BOUNCE_DRAWS"));
+      continue;
+    }
+    ++patched;
+    multisampled += Multisampled(code) ? 1 : 0;
+    // The scene where the atlas's value reaches the game's output.
+    ForwardScene lit = {.fill = -1.f};
+    for (const float height : {0.f, 4.f}) {
+      for (const bool glint : {false, true}) {
+        for (const float fill : {0.5f, 0.25f, 1.f, 0.1f}) {
+          for (const float sun : {1.f, -1.f}) {
+            const ForwardScene scene = {.fill = fill, .sun = sun, .glint = glint, .height = height, .atlas = 0.f};
+            ForwardScene other = scene;
+            other.atlas = 1.f;
+            if (lit.fill < 0.f && !same_bits(DrawForward(code, code, scene), DrawForward(code, code, other))) lit = other;
+          }
+        }
+      }
+    }
+    if (lit.fill < 0.f) {
+      std::printf("  %s %08X: no fill reaches its shadow%s\n", game, hash, Multisampled(code) ? " (MSAA: its G-buffer unbound here)" : "");
+      continue;
+    }
+    ++reached;
+    ForwardScene shadowing = lit;
+    shadowing.atlas = 0.f;
+    // The references: the game's bytes with the atlas lit and with it shading everything.
+    ForwardScene lit_reference = lit;
+    ForwardScene shadowed_reference = shadowing;
+    if (warhammer2) {
+      lit_reference.comparison_slot = sampler_slot;
+      shadowed_reference = lit;
+      shadowed_reference.comparison_slot = sampler_slot;
+      shadowed_reference.comparison = D3D11_COMPARISON_NEVER;
+    }
+    // Replace: the rays' shadow bound at t49 and the runtime's stand-in (Warhammer: the 1 x 1 far plane at t1; Warhammer II:
+    // ALWAYS at s1).
+    ForwardScene replace = lit;
+    if (warhammer2) {
+      replace.atlas = 0.f;
+      replace.comparison_slot = sampler_slot;
+    } else {
+      replace.atlas_size = 1;
+    }
+    ForwardScene rays_lit = replace;
+    rays_lit.occlusion = 0.f;
+    ForwardScene rays_shadowed = replace;
+    rays_shadowed.occlusion = 1.f;
+    const auto game_lit = DrawForward(code, code, lit_reference);
+    const bool lit_ok = same_bits(DrawForward(ours, code, rays_lit), game_lit);
+    const bool shadowed_ok = same_bits(DrawForward(ours, code, rays_shadowed), DrawForward(code, code, shadowed_reference));
+    lit_same += lit_ok ? 1 : 0;
+    shadowed_same += shadowed_ok ? 1 : 0;
+    bool empty_ok = true;
+    if (warhammer2) {
+      ForwardScene half = replace;
+      half.occlusion = 0.5f;
+      ForwardScene empty = lit;
+      empty.atlas = FLT_MAX;
+      empty.occlusion = 0.5f;
+      empty_ok = same_bits(DrawForward(ours, code, half), DrawForward(ours, code, empty));
+      empty_same += empty_ok ? 1 : 0;
+    }
+    // CONTROL: the rays multiplying the game's shadowing atlas (Replace off) under t49 0.
+    ForwardScene multiply = shadowing;
+    multiply.occlusion = 0.f;
+    const bool control = !same_bits(DrawForward(ours, code, multiply), game_lit);
+    controls += control ? 1 : 0;
+    std::printf("  %s %08X%s (fill %g, sun %g%s, height %g): t49 0 %s the lit atlas, t49 1 %s the shadowing one%s; CONTROL multiply %s\n", game, hash,
+                Multisampled(code) ? " MSAA" : "", lit.fill, lit.sun, lit.glint ? ", glint" : "", lit.height, lit_ok ? "=" : "DIFFERS from",
+                shadowed_ok ? "=" : "DIFFERS from", warhammer2 ? (empty_ok ? ", t49 0.5 = over an empty atlas" : ", t49 0.5 DIFFERS over an empty atlas") : "",
+                control ? "differs" : "THE SAME");
+  }
+  const int listed_count = static_cast<int>(hashes.size());
+  CHECK(listed_count > 0 && patched == listed_count && single_missed == 0 && lit_same == reached && shadowed_same == reached
+            && (!warhammer2 || empty_same == reached) && controls == reached,
+        "%s Rays Replace Shadow Maps: %d listed, %d patched, %d reached (%d MSAA), lit %d, shadowed %d, empty %d, controls %d", game, listed_count, patched,
+        reached, multisampled, lit_same, shadowed_same, empty_same, controls);
+  std::printf("%s Rays Replace Shadow Maps: %d listed, %d patched, %d drawn with the atlas reaching the output (%d MSAA, G-buffer unbound here); t49 0 "
+              "bit-identical to the game's lit atlas %d, t49 1 to the game's every comparison failing %d%s; CONTROL the rays multiplying the game's "
+              "shadowing atlas differ %d\n",
+              game, listed_count, patched, reached, multisampled, lit_same, shadowed_same,
+              warhammer2 ? std::format(", t49 0.5 = over an empty atlas {}", empty_same).c_str() : "", controls);
+}
+
+// Part 30.
+static void TestResolveOneOcclusion(const std::string& games) {
+  const std::string path = games + "/twwarhammer/shaders/ssr00_0x6B80E35B.cs_5_0.hlsl";
+  const std::string source = ReadText(path);
+  const auto ours = ComputeShader(source, path);
+  const auto before = ComputeShader(Without(Without(source, "if (rt_reflected && rt_one_occlusion && r0.w == 0) r5.xyz = rt_sun_environment;", ""),
+                                            "r0.xyz = r2.www * (r5.xyz - rt_sun_environment) + r0.xyz;", "r0.xyz = r2.www * (r5.xyz - rt_environment) + r0.xyz;"),
+                                    path + " (as it was)");
+  constexpr float WATER = 64.f / 255.f;
+  constexpr float GLOSS = 0.5f;           // RunResolve's channel 1 z
+  constexpr float ENVIRONMENT = 0.25f;    // its cube
+  constexpr float RAYS_SHARE = 0.8f;      // its rays' confidence
+  constexpr std::array<float, 3> RAYS = {0.3f, 0.2f, 0.1f};
+  const auto cubes = RunResolve(ours.Get(), {.flags = WATER, .confidence = 0.f});
+  const auto game = RunResolve(ours.Get(), {});
+  const auto factor = [](float ao) { return 1.f + ((1.f - GLOSS) * (ao - 1.f)); };
+  // The final reflection: the sun draws' cubes' light (K x f(a)) plus the output.
+  const auto final_reflection = [&](ID3D11ComputeShader* shader, ResolveRun run) {
+    auto output = RunResolve(shader, run);
+    for (size_t at = 0; at < output.size(); ++at) {
+      for (size_t channel = 0; channel < 3; ++channel) output[at][channel] += cubes[at][channel] * factor(run.ao);
+    }
+    return output;
+  };
+  int cube_light = 0;
+  int march_alone = 0;
+  int cubes_alone = 0;
+  int rays_expected = 0;
+  int rays_occlusion_expected = 0;
+  int game_kept = 0;
+  int control_ao = 0;
+  int control_rays = 0;
+  const auto march_dark = final_reflection(ours.Get(), {.occlusion = 0.5f, .ao = 0.f});
+  const auto march_half = final_reflection(ours.Get(), {.occlusion = 0.5f, .ao = 0.5f});
+  const auto march_open = final_reflection(ours.Get(), {.occlusion = 0.5f, .ao = 1.f});
+  const auto cubes_half = final_reflection(ours.Get(), {.confidence = 0.f, .occlusion = 0.5f, .ao = 0.5f});
+  const auto rays_half = final_reflection(ours.Get(), {.rays = true, .ao = 0.5f});
+  const auto rays_occluded = final_reflection(ours.Get(), {.rays = true, .occlusion = 0.5f, .ao = 0.25f});
+  const auto t45_alone = RunResolve(ours.Get(), {.ao = 0.5f});
+  const auto before_game = RunResolve(before.Get(), {});
+  const auto before_dark = final_reflection(before.Get(), {.occlusion = 0.5f, .ao = 0.f});
+  const auto before_open = final_reflection(before.Get(), {.occlusion = 0.5f, .ao = 1.f});
+  const auto before_rays = final_reflection(before.Get(), {.rays = true, .ao = 0.5f});
+  for (size_t at = 0; at < game.size(); ++at) {
+    bool march = true;
+    bool environment = true;
+    bool traced = true;
+    bool traced_occluded = true;
+    bool ao_changes = false;
+    bool rays_differ = false;
+    bool lit = false;
+    for (size_t channel = 0; channel < 3; ++channel) {
+      const float k = cubes[at][channel];
+      lit = lit || k > 1e-4f;
+      const float hit = game[at][channel] + k;
+      march = march && Near(march_dark[at][channel], hit, 1e-4f) && Near(march_half[at][channel], hit, 1e-4f) && Near(march_open[at][channel], hit, 1e-4f);
+      environment = environment && Near(cubes_half[at][channel], k * 0.5f, 1e-4f);
+      const float expected = (k / ENVIRONMENT * RAYS_SHARE * RAYS[channel]) + (k * (1.f - RAYS_SHARE) * factor(0.5f));
+      traced = traced && Near(rays_half[at][channel], expected, 1e-4f);
+      const float expected_occluded = (k / ENVIRONMENT * RAYS_SHARE * RAYS[channel]) + (k * (1.f - RAYS_SHARE) * factor(0.25f));
+      traced_occluded = traced_occluded && Near(rays_occluded[at][channel], expected_occluded, 1e-4f);
+      ao_changes = ao_changes || !Near(before_dark[at][channel], before_open[at][channel], 1e-3f);
+      rays_differ = rays_differ || !Near(before_rays[at][channel], expected, 1e-3f);
+    }
+    cube_light += lit ? 1 : 0;
+    march_alone += march ? 1 : 0;
+    cubes_alone += environment ? 1 : 0;
+    rays_expected += traced ? 1 : 0;
+    rays_occlusion_expected += traced_occluded ? 1 : 0;
+    game_kept += (std::memcmp(t45_alone[at].data(), game[at].data(), 12) == 0 && std::memcmp(before_game[at].data(), game[at].data(), 12) == 0) ? 1 : 0;
+    control_ao += ao_changes ? 1 : 0;
+    control_rays += rays_differ ? 1 : 0;
+  }
+  const int pixels = static_cast<int>(game.size());
+  CHECK(cube_light == pixels && march_alone == pixels && cubes_alone == pixels && rays_expected == pixels && rays_occlusion_expected == pixels
+            && game_kept == pixels && control_ao == pixels && control_rays == pixels,
+        "WH1 one occlusion: cubes' light %d of %d, t46 march alone %d, cubes x t46 alone %d, rays %d, rays + t46 %d, t45 alone the game's %d, CONTROLS "
+        "AO %d, rays %d",
+        cube_light, pixels, march_alone, cubes_alone, rays_expected, rays_occlusion_expected, game_kept, control_ao, control_rays);
+  std::printf("WH1 one occlusion a reflection (cubes' light K > 0 in %d of %d): under t46 0.5 the march's light alone at AO 0 / 0.5 / 1 %d, the cubes' "
+              "light K x t46 alone %d; under the rays' reflections 0.8 x their light + 0.2 x K x f(AO) %d (with t46 %d); t45 without t46 or the rays "
+              "bit for bit the game's %d; CONTROLS the resolve as it was: the AO changes it under t46 %d, the rays' case differs %d\n",
+              cube_light, pixels, march_alone, cubes_alone, rays_expected, rays_occlusion_expected, game_kept, control_ao, control_rays);
+}
+
+// Part 31.
+static void TestWh2AmbientReaders(const std::string& games, const std::string& dump) {
+  int rows = 0;
+  int red_only = 0;
+  int follows = 0;
+  for (const auto& [hash, final_sites] : SunDraws(games, "twwarhammer2")) {
+    const auto code = GameBytes(dump, hash);
+    if (code.empty() || Multisampled(code)) continue;
+    ComPtr<ID3D11ShaderReflection> reflection;
+    D3DReflect(code.data(), code.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf()));
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    if (FAILED(reflection->GetResourceBindingDescByName("t_ssao", &bind))) continue;
+    ++rows;
+    SunScene scene = {.lighting = SunLighting({0.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, 1.f)};
+    scene.ao = {0.25f, 0.f, 0.f, 0.f};
+    const auto others_zero = DrawGame(code, scene);
+    scene.ao = {0.25f, 1.f, 1.f, 1.f};
+    const auto others_one = DrawGame(code, scene);
+    scene.ao = {1.f, 0.f, 0.f, 0.f};
+    const auto open = DrawGame(code, scene);
+    const bool same = std::memcmp(others_zero.data(), others_one.data(), sizeof(Float4)) == 0;
+    red_only += same ? 1 : 0;
+    follows += (others_one != open) ? 1 : 0;
+    if (!same) std::printf("  WH2 %08X reads t_ssao's other channels\n", hash);
+  }
+  const std::string path = games + "/twwarhammer2/shaders/ssr00_0x7E1CDD0A.cs_5_0.hlsl";
+  const auto resolve = ComputeShader(ReadText(path), path);
+  const auto zero = RunWh2Resolve(resolve.Get(), {.ao = 0.5f, .ao_others = 0.f});
+  const auto one = RunWh2Resolve(resolve.Get(), {.ao = 0.5f, .ao_others = 1.f});
+  const auto open = RunWh2Resolve(resolve.Get(), {.ao = 1.f, .ao_others = 1.f});
+  int resolve_differ = 0;
+  int resolve_follows = 0;
+  for (size_t at = 0; at < zero.size(); ++at) {
+    resolve_differ += (std::memcmp(zero[at].data(), one[at].data(), 12) != 0) ? 1 : 0;
+    resolve_follows += (std::memcmp(one[at].data(), open[at].data(), 12) != 0) ? 1 : 0;
+  }
+  const int pixels = static_cast<int>(zero.size());
+  CHECK(rows > 0 && red_only == rows && follows == rows && resolve_differ == 0 && resolve_follows > pixels / 2,
+        "WH2 SSAO readers: %d sun rows, red only %d, follow %d; the resolve %d of %d differ with the other channels, follows %d", rows, red_only,
+        follows, resolve_differ, pixels, resolve_follows);
+  std::printf("WH2 SSAO readers: %d single-sampled sun rows with t_ssao read its red alone in %d (CONTROL their light follows it: %d); the SSR "
+              "resolve's t1: %d of %d texels differ with the other channels 0 / 1 (CONTROL the red moves %d)\n",
+              rows, red_only, follows, resolve_differ, pixels, resolve_follows);
+}
+
 int main(int argc, char** argv) {
   if (argc < 4) {
     std::printf("tests <repo root> <the game's shader dump folder> <Warhammer II's shader dump folder>\n");
@@ -3831,6 +4131,10 @@ int main(int argc, char** argv) {
   TestBitmaskSkips(argv[1], argv[2]);
   TestWh2ReflectionSkip(games);
   TestWh2OneOcclusion(games);
+  TestReplaceMaps(games, argv[2], "twwarhammer", -1);
+  TestReplaceMaps(games, argv[3], "twwarhammer2", 1);
+  TestResolveOneOcclusion(games);
+  TestWh2AmbientReaders(games, argv[3]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

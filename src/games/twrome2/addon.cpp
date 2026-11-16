@@ -1603,6 +1603,26 @@ constexpr std::array<twattila::anti_aliasing::MotionShader, 39> MOTION_SHADERS =
 float rays_banner_light_row = 0.f;
 // Rarer Objects in the Rays (Experimental, off): the scene's families drawn in no trace (level B: SCENE_SHADERS' held_row).
 float rays_untraced_casters_row = 0.f;
+// The rays' cut-outs (rt_scene::InstallCutOuts, as Attila's): the unit pixel shaders that clip at their diffuse's alpha
+// (sample t0 at TEXCOORD1, discard below 0.501961; names.tsv, the bytes): the weighted* families' ps30_gbuffer* and
+// ps30_alpha_overlay* entries (data_rome2.pack's, its overrides of data.pack left out); 18 drawn with a unit VS in ATN's 71
+// traces (level A: DDDFEBA6, 4AD298CF, 1B291719, 42990BB4, 4AB12059, 437EE18A, 5EDD098A, 6B283703, FA1FD9E1, EBD4C46F and
+// the overlays 398DB3E5, A68033F9, 51507813, 4DD4A158, 0281025B, 18709598, C655E116, BDB29482), the rest level B. Not the
+// no_clip, unlit, forward or shadow entries, nor the blood ones that discard on the dismember interpolant alone. Sorted.
+constexpr std::array<uint32_t, 88> UNIT_CUT_OUT_PIXEL_SHADERS = {
+    0x0281025B, 0x02A3994E, 0x04F869A3, 0x091753D0, 0x0DEBDB7D, 0x0F7E0B2E, 0x12E8E94F, 0x17854E59, 0x180AF747,
+    0x18709598, 0x1B291719, 0x270D904C, 0x33A1DD55, 0x398DB3E5, 0x3B5D3EAF, 0x3E2EE49A, 0x3E3DBD68, 0x3E9E9FBC,
+    0x4020E395, 0x403D808E, 0x42990BB4, 0x42E89941, 0x437EE18A, 0x44C4367E, 0x4AB12059, 0x4AD298CF, 0x4D4E56B5,
+    0x4DD4A158, 0x4E652F91, 0x5046469E, 0x51507813, 0x558B58F1, 0x59856C46, 0x5BBEF3AB, 0x5CFA3542, 0x5EDD098A,
+    0x603B9400, 0x64985D6A, 0x67ECD81E, 0x6B283703, 0x6B7594DF, 0x6D4AC63A, 0x7005B6CC, 0x7457B4C3, 0x76097222,
+    0x776478FB, 0x77F78501, 0x7EA78E56, 0x7EAD699A, 0x80ED4000, 0x86F12918, 0x8B331B02, 0x8B4F799B, 0x91C9675E,
+    0x92130074, 0x92DD9320, 0x9A0CEE09, 0xA631FE35, 0xA63CAB60, 0xA68033F9, 0xAE52A97A, 0xAFA7FE9C, 0xAFCF3D01,
+    0xB168B30A, 0xB3455395, 0xB472B3AD, 0xB67F9CC8, 0xB682C0D6, 0xBD2B4EAA, 0xBDB29482, 0xC457FAB8, 0xC4AE865C,
+    0xC655E116, 0xC6AC4399, 0xC745B3D0, 0xCB1560CE, 0xDCAFC814, 0xDDDFEBA6, 0xDE8841DF, 0xE2041D57, 0xE6B857F9,
+    0xEBD4C46F, 0xEC8A8869, 0xF138735D, 0xF94DFB49, 0xF99FFC44, 0xFA1FD9E1, 0xFED3F26F};
+// The units' and rigid objects' cut-out captures (cut_out_shader): the plain capture with the UV (RT_CAPTURE_UV, o2.xy =
+// TEXCOORD1); the rigid rows' at the game's own alpha test, 0.35 (rigidcommon ps30_shadow_alpha_test 17CAF4B6), the units' at
+// the helper's 0.5 (theirs 0.501961). The plain captures' programs are unchanged (fxc disassembly, 12 of 12).
 constexpr std::array<twattila::rt_scene::SceneShader, 46> SCENE_SHADERS = {{
     {.hash = 0x83AB3AFC, .capture_shader = __rt_capture_terrain_old_sm41_a, .terrain = true},
     // The terrain with the game's Tessellation on (rigidterrain vs50_geom B1C7E29F, HS BE9FC167, DS 93979D65: 3-control-point
@@ -1622,23 +1642,27 @@ constexpr std::array<twattila::rt_scene::SceneShader, 46> SCENE_SHADERS = {{
     {.hash = 0x3333EFDC, .capture_shader = __rt_capture_branch_sm3_a},
     {.hash = 0xEFCA94BC, .capture_shader = __rt_capture_branch_sm41_b},
     {.hash = 0x7932D95F, .capture_shader = __rt_capture_branch_lq},
-    {.hash = 0xA30C5E0B, .capture_shader = __rt_capture_unit_sm3_b, .dynamic = true},
-    {.hash = 0x0F1FBD46, .capture_shader = __rt_capture_unit_4_bones_sm3_a, .dynamic = true},
-    {.hash = 0x1675B565, .capture_shader = __rt_capture_unit_dismember_sm3, .dynamic = true},
-    {.hash = 0x9E564D81, .capture_shader = __rt_capture_unit_4_bones_dismember_sm3, .dynamic = true},
-    {.hash = 0xA3550981, .capture_shader = __rt_capture_unit_sm41_b, .dynamic = true},
-    {.hash = 0x1CD702E3, .capture_shader = __rt_capture_unit_4_bones_sm41_a, .dynamic = true},
-    {.hash = 0x63DB20CA, .capture_shader = __rt_capture_unit_dismember_sm41, .dynamic = true},
-    {.hash = 0xF2990459, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .dynamic = true},
-    {.hash = 0x59431BB2, .capture_shader = __rt_capture_rigid_sm3_a, .rows_shader = __motion_record_rigid_sm3_a},
-    {.hash = 0x658FEA51, .capture_shader = __rt_capture_rigid_sm3_b, .rows_shader = __motion_record_rigid_sm3_b},
-    {.hash = 0xF343950E, .capture_shader = __rt_capture_rigid_sm41_b, .rows_shader = __motion_record_rigid_sm41_b},
+    {.hash = 0xA30C5E0B, .capture_shader = __rt_capture_unit_sm3_b, .cut_out_shader = __rt_capture_unit_cut_out_sm3_b, .dynamic = true},
+    {.hash = 0x0F1FBD46, .capture_shader = __rt_capture_unit_4_bones_sm3_a, .cut_out_shader = __rt_capture_unit_4_bones_cut_out_sm3_a, .dynamic = true},
+    {.hash = 0x1675B565, .capture_shader = __rt_capture_unit_dismember_sm3, .cut_out_shader = __rt_capture_unit_dismember_cut_out_sm3, .dynamic = true},
+    {.hash = 0x9E564D81, .capture_shader = __rt_capture_unit_4_bones_dismember_sm3, .cut_out_shader = __rt_capture_unit_4_bones_dismember_cut_out_sm3, .dynamic = true},
+    {.hash = 0xA3550981, .capture_shader = __rt_capture_unit_sm41_b, .cut_out_shader = __rt_capture_unit_cut_out_sm41_b, .dynamic = true},
+    {.hash = 0x1CD702E3, .capture_shader = __rt_capture_unit_4_bones_sm41_a, .cut_out_shader = __rt_capture_unit_4_bones_cut_out_sm41_a, .dynamic = true},
+    {.hash = 0x63DB20CA, .capture_shader = __rt_capture_unit_dismember_sm41, .cut_out_shader = __rt_capture_unit_dismember_cut_out_sm41, .dynamic = true},
+    {.hash = 0xF2990459, .capture_shader = __rt_capture_unit_4_bones_dismember_sm41, .cut_out_shader = __rt_capture_unit_4_bones_dismember_cut_out_sm41, .dynamic = true},
+    {.hash = 0x59431BB2, .capture_shader = __rt_capture_rigid_sm3_a, .rows_shader = __motion_record_rigid_sm3_a,
+     .cut_out_shader = __rt_capture_rigid_cut_out_sm3_a, .alpha_cutoff = 0.35f},
+    {.hash = 0x658FEA51, .capture_shader = __rt_capture_rigid_sm3_b, .rows_shader = __motion_record_rigid_sm3_b,
+     .cut_out_shader = __rt_capture_rigid_cut_out_sm3_b, .alpha_cutoff = 0.35f},
+    {.hash = 0xF343950E, .capture_shader = __rt_capture_rigid_sm41_b, .rows_shader = __motion_record_rigid_sm41_b,
+     .cut_out_shader = __rt_capture_rigid_cut_out_sm41_b, .alpha_cutoff = 0.35f},
     // Rigid objects with the game's Tessellation on (rigidcommon vs30_displacement E51A2D2A, HS E2BF92FC, DS A13A267D: 3-control-point
     // patches; in no trace, level B): F343950E's placement and world position (the same instructions and input signature), the
     // patches without the domain shader's displacement, which fades out 5 to 20 m from the camera. WARP: test/tw_rays_captures (T).
     {.hash = 0xE51A2D2A, .capture_shader = __rt_capture_rigid_sm41_b, .rows_shader = __motion_record_rigid_sm41_b, .patch_triangles = true,
      .held_row = &rays_untraced_casters_row},
-    {.hash = 0x3E086AFB, .capture_shader = __rt_capture_rigid_lq, .rows_shader = __motion_record_rigid_lq},
+    {.hash = 0x3E086AFB, .capture_shader = __rt_capture_rigid_lq, .rows_shader = __motion_record_rigid_lq,
+     .cut_out_shader = __rt_capture_rigid_cut_out_lq, .alpha_cutoff = 0.35f},
     {.hash = 0x54FB9355, .capture_shader = __rt_capture_rigid_blend_sm3_a, .rows_shader = __motion_record_rigid_blend_sm3_a},
     {.hash = 0xEBB7BFED, .capture_shader = __rt_capture_rigid_blend_sm3_b, .rows_shader = __motion_record_rigid_blend_sm3_b},
     {.hash = 0x95A90798, .capture_shader = __rt_capture_rigid_blend_wind_sm3_a, .rows_shader = __motion_record_rigid_blend_wind_sm3_a, .thin_row = &rays_banner_light_row},
@@ -2605,6 +2629,9 @@ bool AttachAddon() {
   // views are no G-buffer to write them from.
   rt_host.rewrite_guides = [](ID3D11DeviceContext*) {};
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, rt_host);
+  // The cut-outs: the units' clipping pixel shaders, the rigid objects' masks from the shadow pass's alpha test (rigidcommon
+  // ps30_shadow_alpha_test 17CAF4B6: in 65 of ATN's 71 traces, 7607 draws; its t0 the diffuse the rigid draws bind at t0).
+  twattila::rt_scene::InstallCutOuts(0x17CAF4B6, UNIT_CUT_OUT_PIXEL_SHADERS);
   for (const uint32_t shader_hash : CAMPAIGN_SHADERS) {
     renodx::utils::command_action::Register(
         OnCampaignDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});

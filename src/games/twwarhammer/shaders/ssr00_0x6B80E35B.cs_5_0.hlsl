@@ -51,6 +51,10 @@ Texture2D<float4> t_jitter : register(t4);
 Texture2D<float4> t_hit : register(t5);
 Texture2D<float4> t_in_radiance : register(t6);
 RWTexture2D<float3> t_out_radiance : register(u0);
+// RenoDX: the AO the frame's sun draws read (t_ssao after the add-on's hooks: the game's, GT-VBAO's, the rays' combine or the
+// AO filter's) and their sampler, bound by the add-on while the rays run (twwarhammer2/sun_ambient.hpp, ssr00's on_draw).
+Texture2D<float4> t_rt_sun_ao : register(t45);
+SamplerState s_rt_sun_ao_s : register(s5);
 
 
 // 3Dmigoto declarations
@@ -69,6 +73,8 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
 
   r0.xy = (int2)vThreadID.xy;
   r0.xy = float2(0.5,0.5) + r0.xy;
+  // RenoDX: where the sun draws read their AO at this pixel ((SV_Position + g_vpos_texel_offset) x g_screen_size.zw).
+  const float2 rt_sun_uv = (r0.xy + g_vpos_texel_offset) * g_screen_size.zw;
   r0.zw = g_screen_size.zw * r0.xy;
   uint rt_width, rt_height;
   gbuffer_channel_1_texture.GetDimensions(rt_width, rt_height);
@@ -193,17 +199,29 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
       r5.xyz = r7.xyz * g_environment_weights[(uint)r2.w] + r5.xyz;
       r2.x = 1 + r2.x;
     }
-    // RenoDX: the cubes' light with the specular occlusion; off water the scene keeps its unoccluded share, so the
-    // difference comes off the output.
+    // RenoDX: one occlusion a reflection (Attila's and Warhammer II's ssr00). Off water the sun draws already put the cubes'
+    // light into the scene with the game's AO (x lerp(1, AO, 1 - gloss)); this output adds the march's (or the rays') light
+    // over it. Under Ray-Traced Specular Occlusion (t46) the cubes' light takes t46 alone; under the rays' reflections it
+    // keeps the game's AO and the rays' light takes none: either way the scene's share comes off as the sun draws put it
+    // (their AO bound at t45), not unoccluded. Water (drawn after the sun draws) has its whole reflection here, as before.
+    // Without t46 and the rays, or without t45: as before.
+    uint rt_occlusion_width, rt_occlusion_height;
+    t_rt_specular_occlusion.GetDimensions(rt_occlusion_width, rt_occlusion_height);
+    uint rt_sun_ao_width, rt_sun_ao_height;
+    t_rt_sun_ao.GetDimensions(rt_sun_ao_width, rt_sun_ao_height);
+    const bool rt_one_occlusion = (rt_reflected || rt_occlusion_width != 0u) && rt_sun_ao_width != 0u;
+    const float rt_sun_ao = rt_one_occlusion ? t_rt_sun_ao.SampleLevel(s_rt_sun_ao_s, rt_sun_uv, 0).x : 1.f;
     const float3 rt_environment = r5.xyz;
+    const float3 rt_sun_environment = rt_environment * (1.f + r2.y * (rt_sun_ao - 1.f));
     if (!rt_reflected) r5.xyz = RtOccludedEnvironment(rt_texel, r5.xyz);
     r0.w = (int)r1.w & 64;
+    if (rt_reflected && rt_one_occlusion && r0.w == 0) r5.xyz = rt_sun_environment;
     r2.xw = r0.ww ? float2(1,0) : float2(0,1);
     r6.xyz = r2.xxx * r5.xyz;
     r0.xyz = -r5.xyz * r2.www + r0.xyz;
     r0.xyz = -r2.xxx * r5.xyz + r0.xyz;
     r0.xyz = r2.zzz * r0.xyz + r6.xyz;
-    r0.xyz = r2.www * (r5.xyz - rt_environment) + r0.xyz;
+    r0.xyz = r2.www * (r5.xyz - rt_sun_environment) + r0.xyz;
     r0.w = dot(r4.xyz, r3.xyz);
     r0.w = min(1, abs(r0.w));
     r1.w = 1 + -r0.w;

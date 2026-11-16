@@ -28,6 +28,9 @@ constexpr size_t ADD_FORCE_LOD = 18;
 
 static uint8_t* enable_force_lod = nullptr;
 static int32_t* force_lod = nullptr;
+// Their values before the addon wrote them: the game's distance levels come back with them (off, and at detach).
+static uint8_t game_enable_force_lod = 0;
+static int32_t game_force_lod = 0;
 static std::string status = "not searched";
 
 }  // namespace internal
@@ -39,22 +42,24 @@ inline void Install() {
     internal::enable_force_lod = engine::RipTarget(read + 2, read + 7);
     uint8_t* add = read + internal::ADD_FORCE_LOD;
     internal::force_lod = reinterpret_cast<int32_t*>(engine::RipTarget(add + 2, add + 6));
-    internal::status = std::format("found (enable_force_lod +{:#x}, force_lod +{:#x})",
+    internal::game_enable_force_lod = *internal::enable_force_lod;
+    internal::game_force_lod = *internal::force_lod;
+    internal::status = std::format("found (enable_force_lod +{:#x} = {}, force_lod +{:#x} = {})",
                                    internal::enable_force_lod - reinterpret_cast<uint8_t*>(engine::Module()),
-                                   reinterpret_cast<uint8_t*>(internal::force_lod) - reinterpret_cast<uint8_t*>(engine::Module()));
+                                   internal::game_enable_force_lod,
+                                   reinterpret_cast<uint8_t*>(internal::force_lod) - reinterpret_cast<uint8_t*>(engine::Module()),
+                                   internal::game_force_lod);
   } else {
     internal::status = "the game's terrain code was not found";
   }
   renodx::utils::log::i("[Shogun 2 DLSS] Terrain detail: ", internal::status);
 }
 
-// Present: finest everywhere, or the game's distance levels.
+// Present: finest everywhere, or the game's distance levels (its own values back; detach too).
 inline void Apply(bool finest) {
   if (internal::enable_force_lod == nullptr) return;
-  *internal::enable_force_lod = (finest ? 1 : 0);
-  if (finest) {
-    *internal::force_lod = 0;
-  }
+  *internal::enable_force_lod = (finest ? 1 : internal::game_enable_force_lod);
+  *internal::force_lod = (finest ? 0 : internal::game_force_lod);
 }
 
 inline const std::string& Status() {

@@ -235,6 +235,13 @@ struct State {
   ComPtr<ID3D11ComputeShader> guides;
   ComPtr<ID3D11ComputeShader> sun;
   ComPtr<ID3D11Buffer> sun_offsets;
+  // Ray-Traced AO for every reader of the game's SSAO (33 pixel shaders declare t_ssao: 4 sun light draws, which take
+  // t41, and 29 drawn after them, decals, terrain tiles, rivers, which read the game's target): its collect's target
+  // (ssao01's u0), cleared open where the game's line sweep and collect were left out (OnGameAmbientCollect), then the
+  // rays' AO copied in after the frame's first sun light draw (rt_ambient_into_game).
+  ComPtr<ID3D11ComputeShader> ambient_into_game;
+  ComPtr<ID3D11UnorderedAccessView> game_ambient;
+  uint64_t game_ambient_frame = UINT64_MAX;  // the frame its collect was left out in, until the copy
   bool failed = false;
   bool campaign = false;  // the last sun draw the campaign map's (no Path-Traced AO there: its overlay takes the ambient)
   // Path-Traced AO: the sun draws' lighting_VS_PS copied without the game's ambient (the cube and the harmonics' flag
@@ -371,6 +378,9 @@ inline bool PrepareObjects(ID3D11DeviceContext* native) {
   state.guides.Reset();
   state.sun.Reset();
   state.sun_offsets.Reset();
+  state.ambient_into_game.Reset();
+  state.game_ambient.Reset();
+  state.game_ambient_frame = UINT64_MAX;
   state.no_ambient.Reset();
   state.ambient_lighting.Reset();
   state.ambient_lighting_bytes = 0;
@@ -384,6 +394,8 @@ inline bool PrepareObjects(ID3D11DeviceContext* native) {
                                                              nullptr, state.private_state.GetAddressOf()))
                  || FAILED(device->CreateComputeShader(__rt_guides.data(), __rt_guides.size(), nullptr, state.guides.GetAddressOf()))
                  || FAILED(device->CreateComputeShader(__rt_sun.data(), __rt_sun.size(), nullptr, state.sun.GetAddressOf()))
+                 || FAILED(device->CreateComputeShader(__rt_ambient_into_game.data(), __rt_ambient_into_game.size(), nullptr,
+                                                       state.ambient_into_game.GetAddressOf()))
                  || FAILED(device->CreateBuffer(&offsets_desc, &offsets_data, state.sun_offsets.GetAddressOf()));
   return !state.failed;
 }
@@ -448,6 +460,28 @@ inline bool PathAmbientNow() {
   auto& runtime = twattila::rt_scene::internal::runtime;
   const std::unique_lock lock(runtime.mutex);
   return runtime.path_ambient_on && runtime.bounced_frame + 1 >= runtime.frame;
+}
+
+// After the frame's first sun light draw: its traced AO (`ambient`, t41) into the game's SSAO target the collect left
+// (rt_ambient_into_game over the render pixels), in the addon's own context state, for the readers after it.
+inline void CopyAmbient(ID3D11DeviceContext* native, ID3D11ShaderResourceView* ambient) {
+  ComPtr<ID3D11DeviceContext1> native1;
+  if (ambient == nullptr || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) return;
+  ComPtr<ID3D11UnorderedAccessView> target;
+  std::array<UINT, 2> render = {};
+  {
+    const std::unique_lock lock(state.mutex);
+    if (state.game_ambient_frame != state.frame || !PrepareObjects(native)) return;
+    state.game_ambient_frame = UINT64_MAX;
+    target = std::move(state.game_ambient);
+    render = state.render_size;
+  }
+  if (render[0] == 0 || render[1] == 0) return;
+  const talesofarise::dlss::ContextStateScope scope(native1.Get(), state.private_state.Get());
+  native->CSSetShader(state.ambient_into_game.Get(), nullptr, 0);
+  native->CSSetShaderResources(0, 1, &ambient);
+  native->CSSetUnorderedAccessViews(0, 1, target.GetAddressOf(), nullptr);
+  native->Dispatch((render[0] + 7) / 8, (render[1] + 7) / 8, 1);
 }
 
 // The draw's lighting_VS_PS replaced by its copy without the game's ambient (the cube c3-c8 and the harmonics' flag c10.w
@@ -543,6 +577,8 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
     constexpr std::array<ID3D11ShaderResourceView*, 2> NONE = {};
     native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(NONE.size()), NONE.data());
     native->PSSetShaderResources(TINT_SLOT, static_cast<UINT>(NONE.size()), NONE.data());
+    // The game's SSAO readers after this draw take the rays' AO too (the collect left out this frame; once a frame).
+    CopyAmbient(native, twattila::rt_scene::Visibilities()[1]);
     const std::unique_lock lock(state.mutex);
     if (state.game_lighting) native->PSSetConstantBuffers(state.game_lighting_slot, 1, state.game_lighting.GetAddressOf());
     state.game_lighting.Reset();
@@ -802,6 +838,37 @@ inline void WaterSurface(reshade::api::command_list* cmd_list) {
   }
   const std::unique_lock lock(state.mutex);
   state.water_frame = traced ? state.frame : UINT64_MAX;
+}
+
+// The rays' AO stands in for the game's SSAO this frame: Ray-Traced AO on and the rays traced last frame (this frame's
+// trace comes at the first sun light draw, after the game's SSAO passes). The game's line sweep (ssao00) and collect
+// (ssao01, OnGameAmbientCollect) are left out then: every reader takes the rays' AO (the sun light draws at t41, the
+// others from the game's target, CopyAmbient).
+inline bool GameAmbientReplaced() {
+  {
+    const std::unique_lock lock(internal::state.mutex);
+    if (!internal::state.settings.ambient_occlusion) return false;
+  }
+  auto& runtime = twattila::rt_scene::internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  return runtime.traced_frame != UINT64_MAX && runtime.traced_frame + 1 >= runtime.frame;
+}
+
+// The game's SSAO collect (ssao01, 98BB1159) while GameAmbientReplaced: its target cleared open (1: no occlusion where
+// the rays' AO doesn't come this frame) and kept for CopyAmbient. True: the game's collect runs.
+inline bool OnGameAmbientCollect(reshade::api::command_list* cmd_list) {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || !GameAmbientReplaced()) return true;
+  ComPtr<ID3D11UnorderedAccessView> target;
+  native->CSGetUnorderedAccessViews(0, 1, target.GetAddressOf());
+  if (!target) return true;
+  constexpr std::array<float, 4> OPEN = {1.f, 1.f, 1.f, 1.f};
+  native->ClearUnorderedAccessViewFloat(target.Get(), OPEN.data());
+  const std::unique_lock lock(internal::state.mutex);
+  internal::state.game_ambient = std::move(target);
+  internal::state.game_ambient_frame = internal::state.frame;
+  return false;
 }
 
 // The traced AO at t41 for the reflections' resolve (shaders/ssrresolve00; `bind` false: unbound) where the sun light draws

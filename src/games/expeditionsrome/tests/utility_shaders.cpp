@@ -52,8 +52,10 @@ struct PreparationConstants {
                                                            {0.f, 0.f, 0.f, 1.f}}};
   std::array<uint32_t, 2> extent = {WIDTH, HEIGHT};
   std::array<float, 2> pixel_jitter = {};
+  uint32_t copy_color = 0;  // 0xB69D8215 CopyColor: the scene colour copy off here
+  std::array<uint32_t, 3> padding = {};
 };
-static_assert(sizeof(PreparationConstants) == 80);
+static_assert(sizeof(PreparationConstants) == 96);
 static_assert(offsetof(PreparationConstants, pixel_jitter) == 72);
 
 void Check(HRESULT result) {
@@ -183,7 +185,7 @@ int wmain(int argc, wchar_t** argv) {
     auto motion = run_preparation(constants);
     for (uint32_t pixel = 0; pixel < PIXELS; ++pixel) ExpectMotion(motion[pixel], 0.f, 0.f, "stationary identity");
     for (const float depth : ReadTexture<float>(device.Get(), context.Get(), output_depth.resource.Get())) {
-      ExpectNear(depth, 0.1f, "center depth copy", 0.f);
+      ExpectNear(depth, 1.f - 0.1f, "center depth copy (forward: 1 - the reversed depth)", 0.f);
     }
 
     constants.clip_to_previous[3][0] = 2.f / WIDTH;
@@ -212,7 +214,7 @@ int wmain(int argc, wchar_t** argv) {
     motion = run_preparation(constants);
     expected = expected_motion(velocities[CENTER - WIDTH - 1]);
     ExpectMotion(motion[CENTER], expected[0], expected[1], "reverse-Z nearest diagonal");
-    ExpectNear(ReadTexture<float>(device.Get(), context.Get(), output_depth.resource.Get())[CENTER], 0.2f,
+    ExpectNear(ReadTexture<float>(device.Get(), context.Get(), output_depth.resource.Get())[CENTER], 1.f - 0.2f,
                "depth is not dilated", 0.f);
 
     depths[CENTER - WIDTH + 1] = 0.9f;
@@ -278,7 +280,7 @@ int wmain(int argc, wchar_t** argv) {
     depths[CENTER] = std::numeric_limits<float>::quiet_NaN();
     motion = run_preparation(constants);
     ExpectMotion(motion[CENTER], 0.f, 0.f, "nonfinite depth guard");
-    ExpectNear(ReadTexture<float>(device.Get(), context.Get(), output_depth.resource.Get())[CENTER], 0.f,
+    ExpectNear(ReadTexture<float>(device.Get(), context.Get(), output_depth.resource.Get())[CENTER], 1.f,
                "nonfinite center depth becomes far", 0.f);
     constants.clip_to_previous[3][0] = 1.e8f;
     motion = run_preparation(constants);
@@ -303,7 +305,7 @@ int wmain(int argc, wchar_t** argv) {
       ExpectMotion(motion[pixel], 0.2f, 0.f, "active-width clamp excludes poison padding motion/depth");
     }
     for (const float depth : ReadTexture<float>(device.Get(), context.Get(), output_depth.resource.Get())) {
-      ExpectNear(depth, 0.2f, "active depth copy excludes padded columns", 0.f);
+      ExpectNear(depth, 1.f - 0.2f, "active depth copy excludes padded columns", 0.f);
     }
 
     constexpr uint32_t OUTPUT_WIDTH = 31;

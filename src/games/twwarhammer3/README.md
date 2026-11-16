@@ -1,5 +1,23 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### Torch shadows per light, two passes less (2026-11-16 next round; built only, not run in game)
+
+- Fixed: **torch shadows under the rays, per light**: the 4 point-light shaders with the game's point shadow map take the
+  rays' shadow in place of the map's for a light the rays trace at the pixel and keep the map for every other light (past
+  the rays' 128 lights or their reach). Since the morning's fix round they ran their unshadowed twin, so untraced lights
+  lost their shadow. WARP (`test/tw_warhammer3_shaders` 5, the game's bytes): an untraced light = the game's with its map
+  within 5.3e-07, a traced one = the rays' alone (reached = the twin within 2.9e-08, blocked dark, half shadow = half);
+  CONTROL the twin route 20850 - 25986 values off the game's.
+- Faster: **Skip the Game's Reflection Passes** (new row, on, as Warhammer I / II): under the rays' reflections everywhere
+  the hits' mip chain after the march (18 small dispatches) is left out with the march; the resolve takes the rays there.
+  WARP (7): other hits and light mips change 0 values under the rays; CONTROL without the rays 21459. The hierarchical depth
+  and the light's mips before the march still run (the rays are traced at the march).
+- Faster: the particle shadows' **half copy** 800F7F7F is skipped where its 2048 x 2048 [4] target is drawn (the game's
+  highest Shadows): nothing reads it in 93 traces; 0.10 ms in the batch 6 timings. Other sizes keep the game's draws.
+- In game: a night siege with torches and RT/PT on (lights far off keep their soft map shadows; traced torches one shadow);
+  Time Each Pass in a river battle with RT reflections and in a siege with smoke (the hit mip and 800F7F7F rows gone, the
+  picture unchanged).
+
 ### One method per effect, presets (2026-11-16 fix round; built only, not run in game)
 
 - Fixed: **Bend Screen-Space Shadows** (and the rays with Rays Replace Shadow Maps off) no longer stack on the game's own
@@ -7,7 +25,8 @@
   the mask as the game's. WARP (`test/tw_warhammer3_shaders` 4): the game's flag 0 bit for bit.
 - Fixed: **torch shadows under the rays**: the 4 point-light shaders that read the game's point shadow map run their
   unshadowed twin, so a traced light gets the rays' shadow alone, not the map's on top (5: the game's shader with its map
-  lit is its twin bit for bit). Lights the rays leave out are unshadowed while the rays run.
+  lit is its twin bit for bit). Lights the rays leave out are unshadowed while the rays run (per light since the next
+  round, above: they keep the map).
 - Fixed: with **Ray-Traced Specular Occlusion** the reflected cubes take the rays' occlusion alone, no longer the AO on
   top (6: the AO no longer changes them, within 4e-7; the older build's change by up to 92%).
 - Fog Shadows, Specular Occlusion and Water Caustics start off (the RT/PT preset still turns them on); Recommended no

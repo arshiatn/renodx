@@ -1,5 +1,19 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Replace round (2026-11-16, tw1_; built only, not run in game)
+
+- **Rays Replace Shadow Maps on by default** (ATN: ours replaces the game's): under ray-traced sun shadows the hardware
+  gather 5.0 sun shaders take the rays' shadow alone, not the rays' times the game's shadow maps; the row lost
+  "(Experimental)", a saved 0 is cleared once. The Shader Model 4.1 builds (software / hardware pcf shadows) keep the game's
+  maps: the rays' shadow never reaches them yet. WARP part 29: t49 0 / 1 bit for bit the game's lit / shadowing atlas;
+  CONTROL the multiply differs.
+- **One occlusion a reflection** under Ray-Traced Specular Occlusion and the rays' reflections (as Attila's 6c6c7559): the
+  SSR resolve now gets the AO the sun draws read (t45), so the scene's share of the cubes' light comes off as the sun
+  draws put it in. WARP part 30: 4096 of 4096 as expected in every case; CONTROLS the resolve as it was 4096.
+- Code only: one psycho_test31.hlsli (Attila's; 33 of 34 shaders the same bytes, ssr00 the change above).
+- In game: a battle with Shadows DXR, the row on and off at each in-game shadow quality (no shadow-map steps under the
+  rays' shadows; which sun shader draws); wet stone and metal with Specular Occlusion and RT reflections (darker only once).
+
 ### Fix round (2026-11-16, the skill audit's rows; built only, not run in game)
 
 - **GT-VBAO leaves the game's AO sweep and collect out** (0C83DB37 / 38F6D9B6: their outputs' only reader is the blur GT-VBAO

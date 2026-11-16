@@ -42,6 +42,7 @@
 //      stream output's bit for bit, w 1;
 //   B2 the second draw marked stale, and the third drawn with a width of 256 at b2: their corners NaN, the first's still bit for bit;
 //   B3 CONTROL: the first draw's animation texture written again after the draws, before the flush: its corners differ.
+// K. Rome II's cut-out captures: the UV the alpha tests read, as the game's vertex shaders write it (CheckCutOuts).
 // tests.exe <dump root: the folder holding dump_shader_<game>_pack\cso> <build root: the folder holding <game>.include\embed>
 //           <build32 root: the same for the 32-bit games>
 #include <windows.h>
@@ -838,6 +839,89 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
   return passed;
 }
 
+// K. Rome II's cut-out captures (twrome2/addon.cpp SCENE_SHADERS' cut_out_shader, RT_CAPTURE_UV): each of the 8 unit and 4 rigid
+//    vertex shaders' capture with the UV against the game's own (build32's twrome2.include\embed, the dump's bytes), 16 random
+//    vertices streamed out, zero constants: the capture's TEXCOORD0.w as two halves is the game's TEXCOORD1.xy (what the alpha
+//    tests read) within a half's step. CONTROL: the plain capture's w (the world's) differs.
+static bool CheckCutOuts(const std::string& dump_root, const std::string& build32_root) {
+  struct CutOut {
+    const char* game;
+    const char* plain;
+    const char* cut_out;
+  };
+  constexpr std::array<CutOut, 12> CUT_OUTS = {{
+      {"0xA30C5E0B.vs_4_0", "rt_capture_unit_sm3_b", "rt_capture_unit_cut_out_sm3_b"},
+      {"0x0F1FBD46.vs_4_0", "rt_capture_unit_4_bones_sm3_a", "rt_capture_unit_4_bones_cut_out_sm3_a"},
+      {"0x1675B565.vs_4_0", "rt_capture_unit_dismember_sm3", "rt_capture_unit_dismember_cut_out_sm3"},
+      {"0x9E564D81.vs_4_0", "rt_capture_unit_4_bones_dismember_sm3", "rt_capture_unit_4_bones_dismember_cut_out_sm3"},
+      {"0xA3550981.vs_4_1", "rt_capture_unit_sm41_b", "rt_capture_unit_cut_out_sm41_b"},
+      {"0x1CD702E3.vs_4_1", "rt_capture_unit_4_bones_sm41_a", "rt_capture_unit_4_bones_cut_out_sm41_a"},
+      {"0x63DB20CA.vs_4_1", "rt_capture_unit_dismember_sm41", "rt_capture_unit_dismember_cut_out_sm41"},
+      {"0xF2990459.vs_4_1", "rt_capture_unit_4_bones_dismember_sm41", "rt_capture_unit_4_bones_dismember_cut_out_sm41"},
+      {"0x59431BB2.vs_4_0", "rt_capture_rigid_sm3_a", "rt_capture_rigid_cut_out_sm3_a"},
+      {"0x658FEA51.vs_4_0", "rt_capture_rigid_sm3_b", "rt_capture_rigid_cut_out_sm3_b"},
+      {"0xF343950E.vs_4_1", "rt_capture_rigid_sm41_b", "rt_capture_rigid_cut_out_sm41_b"},
+      {"0x3E086AFB.vs_4_0", "rt_capture_rigid_lq", "rt_capture_rigid_cut_out_lq"},
+  }};
+  constexpr UINT VERTICES = 16;
+  const std::array<float, 256 * 4> zeros = {};
+  ID3D11Buffer* constants = MakeConstants(zeros);
+  const std::string embed = build32_root + "\\twrome2.include\\embed\\";
+  size_t values = 0;
+  uint64_t misses = 0;
+  uint64_t control = 0;
+  bool made = true;
+  for (const CutOut& cut_out : CUT_OUTS) {
+    const auto game = Load(dump_root + "\\dump_shader_twrome2_pack\\cso\\" + cut_out.game + ".cso");
+    const auto plain = Load(embed + cut_out.plain + ".cso");
+    const auto ours = Load(embed + cut_out.cut_out + ".cso");
+    ID3D11ShaderReflection* reflection = nullptr;
+    if (game.empty() || plain.empty() || ours.empty()
+        || FAILED(D3DReflect(game.data(), game.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(&reflection)))) {
+      std::printf("K %s: MISSING the game's or the build's bytes\n", cut_out.game);
+      made = false;
+      continue;
+    }
+    D3D11_SHADER_DESC desc = {};
+    reflection->GetDesc(&desc);
+    UINT inputs = 0;
+    for (UINT i = 0; i < desc.InputParameters; ++i) {
+      D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+      reflection->GetInputParameterDesc(i, &parameter);
+      inputs += (parameter.SystemValueType == D3D_NAME_UNDEFINED) ? 1u : 0u;
+    }
+    reflection->Release();
+    std::vector<float> vertices;
+    for (UINT k = 0; k < VERTICES * inputs * 4; ++k) vertices.push_back(Range(0.f, 1.f));
+    const Streamed uv = StreamOut({.vs = &game, .vs_constants = {constants, constants, constants}}, vertices, "TEXCOORD", 1, 2);
+    const Draw capture = {.vs = &ours, .vs_constants = {constants, constants, constants}, .stride = inputs * 16};
+    const Streamed with_uv = StreamOut(capture, vertices, "TEXCOORD", 0, 4);
+    const Streamed without = StreamOut({.vs = &plain, .vs_constants = {constants, constants, constants}, .stride = inputs * 16}, vertices, "TEXCOORD", 0, 4);
+    if (uv.values.size() != VERTICES * 2 || with_uv.values.size() != VERTICES * 4 || without.values.size() != VERTICES * 4) {
+      std::printf("K %s: stream output sizes %zu / %zu / %zu\n", cut_out.game, uv.values.size(), with_uv.values.size(), without.values.size());
+      made = false;
+      continue;
+    }
+    for (UINT vertex = 0; vertex < VERTICES; ++vertex) {
+      const uint32_t packed = std::bit_cast<uint32_t>(with_uv.values[(vertex * 4) + 3]);
+      const uint32_t plain_packed = std::bit_cast<uint32_t>(without.values[(vertex * 4) + 3]);
+      for (UINT axis = 0; axis < 2; ++axis) {
+        const float game_uv = uv.values[(vertex * 2) + axis];
+        const float step = std::abs(HalfValue(HalfBits(game_uv) + 1u) - HalfValue(HalfBits(game_uv)));
+        ++values;
+        misses += (std::abs(game_uv - HalfValue((packed >> (axis * 16)) & 0xFFFFu)) > step * 1.01f) ? 1u : 0u;
+        control += (std::abs(game_uv - HalfValue((plain_packed >> (axis * 16)) & 0xFFFFu)) > step * 1.01f) ? 1u : 0u;
+      }
+    }
+  }
+  constants->Release();
+  const bool passed = made && values == CUT_OUTS.size() * VERTICES * 2 && misses == 0 && control > 0;
+  std::printf("K Rome II cut-outs: 12 captures with the UV against the game's TEXCOORD1, %zu values, %llu off by more than a half's step; "
+              "CONTROL the plain captures: %llu differ\n  %s\n",
+              values, static_cast<unsigned long long>(misses), static_cast<unsigned long long>(control), passed ? "PASSED" : "FAILED");
+  return passed;
+}
+
 int main(int argc, char** argv) {
   if (argc < 4) {
     std::printf("tests.exe <dump root> <build root> <build32 root>\n");
@@ -959,6 +1043,7 @@ int main(int argc, char** argv) {
                          root, build32_root)
         && all;
   all = CheckTerrain(root, build32_root) && all;
+  all = CheckCutOuts(root, build32_root) && all;
   for (const BatchedFamily& family : {
            BatchedFamily{"Attila main units sm3", "0x5F9CD405.vs_4_0", "rt_capture_unit_sm3", "rt_batch_unit_sm3"},
            BatchedFamily{"Attila main units sm4.1", "0xA691CFF4.vs_4_1", "rt_capture_unit_sm41", "rt_batch_unit_sm41"},
