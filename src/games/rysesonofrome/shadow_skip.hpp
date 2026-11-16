@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <format>
 #include <shared_mutex>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -21,6 +22,8 @@
 #include <include/reshade.hpp>
 
 #include "../../mods/shader.hpp"
+#include "../../utils/command_action.hpp"
+#include "../../utils/command_action_fast.hpp"
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 
@@ -35,7 +38,9 @@
 // forward pass: depthMapSampler0 / 1) and the fog volumes' shadows (ps 0x91A72BC2: all four maps) read the maps: they
 // lose the sun's shadow where a map is skipped. The eyes, the hair's first pass and the particles read the mask. The
 // 16384 atlas is the lights' shadow pool (torches, fires), not the sun's: never learned. Only while the rays shadowed the
-// mask the frame before (a frame without them draws the maps again).
+// mask the frame before (a frame without them draws the maps again). The draws are left out through command_action's
+// bypass, not a draw event's skip: while the scene is traced every draw is replayed by command_action for rt_core's capture
+// (OnAnyDraw's post callback), and a replayed draw reaches the GPU whatever another draw event returns.
 namespace rysesonofrome::shadow_skip {
 
 using Microsoft::WRL::ComPtr;
@@ -95,18 +100,14 @@ inline void OnBindTargets(reshade::api::command_list* cmd_list, uint32_t count, 
   }
 }
 
-inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, uint32_t) {
-  return skipping.load(std::memory_order_relaxed) == cmd_list;
-}
-
-inline bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t, uint32_t, uint32_t, int32_t, uint32_t) {
-  return skipping.load(std::memory_order_relaxed) == cmd_list;
-}
-
-inline bool OnDrawIndirect(reshade::api::command_list* cmd_list, reshade::api::indirect_command type, reshade::api::resource, uint64_t,
-                           uint32_t, uint32_t) {
-  return type != reshade::api::indirect_command::dispatch && skipping.load(std::memory_order_relaxed) == cmd_list;
-}
+// Draws, indexed draws and indirect draws on the list that bound a skipped map alone.
+constexpr auto OnDraw = []<typename Context>(Context& context) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (skipping.load(std::memory_order_relaxed) != context.cmd_list) return {};
+  if constexpr (std::is_same_v<typename Context::ArgumentType, renodx::utils::command_action::IndirectArguments>) {
+    if (context.arguments.command == reshade::api::indirect_command::dispatch) return {};
+  }
+  return {.bypass = true};
+};
 
 }  // namespace internal
 
@@ -146,7 +147,7 @@ inline void Release() {
 }
 
 // With the ray tracing (at launch): the mask passes note their maps (before mods::shader::Use takes `shaders`), the
-// draws into the skipped ones are left out.
+// draws into the skipped ones are left out (registered before command_action's attach and the fast dispatch's opt-in).
 inline void Install(renodx::mods::shader::CustomShaders* shaders) {
   for (const auto& [hash, kind] : internal::MASK_PASSES) {
     const auto pass = shaders->find(hash);
@@ -165,16 +166,18 @@ inline void Install(renodx::mods::shader::CustomShaders* shaders) {
     };
   }
   reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindTargets);
-  reshade::register_event<reshade::addon_event::draw>(internal::OnDraw);
-  reshade::register_event<reshade::addon_event::draw_indexed>(internal::OnDrawIndexed);
-  reshade::register_event<reshade::addon_event::draw_or_dispatch_indirect>(internal::OnDrawIndirect);
+  renodx::utils::command_action::Register(
+      internal::OnDraw,
+      {.command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW | renodx::utils::command_action::COMMAND_TYPE_INDIRECT});
+  renodx::utils::command_action::fast::SetGate(internal::OnDraw, {.active = [](reshade::api::command_list* cmd_list) {
+                                                  return internal::skipping.load(std::memory_order_relaxed) == cmd_list;
+                                                }});
 }
 
 inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(internal::OnBindTargets);
-  reshade::unregister_event<reshade::addon_event::draw>(internal::OnDraw);
-  reshade::unregister_event<reshade::addon_event::draw_indexed>(internal::OnDrawIndexed);
-  reshade::unregister_event<reshade::addon_event::draw_or_dispatch_indirect>(internal::OnDrawIndirect);
+  renodx::utils::command_action::fast::ClearGate(internal::OnDraw);
+  renodx::utils::command_action::Unregister(internal::OnDraw);
   Release();
 }
 
