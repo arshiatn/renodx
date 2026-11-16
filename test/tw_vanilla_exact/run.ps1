@@ -24,16 +24,29 @@ if (-not $Fxc) {
   $Fxc = (Select-String -LiteralPath $cache -Pattern '^FXC_BIN:FILEPATH=(.*)$').Matches[0].Groups[1].Value
 }
 
-# Each game: its add-on folder, the dump with the game's csos (0x<CRC32>.<target>.cso), the shaders (by file name);
-# Settings: shader_injection members on top of the test's Vanilla ones; Registers (by shader name): constants where the
-# game's bytes carry no names (tests.cpp, GameConstants); FrameGamma: the frame's gamma whose 2.2 decode Gamma Correction
-# gives in every Rendering Mode (tests.cpp's Gamma Correction check); Modes: those Rendering Modes where not 0 - 3.
+# Each game: its add-on folder, the dump with the game's csos (0x<CRC32>.<target>.cso; another target of the same hash
+# where the add-on's build differs), the shaders (by file name); Settings: shader_injection members on top of the test's
+# Vanilla ones; ShaderSettings (by shader name): more of them for those shaders; Registers (by shader name): constants
+# where the game's bytes carry no names (tests.cpp, GameConstants); FrameGamma: the frame's gamma whose 2.2 decode Gamma
+# Correction gives in every Rendering Mode (tests.cpp's Gamma Correction check), none for NoGamma's shaders; Modes: those
+# Rendering Modes where not 0 - 3.
+# Attila and Thrones (the same table): every replaced shader the generic inputs exercise; ssr02-07 have tw_thrones_ssr,
+# vfx and battlefog tw_attila_builds, dof tw_dof_blurs. Left out: pointlight00-39 (their light's place and reach are vertex
+# inputs, so no texel is lit here: the control is never caught; their WARP proof is tools/tw/testbin/g4_point_shadows),
+# the UI sprites uiMap00 / uiMap02 / uiMenuText00 (ui00) (the clip rectangle discards every texel here), grass00 / grass01
+# (their stream output is not made here: no comparable output). The videos (cutscene00) are made for a 2.2 screen: Gamma
+# Correction on shows the game's bytes (off re-encodes them for the 2.0 decode), so no Gamma Correction check either.
+$attilaShaders = @{
+  FrameGamma = '2'; Settings = 'ssr_quality=1,effects_share=1,grass_height_distance=1,sky_smooth_strength=1'
+  ShaderSettings = @{ '^cutscenes?\d+_' = 'gamma_correction=1' }; NoGamma = '^cutscenes?\d+_'
+}
 $table = [ordered]@{
   'Shogun2'     = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'; Shaders = '^(tonemap|flare|hdrflare)\d+_' }
-  'Attila'      = @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2' }
+  'Attila'      = $attilaShaders + @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'
+                                      Shaders = '^((t|bloom|lensflare|sky|markersbattle|cutscene|vignette|autoexposure|ssao)\d+|ssr0[01]|grass02)_' }
   'RomeII'      = @{ Folder = 'twrome2'; Dump = 'dump_shader_twrome2_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2' }
-  'Thrones'     = @{ Folder = 'twthronesofbritannia'; Dump = 'dump_shader_twthronesofbritannia_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'
-                     FrameGamma = '2' }
+  'Thrones'     = $attilaShaders + @{ Folder = 'twthronesofbritannia'; Dump = 'dump_shader_twthronesofbritannia_pack\cso'
+                                      Shaders = '^((t|bloom|lensflare|sky|markersbattle|cutscenes|vignette|autoexposure|ssao)\d+|ssr0[01]|grass02)_' }
   'WH1'         = @{ Folder = 'twwarhammer'; Dump = 'dump_shader_twwarhammer_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2' }
   'WH2'         = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'
                      FrameGamma = '2'; Modes = '0,1,2,3,4' }
@@ -87,11 +100,14 @@ foreach ($game in $table.Keys) {
     $hash = $Matches[2]
     $target = $Matches[3]
     $gameCso = $csos["$hash.$target.cso"]
+    if (-not $gameCso) { $gameCso = $csos.Keys | Where-Object { $_ -like "$hash.*.cso" } | Sort-Object | Select-Object -First 1 | ForEach-Object { $csos[$_] } }
     if (-not $gameCso) { $gameCso = Join-Path $folder "$hash.$target.cso" }
     $addonCso = Join-Path $out ($file.BaseName + '.cso')
     if (-not (Compile-Shader $file.FullName $target $addonCso)) { Remove-Item -LiteralPath $addonCso -ErrorAction SilentlyContinue }
     $registers = if ($entry.Registers) { ($entry.Registers.Keys | Where-Object { $file.Name -match $_ } | ForEach-Object { $entry.Registers[$_] }) -join ';' } else { '' }
-    $manifest += "$game`t$($file.BaseName -replace '\.\w+_\d_\d$', '')`t$gameCso`t$addonCso`t$($entry.Settings)`t$registers`t$($entry.FrameGamma)`t$($entry.Modes)"
+    $settings = @($entry.Settings) + @(if ($entry.ShaderSettings) { $entry.ShaderSettings.Keys | Where-Object { $file.Name -match $_ } | ForEach-Object { $entry.ShaderSettings[$_] } })
+    $frameGamma = if ($entry.NoGamma -and $file.Name -match $entry.NoGamma) { '' } else { $entry.FrameGamma }
+    $manifest += "$game`t$($file.BaseName -replace '\.\w+_\d_\d$', '')`t$gameCso`t$addonCso`t$(($settings | Where-Object { $_ }) -join ',')`t$registers`t$frameGamma`t$($entry.Modes)"
   }
 }
 $manifestPath = Join-Path $testBuild 'manifest.tsv'

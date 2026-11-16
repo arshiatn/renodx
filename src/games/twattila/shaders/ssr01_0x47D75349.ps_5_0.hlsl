@@ -330,8 +330,11 @@ void main(
   r1.x = (int)r2.y & 4;
   // The AO blur draws its whole target below 100% (view_share.hpp RegionRead::whole).
   r0.z = s_ssao.Sample(s_ssao_s, r0.zw / DrawRenderShare()).x;
-  // The rays already met what the AO stands for: their reflection is not darkened again.
-  if (r1.x != 0 || (rt_reflected && r0.y <= RT_REFLECTION_ROUGH_LIMIT)) {
+  // The rays already met what the AO stands for: their reflection is not darkened again, nor anything the specular
+  // occlusion (t46, bound with it on) dimmed above: one occlusion a reflection.
+  uint occlusion_width, occlusion_height;
+  t_rt_specular_occlusion.GetDimensions(occlusion_width, occlusion_height);
+  if (r1.x != 0 || (rt_reflected && r0.y <= RT_REFLECTION_ROUGH_LIMIT) || occlusion_width != 0u) {
     r0.z = 1;
   }
   o1.y = r0.z * r1.w;
