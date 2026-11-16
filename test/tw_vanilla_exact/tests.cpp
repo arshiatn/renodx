@@ -281,6 +281,7 @@ static std::vector<std::pair<int, UINT>> DeclaredSlots(const std::vector<uint8_t
 struct Frame {
   UINT screen_width = WIDTH, screen_height = HEIGHT, target_width = WIDTH, target_height = HEIGHT, samples = 1;
   bool full = false;
+  bool screen_uv = false;  // the manifest's screen_uv=1 (ScreenUv): every 2D texture the screen's size
 };
 
 static ComPtr<ID3D11ShaderResourceView> UploadTexture(const D3D11_SHADER_INPUT_BIND_DESC& bind, Kind kind, UINT width, UINT height,
@@ -418,8 +419,8 @@ static ComPtr<ID3D11ShaderResourceView> MakeView(const D3D11_SHADER_INPUT_BIND_D
   const Kind kind = (bind.Dimension == D3D_SRV_DIMENSION_TEXTURE3D) ? Kind::LUT : KindOf(bind.Name, frame.full);
   if (bind.Type != D3D_SIT_TEXTURE || bind.Dimension == D3D_SRV_DIMENSION_BUFFER) return MakeBuffer(bind, kind);
   if (bind.Dimension == D3D_SRV_DIMENSION_TEXTURE2DMS) return MultisampledTexture(bind, kind);
-  // Masks and noise 64 x 64 (Rome Remastered's dither wraps its coordinates at 64).
-  UINT width = WIDTH, height = (kind == Kind::MASK) ? 64 : HEIGHT, depth = 1;
+  // Masks and noise 64 x 64 (Rome Remastered's dither wraps its coordinates at 64); a screen_uv pass's the screen's size.
+  UINT width = WIDTH, height = (kind == Kind::MASK && !frame.screen_uv) ? 64 : HEIGHT, depth = 1;
   if (kind == Kind::POINTS || kind == Kind::EXPOSURE) width = height = 1;
   if (kind == Kind::CURVE) width = 256, height = 1;
   if (kind == Kind::BLOOM || kind == Kind::FLAT) width /= BLOOM_SCALE, height /= BLOOM_SCALE;
@@ -440,6 +441,7 @@ static std::optional<std::vector<float>> Override(std::string_view name, const F
   if (name == "g_render_target_dimensions") return size(tw, th);
   if (name == "g_render_target_recip_size") return std::vector<float>{1.f / tw, 1.f / th};
   if (name == "g_viewport_origin" || name == "g_vpos_texel_offset") return std::vector<float>{0.f, 0.f, 0.f, 0.f};
+  if (name == "g_viewport_offset_scale") return std::vector<float>{0.f, 0.f, 1.f, 1.f};  // the whole screen (offset, scale)
   if (name == "g_num_of_samples") return std::vector<float>{static_cast<float>(frame.samples)};
   if (name == "g_supersampling") return std::vector<float>{1.f};
   if (name == "g_gamma_output") return std::vector<float>{2.f};
@@ -534,6 +536,12 @@ static std::vector<uint32_t> GameConstants(ID3D11ShaderReflection* reflection, c
 
 using Settings = std::vector<std::pair<std::string, float>>;
 
+// The manifest's screen_uv=1: a full-screen pass whose texcoord addresses the screen and its textures (the game's quad at
+// 100%): VertexShaderFor gives the screen's uv, MakeView screen-size textures.
+static bool ScreenUv(const Settings& settings) {
+  return std::ranges::any_of(settings, [](const auto& setting) { return setting.first == "screen_uv" && setting.second != 0.f; });
+}
+
 // The add-on's shader_injection: every member by name from `settings`, the rest 0.
 static std::vector<uint32_t> InjectionConstants(ID3D11ShaderReflection* reflection, const char* name, const Settings& settings) {
   ID3D11ShaderReflectionConstantBuffer* buffer = reflection->GetConstantBufferByName(name);
@@ -572,6 +580,7 @@ static Setup MakeSetup(const Shader& game, const Shader& addon, const Settings& 
                        bool bright_pass) {
   Setup setup;
   setup.frame.full = full;
+  setup.frame.screen_uv = ScreenUv(settings);
   // The game's bindings: its reflection's, else the add-on's at the slots the game's program declares (with that
   // reflection's names and layouts).
   std::vector<std::pair<D3D11_SHADER_INPUT_BIND_DESC, ID3D11ShaderReflection*>> game_bindings;
@@ -661,8 +670,9 @@ static UINT Layers(ID3D11ShaderReflection* pixel) {
 
 // A vertex shader whose outputs are `pixel`'s inputs (same order, so the same registers): the full-screen triangle's
 // position, the instance as the target's slice, every other input a linear function of the screen's uv (integers
-// constant).
-static ComPtr<ID3D11VertexShader> VertexShaderFor(ID3D11ShaderReflection* pixel) {
+// constant). `screen_uv` (the manifest's screen_uv=1: a full-screen pass whose texcoord addresses the screen, as its
+// game's vertex shader gives it at 100%): the first float input the screen's uv itself.
+static ComPtr<ID3D11VertexShader> VertexShaderFor(ID3D11ShaderReflection* pixel, bool screen_uv) {
   auto elements = Signature(pixel, false);
   std::sort(elements.begin(), elements.end(), [](const auto& a, const auto& b) {
     return std::pair(a.Register, std::countr_zero(static_cast<unsigned>(a.Mask))) < std::pair(b.Register, std::countr_zero(static_cast<unsigned>(b.Mask)));
@@ -697,7 +707,10 @@ static ComPtr<ID3D11VertexShader> VertexShaderFor(ID3D11ShaderReflection* pixel)
     const std::string type = base + (width > 1 ? std::to_string(width) : "");
     const std::string swizzle = std::string(".xyzw").substr(0, width + 1);
     fields += type + " " + field + " : " + element.SemanticName + std::to_string(element.SemanticIndex) + "; ";
-    if (base == "float") {
+    if (base == "float" && screen_uv) {
+      writes += "o." + field + " = float4(uv, 0, 1)" + swizzle + "; ";
+      screen_uv = false;
+    } else if (base == "float") {
       writes += "o." + field + " = (float4(uv, 1 - 0.5 * uv.x, 0.25 + 0.5 * uv.y) * " + std::to_string(0.9 + 0.1 * k) + " + "
                 + std::to_string(0.03 * k) + ")" + swizzle + "; ";
     } else {
@@ -1021,7 +1034,8 @@ int main(int argc, char** argv) {
       continue;
     }
     const bool bright_pass = Lower(entry.shader).starts_with("bloom");
-    const ComPtr<ID3D11VertexShader> vertex = game.vertex ? ComPtr<ID3D11VertexShader>() : VertexShaderFor(game.reflection.Get());
+    const ComPtr<ID3D11VertexShader> vertex =
+        game.vertex ? ComPtr<ID3D11VertexShader>() : VertexShaderFor(game.reflection.Get(), ScreenUv(entry.settings));
     const auto run = [&](const std::vector<uint8_t>& code, const Setup& setup) {
       if (game.vertex) return DrawVertex(code, game, setup);
       return vertex ? DrawPixel(code, game.reflection.Get(), vertex.Get(), setup) : Output{};

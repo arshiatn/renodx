@@ -2,6 +2,22 @@
 
 Build: `cmake --build --preset clang-x64-release --target renodx-twromeremastered.addon64`.
 
+### Next round (2026-11-16 tw3_; built only, not run in game)
+
+- New: **Modded Auto Exposure (Experimental, off)** and its Sensitivity (Extra, Advanced, HDR modes), as Attila's and
+  Pharaoh's rows on Feral's own auto exposure (shaders/autoexposure00_0x6A1D2178, the one-thread pass after its 64-bin
+  histogram of the scene's log luminance): each bin's value in the metered average at most the average x 2^Sensitivity,
+  so a large bright sky or fire darkens the picture less. The bright level the tone mapper's white point follows stays
+  the game's. Off and in SDR: the game's output to the bit.
+- Proven offline: test/tw_romer_auto_exposure (WARP, the game's 0x6A1D2178 against the add-on's: off in every mode and
+  SDR on 0 bits apart in 1200 runs over 200 histograms; the walk read from the assembly within 4e-6; on, the capped
+  mean within 4e-6; each with a CONTROL). A battle-like histogram (ground, sky, a fire tail): on lifts the exposure
+  +0.01 stops at Sensitivity 2, +0.19 at 1, +0.29 at 0.6.
+- PsychoV35 (Recommended) against Rendering Mode SDR below white: x0.89 - 0.92 below 15 nits, colour the same
+  (test/tw_shogun2_romer_toe, Hable white 11.2).
+- In game (HDR, Advanced): a battle under a bright sky, Modded Auto Exposure off / on at Sensitivity 1: on is a little
+  brighter in the ground; the sun, fire and sky keep their brightness.
+
 ### Fix round (2026-11-16; built only, not run in game)
 
 - New: **FSR and XeSS (Experimental)** through the helper in DLSS's place (Anti-Aliasing: FSR, XeSS); frame generation
