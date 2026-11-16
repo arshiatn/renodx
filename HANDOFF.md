@@ -175,8 +175,8 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] C: Divinity 2 Skip the Game's Shadow Maps: on by default under RT shadows (your 22:3x every-game rule) once the coverage run passes (962 of 3,526 city draws skipped)? Path-Traced Ambient into the RT/PT preset once a run shows it? (from: div2_ 11-16)
 - [ ] C: Attila PT GI: calibrate the unseen route's sky (off-screen hits -3 % darker, sky median 0.79: a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
 - [ ] C: Ryse "Recommended (with Deeper Shadows)": after the V35 fit it changes V31 only (V35 Shadows 0.75 would sit far below the game's). Keep the button or drop it? (from: rys2_ 23:xx)
-- [ ] C: GT-VBAO horizon loss on flat ground at grazing pitch (0.969 at 13.6 deg): sample the depth at the exact place (a look change, an Experimental row)? (from: shs2_ A15 91267bbf9)
-- [ ] C: Attila / Thrones run DLAA / SMAA / CMAA2 in a gamma 2.0 frame while Gamma Correction makes it 2.2 (exact round trip, only the AA's working curve differs): move them to 2.2? (from: shs2_ 23:xx)
+- [x] ANSWERED 23:5x (ATN: "add it": Experimental row, off; shs2_) C: GT-VBAO horizon loss on flat ground at grazing pitch (0.969 at 13.6 deg): sample the depth at the exact place (a look change, an Experimental row)? (from: shs2_ A15 91267bbf9)
+- [x] ANSWERED 23:5x (ATN: "yes please": 2.2 under Gamma Correction; shs2_) C: Attila / Thrones run DLAA / SMAA / CMAA2 in a gamma 2.0 frame while Gamma Correction makes it 2.2 (exact round trip, only the AA's working curve differs): move them to 2.2? (from: shs2_ 23:xx)
 - [ ] C: the SSR path-traced occlusion (L1778) and x64 engine_memory (S-list): ATN's call, details in shs2_'s report (from: shs2_ 23:xx)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
@@ -314,6 +314,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHS2 RUNS (shs2_ 23:xx NEEDS A RUN): Pharaoh battle near a building pool with RT ... | coordinator (one game at a time)
 - SHARED STEPS NEXT (shs2_ 23:xx): every game: a census of its other SSAO readers ... | per-game rounds, gpu3_, next shared round
 - R7 / TEST BOXES (shs2_ 23:xx): R7 clamps: Shogun 2 sea overlay writers C8375A74 ... | per-game rounds, next test round
+- PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
 - RESTIR UPGRADE (ATN 23:1x: debug43 chats + 4 NVIDIA papers): own implementations ... | gpu3_ after the torch row + paths split
 - PATHS TRACE / SHADE SPLIT (ATN 23:0x "Let's do that"): the paths at 128 register ... | gpu3_
 - GPU3 RUNS (gpu3_ 11-16 NEEDS A RUN): 1. Attila Constantinople, ATN's rows, path- ... | coordinator (one game at a time)
@@ -2038,6 +2039,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         the ReShade suites FAILS 3 of 3 (near_limit_passed 0, overflow_rejected 0, descriptor_ranges_seen 0); Ryse
         back_buffer_fix::CheckBound registered after mods::shader; Rome Remastered 72 main-pass draws NOT HELD in the
         caster census. Owner: per-game rounds, next test round
+      - [ ] PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction):
+        C:/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw/round_notes/plan_1117/plan.md: phase 0 finish the round +
+        install; 1 ATN's night / sea replays -> one capture run each; 2 reference suite; 3 one features batch (ReSTIR
+        papers, PT DI with RTXDI code allowed + NVIDIA notice, torches via one DI + GI reservoir, vMF diffuse row after PT
+        DI, SER / OMM / PTLAS re-measured); 4 Opus review (xHigh reviewers, High fixers); 5 install + ATN's short list.
+        Owner: coordinator
       - [ ] RESTIR UPGRADE (ATN 23:1x: debug43 chats + 4 NVIDIA papers): own implementations from the papers (their code
         only where its licence allows: ReSTIR-CGNS = Falcor's BSD-3; hedstrom2026 zip / ReSTIR PG / PT Enhanced: no code
         or licence named), each Nsight before / after + the reference path tracer: (1) reciprocal neighbor selection
