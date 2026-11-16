@@ -1315,6 +1315,7 @@ twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
 float ssr_denoiser = 1.f;  // twattila/ssr_hiz.hpp: the resolve's history
+float path_reflection_occlusion = 1.f;  // Path-Traced Reflection Occlusion (ssr00 / ssr01's reflection_occlusion)
 float lod_bias_trilinear_row = 0.f;  // twattila/texture_lod_bias.hpp SetWrappingTrilinear (graphics_page's row)
 // Faster Game CPU Code (twattila/engine_code.hpp, Game::THRONES): Attila's three routines on this game's build (the soldier
 // draw's rounding at its own stack slots, float to half and fmod the same bytes; test/tw_engine_code with this game's DLL:
@@ -1693,6 +1694,11 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
   // Ray Reconstruction is the only denoiser: the reflections' denoiser (and its history) off under it.
   twattila::feature_settings::UpdateSsr(&shader_injection, (twattila::dlaa_bridge::bridge.reconstructing || twattila::dlaa_bridge::bridge.nrd_reflections) ? 0.f : ssr_denoiser);
+  // Path-Traced Reflection Occlusion: the specular occlusion traced for the reflections under Path-Traced Ambient (its own
+  // row keeps it whole).
+  const bool reflections_occluded = rt_settings.path_ambient && !rt_settings.specular_occlusion && path_reflection_occlusion > 0.f;
+  rt_settings.specular_occlusion = rt_settings.specular_occlusion || reflections_occluded;
+  shader_injection.reflection_occlusion = reflections_occluded ? path_reflection_occlusion : 1.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
@@ -1928,6 +1934,24 @@ void ConfigureAddon() {
       .tooltip = "Ray-traced reflections without the game's blur on top of them: sharper.\n"
                  "Off: the game's look.",
       .is_visible = [] { return rt_sliders.reflections != 0.f && twattila::feature_settings::Upscaling(aa_sliders); },
+  });
+  // Path-Traced Reflection Occlusion (on, ATN 2026-11-16 "if it is more correct, add it as on default but an extra slider"):
+  // Path-Traced Ambient's AO is white, the game's reflections had no occlusion; ssr00 / ssr01 take the specular occlusion
+  // at this strength (0: today's, nothing traced for it; test/tw_thrones_ssr part I).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "PathTracedReflectionOcclusion",
+      .binding = &path_reflection_occlusion,
+      .default_value = 1.f,
+      .label = "Path-Traced Reflection Occlusion",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Reflections darken where something blocks the sky: no bright sky in dark corners.\n"
+                 "0: off.",
+      .max = 1.f,
+      .format = "%.2f",
+      .is_visible = [] {
+        return rt_sliders.light_bounce == 2.f && rt_sliders.path_ambient != 0.f && rt_sliders.specular_occlusion == 0.f
+               && twattila::feature_settings::Upscaling(aa_sliders);
+      },
   });
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
