@@ -505,9 +505,13 @@ struct QualityOption {
   int default_choice = 0;  // the item before one is saved and Reset's
   int atn_choice = 0;  // Experimental: the item "ATN's setting" picks
   int floor_option = -1;  // index of an option whose factor this one's never goes below (-1: none)
+  // While true, its absolute cvars at their first values (the effect off): one of ours replaces the game's effect.
+  const std::atomic_bool* replaced_by = nullptr;
   std::vector<QualityCvar> cvars;
   int choice = 0;  // Present thread (the overlay runs in it)
 };
+// The add-on's Light Bounce runs (addon.cpp, each present): the game's indirect light (r_SSII) off in its place.
+std::atomic_bool own_light_bounce = false;
 // Cvars that read back unchanged are refused (e.g. e_DecalsRange, flags 0x800000; left out). Past the engine's caps
 // (the camera's far plane, LOD 0, the tessellation factor 64, every texture resident) higher factors change nothing.
 std::array<QualityOption, 33> quality_options = {{
@@ -838,7 +842,7 @@ std::array<QualityOption, 33> quality_options = {{
     {.label = "Indirect light",
      .key = "IndirectLight",
      .tooltip = "Screen-space indirect illumination: light bounces between surfaces on screen. Off in the game;\n"
-                "may not work.",
+                "may not work. Off while the Light Bounce is on (it replaces it).",
      .choices = "In-game setting (off)\0" "On\0",
      .choice_count = 2,
      .preset_choices = {0, 0, 0, 0},
@@ -846,6 +850,7 @@ std::array<QualityOption, 33> quality_options = {{
      .absolute = true,
      .experimental = true,
      .atn_choice = 1,
+     .replaced_by = &own_light_bounce,
      // "Screen space indirect illumination: 0 turns it off, otherwise it scales the contribution of SSII."
      .cvars = {{.name = "r_SSII", .is_float = false, .absolute = true, .values = {0.f, 1.f}, .from_choice = 1}}},
     {.label = "Grass tessellation",
@@ -2944,7 +2949,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     for (auto& option : quality_options) {
       const QualityOption* floor_source =
           (option.floor_option >= 0 ? &quality_options[option.floor_option] : nullptr);
-      const bool game_own = option.choice == 0 && (floor_source == nullptr || floor_source->choice == 0);
+      const bool replaced = option.replaced_by != nullptr && option.replaced_by->load(std::memory_order_relaxed);
+      const bool game_own = !replaced && option.choice == 0 && (floor_source == nullptr || floor_source->choice == 0);
       float value = option.values[option.choice];
       if (floor_source != nullptr) {
         value = std::max(value, floor_source->values[floor_source->choice]);
@@ -2983,7 +2989,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           }
           entry.set = false;
         }
-        if (game_own || option.choice < entry.from_choice) {
+        if (!replaced && (game_own || option.choice < entry.from_choice)) {
           if (entry.set) {
             set(entry, entry.game_value);
             entry.set = false;
@@ -2995,7 +3001,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         }
         float desired = value;
         if (entry.absolute) {
-          desired = entry.values[option.choice];
+          desired = entry.values[replaced ? 0 : option.choice];
         } else if (!option.absolute) {
           desired = (entry.inverse ? entry.game_value / value : entry.game_value * value);
         }

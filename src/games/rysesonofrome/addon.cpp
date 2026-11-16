@@ -1603,6 +1603,8 @@ void OnPresentHotkeys(reshade::api::command_queue* queue, reshade::api::swapchai
   } else {
     shader_injection.ao_method = shader_injection.ssao_mode;
   }
+  // The Light Bounce in place of the game's indirect light (graphics.hpp's r_SSII row) while it runs.
+  rysesonofrome::graphics::own_light_bounce.store(shader_injection.light_bounce > 0.f, std::memory_order_relaxed);
   // What the helper serves this frame (graphics.hpp adds the upscaler and frame generation): the ray tracing, its guides
   // with the reflections or paths, Ray Reconstruction while a ray-traced effect is on.
   const auto back_buffer = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
