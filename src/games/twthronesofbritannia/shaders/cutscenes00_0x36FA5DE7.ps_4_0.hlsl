@@ -42,7 +42,7 @@ void main(
     o0.xyz += (frac(52.9829189f * frac(dot(floor(v0.xy), float2(0.06711056f, 0.00583715f)))) - 0.5f) / 255.f;
   }
   const float3 video = AutoHdrHighlights(renodx::color::gamma::DecodeSafe(o0.xyz), SI.video_autohdr);
-  // Video is mastered for a 2.2 screen; the frame is 2.0. Scene paper white.
-  o0.xyz = renodx::color::gamma::EncodeSafe(video * (SI.diffuse_white_nits / SI.graphics_white_nits), 2.0f);
+  // Video is mastered for a 2.2 screen, encoded with the frame's gamma (shared.h). Scene paper white.
+  o0.xyz = EncodeFrame(video * (SI.diffuse_white_nits / SI.graphics_white_nits));
   return;
 }

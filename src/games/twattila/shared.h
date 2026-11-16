@@ -149,6 +149,13 @@ struct ShaderInjectData {
 #define HDR_PEAK (ATTILA_SDR_OUTPUT ? 1.f : max(SI.peak_white_nits / SI.diffuse_white_nits, 1.f))
 // Paper White relative to UI.
 #define ATTILA_PAPER_WHITE (ATTILA_SDR_OUTPUT ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)
+// The frame's gamma (frame_gamma.hlsli), the swap chain proxy's decode: Gamma Correction on, 2.2, the game's gamma 2.0
+// picture as a 2.2 display shows it (x^1.1), in every Rendering Mode; off, 2.0. Rendering Mode SDR on an SDR display the
+// other way round: off hands the game's picture to the display as it is.
+#define TW_FRAME_GAMMA (((SI.gamma_correction != 0.f) != (ATTILA_SDR_OUTPUT && HDR < 0.5f)) ? 2.2f : 2.f)
+// The HDR tone mappers' Peak, pre-corrected for the frame's 2.2 decode of their gamma 2.0 output: their top still lands
+// on Peak.
+#define TW_TONE_MAP_PEAK ((TW_FRAME_GAMMA == 2.f) ? HDR_PEAK : pow(HDR_PEAK, 2.f / TW_FRAME_GAMMA))
 
 // PsychoV30 keeps a fixed 1.0 exposure, 0.18 input/output anchors, full target
 // gamut projection, BT.2020 target volume (BT.709 on Output SDR), and automatic compression. The
@@ -156,7 +163,7 @@ struct ShaderInjectData {
 // Last: highlight hue shift (SI.hue_shift).
 #define ApplyAttilaPsychoV30(color)                                               \
   renodx_custom::tonemap::psycho30::psychotm_test30(                             \
-      (color), HDR_PEAK, 1.f, SI.highlights, SI.shadows, SI.contrast,            \
+      (color), TW_TONE_MAP_PEAK, 1.f, SI.highlights, SI.shadows, SI.contrast,    \
       SI.purity_scale, 1.f, 100.f, 1.f, 1.f, 0, SI.cone_response_exponent,       \
       0.18f, 0.18f, 1.f, (ATTILA_SDR_OUTPUT ? 0 : 1), 1.f, 0.f, SI.hue_shift)
 
@@ -210,6 +217,7 @@ cbuffer shader_injection : register(b13) {
 }
 
 #include "../../shaders/renodx.hlsl"
+#include "./frame_gamma.hlsli"
 
 #endif
 

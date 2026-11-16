@@ -9,11 +9,9 @@ float4 ApplyBritanniaLensFlare(float4 stock_color)
   // Restore the UNORM clamp lost to the FP16 upgrade.
   float4 flare = saturate(stock_color);
 
-  // Made for a 2.2 screen (ignores in-game gamma); the frame is 2.0. Scale in linear.
-  float3 flare_linear = renodx::color::gamma::DecodeSafe(flare.xyz);
-  flare_linear *= SI.lensflare
-                * (SI.diffuse_white_nits / SI.graphics_white_nits);
-  flare.xyz = renodx::color::gamma::EncodeSafe(flare_linear, 2.0f);
+  // The game's own add, scaled in linear with the frame's gamma (the swap chain proxy's decode): at Lens Flare 1 and
+  // Paper White = UI it is the game's.
+  flare.xyz = EncodeFrame(DecodeFrame(flare.xyz) * (SI.lensflare * (SI.diffuse_white_nits / SI.graphics_white_nits)));
 
   return flare;
 }
