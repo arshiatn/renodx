@@ -134,6 +134,13 @@
 //    or on without a sum at t1, the game's minimum / maximum / sum and bloom source bit for bit; on with Sensitivity 1 the
 //    maximum last frame's average x 2 (the minimum, sum and source the game's); Sensitivity 16 the game's. CONTROL: the capped
 //    maximum lower than the game's.
+// 26. GT-VBAO leaves the game's sweep 0C83DB37 and collect 38F6D9B6 out (reader_census_wh1.txt: sweep -> A, collect A -> B,
+//    blur_x E3DA9A8D (A, from depth t0 and B at t1), blur_y 4C1918DA (B, from depth t0 and A at t1); the sun reads B): on
+//    64 x 48 R8 targets (the traced format), ours in blur_x's place (the build's embed/ao_bitmask_blur.cso, as
+//    DispatchInstead binds it) writes every texel of A the same whatever A and B held (it declares no t1), and the game's
+//    blur_y writes every texel of B the same whatever B held (its u0 only stored): so nothing reads the sweep's or the
+//    collect's output then. CONTROLS: the game's blur_x changes with B (the collect's output has that one reader); blur_y
+//    over one group less leaves B's old texels.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -3422,6 +3429,123 @@ static void TestMarkers(const std::string& root, const std::string& dump) {
   }
 }
 
+static void TestBitmaskSkips(const std::string& root, const std::string& dump) {
+  constexpr UINT WIDTH = 64;
+  constexpr UINT HEIGHT = 48;
+  const auto blur_x = GameBytes(dump, 0xE3DA9A8D);
+  const auto blur_y = GameBytes(dump, 0x4C1918DA);
+  const auto ours = Bytes(root + "/build/twwarhammer.include/embed/ao_bitmask_blur.cso");
+  if (blur_x.empty() || blur_y.empty() || ours.empty()) {
+    CHECK(false, "bitmask skips: E3DA9A8D / 4C1918DA / ao_bitmask_blur's bytes");
+    return;
+  }
+  ComPtr<ID3D11ComputeShader> game_x;
+  ComPtr<ID3D11ComputeShader> game_y;
+  ComPtr<ID3D11ComputeShader> bitmask;
+  device->CreateComputeShader(blur_x.data(), blur_x.size(), nullptr, game_x.GetAddressOf());
+  device->CreateComputeShader(blur_y.data(), blur_y.size(), nullptr, game_y.GetAddressOf());
+  device->CreateComputeShader(ours.data(), ours.size(), nullptr, bitmask.GetAddressOf());
+  // Ours declares no texture at t1 (the slot blur_x reads B through).
+  ComPtr<ID3D11ShaderReflection> reflection;
+  D3DReflect(ours.data(), ours.size(), IID_PPV_ARGS(reflection.GetAddressOf()));
+  bool ours_reads_t1 = reflection == nullptr;
+  D3D11_SHADER_DESC shader_desc = {};
+  if (reflection != nullptr) reflection->GetDesc(&shader_desc);
+  for (UINT index = 0; index < shader_desc.BoundResources; ++index) {
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDesc(index, &bind);
+    ours_reads_t1 = ours_reads_t1 || (bind.Type == D3D_SIT_TEXTURE && bind.BindPoint <= 1 && bind.BindPoint + bind.BindCount > 1);
+  }
+  std::vector<float> depth(static_cast<size_t>(WIDTH) * HEIGHT);
+  for (size_t at = 0; at < depth.size(); ++at) depth[at] = 0.2f + (0.6f * static_cast<float>((at * 37) % 101) / 101.f);
+  const D3D11_TEXTURE2D_DESC depth_desc = {.Width = WIDTH, .Height = HEIGHT, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
+                                           .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  const D3D11_SUBRESOURCE_DATA depth_data = {.pSysMem = depth.data(), .SysMemPitch = WIDTH * 4};
+  ComPtr<ID3D11Texture2D> depth_texture;
+  ComPtr<ID3D11ShaderResourceView> depth_view;
+  device->CreateTexture2D(&depth_desc, &depth_data, depth_texture.GetAddressOf());
+  device->CreateShaderResourceView(depth_texture.Get(), nullptr, depth_view.GetAddressOf());
+  // The blurs' camera (blur_y reads c26.w, ours the inverse projection at c17-c20: identity) and the add-on's settings at b13.
+  std::array<Float4, 27> camera = {};
+  for (UINT row = 0; row < 4; ++row) camera[17 + row][row] = 1.f;
+  camera[26][3] = 1000.f;
+  ShaderInjectData injected = {};
+  injected.ssao_mode = 1.f;
+  injected.ssao_strength = 1.f;
+  injected.ssao_radius = 1.f;
+  injected.ssao_thickness = 0.15f;
+  injected.ssao_quality = 1.f;
+  injected.ssao_directions = 2.f;
+  std::vector<uint8_t> injected_bytes((sizeof(injected) + 15) & ~size_t{15});
+  std::memcpy(injected_bytes.data(), &injected, sizeof(injected));
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const auto settings_buffer = Constants(injected_bytes.data(), static_cast<UINT>(injected_bytes.size()));
+  // An R8 AO target holding a pattern of its own (`seed`).
+  const auto ao_target = [&](uint32_t seed) {
+    std::vector<uint8_t> texels(static_cast<size_t>(WIDTH) * HEIGHT);
+    for (size_t at = 0; at < texels.size(); ++at) texels[at] = static_cast<uint8_t>(((at * 131) + (seed * 71)) % 251);
+    const D3D11_TEXTURE2D_DESC desc = {.Width = WIDTH, .Height = HEIGHT, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R8_UNORM,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                       .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = texels.data(), .SysMemPitch = WIDTH};
+    ComPtr<ID3D11Texture2D> texture;
+    device->CreateTexture2D(&desc, &data, texture.GetAddressOf());
+    return texture;
+  };
+  // `shader` over `groups` with the depth at t0, `input` at t1 and `output` at u0: the output's texels after it.
+  const auto run = [&](ID3D11ComputeShader* shader, std::array<UINT, 2> groups, uint32_t input_seed, uint32_t output_seed) {
+    const auto input = ao_target(input_seed);
+    const auto output = ao_target(output_seed);
+    ComPtr<ID3D11ShaderResourceView> input_view;
+    ComPtr<ID3D11UnorderedAccessView> output_view;
+    device->CreateShaderResourceView(input.Get(), nullptr, input_view.GetAddressOf());
+    device->CreateUnorderedAccessView(output.Get(), nullptr, output_view.GetAddressOf());
+    const std::array<ID3D11ShaderResourceView*, 2> views = {depth_view.Get(), input_view.Get()};
+    context->CSSetShader(shader, nullptr, 0);
+    context->CSSetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
+    context->CSSetConstantBuffers(13, 1, settings_buffer.GetAddressOf());
+    context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+    context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
+    context->Dispatch(groups[0], groups[1], 1);
+    context->ClearState();
+    D3D11_TEXTURE2D_DESC desc = {};
+    output->GetDesc(&desc);
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.BindFlags = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Texture2D> staging;
+    device->CreateTexture2D(&desc, nullptr, staging.GetAddressOf());
+    context->CopyResource(staging.Get(), output.Get());
+    std::vector<uint8_t> texels(static_cast<size_t>(WIDTH) * HEIGHT);
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+      for (UINT row = 0; row < HEIGHT; ++row) {
+        std::memcpy(texels.data() + (static_cast<size_t>(row) * WIDTH), static_cast<const uint8_t*>(mapped.pData) + (static_cast<size_t>(row) * mapped.RowPitch), WIDTH);
+      }
+      context->Unmap(staging.Get(), 0);
+    }
+    return texels;
+  };
+  const auto apart = [](const std::vector<uint8_t>& left, const std::vector<uint8_t>& right) {
+    size_t count = 0;
+    for (size_t at = 0; at < left.size(); ++at) count += (left[at] != right[at]) ? 1 : 0;
+    return count;
+  };
+  // Ours as DispatchInstead dispatches it (8 x 8 groups over the output), the game's blurs as traced (32 x 32 groups).
+  constexpr std::array<UINT, 2> OURS = {(WIDTH + 7) / 8, (HEIGHT + 7) / 8};
+  constexpr std::array<UINT, 2> GAME = {(WIDTH + 31) / 32, (HEIGHT + 31) / 32};
+  const size_t ours_apart = apart(run(bitmask.Get(), OURS, 1, 2), run(bitmask.Get(), OURS, 3, 4));
+  const size_t blur_y_apart = apart(run(game_y.Get(), GAME, 5, 6), run(game_y.Get(), GAME, 5, 7));
+  const size_t blur_x_control = apart(run(game_x.Get(), GAME, 8, 9), run(game_x.Get(), GAME, 10, 9));
+  const size_t blur_y_control = apart(run(game_y.Get(), {GAME[0], GAME[1] - 1}, 5, 6), run(game_y.Get(), {GAME[0], GAME[1] - 1}, 5, 7));
+  CHECK(!ours_reads_t1 && ours_apart == 0 && blur_y_apart == 0 && blur_x_control > 0 && blur_y_control > 0,
+        "bitmask skips: ours declares t1 %d, ours %zu apart, blur_y %zu apart, CONTROLS blur_x %zu, blur_y short %zu", ours_reads_t1, ours_apart,
+        blur_y_apart, blur_x_control, blur_y_control);
+  std::printf("GT-VBAO leaves the sweep and the collect out: ours (no t1) over A whatever A and B held %zu of %u apart; the game's blur_y over B "
+              "whatever B held %zu apart; CONTROLS: the game's blur_x with another B %zu apart, blur_y a group row short %zu apart\n",
+              ours_apart, WIDTH * HEIGHT, blur_y_apart, blur_x_control, blur_y_control);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -3461,6 +3585,7 @@ int main(int argc, char** argv) {
   TestCloth(argv[1], argv[2]);
   TestRaycast(argv[2]);
   TestLuma(argv[1], argv[2]);
+  TestBitmaskSkips(argv[1], argv[2]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

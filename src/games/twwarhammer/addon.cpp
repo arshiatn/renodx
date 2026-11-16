@@ -354,6 +354,11 @@ bool SkipGameSsao() {
 // GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone; under the paths the
 // game's SSAO stays in t_ssao, as when the page turned GT-VBAO off with them).
 bool bitmask_ao = false;
+// GT-VBAO in the blur's place leaves the sweep's and the collect's outputs unread (the census: sweep -> A, collect A -> B,
+// blur_x B -> A, blur_y A -> B, the sun reads B; ours writes all of A from the depth alone, blur_y all of B: test part 26):
+// both left out while ours drew in the last frame (its first frame, or a dispatch that failed, keeps them for the game's blur).
+bool bitmask_blur_drawn = false;
+bool bitmask_blur_last_frame = false;
 // Light Through Banners: the sails (as the rays, Attila's sails; part 10: SV_Position first) and the banners with their row.
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{
     {.hash = 0xE4B46D0E},
@@ -471,13 +476,17 @@ void BuildRuntimeData() {
   custom_shaders[0xE3DA9A8D].on_draw = [](auto* cmd_list) {
     if (SkipGameSsao()) return false;
     if (!bitmask_ao) return true;
-    return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
-                                               false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
+    bitmask_blur_drawn = tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
+                                                            false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
+    return !bitmask_blur_drawn;
   };
   // Rays' AO Alone: the sweep 0C83DB37 and blur 4C1918DA left out, the collect 38F6D9B6's output cleared to open in its place.
-  custom_shaders[0x0C83DB37].on_draw = [](auto*) { return !SkipGameSsao(); };
+  // GT-VBAO: the sweep and the collect left out (bitmask_blur_last_frame).
+  static constexpr auto bitmask_skips_game_ao = [] { return bitmask_ao && bitmask_blur_last_frame; };
+  custom_shaders[0x0C83DB37].on_draw = [](auto*) { return !SkipGameSsao() && !bitmask_skips_game_ao(); };
   custom_shaders[0x4C1918DA].on_draw = [](auto*) { return !SkipGameSsao(); };
   custom_shaders[0x38F6D9B6].on_draw = [](auto* cmd_list) {
+    if (bitmask_skips_game_ao()) return false;
     if (!SkipGameSsao()) return true;
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
     Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
@@ -1810,6 +1819,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   reflection_passes_skipped = false;
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   bitmask_ao = shader_injection.ssao_mode >= 1.f && !rt_settings.ambient_occlusion && !rt_settings.path_ambient;
+  bitmask_blur_last_frame = std::exchange(bitmask_blur_drawn, false);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
