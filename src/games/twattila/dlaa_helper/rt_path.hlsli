@@ -398,19 +398,30 @@ float3 SunLit(float3 surface, float3 behind, float3 normal, float3 albedo, float
   return albedo * light_kept[1].rgb * sun_share;
 }
 
-// The light a surface the screen never saw sends back (its base colour lit): the sun's (SunLit) and with the local lights
-// two of them picked (less noise from fires and torches than one) by `light_seed`. Not theirs where a surface the screen
-// shows sends none of theirs back (SeenDiffuseLight, with the game's sun light): a surface out of sight sent more than
-// it did once seen, the torches' share (the paths' probe, 640 x 360 at ATN's rows: the unseen route x1.17 the seen
-// route's light over the screen's surfaces, x1.77 where the lights gave 30% of it, x0.98 without them; ATN 2026-11-16:
-// wall corners out of sight too bright until seen, the radiance cache keeping their light).
+// Torch Light in Path-Traced GI (a paths request's LIGHTS_IN_PATHS): not in the reflections' builds, which never ask for
+// it (its light loops in their code cost them 0.02 ms at 4K with the row off).
+#if defined(REFLECT) || defined(REFLECT_RESERVOIR)
+#define TORCH_LIGHT_IN_PATHS false
+#else
+#define TORCH_LIGHT_IN_PATHS ((lights_in_bounce & LIGHTS_IN_PATHS) != 0u)
+#endif
+
+// The local lights' light on a surface: two of them picked (less noise from fires and torches than one) by `seed`.
+float3 LocalLights(float3 surface, float3 normal, uint3 seed) {
+  return 0.5f * (LocalLight(surface, normal, Random(seed + uint3(0u, 0u, 16384u))) + LocalLight(surface, normal, Random(seed + uint3(0u, 0u, 24576u))));
+}
+
+// The light a surface the screen never saw sends back (its base colour lit): the sun's (SunLit) and the local lights'
+// (LocalLights by `light_seed`). Not theirs where a surface the screen shows sends none of theirs back (SeenDiffuseLight,
+// with the game's sun light, without Torch Light in Path-Traced GI): a surface out of sight sent more than it did once
+// seen, the torches' share (the paths' probe, 640 x 360 at ATN's rows: the unseen route x1.17 the seen route's light over
+// the screen's surfaces, x1.77 where the lights gave 30% of it, x0.98 without them; ATN 2026-11-16: wall corners out of
+// sight too bright until seen, the radiance cache keeping their light).
 float3 UnseenLight(float3 surface, float3 behind, float3 normal, float3 albedo, float transmittance, uint2 seed, uint light_seed) {
   float3 emitted = SunLit(surface, behind, normal, albedo, transmittance, -1.f);
-  const bool seen_without_lights = SunLightGiven() && (path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == PATH_LIGHT;
-  if ((path_flags & PATH_LOCAL_LIGHTS) != 0u && !seen_without_lights) {
-    emitted += albedo * (0.5f * (LocalLight(surface, normal, Random(uint3(seed, light_seed + 16384u)))
-                                 + LocalLight(surface, normal, Random(uint3(seed, light_seed + 24576u)))));
-  }
+  const bool seen_without_lights = SunLightGiven() && (path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == PATH_LIGHT
+                                   && !TORCH_LIGHT_IN_PATHS;
+  if ((path_flags & PATH_LOCAL_LIGHTS) != 0u && !seen_without_lights) emitted += albedo * LocalLights(surface, normal, uint3(seed, light_seed));
   return emitted;
 }
 
@@ -471,10 +482,14 @@ float3 ScreenSky(float3 world, float3 normal) {
 // `pixel` where this frame's) and Path-Traced Ambient's own sky there (ScreenSky). The screen's light holds the game's
 // sun and sky specular toward the camera (Attila's sun light shaders add them to the diffuse light), not toward a path's
 // start: taken as the light a surface sends everywhere, the faces in shade came out 14 to 22% brighter seen from a view
-// toward the sun than from beside it (harness HARNESS_PEDESTAL; ATN 2026-11-13).
-float3 SeenDiffuseLight(uint2 pixel, float3 world, float3 normal, float3 albedo) {
+// toward the sun than from beside it (harness HARNESS_PEDESTAL; ATN 2026-11-13). With Torch Light in Path-Traced GI
+// (LIGHTS_IN_PATHS) the local lights' too, as an unseen surface's (LocalLights by `light_seed`).
+float3 SeenDiffuseLight(uint2 pixel, float3 world, float3 normal, float3 albedo, uint3 light_seed) {
   const float visibility = ((path_flags & PATH_SUN_TRACED) != 0u) ? traced_visibility[pixel] : -1.f;
-  return SunLit(world + normal * SurfaceOffset(distance(world, Camera())), world, normal, albedo, 0.f, visibility) + albedo * ScreenSky(world, normal);
+  const float3 surface = world + normal * SurfaceOffset(distance(world, Camera()));
+  float3 light_leaving = SunLit(surface, world, normal, albedo, 0.f, visibility) + albedo * ScreenSky(world, normal);
+  if (TORCH_LIGHT_IN_PATHS && (path_flags & PATH_LOCAL_LIGHTS) != 0u) light_leaving += albedo * LocalLights(surface, normal, light_seed);
+  return light_leaving;
 }
 
 // The light leaving a surface a ray met (false: nobody knows it): the screen's now where it shows that face, else (without
@@ -495,7 +510,8 @@ bool HitLight(float3 hit, float3 hit_normal, out float3 light_there, bool cached
     }
     const float3 albedo = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : HitAlbedo(hit, hit_normal);
     if (SunLightGiven()) {
-      light_there = SeenDiffuseLight(pixel, hit, hit_normal, albedo);
+      // The lights picked by the hit's own position: Validate's look at a reservoir's surface picks what its path did.
+      light_there = SeenDiffuseLight(pixel, hit, hit_normal, albedo, asuint(hit));
     } else {
       // Path-Traced Ambient took the game's ambient away from the screen's light: the surface's base colour x the kept
       // shade (as an unseen surface's) in its place (walls a path met brought back almost nothing: ATN's debug29, dark).
@@ -552,6 +568,10 @@ static const uint PROBE_ALBEDO_SEEN = 13u;    // the guide's base colour at the 
 static const uint PROBE_ALBEDO_UNSEEN = 14u;  // HitAlbedo's at its surface
 static const uint PROBE_UNSEEN_SUN = 15u;     // UnseenLight's parts at its surface: the sun's (its shadow ray)
 static const uint PROBE_UNSEEN_LOCAL = 16u;   // the local lights'
+// The local lights at the texel's surface x its base colour: LocalLights' two picks (the paths' estimator), and every light
+// with a shadow ray of its own, summed (pbrt's sum over all lights: for point lights the exact direct light).
+static const uint PROBE_LIGHTS_PICKED = 17u;
+static const uint PROBE_LIGHTS_ALL = 18u;
 static const uint PROBE_REFERENCE_BOUNCES = 6u;
 static bool probe_running = false;
 static bool probe_seen = false;  // the first surface's light came by the screen's route
@@ -957,6 +977,23 @@ void ProbeTexel(uint2 id) {
         value += UnseenLight(surface, position.xyz, normal, base, 0.f, id, frame * 4096u + ray * 2u) - SunLit(surface, position.xyz, normal, base, 0.f, -1.f);
       }
       value /= rays;
+    }
+    if (kind == PROBE_LIGHTS_PICKED) {
+      value = 0.f;
+      [loop]
+      for (uint ray = 0u; ray < rays; ++ray) value += base * LocalLights(surface, normal, uint3(id, frame * 4096u + ray * 2u));
+      value /= rays;
+    }
+    if (kind == PROBE_LIGHTS_ALL) {
+      value = 0.f;
+      [loop]
+      for (uint index = 0u; index < min(light_count, 32u); ++index) {
+        float3 direction;
+        float light_distance;
+        const float3 arriving = LightArriving(index, surface, normal, direction, light_distance);
+        if (Luminance(arriving) <= 0.f || Occluded(surface, direction, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_GRASS_SMOKE)) continue;
+        value += base * arriving;
+      }
     }
     bounce[id] = float4(value, 1.f);
     return;

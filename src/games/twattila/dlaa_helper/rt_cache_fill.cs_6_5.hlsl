@@ -69,7 +69,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const bool sun_light_given = SunLightGiven();
   float3 cell_light;
   if (sun_light_given) {
-    cell_light = SeenDiffuseLight(pixel, position.xyz, normal, base);
+    cell_light = SeenDiffuseLight(pixel, position.xyz, normal, base, uint3(cell, frame + 52000u));
   } else {
     cell_light = light_there + (((path_flags & PATH_KEEP_LIGHT) != 0u) ? base * KeptShade() : 0.f);
   }

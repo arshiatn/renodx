@@ -910,6 +910,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
           .labels = {"Off", "On"},
           .is_visible = [b, more_path_lights] { return more_path_lights() && *b.light_ratio != 0.f; },
       });
+      page.Add(new Setting{
+          .key = "RayTracedPathTorchLight",
+          .binding = &b.rt->path_torch_light,
+          .value_type = SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Torch Light in Path-Traced GI (Experimental)",
+          .section = section,
+          .tooltip = "Torches and fires also light the walls and ground the path-traced bounce reflects: warmer light\n"
+                     "around fires. Costs more with many fires.",
+          .labels = {"Off", "On"},
+          .is_visible = more_path_lights,
+      });
     }
     page.Take({.match = "RayTracedSpriteShadows", .section = section, .shown = more_rays,
                .label = (b.far_cards_tested && b.sprites_tested) ? "" : "Sprite Soldier Shadows (Experimental)"});

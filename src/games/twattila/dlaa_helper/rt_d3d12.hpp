@@ -1631,10 +1631,12 @@ class RtScene12 {
             .previous_square_root = (version >= 28 && (requested & dlaa_bridge::RT_PATH_COLOR_SQUARE_ROOT) != 0) ? 1u : 0u,
             .previous_positions_slice = previous_positions_slice_,
             // Torch and Fire Light in the Light Bounce: ReuseTexel shades the lights' samples (the paths with ReSTIR GI), or
-            // keeps their shadow ratio (ratio_written below).
+            // keeps their shadow ratio (ratio_written below). Torch Light in Path-Traced GI (RT_PATH_TORCH_LIGHT): the
+            // local lights on the screen's surfaces a path meets too (LIGHTS_IN_PATHS).
             .lights_in_bounce = lights_mode | ((ratio_written && ratio_parity_ != 0) ? 16u : 0u)
                                 | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u)
-                                | (ratio_follows ? 64u : 0u),
+                                | (ratio_follows ? 64u : 0u)
+                                | ((path_traced && light_count != 0 && (requested & dlaa_bridge::RT_PATH_TORCH_LIGHT) != 0) ? LIGHTS_IN_PATHS : 0u),
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -2160,6 +2162,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_SKY_PARITY = 1048576;  // rt_path.hlsli (the trace's PATH_TINT)
   static constexpr uint32_t PATH_SUN_LIGHT = 2097152;   // rt_path.hlsli (the trace's PATH_TINT_GUIDES)
   static constexpr uint32_t PATH_START_PAST = 2147483648;  // rt_camera.hlsli
+  static constexpr uint32_t LIGHTS_IN_PATHS = 128;  // rt_camera.hlsli (PathConstants::lights_in_bounce)
   static constexpr UINT LIGHT_KEPT_TEXELS = 5;  // rt_path.hlsli light_kept
   static constexpr UINT CACHE_ENTRIES = 1u << 20;
   // rt_path.hlsli's b3.
