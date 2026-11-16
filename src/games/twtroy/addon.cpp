@@ -1061,7 +1061,7 @@ void BuildRuntimeData() {
         .binding = &shader_injection.someindicators,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.0f,
-        .label = "Unit / Building Indicator Brightness",
+        .label = "Unit/Building Indicator Brightness",
         .section = "Extra",
         .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
         .min = 0.0f,
