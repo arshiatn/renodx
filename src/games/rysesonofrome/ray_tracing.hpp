@@ -85,9 +85,20 @@ struct State {
   ComPtr<ID3D11ShaderResourceView> no_probes;
   ComPtr<ID3D11ShaderResourceView> game_probes;
   bool probes_bound = false;
+  // The lighting's PER_BATCH (b0) with SSDOParams.y 0 while the traced reflections or specular occlusion are bound (its
+  // SSDO reflection occlusion left out), copied from the game's at each dispatch; the game's binding put back after it.
+  ComPtr<ID3D11Buffer> neutral_batch;
+  ComPtr<ID3D11Buffer> zero;
+  ComPtr<ID3D11Buffer> game_batch;
+  UINT game_batch_first = 0;
+  UINT game_batch_count = 0;
+  bool batch_bound = false;
   bool failed = false;
 };
 static State state;
+// The tiled lighting's PER_BATCH: 8 float4 (c5 SSDOParams: x the lights', y the reflections', z the ambient's occlusion).
+constexpr UINT BATCH_BYTES = 8 * 16;
+constexpr UINT SSDO_REFLECTION_OFFSET = (5 * 16) + 4;
 
 // `texture` as an RGBA16F texture of `size` with `uav` and / or `srv` (null: none), made again when the size changes;
 // false: it could not be made.
@@ -257,6 +268,8 @@ inline bool Trace(ID3D11DeviceContext* context) {
     state.linear_sampler.Reset();
     state.probe_sky.Reset();
     state.no_probes.Reset();
+    state.neutral_batch.Reset();
+    state.zero.Reset();
     const D3D11_SAMPLER_DESC sampler_desc = {
         .Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR,
         .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
@@ -283,6 +296,10 @@ inline bool Trace(ID3D11DeviceContext* context) {
     D3D11_SHADER_RESOURCE_VIEW_DESC cube_view = {.Format = DXGI_FORMAT_R16G16B16A16_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY};
     cube_view.TextureCubeArray = {.MostDetailedMip = 0, .MipLevels = 1, .First2DArrayFace = 0, .NumCubes = 1};
     ComPtr<ID3D11Texture2D> cube;
+    const D3D11_BUFFER_DESC batch_desc = {.ByteWidth = internal::BATCH_BYTES, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    const std::array<float, 4> zeros = {};
+    const D3D11_SUBRESOURCE_DATA zero_data = {.pSysMem = zeros.data()};
+    const D3D11_BUFFER_DESC zero_desc = {.ByteWidth = sizeof(zeros), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
     state.failed = FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
                    || FAILED(device1->CreateDeviceContextState(0, &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr,
                                                                state.private_state.GetAddressOf()))
@@ -294,7 +311,9 @@ inline bool Trace(ID3D11DeviceContext* context) {
                    || FAILED(device->CreateSamplerState(&sampler_desc, state.linear_sampler.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__rt_probe_sky.data(), __rt_probe_sky.size(), nullptr, state.probe_sky.GetAddressOf()))
                    || FAILED(device->CreateTexture2D(&cube_desc, black_faces.data(), cube.GetAddressOf()))
-                   || FAILED(device->CreateShaderResourceView(cube.Get(), &cube_view, state.no_probes.GetAddressOf()));
+                   || FAILED(device->CreateShaderResourceView(cube.Get(), &cube_view, state.no_probes.GetAddressOf()))
+                   || FAILED(device->CreateBuffer(&batch_desc, nullptr, state.neutral_batch.GetAddressOf()))
+                   || FAILED(device->CreateBuffer(&zero_desc, &zero_data, state.zero.GetAddressOf()));
   }
   if (state.failed) return false;
   auto& bridge = twattila::dlaa_bridge::bridge;
@@ -352,7 +371,8 @@ inline bool Trace(ID3D11DeviceContext* context) {
 // (their bounce traced the frame before: a frame without it keeps the game's ambient); the traced reflections in place of
 // its screen-space ones (t6: the same lerp over the probes, reflected light by the share of rays that met something);
 // without them the traced specular occlusion merged into the screen-space ones (rt_specular_merge: the probes' share times
-// it). The game's put back after the dispatch (RestoreLightingInputs).
+// it). Either way the lighting's own SSDO reflection occlusion (SSDOParams.y on the probes' share) is left out: ours
+// replaces it (else the probes' share is occluded twice). The game's put back after the dispatch (RestoreLightingInputs).
 inline void BindLightingInputs(ID3D11DeviceContext* context) {
   auto& state = internal::state;
   const auto traced = twattila::rt_scene::Reflections(context);
@@ -411,6 +431,26 @@ inline void BindLightingInputs(ID3D11DeviceContext* context) {
   state.game_reflections = game;
   context->CSSetShaderResources(6, 1, &bound);
   state.reflections_bound = true;
+  // PER_BATCH with SSDOParams.y 0 (a copy of the game's 8 float4 at its bound range): the ambient's and the lights'
+  // occlusion (z, x) stay the game's.
+  ComPtr<ID3D11Buffer> batch;
+  UINT first = 0;
+  UINT count = 0;
+  context1->CSGetConstantBuffers1(0, 1, batch.GetAddressOf(), &first, &count);
+  D3D11_BUFFER_DESC batch_desc = {};
+  if (batch) batch->GetDesc(&batch_desc);
+  const UINT offset = first * 16;
+  if (!batch || !state.neutral_batch || offset + internal::BATCH_BYTES > batch_desc.ByteWidth) return;
+  const D3D11_BOX source = {.left = offset, .right = offset + internal::BATCH_BYTES, .bottom = 1, .back = 1};
+  context->CopySubresourceRegion(state.neutral_batch.Get(), 0, 0, 0, 0, batch.Get(), 0, &source);
+  const D3D11_BOX one_float = {.right = 4, .bottom = 1, .back = 1};
+  context->CopySubresourceRegion(state.neutral_batch.Get(), 0, internal::SSDO_REFLECTION_OFFSET, 0, 0, state.zero.Get(), 0, &one_float);
+  ID3D11Buffer* neutral = state.neutral_batch.Get();
+  context->CSSetConstantBuffers(0, 1, &neutral);
+  state.game_batch = batch;
+  state.game_batch_first = first;
+  state.game_batch_count = count;
+  state.batch_bound = true;
 }
 
 inline void RestoreLightingInputs(ID3D11DeviceContext* context) {
@@ -421,6 +461,20 @@ inline void RestoreLightingInputs(ID3D11DeviceContext* context) {
     context->CSSetShaderResources(34, 1, &probes);
     state.game_probes.Reset();
     state.probes_bound = false;
+  }
+  if (state.batch_bound) {
+    // As the game bound it: the whole buffer (first 0, its size or more) or its range.
+    ID3D11Buffer* game_batch = state.game_batch.Get();
+    D3D11_BUFFER_DESC batch_desc = {};
+    game_batch->GetDesc(&batch_desc);
+    ComPtr<ID3D11DeviceContext1> context1;
+    if (state.game_batch_first == 0 && state.game_batch_count * 16 >= batch_desc.ByteWidth) {
+      context->CSSetConstantBuffers(0, 1, &game_batch);
+    } else if (SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) {
+      context1->CSSetConstantBuffers1(0, 1, &game_batch, &state.game_batch_first, &state.game_batch_count);
+    }
+    state.game_batch.Reset();
+    state.batch_bound = false;
   }
   if (!state.reflections_bound) return;
   ID3D11ShaderResourceView* game = state.game_reflections.Get();
@@ -516,6 +570,10 @@ inline void Release() {
   state.no_probes.Reset();
   state.game_probes.Reset();
   state.probes_bound = false;
+  state.neutral_batch.Reset();
+  state.zero.Reset();
+  state.game_batch.Reset();
+  state.batch_bound = false;
   state.failed = false;
 }
 

@@ -13,6 +13,10 @@
 //    (1 - visibility) / SSDOParams.z onto t5's alpha, colour untouched; control: the old max blend. c) the game's tiled
 //    lighting with that t5 lights as with the rays' amount alone (LSDO kept); control: the max over the game's SSDO keeps
 //    its halo where the rays see open sky.
+// 4. The SSDO reflection occlusion left out under the traced reflections / specular occlusion (ray_tracing.hpp): its copy
+//    of PER_BATCH (CopySubresourceRegion, then a zero float over SSDOParams.y) holds the game's 32 floats with y 0; the
+//    game's lighting with it: t5 open, the same picture; t5 occluded, the same diffuse (u2) and a brighter scene (the
+//    probes' reflections no longer occluded by SSDO; the control that the term was live).
 // Arguments: the repository (its build's embedded csos), the game's dumped 0x897232B5.cs_5_0.cso and 0xD1106E8B.ps_5_0.cso;
 // all only read.
 #include <windows.h>
@@ -818,6 +822,72 @@ int main(int argc, char** argv) {
   CHECK(ours_scene < 2e-3 && ours_diffuse < 2e-3);
   CHECK(open_half(old_lit.diffuse) < 0.99 * open_half(ours_lit.diffuse));
   CHECK(Relative(old_lit.diffuse, reference_lit.diffuse) > 0.02);
+
+  // 4. The SSDO reflection occlusion left out under the traced reflections / specular occlusion: ray_tracing.hpp's copy of
+  // the game's PER_BATCH (a dynamic buffer here) with SSDOParams.y 0, then the game's lighting with t6 black (the probes'
+  // share whole) and t5 occluded (3b's) or open (direction 0.5, amount 0).
+  const D3D11_BUFFER_DESC game_batch_desc = {.ByteWidth = sizeof(lighting_constants),
+                                             .Usage = D3D11_USAGE_DYNAMIC,
+                                             .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
+                                             .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
+  ComPtr<ID3D11Buffer> game_batch;
+  device->CreateBuffer(&game_batch_desc, nullptr, game_batch.GetAddressOf());
+  if (D3D11_MAPPED_SUBRESOURCE mapped = {}; SUCCEEDED(context->Map(game_batch.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+    std::memcpy(mapped.pData, lighting_constants.data(), sizeof(lighting_constants));
+    context->Unmap(game_batch.Get(), 0);
+  }
+  const D3D11_BUFFER_DESC neutral_desc = {.ByteWidth = sizeof(lighting_constants), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  const std::array<float, 4> zeros = {};
+  const D3D11_SUBRESOURCE_DATA zero_data = {.pSysMem = zeros.data()};
+  const D3D11_BUFFER_DESC zero_desc = {.ByteWidth = sizeof(zeros), .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  ComPtr<ID3D11Buffer> neutral_batch;
+  ComPtr<ID3D11Buffer> zero;
+  device->CreateBuffer(&neutral_desc, nullptr, neutral_batch.GetAddressOf());
+  device->CreateBuffer(&zero_desc, &zero_data, zero.GetAddressOf());
+  context->ClearState();
+  const D3D11_BOX whole_batch = {.left = 0, .right = sizeof(lighting_constants), .bottom = 1, .back = 1};
+  context->CopySubresourceRegion(neutral_batch.Get(), 0, 0, 0, 0, game_batch.Get(), 0, &whole_batch);
+  const D3D11_BOX one_float = {.right = 4, .bottom = 1, .back = 1};
+  context->CopySubresourceRegion(neutral_batch.Get(), 0, (5 * 16) + 4, 0, 0, zero.Get(), 0, &one_float);
+  const D3D11_BUFFER_DESC batch_staging_desc = {.ByteWidth = sizeof(lighting_constants), .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> batch_staging;
+  device->CreateBuffer(&batch_staging_desc, nullptr, batch_staging.GetAddressOf());
+  context->CopyResource(batch_staging.Get(), neutral_batch.Get());
+  std::array<float, 32> neutral_values = {};
+  neutral_values.fill(-99.f);
+  if (D3D11_MAPPED_SUBRESOURCE mapped = {}; SUCCEEDED(context->Map(batch_staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+    std::memcpy(neutral_values.data(), mapped.pData, sizeof(neutral_values));
+    context->Unmap(batch_staging.Get(), 0);
+  }
+  int batch_differences = 0;
+  for (size_t index = 0; index < neutral_values.size(); ++index) {
+    batch_differences += (neutral_values[index] != ((index == 21) ? 0.f : lighting_constants[index])) ? 1 : 0;
+  }
+  std::printf("PER_BATCH's copy with SSDOParams.y 0: %d of 32 floats off what they should be (SSDOParams %.2f %.2f %.2f)\n", batch_differences,
+              neutral_values[20], neutral_values[21], neutral_values[22]);
+  CHECK(batch_differences == 0);
+  std::vector<float> open_texels(EDGE * EDGE * 4, 0.5f);
+  for (size_t texel = 0; texel < EDGE * EDGE; ++texel) open_texels[(texel * 4) + 3] = 0.f;
+  const auto open_occlusion = Texture2D(EDGE, EDGE, DXGI_FORMAT_R32G32B32A32_FLOAT, open_texels.data(), EDGE * 16);
+  const auto lit_with = [&](ID3D11ShaderResourceView* occlusion, ID3D11Buffer* batch) {
+    auto inputs = textures;
+    inputs[5] = occlusion;
+    return Run(game_lighting.Get(), probes, inputs, specular_cubes.Get(), diffuse_cubes.Get(), spots.Get(), batch, sampler.Get());
+  };
+  const Lit occluded_game = lit_with(ours_occlusion.srv.Get(), game_batch.Get());
+  const Lit occluded_neutral = lit_with(ours_occlusion.srv.Get(), neutral_batch.Get());
+  const Lit open_game = lit_with(open_occlusion.srv.Get(), game_batch.Get());
+  const Lit open_neutral = lit_with(open_occlusion.srv.Get(), neutral_batch.Get());
+  const double open_difference = Relative(open_neutral.scene, open_game.scene) + Relative(open_neutral.diffuse, open_game.diffuse);
+  const double diffuse_difference = Relative(occluded_neutral.diffuse, occluded_game.diffuse);
+  const double specular_difference = Relative(occluded_neutral.scene, occluded_game.scene);
+  std::printf("game's lighting with the copy: t5 open, scene and u2 differ by %.3g; t5 occluded, u2 (diffuse) by %.3g, the scene by %.3g "
+              "(sum %.4f with the SSDO reflection occlusion, %.4f without; open %.4f)\n",
+              open_difference, diffuse_difference, specular_difference, Measure(occluded_game.scene)[0], Measure(occluded_neutral.scene)[0],
+              Measure(open_game.scene)[0]);
+  CHECK(open_difference == 0.0);
+  CHECK(diffuse_difference == 0.0);
+  CHECK(specular_difference > 0.01 && Measure(occluded_neutral.scene)[0] > Measure(occluded_game.scene)[0]);
   std::printf("%s (%d failures)\n", failures == 0 ? "PASS" : "FAIL", failures);
   return failures == 0 ? 0 : 1;
 }
