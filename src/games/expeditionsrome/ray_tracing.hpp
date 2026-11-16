@@ -60,11 +60,15 @@ constexpr uint32_t REFLECTION_SHADER = 0xE36ED33E;
 
 namespace internal {
 
-// Unreal 4.23's View: WorldToClip (rows 4-7), WorldCameraOrigin (63).
+// Unreal 4.23's View: WorldToClip (rows 4-7), WorldCameraOrigin (63), the scale the light pass's output takes (129.y: the
+// sun's PS C38C91CD ends o0.xyz = cb0[129].yyy x its light).
 constexpr uint32_t VIEW_WORLD_TO_CLIP = 4;
 constexpr uint32_t VIEW_WORLD_CAMERA_ORIGIN = 63;
-// FDeferredLightUniformStruct: ShadowedBits (c2.x), the direction toward the light (c5.xyz); bound 144 - 256 bytes.
+constexpr uint32_t VIEW_LIGHT_OUTPUT_SCALE = 129;
+// FDeferredLightUniformStruct: ShadowedBits (c2.x), the light's colour (c4.xyz), the direction toward the light (c5.xyz);
+// bound 144 - 256 bytes.
 constexpr uint32_t LIGHT_SHADOWED_BITS = 2;
+constexpr uint32_t LIGHT_COLOR = 4;
 constexpr uint32_t LIGHT_DIRECTION = 5;
 constexpr UINT MIN_LIGHT_BYTES = 144;
 constexpr UINT MAX_LIGHT_BYTES = 256;
@@ -398,8 +402,8 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   buffers[1]->GetDesc(&light_desc);
   const UINT light_first = std::min(first_constants[1] * 16, light_desc.ByteWidth);
   const UINT light_bytes = std::min(light_desc.ByteWidth - light_first, constant_counts[1] * 16);
-  if (light_bytes < MIN_LIGHT_BYTES || light_bytes > MAX_LIGHT_BYTES || constant_counts[0] <= VIEW_WORLD_CAMERA_ORIGIN) return {};
-  std::array<std::array<float, 4>, VIEW_WORLD_CAMERA_ORIGIN + 1> view = {};
+  if (light_bytes < MIN_LIGHT_BYTES || light_bytes > MAX_LIGHT_BYTES || constant_counts[0] <= VIEW_LIGHT_OUTPUT_SCALE) return {};
+  std::array<std::array<float, 4>, VIEW_LIGHT_OUTPUT_SCALE + 1> view = {};
   std::array<std::array<float, 4>, LIGHT_DIRECTION + 1> light = {};
   talesofarise::dlss::constants::Watch(buffers[0].Get(), (first_constants[0] * 16) + static_cast<uint32_t>(sizeof(view)));
   talesofarise::dlss::constants::Watch(buffers[1].Get(), light_first + static_cast<uint32_t>(sizeof(light)));
@@ -472,6 +476,18 @@ constexpr auto OnLightRectangle = []<typename Context>(Context& command) -> reno
   };
   twattila::rt_scene::WriteSun(context, {direction[0] / direction_length, direction[1] / direction_length, direction[2] / direction_length});
   auto& bridge = twattila::dlaa_bridge::bridge;
+  // The sun's diffuse light into the sun texture's texel 2 (w 1), the paths' sun as twattila/rt_sun.cs_5_0.hlsl writes it for
+  // the Total War games: the light lights the G-buffer's diffuse colour (the guides' base x (1 - metallic)) by the colour
+  // times N.L times the shadow. C38C91CD's default lit: DiffuseColor x 0.318309873 (1 / pi) x LightColor (c4) x its shadow
+  // and N.L, x View 129.y at its output.
+  if (bridge.rt_sun.texture) {
+    constexpr float INVERSE_PI = 0.318309873f;
+    const float scale = INVERSE_PI * view[VIEW_LIGHT_OUTPUT_SCALE][1];
+    const auto& color = light[LIGHT_COLOR];
+    const std::array<float, 4> sun_light = {color[0] * scale, color[1] * scale, color[2] * scale, 1.f};
+    const D3D11_BOX texel = {.left = 2, .top = 0, .front = 0, .right = 3, .bottom = 1, .back = 1};
+    context->UpdateSubresource(bridge.rt_sun.texture.Get(), 0, &texel, sun_light.data(), 16, 0);
+  }
   if (guides && bridge.guides) {
     const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
     const std::array<UINT, 4> size = {render_size[0], render_size[1], 0, 0};
