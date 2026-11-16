@@ -1,5 +1,25 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Fix round (2026-11-16; built only, not run in game)
+
+- **Rays Replace Shadow Maps on by default** (ATN: ours replaces the game's, one method per effect): under ray-traced sun
+  shadows the sun draws now take the rays' shadow alone, not the rays' times the game's shadow maps; the row lost
+  "(Experimental)", and a saved 0 is cleared once (SettingsRevision 3). Water, rivers, particles, the fog without Fog
+  Shadows and the map the game baked for the far distance keep the game's shadows. Shadow Map Size shows only where the
+  maps still shade the scene. Proven offline: tools/tw/pharaoh/sun_test V54 on the game's bytes (12 atlas sun shaders):
+  P1-P3 0 of 2,752,512 values off (the rays' shadow alone), CONTROL the game's own shadow 1,486,680 off (86544b2f).
+  In game: a battle with Shadows DXR, the row on and off: on, Softness shows in full and no shadow map steps under the
+  rays' shadows; near the screen's edges a building or tree behind the camera loses its shadow unless Shadow Casters
+  Out of View is on.
+- **Filmgrain (default 0 in HDR): does the game's grain draw?** It is a branch in every hdr_to_screen tone mapper on
+  `grain_tex_offset_enabled.z` (b5 c9.z), which no trace recorded; its texture (1024 x 1024 BC1) sits at the grain slot in
+  all 24 traced tone-mapper draws (`tools/tw/pharaoh/open_items/grain_slots.py`). The frame trace now writes those draws'
+  constants (value_hashes: t01-t08, photo01-04). Next data run: one trace in a battle and the campaign; c9.z above 0 means
+  the game draws grain, then Filmgrain's default goes to 1 (the game's look); 0 everywhere means the row can be hidden.
+- **Sky Debanding off in every preset** (hdr-review-rules: off in every preset; its own tooltip says Higher softens the
+  sky's details): default, Reset and the three Recommended presets wrote Medium (2), Attila's and Troy's write Off. A saved
+  2 is cleared once (SettingsRevision 4). In game: the sky as the game draws it at Off; Low to High still smooth its bands.
+
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
 - **Ray-Traced AO replaces the game's SSAO and GT-VBAO** (ATN: never on top of them). The sun draws' `t_ssao` now holds the

@@ -1,5 +1,6 @@
 # Pharaoh's shadow-map table and ray-traced captures against the game's own bytes (tests.cpp): Three Shadow Cascades Under Rays
-# over Pharaoh.exe's shadow setup (read from the Steam folder, or -Exe), and on WARP the campaign trees' and the placed ropes'
+# over Pharaoh.exe's shadow setup and Dead Unit Detail's pattern over its soldier update (read from the Steam folder, or -Exe),
+# and on WARP the campaign trees' and the placed ropes'
 # captures against the game's vertex shaders.
 # -GameShaders: the folder of the game's dumped csos (0x16D14106, 0x81696642, 0x655AB38D, 0xE7792B60, 0x621E86DD, 0xF81881EB; not in the
 # repository), only read.

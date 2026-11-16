@@ -24,6 +24,10 @@
 // 6. The 8-bone models (weightedcommon vs40_main_8_bones F81881EB): from random 8-bone vertices (bone bytes 0-5, some weights
 //    under 1/256) the capture (rt_capture_unit_8_bones) is the game's TEXCOORD0 and the motion shader's
 //    (motion_unit_weightedcommon_f818) SV_Position the game's; CONTROL the game's with every bone byte 0 differs.
+// 7. Dead Unit Detail (dead_units.hpp) over Pharaoh.exe as it ships (read from disk): its pattern once, in a code section;
+//    at TEST_OFFSET the game's comiss xmm0, xmm10 and jb (the 6 bytes the patch takes); the stub's jnz, mulss and jb land
+//    where its offsets say; the patch on a copy (jmp to the stub, nop) changes those 6 bytes alone; CONTROL: the same bytes
+//    with the comiss made a ucomiss: the pattern finds none.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -43,6 +47,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../../src/games/twpharaohdynasties/dead_units.hpp"
 #include "../../src/games/twpharaohdynasties/shadow_map.hpp"
 #include "../../src/games/twtroy/rt_outside_view_colour_world_uv_gs.h"
 #include "../../src/games/twwarhammer2/rt_outside_view_world_uv_gs.h"
@@ -210,6 +215,14 @@ static std::vector<float> StreamOutThrough(const std::vector<char>& vertex_code,
   return Run(vertex_code, geometry.Get(), D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, vertices, constants, main_view);
 }
 
+// A pattern's one place in `file` (nullptr: none or more than one).
+static const uint8_t* PatternOnce(std::string_view file, std::string_view pattern) {
+  const uint8_t* found = tw::engine_tweaks::FindPattern({file}, pattern);
+  if (found == nullptr) return nullptr;
+  const auto after = static_cast<size_t>(found - reinterpret_cast<const uint8_t*>(file.data())) + 1;
+  return (tw::engine_tweaks::FindPattern({file.substr(after)}, pattern) == nullptr) ? found : nullptr;
+}
+
 static void TestShadowCascades(const std::string& exe_path) {
   namespace shadow = twpharaohdynasties::shadow_map::internal;
   std::ifstream stream(exe_path, std::ios::binary);
@@ -240,13 +253,7 @@ static void TestShadowCascades(const std::string& exe_path) {
     }
     return nullptr;
   };
-  // A pattern's one place in the file (nullptr: none or more than one); `table_at`: the rip-relative lea at `lea` bytes in.
-  const auto once = [&](std::string_view pattern) -> const uint8_t* {
-    const uint8_t* found = tw::engine_tweaks::FindPattern({file}, pattern);
-    if (found == nullptr) return nullptr;
-    const auto after = static_cast<size_t>(found - base) + 1;
-    return (tw::engine_tweaks::FindPattern({std::string_view(file).substr(after)}, pattern) == nullptr) ? found : nullptr;
-  };
+  const auto once = [&](std::string_view pattern) { return PatternOnce(file, pattern); };
   const auto lea_target = [&](const uint8_t* lea) {
     int32_t displacement;
     std::memcpy(&displacement, lea + 3, sizeof(displacement));
@@ -357,6 +364,73 @@ static void TestShadowCascades(const std::string& exe_path) {
               "to 3); back: the game's bytes; CONTROL Medium 4 / 0: none written. Shadow distance at the highest quality: battle "
               "%g m -> %g m, campaign %g -> %g\n",
               table, changed.size(), split(0, 5, 3), split(0, 5, 2), split(1, 5, 3), split(1, 5, 2));
+}
+
+// 7. Dead Unit Detail's pattern over Pharaoh.exe, the stub's offsets, the patch's 6 bytes; CONTROL: a ucomiss finds none.
+static void TestDeadUnits(const std::string& exe_path) {
+  namespace dead = twpharaohdynasties::dead_units::internal;
+  std::ifstream stream(exe_path, std::ios::binary);
+  const std::string file((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+  CHECK(file.size() >= 4096, "dead units: %s", exe_path.c_str());
+  if (file.size() < 4096) return;
+  const auto* base = reinterpret_cast<const uint8_t*>(file.data());
+  const uint8_t* match = PatternOnce(file, dead::PATTERN);
+  CHECK(match != nullptr, "dead units: the pattern once in Pharaoh.exe");
+  if (match == nullptr) return;
+  const auto offset = static_cast<uint32_t>(match - base + dead::TEST_OFFSET);
+  // Its section a code one, as Install searches (ModuleSections' code).
+  const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
+  const IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(nt);
+  uint32_t rva = 0;
+  bool code = false;
+  for (WORD index = 0; index < nt->FileHeader.NumberOfSections; ++index, ++section) {
+    if (offset >= section->PointerToRawData && offset < section->PointerToRawData + section->SizeOfRawData) {
+      rva = section->VirtualAddress + (offset - section->PointerToRawData);
+      code = (section->Characteristics & IMAGE_SCN_CNT_CODE) != 0;
+    }
+  }
+  CHECK(code, "dead units: the match in a code section");
+  const uint8_t* game_test = base + offset;
+  constexpr std::array<uint8_t, 5> COMPARE = {0x41, 0x0F, 0x2F, 0xC2, 0x72};  // comiss xmm0, xmm10; jb rel8
+  CHECK(std::memcmp(game_test, COMPARE.data(), COMPARE.size()) == 0, "dead units: comiss xmm0, xmm10; jb at TEST_OFFSET");
+  const int sprite = static_cast<int8_t>(game_test[dead::TEST_SIZE - 1]);
+  // The stub: jnz (from 10) to its comiss at 18; mulss's rip-relative scale (from 18) at SCALE_OFFSET, after the code; jb
+  // (from 24) to the sprite jump; both jumps' opcodes where Install fills them.
+  int32_t scale_displacement = 0;
+  std::memcpy(&scale_displacement, &dead::STUB[14], sizeof(scale_displacement));
+  CHECK(10 + dead::STUB[9] == 18 && dead::STUB[18] == 0x41 && dead::STUB[20] == 0x2F, "dead units: the stub's jnz lands on its comiss");
+  CHECK(18 + scale_displacement == static_cast<int32_t>(dead::SCALE_OFFSET) && dead::SCALE_OFFSET >= dead::STUB.size(),
+        "dead units: the stub's mulss reads the scale after its code (%d)", 18 + scale_displacement);
+  CHECK(24 + dead::STUB[23] == static_cast<int>(dead::SPRITE_JUMP) && dead::STUB[dead::BACK_JUMP] == 0xE9
+            && dead::STUB[dead::SPRITE_JUMP] == 0xE9,
+        "dead units: the stub's jb lands on the sprite jump");
+  // The patch on a copy: Install's jmp (to a stub 64 KiB on) and nop over the 6 bytes, nothing else.
+  std::string patched = file;
+  auto* copy = reinterpret_cast<uint8_t*>(patched.data()) + offset;
+  std::array<uint8_t, dead::TEST_SIZE> jump = {};
+  dead::WriteJump(jump.data(), copy, copy + 0x10000);
+  jump[5] = 0x90;
+  std::memcpy(copy, jump.data(), jump.size());
+  int32_t jump_displacement = 0;
+  std::memcpy(&jump_displacement, copy + 1, sizeof(jump_displacement));
+  size_t changed = 0;
+  size_t outside = 0;
+  for (size_t index = 0; index < file.size(); ++index) {
+    if (patched[index] == file[index]) continue;
+    ++changed;
+    if (index < offset || index >= offset + dead::TEST_SIZE) ++outside;
+  }
+  CHECK(outside == 0 && changed > 0 && copy[0] == 0xE9 && jump_displacement == 0x10000 - 5 && copy[5] == 0x90,
+        "dead units: the patch: %zu bytes changed, %zu outside the 6", changed, outside);
+  // CONTROL: the comiss made a ucomiss.
+  std::string control = file;
+  control[offset + 2] = static_cast<char>(0x2E);
+  const bool control_found = tw::engine_tweaks::FindPattern({control}, dead::PATTERN) != nullptr;
+  CHECK(!control_found, "dead units: CONTROL the comiss made a ucomiss: the pattern still found");
+  std::printf("7 dead units: the pattern once in Pharaoh.exe (the comiss at +%#x, a code section; jb %+d to +%#x); the stub's jnz, "
+              "mulss (scale at %zu) and jb where its offsets say; the patch %zu bytes, all in the 6; CONTROL a ucomiss: %s\n",
+              rva, sprite, rva + static_cast<uint32_t>(dead::TEST_SIZE + sprite), dead::SCALE_OFFSET, changed,
+              control_found ? "FOUND" : "none found");
 }
 
 // The campaign's trees: the capture against the game's 16D14106 from random instanced vertices, their shadow pass 81696642
@@ -737,7 +811,9 @@ int main(int argc, char** argv) {
     std::printf("usage: pharaoh.exe <the game's csos> <the add-on's built csos> [Pharaoh.exe]\n");
     return 2;
   }
-  TestShadowCascades((argc > 3) ? argv[3] : R"(C:\Program Files (x86)\Steam\steamapps\common\Total War PHARAOH DYNASTIES\Pharaoh.exe)");
+  const std::string exe = (argc > 3) ? argv[3] : R"(C:\Program Files (x86)\Steam\steamapps\common\Total War PHARAOH DYNASTIES\Pharaoh.exe)";
+  TestShadowCascades(exe);
+  TestDeadUnits(exe);
   const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, &device, nullptr, &context))) {
     std::printf("no WARP device\n");

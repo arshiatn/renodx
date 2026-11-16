@@ -48,6 +48,7 @@
 #include "../twattila/credits.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/particle_layer.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/sun_replace_maps.hpp"
 #include "../twattila/test_hooks.hpp"
@@ -171,7 +172,7 @@ void ApplyResetPreset() {
       {"auto_exposure_highlight_headroom_stops", 2.f},
       {"vfx_fire_brightness", 1.f},
       {"vfx_base_brightness", 1.f},
-      {"sky_deband", 2.f},
+      {"sky_deband", 0.f},
       {"filmgrain", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
@@ -210,7 +211,7 @@ void ApplyPsychoRecommendedNoVFXBoost() {
       {"auto_exposure_highlight_headroom_stops", 2.f},
       {"vfx_fire_brightness", 1.f},
       {"vfx_base_brightness", 1.f},
-      {"sky_deband", 2.f},
+      {"sky_deband", 0.f},
       {"filmgrain", 0.f},
   });
 }
@@ -242,7 +243,7 @@ void ApplyPsychoRecommendedVFXBoost2500() {
       {"auto_exposure_highlight_headroom_stops", 2.0f},
       {"vfx_fire_brightness", 6.f},
       {"vfx_base_brightness", 4.5f},
-      {"sky_deband", 2.f},
+      {"sky_deband", 0.f},
       {"filmgrain", 0.f},
   });
 }
@@ -274,7 +275,7 @@ void ApplyPsychoRecommendedVFXBoost1000() {
       {"auto_exposure_highlight_headroom_stops", 2.0f},
       {"vfx_fire_brightness", 4.f},
       {"vfx_base_brightness", 2.4f},
-      {"sky_deband", 2.f},
+      {"sky_deband", 0.f},
       {"filmgrain", 0.f},
   });
 }
@@ -841,7 +842,7 @@ void BuildRuntimeData() {
         .default_value = 1.00f,
         .label = "Highlight Hue Shift",
         .section = "Psycho V30",
-        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30 default (like my old addons), 2 = full.",
+        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30's default, 2 = full.",
         .min = 0.00f,
         .max = 2.00f,
         .format = "%.2f",
@@ -1127,10 +1128,6 @@ void BuildRuntimeData() {
         .label = "Distortion",
         .section = "Extra",
         .tooltip = "Multiplier on distortion. Needs haze to be on.",
-        // .tooltip = "Multiplier on distortion. YOU NEED TO CHOOSE PRESET ULTRA\n"
-        //            "THEN YOUR OWN CUSTOME SETTINGS for the hidden distortion\n"
-        //            "to get turned on. \n"
-        //            "It was probably hidden because it is not getting used anymore!",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
@@ -1163,7 +1160,7 @@ void BuildRuntimeData() {
         .binding = &shader_injection.someindicators,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.0f,
-        .label = "Brightness of some Unit/Building Indicator ",
+        .label = "Unit/Building Indicator Brightness",
         .section = "Extra",
         .tooltip = "Brightness of selected highlight indicators.",
         .min = 0.0f,
@@ -1230,10 +1227,9 @@ void BuildRuntimeData() {
         .binding = &shader_injection.vfxfirebrightness,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.0f,
-        .label = "Brightness boost: torches/burning houses/etc.",
+        .label = "Fire Brightness",
         .section = "Extra (Experimental)",
-        .tooltip = "torches/burning houses/etc. Recommmendation is max 10\n"
-                   "Experimental! Find your sweets spot! ",
+        .tooltip = "Brightness of torches, fires and burning buildings and of the light they cast. 1: the game's.",
         .min = 1.0f,
         .max = 30.0f,
         .format = "%.1f",
@@ -1244,10 +1240,10 @@ void BuildRuntimeData() {
         .binding = &shader_injection.vfxbasebrightness,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.0f,
-        .label = "VFX Brightness boost: All of them!",
+        .label = "VFX Brightness",
         .section = "Extra (Experimental)",
-        .tooltip = "Brightness of every single VFX effect. Recommendation: 2.5 for 1000nits, 6 for 2500nits.\n"
-                   "Probably not usable in desert storms. Experimental! Find your sweets spot! ",
+        .tooltip = "Brightness of every particle effect: smoke, dust, sand storms, fire, sparks. 1: the game's.\n"
+                   "About 2.5 at 1000 nits, 6 at 2500 nits; sand storms brighten with it.",
         .min = 1.0f,
         .max = 20.0f,
         .format = "%.1f",
@@ -1257,8 +1253,8 @@ void BuildRuntimeData() {
         .key = "sky_deband",
         .binding = &shader_injection.sky_deband,
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = 2.f,
-        .label = "Dithering for sky's 7-bit texture",
+        .default_value = 0.f,
+        .label = "Sky Debanding",
         .section = "Extra (Experimental)",
         .tooltip = "Dithering to reduce sky's bandings.\n"
                    "Higher levels destroy more sky details while fixing banding.",
@@ -1304,12 +1300,9 @@ void BuildRuntimeData() {
         .key = "filmgrain",
         .binding = &shader_injection.filmgrain,
         .default_value = 0.f,
-        .label = "Filmgrain (probably isn't used)",
+        .label = "Filmgrain",
         .section = "Extra (Experimental)",
-        .tooltip = "Multiplier on filmgrain. YOU NEED TO CHOOSE PRESET HIGH/ULTRA\n"
-                   "THEN YOUR OWN CUSTOME SETTINGS for the hidden filmgrain\n"
-                   "to get turned on. \n"
-                   "It was probably hidden because it is not getting used anymore!",
+        .tooltip = "Multiplier on the game's film grain. The game draws it only after its High or Ultra preset.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
@@ -1649,7 +1642,8 @@ constexpr auto OnSkyDomeGuides = []<typename Context>(Context& command) -> renod
   return {};
 };
 
-// Rays Replace Shadow Maps (Experimental, off): the sun draws reading the per-frame atlas (g_tShadowBuffer_SM50 t3 through
+// Rays Replace Shadow Maps (on by default: ours replaces the game's, ATN 2026-11-16; sun_test V54 below: P1-P3 0 of
+// 2,752,512 values, CONTROL P3c 1,486,680): the sun draws reading the per-frame atlas (g_tShadowBuffer_SM50 t3 through
 // sShadowBuffer_SM50 s2, its only reads of s2; the other 13 sun shaders read the kept baked map alone or no map, and all
 // of them sample another texture with s2) take every comparison there as lit (an ALWAYS sampler) where the rays' shadow is
 // bound at t49, so their patched comparisons (screen_space_shadows.hpp Patch, each x the rays' visibility) give the rays'
@@ -2290,9 +2284,9 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 
 namespace {
 
-// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
-// (the sun shaders' patched comparisons) or replace the per-frame ones (Rays Replace Shadow Maps), ray-traced AO multiplies
-// the game's SSAO; point lights, the fog, the smoke and the water's reflections hooked.
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows replace the per-frame shadow maps
+// (Rays Replace Shadow Maps; off: they multiply them through the sun shaders' patched comparisons), ray-traced AO in place
+// of the game's SSAO; point lights, the fog, the smoke and the water's reflections hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -2305,7 +2299,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
-                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays in place of the game's shadow maps and of Bend's.\n"
                       "Needs an upscaler.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
@@ -2780,6 +2774,7 @@ void ConfigureAddon() {
   // The water's reflection apply reads the ray-traced reflections (twattila/water_reflections.hpp): their rows, the water's too.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
   twattila::rt_scene::internal::water_pass = true;
+  settings.push_back(twattila::pass_timing::Button(twattila::feature_settings::AA_SECTION));
 
   // Appended Settings (HDR10)
   {
@@ -2816,12 +2811,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                   "PsychoV31 and PsychoV35. Visibility "
-                   "Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque and Gilet (2023) on "
-                   "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024). Screen-space shadows: "
-                   "Bend Studio (Apache 2.0, Sony Interactive Entertainment). SMAA (MIT, Jimenez et al.), CMAA2 "
-                   "(Apache 2.0, Intel).",
+          .label = twattila::credits::Methods({.gtvbao = true, .gtvbgi = true, .auto_thickness = true, .bend = true, .smaa = true,
+                                               .cmaa2 = true, .detours = true}),
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -2948,7 +2939,6 @@ void ConfigureAddon() {
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
-                                             .rays_replace_maps_tested = false,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
@@ -2973,6 +2963,7 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  twattila::pass_timing::Install("pharaoh");
 
   // Failed native-hook removal can retain this DLL across host unload/reload: its detach restored the game's code.
   graphics_found = false;
@@ -3002,9 +2993,13 @@ bool AttachAddon() {
   }
 
   // Rows saved at an old default, cleared once: Smoke Shadows and Sprite Soldier Shadows were saved hidden at RT/PT's 1
-  // (SetRaysPresetDefaults) until they showed, Experimental and off.
+  // (SetRaysPresetDefaults) until they showed, Experimental and off. Rays Replace Shadow Maps was saved at its old
+  // Experimental 0; now on by default. Sky Debanding was saved at its old Medium (default, Reset and every Recommended);
+  // now off in every preset, as Attila's.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSmokeShadows"});
   twattila::graphics_page::ClearSavedRows(2, {"RayTracedSpriteShadows"});
+  twattila::graphics_page::ClearSavedRows(3, {"RayTracedReplaceShadowMaps"});
+  twattila::graphics_page::ClearSavedRows(4, {"sky_deband"});
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -3069,9 +3064,13 @@ bool AttachAddon() {
                                        // Also the point light's and the AO's (g_viewport_offset_scale, g_Resolution: their
                                        // 100% values below 100%, assumed until a trace lists them), the particles' PS
                                        // vfxextremeultra 3F1B86E1, the shroud decals' 61C823A0 (inv_rt_size c13: render or
-                                       // display size) and the campaign terrain's 1E864815.
+                                       // display size) and the campaign terrain's 1E864815. The hdr_to_screen draws t01-t08
+                                       // and photo01-04: whether the game's film grain draws (b5 hdr_to_screen_PS c9.z,
+                                       // grain_tex_offset_enabled: a branch no trace showed, its texture bound in all 24).
                                        .value_hashes = {0xF883F5B2, 0xE238D4C7, 0x976C1C74, 0xE318CE77, 0xD42C3523, 0x3F1B86E1, 0x61C823A0,
-                                                        0x1E864815},
+                                                        0x1E864815, 0x769869A4, 0xDC7D89CD, 0x60683951, 0x504E6093, 0xBB00FA18,
+                                                        0x436A0FBA, 0xDBB55D7B, 0xAD62FB1E, 0x7137A4E2, 0x63E7B6D1, 0x9F49A50F,
+                                                        0xBD868B0A},
                                        .value_slots = 6,
                                        .value_floats = 256,
                                        .on_demand = true,
@@ -3161,6 +3160,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twattila::test_hooks::Uninstall();
+  twattila::pass_timing::Uninstall();
   tw::engine_tweaks::Uninstall(graphics_options);
   twpharaohdynasties::dead_units::Uninstall();
   twpharaohdynasties::shadow_map::Uninstall();

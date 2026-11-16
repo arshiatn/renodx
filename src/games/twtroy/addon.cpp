@@ -32,6 +32,7 @@
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/light_count.hpp"
 #include "../twattila/particle_layer.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/device_loss.hpp"
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_capture_imposter_gs.h"
@@ -162,6 +163,7 @@ void ApplyResetPreset() {
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
       {"some_indicators", 1.0f},
+      {"sky_deband", 0.f},
 
       // Active experimental controls
       {"distortion", 1.f},
@@ -765,7 +767,7 @@ void BuildRuntimeData() {
         .default_value = 1.00f,
         .label = "Highlight Hue Shift",
         .section = "Psycho V30",
-        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30 default (like my old addons), 2 = full.",
+        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30's default, 2 = full.",
         .min = 0.00f,
         .max = 2.00f,
         .format = "%.2f",
@@ -1059,7 +1061,7 @@ void BuildRuntimeData() {
         .binding = &shader_injection.someindicators,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.0f,
-        .label = "Brightness of some Unit/Building Indicator ",
+        .label = "Unit/Building Indicator Brightness",
         .section = "Extra",
         .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
         .min = 0.0f,
@@ -1073,10 +1075,7 @@ void BuildRuntimeData() {
         .default_value = 1.f,
         .label = "Distortion",
         .section = "Extra (Experimental)",
-        .tooltip = "Multiplier on distortion. YOU NEED TO CHOOSE PRESET ULTRA\n"
-                   "THEN YOUR OWN CUSTOME SETTINGS for the hidden distortion\n"
-                   "to get turned on. \n"
-                   "It was probably hidden because it is not getting used anymore!",
+        .tooltip = "Multiplier on the game's heat haze distortion. The game draws it only after its Ultra preset.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
@@ -1159,10 +1158,7 @@ void BuildRuntimeData() {
         .default_value = 1.f,
         .label = "Filmgrain",
         .section = "Extra (Experimental)",
-        .tooltip = "Multiplier on filmgrain. YOU NEED TO CHOOSE PRESET ULTRA\n"
-                   "THEN YOUR OWN CUSTOME SETTINGS for the hidden filmgrain\n"
-                   "to get turned on. \n"
-                   "It was probably hidden because it is not getting used anymore!",
+        .tooltip = "Multiplier on the game's film grain. The game draws it only after its Ultra preset.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
@@ -1509,8 +1505,10 @@ float rays_units_out_of_view_row = 0.f;
 float rays_hills_out_of_view_row = 0.f;
 // Rarer Objects in the Rays (Experimental): the scene's families drawn in no trace (level B: SCENE_SHADERS' held_row).
 float rays_untraced_casters_row = 0.f;
-// Rays Replace Shadow Maps and Skip the Shadow Maps under it (Graphics 1 of 2, Experimental): twattila/sun_replace_maps.hpp on the
-// sun draws reading the per-frame atlas through s2: the twins of Pharaoh's 12 (same names; tools\tw\troy\troy_atlas_twins.py).
+// Rays Replace Shadow Maps (Graphics 1 of 2, on by default: ours replaces the game's, ATN 2026-11-16) and Skip the Shadow
+// Maps under it (Experimental): twattila/sun_replace_maps.hpp on the sun draws reading the per-frame atlas through s2: the
+// twins of Pharaoh's 12 (same names; tools\tw\troy\troy_atlas_twins.py). WARP on the game's bytes with the traces'
+// constants, tools\tw\troy\sun_test v54: P1-P3 0 of 2,752,512 values (the rays' shadow alone), CONTROL P3c 1,264,414.
 constexpr std::array<uint32_t, 12> ATLAS_SUN_SHADERS = {0x049C3CFB, 0x2599D799, 0xD38FA7E4, 0x66D6229E, 0x5B17424A, 0xEB98DED2,
                                                         0x707B069C, 0x6D3D2B69, 0xE1707311, 0x089D1B5B, 0x5835F96C, 0xE885C018};
 float rays_replace_maps_row = 0.f;
@@ -1881,6 +1879,18 @@ constexpr auto OnSunDrawClock = []<typename Context>(Context&) -> renodx::utils:
   return {};
 };
 
+// Ray Reconstruction's guides again after the water (its 68 pixel shaders write the G-buffer after the sun draws): from the
+// first sun draw's channels at the luma statistics F9B80B32, after the last water draw once a frame in all 26 traces with
+// a sun draw (tools\tw\troy\water_order2.py; Pharaoh's sky dome form draws here in only 16 of them, none in the campaign).
+constexpr auto OnLumaGuides = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
+  twattila::anti_aliasing::RewriteSunGuides(native);
+  return {};
+};
+
 // The frame trace's draw reads (FrameTraceReads=1): Pharaoh's layouts (twpharaohdynasties/trace_reads.hpp) at Troy's twins of
 // its shaders, the same RDEF strides and slots (particle_vfx_main F5CE48CC: SORTDATA 8, PARTICLE_INSTANCE_UNPACKED 64,
 // EMITTER_INSTANCE_UNPACKED 128, EMITTER_CONSTANTS_VS 112 at t2 / t6 / t1 / t4; the lit PS 563BA3E8 and 9C8987DD; the point
@@ -1927,8 +1937,9 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 
 namespace {
 
-// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
-// (the sun shaders' patched comparisons), ray-traced AO in place of the game's SSAO, the paths take the sky from the sun
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows replace the per-frame shadow maps
+// (Rays Replace Shadow Maps; off: they multiply them through the sun shaders' patched comparisons), ray-traced AO in
+// place of the game's SSAO, the paths take the sky from the sun
 // shaders' ambient cube; point lights (143A02ED), smoke (F5CE48CC), the water's Clarity and Caustics and its ray-traced
 // reflections (the game's reflections fall on the water alone, Pharaoh's texts) hooked, no fog.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
@@ -1943,7 +1954,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
-                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays in place of the game's shadow maps and of Bend's.\n"
                       "Needs an upscaler.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
@@ -2092,6 +2103,7 @@ void ConfigureAddon() {
   // The water's reflection apply reads the ray-traced reflections (twattila/water_reflections.hpp): their rows, the water's too.
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
   twattila::rt_scene::internal::water_pass = true;
+  settings.push_back(twattila::pass_timing::Button(twattila::feature_settings::AA_SECTION));
 
   // Appended Settings (HDR10)
   {
@@ -2128,12 +2140,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                   "PsychoV31 and PsychoV35. Visibility "
-                   "Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque and Gilet (2023) on "
-                   "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024). Screen-space shadows: "
-                   "Bend Studio (Apache 2.0, Sony Interactive Entertainment). SMAA (MIT, Jimenez et al.), CMAA2 "
-                   "(Apache 2.0, Intel).",
+          .label = twattila::credits::Methods({.gtvbao = true, .gtvbgi = true, .auto_thickness = true, .bend = true, .smaa = true,
+                                               .cmaa2 = true, .detours = true}),
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -2240,7 +2248,6 @@ void ConfigureAddon() {
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
-                                             .rays_replace_maps_tested = false,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
@@ -2255,8 +2262,7 @@ void ConfigureAddon() {
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
                                              .rays_preset_as_attila = true,
-                                             .lights_own_row = true,
-                                             .rays_multiply_maps = true});
+                                             .lights_own_row = true});
   // Smooth Banner Shadows (Experimental, off; RT/PT turns it on, as Attila's): the sails are this game's thin cloth in the
   // rays (its unit banners are not in them), so the row names them.
   for (auto* setting : settings) {
@@ -2271,6 +2277,7 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  twattila::pass_timing::Install("troy");
 
   ConfigureAddon();
 
@@ -2280,17 +2287,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
   // The data run's switches (RENODX_TW_SET / SHOT / PROFILE; nothing hooked without them), timed from the first sun draw.
-  // Epic starts the game through its launchers, so a run script's environment may never reach it: then they come from
-  // ReShade.ini [renodx] TestSet / TestShot / TestProfile (read here, at start; the environment first).
-  for (const auto& [key, variable] : {std::pair{"TestSet", "RENODX_TW_SET"}, std::pair{"TestShot", "RENODX_TW_SHOT"},
-                                      std::pair{"TestProfile", "RENODX_TW_PROFILE"}}) {
-    std::array<char, 8192> value = {};
-    size_t size = value.size();
-    if (GetEnvironmentVariableA(variable, nullptr, 0) == 0 && reshade::get_config_value(nullptr, "renodx", key, value.data(), &size)) {
-      SetEnvironmentVariableA(variable, value.data());
-      renodx::utils::log::i(std::string("[Troy] Test: ") + variable + " from ReShade.ini's " + key + ".");
-    }
-  }
+  // Epic starts the game through its launchers, so a run script's environment may never reach it: test_hooks reads the same
+  // lines from renodx_test_hooks.txt next to the exe.
   twattila::test_hooks::Install(&settings, false);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
@@ -2310,8 +2308,10 @@ bool AttachAddon() {
   }
 
   // Rows saved at an old default, cleared once: Sprite Soldier Shadows was saved hidden at RT/PT's 1 (SetRaysPresetDefaults)
-  // until the sprite soldiers were in the rays; now Experimental, off.
+  // until the sprite soldiers were in the rays; now Experimental, off. Rays Replace Shadow Maps was saved at its old
+  // Experimental 0; now on by default.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSpriteShadows"});
+  twattila::graphics_page::ClearSavedRows(2, {"RayTracedReplaceShadowMaps"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
   // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).
@@ -2436,6 +2436,8 @@ bool AttachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Smoke Shadows without rays: the smoke's dimming into the sun draws' t49 (their x(1 - t49) patch), after the rays' occlusion.
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
+  renodx::utils::command_action::Register(
+      OnLumaGuides, {.shader_hash = 0xF9B80B32, .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH});
   // Last on the particle draws: the smoke's capture, VFX Brightness (its cb7) and view_share's render scale see the game's
   // targets and camera; the camera's target size at c31 (Troy's camera_VS_PS: g_viewport_origin at c30).
   twattila::particle_layer::Install(twtroy::vfx_brightness::HASHES, PARTICLE_LAYER_READERS,
@@ -2459,7 +2461,9 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(frame_copy::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   twattila::test_hooks::Uninstall();
+  twattila::pass_timing::Uninstall();
   renodx::utils::command_action::Unregister(OnSunDrawClock);
+  renodx::utils::command_action::Unregister(OnLumaGuides);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);
