@@ -20,6 +20,7 @@
 #include <cstring>
 #include <format>
 #include <initializer_list>
+#include <memory>
 #include <span>
 #include <string>
 #include <utility>
@@ -937,8 +938,8 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
         texture->Reset();
       }
     };
-    make_texel(D3DCOLOR_ARGB(255, 255, 255, 255), &state.unshadowed);
-    make_texel(D3DCOLOR_ARGB(0, 255, 0, 0), &state.unlit);
+    make_texel(D3DCOLOR_ARGB(255, 255, 255, 255), std::addressof(state.unshadowed));
+    make_texel(D3DCOLOR_ARGB(0, 255, 0, 0), std::addressof(state.unlit));
     BindTraced(host, false);
   }
   // Path-Traced Ambient's sky: the game's ambient from the first terrain shader drawn (the next frame's trace takes it).
