@@ -64,6 +64,7 @@
 #include "./modded_auto_exposure.hpp"
 #include "./particle_smoothing.hpp"
 #include "./shadow_cascades.hpp"
+#include "./sun_ambient.hpp"
 #include "./trace_reads.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
@@ -488,6 +489,24 @@ bool bitmask_ao = false;
 // the collect (only its dispatch is skipped).
 bool bitmask_collect_drawn = false;
 bool bitmask_collect_last_frame = false;
+// The rays' AO in place of the game's SSAO, the game's left out (ATN 2026-11-16: one method; Warhammer's way). The game's
+// passes and their readers by handle in ATN's 36 traces and the A-F runs (tools/tw/tw1_1116/tw1_reader_census_wh2.txt, 41
+// traces): the depth downsample F1CE6943 -> the sweep 4D2C2BF5 alone, the sweep -> the collect 19CF3C83 alone, the collect's
+// output -> the sun draws' t_ssao (their red alone, test/tw_warhammer_shaders part 31) and the SSR resolve's t_ssao (7E1CDD0A
+// t1: red alone). Under the rays' AO the sun draws read the rays' combine in its place (rt_core's ambient_alone: the traced
+// visibility in red, part 15) and the resolve the AO the sun draws read (sun_ambient.hpp, bound at its t1): nothing reads the
+// game's passes then, so they are left out (the blurs C7B1F6F7 / 901C2215 too, drawn in no trace; they read and write only
+// the sweep's and the collect's outputs) and the collect's output, what a frame without the combine reads, cleared to open.
+// While the rays feed it (this frame's trace or the last: these passes come before it); not under the paths (their sky light
+// keeps the game's SSAO, as GT-VBAO's switch).
+bool SkipGameSsao() {
+  const auto& runtime = twattila::rt_scene::internal::runtime;
+  return runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing && runtime.traced_frame != UINT64_MAX
+         && runtime.traced_frame + 1 >= runtime.frame;
+}
+// The game's AO view at the resolve's t1, bound again after it where the sun draws' was bound in its place.
+Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> resolve_game_ao;
+bool resolve_ao_swapped = false;
 // Ray tracing's (twattila/rt_scene.hpp); here for the hooks BuildRuntimeData sets (the water row at FD885574).
 twattila::rt_scene::Sliders rt_sliders;
 // Skip the Game's Reflection Passes (on by default): decided at the hierarchical depth's copy for the frame (BuildRuntimeData).
@@ -516,26 +535,52 @@ void BuildRuntimeData() {
   // collect stays its own code (Game's costs what it did); the game's blur, when it runs, blurs it as the game's.
   custom_shaders[0xF1CE6943].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0xF1CE6943, true);
+    if (SkipGameSsao()) return false;
     if (bitmask_ao) tw::line_sweep_ao::KeepComputeDepth(cmd_list, 0);
     return true;
   };
   custom_shaders[0x19CF3C83].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0x19CF3C83, true);
+    if (SkipGameSsao()) {
+      auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+      Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
+      native->CSGetUnorderedAccessViews(0, 1, output.GetAddressOf());
+      const std::array<float, 4> open = {1.f, 1.f, 1.f, 1.f};
+      if (output) {
+        native->ClearUnorderedAccessViewFloat(output.Get(), open.data());
+      }
+      return false;
+    }
     if (!bitmask_ao) return true;
     tw::line_sweep_ao::KeepComputeCamera(cmd_list, 0);
     bitmask_collect_drawn = tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_collect, &shader_injection, sizeof(shader_injection),
                                                                true, __ao_upsample_collect, shader_injection.ssao_resolution != 0.f);
     return !bitmask_collect_drawn;
   };
-  custom_shaders[0x4D2C2BF5].on_draw = [](auto*) { return !(bitmask_ao && bitmask_collect_last_frame); };
+  custom_shaders[0x4D2C2BF5].on_draw = [](auto*) { return !SkipGameSsao() && !(bitmask_ao && bitmask_collect_last_frame); };
+  for (const uint32_t hash : {0xC7B1F6F7u, 0x901C2215u}) {
+    custom_shaders[hash].on_draw = [](auto*) { return !SkipGameSsao(); };
+  }
 
   // Reflections: the ray-traced ones in the resolve (ssr00, twattila/rt_scene.hpp, rt_reflection.hlsli); while they
   // replace the screen-space march, the march (raycast) and its blurs are left out.
+  // The AO the sun draws read at its t1 (sun_ambient.hpp: the scene's share of the cubes' light comes off with the AO it was
+  // put in with; the game's view while the rays run without the rays' AO), the game's bound again after it.
   custom_shaders[0x7E1CDD0A].on_draw = [](auto* cmd_list) {
     twattila::rt_scene::BindReflections(cmd_list, true, true);
+    if (auto* native = twattila::rt_scene::internal::NativeContext(cmd_list); native != nullptr) {
+      native->CSGetShaderResources(1, 1, resolve_game_ao.ReleaseAndGetAddressOf());
+      resolve_ao_swapped = twwarhammer2::sun_ambient::BindCompute(native, 1);
+    }
     return true;
   };
-  custom_shaders[0x7E1CDD0A].on_drawn = [](auto* cmd_list) { twattila::rt_scene::BindReflections(cmd_list, true, false); };
+  custom_shaders[0x7E1CDD0A].on_drawn = [](auto* cmd_list) {
+    twattila::rt_scene::BindReflections(cmd_list, true, false);
+    if (auto* native = twattila::rt_scene::internal::NativeContext(cmd_list); native != nullptr && std::exchange(resolve_ao_swapped, false)) {
+      native->CSSetShaderResources(1, 1, resolve_game_ao.GetAddressOf());
+    }
+    resolve_game_ao.Reset();
+  };
   for (const uint32_t hash : {0x143BD25Cu, 0x60AF6F79u, 0xBDBC783Bu}) {
     custom_shaders[hash].on_draw = twattila::rt_scene::OnReflectionMarch;
   }
@@ -1903,6 +1948,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
   tw::ao_trace::OnPresent();
+  twwarhammer2::sun_ambient::OnPresent();
   twwarhammer2::particle_smoothing::OnPresent();
   talesofarise::pixel_trace::OnPresent(queue);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
@@ -2702,6 +2748,9 @@ bool AttachAddon() {
                                       sizeof(shader_injection), __fg_hdr10);
   // Before the Light Bounce: it draws the sun draws itself (no callback after it runs).
   twattila::ao_filter::Install(LIGHT_BOUNCE_DRAWS);
+  // The AO the sun draws read, for the SSR resolve: after the rays' combine and the AO filter bound theirs, before the Light
+  // Bounce's (it draws the sun draw itself).
+  twwarhammer2::sun_ambient::Install(LIGHT_BOUNCE_DRAWS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Smoke Shadows without rays: the smoke's dimming into the sun draws' t49 (their x(1 - t49) patch), after the rays' occlusion.
@@ -2756,6 +2805,7 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(GoboSpotLightRays::OnDraw);
   renodx::utils::command_action::Unregister(FogRays::OnDraw);
   twattila::sun_replace_maps::Uninstall();
+  twwarhammer2::sun_ambient::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(PointLightRays::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(SpotLightRays::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(GoboSpotLightRays::OnDestroyDevice);

@@ -173,6 +173,11 @@
 //    with and without t46) the rays' light x 0.8 + K x f(a) x 0.2 (their light no AO, the cubes' the game's). Without t46
 //    and the rays, t45 bound changes nothing (bit for bit). CONTROLS: the resolve as it was (AO + t46 - 1) changes with the
 //    AO under t46; under the rays it differs from the expected.
+// 31. Warhammer II's SSAO readers (the collect's output, tools/tw/tw1_1116/tw1_reader_census_wh2.txt: the sun draws' t_ssao and
+//    the SSR resolve's t1) read its red alone: every single-sampled row of its LIGHT_BOUNCE_DRAWS with a t_ssao (its bytes,
+//    part 15's ambient cube light) and the resolve replacement (part 27's) give the same bits with t_ssao's other channels 0
+//    and 1, so the rays' combine in its place (part 15: red the traced visibility) leaves the game's passes unread.
+//    CONTROLS: their output follows the red.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -3620,6 +3625,7 @@ struct Wh2ResolveRun {
   float ao = 1.f;           // t1 (the game's AO)
   float occlusion = -1.f;   // t46 (the rays' specular occlusion; below 0: unbound)
   float confidence = 1.f;   // t7's x (the march's hit; 0.4 or below: no confidence)
+  float ao_others = -1.f;   // t1's green, blue and alpha (below 0: `ao`)
 };
 
 static std::vector<Float4> RunWh2Resolve(ID3D11ComputeShader* shader, const Wh2ResolveRun& run) {
@@ -3661,7 +3667,8 @@ static std::vector<Float4> RunWh2Resolve(ID3D11ComputeShader* shader, const Wh2R
   const D3D11_SHADER_RESOURCE_VIEW_DESC cube_desc = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY,
                                                      .TextureCubeArray = {.MostDetailedMip = 0, .MipLevels = 1, .First2DArrayFace = 0, .NumCubes = 1}};
   device->CreateShaderResourceView(cube_texture.Get(), &cube_desc, cube_view.GetAddressOf());
-  const auto ssao = View(SIZE, SIZE, std::vector<Float4>(SIZE * SIZE, Float4{run.ao, run.ao, run.ao, run.ao}));
+  const float ao_others = (run.ao_others < 0.f) ? run.ao : run.ao_others;
+  const auto ssao = View(SIZE, SIZE, std::vector<Float4>(SIZE * SIZE, Float4{run.ao, ao_others, ao_others, ao_others}));
   const auto harmonics = View(9, 6, std::vector<Float4>(9 * 6, Float4{}));
   const auto cloud = View(4, 4, std::vector<Float4>(16, Float4{}));
   const auto normal_view = View(SIZE, SIZE, normal);
@@ -4036,6 +4043,51 @@ static void TestResolveOneOcclusion(const std::string& games) {
               cube_light, pixels, march_alone, cubes_alone, rays_expected, rays_occlusion_expected, game_kept, control_ao, control_rays);
 }
 
+// Part 31.
+static void TestWh2AmbientReaders(const std::string& games, const std::string& dump) {
+  int rows = 0;
+  int red_only = 0;
+  int follows = 0;
+  for (const auto& [hash, final_sites] : SunDraws(games, "twwarhammer2")) {
+    const auto code = GameBytes(dump, hash);
+    if (code.empty() || Multisampled(code)) continue;
+    ComPtr<ID3D11ShaderReflection> reflection;
+    D3DReflect(code.data(), code.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf()));
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    if (FAILED(reflection->GetResourceBindingDescByName("t_ssao", &bind))) continue;
+    ++rows;
+    SunScene scene = {.lighting = SunLighting({0.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, 1.f)};
+    scene.ao = {0.25f, 0.f, 0.f, 0.f};
+    const auto others_zero = DrawGame(code, scene);
+    scene.ao = {0.25f, 1.f, 1.f, 1.f};
+    const auto others_one = DrawGame(code, scene);
+    scene.ao = {1.f, 0.f, 0.f, 0.f};
+    const auto open = DrawGame(code, scene);
+    const bool same = std::memcmp(others_zero.data(), others_one.data(), sizeof(Float4)) == 0;
+    red_only += same ? 1 : 0;
+    follows += (others_one != open) ? 1 : 0;
+    if (!same) std::printf("  WH2 %08X reads t_ssao's other channels\n", hash);
+  }
+  const std::string path = games + "/twwarhammer2/shaders/ssr00_0x7E1CDD0A.cs_5_0.hlsl";
+  const auto resolve = ComputeShader(ReadText(path), path);
+  const auto zero = RunWh2Resolve(resolve.Get(), {.ao = 0.5f, .ao_others = 0.f});
+  const auto one = RunWh2Resolve(resolve.Get(), {.ao = 0.5f, .ao_others = 1.f});
+  const auto open = RunWh2Resolve(resolve.Get(), {.ao = 1.f, .ao_others = 1.f});
+  int resolve_differ = 0;
+  int resolve_follows = 0;
+  for (size_t at = 0; at < zero.size(); ++at) {
+    resolve_differ += (std::memcmp(zero[at].data(), one[at].data(), 12) != 0) ? 1 : 0;
+    resolve_follows += (std::memcmp(one[at].data(), open[at].data(), 12) != 0) ? 1 : 0;
+  }
+  const int pixels = static_cast<int>(zero.size());
+  CHECK(rows > 0 && red_only == rows && follows == rows && resolve_differ == 0 && resolve_follows > pixels / 2,
+        "WH2 SSAO readers: %d sun rows, red only %d, follow %d; the resolve %d of %d differ with the other channels, follows %d", rows, red_only,
+        follows, resolve_differ, pixels, resolve_follows);
+  std::printf("WH2 SSAO readers: %d single-sampled sun rows with t_ssao read its red alone in %d (CONTROL their light follows it: %d); the SSR "
+              "resolve's t1: %d of %d texels differ with the other channels 0 / 1 (CONTROL the red moves %d)\n",
+              rows, red_only, follows, resolve_differ, pixels, resolve_follows);
+}
+
 int main(int argc, char** argv) {
   if (argc < 4) {
     std::printf("tests <repo root> <the game's shader dump folder> <Warhammer II's shader dump folder>\n");
@@ -4082,6 +4134,7 @@ int main(int argc, char** argv) {
   TestReplaceMaps(games, argv[2], "twwarhammer", -1);
   TestReplaceMaps(games, argv[3], "twwarhammer2", 1);
   TestResolveOneOcclusion(games);
+  TestWh2AmbientReaders(games, argv[3]);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
