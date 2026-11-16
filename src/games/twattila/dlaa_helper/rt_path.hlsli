@@ -1067,7 +1067,11 @@ void ReflectReservoirTexel(uint2 id) {
 // Reflections and specular occlusion of a render pixel (accumulated by world position).
 void ReflectPixel(uint2 id) {
   if (id.x >= width || id.y >= height) return;
+  // Its screen loads at once (LoadNeighbours).
   const float4 position = positions[id];
+  const float3 guide = GuideNormal(id);
+  const float raw_roughness = ((path_flags & PATH_GUIDES) != 0u) ? guide_roughness[id] : 0.f;
+  const Neighbours neighbours = LoadNeighbours(int2(id));
   if (position.w <= 0.f || (path_flags & PATH_GUIDES) == 0u) {
     specular_accumulated[id] = 0.f;
     specular_meta[id] = float2(1.f, 0.f);
@@ -1075,12 +1079,12 @@ void ReflectPixel(uint2 id) {
     if ((path_flags & PATH_NRD) != 0u) nrd_reflection[id] = float4(0.f, 0.f, 0.f, SKY_HIT_DISTANCE);
     return;
   }
-  const float3 normal = PixelNormal(id, position);
-  const float3 surface_normal = SurfaceNormal(int2(id), position);
+  const float3 normal = PixelNormalOf(id, position, guide, neighbours);
+  const float3 surface_normal = SurfaceNormalOf(int2(id), position, neighbours);
   const float3 view = normalize(Camera() - position.xyz);
   const float n_dot_v = max(dot(normal, view), 1e-3f);
-  const float3 origin = RayOrigin(position, normal, Planar(int2(id), position, normal));
-  const float roughness = saturate(guide_roughness[id]);
+  const float3 origin = RayOrigin(position, normal, PlanarOf(position, normal, neighbours));
+  const float roughness = saturate(raw_roughness);
   const float alpha = ReflectAlpha(roughness);
   const bool mirror = roughness < 0.05f;
   const bool traced = (path_flags & PATH_REFLECTIONS) != 0u && roughness <= ROUGH_LIMIT;
