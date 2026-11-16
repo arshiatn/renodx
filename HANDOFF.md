@@ -3,6 +3,11 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 08:04 INSTALLED (not run in game): all 16 games on helper116 after the fix round, tree daa56e6a7: Attila
+  v165, WH3 v64, Pharaoh v72, Rome II r8, Thrones r9, WH2 v55, Shogun 2 v78, Rome Remastered v16, Troy v59, WH1 r10, Ryse
+  fix59, Tales v76, Expeditions v34, Divinity 1 v3, Divinity 2 v3, R.U.S.E. u3. Checked first: all 16 built,
+  tw_vanilla_exact 293 EXACT / 32 accepted / 0 FAIL (x86 + amd64), tw_psychov35 PASS, dry run clean; your files backed up
+  to tools/tw/install/backups/20261116_080406. Your in-game checks are the "NEW 11-16 (... round)" lines here. Owner: ATN
 - [ ] NEW 11-16 (Rome II round): shadows default Multiply vs Replace (a trace first); morefire00 is x0.2 in SDR too (since
   09-30): keep?; V35 toe at 1-15 nits x0.063-1, colour x1.22 (test black point 1e-4): OK?; Hue Clip 90 vs 80;
   rays_preset_as_attila for Rome II?; a bench save for Faster Game CPU Code. Owner: ATN
@@ -220,7 +225,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AFTER THE RESTART, in order (nothing of this started before it): 1. DONE (non-TW ... | coordinator (steps 2, 4, 5), ATN (step 6)
 - Attila has no frame trace `on_demand` / `at_100` (Pharaoh, Rome II, WH3 have bot ... | next Attila round
 - grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound i ... | next Attila round
-- SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator 06:xx rao_ merged ad541a4f (RT AO replaces the g
 - dvf_ not done: VFX / indicator Experimental rows in both games (D1 633 FX_MAT an ... | next Divinity round / runs, ATN (VFX scope, C rows)
 - tex_ not done: Expeditions Video AutoHDR (NV12 convert ps 0x524CDCDF; needs one ... | next UE round, coordinator (release), shs_
 - w3f_ not done: vanilla_exact over every WH3 shader + a lensflare00 control (~20 ... | next WH3 round, shs_
@@ -1557,7 +1561,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (twattila/output_encoding.hpp, test/tw_output_encoding). Owner: next non-TW round
       - [ ] grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound is the game's" (100 m fade).
         Owner: next Attila round
-      - [ ] SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any of the skill sets"): reports per
+      - [x] DONE 08:04 (every fix round merged, leftovers boxed below; installed v165 / helper116). SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any of the skill sets"): reports per
         game in tools/tw/round_notes/skill_audit_1116/<game>.md (attila, thrones, rome2, wh1, wh2, wh3, troy, pharaoh,
         shogun2, romer, ryse, tales, expeditions, divinity1, divinity2, ruse); each table row is A (offline) / B (ATN in
         game) / C (ATN decides) / W. Fix rounds after rao_ merges: one SHARED STEP agent (twattila / talesofarise_dlss /
