@@ -1651,6 +1651,19 @@ constexpr std::array<twattila::rt_scene::SceneShader, 46> SCENE_SHADERS = {{
     {.hash = 0xAAFE8EAB, .capture_shader = __rt_capture_campaign_tree, .rows_shader = __rt_rows_campaign_tree, .foliage = true, .still = true},
 }};
 
+// What only the campaign map draws (each in all 12 of ATN's campaign traces C1_06 / 08-18 and in none of the 21 battle traces
+// A1 and C1_01 / 02): its borders (campaignborder vs30_border 98BED65B), the shroud's plane (shroud_plane vs30_shroud_main
+// 8CE6B7F1) and its sea (waterplane vs30_main_campaign D96751C9). Their frames take the campaign map's world scale
+// (frame_history::campaign_frames: the object motion's placement cells, rt_positions' sea), as Attila's.
+constexpr std::array<uint32_t, 3> CAMPAIGN_SHADERS = {0x98BED65B, 0x8CE6B7F1, 0xD96751C9};
+std::atomic_bool campaign_logged = false;
+constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (twattila::frame_history::campaign_frames.exchange(2, std::memory_order_relaxed) == 0 && !campaign_logged.exchange(true)) {
+    renodx::utils::log::i("[Total War] First run: the campaign map drawn, its frames at the campaign's world scale.");
+  }
+  return {};
+};
+
 // The screen-space shadows' Light Through Banners: cloth and sails (as the rays), the unit banners with Light Through All
 // Banners (rays_banner_light_row's).
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{
@@ -1782,6 +1795,9 @@ void OnInitDevice(reshade::api::device*) {
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   twattila::pass_timing::OnPresent(queue, "rome2");
+  if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
+    campaign_frames.fetch_sub(1, std::memory_order_relaxed);
+  }
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
   // preset's is XeSS on Intel's, else FSR.
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -2544,6 +2560,10 @@ bool AttachAddon() {
   // views are no G-buffer to write them from.
   rt_host.rewrite_guides = [](ID3D11DeviceContext*) {};
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, rt_host);
+  for (const uint32_t shader_hash : CAMPAIGN_SHADERS) {
+    renodx::utils::command_action::Register(
+        OnCampaignDraw, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+  }
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyWaterRaysDevice);
   // Torch and Fire Shadows: one draw a light (VS E98DDC06, POSITION0 only: a 792-index sphere), the light in point_light_PS b2
   // (c0 position, c1 colour and reach); ours drawn in place of the light shaders without the game's cube shadows where the
@@ -2594,6 +2614,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
+  renodx::utils::command_action::Unregister(OnCampaignDraw);
   renodx::utils::command_action::Unregister(OnLightShadowsDraw);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyLightShadowsDevice);
   OnDestroyLightShadowsDevice(nullptr);
