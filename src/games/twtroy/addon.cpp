@@ -162,6 +162,7 @@ void ApplyResetPreset() {
       {"chromaticaberration", 1.f},
       {"sharpening", 1.f},
       {"some_indicators", 1.0f},
+      {"sky_deband", 0.f},
 
       // Active experimental controls
       {"distortion", 1.f},
