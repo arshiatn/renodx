@@ -69,6 +69,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -160,7 +161,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
 - Window-switch tests (after the restart, with ATN): Attila / Thrones / WH1 / WH2 ... | coordinator (data runs)
 - PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator ATN 02:5x: only the RUNNING agents finish (lg_ l
-- CORRECTION (lg_): Rome II / WH1 / WH2 / Troy / Pharaoh have NO Gamma Correction ... | ATN, then an agent after the restart
+- CORRECTION (lg_): Rome II / WH1 / WH2 / Troy / Pharaoh have NO Gamma Correction ... | an agent AFTER THE RESTART (step 1b)
 - Attila / Thrones 2.2 GC in HDR: ATN's in-game look (scene, UI, flares, video, FG ... | ATN
 - AFTER THE RESTART, in order (nothing of this started before it): 1. Build all (b ... | coordinator
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
@@ -1388,14 +1389,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 02:5x: only the RUNNING agents finish (lg_ lens flares + 2.2 gamma, rrf_ R.U.S.E. review fixes, sk2_ skills 2,
         the switch-fix survey); nothing new starts; merge them, rebuild the skills zip, push, then ping ATN.
       - [ ] CORRECTION (lg_): Rome II / WH1 / WH2 / Troy / Pharaoh have NO Gamma Correction in HDR (row hidden in HDR, HDR
-        shows the 2.0 frame linear), not as told to ATN 02:1x. ATN DECIDES: the same 2.2 in every mode for those five
-        (twattila/frame_gamma.hlsli is ready to reuse; look change for all their HDR players)? Owner: ATN, then an agent
-        after the restart
+        shows the 2.0 frame linear), not as told to ATN 02:1x. ATN 03:1x "Yes, all five": the same 2.2 Gamma Correction in
+        every mode for Rome II / WH1 / WH2 / Troy / Pharaoh, reusing twattila/frame_gamma.hlsli (TW_FRAME_GAMMA, the
+        proxy's decode, flares / UI / video adds in the frame's gamma, TW_TONE_MAP_PEAK + EmulateFrameGamma), GC check in
+        tw_vanilla_exact per game, psychov35 parts per game, build32 Rome II. Owner: an agent AFTER THE RESTART (step 1b)
       - [ ] Attila / Thrones 2.2 GC in HDR: ATN's in-game look (scene, UI, flares, video, FG HUD-less). Owner: ATN
       - [ ] AFTER THE RESTART, in order (nothing of this started before it):
         1. Build all (build32: Attila / Rome II / Thrones; build: the rest incl. Ryse / Tales / Expeditions / Div1 / Div2 /
            R.U.S.E.; the helper from atn-mods), stamp, install every game with tw_install (dry run, fresh backups, hashes):
            the newest merged state for ATN's Attila test.
+        1b. The 2.2 Gamma Correction for Rome II / WH1 / WH2 / Troy / Pharaoh (ATN 03:1x yes), before step 1's build.
         2. R.U.S.E.: re-run H1-H3 if rrf_ changed the bridge after its own run, then the T-run with ATN loading a battle
            (list in the "R.U.S.E. T-run list" box).
         3. Window-switch fix for other games per the survey's table (opt-ins + tests), if any.
