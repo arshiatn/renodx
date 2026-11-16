@@ -19,6 +19,8 @@
 //    its pattern once; off, Set writes Shadow Map Size's bytes alone, as before the row (2x: the six sizes; 1x: the game's
 //    bytes); on, the four cascade immediates (Max's and High's +0x98 and +0x84) become Medium's own (read after the pattern),
 //    nothing else; off again and 1x: the game's bytes; CONTROL: Medium's writes not as known, on writes nothing.
+// 7. Shadow map work (Render's hook), Attila's and Rome II's.
+// 8. Rome II's Two Shadow Cascades Under Rays (twrome2/shadow_cascades.hpp) over its shipped empire.retail.dll.
 #include <windows.h>
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -38,6 +40,7 @@
 #include "src/games/twattila/graphics_hooks.hpp"
 #include "src/games/twattila/rt_scene.hpp"
 #include "src/games/twattila/shadow_pass.hpp"
+#include "src/games/twrome2/shadow_cascades.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
 
 namespace hooks = twattila::graphics_hooks;
@@ -425,6 +428,43 @@ int main(int argc, char** argv) {
                 "on: cascade kind learned after 16 calls, then 1 of 4 a frame in turn (each cascade 10 of 40 frames), the "
                 "main pass and a lone sun-only kind every call; CONTROL: a cascade call binding another target, every call "
                 "after it\n");
+  }
+  // 8. Rome II's Two Shadow Cascades Under Rays (twrome2/shadow_cascades.hpp) over its empire.retail.dll as shipped (when
+  //    installed): the pattern once, its five values the game's; on writes 1-2's (2, 0, 0, 0, 2) at their five places and no
+  //    other byte; off: the game's bytes; CONTROL: one value another mod's: not found.
+  {
+    namespace cascades = twrome2::shadow_cascades;
+    const char* status = "Rome II's DLL not found";
+    if (std::ifstream rome2_stream(R"(C:\Program Files (x86)\Steam\steamapps\common\Total War Rome II\empire.retail.dll)", std::ios::binary);
+        rome2_stream.good()) {
+      std::string rome2_file((std::istreambuf_iterator<char>(rome2_stream)), std::istreambuf_iterator<char>());
+      const std::string shipped = rome2_file;
+      uint8_t* found = cascades::Find({rome2_file});
+      CHECK(found != nullptr);
+      const size_t at = static_cast<size_t>(found - reinterpret_cast<uint8_t*>(rome2_file.data()));
+      CHECK(tw::engine_tweaks::FindPattern({std::string_view(rome2_file).substr(at + 1)}, cascades::CODE) == nullptr);
+      cascades::Write(found, true);
+      size_t changed = 0;
+      for (size_t index = 0; index < rome2_file.size(); ++index) {
+        if (rome2_file[index] == shipped[index]) continue;
+        ++changed;
+        CHECK(std::ranges::any_of(cascades::OFFSETS, [&](size_t offset) { return index >= at + offset && index < at + offset + 4; }));
+      }
+      for (size_t index = 0; index < cascades::OFFSETS.size(); ++index) {
+        uint32_t value;
+        std::memcpy(&value, found + cascades::OFFSETS[index], sizeof(value));
+        CHECK(value == cascades::TWO[index]);
+      }
+      CHECK(changed == 5);
+      cascades::Write(found, false);
+      CHECK(rome2_file == shipped);
+      found[cascades::OFFSETS[0]] = 5;
+      CHECK(cascades::Find({rome2_file}) == nullptr);
+      std::printf("8 Rome II's shadow cascades: once at +0x%zx (file), the game's 3, 1, 2, 3, 4; on: 5 bytes changed, all in the five "
+                  "values (2, 0, 0, 0, 2); off: the shipped bytes; CONTROL: 3's count another mod's (5): not found\n", at);
+      status = nullptr;
+    }
+    if (status != nullptr) std::printf("8 Rome II's shadow cascades: %s\n", status);
   }
   std::printf("PASS\n");
   return 0;

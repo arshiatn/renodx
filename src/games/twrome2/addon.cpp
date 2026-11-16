@@ -49,6 +49,7 @@
 #include "../twattila/water_effects.hpp"
 #include "./more_tests.h"
 #include "./engine_tweaks.hpp"
+#include "./shadow_cascades.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./rt_particle_quads_085DDEDD_gs.h"
 #include "./rt_particle_quads_18FE5E2B_gs.h"
@@ -198,6 +199,13 @@ void ApplyResetPreset(float rendering_mode) {
   );
 }
 
+// Recommended (ATN 2026-11-12: every recommended preset in PsychoV35): Reset in PsychoV35, Video AutoHDR 0.20 (WH1's). Also
+// Output Auto's preset when it turns HDR on (output_encoding's recommended_preset).
+void ApplyRecommendedPreset() {
+  ApplyResetPreset(3.f);
+  renodx::utils::settings::UpdateSettings({{"video_autohdr", 0.2f}});
+}
+
 // SDR monitors (as Attila's): Reset's controls in Rendering Mode SDR (the game's own picture), no video AutoHDR (the button
 // also sets Output SDR). Also a player's first start on a display without HDR (output_encoding's first_start_without_hdr).
 void ApplySdrPreset() {
@@ -207,13 +215,6 @@ void ApplySdrPreset() {
 #define UpgradeRTVReplaceShader(value)                                                              \
   {                                                                                                   \
       value,                                                                                          \
-// Recommended (ATN 2026-11-12: every recommended preset in PsychoV35): Reset in PsychoV35, Video AutoHDR 0.20 (WH1's). Also
-// Output Auto's preset when it turns HDR on (output_encoding's recommended_preset).
-void ApplyRecommendedPreset() {
-  ApplyResetPreset(3.f);
-  renodx::utils::settings::UpdateSettings({{"video_autohdr", 0.2f}});
-}
-
       {                                                                                               \
           .crc32 = value,                                                                             \
           .code = __##value,                                                                          \
@@ -685,6 +686,15 @@ void BuildRuntimeData() {
                    "Off: gamma 2.0; Rendering Mode SDR keeps the in-game Gamma.",
         .labels = {"Off (In-game Gamma value)", "On (Gamma 2.2)"},
     },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+        .label = "Recommended",
+        .section = "Presets",
+        .group = "preset-line-1",
+        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output encoding are kept.",
+        .on_change = []() { ApplyRecommendedPreset(); },
+    },
       new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,
         .label = "My settings for 2500nits peak",
@@ -695,15 +705,6 @@ void BuildRuntimeData() {
         .on_change = []() {
           ApplyHDRPreset(
               3.f, 0.2f,  // rendering mode, video AutoHDR
-    },
-    new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::BUTTON,
-        .label = "Recommended",
-        .section = "Presets",
-        .group = "preset-line-1",
-        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.\n"
-                   "Peak, Paper White, UI brightness, Settings Mode and output encoding are kept.",
-        .on_change = []() { ApplyRecommendedPreset(); },
               1.0f,  // exposure
               1.0f,  // highlights
               1.0f,  // shadows
@@ -1473,24 +1474,7 @@ float small_soldiers_as_sprites = 0.f;
 float sprite_size = 20.f;  // pixels on screen
 // Shadow Map Size: the game's shadowmap_extreme_quality (8192 at the highest Shadows setting).
 tw::engine_tweaks::Option shadow_map = {.scale = 0.f};
-// Two Shadow Cascades Under Rays (Experimental, off; Attila's row): Rome II's shadow quality switch (empire.retail.dll
-// +0x142fcdd, one match from `dec esi` to the shared count write; code read, level B: tools/tw/rome2/p2r2_cascades.txt) sets
-// the sun atlas's size (+0x924 / +0x928), cascade size (+0x84), cascade count (+0x88) and tier (+0x74) per
-// gfx_shadow_quality: 1-2 two cascades tier 0, 3 three tier 1, 4 and 5 four tier 2 / 3. With Skip the Shadow Maps, 3-5's
-// counts and tiers as 1-2's (their sizes kept), read when the game sets its shadows up: from the next start.
-constexpr std::string_view SHADOW_CASCADES_CODE =
-    "4E 83 FE 04 0F 87 ?? ?? ?? ?? FF 24 B5 ?? ?? ?? ?? C7 87 24 09 00 00 00 00 00 45 C7 87 28 09 00 00 00 00 80 44 "
-    "C7 87 84 00 00 00 00 04 00 00 C7 87 88 00 00 00 02 00 00 00 C7 47 74 00 00 00 00 E9 ?? ?? ?? ?? C7 87 24 09 00 00 "
-    "00 00 00 45 C7 87 28 09 00 00 00 00 00 45 C7 87 84 00 00 00 00 04 00 00 C7 87 88 00 00 00 03 00 00 00 C7 47 74 01 "
-    "00 00 00 E9 ?? ?? ?? ?? C7 87 24 09 00 00 00 00 80 45 C7 87 28 09 00 00 00 00 80 45 C7 87 84 00 00 00 00 08 00 00 "
-    "C7 47 74 02 00 00 00 EB ?? 80 3D ?? ?? ?? ?? 00 74 ?? 84 DB 75 ?? 81 F9 00 20 00 00 72 ?? 3D 00 20 00 00 72 ?? F3 "
-    "0F 10 05 ?? ?? ?? ?? B8 00 10 00 00 EB ?? F3 0F 10 05 ?? ?? ?? ?? B8 00 08 00 00 F3 0F 11 87 24 09 00 00 F3 0F 11 "
-    "87 28 09 00 00 89 87 84 00 00 00 C7 47 74 03 00 00 00 C7 87 88 00 00 00 04 00 00 00";
-constexpr size_t SHADOW_CASCADES_CODE_SIZE = 255;
-// 3's count and tier, 4's tier, 5's tier, the count 4 and 5 share.
-constexpr std::array<size_t, 5> SHADOW_CASCADES_OFFSETS = {105, 112, 154, 241, 251};
-constexpr std::array<uint32_t, 5> GAME_SHADOW_CASCADES = {3, 1, 2, 3, 4};
-constexpr std::array<uint32_t, 5> TWO_SHADOW_CASCADES = {2, 0, 0, 0, 2};
+// Two Shadow Cascades Under Rays (Experimental, off; Attila's row): Rome II's shadow quality switch (shadow_cascades.hpp).
 float shadow_cascades_row = 0.f;
 uint8_t* shadow_cascades_code = nullptr;  // null: not found, or its values another mod's
 bool shadow_cascades_searched = false;
@@ -1503,25 +1487,17 @@ void SetShadowCascades(bool two) {
   if (!shadow_cascades_searched) {
     shadow_cascades_searched = true;
     if (HMODULE module = GetModuleHandleW(L"empire.retail.dll"); module != nullptr) {
-      shadow_cascades_code = tw::engine_tweaks::FindPattern(tw::engine_tweaks::ModuleSections(module).code, SHADOW_CASCADES_CODE);
-    }
-    for (size_t index = 0; shadow_cascades_code != nullptr && index < SHADOW_CASCADES_OFFSETS.size(); ++index) {
-      uint32_t value;
-      std::memcpy(&value, shadow_cascades_code + SHADOW_CASCADES_OFFSETS[index], sizeof(value));
-      if (value != GAME_SHADOW_CASCADES[index]) shadow_cascades_code = nullptr;
+      shadow_cascades_code = twrome2::shadow_cascades::Find(tw::engine_tweaks::ModuleSections(module).code);
     }
     renodx::utils::log::i("[Total War] Graphics: shadow cascades ",
                           shadow_cascades_code != nullptr ? "found" : "not found, or changed by another mod");
   }
   if (shadow_cascades_code == nullptr) return;
   DWORD protection;
-  if (VirtualProtect(shadow_cascades_code, SHADOW_CASCADES_CODE_SIZE, PAGE_EXECUTE_READWRITE, &protection) == FALSE) return;
-  const auto& values = (two ? TWO_SHADOW_CASCADES : GAME_SHADOW_CASCADES);
-  for (size_t index = 0; index < SHADOW_CASCADES_OFFSETS.size(); ++index) {
-    std::memcpy(shadow_cascades_code + SHADOW_CASCADES_OFFSETS[index], &values[index], sizeof(values[index]));
-  }
-  VirtualProtect(shadow_cascades_code, SHADOW_CASCADES_CODE_SIZE, protection, &protection);
-  FlushInstructionCache(GetCurrentProcess(), shadow_cascades_code, SHADOW_CASCADES_CODE_SIZE);
+  if (VirtualProtect(shadow_cascades_code, twrome2::shadow_cascades::CODE_SIZE, PAGE_EXECUTE_READWRITE, &protection) == FALSE) return;
+  twrome2::shadow_cascades::Write(shadow_cascades_code, two);
+  VirtualProtect(shadow_cascades_code, twrome2::shadow_cascades::CODE_SIZE, protection, &protection);
+  FlushInstructionCache(GetCurrentProcess(), shadow_cascades_code, twrome2::shadow_cascades::CODE_SIZE);
   two_shadow_cascades_written = two;
 }
 // Every engine option above, then the tests' (Graphics 2 of 2: more_tests.h, twattila/engine_tests.hpp).
