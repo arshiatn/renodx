@@ -4,15 +4,17 @@
 # -Divinity1 / -Divinity2 (their shader dumps), only read. Each add-on shader is compiled here with the build's flags, its reflection
 # kept (the test binds by name; the code is the same as /Qstrip_reflect's). -Games: a subset of the table's keys (A,B).
 # -OutDir: where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\.
-# -NoMutants: skip the constant mutants' report. -Dump <part of a name>: that shader's worst texels. amd64.
-param([string]$Dumps = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16',
+# -NoMutants: skip the constant mutants' report. -Dump <part of a name>: that shader's worst texels. -Architecture: the
+# test exe's (x86: the 32-bit WARP the 32-bit games' add-ons run beside).
+param([ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64',
+      [string]$Dumps = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16',
       [string]$Divinity1 = (Join-Path $env:USERPROFILE '.claude\projects\D--Dev-renodx\tools\nontw\divinity1\census\cso'),
       [string]$Divinity2 = (Join-Path $env:USERPROFILE '.claude\projects\D--Dev-renodx\tools\nontw\divinity2\shader_dump\dxbc'),
       [string]$Games = '', [string]$Fxc = '', [string]$OutDir = '', [switch]$NoMutants, [string]$Dump = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_vanilla_exact'
-$testBuild = if ($OutDir) { Join-Path $OutDir 'tw_vanilla_exact_amd64' } else { Join-Path $repairRoot 'build\tw_vanilla_exact_amd64' }
+$testBuild = Join-Path $(if ($OutDir) { $OutDir } else { Join-Path $repairRoot 'build' }) "tw_vanilla_exact_$Architecture"
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 
 if (-not $Fxc) {
@@ -92,9 +94,10 @@ $manifestPath = Join-Path $testBuild 'manifest.tsv'
 
 $ErrorActionPreference = 'Continue'
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
-& (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+& (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation
 Set-Location -LiteralPath $testBuild
-& 'C:\Program Files\LLVM\bin\clang-cl.exe' --target=x86_64-pc-windows-msvc /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 `
+$triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
+& 'C:\Program Files\LLVM\bin\clang-cl.exe' --target=$triple /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 `
     /I $repairRoot "$testRoot\tests.cpp" /Fe:vanilla_exact.exe /link /OPT:REF /OPT:ICF d3d11.lib d3dcompiler.lib dxguid.lib
 if ($LASTEXITCODE -ne 0) { throw 'Vanilla-exact test compile failed' }
 $arguments = @($manifestPath)
