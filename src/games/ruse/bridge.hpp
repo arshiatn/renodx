@@ -65,7 +65,7 @@ struct State {
   bool reflections = false;  // with the helper's reflections (ray_tracing.hpp's traced reflections, restart)
   bool failed = false;   // a step failed for good: no jitter, the game's picture
   bool ready = false;
-  bool in_scene = false;  // between the first scene draw and the bloom
+  bool scene_closed = false;  // from the bloom to the present: no scene draws (the final post's and the UI's)
   bool jitter_written = false;
   bool reset = true;
   uint32_t frame = 0;
@@ -81,6 +81,9 @@ struct State {
   uint64_t render_target = 0;
   uint64_t depth_stencil = 0;
   uint64_t scene_depth = 0;  // the INTZ depth the last scene draw used
+  // The final post's depth (the back buffer's, INTZ too: back-buffer-sized), never a scene depth: the water simulation
+  // draws with it into the frame-sized pre-pass target at the frame's start (B0 trace).
+  uint64_t post_depth = 0;
   uint64_t pixel_texture_0 = 0;  // the pixel shader's s0 as last bound
   bool render_target_is_frame_sized = false;
   std::unordered_set<uint64_t> intz_depths;
@@ -331,7 +334,7 @@ inline bool Ready(IDirect3DDevice9* host, std::span<const uint8_t> quad, std::sp
 // the game's picture.
 inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8_t> quad, std::span<const uint8_t> prepare,
                      std::span<const uint8_t> writeback) {
-  state.in_scene = false;
+  state.scene_closed = true;
   if (!state.enabled || state.failed || !state.camera_valid || state.pixel_texture_0 == 0 || state.scene_depth == 0) return;
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
   if (!Ready(host, quad, prepare, writeback)) return;
@@ -437,11 +440,15 @@ inline void OnInitDepthView(reshade::api::device* device, reshade::api::resource
 
 inline void OnDestroyDepthView(reshade::api::device*, reshade::api::resource_view view) {
   state.intz_depths.erase(view.handle);
+  if (view.handle == state.post_depth) {
+    state.post_depth = 0;
+  }
 }
 
-// The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth.
+// The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth, before the bloom.
 inline bool IsSceneDraw() {
-  return state.render_target_is_frame_sized && state.intz_depths.contains(state.depth_stencil);
+  return state.render_target_is_frame_sized && !state.scene_closed && state.depth_stencil != state.post_depth
+         && state.intz_depths.contains(state.depth_stencil);
 }
 
 // D3: the scene draws' camera (c0-c3, row-major MVP: clip_i = row_i . position) moved by the jitter: rows 0 and 1 +=
@@ -450,7 +457,6 @@ inline void OnDraw(reshade::api::command_list* cmd_list) {
   if (!state.enabled || state.failed) return;
   const bool scene_draw = IsSceneDraw();
   if (scene_draw) {
-    state.in_scene = true;
     state.scene_depth = state.depth_stencil;
   }
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
@@ -520,9 +526,12 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   }
 }
 
-// The final post's draw (frame generation on): its target, the back buffer's clone the swap chain mod binds in the
-// game's back buffer's place, as the device holds it.
+// The final post's draw: its depth (unless the scene's own); with frame generation its target, the back buffer's clone
+// the swap chain mod binds in the game's back buffer's place, as the device holds it.
 inline void OnFinalPost(reshade::api::command_list* cmd_list) {
+  if (state.depth_stencil != state.scene_depth) {
+    state.post_depth = state.depth_stencil;
+  }
   if (!state.ready || state.hudless_failed || !twattila::frame_generation::Wanted()) return;
   state.post_surface.Reset();
   reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native())->GetRenderTarget(0, state.post_surface.GetAddressOf());
@@ -565,7 +574,7 @@ inline void KeepFrame(ID3D11DeviceContext* context) {
 inline void OnPresent(IDirect3DDevice9* host) {
   KeepHudless(host);
   state.generation_ready = state.hudless_frame == state.frame && state.generation_frame == state.frame;
-  state.in_scene = false;
+  state.scene_closed = false;
   state.scene_depth = 0;  // this frame's: the next Evaluate takes the next frame's scene draws' (none in a menu)
   ++state.frame;
   state.jitter = {Halton((state.frame % 8) + 1, 2) - 0.5f, Halton((state.frame % 8) + 1, 3) - 0.5f};

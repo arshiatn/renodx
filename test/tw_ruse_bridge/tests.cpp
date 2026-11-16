@@ -686,6 +686,28 @@ int main(int argc, char** argv) {
   bridge::OnDestroyDepthView(&host_device, {state.depth_stencil});
   CHECK(!bridge::IsSceneDraw());
   register_depth();
+  // No scene draws from the bloom (Evaluate, here returning at once) to the present, none with the final post's depth
+  // (another INTZ depth: the back buffer's), the scene's own depth never the post's.
+  CHECK(bridge::IsSceneDraw());
+  state.camera_valid = false;
+  bridge::Evaluate(&command_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
+  CHECK(!bridge::IsSceneDraw());
+  bridge::OnPresent(host);
+  CHECK(bridge::IsSceneDraw());
+  const uint64_t scene_depth_handle = state.depth_stencil;
+  constexpr uint64_t POST_DEPTH = 0x7E57D00Du;
+  bridge::OnInitDepthView(&host_device, {}, reshade::api::resource_usage::depth_stencil,
+                          reshade::api::resource_view_desc(reshade::api::resource_view_type::texture_2d, reshade::api::format::intz, 0, 1, 0, 1),
+                          {POST_DEPTH});
+  bridge::OnDraw(&command_list);
+  state.depth_stencil = POST_DEPTH;
+  bridge::OnFinalPost(&command_list);
+  CHECK(!bridge::IsSceneDraw());
+  state.depth_stencil = scene_depth_handle;
+  bridge::OnFinalPost(&command_list);
+  CHECK(state.post_depth == POST_DEPTH && bridge::IsSceneDraw());
+  bridge::OnDestroyDepthView(&host_device, {POST_DEPTH});
+  CHECK(state.post_depth == 0);
   state.render_target_is_frame_sized = false;
   bridge::OnDraw(&command_list);
 

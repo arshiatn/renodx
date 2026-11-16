@@ -773,8 +773,8 @@ void BuildRuntimeData() {
   for (auto& [hash, shader] : custom_shaders) {
     shader.on_draw = OnFrameShaderDraw;
   }
-  // The bridge (bridge.hpp): the final post's HDRParam (c11.x) for the next frame's write-back, its target for frame
-  // generation's HUD-less image.
+  // The bridge (bridge.hpp): the final post's HDRParam (c11.x) for the next frame's write-back, its depth (no scene
+  // depth), its target for frame generation's HUD-less image.
   for (const uint32_t post : {0x232EB5DFu, 0x2D5EFDE2u, 0x44550114u, 0x7E93D12Fu, 0xC3EBA3CAu, 0xFB692F37u, 0x0106B253u}) {
     custom_shaders[post].on_draw = [](reshade::api::command_list* cmd_list) {
       ruse::bridge::state.hdr_param = ruse::bridge::state.pixel_registers[44];
