@@ -129,6 +129,7 @@ void ApplyResetPreset() {
       {"v35_mid_gray", 0.f},
       {"vanilla_per_channel_shoulder", 1.f},
       {"exact_lut_sampling", 0.f},
+      {"sun_shadow_softness", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
   renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
@@ -696,6 +697,18 @@ renodx::utils::settings::Settings settings = {
         .tooltip = "The game reads its colour LUT half a step off: mid gray about a fifth darker than the mode sets it.\n"
                    "On: read exactly (Vanilla and Vanilla+ modes; brighter mid tones). Off: the game's own reading.",
         .is_enabled = IsModded,
+        .is_visible = IsAdvancedSettings,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "sun_shadow_softness",
+        .binding = &shader_injection.sun_shadow_softness,
+        .default_value = 1.f,
+        .label = "Sun Shadow Softness (Experimental)",
+        .section = "Extra",
+        .tooltip = "How soft the sun's shadows get away from what casts them. 1: the game's.",
+        .min = 0.25f,
+        .max = 3.f,
+        .format = "%.2f",
         .is_visible = IsAdvancedSettings,
     },
     // new renodx::utils::settings::Setting{
