@@ -20,6 +20,8 @@
 //    byte 28) = the game's with the flag 0. CONTROL: the game's flag 1 shadows pixels.
 // 5. Torch shadows under the rays: the 4 light PS that read the game's point shadow map with the map lit = their unshadowed
 //    twins (the game's and ours). CONTROL: a random map differs.
+// 6. Ray-Traced Specular Occlusion (a third argument: an older build's csos): reflection00's cubes dimmed by t46 alone, not
+//    by the AO too. CONTROL: the older build's take the AO.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -1021,9 +1023,170 @@ static void TestPointShadowTwins(const std::string& pack, const std::string& bui
   }
 }
 
+// 6. Ray-Traced Specular Occlusion in reflection00 (89AF6FF5, the cubes off water): the resolve's output stands over the sun
+//    light's cubes (with the AO), so the cubes a frame shows = out(t46) - out(t46 = 0). The scene of BuildPassScene, every
+//    surface flagged (not water), one random cube, random G-buffer, no rays (t47 unbound), the AO (t1) random 0.2 - 1 or white.
+//    A: t46 unbound, ours = the older build (`older`: the csos before this fix) bit for bit. B: t46 random 0.2 - 1: the shown
+//    cubes with the random AO within 1e-5 of those with the white AO (one occlusion: t46). C: at the white AO ours = the older
+//    build's within 1e-5. CONTROL: the older build's shown cubes with the random AO differ from its white-AO ones.
+static void TestReflectionOcclusion(const std::string& built, const std::string& older) {
+  const std::vector<uint8_t> ours = ReadFile(built + "\\0x89AF6FF5.cso");
+  const std::vector<uint8_t> before = ReadFile(older + "\\0x89AF6FF5.cso");
+  CHECK(!ours.empty() && !before.empty(), "reflection occlusion: no code");
+  if (ours.empty() || before.empty()) return;
+  const PassScene scene = BuildPassScene();
+  const size_t pixels = static_cast<size_t>(PASS_WIDTH) * PASS_HEIGHT;
+  std::mt19937 random(1357);
+  std::uniform_real_distribution<float> unit(0.f, 1.f);
+  const auto noise = [&](float low, float high) {
+    std::vector<float> values(pixels * 4);
+    for (float& value : values) value = low + (high - low) * unit(random);
+    return values;
+  };
+  std::vector<float> material = noise(0.2f, 0.9f);
+  std::vector<float> depth(pixels * 4, 0.f);
+  for (size_t i = 0; i < pixels; ++i) {
+    material[i * 4 + 3] = 1.f / 255.f;  // the flags: bit 0 (the resolve's surfaces), not water
+    depth[i * 4] = scene.depth[i];
+  }
+  std::vector<float> hits(pixels * 4, 1000.f);
+  std::vector<float> radiance = noise(0.f, 2.f);
+  for (size_t i = 0; i < pixels; ++i) radiance[i * 4 + 3] = 1.f;
+  const std::array<ComPtr<ID3D11ShaderResourceView>, 7> scene_views = {PassTexture(noise(0.3f, 0.7f)), PassTexture(noise(0.f, 1.f)),
+                                                                       PassTexture(material), PassTexture(depth), PassTexture(noise(0.f, 1.f)),
+                                                                       PassTexture(hits), PassTexture(radiance)};
+  const auto random_ao = PassTexture(noise(0.2f, 1.f));
+  const auto white_ao = PassTexture(std::vector<float>(pixels * 4, 1.f));
+  const auto random_occlusion = PassTexture(noise(0.2f, 1.f));
+  const auto closed_occlusion = PassTexture(std::vector<float>(pixels * 4, 0.f));
+  // t0: one 8 x 8 cube of random light.
+  std::vector<float> cube(8 * 8 * 4 * 6);
+  for (float& value : cube) value = 0.2f + 0.8f * unit(random);
+  const D3D11_TEXTURE2D_DESC cube_desc = {.Width = 8, .Height = 8, .MipLevels = 1, .ArraySize = 6, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                          .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+                                          .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE};
+  std::array<D3D11_SUBRESOURCE_DATA, 6> faces = {};
+  for (size_t face = 0; face < faces.size(); ++face) faces[face] = {.pSysMem = &cube[face * 8 * 8 * 4], .SysMemPitch = 8 * 16};
+  ComPtr<ID3D11Texture2D> cube_texture;
+  device->CreateTexture2D(&cube_desc, faces.data(), &cube_texture);
+  D3D11_SHADER_RESOURCE_VIEW_DESC cube_view_desc = {.Format = cube_desc.Format, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY};
+  cube_view_desc.TextureCubeArray = {.MostDetailedMip = 0, .MipLevels = 1, .First2DArrayFace = 0, .NumCubes = 1};
+  ComPtr<ID3D11ShaderResourceView> cube_view;
+  device->CreateShaderResourceView(cube_texture.Get(), &cube_view_desc, &cube_view);
+  // environment_PS: cube 0 at weight 1; cb_ssao: no overscan; lighting_VS_PS: the sun, no spherical harmonics, cloud scale 1.
+  std::array<float, 48 * 4> environment = {};
+  environment[0] = 1.f;
+  environment[15 * 4 + 1] = 1.f;
+  constexpr std::array<float, 4> SSAO = {1.f, 1.f, 0.f, 0.f};
+  std::array<float, 30 * 4> lighting = {};
+  const std::array<float, 3> sun = {0.3f, -0.8f, 0.5f};
+  const float sun_length = std::sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
+  for (int k = 0; k < 3; ++k) lighting[1 + k] = sun[k] / sun_length;
+  lighting[4] = 2.f;
+  lighting[5] = 1.8f;
+  lighting[6] = 1.5f;
+  lighting[12 * 4 + 3] = 1.f;
+  lighting[18 * 4 + 3] = 1.f;
+  lighting[29 * 4] = 0.2f;
+  lighting[29 * 4 + 2] = 1.f;
+  lighting[29 * 4 + 3] = 1.f;
+  const std::array<ComPtr<ID3D11Buffer>, 4> constants = {ConstantBuffer(environment.data(), sizeof(environment)),
+                                                         ConstantBuffer(scene.camera.data(), sizeof(scene.camera)),
+                                                         ConstantBuffer(SSAO.data(), sizeof(SSAO)), ConstantBuffer(lighting.data(), sizeof(lighting))};
+  const D3D11_SAMPLER_DESC linear_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                          .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                          .ComparisonFunc = D3D11_COMPARISON_NEVER, .MaxLOD = D3D11_FLOAT32_MAX};
+  D3D11_SAMPLER_DESC point_desc = linear_desc;
+  point_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+  ComPtr<ID3D11SamplerState> linear;
+  ComPtr<ID3D11SamplerState> point;
+  device->CreateSamplerState(&linear_desc, &linear);
+  device->CreateSamplerState(&point_desc, &point);
+  const std::array<ID3D11SamplerState*, 5> samplers = {linear.Get(), linear.Get(), linear.Get(), point.Get(), linear.Get()};
+  const D3D11_TEXTURE2D_DESC out_desc = {.Width = PASS_WIDTH, .Height = PASS_HEIGHT, .MipLevels = 1, .ArraySize = 1,
+                                         .Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                         .BindFlags = D3D11_BIND_UNORDERED_ACCESS};
+  ComPtr<ID3D11Texture2D> out;
+  device->CreateTexture2D(&out_desc, nullptr, &out);
+  ComPtr<ID3D11UnorderedAccessView> out_view;
+  device->CreateUnorderedAccessView(out.Get(), nullptr, &out_view);
+  D3D11_TEXTURE2D_DESC staging_desc = out_desc;
+  staging_desc.BindFlags = 0;
+  staging_desc.Usage = D3D11_USAGE_STAGING;
+  staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  ComPtr<ID3D11Texture2D> staging;
+  device->CreateTexture2D(&staging_desc, nullptr, &staging);
+  // The resolve's output (rgb per pixel) with this AO and t46 (nullptr: unbound).
+  const auto run = [&](const std::vector<uint8_t>& code, ID3D11ShaderResourceView* ao, ID3D11ShaderResourceView* occlusion) {
+    ComPtr<ID3D11ComputeShader> shader;
+    CHECK(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, &shader)), "reflection shader");
+    std::vector<float> rgb(pixels * 3, 0.f);
+    if (shader == nullptr) return rgb;
+    std::array<ID3D11ShaderResourceView*, 47> views = {cube_view.Get(), ao};
+    for (size_t k = 0; k < scene_views.size(); ++k) views[5 + k] = scene_views[k].Get();
+    views[46] = occlusion;
+    constexpr std::array<float, 4> CLEAR = {-7.f, -7.f, -7.f, -7.f};
+    context->ClearState();
+    context->ClearUnorderedAccessViewFloat(out_view.Get(), CLEAR.data());
+    context->CSSetShader(shader.Get(), nullptr, 0);
+    context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+    const std::array<ID3D11Buffer*, 4> raw_constants = {constants[0].Get(), constants[1].Get(), constants[2].Get(), constants[3].Get()};
+    context->CSSetConstantBuffers(0, static_cast<UINT>(raw_constants.size()), raw_constants.data());
+    context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+    context->CSSetUnorderedAccessViews(0, 1, out_view.GetAddressOf(), nullptr);
+    context->Dispatch(PASS_WIDTH / 8, PASS_HEIGHT / 8, 1);
+    context->ClearState();
+    context->CopyResource(staging.Get(), out.Get());
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    for (UINT y = 0; y < PASS_HEIGHT; ++y) {
+      const auto* row = reinterpret_cast<const float*>(static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(y) * mapped.RowPitch);
+      for (UINT x = 0; x < PASS_WIDTH; ++x) {
+        for (int c = 0; c < 3; ++c) rgb[(static_cast<size_t>(y) * PASS_WIDTH + x) * 3 + c] = row[x * 4 + c];
+      }
+    }
+    context->Unmap(staging.Get(), 0);
+    return rgb;
+  };
+  // The cubes a frame shows: the output over the sun light's cubes (= minus the output with t46 0).
+  const auto shown = [&](const std::vector<uint8_t>& code, ID3D11ShaderResourceView* ao) {
+    std::vector<float> cubes = run(code, ao, random_occlusion.Get());
+    const std::vector<float> closed = run(code, ao, closed_occlusion.Get());
+    for (size_t i = 0; i < cubes.size(); ++i) cubes[i] -= closed[i];
+    return cubes;
+  };
+  // The largest difference of a against b relative to b, and the values more than 1e-3 apart.
+  const auto apart = [](const std::vector<float>& a, const std::vector<float>& b) {
+    float largest = 0.f;
+    int values = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+      const float relative = std::abs(a[i] - b[i]) / std::max(std::abs(b[i]), 1e-3f);
+      largest = std::max(largest, relative);
+      values += (relative > 1e-3f) ? 1 : 0;
+    }
+    return std::pair{largest, values};
+  };
+  const int unbound_apart = DifferentValues(run(ours, random_ao.Get(), nullptr), run(before, random_ao.Get(), nullptr));
+  const auto ours_white = shown(ours, white_ao.Get());
+  const auto [one_largest, one_values] = apart(shown(ours, random_ao.Get()), ours_white);
+  const auto [white_largest, white_values] = apart(ours_white, shown(before, white_ao.Get()));
+  const auto [control_largest, control_values] = apart(shown(before, random_ao.Get()), shown(before, white_ao.Get()));
+  int reached = 0;
+  for (size_t i = 0; i < pixels; ++i) reached += (ours_white[i * 3] > 1e-3f || ours_white[i * 3 + 1] > 1e-3f || ours_white[i * 3 + 2] > 1e-3f) ? 1 : 0;
+  std::printf("reflection occlusion: %d of %zu pixels show cubes; A t46 unbound %d values apart from the older build; B the random AO "
+              "against the white largest %.2g of the value (%d values over 1e-3); C the white AO against the older build %.2g (%d); "
+              "CONTROL the older build's random AO against its white %.2g (%d values over 1e-3)\n",
+              reached, pixels, unbound_apart, one_largest, one_values, white_largest, white_values, control_largest, control_values);
+  CHECK(reached > static_cast<int>(pixels) / 2, "reflection occlusion: the cubes reach %d pixels", reached);
+  CHECK(unbound_apart == 0, "reflection occlusion: A without t46 not the older build");
+  CHECK(one_largest < 1e-5f, "reflection occlusion: B the AO still dims the cubes t46 dims");
+  CHECK(white_largest < 1e-5f, "reflection occlusion: C the white AO not the older build's");
+  CHECK(control_values > 0, "reflection occlusion: CONTROL the older build's AO dims nothing");
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
-    std::printf("usage: tests <the game's csos> <the add-on's built csos>\n");
+    std::printf("usage: tests <the game's csos> <the add-on's built csos> [<the older build's csos>]\n");
     return 2;
   }
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context))) {
@@ -1035,6 +1198,7 @@ int main(int argc, char** argv) {
   TestAutoExposure(argv[1], argv[2]);
   TestSunMaskMarch(argv[1]);
   TestPointShadowTwins(argv[1], argv[2]);
+  if (argc > 3) TestReflectionOcclusion(argv[2], argv[3]);
   std::printf("%s (%d failures)\n", failures == 0 ? "PASS" : "FAIL", failures);
   return failures == 0 ? 0 : 1;
 }

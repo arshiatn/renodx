@@ -4,8 +4,9 @@
 # -GameShaders: the folder of the game's dumped csos, only read. -Built: the add-on's compiled shaders
 # (build\twwarhammer3.include\embed after a twwarhammer3 build). Holds tools/tw's GPU job lock while it runs when -Lock names
 # it. -OutDir: where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\.
+# -Older: a folder with an older build's 0x89AF6FF5.cso (reflection00 before its one-occlusion fix): part 6's control.
 # amd64 only (Warhammer III is 64-bit).
-param([string]$GameShaders = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\dump_shader_twwarhammer3_pack\cso', [string]$Built = '', [string]$Lock = '', [string]$OutDir = '')
+param([string]$GameShaders = 'D:\Dev\renodx\bin\cmd_Decompiler-1.3.16\dump_shader_twwarhammer3_pack\cso', [string]$Built = '', [string]$Lock = '', [string]$OutDir = '', [string]$Older = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 if ($Built -eq '') { $Built = Join-Path $repairRoot 'build\twwarhammer3.include\embed' }
@@ -33,7 +34,7 @@ while ($Lock -ne '') {
 }
 try {
   # Also kept in last_run.txt (a failing run's lines survive a caller's pipeline).
-  & (Join-Path $testBuild 'warhammer3_shaders.exe') $GameShaders $Built | Tee-Object -FilePath (Join-Path $testBuild 'last_run.txt')
+  & (Join-Path $testBuild 'warhammer3_shaders.exe') $GameShaders $Built $(if ($Older) { $Older }) | Tee-Object -FilePath (Join-Path $testBuild 'last_run.txt')
   if ($LASTEXITCODE -ne 0) { throw 'Warhammer III shader test failed' }
 } finally {
   if ($Lock -ne '' -and (Get-Content -LiteralPath $Lock -Raw -ErrorAction SilentlyContinue) -eq $mine) { Remove-Item -LiteralPath $Lock -Force -Confirm:$false }
