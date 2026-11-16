@@ -90,9 +90,9 @@ bool IsHDRMode() {
   return shader_injection.hdr >= 1.f && current_settings_mode == 1;
 }
 
-// bool IsModdedAutoExposureEnabled() {
-//   return shader_injection.auto_exposure_highlight_protection == 1.f && IsPsychoMode();
-// }
+bool IsModdedAutoExposureEnabled() {
+  return shader_injection.auto_exposure_highlight_protection == 1.f && IsHDRMode();
+}
 
 void ApplyResetPreset() {
   // Reset only controls that are currently active in this addon.
@@ -142,13 +142,13 @@ void ApplyResetPreset() {
       {"lensflare", 1.f},
       {"vignette", 1.f},
       {"distortion", 1.f},
+      {"auto_exposure_highlight_protection", 0.f},
+      {"auto_exposure_highlight_headroom_stops", 2.f},
       // {"chromaticaberration", 1.f},
       // {"sharpening", 1.f},
       // {"some_indicators", 1.f},
 
       // The graphics page has its own Reset (graphics_page.hpp), as Attila's.
-      // {"auto_exposure_highlight_protection", 0.f},
-      // {"auto_exposure_highlight_headroom_stops", 2.f},
       // {"vfx_fire_brightness", 1.f},
       // {"vfx_base_brightness", 1.f},
       // {"sky_deband", 2.f},
@@ -1401,34 +1401,35 @@ void BuildRuntimeData() {
     // },
 
 
-    // EXTRA EXPERIMENTAL//////////
-    // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_protection",
-    //     .binding = &shader_injection.auto_exposure_highlight_protection,
-    //     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-    //     .default_value = 0.0f,
-    //     .label = "Modded Auto Exposure",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
-    //     .labels = {"Off (Stock)", "On (Protected)"},
-    //     .is_enabled = IsHDRMode,
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_headroom_stops",
-    //     .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 2.0f,
-    //     .label = "Modded Auto Exposure: Sensitivity",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
-    //     .min = 0.6f,
-    //     .max = 4.0f,
-    //     .format = "%.1f",
-    //     .is_enabled = IsModdedAutoExposureEnabled,
-    //     .is_visible = IsAdvancedSettings,
-    // },
+    // Modded Auto Exposure (Experimental, off): shaders/autoexposure00_0x6A1D2178 (Feral's auto exposure; off and SDR
+    // the game's bytes on WARP, test/tw_romer_auto_exposure).
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_protection",
+        .binding = &shader_injection.auto_exposure_highlight_protection,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Modded Auto Exposure (Experimental)",
+        .section = "Extra",
+        .tooltip = "Keeps large bright areas such as the sky, fire and the sun from darkening the whole picture;\n"
+                   "their own brightness stays. Off: the game's.",
+        .labels = {"Off", "On"},
+        .is_enabled = IsHDRMode,
+        .is_visible = IsAdvancedSettings,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_headroom_stops",
+        .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
+        .default_value = 2.f,
+        .label = "Modded Auto Exposure: Sensitivity",
+        .section = "Extra",
+        .tooltip = "How far above the picture's average brightness a bright area still counts, in stops.\n"
+                   "Lower: a steadier exposure; higher: closer to the game's.",
+        .min = 0.6f,
+        .max = 4.f,
+        .format = "%.1f",
+        .is_enabled = IsModdedAutoExposureEnabled,
+        .is_visible = IsAdvancedSettings,
+    },
     // new renodx::utils::settings::Setting{
     //     .key = "vfx_fire_brightness",
     //     .binding = &shader_injection.vfxfirebrightness,

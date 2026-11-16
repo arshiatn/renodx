@@ -1,5 +1,16 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
+## Dev, tw1_ round (2026-11-16; built only, not stamped, not installed, not run in game)
+
+- Fixed: **Grass Height Distance** with its constants not bound gives the game's 100 m fade (it gave none), Attila's code.
+  WARP (tools/tw/tw1_1116/grass_fade): Thrones' 13 grass shaders + the prefill, unbound and at 1 the game's bits; CONTROLS the
+  old patch and 2 x the distance differ.
+- Proven offline: the 24 sun shaders the scale census left "unclear" draw at 50% what they draw at 100%, bit for bit
+  (tools/tw/tw1_1116/sun2x; CONTROL without the whole AO read 4095 of 4096 differ).
+- Proven offline: under the rays' reflections the game's screen-space march no longer reaches the picture (`tw_thrones_ssr`
+  part G: 0 of 32768 apart with the light buffer black; CONTROL without the rays 7471).
+- Code only: one psycho_test30 / psycho_test31.hlsli (Attila's; 110 of 110 shaders the same bytes).
+
 ## Dev, fix round (2026-11-16; built only, not stamped, not installed, not run in game)
 
 - New: **Time Each Pass (One Frame)**, as Attila's: the GPU time of every pass of the next frame into

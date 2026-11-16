@@ -1,5 +1,18 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### Replace round (2026-11-16, tw1_; built only, not run in game)
+
+- **Rays Replace Shadow Maps on by default** (ATN: ours replaces the game's): under ray-traced sun shadows the six sun
+  shaders take the rays' shadow alone; the row lost "(Experimental)", a saved 0 is cleared once. WARP part 29: t49 0 / 1 /
+  0.5 bit for bit the game's lit / shadowing / empty atlas in 6 of 6; CONTROL the multiply differs in 6.
+- **Ray-Traced AO leaves the game's SSAO out** (one AO method): while the rays' AO feeds the sun, the game's depth
+  downsample, sweep, collect and blurs are skipped (census by handle, 41 traces: nothing else reads them) and the SSR
+  resolve reads the sun's AO. WARP part 31: the sun rows and the resolve read the AO's red alone (10 of 10, 0 of 4096
+  apart). Under Path-Traced AO and GT-VBAO as before.
+- Code only: one psycho_test31.hlsli (Attila's; 53 of 53 shaders the same bytes).
+- In game: Shadows DXR with the row on and off; Time Each Pass with Ray-Traced AO on (the skipped SSAO passes' time); GT-VBAO
+  at each in-game SSAO quality: do the game's AO blurs C7B1F6F7 / 901C2215 draw (in no trace yet).
+
 ### Fix round (2026-11-16, the skill audit's rows; built only, not run in game)
 
 - **Skip the Game's Reflection Passes (on)**, as Warhammer's: under the rays' reflections the hierarchical depth (FD885574 /

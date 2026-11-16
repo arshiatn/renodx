@@ -4,13 +4,14 @@
 # -GameShaders: the folder of the game's dumped csos (0xFAAE535B, 0x03FB2979, 0xAC25DAB8, 0x8A00A1D4, 0xE3DA20D4 .vs_5_0.cso,
 # 0x16ADFD60, 0x6B8954A6, 0x5487502A, 0xE73D4A5E, 0x9B9EC116, 0x892D56F9 .ps_5_0.cso: parts 5, 6, 8, 9, 10, 11; part 18: 0x5074655A,
 # 0xC24D8705 .vs_5_0.cso with 0x91442562, 0x54F0069F .hs_5_0.cso and 0x94CEC8A9, 0x4FE62BBA .ds_5_0.cso; part 20: 0xBDFF60D4
-# .vs_5_0.cso, 0x0FBCC65A .ps_5_0.cso), only read.
+# .vs_5_0.cso, 0x0FBCC65A .ps_5_0.cso), only read. -OutDir: where the test exe is built and run (ATN's antivirus-excluded
+# test folder, tools\tw\testbin); else build\.
 param([Parameter(Mandatory = $true)][string]$Capture, [ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64', [string]$Lock = '',
-      [string]$GameShaders = '')
+      [string]$GameShaders = '', [string]$OutDir = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_shogun2_shaders'
-$testBuild = Join-Path $repairRoot "build\tw_shogun2_shaders_test_$Architecture"
+$testBuild = Join-Path $(if ($OutDir) { $OutDir } else { Join-Path $repairRoot 'build' }) "tw_shogun2_shaders_test_$Architecture"
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation
