@@ -45,6 +45,6 @@ void main(
   r0.xyzw = g_spline_colour.xyzw * r0.xyzw;
   r1.xyzw = s_diffuse.Sample(s_diffuse_s, v1.xy).xyzw;
   o0.xyzw = r1.xyzw * r0.xyzw;
-  o0.xyz *= SI.someindicators;
+  if (HDR >= 1.f) o0.xyz *= SOMEINDICATORS;  // SDR stays stock
   return;
 }
