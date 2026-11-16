@@ -1164,7 +1164,7 @@ void ConfigureAddon() {
   custom_shaders[CLUSTERED_LIGHTING_HASH] = {
       .crc32 = CLUSTERED_LIGHTING_HASH,
       .on_draw = [](reshade::api::command_list* cmd_list) {
-        divinity2::ray_tracing::KeepSun(cmd_list);
+        divinity2::ray_tracing::OnLighting(cmd_list);
         return true;
       },
       .on_drawn = divinity2::ray_tracing::LightBounce,
@@ -1208,9 +1208,9 @@ void ConfigureAddon() {
   };
 
   // The graphics page (twattila/graphics_page.hpp, Attila's): its anti-aliasing rows (feature_settings::AppendAa: DLSS
-  // with its preset, frame generation and Reflex; SMAA, CMAA2 and TAA stay hidden), the rays' rows
-  // (rt_scene::AppendSettings: sun shadows and AO here), shown in Advanced (Settings Mode).
-  twattila::feature_settings::AppendAa(&settings, &divinity2::dlaa::sliders, false, false, true);
+  // with its preset, Ray Reconstruction on the rays' guides, frame generation and Reflex; SMAA, CMAA2 and TAA stay
+  // hidden), the rays' rows (rt_scene::AppendSettings), shown in Advanced (Settings Mode).
+  twattila::feature_settings::AppendAa(&settings, &divinity2::dlaa::sliders, false, true, true);
   twattila::rt_scene::AppendSettings(&settings, &divinity2::ray_tracing::sliders, &divinity2::dlaa::sliders);
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedSkipShadowPass",

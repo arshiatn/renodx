@@ -234,9 +234,13 @@ Total War helper (`renodx-tw-dlaa64.exe` and its DLLs next to `EoCApp.exe`):
   once the paths have learned the game's light, the sky's and the light
   probes' diffuse cubes are black and the SAO chain open: the paths bring the
   ambient light and its shade (the specular IBL stays the game's).
+- **Ray Reconstruction** (DLSS, Experimental, off; with a ray tracing row on):
+  the G-buffer guides written at ClusteredLightingWithSSAO's draw as
+  DeferredSky lights the pixel (`rt_guides`: diffuse colour, specular colour
+  through its LUT, world normal, roughness); the paths read them too.
 
 Not yet: render scale below 100%, the game's settings above its maximum,
-reflections, Ray Reconstruction.
+reflections.
 
 ## Data runs and installing
 
@@ -286,7 +290,8 @@ cone response): press Reset before comparing defaults.
   PPApplyAO, the sun's direction from PerFrame and the overlays left out of
   the rays' scene, Skip the Game's Shadow Maps, and against the game's
   DeferredSky the paths' sky, its black diffuse under the paths and the GI's
-  diffuse factor, each with a control that must fail.
+  diffuse factor, and the G-buffer guides against its own diffuse / specular,
+  each with a control that must fail.
 - `test/tw_psychov30_nan`, `test/tw_output_encoding`, `test/tw_device_loss`,
   `test/tw_draw_dispatch`: the shared PsychoV30 guards, the not-configured
   Output, device loss and the fast draw dispatch.

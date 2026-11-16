@@ -128,11 +128,13 @@ struct Objects {
   ComPtr<ID3D11PixelShader> bounce_prepare;
   ComPtr<ID3D11ComputeShader> bounce_resolve;
   ComPtr<ID3D11PixelShader> bounce_apply;
+  ComPtr<ID3D11ComputeShader> guides;
   ComPtr<ID3D11RasterizerState> no_cull;
   ComPtr<ID3D11BlendState> add;
   ComPtr<ID3D11SamplerState> linear;
   ComPtr<ID3D11Buffer> bounce_constants;  // 96 bytes: the resolve's (the most), the prepare's and the apply's
   ComPtr<ID3D11Buffer> sky_settings;
+  ComPtr<ID3D11Buffer> ibl_view;  // rt_ibl.hlsli's (IblView)
   ComPtr<ID3D11ShaderResourceView> black_cube;
   bool failed = false;
 };
@@ -160,8 +162,21 @@ struct State {
   twattila::rt_scene::Settings settings;
   uint64_t frame = 0;
   Bounce bounce;
+  // DeferredSky's LUT (its t3) as this frame's sky draw had it, for the guides (the render thread's).
+  ComPtr<ID3D11ShaderResourceView> lut;
+  uint64_t lut_frame = UINT64_MAX;
 };
 static State state;
+// The G-buffer guides written since the last present (rt_core reads it through HOST under its own lock: no state.mutex).
+static std::atomic_bool guides_written = false;
+
+// rt_ibl.hlsli's view: the View's rows, the jittered view-projection's inverse, the eye, the render size.
+struct IblView {
+  std::array<float, 12> view_rows;
+  std::array<float, 16> inverse_view_projection;
+  std::array<float, 4> eye;
+  std::array<uint32_t, 4> size;
+};
 static bool installed = false;
 // The game's overlay pixel shaders as made (ReShade's D3D11 pipeline handle is the native shader); its own lock:
 // destroy_pipeline also fires inside D3D11 calls made under state.mutex.
@@ -259,6 +274,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     if (state.objects.device.Get() == native) {
       state.objects = {};
       state.bounce = {};
+      state.lut.Reset();
     }
   }
   const std::unique_lock lock(atlas_mutex);
@@ -274,7 +290,10 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
   settings.path_ambient = sliders.path_ambient != 0.f && settings.path_tracing;
   settings.ambient_occlusion = settings.ambient_occlusion && !settings.path_ambient;
   dlaa::rays = settings.sun_shadows || settings.ambient_occlusion || settings.light_bounce;
+  // The guides for Ray Reconstruction and the paths (Attila's: their normals and roughness from the G-buffer).
+  dlaa::guides = twattila::feature_settings::AaSettings(dlaa::sliders).ray_reconstruction || settings.path_tracing;
   twattila::rt_scene::Update(settings);
+  guides_written.store(false, std::memory_order_relaxed);
   const std::unique_lock lock(state.mutex);
   state.settings = settings;
   ++state.frame;
@@ -309,6 +328,7 @@ inline bool MakeObjects(ID3D11Device* device) {
   const D3D11_SAMPLER_DESC linear_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
   const D3D11_BUFFER_DESC bounce_desc = {.ByteWidth = 96, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   const D3D11_BUFFER_DESC sky_desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+  const D3D11_BUFFER_DESC view_desc = {.ByteWidth = sizeof(IblView), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
   // A 1 x 1 black cube in place of the ambient passes' diffuse ones.
   const D3D11_TEXTURE2D_DESC cube_desc = {.Width = 1, .Height = 1, .MipLevels = 1, .ArraySize = 6, .Format = DXGI_FORMAT_R8G8B8A8_UNORM, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_SHADER_RESOURCE, .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE};
   constexpr uint32_t BLACK = 0u;
@@ -324,11 +344,13 @@ inline bool MakeObjects(ID3D11Device* device) {
                    || FAILED(device->CreatePixelShader(__rt_bounce_prepare.data(), __rt_bounce_prepare.size(), nullptr, objects.bounce_prepare.GetAddressOf()))
                    || FAILED(device->CreateComputeShader(__rt_bounce_resolve.data(), __rt_bounce_resolve.size(), nullptr, objects.bounce_resolve.GetAddressOf()))
                    || FAILED(device->CreatePixelShader(__rt_bounce_apply.data(), __rt_bounce_apply.size(), nullptr, objects.bounce_apply.GetAddressOf()))
+                   || FAILED(device->CreateComputeShader(__rt_guides.data(), __rt_guides.size(), nullptr, objects.guides.GetAddressOf()))
                    || FAILED(device->CreateRasterizerState(&raster_desc, objects.no_cull.GetAddressOf()))
                    || FAILED(device->CreateBlendState(&add_desc, objects.add.GetAddressOf()))
                    || FAILED(device->CreateSamplerState(&linear_desc, objects.linear.GetAddressOf()))
                    || FAILED(device->CreateBuffer(&bounce_desc, nullptr, objects.bounce_constants.GetAddressOf()))
                    || FAILED(device->CreateBuffer(&sky_desc, nullptr, objects.sky_settings.GetAddressOf()))
+                   || FAILED(device->CreateBuffer(&view_desc, nullptr, objects.ibl_view.GetAddressOf()))
                    || FAILED(device->CreateTexture2D(&cube_desc, cube_data.data(), cube.GetAddressOf()))
                    || FAILED(device->CreateShaderResourceView(cube.Get(), nullptr, objects.black_cube.GetAddressOf()));
   return !objects.failed;
@@ -403,6 +425,17 @@ inline ComPtr<ID3D11RenderTargetView> MainViewTarget(ID3D11DeviceContext* native
   return (width != 0 && desc.Width == width && desc.Height == height) ? target : nullptr;
 }
 
+// rt_ibl.hlsli's view of `camera` at the render `size` (the guides and the reflections).
+inline IblView IblViewOf(const dlaa::internal::Camera& camera, std::array<UINT, 2> size) {
+  const auto& view = camera.view;
+  return {
+      .view_rows = {view[0], view[1], view[2], 0.f, view[4], view[5], view[6], 0.f, view[8], view[9], view[10], 0.f},
+      .inverse_view_projection = camera.inverse_view_projection,
+      .eye = {camera.position[0], camera.position[1], camera.position[2], 0.f},
+      .size = {size[0], size[1], 0u, 0u},
+  };
+}
+
 // A bounce texture of `format` at the bounce's size, read by views, written by a render target (`rtv`) or unordered
 // access.
 inline bool MakeBounceTexture(ID3D11Device* device, std::array<UINT, 2> size, DXGI_FORMAT format, twattila::dlaa_bridge::Texture* texture,
@@ -419,7 +452,7 @@ inline bool MakeBounceTexture(ID3D11Device* device, std::array<UINT, 2> size, DX
 
 inline const twattila::rt_scene::Host HOST = {
     .render_size = dlaa::SceneSize,
-    .guides_written = [] { return false; },
+    .guides_written = [] { return internal::guides_written.load(std::memory_order_relaxed); },
     // The captures' clip positions go back to the world with the trace's camera (every G-buffer draw has the main view's).
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
@@ -449,14 +482,49 @@ inline void Trace(reshade::api::command_list* cmd_list) {
                             });
 }
 
-// ClusteredLightingWithSSAO (before its draw: PerFrame at its b13; its target the scene): the sun's direction for the
-// next trace.
-inline void KeepSun(reshade::api::command_list* cmd_list) {
+// ClusteredLightingWithSSAO (before its draw: PerFrame at its b13, the G-buffer at t2-t4 and t6, its target the scene):
+// the sun's direction for the next trace; with them wanted (Ray Reconstruction, the paths) this frame's G-buffer guides
+// (rt_guides, once a frame) before the light bounce and DLAA read them.
+inline void OnLighting(reshade::api::command_list* cmd_list) {
   ID3D11DeviceContext* native = internal::ImmediateContext(cmd_list);
   if (native == nullptr || !internal::MainViewTarget(native)) return;
   ComPtr<ID3D11Buffer> frame_constants;
   native->PSGetConstantBuffers(13, 1, frame_constants.GetAddressOf());
   if (frame_constants) internal::WriteSun(native, frame_constants.Get());
+  auto& bridge = twattila::dlaa_bridge::bridge;
+  dlaa::internal::Camera camera;
+  if (!dlaa::guides || !bridge.guides || internal::guides_written.load(std::memory_order_relaxed) || !dlaa::MainCamera(&camera)) return;
+  // rt_ibl.hlsli's inputs: LinearDepth (t6), GBuffer1-3 (t2-t4), this frame's DeferredSky LUT.
+  std::array<ComPtr<ID3D11ShaderResourceView>, 5> ibl;
+  native->PSGetShaderResources(6, 1, ibl[0].GetAddressOf());
+  for (UINT index = 1; index < 4; ++index) native->PSGetShaderResources(index + 1, 1, ibl[index].GetAddressOf());
+  ComPtr<ID3D11DeviceContext1> native1;
+  const auto size = dlaa::SceneSize();
+  {
+    const std::shared_lock lock(internal::state.mutex);
+    const auto& objects = internal::state.objects;
+    if (internal::state.lut_frame != internal::state.frame || objects.failed || !objects.guides
+        || FAILED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) {
+      return;
+    }
+    ibl[4] = internal::state.lut;
+    if (std::ranges::any_of(ibl, [](const auto& view) { return !view; })) return;
+    const internal::IblView view = internal::IblViewOf(camera, size);
+    twattila::dlaa_bridge::BeforeSharedWrites(native);
+    const talesofarise::dlss::ContextStateScope scope(native1.Get(), objects.private_state.Get());
+    native->UpdateSubresource(objects.ibl_view.Get(), 0, nullptr, &view, 0, 0);
+    const std::array<ID3D11ShaderResourceView*, 5> views = {ibl[0].Get(), ibl[1].Get(), ibl[2].Get(), ibl[3].Get(), ibl[4].Get()};
+    const std::array<ID3D11UnorderedAccessView*, 4> outputs = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
+                                                               bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
+    native->CSSetShader(objects.guides.Get(), nullptr, 0);
+    native->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+    native->CSSetUnorderedAccessViews(0, static_cast<UINT>(outputs.size()), outputs.data(), nullptr);
+    native->CSSetConstantBuffers(0, 1, objects.ibl_view.GetAddressOf());
+    native->CSSetSamplers(0, 1, objects.linear.GetAddressOf());
+    native->Dispatch((size[0] + 7) / 8, (size[1] + 7) / 8, 1);
+  }
+  internal::guides_written.store(true, std::memory_order_relaxed);
+  dlaa::NoteGuides();
 }
 
 // A sun shadow mask's draw (before it): under Ray-Traced Sun Shadows this frame's traced visibility into its target in
@@ -529,6 +597,14 @@ inline void OnAmbientPass(reshade::api::command_list* cmd_list, const internal::
   {
     const std::shared_lock lock(internal::state.mutex);
     path_ambient = internal::state.settings.path_ambient;
+  }
+  // The sky's LUT for this frame's guides (OnLighting).
+  if (pass.sky) {
+    ComPtr<ID3D11ShaderResourceView> lut;
+    native->PSGetShaderResources(3, 1, lut.GetAddressOf());
+    const std::unique_lock lock(internal::state.mutex);
+    internal::state.lut = lut;
+    internal::state.lut_frame = internal::state.frame;
   }
   if (pass.sky && bridge.rt_sun.uav) {
     std::array<ID3D11ShaderResourceView*, 2> views = {};
