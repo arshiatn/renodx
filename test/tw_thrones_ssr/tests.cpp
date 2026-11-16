@@ -4,7 +4,8 @@
 // but every 16th pixel), the add-on's settings at b13 (SSR Quality 1, Effects at Output Resolution's share 1: the game's
 // look), the rays' textures (t46, t47) and the hierarchical march's (t10) unbound.
 // tests.exe <the game's dumped csos> <the add-on's built csos (build32\<game>.include\embed)> <ssr_quality's float in b13>
-//           <effects_share's float in b13> [<an older build's csos: part F's CONTROL>]
+//           <effects_share's float in b13> <rays_sharp_reflections' float in b13>
+//           [<an older build's csos: part F's CONTROL, "-": none>] [<the build before part H's row: its reference>]
 // Shader Model 5 (66006BEA, 47D75349: ssr00 / ssr01) and 4 / 4.1 (485F33D7, 0AC579F6, 8E734BAA, C8BD2B2F: their code at
 // those shader models):
 // A. 100%: the replacement (nothing at b12) and the game's shader: o0 and o1.y bit for bit, o1.x (the blur's step, x
@@ -26,6 +27,12 @@
 //    the screen-space march (its only reader; the hierarchical march's t10 under the same branch) is left out; without them
 //    (b10 unbound) only the water's pixels (material flag 4) keep it. CONTROL: without t47 the light buffer reaches the
 //    pixels that reflect it.
+// H. Sharp Ray-Traced Reflections (Experimental, b13's rays_sharp_reflections): off, with the rays (t47, the water's rays on)
+//    and without them, o0 and o1 bit for bit the older build's (today's); on, where the rays reflect, o1.x (the reflections
+//    blur's roughness step) is 0 and o0 / o1.y keep their bits; without the rays nothing changes. CONTROL: on differs from
+//    off. Numbers: the step in texels ((o1.x x 1.9 + 0.1), reflections_blur) before / after, its 9 taps' reach
+//    (+-(4 x step + 0.5) texels), and the game's own blur_x (AEA114D4, the game's bytes) with each o1 over a checkerboard of
+//    8-texel squares in place of the reflection: how far the blurred board is from the board (mean |blur - board|).
 // The march's share of the picture: pixels whose result changes at 100% with the light buffer black (it reflects there).
 #include <windows.h>
 #include <d3d11.h>
@@ -339,16 +346,18 @@ static void Invert(const double (&m)[4][4], double (&out)[4][4]) {
 }
 
 int main(int argc, char** argv) {
-  if (argc < 5) {
+  if (argc < 6) {
     std::printf("usage: tests.exe <the game's dumped csos> <the add-on's built csos> <ssr_quality's float in b13> <effects_share's>"
-                " [<an older build's csos>]\n");
+                " <rays_sharp_reflections'> [<an older build's csos>]\n");
     return 2;
   }
   const std::string game_folder = argv[1];
   const std::string built_folder = argv[2];
   const int ssr_quality = std::atoi(argv[3]);
   const int effects_share = std::atoi(argv[4]);
-  const std::string older_folder = (argc > 5) ? argv[5] : "";
+  const int sharp_reflections = std::atoi(argv[5]);
+  const std::string older_folder = (argc > 6 && std::string(argv[6]) != "-") ? argv[6] : "";
+  const std::string reference_folder = (argc > 7) ? argv[7] : "";
   const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
                                context.GetAddressOf()))) {
@@ -462,14 +471,23 @@ int main(int argc, char** argv) {
   const auto camera_50 = camera_for(WIDTH * 2, HEIGHT * 2);
 
   // The add-on's settings (b13): SSR Quality 1, Effects at Output Resolution's share 1 (the game's look), or SSR Quality 2.
-  const auto settings_for = [&](float quality) {
+  const auto settings_for = [&](float quality, float sharp = 0.f) {
     std::vector<float> values(256 * 4, 0.f);
     values[ssr_quality] = quality;
     values[effects_share] = 1.f;
+    values[sharp_reflections] = sharp;
     return Constants(values.data(), static_cast<UINT>(values.size() * 4));
   };
   const auto settings = settings_for(1.f);
   const auto settings_2 = settings_for(2.f);
+  const auto settings_sharp = settings_for(1.f, 1.f);
+  // Part H's measure: the game's reflections blur_x and its parameters (g_min_normal_dot 0.9, g_buffers_scale 1).
+  ComPtr<ID3D11PixelShader> blur_x;
+  if (const auto blur_code = ReadFile(game_folder + "\\0xAEA114D4.ps_4_0.cso"); !blur_code.empty()) {
+    device->CreatePixelShader(blur_code.data(), blur_code.size(), nullptr, blur_x.GetAddressOf());
+  }
+  const std::array<float, 4> blur_values = {0.f, 0.9f, 0.f, 1.f};
+  const auto blur_parameters = Constants(blur_values.data(), 16);
   // ssr00 / ssr01's blur step (o1.x) through effects_share 1: a few ulp off the game's.
   constexpr float BLUR_STEP = 1e-6f;
 
@@ -606,6 +624,75 @@ int main(int argc, char** argv) {
       CHECK(g == 0, "%s: the march still reaches the picture under the rays' reflections", pair.name);
       CHECK(g_water <= water, "%s: more than the water keeps the march without the water's rays", pair.name);
       CHECK(g_control > 0, "%s: control G does not fail", pair.name);
+      // H: Sharp Ray-Traced Reflections, against the build before the row.
+      ComPtr<ID3D11PixelShader> reference;
+      if (const auto reference_code = reference_folder.empty() ? std::vector<char>() : ReadFile(reference_folder + "\\" + pair.replacement);
+          !reference_code.empty()) {
+        device->CreatePixelShader(reference_code.data(), reference_code.size(), nullptr, reference.GetAddressOf());
+      }
+      const auto sharp_draw = [&](ID3D11PixelShader* shader, ID3D11Buffer* b13, ID3D11ShaderResourceView* reflection) {
+        return Draw(shader, view_w, view_h, view_w, view_h, scene_100, buffers_100, nullptr, b13, nullptr, reflection, water_flags.Get());
+      };
+      const Targets off = sharp_draw(replacement.Get(), settings.Get(), rays_reflection.Get());
+      const Targets on = sharp_draw(replacement.Get(), settings_sharp.Get(), rays_reflection.Get());
+      const Targets off_no_rays = sharp_draw(replacement.Get(), settings.Get(), nullptr);
+      const UINT h_off = reference ? Differ(off, sharp_draw(reference.Get(), settings.Get(), rays_reflection.Get())) : UINT_MAX;
+      const UINT h_off_no_rays = reference ? Differ(off_no_rays, sharp_draw(reference.Get(), settings.Get(), nullptr)) : UINT_MAX;
+      const UINT h_no_rays = Differ(sharp_draw(replacement.Get(), settings_sharp.Get(), nullptr), off_no_rays);
+      UINT drawn = 0;
+      UINT stepped = 0;
+      UINT kept = 0;
+      double before_sum = 0.0;
+      double before_max = 0.0;
+      double after_max = 0.0;
+      for (size_t pixel = 0; pixel < off.o0.size() / 4; ++pixel) {
+        if (off.o1[pixel * 4] == SENTINEL) continue;
+        ++drawn;
+        kept += (std::memcmp(&off.o0[pixel * 4], &on.o0[pixel * 4], 12) != 0 || off.o1[pixel * 4 + 1] != on.o1[pixel * 4 + 1]) ? 1u : 0u;
+        if (off.o1[pixel * 4] == on.o1[pixel * 4]) continue;
+        ++stepped;
+        before_sum += off.o1[pixel * 4] * 1.9 + 0.1;
+        before_max = std::max(before_max, off.o1[pixel * 4] * 1.9 + 0.1);
+        after_max = std::max(after_max, on.o1[pixel * 4] * 1.9 + 0.1);
+      }
+      // The game's blur_x with each o1 over the board (100% only: its normals at the view's size), on the pixels whose step
+      // changed.
+      double blur_off = -1.0;
+      double blur_on = -1.0;
+      if (blur_x && buffers_scale == 1.f && stepped > 0) {
+        std::vector<float> board(off.o0.size());
+        for (UINT y = 0; y < view_h; ++y) {
+          for (UINT x = 0; x < view_w; ++x) {
+            for (UINT channel = 0; channel < 4; ++channel) board[(static_cast<size_t>(y) * view_w + x) * 4 + channel] = static_cast<float>((x / 8 + y / 8) % 2);
+          }
+        }
+        const auto reflection = Texture(view_w, view_h, FLOATS, board.data());
+        const auto blurred = [&](const Targets& targets) {
+          const auto parameters_texture = Texture(view_w, view_h, FLOATS, targets.o1.data());
+          const std::array<ID3D11ShaderResourceView*, 10> blur_textures = {at_100[0].Get(), reflection.Get(), parameters_texture.Get()};
+          const std::array<ID3D11Buffer*, 3> blur_buffers = {camera_100.Get(), blur_parameters.Get(), nullptr};
+          const Targets out = Draw(blur_x.Get(), view_w, view_h, view_w, view_h, blur_textures, blur_buffers, nullptr, nullptr);
+          double sum = 0.0;
+          for (size_t pixel = 0; pixel < off.o0.size() / 4; ++pixel) {
+            if (off.o1[pixel * 4] == SENTINEL || off.o1[pixel * 4] == on.o1[pixel * 4]) continue;
+            for (size_t channel = 0; channel < 3; ++channel) sum += std::fabs(out.o0[pixel * 4 + channel] - board[pixel * 4 + channel]);
+          }
+          return sum / (3.0 * stepped);
+        };
+        blur_off = blurred(off);
+        blur_on = blurred(on);
+      }
+      const double before_mean = stepped > 0 ? before_sum / stepped : 0.0;
+      std::printf("%s, g_buffers_scale %.1f: H Sharp Ray-Traced Reflections: off vs the build before it: %u differ with the rays, %u without; "
+                  "on: the step changed in %u of %u drawn pixels (mean %.3f, max %.3f texels -> at most %.3f; the taps' reach +-%.2f, max "
+                  "+-%.2f -> +-%.2f texels), o0 / o1.y changed in %u, without the rays %u differ; the game's blur_x over a checkerboard: "
+                  "mean |blur - board| %.4f off, %.4f on\n",
+                  pair.name, buffers_scale, h_off, h_off_no_rays, stepped, drawn, before_mean, before_max, after_max, 4.0 * before_mean + 0.5,
+                  4.0 * before_max + 0.5, 4.0 * after_max + 0.5, kept, h_no_rays, blur_off, blur_on);
+      CHECK(h_off == 0 && h_off_no_rays == 0, "%s: Sharp Ray-Traced Reflections off is not the build before it (or none given)", pair.name);
+      CHECK(stepped > 0, "%s: control H (on) does not differ", pair.name);
+      CHECK(kept == 0 && h_no_rays == 0, "%s: Sharp Ray-Traced Reflections changes more than the step where the rays reflect", pair.name);
+      CHECK(blur_off < 0.0 || blur_on < blur_off, "%s: the blur is not narrower with Sharp Ray-Traced Reflections", pair.name);
     }
   }
   std::printf("%s\n", failures == 0 ? "PASS" : "FAIL");
