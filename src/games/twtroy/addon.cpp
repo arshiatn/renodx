@@ -765,7 +765,7 @@ void BuildRuntimeData() {
         .default_value = 1.00f,
         .label = "Highlight Hue Shift",
         .section = "Psycho V30",
-        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30 default (like my old addons), 2 = full.",
+        .tooltip = "Hue shift of bright highlights, like SDR: fire and explosions turn orange/yellow instead of pink/red.\n0 = none, 1 = PsychoV30's default, 2 = full.",
         .min = 0.00f,
         .max = 2.00f,
         .format = "%.2f",
@@ -1059,7 +1059,7 @@ void BuildRuntimeData() {
         .binding = &shader_injection.someindicators,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
         .default_value = 1.0f,
-        .label = "Brightness of some Unit/Building Indicator ",
+        .label = "Unit / Building Indicator Brightness",
         .section = "Extra",
         .tooltip = "Brightness of selected highlight indicators, particularly useful at night.",
         .min = 0.0f,
@@ -1073,10 +1073,7 @@ void BuildRuntimeData() {
         .default_value = 1.f,
         .label = "Distortion",
         .section = "Extra (Experimental)",
-        .tooltip = "Multiplier on distortion. YOU NEED TO CHOOSE PRESET ULTRA\n"
-                   "THEN YOUR OWN CUSTOME SETTINGS for the hidden distortion\n"
-                   "to get turned on. \n"
-                   "It was probably hidden because it is not getting used anymore!",
+        .tooltip = "Multiplier on the game's heat haze distortion. The game draws it only after its Ultra preset.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
@@ -1159,10 +1156,7 @@ void BuildRuntimeData() {
         .default_value = 1.f,
         .label = "Filmgrain",
         .section = "Extra (Experimental)",
-        .tooltip = "Multiplier on filmgrain. YOU NEED TO CHOOSE PRESET ULTRA\n"
-                   "THEN YOUR OWN CUSTOME SETTINGS for the hidden filmgrain\n"
-                   "to get turned on. \n"
-                   "It was probably hidden because it is not getting used anymore!",
+        .tooltip = "Multiplier on the game's film grain. The game draws it only after its Ultra preset.",
         .min = 0.f,
         .max = 2.f,
         .format = "%.2f",
