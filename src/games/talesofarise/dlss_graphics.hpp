@@ -1839,6 +1839,16 @@ constexpr auto OnDepthPrepass = []<DrawCommand Command>(Command&) -> renodx::uti
 // shadowing; unbound after it with the rays' (t40).
 constexpr UINT SCREEN_SPACE_SHADOWS_SLOT = 41;
 
+// Bandai's SSAO (ao00 E243580F and its two blurs, 0.11 ms at DLSS Performance, 0.34 ms at DLAA in run_124955): skipped
+// while the rays' AO or Path-Traced Ambient replaces it at every reader (lighting00-05's t5, toon00-09's t6: rt_ambient.hlsli
+// reads t41 instead). This frame's trace comes after it (the sun shadow mask): last frame's decides.
+constexpr std::array<uint32_t, 3> GAME_AO_SHADERS = {0xE243580Fu, 0x8D9AC9A4u, 0x8C5387E3u};
+
+constexpr auto OnGameAo = [](Context&) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (!talesofarise::rt_shadows::AmbientOcclusionTracedLastFrame()) return {};
+  return {.bypass = true};
+};
+
 constexpr auto OnSunShadowMask = [](Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&context);
@@ -3559,6 +3569,12 @@ inline bool Install(HMODULE module) {
   }
   // The alpha-tested draws' stream output is made from their own vertex shader's bytecode, kept from its creation.
   renodx::utils::pipeline::EnableSubobjectCaching();
+  for (const uint32_t shader_hash : GAME_AO_SHADERS) {
+    renodx::utils::command_action::Register(OnGameAo, {
+                                                          .shader_hash = shader_hash,
+                                                          .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH,
+                                                      });
+  }
   renodx::utils::command_action::Register(OnSunShadowMask, {
                                                                .shader_hash = talesofarise::rt_shadows::SUN_SHADOW_SHADER,
                                                                .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH,
@@ -3599,6 +3615,7 @@ inline void Uninstall() {
     renodx::utils::command_action::Unregister(OnLightingDraw);
     renodx::utils::command_action::Unregister(OnDepthPrepass);
     renodx::utils::command_action::Unregister(OnSunShadowMask);
+    renodx::utils::command_action::Unregister(OnGameAo);
     talesofarise::dlss::constants::Use(DLL_PROCESS_DETACH);
     talesofarise::post_filters::Store({});
     reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);

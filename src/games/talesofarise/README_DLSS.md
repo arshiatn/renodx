@@ -775,3 +775,7 @@ size; then:
   (0x7A1E0D34: 0x7A1E0D1B at shader model 6.9); the ray generation shader with shader execution reordering
   (0x7A1E0D1C) is the Experimental row **Path Tracing Reordering** (off): Attila measured reordering slower at every
   size; Tales still needs its Nsight A/B.
+- AO round 2026-11-16 (tpa_, untested in game): Bandai's SSAO (E243580F and its blurs 8D9AC9A4 / 8C5387E3; 0.11 ms at
+  DLSS Performance, 0.34 ms at DLAA with the rays in run_124955) is skipped while the rays' AO or Path-Traced Ambient
+  traced the last frame: its readers (lighting00-05 t5, toon00-09 t6; census in tools/nontw/tales/tales.tsv) read t41
+  then. GT-VBAO off under them too (one AO method).

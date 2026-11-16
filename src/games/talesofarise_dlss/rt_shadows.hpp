@@ -2541,6 +2541,14 @@ inline ComPtr<ID3D11ShaderResourceView> AmbientOcclusion() {
   return state.gpu.ambient.srv;
 }
 
+// The rays' AO reached last frame's lighting: a pass before this frame's trace (Bandai's SSAO) may leave the AO to them.
+inline bool AmbientOcclusionTracedLastFrame() {
+  using internal::state;
+  if (!ambient_occlusion.load(std::memory_order_relaxed)) return false;
+  const std::shared_lock lock(state.mutex);
+  return state.traced_frame + 1 == state.frame;
+}
+
 // This frame's ray-traced bounce light (not path traced) for the lighting pass (t42), or null (off, or not traced this
 // frame).
 inline ComPtr<ID3D11ShaderResourceView> BounceLight() {
