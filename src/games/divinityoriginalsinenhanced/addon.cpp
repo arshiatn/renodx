@@ -536,6 +536,9 @@ renodx::mods::shader::CustomShaders custom_shaders = {
     UpgradeRTVReplaceShader(0xB7FC46C3), // SMAA Pass 1
     UpgradeRTVReplaceShader(0x6AF33A9B), // SMAA Pass 2
     UpgradeRTVReplaceShader(0xFB839D33), // SMAA Pass 3
+    UpgradeRTVReplaceShader(0x25539638), // SMAA Pass 1 with LightVolume on
+    UpgradeRTVReplaceShader(0xAD516F39), // SMAA Pass 2 with LightVolume on
+    UpgradeRTVReplaceShader(0x47E69078), // SMAA Pass 3 with LightVolume on
     UpgradeRTVReplaceShader(0xDDBCD866), // Vignette
     UpgradeRTVReplaceShader(0x20163A55), // Final UI/copy target must retain HDR RGB
     __ALL_CUSTOM_SHADERS,

@@ -1,7 +1,8 @@
 // Divinity: Original Sin EE's replaced passes besides the tone map (bloom, god rays, UI, FXAA, SMAA, vignette, fog of
 // war, outlines, fire, candles, lights, the exe's colour shader) on WARP, Vanilla exact: in Rendering Mode SDR (Native)
 // each add-on shader gives the game's own bytes' picture, and a deliberately wrong copy of it (o0.x * 0.99 + 0.004 at its end,
-// written by run.ps1) must not. The tone map has its own test (test/tw_divinity1).
+// written by run.ps1) must not. The light passes (point and spot, plain and shadowed): their Player / Local Light
+// Intensity row at 2 in HDR gives twice the game's light. The tone map has its own test (test/tw_divinity1).
 // Inputs as the game's shader declares them (its reflection, the game's shaders ship it): every texture 64 x 64 of fixed
 // noise (0 - 1 for passes after the tone map, 0 - 4 before it), every constant buffer of fixed values 0 - 1 (a third set 0 - 16), samplers by
 // name (Point / Wrap / comparison), the interpolants from one vertex shader made from the game's input signature (fixed
@@ -9,7 +10,7 @@
 // at its default.
 // Compared: passes after the tone map through saturate (the game's UNORM targets), passes before it as they are
 // (R11G11B10F / RGBA16F targets), relative to max(1, |game|).
-// tests.exe <manifest>: lines "<hash> <pre|post> <game cso> <add-on cso> <mutant cso>"; exit code 0 when every check holds.
+// tests.exe <manifest>: lines "<hash> <pre|post> <game cso> <add-on cso> <mutant cso> [row]"; exit code 0 when every check holds.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -272,12 +273,19 @@ int main(int argc, char** argv) {
   }
   const auto vanilla = VanillaInjection();
   const ComPtr<ID3D11Buffer> injection = MakeConstants(&vanilla, sizeof(vanilla));
+  // The light rows at 2 in HDR (Extended): the light passes' output doubles.
+  auto doubled = vanilla;
+  doubled.tonemap_type = 3.f;
+  doubled.player_light_intensity = 2.f;
+  doubled.local_light_intensity = 2.f;
+  const ComPtr<ID3D11Buffer> doubled_injection = MakeConstants(&doubled, sizeof(doubled));
   std::ifstream manifest(argv[1]);
   int passes = 0;
   for (std::string line; std::getline(manifest, line);) {
     std::istringstream fields(line);
-    std::string hash, stage, game_path, addon_path, mutant_path;
+    std::string hash, stage, game_path, addon_path, mutant_path, row;
     if (!(fields >> hash >> stage >> game_path >> addon_path >> mutant_path)) continue;
+    fields >> row;
     const bool post = stage == "post";
     const auto game_code = ReadFile(game_path);
     const auto addon_code = ReadFile(addon_path);
@@ -285,6 +293,7 @@ int main(int argc, char** argv) {
     CHECK(!game_code.empty() && !addon_code.empty() && !mutant_code.empty());
     float worst = 0.f;
     float mutant_worst = 0.f;  // caught when any input set shows it (saturate hides it where a set's output is past 1)
+    float row_worst = 0.f;     // a light pass at its row's 2 against twice the game's light
     bool flat = true;  // the game's output one value everywhere: these inputs reach one branch only
     std::string skipped;
     // Three noise sets: other values everywhere, the third with constants 0 - 16 (other branches of a pass's tests).
@@ -300,16 +309,26 @@ int main(int argc, char** argv) {
       }
       worst = std::max(worst, Difference(game, Draw(addon_code, inputs, injection.Get()), post));
       mutant_worst = std::max(mutant_worst, Difference(game, Draw(mutant_code, inputs, injection.Get()), post));
+      if (row == "row") {
+        auto twice = game;
+        for (auto& texel : twice) {
+          for (int channel = 0; channel < 3; ++channel) texel[channel] *= 2.f;
+        }
+        row_worst = std::max(row_worst, Difference(twice, Draw(addon_code, inputs, doubled_injection.Get()), post));
+      }
     }
     if (!skipped.empty()) {
       std::printf("0x%s: NOT CHECKED (%s)\n", hash.c_str(), skipped.c_str());
       CHECK(skipped.empty());
       continue;
     }
-    std::printf("0x%s (%s): add-on against the game's bytes %.3g, the wrong copy %.3g%s\n", hash.c_str(), stage.c_str(), worst, mutant_worst,
+    std::printf("0x%s (%s): add-on against the game's bytes %.3g, the wrong copy %.3g%s", hash.c_str(), stage.c_str(), worst, mutant_worst,
                 (flat ? " (the game's output one value: one branch only)" : ""));
+    if (row == "row") std::printf("; its light row at 2 against twice the game's light %.3g", row_worst);
+    std::printf("\n");
     CHECK(worst <= TOLERANCE);
     CHECK(mutant_worst > TOLERANCE);
+    CHECK(row != "row" || row_worst <= TOLERANCE);
     ++passes;
   }
   std::printf(failures == 0 ? "tw_d1_post: %d passes Vanilla exact, every wrong copy caught\n" : "tw_d1_post: %d passes run, %d checks failed\n", passes, failures);
