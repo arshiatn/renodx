@@ -59,6 +59,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -146,8 +147,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp cand ... | next Divinity 1 agent
 - tw_install.py's include scanner counts includes inside an #ifndef the add-on def ... | coordinator (tools)
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
-- R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI ... | ru7_ (started 01:2x)
-- R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA pas ... | coordinator
+- R.U.S.E. T-run list (ATN loads a battle, one row at a time with PresentMon): DLA ... | coordinator (after the Fable review fixes)
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
 - vf_ (started 02:0x): fix the Vanilla-exact FAILs: Shogun 2 flare00 / 02 / 03 spr ... | vf_
 - PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator
@@ -1299,11 +1299,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         112 terrain PS); D3D9 runtime accepts 974 / 974 patched shaders; WARP mirror hits 16,186 / 16,186; S1 / S2 adopted
         (027e08d6 + 995b4183). Not possible yet: RT water reflections + RT GI (no G-buffer guides / albedo; route in 11b,
         M); lit objects' reflections need a combined O1 variant. ruh_ started 01:4x: H1 / H2 / H3 on the GPU.
-      - [ ] R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI would be a huge upgrade";
+      - [x] MERGED c76cb18b 02:3x (ru7_): both WON'T verdicts were wrong: RT GI needs no G-buffer (Light Bounce reads
+        positions + last frame's light; the game's patched shader multiplies by its own albedo); only ReflectPixel needs
+        guides: the game's own shaders write them as MRT (D3D9 caps: 4 targets, per-target formats / masks). Guide tables:
+        terrain 100/112, objects 543/603, water 120/120; off = the game (interpreter worst 0; D3D9 runtime 1737/1737);
+        WARP + GPU (H1 test 9: 36,864/36,864) PASS. Rows: Ground Light Bounce Off / Screen-Space / Ray-Traced /
+        Path-Traced, Water Reflections Off / Screen-Space / Ray-Traced (traced states need Ray-Traced Ground Shadows), all
+        Experimental off; RT/PT preset leaves the traced states off. Water writes no depth in 64 of 68 draws: its surface
+        goes in through guide oC3. R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI would be a huge upgrade";
         doubts "needs a G-buffer"): guides via MRT from the patched game shaders, then rt_core light bounce / paths +
         ReflectPixel; Experimental rows; branch ruse-gi. Owner: ru7_ (started 01:2x)
       - [x] DONE a98b1871 02:0x (sk_ 6b854be3 + 67e7e62d, all 17 lessons placed; zip rebuilt: Downloads\RenoDX_skills_2026-11-15.zip,
         48 files). Skills update from tonight's 17 lessons (tools/tw/round_notes/skill_lessons_1116.md) + rebuilt skills zip.
+      - [ ] R.U.S.E. T-run list (ATN loads a battle, one row at a time with PresentMon): DLAA / FSR / XeSS in game, readable
+        depth with in-game AA off, G1 sun sign / units / acne, O1 reprojection, AO range, Bend thickness, GT-VBAO darkening
+        at the real pitch, water reflections + ground bounce (units: BOUNCE_RANGE 1000 = cm?, brightness of the gamma-space
+        ambient sum, 3 SetRenderState a draw CPU cost, moving units a frame late, water draws in the replay blocking rays),
+        FG 2x on PresentMon, Reflex, MainRTDivider, Option.ini 8192 / 4x, S2 SDR output + S3 test hooks; H2 with the helper
+        on the GI inputs. 12 terrain + 60 object PS keep the game's ambient (no guide patch). Owner: coordinator (after the
+        Fable review fixes)
       - [x] ruh_ GPU TESTS PASS + MERGED df26e42c 02:2x: af61a7ae real bug (the bridge could never start: D3D9Ex opens
         D3D11-made shared textures only as RGBA16F / RGB10A2 / BGRA8; now D3D9Ex makes them, compute writes via D3D11 work
         textures + copy); H1 PASS (INTZ 1e-5, 10-bit 0 of 36,864 differ, jitter restored bit for bit), H2 PASS (DLSS / FSR
