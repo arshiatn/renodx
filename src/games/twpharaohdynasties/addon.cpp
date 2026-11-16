@@ -1649,7 +1649,8 @@ constexpr auto OnSkyDomeGuides = []<typename Context>(Context& command) -> renod
   return {};
 };
 
-// Rays Replace Shadow Maps (Experimental, off): the sun draws reading the per-frame atlas (g_tShadowBuffer_SM50 t3 through
+// Rays Replace Shadow Maps (on by default: ours replaces the game's, ATN 2026-11-16; sun_test V54 below: P1-P3 0 of
+// 2,752,512 values, CONTROL P3c 1,486,680): the sun draws reading the per-frame atlas (g_tShadowBuffer_SM50 t3 through
 // sShadowBuffer_SM50 s2, its only reads of s2; the other 13 sun shaders read the kept baked map alone or no map, and all
 // of them sample another texture with s2) take every comparison there as lit (an ALWAYS sampler) where the rays' shadow is
 // bound at t49, so their patched comparisons (screen_space_shadows.hpp Patch, each x the rays' visibility) give the rays'
@@ -2290,9 +2291,9 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 
 namespace {
 
-// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
-// (the sun shaders' patched comparisons) or replace the per-frame ones (Rays Replace Shadow Maps), ray-traced AO multiplies
-// the game's SSAO; point lights, the fog, the smoke and the water's reflections hooked.
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows replace the per-frame shadow maps
+// (Rays Replace Shadow Maps; off: they multiply them through the sun shaders' patched comparisons), ray-traced AO in place
+// of the game's SSAO; point lights, the fog, the smoke and the water's reflections hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
     .aa_tooltip = twattila::graphics_page::ATTILA_TEXTS.aa_tooltip,
@@ -2305,7 +2306,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
-                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays in place of the game's shadow maps and of Bend's.\n"
                       "Needs an upscaler.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
@@ -2948,7 +2949,6 @@ void ConfigureAddon() {
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
-                                             .rays_replace_maps_tested = false,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
@@ -3002,9 +3002,11 @@ bool AttachAddon() {
   }
 
   // Rows saved at an old default, cleared once: Smoke Shadows and Sprite Soldier Shadows were saved hidden at RT/PT's 1
-  // (SetRaysPresetDefaults) until they showed, Experimental and off.
+  // (SetRaysPresetDefaults) until they showed, Experimental and off. Rays Replace Shadow Maps was saved at its old
+  // Experimental 0; now on by default.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSmokeShadows"});
   twattila::graphics_page::ClearSavedRows(2, {"RayTracedSpriteShadows"});
+  twattila::graphics_page::ClearSavedRows(3, {"RayTracedReplaceShadowMaps"});
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
