@@ -204,9 +204,7 @@ void main(
     o0.xyz = r0.xyz * lut_weights[2] + r1.xyz;
     o0.w = r0.w;
 
-    o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, SDR_STOCK_GAMMA);
-    o0.xyz *= SDR_PAPER_WHITE;
-    o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
+    o0.xyz = SdrToFrame(o0.xyz, g_gamma_output, SDR_PAPER_WHITE);
     return;
   }
 
@@ -226,9 +224,7 @@ void main(
     graded_hdr = ApplyWarhammer2Psycho(graded_hdr);
   }
 
-  o0.xyz = graded_hdr;
-  o0.xyz *= (SI.diffuse_white_nits / SI.graphics_white_nits);
-  o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
+  o0.xyz = HdrToFrame(graded_hdr, SI.diffuse_white_nits / SI.graphics_white_nits);
   o0.w = output_alpha;
   return;
 

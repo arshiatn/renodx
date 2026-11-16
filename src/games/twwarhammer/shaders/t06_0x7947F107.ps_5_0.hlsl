@@ -263,9 +263,7 @@ void main(
     o0.xyz = r0.xyz * lut_weights[2] + r1.xyz;
     o0.w = r0.w;
 
-    o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, SDR_STOCK_GAMMA);
-    o0.xyz *= SDR_PAPER_WHITE;
-    o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
+    o0.xyz = SdrToFrame(o0.xyz, g_gamma_output, SDR_PAPER_WHITE);
     return;
   }
 

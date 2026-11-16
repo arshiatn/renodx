@@ -1,7 +1,7 @@
 // TROY menuvideo00 - menu / UI video sprite (BT.601 limited-range YUV -> RGB).
 //
-// Same change as Pharaoh's cinematics00. Stock encodes pow(1/g_gamma_output); encode 2.2
-// instead and put SDR white at Paper White. Same in both modes - the video is display-
+// Same change as Pharaoh's cinematics00. Stock encodes pow(1/g_gamma_output); encode the
+// frame's gamma instead and put SDR white at Paper White. Same in both modes - the video is display-
 // referred, there is nothing to tone map. Matches t01-t08's SDR path exactly: their
 // decode/encode round trip is identity here, nothing touches the value in between.
 //
@@ -102,16 +102,14 @@ void main(
   r0.xy = float2(2.4000001,2.4000001) * r0.xy;
   r0.xy = exp2(r0.xy);
   r3.yz = saturate(r2.yz ? r1.zw : r0.xy);
-  // Paper White, then the 2.2 encode the swapchain proxy expects. Stock's
-  // pow(1/g_gamma_output) and a decode back would cancel, so it collapses to this.
-  // Paper White, AutoHDR (Video Dithering: 1 code value of noise on the 2.2 encoded video first), then the 2.2 encode
-  // the swapchain proxy expects; the game's pow(1 / g_gamma_output) dropped.
+  // Paper White, AutoHDR (Video Dithering: 1 code value of noise on the 2.2 encoded video first), then the frame's gamma
+  // (the swapchain proxy's decode, twattila/frame_gamma.hlsli); the game's pow(1 / g_gamma_output) dropped.
   float3 video = r3.xyz;
   if (HDR >= 1.f && SI.video_autohdr > 0.f && SI.video_dithering != 0.f) {
     video = renodx::color::gamma::DecodeSafe(renodx::color::gamma::EncodeSafe(video)
                                              + (frac(52.9829189f * frac(dot(floor(v0.xy), float2(0.06711056f, 0.00583715f)))) - 0.5f) / 255.f);
   }
-  o0.xyz = renodx::color::gamma::EncodeSafe(AutoHdrHighlights(saturate(video), SI.video_autohdr)
-                                            * (SI.diffuse_white_nits / SI.graphics_white_nits));
+  o0.xyz = EncodeFrame(AutoHdrHighlights(saturate(video), SI.video_autohdr)
+                       * (SI.diffuse_white_nits / SI.graphics_white_nits));
   return;
 }

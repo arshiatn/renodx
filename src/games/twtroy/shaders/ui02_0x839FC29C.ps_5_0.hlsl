@@ -123,11 +123,9 @@ void main(
 
   if (HDR >= 0.5f)
   {
-    // Stock's sqrt() is gamma 2.0, but the swapchain decodes 2.2 (as the display
-    // did in stock). Decoding 2.2 keeps the round trip exact below the knee.
-    float3 backdrop =
-        renodx::color::gamma::DecodeSafe(
-            max(o0.xyz, 0.f.xxx));
+    // Stock's sqrt() is gamma 2.0, decoded with the frame's gamma (the swapchain's decode: 2.2 with Gamma Correction,
+    // as the display did in stock): the round trip stays exact below the knee.
+    float3 backdrop = DecodeFrame(max(o0.xyz, 0.f.xxx));
 
     // 1.0 in this compositing buffer corresponds to UI white.
     // Allow recovered scene detail to use the actual display peak.
@@ -149,7 +147,7 @@ void main(
     }
 
     // The finished frame is gamma-encoded, matching the swapchain decode.
-    o0.xyz = renodx::color::gamma::EncodeSafe(backdrop);
+    o0.xyz = EncodeFrame(backdrop);
     return;
   }
 

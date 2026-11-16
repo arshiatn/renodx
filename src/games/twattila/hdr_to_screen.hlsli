@@ -76,25 +76,14 @@ float4 HdrToScreenOutput(float3 hdr_color, float alpha)
       color = ApplyAttilaPsychoV30(graded_hdr);
     }
   }
-  // Gamma Correction: the game's gamma 2.0 picture as the frame's 2.2 decode shows it (off, 2.0: as it is).
-  [branch]
-  if (TW_FRAME_GAMMA != 2.f) {
-    color = EmulateFrameGamma(color, HDR_PEAK);
-  }
-  return float4(EncodeFrame(color * ATTILA_PAPER_WHITE), saturate(alpha));
+  return float4(HdrToFrame(color, ATTILA_PAPER_WHITE), saturate(alpha));
 }
 
 // SDR: the stock result, clipped as the original 8-bit target, at Paper White relative to UI (in the frame's gamma).
-// Gamma Correction starts from gamma 2.0 whatever the in-game Gamma (the frame's 2.2 decode shows it as a 2.2 display
-// does); off, the in-game Gamma stays.
 float4 SdrToScreenOutput(float4 stock)
 {
   stock = saturate(stock);
-  [branch]
-  if (SI.gamma_correction != 0.f) {
-    stock.xyz = renodx::color::gamma::EncodeSafe(renodx::color::gamma::DecodeSafe(stock.xyz, g_gamma_output), 2.f);
-  }
-  stock.xyz = EncodeFrame(DecodeFrame(stock.xyz) * ATTILA_PAPER_WHITE);
+  stock.xyz = SdrToFrame(stock.xyz, g_gamma_output, ATTILA_PAPER_WHITE);
   return stock;
 }
 

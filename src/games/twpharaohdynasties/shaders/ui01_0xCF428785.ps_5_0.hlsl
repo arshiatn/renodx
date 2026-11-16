@@ -127,10 +127,10 @@ void main(
 
   if (HDR >= 0.5f)
   {
-    // Stock's sqrt() is a gamma-2.0 encode, but the swapchain decodes 2.2 - and so did
-    // the display in stock. Decoding 2.2 recovers exactly the linear light SDR shows,
-    // which makes the round trip an identity below the knee.
-    float3 backdrop = renodx::color::gamma::DecodeSafe(max(o0.xyz, 0.f.xxx));
+    // Stock's sqrt() is a gamma-2.0 encode, decoded with the frame's gamma (the swapchain's
+    // decode: 2.2 with Gamma Correction, as the display in stock): the round trip is an
+    // identity below the knee.
+    float3 backdrop = DecodeFrame(max(o0.xyz, 0.f.xxx));
 
     float ui_white = max(SI.graphics_white_nits, 0.0001f);
     float ceiling = max(SI.peak_white_nits / ui_white, 1.0001f);
@@ -142,7 +142,7 @@ void main(
       backdrop *= mapped / max_channel;
     }
 
-    o0.xyz = renodx::color::gamma::EncodeSafe(backdrop);
+    o0.xyz = EncodeFrame(backdrop);
     return;
   }
 

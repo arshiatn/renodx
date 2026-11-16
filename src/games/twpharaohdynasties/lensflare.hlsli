@@ -9,11 +9,9 @@ float4 ApplyPharaohLensOverlay(float4 stock_color, float scale)
 
   if (HDR >= 0.5f)
   {
-    // Scale in linear. The frame is gamma-encoded by t01-t04 at this point, matching
-    // what the swapchain proxy decodes. The ratio is the one t01 applies to the scene.
-    float3 overlay_linear = renodx::color::gamma::DecodeSafe(overlay.xyz);
-    overlay_linear *= scale * (SI.diffuse_white_nits / SI.graphics_white_nits);
-    overlay.xyz = renodx::color::gamma::EncodeSafe(overlay_linear);
+    // Scale in linear. The frame is in its gamma (t01-t04, the swapchain proxy's decode:
+    // twattila/frame_gamma.hlsli). The ratio is the one t01 applies to the scene.
+    overlay.xyz = EncodeFrame(DecodeFrame(overlay.xyz) * (scale * (SI.diffuse_white_nits / SI.graphics_white_nits)));
   }
 
   return overlay;

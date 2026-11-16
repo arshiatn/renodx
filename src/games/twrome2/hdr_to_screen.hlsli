@@ -19,7 +19,7 @@ float3 ApplyPsychoV31(float3 color)
                                                           : int(SI.v31_gamut_compression_mode));
   const float compression = 1.f + 0.5f * SI.v31_roll_off * SI.v31_roll_off;
   float3 result = renodx::tonemap::psychov::custom_psychotm_test31(
-      color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
+      color, TW_TONE_MAP_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
       SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,
       SI.v31_dechroma, 0.18f, 0.18f, 0.f, SI.v31_gamut_compression, target_gamut, compression, 1.f, 0.5f, 0.f,
       renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 1.f);
@@ -28,7 +28,7 @@ float3 ApplyPsychoV31(float3 color)
   [branch]
   if (all(result == 0.f) && scene_y > 1.000179e-6f) {
     result = renodx::tonemap::psychov::custom_psychotm_test31(
-        color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
+        color, TW_TONE_MAP_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
         SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,
         SI.v31_dechroma, 0.18f, 0.18f, 0.f, SI.v31_gamut_compression, target_gamut, compression, 1.f, 0.5f, 0.f,
         renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 0.f);
@@ -52,10 +52,10 @@ float3 ApplyPsychoV31(float3 color)
 }
 
 // HDR: the colour matrix (made for the clipped SDR image) on a copy compressed into 0 - 1 (Neutwo by max channel, its
-// exact inverse after), PsychoV30 or V31, Paper White relative to UI, 2.2 encoded.
+// exact inverse after), PsychoV30, V31 or V35, Paper White relative to UI, in the frame's gamma.
 float4 HdrToScreenOutput(float3 hdr_color, float alpha)
 {
-  const float matrix_scale = renodx::tonemap::neutwo::ComputeMaxChannelScale(hdr_color, 1.f, HDR_PEAK);
+  const float matrix_scale = renodx::tonemap::neutwo::ComputeMaxChannelScale(hdr_color, 1.f, TW_TONE_MAP_PEAK);
   const float4 matrix_input = float4(renodx::color::gamma::EncodeSafe(hdr_color * matrix_scale), 1.f);
   const float3 matrix_output_gamma = float3(dot(matrix_input, colour_matrix._m00_m10_m20_m30),
                                             dot(matrix_input, colour_matrix._m01_m11_m21_m31),
@@ -65,22 +65,20 @@ float4 HdrToScreenOutput(float3 hdr_color, float alpha)
   float3 color;
   [branch]
   if (HDR >= 3.f) {
-    color = ApplyPsychoV35(graded_hdr, HDR_PEAK, SI.swap_chain_encoding == 2.f);
+    color = ApplyPsychoV35(graded_hdr, TW_TONE_MAP_PEAK, SI.swap_chain_encoding == 2.f);
   } else if (HDR >= 2.f) {
     color = ApplyPsychoV31(graded_hdr);
   } else {
     color = ApplyPsychoV30(graded_hdr);
   }
-  color *= SI.diffuse_white_nits / SI.graphics_white_nits;
-  return float4(renodx::color::gamma::EncodeSafe(color), alpha);
+  return float4(HdrToFrame(color, SI.diffuse_white_nits / SI.graphics_white_nits), alpha);
 }
 
-// SDR: the stock result, clipped as the original 8-bit target, at Paper White relative to UI (2.2 encoded).
+// SDR: the stock result, clipped as the original 8-bit target, at Paper White relative to UI (in the frame's gamma).
 float4 SdrToScreenOutput(float4 stock)
 {
   stock = saturate(stock);
-  stock.xyz = renodx::color::gamma::DecodeSafe(stock.xyz, SDR_STOCK_GAMMA) * SDR_PAPER_WHITE;
-  stock.xyz = renodx::color::gamma::EncodeSafe(stock.xyz);
+  stock.xyz = SdrToFrame(stock.xyz, g_gamma_output, SDR_PAPER_WHITE);
   return stock;
 }
 

@@ -27,9 +27,10 @@
 //
 // TWO THINGS THAT HAVE TO BE RIGHT:
 //
-// 1. DOMAIN. Stock encodes with sqrt() (gamma 2.0), but the swapchain decodes 2.2 -
-//    and so did the display in stock. So decode 2.2, shoulder in linear light,
-//    encode 2.2: an exact identity below the knee. 1.0 here is UI white.
+// 1. DOMAIN. Stock encodes with sqrt() (gamma 2.0); the swapchain decodes the frame's
+//    gamma (2.2 with Gamma Correction, as the display did in stock). So decode it,
+//    shoulder in linear light, encode it: an exact identity below the knee. 1.0 here
+//    is UI white.
 //
 // 2. CEILING. The recovered backdrop is allowed to use the actual HDR display peak.
 //    Because 1.0 in this compositing buffer corresponds to UI white, the shoulder
@@ -160,11 +161,9 @@ void main(
 
   if (HDR >= 0.5f)
   {
-    // Stock's sqrt() is gamma 2.0, but the swapchain decodes 2.2 (as the display
-    // did in stock). Decoding 2.2 keeps the round trip exact below the knee.
-    float3 backdrop =
-        renodx::color::gamma::DecodeSafe(
-            max(o0.xyz, 0.f.xxx));
+    // Stock's sqrt() is gamma 2.0, decoded with the frame's gamma (the swapchain's decode: 2.2 with Gamma Correction,
+    // as the display did in stock): the round trip stays exact below the knee.
+    float3 backdrop = DecodeFrame(max(o0.xyz, 0.f.xxx));
 
     // Let the recovered backdrop use the actual display peak.
     // 1.0 in this compositing buffer corresponds to UI white.
@@ -181,7 +180,7 @@ void main(
       backdrop *= mapped / max_channel;
     }
 
-    o0.xyz = renodx::color::gamma::EncodeSafe(backdrop);
+    o0.xyz = EncodeFrame(backdrop);
     return;
   }
 

@@ -397,9 +397,7 @@ void main(
     // Restore the UNORM write clamp on the upgraded target.
     o0.xyzw = saturate(o0.xyzw);
 
-    o0.xyz = renodx::color::gamma::DecodeSafe(o0.xyz, SDR_STOCK_GAMMA);
-    o0.xyz *= SDR_PAPER_WHITE;
-    o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
+    o0.xyz = SdrToFrame(o0.xyz, g_gamma_output, SDR_PAPER_WHITE);
     return;
   }
 
@@ -417,9 +415,7 @@ void main(
     graded_hdr = ApplyTroyPsycho(graded_hdr);
   }
 
-  o0.xyz = graded_hdr;
-  o0.xyz *= (SI.diffuse_white_nits / SI.graphics_white_nits);
-  o0.xyz = renodx::color::gamma::EncodeSafe(o0.xyz);
+  o0.xyz = HdrToFrame(graded_hdr, SI.diffuse_white_nits / SI.graphics_white_nits);
   o0.w = output_alpha;
   return;
   return;
