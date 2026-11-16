@@ -900,6 +900,9 @@ struct Runtime {
   uint64_t new_static_time = 0;
   // The helper's status logged this long after the settings changed (each effect's GPU time as they are tried).
   uint64_t status_log_time = 0;
+  // A trace point asked for a trace this session: the status line's reason while the helper has written no status yet
+  // (R.U.S.E.'s line ended at ": " when its trace point never ran, 2026-11-16).
+  bool trace_asked = false;
   std::unordered_map<uint32_t, std::vector<std::string>> new_static_examples;  // the last three each
   std::unordered_map<uint32_t, uint32_t> dynamic_buffers;  // draws captured every frame for their dynamic vertex buffers
   // The placed draws logged per vertex shader (their instancing and vertex buffers, the first two each; ATN 2026-10-28:
@@ -2930,6 +2933,7 @@ inline void NotTraced(const std::string& reason) {
 inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, const Camera& camera) {
   auto& objects = runtime.objects;
   if (!Enabled() || runtime.traced_frame == runtime.frame) return false;
+  runtime.trace_asked = true;
   const CpuTime timed(runtime.timed ? &runtime.costs.trace_ticks : nullptr);
   if (!dlaa_bridge::bridge.ray_tracing || !objects.constants) {
     NotTraced(dlaa_bridge::bridge.ray_tracing ? "its objects were not made" : "DLAA's bridge has no ray tracing textures");
@@ -3358,6 +3362,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
 // The same with the camera in `camera_buffer` (host.camera); false: not the main view's.
 inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, ID3D11Buffer* camera_buffer) {
   if (!Enabled() || runtime.traced_frame == runtime.frame) return false;
+  runtime.trace_asked = true;
   Camera camera;
   if (depth == nullptr || camera_buffer == nullptr || !host.camera(camera_buffer, &camera)) {
     NotTraced(depth == nullptr ? "no depth bound at its pass" : "no main camera in its pass's camera buffer");
@@ -4054,6 +4059,13 @@ inline void Update(const Settings& settings) {
     }
     constexpr std::array<const char*, 5> TESTS = {"", " (scene test: the terrain alone)", " (scene test: objects and trees alone)",
                                                   " (scene test: no leaves)", " (scene test: none kept off-screen)"};
+    // Before the helper's first status, why there is none (a missing status line is a finding: no trace point, or every
+    // request refused).
+    std::string status = dlaa_bridge::TraceStatus();
+    if (status.empty()) {
+      status = (runtime.trace_asked ? "no status from the helper yet (see the \"no trace this frame\" lines)"
+                                    : "no trace asked yet (the pass that asks for it has not run)");
+    }
     // The Light Bounce's rays and bounces too: its GPU time follows them (ATN's 2026-11-13 log: 19-40 ms for a minute
     // between two settings changes, 5-7 ms around them, the rays not in the log).
     renodx::utils::log::i("[Total War] Ray tracing with ", (effects.empty() ? std::string("nothing") : effects),
@@ -4061,7 +4073,7 @@ inline void Update(const Settings& settings) {
                           settings.light_bounce ? std::format(" (Light Bounce {} rays, {} bounces)", settings.light_bounce_rays,
                                                               settings.path_tracing ? settings.path_bounces : 0u)
                                                 : std::string(),
-                          ": ", dlaa_bridge::TraceStatus());
+                          ": ", status);
   }
   if (const uint64_t now = GetTickCount64(); now >= runtime.new_static_time + 10000) {
     if (!settings.debug_log) {
