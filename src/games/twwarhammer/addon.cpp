@@ -112,6 +112,7 @@ void ApplyHDRPreset(
       {"gamma_correction", 1.f},
       {"sky_smooth", 0.f},
       {"sky_smooth_strength", 1.f},
+      {"sky_deband", 0.f},
       {"exposure", exposure},
       {"highlights", highlights},
       {"shadows", shadows},
