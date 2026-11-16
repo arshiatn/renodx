@@ -13,7 +13,8 @@
 // 4. Motion: prepare's camera motion from that depth (c4-c7 the inverse view-projection, c0-c3 a previous one with the
 //    camera moved) against the CPU's reprojection of the same depth (worst 0.05 px or 0.3%); with the game's velocity
 //    (s2 .yz, c9.w 1): an object's patch takes its own, the rest the camera's.
-// 5. Jitter: OnDraw on a scene draw writes rows 0 / 1 of c0-c3 + offset x row 3 (read back from the device), the census
+// 5. Jitter: OnDraw on a scene draw (its INTZ depth registered as ReShade's init_resource_view reports it: the bound
+//    level-0 surface, not the texture) writes rows 0 / 1 of c0-c3 + offset x row 3 (read back from the device), the census
 //    VS drawn with them moves clip.xy by offset x clip.w (worst 1% of the offset), the next non-scene draw gets the game's
 //    c0-c3 back bit for bit.
 // 6. GT-VBAO (ray_tracing.hpp ShadeGround with the Screen-Space Ground Ambient Occlusion row alone: no helper, the
@@ -478,6 +479,13 @@ int main(int argc, char** argv) {
   const ComPtr<IDirect3DTexture9> depth_texture = MakeTarget(host, INTZ, D3DUSAGE_DEPTHSTENCIL);
   REQUIRE(depth_texture != nullptr);
   const ComPtr<IDirect3DSurface9> depth_surface = Level(depth_texture.Get());
+  // Made readable as ReShade reports it: init_resource_view with the texture as the resource and its level-0 surface as
+  // the view, the handle the binds give.
+  const auto register_depth = [&] {
+    bridge::OnInitDepthView(&host_device, {reinterpret_cast<uint64_t>(depth_texture.Get())}, reshade::api::resource_usage::depth_stencil,
+                            reshade::api::resource_view_desc(reshade::api::resource_view_type::texture_2d, reshade::api::format::intz, 0, 1, 0, 1),
+                            {reinterpret_cast<uint64_t>(depth_surface.Get())});
+  };
   const ComPtr<IDirect3DTexture9> scratch = MakeTarget(host, D3DFMT_A8R8G8B8);
   const ComPtr<IDirect3DSurface9> scratch_surface = Level(scratch.Get());
   host->SetRenderTarget(0, scratch_surface.Get());
@@ -627,7 +635,8 @@ int main(int argc, char** argv) {
   state.ready = true;
   state.render_target_is_frame_sized = true;
   state.depth_stencil = reinterpret_cast<uint64_t>(depth_surface.Get());
-  state.intz_depths = {state.depth_stencil};
+  register_depth();
+  CHECK(bridge::IsSceneDraw());
   state.vertex_camera = VIEW_PROJECTION;
   state.jitter = {0.3125f, -0.2f};
   host->SetVertexShaderConstantF(0, VIEW_PROJECTION.data(), 4);
@@ -678,7 +687,7 @@ int main(int argc, char** argv) {
     std::ranges::copy(inverse_float, state.camera.begin() + 16);
     state.camera[32] = RENDER_DT;
     state.camera_valid = true;
-    state.intz_depths = {reinterpret_cast<uint64_t>(depth_surface.Get())};
+    register_depth();
     auto& rays = ruse::ray_tracing::state;
     rays.vbao = true;
     rays.prepass_depth = reinterpret_cast<uint64_t>(depth_surface.Get());
@@ -893,9 +902,8 @@ int main(int argc, char** argv) {
     state.camera[32] = RENDER_DT;
     state.camera_valid = true;
     state.pixel_texture_0 = reinterpret_cast<uint64_t>(scene.Get());
-    state.scene_depth = reinterpret_cast<uint64_t>(depth_surface.Get());
-    state.depth_stencil = state.scene_depth;
-    state.intz_depths = {state.scene_depth};
+    state.depth_stencil = reinterpret_cast<uint64_t>(depth_surface.Get());
+    register_depth();
     constexpr float BACKGROUND = 0.2f;
     constexpr float FOREGROUND = 0.8f;
     const auto draw_frame = [&](bool jittered) {

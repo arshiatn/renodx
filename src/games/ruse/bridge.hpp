@@ -424,6 +424,16 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   DrawQuad(host, target, state.writeback.Get(), result, constants);
 }
 
+// Readable Scene Depth's INTZ depths by the handle the binds give: ReShade's init_resource names an INTZ depth by its
+// texture (the surface's replacement), bind_render_targets_and_depth_stencil by its level-0 surface, as its view
+// (d3d9_device.cpp: CreateDepthStencilSurface, the auto depth-stencil, SetDepthStencilSurface).
+inline void OnInitDepthView(reshade::api::device* device, reshade::api::resource, reshade::api::resource_usage usage_type,
+                            const reshade::api::resource_view_desc& desc, reshade::api::resource_view view) {
+  if (usage_type != reshade::api::resource_usage::depth_stencil || desc.format != reshade::api::format::intz) return;
+  state.intz_depths.insert(view.handle);
+  state.host_device = device;
+}
+
 // The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth.
 inline bool IsSceneDraw() {
   return state.render_target_is_frame_sized && state.intz_depths.contains(state.depth_stencil);
