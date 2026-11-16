@@ -13,6 +13,11 @@
 //   still holds the window (the fallback: the game's own swap effect, SDR for that chain).
 // - ClearState drops the game's other state and still misses a view referenced elsewhere: the fix unbinds the views,
 //   releases its own, and flushes.
+// - The fix in ReShade's order (twattila/device_loss.hpp release_flip_chains_before_recreate; its own code on WARP:
+//   test/tw_device_loss case 3c): destroy_swapchain comes before the chain's last release, so the views are unbound and
+//   the context flushed there, and flushed again at the next create_swapchain.
+// - The limit: a view of the old back buffer held elsewhere keeps the window, and neither the chain's nor the buffer's
+//   reference count shows it, so no blt fallback can be chosen ahead of CreateSwapChain.
 // tests.exe; exit code 0 when every check holds.
 #include <windows.h>
 #include <d3d11.h>
@@ -49,8 +54,27 @@ static HRESULT MakeChain(HWND window, DXGI_SWAP_EFFECT effect, IDXGISwapChain** 
   return factory->CreateSwapChain(device.Get(), &desc, chain);
 }
 
-// The game's last frame on a chain, then every reference the game holds goes.
-static bool LeaveChain(HWND window, DXGI_SWAP_EFFECT effect, Left left) {
+// The fix's unbinding (mods::swapchain_v2 OnDestroySwapchain): the output merger's targets and every stage's textures
+// and the compute UAVs; samplers, shaders and buffers stay.
+static void UnbindViews() {
+  ID3D11RenderTargetView* no_targets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+  ID3D11ShaderResourceView* no_resources[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+  ID3D11UnorderedAccessView* no_uavs[D3D11_1_UAV_SLOT_COUNT] = {};
+  context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, no_targets, nullptr);
+  context->VSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->HSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->DSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->GSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->CSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, no_resources);
+  context->CSSetUnorderedAccessViews(0, D3D11_PS_CS_UAV_REGISTER_COUNT, no_uavs, nullptr);
+}
+
+// The game's last frame on a chain, then every reference the game holds goes. With `kept` (the fix, at ReShade's
+// destroy_swapchain, before the chain's last release): the views unbound and the back buffer kept by one reference;
+// with `flush_before_release` instead, the views unbound and the context flushed there (no reference kept).
+static bool LeaveChain(HWND window, DXGI_SWAP_EFFECT effect, Left left, ID3D11Texture2D** kept = nullptr,
+                       bool flush_before_release = false) {
   ComPtr<IDXGISwapChain> chain;
   ComPtr<ID3D11Texture2D> back_buffer;
   if (FAILED(MakeChain(window, effect, &chain)) || FAILED(chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer)))) return false;
@@ -59,13 +83,15 @@ static bool LeaveChain(HWND window, DXGI_SWAP_EFFECT effect, Left left) {
   constexpr FLOAT CLEAR[4] = {};
   context->OMSetRenderTargets(1, target.GetAddressOf(), nullptr);
   context->ClearRenderTargetView(target.Get(), CLEAR);
+  bool presented = false;
   switch (left) {
     case Left::TARGET_BEFORE_PRESENT:
-      return SUCCEEDED(chain->Present(0, 0));
+      presented = SUCCEEDED(chain->Present(0, 0));
+      break;
     case Left::TARGET_AFTER_PRESENT:
-      if (FAILED(chain->Present(0, 0))) return false;
+      presented = SUCCEEDED(chain->Present(0, 0));
       context->OMSetRenderTargets(1, target.GetAddressOf(), nullptr);
-      return true;
+      break;
     case Left::READ_AS_TEXTURE: {
       // D3D11 refuses a texture binding of a resource bound as a target: the target goes first.
       ID3D11RenderTargetView* no_target = nullptr;
@@ -73,13 +99,50 @@ static bool LeaveChain(HWND window, DXGI_SWAP_EFFECT effect, Left left) {
       ComPtr<ID3D11ShaderResourceView> resource;
       if (FAILED(device->CreateShaderResourceView(back_buffer.Get(), nullptr, &resource))) return false;
       context->PSSetShaderResources(0, 1, resource.GetAddressOf());
-      return SUCCEEDED(chain->Present(0, 0));
+      presented = SUCCEEDED(chain->Present(0, 0));
+      break;
     }
     case Left::VIEW_HELD:
       held_view = target;
-      return SUCCEEDED(chain->Present(0, 0));
+      presented = SUCCEEDED(chain->Present(0, 0));
+      break;
   }
-  return false;
+  if (presented && (kept != nullptr || flush_before_release)) {
+    UnbindViews();
+  }
+  if (presented && kept != nullptr) {
+    *kept = back_buffer.Get();
+    (*kept)->AddRef();
+  }
+  if (presented && flush_before_release) {
+    context->Flush();
+  }
+  return presented;
+}
+
+// The fix in ReShade's order: views unbound and a Flush at destroy_swapchain (the back buffer's other references read
+// there, as a fallback would have to), a Flush at the next create_swapchain, then the flip chain the mod asks for.
+// `references_left`: the back buffer's references besides the one taken to read them.
+static HRESULT RecreateWithFix(Left left, ULONG* references_left, const char* name) {
+  HWND window = CreateWindowExW(0, L"STATIC", L"tw_d1_swapchain", WS_OVERLAPPEDWINDOW, 40, 40, 320, 200, nullptr, nullptr, nullptr, nullptr);
+  ShowWindow(window, SW_SHOWNOACTIVATE);
+  HRESULT result = E_FAIL;
+  *references_left = ~0ul;
+  ID3D11Texture2D* probe = nullptr;
+  if (LeaveChain(window, DXGI_SWAP_EFFECT_FLIP_DISCARD, left, &probe, true)) {
+    probe->AddRef();
+    *references_left = probe->Release() - 1;
+    probe->Release();
+    context->Flush();
+    ComPtr<IDXGISwapChain> chain;
+    result = MakeChain(window, DXGI_SWAP_EFFECT_FLIP_DISCARD, &chain);
+  }
+  std::printf("%-80s 0x%08X, references left %lu\n", name, static_cast<unsigned>(result), *references_left);
+  held_view.Reset();
+  context->ClearState();
+  context->Flush();
+  DestroyWindow(window);
+  return result;
 }
 
 static void LetGo(Release release) {
@@ -111,11 +174,12 @@ static void LetGo(Release release) {
   }
 }
 
-static HRESULT Recreate(DXGI_SWAP_EFFECT first, Left left, Release release, DXGI_SWAP_EFFECT next, const char* name) {
+static HRESULT Recreate(DXGI_SWAP_EFFECT first, Left left, Release release, DXGI_SWAP_EFFECT next, const char* name,
+                        bool flush_before_release = false) {
   HWND window = CreateWindowExW(0, L"STATIC", L"tw_d1_swapchain", WS_OVERLAPPEDWINDOW, 40, 40, 320, 200, nullptr, nullptr, nullptr, nullptr);
   ShowWindow(window, SW_SHOWNOACTIVATE);
   HRESULT result = E_FAIL;
-  if (LeaveChain(window, first, left)) {
+  if (LeaveChain(window, first, left, nullptr, flush_before_release)) {
     LetGo(release);
     ComPtr<IDXGISwapChain> chain;
     result = MakeChain(window, next, &chain);
@@ -161,6 +225,27 @@ int main() {
   // The game's own blt chain as the fallback works while a flip chain still holds the window.
   CHECK(SUCCEEDED(Recreate(FLIP, Left::TARGET_AFTER_PRESENT, Release::NOTHING, BLT, "flip -> blt, target bound after Present (fallback)")));
   CHECK(SUCCEEDED(Recreate(FLIP, Left::VIEW_HELD, Release::NOTHING, BLT, "flip -> blt, a view held (fallback)")));
+
+  // ReShade's order: destroy_swapchain comes before the chain's last release, so a Flush there is too early.
+  {
+    const HRESULT early = Recreate(FLIP, Left::TARGET_AFTER_PRESENT, Release::NOTHING, FLIP,
+                                   "flip -> flip, target after Present, unbind + Flush before the release only", true);
+    std::printf("  (the create-time Flush is %s)\n", (SUCCEEDED(early) ? "not needed on WARP" : "needed"));
+  }
+  // The fix in ReShade's order (twattila/device_loss.hpp release_flip_chains_before_recreate): unbind and Flush at
+  // destroy_swapchain, Flush at the next create_swapchain.
+  {
+    ULONG references = 0;
+    CHECK(SUCCEEDED(RecreateWithFix(Left::TARGET_BEFORE_PRESENT, &references, "fix: target bound before Present")));
+    CHECK(references == 0);
+    CHECK(SUCCEEDED(RecreateWithFix(Left::TARGET_AFTER_PRESENT, &references, "fix: target bound after Present (the crash)")));
+    CHECK(references == 0);
+    CHECK(SUCCEEDED(RecreateWithFix(Left::READ_AS_TEXTURE, &references, "fix: read as texture")));
+    CHECK(references == 0);
+    // The limit: a view another holder keeps still takes the window, and the buffer's count says nothing of it.
+    CHECK(RecreateWithFix(Left::VIEW_HELD, &references, "fix: a view held elsewhere (the limit)") == E_ACCESSDENIED);
+    CHECK(references == 0);
+  }
 
   // ClearState drops the game's other state (a sampler it set once); unbinding the views keeps it.
   {

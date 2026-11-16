@@ -144,7 +144,11 @@ struct CommandList : command_list {
 
 struct Swapchain : swapchain {
   Device* owner = nullptr;
-  uint64_t get_native() const override { throw std::runtime_error("unexpected swapchain call: get_native"); }
+  IDXGISwapChain* native_chain = nullptr;  // the destroyed chain of case 3c
+  uint64_t get_native() const override {
+    if (native_chain == nullptr) throw std::runtime_error("unexpected swapchain call: get_native");
+    return reinterpret_cast<uint64_t>(native_chain);
+  }
   device* get_device() override { return owner; }
   void get_private_data(const uint8_t guid[16], uint64_t* data) const override { throw std::runtime_error("unexpected swapchain call: get_private_data"); }
   void set_private_data(const uint8_t guid[16], const uint64_t data) override { throw std::runtime_error("unexpected swapchain call: set_private_data"); }
@@ -290,6 +294,9 @@ static void Reset() {
   loss::resizing = false;
   loss::keep_game_desc = false;
   loss::native_flip_window = nullptr;
+  loss::release_flip_chains_before_recreate = false;
+  loss::released_flip_window = nullptr;
+  loss::released_flip_device = nullptr;
   loss::last_present_tick = 0;
 }
 
@@ -586,6 +593,85 @@ static int Parent(const wchar_t* self) {
     }
     frame_generation = false;
     output::Configure({.shader_encoding = &encoding, .setting = output::SCRGB});
+  }
+
+  // 3c. A new chain for the window on the same live device (Divinity: Original Sin EE, 2-4 times a start): the game's
+  //     last flip chain, its back buffer bound for the next frame, then ReShade's destroy_swapchain, then the game's last
+  //     release. Off (as before): the window stays the old chain's. On (release_flip_chains_before_recreate): the views
+  //     go and the context is flushed at the destroy, flushed again at the next create. A view held elsewhere still keeps
+  //     the window (the limit: nothing can tell it ahead of CreateSwapChain).
+  {
+    HWND window = MakeWindow(SW_SHOWNOACTIVATE);
+    mock::Device device;
+    ComPtr<ID3D11DeviceContext> context;
+    CHECK(MakeDevice(&device, &context));
+    loss::OnInitDevice(&device);
+    const D3D11_SAMPLER_DESC sampler_desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                             .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                             .MaxLOD = D3D11_FLOAT32_MAX};
+    ComPtr<ID3D11SamplerState> sampler;
+    CHECK(SUCCEEDED(device.native->CreateSamplerState(&sampler_desc, &sampler)));
+    const auto leave_chain = [&](ComPtr<ID3D11RenderTargetView>* held_elsewhere) {
+      ComPtr<IDXGISwapChain> chain;
+      ComPtr<ID3D11Texture2D> back;
+      ComPtr<ID3D11RenderTargetView> view;
+      if (FAILED(MakeChain(device.native.Get(), window, DXGI_SWAP_EFFECT_FLIP_DISCARD, &chain)) || FAILED(chain->GetBuffer(0, IID_PPV_ARGS(&back)))
+          || FAILED(device.native->CreateRenderTargetView(back.Get(), nullptr, &view))) {
+        return false;
+      }
+      context->PSSetSamplers(0, 1, sampler.GetAddressOf());
+      context->OMSetRenderTargets(1, view.GetAddressOf(), nullptr);
+      if (FAILED(chain->Present(0, 0))) return false;
+      context->OMSetRenderTargets(1, view.GetAddressOf(), nullptr);
+      mock::Swapchain destroyed;
+      destroyed.owner = &device;
+      destroyed.native_chain = chain.Get();
+      loss::OnDestroySwapchain(&destroyed, false);
+      if (held_elsewhere != nullptr) *held_elsewhere = view;
+      return true;
+    };
+    const auto free_window = [&] {
+      context->ClearState();
+      context->Flush();
+    };
+    ComPtr<IDXGISwapChain> chain;
+    auto desc = GameDesc(DXGI_SWAP_EFFECT_DISCARD);
+    // Off: today's start crash (the control).
+    CHECK(leave_chain(nullptr));
+    CHECK(loss::released_flip_window == nullptr);
+    CHECK(!loss::BeforeSwapchainMod(reshade::api::device_api::d3d11, desc, window));
+    CHECK(MakeChain(device.native.Get(), window, DXGI_SWAP_EFFECT_FLIP_DISCARD, &chain) == E_ACCESSDENIED);
+    free_window();
+    // On: the flip chain the mod asks for is made, the game's sampler kept, the upgrade as ever.
+    loss::release_flip_chains_before_recreate = true;
+    CHECK(leave_chain(nullptr));
+    CHECK(loss::released_flip_window == window && loss::released_flip_device == device.native.Get());
+    ComPtr<ID3D11SamplerState> kept_sampler;
+    context->PSGetSamplers(0, 1, &kept_sampler);
+    CHECK(kept_sampler.Get() == sampler.Get());
+    CHECK(!loss::BeforeSwapchainMod(reshade::api::device_api::d3d11, desc, window));
+    CHECK(loss::released_flip_window == nullptr && !loss::keep_game_desc);
+    CHECK(SUCCEEDED(MakeChain(device.native.Get(), window, DXGI_SWAP_EFFECT_FLIP_DISCARD, &chain)));
+    chain.Reset();
+    free_window();
+    // The limit: a view of the old back buffer held elsewhere still keeps the window.
+    ComPtr<ID3D11RenderTargetView> held;
+    CHECK(leave_chain(&held));
+    CHECK(!loss::BeforeSwapchainMod(reshade::api::device_api::d3d11, desc, window));
+    CHECK(MakeChain(device.native.Get(), window, DXGI_SWAP_EFFECT_FLIP_DISCARD, &chain) == E_ACCESSDENIED);
+    held.Reset();
+    free_window();
+    // A resize changes nothing; the device's end forgets the window.
+    mock::Swapchain resized;
+    loss::OnDestroySwapchain(&resized, true);
+    CHECK(loss::released_flip_window == nullptr);
+    CHECK(leave_chain(nullptr));
+    CHECK(loss::released_flip_device == device.native.Get());
+    loss::OnDestroyDevice(&device);
+    CHECK(loss::released_flip_device == nullptr && loss::released_flip_window == nullptr);
+    free_window();
+    DestroyWindow(window);
+    Reset();
   }
 
   // 4. Who asks a device for its removed reason, and the frame thread's place when frames stop.
