@@ -73,12 +73,11 @@ constexpr const char* HELPER =
     "Phantom FX (MIT). AMD FSR: Advanced Micro Devices, Inc. (MIT License). XeSS: Intel Corporation (Intel "
     "Simplified Software License). Every license ships with the mod.";
 
-// The DLSS add-ons (talesofarise_dlss's frame generation, shared by Ryse's, Expeditions: Rome's and Shogun 2's).
-constexpr const char* DLSS_ADDON =
-    "The DLSS add-on: NVIDIA DLSS (the NGX SDK, under the NVIDIA RTX SDKs license) and Streamline (MIT): NVIDIA "
-    "Corporation (this software contains source code provided by NVIDIA Corporation); NVIDIA and DLSS are trademarks "
-    "and/or registered trademarks of NVIDIA Corporation. Frame generation's D3D12 device after Bustanity's Phantom FX "
-    "(MIT). Hooks: Microsoft Detours (MIT). Every license ships with the mod.";
+// The add-ons compiling the NGX SDK's header for DLSS's presets (Ryse's; Shogun 2's, which hooks the game's own DLSS
+// with it). DLSS itself, Streamline and frame generation run in the helper (HELPER).
+constexpr const char* NGX_HEADER =
+    "NVIDIA DLSS's presets: the NGX SDK's header (NVIDIA RTX SDKs license); NVIDIA and DLSS are trademarks and/or "
+    "registered trademarks of NVIDIA Corporation. Every license ships with the mod.";
 
 // The ACES reference rendering transform (Tales of Arise's and Expeditions: Rome's UE Extended).
 constexpr const char* ACES =

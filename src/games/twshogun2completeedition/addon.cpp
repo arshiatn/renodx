@@ -2660,7 +2660,7 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = twattila::credits::DLSS_ADDON,
+          .label = twattila::credits::NGX_HEADER,
           .section = "About",
       },
       new renodx::utils::settings::Setting{

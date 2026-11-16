@@ -2088,8 +2088,7 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "NVIDIA DLSS's presets: the NGX SDK's header (NVIDIA RTX SDKs license); NVIDIA and DLSS are trademarks "
-                   "and/or registered trademarks of NVIDIA Corporation. Every license ships with the mod.",
+          .label = twattila::credits::NGX_HEADER,
           .section = "About",
       },
       new renodx::utils::settings::Setting{
