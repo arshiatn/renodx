@@ -141,6 +141,12 @@
 //    blur_y writes every texel of B the same whatever B held (its u0 only stored): so nothing reads the sweep's or the
 //    collect's output then. CONTROLS: the game's blur_x changes with B (the collect's output has that one reader); blur_y
 //    over one group less leaves B's old texels.
+// 27. Warhammer II's Skip the Game's Reflection Passes (src/games/twwarhammer2/shaders/ssr00_0x7E1CDD0A, its resolve
+//    replacement, on 64 x 64 targets laid out as in ATN's traces: t4-t6 G-buffer, t7 the march's hits, t8 the lit scene's mips):
+//    under the rays' reflections (t47 bound) bit-identical texels whatever the hits (t7) and the light mips 1-6 (t8) hold, so
+//    the hierarchical depth FD885574 / 73BA2BE9 and both mip chains' downscale and blurs (9733C5E0 / 7C650AD9 / BFD99540)
+//    go with the march; t8's mip 0 alpha (the lit scene's sun shadow, written by the preconvolve copy 07966BBA) is still read,
+//    so the copy stays. CONTROLS: without the rays the hits and mips change the output; under the rays mip 0's alpha does.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -156,6 +162,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <regex>
 #include <span>
@@ -3546,6 +3553,161 @@ static void TestBitmaskSkips(const std::string& root, const std::string& dump) {
               ours_apart, WIDTH * HEIGHT, blur_y_apart, blur_x_control, blur_y_control);
 }
 
+
+// Part 27: Warhammer II's resolve replacement with `hits` in t7 (its every texel's distance), `mips` added to t8's mips 1-6,
+// `shadow` t8 mip 0's alpha, the rays at t47 or not.
+struct Wh2ResolveRun {
+  float hits = 65504.f;
+  float mips = 0.f;
+  float shadow = 1.f;
+  bool rays = false;
+  float ao = 1.f;           // t1 (the game's AO)
+  float occlusion = -1.f;   // t46 (the rays' specular occlusion; below 0: unbound)
+  float confidence = 1.f;   // t7's x (the march's hit; 0.4 or below: no confidence)
+};
+
+static std::vector<Float4> RunWh2Resolve(ID3D11ComputeShader* shader, const Wh2ResolveRun& run) {
+  constexpr UINT SIZE = 64;
+  constexpr UINT MIPS = 7;
+  std::vector<Float4> normal(SIZE * SIZE, Float4{0.5f, 0.3125f, 0.5f, 0.f});
+  std::vector<Float4> specular(SIZE * SIZE, Float4{0.5f, 0.5f, 0.5f, 1.f / 255.f});
+  std::vector<Float4> depth(SIZE * SIZE, Float4{0.1f, 0.f, 0.f, 0.f});
+  // The march's hits and the lit scene with their mip chains (as the game's downscale leaves them).
+  const auto mipped = [&](const std::function<Float4(UINT, UINT, UINT)>& texel) {
+    std::vector<std::vector<Float4>> levels;
+    std::vector<D3D11_SUBRESOURCE_DATA> initial;
+    for (UINT mip = 0; mip < MIPS; ++mip) {
+      const UINT width = std::max(SIZE >> mip, 1u);
+      auto& level = levels.emplace_back(static_cast<size_t>(width) * width);
+      for (UINT y = 0; y < width; ++y) {
+        for (UINT x = 0; x < width; ++x) level[(static_cast<size_t>(y) * width) + x] = texel(mip, x, y);
+      }
+    }
+    for (UINT mip = 0; mip < MIPS; ++mip) {
+      initial.push_back({.pSysMem = levels[mip].data(), .SysMemPitch = std::max(SIZE >> mip, 1u) * 16});
+    }
+    const D3D11_TEXTURE2D_DESC desc = {.Width = SIZE, .Height = SIZE, .MipLevels = MIPS, .ArraySize = 1, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    ComPtr<ID3D11Texture2D> texture;
+    ComPtr<ID3D11ShaderResourceView> view;
+    device->CreateTexture2D(&desc, initial.data(), texture.GetAddressOf());
+    device->CreateShaderResourceView(texture.Get(), nullptr, view.GetAddressOf());
+    return view;
+  };
+  const auto hits = mipped([&](UINT mip, UINT, UINT) { return Float4{run.confidence, run.hits + static_cast<float>(mip), 0.f, 0.f}; });
+  const auto radiance = mipped([&](UINT mip, UINT x, UINT y) {
+    const float add = (mip == 0) ? 0.f : run.mips;
+    return Float4{static_cast<float>(x) + 0.5f + add, static_cast<float>(y) + 0.5f + add, 1.f + add, (mip == 0) ? run.shadow : 1.f};
+  });
+  const std::vector<Float4> cube(6, Float4{0.25f, 0.25f, 0.25f, 1.f});
+  const auto cube_texture = Texture(1, 1, cube.data(), D3D11_BIND_SHADER_RESOURCE, 6, D3D11_RESOURCE_MISC_TEXTURECUBE);
+  ComPtr<ID3D11ShaderResourceView> cube_view;
+  const D3D11_SHADER_RESOURCE_VIEW_DESC cube_desc = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY,
+                                                     .TextureCubeArray = {.MostDetailedMip = 0, .MipLevels = 1, .First2DArrayFace = 0, .NumCubes = 1}};
+  device->CreateShaderResourceView(cube_texture.Get(), &cube_desc, cube_view.GetAddressOf());
+  const auto ssao = View(SIZE, SIZE, std::vector<Float4>(SIZE * SIZE, Float4{run.ao, run.ao, run.ao, run.ao}));
+  const auto harmonics = View(9, 6, std::vector<Float4>(9 * 6, Float4{}));
+  const auto cloud = View(4, 4, std::vector<Float4>(16, Float4{}));
+  const auto normal_view = View(SIZE, SIZE, normal);
+  const auto specular_view = View(SIZE, SIZE, specular);
+  const auto depth_view = View(SIZE, SIZE, depth);
+  const std::array<ID3D11ShaderResourceView*, 9> views = {cube_view.Get(),     ssao.Get(),       harmonics.Get(), cloud.Get(), normal_view.Get(),
+                                                          specular_view.Get(), depth_view.Get(), hits.Get(),      radiance.Get()};
+  const auto output = Texture(SIZE, SIZE, nullptr, D3D11_BIND_UNORDERED_ACCESS);
+  ComPtr<ID3D11UnorderedAccessView> uav;
+  device->CreateUnorderedAccessView(output.Get(), nullptr, uav.GetAddressOf());
+  std::array<float, 16 * 4> environment = {};
+  environment[0] = 1.f;           // weight 0
+  environment[15 * 4 + 1] = 1.f;  // g_environment_count
+  // The camera as part 2's (identity view at the origin, x and y over z, near / far around the surface) in WH2's layout.
+  std::array<float, 48 * 4> camera = {};
+  for (const size_t row : {0u, 1u, 2u}) camera[(1 + row) * 4 + row] = 1.f;
+  camera[4 * 4 + 3] = 1.f;
+  camera[5 * 4 + 0] = 1.f;
+  camera[6 * 4 + 1] = 1.f;
+  camera[8 * 4 + 2] = 1.f;
+  camera[21 * 4 + 0] = 1.f;
+  camera[22 * 4 + 1] = 1.f;
+  camera[23 * 4 + 3] = 1.f;
+  camera[24 * 4 + 2] = 1.f;
+  camera[25 * 4 + 0] = 9.5f;
+  camera[25 * 4 + 1] = 10.5f;
+  for (const size_t row : {27u, 29u, 31u}) {
+    camera[row * 4 + 0] = static_cast<float>(SIZE);
+    camera[row * 4 + 1] = static_cast<float>(SIZE);
+    camera[row * 4 + 2] = 1.f / static_cast<float>(SIZE);
+    camera[row * 4 + 3] = 1.f / static_cast<float>(SIZE);
+  }
+  // lighting_VS_PS: environment specular on, SSR on, no harmonics, cloud shadows off (scale 1, lerp 0); the sun overhead
+  // (colour 1) and the sky's colour 0.5 (the resolve divides the sky's luminance by the sky's and the sun's: not 0 / 0).
+  std::array<uint32_t, 19 * 4> lighting = {};
+  lighting[0] = 1u;
+  lighting[0 * 4 + 2] = std::bit_cast<uint32_t>(1.f);
+  for (const size_t channel : {0u, 1u, 2u}) {
+    lighting[1 * 4 + channel] = std::bit_cast<uint32_t>(1.f);
+    lighting[4 * 4 + channel] = std::bit_cast<uint32_t>(0.5f);
+  }
+  lighting[11 * 4 + 0] = 1u;
+  lighting[12 * 4 + 1] = std::bit_cast<uint32_t>(1.f);
+  const std::array<ID3D11Buffer*, 3> buffers = {Constants(environment.data(), sizeof(environment)).Detach(), Constants(camera.data(), sizeof(camera)).Detach(),
+                                                Constants(lighting.data(), sizeof(lighting)).Detach()};
+  const D3D11_SAMPLER_DESC point = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                    .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  D3D11_SAMPLER_DESC linear = point;
+  linear.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+  ComPtr<ID3D11SamplerState> point_sampler;
+  ComPtr<ID3D11SamplerState> linear_sampler;
+  device->CreateSamplerState(&point, point_sampler.GetAddressOf());
+  device->CreateSamplerState(&linear, linear_sampler.GetAddressOf());
+  const std::array<ID3D11SamplerState*, 5> samplers = {linear_sampler.Get(), point_sampler.Get(), point_sampler.Get(), point_sampler.Get(), linear_sampler.Get()};
+  context->CSSetShader(shader, nullptr, 0);
+  context->CSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
+  context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+  const auto rays = View(SIZE, SIZE, std::vector<Float4>(static_cast<size_t>(SIZE) * SIZE, Float4{0.3f, 0.2f, 0.1f, 0.8f}));
+  if (run.rays) context->CSSetShaderResources(47, 1, rays.GetAddressOf());
+  const auto occlusion = View(SIZE, SIZE, std::vector<Float4>(static_cast<size_t>(SIZE) * SIZE, Float4{run.occlusion, 0.f, 0.f, 0.f}));
+  if (run.occlusion >= 0.f) context->CSSetShaderResources(46, 1, occlusion.GetAddressOf());
+  context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+  context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
+  context->Dispatch((SIZE + 31) / 32, (SIZE + 31) / 32, 1);
+  context->ClearState();
+  for (auto* buffer : buffers) buffer->Release();
+  return Read(output.Get());
+}
+
+static void TestWh2ReflectionSkip(const std::string& games) {
+  const std::string path = games + "/twwarhammer2/shaders/ssr00_0x7E1CDD0A.cs_5_0.hlsl";
+  const auto ours = ComputeShader(ReadText(path), path);
+  if (ours == nullptr) {
+    CHECK(false, "WH2 reflection skip: ssr00_0x7E1CDD0A compiles");
+    return;
+  }
+  constexpr float MARCH = 2.f;
+  const auto rays_first = RunWh2Resolve(ours.Get(), {.rays = true});
+  const auto rays_second = RunWh2Resolve(ours.Get(), {.hits = MARCH, .mips = 100.f, .rays = true});
+  const auto rays_shadowed = RunWh2Resolve(ours.Get(), {.shadow = 0.25f, .rays = true});
+  const auto game_first = RunWh2Resolve(ours.Get(), {});
+  const auto game_second = RunWh2Resolve(ours.Get(), {.hits = MARCH, .mips = 100.f});
+  const auto differ = [](const Float4& a, const Float4& b) { return std::memcmp(a.data(), b.data(), 3 * sizeof(float)) != 0; };
+  int rays_differ = 0;
+  int rays_used = 0;
+  int shadow_read = 0;
+  int game_differ = 0;
+  for (size_t at = 0; at < rays_first.size(); ++at) {
+    rays_differ += differ(rays_first[at], rays_second[at]) ? 1 : 0;
+    rays_used += differ(rays_first[at], game_first[at]) ? 1 : 0;
+    shadow_read += differ(rays_first[at], rays_shadowed[at]) ? 1 : 0;
+    game_differ += differ(game_first[at], game_second[at]) ? 1 : 0;
+  }
+  const int pixels = static_cast<int>(rays_first.size());
+  CHECK(pixels == 64 * 64 && rays_differ == 0 && rays_used > pixels / 2 && shadow_read > pixels / 2 && game_differ > pixels / 2,
+        "WH2 reflection skip: under the rays %d of %d differ with other hits / mips 1-6 (rays in %d), CONTROLS mip 0 alpha %d, without the rays %d",
+        rays_differ, pixels, rays_used, shadow_read, game_differ);
+  std::printf("WH2 reflection skip: under the rays %d of %d texels differ with other hits (t7) and light mips 1-6 (t8), the rays in %d; CONTROLS: "
+              "t8 mip 0's alpha (the preconvolve copy's) changes %d, without the rays the hits and mips change %d\n",
+              rays_differ, pixels, rays_used, shadow_read, game_differ);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <the game's shader dump folder>\n");
@@ -3586,6 +3748,7 @@ int main(int argc, char** argv) {
   TestRaycast(argv[2]);
   TestLuma(argv[1], argv[2]);
   TestBitmaskSkips(argv[1], argv[2]);
+  TestWh2ReflectionSkip(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

@@ -484,6 +484,9 @@ bool bitmask_ao = false;
 // the collect (only its dispatch is skipped).
 bool bitmask_collect_drawn = false;
 bool bitmask_collect_last_frame = false;
+// Skip the Game's Reflection Passes (on by default): decided at the hierarchical depth's copy for the frame (BuildRuntimeData).
+float rays_skip_reflection_passes_row = 1.f;
+bool reflection_passes_skipped = false;
 
 void BuildRuntimeData() {
   custom_shaders = {
@@ -529,6 +532,19 @@ void BuildRuntimeData() {
   custom_shaders[0x7E1CDD0A].on_drawn = [](auto* cmd_list) { twattila::rt_scene::BindReflections(cmd_list, true, false); };
   for (const uint32_t hash : {0x143BD25Cu, 0x60AF6F79u, 0xBDBC783Bu}) {
     custom_shaders[hash].on_draw = twattila::rt_scene::OnReflectionMarch;
+  }
+  // Skip the Game's Reflection Passes (on by default; Warhammer's row): under the rays' reflections the resolve's replacement
+  // reads neither the march's hits (t7) nor the light mips 1-6 (t8), and nothing else reads them or the hierarchical depth
+  // (by handle in ATN's 36 traces with the chain): the hierarchical depth (copy FD885574, gathers 73BA2BE9) and both mip
+  // chains' downscale and blurs (9733C5E0 / 7C650AD9 / BFD99540) go with the march (test/tw_warhammer_shaders part 27). The
+  // preconvolve copy 07966BBA stays: the resolve reads its mip 0's alpha (the lit scene's sun shadow) under the rays too.
+  // Decided at the hierarchical depth's copy, the chain's first pass, for the frame.
+  custom_shaders[0xFD885574].on_draw = [](auto* cmd_list) {
+    reflection_passes_skipped = rays_skip_reflection_passes_row != 0.f && !twattila::rt_scene::OnReflectionMarch(cmd_list);
+    return !reflection_passes_skipped;
+  };
+  for (const uint32_t hash : {0x73BA2BE9u, 0x9733C5E0u, 0x7C650AD9u, 0xBFD99540u}) {
+    custom_shaders[hash].on_draw = [](auto*) { return !reflection_passes_skipped; };
   }
   // The point and spot lights' and the fog's shaders: ours only while the rays are bound (RaysShader above).
   PointLightRays::Take(&custom_shaders);
@@ -1862,6 +1878,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   rt_settings.ambient_alone = true;
   bitmask_ao = shader_injection.ssao_mode >= 1.f && !rt_settings.ambient_occlusion && !rt_settings.path_ambient;
   bitmask_collect_last_frame = std::exchange(bitmask_collect_drawn, false);
+  reflection_passes_skipped = false;
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
@@ -2340,6 +2357,16 @@ void ConfigureAddon() {
       .section = twattila::feature_settings::AA_SECTION,
       .tooltip = "The GPU's time of every pass of the next frame into warhammer2_pass_timing.txt next to the game's exe.",
       .on_change = [] { twattila::pass_timing::Request(); },
+  });
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSkipGameReflections",
+      .binding = &rays_skip_reflection_passes_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 1.f,
+      .label = "Skip the Game's Reflection Passes",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Leaves out the game's screen-space reflection passes the rays' reflections replace: the same picture,\n"
+                 "a little faster.",
   });
 
   // Appended Settings (HDR10)
