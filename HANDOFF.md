@@ -3,6 +3,11 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 (shared + Ryse rounds): Auto Thickness is now OFF by default everywhere (it was labelled Experimental
+  while on; your rule: Experimental off) - keep off, or on without the label?; players' saved Fog Shadows / Specular
+  Occlusion = 1 and saved trilinear = 0 stay as saved (no ClearSavedRows) - clear them once?; Ryse: rays overwriting the
+  sun mask (not proven: off-screen casters, mask channels only on the GPU; Skip All already gives rays alone except the
+  kept far map). Owner: ATN
 - [ ] NEW 11-16 (Shogun 2 / Rome Remastered / GPU rounds): Shogun 2 Rays Replace Shadow Maps stays Experimental off (far
   soldiers / trees need their Experimental shadow rows, grass loses contact shadows, the cascades are still drawn: no cost
   saved yet) - OK?; Auto Thickness "(Experimental)" but on by default (Shogun 2, Attila, Thrones, WH3): drop the label or
@@ -206,6 +211,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - w3f_ not done: vanilla_exact over every WH3 shader + a lensflare00 control (~20 ... | next WH3 round, shs_
 - s2r_ not done: Rome Remastered Modded Auto Exposure (Feral's AE compute not iden ... | next Shogun 2 / Rome Remastered rounds and data runs
 - gpu2_ next wins: (1) paths at 128 registers (split trace / shade, or SASS livene ... | next GPU round, next ReSTIR round, tools owner
+- CALL-SITE PASS (csp_, running): credits::Methods in Thrones / WH3 / Rome Remaste ... | csp_, per-game agents
+- Shared leftovers (shs_ / ryf_): rt_core OnAnyDraw replays every draw while trace ... | next shared round, next WH3 round, release round
+- ryf_ not done: row 9 e_GsmLodsNum under the rays' sun (trace: which lod is the c ... | next Ryse round / data run
 - ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
 - Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
@@ -1609,6 +1617,39 @@ heading text are in HANDOFF_ARCHIVE.md)
           numbers for ATN); (8) one more copy (0.16 ms); (10) ns_trace_run cleanup misses an exiting helper (empty Path),
           one lingered ~20 min. Files: tools\tw\nsight runs gpu2_ns_*, scratchpad gpu2_c3_files. Owner: next GPU round,
           next ReSTIR round, tools owner
+        - [x] SHARED STEP MERGED ad7edf1b2 (shs_, 26 commits; build32 Attila / Rome II / Thrones + 13 amd64 exit 0 on its
+          branch): Fog Shadows + RT Specular Occlusion in RAY_METHODS; helper idle release = info; Lean ReSTIR and trilinear
+          LOD bias on by default (ATN 06:xx); Auto Thickness off by default (it was labelled Experimental); pass_timing one
+          call Install(prefix) + Button(section); the game's AO blurs skipped only under PT ambient alone (tw_ao_blurs: white
+          stays 1.0, control 8192 / 8192; cost blur_x 0.022 + blur_y 0.047 ms); credits::Methods + Detours line; OnNvidia =
+          vendor 0x10DE and reflex reads the vendor everywhere; tw_graphics_hooks_patterns (Attila 9/9, Thrones 9/9, Rome II
+          3/3 once, controls 0); tw_test_hooks builds again; Characters Ray Tracing Range for scene_draw hosts
+          (Expeditions); Tales RENODX_TW_NO_DXR12 / RENODX_TW_TEST_REMOVAL; constant mirror counts only while Details shows;
+          LOD bias added to c133.x (tw_view_mip_bias, control fails 4); WriteSun sun light + RT_PATH_SUN_LIGHT; frame trace
+          <game>_frame_trace.txt + change notification + t0-t127 / declared slots / VBs; RtLocalLightTraced.
+          Follow-up 620749d6c: Shogun 2 / Rome Remastered on the new pass_timing API, Shogun 2 trilinear on (coordinator).
+        - [x] Ryse MERGED 6be38b3c3 (ryf_, 18 commits; amd64 OK): ComPtr fix (static_checks clean), shadow skip through the
+          command_action bypass (11 x 837 draws bypassed; the old skip removed none), HUD / highlight / skull hotkeys same
+          trap, RT AO in place of SSDO's amount, specular occlusion once, r_SSII off under Light Bounce, video AutoHDR off at
+          SDR output (tw_ryse_video 0), vendor fallback, Reflex with any AA + limit gates, Lean on (RAYS_RESET), Characters
+          RT Range (Exp off), tw_ryse_patterns 18/18, credits, AA Off without per-frame jitter diagnostics, README fix59.
+        - [ ] CALL-SITE PASS (csp_, running): credits::Methods in Thrones / WH3 / Rome Remastered / Shogun 2 / Ryse / Tales /
+          Expeditions; credits::DLSS_ADDON stale; fast MAX_GATES 8 headroom (Ryse adds 2) with a check; run scripts read
+          <game>_frame_trace.txt. Rome II / WH1 / WH2 / Troy / Pharaoh / R.U.S.E. told to do Methods + pass_timing in their
+          rounds. Owner: csp_, per-game agents
+        - [ ] Shared leftovers (shs_ / ryf_): rt_core OnAnyDraw replays every draw while traced, defeating raw draw-event
+          skips in every rt_scene host (audit each host's raw skips + CPU cost); WH3's DLSS scaled prepare / finish and
+          rr_extra_scaled decode at 2.2 while t00 writes TW_FRAME_GAMMA 2.0 with GC off (exact round trip, wrong domain: a
+          frame-gamma float in their b0 + WARP); contact_shadows_off sharing WH3's b3 / byte-28 route; WH3 shadowed point
+          lights back with RtLocalLightTraced (keep the map where a light isn't traced); WriteSun no effect in Expeditions
+          (no PT ambient there) + the C38C91CD WARP; MSAA + DLSS + PT ambient edge (white AO without paths); Detours licence
+          file missing from the release zips. Not run in game: Characters range at 50 / 100 m, Tales switch runs, a frame
+          trace with the new code, Tales' own c133.x. Owner: next shared round, next WH3 round, release round
+        - [ ] ryf_ not done: row 9 e_GsmLodsNum under the rays' sun (trace: which lod is the cached far map, what a live 3 / 2
+          draws); LOD bias at AA Off below 100 % + main-view gate (without the gate shadow-map leaf holes sharpen);
+          Advanced's live counters + back_buffer_fix's per-bind view lookup; vanilla-exact widening, reader census, V35 fit.
+          B in game: R2 cost rerun for the skip, HUD hotkeys with RT on, r_SSII read-back 0 in the log, RENODX_TW_FAKE_VENDOR
+          8086 / 1002, Reflex with AA Off, Characters range at 50 / 100 m. Owner: next Ryse round / data run
         - [ ] ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB73442 / D9123DE1, vanilla coverage
           of pointlight00-39 / UI sprites / grass00-01 (the generic driver can't feed them); view_share Classify 24 unclear
           sun-PS rows a game (NEEDS A TRACE). The t46 x AO double-occlusion check was sent to WH3, WH1 / WH2, Troy / Pharaoh,
