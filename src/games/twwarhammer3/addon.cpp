@@ -3013,20 +3013,38 @@ constexpr auto OnCascadeCaster = []<typename Context>(Context& command) -> renod
 // their code, so a source twice their target). With Log Details, once each, at their next draw.
 constexpr std::array<uint32_t, 3> SHADOW_SIZE_SHADERS = {0xC883E3FA, 0x800F7F7F, 0xD5DCC85F};
 std::array<std::atomic_bool, SHADOW_SIZE_SHADERS.size()> shadow_size_logged = {};
+std::atomic_bool half_copy_skip_logged = false;
 constexpr auto OnShadowSizeDraw = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   const auto& hash = command.template GetCallbackData<uint32_t>();
-  // The half copy's t1: the kept maps (OnCascadeCaster), from the first frame on.
+  // The half copy (800F7F7F, 4 draws a frame in the particle shadow pass): its t1 the kept maps (OnCascadeCaster), from the
+  // first frame on. Its own target, the 2048 x 2048 [4] R32_TYPELESS array at the game's highest Shadows (HALF), has no
+  // reader: no draw or dispatch binds it in any of 93 traces, no shader in the dump declares another name for it
+  // (wh3_batch6 p4 item10_readers.md; level A). So its draws are skipped there (0.10 ms of the frame's GPU in batch 6's
+  // Time Each Pass); at any other size (another Shadows setting, Shadow Map Size) the game's draws stay.
+  bool half_copy_skipped = false;
   if (hash == 0x800F7F7F) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
     renodx::utils::directx::TryNativeFromReShadeProxy(&context);
+    if (context == nullptr) return {};
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> kept;
-    if (context != nullptr) context->PSGetShaderResources(1, 1, kept.GetAddressOf());
+    context->PSGetShaderResources(1, 1, kept.GetAddressOf());
     Microsoft::WRL::ComPtr<ID3D11Resource> resource;
     if (kept) kept->GetResource(resource.GetAddressOf());
     if (resource) kept_maps.store(reinterpret_cast<uintptr_t>(resource.Get()), std::memory_order_relaxed);
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView> half;
+    context->OMGetRenderTargets(0, nullptr, half.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Resource> half_resource;
+    if (half) half->GetResource(half_resource.GetAddressOf());
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> half_texture;
+    D3D11_TEXTURE2D_DESC half_desc = {};
+    if (half_resource && SUCCEEDED(half_resource.As(&half_texture))) half_texture->GetDesc(&half_desc);
+    half_copy_skipped = half_desc.Width == 2048 && half_desc.Height == 2048 && half_desc.ArraySize == 4 && half_desc.Format == DXGI_FORMAT_R32_TYPELESS;
+    if (half_copy_skipped && !half_copy_skip_logged.exchange(true, std::memory_order_relaxed)) {
+      renodx::utils::log::i("[Warhammer III] First run: the half copy 800F7F7F skipped (its 2048 x 2048 [4] target has no reader).");
+    }
   }
-  if (rt_sliders.debug_log == 0.f) return {};
-  if (shadow_size_logged[&hash - SHADOW_SIZE_SHADERS.data()].exchange(true, std::memory_order_relaxed)) return {};
+  if (rt_sliders.debug_log == 0.f) return {.bypass = half_copy_skipped};
+  if (shadow_size_logged[&hash - SHADOW_SIZE_SHADERS.data()].exchange(true, std::memory_order_relaxed)) return {.bypass = half_copy_skipped};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr) return {};
@@ -3060,7 +3078,7 @@ constexpr auto OnShadowSizeDraw = []<typename Context>(Context& command) -> reno
   renodx::utils::log::i(std::format("[Warhammer III] Shadow map sizes: ps {:08X}: colour {}, depth {}, viewport {:g}x{:g}, t0 {}, t1 {}{}{}.", hash,
                                     size_of(colour.Get()), size_of(depth.Get()), viewport.Width, viewport.Height, size_of(inputs[0].Get()),
                                     size_of(inputs[1].Get()), (constants.empty() ? "" : ", b0's first 12 floats"), constants));
-  return {};
+  return {.bypass = half_copy_skipped};
 };
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here.
