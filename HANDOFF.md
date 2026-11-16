@@ -152,6 +152,8 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] C: R.U.S.E.: keep its own V31 rows or move to Attila's 15 v31_* rows (saved V31 looks change)? Hue Clip 100 by eye? (from: "ATN DECIDES (R.U.S.E.): keep R.U.S.E.'s own V31 rows ...")
 - [ ] C: R.U.S.E. at the end: Extended replacing V31 Native Tone or beside it? (from: "ATN at the end (R.U.S.E.): Extended replacing V31 Native Tone ...")
 - [ ] C: Hue Clip by eye: Ryse 80, Tales 70, Expeditions 70, Divinity 2 80 (60 is closer on average), Thrones (its S-curve texture is in no dump)? (from: "ATN by eye: Hue Clip Ryse 80 ...")
+- [ ] C: Divinity 1 Smooth Grade Shoulder: keep it an Experimental row (off, now), or the default? On: OkLab 0.033 at 0.8-1, 0.025 at 1-2, 0.006 at 2-4, 0.002 at 4-16. (from: "C9 Divinity 1 grade shoulder ...")
+- [ ] C: Divinity 1 / 2 VFX / indicator rows: OK to patch the effects' pixel shader output (D1 633, D2 2,050 permutations) with a constant buffer, as Troy's VFX brightness? (from: "dvf_ not done ...")
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -216,7 +218,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Expeditions rays-on DLAA 22.9 fps with GPU busy 9.31 ms (frame 43.7 ms): a stall ... | next UE round
 - Expeditions unreplaced post into 8-bit f90 targets before the tonemapper: A45907 ... | next UE round
 - ATN by eye (Divinity 1): Hue Clip 70 in Extended / V35. Owner: ATN | ATN
-- D1 steps 9-10 + Graphics 2 of 2: helper route at 100 % (DLAA / FSR / XeSS, b12 j ... | d1_ after R1
+- (steps 9-10 DONE div1_ 315588b61: helper DLAA / FSR / XeSS at 100 %, b12 jitter, ... | d1_ after R1
 - ATN at the end (Divinity 1): drop or keep the legacy V30 / Pragmap modes. Owner: ... | ATN
 - ATN DECIDES (Divinity 2): "Exact Colour LUT (Experimental)", off: the game reads ... | ATN
 - Divinity 2 SHARED STEP: output_encoding needs a game-owned-output flag (Apply mu ... | coordinator (shared-steps round after the fix merge)
@@ -228,8 +230,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN DECIDES (R.U.S.E.): keep R.U.S.E.'s own V31 rows or move to Attila's 15 v31_ ... | ATN
 - R.U.S.E. C2: 15 marker / map-interface draws pre-undo the post grade (authored c ... | ru_
 - ATN at the end (R.U.S.E.): Extended replacing V31 Native Tone or beside it; Hue ... | ATN
-- Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp cand ... | next Divinity 1 agent
-- tw_install.py's include scanner counts includes inside an #ifndef the add-on def ... | coordinator (tools)
+- (part DONE div1_: sun pass b0 / b12 / b13 + SSAO readers from R1; LEFT: R7 RGBA8 ... | next Divinity 1 agent
+- (D1 no longer hits it: div1_ includes rt_scene.hpp directly, PROFILE define gone ... | coordinator (tools)
 - tw_install.py: stamp only through it. Stamping a build in place made it refuse; ... | coordinator (note)
 - R.U.S.E. T-run list (ATN loads a battle, one row at a time with PresentMon): DLA ... | coordinator (T-run with ATN)
 - R.U.S.E.: Ray Reconstruction for the rays (today DLAA preset K + our own denoise ... | ATN decides, then the game's next round
@@ -259,7 +261,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan ... | ATN (go-ahead), then a Ryse round
 - ATN 11-16 ~11:4x BUG: Attila path-traced GI: wall corners off screen (Constantin ... | gpu3_, then coordinator (all PT games share the helper)
 - AUDIT 11-16 (hca_, tools/tw/round_notes/handoff_audit_1116.md: ATN 10:5x "forgot ... | ?
-- A1a Divinity 1 SSR: keep the exe's lsx after exit + static read of the SSREnable ... | div1_ (read), coordinator (run)
+- (read DONE div1_ 5d59f99f7: the exe never loads / saves SSREnabled, settings byt ... | div1_ (read), coordinator (run)
 - A1b Divinity 1 next run: Sun Shadow Softness 1 / 2 in a sunlit still view. Owner ... | coordinator (D1 run)
 - A1c Divinity runners: copy divinity_pass_timing.txt after each Time Each Pass pr ... | coordinator (run tooling)
 - A1d Why run_r2gamma_042527 wrote no frame trace at +300 s. Owner: coordinator | coordinator
@@ -297,11 +299,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - C3 Ryse: prove the rays overwriting the sun mask (dual-source split, the cascade ... | rys2_
 - C4 WH3 / Rome II: prove Replace for the sun shadows, then default (your replace ... | tw2_
 - C6 Ryse: Texture LOD Bias on All Textures on by default, label without "(Experim ... | rys2_
-- C9 Divinity 1 grade shoulder (a6762afab, installed d1 v3): back to the previous ... | div1_
 - C10 Shogun 2 Auto Thickness rows off by default as the shared ones (23fb900c2). ... | tw3_
 - D1 Boxes no round owned, now assigned: scorer (L749), DLSS RR 310.9 paths boil ( ... | those rounds
 - NEXT ROUNDS 11-16 (ATN ~10:4x: "start doing everything that is in next game and ... | coordinator
 - ATN 10:3x "Where are PT AO / PT GI for all the games?": every TW game, Shogun 2, ... | tpa_, next Divinity rounds
+- DIVINITY 1 RUN (div1_ 11-16 NEEDS A RUN, save T1, in-game AA off, helper next to ... | coordinator (one game at a time)
+- Divinity 1 next (div1_ 11-16): render scale below 100 % (view_share) + texture L ... | next Divinity 1 round
+- SHARED STEP: rt_core's path ambient works only for TW hosts (internal::ambient_c ... | shared round with tpa_'s result
 - Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask ... | next Divinity 2 round
 - Bench script: constantinople_bench.ps1 checks build tools 3 times in a row; a bu ... | next shared round
 - Reset / No RT/PT cost (eob_ 11-16): Bend +0.96 ms and GT-VBAO / GT-VBGI +0.94 ms ... | next shared round
@@ -1210,7 +1214,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [x] DONE 11-16 (d1 v1 / v2 stamped + installed): D1 install: --first (add-on + DevKit are symlinks in Shipping today), DevKit aside, fresh backup. Owner:
         coordinator (next install)
       - [ ] ATN by eye (Divinity 1): Hue Clip 70 in Extended / V35. Owner: ATN
-      - [ ] D1 steps 9-10 + Graphics 2 of 2: helper route at 100 % (DLAA / FSR / XeSS, b12 jitter, camera motion, FG,
+      - [ ] (steps 9-10 DONE div1_ 315588b61: helper DLAA / FSR / XeSS at 100 %, b12 jitter, camera motion, FG, Reflex, RR guides, RT sun shadows into the PCSS mask, RT AO over SSAO, Experimental off, tw_d1_rays WARP pass; LEFT: Graphics 2 of 2 (settings bytes 0x4C-0x54 known, readers + a run each) and the D1 run a-c) D1 steps 9-10 + Graphics 2 of 2: helper route at 100 % (DLAA / FSR / XeSS, b12 jitter, camera motion, FG,
         Reflex, RR guides); rt_core host (RT shadows into the PCSS mask, RT AO). Owner: d1_ after R1
       - [x] DONE 11-16 (ran 01:40 (run_r1_014005) and r2ssr 03:21 (run_r2ssr_032119)): D1 R1 run (after steps 1 + 7, ATN's OK, no DevKit): main-menu torches (fire values, point lights, run-time
         shader dump), beach Params / ColorMatrix vs atmospheres.tsv, b12, mode shots, timing, window-mode path with the
@@ -1402,9 +1406,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: coordinator. Divinity 1 window-switch crash: d1f_ (started 01:5x) finds what holds the old flip chain (view clones,
         ReShade refs), releases it at destroy_swapchain, adds an E_ACCESSDENIED safety net (retry as the game's blt chain),
         extends tw_d1_swapchain; then a vanilla control run (no ReShade) and a re-run of the switch with ATN. Owner: d1f_
-      - [ ] Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp candidates, torch / fire values,
+      - [ ] (part DONE div1_: sun pass b0 / b12 / b13 + SSAO readers from R1; LEFT: R7 RGBA8 readers, clamp candidates, torch / fire values, PCSS constants) Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp candidates, torch / fire values,
         PCSS constants; SSREnabled 1 + a second mode cycle at the next run. Owner: next Divinity 1 agent
-      - [ ] tw_install.py's include scanner counts includes inside an #ifndef the add-on defines (rt_scene.hpp via
+      - [ ] (D1 no longer hits it: div1_ includes rt_scene.hpp directly, PROFILE define gone; the scanner fix left) tw_install.py's include scanner counts includes inside an #ifndef the add-on defines (rt_scene.hpp via
         test_hooks.hpp:31 for Divinity 1) and refuses a current build. Owner: coordinator (tools)
       - [ ] tw_install.py: stamp only through it. Stamping a build in place made it refuse; the fix was to move the
         stamped bytes to build/stamped and truncate. Owner: coordinator (note)
@@ -1859,7 +1863,7 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] AUDIT 11-16 (hca_, tools/tw/round_notes/handoff_audit_1116.md: ATN 10:5x "forgotten some stuff ... because of not
         having enough ticks?"): 49 items had no box, 7 ticks claimed too much, 11 of your answers were still asked or not
         in code, 15 boxes had no round. Fixed above (ticks, answers) and boxed here; every box sent to its round.
-        - [ ] A1a Divinity 1 SSR: keep the exe's lsx after exit + static read of the SSREnabled reader, then one SSR start.
+        - [ ] (read DONE div1_ 5d59f99f7: the exe never loads / saves SSREnabled, settings byte 0x4E always 0; row "Game's Screen-Space Reflections (Experimental)" writes it, exe-guarded, 81bb5f511; the SSR start = D1 run d left) A1a Divinity 1 SSR: keep the exe's lsx after exit + static read of the SSREnabled reader, then one SSR start.
           Owner: div1_ (read), coordinator (run)
         - [ ] A1b Divinity 1 next run: Sun Shadow Softness 1 / 2 in a sunlit still view. Owner: coordinator (D1 run)
         - [ ] A1c Divinity runners: copy divinity_pass_timing.txt after each Time Each Pass press; PresentMon with nothing
@@ -1922,7 +1926,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           Owner: tw2_
         - [ ] C6 Ryse: Texture LOD Bias on All Textures on by default, label without "(Experimental)" (your 05:55 answer;
           addon.cpp:2166-2173, graphics.hpp:1110). Owner: rys2_
-        - [ ] C9 Divinity 1 grade shoulder (a6762afab, installed d1 v3): back to the previous default, the smooth shoulder as
+        - [x] DONE div1_ 9da00b28b (knee at 1 again; Smooth Grade Shoulder row Experimental off, in Reset; WARP row off = a6762afab^ 0 of 3,538,944 texels, control 0.26): C9 Divinity 1 grade shoulder (a6762afab, installed d1 v3): back to the previous default, the smooth shoulder as
           an Experimental row, off (unless you keep it: top). Owner: div1_
         - [ ] C10 Shogun 2 Auto Thickness rows off by default as the shared ones (23fb900c2). Owner: tw3_
         - [ ] D1 Boxes no round owned, now assigned: scorer (L749), DLSS RR 310.9 paths boil (L751), both D3D12 devices
@@ -1945,6 +1949,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         (kept only under the Open Sky row); Divinity 1 / 2 have no ray tracing at all yet (rt_core host: the D1 steps
         9-10 box + a D2 one below); R.U.S.E. has a path-traced ground bounce, no separate PT AO. Owner: tpa_, next
         Divinity rounds
+      - [ ] DIVINITY 1 RUN (div1_ 11-16 NEEDS A RUN, save T1, in-game AA off, helper next to the add-on): a. DLSS K / M / L,
+        FSR, XeSS: "[Divinity] Upscaling: applied" + status line, still shot vs SMAA, pan with Upscaling Debug View, walking
+        characters, FG 2x + FG Debug View 1, Reflex, PresentMon, Time Each Pass; b. a DLSS-on trace: 224-byte b12 uploads
+        a frame (expect 1, Map or UpdateSubresource), world UI / cursor highlights 0x9B114FEF / 0x83553BB1 shimmer; c. RT/PT
+        preset + restart: status line, RT Debug View, sunlit shots vs the game's shadows / SSAO, RR on / off, Time Each Pass,
+        leaf cut-outs; d. Game's SSR row + restart: log line, DeferredSSR 0x14E188F5 / Combine 0x2B8FCDB8 in a trace, a
+        reflective surface shot, keep graphicSettings.lsx as at exit. Owner: coordinator (one game at a time)
+      - [ ] Divinity 1 next (div1_ 11-16): render scale below 100 % (view_share) + texture LOD bias; characters' own motion
+        vectors; skip the shadow pass under RT shadows (292 caster draws); skip the SSAO chain under RT AO (0.086 ms; the
+        trace must move before SSAO, no reader between BlurV and the sun pass in R1 T1); RT reflections after run d; the
+        page label says "Graphics 1 of 2". Owner: next Divinity 1 round
+      - [ ] SHARED STEP: rt_core's path ambient works only for TW hosts (internal::ambient_cube): Path-Traced Ambient + RT /
+        PT GI for non-TW hosts (Divinity 1 / 2, same gap as Tales / Expeditions, tpa_). Owner: shared round with tpa_'s result
       - [ ] Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask, RT AO / PT ambient replacing
         PPApplyAO, RT / PT GI replacing the IBL diffuse, RT reflections replacing IBL_Specular; the ledger's stacking lines)
         as Divinity 1's steps 9-10. Owner: next Divinity 2 round
