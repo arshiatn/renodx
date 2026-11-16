@@ -803,6 +803,10 @@ constexpr uint32_t SMAA_WEIGHTS_HASH = 0x50B25933;
 constexpr uint32_t FXAA_HASH = 0x02DC3AD9;
 // ClusteredLightingWithSSAO (perspective): PerFrame bound at its b13 (the sun's direction for the rays, ray_tracing.hpp).
 constexpr uint32_t CLUSTERED_LIGHTING_HASH = 0xA6E6A660;
+// DeferredSSR's march and DeferredSSRCombine (perspective; level B, no trace with the game's SSR on yet): left out under
+// the rays' reflections (ray_tracing.hpp).
+constexpr uint32_t REFLECTION_MARCH_HASH = 0xEB5998CF;
+constexpr uint32_t REFLECTION_COMBINE_HASH = 0x0FA22D5A;
 
 // The graphics page's anti-aliasing: the game's, the helper's DLSS, FSR and XeSS (dlaa.hpp: in DLSS's place).
 constexpr std::array<int, 4> AA_METHODS = {0, 5, 6, 7};
@@ -818,8 +822,8 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .in_game_aa_note = "DLSS, FSR and XeSS take the place of the game's SMAA or FXAA: any in-game Anti-Aliasing works.",
     .reset_tooltip = "Everything on this page but Anti-Aliasing back to its default: the game's shadows and AO.",
     .no_rays_tooltip = "The game's own shadows and ambient occlusion. The rest of this page at its default.",
-    .rays_tooltip = "Ray-traced sun shadows, ambient occlusion and global illumination at my settings. The rest of this page at its\n"
-                    "default.\n"
+    .rays_tooltip = "Ray-traced sun shadows, ambient occlusion, global illumination and reflections at my settings. The rest of\n"
+                    "this page at its default.\n"
                     "Needs an upscaler (Anti-Aliasing above). Restart the game after turning ray tracing on.",
     .shadow_tooltip = "Game's Shadow Maps: the original. DXR: ray-traced sun shadows in their place (keep in-game\n"
                       "shadows on). Needs an upscaler. Restart the game after turning it on.",
@@ -828,6 +832,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Path-Traced: the sky's light itself from Global Illumination's paths, its shade included.\n"
                   "Needs an upscaler. Restart the game after turning it on.",
     .gi_tooltip_end = "\nRestart the game after turning it on.",
+    .reflections_tooltip = "Reflections on metal, water and polished floors.\n"
+                           "Game's SSR: the original (its light probes, with in-game SSR its screen-space reflections). DXR: from\n"
+                           "rays, also what is off screen or hidden, in their place. Needs an upscaler. Restart the game after turning it on.",
 };
 
 // Each replaced shader's first use is logged once (the "applied" lines of a data run); a bit per custom shader.
@@ -1164,10 +1171,18 @@ void ConfigureAddon() {
   custom_shaders[CLUSTERED_LIGHTING_HASH] = {
       .crc32 = CLUSTERED_LIGHTING_HASH,
       .on_draw = [](reshade::api::command_list* cmd_list) {
-        divinity2::ray_tracing::KeepSun(cmd_list);
+        divinity2::ray_tracing::OnLighting(cmd_list);
         return true;
       },
       .on_drawn = divinity2::ray_tracing::LightBounce,
+  };
+  custom_shaders[REFLECTION_MARCH_HASH] = {
+      .crc32 = REFLECTION_MARCH_HASH,
+      .on_draw = [](reshade::api::command_list* cmd_list) { return !divinity2::ray_tracing::SkipReflectionMarch(cmd_list); },
+  };
+  custom_shaders[REFLECTION_COMBINE_HASH] = {
+      .crc32 = REFLECTION_COMBINE_HASH,
+      .on_draw = [](reshade::api::command_list* cmd_list) { return !divinity2::ray_tracing::ReplaceReflectionCombine(cmd_list); },
   };
   // The IBL diffuse passes (the sky's and the light probes'): Path-Traced Ambient's sky, the paths in their diffuse's place.
   for (const auto& pass : divinity2::ray_tracing::internal::AMBIENT_PASSES) {
@@ -1208,10 +1223,11 @@ void ConfigureAddon() {
   };
 
   // The graphics page (twattila/graphics_page.hpp, Attila's): its anti-aliasing rows (feature_settings::AppendAa: DLSS
-  // with its preset, frame generation and Reflex; SMAA, CMAA2 and TAA stay hidden), the rays' rows
-  // (rt_scene::AppendSettings: sun shadows and AO here), shown in Advanced (Settings Mode).
-  twattila::feature_settings::AppendAa(&settings, &divinity2::dlaa::sliders, false, false, true);
-  twattila::rt_scene::AppendSettings(&settings, &divinity2::ray_tracing::sliders, &divinity2::dlaa::sliders);
+  // with its preset, Ray Reconstruction on the rays' guides, frame generation and Reflex; SMAA, CMAA2 and TAA stay
+  // hidden), the rays' rows (rt_scene::AppendSettings), shown in Advanced (Settings Mode).
+  twattila::feature_settings::AppendAa(&settings, &divinity2::dlaa::sliders, false, true, true);
+  // The reflections' rows: OnLighting blends them into the IBL specular (the game's reflection pass, as the TW games').
+  twattila::rt_scene::AppendSettings(&settings, &divinity2::ray_tracing::sliders, &divinity2::dlaa::sliders, false, true);
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "RayTracedSkipShadowPass",
       .binding = &divinity2::ray_tracing::skip_shadow_maps,
@@ -1246,7 +1262,6 @@ void ConfigureAddon() {
                                              .has_foliage_light = false,
                                              .rays_preset_as_attila = true,
                                              .path_ambient_tested = false,
-                                             .has_reflections = false,
                                              .has_gtvbao = false,
                                              .has_screen_space_shadows = false,
                                              .has_gtvbgi = false,
@@ -1285,7 +1300,8 @@ bool AttachAddon() {
   twattila::test_hooks::Install(&settings, true, "[Divinity 2]");
   // A ray tracing row on at launch: its scene's shaders kept from the start.
   if (divinity2::ray_tracing::sliders.sun_shadows != 0.f || divinity2::ray_tracing::sliders.ambient_occlusion != 0.f
-      || divinity2::ray_tracing::sliders.light_bounce != 0.f) {
+      || divinity2::ray_tracing::sliders.light_bounce != 0.f || divinity2::ray_tracing::sliders.reflections != 0.f
+      || divinity2::ray_tracing::sliders.specular_occlusion != 0.f) {
     divinity2::ray_tracing::Install();
   }
   // Before the swap chain mod (below): a removed device's chain let go, the no-frame limit and stall log after it. The

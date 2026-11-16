@@ -174,6 +174,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 23:0x (ATN: "Torches have "lights" too which can light up surfaces. That is what path tracing should do ... let's add that as an extra row too": a row Torch Light in Path-Traced GI (torches for seen + unseen hits), checked against the reference path tracer with torches, cost measured; gpu3_. Sky calibration + fewer rays stay open, next C line) C: Attila PT GI: torches also bounce (torch light for on-screen hits too: warm bounce near fires, costs a light loop + shadow ray per hit; gpu3_ measures first)? Calibrate the unseen route's sky (-3 % left, median 0.79, a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
 - [ ] C: Divinity 2 Skip the Game's Shadow Maps: on by default under RT shadows (your 22:3x every-game rule) once the coverage run passes (962 of 3,526 city draws skipped)? Path-Traced Ambient into the RT/PT preset once a run shows it? (from: div2_ 11-16)
 - [ ] C: Attila PT GI: calibrate the unseen route's sky (off-screen hits -3 % darker, sky median 0.79: a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
+- [ ] C: Ryse "Recommended (with Deeper Shadows)": after the V35 fit it changes V31 only (V35 Shadows 0.75 would sit far below the game's). Keep the button or drop it? (from: rys2_ 23:xx)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -305,16 +306,17 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NEXT ROUNDS 11-16 (ATN ~10:4x: "start doing everything that is in next game and ... | coordinator
 - (Tales + Expeditions Path-Traced Ambient DONE tpa_ 99b372c7a / 170aa2058, Experi ... | tpa_, next Divinity rounds
 - SHADOW MAPS UNDER RT SHADOWS, every game (ATN 22:3x: "No shadow maps should run ... | rur2_ (R
-- V35 FIT, every game (ATN 22:3x: "Does the skill say to do it? If yes, then let's ... | rys2_ (Ryse), V35 fit round (the rest)
-- DIVINITY 2 RUN (div2_ 11-16, R1 Arx city save + a torch-lit interior): DLSS on ( ... | coordinator (one game at a time)
-- Divinity 2 next (div2_ 11-16): rt_guides CS (d1_rt_guides pattern: GBuffer1 norm ... | next Divinity 2 round
+- (Ryse level B DONE rys2_ f795f917c: Contrast 1.15 / Shadows 1.35 / Saturation 1 ... | rys2_ (Ryse), V35 fit round (the rest)
+- (+ div2_ 23:xx: RR on with the rays (helper log RR line); RT reflections on meta ... | coordinator (one game at a time)
+- (div2_ 23:xx DONE: rt_guides + Ray Reconstruction bd7332449 (diffuse / specular ... | next Divinity 2 round
 - SHARED STEPS (div2_ 11-16): rt_core TraceLightBounce: one missed bounce frame re ... | shs2_ / next shared round
 - GAME-SPECIFIC SKIPS PARITY (ATN 23:0x "Game-specific skips, let's do this too"): ... | per-game rounds (after the current merges)
 - NIGHT + SEA BENCH (ATN 23:0x offers a burning Constantinople at night replay; a ... | ATN (replays), coordinator
+- RESTIR UPGRADE (ATN 23:1x: debug43 chats + 4 NVIDIA papers): own implementations ... | gpu3_ after the torch row + paths split
 - PATHS TRACE / SHADE SPLIT (ATN 23:0x "Let's do that"): the paths at 128 register ... | gpu3_
 - GPU3 RUNS (gpu3_ 11-16 NEEDS A RUN): 1. Attila Constantinople, ATN's rows, path- ... | coordinator (one game at a time)
 - GPU next (gpu3_ 11-16): Attila Nsight round DONE (whole frame 3.711 -> 3.607 ms, ... | next GPU round
-- RYSE RUN (rys2_ 11-16 NEEDS A RUN): rays + RR with a moving camera (shots + vide ... | coordinator (one game at a time)
+- (+ rys2_ 23:xx: renodx_trace_now in 2-3 levels / times of day for tonemap00 PER_ ... | coordinator (one game at a time)
 - Ryse next (rys2_ 11-16): upgraded-target reader census needs a log line per upgr ... | next Ryse round, shared round
 - R.U.S.E. RUN (rur2_ 11-16, near / map table / mid as run_rn3): 1. rays on vs DLA ... | coordinator (one game at a time)
 - R.U.S.E. next (rur2_ 11-16): Bend harness case with a solid caster + the 37-45 s ... | next R
@@ -1980,19 +1982,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         cover them, ATN's Ryse note); each after its in-game coverage check (skill rule). Owner: rur2_ (R.U.S.E.), rys2_
         (Ryse, after the caster capture), per-game rounds (TW: Skip the Shadow Maps rows, Shogun 2, Rome Remastered,
         Expeditions, Tales, Divinity)
-      - [ ] V35 FIT, every game (ATN 22:3x: "Does the skill say to do it? If yes, then let's do that for v35"; the skill:
+      - [ ] (Ryse level B DONE rys2_ f795f917c: Contrast 1.15 / Shadows 1.35 / Saturation 1 in defaults, Reset, Recommended; grey worst 111.9 % -> 4.8 % (0.05-1 nit), 46.3 -> 3.1 % (1-15), chroma 4.7 %, control Musa's sliders fails; level A: 67fd02802 traces tonemap00's PER_BATCH, NEEDS A RUN) V35 FIT, every game (ATN 22:3x: "Does the skill say to do it? If yes, then let's do that for v35"; the skill:
         defaults match the vanilla look as closely as practical): per game, V35's grey / chroma below white vs the game's
         SDR, fitted Contrast / Shadows / Saturation defaults with traced constants (Ryse first, level B now: x2.05 at 0.1
         nit -> within 4.8 %; Shogun 2 x2.5-6.2 lift, RomeR fine), WARP proof per game. Owner: rys2_ (Ryse), V35 fit round
         (the rest)
-      - [ ] DIVINITY 2 RUN (div2_ 11-16, R1 Arx city save + a torch-lit interior): DLSS on (the helper's upload line, DLAA /
+      - [ ] (+ div2_ 23:xx: RR on with the rays (helper log RR line); RT reflections on metal / polished floors vs the game's + Time Each Pass; one trace with the game's SSR on (DeferredSSRCombine's target); the double specular occlusion under RT reflections) DIVINITY 2 RUN (div2_ 11-16, R1 Arx city save + a torch-lit interior): DLSS on (the helper's upload line, DLAA /
         FSR / XeSS A/B, the FXAA copy at in-game AntiAliasing 1, FG HUD-less); RT shadows + RT AO (sun direction vs the
         game's shadows: KeepSun fix, Time Each Pass); Skip the Game's Shadow Maps on (oil / lava / fire / web: 27 forward
         surfaces bind a _ShadowSampler at t6-t10, trace which; time saved, 962 of 3,526 city draws); GI at Strength 1
         (rays + paths, city + interior); Path-Traced Ambient on (after ~2.5 s the ambient swaps, brightness vs the
         game's); Higher Precision Scene water / refraction; the orthographic camera trigger. Owner: coordinator (one game
         at a time)
-      - [ ] Divinity 2 next (div2_ 11-16): rt_guides CS (d1_rt_guides pattern: GBuffer1 normals, GBuffer2 base, GBuffer3
+      - [ ] (div2_ 23:xx DONE: rt_guides + Ray Reconstruction bd7332449 (diffuse / specular within 0.002 of the game's, controls 0.768 / 1.190); RT reflections + Specular Occlusion 31770fe86, Experimental off, in RT/PT as Attila's: blended into DeferredSky + probes' IBL specular texture before Clustered reads it (the 7 writers' blend / order not provable), WARP within 1e-7 of the game's o0, DeferredSSR skipped + combine passes the scene bit for bit; LEFT: GT-VBAO / GT-VBGI / Bend no-RT methods, render scale < 100 %, Graphics 2 of 2, our TAA / CMAA2, Modded Auto Exposure, look rows, FidelityFX SSSR (after the SSR trace), Clustered's SSAO specular occlusion under RT reflections (r9.z, a Clustered patch after the run)) Divinity 2 next (div2_ 11-16): rt_guides CS (d1_rt_guides pattern: GBuffer1 normals, GBuffer2 base, GBuffer3
         roughness / metal; unlocks RR + reflections); RT reflections (7 IBL specular shaders vanilla exact + DeferredSSR
         off); render scale below 100 % (D2-10 viewport route); Graphics 2 of 2 / Shadow Map Size (D2-12, exe read first);
         our TAA / CMAA2; GT-VBAO / GT-VBGI / Bend as the no-RT methods; Modded Auto Exposure (meter takes log2 above 2,
@@ -2012,6 +2014,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         replays; then one bench + WPR (ATN's tasks) + Nsight GPU trace at each (torches 128, fire / smoke particles, RT
         water reflections, ships = Rarer Objects), then a CPU / GPU round from the findings. Owner: ATN (replays),
         coordinator
+      - [ ] RESTIR UPGRADE (ATN 23:1x: debug43 chats + 4 NVIDIA papers): own implementations from the papers (their code
+        only where its licence allows: ReSTIR-CGNS = Falcor's BSD-3; hedstrom2026 zip / ReSTIR PG / PT Enhanced: no code
+        or licence named), each Nsight before / after + the reference path tracer: (1) reciprocal neighbor selection
+        (lin2026, halves spatial reuse cost: our reuse pass is L2-bound); (2) compatibility-guided neighbor selection
+        (junkins2026: SMAPE -6..29 %, temporal covariance -22..49 %, +2..5 % cost: less boiling); (3) the feedback-loop
+        check of kajiya's gi-overview "Indirect diffuse" (Embark, MIT / Apache-2.0): spatial + temporal data fed back
+        onto itself boils, M clamp; duplication maps only if they keep the energy; (4) torches into the paths through the
+        GI reservoir (lin2026's unified DI + GI reservoirs) instead of a light loop per hit; (5) later: stochastic
+        pairwise MIS (hedstrom2026, disocclusions), ReSTIR PG path guiding (zeng2025). PT DI (RTXDI-style direct light)
+        stays the game's: its raster lights with our visibility bits (one bit per light), keeping the game's look.
+        Diffuse BRDF at path hits stays Lambert (as the game shades what it sees; EON / Hammon / VMF diffuse would change
+        the bounce only, not the game's direct light). Owner: gpu3_ after the torch row + paths split
       - [ ] PATHS TRACE / SHADE SPLIT (ATN 23:0x "Let's do that"): the paths at 128 registers split into trace and shade
         passes in the shared helper (every helper game gets it). Owner: gpu3_
       - [ ] GPU3 RUNS (gpu3_ 11-16 NEEDS A RUN): 1. Attila Constantinople, ATN's rows, path-traced GI: pan along the walls
@@ -2029,7 +2043,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         idle release holds the request loop 50-60 ms, dim texels under plates (path 0.042 vs reference 0.003, median 0.60),
         D1a scorer reflections / fog / water features, D1d both D3D12 devices removed (needs a crash log). Owner: next GPU
         round
-      - [ ] RYSE RUN (rys2_ 11-16 NEEDS A RUN): rays + RR with a moving camera (shots + video, RR on / off); the cvar run
+      - [ ] (+ rys2_ 23:xx: renodx_trace_now in 2-3 levels / times of day for tonemap00 PER_BATCH, then the level-A refit; Shadow Casters Out of View (28681c9c0, Experimental off, 10.2 M indices a frame): Time Each Pass / PresentMon, Log Details captures / "no room", a caster behind the camera with Replace on, captures under Skip the Game's Sun Shadow Maps; dark tones with L / M (72f20d75c); No RT/PT (Recommended) with the screen-space methods f7f27ddea) RYSE RUN (rys2_ 11-16 NEEDS A RUN): rays + RR with a moving camera (shots + video, RR on / off); the cvar run
         list (Low / Medium, every AA mode, supersampling, r_ShadersLogCacheMisses / r_LogShaders); DLAA + DLSS Quality with
         presets K / M / L in one scene, PresentMon + RENODX_TW_PROFILE; FG pacing: RENODX_TW_PROFILE + PresentMon on both
         processes, Reflex boost on / off, frame-limit variants; Rays Replace Shadow Maps on vs off: a caster just behind the

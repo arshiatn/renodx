@@ -351,10 +351,6 @@ std::atomic<uint32_t> preset = NVSDK_NGX_DLSS_Hint_Render_Preset_M;  // L looks 
 std::atomic<int> upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;     // UPSCALERS' item
 std::atomic<int> ray_reconstruction = 0;                              // RAY_RECONSTRUCTION_CHOICES' item
 std::atomic<int> upscaling_debug_view = 0;                            // 1: the motion the upscaler gets (upscale_output)
-// [Ryse AA] DlssSquareRoot (Experimental, off; the maintainer decides): DLSS presets L and M (always auto-exposed) get the
-// colour's square root, squared back after, as Ray Reconstruction does here and the Total War games' L / M always
-// (twattila anti_aliasing.hpp, c243f7c4: given linear colour they flattened dark tones there).
-std::atomic<int> dlss_square_root = 0;
 // Frame generation (Experimental; the helper presents: twattila/frame_generation.hpp) with Tales' keys: FrameGeneration,
 // FrameGenerationMultiplier (2-6; 0 Dynamic; 1 off, Reflex only), FrameGenerationFrameLimit (Reflex's or Xe Low
 // Latency's; ReflexBoost, before the Reflex row, read once as its On + Boost).
@@ -1648,6 +1644,42 @@ ComPtr<ID3D11DeviceContext1> ImmediateContext(reshade::api::command_list* cmd_li
   return context;
 }
 
+// The one-frame trace (ryse_frame_trace.txt): tonemap00's PER_BATCH (b0, 9 float4: HDRParams1, HDRColorBalance,
+// SunShafts_SunCol, HDREyeAdaptation, HDRFilmCurve, HDRParams0, HDRBloomColor, HDRParams2, PS_ScreenSize), the level's
+// time-of-day values that test/tw_ryse_tonemap's PerBatch assumes (the PsychoV35 fit). Read back through a staging
+// copy, only in the traced frame.
+inline void TraceTonemapConstants(reshade::api::command_list* cmd_list) {
+  if (!talesofarise::frame_trace::Tracing()) return;
+  const auto context = ImmediateContext(cmd_list);
+  if (!context) return;
+  ComPtr<ID3D11Buffer> buffer;
+  UINT first = 0;
+  UINT count = 0;
+  context->PSGetConstantBuffers1(0, 1, buffer.GetAddressOf(), &first, &count);
+  if (!buffer) return;
+  D3D11_BUFFER_DESC desc = {};
+  buffer->GetDesc(&desc);
+  constexpr UINT BYTES = 9 * 16;
+  if (desc.ByteWidth < (first * 16) + BYTES) return;
+  ComPtr<ID3D11Device> device;
+  context->GetDevice(device.GetAddressOf());
+  const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = BYTES, .Usage = D3D11_USAGE_STAGING, .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+  ComPtr<ID3D11Buffer> staging;
+  if (FAILED(device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf()))) return;
+  const D3D11_BOX box = {.left = first * 16, .top = 0, .front = 0, .right = (first * 16) + BYTES, .bottom = 1, .back = 1};
+  context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, buffer.Get(), 0, &box);
+  D3D11_MAPPED_SUBRESOURCE mapped = {};
+  if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return;
+  const auto* values = static_cast<const float*>(mapped.pData);
+  std::string line = std::format("tonemap00 PER_BATCH (b0 at c{}):", first);
+  for (UINT constant = 0; constant < 9; ++constant) {
+    line += std::format(" c{} {:.6g} {:.6g} {:.6g} {:.6g} |", constant, values[constant * 4], values[(constant * 4) + 1],
+                        values[(constant * 4) + 2], values[(constant * 4) + 3]);
+  }
+  context->Unmap(staging.Get(), 0);
+  talesofarise::frame_trace::Note(std::move(line));
+}
+
 void Reset() {
   const std::lock_guard lock(runtime_mutex);
   runtime = {};
@@ -2059,14 +2091,15 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
     if (skipped) ++diagnostics.skipped_frames;
     const bool reset = restart || skipped;
     // Ray Reconstruction with this frame's guides (the ray tracing's, while a ray-traced effect is on) and the camera.
-    // Its denoiser takes the colour's square root (upscale_output squares it back), as DLSS presets L and M with
-    // dlss_square_root on; DLSS otherwise, FSR and XeSS the light as it is.
+    // Its denoiser takes the colour's square root (upscale_output squares it back), as DLSS presets L and M (always
+    // auto-exposed: given linear colour they flatten dark tones, as in the Total War games, twattila anti_aliasing.hpp);
+    // DLSS's other presets, FSR and XeSS the light as it is.
     const auto use = upscaling::CurrentUse();
     const bool reconstruct = nvidia_model && use.ray_reconstruction != 0 && current_camera && bridge.guides
                              && rysesonofrome::ray_tracing::HOST.guides_written();
     const uint32_t chosen_preset = preset.load();
     const bool square_root = reconstruct
-                             || (nvidia_model && dlss_square_root.load() != 0
+                             || (nvidia_model
                                  && (chosen_preset == NVSDK_NGX_DLSS_Hint_Render_Preset_L || chosen_preset == NVSDK_NGX_DLSS_Hint_Render_Preset_M));
     bridge.color_square_root = square_root;
     const UpscaleSettings settings = {
@@ -3402,13 +3435,6 @@ inline void DrawAntiAliasing(bool advanced) {
       }
       ImGui::EndCombo();
     }
-    if (const uint32_t chosen_preset = preset.load();
-        nvidia_model && (chosen_preset == NVSDK_NGX_DLSS_Hint_Render_Preset_L || chosen_preset == NVSDK_NGX_DLSS_Hint_Render_Preset_M)) {
-      constexpr std::array<const char*, 2> OFF_ON = {"Off", "On"};
-      combo("Dark tones for L / M (Experimental)", "DlssSquareRoot", &dlss_square_root, OFF_ON,
-            "Presets L and M can flatten dark tones into one grey. On: they get the colour's square root,\n"
-            "squared back after (as the Total War games' L and M).");
-    }
     if (nvidia_model) {
       combo("Ray Reconstruction (Experimental)", "RayReconstruction", &ray_reconstruction, RAY_RECONSTRUCTION_CHOICES,
             "NVIDIA's denoiser for ray tracing in place of DLSS's usual model: less noise in everything ray-traced.\n"
@@ -4055,7 +4081,6 @@ inline void Install(std::span<const uint8_t> vertex_code, std::span<const uint8_
   load_choice("Upscaler", &upscaler, UPSCALERS.size());
   load_choice("RayReconstruction", &ray_reconstruction, RAY_RECONSTRUCTION_CHOICES.size());
   load_choice("UpscalingDebugView", &upscaling_debug_view, 2);
-  load_choice("DlssSquareRoot", &dlss_square_root, 2);
   load_choice("FrameGenerationMethod", &frame_method, FRAME_METHODS.size());
   load_choice("FrameGenerationHudRecomposition", &hud_recomposition, 2);
   load_choice("FrameGenerationPreset", &frame_preset, 4);
