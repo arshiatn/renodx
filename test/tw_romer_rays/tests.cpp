@@ -14,7 +14,9 @@
 //    the frame constants' c2 (toward the sun) normalised into the sun texture's texel 0, texel 1 (the camera) kept;
 //    CONTROL: not c1.
 // 4. DrawMultiply: the mask's red x the visibility (to 1 / 255), its green kept, 1 keeps the red to the bit; ASSAO's R8 the
-//    same; the game's state (targets, viewport, blend, shaders, a view, the topology) the same after.
+//    same; the game's state (targets, viewport, blend, shaders, a view, the topology) the same after. ASSAO's R8 cleared to
+//    open first (Multiply's rays in place of the game's AO) the visibility to the bit; CONTROL: not cleared, the game's 204
+//    under it.
 // 5. The game's bytes: the PBR pixel shader's output is affine in the mask's red (the sun's term x it; 1 is the game's
 //    unshadowed light), the mask's green changes nothing; the AO changes it; the mask and the AO multiplied by the module
 //    (4) light it as the products would.
@@ -508,6 +510,22 @@ int main(int argc, char** argv) {
     CHECK(worst <= 1);
     CHECK(green_kept);
     CHECK(mask_after[0][0] == 230 && ao_after[0] == 204);
+    // The rays' AO in place of ASSAO's: its target cleared to open, then the multiply.
+    constexpr std::array<float, 4> OPEN = {1.f, 1.f, 1.f, 1.f};
+    context->ClearRenderTargetView(ao_rtv.Get(), OPEN.data());
+    rays::internal::DrawMultiply(context1.Get(), ao_rtv.Get(), visibility_srv.Get(), false);
+    context->ClearState();
+    const auto ao_alone = ReadBack<uint8_t>(ao.Get());
+    int alone = 0;
+    int under_game = 0;
+    for (size_t at = 0; at < ao_alone.size(); ++at) {
+      alone += (ao_alone[at] == visibility_bytes[at]) ? 1 : 0;
+      under_game += (visibility_bytes[at] != 0 && visibility_bytes[at] != 255 && ao_after[at] != visibility_bytes[at]) ? 1 : 0;
+    }
+    std::printf("rays' AO in place of ASSAO's: %d of %zu texels the visibility to the bit (CONTROL multiplied over the game's 204: %d differ)\n",
+                alone, ao_alone.size(), under_game);
+    CHECK(alone == static_cast<int>(ao_alone.size()));
+    CHECK(under_game > static_cast<int>(ao_alone.size()) / 2);
   }
 
   // 5. The game's PBR pixel shader.

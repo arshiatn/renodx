@@ -685,7 +685,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                       "what is on screen (Bend Studio's; soldiers, weapons; needs in-game shadows on).\n"
                       "DXR: ray-traced sun shadows over the game's. Needs DLSS. Restart the game after turning it on.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground.\n"
-                  "Game's SSAO: the original. RTAO: from rays through the scene, over the game's. Needs DLSS.\n"
+                  "Game's SSAO: the original. RTAO: from rays through the scene, in place of the game's. Needs DLSS.\n"
                   "Restart the game after turning it on.",
 };
 
@@ -762,8 +762,10 @@ void BuildRuntimeData() {
                                              if (test_ao_off != 0.f) { ClearOutputToOne(cmd_list, false, &logged_test_ao, "the ambient occlusion"); }
                                              twromeremastered::ray_tracing::Multiply(cmd_list, true);
                                            }};
-  // The trees' AO drawn into ASSAO's target: left out while the Test row is on.
-  custom_shaders[TREE_AO_PIXEL_SHADER] = {.crc32 = TREE_AO_PIXEL_SHADER, .on_draw = [](reshade::api::command_list*) { return test_ao_off == 0.f; }};
+  // The trees' AO drawn into ASSAO's target: left out while the Test row is on or the rays' AO stands in place of ASSAO's.
+  custom_shaders[TREE_AO_PIXEL_SHADER] = {.crc32 = TREE_AO_PIXEL_SHADER, .on_draw = [](reshade::api::command_list*) {
+                                            return test_ao_off == 0.f && !twromeremastered::ray_tracing::AmbientReplaced();
+                                          }};
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.
@@ -2026,7 +2028,6 @@ void ConfigureAddon() {
                                              .rays_preset_as_attila = true,
                                              .has_path_ambient = false,
                                              .has_reflections = false,
-                                             .rays_replace_ao = false,
                                              .rays_multiply_maps = true,
                                              .has_gtvbao = false,
                                              .has_gi = false,
