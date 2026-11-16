@@ -124,8 +124,8 @@ void main(
   r0.zw = float2(0,0);
   float3 tap_down = t_frame.Load(r0.xyz).xyz;
 
-  // Paper White units: SDR white = 1 (frame is 2.2-encoded, scaled by the tonemapper).
-  float pw_encoded = renodx::color::gamma::EncodeSafe(SI.diffuse_white_nits / SI.graphics_white_nits);
+  // Paper White units: SDR white = 1 (the frame in its gamma, scaled by the tonemapper).
+  float pw_encoded = EncodeFrame(SI.diffuse_white_nits / SI.graphics_white_nits).x;
   float3 c = tap_centre / pw_encoded;
   float3 up = tap_up / pw_encoded;
   float3 left = tap_left / pw_encoded;

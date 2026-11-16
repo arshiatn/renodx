@@ -1,4 +1,4 @@
-// sprite.hlsl ps_pixel_yuv (sm_3_0): the videos. The frame is 2.2 encoded (the proxy decodes 2.2).
+// sprite.hlsl ps_pixel_yuv (sm_3_0): the videos, in the frame's gamma (twattila/frame_gamma.hlsli, the proxy's decode).
 
 SamplerState s_diffuse_map_y_s : register(s0);
 SamplerState s_diffuse_map_u_s : register(s1);
@@ -42,7 +42,7 @@ void main(
     o0.xyz += (frac(52.9829189f * frac(dot(floor(v0.xy), float2(0.06711056f, 0.00583715f)))) - 0.5f) / 255.f;
   }
   const float3 video = AutoHdrHighlights(renodx::color::gamma::DecodeSafe(o0.xyz), SI.video_autohdr);
-  // Mastered for a 2.2 screen; at Paper White (the frame's 1 is UI white).
-  o0.xyz = renodx::color::gamma::EncodeSafe(video * (SI.diffuse_white_nits / SI.graphics_white_nits), 2.2f);
+  // Mastered for a 2.2 screen, encoded with the frame's gamma; at Paper White (the frame's 1 is UI white).
+  o0.xyz = EncodeFrame(video * (SI.diffuse_white_nits / SI.graphics_white_nits));
   return;
 }

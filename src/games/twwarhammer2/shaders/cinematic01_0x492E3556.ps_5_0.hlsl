@@ -110,13 +110,13 @@ void main(
   if (r0.x != 0) discard;
   o0.w = v1.w;
   // The blurred video, as the sharp one: the game's YUV result (sRGB encoded) decoded and clipped, AutoHDR (Video
-  // Dithering: 1 code value of noise on the 2.2 encoded video first), at Paper White, 2.2 encoded for the proxy.
+  // Dithering: 1 code value of noise on the 2.2 encoded video first), at Paper White, in the frame's gamma for the proxy.
   float3 video = saturate(renodx::color::srgb::DecodeSafe(o0.xyz));
   if (HDR >= 1.f && SI.video_autohdr > 0.f && SI.video_dithering != 0.f) {
     video = renodx::color::gamma::DecodeSafe(renodx::color::gamma::EncodeSafe(video)
                                              + (frac(52.9829189f * frac(dot(floor(v0.xy), float2(0.06711056f, 0.00583715f)))) - 0.5f) / 255.f);
   }
-  o0.xyz = renodx::color::gamma::EncodeSafe(AutoHdrHighlights(saturate(video), SI.video_autohdr)
-                                            * (SI.diffuse_white_nits / SI.graphics_white_nits));
+  o0.xyz = EncodeFrame(AutoHdrHighlights(saturate(video), SI.video_autohdr)
+                       * (SI.diffuse_white_nits / SI.graphics_white_nits));
   return;
 }

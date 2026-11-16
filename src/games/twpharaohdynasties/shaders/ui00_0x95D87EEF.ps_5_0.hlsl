@@ -6,7 +6,7 @@
 // zero negatives, zero NaN. The alpha is a lerp of three [0,1] terms, so also clean.
 //
 // ONE change: the final encode. Stock uses the in-game Gamma slider, the proxy decodes
-// 2.2, so normalise to 2.2 - exactly what t01-t04's SDR path does the long way round.
+// the frame's gamma (twattila/frame_gamma.hlsli), so normalise to it.
 // No paper-white ratio: UI belongs at Graphics White, and 1.0 is what the proxy reads as
 // Graphics White. (cinematics00 gets the ratio because a cutscene is content, not chrome.)
 //
@@ -177,9 +177,9 @@ void main(
   r1.xy = (int2)r1.zw | (int2)r1.xy;
   r1.x = (int)r1.y | (int)r1.x;
   if (r1.x != 0) discard;
-  // Stock's saturate, then the 2.2 encode the swapchain proxy decodes. Stock's
+  // Stock's saturate, then the frame's gamma the swapchain proxy decodes. Stock's
   // pow(1/g_gamma_output) and a decode back would cancel, so it collapses to this.
-  o0.xyz = renodx::color::gamma::EncodeSafe(saturate(r0.xyz));
+  o0.xyz = EncodeFrame(saturate(r0.xyz));
   o0.w = saturate(r0.w);
   return;
 }

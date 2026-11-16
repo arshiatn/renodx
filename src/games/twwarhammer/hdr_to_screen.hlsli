@@ -19,7 +19,7 @@ float3 ApplyPsychoV31(float3 color)
                                                           : int(SI.v31_gamut_compression_mode));
   const float compression = 1.f + 0.5f * SI.v31_roll_off * SI.v31_roll_off;
   float3 result = renodx::tonemap::psychov::custom_psychotm_test31(
-      color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
+      color, TW_TONE_MAP_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
       SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,
       SI.v31_dechroma, 0.18f, 0.18f, 0.f, SI.v31_gamut_compression, target_gamut, compression, 1.f, 0.5f, 0.f,
       renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 1.f);
@@ -28,7 +28,7 @@ float3 ApplyPsychoV31(float3 color)
   [branch]
   if (all(result == 0.f) && scene_y > 9.999621e-7f) {
     result = renodx::tonemap::psychov::custom_psychotm_test31(
-        color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
+        color, TW_TONE_MAP_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
         SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,
         SI.v31_dechroma, 0.18f, 0.18f, 0.f, SI.v31_gamut_compression, target_gamut, compression, 1.f, 0.5f, 0.f,
         renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 0.f);
@@ -51,13 +51,14 @@ float3 ApplyPsychoV31(float3 color)
   return result;
 }
 
-// HDR: the native matrix + three LUTs on a bounded proxy, expanded back, PsychoV30 or V31, Paper White relative to UI.
+// HDR: the native matrix + three LUTs on a bounded proxy, expanded back, PsychoV30, V31 or V35, Paper White relative to
+// UI, in the frame's gamma.
 float4 HdrToScreenOutput(float3 hdr_color, float output_alpha)
 {
   // The stock matrix and 3D LUTs expect bounded gamma-domain coordinates.
   // Compress the HDR signal reversibly, apply both native grading stages in
   // their expected domain, then expand back to HDR before PsychoV30.
-  float grade_scale = renodx::tonemap::neutwo::ComputeMaxChannelScale(hdr_color, 1.f, HDR_PEAK);
+  float grade_scale = renodx::tonemap::neutwo::ComputeMaxChannelScale(hdr_color, 1.f, TW_TONE_MAP_PEAK);
   float3 grade_input_linear = hdr_color * grade_scale;
   float3 grade_input_gamma =  renodx::color::gamma::EncodeSafe(grade_input_linear);
 
@@ -81,13 +82,13 @@ float4 HdrToScreenOutput(float3 hdr_color, float output_alpha)
   float3 color;
   [branch]
   if (HDR >= 3.f) {
-    color = ApplyPsychoV35(graded_hdr, HDR_PEAK, SI.swap_chain_encoding == 2.f);
+    color = ApplyPsychoV35(graded_hdr, TW_TONE_MAP_PEAK, SI.swap_chain_encoding == 2.f);
   } else if (HDR >= 2.f) {
     color = ApplyPsychoV31(graded_hdr);
   } else {
     color = ApplyPsychoV30(graded_hdr);
   }
-  return float4(renodx::color::gamma::EncodeSafe(color * (SI.diffuse_white_nits / SI.graphics_white_nits)), output_alpha);
+  return float4(HdrToFrame(color, SI.diffuse_white_nits / SI.graphics_white_nits), output_alpha);
 }
 
 #endif  // SRC_TWWARHAMMER_HDR_TO_SCREEN_HLSLI_

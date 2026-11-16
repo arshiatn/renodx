@@ -147,13 +147,6 @@ struct ShaderInjectData {
 
 #define SI shader_injection
 #define HDR_PEAK max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 0.00009998806f) //added guard
-// The frame's gamma (twattila/frame_gamma.hlsli), the swap chain proxy's decode, as Attila's: Gamma Correction on, 2.2,
-// the game's gamma 2.0 picture as a 2.2 display shows it (x^1.1), in every Rendering Mode; off, 2.0. Rendering Mode SDR
-// on an SDR display the other way round: off hands the game's picture to the display as it is.
-#define TW_FRAME_GAMMA (((SI.gamma_correction != 0.f) != (SI.swap_chain_encoding == 2.f && HDR < 0.5f)) ? 2.2f : 2.f)
-// The HDR tone mappers' Peak, pre-corrected for the frame's 2.2 decode of their gamma 2.0 output: their top still lands
-// on Peak.
-#define TW_TONE_MAP_PEAK ((TW_FRAME_GAMMA == 2.f) ? HDR_PEAK : pow(HDR_PEAK, 2.f / TW_FRAME_GAMMA))
 #define HDR_INTSCALING SI.diffuse_white_nits / SI.graphics_white_nits
 #define HDR_STOPS log2(HDR_MAXEXPECTED / HDR_PEAK)
 

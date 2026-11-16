@@ -12,11 +12,11 @@ float3 SharpenLaplacian(float3 c, float3 up, float3 left, float3 right, float3 d
   return (((c * 5.f + (-up - left)) - right) - down) - c;
 }
 
-// Taps from the frame copy (gamma-encoded, Paper White scaled). The stock result on SDR-clipped taps in Paper White
+// Taps from the frame copy (in the frame's gamma, Paper White scaled). The stock result on SDR-clipped taps in Paper White
 // units; values outside 0..1 (highlights, wide gamut) pass through untouched.
 float3 SharpenOwn(Texture2D<float3> frame, int2 pixel, float4 render_target_dimensions, float3 centre) {
   int2 last = int2(render_target_dimensions.xy) - 1;
-  float pw_encoded = renodx::color::gamma::EncodeSafe(SI.diffuse_white_nits / SI.graphics_white_nits);
+  float pw_encoded = EncodeFrame(SI.diffuse_white_nits / SI.graphics_white_nits).x;
   float3 c = centre / pw_encoded;
   float3 up = frame.Load(int3(clamp(pixel + int2(0, -1), 0, last), 0)) / pw_encoded;
   float3 left = frame.Load(int3(clamp(pixel + int2(-1, 0), 0, last), 0)) / pw_encoded;

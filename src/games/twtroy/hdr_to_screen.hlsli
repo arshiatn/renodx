@@ -13,7 +13,7 @@
 float3 ApplyTroyNativeGradeHDRSafe(float3 grade_source_linear)
 {
   float grade_scale =
-      renodx::tonemap::neutwo::ComputeMaxChannelScale(grade_source_linear, 1.f, HDR_PEAK);
+      renodx::tonemap::neutwo::ComputeMaxChannelScale(grade_source_linear, 1.f, TW_TONE_MAP_PEAK);
   float3 grade_proxy_linear = grade_source_linear * grade_scale;
 
   // Stock's saturate(g_brightness * c) is dropped: the proxy is already bounded, and
@@ -65,7 +65,7 @@ float3 ApplyTroyHDR1PeakShoulder(float3 color)
 {
   // Above 1 each channel rolls off to Peak on its own, as SDR clips each channel: bright fire turns yellow / white at
   // its core (as Ryse). (The brightest-channel roll-off kept fire's full orange saturation up to Peak: flat, salmon.)
-  const float headroom = max(HDR_PEAK, 1.0001f) - 1.f;
+  const float headroom = max(TW_TONE_MAP_PEAK, 1.0001f) - 1.f;
   const float3 over = max(color - 1.f, 0.f);
   return min(color, 1.f)
          + float3(renodx::tonemap::Neutwo(over.r, headroom), renodx::tonemap::Neutwo(over.g, headroom),
@@ -83,7 +83,7 @@ float3 ApplyPsychoV31(float3 color)
                                                           : int(SI.v31_gamut_compression_mode));
   const float compression = 1.f + 0.5f * SI.v31_roll_off * SI.v31_roll_off;
   float3 result = renodx::tonemap::psychov::custom_psychotm_test31(
-      color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
+      color, TW_TONE_MAP_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
       SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,
       SI.v31_dechroma, 0.18f, 0.18f, 0.f, SI.v31_gamut_compression, target_gamut, compression, 1.f, 0.5f, 0.f,
       renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 1.f);
@@ -92,7 +92,7 @@ float3 ApplyPsychoV31(float3 color)
   [branch]
   if (all(result == 0.f) && scene_y > 1.0001283e-6f) {
     result = renodx::tonemap::psychov::custom_psychotm_test31(
-        color, HDR_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
+        color, TW_TONE_MAP_PEAK, SI.v31_exposure, SI.v31_highlights, SI.v31_shadows, SI.v31_contrast, SI.v31_flare,
         SI.v31_highlight_contrast, SI.v31_shadow_contrast, SI.v31_saturation, SI.v31_highlight_saturation,
         SI.v31_dechroma, 0.18f, 0.18f, 0.f, SI.v31_gamut_compression, target_gamut, compression, 1.f, 0.5f, 0.f,
         renodx::tonemap::psychov::PSYCHO30_SOURCE_BOUNDARY_BT709, 0.f);
@@ -120,7 +120,7 @@ float3 ApplyTroyPsycho(float3 color)
 {
   [branch]
   if (HDR >= 3.5f) {
-    return ApplyPsychoV35(color, HDR_PEAK, SI.swap_chain_encoding == 2.f);
+    return ApplyPsychoV35(color, TW_TONE_MAP_PEAK, SI.swap_chain_encoding == 2.f);
   }
   [branch]
   if (HDR >= 2.5f) {
@@ -129,16 +129,16 @@ float3 ApplyTroyPsycho(float3 color)
   return ApplyPsychoV30(color);
 }
 
-// SDR: the stock result, clipped as the original 8-bit target, at Paper White relative to UI (2.2 encoded).
+// SDR: the stock result, clipped as the original 8-bit target, at Paper White relative to UI (in the frame's gamma).
 float4 SdrToScreenOutput(float4 stock)
 {
   stock = saturate(stock);
-  stock.xyz = renodx::color::gamma::DecodeSafe(stock.xyz, SDR_STOCK_GAMMA) * SDR_PAPER_WHITE;
-  stock.xyz = renodx::color::gamma::EncodeSafe(stock.xyz);
+  stock.xyz = SdrToFrame(stock.xyz, g_gamma_output, SDR_PAPER_WHITE);
   return stock;
 }
 
-// HDR: the native matrix + LUT on a bounded proxy, then the mode's tone mapper, Paper White relative to UI.
+// HDR: the native matrix + LUT on a bounded proxy, then the mode's tone mapper, Paper White relative to UI, in the
+// frame's gamma.
 float4 HdrToScreenOutput(float3 color, float alpha)
 {
   float3 graded_hdr = ApplyTroyNativeGradeHDRSafe(max(color, 0.f));
@@ -149,7 +149,7 @@ float4 HdrToScreenOutput(float3 color, float alpha)
   } else {
     graded_hdr = ApplyTroyPsycho(graded_hdr);
   }
-  return float4(renodx::color::gamma::EncodeSafe(graded_hdr * (SI.diffuse_white_nits / SI.graphics_white_nits)), alpha);
+  return float4(HdrToFrame(graded_hdr, SI.diffuse_white_nits / SI.graphics_white_nits), alpha);
 }
 
 #endif  // SRC_TWTROY_HDR_TO_SCREEN_HLSLI_

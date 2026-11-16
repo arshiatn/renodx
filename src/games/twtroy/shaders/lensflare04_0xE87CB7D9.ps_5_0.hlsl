@@ -37,10 +37,9 @@ float4 ApplyTroyLensFlare(float4 stock_color)
 
   if (HDR >= 0.5f)
   {
-    // Scale in linear, by the same ratio t01 applies to the scene.
-    float3 flare_linear = renodx::color::gamma::DecodeSafe(flare.xyz);
-    flare_linear *= SI.lensflare * (SI.diffuse_white_nits / SI.graphics_white_nits);
-    flare.xyz = renodx::color::gamma::EncodeSafe(flare_linear);
+    // Scale in linear with the frame's gamma (the swap chain proxy's decode), by the same ratio t01 applies to the
+    // scene: at Lens Flare 1 and Paper White = UI the game's add.
+    flare.xyz = EncodeFrame(DecodeFrame(flare.xyz) * (SI.lensflare * (SI.diffuse_white_nits / SI.graphics_white_nits)));
   }
 
   return flare;

@@ -1,5 +1,18 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Gamma Correction in every mode (2026-11-16; built only, not run in game)
+
+- **Gamma Correction** (same row, on by default) now also acts in the HDR modes, as Attila's and Thrones': the game's
+  gamma 2.0 picture as a gamma 2.2 display shows it (deeper shadows; PsychoV35 at Paper White 203: 1 % grey 2.03 -> 1.28
+  nits, 5 % 10.15 -> 7.52, 18 % 36.54 -> 30.78, Peak still Peak). The row shows in every Rendering Mode. Rendering Mode SDR
+  on an HDR display: On is now that gamma 2.2 picture too (before: the brighter gamma 2.0 one, now Off); on an SDR display
+  nothing changes. The swap chain proxy decodes the frame with its gamma (twattila/frame_gamma.hlsli: 2.2 on, 2.0 off);
+  the lens flares and lens blood, the cinematics, Sharpening and the UI sprites and backdrop encode with it, so at Lens Flare 1 and Paper White = UI the game's own add stays exact.
+- Proven offline: test/tw_vanilla_exact (Vanilla still the game's bytes; the Gamma Correction check on every shader it
+  changes, every Rendering Mode) and test/tw_psychov35 part 7 (off and Rendering Mode SDR the same picture as before, on
+  within Peak).
+- In game: Rendering Mode SDR and every HDR mode with the row on and off: scene, UI, lens flares, lens blood, cinematics, Sharpening, UI.
+
 ## To test in game (the maintainer; open items, newest first)
 
 Send `ReShade.log`, `renodx-tw-dlaa64.log` and `ReShade.ini` after each.

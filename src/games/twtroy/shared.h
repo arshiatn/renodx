@@ -141,9 +141,6 @@ struct ShaderInjectData {
 };
 
 #define SI shader_injection
-// Rendering Mode SDR: what the game's encoded picture is decoded with. Gamma Correction on: its own gamma, so any in-game
-// Gamma lands on the frame's 2.2; off: 2.2, what a 2.2 display shows of it, at the in-game Gamma.
-#define SDR_STOCK_GAMMA ((SI.gamma_correction != 0.f) ? g_gamma_output : 2.2f)
 // Output SDR has no Paper White (as Attila).
 #define SDR_PAPER_WHITE ((SI.swap_chain_encoding == 2.f) ? 1.f : SI.diffuse_white_nits / SI.graphics_white_nits)
 #define AO_NOISE_FRAME SI.ssao_frame  // twwarhammer2/bitmask_ao.hlsli
@@ -157,7 +154,7 @@ struct ShaderInjectData {
 // Last: highlight hue shift (SI.hue_shift).
 #define ApplyPsychoV30(color)                                               \
   renodx_custom::tonemap::psycho30::psychotm_test30(                             \
-      (color), HDR_PEAK,  SI.exposure, SI.highlights, SI.shadows, SI.contrast,            \
+      (color), TW_TONE_MAP_PEAK,  SI.exposure, SI.highlights, SI.shadows, SI.contrast,    \
       SI.saturation, 1.f, 100.f, 1.f, 1.f, 0, SI.cone_response_exponent,       \
       0.18f, 0.18f, 1.f, ((SI.swap_chain_encoding == 2.f) ? 0 : 1), 1.f, 0.f, SI.hue_shift)
 
@@ -227,6 +224,7 @@ ShaderInjectData OutputShaderInjection(ShaderInjectData data) {
 #define SI OutputShaderInjection(shader_injection)
 
 #include "../../shaders/renodx.hlsl"
+#include "../twattila/frame_gamma.hlsli"
 
 #endif
 

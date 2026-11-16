@@ -38,14 +38,14 @@ void main(
   o0.xyzw = saturate(o0.xyzw);//fix negative nits
 
   // Paper White, like the other games' cinematics. The video is already display-
-  // encoded and the proxy decodes 2.2, so decode, scale, re-encode. Exact identity
-  // when Paper White == UI.
+  // encoded (for a 2.2 screen), so decode 2.2, scale, encode with the frame's gamma (the
+  // proxy's decode). Exact identity when Paper White == UI with Gamma Correction.
   // Video AutoHDR stretches 8-bit steps: Video Dithering adds 1 code value (peak to peak) of interleaved gradient
   // noise first, static in screen space.
   if (HDR >= 1.f && SI.video_autohdr > 0.f && SI.video_dithering != 0.f) {
     o0.xyz += (frac(52.9829189f * frac(dot(floor(v0.xy), float2(0.06711056f, 0.00583715f)))) - 0.5f) / 255.f;
   }
-  o0.xyz = renodx::color::gamma::EncodeSafe(
+  o0.xyz = EncodeFrame(
       AutoHdrHighlights(renodx::color::gamma::DecodeSafe(saturate(o0.xyz)), SI.video_autohdr)
       * (SI.diffuse_white_nits / SI.graphics_white_nits));
   return;
