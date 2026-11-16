@@ -50,6 +50,18 @@ passes and the scene's float targets are upgraded with view cloning and the hot 
 
 The census (`tools/nontw/divinity1/census`, the game's shaders from its .pak files and exe) stays outside the repo.
 
+## Engine facts (static reads of EoCApp.exe)
+
+The Steam exe, 21,605,888 bytes, SHA-256 f7c759e7...33d88, ASLR on (addresses at its image base 0x140000000).
+
+- Screen-space reflections: `SSREnabled` in graphicSettings.lsx does nothing. The key is built as a FixedString
+  (0x1407989C2), but the lsx loader (0x1407E2D40...: MotionBlurEnabled into the settings object's byte 0x4C,
+  SSAOEnabled 0x4D, ShadowsEnabled 0x4F) and the saver (0x1407E2141...: the same keys) skip it, so the lsx the game
+  writes at exit should lose the line (a run keeping that lsx confirms it). The settings object (pointer at 0x1412E3E30, built at 0x1407E34C0 / 0x14085E96E: dword
+  0x01000101 at 0x4C) keeps byte 0x4E, SSR, at 0. The renderer reads that byte at its start (0x1408225F8) and in its
+  settings apply (0x140820990, vtable slot 0x141064570). On a change it creates SSR (0x140820040) or releases it
+  (0x14081FEB0). So SSR can only be turned on by writing that byte in the game's memory.
+
 ## Credits
 
 RenoDX, PsychoV30, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV30 and
