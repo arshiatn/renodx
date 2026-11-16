@@ -52,6 +52,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -138,6 +139,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 ... | coordinator
 - d1_ (resumed): Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div ... | d1_
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
+- R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI ... | ru7_ (started 01:2x)
+- Skills update from tonight's 17 lessons (tools/tw/round_notes/skill_lessons_1116 ... | sk_ (started 01:3x), coordinator merges
 - R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA pas ... | coordinator
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
@@ -1263,6 +1266,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         112 terrain PS); D3D9 runtime accepts 974 / 974 patched shaders; WARP mirror hits 16,186 / 16,186; S1 / S2 adopted
         (027e08d6 + 995b4183). Not possible yet: RT water reflections + RT GI (no G-buffer guides / albedo; route in 11b,
         M); lit objects' reflections need a combined O1 variant. ruh_ started 01:4x: H1 / H2 / H3 on the GPU.
+      - [ ] R.U.S.E. RT GI / PT GI + RT water reflections re-check (ATN 01:2x: "RT GI/PT GI would be a huge upgrade";
+        doubts "needs a G-buffer"): guides via MRT from the patched game shaders, then rt_core light bounce / paths +
+        ReflectPixel; Experimental rows; branch ruse-gi. Owner: ru7_ (started 01:2x)
+      - [ ] Skills update from tonight's 17 lessons (tools/tw/round_notes/skill_lessons_1116.md) + rebuilt skills zip.
+        Owner: sk_ (started 01:3x), coordinator merges
       - [ ] R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA passes H1 + H2 first), Fable 5.2
         High review of the bridge (ATN asked), T-run with ATN loading the battle (water depth, world up, units, cube-map
         brightness, bounce double count, GPU cost, G1 / O1 / AO / Bend checks, FG / Reflex, MainRTDivider). Owner: coordinator
