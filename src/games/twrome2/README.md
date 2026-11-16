@@ -1,5 +1,16 @@
 # Total War: ROME II - Emperor Edition (RenoDX HDR, ATN)
 
+### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
+
+- **Ray-Traced AO and Path-Traced AO replace the game's HBAO and GT-VBAO** (ATN: never on top of them), as Attila's and
+  Thrones': the game's AO resolve (ssao01, 1ED22F9C) writes 1 under them (`rt_ambient_alone`) and `rt_scene` multiplies the
+  traced visibility in after it, so its target holds the rays' AO alone; GT-VBAO isn't drawn then. The page keeps GT-VBAO's
+  setting under the rays (`rays_replace_ao`, as Attila's).
+- Proven offline: test/tw_rome2_shaders part 3 (WARP): rt_ambient_alone 0 the game's code bit for bit (0 of 4096 pixels
+  differ), 1 every channel 1 (4096 of 4096); CONTROL the game's occludes (4001 pixels below 1).
+- In game: Ray-Traced AO in a battle: corners lighter than before (no HBAO under the rays' AO); Path-Traced AO: no game AO
+  under the paths' light; GT-VBAO and the game's HBAO unchanged without rays.
+
 ### Gamma Correction in every mode (2026-11-16; built only, not run in game)
 
 - **Gamma Correction** (same row, on by default) now also acts in the HDR modes, as Attila's and Thrones': the game's

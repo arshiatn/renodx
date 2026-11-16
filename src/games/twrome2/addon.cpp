@@ -1811,9 +1811,12 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   twattila::feature_settings::UpdateSsr(&shader_injection);
   shader_injection.ssao_scale = twattila::ao_pass::ResolutionScale(shader_injection.ssao_resolution);
+  // The rays' AO or the paths' in place of the game's (ssao01) and GT-VBAO's (not drawn), never on top of them (ATN
+  // 2026-11-16), as Attila's and Thrones'.
+  shader_injection.rt_ambient_alone = (rt_settings.ambient_occlusion || rt_settings.path_ambient) ? 1.f : 0.f;
   shader_injection.ssao_frame =
-      twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f, shader_injection.ssao_temporal != 0.f,
-                                shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
+      twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f && shader_injection.rt_ambient_alone == 0.f,
+                                shader_injection.ssao_temporal != 0.f, shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ROME2);
@@ -1864,7 +1867,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
                   "GT-VBAO (Ground Truth AO with a visibility bitmask): objects have a thickness, so light gets behind\n"
                   "thin ones.\n"
-                  "RTAO: from rays through the scene, on top of the game's SSAO. Needs an upscaler.\n"
+                  "RTAO: from rays through the scene, in place of the game's. Needs an upscaler.\n"
                   "ReSTIR GI: Global Illumination's paths bring the sky's light in place of the game's ambient;\n"
                   "turns it on below. Needs an upscaler.",
     .ao_paths_label = "Path-Traced (ReSTIR GI, Experimental)",
@@ -2219,8 +2222,9 @@ void ConfigureAddon() {
   twattila::lighting_settings::Append(&settings, &shader_injection);
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
-  // The water's reflections read the ray-traced reflections (TraceWaterReflections): their rows, the water's too.
-  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, false, true);
+  // The rays' AO in place of the game's and GT-VBAO (ssao01's rt_ambient_alone, as Attila's); the water's reflections read the
+  // ray-traced reflections (TraceWaterReflections): their rows, the water's too.
+  twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
   twattila::rt_scene::internal::water_pass = true;
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "WaterClarity",
@@ -2401,7 +2405,6 @@ void ConfigureAddon() {
                                              .water_caustics_tested = false,
                                              .banner_light_tested = false,
                                              .lights_own_row = true,
-                                             .rays_replace_ao = false,
                                              .rays_multiply_maps = true});
   // Faster Game CPU Code (engine_code_row) Experimental, off.
   for (auto* setting : settings) {
