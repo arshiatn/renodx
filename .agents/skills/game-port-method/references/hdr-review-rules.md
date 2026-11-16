@@ -21,7 +21,9 @@ Read before any tone mapper, LUT, bloom, hue, gamma or PsychoV change. `handle-s
 - **Grading** blends in linear; the bridge's inverse applies there.
 - **Gamma:** decode the game's output as sRGB or 2.2 (Gamma Correction). Don't carry a game's cooked write curve (a toe
   such as `min(8.4 x, sRGB)`) into the picture; keep it only where a game pass reads it back, such as an exposure
-  histogram.
+  histogram. A gamma 2.0 game was seen on 2.2 displays: decode its frame with 2.2 in every mode that shows it, and
+  give every add mixed into the frame (lens flares, sprites) the frame's own gamma, so Vanilla keeps the game's add
+  (Attila's and Thrones' flares were 0.035 off; the maintainer, 2026-11-16).
 - **No clip at white in a redone add.** Where the port redoes an add the game made on its 8-bit image (bloom, a sun
   sprite, stacked additive sprites), don't clip the sum or the destination at white: the plateau it leaves can't be
   lifted. The Vanilla mode clips once, at the end.
@@ -38,7 +40,9 @@ Read before any tone mapper, LUT, bloom, hue, gamma or PsychoV change. `handle-s
 - Compression's toe darkens shadows under the anchor: measure against Vanilla below white before keeping the default.
   Where the game's own toe and saturation are the look (an ACES game's darker shadows), PsychoV reproduces them,
   measured against the game's LUT on the traced constants, and keeps only its own highlights: Divinity 2's V35 came out
-  with shadows 5x brighter and mid tones 23% paler than Off (the maintainer, 2026-11-16).
+  with shadows 5x brighter and mid tones 23% paler than Off (the maintainer, 2026-11-16). No second curve for it: fit
+  V35's own sliders (Contrast, Shadows, Saturation, Highlight Contrast) to the game's chain by minimax on WARP and
+  ship them as the rows' defaults (Divinity 2: shadows x0.97-1.04 and chroma x1.03 of the game's).
 - The output goes unclamped into the swap chain pass.
 - Our PsychoV35 (Musa's, `twattila/psycho_test35.hlsli`) keeps this contract where its arguments match.
 
@@ -60,7 +64,8 @@ Read before any tone mapper, LUT, bloom, hue, gamma or PsychoV change. `handle-s
 - **Vanilla exact first:** every replaced shader has an offline test against the game's own bytes, plus a deliberately
   wrong copy that must fail. Then any difference under the HDR modes is the mod's, not a porting error. These tests
   find real bugs: R.U.S.E.'s vignette had lost a `dp2add_sat`'s saturate, 0.13 to 0.30 off in 6 of 7 permutations
-  (the maintainer, 2026-11-16).
+  (the maintainer, 2026-11-16); the suite (`test/tw_vanilla_exact`: 212 shaders, x86 and amd64) also caught three
+  decompiler traps ([engines.md](engines.md)'s Shader sources).
 - **Every 8-bit target between the HDR scene and the tone map clips HDR:** DOF and blur targets, a LUT strip, an AA
   pass's back-buffer-sized input. Upgrade narrowly (exact size and usage, not an aspect tolerance).
 - **MSAA:** upgrade the MSAA surface and its resolve target together. Upgrading only one crashed Arkham City (RGBA8

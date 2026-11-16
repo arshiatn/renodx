@@ -42,7 +42,7 @@ Tone-map and LUT math belongs to `handle-sdr-tonemap-lut`; these are the TW-spec
 | A Hue Clip default copied from another game | Default from the OkLab hue error of PsychoV35 against that game's SDR clip (Attila 40, WH3 100); sky blue bends twice as far | `test/tw_psychov35`: ramps never above peak or NaN, other modes 0 pixels different, other shaders the same bytes |
 | PsychoV35 shipped as the default | First an Experimental Rendering Mode; Recommended took it (Musa's V35) only after the maintainer's test; no new per-frame CPU | Page dump |
 | The SDR preset set PsychoV31 | It sets Rendering Mode SDR | Page dump |
-| SDR output re-encoded the gamma 2.0 frame as 2.2: darks brighter | Decode what that game's pass encoded | WARP ramp |
+| SDR output re-encoded the gamma 2.0 frame as 2.2: darks brighter | Decode what that game's pass encoded; HDR modes and the frame's adds (lens flares): `game-port-method`'s [hdr-review-rules.md](../../game-port-method/references/hdr-review-rules.md) Gamma rule | WARP ramp; `test/tw_vanilla_exact` for the adds |
 | WH3's lens blood reached 9.5 in FP16 | Clamp additive overlays at paper white | Read the overlay PS |
 
 ## 3. Graphics page and presets

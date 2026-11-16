@@ -72,7 +72,7 @@ The format is `game-port-method`'s. TW additions:
 ## 4. Reading the maintainer's evidence
 
 - Copy each set of logs, shots and inis into the round's folder in `tools/tw` before reading, named by run. Then `python -I tools/tw/check_logs.py <folder>` (the data-run scripts and `atn_trace_watch.ps1` print it at their end): known-bad lines in `ReShade.log`, the helper's log and the run's notes (RR unavailable, "no main camera" repeating, a `RENODX_TW_SET` key not applied, a trace not taken, exceptions, removed devices, NOT RUN, a game that ended by itself), exit 1 on any. Pharaoh's run B61 held "Ray Reconstruction unavailable" at 16:28; it was read at 19:55.
-- A crash or hang: the game's `crash_report` folder first, then the device-end line, then event 153 ([helper-fg-stability.md](helper-fg-stability.md)).
+- A crash or hang: the game's `crash_report` folder first, then the device-end line, then event 153 ([helper-fg-stability.md](helper-fg-stability.md)). A crash only with the mod: the three control starts (vanilla, ReShade only, the mod) of `game-port-method`'s Measurement section before any theory.
 - A profile: segment it by its setting-change log lines before reading numbers; a profile's "states" were once the maintainer stepping through Upscaling Mode.
 - A paused pair 30 s apart differed 4 to 5% around the units with nothing changed (banners fade after the pause starts): run the control before blaming a row.
 - A brighter picture with rays multiplying is not the rays: one effect at a time, the other shadow method off. RT Shadows on turns Bend off.
