@@ -5,7 +5,8 @@
 //    the lighting's only ambient, the black cube takes all of it. Control: with the probes' reflections back, the black
 //    cube keeps them (the scene not black) and differs from the game's.
 // 2. rt_probe_sky (the add-on's build): the widest probe before the sun (later entries are older frames') at the six axes
-//    times its colour and attenuation into the sun texture's texels 3-8, w 1; no light list: zeros.
+//    times its colour and attenuation into the sun texture's texels 3-8, w 1 but texel 6's 0: the helper's OpenSky then
+//    equals the cube at the normal (control: texel 6's w 1 stretches y); no light list: zeros.
 // 3. The ray-traced AO in place of the game's SSDO amount (the AO method 2). a) ssdo00 (the add-on's build against the
 //    game's bytes, a camera above a floor facing a wall, GT-VBAO saved): the AO method 0 is the game's (GT-VBAO only at
 //    1), 2 leaves the SSDO amount out (w 0 without LSDO, the terrain's LSDO alone with it), the direction kept. Control:
@@ -508,11 +509,48 @@ int main(int argc, char** argv) {
   const auto with_list = sky(list_srv.Get(), faces_srv.Get());
   float worst = 0.f;
   for (UINT face = 0; face < 6; ++face) {
-    const std::array<float, 4> expected = {0.1f * static_cast<float>(face + 1) * 0.5f * 0.8f, 1.f * 1.f * 0.8f, 1.f * 2.f * 0.8f, 1.f};
+    // w 1, texel 6's 0 (the helper's OpenSky then takes the cube at the normal as it is: Ryse's world is z up).
+    const std::array<float, 4> expected = {0.1f * static_cast<float>(face + 1) * 0.5f * 0.8f, 1.f * 1.f * 0.8f, 1.f * 2.f * 0.8f,
+                                           (face == 3) ? 0.f : 1.f};
     for (UINT channel = 0; channel < 4; ++channel) worst = std::max(worst, std::abs(with_list[((3 + face) * 4) + channel] - expected[channel]));
-    std::printf("  sky texel %u: %.4f %.4f %.4f %.1f (expected %.4f %.4f %.4f 1)\n", 3 + face, with_list[(3 + face) * 4], with_list[((3 + face) * 4) + 1],
-                with_list[((3 + face) * 4) + 2], with_list[((3 + face) * 4) + 3], expected[0], expected[1], expected[2]);
+    std::printf("  sky texel %u: %.4f %.4f %.4f %.1f (expected %.4f %.4f %.4f %.0f)\n", 3 + face, with_list[(3 + face) * 4],
+                with_list[((3 + face) * 4) + 1], with_list[((3 + face) * 4) + 2], with_list[((3 + face) * 4) + 3], expected[0], expected[1],
+                expected[2], expected[3]);
   }
+  // The helper's OpenSky (dlaa_helper/rt_path.hlsli) on these texels: the cube at the normal, scaled by texel 4's w; texel
+  // 6's w not 0 stretches the normal's y four times (Attila's sun shaders). It must equal the plain cube at the normal
+  // (the tiled lighting samples its probes at the world normal); CONTROL: texel 6's w 1 (as before) must differ.
+  const auto open_sky = [&](std::array<float, 3> normal, float texel6_w) {
+    if (texel6_w != 0.f) {
+      normal[1] *= 4.f;
+      const float length = std::sqrt((normal[0] * normal[0]) + (normal[1] * normal[1]) + (normal[2] * normal[2]));
+      for (float& axis : normal) axis /= length;
+    }
+    std::array<float, 3> light = {};
+    for (UINT axis = 0; axis < 3; ++axis) {
+      const UINT texel = 3 + (2 * axis) + ((normal[axis] < 0.f) ? 1u : 0u);
+      for (UINT channel = 0; channel < 3; ++channel) light[channel] += normal[axis] * normal[axis] * with_list[(texel * 4) + channel];
+    }
+    for (float& channel : light) channel *= with_list[(4 * 4) + 3];
+    return light;
+  };
+  float sky_difference = 0.f;
+  float stretched_difference = 0.f;
+  for (const std::array<float, 3>& normal : {std::array<float, 3>{0.f, 0.6f, 0.8f}, std::array<float, 3>{0.48f, -0.6f, 0.64f},
+                                             std::array<float, 3>{-0.8f, 0.36f, -0.48f}}) {
+    const auto plain = open_sky(normal, 0.f);
+    const auto written = open_sky(normal, with_list[(6 * 4) + 3]);
+    const auto stretched = open_sky(normal, 1.f);
+    for (UINT channel = 0; channel < 3; ++channel) {
+      sky_difference = std::max(sky_difference, std::abs(written[channel] - plain[channel]));
+      stretched_difference = std::max(stretched_difference, std::abs(stretched[channel] - plain[channel]) / std::max(plain[channel], 1e-6f));
+    }
+  }
+  std::printf("  the helper's OpenSky with the written texel 6 against the cube at the normal: largest difference %.3g; CONTROL "
+              "texel 6's w 1 (y four times over): %.1f %% off\n",
+              sky_difference, 100.f * stretched_difference);
+  CHECK(sky_difference == 0.f);
+  CHECK(stretched_difference > 0.01f);
   std::printf("rt_probe_sky: the widest probe before the sun, largest difference %.3g; texels 0-2 untouched: %s\n", worst,
               (with_list[0] == -7.f && with_list[8] == -7.f) ? "yes" : "no");
   CHECK(worst <= 1e-5f);

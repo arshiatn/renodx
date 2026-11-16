@@ -7,8 +7,9 @@
 // its diffuse ambient from the probes alone (its t32 list's lightType 1 entries: DiffuseCubeArray at t34, layer resIndex,
 // sampled with the world normal, times the entry's colour and its attenuationParams.x); the level's own probe is the
 // widest. Its light toward +x, -x, +y, -y, +z, -z goes into the sun texture's texels 3-8 (w 1: texel 4's the sky's scale,
-// the game's units; texel 5's the share the Light Bounce adds), the ambient cube the helper's paths take as their sky
-// (dlaa_helper/rt_path.hlsli SkyLight, OpenSky). The list holds the frame's lights up to the sun (lightType 8, the last
+// the game's units; texel 5's the share the Light Bounce adds; texel 6's w 0: OpenSky takes the cube at the normal as it
+// is, as the lighting samples the probes; its w 1 is Attila's y four times over, a y-up habit, wrong in Ryse's z-up
+// world), the ambient cube the helper's paths take as their sky (dlaa_helper/rt_path.hlsli SkyLight, OpenSky). The list holds the frame's lights up to the sun (lightType 8, the last
 // the game adds): past it the entries are older frames'. No list (t0 unbound) or no probe: texel 3's w 0 (no sky).
 struct TiledLightShadeInfo {
   uint light_type;
@@ -54,7 +55,7 @@ void main() {
     if (widest != 0xFFFFFFFFu) {
       const TiledLightShadeInfo probe = lights[widest];
       const float3 irradiance = diffuse_probes.SampleLevel(s_linear, float4(SIDES[side], (float)probe.resource_index), 0).rgb;
-      light = float4(irradiance * probe.color.rgb * probe.attenuation.x, 1.f);
+      light = float4(irradiance * probe.color.rgb * probe.attenuation.x, (side == 3u) ? 0.f : 1.f);
     }
     sun[uint2(3u + side, 0)] = light;
   }
