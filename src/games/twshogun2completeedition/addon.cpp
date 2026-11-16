@@ -2366,6 +2366,13 @@ void ApplyGameRows() {
 
 void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  // Before any setting is read this frame: the helper's DLSS never starts on another vendor's GPU, a saved one or a
+  // preset's is its XeSS on Intel's, else its FSR (Attila's; HelperUpscaler's slider places 2 and 3, parsed to 6 and 7).
+  // The game's DLSS (0) stays: the game runs it or not itself.
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
+  if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
+    renodx::utils::settings::UpdateSettings({{"HelperUpscaler", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 3.f : 2.f)}});
+  }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   // GT-VBAO not under the rays' AO (one AO method, as Attila's rt_ambient_alone: the sun draws read the rays' AO in place of
   // the game's, rt_sun.hlsli RtInPlace). Its Temporal Smoothing (its noise moving each frame) and Denoiser
