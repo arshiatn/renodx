@@ -921,7 +921,7 @@ void BuildRuntimeData() {
           .section = "Presets",
           .group = "preset-line-1",
           .tooltip = "For displays without HDR: Rendering Mode SDR and Output SDR (restart the game if it was HDR),\n"
-                     "every look control at its default.",
+                     "every look control at its default. Peak, Paper White and UI are kept.",
           .on_change = []() {
             ApplyDefaultLook(0.f);
             renodx::utils::settings::UpdateSettings({{"SwapChainEncoding", static_cast<float>(twattila::output_encoding::SDR)}});
