@@ -299,6 +299,7 @@ struct RaySliders {
   float far_tree_shadows = 0.f;
   float units_out_of_view = 0.f;
   float untraced_casters = 0.f;
+  float replace_maps = 0.f;
   float sheets_unselfed = 0.f;
   float smoke_shadows = 0.f;
   float smoke_quality = 1.f;  // Low to Maximum
@@ -373,6 +374,7 @@ twattila::rt_scene::Settings RaySettings() {
   // (rays from pixels farther than it pass the grass), both the helper's.
   rays.sheets_unselfed = on(rows.sheets_unselfed);
   twshogun2::ray_tracing::untraced_casters.store(on(rows.untraced_casters), std::memory_order_relaxed);
+  twshogun2::ray_tracing::sun_replaces_maps.store(rays.sun_shadows && on(rows.replace_maps), std::memory_order_relaxed);
   rays.grass_shadow_range = std::clamp(rows.grass_shadow_range, 0.f, 200.f);
   rays.ambient_occlusion = on(rows.ambient_occlusion);
   rays.ambient_range = std::clamp(rows.ambient_range, 0.25f, 5.f);
@@ -640,6 +642,7 @@ const Values RAYS_RESET = {
     {"RayTracedFarTreeShadows", 0.f},
     {"RayTracedUnitsOutOfView", 0.f},
     {"RayTracedUntracedCasters", 0.f},
+    {"RayTracedReplaceShadowMaps", 0.f},
     {"RayTracedSheetsUnselfed", 0.f},
     {"RayTracedGrassShadowRange", 0.f},
     {"RayTracedAoReblur", 0.f},
@@ -2142,6 +2145,10 @@ void BuildRuntimeData() {
                  sun),
       ray_choice("RayTracedUntracedCasters", &rt_sliders.untraced_casters, 0.f, "Rarer objects in the rays (Experimental)", off_on,
                  "Objects and near ground the game tessellates (its Tessellation on) also cast ray-traced shadows.", sun),
+      ray_choice("RayTracedReplaceShadowMaps", &rt_sliders.replace_maps, 0.f, "Rays replace shadow maps (Experimental)", off_on,
+                 "The sun's shadows from the rays alone, without the game's shadow maps and screen-space shadows.\n"
+                 "Far soldiers and far trees need their shadow rows on; grass casts no contact shadows.",
+                 sun),
       ray_choice("RayTracedSheetsUnselfed", &rt_sliders.sheets_unselfed, 0.f, "Smooth banner shadows (Experimental)", off_on,
                  "Banners, sails and other cloth don't shade themselves: no blocky triangles on them. Shadows of other things stay.", sun),
       ray_choice("RayTracedSmokeShadows", &rt_sliders.smoke_shadows, 0.f, "Ray-traced smoke shadows (Experimental)", off_on,

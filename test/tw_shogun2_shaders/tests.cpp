@@ -17,7 +17,8 @@
 //     0xF7EDF855 / 0x4E3EE717, wind / weighted / grass / far_tree_3k against 0xEDCD8445 / 0x1E0425DE / 0xF6CBD06E / 0x63E273F4
 //     (TestCascadeLeaves).
 // 12. rt_capture_cascade_tree_leaves' fade against the game's leaf shadow pass 0x5851CA62 + 0xA97EF2E0 (TestLeafFade).
-// 13. Coloured Shadows and the rays' AO in place of the game's in shaders/sunlight00-03 (TestSunTint).
+// 13. Coloured Shadows, the rays' AO and (Rays Replace Shadow Maps) sun visibility in place of the game's in
+//     shaders/sunlight00-03 (TestSunTint).
 // 14. autoexposure00's Modded Auto Exposure against the game's 0x8233E11F (TestAutoExposure).
 // 15. indicator00-02's Indicator Brightness against the game's 0xD12FA660 / 0xC454C1EA / 0xC57C222D (TestIndicators).
 // 16. campaignoverlay00 at 33% against 100% and the game's 0xD7E27B35 (TestCampaignOverlay).
@@ -1992,6 +1993,7 @@ struct SunShader {
   UINT textures;  // t0.. bound (the rest 16 x 16 RGBA)
   UINT samplers;
   UINT ao_slot;  // t_ssao
+  UINT shadow_slot;  // t_shadow (the game's mask)
 };
 
 static void TestSunTint(const std::string& games) {
@@ -2060,13 +2062,13 @@ static void TestSunTint(const std::string& games) {
   const std::wstring path(games.begin(), games.end());
   const std::array<SunShader, 4> shaders = {{
       {.file = L"sunlight00_0xED1BED93", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4,
-       .ao_slot = 5},
+       .ao_slot = 5, .shadow_slot = 11},
       {.file = L"sunlight01_0x5496DE73", .lighting_slot = 2, .constant_buffers = 4, .cube_array_slots = {0, 1}, .harmonics_slots = {2, 3}, .textures = 12, .samplers = 4,
-       .ao_slot = 5},
+       .ao_slot = 5, .shadow_slot = 11},
       {.file = L"sunlight02_0xC3E0E939", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6,
-       .ao_slot = 7},
+       .ao_slot = 7, .shadow_slot = 13},
       {.file = L"sunlight03_0xD5FDDE8F", .lighting_slot = 3, .constant_buffers = 5, .cube_array_slots = {2, 3}, .harmonics_slots = {4, 5}, .textures = 14, .samplers = 6,
-       .ao_slot = 7},
+       .ao_slot = 7, .shadow_slot = 13},
   }};
   const auto traced_ambient = filter(0.37f);
   for (const auto& shader : shaders) {
@@ -2102,9 +2104,11 @@ static void TestSunTint(const std::string& games) {
       }
     }
     const std::vector<ID3D11SamplerState*> samplers(shader.samplers, sampler.Get());
-    // `ambient`: t41 (the rays' AO); `ssao`: in place of the random t_ssao.
+    // `ambient`: t41 (the rays' AO); `ssao`: in place of the random t_ssao; `sun`: t40 (the darker), `alone`: t51 (the rays'
+    // sun in place of the game's mask); `shadow`: in place of the random t_shadow.
     const auto run = [&](ID3D11Buffer* lighting_buffer, ID3D11ShaderResourceView* tint, ID3D11ShaderResourceView* ambient = nullptr,
-                         ID3D11ShaderResourceView* ssao = nullptr) {
+                         ID3D11ShaderResourceView* ssao = nullptr, ID3D11ShaderResourceView* sun = nullptr,
+                         ID3D11ShaderResourceView* alone = nullptr, ID3D11ShaderResourceView* shadow = nullptr) {
       const auto output = Texture(SIZE, SIZE, DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 0, D3D11_BIND_RENDER_TARGET);
       ComPtr<ID3D11RenderTargetView> target;
       device->CreateRenderTargetView(output.Get(), nullptr, target.GetAddressOf());
@@ -2115,13 +2119,16 @@ static void TestSunTint(const std::string& games) {
       std::vector<ID3D11ShaderResourceView*> bound(views.size());
       for (size_t slot = 0; slot < views.size(); ++slot) bound[slot] = views[slot].Get();
       if (ssao != nullptr) bound[shader.ao_slot] = ssao;
+      if (shadow != nullptr) bound[shader.shadow_slot] = shadow;
       const D3D11_VIEWPORT viewport = {.Width = SIZE, .Height = SIZE, .MaxDepth = 1.f};
       context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
       context->VSSetShader(vertex.Get(), nullptr, 0);
       context->PSSetShader(pixel.Get(), nullptr, 0);
       context->PSSetShaderResources(0, static_cast<UINT>(bound.size()), bound.data());
-      context->PSSetShaderResources(41, 1, &ambient);
-      context->PSSetShaderResources(50, 1, &tint);
+      const std::array<ID3D11ShaderResourceView*, 2> traced = {sun, ambient};
+      context->PSSetShaderResources(40, static_cast<UINT>(traced.size()), traced.data());
+      const std::array<ID3D11ShaderResourceView*, 2> tint_and_alone = {tint, alone};
+      context->PSSetShaderResources(50, static_cast<UINT>(tint_and_alone.size()), tint_and_alone.data());
       context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
       context->PSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
       context->RSSetViewports(1, &viewport);
@@ -2164,6 +2171,28 @@ static void TestSunTint(const std::string& games) {
     CHECK(ao_shown > 0, "CONTROL %s: t41 0.37 left the random t_ssao's picture", name.c_str());
     std::printf("%s AO in place: t41 0.37 = t_ssao 0.37 (%zu apart, %zu not to the bit); the random t_ssao's picture %zu values apart\n",
                 name.c_str(), ao_apart, ao_bits, ao_shown);
+    // Rays Replace Shadow Maps: t51 0.37 over the game's mask 0.2 (t40 bound too: it then is not read) = the game's with
+    // t_shadow 0.37; CONTROL: the darker (t40 0.37 without t51, min(0.2, 0.37)) differs from it. g_Shadow_low_clamp
+    // (lighting c15.x) 0 here: the random one could lift both above 0.37.
+    auto unclamped = lighting;
+    unclamped[60] = 0.f;
+    const auto unclamped_buffer = Constants(unclamped.data(), sizeof(unclamped));
+    const auto traced_sun = filter(0.37f);
+    const auto darker_mask = filter(0.2f);
+    const auto alone = run(unclamped_buffer.Get(), nullptr, nullptr, nullptr, traced_sun.Get(), traced_sun.Get(), darker_mask.Get());
+    const auto game_at_sun = run(unclamped_buffer.Get(), nullptr, nullptr, nullptr, nullptr, nullptr, traced_sun.Get());
+    const auto darker = run(unclamped_buffer.Get(), nullptr, nullptr, nullptr, traced_sun.Get(), nullptr, darker_mask.Get());
+    size_t sun_apart = 0, sun_bits = 0, darker_shown = 0;
+    for (size_t value = 0; value < unbound.size(); ++value) {
+      sun_apart += same(alone[value], game_at_sun[value]) ? 0 : 1;
+      sun_bits += (std::bit_cast<uint32_t>(alone[value]) == std::bit_cast<uint32_t>(game_at_sun[value])) ? 0 : 1;
+      darker_shown += same(alone[value], darker[value]) ? 0 : 1;
+    }
+    CHECK(sun_apart == 0, "%s: %zu values of t51 0.37 over the mask 0.2 differ from t_shadow 0.37 unbound", name.c_str(), sun_apart);
+    CHECK(darker_shown > 0, "CONTROL %s: t51 0.37 gave the darker's picture (min with the mask 0.2)", name.c_str());
+    std::printf("%s sun in place: t51 0.37 over the mask 0.2 = t_shadow 0.37 (%zu apart, %zu not to the bit); the darker's picture %zu values "
+                "apart\n",
+                name.c_str(), sun_apart, sun_bits, darker_shown);
   }
 }
 

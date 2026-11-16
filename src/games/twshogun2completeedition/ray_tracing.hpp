@@ -91,6 +91,10 @@ constexpr uint32_t TREE_BILLBOARD_VERTEX_SHADER = 0xFAAE535B;
 constexpr uint32_t DISPLACEMENT_VERTEX_SHADER = 0x5074655A;
 constexpr uint32_t TERRAIN_PATCHES_VERTEX_SHADER = 0xC24D8705;
 inline std::atomic_bool untraced_casters = false;
+// Rays Replace Shadow Maps (Experimental, Attila's key RayTracedReplaceShadowMaps; live): the sun light draws take this
+// frame's traced sun visibility alone (t51, shaders/rt_sun.hlsli RtSunVisibility) in place of the darker of it and the
+// game's mask (t11 / t13: its cascades and screen-space shadows, sss00-02): one sun-shadow method.
+inline std::atomic_bool sun_replaces_maps = false;
 // Shadow Casters Out of View (Experimental): the shadow pass's rigid casters (rigidterrainblend vs30_shadow, AC25DAB8; 488 draws in
 // the 2026-11-14 battle trace, all instanced: 38M, 53M and 326M indices x instances in cascades 1-3, far too many to stream out) as
 // listed scene shaders besides SceneDraw's (twattila/rt_core.hpp, as Warhammer III's): placed by their instances' rows, those whose
@@ -520,13 +524,17 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
   if (settings.reflections || settings.path_tracing || settings.coloured_shadows || upscaling::Reconstructing()) WriteGuides(native, draw.gbuffer_slot);
   if (twattila::rt_scene::Camera camera; Camera(camera_buffer.Get(), &camera)) twattila::rt_scene::Trace(native, depth.Get(), camera);
   const auto [sun, ambient] = twattila::rt_scene::Visibilities();
-  const std::array<ID3D11ShaderResourceView*, 2> visibilities = {settings.sun_shadows ? sun : nullptr,
-                                                                 settings.ambient_occlusion ? ambient : nullptr};
+  // t40 the darker with the game's mask, t51 in place of it (Rays Replace Shadow Maps); t41 the AO in place of the game's.
+  const bool sun_alone = sun_replaces_maps.load(std::memory_order_relaxed);
+  ID3D11ShaderResourceView* traced_sun = settings.sun_shadows ? sun : nullptr;
+  const std::array<ID3D11ShaderResourceView*, 2> visibilities = {sun_alone ? nullptr : traced_sun, settings.ambient_occlusion ? ambient : nullptr};
   const bool no_ambient = draw.lighting_slot != CAMPAIGN_LIGHTING_SLOT && PathAmbientNow() && LightingWithoutAmbient(native, draw.lighting_slot);
-  if (visibilities[0] == nullptr && visibilities[1] == nullptr && !no_ambient) return {};
+  if (traced_sun == nullptr && visibilities[1] == nullptr && !no_ambient) return {};
   native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(visibilities.size()), visibilities.data());
-  ID3D11ShaderResourceView* tint = (settings.coloured_shadows && visibilities[0] != nullptr) ? twattila::dlaa_bridge::bridge.rt_tint.srv.Get() : nullptr;
-  native->PSSetShaderResources(TINT_SLOT, 1, &tint);
+  const std::array<ID3D11ShaderResourceView*, 2> tint_and_alone = {
+      (settings.coloured_shadows && traced_sun != nullptr) ? twattila::dlaa_bridge::bridge.rt_tint.srv.Get() : nullptr,
+      sun_alone ? traced_sun : nullptr};
+  native->PSSetShaderResources(TINT_SLOT, static_cast<UINT>(tint_and_alone.size()), tint_and_alone.data());
   // Put back in finalize callbacks: the Light Bounce draws the sun draw itself (bypass), which skips post callbacks.
   return {.finalize_callback = [](Context& command, const void*) {
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
@@ -534,7 +542,7 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
     if (native == nullptr) return;
     constexpr std::array<ID3D11ShaderResourceView*, 2> NONE = {};
     native->PSSetShaderResources(VISIBILITY_SLOT, static_cast<UINT>(NONE.size()), NONE.data());
-    native->PSSetShaderResources(TINT_SLOT, 1, NONE.data());
+    native->PSSetShaderResources(TINT_SLOT, static_cast<UINT>(NONE.size()), NONE.data());
     const std::unique_lock lock(state.mutex);
     if (state.game_lighting) native->PSSetConstantBuffers(state.game_lighting_slot, 1, state.game_lighting.GetAddressOf());
     state.game_lighting.Reset();
