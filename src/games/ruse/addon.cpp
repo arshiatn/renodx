@@ -131,6 +131,13 @@ void OnBridgeBindTargets(reshade::api::command_list* cmd_list, uint32_t count, c
       && desc.Width == back_buffer_width && desc.Height == back_buffer_height;
 }
 
+void OnBridgeBindViewports(reshade::api::command_list* cmd_list, uint32_t first, uint32_t count, const reshade::api::viewport* viewports) {
+  if (first != 0 || count == 0 || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d9) return;
+  ruse::bridge::state.viewport_is_frame_sized = viewports[0].x == 0.f && viewports[0].y == 0.f
+                                                && viewports[0].width == static_cast<float>(back_buffer_width)
+                                                && viewports[0].height == static_cast<float>(back_buffer_height);
+}
+
 void OnBridgePushDescriptors(reshade::api::command_list*, reshade::api::shader_stage stages, reshade::api::pipeline_layout,
                              uint32_t layout_param, const reshade::api::descriptor_table_update& update) {
   // ReShade's D3D9 layout: parameter 1 the pixel samplers with their textures.
@@ -697,6 +704,9 @@ void OnPresentFrame(
   }
   ruse::replay::Replay(ruse::bridge::state.camera_valid ? std::span<const float>(ruse::bridge::state.camera).subspan(16, 16)
                                                        : std::span<const float>());
+  // With the rays the next frame's scene draws are recorded only for a try that takes them: no replay work while they
+  // don't trace.
+  ruse::replay::state.recording = !ruse::replay::state.rays || ruse::ray_tracing::SceneWanted();
   native_gui_phase = false;
   skip_host_present = false;
   proxy_present_started = false;
@@ -1965,6 +1975,7 @@ bool AttachAddon() {
   }
   if (ruse::bridge::state.enabled || ruse::replay::state.enabled || ruse::ray_tracing::state.vbao) {
     reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
+    reshade::register_event<reshade::addon_event::bind_viewports>(OnBridgeBindViewports);
     reshade::register_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
     reshade::register_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
     reshade::register_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);
@@ -1988,6 +1999,7 @@ bool AttachAddon() {
   }
   if (ruse::ray_tracing::Shading()) {
     reshade::register_event<reshade::addon_event::copy_texture_region>(ruse::ray_tracing::OnCopyTextureRegion);
+    reshade::register_event<reshade::addon_event::clear_depth_stencil_view>(ruse::ray_tracing::OnClearDepthStencilView);
     reshade::register_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
   }
   if (ruse::bridge::state.gpu_sync) {
@@ -2030,6 +2042,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_resource_view>(ruse::bridge::OnInitDepthView);
   reshade::unregister_event<reshade::addon_event::destroy_resource_view>(ruse::bridge::OnDestroyDepthView);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(OnBridgeBindTargets);
+  reshade::unregister_event<reshade::addon_event::bind_viewports>(OnBridgeBindViewports);
   reshade::unregister_event<reshade::addon_event::push_descriptors>(OnBridgePushDescriptors);
   reshade::unregister_event<reshade::addon_event::push_constants>(OnBridgePushConstants);
   reshade::unregister_event<reshade::addon_event::draw_indexed>(OnBridgeDrawIndexed);
@@ -2045,6 +2058,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::bind_pipeline_states>(ruse::replay::OnBindPipelineStates);
   reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::replay::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::copy_texture_region>(ruse::ray_tracing::OnCopyTextureRegion);
+  reshade::unregister_event<reshade::addon_event::clear_depth_stencil_view>(ruse::ray_tracing::OnClearDepthStencilView);
   reshade::unregister_event<reshade::addon_event::destroy_device>(ruse::ray_tracing::OnDestroyDevice);
   if (ruse::bridge::state.gpu_sync) {
     renodx::utils::gpu_fence::Use(DLL_PROCESS_DETACH);

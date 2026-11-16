@@ -38,7 +38,8 @@
 // scene the draw replay captured (rt_core.hpp, a clip-space host on the DX11 proxy's device: InstallReplayedScene). The
 // ground's sun shadow is a screen-space mask: the pre-pass (the 32 terrain patches and the camera pass 0x88292FC6) draws
 // it, StretchRect copies it into a texture whose red the 110 terrain and 94 water pixel shaders read by screen position
-// and multiply into the sun's colour alone. Right after that copy, at the main pass's first draw: the pre-pass's depth
+// and multiply into the sun's colour alone. After that copy, before the main pass draws (with the game's AA off at its
+// clear of the pre-pass's depth, which it draws into too; else at its first draw): the pre-pass's depth
 // (INTZ) into the bridge's shared depth, the last frame's draws into the scene in this frame's camera (CaptureScene), the
 // trace, and the traced visibility into the mask's red in place of the game's shadow-map term (the pre-pass writes only
 // that term there; a frame without a trace keeps the game's).
@@ -82,6 +83,9 @@ constexpr float REFLECTION_THICKNESS = 500.f;
 constexpr UINT BOUNCE_SCALE = 2;
 constexpr uint32_t BOUNCE_RAYS = 2;
 constexpr float BOUNCE_RANGE = 1000.f;
+// After a frame without rays (the helper didn't trace, or no trace point) the next try this many frames on: the replay
+// records the frame before a try and the try's own, not every frame.
+constexpr uint32_t RAYS_RETRY_FRAMES = 60;
 
 using Microsoft::WRL::ComPtr;
 
@@ -100,6 +104,8 @@ struct State {
   bool failed = false;
   bool tracing = false;  // the last trace's answer, and its changes logged this start (a few: never a line a frame)
   uint32_t changes_logged = 0;
+  uint32_t rays_frame = 0;  // the first frame whose trace point asks for the rays (the next while they trace)
+  uint32_t tried_frame = UINT32_MAX;  // the last frame that asked
   // This frame's pre-pass (the camera pass's target and depth), where its copy went (an IDirect3DTexture9), the sun.
   uint32_t camera_frame = UINT32_MAX;
   uint32_t mask_frame = UINT32_MAX;
@@ -262,6 +268,31 @@ inline bool OnCopyTextureRegion(reshade::api::command_list*, reshade::api::resou
   return false;
 }
 
+// The rays' answer at a try, or at a frame that was to try and didn't: logged the first time and when it changes (at most
+// nine lines a start, never one a frame).
+inline void SetTracing(bool tracing, const std::string& why_not) {
+  if ((tracing != state.tracing || state.changes_logged == 0) && state.changes_logged <= 8) {
+    ++state.changes_logged;
+    reshade::log::message(
+        reshade::log::level::info,
+        std::format("[R.U.S.E.] Ray tracing: {}{}",
+                    (tracing ? std::format("tracing (ground shadows{}{}{}{})", (state.objects ? ", object shadows" : ""),
+                                           (state.ambient ? ", ambient occlusion" : ""),
+                                           (state.traced_bounce == 1 ? ", Light Bounce" : (state.traced_bounce == 2 ? ", path-traced Light Bounce" : "")),
+                                           (state.traced_reflections ? ", water reflections" : ""))
+                             : std::format("not tracing ({}): the game's shadows, asked again {} frames on", why_not, RAYS_RETRY_FRAMES)),
+                    (state.changes_logged > 8 ? " (no more of these lines this start)" : ""))
+            .c_str());
+  }
+  state.tracing = tracing;
+}
+
+// Whether this frame's scene draws are recorded (addon.cpp sets the replay's row at the game's present): for a try this
+// frame or the next, the one that takes them.
+inline bool SceneWanted() {
+  return state.ground && bridge::state.frame + 1 >= state.rays_frame;
+}
+
 // The ground's sun shadows once a frame (the rays, Bend's march or both) into the ground mask, before the main pass draws
 // with it; true when the shared visibility holds this frame's.
 inline bool ShadeGround(reshade::api::command_list* cmd_list) {
@@ -271,6 +302,10 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       || !bridge.camera_valid || !bridge.intz_depths.contains(state.prepass_depth)) {
     return false;
   }
+  // The rays tried each frame while they trace, else every RAYS_RETRY_FRAMES; between tries without another ground row
+  // nothing below runs (the depth's copy and its wait included).
+  const bool rays = state.ground && bridge.frame >= state.rays_frame;
+  if (!rays && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
   // The anti-aliasing's bridge once it runs; without it (GT-VBAO alone) its shared textures and passes only, tried once.
   if (!bridge.ready) {
@@ -582,26 +617,23 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     state.gathered_frame = bridge.frame;
   }
 
-  // G1: the rays (and the ambient's); without them (Bend alone, or no trace this frame) the visibility starts at 1.
+  // G1: the rays (and the ambient's); without them (Bend alone, or no trace this frame) the visibility starts at 1. A trace
+  // whose last frame the replay didn't record whole (the first after a pause: its scene without that frame's draws) is
+  // made but not shown, the game's shadows that frame.
   bool traced = false;
-  if (state.ground) {
+  if (rays) {
     twattila::rt_scene::WriteSun(context.Get(), state.toward_sun);
     replay::CaptureScene(state.proxy_queue->get_immediate_command_list(), view_projection);
-    traced = twattila::rt_scene::Trace(context.Get(), start_depth, camera);
-    if (traced != state.tracing && state.changes_logged <= 8) {
-      ++state.changes_logged;
-      reshade::log::message(
-          reshade::log::level::info,
-          std::format("[R.U.S.E.] Ray tracing: {}{}",
-                      (traced ? std::format("tracing (ground shadows{}{}{}{})", (state.objects ? ", object shadows" : ""),
-                                            (state.ambient ? ", ambient occlusion" : ""),
-                                            (state.traced_bounce == 1 ? ", Light Bounce" : (state.traced_bounce == 2 ? ", path-traced Light Bounce" : "")),
-                                            (state.traced_reflections ? ", water reflections" : ""))
-                              : std::string("not tracing (the helper's scene isn't ready): the game's shadows this frame")),
-                      (state.changes_logged > 8 ? " (no more of these lines this start)" : ""))
-              .c_str());
+    const bool answered = twattila::rt_scene::Trace(context.Get(), start_depth, camera);
+    state.tried_frame = bridge.frame;
+    state.rays_frame = bridge.frame + (answered ? 1u : RAYS_RETRY_FRAMES);
+    if (answered) {
+      SetTracing(true, {});
+    } else {
+      const std::string status = twattila::rt_scene::Status();
+      SetTracing(false, "the helper didn't trace: " + (status.empty() ? std::string("no status") : status));
     }
-    state.tracing = traced;
+    traced = answered && replay::state.previous_whole;
   }
   const auto [visibility, occlusion] = (traced ? twattila::rt_scene::Visibilities() : std::array<ID3D11ShaderResourceView*, 2>{});
   if (visibility == nullptr && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;
@@ -911,8 +943,50 @@ inline void OnGuideDraw(reshade::api::command_list* cmd_list) {
   host->SetRenderState(D3DRS_COLORWRITEENABLE3, water ? 0xF : 0);
 }
 
+// The trace point, once a frame after the mask's copy and before the main pass draws: the ground's rows over the
+// pre-pass's depth, the patched shaders' textures, this frame's guides opened.
+inline void ShadeBeforeMainPass(reshade::api::command_list* cmd_list) {
+  state.traced_frame = bridge::state.frame;
+  auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
+  if (state.guides_bound) {
+    BindGuides(host, false);
+  }
+  if (ShadeGround(cmd_list)) {
+    BindTraced(host, true);
+  }
+  // This frame's guides from here to the bloom (the gather above read last frame's and the proxy waited for it), for a
+  // try that takes them as the replay's draws.
+  if (state.guides && state.guide_water.host_surface != nullptr && SceneWanted()) {
+    for (IDirect3DSurface9* guide : {state.guide_albedo.host_surface.Get(), state.guide_normal.host_surface.Get(), state.guide_water.host_surface.Get()}) {
+      host->ColorFill(guide, nullptr, D3DCOLOR_ARGB(0, 0, 0, 0));
+    }
+    state.guides_frame = bridge::state.frame;
+    state.guides_closed = false;
+  }
+}
+
+// The game's AA off (MainRTAA 1x, the bridge's case): the main pass draws into the pre-pass's own depth and clears it
+// first (run_rn2_rt_084045's frame trace: 0x0C1E65C0 bound by both, cleared twice after the mask's copy), so the ground's
+// depth is there only until that clear, which ReShade reports before D3D9 runs it: the trace point then.
+inline bool OnClearDepthStencilView(reshade::api::command_list* cmd_list, reshade::api::resource_view depth_stencil, const float*, const uint8_t*,
+                                    uint32_t, const reshade::api::rect*) {
+  if (state.mask_frame != bridge::state.frame || state.traced_frame == bridge::state.frame || depth_stencil.handle != state.prepass_depth) {
+    return false;
+  }
+  // A clear may come between two of the game's scenes, and D3D9 draws only inside one: the trace point's passes in a
+  // scene of their own then (BeginScene fails inside one, changing nothing).
+  auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
+  const bool own_scene = SUCCEEDED(host->BeginScene());
+  ShadeBeforeMainPass(cmd_list);
+  if (own_scene) {
+    host->EndScene();
+  }
+  return false;
+}
+
 // Each scene draw (D3D9): the sun from the first pixel shader this frame that holds it (sun_shaders.h: the light's
-// direction, so toward the sun its negative), and the trace at the main pass's first draw after the mask's copy.
+// direction, so toward the sun its negative), and the trace point at the main pass's first draw after the mask's copy
+// when that pass has a depth of its own (the B0 trace's layout, the game's AA on); with the pre-pass's depth, its clear.
 inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
   auto& bridge = bridge::state;
   if (state.sun_frame != bridge.frame) {
@@ -953,25 +1027,18 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
     }
   }
   if (state.mask_frame != bridge.frame || state.traced_frame == bridge.frame || bridge.depth_stencil == state.prepass_depth) return;
-  state.traced_frame = bridge.frame;
-  if (state.guides_bound) {
-    BindGuides(host, false);
-  }
-  if (ShadeGround(cmd_list)) {
-    BindTraced(host, true);
-  }
-  // This frame's guides from here to the bloom (the gather above read last frame's and the proxy waited for it).
-  if (state.guides && state.guide_water.host_surface != nullptr) {
-    for (IDirect3DSurface9* guide : {state.guide_albedo.host_surface.Get(), state.guide_normal.host_surface.Get(), state.guide_water.host_surface.Get()}) {
-      host->ColorFill(guide, nullptr, D3DCOLOR_ARGB(0, 0, 0, 0));
-    }
-    state.guides_frame = bridge.frame;
-    state.guides_closed = false;
-  }
+  ShadeBeforeMainPass(cmd_list);
 }
 
-// The game's present: rt_core's new frame (its AO rays off while the paths' ambient stands in for the occlusion).
+// The game's present (after the bridge's, which counted the frame): rt_core's new frame (its AO rays off while the paths'
+// ambient stands in for the occlusion). A frame that was to ask for the rays and didn't (no trace point: a menu, the
+// map table; or its inputs not ready) asks again RAYS_RETRY_FRAMES on, the replay idle until the frame before.
 inline void OnPresent() {
+  if (const uint32_t ended = bridge::state.frame - 1; state.rays_frame <= ended && state.tried_frame != ended) {
+    state.rays_frame = ended + RAYS_RETRY_FRAMES;
+    SetTracing(false, (state.traced_frame == ended) ? "the trace point's inputs weren't ready: the bridge, the camera pass or the pre-pass's depth"
+                                                    : "no trace point: no camera pass and mask copy, or no main pass after them");
+  }
   twattila::rt_scene::Update({
       .sun_shadows = state.ground,
       .ambient_occlusion = state.ambient && !PathsReplaceAmbient(),

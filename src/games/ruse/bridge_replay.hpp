@@ -134,6 +134,7 @@ struct Counts {
   uint32_t placed = 0;
   uint32_t replayed = 0;
   uint32_t no_shader = 0;
+  uint32_t screen_quads = 0;
   uint32_t no_layout = 0;
   uint32_t no_buffer = 0;
   uint32_t fan = 0;
@@ -143,6 +144,10 @@ struct Counts {
 struct State {
   bool enabled = false;  // the Scene Replay row (restart)
   bool rays = false;     // ray_tracing.hpp's row (restart): the draws go to the next frame's trace (CaptureScene)
+  // This frame's draws recorded (with the rays only for a try that takes them: addon.cpp sets it at each present), and
+  // whether `previous` holds a frame recorded from its start (the next trace's scene whole).
+  bool recording = true;
+  bool previous_whole = false;
   bool log_next = false;
   bool log_capture = false;
   renodx::utils::data::ParallelNodeHashMap<uint64_t, Mirror, std::shared_mutex> mirrors;
@@ -288,11 +293,19 @@ inline void OnPushConstants(uint32_t layout_param, uint32_t first, uint32_t coun
 
 // A4: a scene draw (the bridge's test: back-buffer-sized target, an INTZ depth) recorded with what it reads.
 inline void Record(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t first_index, int32_t vertex_offset) {
+  if (!state.recording) return;
   ++state.counts.recorded;
   const uint32_t hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::vertex_shader);
   const auto found = std::ranges::lower_bound(SHADERS, hash, {}, &ReplayShader::hash);
   if (found == SHADERS.end() || found->hash != hash) {
     ++state.counts.no_shader;
+    return;
+  }
+  // Its clip position from fewer registers than c0-c3: a screen pass's quad (the camera pass's VS 0xF3556541, a scene draw
+  // with the game's AA off: run_rn2_rt_084045's frame trace) or a flat projection, nothing CaptureScene can move into
+  // this frame's camera (it moves c0-c3).
+  if (found->registers < 4) {
+    ++state.counts.screen_quads;
     return;
   }
   if (hash == GROUND_SHADER) {
@@ -432,6 +445,7 @@ inline void Replay(std::span<const float> inverse_view_projection) {
     state.draws.clear();
     state.constants.clear();
     state.previous.clear();
+    state.previous_whole = false;
     state.counts = {};
     return;
   }
@@ -513,6 +527,7 @@ inline void Replay(std::span<const float> inverse_view_projection) {
     if (state.previous_valid) std::ranges::copy(inverse_view_projection, state.previous_inverse.begin());
     state.previous = std::move(state.draws);
     state.previous_constants = std::move(state.constants);
+    state.previous_whole = state.recording;
     state.draws.clear();
     state.constants.clear();
     state.counts = {};
@@ -609,10 +624,10 @@ inline void Replay(std::span<const float> inverse_view_projection) {
     const Counts& counts = state.counts;
     reshade::log::message(reshade::log::level::info,
                           std::format("[R.U.S.E.] Scene Replay: {} scene draws, {} at their earlier place, {} replayed ({} triangles, {} "
-                                      "needed), skipped: {} unknown shader, {} no layout, {} unmirrored buffer, {} fan, {} ground layers (the pre-pass's "
-                                      "patches hold them); {} mirrored buffers, {} placement keys",
+                                      "needed), skipped: {} unknown shader, {} screen quads, {} no layout, {} unmirrored buffer, {} fan, {} ground "
+                                      "layers (the pre-pass's patches hold them); {} mirrored buffers, {} placement keys",
                                       counts.recorded, counts.placed, counts.replayed, written.NumPrimitivesWritten,
-                                      written.PrimitivesStorageNeeded, counts.no_shader, counts.no_layout, counts.no_buffer, counts.fan,
+                                      written.PrimitivesStorageNeeded, counts.no_shader, counts.screen_quads, counts.no_layout, counts.no_buffer, counts.fan,
                                       counts.ground_layers, state.mirrors.size(), state.placements.size())
                               .c_str());
     state.log_next = false;
@@ -760,6 +775,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     state.draws.clear();
     state.constants.clear();
     state.previous.clear();
+    state.previous_whole = false;
     state.placements.clear();
     return;
   }

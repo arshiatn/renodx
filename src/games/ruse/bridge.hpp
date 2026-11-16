@@ -90,6 +90,7 @@ struct State {
   uint64_t post_depth = 0;
   uint64_t pixel_texture_0 = 0;  // the pixel shader's s0 as last bound
   bool render_target_is_frame_sized = false;
+  bool viewport_is_frame_sized = false;  // the viewport covers a frame-sized target (D3D9 sets it with the target)
   std::unordered_set<uint64_t> intz_depths;
   reshade::api::device* host_device = nullptr;  // the game's D3D9 device (its INTZ depths' maker)
   SharedTexture color;
@@ -481,11 +482,13 @@ inline void OnDestroyDepthView(reshade::api::device*, reshade::api::resource_vie
   }
 }
 
-// The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth, before the bloom;
-// none with the game's MSAA on (the pre-pass alone would be jittered and read).
+// The main pass's and the ground pre-pass's draws: over all of a back-buffer-sized target with an INTZ depth, before the
+// bloom; none with the game's MSAA on (the pre-pass alone would be jittered and read). With it off the sprite atlas (172
+// draws in a 2048 x 2048 viewport) and the bloom's first pass (1920 x 1080) draw into the pre-pass's target with the
+// scene's depth (run_rn2_rt_084045's frame trace): their viewports leave them out.
 inline bool IsSceneDraw() {
-  return state.game_samples == 0 && state.render_target_is_frame_sized && !state.scene_closed && state.depth_stencil != state.post_depth
-         && state.intz_depths.contains(state.depth_stencil);
+  return state.game_samples == 0 && state.render_target_is_frame_sized && state.viewport_is_frame_sized && !state.scene_closed
+         && state.depth_stencil != state.post_depth && state.intz_depths.contains(state.depth_stencil);
 }
 
 // D3: the scene draws' camera (c0-c3, row-major MVP: clip_i = row_i . position) moved by the jitter: rows 0 and 1 +=

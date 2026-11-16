@@ -79,8 +79,15 @@ terrain shaders (they keep the game's shading). The game's shadow-map pass still
 the shaders above).
 
 The log says what runs: `[R.U.S.E.] Anti-aliasing: DLAA ready at WxH`, `... applied`, `[R.U.S.E.] Ray tracing:
-tracing (...)`, `[R.U.S.E.] Patched game shaders installed: ...`, `[R.U.S.E.] Frame generation: ...`; each at start or
-at a change, never a line a frame.
+tracing (...)` or `... not tracing (why)`, `[R.U.S.E.] Patched game shaders installed: ...`, `[R.U.S.E.] Frame
+generation: ...`; each at start or at a change, never a line a frame.
+
+The trace point: after the ground mask's copy, at the main pass's clear of the pre-pass's depth (the game's AA off: both
+passes draw into it), else at the main pass's first draw. A frame without rays (the helper didn't trace, or no trace
+point: menus, the map table) asks again 60 frames on; the replay records only a try's frame and the one before, and a
+try whose last frame wasn't recorded whole shows the game's shadows that frame. Scene draws: a frame-sized target and
+viewport (not the sprite atlas or the bloom, which draw into the pre-pass's target); the replay leaves out vertex
+shaders that read fewer than c0-c3 (the camera pass's quad).
 
 ## Postprocess, effects, video and UI
 
