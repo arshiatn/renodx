@@ -166,6 +166,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // no shared fence (the addon's value is waited for and its next signalled here on D3D11, which Nsight does not capture;
   // ray tracing requests then run one at a time) and Ray Reconstruction stays off.
   const bool replayable = GetEnvironmentVariableW(L"RENODX_TW_REPLAYABLE", nullptr, 0) != 0;
+  // RENODX_TW_SERIAL_REQUESTS (a test switch, tools/tw/nsight A32): every ray tracing request runs at once, as each kind's
+  // first does, the shared fence kept: RENODX_TW_REPLAYABLE's one-at-a-time half alone (which half kept the helper's commit
+  // bounded under Nsight's injection).
+  const bool serial_requests = GetEnvironmentVariableW(L"RENODX_TW_SERIAL_REQUESTS", nullptr, 0) != 0;
   HANDLE replay_wait = nullptr;
   if (replayable) {
     replay_wait = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -905,7 +909,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       bool queued = false;
       if (scene_open) {
         const std::unique_lock lock(rt_work.mutex);
-        if (rt_work.ran[kind(*shared)] && !replayable) {
+        if (rt_work.ran[kind(*shared)] && !replayable && !serial_requests) {
           auto copy = std::make_unique<twattila::dlaa_bridge::Shared>();
           std::memcpy(copy.get(), shared, twattila::dlaa_bridge::SharedBytes(version));
           const auto sets = new_sets(*shared);
