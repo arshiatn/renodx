@@ -1326,7 +1326,7 @@ bool graphics_hooks_installed = false;
 // pass (whose replacement is the game's code only).
 constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
     {.shader_hash = 0xBD389EF1, .bitmask = __ao_bitmask, .upsample = __ao_upsample, .resolve = __ao_resolve,
-     .denoise = __ao_denoise},  // ssao00
+     .denoise = __ao_denoise, .blurs = {0xB4026AF2, 0x6203C824}},  // ssao00, its blur_x and blur_y
 }};
 
 // DLAA / DLSS object motion (twattila/anti_aliasing.hpp, as Attila's): the game's shaders whose things move on

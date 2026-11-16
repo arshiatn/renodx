@@ -517,6 +517,35 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
   }
 };
 
+// The game's blurs of its ambient occlusion (AmbientOcclusionDraw::blurs) under Path-Traced Ambient: the pass wrote white
+// and nothing multiplies into it (the paths are the occlusion), so they would blur white: left out (their cost), the last
+// one's target cleared white in their place (test/tw_ao_blurs: the game's blurs of white give exactly 1 there).
+constexpr auto OnAmbientBlurDraw = []<typename T, typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  using Arguments = typename Context::ArgumentType;
+  if constexpr (!std::is_same_v<Arguments, renodx::utils::command_action::DrawArguments>
+                && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
+    return {};
+  } else {
+    auto* native = internal::NativeContext(command.cmd_list);
+    if (native == nullptr) return {};
+    {
+      const std::unique_lock lock(internal::runtime.mutex);
+      if (!internal::runtime.settings.path_ambient) return {};
+    }
+    const auto& blurs = command.template GetCallbackData<ao_pass::AmbientOcclusionDraw>().blurs;
+    if (command.matched_shader_hash == ((blurs[1] != 0u) ? blurs[1] : blurs[0])) {
+      ComPtr<ID3D11RenderTargetView> target;
+      native->OMGetRenderTargets(1, target.GetAddressOf(), nullptr);
+      if (!target) return {};
+      constexpr std::array<FLOAT, 4> WHITE = {1.f, 1.f, 1.f, 1.f};
+      native->ClearRenderTargetView(target.Get(), WHITE.data());
+      static std::atomic_bool logged = false;
+      if (!logged.exchange(true)) renodx::utils::log::i("[Total War] Path-Traced Ambient: the game's AO blurs left out, their target white.");
+    }
+    return {.bypass = true};
+  }
+};
+
 namespace internal {
 
 // Ray-Traced Shadows Only: the sun draws' shadow map (a square depth texture of theirs, 1024 and up), learned at each
@@ -1750,6 +1779,11 @@ inline void Install(std::span<const SceneShader> shaders, std::span<const ao_pas
     renodx::utils::command_action::Register(
         OnAmbientOcclusionDraw, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW},
         &draw);
+    for (const uint32_t blur : draw.blurs) {
+      if (blur == 0u) continue;
+      renodx::utils::command_action::Register(
+          OnAmbientBlurDraw, {.shader_hash = blur, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &draw);
+    }
   }
 }
 
@@ -1779,6 +1813,7 @@ inline void InstallSunDraws(std::span<const light_bounce::SunDraw> sun_draws, UI
 inline void Uninstall() {
   light_bounce::SetRayTracedTrace(nullptr);
   renodx::utils::command_action::Unregister(OnAmbientOcclusionDraw);
+  renodx::utils::command_action::Unregister(OnAmbientBlurDraw);
   renodx::utils::command_action::Unregister(OnSunDraw);
   renodx::utils::command_action::Unregister(OnSunDebugAmbient);
   if (internal::ambient_cube != 0) renodx::utils::command_action::Unregister(OnPathAmbientDraw);

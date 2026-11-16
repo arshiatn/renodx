@@ -52,6 +52,11 @@ struct AmbientOcclusionDraw {
   std::span<const uint8_t> upsample;  // into the game's target from the addon's (none: no Half resolution)
   std::span<const uint8_t> resolve;   // Temporal Smoothing (none: not offered)
   std::span<const uint8_t> denoise;   // the Denoiser (none: not offered)
+  // The game's blurs of the pass's result, in order (Attila's blur_x, blur_y), where the pass writes white under the rays'
+  // ambient (rt_ambient_alone) and only the lights and the reflections read the last one's target (a reader census of
+  // the traces): under Path-Traced Ambient they are left out, that target cleared white (rt_scene.hpp OnAmbientBlurDraw).
+  // 0: none, the game's draws as they are.
+  std::array<uint32_t, 2> blurs = {};
 };
 
 namespace internal {
