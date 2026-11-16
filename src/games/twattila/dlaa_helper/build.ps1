@@ -36,6 +36,12 @@ foreach ($variant in @(@('rt_path', 'TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights'
   & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 @defines -Fh "$out\$($variant[2]).h" -Vn $variant[3] "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
   & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 @defines -D OPACITY_MICROMAPS -Fh "$out\$($variant[2])_omm.h" -Vn "$($variant[3])_OMM" "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
 }
+# RENODX_TW_PATH_PROBE_BUILD set: the paths' probe build too (rt_path.hlsli ProbeTexel, tests only; a player's helper has none).
+Remove-Item "$out\rt_path_probe.h", "$out\rt_path_probe_omm.h" -ErrorAction SilentlyContinue
+if ($env:RENODX_TW_PATH_PROBE_BUILD) {
+  & "$root\bin\dxc.exe" -nologo -T cs_6_5 -E main -O3 -D PATH_PROBE -Fh "$out\rt_path_probe.h" -Vn RT_PATH_PROBE "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+  & "$root\bin\dxc.exe" -nologo -T cs_6_9 -E main -O3 -D PATH_PROBE -D OPACITY_MICROMAPS -Fh "$out\rt_path_probe_omm.h" -Vn RT_PATH_PROBE_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+}
 & "$root\bin\dxc.exe" -nologo -T cs_6_0 -E main -O3 -Fh "$out\fg_ui.h" -Vn FG_UI "$PSScriptRoot\fg_ui.cs_6_0.hlsl"
 & "$root\bin\dxc.exe" -nologo -T lib_6_9 -O3 -D OPACITY_MICROMAPS -D PATH_REORDER -Fh "$out\rt_path_ser.h" -Vn RT_PATH_SER "$PSScriptRoot\rt_path_ser.lib_6_9.hlsl"
 # NVIDIA's SHaRC (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/SHARC: its 1.6.5 release) for SHaRC Radiance Cache when

@@ -525,6 +525,55 @@ struct UnseenSurface {
 groupshared UnseenSurface unseen_surfaces[64];
 #endif
 
+#if defined(PATH_PROBE)
+// RENODX_TW_PATH_PROBE (tests only: the helper built with RENODX_TW_PATH_PROBE_BUILD, its paths' build rt_path_probe):
+// ProbeTexel's modes (probe_mode's low byte; its rays a texel probe_mode >> 8). The light leaving each bounce texel's own
+// surface, met by a ray from 5 cm before it, by the route a path's hit on a surface the screen shows takes (HitLight), or
+// by the route of one nobody saw (UnseenLight, the path going on) and that route's parts; the texel's arriving light as
+// the paths take it, and a reference path tracer: every surface by the unseen route, no screen, no cache.
+static const uint PROBE_SEEN = 1u;
+static const uint PROBE_UNSEEN = 2u;
+static const uint PROBE_EMITTED = 3u;   // the unseen route's part: the surface's own sun and local lights
+static const uint PROBE_SKY = 4u;       // the sky its path goes on to
+static const uint PROBE_SURFACES = 5u;  // surfaces past it the screen or the cache knew
+static const uint PROBE_DEEPER = 6u;    // surfaces past it nobody knew: their own light, the last one's base colour x shade
+static const uint PROBE_UNSEEN_NO_CACHE = 7u;
+static const uint PROBE_ESTIMATOR = 8u;
+static const uint PROBE_ESTIMATOR_NO_CACHE = 9u;
+static const uint PROBE_REFERENCE = 10u;
+static const uint PROBE_SEEN_SUN = 11u;  // SeenDiffuseLight's parts at the texel's pixel: the sun's
+static const uint PROBE_SEEN_SKY = 12u;  // its base colour x ScreenSky
+static const uint PROBE_ALBEDO_SEEN = 13u;    // the guide's base colour at the texel's pixel
+static const uint PROBE_ALBEDO_UNSEEN = 14u;  // HitAlbedo's at its surface
+static const uint PROBE_UNSEEN_SUN = 15u;     // UnseenLight's parts at its surface: the sun's (its shadow ray)
+static const uint PROBE_UNSEEN_LOCAL = 16u;   // the local lights'
+static const uint PROBE_REFERENCE_BOUNCES = 6u;
+static bool probe_running = false;
+static bool probe_seen = false;  // the first surface's light came by the screen's route
+static float3 probe_emitted = 0.f;
+static float3 probe_sky = 0.f;
+static float3 probe_surfaces = 0.f;
+static float3 probe_deeper = 0.f;
+uint ProbeKind() {
+  return probe_running ? (probe_mode & 0xFFu) : 0u;
+}
+// A surface the path meets at `vertex` may take the screen's (or the cache's) light.
+bool ProbeScreen(uint vertex) {
+  const uint kind = ProbeKind();
+  if (kind == PROBE_REFERENCE) return false;
+  return vertex > 0u || kind == 0u || kind == PROBE_SEEN || kind >= PROBE_ESTIMATOR;
+}
+#define PROBE_SCREEN(vertex) ProbeScreen(vertex)
+#define PROBE_CACHE() (ProbeKind() != PROBE_UNSEEN_NO_CACHE && ProbeKind() != PROBE_ESTIMATOR_NO_CACHE)
+#define PROBE_ADDS() (!probe_running)
+#define PATH_BOUNCES ((ProbeKind() == PROBE_REFERENCE) ? PROBE_REFERENCE_BOUNCES : path_bounces)
+#else
+#define PROBE_SCREEN(vertex) true
+#define PROBE_CACHE() true
+#define PROBE_ADDS() true
+#define PATH_BOUNCES path_bounces
+#endif
+
 // The light arriving along a ray (`first_distance`: how far its first surface is, 1e30: none; `first_normal` its normal;
 // `sky_calibration`: SkyCalibration's, for the sky it meets first; `may_relearn`: CACHE_RELEARN of its hits leave the cache
 // out).
@@ -545,7 +594,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
   float3 radiance_before = 0.f;
 #endif
   [loop]
-  for (uint vertex = 0u; vertex <= path_bounces; ++vertex) {
+  for (uint vertex = 0u; vertex <= PATH_BOUNCES; ++vertex) {
     RayDesc ray;
     ray.Origin = origin;
     ray.Direction = direction;
@@ -562,6 +611,9 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
       // bounce and the reflections cost 7 to 8% more (4K harness).
       if (vertex > 0u) {
         radiance += throughput * SkyLight(direction, shade.rgb);
+#if defined(PATH_PROBE)
+        probe_sky += throughput * SkyLight(direction, shade.rgb);
+#endif
       } else if ((path_flags & PATH_AMBIENT) != 0u && !Occluded(origin, direction, min(range, GRASS_AMBIENT_RANGE), GRASS_STILL)
 #if defined(OPACITY_MICROMAPS)
                  && !Occluded(origin, direction, range, CUT_OUTS)
@@ -582,8 +634,15 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     // ray a frame, no history, no filter, showed each re-rolled hit as a warm dot jumping about a paused picture (ATN: water).
     const bool relearn = may_relearn && Random(uint3(seed, frame * 64u + path * 8u + vertex * 2u + 49152u)) < CACHE_RELEARN;
     // No cached answer for a ray shorter than its cell (as SHaRC's): the cell may be the ray's own start's.
-    if (HitLight(position, normal, light_there, !relearn && query.CommittedRayT() >= CacheCellSize(position))) {
+    if (PROBE_SCREEN(vertex) && HitLight(position, normal, light_there, PROBE_CACHE() && !relearn && query.CommittedRayT() >= CacheCellSize(position))) {
       radiance += throughput * light_there;
+#if defined(PATH_PROBE)
+      if (vertex == 0u) {
+        probe_seen = true;
+      } else {
+        probe_surfaces += throughput * light_there;
+      }
+#endif
       break;
     }
     if (vertex == 0u) first_normal = normal;
@@ -605,6 +664,14 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     const float transmittance = ((record_flags & (RECORD_MASKED | RECORD_GRASS)) == RECORD_MASKED) ? LEAF_TRANSMITTANCE : (((record_flags & RECORD_THIN) != 0u) ? THIN_TRANSMITTANCE : 0.f);
     const float3 behind = position - normal * offset;
     const float3 emitted = UnseenLight(surface, behind, normal, albedo, transmittance, seed, frame * 64u + path * 8u + vertex * 2u);
+#if defined(PATH_PROBE)
+    if (vertex == 0u) {
+      probe_emitted += throughput * emitted;
+    } else {
+      probe_deeper += throughput * emitted;
+    }
+    if (vertex == PATH_BOUNCES) probe_deeper += throughput * albedo * shade.rgb;
+#endif
     if (!unseen) {
       unseen = true;
 #if defined(REFLECT_ONE_SAMPLE)
@@ -617,7 +684,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
       radiance_before = radiance;
 #endif
     }
-    if (vertex == path_bounces) {
+    if (vertex == PATH_BOUNCES) {
       radiance += throughput * (emitted + albedo * shade.rgb);
       break;
     }
@@ -637,7 +704,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     }
   }
 #else
-  if (unseen && shade.w > 0.f && all(unseen_throughput > 1.0000807e-3f)) {
+  if (PROBE_ADDS() && unseen && shade.w > 0.f && all(unseen_throughput > 1.0000807e-3f)) {
     CacheAdd(unseen_position, unseen_normal, (radiance - radiance_before) / unseen_throughput);
   }
 #endif
@@ -852,6 +919,79 @@ void PathTraceTexel(uint2 id) {
   StoreReservoir(reuse_samples[set], reuse_data[set], id, reservoir, normal);
   if (sky_apart) bounce[id] = float4(sky / samples, 0.f);
 }
+
+#if defined(PATH_PROBE)
+// RENODX_TW_PATH_PROBE (its build alone; after PathTraceTexel, whose paths keep the cache and own_sky as without it): the
+// mode's light at each bounce texel into the bounce (rgb; w the share of rays that met the texel's own surface, 5 cm
+// away, and with PROBE_SEEN took the screen's route there: 1 where the mode means what it says). No cache adds.
+void ProbeTexel(uint2 id) {
+  if (id.x >= bounce_width || id.y >= bounce_height) return;
+  float3 normal;
+  float3 origin;
+  const float4 position = TexelSurface(id, normal, origin);
+  if (position.w <= 0.f) {
+    bounce[id] = 0.f;
+    return;
+  }
+  const uint kind = probe_mode & 0xFFu;
+  const uint rays = max(probe_mode >> 8, 1u);
+  const uint2 pixel = min(id * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u);
+  const float3 base = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : UNSEEN_ALBEDO;
+  if (kind >= PROBE_SEEN_SUN) {
+    const float visibility = ((path_flags & PATH_SUN_TRACED) != 0u) ? traced_visibility[pixel] : -1.f;
+    const float3 surface = position.xyz + normal * SurfaceOffset(distance(position.xyz, Camera()));
+    float3 value = base;
+    if (kind == PROBE_SEEN_SUN) value = SunLit(surface, position.xyz, normal, base, 0.f, visibility);
+    if (kind == PROBE_SEEN_SKY) value = base * ScreenSky(position.xyz, normal);
+    if (kind == PROBE_ALBEDO_UNSEEN) value = HitAlbedo(position.xyz, normal);
+    if (kind == PROBE_UNSEEN_SUN) value = SunLit(surface, position.xyz, normal, base, 0.f, -1.f);
+    if (kind == PROBE_UNSEEN_LOCAL) {
+      value = 0.f;
+      [loop]
+      for (uint ray = 0u; ray < rays && (path_flags & PATH_LOCAL_LIGHTS) != 0u; ++ray) {
+        value += UnseenLight(surface, position.xyz, normal, base, 0.f, id, frame * 4096u + ray * 2u) - SunLit(surface, position.xyz, normal, base, 0.f, -1.f);
+      }
+      value /= rays;
+    }
+    bounce[id] = float4(value, 1.f);
+    return;
+  }
+  probe_running = true;
+  const bool camera_rays = kind >= PROBE_ESTIMATOR;
+  const float3 sky_calibration = SkyCalibration(normal);
+  const float first_range = ((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range;
+  float3 sum = 0.f;
+  float valid = 0.f;
+  [loop]
+  for (uint ray = 0u; ray < rays; ++ray) {
+    probe_seen = false;
+    probe_emitted = 0.f;
+    probe_sky = 0.f;
+    probe_surfaces = 0.f;
+    probe_deeper = 0.f;
+    float first_distance;
+    float3 first_normal;
+    if (camera_rays) {
+      const float3 direction = CosineDirection(normal, Random(uint3(id, frame * 4096u + ray * 2u + 40960u)), Random(uint3(id, frame * 4096u + ray * 2u + 40961u)));
+      sum += PathRadiance(origin, direction, first_range, sky_calibration, id, ray, true, first_distance, first_normal) * ContactShade(first_distance);
+      valid += 1.f;
+      continue;
+    }
+    const float3 light_leaving = PathRadiance(position.xyz + normal * 0.05f, -normal, 0.1f, 1.f, id, ray, true, first_distance, first_normal);
+    const bool met = first_distance > 0.03f && first_distance < 0.07f;
+    if (!met || (kind == PROBE_SEEN && !probe_seen) || (kind != PROBE_SEEN && probe_seen)) continue;
+    valid += 1.f;
+    float3 value = light_leaving;
+    if (kind == PROBE_EMITTED) value = probe_emitted;
+    if (kind == PROBE_SKY) value = probe_sky;
+    if (kind == PROBE_SURFACES) value = probe_surfaces;
+    if (kind == PROBE_DEEPER) value = probe_deeper;
+    sum += value;
+  }
+  probe_running = false;
+  bounce[id] = float4(sum / max(valid, 1.f), valid / rays);
+}
+#endif
 
 // ReSTIR GI's spatial reuse: a texel's reservoir merged with neighbours' on the same surface (their samples' density
 // moved to this texel: the Jacobian of their surfaces' solid angles); the chosen surface's light, if in view, is the
