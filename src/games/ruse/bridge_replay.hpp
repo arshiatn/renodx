@@ -398,10 +398,12 @@ inline ID3D11Buffer* GetBuffer(ID3D11Device* device, ID3D11DeviceContext* contex
     auto& [key, mirror] = entry;
     if (mirror.buffer == nullptr || mirror.uploaded != mirror.written) {
       rewritten = mirror.buffer != nullptr;
+      // 16-byte multiples: compared at that size, or a mirror of another size was made anew at every upload.
+      const auto width = static_cast<UINT>((mirror.bytes.size() + 15) & ~size_t{15});
       D3D11_BUFFER_DESC desc = {};
       if (mirror.buffer != nullptr) mirror.buffer->GetDesc(&desc);
-      if (mirror.buffer == nullptr || desc.ByteWidth != mirror.bytes.size()) {
-        const D3D11_BUFFER_DESC made = {.ByteWidth = static_cast<UINT>((mirror.bytes.size() + 15) & ~size_t{15}), .Usage = D3D11_USAGE_DEFAULT,
+      if (mirror.buffer == nullptr || desc.ByteWidth != width) {
+        const D3D11_BUFFER_DESC made = {.ByteWidth = width, .Usage = D3D11_USAGE_DEFAULT,
                                         .BindFlags = D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_INDEX_BUFFER};
         mirror.buffer.Reset();
         if (FAILED(device->CreateBuffer(&made, nullptr, mirror.buffer.GetAddressOf()))) return;
