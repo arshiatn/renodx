@@ -43,6 +43,7 @@
 //   B2 the second draw marked stale, and the third drawn with a width of 256 at b2: their corners NaN, the first's still bit for bit;
 //   B3 CONTROL: the first draw's animation texture written again after the draws, before the flush: its corners differ.
 // K. Rome II's cut-out captures: the UV the alpha tests read, as the game's vertex shaders write it (CheckCutOuts).
+// L. Rome II's cut-out pixel shaders (88 unit ones, the rigid shadow alpha test): their cut-offs (CheckCutOutAlphaTests).
 // tests.exe <dump root: the folder holding dump_shader_<game>_pack\cso> <build root: the folder holding <game>.include\embed>
 //           <build32 root: the same for the 32-bit games>
 #include <windows.h>
@@ -59,6 +60,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <random>
@@ -922,6 +924,161 @@ static bool CheckCutOuts(const std::string& dump_root, const std::string& build3
   return passed;
 }
 
+// L. Rome II's cut-out alpha tests: every pixel shader the rays take as a unit cut-out (twrome2/addon.cpp
+//    UNIT_CUT_OUT_PIXEL_SHADERS: 72 ps30_gbuffer*, 16 ps30_alpha_overlay*) and the rigid objects' shadow alpha test 17CAF4B6, the
+//    dump's bytes on a 256 x 4 target: every input the column's u ((x + 0.5) / 256, v the row's, z -1, w 1: the blood ones'
+//    v9.x < v9.z discards nothing), t0 a 256 x 1 R8G8B8A8_UNORM ramp (alpha x / 255), point samplers, nothing else bound. Each
+//    discards exactly the columns whose alpha is below its game's cut-off: the units' 128 / 255 (their literal 0xBF008081,
+//    the disassembly's -0.501961: alpha 0 - 127 / 255, as the helper's 0.5), 17CAF4B6's 0.35 (0 - 89 / 255). Printed beside
+//    it: what the rays' cut-offs leave apart (the units at the helper's 0.5; the rigid rows at their alpha_cutoff 0.35,
+//    RT_OWN_CUTOFF; at 0.5 before). CONTROLS: the overlay without its clip
+//    (ps30_alpha_overlay_no_clip_no_faction_colour 418A12B2) discards no column; 17CAF4B6 at the units' cut-off differs.
+static bool CheckCutOutAlphaTests(const std::string& dump_root) {
+  using Microsoft::WRL::ComPtr;
+  constexpr std::array<uint32_t, 88> UNIT_CUT_OUT_PIXEL_SHADERS = {
+      0x0281025B, 0x02A3994E, 0x04F869A3, 0x091753D0, 0x0DEBDB7D, 0x0F7E0B2E, 0x12E8E94F, 0x17854E59, 0x180AF747,
+      0x18709598, 0x1B291719, 0x270D904C, 0x33A1DD55, 0x398DB3E5, 0x3B5D3EAF, 0x3E2EE49A, 0x3E3DBD68, 0x3E9E9FBC,
+      0x4020E395, 0x403D808E, 0x42990BB4, 0x42E89941, 0x437EE18A, 0x44C4367E, 0x4AB12059, 0x4AD298CF, 0x4D4E56B5,
+      0x4DD4A158, 0x4E652F91, 0x5046469E, 0x51507813, 0x558B58F1, 0x59856C46, 0x5BBEF3AB, 0x5CFA3542, 0x5EDD098A,
+      0x603B9400, 0x64985D6A, 0x67ECD81E, 0x6B283703, 0x6B7594DF, 0x6D4AC63A, 0x7005B6CC, 0x7457B4C3, 0x76097222,
+      0x776478FB, 0x77F78501, 0x7EA78E56, 0x7EAD699A, 0x80ED4000, 0x86F12918, 0x8B331B02, 0x8B4F799B, 0x91C9675E,
+      0x92130074, 0x92DD9320, 0x9A0CEE09, 0xA631FE35, 0xA63CAB60, 0xA68033F9, 0xAE52A97A, 0xAFA7FE9C, 0xAFCF3D01,
+      0xB168B30A, 0xB3455395, 0xB472B3AD, 0xB67F9CC8, 0xB682C0D6, 0xBD2B4EAA, 0xBDB29482, 0xC457FAB8, 0xC4AE865C,
+      0xC655E116, 0xC6AC4399, 0xC745B3D0, 0xCB1560CE, 0xDCAFC814, 0xDDDFEBA6, 0xDE8841DF, 0xE2041D57, 0xE6B857F9,
+      0xEBD4C46F, 0xEC8A8869, 0xF138735D, 0xF94DFB49, 0xF99FFC44, 0xFA1FD9E1, 0xFED3F26F};
+  constexpr UINT COLUMNS = 256;
+  constexpr UINT ROWS = 4;
+  constexpr float UNIT_CUTOFF = 128.f / 255.f;  // the units' `add r, alpha, l(-0.501961)` (0xBF008081), discard below 0
+  constexpr float RIGID_CUTOFF = 0.35f;      // 17CAF4B6's `add r, alpha, l(-0.350000)`
+  constexpr float HELPER_CUTOFF = 0.5f;      // rt_scene_data.hlsli LEAF_ALPHA_CUTOFF
+  std::array<uint8_t, COLUMNS * 4> ramp = {};
+  for (UINT x = 0; x < COLUMNS; ++x) ramp[(x * 4) + 3] = static_cast<uint8_t>(x);
+  const D3D11_TEXTURE2D_DESC ramp_desc = {COLUMNS, 1, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0};
+  const D3D11_SUBRESOURCE_DATA ramp_data = {ramp.data(), COLUMNS * 4, 0};
+  ComPtr<ID3D11Texture2D> ramp_texture;
+  ComPtr<ID3D11ShaderResourceView> ramp_view;
+  device->CreateTexture2D(&ramp_desc, &ramp_data, ramp_texture.GetAddressOf());
+  device->CreateShaderResourceView(ramp_texture.Get(), nullptr, ramp_view.GetAddressOf());
+  D3D11_SAMPLER_DESC point_desc = {};
+  point_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+  point_desc.AddressU = point_desc.AddressV = point_desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+  point_desc.MaxLOD = D3D11_FLOAT32_MAX;
+  ComPtr<ID3D11SamplerState> point;
+  device->CreateSamplerState(&point_desc, point.GetAddressOf());
+  const std::array<ID3D11SamplerState*, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT> samplers = [&] {
+    std::array<ID3D11SamplerState*, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT> all = {};
+    all.fill(point.Get());
+    return all;
+  }();
+  const D3D11_TEXTURE2D_DESC target_desc = {COLUMNS, ROWS, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET, 0, 0};
+  D3D11_TEXTURE2D_DESC staging_desc = target_desc;
+  staging_desc.Usage = D3D11_USAGE_STAGING;
+  staging_desc.BindFlags = 0;
+  staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  ComPtr<ID3D11Texture2D> target;
+  ComPtr<ID3D11Texture2D> staging;
+  ComPtr<ID3D11RenderTargetView> target_view;
+  device->CreateTexture2D(&target_desc, nullptr, target.GetAddressOf());
+  device->CreateTexture2D(&staging_desc, nullptr, staging.GetAddressOf());
+  device->CreateRenderTargetView(target.Get(), nullptr, target_view.GetAddressOf());
+  // The columns a pixel shader (the dump's, any target) discards in every row; empty: no bytes or no draw.
+  const auto discarded = [&](uint32_t hash) -> std::vector<bool> {
+    std::vector<uint8_t> code;
+    for (const char* target_name : {"ps_4_0", "ps_4_1", "ps_5_0"}) {
+      if (code.empty()) code = Load(std::format("{}\\dump_shader_twrome2_pack\\cso\\0x{:08X}.{}.cso", dump_root, hash, target_name));
+    }
+    ComPtr<ID3D11ShaderReflection> reflection;
+    if (code.empty() || FAILED(D3DReflect(code.data(), code.size(), IID_PPV_ARGS(reflection.GetAddressOf())))) return {};
+    D3D11_SHADER_DESC desc = {};
+    reflection->GetDesc(&desc);
+    std::string outputs;
+    std::string body;
+    for (UINT i = 0; i < desc.InputParameters; ++i) {
+      D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+      reflection->GetInputParameterDesc(i, &parameter);
+      if (parameter.SystemValueType != D3D_NAME_UNDEFINED) continue;
+      outputs += std::format(", out float4 o{} : {}{}", i, parameter.SemanticName, parameter.SemanticIndex);
+      body += std::format(" o{} = t;", i);
+    }
+    const std::string source = "void main(uint id : SV_VertexID, out float4 p : SV_Position" + outputs
+                               + ") { float2 uv = float2((id << 1) & 2, id & 2); p = float4(uv * float2(2, -2) + float2(-1, 1), 0.5, 1);"
+                                 " float4 t = float4(uv, -1, 1);"
+                               + body + " }";
+    ComPtr<ID3DBlob> blob;
+    ComPtr<ID3DBlob> errors;
+    ComPtr<ID3D11VertexShader> vertex_shader;
+    ComPtr<ID3D11PixelShader> pixel_shader;
+    if (FAILED(D3DCompile(source.c_str(), source.size(), nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0, blob.GetAddressOf(), errors.GetAddressOf()))
+        || FAILED(device->CreateVertexShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, vertex_shader.GetAddressOf()))
+        || FAILED(device->CreatePixelShader(code.data(), code.size(), nullptr, pixel_shader.GetAddressOf()))) {
+      return {};
+    }
+    context->ClearState();
+    constexpr std::array<float, 4> SENTINEL = {-7.f, -7.f, -7.f, -7.f};
+    context->ClearRenderTargetView(target_view.Get(), SENTINEL.data());
+    const D3D11_VIEWPORT viewport = {0.f, 0.f, float(COLUMNS), float(ROWS), 0.f, 1.f};
+    context->RSSetViewports(1, &viewport);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(vertex_shader.Get(), nullptr, 0);
+    context->PSSetShader(pixel_shader.Get(), nullptr, 0);
+    context->PSSetShaderResources(0, 1, ramp_view.GetAddressOf());
+    context->PSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+    context->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+    context->Draw(3, 0);
+    context->ClearState();
+    context->CopyResource(staging.Get(), target.Get());
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return {};
+    std::vector<bool> columns(COLUMNS, true);
+    for (UINT y = 0; y < ROWS; ++y) {
+      const auto* row = reinterpret_cast<const float*>(static_cast<const uint8_t*>(mapped.pData) + (y * mapped.RowPitch));
+      for (UINT x = 0; x < COLUMNS; ++x) {
+        if (!SameBits(row + (x * 4), SENTINEL.data(), 4)) columns[x] = false;
+      }
+    }
+    context->Unmap(staging.Get(), 0);
+    return columns;
+  };
+  // The columns a cut-off discards (the game's arithmetic: alpha - cut-off < 0), and how many of `columns` it leaves apart.
+  const auto apart = [&](const std::vector<bool>& columns, float cutoff) {
+    int count = 0;
+    for (UINT x = 0; x < COLUMNS; ++x) count += (columns[x] != ((static_cast<float>(x) / 255.f) - cutoff < 0.f)) ? 1 : 0;
+    return count;
+  };
+  int units = 0;
+  int units_apart = 0;
+  int helper_apart = 0;
+  bool made = true;
+  for (const uint32_t hash : UNIT_CUT_OUT_PIXEL_SHADERS) {
+    const std::vector<bool> columns = discarded(hash);
+    if (columns.empty()) {
+      std::printf("L %08X: MISSING its bytes or no draw\n", hash);
+      made = false;
+      continue;
+    }
+    ++units;
+    const int off = apart(columns, UNIT_CUTOFF);
+    if (off != 0) std::printf("L %08X: %d columns apart from alpha < 128 / 255\n", hash, off);
+    units_apart += off;
+    helper_apart = std::max(helper_apart, apart(columns, HELPER_CUTOFF));
+  }
+  const std::vector<bool> rigid = discarded(0x17CAF4B6);
+  const std::vector<bool> control = discarded(0x418A12B2);
+  if (rigid.empty() || control.empty()) made = false;
+  const int rigid_apart = rigid.empty() ? -1 : apart(rigid, RIGID_CUTOFF);
+  const int rigid_at_helper = rigid.empty() ? -1 : apart(rigid, HELPER_CUTOFF);
+  const int rigid_at_units = rigid.empty() ? -1 : apart(rigid, UNIT_CUTOFF);
+  const int control_discarded = control.empty() ? -1 : static_cast<int>(std::ranges::count(control, true));
+  const bool passed = made && units == static_cast<int>(UNIT_CUT_OUT_PIXEL_SHADERS.size()) && units_apart == 0 && rigid_apart == 0 && control_discarded == 0
+                      && rigid_at_units > 0;
+  std::printf("L Rome II cut-out alpha tests: %d of %zu unit PS discard exactly alpha < 128 / 255 (%d columns apart), 17CAF4B6 alpha < %g "
+              "(%d apart); the rays: units at the helper's %g at most %d column apart, rigid at %g (before) %d apart; CONTROLS 418A12B2 (no clip) "
+              "discards %d of %u, 17CAF4B6 at the units' cut-off %d apart\n  %s\n",
+              units, UNIT_CUT_OUT_PIXEL_SHADERS.size(), units_apart, RIGID_CUTOFF, rigid_apart, HELPER_CUTOFF, helper_apart, HELPER_CUTOFF,
+              rigid_at_helper, control_discarded, COLUMNS, rigid_at_units, passed ? "PASSED" : "FAILED");
+  return passed;
+}
+
 int main(int argc, char** argv) {
   if (argc < 4) {
     std::printf("tests.exe <dump root> <build root> <build32 root>\n");
@@ -1044,6 +1201,7 @@ int main(int argc, char** argv) {
         && all;
   all = CheckTerrain(root, build32_root) && all;
   all = CheckCutOuts(root, build32_root) && all;
+  all = CheckCutOutAlphaTests(root) && all;
   for (const BatchedFamily& family : {
            BatchedFamily{"Attila main units sm3", "0x5F9CD405.vs_4_0", "rt_capture_unit_sm3", "rt_batch_unit_sm3"},
            BatchedFamily{"Attila main units sm4.1", "0xA691CFF4.vs_4_1", "rt_capture_unit_sm41", "rt_batch_unit_sm41"},
