@@ -766,7 +766,7 @@ void OnPresentFrame(
 
 // Reset (Extended) and SDR: every look control at its default.
 void ApplyDefaultLook(float rendering_mode) {
-  // Display/output settings and the independent Motion Blur/DOF controls are preserved.
+  // Every look row (Motion Blur and Depth of Field at the game's 1 too); Peak, Paper White, UI and Output kept.
   renodx::utils::settings::UpdateSettings({
       {"rendering_mode", rendering_mode},
 
@@ -792,7 +792,7 @@ void ApplyDefaultLook(float rendering_mode) {
 
 // ATN 2026-11-12: Musa's PsychoV35 at its defaults; PsychoV31's sliders as before, for its modes.
 void ApplyPsychoRecommended() {
-  // Display/output settings and the independent Motion Blur/DOF controls are preserved.
+  // The look rows (Motion Blur off: ATN decides, skill audit 11-16); Peak, Paper White, UI and Output kept.
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
   renodx::utils::settings::UpdateSettings({
       {"rendering_mode", 3.f},
@@ -902,8 +902,8 @@ void BuildRuntimeData() {
           .label = "Reset (Faithful to SDR)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Resets Psycho controls, Bloom and Vignette; selects HDR (Extended).\n"
-                     "Peak, Paper White, UI, output, Motion Blur and Depth of Field are preserved.",
+          .tooltip = "Selects HDR (Extended) with every look control at its default (Motion Blur and Depth of Field at 1).\n"
+                     "Peak, Paper White, UI and Output are kept.",
           .on_change = []() {
             ApplyDefaultLook(4.f);
           },
@@ -925,8 +925,8 @@ void BuildRuntimeData() {
           .label = "Recommended (PsychoV35)",
           .section = "Presets",
           .group = "preset-line-2",
-          .tooltip = "Selects HDR (PsychoV35) with its controls at their defaults.\n"
-                     "Peak, Paper White, UI, output, Motion Blur and Depth of Field are preserved.",
+          .tooltip = "Selects HDR (PsychoV35) with its controls at their defaults, Motion Blur off.\n"
+                     "Peak, Paper White, UI and Output are kept.",
           .on_change = []() {
             ApplyPsychoRecommended();
           },
@@ -1064,8 +1064,8 @@ void BuildRuntimeData() {
           .default_value = 1.f,
           .label = "Motion Blur",
           .section = "Extra",
-          .tooltip = "0 = off, 1 = native strength. Intermediate values reduce the blur radius.\n"
-                     "Works in SDR and both Psycho modes. Has no effect when the game uses its single-tap path.",
+          .tooltip = "0 = off, 1 = the game's strength. Values between shorten the blur.\n"
+                     "Works in every Rendering Mode, where the game's settings draw motion blur.",
           .min = 0.f,
           .max = 1.f,
           .format = "%.2f",
@@ -1079,8 +1079,8 @@ void BuildRuntimeData() {
           .default_value = 1.f,
           .label = "Depth of Field",
           .section = "Extra",
-          .tooltip = "0 = off, 1 = native strength. Intermediate values reduce blur and its mask strength.\n"
-                     "Works in SDR and both Psycho modes where the game applies depth of field.",
+          .tooltip = "0 = off, 1 = the game's strength. Values between soften the blur and its reach.\n"
+                     "Works in every Rendering Mode, where the game applies depth of field.",
           .min = 0.f,
           .max = 1.f,
           .format = "%.2f",
@@ -1273,7 +1273,7 @@ void ConfigureAddon() {
           .label = "RT/PT",
           .section = RAYS_SECTION,
           .group = "rays-presets",
-          .tooltip = "Every ray-traced effect on (restart the game).\n"
+          .tooltip = "Ray-traced ground and object shadows and ground ambient occlusion on (restart the game).\n"
                      "The rays need Anti-Aliasing: the game's becomes DLAA (FSR Native AA on AMD and Intel).",
           .on_change = [] {
             renodx::utils::settings::UpdateSettings(RAYS_ON);
@@ -1289,7 +1289,7 @@ void ConfigureAddon() {
           .label = "No RT/PT (Recommended)",
           .section = RAYS_SECTION,
           .group = "rays-presets",
-          .tooltip = "Every ray-traced effect off (restart the game).",
+          .tooltip = "Ray-traced ground and object shadows and ground ambient occlusion off (restart the game).",
           .on_change = [] { renodx::utils::settings::UpdateSettings(RAYS_OFF); },
       },
   });
@@ -1300,8 +1300,8 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Readable Scene Depth (Testing)",
         .section = RAYS_SECTION,
-        .tooltip = "For testing: makes the game's depth readable for the upcoming anti-aliasing and shadows.\n"
-                   "Needs the in-game anti-aliasing off. Off (default) changes nothing. Restart after changing this setting.",
+        .tooltip = "For testing: makes the game's scene depth readable (the rows that need it turn it on themselves).\n"
+                   "Needs the in-game anti-aliasing at 1x. Off (default) changes nothing. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
     };
@@ -1391,7 +1391,7 @@ void ConfigureAddon() {
           .binding = &generation_sliders.reflex,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
           .default_value = 0.f,
-          .label = "NVIDIA Reflex",
+          .label = "NVIDIA Reflex (Experimental)",
           .section = AA_SECTION,
           .tooltip = "Less input lag on NVIDIA GPUs: each frame starts only as the GPU needs it.\n"
                      "Boost also keeps the GPU's clocks up. Always on with frame generation.",
@@ -1455,8 +1455,8 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Scene Replay (Testing)",
         .section = RAYS_SECTION,
-        .tooltip = "For testing: draws the scene's geometry a second time for the upcoming ray-traced shadows (costs CPU time).\n"
-                   "Needs the in-game anti-aliasing off. Off (default) changes nothing. Restart after changing this setting.",
+        .tooltip = "For testing: draws the scene's geometry a second time, as the ray-traced rows do (costs CPU time).\n"
+                   "Needs the in-game anti-aliasing at 1x. Off (default) changes nothing. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
     };
@@ -1561,7 +1561,7 @@ void ConfigureAddon() {
         .section = AO_SECTION,
         .tooltip = "GT-VBAO ambient occlusion on the ground: softly darker in hollows and at the foot of slopes (costs GPU time).\n"
                    "Works without the helper; the ray-traced ground ambient occlusion replaces it where it runs.\n"
-                   "Needs the in-game anti-aliasing off. Restart after changing this setting.",
+                   "Needs the in-game anti-aliasing at 1x. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
     };
