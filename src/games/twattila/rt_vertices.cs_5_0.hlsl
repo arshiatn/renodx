@@ -9,14 +9,46 @@
 Buffer<float4> captured : register(t0);
 Buffer<float2> captured_uv : register(t1);
 RWTexture2D<float4> vertices : register(u0);
+#if defined(RT_VERTICES_UV_SCALES)
+// rt_core Host::mask_uv_scales: the frame's masks read at the UV times a material register, by first vertex (first vertex,
+// vertices, the register's components for u and v), and each one's register as its draw had it.
+Buffer<uint4> uv_scale_ranges : register(t2);
+Buffer<float4> uv_scales : register(t3);
+#endif
 
 cbuffer rt_vertices : register(b0)
 {
   uint4 rt_vertices;  // x the vertices, y the texture's width, z 1: clip-space positions (the game's own shaders)
   float4 inverse_view_projection[4];  // their camera's (rows acting on column vectors)
-#if defined(RT_VERTICES_WORLD_AFTER)
-  uint4 rt_vertices_world;  // x where the world-space part lies in the captured buffer
+#if defined(RT_VERTICES_WORLD_AFTER) || defined(RT_VERTICES_UV_SCALES)
+  uint4 rt_vertices_world;  // x where the world-space part lies in the captured buffer; y the scaled masks (RT_VERTICES_UV_SCALES)
 #endif
+}
+
+// Captured vertex `id`'s UV (a clip-space capture's foliage); with RT_VERTICES_UV_SCALES times its draw's register where it is
+// a scaled mask's.
+float2 CapturedUv(uint id)
+{
+  float2 uv = captured_uv[id];
+#if defined(RT_VERTICES_UV_SCALES)
+  uint low = 0u;
+  uint high = rt_vertices_world.y;
+  [loop]
+  while (low < high) {
+    const uint middle = (low + high) / 2u;
+    if (uv_scale_ranges[middle].x <= id) {
+      low = middle + 1u;
+    } else {
+      high = middle;
+    }
+  }
+  if (low != 0u) {
+    const uint4 range = uv_scale_ranges[low - 1u];
+    const float4 scale = uv_scales[low - 1u];
+    if (id - range.x < range.y) uv *= float2(scale[range.z], scale[range.w]);
+  }
+#endif
+  return uv;
 }
 
 [numthreads(256, 1, 1)]
@@ -41,12 +73,12 @@ void main(uint3 dispatch_id : SV_DispatchThreadID)
     // rt_core Host::clip_relative: rows 0-2 the offset from the camera (row 3), no division by the w row (it cancels).
     const float3 offset = float3(dot(inverse_view_projection[0], position), dot(inverse_view_projection[1], position),
                                  dot(inverse_view_projection[2], position));
-    const float2 uv = captured_uv[id];
+    const float2 uv = CapturedUv(id);
     position = float4(inverse_view_projection[3].xyz + offset, asfloat(f32tof16(uv.x) | (f32tof16(uv.y) << 16)));
 #else
     const float4 world = float4(dot(inverse_view_projection[0], position), dot(inverse_view_projection[1], position),
                                 dot(inverse_view_projection[2], position), dot(inverse_view_projection[3], position));
-    const float2 uv = captured_uv[id];
+    const float2 uv = CapturedUv(id);
     position = float4(world.xyz / world.w, asfloat(f32tof16(uv.x) | (f32tof16(uv.y) << 16)));
 #endif
   }

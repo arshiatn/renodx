@@ -1,7 +1,10 @@
-# twattila/rt_core.hpp's scene_draw hosts' masked draws (tests.cpp): SceneCoverage with Host::leaf_cutoff, on WARP with
-# the real rt_core. Needs build\talesofarise.include (a renodx-talesofarise.addon64 build: rt_core.hpp's embedded shaders).
-# Holds tools/tw's GPU job lock while it runs when -Lock names it.
-param([string]$Lock = '')
+# twattila/rt_core.hpp's scene_draw hosts' masked draws (tests.cpp): SceneCoverage with Host::leaf_cutoff and
+# Host::mask_uv_scales, Tales' rt_vertices, on WARP with the real rt_core. Needs build\talesofarise.include (a
+# renodx-talesofarise.addon64 build: rt_core.hpp's embedded shaders). -DumpFolder / -Table: Tales' dumped masked prepass
+# shaders and the scanner's table (part 6). Holds tools/tw's GPU job lock while it runs when -Lock names it.
+param([string]$Lock = '', [string]$DumpFolder = '', [string]$Table = '')
+$Dumps = @()
+if ($DumpFolder -ne '') { $Dumps = @($DumpFolder, $Table) }
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_scene_coverage'
@@ -29,7 +32,7 @@ while ($Lock -ne '') {
   Start-Sleep -Seconds 30
 }
 try {
-  & (Join-Path $testBuild 'scene_coverage.exe') @args | Tee-Object -FilePath (Join-Path $testBuild 'last_run.txt')
+  & (Join-Path $testBuild 'scene_coverage.exe') $repairRoot @Dumps | Tee-Object -FilePath (Join-Path $testBuild 'last_run.txt')
   if ($LASTEXITCODE -ne 0) { throw 'Scene coverage test failed' }
 } finally {
   if ($Lock -ne '' -and (Get-Content -LiteralPath $Lock -Raw -ErrorAction SilentlyContinue) -eq $mine) { Remove-Item -LiteralPath $Lock -Force -Confirm:$false }
