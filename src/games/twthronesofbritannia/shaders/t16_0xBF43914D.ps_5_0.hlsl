@@ -70,7 +70,7 @@ Texture2DMS<float4> gbuffer_channel_4_texture_ms : register(t6);
 // 3Dmigoto declarations
 #define cmp -
 #include "../hdr_to_screen.hlsli"
-#include "../psycho_test30.hlsli"
+#include "../../twattila/psycho_test30.hlsli"
 #include "../../twattila/render_scale.hlsli"
 
 
