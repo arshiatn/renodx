@@ -178,7 +178,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 23:5x (ATN: "add it": Experimental row, off; shs2_) C: GT-VBAO horizon loss on flat ground at grazing pitch (0.969 at 13.6 deg): sample the depth at the exact place (a look change, an Experimental row)? (from: shs2_ A15 91267bbf9)
 - [x] ANSWERED 23:5x (ATN: "yes please": 2.2 under Gamma Correction; shs2_) C: Attila / Thrones run DLAA / SMAA / CMAA2 in a gamma 2.0 frame while Gamma Correction makes it 2.2 (exact round trip, only the AA's working curve differs): move them to 2.2? (from: shs2_ 23:xx)
 - [x] ANSWERED 00:1x (ATN: SSR "if it is more correct, add it as on default but an extra slider please": the paths' occlusion on reflections under Path-Traced Ambient, on by default + a strength slider, tw1_; x64 engine memory "in handsoff but let's do it at end of the week or next week if we still got usage left": X64 ENGINE MEMORY box) C: the SSR path-traced occlusion (L1778) and x64 engine_memory (S-list): ATN's call, details in shs2_'s report (from: shs2_ 23:xx)
-- [ ] C: WH1 / WH2: remove the Rays Replace Shadow Maps row too (off = Multiply), as WH3 / Troy / Pharaoh now (one method; WH1's 12 SM 4.1 builds keep the game's maps until the shared Patch)? (from: tw2_ 00:0x)
+- [x] ANSWERED 00:3x (ATN: "If it is on by default, then get rid of that slider": it is on by default (5d9810cd1), row removed in WH1 / WH2; tw1_ after the SSR item) C: WH1 / WH2: remove the Rays Replace Shadow Maps row too (off = Multiply), as WH3 / Troy / Pharaoh now (one method; WH1's 12 SM 4.1 builds keep the game's maps until the shared Patch)? (from: tw2_ 00:0x)
 - [ ] C: R.U.S.E. VRAM: a smaller ShadowRTSize while Replace is on frees memory (~72 MiB at 1024 vs ~290 MiB at 2048; coarser game shadows where they come back: above Rays Off Above, a failed trace, Replace off)? (from: rur2_ 00:0x)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
@@ -317,6 +317,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEPS NEXT (shs2_ 23:xx): every game: a census of its other SSAO readers ... | per-game rounds, gpu3_, next shared round
 - R7 / TEST BOXES (shs2_ 23:xx): R7 clamps: Shogun 2 sea overlay writers C8375A74 ... | per-game rounds, next test round
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
+- ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart batt ... | coordinator, then a CPU / memory round
+- STRESS REPLAY stress_test_log2 (ATN 00:3x: "Maybe do a cpu/gpu recording there t ... | coordinator (plan phase 1)
 - SSR PATH-TRACED OCCLUSION (ATN 00:1x "if it is more correct, add it as on defaul ... | tw1_ (Attila / Thrones), per-game rounds for the twins
 - X64 ENGINE MEMORY (ATN 00:1x: end of the week or next week if usage is left): th ... | coordinator, end of week 47 / week 48
 - TW2 / R.U.S.E. NEXT (00:0x): Sharp Ray-Traced Reflections for Rome II (its ssr00 ... | per-game rounds, next shared round
@@ -2049,6 +2051,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         papers, PT DI with RTXDI code allowed + NVIDIA notice, torches via one DI + GI reservoir, vMF diffuse row after PT
         DI, SER / OMM / PTLAS re-measured); 4 Opus review (xHigh reviewers, High fixers); 5 install + ATN's short list.
         Owner: coordinator
+      - [ ] ATTILA RESTART CRASH (ATN 00:3x, stress_test_log2, 40-50k soldiers, restart battle): "Runtime Error! ...
+        terminate it in an unusual way". heapfix.log 23:37:58: malloc of 41,998,788 / 48,846,319 bytes FAILED (418 MB free,
+        largest free block 37 MB: the 32-bit address space fragmented; the first failed malloc in the whole log), 23:41:42
+        access violation executing DEDEDEDE (garbage pointer) in d3d11.dll on the main thread, then the CRT abort. Not our
+        code's fault, but RenoDX + ReShade live in the same 4 GB: measure the game's address space with vs without RenoDX at
+        the battle start and after a restart, then cut what RenoDX holds there (CPU-side copies, mapped staging buffers,
+        the driver's share for our textures). In the stress capture run (plan phase 1). Owner: coordinator, then a CPU /
+        memory round
+      - [ ] STRESS REPLAY stress_test_log2 (ATN 00:3x: "Maybe do a cpu/gpu recording there too Nsight too ... more cpu/gpu
+        peformance out of the game's own function?"): bench + WPR (ATN's tasks) + Nsight at 40-50k soldiers, then engine
+        patches for the game's hot functions as the earlier CPU rounds. Owner: coordinator (plan phase 1)
       - [ ] SSR PATH-TRACED OCCLUSION (ATN 00:1x "if it is more correct, add it as on default but an extra slider please"):
         under Path-Traced Ambient the game's reflections (ssr00 / 01 / 06 / 07 family) take the paths' sky occlusion, on by
         default + a strength slider (0..1, default 1); WARP: slider 0 = today's bytes, control; every game with that
