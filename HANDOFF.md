@@ -245,7 +245,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
 - Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
-- 17-ROW CHECK (ATN 06:xx: the first audits ran before the 17 Attila rows were in ... | coordinator
 - Group 1 leftovers: Grass Ray Tracing Range for grass captured as drawn (Rome II, ... | next GPU round (grass range), next data runs (VFX)
 - ATN DECIDES: UI 4K Mod Compatibility for Thrones and Rome II, only if a UI mod f ... | ATN
 - Group 2 leftovers: WH3 Grass Ray Tracing Range for GPU-placed grass (new work, m ... | next per-game data runs / rounds
@@ -253,6 +252,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
 - Ryse ray costs (RT shadows +1.0 ms, PT +2.7 ms at 4K DLSS Quality): Nsight work ... | a later GPU round
 - RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan ... | ATN (go-ahead), then a Ryse round
+- NEXT ROUNDS 11-16 (ATN ~10:4x: "start doing everything that is in next game and ... | coordinator
 - ATN 10:3x "Where are PT AO / PT GI for all the games?": every TW game, Shogun 2, ... | tpa_, next Divinity rounds
 - Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask ... | next Divinity 2 round
 - END-OF-BATCH BENCH (eob_, tools/tw/bench/end_of_batch_1116.md): helper115 vs hel ... | eob_, then coordinator
@@ -260,8 +260,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
 - Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, G ... | rao_, then the next replace round
 - Attila features vs skills: sk3_ is comparing; then ATN decides which to add. Own ... | sk3_, then ATN
-- Tonight's run analysis: an_ is writing tools/tw/round_notes/runs_1116_analysis.m ... | coordinator
-- Ryse redo: per-state GPU cost (PresentMon GPU busy per state + a copy of the pas ... | coordinator tonight
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
@@ -1753,7 +1751,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (saved DLSS -> XeSS on Intel, else FSR) is missing in Rome Remastered, Shogun 2, Ryse, Tales, Expeditions;
         tools/tw/page_dump/README.txt still says non-TW add-ons have no driver (dump_ry / dump_ta / dump_exr exist).
         Owner: per-game rounds (SMAA / CMAA2, fallback), coordinator (README)
-      - [ ] 17-ROW CHECK (ATN 06:xx: the first audits ran before the 17 Attila rows were in the skills): 3 read-only agents,
+      - [x] DONE 07:3x (all 16 games checked, A rows sent to the fix agents and merged). 17-ROW CHECK (ATN 06:xx: the first audits ran before the 17 Attila rows were in the skills): 3 read-only agents,
         reports skill_audit_1116/<game>_17.md; their A rows go to a second fix pass. Owner: coordinator
         - [x] Group 1 DONE (thrones / rome2 / wh1 / wh2 _17.md): A rows sent to the running fix agents (Rome II Modded
           Auto Exposure in decades -> stops x0.30103, indicator HDR-only, a plain Recommended, preset tooltips, cascades
@@ -1807,6 +1805,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         R.U.S.E. has no Gamma Correction row. Reports runs2_1116/tales.md, ruse.md. RUNS 11-16 MORNING (rn2_, brief tools/tw/round_notes/runs2_1116/brief.md, after the 08:04 install): Tales Bend /
         GT-VBGI look shots with a title click, then the R.U.S.E. T-run; reports runs2_1116/tales.md, ruse.md. Morning
         report: tools/tw/round_notes/morning_report_1116.md. Owner: rn2_, then coordinator
+      - [ ] NEXT ROUNDS 11-16 (ATN ~10:4x: "start doing everything that is in next game and shared rounds too"; Attila's
+        last Nsight + optimizations; Divinity 1 / 2 "the FULL package. That includes RT/PT"). Brief + every open box with
+        its line: tools/tw/round_notes/next_rounds_1116/brief.md, open_boxes.txt. Agents (own worktrees, no HANDOFF edits;
+        the coordinator ticks each box at the merge): gpu3_ (Attila final Nsight + GPU / ReSTIR / harness + rays side:
+        dlaa_helper, rt_*), shs2_ (shared: other twattila headers, utils, mods, tools, D3D11 / CPU / tools / test rounds),
+        div1_ / div2_ (Divinity full package with RT / PT), tw1_ (Attila game files, Thrones, WH1, WH2), tw2_ (WH3, Troy,
+        Pharaoh, Rome II), tw3_ (Shogun 2, Rome Remastered), rys2_ (Ryse), tpa_ (+ the UE round boxes), rur2_ (+ the
+        R.U.S.E. boxes). Still separate: release-round boxes (ATN releases), data runs (after the merges, one game at a
+        time), ATN's own boxes. Owner: coordinator
       - [ ] ATN 10:3x "Where are PT AO / PT GI for all the games?": every TW game, Shogun 2, Rome Remastered and Ryse have
         both; Tales + Expeditions have PT GI but Path-Traced Ambient does nothing (has_path_ambient false): tpa_ wires it
         (one method, WARP proof, Experimental off) + ports Tales' 10 toon shaders so Bandai's GI chain can be skipped again
@@ -1872,9 +1879,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         17CE7BCD / 13BDD599 / 746654CA, UE's) and shadows (Bend / RT shadows vs contact shadows and shadow maps,
         `rays_multiply_maps`). Owner: rao_, then the next replace round
       - [ ] Attila features vs skills: sk3_ is comparing; then ATN decides which to add. Owner: sk3_, then ATN
-      - [ ] Tonight's run analysis: an_ is writing tools/tw/round_notes/runs_1116_analysis.md; its "Boxes" list becomes
+      - [x] DONE (runs_1116_analysis.md written, its boxes in RUN ANALYSIS 11-16). Tonight's run analysis: an_ is writing tools/tw/round_notes/runs_1116_analysis.md; its "Boxes" list becomes
         boxes here. Owner: coordinator
-      - [ ] Ryse redo: per-state GPU cost (PresentMon GPU busy per state + a copy of the pass timing after each press;
+      - [x] DONE (rd_: redo_1116.md section 1). Ryse redo: per-state GPU cost (PresentMon GPU busy per state + a copy of the pass timing after each press;
         Ryse is capped at 60 fps, Time Each Pass totals stay ~16.8 ms and the file keeps only the last state) and Tales:
         look screenshots of Bend / GT-VBGI (run_035823 had none). Both are scripted runs with keyboard save loads.
         Owner: coordinator tonight
