@@ -34,7 +34,8 @@ namespace talesofarise::dlss::constants {
 inline const char* log_tag = "[Tales AA constants]";
 
 // Texture mip bias for DLSS upscaling (UE 4.21 biases material textures only for its own temporal upscaling): mapped
-// uploads whose ViewSizeAndInvSize is the main view's get MaterialTextureMipBias (.x) before the GPU reads them.
+// uploads whose ViewSizeAndInvSize is the main view's get `bias` added to MaterialTextureMipBias (.x) before the GPU reads
+// them (the game's own, r.MipMapLODBias, stays under it).
 struct ViewMipBias {
   uint32_t size_vector = 0;  // the View uniform buffer's ViewSizeAndInvSize
   uint32_t bias_vector = 0;  // its MaterialTextureMipBias
@@ -151,7 +152,10 @@ inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource re
     std::memcpy(view_size.data(), snapshot.bytes.data() + edit.size_vector * 16, sizeof(view_size));
     if (view_size[0] == static_cast<float>(edit.width) && view_size[1] == static_cast<float>(edit.height)
         && std::abs(view_size[0] * view_size[2] - 1.f) < 1e-3f && std::abs(view_size[1] * view_size[3] - 1.f) < 1e-3f) {
-      std::memcpy(snapshot.mapping + edit.bias_vector * 16, &edit.bias, sizeof(edit.bias));
+      float game_bias;
+      std::memcpy(&game_bias, snapshot.mapping + edit.bias_vector * 16, sizeof(game_bias));
+      game_bias += edit.bias;
+      std::memcpy(snapshot.mapping + edit.bias_vector * 16, &game_bias, sizeof(game_bias));
       if (counting.load(std::memory_order_relaxed)) biased_uploads.fetch_add(1, std::memory_order_relaxed);
     }
   }
