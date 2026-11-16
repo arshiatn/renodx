@@ -251,9 +251,11 @@ int main(int argc, char** argv) {
     const auto intended = ReadBack(device.Get(), context.Get(), results[1].resource.Get());
     const auto controlled = ReadBack(device.Get(), context.Get(), results[2].resource.Get());
     std::array<double, 2> worst = {};
-    // Away from the last row and column (the lighting's corner sample reaches past the merged texture there, clamped).
-    for (UINT y = 1; y + 1 < HEIGHT; ++y) {
-      for (UINT x = 1; x + 1 < WIDTH; ++x) {
+    // Away from the first two and the last row and column: there the lighting's corner sample takes a merged texel whose
+    // own sample of the half-size reflections sat in its clamped border (texel 0's centre is a quarter texel outside the
+    // half-size texture's first centre), or reaches past the merged texture.
+    for (UINT y = 2; y + 1 < HEIGHT; ++y) {
+      for (UINT x = 2; x + 1 < WIDTH; ++x) {
         for (uint32_t channel = 0; channel < 3; ++channel) {
           const size_t index = (((size_t{y} * WIDTH) + x) * 4) + channel;
           const double scale = std::max(std::abs(static_cast<double>(intended[index])), 0.01);

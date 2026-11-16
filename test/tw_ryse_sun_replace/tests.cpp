@@ -161,9 +161,9 @@ int main(int argc, char** argv) {
   };
   const auto batch_buffer = constants(batch.data(), sizeof(batch));
   const auto contact_buffer = constants(contact.data(), sizeof(contact));
-  // The game's mask: random bytes in both slices.
+  // The game's mask: random bytes in both slices (Random() has 24 bits: two of them for all four bytes).
   std::vector<uint32_t> game_mask(EDGE * EDGE * 2);
-  for (auto& texel : game_mask) texel = Random();
+  for (auto& texel : game_mask) texel = (Random() << 8) ^ Random();
   const D3D11_BUFFER_DESC sun_desc = {.ByteWidth = 8, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS};
   ComPtr<ID3D11Buffer> sun;
   device->CreateBuffer(&sun_desc, nullptr, sun.GetAddressOf());
