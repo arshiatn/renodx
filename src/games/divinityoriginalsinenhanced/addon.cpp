@@ -1070,11 +1070,12 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
       // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
       twattila::pass_timing::Install();
       ConfigureAddon();
-      // Constants once each for the tone mapper, the exposure, the shadow filter, the sun, fog, SSAO and bloom's combine
-      // (b0-b13: the frame b13, the view b12; the camera fields are Attila's b0 registers, not this game's); blends of fire,
-      // candles and the UI combine.
+      // Constants once each for the tone mapper, the exposure, the shadow filter, the sun, fog, SSAO, bloom's combine and
+      // the point and spot lights, plain and shadowed (b0-b13: the frame b13, the view b12; the camera fields are Attila's b0
+      // registers, not this game's); blends of fire, candles and the UI combine.
       twattila::frame_trace::Install({
-          .value_hashes = {0x30A1D40D, 0x4E112ABA, 0x8F114E47, 0xCCCB7253, 0xEDA7F8A1, 0x385DCF3C, 0x88B0D842},
+          .value_hashes = {0x30A1D40D, 0x4E112ABA, 0x8F114E47, 0xCCCB7253, 0xEDA7F8A1, 0x385DCF3C, 0x88B0D842, 0xD39E39C8,
+                           0x2F56D195, 0x23B84721, 0x7CBAA94E},
           .value_slots = 14,
           .value_floats = 64,
           .on_demand = true,
