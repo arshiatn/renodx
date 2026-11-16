@@ -331,7 +331,7 @@ struct RaySliders {
   float path_tracing = 0.f;
   float path_bounces = 2.f;
   float sharc = 0.f;
-  float reuse_lean = 0.f;
+  float reuse_lean = 1.f;
   float reuse_near = 1.f;
   float lights_in_bounce = 0.f;
   float light_ratio = 0.f;
@@ -665,7 +665,7 @@ const Values RAYS_RESET = {
     {"RayTracedLightBounceResolution", 1.f},
     {"PathTracingBounces", 2.f},
     {"RayTracedSharc", 0.f},
-    {"RayTracedReuseLean", 0.f},
+    {"RayTracedReuseLean", 1.f},
     {"RayTracedReuseNear", 1.f},
     {"RayTracedLightsInBounce", 0.f},
     {"RayTracedLightShadowRatio", 0.f},
@@ -2226,7 +2226,7 @@ void BuildRuntimeData() {
                 "Bounces past the first where the camera sees nothing. 1: faster, a little darker.", paths),
       ray_choice("RayTracedSharc", &rt_sliders.sharc, 0.f, "SHaRC radiance cache (Experimental)", off_on,
                  "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).", paths),
-      ray_choice("RayTracedReuseLean", &rt_sliders.reuse_lean, 0.f, "Lean ReSTIR reuse (Experimental)", off_on,
+      ray_choice("RayTracedReuseLean", &rt_sliders.reuse_lean, 1.f, "Lean ReSTIR reuse", off_on,
                  "A faster ReSTIR GI for path tracing: the same look in tests.", paths),
       ray_choice("RayTracedReuseNear", &rt_sliders.reuse_near, 1.f, "Near ReSTIR reuse", off_on,
                  "A faster ReSTIR GI for path tracing: fewer, nearer neighbours share their light (also a little cleaner).", paths),
