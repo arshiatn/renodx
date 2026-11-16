@@ -504,6 +504,9 @@ constexpr uint32_t MAX_SET_BUILDS = 16;
 constexpr uint64_t CORNER_FRAMES = 30;
 // Record Ray Tracing Profile's length.
 constexpr uint64_t PROFILE_MS = 30000;
+// The helper lets its ray tracing go after this long without a trace request (dlaa_helper/main.cpp IDLE_RELEASE: menus,
+// loading screens, the rays off): its next device then is no restart.
+constexpr uint64_t HELPER_IDLE_RELEASE_MS = 10000;
 // Batched Unit Capture: the streamed meshes' texels, rows' instances and draws a flush holds at most (FlushBatch first when a
 // draw finds them full), the corners one turn of its compute makes before they are copied into `captured` (a draw with more is
 // captured at its draw).
@@ -915,6 +918,7 @@ struct Runtime {
   uint32_t lights_in_bounce = 0;
   uint32_t helper_device = 0;             // the helper's ray tracing device (a new one: its scene empty)
   uint64_t wanted_tick = 0;               // when ray tracing was last on (GetTickCount64)
+  uint64_t traced_tick = 0;               // when the helper last traced a frame (GetTickCount64)
   // The garbage triangles the helper left out (far off or stretched) as last read, the captures' vertex shaders by key
   // (since the last report) and what was left out since then by vertex shader (Update's report).
   uint32_t helper_left_out = 0;
@@ -3918,21 +3922,27 @@ inline void Update(const Settings& settings) {
   }
   dlaa_bridge::bridge.details = settings.debug_log;
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
+  const uint64_t tick = GetTickCount64();
+  if (runtime.traced_frame == runtime.frame) runtime.traced_tick = tick;
   ++runtime.frame;
-  // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed) or, with the rays
-  // off, released its scene after 10 s: every mesh captured again.
+  // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed) or released its
+  // scene after 10 s without a trace (the rays off, a menu): every mesh captured again. Only the first is a warning.
   if (const uint32_t device = dlaa_bridge::RayTracingDevice(); device != runtime.helper_device) {
     runtime.helper_device = device;
     runtime.known.clear();
     runtime.short_keys.clear();
     for (auto& [set_key, mesh] : runtime.cluster_meshes) mesh.sent = false;
     if (internal::Enabled() || dlaa_bridge::bridge.ray_tracing) {
-      renodx::utils::log::w("[Total War] Ray tracing: the helper started again (why: renodx-tw-dlaa64.log), the scene is captured again.");
+      if (tick >= runtime.traced_tick + internal::HELPER_IDLE_RELEASE_MS) {
+        renodx::utils::log::i("[Total War] Ray tracing: the helper let its scene go after 10 s without rays, the scene is captured again.");
+      } else {
+        renodx::utils::log::w("[Total War] Ray tracing: the helper started again (why: renodx-tw-dlaa64.log), the scene is captured again.");
+      }
     }
   }
   // Off for longer than the helper's IDLE_RELEASE: its scene is gone and nothing points at these, the addon's memory and
   // its hold on the game's mask textures back.
-  if (const uint64_t tick = GetTickCount64(); internal::Enabled() || dlaa_bridge::bridge.ray_tracing) {
+  if (internal::Enabled() || dlaa_bridge::bridge.ray_tracing) {
     runtime.wanted_tick = tick;
   } else if (runtime.objects.device && tick > runtime.wanted_tick + 15000) {
     runtime.objects = {};
