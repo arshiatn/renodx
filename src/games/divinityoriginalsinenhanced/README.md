@@ -38,11 +38,34 @@ The game makes a new swap chain 2-4 times a start and at each window-mode change
 last flip chain go first (`release_flip_chains_before_recreate`) and handles a removed device. LightVolume's SMAA
 passes and the scene's float targets are upgraded with view cloning and the hot swap.
 
+## Graphics 1 of 2 (Settings Mode)
+
+Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); without them the page says so.
+
+- Anti-Aliasing: the game's FXAA / SMAA, or the helper's DLSS (as DLAA), FSR or XeSS at 100% (`upscaling.hpp`). The
+  game has no jitter and no motion vectors: the main view's PerView (b12, a perspective at the display's size) is
+  jittered as the game uploads it (Halton 2 / 3 over 8 frames), the depth comes from gBuffer1's linear depth (kept at
+  the sun pass 0xCCCB7253) and the camera's motion from that depth and both frames' cameras (`d1_upscale_inputs`). At
+  the tone mapper's draw its Base goes through the upscaler and the result is written back into it
+  (`d1_upscale_output`): fog of war, outlines and the UI stay the game's. DLSS's presets L / M and Ray Reconstruction
+  get the colour's square root. Frame generation takes the back buffer before CombineUI as its HUD-less image; Reflex
+  for the game's presents. The in-game anti-aliasing must be off.
+- Ray tracing (Experimental, restart after turning the first effect on; `ray_tracing.hpp`): a host of the Total War
+  helper's rt_core. Every G-buffer draw goes into the scene (skinned characters every frame, alpha-tested materials
+  with their cut-out). Ray-Traced Shadows replace the sun's shadow filter (CascadedPCSS / Unfiltered / VSM are left
+  out; `d1_rt_shadow` writes the mask the sun pass and the forward materials read). Ray-Traced AO is drawn over the SSAO
+  result (`d1_rt_ambient`), so the sun pass and the forward materials read the rays' AO alone (the game's SSAO must
+  stay on). Ray Reconstruction gets the G-buffer guides (`d1_rt_guides`). The RT/PT preset is Attila's.
+  Not yet: Path-Traced Ambient, Light Bounce (GI) and reflections.
+
 ## Tests (offline, WARP)
 
 - `test/tw_divinity1/run.ps1`: the tone map 0x30A1D40D against the game's bytes: SDR (Native) exact, Extended and
   PsychoV35 on the game's mid gray (control: mode 1's curve on a curve), Smooth Grade Shoulder on (slope, the stock
   below 0.8) with a hard-knee control, the row off bit-equal to the tone map before it (a6762afab^; control: the row on).
+- `test/tw_d1_rays/run.ps1`: the helper's inputs and the rays' replacements, the game's sun pass reading them: the motion
+  and the rays' positions within 0.002 px, the colour's round trip, the guides against its own normal decode, the shadow
+  mask and the AO over the SSAO result giving its light; each with a control that must fail.
 - `test/tw_d1_post/run.ps1`: 22 replaced passes Vanilla exact against the game's census bytes, each with a wrong copy
   that must fail; the light rows at 2 give twice the game's light.
 - `test/tw_d1_swapchain`, `test/tw_device_loss`, `test/tw_output_encoding`: the window's chains, device loss, Output.
