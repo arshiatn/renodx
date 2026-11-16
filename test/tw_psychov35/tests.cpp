@@ -38,8 +38,8 @@
 // 7. Gamma Correction in every mode (Rome II, Warhammer I / II / III, Troy, Pharaoh: twattila/frame_gamma.hlsli) on each
 //    one's hdr_to_screen t01 (WH3: t00) against 242d6101's: off and Rendering Mode SDR the same picture, on the 2.2
 //    display's decode within Peak (TestGammaCorrection). WH3 at the game's gamma 2.0.
-// 8. Report: PsychoV35's toe against Vanilla below white (Attila, Thrones of Britannia): Recommended against Rendering
-//    Mode SDR, grey in shadows and mid tones and colour at equal lightness (ReportToe).
+// 8. Report: PsychoV35's toe against Vanilla below white (Attila, Thrones of Britannia, Warhammer III): Recommended
+//    against Rendering Mode SDR, grey in shadows and mid tones and colour at equal lightness (ReportToe).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -1312,7 +1312,8 @@ static void ReportHue(const Chain& chain) {
 
 // 8. PsychoV35's toe against Vanilla below white ///////////////////////////////////////////////////////////////////
 
-// Attila's and Thrones' Recommended (PsychoV35 at its defaults, Hue Clip 40) against Rendering Mode SDR through the
+// Attila's and Thrones' Recommended (PsychoV35 at its defaults, Hue Clip 40; Warhammer III's: Hue Clip 100, its t00 at
+// burn 0.3, the scene's white at its SDR white) against Rendering Mode SDR through the
 // same chain, both as a display shows them (Gamma Correction on: decoded at 2.2), at 1000 / 203 nits, below the game's
 // white: grey where SDR is 0.05 - 1 nits (shadows), 1 - 15 (mid tones), 15 - 100 (upper mid tones); colour (OkLab chroma
 // at equal lightness, as part 6 of Divinity 2's) where SDR is 1 - 30 and 30 - 150 nits. The identity S-curve, and
@@ -1327,6 +1328,7 @@ static void ReportToe(const Chain& chain) {
   struct Game {
     const char* name;
     std::function<std::vector<Float3>(float mode)> run;
+    float v35_mode = 3.f;  // PsychoV35's Rendering Mode
   };
   const std::vector<Game> games = {
       {"Attila, identity S-curve", [&](float mode) {
@@ -1340,11 +1342,17 @@ static void ReportToe(const Chain& chain) {
          return RunAttila(chain, scene, si, false);
        }},
       {"Thrones of Britannia, identity S-curve", [&](float mode) { return RunThrones(chain, scene, ThronesInjection(mode, 1.f)); }},
+      {"Warhammer III, burn 0.3", [&](float mode) {
+         auto si = Wh3Injection(mode, 1.f);
+         si.hue_clip = 1.f;
+         return RunWh3(chain, Scene(columns, -10.f, 0.25f, Wh3White(0.3f)), si, 0.3f);
+       },
+       4.f},
   };
   constexpr float NITS = 203.f;
   for (const auto& game : games) {
     const auto sdr = game.run(0.f);
-    const auto v35 = game.run(3.f);
+    const auto v35 = game.run(game.v35_mode);
     struct Range {
       float low = 1e9f, high = 0.f;
     };

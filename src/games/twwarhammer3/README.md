@@ -1,5 +1,21 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### One method per effect, presets (2026-11-16 fix round; built only, not run in game)
+
+- Fixed: **Bend Screen-Space Shadows** (and the rays with Rays Replace Shadow Maps off) no longer stack on the game's own
+  contact shadows: the sun mask draws with the game's screen-space shadow flag 0 (a copy of its constants), the rest of
+  the mask as the game's. WARP (`test/tw_warhammer3_shaders` 4): the game's flag 0 bit for bit.
+- Fixed: **torch shadows under the rays**: the 4 point-light shaders that read the game's point shadow map run their
+  unshadowed twin, so a traced light gets the rays' shadow alone, not the map's on top (5: the game's shader with its map
+  lit is its twin bit for bit). Lights the rays leave out are unshadowed while the rays run.
+- Fixed: with **Ray-Traced Specular Occlusion** the reflected cubes take the rays' occlusion alone, no longer the AO on
+  top (6: the AO no longer changes them, within 4e-7; the older build's change by up to 92%).
+- Fog Shadows, Specular Occlusion and Water Caustics start off (the RT/PT preset still turns them on); Recommended no
+  longer turns Sky Debanding on; Reset puts the four VFX Brightness rows back to 1. Saved presets: those rows cleared
+  once (settings revision 34).
+- In game: Bend and the rays with the kept maps (contact shadows once), torch-lit walls and soldiers under the rays,
+  metal and wet stone with Specular Occlusion on.
+
 ### Gamma Correction in every mode (2026-11-16; built only, not run in game)
 
 - **Gamma Correction** (same row, on by default) now also acts in the HDR modes, as the other TW games': the game's picture
