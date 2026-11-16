@@ -178,6 +178,9 @@ struct Settings {
   bool light_ratio = false;
   // With light_ratio (bridge RT_PATH_RATIO_FOLLOW): the ratio's history shorter while the camera moves. Experimental, off.
   bool light_ratio_follow = false;
+  // Torch Light in Path-Traced GI (bridge RT_PATH_TORCH_LIGHT, with the lights traced): the torches' and fires' light on
+  // the screen's surfaces a path meets too, not only on those nobody saw. Experimental, off.
+  bool path_torch_light = false;
   // Fog shadows (bridge v11): the games' fog loses the sun's light where the camera's ray runs through shadow
   // (BindFogShadows for their fog pass).
   bool fog_shadows = false;
@@ -3413,6 +3416,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
                                                      | ((runtime.lights_in_bounce != 0) ? dlaa_bridge::RT_PATH_LIGHTS_IN_BOUNCE : 0u)
                                                      | ((runtime.lights_in_bounce == 3) ? dlaa_bridge::RT_PATH_LIGHT_RATIO : 0u)
                                                      | ((runtime.lights_in_bounce == 3 && runtime.settings.light_ratio_follow) ? dlaa_bridge::RT_PATH_RATIO_FOLLOW : 0u)
+                                                     | (runtime.settings.path_torch_light ? dlaa_bridge::RT_PATH_TORCH_LIGHT : 0u)
                                                      | (dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u))
                                                   : ((dlaa_bridge::bridge.nrd_ask_bounce ? dlaa_bridge::RT_PATH_NRD : 0u)
                                                      | (runtime.settings.reflections ? dlaa_bridge::RT_PATH_CACHE_FILL : 0u)),
