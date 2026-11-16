@@ -420,7 +420,8 @@ constexpr std::array<twattila::rt_scene::SmokePixelShader, 3> SMOKE_PIXEL_SHADER
     {.hash = 0x687378DB, .view_shift = 1, .sampler_shift = 1},
 }};
 
-// Rays Replace Shadow Maps (Experimental, off; Pharaoh's way): the six sun shaders whose shadow the screen-space shadows
+// Rays Replace Shadow Maps (on by default: ours replaces the game's, ATN 2026-11-16; WARP test/tw_warhammer_shaders part 29;
+// Pharaoh's way): the six sun shaders whose shadow the screen-space shadows
 // patched (the data run's log: hardware gather 5.0, standard and skin, single-sampled and MSAA) read the sun's atlas
 // (g_tShadowBuffer_SM50 t1, 12288 x 12288 R32) only through s1, 28 gather4_c each, s1's only reads; there is no baked map.
 // Where the rays' shadow is bound at t49 an ALWAYS sampler at s1 makes every comparison lit, so their patched comparisons
@@ -1978,8 +1979,9 @@ constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {
     {.hash = 0xDEA0A768, .world_input = 3, .refraction_slot = 5, .caustics = false, .material_water = true},  // campaign_lake, no shadows
 }};
 
-// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows multiply the game's shadow maps
-// (the sun shaders' patched comparisons), ray-traced AO in place of the game's SSAO; reflections on the game's SSR resolve;
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here. The rays' sun shadows replace the game's shadow maps
+// (Rays Replace Shadow Maps; off: they multiply them through the sun shaders' patched comparisons), ray-traced AO in place of
+// the game's SSAO; reflections on the game's SSR resolve;
 // the paths' sky from the game's spherical harmonics (rt_sun); Water Clarity and Caustics on the water's own draws.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
@@ -1993,7 +1995,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
-                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays in place of the game's shadow maps and of Bend's.\n"
                       "Needs an upscaler.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
@@ -2547,7 +2549,6 @@ void ConfigureAddon() {
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
-                                             .rays_replace_maps_tested = false,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
@@ -2606,6 +2607,8 @@ bool AttachAddon() {
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSpriteShadows"});
   // Ray-Traced Water Reflections was saved hidden at RT/PT's 1 before the water pass (it did nothing): now Experimental, off.
   twattila::graphics_page::ClearSavedRows(2, {"RayTracedWaterReflections"});
+  // Rays Replace Shadow Maps was saved at its old Experimental 0; now on by default.
+  twattila::graphics_page::ClearSavedRows(3, {"RayTracedReplaceShadowMaps"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
   // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).

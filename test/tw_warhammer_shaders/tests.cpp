@@ -153,6 +153,18 @@
 //    AO 0.5 and 1 with the march's light (confidence 1), and with the cubes' light alone (confidence 0) the environment x t46,
 //    no AO. CONTROLS: without t46 the game's AO changes it; the resolve as it was (the cubes' light x AO x t46) changes with
 //    the AO.
+// 29. Rays Replace Shadow Maps on the sun draws that read the sun's atlas (each addon.cpp's ATLAS_SUN_SHADERS, the game's
+//    bytes patched as the runtime: screen_space_shadows' Patch, then PatchAmbient with the row's ambient sites), drawn as part
+//    8 draws (FORWARD_CONSTANTS: cascade 0; the scene the first fill, sun, glint and height where the atlas's value reaches
+//    the game's output; the MSAA builds need it there, with their G-buffer unbound only Warhammer II's do, and under the
+//    game's MSAA no upscaler and so no rays run). Warhammer (its 6 gather 5.0 builds, the ones the screen-space shadows'
+//    patch multiplies by t49; OnSunReplaceMaps: t1 a 1 x 1 R32 of 1, the far plane): t49 0 bit-identical to the game's
+//    bytes over a lit atlas (4 x 4 of 1); t49 1 to the game's over a shadowing atlas (0: every comparison and read
+//    failing): the rays' shadow alone. Warhammer II (twattila/sun_replace_maps.hpp: an ALWAYS point comparison sampler at
+//    s1): t49 0 bit-identical to the game's bytes with every comparison lit (ALWAYS); t49 1 to the game's with every one
+//    failing (NEVER); t49 0.5 to its patch over an empty atlas (FLT_MAX, the game's sampler): Replace = the multiply over a
+//    map that shades nothing. CONTROL (both): today's multiply with the game's shadowing atlas under t49 0 differs from the
+//    lit reference (the map's shadow is what Replace takes away).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -161,6 +173,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -1297,6 +1310,9 @@ struct ForwardScene {
   std::vector<NamedConstant> constants = {};                // after FORWARD_CONSTANTS, by name
   std::vector<std::pair<std::string, Float4>> textures = {};  // 2D textures by name: uniform
   const ShaderInjectData* injection = nullptr;               // cb13 (nullptr: unbound)
+  UINT atlas_size = 4;                                       // the shadow map's width and height (1: Warhammer's far-plane stand-in)
+  int comparison_slot = -1;                                  // a point comparison sampler with `comparison` there (< 0: none)
+  D3D11_COMPARISON_FUNC comparison = D3D11_COMPARISON_ALWAYS;
 };
 
 // A forward pixel shader's bytes drawn over 4 x 4 pixels: its inputs from a vertex shader made from its input signature
@@ -1397,10 +1413,11 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
       context->PSSetShaderResources(bind.BindPoint, 1, views.back().GetAddressOf());
     } else if (bind.Type == D3D_SIT_TEXTURE && name.find("ShadowBuffer") != std::string::npos) {
       // The atlas as the game's: one R32 float (comparisons need it).
-      const std::vector<float> depths(16, scene.atlas);
-      const D3D11_TEXTURE2D_DESC atlas_desc = {.Width = 4, .Height = 4, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
-                                               .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
-      const D3D11_SUBRESOURCE_DATA atlas_data = {.pSysMem = depths.data(), .SysMemPitch = 16};
+      const std::vector<float> depths(static_cast<size_t>(scene.atlas_size) * scene.atlas_size, scene.atlas);
+      const D3D11_TEXTURE2D_DESC atlas_desc = {.Width = scene.atlas_size, .Height = scene.atlas_size, .MipLevels = 1, .ArraySize = 1,
+                                               .Format = DXGI_FORMAT_R32_FLOAT, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                               .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+      const D3D11_SUBRESOURCE_DATA atlas_data = {.pSysMem = depths.data(), .SysMemPitch = 4 * scene.atlas_size};
       ComPtr<ID3D11Texture2D> texture;
       device->CreateTexture2D(&atlas_desc, &atlas_data, texture.GetAddressOf());
       views.emplace_back();
@@ -1433,6 +1450,15 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
   if (scene.occlusion >= 0.f) {
     views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.occlusion, scene.occlusion, scene.occlusion, scene.occlusion})));
     context->PSSetShaderResources(49, 1, views.back().GetAddressOf());
+  }
+  if (scene.comparison_slot >= 0) {
+    // As twattila/sun_replace_maps.hpp makes it (point: each comparison exactly 0 or 1).
+    const D3D11_SAMPLER_DESC sampler = {.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                        .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                        .ComparisonFunc = scene.comparison, .MaxLOD = D3D11_FLOAT32_MAX};
+    samplers.emplace_back();
+    device->CreateSamplerState(&sampler, samplers.back().GetAddressOf());
+    context->PSSetSamplers(static_cast<UINT>(scene.comparison_slot), 1, samplers.back().GetAddressOf());
   }
   if (scene.caustics >= 0.f) {
     views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.caustics, scene.caustics, scene.caustics, scene.caustics})));
@@ -3788,6 +3814,126 @@ static void TestWh2ReflectionSkip(const std::string& games) {
               rays_differ, pixels, rays_used, shadow_read, game_differ);
 }
 
+// Part 29: each game's ATLAS_SUN_SHADERS (its addon.cpp), patched as the runtime patches its LIGHT_BOUNCE_DRAWS rows.
+static void TestReplaceMaps(const std::string& games, const std::string& dump, const char* game, int sampler_slot) {
+  const std::string text = ReadText(games + "/" + game + "/addon.cpp");
+  std::smatch listed;
+  std::vector<uint32_t> hashes;
+  if (std::regex_search(text, listed, std::regex(R"(ATLAS_SUN_SHADERS = \{([^}]*)\})"))) {
+    const std::string list = listed[1].str();
+    const std::regex hash(R"(0x([0-9A-F]{8}))");
+    for (auto found = std::sregex_iterator(list.begin(), list.end(), hash); found != std::sregex_iterator(); ++found) {
+      hashes.push_back(static_cast<uint32_t>(std::stoul((*found)[1].str(), nullptr, 16)));
+    }
+  }
+  const auto draws = SunDraws(games, game);
+  const auto same_bits = [](const std::vector<Float4>& a, const std::vector<Float4>& b) {
+    return !a.empty() && a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(Float4)) == 0;
+  };
+  const bool warhammer2 = sampler_slot >= 0;
+  int patched = 0;
+  int reached = 0;
+  int lit_same = 0;
+  int shadowed_same = 0;
+  int empty_same = 0;
+  int controls = 0;
+  int multisampled = 0;
+  int single_missed = 0;
+  for (const uint32_t hash : hashes) {
+    const auto code = GameBytes(dump, hash);
+    const auto row = std::ranges::find(draws, hash, &std::pair<uint32_t, uint32_t>::first);
+    const auto shadow = ambient_patch::Patch(code, false, 1);
+    bool foliage = false;
+    const auto ambient = (row == draws.end()) ? std::vector<uint8_t>()
+                                              : ambient_patch::PatchAmbient(shadow.empty() ? std::span<const uint8_t>(code) : std::span<const uint8_t>(shadow),
+                                                                            &foliage, row->second);
+    const auto& ours = ambient.empty() ? shadow : ambient;
+    if (code.empty() || shadow.empty() || row == draws.end()) {
+      std::printf("  %s %08X: %s\n", game, hash, code.empty() ? "no bytes" : (shadow.empty() ? "no shadow patched" : "not in LIGHT_BOUNCE_DRAWS"));
+      continue;
+    }
+    ++patched;
+    multisampled += Multisampled(code) ? 1 : 0;
+    // The scene where the atlas's value reaches the game's output.
+    ForwardScene lit = {.fill = -1.f};
+    for (const float height : {0.f, 4.f}) {
+      for (const bool glint : {false, true}) {
+        for (const float fill : {0.5f, 0.25f, 1.f, 0.1f}) {
+          for (const float sun : {1.f, -1.f}) {
+            const ForwardScene scene = {.fill = fill, .sun = sun, .glint = glint, .height = height, .atlas = 0.f};
+            ForwardScene other = scene;
+            other.atlas = 1.f;
+            if (lit.fill < 0.f && !same_bits(DrawForward(code, code, scene), DrawForward(code, code, other))) lit = other;
+          }
+        }
+      }
+    }
+    if (lit.fill < 0.f) {
+      std::printf("  %s %08X: no fill reaches its shadow%s\n", game, hash, Multisampled(code) ? " (MSAA: its G-buffer unbound here)" : "");
+      continue;
+    }
+    ++reached;
+    ForwardScene shadowing = lit;
+    shadowing.atlas = 0.f;
+    // The references: the game's bytes with the atlas lit and with it shading everything.
+    ForwardScene lit_reference = lit;
+    ForwardScene shadowed_reference = shadowing;
+    if (warhammer2) {
+      lit_reference.comparison_slot = sampler_slot;
+      shadowed_reference = lit;
+      shadowed_reference.comparison_slot = sampler_slot;
+      shadowed_reference.comparison = D3D11_COMPARISON_NEVER;
+    }
+    // Replace: the rays' shadow bound at t49 and the runtime's stand-in (Warhammer: the 1 x 1 far plane at t1; Warhammer II:
+    // ALWAYS at s1).
+    ForwardScene replace = lit;
+    if (warhammer2) {
+      replace.atlas = 0.f;
+      replace.comparison_slot = sampler_slot;
+    } else {
+      replace.atlas_size = 1;
+    }
+    ForwardScene rays_lit = replace;
+    rays_lit.occlusion = 0.f;
+    ForwardScene rays_shadowed = replace;
+    rays_shadowed.occlusion = 1.f;
+    const auto game_lit = DrawForward(code, code, lit_reference);
+    const bool lit_ok = same_bits(DrawForward(ours, code, rays_lit), game_lit);
+    const bool shadowed_ok = same_bits(DrawForward(ours, code, rays_shadowed), DrawForward(code, code, shadowed_reference));
+    lit_same += lit_ok ? 1 : 0;
+    shadowed_same += shadowed_ok ? 1 : 0;
+    bool empty_ok = true;
+    if (warhammer2) {
+      ForwardScene half = replace;
+      half.occlusion = 0.5f;
+      ForwardScene empty = lit;
+      empty.atlas = FLT_MAX;
+      empty.occlusion = 0.5f;
+      empty_ok = same_bits(DrawForward(ours, code, half), DrawForward(ours, code, empty));
+      empty_same += empty_ok ? 1 : 0;
+    }
+    // CONTROL: the rays multiplying the game's shadowing atlas (Replace off) under t49 0.
+    ForwardScene multiply = shadowing;
+    multiply.occlusion = 0.f;
+    const bool control = !same_bits(DrawForward(ours, code, multiply), game_lit);
+    controls += control ? 1 : 0;
+    std::printf("  %s %08X%s (fill %g, sun %g%s, height %g): t49 0 %s the lit atlas, t49 1 %s the shadowing one%s; CONTROL multiply %s\n", game, hash,
+                Multisampled(code) ? " MSAA" : "", lit.fill, lit.sun, lit.glint ? ", glint" : "", lit.height, lit_ok ? "=" : "DIFFERS from",
+                shadowed_ok ? "=" : "DIFFERS from", warhammer2 ? (empty_ok ? ", t49 0.5 = over an empty atlas" : ", t49 0.5 DIFFERS over an empty atlas") : "",
+                control ? "differs" : "THE SAME");
+  }
+  const int listed_count = static_cast<int>(hashes.size());
+  CHECK(listed_count > 0 && patched == listed_count && single_missed == 0 && lit_same == reached && shadowed_same == reached
+            && (!warhammer2 || empty_same == reached) && controls == reached,
+        "%s Rays Replace Shadow Maps: %d listed, %d patched, %d reached (%d MSAA), lit %d, shadowed %d, empty %d, controls %d", game, listed_count, patched,
+        reached, multisampled, lit_same, shadowed_same, empty_same, controls);
+  std::printf("%s Rays Replace Shadow Maps: %d listed, %d patched, %d drawn with the atlas reaching the output (%d MSAA, G-buffer unbound here); t49 0 "
+              "bit-identical to the game's lit atlas %d, t49 1 to the game's every comparison failing %d%s; CONTROL the rays multiplying the game's "
+              "shadowing atlas differ %d\n",
+              game, listed_count, patched, reached, multisampled, lit_same, shadowed_same,
+              warhammer2 ? std::format(", t49 0.5 = over an empty atlas {}", empty_same).c_str() : "", controls);
+}
+
 int main(int argc, char** argv) {
   if (argc < 4) {
     std::printf("tests <repo root> <the game's shader dump folder> <Warhammer II's shader dump folder>\n");
@@ -3831,6 +3977,8 @@ int main(int argc, char** argv) {
   TestBitmaskSkips(argv[1], argv[2]);
   TestWh2ReflectionSkip(games);
   TestWh2OneOcclusion(games);
+  TestReplaceMaps(games, argv[2], "twwarhammer", -1);
+  TestReplaceMaps(games, argv[3], "twwarhammer2", 1);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

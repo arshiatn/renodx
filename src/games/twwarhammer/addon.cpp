@@ -280,16 +280,16 @@ struct RaysShader {
 using PointLightRays = RaysShader<0xD0C67938, 42>;
 using LinearPointLightRays = RaysShader<0x5D1695BC, 42>;
 
-// Rays Replace Shadow Maps (Experimental, off): the 18 sun shaders that read the sun's atlas (g_tShadowBuffer, t1 in each;
-// tools/tw/wh1/wh1_atlas_reads.py) read it three ways: sample_l and their own `lt receiver, stored` (6), gather4_c through
-// s1 (6, CF0C5118 among them), or the read itself as the lit share (6). Where the rays' shadow is bound at t49 a 1 x 1
-// texture of 1 (the far plane, a cleared map's value) at t1 makes all three lit, so their patched shadows (each x the rays'
-// visibility) give the rays' shadow alone; cloud shadows stay the game's, the maps are still drawn (their forward readers:
-// water, forward units). The game's view is bound again after the draw (finalize: the Light Bounce draws the sun draw
-// itself and bypasses).
-constexpr std::array<uint32_t, 18> ATLAS_SUN_SHADERS = {0x230F2241, 0xC601C862, 0xCF0C5118, 0x4324BBE8, 0xA14D4C74, 0xB8F4B964,
-                                                        0x41365626, 0x42114392, 0xA8D2616A, 0xD0F4F425, 0xD56D16EA, 0xD9DDB44A,
-                                                        0x34FEF0FF, 0x7BA77953, 0x9AA0E558, 0xA1AF2AEC, 0xB1AFBCF1, 0xCAD9815A};
+// Rays Replace Shadow Maps (on by default: ours replaces the game's, ATN 2026-11-16; WARP test/tw_warhammer_shaders part 29):
+// of the 18 sun shaders that read the sun's atlas (g_tShadowBuffer, t1 in each; tools/tw/wh1/wh1_atlas_reads.py) the 6
+// hardware gather 5.0 builds read it through gather4_c at s1 (CF0C5118 among them), which the screen-space shadows' patch
+// multiplies by the rays' visibility. Where the rays' shadow is bound at t49 a 1 x 1 texture of 1 (the far plane, a cleared
+// map's value) at t1 makes every comparison lit, so their patched shadows give the rays' shadow alone; cloud shadows stay
+// the game's, the maps are still drawn (their forward readers: water, forward units). The game's view is bound again after
+// the draw (finalize: the Light Bounce draws the sun draw itself and bypasses). Not the 12 Shader Model 4.1 builds
+// (software: sample_l and their own `lt receiver, stored`; hardware pcf: the read itself as the lit share): the patch finds
+// no comparison in them, so the rays never reach their shadow and they keep the game's maps.
+constexpr std::array<uint32_t, 6> ATLAS_SUN_SHADERS = {0xCF0C5118, 0xB8F4B964, 0x41365626, 0xD9DDB44A, 0x34FEF0FF, 0xA1AF2AEC};
 constexpr UINT ATLAS_SLOT = 1;
 float rays_replace_maps_row = 0.f;
 // Skip the Shadow Maps (Experimental, off; under Rays Replace Shadow Maps): rt_scene's Ray-Traced Shadows Only skips the
@@ -1824,8 +1824,9 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 
 namespace {
 
-// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here (as Warhammer II's). The rays' sun shadows multiply the
-// game's shadow maps (the sun shaders' patched comparisons), ray-traced AO multiplies the game's SSAO (its line sweeps);
+// Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here (as Warhammer II's). The rays' sun shadows replace the
+// game's shadow maps (Rays Replace Shadow Maps; off: they multiply them through the sun shaders' patched comparisons),
+// ray-traced AO in place of the game's SSAO (its line sweeps);
 // reflections on the game's SSR resolve; point lights, the battle fog, the battle water and the lit particles hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .aa_labels = twattila::graphics_page::ATTILA_TEXTS.aa_labels,
@@ -1839,7 +1840,7 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
                     "On NVIDIA also turns DLSS Ray Reconstruction on. Elsewhere Experimental, slower: its own denoisers.",
     .shadow_tooltip = "Game's Shadow Maps: the original. Bend Screen-Space Shadows: those plus fine contact shadows from\n"
                       "what is on screen (Bend Studio's; soldiers, weapons, grass; needs in-game shadows on).\n"
-                      "DXR: DirectX Raytracing, the sun's shadow from rays too, on top of the game's, in place of Bend's.\n"
+                      "DXR: DirectX Raytracing, the sun's shadow from rays in place of the game's shadow maps and of Bend's.\n"
                       "Needs an upscaler.",
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game SSAO on for all of these.\n"
                   "Game's SSAO: everything counts as solid, so soldiers and trees get dark halos.\n"
@@ -2370,7 +2371,6 @@ void ConfigureAddon() {
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
-                                             .rays_replace_maps_tested = false,
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
                                              .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
@@ -2429,6 +2429,8 @@ bool AttachAddon() {
   // both Experimental, off.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedWaterReflections"});
   twattila::graphics_page::ClearSavedRows(2, {"RayTracedSpriteShadows"});
+  // Rays Replace Shadow Maps was saved at its old Experimental 0; now on by default.
+  twattila::graphics_page::ClearSavedRows(3, {"RayTracedReplaceShadowMaps"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
   // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).
