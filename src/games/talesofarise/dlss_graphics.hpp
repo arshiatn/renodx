@@ -2628,7 +2628,15 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     }
   }
   bool wrote = false;
-  const float render_scale = (upscaling ? static_cast<float>(expected[0]) / static_cast<float>(width) : 1.f);
+  // The size the game renders at: the upscaler's, else the game's own below 100% (its menu's DrawScale, r.ScreenPercentage
+  // as found; UE renders ceil(size x percentage)), for Bandai's screen filters, Bend and the texture LOD bias.
+  std::array<uint32_t, 2> render_size = expected;
+  if (const auto current = (finder.phase() == Phase::FOUND ? finder.Get() : std::nullopt); !upscaling && current && *current > 0.f && *current < 100.f) {
+    render_size = {static_cast<uint32_t>(std::ceil(static_cast<float>(width) * *current / 100.f)),
+                   static_cast<uint32_t>(std::ceil(static_cast<float>(height) * *current / 100.f))};
+  }
+  const bool below_native = render_size[0] != 0 && (render_size[0] < width || render_size[1] < height);
+  const float render_scale = (below_native ? static_cast<float>(render_size[0]) / static_cast<float>(width) : 1.f);
   for (size_t index = 0; graphics.available && index < GRAPHICS_SETTINGS.size(); ++index) {
     auto& entry = graphics.entries[index];
     if (entry.cvar.values[0] == nullptr) continue;
@@ -2675,13 +2683,14 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     entry.written = desired;
   }
   if (wrote) graphics.console.Refresh();
-  // Texture LOD bias while upscaling, from the next View upload on.
+  // Texture LOD bias at every render scale below 100%, from the next View upload on: the row's choice while upscaling,
+  // log2(scale) (Matched) at the game's own scale.
   talesofarise::dlss::constants::ViewMipBias mip_bias = {.size_vector = VIEW_SIZE_AND_INV_SIZE, .bias_vector = VIEW_MATERIAL_TEXTURE_MIP_BIAS};
-  if (upscaling && texture_lod_bias != 0) {
-    mip_bias.width = expected[0];
-    mip_bias.height = expected[1];
-    mip_bias.bias = std::log2(std::min(static_cast<float>(expected[0]) / static_cast<float>(width), static_cast<float>(expected[1]) / static_cast<float>(height)))
-                    - static_cast<float>(texture_lod_bias - 1);
+  if (below_native && texture_lod_bias != 0) {
+    mip_bias.width = render_size[0];
+    mip_bias.height = render_size[1];
+    mip_bias.bias = std::log2(std::min(static_cast<float>(render_size[0]) / static_cast<float>(width), static_cast<float>(render_size[1]) / static_cast<float>(height)))
+                    - (upscaling ? static_cast<float>(texture_lod_bias - 1) : 0.f);
   }
   if (mip_bias.width != applied_mip_bias.width || mip_bias.height != applied_mip_bias.height || mip_bias.bias != applied_mip_bias.bias) {
     talesofarise::dlss::constants::SetViewMipBias(mip_bias);
