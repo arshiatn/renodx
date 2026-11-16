@@ -48,7 +48,10 @@ Read before any tone mapper, LUT, bloom, hue, gamma or PsychoV change. `handle-s
 
 ## Hue
 
-- No Hue Correction and no Hue Shift after PsychoV: elsewhere it turned fire green.
+- No Hue Correction and no Hue Shift after PsychoV: elsewhere it turned fire green. One exception, the legacy
+  PsychoV31 mode (the maintainer, 2026-11-16): the TW add-ons' V31 Highlight Hue Shift moves the hue toward the clipped
+  SDR colour after PsychoV31, above mid grey only (`twattila/hdr_to_screen.hlsli`), and every HDR preset writes
+  `v31_highlight_hue_shift` 0.04. PsychoV35, the Recommended mode, follows the rule.
 - Clip emulation (vanilla's clipped hue) is ShortFuse's clip bend, applied **before** the LUT. Reference = a per-channel
   Neutwo of the colour; move only the middle channel toward the reference's place between min and max; lerp by the
   strength; restore the luminance. Our Hue Clip Emulation is this bend.
@@ -90,3 +93,34 @@ Read before any tone mapper, LUT, bloom, hue, gamma or PsychoV change. `handle-s
 - **A skipped swap chain:** UE3 creates its window with `WS_EX_TOOLWINDOW` and clears it only after `CreateSwapChain`,
   so the swapchain mod skipped the game's only chain. Clearing the style first fixed it. Check this in any Unreal game
   that gets no HDR chain.
+
+## Page 1 and presets
+
+The maintainer's rules (2026-11-16, from Attila's page); every HDR add-on follows them.
+
+- **The game's Gamma and Brightness at their neutral values.** The game's own sliders change the picture before the
+  port's decode, so page 1's first line names the values the port's maths assumes: Attila's "Use these in-game
+  settings: Gamma 20 and Brightness 10." (its colour matrix assumes gamma 2.0 at in-game 20). Read them from what the
+  game's slider writes (a step, an exponent, a percentage), never from another game; the TW values are in
+  [game-facts.md](../../tw-port-checklist/references/game-facts.md).
+- **Video AutoHDR, the one expansion allowed.** Only an 8-bit SDR source with nothing behind it (the game's
+  pre-rendered videos), in that source's own shader, never the scene or the final frame (the rejected inverse tone map
+  of `swapchain-resource-analysis`). Only luminance above mid grey, smooth from 0.18, one factor a pixel (hue kept),
+  SDR white to lerp(1, Peak / Paper White, amount); HDR output only (`twattila/autohdr.hlsli`). Default 0 (Reset),
+  Recommended 0.2 (Tales 0.25). Video Dithering (on, only while AutoHDR is above 0) adds one code value peak to peak of
+  static interleaved gradient noise before the decode: the stretch shows the 8-bit steps; never temporal. In every TW
+  add-on, Ryse, Tales of Arise and R.U.S.E.
+- **Standard rows** where the game has the effect, Attila's as the model: VFX Brightness by particle family (Attila's
+  three: flame, dust, clouds and smoke; blood, storms and fog; snow, rain and sparks; 1 = the game's), Unit / Building
+  Indicator Brightness (the game's highlight markers, HDR modes only), Sky Debanding (taps weighted by colour plus
+  4 code values of screen-space dither; off in every preset: too heavy), Modded Auto Exposure (off = the game's bits;
+  on caps only the meter's maximum at the frame's average x 2^Sensitivity, the scene's colours untouched).
+- **Presets keep the calibration.** Reset, Recommended and every condition preset (Attila's All Conditions,
+  Day/Dry/Rain, Night/Snow/Fog) write the look rows only, never Peak, Paper White, UI, Output or Settings Mode; their
+  tooltips say so. Only the SDR button writes Output (SDR). Check: every button in a page dump.
+- **Output Auto's preset switch** (`twattila/output_encoding.hpp`; every HDR add-on, Ryse, Tales and Expeditions too,
+  since [89d250f1]): with Output Auto, a first start without Windows HDR gets the SDR preset; Windows HDR coming on
+  then applies Recommended, going off the SDR preset again, once per change, until the player changes any row (a hash
+  of every non-global row after Auto's preset, `OutputAutoPreset` in the ini; "off" for good after a change). A first
+  start with Windows HDR on never gets a preset. Check: the page dump's `== first start without hdr`, the log's
+  "Output Auto:" lines.
