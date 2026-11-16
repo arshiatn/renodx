@@ -67,7 +67,8 @@ struct Filters {
   float ao_frame = 0.f;        // 0-63, the noise's frame
   float ao_auto_thickness = 0.f;  // 1: each occluder as thick as it is wide
   float screen_space_shadows = 0.f;  // 1: Bend's in place of Bandai's contact shadows' march toward the sun
-  float gtvbgi = 0.f;                // 1: GT-VBGI or the rays' GI (RT / PT) in place of Bandai's screen-space GI
+  float gtvbgi = 0.f;                // 1: GT-VBGI or the rays' GI (RT / PT) in place of Bandai's screen-space GI's add;
+                                     // 2: its share through the open sky kept (Tales' shared.h TOA_GAME_GI_SHARE)
 };
 
 // DLSS addon: every present; scale and sharpening 1 while it does not upscale, all 1 once it is unloaded.

@@ -107,6 +107,10 @@ $table = [ordered]@{
   'TalesGI'     = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^lighting\d+_'
                      Settings = 'filter_scale=1,sun_shadow_distance=1,shadow_edge_color=1,sun_haze=1,gtvbgi=1'
                      Registers = @{ '^lighting\d+_' = 'cb0[69]=0.55,0,0.65,0.45' } }
+  # With Game's GI Under the Open Sky (SI.gtvbgi 2): the game's bytes as they are, Bandai's add x the AO without its 0.3
+  # floor (these inputs' AO stays above 0.3: the floor itself is not exercised here).
+  'TalesGIOpenSky' = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^lighting\d+_'
+                        Settings = 'filter_scale=1,sun_shadow_distance=1,shadow_edge_color=1,sun_haze=1,gtvbgi=2' }
   'Expeditions' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^(t|lut)\d+_' }
 }
 

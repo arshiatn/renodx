@@ -748,3 +748,11 @@ size; then:
   older traces) reading its first 10 x 6 output at t25-t30 behind their own GI switch (cb0[59].w); with the chain
   skipped (0.000 ms in ue_gi) they read a pooled texture nothing wrote that frame (ue_game's far-GI texture), and the
   character / bush boxes came out 6.0 / 14.3% darker (linear). Cost back: about 0.07 ms.
+  Under our GI lighting00-05 no longer take the menu's GI-off path: only Bandai's GI add goes (shared.h
+  TOA_GAME_GI_SHARE); its colour still tints the fill light on faces turned from the sun (the off path's 0.001 stand-in
+  gave that fill 0.5 per channel, ^ cb0[61].w). New **Game's GI Under the Open Sky (Experimental)** (Global
+  Illumination's More Options, `GlobalIlluminationGameOpenSky`, off): Bandai's add stays x the AO without its 0.3 floor
+  (open directions Bandai's screen average, covered ones ours). run_080739 (GT-VBGI against the game, PQ-decoded
+  linear): whole frame -16.8%, lit open ground -32.6%, cliffs -26.3%; open lit ground faces the sun (no fill there), so
+  it stays -33% with the row off; with it on the frame is the game's where the AO is 0.3 or more, plus ours.
+  test/tw_vanilla_exact: TalesLighting, TalesGI, TalesGIOpenSky (lighting00-05 against the game's bytes).

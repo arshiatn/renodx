@@ -416,7 +416,7 @@ void main(
   r1.w = exp2(r1.w);
   r3.w = max(0.300000012, r8.y);
   // Our GI (GT-VBGI, the rays' bounce light or path tracing: t42 below) in place of Bandai's add (shared.h).
-  r3.w = TOA_GAME_GI_SHARE(r3.w);
+  r3.w = TOA_GAME_GI_SHARE(r3.w, r8.y);
   r9.xyz = r3.www * r9.xyz;
   r7.xyz = r7.xyz * r1.www;
   r7.xyz = r9.xyz * r1.xyz + r7.xyz;

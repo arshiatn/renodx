@@ -179,6 +179,8 @@ twattila::rt_scene::Sliders rt_sliders;
 // the rays' bounce light's.
 twattila::feature_settings::SssSliders screen_space_shadows_rows;
 talesofarise::ue_light_bounce::Rows gi_rows;
+// Under our GI, Bandai's GI add keeps its share through the open sky (shared.h TOA_GAME_GI_SHARE, SI.gtvbgi 2).
+float game_gi_open_sky_row = 0.f;
 float live_scale_row = 1.f;
 float camera_jitter_row = 1.f;
 float replace_taa_row = 1.f;
@@ -2724,7 +2726,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       .ao_frame = static_cast<float>(ao_frame),
       .ao_auto_thickness = ao_auto_thickness,
       .screen_space_shadows = (shadows.enabled ? 1.f : 0.f),
-      .gtvbgi = ((bounce.strength > 0.f || rays_gi) ? 1.f : 0.f),
+      .gtvbgi = ((bounce.strength > 0.f || rays_gi) ? ((game_gi_open_sky_row != 0.f) ? 2.f : 1.f) : 0.f),
   });
   talesofarise::engine_hooks::Update();
 }
@@ -3051,6 +3053,15 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                          .format = "%d",
                                          .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders) && rt_sliders.light_bounce == 2.f; },
                                      });
+  insert_after("light_bounce_multi_bounce", new Setting{
+                                                .key = "GlobalIlluminationGameOpenSky",
+                                                .binding = &game_gi_open_sky_row,
+                                                .value_type = SettingValueType::BOOLEAN,
+                                                .default_value = 0.f,
+                                                .label = "Game's GI Under the Open Sky (Experimental)",
+                                                .tooltip = "Keeps the game's own Global Illumination where the sky is open (open ground, cliffs);\n"
+                                                           "ours lights what nearby surfaces cover. Off: ours alone, darker in open areas.",
+                                            });
   renodx::utils::settings::section_tints.emplace_back(TOOLS_SECTION, twattila::graphics_page::TITLE_TINT);
 
   // Graphics 1 of 2's own section.
