@@ -32,6 +32,14 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
 - Known differences to prove offline: masks read at a scaled UV (some of the 89 masked shaders) are left out, and the
   helper cuts alpha at 0.5 where the game does at 0.333 (rt_core's host route has no cutoff of its own yet).
 - tests/helper_rays (WARP + CPU): TowardSun equals sun_direction.hlsli's, the camera equals TranslatedWorldToClip.
+- Step 2: the **reflections and specular occlusion** in the helper too. At the frame's first lighting or toon draw the
+  G-buffer guides go into the bridge from its t1-t3 and View (the anti-aliasing's 0x7A1E0D31, one `WriteGuides` for
+  both, in the add-on's own context state there), then rt_scene::Reflections traces them; both are copied to the scene
+  depth's size for t43 / t44 (rt_ambient.hlsli reads them by UV, as the in-process rays'). The hits light from last
+  frame's colour (the bridge's input colour). With Ray Reconstruction on the guides are written twice a frame (here and
+  at the anti-aliasing): a small double cost left for the equality round. tests/helper_kept (WARP): the kept copies
+  give each render pixel its own traced texel through rt_ambient.hlsli's read (exact; the bridge's texture read the
+  same way: off by up to 52 texels, caught).
 
 ## Install
 

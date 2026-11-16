@@ -1217,31 +1217,9 @@ bool Evaluate(Frame* frame, bool replace) {
     }
     const bool reconstruct = gbuffer_views[0] && gbuffer_views[1] && gbuffer_views[2];
     if (reconstruct) {
-      struct GuideConstants {
-        std::array<std::array<float, 4>, 3> world_to_view;
-        std::array<float, 2> projection;
-        std::array<uint32_t, 2> extent;
-      } guide_constants = {
-          .world_to_view = {frame->view[VIEW_TRANSLATED_WORLD_TO_VIEW], frame->view[VIEW_TRANSLATED_WORLD_TO_VIEW + 1],
-                            frame->view[VIEW_TRANSLATED_WORLD_TO_VIEW + 2]},
-          .projection = {frame->view[VIEW_VIEW_TO_CLIP][0], frame->view[VIEW_VIEW_TO_CLIP + 1][1]},
-          .extent = {frame->render_width, frame->render_height},
-      };
-      static_assert(sizeof(guide_constants) == 64);
-      context->UpdateSubresource(runtime.guide_constants.Get(), 0, nullptr, &guide_constants, 0, 0);
-      ID3D11Buffer* guide_buffers[] = {runtime.guide_constants.Get()};
-      ID3D11ShaderResourceView* guide_inputs[] = {gbuffer_views[0].Get(), gbuffer_views[1].Get(), gbuffer_views[2].Get()};
-      ID3D11UnorderedAccessView* guide_outputs[] = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
-                                                    bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
-      context->CSSetShader(runtime.guide_shader.Get(), nullptr, 0);
-      context->CSSetConstantBuffers(0, 1, guide_buffers);
-      context->CSSetShaderResources(0, 3, guide_inputs);
-      context->CSSetUnorderedAccessViews(0, 4, guide_outputs, nullptr);
-      context->Dispatch((frame->render_width + 7) / 8, (frame->render_height + 7) / 8, 1);
-      constexpr std::array<ID3D11ShaderResourceView*, 3> NO_GUIDE_INPUTS = {};
-      constexpr std::array<ID3D11UnorderedAccessView*, 4> NO_GUIDE_OUTPUTS = {};
-      context->CSSetShaderResources(0, 3, NO_GUIDE_INPUTS.data());
-      context->CSSetUnorderedAccessViews(0, 4, NO_GUIDE_OUTPUTS.data(), nullptr);
+      talesofarise::dlss::ray_tracing::WriteGuides(context, runtime.guide_shader.Get(), runtime.guide_constants.Get(),
+                                                   {gbuffer_views[0].Get(), gbuffer_views[1].Get(), gbuffer_views[2].Get()}, frame->view,
+                                                   {frame->render_width, frame->render_height});
     }
     // The scene colour is not pre-exposed (the tonemapper does not scale it); FSR and XeSS get the forward projection.
     const twattila::dlaa_bridge::RayReconstruction reconstruction = {.preset = (use.ray_reconstruction != 0) ? use.ray_reconstruction - 1 : 0u,
@@ -2017,6 +1995,11 @@ constexpr auto OnLightingDraw = []<DrawCommand Command>(Command& command) -> ren
     context->PSGetShaderResources(1, 3, gbuffer_views.views.data());
     lighting = talesofarise::rt_shadows::TraceLighting(context, gbuffer_views.views);
   }
+  if (helper_rays_installed) {
+    const auto reflected = talesofarise::dlss::ray_tracing::Reflections(context);
+    lighting.reflection = reflected[0];
+    lighting.specular_occlusion = reflected[1];
+  }
   const auto ambient = helper_rays_installed ? talesofarise::dlss::ray_tracing::Ambient() : talesofarise::rt_shadows::AmbientOcclusion();
   ComPtr<ID3D11ShaderResourceView> bounce = lighting.bounce ? lighting.bounce : talesofarise::rt_shadows::BounceLight();
   // Without the rays' bounce light, GT-VBGI's (ue_light_bounce.hpp: off at Strength 0) at the frame's first lighting draw:
@@ -2300,16 +2283,17 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     // War ambient cube): with the paths, the ambient rays weighted by the game's sky light in place of Bandai's AO under its
     // ambient (Bandai's sky light comes from its base pass inside the scene colour the lighting passes read: no input to
     // zero there, so the paths' share of it enters where its AO does), the paths' bounce at t42 as before.
-    // Ray Tracing in the Helper: its sun shadows and AO (ray_tracing.hpp), nothing in process.
+    // Ray Tracing in the Helper: its sun shadows, AO, reflections and specular occlusion (ray_tracing.hpp), nothing in
+    // process.
     const auto all_rays = upscaling ? twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, gi_rows.light_bounce_strength) : twattila::rt_scene::Settings{};
     if (helper_rays_installed) {
-      talesofarise::dlss::ray_tracing::Update({
-          .sun_shadows = all_rays.sun_shadows,
-          .ambient_occlusion = all_rays.ambient_occlusion || (all_rays.path_tracing && rt_sliders.path_ambient != 0.f),
-          .ambient_range = all_rays.ambient_range,
-          .ambient_rays = all_rays.ambient_rays,
-          .sun_softness = all_rays.sun_softness,
-      });
+      auto helper_rays = all_rays;
+      helper_rays.ambient_occlusion = all_rays.ambient_occlusion || (all_rays.path_tracing && rt_sliders.path_ambient != 0.f);
+      helper_rays.light_bounce = false;
+      helper_rays.path_tracing = false;
+      helper_rays.path_ambient = false;
+      helper_rays.local_lights = false;
+      talesofarise::dlss::ray_tracing::Update(helper_rays);
     }
     const auto rays = helper_rays_installed ? twattila::rt_scene::Settings{} : all_rays;
     const bool path_ambient = rays.path_tracing && rt_sliders.path_ambient != 0.f;
@@ -3115,8 +3099,9 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                            .value_type = SettingValueType::BOOLEAN,
                                            .default_value = 0.f,
                                            .label = "Ray Tracing in the Helper (Experimental)",
-                                           .tooltip = "Sun shadows and ambient occlusion traced in the helper, as in the Total War games\n"
-                                                      "(no reflections, light bounce or path tracing there yet). Restart the game after changing it.",
+                                           .tooltip = "Sun shadows, ambient occlusion, reflections and specular occlusion traced in the helper,\n"
+                                                      "as in the Total War games (no light bounce or path tracing there yet).\n"
+                                                      "Restart the game after changing it.",
                                            .is_enabled = [] { return twattila::feature_settings::Upscaling(aa_sliders); },
                                        });
   insert_after("light_bounce_multi_bounce", new Setting{
@@ -3607,7 +3592,8 @@ inline bool Install(HMODULE module) {
   }
   // Ray Tracing in the Helper: installed when on at launch with the helper there and an effect it traces on.
   helper_rays_installed = twattila::dlaa_bridge::HelperInstalled() && helper_rays_row != 0.f
-                          && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f);
+                          && (rt_sliders.sun_shadows != 0.f || rt_sliders.ambient_occlusion != 0.f || rt_sliders.reflections != 0.f
+                              || rt_sliders.specular_occlusion != 0.f);
   if (helper_rays_installed) talesofarise::dlss::ray_tracing::Install();
   renodx::utils::command_action::Register(OnSunShadowMask, {
                                                                .shader_hash = talesofarise::rt_shadows::SUN_SHADOW_SHADER,

@@ -17,8 +17,11 @@
 
 #include <include/reshade.hpp>
 
+#include <embed/shaders.h>
+
 #include "../talesofarise_dlss/constant_mirror.hpp"
 #include "../talesofarise_dlss/matrix.hpp"
+#include "../talesofarise_dlss/native_state.hpp"
 #include "../talesofarise_dlss/rt_shadows.hpp"
 #include "../talesofarise_dlss/upscaling.hpp"
 #include "../twattila/rt_core.hpp"
@@ -33,15 +36,22 @@
 // (TranslatedWorldToClip c0-c3 and PreViewTranslation c62 in metres), the direction toward the sun (0x7A1E0D12's
 // TowardSun, here on the CPU); then the traced sun at t40 for sunshadow00 (its texture's top-left the render pixels it
 // loads) and the traced ambient copied to the scene depth's size for the lighting passes' t41 (rt_ambient.hlsli reads it
-// by UV), in rt_shadows' place. Step 1 of the move (ATN 2026-11-16): the sun shadows and the AO.
+// by UV), in rt_shadows' place. At the frame's first lighting or toon draw (its G-buffer at t1-t3, the View at b1): the
+// G-buffer guides into the bridge (WriteGuides, the anti-aliasing's 0x7A1E0D31), then the reflections and the specular
+// occlusion traced (rt_scene::Reflections; their hits light from last frame's colour, the bridge's), copied for t43 /
+// t44. The move's steps (ATN 2026-11-16): 1 the sun shadows and the AO, 2 the reflections and specular occlusion.
 namespace talesofarise::dlss::ray_tracing {
 
 using Microsoft::WRL::ComPtr;
 
 namespace internal {
 
-// UE 4.21's View (the sun shadow mask's b1, 0x7A1E0D12's rows): TranslatedWorldToClip c0-c3, ScreenToWorld c44-c46,
-// PreViewTranslation c62, ViewSizeAndInvSize c122. Its ScreenToShadow at b0 c28-c30.
+// UE 4.21's View (the sun shadow mask's b1, 0x7A1E0D12's rows): TranslatedWorldToClip c0-c3, TranslatedWorldToView c8-c10,
+// ViewToClip c24-c25, ScreenToWorld c44-c46, PreViewTranslation c62, ViewSizeAndInvSize c122. Its ScreenToShadow at b0
+// c28-c30.
+constexpr uint32_t VIEW_TRANSLATED_WORLD_TO_VIEW = 8;
+constexpr uint32_t VIEW_VIEW_TO_CLIP = 24;
+constexpr uint32_t VIEW_GUIDE_ROWS = VIEW_VIEW_TO_CLIP + 2;
 constexpr uint32_t VIEW_SCREEN_TO_WORLD = 44;
 constexpr uint32_t VIEW_PRE_VIEW_TRANSLATION = 62;
 constexpr uint32_t VIEW_SIZE = 122;
@@ -49,15 +59,31 @@ constexpr uint32_t VIEW_ROWS = VIEW_SIZE + 1;
 constexpr uint32_t SCREEN_TO_SHADOW = 28;
 constexpr double CENTIMETRES = 100.0;
 
+// A traced texture copied to the scene depth's size (the lighting passes read it by UV, as the in-process rays'), the
+// render pixels at its top-left, and the frame it was copied.
+struct Kept {
+  ComPtr<ID3D11Texture2D> texture;
+  ComPtr<ID3D11ShaderResourceView> srv;
+  uint64_t frame = UINT64_MAX;
+};
+
 struct State {
   std::mutex mutex;
   twattila::rt_scene::Settings settings;
   ID3D11Resource* scene_depth = nullptr;  // the sun shadow mask's t0 (compared only)
   std::array<UINT, 2> render_size = {};
+  std::array<UINT, 2> depth_size = {};
   uint64_t frame = 0;
-  uint64_t ambient_frame = UINT64_MAX;  // the traced ambient's copy
-  ComPtr<ID3D11Texture2D> ambient;      // at the scene depth's size, the render pixels at its top-left
-  ComPtr<ID3D11ShaderResourceView> ambient_srv;
+  uint64_t guides_frame = UINT64_MAX;
+  uint64_t lit_frame = UINT64_MAX;  // the first lighting draw's (Reflections)
+  Kept ambient;
+  Kept reflection;
+  Kept specular;
+  // The guides' pass on the game's device, in the add-on's own context state.
+  ID3D11Device* device = nullptr;
+  ComPtr<ID3DDeviceContextState> private_state;
+  ComPtr<ID3D11ComputeShader> guide_shader;
+  ComPtr<ID3D11Buffer> guide_constants;
 };
 inline State state;
 
@@ -144,6 +170,47 @@ inline twattila::rt_scene::Camera ViewCamera(std::span<const std::array<float, 4
   };
 }
 
+// `traced` (a bridge texture: the render pixels at its top-left) copied into `kept` at the scene depth's size, as this
+// frame's; false: not copied.
+inline bool Keep(ID3D11DeviceContext* context, ID3D11ShaderResourceView* traced, uint64_t frame, Kept* kept) {
+  if (traced == nullptr) return false;
+  ComPtr<ID3D11Resource> resource;
+  traced->GetResource(resource.GetAddressOf());
+  ComPtr<ID3D11Texture2D> texture;
+  if (FAILED(resource.As(&texture))) return false;
+  D3D11_TEXTURE2D_DESC traced_desc = {};
+  texture->GetDesc(&traced_desc);
+  D3D11_TEXTURE2D_DESC kept_desc = {};
+  if (kept->texture) kept->texture->GetDesc(&kept_desc);
+  if (kept_desc.Width != state.depth_size[0] || kept_desc.Height != state.depth_size[1] || kept_desc.Format != traced_desc.Format) {
+    const D3D11_TEXTURE2D_DESC desc = {.Width = state.depth_size[0], .Height = state.depth_size[1], .MipLevels = 1, .ArraySize = 1,
+                                       .Format = traced_desc.Format, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                       .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {};
+    traced->GetDesc(&view_desc);
+    ComPtr<ID3D11Device> device;
+    context->GetDevice(device.GetAddressOf());
+    kept->srv.Reset();
+    if (FAILED(device->CreateTexture2D(&desc, nullptr, kept->texture.ReleaseAndGetAddressOf()))
+        || FAILED(device->CreateShaderResourceView(kept->texture.Get(), &view_desc, kept->srv.GetAddressOf()))) {
+      kept->texture.Reset();
+      kept->srv.Reset();
+      return false;
+    }
+  }
+  const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = std::min(state.render_size[0], traced_desc.Width),
+                            .bottom = std::min(state.render_size[1], traced_desc.Height), .back = 1};
+  context->CopySubresourceRegion(kept->texture.Get(), 0, 0, 0, 0, resource.Get(), 0, &region);
+  const std::unique_lock lock(state.mutex);
+  kept->frame = frame;
+  return true;
+}
+
+// `kept`'s view when copied in `frame`, else null (under the state's lock).
+inline ComPtr<ID3D11ShaderResourceView> ThisFrame(const Kept& kept, uint64_t frame) {
+  return (kept.frame == frame) ? kept.srv : nullptr;
+}
+
 }  // namespace internal
 
 inline const twattila::rt_scene::Host HOST = {
@@ -151,8 +218,10 @@ inline const twattila::rt_scene::Host HOST = {
       const std::unique_lock lock(internal::state.mutex);
       return internal::state.render_size;
     },
-    // The reflections' and the paths' G-buffer guides: none yet (step 1).
-    .guides_written = [] { return false; },
+    .guides_written = [] {
+      const std::unique_lock lock(internal::state.mutex);
+      return internal::state.guides_frame == internal::state.frame;
+    },
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
     .characters_dynamic = true,
@@ -166,6 +235,38 @@ inline void Update(const twattila::rt_scene::Settings& settings) {
     ++internal::state.frame;
   }
   twattila::rt_scene::Update(settings);
+}
+
+// Ray Reconstruction's and the helper's G-buffer guides (0x7A1E0D31: `shader`, its 64-byte `constants`) from G-buffer
+// A - C (`gbuffer`) and the View (`view`: its rows to ViewToClip's) into the bridge's textures over `extent`.
+inline void WriteGuides(ID3D11DeviceContext* context, ID3D11ComputeShader* shader, ID3D11Buffer* constants,
+                        const std::array<ID3D11ShaderResourceView*, 3>& gbuffer, std::span<const std::array<float, 4>> view,
+                        const std::array<uint32_t, 2>& extent) {
+  auto& bridge = twattila::dlaa_bridge::bridge;
+  struct GuideConstants {
+    std::array<std::array<float, 4>, 3> world_to_view;
+    std::array<float, 2> projection;
+    std::array<uint32_t, 2> extent;
+  };
+  static_assert(sizeof(GuideConstants) == 64);
+  const GuideConstants guide_constants = {
+      .world_to_view = {view[internal::VIEW_TRANSLATED_WORLD_TO_VIEW], view[internal::VIEW_TRANSLATED_WORLD_TO_VIEW + 1],
+                        view[internal::VIEW_TRANSLATED_WORLD_TO_VIEW + 2]},
+      .projection = {view[internal::VIEW_VIEW_TO_CLIP][0], view[internal::VIEW_VIEW_TO_CLIP + 1][1]},
+      .extent = extent,
+  };
+  context->UpdateSubresource(constants, 0, nullptr, &guide_constants, 0, 0);
+  const std::array<ID3D11UnorderedAccessView*, 4> outputs = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
+                                                             bridge.normals.uav.Get(), bridge.roughness.uav.Get()};
+  context->CSSetShader(shader, nullptr, 0);
+  context->CSSetConstantBuffers(0, 1, &constants);
+  context->CSSetShaderResources(0, 3, gbuffer.data());
+  context->CSSetUnorderedAccessViews(0, 4, outputs.data(), nullptr);
+  context->Dispatch((extent[0] + 7) / 8, (extent[1] + 7) / 8, 1);
+  constexpr std::array<ID3D11ShaderResourceView*, 3> NO_INPUTS = {};
+  constexpr std::array<ID3D11UnorderedAccessView*, 4> NO_OUTPUTS = {};
+  context->CSSetShaderResources(0, 3, NO_INPUTS.data());
+  context->CSSetUnorderedAccessViews(0, 4, NO_OUTPUTS.data(), nullptr);
 }
 
 // At Bandai's sun shadow mask: the camera and the sun to the helper, the trace; the traced sun at t40 (rt_shadows::Unbind
@@ -214,51 +315,96 @@ inline bool Trace(ID3D11DeviceContext* context) {
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
   if (!talesofarise::upscaling::PrepareBridge(device.Get())) return false;
-  // The traced ambient's copy at the scene depth's size (made again when it changes).
-  D3D11_TEXTURE2D_DESC ambient_desc = {};
-  if (state.ambient) state.ambient->GetDesc(&ambient_desc);
-  if (settings.ambient_occlusion && (ambient_desc.Width != depth_desc.Width || ambient_desc.Height != depth_desc.Height)) {
-    const D3D11_TEXTURE2D_DESC desc = {.Width = depth_desc.Width, .Height = depth_desc.Height, .MipLevels = 1, .ArraySize = 1,
-                                       .Format = DXGI_FORMAT_R8_UNORM, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
-                                       .BindFlags = D3D11_BIND_SHADER_RESOURCE};
-    state.ambient_srv.Reset();
-    if (FAILED(device->CreateTexture2D(&desc, nullptr, state.ambient.ReleaseAndGetAddressOf()))
-        || FAILED(device->CreateShaderResourceView(state.ambient.Get(), nullptr, state.ambient_srv.GetAddressOf()))) {
-      state.ambient.Reset();
-      state.ambient_srv.Reset();
-    }
-  }
   {
     const std::unique_lock lock(state.mutex);
     state.scene_depth = depth_resource.Get();
     state.render_size = render_size;
+    state.depth_size = {depth_desc.Width, depth_desc.Height};
   }
   twattila::rt_scene::WriteSun(context, toward_sun);
   if (!twattila::rt_scene::Trace(context, depth.Get(), internal::ViewCamera(view))) return false;
   const auto [sun, ambient] = twattila::rt_scene::Visibilities();
   if (settings.sun_shadows && sun != nullptr) context->CSSetShaderResources(rt_shadows::VISIBILITY_SLOT, 1, &sun);
-  if (settings.ambient_occlusion && ambient != nullptr && state.ambient) {
-    ComPtr<ID3D11Resource> traced;
-    ambient->GetResource(traced.GetAddressOf());
-    const D3D11_BOX region = {.left = 0, .top = 0, .front = 0, .right = render_size[0], .bottom = render_size[1], .back = 1};
-    context->CopySubresourceRegion(state.ambient.Get(), 0, 0, 0, 0, traced.Get(), 0, &region);
-    const std::unique_lock lock(state.mutex);
-    state.ambient_frame = frame;
-  }
+  if (settings.ambient_occlusion) internal::Keep(context, ambient, frame, &state.ambient);
   return true;
+}
+
+// At the frame's first lighting or toon draw: the guides from its G-buffer (t1-t3) and View (b1), the reflections and
+// the specular occlusion traced and copied for t43 / t44 (later draws this frame take the same); null where off or not
+// traced.
+inline std::array<ComPtr<ID3D11ShaderResourceView>, 2> Reflections(ID3D11DeviceContext* context) {
+  using internal::state;
+  twattila::rt_scene::Settings settings;
+  uint64_t frame = 0;
+  {
+    const std::unique_lock lock(state.mutex);
+    if (state.lit_frame == state.frame) return {internal::ThisFrame(state.reflection, state.frame), internal::ThisFrame(state.specular, state.frame)};
+    state.lit_frame = state.frame;
+    settings = state.settings;
+    frame = state.frame;
+  }
+  ComPtr<ID3D11DeviceContext1> context1;
+  if (!(settings.reflections || settings.specular_occlusion) || FAILED(context->QueryInterface(IID_PPV_ARGS(context1.GetAddressOf())))) return {};
+  std::array<ComPtr<ID3D11ShaderResourceView>, 3> gbuffer;
+  {
+    std::array<ID3D11ShaderResourceView*, 3> pointers = {};
+    context->PSGetShaderResources(1, static_cast<UINT>(pointers.size()), pointers.data());
+    for (size_t index = 0; index < pointers.size(); ++index) gbuffer[index].Attach(pointers[index]);
+  }
+  ComPtr<ID3D11Buffer> view_buffer;
+  UINT first_constant = 0;
+  UINT constant_count = 0;
+  context1->PSGetConstantBuffers1(1, 1, view_buffer.GetAddressOf(), &first_constant, &constant_count);
+  std::array<std::array<float, 4>, internal::VIEW_GUIDE_ROWS> view = {};
+  if (!gbuffer[0] || !gbuffer[1] || !gbuffer[2] || !view_buffer || constant_count < view.size()) return {};
+  talesofarise::dlss::constants::Watch(view_buffer.Get(), (first_constant + internal::VIEW_GUIDE_ROWS) * 16);
+  if (!talesofarise::dlss::constants::Read(view_buffer.Get(), uint64_t{first_constant} * 16, std::as_writable_bytes(std::span(view)))) return {};
+  ComPtr<ID3D11Device> device;
+  context->GetDevice(device.GetAddressOf());
+  if (state.device != device.Get()) {
+    const auto feature_level = device->GetFeatureLevel();
+    ComPtr<ID3D11Device1> device1;
+    const D3D11_BUFFER_DESC constants_desc = {.ByteWidth = 64, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+    state.device = device.Get();
+    if (FAILED(device.As(&device1))
+        || FAILED(device1->CreateDeviceContextState(((device->GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED) != 0)
+                                                        ? D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED
+                                                        : 0,
+                                                    &feature_level, 1, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr,
+                                                    state.private_state.ReleaseAndGetAddressOf()))
+        || FAILED(device->CreateComputeShader(__0x7A1E0D31.data(), __0x7A1E0D31.size(), nullptr, state.guide_shader.ReleaseAndGetAddressOf()))
+        || FAILED(device->CreateBuffer(&constants_desc, nullptr, state.guide_constants.ReleaseAndGetAddressOf()))) {
+      state.private_state.Reset();
+    }
+  }
+  if (!state.private_state) return {};
+  {
+    const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
+    WriteGuides(context, state.guide_shader.Get(), state.guide_constants.Get(), {gbuffer[0].Get(), gbuffer[1].Get(), gbuffer[2].Get()}, view,
+                state.render_size);
+  }
+  {
+    const std::unique_lock lock(state.mutex);
+    state.guides_frame = frame;
+  }
+  const auto traced = twattila::rt_scene::Reflections(context);
+  if (settings.reflections) internal::Keep(context, traced[0], frame, &state.reflection);
+  if (settings.specular_occlusion) internal::Keep(context, traced[1], frame, &state.specular);
+  const std::unique_lock lock(state.mutex);
+  return {internal::ThisFrame(state.reflection, frame), internal::ThisFrame(state.specular, frame)};
 }
 
 // This frame's traced ambient for the lighting passes (t41), or null (off, or not traced this frame).
 inline ComPtr<ID3D11ShaderResourceView> Ambient() {
   const std::unique_lock lock(internal::state.mutex);
-  if (!internal::state.settings.ambient_occlusion || internal::state.ambient_frame != internal::state.frame) return nullptr;
-  return internal::state.ambient_srv;
+  if (!internal::state.settings.ambient_occlusion) return nullptr;
+  return internal::ThisFrame(internal::state.ambient, internal::state.frame);
 }
 
 // The traced ambient reached last frame's lighting: Bandai's SSAO (before this frame's trace) may leave the AO to it.
 inline bool AmbientTracedLastFrame() {
   const std::unique_lock lock(internal::state.mutex);
-  return internal::state.settings.ambient_occlusion && internal::state.ambient_frame + 1 == internal::state.frame;
+  return internal::state.settings.ambient_occlusion && internal::state.ambient.frame + 1 == internal::state.frame;
 }
 
 inline void Install() {
@@ -274,10 +420,16 @@ inline void Release(reshade::api::device* device) {
   {
     const std::unique_lock lock(internal::state.mutex);
     internal::state.scene_depth = nullptr;
-    internal::state.ambient_frame = UINT64_MAX;
   }
-  internal::state.ambient_srv.Reset();
-  internal::state.ambient.Reset();
+  if (auto& state = internal::state; state.device == reinterpret_cast<ID3D11Device*>(device->get_native())) {
+    state.ambient = {};
+    state.reflection = {};
+    state.specular = {};
+    state.device = nullptr;
+    state.private_state.Reset();
+    state.guide_shader.Reset();
+    state.guide_constants.Reset();
+  }
   twattila::rt_scene::OnDestroyDevice(device);
 }
 
