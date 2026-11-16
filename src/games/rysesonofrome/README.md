@@ -429,7 +429,8 @@ the rays, contact shadows and Light Bounce. The game's edge mask (ps 0x292F2865,
 under Sun Shadow Softness (PCSS doesn't read it; six unreplaced near-mask permutations bring it back). Texture LOD bias:
 the shared `twattila::texture_lod_bias` with a main-view gate (shadow maps keep the game's levels), also with AA mode
 Off while the game renders below the display (Native Upscaling); Texture LOD Bias on All Textures on by default. DLSS
-"Dark tones for L / M" (Experimental, off: the square-root feed of the TW games). "No RT/PT + Screen-Space
+presets L and M always get the colour's square root (squared back after), as Ray Reconstruction and the TW games' L / M
+(the "Dark tones for L / M" row is gone, ATN 2026-11-16). "No RT/PT + Screen-Space
 (Experimental)" beside No RT/PT. Into windowed: the game's own size at once. No per-frame work for debug features: the
 frame trace is a button (renodx_trace_now only in scripted runs), the jitter diagnostics only while the AA section
 shows, back_buffer_fix matches a bind by its view. rt_specular_merge exact where open. `rt_probe_sky` writes texel 6's
