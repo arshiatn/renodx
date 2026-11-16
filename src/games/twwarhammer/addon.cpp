@@ -2285,8 +2285,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = twattila::credits::Methods({.gtvbao = true, .gtvbgi = true, .auto_thickness = true, .bend = true, .cmaa2 = true,
-                                               .detours = true}),
+          .label = twattila::credits::Methods({.gtvbao = true, .gtvbgi = true, .auto_thickness = true, .bend = true,
+                                               .smaa = true, .cmaa2 = true, .detours = true}),
           .section = "About",
       },
       new renodx::utils::settings::Setting{
