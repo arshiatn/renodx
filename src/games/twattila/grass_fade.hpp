@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <mutex>
 #include <span>
@@ -32,11 +33,12 @@
 // grass sliders): the game's grass pixel shaders (rigidgrass(wet) ps30 gbuffer / gbuffer_no_clip / gbuffer_ms and
 // forward_lit_oit / aoit, 13) blend each blade into the ground's colour by 100 m (mul rA.c, rB.c, l(0.01) before min:
 // 1 - min(1, distance x 0.01)), so past it the blades are drawn but look like the ground. They are patched as the game
-// creates them: that 0.01 read from cb8[0].x (SLOT), which the addon binds on their draws (0.01 / Grass Height Distance,
-// as the grass vertex shaders' height). cb8 unbound reads 0: no fade.
+// creates them: the fade's product x (1 + cb8[0].x) (SLOT), which the addon binds on their draws (1 / Grass Height Distance
+// - 1, as the grass vertex shaders' height).
 // Its depth pre-pass (rigidgrass(wet) ps30 gbuffer_zprefill_grass) drops grass past 50 m from the camera whose pixel's
 // terrain point (the terrain depth at its projected uv) lies past 100 m from it: at grazing angles that cut the grass at
-// ~100 m whatever the distance (ATN debug12). Its 100 and 50 read from cb8[0].yz: 100 m and 50 m x Grass Height Distance.
+// ~100 m whatever the distance (ATN debug12). Its 100 and 50 + cb8[0].yz (in a temp of its own): 100 m and 50 m x
+// (Grass Height Distance - 1). Both patches add to the game's values, so cb8 unbound (0) is the game's 100 m.
 // Below 100% the render scale (view_share.hpp) patches all of them first: their terrain reads at projected uvs.
 namespace twattila::grass_fade {
 
@@ -58,7 +60,7 @@ namespace internal {
 struct Runtime {
   std::mutex mutex;
   std::span<const uint32_t> hashes = HASHES;  // the game's (Install), set before it creates its shaders
-  float fade = 0.01f;  // per metre: 0.01 / Grass Height Distance (the pre-pass's distances 1 / fade, half of it)
+  float height_distance = 1.f;  // Grass Height Distance (1: the game's 100 m fade and pre-pass cut)
   std::unordered_map<uint32_t, std::vector<uint8_t>> patched;  // by the game's hash (kept: it may create them again)
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11Buffer> buffer;
@@ -68,16 +70,20 @@ struct Runtime {
 
 static Runtime runtime;
 
-// The fade's mul (its 0.01 the second source, a min next): that source from cb12[0].x, cb12 declared. Empty: not such
-// a shader.
+// The fade's mul (its 0.01 the second source, a min next) followed by mad rA.c, rA.c, cb8[0].x, rA.c; the pre-pass's
+// immediate distances added to cb8[0].yz in a new temp the lt reads instead; cb8 declared. Empty: not such a shader.
 inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool prefill) {
-  constexpr uint32_t OP_LT = 49, OP_MIN = 51, OP_MUL = 56, OP_DCL_TEMPS = 104;
+  constexpr uint32_t OP_ADD = 0, OP_LT = 49, OP_MAD = 50, OP_MIN = 51, OP_MUL = 56, OP_DCL_TEMPS = 104;
+  constexpr uint32_t SATURATE = 1u << 13;
   constexpr uint32_t IMMEDIATE_SCALAR = 0x00004001, HUNDREDTH = 0x3C23D70A;
   constexpr uint32_t IMMEDIATE_VECTOR = 0x00004002, HUNDRED = 0x42C80000, FIFTY = 0x42480000;
   // cb#[#].x (select-1, 2D immediate index), cb#[#].yzyy (swizzle) and dcl_constantbuffer cb#[1], immediateIndexed.
   constexpr uint32_t CONSTANT_X = 2u | (2u << 2) | (8u << 12) | (2u << 20);
   constexpr uint32_t CONSTANT_YZYY = 2u | (1u << 2) | (0x59u << 4) | (8u << 12) | (2u << 20);
   constexpr std::array<uint32_t, 4> DECLARATION = {0x04000059, 0x00208E46, SLOT, 1};
+  // r#.xy (mask, 1D immediate index) and r#.xyxx (swizzle).
+  constexpr uint32_t TEMP_XY = 2u | (0x3u << 4) | (1u << 20);
+  constexpr uint32_t TEMP_XYXX = 2u | (1u << 2) | (0x04u << 4) | (1u << 20);
   dxbc::Program program = dxbc::Read(code);
   auto& tokens = program.tokens;
   if (tokens.empty()) return {};
@@ -101,15 +107,25 @@ inline std::vector<uint8_t> Patch(std::span<const uint8_t> code, bool prefill) {
   }
   if (temps_at == 0 || fade_at == 0) return {};
   if (prefill) {
-    tokens[fade_at] = (tokens[fade_at] & ~(0x7Fu << 24)) | (8u << 24);
-    const std::array<uint32_t, 3> distances = {CONSTANT_YZYY, SLOT, 0};
+    const uint32_t temp = tokens[temps_at + 1];
+    tokens[temps_at + 1] = temp + 1;
+    const std::array<uint32_t, 11> distances = {
+        OP_ADD | (11u << 24), TEMP_XY, temp, tokens[fade_at + 3], tokens[fade_at + 4], tokens[fade_at + 5], tokens[fade_at + 6],
+        tokens[fade_at + 7], CONSTANT_YZYY, SLOT, 0};
+    tokens[fade_at] = (tokens[fade_at] & ~(0x7Fu << 24)) | (7u << 24);
     tokens.erase(tokens.begin() + static_cast<ptrdiff_t>(fade_at + 3), tokens.begin() + static_cast<ptrdiff_t>(fade_at + 8));
-    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(fade_at + 3), distances.begin(), distances.end());
+    const std::array<uint32_t, 2> distances_read = {TEMP_XYXX, temp};
+    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(fade_at + 3), distances_read.begin(), distances_read.end());
+    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(fade_at), distances.begin(), distances.end());
   } else {
-    tokens[fade_at] = (tokens[fade_at] & ~(0x7Fu << 24)) | (8u << 24);
-    tokens[fade_at + 5] = CONSTANT_X;
-    tokens[fade_at + 6] = SLOT;
-    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(fade_at + 7), 0u);
+    // Its destination one component of a temp (mask mode, immediate index), not saturated: the mad reads it back.
+    const uint32_t destination = tokens[fade_at + 1];
+    const uint32_t mask = (destination >> 4) & 0xF;
+    if ((tokens[fade_at] & SATURATE) != 0 || (destination & 0xFFFFF00Fu) != (2u | (1u << 20)) || std::popcount(mask) != 1) return {};
+    const uint32_t product = 2u | (2u << 2) | (static_cast<uint32_t>(std::countr_zero(mask)) << 4) | (1u << 20);
+    const uint32_t index = tokens[fade_at + 2];
+    const std::array<uint32_t, 10> scale = {OP_MAD | (10u << 24), destination, index, product, index, CONSTANT_X, SLOT, 0, product, index};
+    tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(fade_at + 7), scale.begin(), scale.end());
   }
   // Before dcl_temps (the declarations come first; dcl_temps is before every instruction).
   tokens.insert(tokens.begin() + static_cast<ptrdiff_t>(temps_at), DECLARATION.begin(), DECLARATION.end());
@@ -173,10 +189,11 @@ constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::u
       device->CreateBuffer(&desc, nullptr, runtime.buffer.GetAddressOf());
     }
     if (!runtime.buffer) return {};
-    if (runtime.uploaded != runtime.fade) {
-      const std::array<float, 4> value = {runtime.fade, 1.f / runtime.fade, 0.5f / runtime.fade, 0.f};
+    if (runtime.uploaded != runtime.height_distance) {
+      const float distance = runtime.height_distance;
+      const std::array<float, 4> value = {(1.f / distance) - 1.f, 100.f * (distance - 1.f), 50.f * (distance - 1.f), 0.f};
       native->UpdateSubresource(runtime.buffer.Get(), 0, nullptr, value.data(), 0, 0);
-      runtime.uploaded = runtime.fade;
+      runtime.uploaded = distance;
     }
     native->PSGetConstantBuffers(SLOT, 1, runtime.game_buffer.ReleaseAndGetAddressOf());
     native->PSSetConstantBuffers(SLOT, 1, runtime.buffer.GetAddressOf());
@@ -194,7 +211,7 @@ constexpr auto OnGrassDraw = []<typename Context>(Context& command) -> renodx::u
 // Every present: Grass Height Distance (1: the game's 100 m).
 inline void Update(float height_distance) {
   const std::unique_lock lock(internal::runtime.mutex);
-  internal::runtime.fade = 0.01f / std::max(height_distance, 0.009998622f);
+  internal::runtime.height_distance = std::max(height_distance, 0.009998622f);
 }
 
 // Before the game creates its shaders: its grass pixel shaders with the fade (default Attila's).
