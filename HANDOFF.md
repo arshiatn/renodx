@@ -307,8 +307,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (Tales + Expeditions Path-Traced Ambient DONE tpa_ 99b372c7a / 170aa2058, Experi ... | tpa_, next Divinity rounds
 - SHADOW MAPS UNDER RT SHADOWS, every game (ATN 22:3x: "No shadow maps should run ... | rur2_ (R
 - (Ryse level B DONE rys2_ f795f917c: Contrast 1.15 / Shadows 1.35 / Saturation 1 ... | rys2_ (Ryse), V35 fit round (the rest)
-- DIVINITY 2 RUN (div2_ 11-16, R1 Arx city save + a torch-lit interior): DLSS on ( ... | coordinator (one game at a time)
-- Divinity 2 next (div2_ 11-16): rt_guides CS (d1_rt_guides pattern: GBuffer1 norm ... | next Divinity 2 round
+- (+ div2_ 23:xx: RR on with the rays (helper log RR line); RT reflections on meta ... | coordinator (one game at a time)
+- (div2_ 23:xx DONE: rt_guides + Ray Reconstruction bd7332449 (diffuse / specular ... | next Divinity 2 round
 - SHARED STEPS (div2_ 11-16): rt_core TraceLightBounce: one missed bounce frame re ... | shs2_ / next shared round
 - GAME-SPECIFIC SKIPS PARITY (ATN 23:0x "Game-specific skips, let's do this too"): ... | per-game rounds (after the current merges)
 - NIGHT + SEA BENCH (ATN 23:0x offers a burning Constantinople at night replay; a ... | ATN (replays), coordinator
@@ -1987,14 +1987,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         SDR, fitted Contrast / Shadows / Saturation defaults with traced constants (Ryse first, level B now: x2.05 at 0.1
         nit -> within 4.8 %; Shogun 2 x2.5-6.2 lift, RomeR fine), WARP proof per game. Owner: rys2_ (Ryse), V35 fit round
         (the rest)
-      - [ ] DIVINITY 2 RUN (div2_ 11-16, R1 Arx city save + a torch-lit interior): DLSS on (the helper's upload line, DLAA /
+      - [ ] (+ div2_ 23:xx: RR on with the rays (helper log RR line); RT reflections on metal / polished floors vs the game's + Time Each Pass; one trace with the game's SSR on (DeferredSSRCombine's target); the double specular occlusion under RT reflections) DIVINITY 2 RUN (div2_ 11-16, R1 Arx city save + a torch-lit interior): DLSS on (the helper's upload line, DLAA /
         FSR / XeSS A/B, the FXAA copy at in-game AntiAliasing 1, FG HUD-less); RT shadows + RT AO (sun direction vs the
         game's shadows: KeepSun fix, Time Each Pass); Skip the Game's Shadow Maps on (oil / lava / fire / web: 27 forward
         surfaces bind a _ShadowSampler at t6-t10, trace which; time saved, 962 of 3,526 city draws); GI at Strength 1
         (rays + paths, city + interior); Path-Traced Ambient on (after ~2.5 s the ambient swaps, brightness vs the
         game's); Higher Precision Scene water / refraction; the orthographic camera trigger. Owner: coordinator (one game
         at a time)
-      - [ ] Divinity 2 next (div2_ 11-16): rt_guides CS (d1_rt_guides pattern: GBuffer1 normals, GBuffer2 base, GBuffer3
+      - [ ] (div2_ 23:xx DONE: rt_guides + Ray Reconstruction bd7332449 (diffuse / specular within 0.002 of the game's, controls 0.768 / 1.190); RT reflections + Specular Occlusion 31770fe86, Experimental off, in RT/PT as Attila's: blended into DeferredSky + probes' IBL specular texture before Clustered reads it (the 7 writers' blend / order not provable), WARP within 1e-7 of the game's o0, DeferredSSR skipped + combine passes the scene bit for bit; LEFT: GT-VBAO / GT-VBGI / Bend no-RT methods, render scale < 100 %, Graphics 2 of 2, our TAA / CMAA2, Modded Auto Exposure, look rows, FidelityFX SSSR (after the SSR trace), Clustered's SSAO specular occlusion under RT reflections (r9.z, a Clustered patch after the run)) Divinity 2 next (div2_ 11-16): rt_guides CS (d1_rt_guides pattern: GBuffer1 normals, GBuffer2 base, GBuffer3
         roughness / metal; unlocks RR + reflections); RT reflections (7 IBL specular shaders vanilla exact + DeferredSSR
         off); render scale below 100 % (D2-10 viewport route); Graphics 2 of 2 / Shadow Map Size (D2-12, exe read first);
         our TAA / CMAA2; GT-VBAO / GT-VBGI / Bend as the no-RT methods; Modded Auto Exposure (meter takes log2 above 2,
