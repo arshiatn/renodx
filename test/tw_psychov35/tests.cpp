@@ -1,8 +1,8 @@
 // PsychoV35 and Hue Clip on WARP: Attila's tone mappers (t00 - t10: tone_mapper.hlsli's Hue Clip, hdr_to_screen.hlsli's
-// PsychoV35, Rendering Mode 3) and WH3's t00 (Rendering Mode 4), compiled by run.ps1 from this tree and from d3d6425b with
+// PsychoV35, Rendering Mode 3) and WH3's t00 (Rendering Mode 4), compiled by run.ps1 from this tree and from its -Before with
 // the build's flags. tests.exe <before_cso> <after_cso>. PsychoV35: Musa's (twattila/psycho_test35.hlsli), its own v35_*
 // sliders.
-// 1. Every other mode gives the same bits as d3d6425b: Attila SDR / PsychoV30 / PsychoV31, WH3 SDR / Extended /
+// 1. Every other mode gives the same bits as -Before: Attila SDR / PsychoV30 / PsychoV31, WH3 SDR / Extended /
 //    PsychoV30 / PsychoV31, at HDR10, scRGB and SDR output, sliders at their defaults and moved, Hue Clip at 0.7 and
 //    PsychoV35's sliders moved (which must do nothing there). 64 colours (every hue, greys, negative channels, black) x
 //    48 brightness steps. Attila's hdr_to_screen (t01 - t08): V30 / V31 with Gamma Correction off (since 2026-11-16 it
@@ -17,7 +17,8 @@
 // 4. Report: PsychoV35's hue (OkLab) against the game's own SDR picture (the same chain in its SDR mode) where SDR
 //    reaches its clip, for fire, sky blue and 48 hues, Hue Clip 0 to 1 (sky to 2): what the default comes from. Rome II's
 //    own chain too (t00 EE1DA45C -> t01 850AEE44, Rendering Mode 3: its SDR curve is on xyY luminance, then each channel
-//    clipped, not Attila's curve per channel; an identity curve as Attila's, black 10^-4, white 1).
+//    clipped, not Attila's curve per channel; an identity curve as Attila's, black 10^-4, white 1), and Thrones of
+//    Britannia's (its t00 8BF6B657 -> t01 D0FAF089, Thrones' builds).
 // 5. The same for the other games' kinds of stock curve (hue_curves.hlsl: a luminance curve then each channel clipped,
 //    or a curve on each channel), PsychoV35 right after Hue Clip as their shaders call it. Its WH3 form agrees with part
 //    4's WH3 (1.00); WH2's own t00 (curve 6: its anchored handoff, at burns 0.1, 0.3 and 0.5) too (1.00); WH1's tone
@@ -35,6 +36,8 @@
 // 7. Gamma Correction in every mode (Rome II, Warhammer I / II, Troy, Pharaoh: twattila/frame_gamma.hlsli) on each one's
 //    hdr_to_screen t01 against 242d6101's: off and Rendering Mode SDR the same picture, on the 2.2 display's decode
 //    within Peak (TestGammaCorrection).
+// 8. Report: PsychoV35's toe against Vanilla below white (Attila, Thrones of Britannia): Recommended against Rendering
+//    Mode SDR, grey in shadows and mid tones and colour at equal lightness (ReportToe).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -85,6 +88,10 @@ namespace troy {
 namespace pharaoh {
 #include "src/games/twpharaohdynasties/shared.h"
 }  // namespace pharaoh
+#undef SRC_TEMPLATE_SHARED_H_
+namespace thrones {
+#include "src/games/twthronesofbritannia/shared.h"
+}  // namespace thrones
 namespace ruse {
 #include "src/games/ruse/shared.h"
 }  // namespace ruse
@@ -390,6 +397,60 @@ static attila::ShaderInjectData AttilaInjection(float mode, float encoding) {
   return si;
 }
 
+// Thrones of Britannia: Attila's chain's rows (its own Rendering Modes 0 - 3), film grain off and god rays black (part 4's
+// colours read alone).
+static thrones::ShaderInjectData ThronesInjection(float mode, float encoding) {
+  thrones::ShaderInjectData si = {};
+  si.peak_white_nits = 1000.f;
+  si.diffuse_white_nits = 203.f;
+  si.graphics_white_nits = 203.f;
+  si.gamma_correction = 1.f;
+  si.swap_chain_encoding = encoding;
+  si.uvdistort = 1.f;
+  si.hdr = mode;
+  si.bloom = 1.f;
+  si.vignette = 1.f;
+  si.godrays = 1.f;
+  si.lensflare = 1.f;
+  si.exposure = 1.f;
+  si.highlights = 1.f;
+  si.shadows = 1.f;
+  si.contrast = 1.f;
+  si.saturation = 1.f;
+  si.cone_response_exponent = 1.f;
+  si.hue_shift = 1.f;
+  si.v31_exposure = 1.f;
+  si.v31_highlights = 1.f;
+  si.v31_shadows = 1.f;
+  si.v31_contrast = 1.f;
+  si.v31_highlight_contrast = 1.f;
+  si.v31_shadow_contrast = 1.f;
+  si.v31_saturation = 1.f;
+  si.v31_highlight_saturation = 0.7f;
+  si.v31_roll_off = 1.f;
+  si.v31_gamut_compression = 1.f;
+  si.v31_gamut_compression_mode = 1.f;
+  si.v31_highlight_hue_shift = 0.04f;
+  si.effects_share = 1.f;
+  si.sky_smooth_strength = 1.f;
+  si.fog_strength = 1.f;
+  si.hue_clip = 0.4f;
+  si.v35_exposure = 1.f;
+  si.v35_highlights = 1.f;
+  si.v35_shadows = 1.f;
+  si.v35_contrast = 1.f;
+  si.v35_highlight_contrast = 1.f;
+  si.v35_shadow_contrast = 1.f;
+  si.v35_saturation = 1.f;
+  si.v35_highlight_saturation = 1.f;
+  si.v35_roll_off = 1.f;
+  si.v35_gamut_compression = 1.f;
+  si.dof = 1.f;
+  si.someindicators = 1.f;
+  si.vfxbasebrightness = 1.f;
+  return si;
+}
+
 static wh3::ShaderInjectData Wh3Injection(float mode, float encoding) {
   wh3::ShaderInjectData si = {};
   si.peak_white_nits = 1000.f;
@@ -642,8 +703,8 @@ static void TestBits(const std::map<std::string, Pair>& shaders) {
   int total_different = 0;
   for (const auto& [name, pair] : shaders) {
     // Rome II's t00 / t01: part 4's chain alone (run.ps1: no bit comparison); Attila's bindings here leave its black and white
-    // points unbound. The five games' t01 (g_): part 7 alone.
-    if (name.starts_with("r_") || name.starts_with("g_")) continue;
+    // points unbound. The five games' t01 (g_): part 7 alone. Thrones' t00 / t01 (th_): parts 4 and 8 alone.
+    if (name.starts_with("r_") || name.starts_with("g_") || name.starts_with("th_")) continue;
     const bool wh3_shader = name.starts_with("w_");
     const bool tone_mapper = (name == "a_t00" || name == "a_t09" || name == "a_t10");
     // Attila's hdr_to_screen since 2026-11-16: Gamma Correction acts in every Rendering Mode and Rendering Mode SDR's
@@ -802,11 +863,15 @@ struct Chain {
   const Pair* rome2_tone_mapper;  // part 4
   const Pair* rome2_hdr_to_screen;
   const Shader* ruse_post;  // parts 3, 4 and 6
+  const Pair* thrones_tone_mapper;  // parts 4 and 8
+  const Pair* thrones_hdr_to_screen;
 };
 
-// Linear BT.709 in units of the UI's white (x graphics nits = nits) of PsychoV35's (or the SDR mode's) output.
-static std::vector<Float3> RunAttila(const Chain& chain, const std::vector<Float4>& scene, const attila::ShaderInjectData& si) {
-  Bindings first = AttilaToneMapper(scene, true);
+// Linear BT.709 in units of the UI's white (x graphics nits = nits) of PsychoV35's (or the SDR mode's) output; the
+// identity S-curve unless `identity_curve` is false (AttilaSCurve's S).
+static std::vector<Float3> RunAttila(const Chain& chain, const std::vector<Float4>& scene, const attila::ShaderInjectData& si,
+                                     bool identity_curve = true) {
+  Bindings first = AttilaToneMapper(scene, identity_curve);
   first.injection = Bytes(si);
   const auto handoff = Draw(chain.attila_tone_mapper->after, first);
   Bindings second = AttilaHdrToScreen(handoff, true);
@@ -814,6 +879,23 @@ static std::vector<Float3> RunAttila(const Chain& chain, const std::vector<Float
   const auto output = Draw(chain.attila_hdr_to_screen->after, second);
   // Decoded as the swap chain proxy does, with the frame's gamma (twattila/shared.h TW_FRAME_GAMMA): 2.2 with Gamma
   // Correction, 2.0 without; Rendering Mode SDR on an SDR display the other way round.
+  const bool sdr_mode_on_sdr = (si.swap_chain_encoding == 2.f && si.hdr < 0.5f);
+  const float frame_gamma = ((si.gamma_correction != 0.f) != sdr_mode_on_sdr) ? 2.2f : 2.f;
+  std::vector<Float3> linear;
+  for (const auto& o : output) linear.push_back(Decode(o, frame_gamma));
+  return linear;
+}
+
+// Thrones of Britannia's t00 (Attila's game bytes, Thrones' build) -> t01 (D0FAF089: Attila's t01 with god rays and film
+// grain), the identity S-curve, decoded as RunAttila's.
+static std::vector<Float3> RunThrones(const Chain& chain, const std::vector<Float4>& scene, const thrones::ShaderInjectData& si) {
+  Bindings first = AttilaToneMapper(scene, true);
+  first.injection = Bytes(si);
+  const auto handoff = Draw(chain.thrones_tone_mapper->after, first);
+  Bindings second = AttilaHdrToScreen(handoff, true);
+  second.views["god_rays_sampler"] = Texture2D(WIDTH, HEIGHT, std::vector<Float4>(WIDTH * HEIGHT, Float4{}));
+  second.injection = Bytes(si);
+  const auto output = Draw(chain.thrones_hdr_to_screen->after, second);
   const bool sdr_mode_on_sdr = (si.swap_chain_encoding == 2.f && si.hdr < 0.5f);
   const float frame_gamma = ((si.gamma_correction != 0.f) != sdr_mode_on_sdr) ? 2.2f : 2.f;
   std::vector<Float3> linear;
@@ -1095,6 +1177,11 @@ static void ReportHue(const Chain& chain) {
          return RunAttila(chain, Scene(columns, first_stop, stops_per_row, 1.f), si);
        }},
       {"Rome II", [&](float mode, float hue_clip) { return RunRome2(chain, Scene(columns, first_stop, stops_per_row, 1.f), mode, hue_clip); }},
+      {"Thrones of Britannia", [&](float mode, float hue_clip) {
+         auto si = ThronesInjection(mode, 1.f);
+         si.hue_clip = hue_clip;
+         return RunThrones(chain, Scene(columns, first_stop, stops_per_row, 1.f), si);
+       }},
   };
   for (const RuseGrade& grade : {RUSE_MENU_GRADE, RUSE_MEDIAN_GRADE}) {
     games.push_back({grade.name, [&, grade](float mode, float hue_clip) {
@@ -1191,6 +1278,98 @@ static void ReportHue(const Chain& chain) {
       }
       std::printf("   %6.2f\n", below_count ? below_sum / below_count : 0.0);
     }
+  }
+}
+
+// 8. PsychoV35's toe against Vanilla below white ///////////////////////////////////////////////////////////////////
+
+// Attila's and Thrones' Recommended (PsychoV35 at its defaults, Hue Clip 40) against Rendering Mode SDR through the
+// same chain, both as a display shows them (Gamma Correction on: decoded at 2.2), at 1000 / 203 nits, below the game's
+// white: grey where SDR is 0.05 - 1 nits (shadows), 1 - 15 (mid tones), 15 - 100 (upper mid tones); colour (OkLab chroma
+// at equal lightness, as part 6 of Divinity 2's) where SDR is 1 - 30 and 30 - 150 nits. The identity S-curve, and
+// AttilaSCurve's S for Attila (the game's own S-curve texture is data no dump holds). Numbers for ATN, no check.
+static void ReportToe(const Chain& chain) {
+  std::vector<Float3> columns = {{1.f, 1.f, 1.f}};
+  for (int h = 0; h < 21; ++h) {
+    for (const float s : {0.4f, 0.8f, 0.95f}) columns.push_back(Hue(h * 360.f / 21.f, s));
+  }
+  // 2^-10 .. 2^1.75 of the game's white, a quarter stop a row.
+  const auto scene = Scene(columns, -10.f, 0.25f, 1.f);
+  struct Game {
+    const char* name;
+    std::function<std::vector<Float3>(float mode)> run;
+  };
+  const std::vector<Game> games = {
+      {"Attila, identity S-curve", [&](float mode) {
+         auto si = AttilaInjection(mode, 1.f);
+         si.hue_clip = 0.4f;
+         return RunAttila(chain, scene, si);
+       }},
+      {"Attila, S-shaped S-curve", [&](float mode) {
+         auto si = AttilaInjection(mode, 1.f);
+         si.hue_clip = 0.4f;
+         return RunAttila(chain, scene, si, false);
+       }},
+      {"Thrones of Britannia, identity S-curve", [&](float mode) { return RunThrones(chain, scene, ThronesInjection(mode, 1.f)); }},
+  };
+  constexpr float NITS = 203.f;
+  for (const auto& game : games) {
+    const auto sdr = game.run(0.f);
+    const auto v35 = game.run(3.f);
+    struct Range {
+      float low = 1e9f, high = 0.f;
+    };
+    std::array<Range, 3> grey;  // 0.05 - 1, 1 - 15, 15 - 100 nits
+    for (UINT y = 0; y < HEIGHT; ++y) {
+      const float sdr_nits = Luminance(sdr[y * WIDTH]) * NITS;
+      const float ratio = Luminance(v35[y * WIDTH]) / std::max(Luminance(sdr[y * WIDTH]), 1e-9f);
+      const int band = (sdr_nits >= 0.05f && sdr_nits <= 1.f) ? 0 : ((sdr_nits > 1.f && sdr_nits <= 15.f) ? 1 : ((sdr_nits > 15.f && sdr_nits <= 100.f) ? 2 : -1));
+      if (band < 0) continue;
+      grey[band].low = std::min(grey[band].low, ratio);
+      grey[band].high = std::max(grey[band].high, ratio);
+    }
+    // Chroma at equal lightness: PsychoV35's lightness rises with the rows as SDR's does; its chroma interpolated where its
+    // lightness is SDR's.
+    std::array<double, 2> log_sums = {};
+    std::array<int, 2> counts = {};
+    std::array<Range, 2> per_colour;
+    for (UINT column = 1; column < columns.size(); ++column) {
+      std::array<double, 2> column_sums = {};
+      std::array<int, 2> column_counts = {};
+      for (UINT y = 0; y < HEIGHT; ++y) {
+        const Float3& game_colour = sdr[y * WIDTH + column];
+        const float sdr_nits = Luminance(game_colour) * NITS;
+        const int band = (sdr_nits >= 1.f && sdr_nits <= 30.f) ? 0 : ((sdr_nits > 30.f && sdr_nits <= 150.f) ? 1 : -1);
+        if (band < 0) continue;
+        const Float3 game_lab = OkLab(game_colour);
+        const float game_chroma = std::hypot(game_lab[1], game_lab[2]);
+        if (game_chroma < 0.01f) continue;
+        for (UINT j = 0; j + 1 < HEIGHT; ++j) {
+          const Float3 below = OkLab(v35[j * WIDTH + column]);
+          const Float3 above = OkLab(v35[(j + 1) * WIDTH + column]);
+          if (game_lab[0] < below[0] || game_lab[0] > above[0]) continue;
+          const float t = (above[0] > below[0]) ? (game_lab[0] - below[0]) / (above[0] - below[0]) : 0.f;
+          const float chroma = std::lerp(std::hypot(below[1], below[2]), std::hypot(above[1], above[2]), t);
+          column_sums[band] += std::log(chroma / game_chroma);
+          ++column_counts[band];
+          break;
+        }
+      }
+      for (int band = 0; band < 2; ++band) {
+        if (column_counts[band] == 0) continue;
+        const float column_ratio = static_cast<float>(std::exp(column_sums[band] / column_counts[band]));
+        per_colour[band].low = std::min(per_colour[band].low, column_ratio);
+        per_colour[band].high = std::max(per_colour[band].high, column_ratio);
+        log_sums[band] += column_sums[band];
+        counts[band] += column_counts[band];
+      }
+    }
+    std::printf("8. %s: PsychoV35 (Recommended) over Rendering Mode SDR below white, 1000 / 203 nits\n"
+                "   grey where SDR is 0.05 - 1 nits x%.3f..x%.3f, 1 - 15 nits x%.3f..x%.3f, 15 - 100 nits x%.3f..x%.3f\n"
+                "   colour at equal lightness, SDR 1 - 30 nits x%.3f (per colour x%.2f..x%.2f), 30 - 150 nits x%.3f (x%.2f..x%.2f)\n",
+                game.name, grey[0].low, grey[0].high, grey[1].low, grey[1].high, grey[2].low, grey[2].high,
+                std::exp(log_sums[0] / std::max(counts[0], 1)), per_colour[0].low, per_colour[0].high,
+                std::exp(log_sums[1] / std::max(counts[1], 1)), per_colour[1].low, per_colour[1].high);
   }
 }
 
@@ -1515,7 +1694,7 @@ int main(int argc, char** argv) {
 
   std::map<std::string, Pair> shaders;
   for (const char* name : {"a_t00", "a_t01", "a_t02", "a_t03", "a_t04", "a_t05", "a_t06", "a_t07", "a_t08", "a_t09", "a_t10", "w_t00", "r_t00",
-                           "r_t01", "g_rome2", "g_wh1", "g_wh2", "g_troy", "g_pharaoh"}) {
+                           "r_t01", "g_rome2", "g_wh1", "g_wh2", "g_troy", "g_pharaoh", "th_t00", "th_t01"}) {
     shaders[name] = {LoadPixelShader(before / (std::string(name) + ".cso")), LoadPixelShader(after / (std::string(name) + ".cso"))};
   }
   const bool report_only = (argc >= 4 && std::string(argv[3]) == "--report");
@@ -1525,9 +1704,11 @@ int main(int argc, char** argv) {
   }
   const Shader curves = LoadPixelShader(after / "hue_curves.cso");
   const Shader ruse_post = LoadPixelShader(after / "ruse_post.cso");
-  const Chain chain = {&shaders["a_t00"], &shaders["a_t01"], &shaders["w_t00"], &curves, &shaders["r_t00"], &shaders["r_t01"], &ruse_post};
+  const Chain chain = {&shaders["a_t00"], &shaders["a_t01"], &shaders["w_t00"], &curves, &shaders["r_t00"], &shaders["r_t01"], &ruse_post,
+                       &shaders["th_t00"], &shaders["th_t01"]};
   if (!report_only) TestPsychoV35(chain);
   ReportHue(chain);
+  ReportToe(chain);
   if (!report_only) TestRuse(ruse_post);
   if (!report_only) {
     const Bindings gamma = GammaBindings(Scene(PatternColumns(), -6.f, 0.4f, 1.f));

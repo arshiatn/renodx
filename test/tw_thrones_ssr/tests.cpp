@@ -1,11 +1,12 @@
-// The environment_specular_light replacements of the game's other builds (src/games/twattila/shaders/ssr02-07: the same
-// bytes in Attila and Thrones of Britannia, Thrones' files include Attila's) against the game's own shaders on WARP, each
-// with g_buffers_scale 1 and 0.5, on a synthetic scene (a floor, a wall and a back wall in the G-buffer depth and normals, a
-// light buffer pattern, stencil 1 but every 16th pixel), the add-on's settings at b13 (SSR Quality 1, Effects at Output
-// Resolution's share 1: the game's look).
+// The environment_specular_light replacements (src/games/twattila/shaders/ssr00-07: the same bytes in Attila and Thrones of
+// Britannia, Thrones' files include Attila's) against the game's own shaders on WARP, each with g_buffers_scale 1 and 0.5,
+// on a synthetic scene (a floor, a wall and a back wall in the G-buffer depth and normals, a light buffer pattern, stencil 1
+// but every 16th pixel), the add-on's settings at b13 (SSR Quality 1, Effects at Output Resolution's share 1: the game's
+// look), the rays' textures (t46, t47) and the hierarchical march's (t10) unbound.
 // tests.exe <the game's dumped csos> <the add-on's built csos (build32\<game>.include\embed)> <ssr_quality's float in b13>
-//           <effects_share's float in b13>
-// Shader Model 4 / 4.1 (485F33D7, 0AC579F6, 8E734BAA, C8BD2B2F: ssr00's / ssr01's code at their shader model):
+//           <effects_share's float in b13> [<an older build's csos: part F's CONTROL>]
+// Shader Model 5 (66006BEA, 47D75349: ssr00 / ssr01) and 4 / 4.1 (485F33D7, 0AC579F6, 8E734BAA, C8BD2B2F: their code at
+// those shader models):
 // A. 100%: the replacement (nothing at b12) and the game's shader: o0 and o1.y bit for bit, o1.x (the blur's step, x
 //    effects_share in ssr00 / ssr01) within 1e-6.
 // B. 50%: the replacement on display-size (2x) textures holding the view in their top-left part (the rest the view's last
@@ -16,6 +17,10 @@
 // The game's MSAA (5724C43A, 1469E169, 42F48C08, 97F6C9FC: the G-buffer, light buffer and stencil multisampled, every sample
 // the scene's), at 100% only (no render scale under the game's MSAA):
 // E. the replacement and the game's shader bit for bit; CONTROL SSR Quality 2 differs.
+// ssr00 / ssr01 with Ray-Traced Specular Occlusion (t46 bound, noise 0.2 - 1; the environment dimmed by it):
+// F. one occlusion a reflection: o1.y (the AO the reflection is multiplied by; ssr01: times its reflectance) bit for bit
+//    the same as with a white AO and t46 unbound, and o0 apart from A's somewhere (t46 reaches the environment). CONTROL:
+//    the older build's (else the game's) o1.y with t46 bound differs from the white-AO one (the AO on top).
 // The march's share of the picture: pixels whose result changes at 100% with the light buffer black (it reflects there).
 #include <windows.h>
 #include <d3d11.h>
@@ -155,10 +160,10 @@ struct Targets {
 
 // One draw of `shader` (a full-screen triangle) into two RGBA float targets of `width` x `height`, its viewport the
 // top-left `view_width` x `view_height`; `textures` t0-t9, b0-b2 the camera / lighting / parameters, b12 `render_scale` or none,
-// b13 the add-on's settings.
+// b13 the add-on's settings, t46 `specular_occlusion` or none.
 static Targets Draw(ID3D11PixelShader* shader, UINT width, UINT height, UINT view_width, UINT view_height,
                     const std::array<ID3D11ShaderResourceView*, 10>& textures, const std::array<ID3D11Buffer*, 3>& buffers,
-                    ID3D11Buffer* render_scale, ID3D11Buffer* settings) {
+                    ID3D11Buffer* render_scale, ID3D11Buffer* settings, ID3D11ShaderResourceView* specular_occlusion = nullptr) {
   static ComPtr<ID3D11VertexShader> vertex_shader;
   if (!vertex_shader) {
     constexpr char SOURCE[] = "float4 main(uint id : SV_VertexID) : SV_Position { return float4(float2((id << 1) & 2, id & 2) * float2(2, -2) + float2(-1, 1), 0, 1); }";
@@ -185,6 +190,7 @@ static Targets Draw(ID3D11PixelShader* shader, UINT width, UINT height, UINT vie
   context->VSSetShader(vertex_shader.Get(), nullptr, 0);
   context->PSSetShader(shader, nullptr, 0);
   context->PSSetShaderResources(0, 10, textures.data());
+  context->PSSetShaderResources(46, 1, &specular_occlusion);
   context->PSSetConstantBuffers(0, 3, buffers.data());
   context->PSSetConstantBuffers(12, 1, &render_scale);
   context->PSSetConstantBuffers(13, 1, &settings);
@@ -224,6 +230,7 @@ static Targets Draw(ID3D11PixelShader* shader, UINT width, UINT height, UINT vie
   }
   ID3D11ShaderResourceView* none[10] = {};
   context->PSSetShaderResources(0, 10, none);
+  context->PSSetShaderResources(46, 1, none);
   return out;
 }
 
@@ -325,13 +332,15 @@ static void Invert(const double (&m)[4][4], double (&out)[4][4]) {
 
 int main(int argc, char** argv) {
   if (argc < 5) {
-    std::printf("usage: tests.exe <the game's dumped csos> <the add-on's built csos> <ssr_quality's float in b13> <effects_share's>\n");
+    std::printf("usage: tests.exe <the game's dumped csos> <the add-on's built csos> <ssr_quality's float in b13> <effects_share's>"
+                " [<an older build's csos>]\n");
     return 2;
   }
   const std::string game_folder = argv[1];
   const std::string built_folder = argv[2];
   const int ssr_quality = std::atoi(argv[3]);
   const int effects_share = std::atoi(argv[4]);
+  const std::string older_folder = (argc > 5) ? argv[5] : "";
   const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &level, 1, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
                                context.GetAddressOf()))) {
@@ -409,6 +418,12 @@ int main(int argc, char** argv) {
   device->CreateTexture2D(&cube_desc, face_data, cube.GetAddressOf());
   device->CreateShaderResourceView(cube.Get(), nullptr, environment.GetAddressOf());
   const auto shared_ssao = Texture(WIDTH / 2, HEIGHT / 2, DXGI_FORMAT_R32G32B32A32_FLOAT, ssao.data());
+  const std::vector<float> ones(WIDTH / 2 * HEIGHT / 2 * 4, 1.f);
+  const auto white_ssao = Texture(WIDTH / 2, HEIGHT / 2, DXGI_FORMAT_R32G32B32A32_FLOAT, ones.data());
+  // Part F's specular occlusion at the render pixels (x read).
+  std::vector<float> open(WIDTH * HEIGHT * 4);
+  for (UINT i = 0; i < open.size(); ++i) open[i] = 0.2f + 0.8f * Hash(i / 4, 11, 9);
+  const auto specular_occlusion = Texture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, open.data());
   const auto shared_jitter = Texture(64, 64, DXGI_FORMAT_R32G32B32A32_FLOAT, jitter.data());
   const auto shared_terrain = Texture(64, 64, DXGI_FORMAT_R32G32B32A32_FLOAT, terrain.data());
   constexpr auto FLOATS = DXGI_FORMAT_R32G32B32A32_FLOAT;
@@ -449,16 +464,19 @@ int main(int argc, char** argv) {
     const char* game;
     const char* replacement;
     bool multisampled;
+    bool occlusion;  // reads Ray-Traced Specular Occlusion (t46): part F
   };
-  constexpr std::array<Pair, 8> PAIRS = {{
-      {"ssr02 sm_4_1 standard", "0x485F33D7.ps_4_1.cso", "0x485F33D7.cso", false},
-      {"ssr03 sm_4_1 full_res", "0x0AC579F6.ps_4_1.cso", "0x0AC579F6.cso", false},
-      {"ssr04 sm_4_0 standard", "0x8E734BAA.ps_4_0.cso", "0x8E734BAA.cso", false},
-      {"ssr05 sm_4_0 full_res", "0xC8BD2B2F.ps_4_0.cso", "0xC8BD2B2F.cso", false},
-      {"ssr06 sm_5_0 standard MSAA", "0x5724C43A.ps_5_0.cso", "0x5724C43A.cso", true},
-      {"ssr06 sm_4_1 standard MSAA", "0x1469E169.ps_4_1.cso", "0x1469E169.cso", true},
-      {"ssr07 sm_5_0 full_res MSAA", "0x42F48C08.ps_5_0.cso", "0x42F48C08.cso", true},
-      {"ssr07 sm_4_1 full_res MSAA", "0x97F6C9FC.ps_4_1.cso", "0x97F6C9FC.cso", true},
+  constexpr std::array<Pair, 10> PAIRS = {{
+      {"ssr00 sm_5_0 standard", "0x66006BEA.ps_5_0.cso", "0x66006BEA.cso", false, true},
+      {"ssr01 sm_5_0 full_res", "0x47D75349.ps_5_0.cso", "0x47D75349.cso", false, true},
+      {"ssr02 sm_4_1 standard", "0x485F33D7.ps_4_1.cso", "0x485F33D7.cso", false, false},
+      {"ssr03 sm_4_1 full_res", "0x0AC579F6.ps_4_1.cso", "0x0AC579F6.cso", false, false},
+      {"ssr04 sm_4_0 standard", "0x8E734BAA.ps_4_0.cso", "0x8E734BAA.cso", false, false},
+      {"ssr05 sm_4_0 full_res", "0xC8BD2B2F.ps_4_0.cso", "0xC8BD2B2F.cso", false, false},
+      {"ssr06 sm_5_0 standard MSAA", "0x5724C43A.ps_5_0.cso", "0x5724C43A.cso", true, false},
+      {"ssr06 sm_4_1 standard MSAA", "0x1469E169.ps_4_1.cso", "0x1469E169.cso", true, false},
+      {"ssr07 sm_5_0 full_res MSAA", "0x42F48C08.ps_5_0.cso", "0x42F48C08.cso", true, false},
+      {"ssr07 sm_4_1 full_res MSAA", "0x97F6C9FC.ps_4_1.cso", "0x97F6C9FC.cso", true, false},
   }};
   // The game's MSAA: the view's G-buffer, light buffer and stencil multisampled (t3-t8 of its builds).
   const auto multisampled = [&](const std::array<ComPtr<ID3D11ShaderResourceView>, 6>& view) {
@@ -518,6 +536,38 @@ int main(int argc, char** argv) {
                   pair.name, buffers_scale, view_w, view_h, written, reflecting, a, b, c, d);
       CHECK(b == 0, "%s: 50%% not 100%%'s", pair.name);
       CHECK(c > 0, "%s: control C does not fail", pair.name);
+      if (!pair.occlusion) continue;
+      // F: the AO's reflections under the specular occlusion.
+      ComPtr<ID3D11PixelShader> older;
+      if (const auto older_code = older_folder.empty() ? std::vector<char>() : ReadFile(older_folder + "\\" + pair.replacement);
+          !older_code.empty()) {
+        device->CreatePixelShader(older_code.data(), older_code.size(), nullptr, older.GetAddressOf());
+      }
+      auto scene_white = scene_100;
+      scene_white[7] = white_ssao.Get();
+      const Targets ours_occluded = Draw(replacement.Get(), view_w, view_h, view_w, view_h, scene_100, buffers_100, nullptr, settings.Get(),
+                                         specular_occlusion.Get());
+      const Targets ours_white = Draw(replacement.Get(), view_w, view_h, view_w, view_h, scene_white, buffers_100, nullptr, settings.Get());
+      const Targets control_occluded = Draw(older ? older.Get() : game.Get(), view_w, view_h, view_w, view_h, scene_100, buffers_100, nullptr,
+                                            settings.Get(), specular_occlusion.Get());
+      const auto ao_differ = [](const Targets& x, const Targets& y) {
+        UINT count = 0;
+        for (size_t pixel = 0; pixel < x.o1.size() / 4; ++pixel) count += (std::memcmp(&x.o1[pixel * 4 + 1], &y.o1[pixel * 4 + 1], 4) != 0) ? 1u : 0u;
+        return count;
+      };
+      const auto colour_differ = [](const Targets& x, const Targets& y) {
+        UINT count = 0;
+        for (size_t pixel = 0; pixel < x.o0.size() / 4; ++pixel) count += (std::memcmp(&x.o0[pixel * 4], &y.o0[pixel * 4], 12) != 0) ? 1u : 0u;
+        return count;
+      };
+      const UINT f = ao_differ(ours_occluded, ours_white);
+      const UINT dimmed = colour_differ(ours_occluded, ours_100);
+      const UINT f_control = ao_differ(control_occluded, ours_white);
+      std::printf("%s, g_buffers_scale %.1f: F specular occlusion: o1.y %u differ from the white AO's, o0 %u dimmed; CONTROL %s with "
+                  "it: o1.y %u differ\n", pair.name, buffers_scale, f, dimmed, older ? "the older build" : "the game's", f_control);
+      CHECK(f == 0, "%s: the AO still multiplies the reflection under the specular occlusion", pair.name);
+      CHECK(dimmed > 0, "%s: the specular occlusion does not reach the environment", pair.name);
+      CHECK(f_control > 0, "%s: control F does not fail", pair.name);
     }
   }
   std::printf("%s\n", failures == 0 ? "PASS" : "FAIL");
