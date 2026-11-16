@@ -4,7 +4,7 @@
 // hdr_to_screen, every permutation (t01-t08): the HDR end. Include after the shader's cbuffers and textures
 // (colour_matrix, lut_texture_1-3, lut_sampler_1-3_s, lut_weights).
 #include "./shared.h"
-#include "./psycho_test30.hlsli"
+#include "../twattila/psycho_test30.hlsli"
 #include "./psycho_test31.hlsli"
 #include "../twattila/psycho35.hlsli"
 
