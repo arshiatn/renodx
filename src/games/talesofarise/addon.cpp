@@ -870,18 +870,12 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV31 "
-                   "and PsychoV35. UE Extended by Marat, blue correction by Pumbo.",
+          .label = twattila::credits::Methods(talesofarise::hdr_only::SHIPPED_METHODS) + "\nBlue correction by Pumbo.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = twattila::credits::ACES,
-          .section = "About",
-      },
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = talesofarise::hdr_only::EFFECTS_CREDITS,
           .section = "About",
       },
       new renodx::utils::settings::Setting{
