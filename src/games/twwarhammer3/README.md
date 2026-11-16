@@ -1,5 +1,21 @@
 # Total War: WARHAMMER III (RenoDX HDR, ATN)
 
+### Gamma Correction in every mode (2026-11-16; built only, not run in game)
+
+- **Gamma Correction** (same row, on by default) now also acts in the HDR modes, as the other TW games': the game's picture
+  as a gamma 2.2 display shows it. How much that changes comes from the game's own gamma, `g_gamma_output` in t00: at 2.0
+  (what the offline tests assume; never logged in a game run) the same as Warhammer II's (deeper shadows; PsychoV35 at
+  Paper White 203: 1 % grey 2.03 -> 1.28 nits, 18 % 36.54 -> 30.78, Peak still Peak), at 2.2 nothing. The row shows in
+  every Rendering Mode. Rendering Mode SDR on an HDR display: On is that 2.2 picture whatever the game's gamma, Off gamma 2.0
+  (before: On the game's picture at its own gamma, Off the 2.2 one); on an SDR display nothing changes. The swap chain proxy
+  decodes the frame with its gamma (twattila/frame_gamma.hlsli: 2.2 on, 2.0 off), the lens flares, the lens blood, the
+  cutscenes and Sharpening encode with it, so at Lens Flare 1 and Paper White = UI the game's own add stays exact.
+- Proven offline: test/tw_vanilla_exact (Vanilla still the game's bytes; the Gamma Correction check on t00, the flares and
+  the lens blood in every Rendering Mode) and test/tw_psychov35 (at the game's gamma 2.2 the picture as before in every mode
+  but Rendering Mode SDR with Gamma Correction off, now gamma 2.0).
+- In game: one trace of t00's `g_gamma_output`; then Rendering Mode SDR and every HDR mode with the row on and off: scene,
+  UI, lens flares, cutscenes, Sharpening.
+
 ### Ray-Traced AO keeps GT-VBAO's setting (2026-11-16; built only, not run in game)
 
 - Ray-Traced and Path-Traced AO already stood in place of the game's SSAO and GT-VBAO here (the game's passes skipped, the

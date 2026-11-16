@@ -2039,10 +2039,9 @@ void BuildRuntimeData() {
         .default_value = 1.f,
         .label = "Gamma Correction",
         .section = "General",
-        .tooltip = "Rendering Mode SDR: any in-game Gamma shown as gamma 2.2.\n"
-                   "Off: the game's own picture, at the in-game Gamma.",
-        .labels = {"Off (In-game Gamma value)", "On (Gamma 2.2)"},
-        .is_visible = [] { return !IsHDRMode(); },
+        .tooltip = "The game's picture as a gamma 2.2 display shows it, in every Rendering Mode.\n"
+                   "Off: as gamma 2.0. Rendering Mode SDR on an SDR monitor the other way round.",
+        .labels = {"Off (Gamma 2.0)", "On (Gamma 2.2)"},
     },
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,

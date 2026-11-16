@@ -37,7 +37,8 @@ $table = [ordered]@{
   'WH1'         = @{ Folder = 'twwarhammer'; Dump = 'dump_shader_twwarhammer_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2' }
   'WH2'         = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'
                      FrameGamma = '2'; Modes = '0,1,2,3,4' }
-  'WH3'         = @{ Folder = 'twwarhammer3'; Dump = 'dump_shader_twwarhammer3_pack\cso'; Shaders = '^(t|bloom|lensflare|lensblood)\d+_' }
+  'WH3'         = @{ Folder = 'twwarhammer3'; Dump = 'dump_shader_twwarhammer3_pack\cso'; Shaders = '^(t|bloom|lensflare|lensblood)\d+_'
+                     FrameGamma = '2'; Modes = '0,1,2,3,4' }
   'Troy'        = @{ Folder = 'twtroy'; Dump = 'dump_shader_twtroy_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2'
                      Modes = '0,1,2,3,4' }
   'Pharaoh'     = @{ Folder = 'twpharaohdynasties'; Dump = 'dump_shader_twpharaohdynasties_pack\cso'; Shaders = '^(t|bloom|lensflare|lensblood)\d+_'
