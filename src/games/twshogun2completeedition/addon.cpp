@@ -784,11 +784,14 @@ void BuildRuntimeData() {
   // Ambient Occlusion: Visibility Bitmask: the line sweep skipped (its camera kept), the addon's own shader in place of
   // the collect (ao_bitmask_collect, with the collect's depth and the sweep's camera at b0); the collect's replacement
   // stays the game's code (Game's costs what it did). The first frame (no camera kept yet): nothing.
+  // Ray-Traced AO: both left out, every reader of their target takes the rays' AO (ray_tracing.hpp
+  // GameAmbientReplaced).
   custom_shaders[0xA00FE3A3].on_draw = [](auto* cmd_list) {
     tw::line_sweep_ao::OnBlur(cmd_list);
-    return !bitmask_ao;
+    return !bitmask_ao && !(ray_tracing_installed && twshogun2::ray_tracing::GameAmbientReplaced());
   };
   custom_shaders[0x98BB1159].on_draw = [](auto* cmd_list) {
+    if (ray_tracing_installed && !twshogun2::ray_tracing::OnGameAmbientCollect(cmd_list)) return false;
     if (!bitmask_ao) return true;
     if (!tw::line_sweep_ao::OnCollect(cmd_list, true, false, 0, 0)) return false;
     tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_collect, &shader_injection, sizeof(shader_injection), false,

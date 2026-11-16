@@ -31,6 +31,7 @@
 // 21. ssrresolve00 against the game's 0xF87ECE85: unbound the game's, the rays' AO in place of the game's, one occlusion on
 //     the environment under Ray-Traced Specular Occlusion, the radiance (t9) unread under the rays' reflections (TestResolve;
 //     the csos' folder third).
+// 22. rt_ambient_into_game (Ray-Traced AO into the game's SSAO target for its other readers) (TestAmbientIntoGame).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -3473,6 +3474,55 @@ static void TestResolve(const std::string& games, const std::string& folder) {
               hit_game_apart, radiance_apart, radiance_shown);
 }
 
+// 22. rt_ambient_into_game (Ray-Traced AO for every reader of the game's SSAO: ray_tracing.hpp CopyAmbient after the frame's
+//     first sun light draw, the line sweep and collect left out and their target cleared open) on a 13 x 11 render in the
+//     game's 16 x 16 R8 target: each render pixel the traced visibility (t41's value, within one 8-bit code), every other
+//     texel the cleared 1. CONTROL: the traced values one pixel to the side are off.
+static void TestAmbientIntoGame(const std::string& games) {
+  const auto shader = Compile(games + "/twshogun2completeedition/rt_ambient_into_game.cs_5_0.hlsl");
+  constexpr UINT RENDER_WIDTH = 13;
+  constexpr UINT RENDER_HEIGHT = 11;
+  constexpr UINT TARGET = 16;
+  std::mt19937 random(22);
+  std::uniform_real_distribution<float> unit(0.f, 1.f);
+  std::vector<float> traced(RENDER_WIDTH * RENDER_HEIGHT);
+  for (auto& value : traced) value = unit(random);
+  const auto ambient = Texture(RENDER_WIDTH, RENDER_HEIGHT, DXGI_FORMAT_R32_FLOAT, traced.data(), RENDER_WIDTH * 4, D3D11_BIND_SHADER_RESOURCE);
+  const std::vector<uint8_t> cleared(TARGET * TARGET, 255);  // ClearUnorderedAccessViewFloat's 1 (OnGameAmbientCollect)
+  const auto target = Texture(TARGET, TARGET, DXGI_FORMAT_R8_UNORM, cleared.data(), TARGET,
+                              D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS);
+  const auto ambient_view = Srv(ambient.Get());
+  const auto target_view = Uav(target.Get());
+  context->CSSetShader(shader.Get(), nullptr, 0);
+  context->CSSetShaderResources(0, 1, ambient_view.GetAddressOf());
+  context->CSSetUnorderedAccessViews(0, 1, target_view.GetAddressOf(), nullptr);
+  context->Dispatch((RENDER_WIDTH + 7) / 8, (RENDER_HEIGHT + 7) / 8, 1);
+  context->ClearState();
+  const auto texels = Read(target.Get(), 1);
+  size_t render_apart = 0;
+  size_t outside_apart = 0;
+  size_t shifted_apart = 0;
+  for (UINT y = 0; y < TARGET; ++y) {
+    for (UINT x = 0; x < TARGET; ++x) {
+      const int code = texels[(y * TARGET) + x];
+      if (x < RENDER_WIDTH && y < RENDER_HEIGHT) {
+        render_apart += (std::abs(code - static_cast<int>(std::lround(traced[(y * RENDER_WIDTH) + x] * 255.f))) > 1) ? 1 : 0;
+        if (x + 1 < RENDER_WIDTH) {
+          shifted_apart += (std::abs(code - static_cast<int>(std::lround(traced[(y * RENDER_WIDTH) + x + 1] * 255.f))) > 1) ? 1 : 0;
+        }
+      } else {
+        outside_apart += (code != 255) ? 1 : 0;
+      }
+    }
+  }
+  CHECK(render_apart == 0 && outside_apart == 0 && shifted_apart > 50, "ambient into the game's target: %zu render pixels apart, %zu outside not 1, CONTROL shifted %zu",
+        render_apart, outside_apart, shifted_apart);
+  std::printf("rt_ambient_into_game: %u render pixels the traced AO (%zu apart), %u others the cleared 1 (%zu apart); CONTROL one pixel to the "
+              "side %zu of %u apart\n",
+              RENDER_WIDTH * RENDER_HEIGHT, render_apart, TARGET * TARGET - (RENDER_WIDTH * RENDER_HEIGHT), outside_apart, shifted_apart,
+              (RENDER_WIDTH - 1) * RENDER_HEIGHT);
+}
+
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::printf("tests <repo root> <capture folder>\n");
@@ -3516,6 +3566,7 @@ int main(int argc, char** argv) {
   TestSunTint(games);
   TestParticleQuads(games);
   TestSoftMask(games);
+  TestAmbientIntoGame(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
