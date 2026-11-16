@@ -982,3 +982,12 @@ CMAA2 / FidelityFX SSSR and Detours; Peak / Paper White / UI hidden under Output
 in-game setting: Brightness 40." (the game's display gamma is 1 + 0.03 x Brightness, its default 50 = 2.5; 40 = Unreal's
 2.2, the LUT's gamma 1); Two Shadow Cascades Under Rays (Experimental, off: r.Shadow.CSM.MaxCascades at most 2 while the
 rays' sun shadows run); test/tw_ue_patterns runs the add-on's byte patterns on the Shipping exe.
+
+Path-Traced Ambient round 2026-11-16 (tpa_, untested in game): **Path-Traced Ambient** (with Path Tracing): Unreal's
+sky light into the paths' sky (the helper's ambient cube, sun texels 3-8: the View's SkyIrradianceEnvironmentMap
+c163-c169 at the six axes x SkyLightColor c162 x the light output scale c129.y, ray_tracing.hpp OnLightRectangle), and
+its diffuse part out of the sky light passes skylight00-02 (6C9A1DD0, 62008428, 5E77BB26; shared.h ExrPathAmbient, a
+1 x 1 switch at t120 while the paths bring it) so it is counted once; the subsurface / two-sided sky and every specular
+term stay. The rays' AO is off under it (one AO method). Experimental and off (path_ambient_tested = false).
+test/tw_vanilla_exact: ExpeditionsSky (off = the game's bytes), ExpeditionsSkyPaths (the switch on: only the diffuse
+sky gone).

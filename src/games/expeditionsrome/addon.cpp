@@ -204,6 +204,9 @@ void BuildRuntimeData() {
       CustomShaderEntry(0xBCD37CAF),         // fog08 (height + volumetric fog, directional)
       CustomShaderEntry(0x31A1C68C),         // ao00 (ambient occlusion, last level: GT-VBAO)
       CustomShaderEntry(0xBD381E21),         // ao01
+      CustomShaderEntry(0x6C9A1DD0),         // skylight00 (sky light, distance field AO: Path-Traced Ambient's switch)
+      CustomShaderEntry(0x62008428),         // skylight01 (sky light)
+      CustomShaderEntry(0x5E77BB26),         // skylight02 (sky light, another reflection branch)
       // The carve's: scene colour (or its high-pass, viewport-clamped twin) through UE's max(0, x + c); depth and a mask
       // into a factor (no scene read). Its editor-only selection outlines and editor primitive composites are left out.
       LoggedShader(0x93E43D26),

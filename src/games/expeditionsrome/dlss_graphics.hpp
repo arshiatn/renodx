@@ -1271,6 +1271,13 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
       }
     }
     ray_tracing_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, gi_rows.light_bounce_strength);
+    // Path-Traced Ambient (SettingsOf's needs a Total War ambient cube): with the paths, Unreal's sky light into their sky
+    // (ray_tracing.hpp OnLightRectangle), its diffuse part out of the sky light passes once they bring it (OnSkyLight);
+    // the ray-traced AO off (one AO method: the paths' blocked rays are the occlusion).
+    ray_tracing_settings.path_ambient = rt_sliders.path_ambient != 0.f && ray_tracing_settings.path_tracing;
+    if (ray_tracing_settings.path_ambient) {
+      ray_tracing_settings.ambient_occlusion = false;
+    }
     ray_traced_bounce_strength = gi_rows.light_bounce_strength;
     // What the bridge serves this frame (upscaling.hpp); Ray Reconstruction with a ray-traced effect only.
     const auto& rays = ray_tracing_settings;
@@ -1749,7 +1756,9 @@ constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
     .ao_tooltip = "Soft shadows in corners and where objects meet the ground. Keep in-game ambient occlusion on.\n"
                   "Game's SSAO: the original. GT-VBAO: contact shading that lets light pass behind thin things (grass,\n"
                   "poles, characters) instead of dark halos.\n"
-                  "RTAO: from rays through the scene, with the game's. Needs an upscaler. Restart the game after turning it on.",
+                  "RTAO: from rays through the scene, in place of the game's. Path-Traced: with Path Tracing Global\n"
+                  "Illumination, the sky's light from the paths in place of the game's. Needs an upscaler. Restart the game\n"
+                  "after turning it on.",
     .gi_tooltip_end = "\nRestart the game after turning the last two on.",
     .effects_at_output_tooltip = "While the upscaler renders below 100%, volumetric fog, light shafts, skin and the shadows of characters,\n"
                                  "objects and lamps keep the detail they have at 100%. Looks better, can cost some performance.",
@@ -1853,7 +1862,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
                                             .aa_methods = AA_METHODS,
                                             .upscaler_status = &UpscalerStatus,
                                             .has_foliage_light = false,
-                                            .has_path_ambient = false,
+                                            .path_ambient_tested = false,
                                             .rays_replace_ao = false,
                                             .rays_multiply_maps = true,
                                             .rays_tested = false,
