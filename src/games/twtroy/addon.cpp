@@ -1880,6 +1880,18 @@ constexpr auto OnSunDrawClock = []<typename Context>(Context&) -> renodx::utils:
   return {};
 };
 
+// Ray Reconstruction's guides again after the water (its 68 pixel shaders write the G-buffer after the sun draws): from the
+// first sun draw's channels at the luma statistics F9B80B32, after the last water draw once a frame in all 26 traces with
+// a sun draw (tools\tw\troy\water_order2.py; Pharaoh's sky dome form draws here in only 16 of them, none in the campaign).
+constexpr auto OnLumaGuides = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+  if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
+  twattila::anti_aliasing::RewriteSunGuides(native);
+  return {};
+};
+
 // The frame trace's draw reads (FrameTraceReads=1): Pharaoh's layouts (twpharaohdynasties/trace_reads.hpp) at Troy's twins of
 // its shaders, the same RDEF strides and slots (particle_vfx_main F5CE48CC: SORTDATA 8, PARTICLE_INSTANCE_UNPACKED 64,
 // EMITTER_INSTANCE_UNPACKED 128, EMITTER_CONSTANTS_VS 112 at t2 / t6 / t1 / t4; the lit PS 563BA3E8 and 9C8987DD; the point
@@ -2436,6 +2448,8 @@ bool AttachAddon() {
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   // Smoke Shadows without rays: the smoke's dimming into the sun draws' t49 (their x(1 - t49) patch), after the rays' occlusion.
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
+  renodx::utils::command_action::Register(
+      OnLumaGuides, {.shader_hash = 0xF9B80B32, .command_types = renodx::utils::command_action::COMMAND_TYPE_DISPATCH});
   // Last on the particle draws: the smoke's capture, VFX Brightness (its cb7) and view_share's render scale see the game's
   // targets and camera; the camera's target size at c31 (Troy's camera_VS_PS: g_viewport_origin at c30).
   twattila::particle_layer::Install(twtroy::vfx_brightness::HASHES, PARTICLE_LAYER_READERS,
@@ -2461,6 +2475,7 @@ void DetachAddon() {
   twattila::test_hooks::Uninstall();
   twattila::pass_timing::Uninstall();
   renodx::utils::command_action::Unregister(OnSunDrawClock);
+  renodx::utils::command_action::Unregister(OnLumaGuides);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::light_bounce::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_filter::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::ao_pass::OnDestroyDevice);

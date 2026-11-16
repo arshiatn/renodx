@@ -11,6 +11,13 @@
   In game: a battle with Shadows DXR, the row on and off: on, Softness shows in full and no shadow map steps under the
   rays' shadows; near the screen's edges a building or tree behind the camera loses its shadow unless Shadow Casters
   Out of View is on.
+- **Ray Reconstruction's guides see the water** (as Pharaoh's): the water draws its G-buffer after the sun light, so the
+  guides (written at the first sun draw) showed the riverbed under rivers and the sea. They are written again after the
+  last water draw, at the luma statistics F9B80B32 (after the water in all 26 traces that draw the sun; the sky dome,
+  Pharaoh's point, draws in only 16 of them), and water (flags 64: all 68 water pixel shaders write it, no other G-buffer
+  writer does) gets no diffuse albedo, 0.02 specular and the water's roughness. Proven offline:
+  tools/tw/troy/guides/guides_troy_water_results.txt on the sun 049C3CFB's traces. In game: DLSS Ray Reconstruction over
+  a river with Water Reflections on: the reflection stays sharp and doesn't smear with the riverbed's texture.
 
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
