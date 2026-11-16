@@ -1162,7 +1162,7 @@ void ConfigureAddon() {
   BuildRuntimeData();
 
   // Shaders: DX9 has no constant buffers, the injection goes into pixel shader
-  // constants c200-c209 (shared.h). The game's shaders use the low registers.
+  // constants c200-c210 (11 registers, shared.h; c210 the rays' texel). The game's shaders use the low registers.
   renodx::mods::shader::force_pipeline_cloning = true;
   renodx::mods::shader::expected_constant_buffer_space = 50;
   renodx::mods::shader::expected_constant_buffer_index = 13;
