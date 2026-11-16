@@ -1,5 +1,22 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, tw1_ and shared rounds (2026-11-16; built only, not stamped, not installed, not run in game)
+
+- New: **Sharp Ray-Traced Reflections** (Experimental, off): the game's blur stays on top of the rays' reflection,
+  without its roughness step. `tw_thrones_ssr` part H: off = 0 apart; on, the blur taps reach ±0.9 texels instead of
+  ±1.8 (up to ±5.6), with 26% less blur on a checkerboard.
+- Fixed: **Grass Height Distance** with its constants not bound (a frame before the upload) gives the game's 100 m fade
+  (it gave none). WARP (tools/tw/tw1_1116/grass_fade): Attila's 13 grass shaders + the prefill 125A0DD5, as shipped and
+  after the render scale's patch, unbound and at 1 the game's bits; CONTROLS the old patch and 2 x the distance differ.
+- Proven offline: the 24 sun shaders the scale census left "unclear" draw at 50% what they draw at 100%, bit for bit
+  (tools/tw/tw1_1116/sun2x; CONTROL without the whole AO read 4095 of 4096 differ).
+- Proven offline: under the rays' reflections the game's screen-space march no longer reaches the picture (`tw_thrones_ssr
+  -Game twattila` part G: 0 of 32768 apart with the light buffer black; only water the rays don't trace keeps it, 734 of
+  3034 water pixels; CONTROL without the rays 7471).
+- Code only: the frame trace also starts on request (renodx_trace_now next to the exe) and at a 100% camera, as Thrones,
+  WH1 and Pharaoh. Scripted runs (RENODX_TW_SET) press one button as `<group>/<label>` (`page-presets/Reset`); a plain
+  label still presses every button with it and now logs how many.
+
 ## Dev, fix round (2026-11-16; built only, not stamped, not installed, not run in game)
 
 - Fixed: with **Ray-Traced Specular Occlusion** on, the reflections took the game's AO on top of the rays' occlusion

@@ -40,6 +40,7 @@
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_capture_imposter_gs.h"
 #include "../twattila/rt_scene.hpp"
+#include "../twattila/ao_readers.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
@@ -2210,6 +2211,14 @@ constexpr std::array<twattila::light_bounce::SunDraw, 25> LIGHT_BOUNCE_DRAWS = {
     {.shader_hash = 0x955658C3, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .sun_direction = 4, .ao_slot = 12},  // skinlm_interior
     {.shader_hash = 0xF4E19A48, .gbuffer_slot = 4, .camera_slot = 1, .lighting_slot = 3, .sun_direction = 4, .ao_slot = 12},  // skinlm_interior
 }};
+// The game's SSAO read beside the sun draws: the building pools (phar_building_water_01's four builds, their t_ssao from
+// their bytes; drawn after the sun draws, trace_12 :2436 / :2492): under Ray-Traced AO the rays' AO, as the sun draws.
+constexpr std::array<twattila::ao_readers::AoReader, 4> AO_READERS = {{
+    {.shader_hash = 0x9D28319F, .ao_slot = 12},  // shadows
+    {.shader_hash = 0x03B9CEFE, .ao_slot = 12},  // shadows (ps_4_1)
+    {.shader_hash = 0x40154AD7, .ao_slot = 9},
+    {.shader_hash = 0xAC04E623, .ao_slot = 11},  // baked shadows
+}};
 
 // The shadow map size and cascades, before the game builds its shadows.
 void OnInitDevice(reshade::api::device*) {
@@ -3137,6 +3146,7 @@ bool AttachAddon() {
         OnSkySmoothDraw, {.shader_hash = hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW}, &hash);
   }
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
+  twattila::ao_readers::Install(AO_READERS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
   twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
@@ -3185,6 +3195,7 @@ void DetachAddon() {
   twattila::contact_shadows_off::Uninstall();
   twattila::sun_replace_maps::Uninstall();
   twattila::light_bounce::Uninstall();
+  twattila::ao_readers::Uninstall();
   twattila::rt_scene::Uninstall();
   renodx::utils::command_action::Unregister(OnFogShadowsDraw);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyFogShadowsDevice);

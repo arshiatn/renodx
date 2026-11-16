@@ -1,8 +1,9 @@
 // Output Auto's preset switch (twattila/output_encoding.hpp): a first start without Windows HDR takes the SDR preset, the
 // Recommended preset once when Windows HDR comes on, the SDR preset again when it goes, and nothing after a row changed;
 // a first start with Windows HDR on is never given a preset, nor one whose display query failed (SDR out, no SDR preset).
-// Also the first start's key (tonemapper unless the game names its own), the D3D11 proxy's target beside each output, and
-// an addon that never configures the output (its own target stays).
+// Also the first start's key (tonemapper unless the game names its own), the D3D11 proxy's target beside each output, an
+// addon that never configures the output (its own target stays), a game that owns its output chain (presets as Auto,
+// the chain's target stays), and Ryse's configuration (HDR10 with its frame generation, else scRGB).
 // A fake ReShade.ini, the real settings code, restarts between steps. `control`: the first start with Windows HDR on leaves no "off" mark; its sequence must then fail.
 #include <windows.h>
 
@@ -76,7 +77,8 @@ constexpr output::WindowsHdr NO_ANSWER = {.known = false, .on = true};  // no di
 constexpr output::WindowsHdr QUERY_FAILED = {.known = false, .on = false};
 
 // A game start: the addon loads its rows from the ini (settings::Use's order) and configures the output.
-static void Start(int output_setting = output::AUTO, const char* first_start_key = output::Config{}.first_start_key) {
+static void Start(int output_setting = output::AUTO, const char* first_start_key = output::Config{}.first_start_key,
+                  bool game_owned_output = false) {
   output::decided.reset();
   output::first_start = false;
   for (auto* row : rows) row->Set(row->default_value);
@@ -88,6 +90,7 @@ static void Start(int output_setting = output::AUTO, const char* first_start_key
       .first_start_without_hdr = &SdrPreset,
       .first_start_key = first_start_key,
       .recommended_preset = &RecommendedPreset,
+      .game_owned_output = game_owned_output,
   });
 }
 
@@ -327,6 +330,84 @@ static int NotConfigured() {
   return 0;
 }
 
+static int GameOwnedOutput() {
+  // A game that makes its own HDR10 chain (Divinity 2): the first start without Windows HDR still takes the SDR preset and
+  // Auto's switch, the shaders get each output, but the swap chain's and the proxy's target stay the addon's HDR10. The
+  // same start without the flag changes them (the check sees a change).
+  Fresh();
+  renodx::mods::swapchain::SetUseHDR10(true);
+  renodx::utils::device_proxy::SetTargetFormat(reshade::api::format::r10g10b10a2_unorm);
+  renodx::utils::device_proxy::SetTargetColorSpace(reshade::api::color_space::hdr10_st2084);
+  Start(output::AUTO, "rendering_mode", true);
+  CHECK(output::first_start);
+  output::Decide(HDR_OFF);
+  CHECK(shader_encoding == static_cast<float>(output::SDR));
+  CHECK(sdr_applied == 1 && State().starts_with("sdr "));
+  CHECK(ProxyTarget(reshade::api::format::r10g10b10a2_unorm, reshade::api::color_space::hdr10_st2084));
+  Start(output::AUTO, "rendering_mode", true);
+  output::Decide(HDR_ON);
+  CHECK(recommended_applied == 1 && State().starts_with("hdr "));
+  CHECK(ProxyTarget(reshade::api::format::r10g10b10a2_unorm, reshade::api::color_space::hdr10_st2084));
+
+  Fresh();
+  Start(output::AUTO, "rendering_mode", false);
+  output::Decide(HDR_OFF);
+  CHECK(sdr_applied == 1 && ProxyTarget(reshade::api::format::r10g10b10a2_unorm, reshade::api::color_space::srgb_nonlinear));
+  std::printf("PASS game-owned output: presets and shader output as Auto, the chain's target left alone\n");
+  return 0;
+}
+
+static int RyseConfig() {
+  // Ryse's configuration (rysesonofrome/addon.cpp's Configure): its hdr_encoding takes HDR10 when its frame generation is on
+  // ("Ryse AA" FrameGeneration: no scRGB there), Auto's HDR is scRGB otherwise; Windows HDR off is SDR either way; its
+  // log prefix.
+  const auto start_ryse = [](int output_setting) {
+    output::decided.reset();
+    output::first_start = false;
+    for (auto* row : rows) row->Set(row->default_value);
+    settings::LoadGlobalSettings();
+    settings::LoadSettings(settings::global_name + "-preset1");
+    output::Configure({
+        .shader_encoding = &shader_encoding,
+        .setting = output_setting,
+        .hdr_encoding = [](int setting) {
+          bool frame_generation = false;
+          reshade::get_config_value(nullptr, "Ryse AA", "FrameGeneration", frame_generation);
+          return (setting == output::HDR10 || frame_generation) ? output::HDR10 : output::SCRGB;
+        },
+        .first_start_without_hdr = &SdrPreset,
+        .recommended_preset = &RecommendedPreset,
+        .log_name = "[Ryse]",
+    });
+  };
+  Fresh();
+  ini[{settings::global_name + "-preset1", "tonemapper"}] = "3";  // saved rows: no first start
+  start_ryse(output::AUTO);
+  output::Decide(HDR_ON);
+  CHECK(shader_encoding == static_cast<float>(output::SCRGB));
+  CHECK(ProxyTarget(reshade::api::format::r16g16b16a16_float, reshade::api::color_space::extended_srgb_linear));
+  CHECK(last_log.find("[Ryse] Output: scRGB (Windows HDR on).") != std::string::npos);
+  ini[{"Ryse AA", "FrameGeneration"}] = "1";
+  start_ryse(output::AUTO);
+  output::Decide(HDR_ON);
+  CHECK(shader_encoding == static_cast<float>(output::HDR10));
+  CHECK(ProxyTarget(reshade::api::format::r10g10b10a2_unorm, reshade::api::color_space::hdr10_st2084));
+  start_ryse(output::SCRGB);
+  output::Decide(HDR_ON);
+  CHECK(shader_encoding == static_cast<float>(output::HDR10));
+  start_ryse(output::AUTO);
+  output::Decide(HDR_OFF);
+  CHECK(shader_encoding == static_cast<float>(output::SDR));
+  CHECK(ProxyTarget(reshade::api::format::r10g10b10a2_unorm, reshade::api::color_space::srgb_nonlinear));
+  CHECK(sdr_applied == 0 && recommended_applied == 0);
+  ini.erase({"Ryse AA", "FrameGeneration"});
+  start_ryse(output::SCRGB);
+  output::Decide(HDR_ON);
+  CHECK(shader_encoding == static_cast<float>(output::SCRGB));
+  std::printf("PASS Ryse: frame generation takes HDR10, Auto's HDR scRGB without it, SDR without Windows HDR, [Ryse] lines\n");
+  return 0;
+}
+
 int main(int argc, char** argv) {
   control = (argc > 1 && std::strcmp(argv[1], "control") == 0);
   settings::settings = &rows;
@@ -336,7 +417,7 @@ int main(int argc, char** argv) {
     return result;
   }
   if (SdrFirstStart() != 0 || HdrFirstStart() != 0 || PlayerChanged() != 0 || OtherStarts() != 0 || FirstStartKeys() != 0
-      || NotConfigured() != 0) {
+      || NotConfigured() != 0 || GameOwnedOutput() != 0 || RyseConfig() != 0) {
     return 1;
   }
   std::printf("ALL PASS\n");
