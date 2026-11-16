@@ -62,6 +62,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -151,12 +152,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
 - R.U.S.E. T-run list (ATN loads a battle, one row at a time with PresentMon): DLA ... | coordinator (after the Fable review fixes)
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
+- Skills update 2 (tools/tw/round_notes/skill_lessons_1116b.md, 11 lessons) by sk2 ... | sk2_ / coordinator
+- Which other games need the window-switch fix (release_flip_chains_before_recreat ... | survey agent, then coordinator
 - PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
 - Ryse: VFX rows need a trace (particle VS candidates in tools/nontw/ryse/r0/famil ... | next Ryse data run
-- tl_ (started 01:1x): UE port of Bend SSS + GT-VBGI, Tales first then Expeditions ... | ATN
+- Tales / Expeditions Bend + GT-VBGI: in-game look + GPU cost, then defaults on (A ... | ATN
 - GPU round 2 (after the Divinity 1 run + ruh_'s R.U.S.E. GPU tests free the GPU): ... | coordinator (next GPU round)
 - Both D3D12 devices (Streamline FG + RR) removed at the same moment: every order ... | next helper round
 - Coordinator after ATN's game: merges (one at a time), fx_ GPU harness (device re ... | coordinator
@@ -1350,6 +1353,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         Gamma Correction on in the others. lg_ started 02:1x. (was) ATN DECIDES (Vanilla not exactly the game, by design today): Attila / Thrones lens flares decode 2.2 / encode 2.0
         in every mode (0.035); Gamma Correction on by default re-encodes 2.0 -> 2.2 in Rome II / WH1 / WH2 / Troy / Pharaoh
         Vanilla (0.027-0.035); the R6 bloom smoothing in SDR (up to 22 in WH2 t00). Make Vanilla = the game? Owner: ATN
+      - [ ] Skills update 2 (tools/tw/round_notes/skill_lessons_1116b.md, 11 lessons) by sk2_, then rebuild the zip.
+        Owner: sk2_ / coordinator
+      - [ ] Which other games need the window-switch fix (release_flip_chains_before_recreate opt-in): survey started
+        02:3x. Owner: survey agent, then coordinator
       - [ ] PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, everything is merged, pushed and
         HANDOFF is current (no running build / GPU job / game); installs after the restart. Owner: coordinator
       - [ ] In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), Shogun 2 highlights (V35 top
@@ -1394,8 +1401,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         Ryse, --embed): see the NON-TW SKILLS AUDIT boxes. npu_: Tales + Expeditions parity boxes + psycho_test31 / ue_extended dedupe.
       - [x] ATN ANSWERED 01:1x "Yes, ours. Ours should be much better": Bend SSS + GT-VBGI replace Bandai's contact shadows
         + SSGI in Tales (then Expeditions, shared UE port); rows off until an in-game look check, then on by default.
-      - [ ] tl_ (started 01:1x): UE port of Bend SSS + GT-VBGI, Tales first then Expeditions, replacing Bandai's passes;
-        WARP tests; then in-game look + GPU cost, then defaults on. Owner: tl_
+      - [x] MERGED 1fd4f778 02:3x (tl_ 7e85a4ea Tales, bfe83f4e Expeditions, 63a0bcec test/tw_ue_sss_gi WARP PASS): Bend
+        + GT-VBGI from twattila's unchanged passes on UE's View; Tales: Bend at the sun mask (contactshadow00's sun march
+        skipped), GT-VBGI replaces Bandai's SSGI term (its 3 dispatches still run); Expeditions: Bend into the attenuation,
+        UE contact shadows off while it runs, GT-VBGI after the sun draw; default off; "No RT/PT (Recommended)" turns both on.
+      - [ ] Tales / Expeditions Bend + GT-VBGI: in-game look + GPU cost, then defaults on (ATN wants them on); skip Bandai's
+        SSGI dispatches 17CE7BCD / 13BDD599 / 746654CA after a GI-off trace; check UE 4.23's attenuation blue channel +
+        scene colour target in an Expeditions frame trace. Owner: next Tales / Expeditions run
         (was) ATN DECIDES (Tales): Bend SSS instead of Bandai's contact shadows 0x95802ADA? GT-VBGI instead of Bandai's own
         SSGI? (double work: tools/nontw/tales/census/t13_double_work.txt; both need a UE port). AO temporal / edge /
         denoise for Tales / Expeditions: not wanted per ATN's 00:0x "ignore Attila's own SSAO" (UE GT-VBAO leaves noise to
