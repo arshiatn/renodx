@@ -16,6 +16,7 @@
 #include <array>
 #include <format>
 #include <string>
+#include <utility>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -477,6 +478,12 @@ renodx::utils::settings::Settings settings;
 // in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO stays
 // there, as when the page turned GT-VBAO off with them.
 bool bitmask_ao = false;
+// GT-VBAO in the collect's place leaves the sweep 4D2C2BF5 unread: its output's one reader in ATN's traces is the collect's t0
+// (36 of 36, by handle), and ours declares only the depth at t2 and the camera (fxc -dumpbin). Left out while ours drew in the
+// last frame (its first frame, or a dispatch that failed, keeps it for the game's collect). The sweep's camera stays bound for
+// the collect (only its dispatch is skipped).
+bool bitmask_collect_drawn = false;
+bool bitmask_collect_last_frame = false;
 
 void BuildRuntimeData() {
   custom_shaders = {
@@ -507,9 +514,11 @@ void BuildRuntimeData() {
     tw::ao_trace::OnPass(cmd_list, 0x19CF3C83, true);
     if (!bitmask_ao) return true;
     tw::line_sweep_ao::KeepComputeCamera(cmd_list, 0);
-    return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_collect, &shader_injection, sizeof(shader_injection),
-                                               true, __ao_upsample_collect, shader_injection.ssao_resolution != 0.f);
+    bitmask_collect_drawn = tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_collect, &shader_injection, sizeof(shader_injection),
+                                                               true, __ao_upsample_collect, shader_injection.ssao_resolution != 0.f);
+    return !bitmask_collect_drawn;
   };
+  custom_shaders[0x4D2C2BF5].on_draw = [](auto*) { return !(bitmask_ao && bitmask_collect_last_frame); };
 
   // Reflections: the ray-traced ones in the resolve (ssr00, twattila/rt_scene.hpp, rt_reflection.hlsli); while they
   // replace the screen-space march, the march (raycast) and its blurs are left out.
@@ -1852,6 +1861,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // slot reads its red alone (the dump), which the combine replaces by the traced visibility, its other channels kept.
   rt_settings.ambient_alone = true;
   bitmask_ao = shader_injection.ssao_mode >= 1.f && !rt_settings.ambient_occlusion && !rt_settings.path_ambient;
+  bitmask_collect_last_frame = std::exchange(bitmask_collect_drawn, false);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
