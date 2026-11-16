@@ -1730,7 +1730,7 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
     return {};
   } else {
     if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
-    // Off: the game's jitter is still measured (diagnostics), the stock TAA runs.
+    // Off: the stock TAA runs (the game's jitter measured for Advanced's diagnostics alone, below).
     const AAMode mode = requested_mode.load();
     const bool active = mode != AAMode::OFF;
     uint64_t frame;
@@ -1740,6 +1740,11 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
       frame = state.frame;
     }
     taa_frame.store(frame, std::memory_order_relaxed);
+    // Off: the game's jitter measured only while Advanced shows it (the overlay drew within 120 frames); else no work and
+    // no log lines a frame.
+    if (const uint64_t overlay = overlay_frame.load(std::memory_order_relaxed); !active && !(overlay != 0 && frame + 1 - overlay < 120)) {
+      return {};
+    }
     const auto fail = [active](std::string_view message) -> command_action::CallbackResult<Context> {
       if (active) SetStatus(message);
       return {};
