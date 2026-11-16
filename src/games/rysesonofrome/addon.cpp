@@ -1166,6 +1166,16 @@ void BuildRuntimeData() {
                  }),
       ray_button("No RT/PT (Recommended)", "Every ray-traced effect off, their sliders kept (restart the game).",
                  [] { renodx::utils::settings::UpdateSettings(RAYS_OFF); }),
+      // Attila's and Tales' No RT/PT content (their screen-space methods in the rays' place), kept apart until GT-VBAO,
+      // the Light Bounce and the Contact Shadows have their in-game check: then the maintainer decides whether No RT/PT
+      // takes it.
+      ray_button("No RT/PT + Screen-Space (Experimental)",
+                 "Every ray-traced effect off (restart the game), in their place GT-VBAO, the Light Bounce and the\n"
+                 "Contact Shadows on.",
+                 [] {
+                   renodx::utils::settings::UpdateSettings(RAYS_OFF);
+                   renodx::utils::settings::UpdateSettings({{"ssao_mode", 1.f}, {"light_bounce", 1.f}, {"contact_shadows", 1.f}});
+                 }),
       ray_button("Reset", "Every ray-traced effect off, this section's sliders at their defaults (restart the game).", [] {
         renodx::utils::settings::UpdateSettings(RAYS_OFF);
         renodx::utils::settings::UpdateSettings(RAYS_RESET);
