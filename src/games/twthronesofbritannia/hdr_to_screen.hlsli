@@ -4,8 +4,8 @@
 // hdr_to_screen, every permutation: the game's last pass (fog of war, colour matrix, brightness, gamma), its HDR and
 // SDR ends. Include after the shader's cbuffers (colour_matrix, g_gamma_output).
 #include "./shared.h"
-#include "./psycho_test30.hlsli"
-#include "./psycho_test31.hlsli"
+#include "../twattila/psycho_test30.hlsli"
+#include "../twattila/psycho_test31.hlsli"
 #include "../twattila/psycho35.hlsli"
 
 // PsychoV31, anchored at mid gray (Britannia's S-curve runs before, in t00); target-only where its source cage returns
