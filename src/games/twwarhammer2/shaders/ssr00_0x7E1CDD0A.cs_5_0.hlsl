@@ -376,16 +376,24 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
       r1.xyz = r1.xxx * r1.yzw;
       r3.xyw = g_apply_environment_specular ? r1.xyz : r2.xyz;
       r0.yzw = r3.xyw * r0.yzw;
+      const float3 rt_unoccluded = r0.yzw;
       r1.w = 1 + -r0.x;
       r1.w = r4.z * r1.w + r0.x;
       r0.yzw = r1.www * r0.yzw;
       r0.yzw = r0.xxx * r0.yzw;
+      // RenoDX: one occlusion a reflection (as Attila's ssr00): under Ray-Traced Specular Occlusion (t46 bound) the cubes'
+      // light takes the rays' occlusion in place of the game's AO, and the march's or the rays' light no AO; without it, the
+      // rays' light no AO either (they met what it stands for). The scene's share with the AO (rt_environment) still comes off.
+      uint rt_occlusion_width, rt_occlusion_height;
+      t_rt_specular_occlusion.GetDimensions(rt_occlusion_width, rt_occlusion_height);
+      const bool rt_occlusion = rt_occlusion_width != 0u;
       const float3 rt_environment = r0.yzw;
-      if (!rt_reflected) r0.yzw = RtOccludedEnvironment(rt_texel, r0.yzw);
+      if (!rt_reflected) r0.yzw = RtOccludedEnvironment(rt_texel, rt_occlusion ? rt_unoccluded : r0.yzw);
       const float3 rt_occluded = r0.yzw;
       r1.xyz = r9.xyz * r1.xyz;
       r0.x = -1 + r0.x;
       r0.x = r3.z * r0.x + 1;
+      if (rt_reflected || rt_occlusion) r0.x = 1;
       r1.w = 16.666666 * r5.w;
       r2.w = saturate(0.125 * r6.x);
       r1.w = r2.w * r1.w;

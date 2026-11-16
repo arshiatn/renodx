@@ -16,6 +16,7 @@
 #include <array>
 #include <format>
 #include <string>
+#include <utility>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -46,6 +47,7 @@
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/sun_replace_maps.hpp"
@@ -59,6 +61,7 @@
 #include "../twrome2/engine_tweaks.hpp"
 #include "./ao_trace.hpp"
 #include "./line_sweep_ao.hpp"
+#include "./modded_auto_exposure.hpp"
 #include "./particle_smoothing.hpp"
 #include "./shadow_cascades.hpp"
 #include "./trace_reads.hpp"
@@ -85,6 +88,11 @@ bool IsPsychoMode() {
 bool IsHDRMode() {
   return shader_injection.hdr >= 1.f;
 }
+
+// The swap chain's output not SDR (Attila's): at Output SDR the video AutoHDR does nothing (shared.h).
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != 2.f;
+}
 bool IsPsychoV31Mode() {
   return shader_injection.hdr == 3.f;
 }
@@ -97,9 +105,9 @@ bool IsPsychoV35Mode() {
 // 0.3 and 0.5; fire's hue within 1.3 degrees of the game's SDR picture on average, the row's top).
 constexpr float HUE_CLIP_DEFAULT = 100.f;
 
-// bool IsModdedAutoExposureEnabled() {
-//   return shader_injection.auto_exposure_highlight_protection == 1.f;
-// }
+bool IsModdedAutoExposureEnabled() {
+  return shader_injection.auto_exposure_highlight_protection == 1.f;
+}
 
 void ApplyResetPreset() {
   // Reset only controls that are currently active in this addon.
@@ -110,6 +118,8 @@ void ApplyResetPreset() {
       {"gamma_correction", 1.f},
       {"video_autohdr", 0.f},
       {"lensflare", 1.f},
+      {"auto_exposure_highlight_protection", 0.f},
+      {"auto_exposure_highlight_headroom_stops", 4.f},
       // PsychoV31
       {"v31_exposure", 1.f},
       {"v31_highlights", 1.f},
@@ -150,6 +160,7 @@ void ApplyResetPreset() {
       {"fog_strength", 1.f},
       {"sky_smooth", 0.f},
       {"sky_smooth_strength", 1.f},
+      {"sky_deband", 0.f},
       {"dof", 1.f},
       {"vignette", 1.f},
       {"distortion", 1.f},
@@ -470,6 +481,17 @@ renodx::utils::settings::Settings settings;
 // in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO stays
 // there, as when the page turned GT-VBAO off with them.
 bool bitmask_ao = false;
+// GT-VBAO in the collect's place leaves the sweep 4D2C2BF5 unread: its output's one reader in ATN's traces is the collect's t0
+// (36 of 36, by handle), and ours declares only the depth at t2 and the camera (fxc -dumpbin). Left out while ours drew in the
+// last frame (its first frame, or a dispatch that failed, keeps it for the game's collect). The sweep's camera stays bound for
+// the collect (only its dispatch is skipped).
+bool bitmask_collect_drawn = false;
+bool bitmask_collect_last_frame = false;
+// Ray tracing's (twattila/rt_scene.hpp); here for the hooks BuildRuntimeData sets (the water row at FD885574).
+twattila::rt_scene::Sliders rt_sliders;
+// Skip the Game's Reflection Passes (on by default): decided at the hierarchical depth's copy for the frame (BuildRuntimeData).
+float rays_skip_reflection_passes_row = 1.f;
+bool reflection_passes_skipped = false;
 
 void BuildRuntimeData() {
   custom_shaders = {
@@ -500,9 +522,11 @@ void BuildRuntimeData() {
     tw::ao_trace::OnPass(cmd_list, 0x19CF3C83, true);
     if (!bitmask_ao) return true;
     tw::line_sweep_ao::KeepComputeCamera(cmd_list, 0);
-    return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_collect, &shader_injection, sizeof(shader_injection),
-                                               true, __ao_upsample_collect, shader_injection.ssao_resolution != 0.f);
+    bitmask_collect_drawn = tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_collect, &shader_injection, sizeof(shader_injection),
+                                                               true, __ao_upsample_collect, shader_injection.ssao_resolution != 0.f);
+    return !bitmask_collect_drawn;
   };
+  custom_shaders[0x4D2C2BF5].on_draw = [](auto*) { return !(bitmask_ao && bitmask_collect_last_frame); };
 
   // Reflections: the ray-traced ones in the resolve (ssr00, twattila/rt_scene.hpp, rt_reflection.hlsli); while they
   // replace the screen-space march, the march (raycast) and its blurs are left out.
@@ -514,6 +538,50 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0x143BD25Cu, 0x60AF6F79u, 0xBDBC783Bu}) {
     custom_shaders[hash].on_draw = twattila::rt_scene::OnReflectionMarch;
   }
+  // Skip the Game's Reflection Passes (on by default; Warhammer's row): under the rays' reflections the resolve's replacement
+  // reads neither the march's hits (t7) nor the light mips 1-6 (t8), and nothing else reads them or the hierarchical depth
+  // (by handle in ATN's 36 traces with the chain): the hierarchical depth (copy FD885574, gathers 73BA2BE9) and both mip
+  // chains' downscale and blurs (9733C5E0 / 7C650AD9 / BFD99540) go with the march (test/tw_warhammer_shaders part 27). The
+  // preconvolve copy 07966BBA stays: the resolve reads its mip 0's alpha (the lit scene's sun shadow) under the rays too.
+  // Decided at the hierarchical depth's copy, the chain's first pass, for the frame.
+  // Ray-Traced Water Reflections (Experimental, off; Warhammer's water pass): the battle water 8686041E draws into the
+  // G-buffer (the sun draws' t5-t7) and the depth after the sun draws (ATN's traces, e.g. trace_21 lines 3487 / 3805 / 3808),
+  // so the frame's rays left from the bed under it; the copy FD885574 reads that depth at t0: the rays traced there leave
+  // from the water (its positions, and the guides again: RewriteSunGuides).
+  custom_shaders[0xFD885574].on_draw = [](auto* cmd_list) {
+    if (rt_sliders.water_reflections != 0.f && twattila::rt_scene::internal::active.load(std::memory_order_relaxed)) {
+      if (auto* native = twattila::rt_scene::internal::NativeContext(cmd_list); native != nullptr) {
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> depth;
+        native->CSGetShaderResources(0, 1, depth.GetAddressOf());
+        const twattila::rt_scene::internal::ComputeState kept(native);
+        twattila::rt_scene::Reflections(native, depth.Get());
+      }
+    }
+    reflection_passes_skipped = rays_skip_reflection_passes_row != 0.f && !twattila::rt_scene::OnReflectionMarch(cmd_list);
+    return !reflection_passes_skipped;
+  };
+  for (const uint32_t hash : {0x73BA2BE9u, 0x9733C5E0u, 0x7C650AD9u, 0xBFD99540u}) {
+    custom_shaders[hash].on_draw = [](auto*) { return !reflection_passes_skipped; };
+  }
+  // Modded Auto Exposure (modded_auto_exposure.hpp, Warhammer's): last frame's sum copied out of the luma statistics before
+  // the game's clear 242CA153, then bound at our A50883CE's t1 (shaders/autoexposure00) and unbound after it.
+  custom_shaders[0x242CA153].on_draw = [](auto* cmd_list) {
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::OnClear(cmd_list);
+    }
+    return true;
+  };
+  custom_shaders[0xA50883CE].on_draw = [](auto* cmd_list) {
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::BindLastSum(cmd_list, true);
+    }
+    return true;
+  };
+  custom_shaders[0xA50883CE].on_drawn = [](auto* cmd_list) {
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::BindLastSum(cmd_list, false);
+    }
+  };
   // The point and spot lights' and the fog's shaders: ours only while the rays are bound (RaysShader above).
   PointLightRays::Take(&custom_shaders);
   SpotLightRays::Take(&custom_shaders);
@@ -549,6 +617,12 @@ void BuildRuntimeData() {
         .label = "Settings Mode",
         .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "Use these in-game settings: Gamma 22 and Brightness 10.",
+        .section = "General",
+        .tint = 0xFFD23C,
     },
     twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
                                   [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
@@ -586,13 +660,6 @@ void BuildRuntimeData() {
     //     .section = "Peak",
     //     .tooltip = "3 rectangles within a large one.\n\n- Left: Not Visible.\n- Middle: Barely Visible.\n- Right: Easily Visible.\n\n(Ofc, you can always set lower to personal pref.)",
     // },
-    
-    new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::TEXT,
-        .label = "Use these in-game settings: Gamma 22 and Brightness 10.",
-        .section = "General",
-        .tint = 0xFFD23C,
-    },
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
@@ -1170,7 +1237,7 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 1.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput(); },
     },
     new renodx::utils::settings::Setting{
         .key = "video_dithering",
@@ -1182,7 +1249,7 @@ void BuildRuntimeData() {
         .tooltip = "Fine noise that hides banding in the brightened videos.\n"
                    "Only with Video AutoHDR above 0.",
         .labels = {"Off", "On"},
-        .is_enabled = [] { return IsHDRMode() && shader_injection.video_autohdr > 0.f; },
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput() && shader_injection.video_autohdr > 0.f; },
     },
     new renodx::utils::settings::Setting{
         .key = "sky_deband",
@@ -1249,31 +1316,31 @@ void BuildRuntimeData() {
 
 
     // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_protection",
-    //     .binding = &shader_injection.auto_exposure_highlight_protection,
-    //     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-    //     .default_value = 0.0f,
-    //     .label = "Modded Auto Exposure",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
-    //     .labels = {"Off (Stock)", "On (Protected)"},
-    //     .is_visible = IsAdvancedSettings,
-    // },
-    // new renodx::utils::settings::Setting{
-    //     .key = "auto_exposure_highlight_headroom_stops",
-    //     .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
-    //     .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-    //     .default_value = 1.0f,
-    //     .label = "Modded Auto Exposure: Sensitivity",
-    //     .section = "Extra (Experimental)",
-    //     .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
-    //     .min = 0.0f,
-    //     .max = 2.0f,
-    //     .format = "%.1f",
-    //     .is_enabled = IsModdedAutoExposureEnabled,
-    //     .is_visible = IsAdvancedSettings,
-    // },
+    // Attila's rows (Experimental, off; Warhammer's): the metered maximum capped at last frame's average (shaders/autoexposure00,
+    // modded_auto_exposure.hpp; test/tw_warhammer_shaders part 25, Warhammer II's run).
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_protection",
+        .binding = &shader_injection.auto_exposure_highlight_protection,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.0f,
+        .label = "Modded Auto Exposure",
+        .section = "Extra (Experimental)",
+        .tooltip = "Reduces the exposure influence of isolated highlights such as the sun, fire, and sparks without reducing their rendered brightness. Off is stock.",
+        .labels = {"Off (Stock)", "On (Protected)"},
+    },
+    new renodx::utils::settings::Setting{
+        .key = "auto_exposure_highlight_headroom_stops",
+        .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
+        .value_type = renodx::utils::settings::SettingValueType::FLOAT,
+        .default_value = 4.0f,
+        .label = "Modded Auto Exposure: Sensitivity",
+        .section = "Extra (Experimental)",
+        .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
+        .min = 1.0f,
+        .max = 8.0f,
+        .format = "%.0f",
+        .is_enabled = IsModdedAutoExposureEnabled,
+    },
     // VFX //////////////////////////////////////////////////////////////////////////////////////
     // new renodx::utils::settings::Setting{
     //     .key = "vfx_fire_brightness",
@@ -1565,8 +1632,6 @@ std::atomic<bool> at_start_stop = false;
 HMODULE addon_module_handle = nullptr;
 twattila::feature_settings::SssSliders sss_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
-// Ray tracing's (twattila/rt_scene.hpp).
-twattila::rt_scene::Sliders rt_sliders;
 // Texture LOD Bias on All Textures (Graphics 1 of 2, Experimental): the trilinear samplers too
 // (texture_lod_bias.hpp SetWrappingTrilinear).
 float lod_bias_trilinear_row = 0.f;
@@ -1845,6 +1910,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // slot reads its red alone (the dump), which the combine replaces by the traced visibility, its other channels kept.
   rt_settings.ambient_alone = true;
   bitmask_ao = shader_injection.ssao_mode >= 1.f && !rt_settings.ambient_occlusion && !rt_settings.path_ambient;
+  bitmask_collect_last_frame = std::exchange(bitmask_collect_drawn, false);
+  reflection_passes_skipped = false;
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
@@ -1856,6 +1923,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
+  // Fog Shadows alone light no surface: no Ray Reconstruction for them (as Warhammer's, Warhammer III's and Pharaoh's).
+  rt_settings.cheap_fog_alone = true;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
@@ -1870,7 +1939,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
-  aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
+  aa_settings.sdr_output = !IsHdrOutput();
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   // After the at-start tests' thread (one writer at a time).
@@ -2315,6 +2384,19 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
+  settings.push_back(twattila::pass_timing::Button(twattila::feature_settings::AA_SECTION));
+  // Ray-Traced Water Reflections' rows shown: the water pass at FD885574.
+  twattila::rt_scene::internal::water_pass = true;
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RayTracedSkipGameReflections",
+      .binding = &rays_skip_reflection_passes_row,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 1.f,
+      .label = "Skip the Game's Reflection Passes",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Leaves out the game's screen-space reflection passes the rays' reflections replace: the same picture,\n"
+                 "a little faster.",
+  });
 
   // Appended Settings (HDR10)
   {
@@ -2351,12 +2433,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                   "PsychoV31 and PsychoV35. Visibility "
-                   "Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque and Gilet (2023) on "
-                   "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024). Screen-space shadows: "
-                   "Bend Studio (Apache 2.0, Sony Interactive Entertainment). SMAA (MIT, Jimenez et al.), CMAA2 "
-                   "(Apache 2.0, Intel).",
+          .label = twattila::credits::Methods({.gtvbao = true, .gtvbgi = true, .auto_thickness = true, .bend = true, .cmaa2 = true,
+                                               .detours = true}),
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -2404,13 +2482,14 @@ void ConfigureAddon() {
   twattila::feature_settings::SetTints({}, engine_sections);
 
   // Graphics 1 of 2's layout (as Pharaoh's and Warhammer III's), ATN's RT/PT preset as the defaults of what the methods
-  // leave, then Settings Mode's pages. Only what this game hooks: no water pass for the rays (its rows stay hidden).
+  // leave, then Settings Mode's pages. The rays' water pass at FD885574 (water_pass: its rows shown).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   // Fog Shadows, the torches' light in it, Sprite Soldier and Far Tree Shadows and Smoke Shadows start off (Experimental: no
-  // game run has shown them here yet), Specular Occlusion too; RT/PT turns them on, as Attila's (rays_preset_as_attila).
+  // game run has shown them here yet), Specular Occlusion and Ray-Traced Water Reflections too; RT/PT turns them on, as
+  // Attila's (rays_preset_as_attila).
   for (auto* setting : settings) {
     if (setting->key == "RayTracedFogShadows" || setting->key == "RayTracedLightGlow" || setting->key == "RayTracedSmokeShadows"
-        || setting->key == "RayTracedSpecularOcclusion") {
+        || setting->key == "RayTracedSpecularOcclusion" || setting->key == "RayTracedWaterReflections") {
       setting->default_value = 0.f;
     } else if (setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows") {
       setting->default_value = 0.f;
@@ -2490,6 +2569,8 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
+  twattila::pass_timing::Install("wh2");
 
   ConfigureAddon();
   tw::engine_tweaks::watch::StartIfRequested(graphics_options, WATCHED_VALUES, 300);
@@ -2511,6 +2592,7 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
   twwarhammer2::particle_smoothing::Install();
+  reshade::register_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
   // Water Clarity and Caustics: every row a material water (the patched copy swapped in at the draw).
   twattila::water_effects::water_shaders = WATER_SHADERS;
   renodx::utils::pipeline::RegisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
@@ -2522,6 +2604,8 @@ bool AttachAddon() {
   // Rows saved at an old default, cleared once: Sprite Soldier Shadows was saved hidden at RT/PT's 1 (SetRaysPresetDefaults)
   // until the sprite soldiers were in the rays; now Experimental, off.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSpriteShadows"});
+  // Ray-Traced Water Reflections was saved hidden at RT/PT's 1 before the water pass (it did nothing): now Experimental, off.
+  twattila::graphics_page::ClearSavedRows(2, {"RayTracedWaterReflections"});
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
   // The at-start tests: written as the game sets its own values (twattila/engine_tests.hpp).
@@ -2542,6 +2626,9 @@ bool AttachAddon() {
   rt_host.cascade_target = [](const D3D11_TEXTURE2D_DESC& desc) {
     return desc.ArraySize == 1 && desc.Width == desc.Height && desc.Format == DXGI_FORMAT_R32_TYPELESS;
   };
+  // Ray-Traced Water Reflections (FD885574): the guides again from the sun draw's G-buffer channels, the water drawn into
+  // them since (TW_HOST's RewriteGuides reads PS slots 0-2: the reflection pass is compute).
+  rt_host.rewrite_guides = twattila::anti_aliasing::RewriteSunGuides;
   twattila::rt_scene::Install(SCENE_SHADERS, {}, rt_host);
   twattila::rt_scene::InstallCutOutMasks(CUT_OUT_MASKS);
   // Torch and Fire Shadows: the point lights (one instanced draw a frame, VS D2A0FF23 with PS D96A8DC3; its instances
@@ -2627,6 +2714,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  twattila::pass_timing::Uninstall();
   twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
@@ -2643,6 +2731,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
   twwarhammer2::particle_smoothing::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
+  tw::modded_auto_exposure::OnDestroyDevice(nullptr);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnInitCallback(twattila::water_effects::OnInitMaterialWater);
   twattila::engine_tests::StopAtStart(&at_start_stop);

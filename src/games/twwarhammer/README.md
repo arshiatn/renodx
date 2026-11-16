@@ -1,5 +1,27 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Fix round (2026-11-16, the skill audit's rows; built only, not run in game)
+
+- **GT-VBAO leaves the game's AO sweep and collect out** (0C83DB37 / 38F6D9B6: their outputs' only reader is the blur GT-VBAO
+  replaces; census 34 of 36 traces). WARP part 26: ours 0 of 3072 texels apart whatever they held; CONTROLS 3072 / 1024.
+- **New: Smoke Shadows without rays (Experimental, off)**, as Warhammer II's (twattila/smoke_map from the rays' particle stream).
+- **New: Smooth Half-Size Particles (Experimental, off)** at the game's half-size particle upsample E88CBE3C, as Warhammer II's.
+- **Time Each Pass (One Frame)** button (wh1_pass_timing.txt) and the **Pixel trace** (warhammer_pixel_trace.txt), as
+  Attila's / Warhammer II's.
+- Reset, Recommended and SDR write Sky Debanding Off; their tooltips say Peak / Paper White / UI / Settings Mode / output are
+  kept. The in-game Gamma / Brightness line is page 1's first. Video AutoHDR / Dithering only with HDR output. About is the
+  shared credits line (the auto thickness after Bjorn Ottosson, Microsoft Detours added).
+- Code only: Modded Auto Exposure's hooks shared with Warhammer II (twwarhammer2/modded_auto_exposure.hpp); one
+  psycho_test30.hlsli (Attila's; all 87 WH1 / WH2 shaders the same bytes).
+- Proven offline: test/tw_warhammer_shaders PASS (parts 1 - 28); test/tw_vanilla_exact now also the sky (46AF3935 / 1DEF50A9) and
+  the vignette 792693E9 against the game's bytes: EXACT, 0 apart, the failing controls caught (sky 0.38, vignette 0.0039). The cinematic 8E4C7248 is not bit-exact by design (the
+  video decoded at 2.2, encoded with the frame's gamma).
+- In game: Smoke Shadows without rays in a burning siege; Smooth Half-Size Particles over smoke at DLSS Performance; Time Each
+  Pass with GT-VBAO on (the two skipped passes' time).
+- Not done: one occlusion a reflection under Ray-Traced Specular Occlusion (Attila's 6c6c7559): WH1's resolve 6B80E35B binds no
+  AO (the sun draws carried it into the scene) and adds the occlusion as AO + t46 - 1, so the fix needs the sun's AO at the
+  resolve. Rays Replace Shadow Maps stays Experimental (no offline proof of the replace path yet).
+
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
 - **Ray-Traced AO replaces the game's SSAO and GT-VBAO** (ATN: never on top of them): the former Rays' AO Alone row

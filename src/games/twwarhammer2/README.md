@@ -1,5 +1,30 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### Fix round (2026-11-16, the skill audit's rows; built only, not run in game)
+
+- **Skip the Game's Reflection Passes (on)**, as Warhammer's: under the rays' reflections the hierarchical depth (FD885574 /
+  73BA2BE9) and both mip chains (9733C5E0 / 7C650AD9 / BFD99540) go with the march (census by handle, 36 traces: nothing else
+  reads them). The copy 07966BBA stays: the resolve reads its mip 0's alpha (the sun's shadow). WARP part 27: under the rays 0 of 4096 texels differ with other hits and mips; CONTROLS the rays 4096, mip 0's alpha 4096, without the rays 4096.
+- **New: Ray-Traced Water Reflections (Experimental, off; RT/PT on)** at the hi-Z copy FD885574, as Warhammer's at F2CCEF86:
+  the water (and lava) draw their depth after the sun draws, so the rays' reflections started at the bed.
+- **One occlusion a reflection** under Ray-Traced Specular Occlusion (as Attila's 6c6c7559): the cubes' light takes the rays'
+  occlusion in place of the game's AO, the march's / rays' light no AO. WARP part 28: the final reflection the same at AO 0.5 and 1 in 4096 of 4096; CONTROLS without t46 4096, the resolve as it was 12288 values.
+- **New: Modded Auto Exposure (Experimental, off)**, as Warhammer's: A50883CE is WH1's 96BCFCBB instruction for instruction.
+  WARP part 25 (Warhammer II's run): off the game's bits; on, Sensitivity 1 the maximum capped at last frame's average x 2 (00BA78D2 against the game's FFFFFFFF); Sensitivity 16 the game's.
+- **GT-VBAO leaves the game's AO sweep 4D2C2BF5 out** (its only reader the collect GT-VBAO replaces, 36 of 36 traces).
+- Fog Shadows alone take the cheap path (cheap_fog_alone, as Warhammer's). **Time Each Pass (One Frame)** button
+  (wh2_pass_timing.txt).
+- Reset writes Sky Debanding Off. The in-game Gamma / Brightness line is page 1's first. Video AutoHDR / Dithering only with HDR
+  output. About is the shared credits line (the auto thickness after Bjorn Ottosson, Microsoft Detours added). One
+  psycho_test30.hlsli (Attila's; same bytes).
+- Proven offline: test/tw_warhammer_shaders PASS (parts 1 - 28); test/tw_vanilla_exact now also the sky, the vignette and the
+  legacy battle fog 04 - 06: EXACT, 0 apart, the failing controls caught (sky 0.38, vignette 0.0039, battlefog 0.062 / 0.02 / 0.18). Not checkable there yet: the cinematics, FXAA (0.88 apart: it writes alpha
+  1), sharpening and the point light D96A8DC3 (0 on its inputs).
+- In game: a river or lava with RT/PT (reflections from the surface, not the bed); a city's wet stone with Specular Occlusion
+  (reflections darker only once); Modded Auto Exposure on a sunny map; Time Each Pass with GT-VBAO and with the rays'
+  reflections (the skipped passes' time).
+- Not done: Rays Replace Shadow Maps stays Experimental (no offline proof of the replace path yet).
+
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
 - **Ray-Traced AO replaces the game's SSAO and GT-VBAO** (ATN: never on top of them). The sun draws' `t_ssao` now holds the
@@ -251,12 +276,10 @@ Build: `cmake --build build --config Release --target renodx-twwarhammer2.addon6
 8. DLSS Performance, a fire or flaming arrows: sparks bounce on the ground, not above or under it.
 
 Not done:
-- Smoke Shadows: the particles' vertex shader (C3300B96, one vertex a particle) writes the atlas cell's UV rectangle at
-  TEXCOORD3, which Attila's capture reads into its record (centre, colour, size): it needs a WH2 record of its own.
-- Ray-traced water reflections: no water pass of its own; the battle water (battle_water 8686041E) is drawn into the
-  G-buffer and takes the same screen-space reflection resolve every surface does, which Reflections DXR replaces.
-- Spot lights (5E0BC81E with PS 0764179D / F550D451): their data is instance rows too, but laid out apart from the point
-  lights' (position at POSITION1, colour at POSITION4); the one traced sits about 3 km out with 1000 m reach.
+- Smoke Shadows: done in round v49 (the lit particles' indirect draw 1FC776EF).
+- Ray-traced water reflections: done in the fix round of 2026-11-16 (the hi-Z copy FD885574): the water draws its depth
+  after the sun draws, so the rays' reflections had started at the bed.
+- Spot lights: done in round v49 (Torch and Fire Shadows cover F550D451 / 0764179D).
 - Out of the rays: the far cards' shadow version 75914932 (its outputs packed apart from Pharaoh's), the depth-only
   EF11AD35, the floating banners 7DF335FF (the game gives them no shadow). Near cards: the cull distance is the pixel
   shader's, so cards inside it cast with the 3D trees there.

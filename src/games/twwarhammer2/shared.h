@@ -64,11 +64,6 @@ struct ShaderInjectData {
   // float vfxdebugslice;
   // float vfxdebugmode;
 
-  // Auto-exposure controls are appended so every existing injection offset
-  // remains unchanged.
-  // float auto_exposure_highlight_protection;     // 0: stock, 1: protected
-  // float auto_exposure_highlight_headroom_stops; // 1 - 4 seems to work fine
-
   // Appended.
   float sharpening;
   float hue_shift;  // PsychoV30 highlight hue shift: 0 none, 1 Test30, 2 full
@@ -145,6 +140,9 @@ struct ShaderInjectData {
   float fog_strength;    // Fog Strength: x the battle fog's opacity (extinction 16AB86F4; its light: addon.cpp FogRays' b8), 1 the game's
   float grass_height_distance;  // Grass Height Distance: x the grass's 100 m (its height, normal and pre-pass), 1 the game's
   float dof;  // Depth of Field: x its circle of confusion (depth_of_field pixel_dof_coc), 1 the game's, 0 off
+  // Appended (fix round 2026-11-16): Modded Auto Exposure (shaders/autoexposure00, Warhammer's).
+  float auto_exposure_highlight_protection;     // 0: the game's, 1: the metered maximum capped
+  float auto_exposure_highlight_headroom_stops; // the cap: last frame's average x 2^this
 };
 
 #define SI shader_injection
@@ -166,9 +164,9 @@ struct ShaderInjectData {
       0.18f, 0.18f, 1.f, ((SI.swap_chain_encoding == 2.f) ? 0 : 1), 1.f, 0.f, SI.hue_shift)
 
 
-// // For the modded auto exposure
-// #define AutoExposureHighlightProtection     SI.auto_exposure_highlight_protection
-// #define AutoExposureHighlightHeadroomStops  SI.auto_exposure_highlight_headroom_stops
+// For the modded auto exposure
+#define AutoExposureHighlightProtection     SI.auto_exposure_highlight_protection
+#define AutoExposureHighlightHeadroomStops  SI.auto_exposure_highlight_headroom_stops
 
 // Grass Height Distance on the grass's g_inv_lod_distance (1 / 100 m): its shaders (shaders/grass00-02) and their motion and
 // ray-tracing copies. At 1 the same bits; settings not yet written (0) leave the game's.

@@ -133,7 +133,26 @@
 //    166E783A, last frame's sum copied out of the statistics before the clear as the add-on does: off (t1 unbound or bound),
 //    or on without a sum at t1, the game's minimum / maximum / sum and bloom source bit for bit; on with Sensitivity 1 the
 //    maximum last frame's average x 2 (the minimum, sum and source the game's); Sensitivity 16 the game's. CONTROL: the capped
-//    maximum lower than the game's.
+//    maximum lower than the game's. The same for Warhammer II's A50883CE after its clear 242CA153 (its dump, the build's
+//    twwarhammer2.include/embed/0xA50883CE.cso, its own settings buffer: twwarhammer2/shared.h).
+// 26. GT-VBAO leaves the game's sweep 0C83DB37 and collect 38F6D9B6 out (reader_census_wh1.txt: sweep -> A, collect A -> B,
+//    blur_x E3DA9A8D (A, from depth t0 and B at t1), blur_y 4C1918DA (B, from depth t0 and A at t1); the sun reads B): on
+//    64 x 48 R8 targets (the traced format), ours in blur_x's place (the build's embed/ao_bitmask_blur.cso, as
+//    DispatchInstead binds it) writes every texel of A the same whatever A and B held (it declares no t1), and the game's
+//    blur_y writes every texel of B the same whatever B held (its u0 only stored): so nothing reads the sweep's or the
+//    collect's output then. CONTROLS: the game's blur_x changes with B (the collect's output has that one reader); blur_y
+//    over one group less leaves B's old texels.
+// 27. Warhammer II's Skip the Game's Reflection Passes (src/games/twwarhammer2/shaders/ssr00_0x7E1CDD0A, its resolve
+//    replacement, on 64 x 64 targets laid out as in ATN's traces: t4-t6 G-buffer, t7 the march's hits, t8 the lit scene's mips):
+//    under the rays' reflections (t47 bound) bit-identical texels whatever the hits (t7) and the light mips 1-6 (t8) hold, so
+//    the hierarchical depth FD885574 / 73BA2BE9 and both mip chains' downscale and blurs (9733C5E0 / 7C650AD9 / BFD99540)
+//    go with the march; t8's mip 0 alpha (the lit scene's sun shadow, written by the preconvolve copy 07966BBA) is still read,
+//    so the copy stays. CONTROLS: without the rays the hits and mips change the output; under the rays mip 0's alpha does.
+// 28. Warhammer II's one occlusion a reflection (the same resolve, as Attila's 6c6c7559): the final reflection (the scene's
+//    share with the game's AO taken off, plus the resolve's output) under Ray-Traced Specular Occlusion (t46 0.5) the same at
+//    AO 0.5 and 1 with the march's light (confidence 1), and with the cubes' light alone (confidence 0) the environment x t46,
+//    no AO. CONTROLS: without t46 the game's AO changes it; the resolve as it was (the cubes' light x AO x t46) changes with
+//    the AO.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -149,6 +168,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <regex>
 #include <span>
@@ -156,8 +176,12 @@
 #include <vector>
 
 #include "ambient_patch.h"
-// The add-on's settings buffer (b13) as the shaders read it.
+// The add-on's settings buffer (b13) as the shaders read it; Warhammer II's (part 25) in wh2.
 #include "../../src/games/twwarhammer/shared.h"
+#undef SRC_TEMPLATE_SHARED_H_
+namespace wh2 {
+#include "../../src/games/twwarhammer2/shared.h"
+}  // namespace wh2
 #include "../../src/games/twwarhammer/rt_outside_view_colour_world_gs.h"
 #include "../../src/games/twpharaohdynasties/rt_outside_view_world_gs.h"
 
@@ -2526,14 +2550,15 @@ static void TestRaycast(const std::string& dump) {
               patched.ndc, patched.projected, equal, PIXELS, hits, marched - hits, PIXELS - marched, game_differs, unbound_differs, near_differs);
 }
 
-// The luma statistics (96BCFCBB's u1: minimum, maximum, sum) and its bloom source (u0) of `code` over `scene` (512 x 288),
-// after the game's clear 166E783A on `stats` (16 bytes, raw), Modded Auto Exposure's rows in b13 and `last_sum` at t1 (null:
-// unbound).
+// The luma statistics (compute_luma_stats' u1: minimum, maximum, sum) and its bloom source (u0) of `code` over `scene`
+// (512 x 288), after the game's clear `clear` on `stats` (16 bytes, raw), Modded Auto Exposure's rows in b13 and `last_sum` at
+// t1 (null: unbound).
 struct LumaRun {
   std::array<uint32_t, 3> stats = {};
   std::vector<Float4> source;
 };
 
+template <typename Injected>
 static LumaRun RunLuma(std::span<const uint8_t> code, std::span<const uint8_t> clear, ID3D11ShaderResourceView* scene, ID3D11Buffer* stats,
                        ID3D11ShaderResourceView* last_sum, float protection, float stops) {
   ComPtr<ID3D11ComputeShader> shader;
@@ -2558,7 +2583,7 @@ static LumaRun RunLuma(std::span<const uint8_t> code, std::span<const uint8_t> c
     camera[(reg * 4) + 3] = 1.f / 288.f;
   }
   const std::array<float, 4> limits = {0.001f, 0.5f, 0.05f, 64.f};  // luma_stats_buffer: black, -, -, white
-  ShaderInjectData injected = {};
+  Injected injected = {};
   injected.auto_exposure_highlight_protection = protection;
   injected.auto_exposure_highlight_headroom_stops = stops;
   std::vector<uint8_t> injected_bytes((sizeof(injected) + 15) & ~size_t{15});
@@ -2597,12 +2622,15 @@ static LumaRun RunLuma(std::span<const uint8_t> code, std::span<const uint8_t> c
   return run;
 }
 
-static void TestLuma(const std::string& root, const std::string& dump) {
-  const auto game = GameBytes(dump, 0x96BCFCBB);
-  const auto clear = GameBytes(dump, 0x166E783A);
-  const auto ours = Bytes(root + "/build/twwarhammer.include/embed/0x96BCFCBB.cso");
-  if (game.empty() || clear.empty()) {
-    CHECK(false, "luma: 96BCFCBB / 166E783A's bytes");
+// `game_name`'s compute_luma_stats `hash` (ours: the build's embed/0x<hash>.cso in `include`, its settings `Injected`) after
+// its clear `clear_hash`.
+template <typename Injected>
+static void TestLuma(const std::string& root, const std::string& include, const std::string& dump, uint32_t hash, uint32_t clear_hash, const char* game_name) {
+  const auto game = GameBytes(dump, hash);
+  const auto clear = GameBytes(dump, clear_hash);
+  const auto ours = Bytes(std::format("{}/build/{}/embed/0x{:08X}.cso", root, include, hash));
+  if (game.empty() || clear.empty() || ours.empty()) {
+    CHECK(false, "luma: %s's %08X / %08X's bytes, ours", game_name, hash, clear_hash);
     return;
   }
   // A scene of 512 x 288: a lit gradient (0.05 - 2.5), fire specks (30) and a sun (400, past the white limit 64).
@@ -2640,16 +2668,16 @@ static void TestLuma(const std::string& root, const std::string& dump) {
     const D3D11_BOX sum_bytes = {.left = 8, .top = 0, .front = 0, .right = 12, .bottom = 1, .back = 1};
     context->CopySubresourceRegion(kept.Get(), 0, 0, 0, 0, stats.Get(), 0, &sum_bytes);
   };
-  const auto expected = RunLuma(game, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
-  const auto off = RunLuma(ours, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
+  const auto expected = RunLuma<Injected>(game, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
+  const auto off = RunLuma<Injected>(ours, clear, scene.Get(), stats.Get(), nullptr, 0.f, 4.f);
   keep_sum();
-  const auto off_bound = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 0.f, 1.f);
+  const auto off_bound = RunLuma<Injected>(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 0.f, 1.f);
   keep_sum();
-  const auto capped = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 1.f);
+  const auto capped = RunLuma<Injected>(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 1.f);
   keep_sum();
-  const auto wide = RunLuma(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 16.f);
-  const auto unbound = RunLuma(ours, clear, scene.Get(), stats.Get(), nullptr, 1.f, 1.f);
-  CHECK(expected.source.size() == 512 * 512 && off.source.size() == 512 * 512 && capped.source.size() == 512 * 512, "luma: outputs");
+  const auto wide = RunLuma<Injected>(ours, clear, scene.Get(), stats.Get(), kept_view.Get(), 1.f, 16.f);
+  const auto unbound = RunLuma<Injected>(ours, clear, scene.Get(), stats.Get(), nullptr, 1.f, 1.f);
+  CHECK(expected.source.size() == 512 * 512 && off.source.size() == 512 * 512 && capped.source.size() == 512 * 512, "luma: %s's outputs", game_name);
   if (expected.source.size() != 512 * 512 || off.source.size() != 512 * 512 || capped.source.size() != 512 * 512) return;
   const auto same_source = [&](const LumaRun& run) { return std::memcmp(run.source.data(), expected.source.data(), expected.source.size() * 16) == 0; };
   // The cap as the shader makes it (last frame's sum: this scene's), within a float's rounding of the quantised value.
@@ -2664,12 +2692,12 @@ static void TestLuma(const std::string& root, const std::string& dump) {
                             std::fabs(static_cast<double>(capped.stats[1]) - expected_max) <= 4294967296.0 * 2e-6;
   const bool wide_same = wide.stats == expected.stats && same_source(wide);
   CHECK(off_same && capped_right && wide_same && capped.stats[1] < expected.stats[1],
-        "luma: off %d, capped %d (max %u, expected %.0f, the game's %u), Sensitivity 16 the game's %d", off_same, capped_right, capped.stats[1], expected_max,
-        expected.stats[1], wide_same);
-  std::printf("Modded Auto Exposure: our 96BCFCBB off (t1 unbound, bound, or on without last frame's sum) the game's bits (min %08X max %08X sum %08X, "
+        "luma: %s: off %d, capped %d (max %u, expected %.0f, the game's %u), Sensitivity 16 the game's %d", game_name, off_same, capped_right, capped.stats[1],
+        expected_max, expected.stats[1], wide_same);
+  std::printf("Modded Auto Exposure (%s): our %08X off (t1 unbound, bound, or on without last frame's sum) the game's bits (min %08X max %08X sum %08X, "
               "the bloom's 512 x 512 source) %s; on, Sensitivity 1: max %08X = last frame's average x 2 (expected %.0f; the game's %08X: CONTROL "
               "lower), min and sum and source the game's %s; Sensitivity 16 the game's %s\n",
-              expected.stats[0], expected.stats[1], expected.stats[2], off_same ? "yes" : "NO", capped.stats[1], expected_max, expected.stats[1],
+              game_name, hash, expected.stats[0], expected.stats[1], expected.stats[2], off_same ? "yes" : "NO", capped.stats[1], expected_max, expected.stats[1],
               capped_right ? "yes" : "NO", wide_same ? "yes" : "NO");
 }
 
@@ -3422,9 +3450,347 @@ static void TestMarkers(const std::string& root, const std::string& dump) {
   }
 }
 
+static void TestBitmaskSkips(const std::string& root, const std::string& dump) {
+  constexpr UINT WIDTH = 64;
+  constexpr UINT HEIGHT = 48;
+  const auto blur_x = GameBytes(dump, 0xE3DA9A8D);
+  const auto blur_y = GameBytes(dump, 0x4C1918DA);
+  const auto ours = Bytes(root + "/build/twwarhammer.include/embed/ao_bitmask_blur.cso");
+  if (blur_x.empty() || blur_y.empty() || ours.empty()) {
+    CHECK(false, "bitmask skips: E3DA9A8D / 4C1918DA / ao_bitmask_blur's bytes");
+    return;
+  }
+  ComPtr<ID3D11ComputeShader> game_x;
+  ComPtr<ID3D11ComputeShader> game_y;
+  ComPtr<ID3D11ComputeShader> bitmask;
+  device->CreateComputeShader(blur_x.data(), blur_x.size(), nullptr, game_x.GetAddressOf());
+  device->CreateComputeShader(blur_y.data(), blur_y.size(), nullptr, game_y.GetAddressOf());
+  device->CreateComputeShader(ours.data(), ours.size(), nullptr, bitmask.GetAddressOf());
+  // Ours declares no texture at t1 (the slot blur_x reads B through).
+  ComPtr<ID3D11ShaderReflection> reflection;
+  D3DReflect(ours.data(), ours.size(), IID_PPV_ARGS(reflection.GetAddressOf()));
+  bool ours_reads_t1 = reflection == nullptr;
+  D3D11_SHADER_DESC shader_desc = {};
+  if (reflection != nullptr) reflection->GetDesc(&shader_desc);
+  for (UINT index = 0; index < shader_desc.BoundResources; ++index) {
+    D3D11_SHADER_INPUT_BIND_DESC bind = {};
+    reflection->GetResourceBindingDesc(index, &bind);
+    ours_reads_t1 = ours_reads_t1 || (bind.Type == D3D_SIT_TEXTURE && bind.BindPoint <= 1 && bind.BindPoint + bind.BindCount > 1);
+  }
+  std::vector<float> depth(static_cast<size_t>(WIDTH) * HEIGHT);
+  for (size_t at = 0; at < depth.size(); ++at) depth[at] = 0.2f + (0.6f * static_cast<float>((at * 37) % 101) / 101.f);
+  const D3D11_TEXTURE2D_DESC depth_desc = {.Width = WIDTH, .Height = HEIGHT, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
+                                           .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+  const D3D11_SUBRESOURCE_DATA depth_data = {.pSysMem = depth.data(), .SysMemPitch = WIDTH * 4};
+  ComPtr<ID3D11Texture2D> depth_texture;
+  ComPtr<ID3D11ShaderResourceView> depth_view;
+  device->CreateTexture2D(&depth_desc, &depth_data, depth_texture.GetAddressOf());
+  device->CreateShaderResourceView(depth_texture.Get(), nullptr, depth_view.GetAddressOf());
+  // The blurs' camera (blur_y reads c26.w, ours the inverse projection at c17-c20: identity) and the add-on's settings at b13.
+  std::array<Float4, 27> camera = {};
+  for (UINT row = 0; row < 4; ++row) camera[17 + row][row] = 1.f;
+  camera[26][3] = 1000.f;
+  ShaderInjectData injected = {};
+  injected.ssao_mode = 1.f;
+  injected.ssao_strength = 1.f;
+  injected.ssao_radius = 1.f;
+  injected.ssao_thickness = 0.15f;
+  injected.ssao_quality = 1.f;
+  injected.ssao_directions = 2.f;
+  std::vector<uint8_t> injected_bytes((sizeof(injected) + 15) & ~size_t{15});
+  std::memcpy(injected_bytes.data(), &injected, sizeof(injected));
+  const auto camera_buffer = Constants(camera.data(), sizeof(camera));
+  const auto settings_buffer = Constants(injected_bytes.data(), static_cast<UINT>(injected_bytes.size()));
+  // An R8 AO target holding a pattern of its own (`seed`).
+  const auto ao_target = [&](uint32_t seed) {
+    std::vector<uint8_t> texels(static_cast<size_t>(WIDTH) * HEIGHT);
+    for (size_t at = 0; at < texels.size(); ++at) texels[at] = static_cast<uint8_t>(((at * 131) + (seed * 71)) % 251);
+    const D3D11_TEXTURE2D_DESC desc = {.Width = WIDTH, .Height = HEIGHT, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R8_UNORM,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
+                                       .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS};
+    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = texels.data(), .SysMemPitch = WIDTH};
+    ComPtr<ID3D11Texture2D> texture;
+    device->CreateTexture2D(&desc, &data, texture.GetAddressOf());
+    return texture;
+  };
+  // `shader` over `groups` with the depth at t0, `input` at t1 and `output` at u0: the output's texels after it.
+  const auto run = [&](ID3D11ComputeShader* shader, std::array<UINT, 2> groups, uint32_t input_seed, uint32_t output_seed) {
+    const auto input = ao_target(input_seed);
+    const auto output = ao_target(output_seed);
+    ComPtr<ID3D11ShaderResourceView> input_view;
+    ComPtr<ID3D11UnorderedAccessView> output_view;
+    device->CreateShaderResourceView(input.Get(), nullptr, input_view.GetAddressOf());
+    device->CreateUnorderedAccessView(output.Get(), nullptr, output_view.GetAddressOf());
+    const std::array<ID3D11ShaderResourceView*, 2> views = {depth_view.Get(), input_view.Get()};
+    context->CSSetShader(shader, nullptr, 0);
+    context->CSSetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
+    context->CSSetConstantBuffers(13, 1, settings_buffer.GetAddressOf());
+    context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+    context->CSSetUnorderedAccessViews(0, 1, output_view.GetAddressOf(), nullptr);
+    context->Dispatch(groups[0], groups[1], 1);
+    context->ClearState();
+    D3D11_TEXTURE2D_DESC desc = {};
+    output->GetDesc(&desc);
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.BindFlags = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Texture2D> staging;
+    device->CreateTexture2D(&desc, nullptr, staging.GetAddressOf());
+    context->CopyResource(staging.Get(), output.Get());
+    std::vector<uint8_t> texels(static_cast<size_t>(WIDTH) * HEIGHT);
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+      for (UINT row = 0; row < HEIGHT; ++row) {
+        std::memcpy(texels.data() + (static_cast<size_t>(row) * WIDTH), static_cast<const uint8_t*>(mapped.pData) + (static_cast<size_t>(row) * mapped.RowPitch), WIDTH);
+      }
+      context->Unmap(staging.Get(), 0);
+    }
+    return texels;
+  };
+  const auto apart = [](const std::vector<uint8_t>& left, const std::vector<uint8_t>& right) {
+    size_t count = 0;
+    for (size_t at = 0; at < left.size(); ++at) count += (left[at] != right[at]) ? 1 : 0;
+    return count;
+  };
+  // Ours as DispatchInstead dispatches it (8 x 8 groups over the output), the game's blurs as traced (32 x 32 groups).
+  constexpr std::array<UINT, 2> OURS = {(WIDTH + 7) / 8, (HEIGHT + 7) / 8};
+  constexpr std::array<UINT, 2> GAME = {(WIDTH + 31) / 32, (HEIGHT + 31) / 32};
+  const size_t ours_apart = apart(run(bitmask.Get(), OURS, 1, 2), run(bitmask.Get(), OURS, 3, 4));
+  const size_t blur_y_apart = apart(run(game_y.Get(), GAME, 5, 6), run(game_y.Get(), GAME, 5, 7));
+  const size_t blur_x_control = apart(run(game_x.Get(), GAME, 8, 9), run(game_x.Get(), GAME, 10, 9));
+  const size_t blur_y_control = apart(run(game_y.Get(), {GAME[0], GAME[1] - 1}, 5, 6), run(game_y.Get(), {GAME[0], GAME[1] - 1}, 5, 7));
+  CHECK(!ours_reads_t1 && ours_apart == 0 && blur_y_apart == 0 && blur_x_control > 0 && blur_y_control > 0,
+        "bitmask skips: ours declares t1 %d, ours %zu apart, blur_y %zu apart, CONTROLS blur_x %zu, blur_y short %zu", ours_reads_t1, ours_apart,
+        blur_y_apart, blur_x_control, blur_y_control);
+  std::printf("GT-VBAO leaves the sweep and the collect out: ours (no t1) over A whatever A and B held %zu of %u apart; the game's blur_y over B "
+              "whatever B held %zu apart; CONTROLS: the game's blur_x with another B %zu apart, blur_y a group row short %zu apart\n",
+              ours_apart, WIDTH * HEIGHT, blur_y_apart, blur_x_control, blur_y_control);
+}
+
+// Part 27: Warhammer II's resolve replacement with `hits` in t7 (its every texel's distance), `mips` added to t8's mips 1-6,
+// `shadow` t8 mip 0's alpha, the rays at t47 or not.
+struct Wh2ResolveRun {
+  float hits = 65504.f;
+  float mips = 0.f;
+  float shadow = 1.f;
+  bool rays = false;
+  float ao = 1.f;           // t1 (the game's AO)
+  float occlusion = -1.f;   // t46 (the rays' specular occlusion; below 0: unbound)
+  float confidence = 1.f;   // t7's x (the march's hit; 0.4 or below: no confidence)
+};
+
+static std::vector<Float4> RunWh2Resolve(ID3D11ComputeShader* shader, const Wh2ResolveRun& run) {
+  constexpr UINT SIZE = 64;
+  constexpr UINT MIPS = 7;
+  std::vector<Float4> normal(SIZE * SIZE, Float4{0.5f, 0.3125f, 0.5f, 0.f});
+  std::vector<Float4> specular(SIZE * SIZE, Float4{0.5f, 0.5f, 0.5f, 1.f / 255.f});
+  std::vector<Float4> depth(SIZE * SIZE, Float4{0.1f, 0.f, 0.f, 0.f});
+  // The march's hits and the lit scene with their mip chains (as the game's downscale leaves them).
+  const auto mipped = [&](const std::function<Float4(UINT, UINT, UINT)>& texel) {
+    std::vector<std::vector<Float4>> levels;
+    std::vector<D3D11_SUBRESOURCE_DATA> initial;
+    for (UINT mip = 0; mip < MIPS; ++mip) {
+      const UINT width = std::max(SIZE >> mip, 1u);
+      auto& level = levels.emplace_back(static_cast<size_t>(width) * width);
+      for (UINT y = 0; y < width; ++y) {
+        for (UINT x = 0; x < width; ++x) level[(static_cast<size_t>(y) * width) + x] = texel(mip, x, y);
+      }
+    }
+    for (UINT mip = 0; mip < MIPS; ++mip) {
+      initial.push_back({.pSysMem = levels[mip].data(), .SysMemPitch = std::max(SIZE >> mip, 1u) * 16});
+    }
+    const D3D11_TEXTURE2D_DESC desc = {.Width = SIZE, .Height = SIZE, .MipLevels = MIPS, .ArraySize = 1, .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
+    ComPtr<ID3D11Texture2D> texture;
+    ComPtr<ID3D11ShaderResourceView> view;
+    device->CreateTexture2D(&desc, initial.data(), texture.GetAddressOf());
+    device->CreateShaderResourceView(texture.Get(), nullptr, view.GetAddressOf());
+    return view;
+  };
+  const auto hits = mipped([&](UINT mip, UINT, UINT) { return Float4{run.confidence, run.hits + static_cast<float>(mip), 0.f, 0.f}; });
+  const auto radiance = mipped([&](UINT mip, UINT x, UINT y) {
+    const float add = (mip == 0) ? 0.f : run.mips;
+    return Float4{static_cast<float>(x) + 0.5f + add, static_cast<float>(y) + 0.5f + add, 1.f + add, (mip == 0) ? run.shadow : 1.f};
+  });
+  const std::vector<Float4> cube(6, Float4{0.25f, 0.25f, 0.25f, 1.f});
+  const auto cube_texture = Texture(1, 1, cube.data(), D3D11_BIND_SHADER_RESOURCE, 6, D3D11_RESOURCE_MISC_TEXTURECUBE);
+  ComPtr<ID3D11ShaderResourceView> cube_view;
+  const D3D11_SHADER_RESOURCE_VIEW_DESC cube_desc = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY,
+                                                     .TextureCubeArray = {.MostDetailedMip = 0, .MipLevels = 1, .First2DArrayFace = 0, .NumCubes = 1}};
+  device->CreateShaderResourceView(cube_texture.Get(), &cube_desc, cube_view.GetAddressOf());
+  const auto ssao = View(SIZE, SIZE, std::vector<Float4>(SIZE * SIZE, Float4{run.ao, run.ao, run.ao, run.ao}));
+  const auto harmonics = View(9, 6, std::vector<Float4>(9 * 6, Float4{}));
+  const auto cloud = View(4, 4, std::vector<Float4>(16, Float4{}));
+  const auto normal_view = View(SIZE, SIZE, normal);
+  const auto specular_view = View(SIZE, SIZE, specular);
+  const auto depth_view = View(SIZE, SIZE, depth);
+  const std::array<ID3D11ShaderResourceView*, 9> views = {cube_view.Get(),     ssao.Get(),       harmonics.Get(), cloud.Get(), normal_view.Get(),
+                                                          specular_view.Get(), depth_view.Get(), hits.Get(),      radiance.Get()};
+  const auto output = Texture(SIZE, SIZE, nullptr, D3D11_BIND_UNORDERED_ACCESS);
+  ComPtr<ID3D11UnorderedAccessView> uav;
+  device->CreateUnorderedAccessView(output.Get(), nullptr, uav.GetAddressOf());
+  std::array<float, 16 * 4> environment = {};
+  environment[0] = 1.f;           // weight 0
+  environment[15 * 4 + 1] = 1.f;  // g_environment_count
+  // The camera as part 2's (identity view at the origin, x and y over z, near / far around the surface) in WH2's layout.
+  std::array<float, 48 * 4> camera = {};
+  for (const size_t row : {0u, 1u, 2u}) camera[(1 + row) * 4 + row] = 1.f;
+  camera[4 * 4 + 3] = 1.f;
+  camera[5 * 4 + 0] = 1.f;
+  camera[6 * 4 + 1] = 1.f;
+  camera[8 * 4 + 2] = 1.f;
+  camera[21 * 4 + 0] = 1.f;
+  camera[22 * 4 + 1] = 1.f;
+  camera[23 * 4 + 3] = 1.f;
+  camera[24 * 4 + 2] = 1.f;
+  camera[25 * 4 + 0] = 9.5f;
+  camera[25 * 4 + 1] = 10.5f;
+  for (const size_t row : {27u, 29u, 31u}) {
+    camera[row * 4 + 0] = static_cast<float>(SIZE);
+    camera[row * 4 + 1] = static_cast<float>(SIZE);
+    camera[row * 4 + 2] = 1.f / static_cast<float>(SIZE);
+    camera[row * 4 + 3] = 1.f / static_cast<float>(SIZE);
+  }
+  // lighting_VS_PS: environment specular on, SSR on, no harmonics, cloud shadows off (scale 1, lerp 0); the sun overhead
+  // (colour 1) and the sky's colour 0.5 (the resolve divides the sky's luminance by the sky's and the sun's: not 0 / 0).
+  std::array<uint32_t, 19 * 4> lighting = {};
+  lighting[0] = 1u;
+  lighting[0 * 4 + 2] = std::bit_cast<uint32_t>(1.f);
+  for (const size_t channel : {0u, 1u, 2u}) {
+    lighting[1 * 4 + channel] = std::bit_cast<uint32_t>(1.f);
+    lighting[4 * 4 + channel] = std::bit_cast<uint32_t>(0.5f);
+  }
+  lighting[11 * 4 + 0] = 1u;
+  lighting[12 * 4 + 1] = std::bit_cast<uint32_t>(1.f);
+  const std::array<ID3D11Buffer*, 3> buffers = {Constants(environment.data(), sizeof(environment)).Detach(), Constants(camera.data(), sizeof(camera)).Detach(),
+                                                Constants(lighting.data(), sizeof(lighting)).Detach()};
+  const D3D11_SAMPLER_DESC point = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                    .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
+  D3D11_SAMPLER_DESC linear = point;
+  linear.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+  ComPtr<ID3D11SamplerState> point_sampler;
+  ComPtr<ID3D11SamplerState> linear_sampler;
+  device->CreateSamplerState(&point, point_sampler.GetAddressOf());
+  device->CreateSamplerState(&linear, linear_sampler.GetAddressOf());
+  const std::array<ID3D11SamplerState*, 5> samplers = {linear_sampler.Get(), point_sampler.Get(), point_sampler.Get(), point_sampler.Get(), linear_sampler.Get()};
+  context->CSSetShader(shader, nullptr, 0);
+  context->CSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
+  context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+  const auto rays = View(SIZE, SIZE, std::vector<Float4>(static_cast<size_t>(SIZE) * SIZE, Float4{0.3f, 0.2f, 0.1f, 0.8f}));
+  if (run.rays) context->CSSetShaderResources(47, 1, rays.GetAddressOf());
+  const auto occlusion = View(SIZE, SIZE, std::vector<Float4>(static_cast<size_t>(SIZE) * SIZE, Float4{run.occlusion, 0.f, 0.f, 0.f}));
+  if (run.occlusion >= 0.f) context->CSSetShaderResources(46, 1, occlusion.GetAddressOf());
+  context->CSSetSamplers(0, static_cast<UINT>(samplers.size()), samplers.data());
+  context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
+  context->Dispatch((SIZE + 31) / 32, (SIZE + 31) / 32, 1);
+  context->ClearState();
+  for (auto* buffer : buffers) buffer->Release();
+  return Read(output.Get());
+}
+
+// Part 28: the reflection as the scene ends up with it, the scene's environment share with the game's AO (what the sun draws
+// added, the resolve's rt_environment) plus the resolve's output. rt_environment from the output itself: at t46 0 and AO 1 the
+// output is minus the unoccluded environment E; at t46 1 and no confidence E minus rt_environment.
+static void TestWh2OneOcclusion(const std::string& games) {
+  const std::string path = games + "/twwarhammer2/shaders/ssr00_0x7E1CDD0A.cs_5_0.hlsl";
+  const std::string source = ReadText(path);
+  const auto ours = ComputeShader(source, path);
+  // The resolve as it was: the cubes' light under t46 with the game's AO too, the march's light with the AO.
+  const auto before = ComputeShader(Without(Without(source, "rt_occlusion ? rt_unoccluded : r0.yzw", "r0.yzw"), "if (rt_reflected || rt_occlusion) r0.x = 1;", ""),
+                                    path + " (before)");
+  if (ours == nullptr || before == nullptr) {
+    CHECK(false, "WH2 one occlusion: ssr00_0x7E1CDD0A compiles (and its control)");
+    return;
+  }
+  const auto unoccluded = RunWh2Resolve(ours.Get(), {.occlusion = 0.f, .confidence = 0.f});
+  // The scene's share at `ao`, then the final reflection of `shader` at `ao`, t46 `occlusion` (unbound below 0), `confidence`.
+  const auto final_reflection = [&](ID3D11ComputeShader* shader, float ao, float occlusion, float confidence) {
+    const auto open = RunWh2Resolve(shader, {.ao = ao, .occlusion = 1.f, .confidence = 0.f});
+    const auto output = RunWh2Resolve(shader, {.ao = ao, .occlusion = occlusion, .confidence = confidence});
+    std::vector<Float4> result(output.size());
+    for (size_t at = 0; at < output.size(); ++at) {
+      for (size_t channel = 0; channel < 3; ++channel) {
+        const float scene = -unoccluded[at][channel] - open[at][channel];
+        result[at][channel] = scene + output[at][channel];
+      }
+    }
+    return result;
+  };
+  int independent = 0;
+  int occluded_once = 0;
+  int control = 0;
+  int scene_ao = 0;
+  int twice = 0;
+  const auto dark_march = final_reflection(ours.Get(), 0.5f, 0.5f, 1.f);
+  const auto light_march = final_reflection(ours.Get(), 1.f, 0.5f, 1.f);
+  const auto dark_environment = final_reflection(ours.Get(), 0.5f, 0.5f, 0.f);
+  const auto dark_game = final_reflection(ours.Get(), 0.5f, -1.f, 1.f);
+  const auto light_game = final_reflection(ours.Get(), 1.f, -1.f, 1.f);
+  const auto dark_before = final_reflection(before.Get(), 0.5f, 0.5f, 0.f);
+  const auto light_before = final_reflection(before.Get(), 1.f, 0.5f, 0.f);
+  const auto open_scene = RunWh2Resolve(ours.Get(), {.ao = 0.5f, .occlusion = 1.f, .confidence = 0.f});
+  for (size_t at = 0; at < dark_march.size(); ++at) {
+    bool same = true;
+    bool once = true;
+    bool differs = false;
+    for (size_t channel = 0; channel < 3; ++channel) {
+      same = same && Near(dark_march[at][channel], light_march[at][channel], 1e-5f);
+      once = once && Near(dark_environment[at][channel], -0.5f * unoccluded[at][channel], 1e-5f);
+      differs = differs || !Near(dark_game[at][channel], light_game[at][channel], 1e-3f);
+      scene_ao += (open_scene[at][channel] != 0.f) ? 1 : 0;
+      twice += Near(dark_before[at][channel], light_before[at][channel], 1e-3f) ? 0 : 1;
+    }
+    independent += same ? 1 : 0;
+    occluded_once += once ? 1 : 0;
+    control += differs ? 1 : 0;
+  }
+  const int pixels = static_cast<int>(dark_march.size());
+  CHECK(independent == pixels && occluded_once == pixels && control > pixels / 2 && scene_ao > pixels && twice > pixels,
+        "WH2 one occlusion: AO-free under t46 %d of %d, environment x t46 alone %d, CONTROLS the game's AO without t46 %d, the resolve as it was %d values, "
+        "AO in the scene's share %d",
+        independent, pixels, occluded_once, control, twice, scene_ao);
+  std::printf("WH2 one occlusion a reflection: under Ray-Traced Specular Occlusion (t46 0.5) the final reflection the same at AO 0.5 and 1 in %d of %d, "
+              "the environment E x t46 alone (no AO) in %d; CONTROLS: without t46 the game's AO changes %d; the resolve as it was (AO and t46) changes "
+              "%d values with the AO; the scene's share took the AO in %d values\n",
+              independent, pixels, occluded_once, control, twice, scene_ao);
+}
+
+static void TestWh2ReflectionSkip(const std::string& games) {
+  const std::string path = games + "/twwarhammer2/shaders/ssr00_0x7E1CDD0A.cs_5_0.hlsl";
+  const auto ours = ComputeShader(ReadText(path), path);
+  if (ours == nullptr) {
+    CHECK(false, "WH2 reflection skip: ssr00_0x7E1CDD0A compiles");
+    return;
+  }
+  constexpr float MARCH = 2.f;
+  const auto rays_first = RunWh2Resolve(ours.Get(), {.rays = true});
+  const auto rays_second = RunWh2Resolve(ours.Get(), {.hits = MARCH, .mips = 100.f, .rays = true});
+  const auto rays_shadowed = RunWh2Resolve(ours.Get(), {.shadow = 0.25f, .rays = true});
+  const auto game_first = RunWh2Resolve(ours.Get(), {});
+  const auto game_second = RunWh2Resolve(ours.Get(), {.hits = MARCH, .mips = 100.f});
+  const auto differ = [](const Float4& a, const Float4& b) { return std::memcmp(a.data(), b.data(), 3 * sizeof(float)) != 0; };
+  int rays_differ = 0;
+  int rays_used = 0;
+  int shadow_read = 0;
+  int game_differ = 0;
+  for (size_t at = 0; at < rays_first.size(); ++at) {
+    rays_differ += differ(rays_first[at], rays_second[at]) ? 1 : 0;
+    rays_used += differ(rays_first[at], game_first[at]) ? 1 : 0;
+    shadow_read += differ(rays_first[at], rays_shadowed[at]) ? 1 : 0;
+    game_differ += differ(game_first[at], game_second[at]) ? 1 : 0;
+  }
+  const int pixels = static_cast<int>(rays_first.size());
+  CHECK(pixels == 64 * 64 && rays_differ == 0 && rays_used > pixels / 2 && shadow_read > pixels / 2 && game_differ > pixels / 2,
+        "WH2 reflection skip: under the rays %d of %d differ with other hits / mips 1-6 (rays in %d), CONTROLS mip 0 alpha %d, without the rays %d",
+        rays_differ, pixels, rays_used, shadow_read, game_differ);
+  std::printf("WH2 reflection skip: under the rays %d of %d texels differ with other hits (t7) and light mips 1-6 (t8), the rays in %d; CONTROLS: "
+              "t8 mip 0's alpha (the preconvolve copy's) changes %d, without the rays the hits and mips change %d\n",
+              rays_differ, pixels, rays_used, shadow_read, game_differ);
+}
+
 int main(int argc, char** argv) {
-  if (argc < 3) {
-    std::printf("tests <repo root> <the game's shader dump folder>\n");
+  if (argc < 4) {
+    std::printf("tests <repo root> <the game's shader dump folder> <Warhammer II's shader dump folder>\n");
     return 2;
   }
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
@@ -3460,7 +3826,11 @@ int main(int argc, char** argv) {
   TestTreeShadows(argv[2]);
   TestCloth(argv[1], argv[2]);
   TestRaycast(argv[2]);
-  TestLuma(argv[1], argv[2]);
+  TestLuma<ShaderInjectData>(argv[1], "twwarhammer.include", argv[2], 0x96BCFCBB, 0x166E783A, "Warhammer");
+  TestLuma<wh2::ShaderInjectData>(argv[1], "twwarhammer2.include", argv[3], 0xA50883CE, 0x242CA153, "Warhammer II");
+  TestBitmaskSkips(argv[1], argv[2]);
+  TestWh2ReflectionSkip(games);
+  TestWh2OneOcclusion(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

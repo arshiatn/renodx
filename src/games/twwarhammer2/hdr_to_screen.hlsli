@@ -5,7 +5,7 @@
 // V31, and the SDR / HDR ends. Include after the shader's cbuffers and textures (colour_matrix, lut_texture_1-3,
 // lut_sampler_1-3_s, lut_weights, g_brightness, g_gamma_output, g_inv_gamma_output).
 #include "./shared.h"
-#include "./psycho_test30.hlsli"
+#include "../twattila/psycho_test30.hlsli"
 #include "./psycho_test31.hlsli"
 #include "../twattila/psycho35.hlsli"
 

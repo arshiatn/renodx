@@ -47,7 +47,7 @@ Texture2D<float4> g_hdr_rgb_bloom_texture : register(t1);
 // 3Dmigoto declarations
 #define cmp -
 #include "../shared.h"
-#include "../psycho_test30.hlsli"
+#include "../../twattila/psycho_test30.hlsli"
 #include "../../twattila/psycho35.hlsli"
 
 // Stock: one bilinear tap of the bloom; bloom_filter.hlsli: a cubic B-spline over 4 x 4 texels.

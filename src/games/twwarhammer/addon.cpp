@@ -28,6 +28,7 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/settings.hpp"
+#include "../talesofarise_dlss/pixel_trace.hpp"
 #include "../twattila/draw_dispatch.hpp"
 #include "../twattila/light_bounce.hpp"
 #include "../twattila/device_loss.hpp"
@@ -40,7 +41,9 @@
 #include "../twattila/feature_settings.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/screen_space_shadows.hpp"
+#include "../twattila/smoke_map.hpp"
 #include "../twattila/water_effects.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "./grass_height.hpp"
@@ -48,6 +51,8 @@
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
+#include "../twwarhammer2/modded_auto_exposure.hpp"
+#include "../twwarhammer2/particle_smoothing.hpp"
 #include "../twwarhammer2/shadow_cascades.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
@@ -64,6 +69,11 @@ float current_settings_mode = 0.f;
 
 bool IsHDRMode() {
   return shader_injection.hdr >= 1.f;
+}
+
+// The swap chain's output not SDR (Attila's): at Output SDR the video AutoHDR does nothing (shared.h).
+bool IsHdrOutput() {
+  return shader_injection.swap_chain_encoding != 2.f;
 }
 
 bool IsPsychoV30Mode() {
@@ -112,6 +122,7 @@ void ApplyHDRPreset(
       {"gamma_correction", 1.f},
       {"sky_smooth", 0.f},
       {"sky_smooth_strength", 1.f},
+      {"sky_deband", 0.f},
       {"exposure", exposure},
       {"highlights", highlights},
       {"shadows", shadows},
@@ -328,9 +339,14 @@ constexpr std::array<twattila::rt_scene::PixelMask, 10> CUT_OUT_MASKS = {{
 // are Warhammer II's 1FC776EF's, 122F218C's emitter constants (t5, 80 bytes) F32116B4's: Warhammer II's quad shader at
 // 122F218C's slots (rt_particle_quads.gs_5_0.hlsl; its code is Warhammer II's but for the three slots, fxc -dumpbin).
 constexpr std::array<twattila::rt_scene::SmokeVertexShader, 1> SMOKE_VERTEX_SHADERS = {{
-    {.hash = 0x9FD3EC63, .quad_shader = __rt_particle_quads, .indirect = true},
+    // It binds cb0-cb2 only (camera, cb_vfx_shared, cb_vfx; fxc -dumpbin), as Warhammer II's 1FC776EF: no emitter constants at
+    // cb3 for smoke_map's weather test.
+    {.hash = 0x9FD3EC63, .quad_shader = __rt_particle_quads, .indirect = true, .behaviours_at_cb3 = false},
 }};
 constexpr std::array<twattila::rt_scene::SmokePixelShader, 1> SMOKE_PIXEL_SHADERS = {{{.hash = 0x122F218C}}};
+// Smoke Shadows without rays (twattila/smoke_map.hpp; Experimental, off; Warhammer II's): last frame's lit particles from the
+// same stream, splatted into a map seen from the sun, dimming the sun draws' t49 (Bend's, the rays' or none).
+twattila::smoke_map::Sliders smoke_map_sliders;
 // Ray tracing's (twattila/rt_scene.hpp); here for the hooks BuildRuntimeData sets (the water row at F2CCEF86).
 twattila::rt_scene::Sliders rt_sliders;
 // Skip the Game's Reflection Passes (on by default): under the rays' reflections the resolve's replacement (ssr00) reads
@@ -351,6 +367,11 @@ bool SkipGameSsao() {
 // GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone; under the paths the
 // game's SSAO stays in t_ssao, as when the page turned GT-VBAO off with them).
 bool bitmask_ao = false;
+// GT-VBAO in the blur's place leaves the sweep's and the collect's outputs unread (the census: sweep -> A, collect A -> B,
+// blur_x B -> A, blur_y A -> B, the sun reads B; ours writes all of A from the depth alone, blur_y all of B: test part 26):
+// both left out while ours drew in the last frame (its first frame, or a dispatch that failed, keeps them for the game's blur).
+bool bitmask_blur_drawn = false;
+bool bitmask_blur_last_frame = false;
 // Light Through Banners: the sails (as the rays, Attila's sails; part 10: SV_Position first) and the banners with their row.
 constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS = {{
     {.hash = 0xE4B46D0E},
@@ -419,30 +440,6 @@ void OnDestroyAtlasLitDevice(reshade::api::device* device) {
   state.device = nullptr;
 }
 
-// Modded Auto Exposure (Experimental, off): the game meters its exposure on the CPU from compute_luma_stats 96BCFCBB's
-// minimum / maximum / sum (ATN's traces: clear_luma_stats 166E783A, then 96BCFCBB, the buffer copied out after it; one buffer
-// for every frame of a device). With the row on, the sum it still holds at the clear (last frame's) is copied into `sum` first,
-// and our 96BCFCBB (shaders/autoexposure00) reads it at t1 to cap the metered maximum.
-struct LumaLastSum {
-  std::shared_mutex mutex;
-  ID3D11Device* device = nullptr;  // its buffer's (compared only)
-  Microsoft::WRL::ComPtr<ID3D11Buffer> sum;
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> view;
-  bool logged = false;
-};
-LumaLastSum luma_last_sum;
-
-// Its buffer's device (nullptr: the addon's end, DetachAddon).
-void OnDestroyLumaSumDevice(reshade::api::device* device) {
-  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
-  auto& state = luma_last_sum;
-  const std::unique_lock lock(state.mutex);
-  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
-  state.view.Reset();
-  state.sum.Reset();
-  state.device = nullptr;
-}
-
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
@@ -468,13 +465,17 @@ void BuildRuntimeData() {
   custom_shaders[0xE3DA9A8D].on_draw = [](auto* cmd_list) {
     if (SkipGameSsao()) return false;
     if (!bitmask_ao) return true;
-    return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
-                                               false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
+    bitmask_blur_drawn = tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
+                                                            false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
+    return !bitmask_blur_drawn;
   };
   // Rays' AO Alone: the sweep 0C83DB37 and blur 4C1918DA left out, the collect 38F6D9B6's output cleared to open in its place.
-  custom_shaders[0x0C83DB37].on_draw = [](auto*) { return !SkipGameSsao(); };
+  // GT-VBAO: the sweep and the collect left out (bitmask_blur_last_frame).
+  static constexpr auto bitmask_skips_game_ao = [] { return bitmask_ao && bitmask_blur_last_frame; };
+  custom_shaders[0x0C83DB37].on_draw = [](auto*) { return !SkipGameSsao() && !bitmask_skips_game_ao(); };
   custom_shaders[0x4C1918DA].on_draw = [](auto*) { return !SkipGameSsao(); };
   custom_shaders[0x38F6D9B6].on_draw = [](auto* cmd_list) {
+    if (bitmask_skips_game_ao()) return false;
     if (!SkipGameSsao()) return true;
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
     Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
@@ -517,63 +518,25 @@ void BuildRuntimeData() {
   for (const uint32_t hash : {0x7AA39EE9u, 0x4D96DAB5u, 0xF9870DE2u, 0xE7A82FC2u, 0x53E74A97u}) {
     custom_shaders[hash].on_draw = [](auto*) { return !reflection_passes_skipped; };
   }
-  // Modded Auto Exposure: last frame's sum copied out of the luma statistics before the game's clear, then bound at our
-  // 96BCFCBB's t1 (nothing there in ATN's traces) and unbound after it.
+  // Modded Auto Exposure (twwarhammer2/modded_auto_exposure.hpp): last frame's sum copied out of the luma statistics
+  // before the game's clear 166E783A, then bound at our 96BCFCBB's t1 and unbound after it.
   custom_shaders[0x166E783A].on_draw = [](auto* cmd_list) {
-    if (!IsModdedAutoExposureEnabled()) return true;
-    auto* native = twattila::rt_scene::internal::NativeContext(cmd_list);
-    if (native == nullptr) return true;
-    Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> stats_view;
-    native->CSGetUnorderedAccessViews(0, 1, stats_view.GetAddressOf());
-    if (!stats_view) return true;
-    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
-    stats_view->GetResource(resource.GetAddressOf());
-    Microsoft::WRL::ComPtr<ID3D11Buffer> stats;
-    if (FAILED(resource.As(&stats))) return true;
-    D3D11_BUFFER_DESC stats_desc = {};
-    stats->GetDesc(&stats_desc);
-    if (stats_desc.ByteWidth < 12) return true;
-    Microsoft::WRL::ComPtr<ID3D11Device> device;
-    native->GetDevice(device.GetAddressOf());
-    auto& state = luma_last_sum;
-    const std::unique_lock lock(state.mutex);
-    if (state.device != device.Get()) {
-      state.view.Reset();
-      state.sum.Reset();
-      state.device = nullptr;
-      const D3D11_BUFFER_DESC desc = {.ByteWidth = 16, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE,
-                                      .MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS};
-      const D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = DXGI_FORMAT_R32_TYPELESS, .ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX,
-                                                         .BufferEx = {.FirstElement = 0, .NumElements = 4, .Flags = D3D11_BUFFEREX_SRV_FLAG_RAW}};
-      if (FAILED(device->CreateBuffer(&desc, nullptr, state.sum.GetAddressOf()))
-          || FAILED(device->CreateShaderResourceView(state.sum.Get(), &view_desc, state.view.GetAddressOf()))) {
-        state.view.Reset();
-        state.sum.Reset();
-        return true;
-      }
-      state.device = device.Get();
-    }
-    const D3D11_BOX sum_bytes = {.left = 8, .top = 0, .front = 0, .right = 12, .bottom = 1, .back = 1};
-    native->CopySubresourceRegion(state.sum.Get(), 0, 0, 0, 0, stats.Get(), 0, &sum_bytes);
-    if (!std::exchange(state.logged, true)) {
-      renodx::utils::log::i("[Total War] First run: Modded Auto Exposure: last frame's luma sum kept for the metered maximum.");
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::OnClear(cmd_list);
     }
     return true;
-  };
-  static constexpr auto bind_luma_sum = [](reshade::api::command_list* cmd_list, bool bind) {
-    if (!IsModdedAutoExposureEnabled()) return;
-    auto* native = twattila::rt_scene::internal::NativeContext(cmd_list);
-    if (native == nullptr) return;
-    auto& state = luma_last_sum;
-    const std::shared_lock lock(state.mutex);
-    ID3D11ShaderResourceView* view = bind ? state.view.Get() : nullptr;
-    native->CSSetShaderResources(1, 1, &view);  // t1: t_luma_last_sum
   };
   custom_shaders[0x96BCFCBB].on_draw = [](auto* cmd_list) {
-    bind_luma_sum(cmd_list, true);
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::BindLastSum(cmd_list, true);
+    }
     return true;
   };
-  custom_shaders[0x96BCFCBB].on_drawn = [](auto* cmd_list) { bind_luma_sum(cmd_list, false); };
+  custom_shaders[0x96BCFCBB].on_drawn = [](auto* cmd_list) {
+    if (IsModdedAutoExposureEnabled()) {
+      tw::modded_auto_exposure::BindLastSum(cmd_list, false);
+    }
+  };
   // The point lights' shaders: ours only while the rays are bound (RaysShader above).
   PointLightRays::Take(&custom_shaders);
   LinearPointLightRays::Take(&custom_shaders);
@@ -606,6 +569,12 @@ void BuildRuntimeData() {
         .label = "Settings Mode",
         .labels = {"HDR & Effects", "Graphics 1 of 2", "Graphics 2 of 2"},
         .is_global = true,
+    },
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "Use these in-game settings: Gamma 22 and Brightness 10.",
+        .section = "General",
+        .tint = 0xFFD23C,
     },
     twattila::graphics_page::Note(twattila::graphics_page::FULL_DOWNLOAD_NOTE, "General", twattila::graphics_page::WARNING_TINT,
                                   [] { return !twattila::dlaa_bridge::HelperInstalled(); }),
@@ -643,13 +612,7 @@ void BuildRuntimeData() {
     //     .section = "Peak",
     //     .tooltip = "3 rectangles within a large one.\n\n- Left: Not Visible.\n- Middle: Barely Visible.\n- Right: Easily Visible.\n\n(Ofc, you can always set lower to personal pref.)",
     // },
-    
-    new renodx::utils::settings::Setting{
-        .value_type = renodx::utils::settings::SettingValueType::TEXT,
-        .label = "Use these in-game settings: Gamma 22 and Brightness 10.",
-        .section = "General",
-        .tint = 0xFFD23C,
-    },
+
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
@@ -793,7 +756,8 @@ void BuildRuntimeData() {
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.",
+        .tooltip = "HDR (PsychoV35) and Video AutoHDR 0.20, the rest at its default.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() { ApplyRecommendedPreset(); },
     },
     new renodx::utils::settings::Setting{
@@ -801,7 +765,8 @@ void BuildRuntimeData() {
         .label = "Reset",
         .section = "Presets",
         .group = "preset-line-1",
-        .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.",
+        .tooltip = "Resets all image tuning and VFX sliders to their default HDR values.\n"
+                   "Peak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() {
           ApplyResetPreset();
         },
@@ -1147,6 +1112,17 @@ void BuildRuntimeData() {
         .is_enabled = IsHDRMode,
     },
     new renodx::utils::settings::Setting{
+        .key = "VfxParticleSmoothing",
+        .binding = &twwarhammer2::particle_smoothing::row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Smooth Half-Size Particles (Experimental)",
+        .section = "Extra",
+        .tooltip = "Smoke, fire and dust the game draws at half size flicker less.\n"
+                   "Small cost.",
+        .labels = {"Off", "On"},
+    },
+    new renodx::utils::settings::Setting{
         .key = "video_autohdr",
         .binding = &shader_injection.video_autohdr,
         .default_value = 0.f,
@@ -1158,7 +1134,7 @@ void BuildRuntimeData() {
         .min = 0.f,
         .max = 1.f,
         .format = "%.2f",
-        .is_enabled = IsHDRMode,
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput(); },
     },
     new renodx::utils::settings::Setting{
         .key = "video_dithering",
@@ -1170,7 +1146,7 @@ void BuildRuntimeData() {
         .tooltip = "Fine noise that hides banding in the brightened videos.\n"
                    "Only with Video AutoHDR above 0.",
         .labels = {"Off", "On"},
-        .is_enabled = [] { return IsHDRMode() && shader_injection.video_autohdr > 0.f; },
+        .is_enabled = [] { return IsHDRMode() && IsHdrOutput() && shader_injection.video_autohdr > 0.f; },
     },
     new renodx::utils::settings::Setting{
         .key = "sky_smooth_strength",
@@ -1236,7 +1212,7 @@ void BuildRuntimeData() {
 
 
     // Auto Exposure //////////////////////////////////////////////////////////////////////////////////////
-    // Attila's rows (Experimental, off): the metered maximum capped at last frame's average (shaders/autoexposure00, LumaLastSum;
+    // Attila's rows (Experimental, off): the metered maximum capped at last frame's average (shaders/autoexposure00, twwarhammer2/modded_auto_exposure.hpp;
     // test/tw_warhammer_shaders part 25).
     new renodx::utils::settings::Setting{
         .key = "auto_exposure_highlight_protection",
@@ -1570,6 +1546,9 @@ bool graphics_found = false;
 // The graphics watch's values (4 hardware breakpoints).
 constexpr std::array<std::string_view, 4> WATCHED_VALUES = {"tree_lod_scaler", "scrub_lod_distance_default", "campaign_culling_ratio", "terrain_visible_tiles"};
 
+// The pixel trace's position, % of the screen's width and height.
+std::array<float, 2> traced_pixel = {50.f, 50.f};
+
 bool configured = false;
 bool attached = false;
 bool addon_registered = false;
@@ -1790,7 +1769,7 @@ constexpr std::array<twattila::light_bounce::SunDraw, 31> LIGHT_BOUNCE_DRAWS = {
     {.shader_hash = 0xCAD9815A, .gbuffer_slot = 5, .camera_slot = 2, .lighting_slot = 4, .ao_slot = 2, .ambient_final_sites = AMBIENT_AFTER_HARMONICS_Z, .sky_harmonics_slot = 3},  // skinlm_interior
 }};
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   // Before any setting is read this frame (as Attila's): DLSS never starts on another vendor's GPU, a saved DLSS or a
   // preset's is XeSS on Intel's, else FSR.
@@ -1798,10 +1777,13 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
+  twwarhammer2::particle_smoothing::OnPresent();
+  talesofarise::pixel_trace::OnPresent(queue);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   reflection_passes_skipped = false;
   twattila::rt_scene::Settings rt_settings = twattila::rt_scene::SettingsOf(rt_sliders, aa_sliders, shader_injection.light_bounce_strength);
   bitmask_ao = shader_injection.ssao_mode >= 1.f && !rt_settings.ambient_occlusion && !rt_settings.path_ambient;
+  bitmask_blur_last_frame = std::exchange(bitmask_blur_drawn, false);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp).
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
@@ -1819,9 +1801,16 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
   twattila::screen_space_shadows::Update(swapchain, sss_settings);
+  // Smoke Shadows without rays: off under the rays' sun shadows (their own Smoke Shadows); their particles streamed without the rays.
+  auto smoke_map_settings = smoke_map_sliders;
+  if (rt_settings.sun_shadows) {
+    smoke_map_settings.strength = 0.f;
+  }
+  twattila::smoke_map::Update(smoke_map_settings);
+  rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
-  aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
+  aa_settings.sdr_output = !IsHdrOutput();
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   // After the at-start tests' thread (one writer at a time).
@@ -1917,6 +1906,7 @@ void ConfigureAddon() {
       });
 
   // Appended Settings (Graphics (Experimental))
+  talesofarise::pixel_trace::file_prefix = "warhammer";
   unit_detail[0].tweaks = {{.name = "VERY_SMALL_IMPOSTER_DISTANCE"}};
   unit_detail[1].tweaks = {{.name = "SMALL_IMPOSTER_DISTANCE"}};
   unit_detail[2].tweaks = {{.name = "MEDIUM_IMPOSTER_DISTANCE"}};
@@ -2155,6 +2145,33 @@ void ConfigureAddon() {
           .labels = {"Off", "On"},
       },
       graphics_status,
+      // The pixel trace (talesofarise_dlss/pixel_trace.hpp), one frame on request; its marker only while it is open.
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+          .section = "Graphics (Experimental)",
+          .on_draw = [] {
+            if (!ImGui::TreeNode("Pixel trace")) return false;
+            ImGui::SliderFloat2("Traced pixel (% of width, height)", traced_pixel.data(), 0.f, 100.f, "%.1f%%");
+            // A red cross marks the pixel, the red line the traced line through it.
+            const ImVec2 screen = ImGui::GetIO().DisplaySize;
+            const ImVec2 cross = {screen.x * traced_pixel[0] / 100.f, screen.y * traced_pixel[1] / 100.f};
+            const float half_line = screen.x * talesofarise::pixel_trace::LINE_WIDTH * 0.5f;
+            ImDrawList* foreground = ImGui::GetForegroundDrawList(nullptr);
+            foreground->AddLine({cross.x - half_line, cross.y}, {cross.x + half_line, cross.y}, IM_COL32(255, 0, 0, 255), 1.f);
+            foreground->AddLine({cross.x, cross.y - 12.f}, {cross.x, cross.y + 12.f}, IM_COL32(255, 0, 0, 255), 2.f);
+            if (ImGui::Button("Trace these pixels for one frame")) {
+              talesofarise::pixel_trace::Request(traced_pixel[0] / 100.f, traced_pixel[1] / 100.f);
+            }
+            if (ImGui::IsItemHovered()) {
+              ImGui::SetTooltip("Saves every pass that changes the pixels under the red line during the next frame\n"
+                                "to warhammer_pixel_trace.txt next to the game's exe (one short hitch). Put the cross\n"
+                                "on something too dark.");
+            }
+            ImGui::TextWrapped("%s", talesofarise::pixel_trace::Status().c_str());
+            ImGui::TreePop();
+            return false;
+          },
+      },
       // Two empty lines between this section and the ambient occlusion (ATN).
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
@@ -2198,6 +2215,7 @@ void ConfigureAddon() {
   twattila::feature_settings::AppendSss(&settings, &sss_sliders);
   twattila::feature_settings::AppendAa(&settings, &aa_sliders, true, true);
   twattila::rt_scene::AppendSettings(&settings, &rt_sliders, &aa_sliders, true, true);
+  settings.push_back(twattila::pass_timing::Button(twattila::feature_settings::AA_SECTION));
   // Ray-Traced Water Reflections' rows shown: the water pass at F2CCEF86.
   twattila::rt_scene::internal::water_pass = true;
   settings.push_back(new renodx::utils::settings::Setting{
@@ -2267,12 +2285,8 @@ void ConfigureAddon() {
   settings.insert(settings.end(), {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30, PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                   "PsychoV31 and PsychoV35. Visibility "
-                   "Bitmask ambient occlusion and Light Bounce: the method of Therrien, Levesque and Gilet (2023) on "
-                   "GTAO (Jimenez et al. 2016), as GT-VBAO and GT-VBGI by Mirko Salm (2024). Screen-space shadows: "
-                   "Bend Studio (Apache 2.0, Sony Interactive Entertainment). SMAA (MIT, Jimenez et al.), CMAA2 "
-                   "(Apache 2.0, Intel).",
+          .label = twattila::credits::Methods({.gtvbao = true, .gtvbgi = true, .auto_thickness = true, .bend = true, .cmaa2 = true,
+                                               .detours = true}),
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -2352,6 +2366,8 @@ void ConfigureAddon() {
   });
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
+                                             .smoke_strength = &smoke_map_sliders.strength,
+                                             .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
                                              .rays_replace_maps = &rays_replace_maps_row,
                                              .rays_replace_maps_tested = false,
@@ -2365,6 +2381,7 @@ void ConfigureAddon() {
                                              .lights_in_bounce = &rt_sliders.lights_in_bounce, .light_ratio = &rt_sliders.light_ratio,
                                              .texts = &PAGE_TEXTS,
                                              .foliage_light_tested = false,
+                                             .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
                                              .far_cards_tested = false,
                                              .water_caustics_tested = false,
@@ -2384,6 +2401,8 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
+  twattila::pass_timing::Install("wh1");
 
   ConfigureAddon();
   tw::engine_tweaks::watch::StartIfRequested(graphics_options, WATCHED_VALUES, 300);
@@ -2400,6 +2419,10 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
+  // Smooth Half-Size Particles at the alpha composition's cross-bilateral upsample E88CBE3C (34 of ATN's 36 traces).
+  reshade::register_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
+  twwarhammer2::particle_smoothing::Install(0xE88CBE3C);
 
   // Rows saved at an old default, cleared once: Ray-Traced Water Reflections was hidden at 1 (it did nothing) before the
   // water pass, Sprite Soldier Shadows at RT/PT's 1 (SetRaysPresetDefaults) before the sprite soldiers were in the rays; now
@@ -2466,7 +2489,7 @@ bool AttachAddon() {
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 1.f);
   // Rays Replace Shadow Maps: after the screen-space shadows' and before the Light Bounce's.
   reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
-  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyLumaSumDevice);
+  reshade::register_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
   for (const uint32_t shader_hash : ATLAS_SUN_SHADERS) {
     renodx::utils::command_action::Register(
         OnSunReplaceMaps, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
@@ -2520,6 +2543,8 @@ bool AttachAddon() {
   twattila::ao_filter::Install(LIGHT_BOUNCE_DRAWS);
   twattila::light_bounce::Install(LIGHT_BOUNCE_DRAWS);
   twattila::screen_space_shadows::SetExtraOcclusion(&twattila::rt_scene::Occlusion);
+  // Smoke Shadows without rays: the smoke's dimming into the sun draws' t49 (their x(1 - t49) patch), after the rays' occlusion.
+  twattila::screen_space_shadows::SetSmokeOcclusion(&twattila::smoke_map::Occlusion);
 
   reshade::register_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
   twattila::device_loss::InstallLast();
@@ -2531,6 +2556,7 @@ bool AttachAddon() {
 void DetachAddon() {
   if (!attached) return;
 
+  twattila::pass_timing::Uninstall();
   twattila::device_loss::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(tw::line_sweep_ao::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
@@ -2543,6 +2569,9 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::screen_space_shadows::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::anti_aliasing::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::rt_scene::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::smoke_map::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer2::particle_smoothing::OnDestroyDevice);
+  twwarhammer2::particle_smoothing::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::water_effects::OnDestroyDevice);
   renodx::utils::command_action::Unregister(twattila::water_effects::OnWaterDraw);
   renodx::utils::pipeline::UnregisterOnCreateCallback(twattila::water_effects::OnCreateWater);
@@ -2553,8 +2582,8 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(OnSunReplaceMaps);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
   OnDestroyAtlasLitDevice(nullptr);
-  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyLumaSumDevice);
-  OnDestroyLumaSumDevice(nullptr);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
+  tw::modded_auto_exposure::OnDestroyDevice(nullptr);
   reshade::unregister_event<reshade::addon_event::destroy_device>(PointLightRays::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(LinearPointLightRays::OnDestroyDevice);
   twattila::engine_tests::StopAtStart(&at_start_stop);
@@ -2564,7 +2593,10 @@ void DetachAddon() {
   twattila::light_bounce::Uninstall();
   twattila::rt_scene::Uninstall();
   twattila::screen_space_shadows::SetExtraOcclusion(nullptr);
+  twattila::screen_space_shadows::SetSmokeOcclusion(nullptr);
+  twattila::smoke_map::Uninstall();
   twattila::ao_filter::Uninstall();
+  talesofarise::pixel_trace::Stop();
   tw::engine_tweaks::Uninstall(graphics_options);
 
   twattila::draw_dispatch::Use(DLL_PROCESS_DETACH);
