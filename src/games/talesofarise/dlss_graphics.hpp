@@ -296,7 +296,7 @@ struct GBufferCopy {
 
 // Bend's and GT-VBGI's settings from the page's rows (each present) for the sun shadow mask and the lighting pass, and
 // this frame's GT-VBGI (it runs at the frame's first lighting draw, the others reuse it); the last frame the rays' bounce
-// light or path tracing reached the lighting pass (Bandai's GI stays off while it did recently).
+// light or path tracing reached the lighting pass (Bandai's GI add stays out while it did recently).
 struct UeEffects {
   std::shared_mutex mutex;
   twattila::screen_space_shadows::Settings shadows;
@@ -2693,9 +2693,10 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (rt_sliders.light_bounce != 0.f) {
     bounce.strength = 0.f;
   }
-  // One GI method (ATN 2026-11-16): lighting00-05 take Bandai's GI-off path while GT-VBGI runs, or while the rays' bounce
+  // One GI method (ATN 2026-11-16): lighting00-05 leave out Bandai's GI add while GT-VBGI runs, or while the rays' bounce
   // light or path tracing reached the lighting pass within the last half second (their light in place of Bandai's, never
-  // added to it; a frame the rays miss stays on that path). Bandai's SSGI chain (17CE7BCD, 13BDD599, 86CBF00A, 746654CA)
+  // added to it; a frame the rays miss stays so); Bandai's GI still colours their fill light (shared.h TOA_GAME_GI_SHARE:
+  // the menu's GI-off path also halved that fill). Bandai's SSGI chain (17CE7BCD, 13BDD599, 86CBF00A, 746654CA)
   // still runs: ten stock toon lighting permutations (characters, foliage; 0A9D482A and its siblings, behind their own
   // switch cb0[59].w) read its 10 x 6 texture at t25-t30, and a skipped chain left them a stale pooled texture.
   constexpr uint64_t RECENT_FRAMES = 30;

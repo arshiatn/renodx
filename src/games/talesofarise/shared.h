@@ -86,8 +86,7 @@ struct ShaderInjectData {
 
   // Bend's screen-space shadows and our GI in place of Bandai's (talesofarise_dlss/ue_screen_space_shadows.hpp,
   // ue_light_bounce.hpp, rt_shadows.hpp): 1 while each runs. Bend: contactshadow00 leaves out its march toward the sun;
-  // GT-VBGI, the rays' bounce light or path tracing: lighting00-05 take the menu's Global Illumination off path
-  // (TOA_GAME_GI).
+  // GT-VBGI, the rays' bounce light or path tracing: lighting00-05 leave out Bandai's GI add (TOA_GAME_GI_SHARE).
   float screen_space_shadows;
   float gtvbgi;
 };
@@ -97,9 +96,12 @@ struct ShaderInjectData {
 
 // SDR output (displays without HDR): the display's white is the game's and the UI's.
 #define TOA_SDR_OUTPUT (SI.swap_chain_encoding == 2.f)
-// Bandai's screen-space GI (the menu's Global Illumination, cb0[76].w: its colour from t11-t13 in lighting00-05), off
-// while ours (GT-VBGI, the rays' bounce light or path tracing) takes its place.
-#define TOA_GAME_GI (cb0[76].w != 0.f && SI.gtvbgi == 0.f)
+// Bandai's screen-space GI (the menu's Global Illumination, cb0[76].w; t11-t13 / t8-t10 in lighting00-05: last frame's
+// light averaged down to 10 x 6) is added x its AO's share `game_share` (max(0.3, AO)). While ours runs (SI.gtvbgi:
+// GT-VBGI, the rays' bounce light or path tracing) that add is ours. Bandai's GI is still read: its colour tints the
+// fill light on faces turned from the sun (cb0[61]), a term ours does not replace; the menu's GI-off path would
+// halve that fill (its 0.001 stand-in gives 0.001 / 0.002 per channel, ^ cb0[61].w).
+#define TOA_GAME_GI_SHARE(game_share) ((SI.gtvbgi == 0.f) ? (game_share) : 0.f)
 // Peak relative to Paper White.
 #define TOA_PEAK (TOA_SDR_OUTPUT ? 1.f : (max(SI.peak_white_nits, SI.diffuse_white_nits) / max(SI.diffuse_white_nits, 1.f)))
 // Paper White relative to UI (the UI target's white).
