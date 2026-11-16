@@ -247,6 +247,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
 - Ryse ray costs (RT shadows +1.0 ms, PT +2.7 ms at 4K DLSS Quality): Nsight work ... | a later GPU round
 - RYSE RT / PT IDEAS (ATN 11-16 "don't add them yet"; ATN decides when, then plan ... | ATN (go-ahead), then a Ryse round
+- RUNS 11-16 MORNING (rn2_, brief tools/tw/round_notes/runs2_1116/brief.md, after ... | rn2_, then coordinator
 - Tales Bend / GT-VBGI look shots: rerun tales\g1g2\run.ps1 -Bend with a mouse cli ... | coordinator
 - REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cos ... | coordinator, Ryse fix agent
 - RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
@@ -1789,6 +1790,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         shadows); (4) RT skin subsurface (RTX Character Rendering's Burley + single scattering) replacing the game's skin
         SSS; (5) smoke / particles lit and shadowed by the rays (Attila's smoke shadows, particle light). With (1) + (2) the
         shadow-map skip All loses nothing near you. Licence: NVIDIA RTX SDK terms. Owner: ATN (go-ahead), then a Ryse round
+      - [ ] RUNS 11-16 MORNING (rn2_, brief tools/tw/round_notes/runs2_1116/brief.md, after the 08:04 install): Tales Bend /
+        GT-VBGI look shots with a title click, then the R.U.S.E. T-run; reports runs2_1116/tales.md, ruse.md. Morning
+        report: tools/tw/round_notes/morning_report_1116.md. Owner: rn2_, then coordinator
       - [ ] Tales Bend / GT-VBGI look shots: rerun tales\g1g2\run.ps1 -Bend with a mouse click on the title (ATN allows it)
         after the fix round's install. Owner: coordinator
       - [ ] REDO 11-16 (rd_, tools/tw/round_notes/redo_1116.md): Ryse cost runs r0/run_r2cost_050544 + run_r2pt_053054
