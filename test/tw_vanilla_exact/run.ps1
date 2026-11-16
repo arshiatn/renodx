@@ -34,8 +34,13 @@ $table = [ordered]@{
   'RomeII'      = @{ Folder = 'twrome2'; Dump = 'dump_shader_twrome2_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2' }
   'Thrones'     = @{ Folder = 'twthronesofbritannia'; Dump = 'dump_shader_twthronesofbritannia_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'
                      FrameGamma = '2' }
-  'WH1'         = @{ Folder = 'twwarhammer'; Dump = 'dump_shader_twwarhammer_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2' }
-  'WH2'         = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'
+  # Warhammer I / II: also the sky and the vignette (WH2: the legacy battle fog 04 - 06); their other shaders in
+  # test/tw_warhammer_shaders and test/tw_dof_blurs. Not here: the cinematics (the video decoded at 2.2 and encoded with the
+  # frame's gamma by design; WH2's give 0 on these inputs), FXAA (alpha written 1), sharpening and the point light (0 on
+  # these inputs: no control).
+  'WH1'         = @{ Folder = 'twwarhammer'; Dump = 'dump_shader_twwarhammer_pack\cso'; Shaders = '^(t|bloom|lensflare|sky|vignette)\d+_'
+                     FrameGamma = '2' }
+  'WH2'         = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^(t|bloom|lensflare|sky|vignette)\d+_|^battlefog0[4-6]_'
                      FrameGamma = '2'; Modes = '0,1,2,3,4' }
   'WH3'         = @{ Folder = 'twwarhammer3'; Dump = 'dump_shader_twwarhammer3_pack\cso'; Shaders = '^(t|bloom|lensflare|lensblood)\d+_' }
   'Troy'        = @{ Folder = 'twtroy'; Dump = 'dump_shader_twtroy_pack\cso'; Shaders = '^(t|bloom|lensflare)\d+_'; FrameGamma = '2'
