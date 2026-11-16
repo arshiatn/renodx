@@ -693,9 +693,12 @@ int main(int argc, char** argv) {
   std::array<float, 16> atlas_rows = {};
   host->GetVertexShaderConstantF(0, atlas_rows.data(), 4);
   CHECK(atlas_rows == VIEW_PROJECTION && !state.jitter_written);
+  // The jitter the frame's scene draws took (the rays' camera, O1's kept depth): none until a scene draw takes it.
+  CHECK(bridge::DrawnJitter() == (std::array<float, 2>{}));
   state.viewport_is_frame_sized = true;
   CHECK(bridge::IsSceneDraw());
   bridge::OnDraw(&command_list);
+  CHECK(bridge::DrawnJitter() == state.jitter);
   std::array<float, 16> written = {};
   host->GetVertexShaderConstantF(0, written.data(), 4);
   const float offset_x = 2.f * state.jitter[0] / WIDTH;
@@ -1896,6 +1899,7 @@ int main(int argc, char** argv) {
             drawn[column] += 2.f * state.jitter[0] / static_cast<float>(WIDTH) * VIEW_PROJECTION[12 + column];
             drawn[4 + column] -= 2.f * state.jitter[1] / static_cast<float>(HEIGHT) * VIEW_PROJECTION[12 + column];
           }
+          state.jittered_frame = state.frame;
         }
         host->SetRenderTarget(0, scratch_surface.Get());
         host->SetDepthStencilSurface(depth_surface.Get());

@@ -156,7 +156,8 @@ struct State {
   bool steps_timed = false;
   ComPtr<ID3D11ShaderResourceView> depth_view;  // the bridge's shared depth
   ComPtr<ID3D11ComputeShader> copy;
-  // O1: last frame's main depth with its camera (the inverse view-projection) and jitter (NDC), the rays' start depth
+  // O1: last frame's main depth with its camera (the inverse view-projection) and the jitter its draws took (NDC; none
+  // before the anti-aliasing's first result: bridge::DrawnJitter), the rays' start depth
   // (R32 typeless: float to trace, uint to scatter by minimum), the object shaders' s15 when untraced.
   uint32_t kept_frame = UINT32_MAX;
   uint32_t bound_frame = UINT32_MAX;
@@ -585,7 +586,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   std::array<double, 16> view_projection = {};
   std::array<double, 3> eye = {};
   if (!bridge::CurrentCamera(&view_projection, &eye)) return false;
-  const std::array<float, 2> drawn_jitter = (bridge.ready ? bridge.jitter : std::array<float, 2>{});
+  const std::array<float, 2> drawn_jitter = bridge::DrawnJitter();
   const std::array<double, 2> shift = {(2.0 * drawn_jitter[0] + 1.0) / bridge.width, -(2.0 * drawn_jitter[1] + 1.0) / bridge.height};
   twattila::rt_scene::Camera camera = {};
   for (size_t row = 0; row < 4; ++row) {
@@ -649,8 +650,8 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     }
     reprojection[16] = state.kept_jitter[0];
     reprojection[17] = state.kept_jitter[1];
-    reprojection[18] = 2.f * bridge.jitter[0] / static_cast<float>(bridge.width);
-    reprojection[19] = -2.f * bridge.jitter[1] / static_cast<float>(bridge.height);
+    reprojection[18] = 2.f * drawn_jitter[0] / static_cast<float>(bridge.width);
+    reprojection[19] = -2.f * drawn_jitter[1] / static_cast<float>(bridge.height);
     reprojection[20] = static_cast<float>(bridge.width);
     reprojection[21] = static_cast<float>(bridge.height);
     reprojection[22] = 1.f / static_cast<float>(bridge.width);
@@ -1058,7 +1059,8 @@ inline void OnBloom(reshade::api::command_list* cmd_list) {
   reinterpret_cast<ID3D11Device*>(proxy_reshade->get_native())->GetImmediateContext(context.GetAddressOf());
   context->CopyResource(state.kept_depth.Get(), bridge.depth.proxy.Get());
   std::memcpy(state.kept_inverse.data(), bridge.camera.data() + 16, sizeof(state.kept_inverse));
-  state.kept_jitter = {2.f * bridge.jitter[0] / static_cast<float>(bridge.width), -2.f * bridge.jitter[1] / static_cast<float>(bridge.height)};
+  const std::array<float, 2> drawn_jitter = bridge::DrawnJitter();
+  state.kept_jitter = {2.f * drawn_jitter[0] / static_cast<float>(bridge.width), -2.f * drawn_jitter[1] / static_cast<float>(bridge.height)};
   std::array<double, 16> view_projection = {};
   if (bridge::CurrentCamera(&view_projection, &state.kept_eye)) {
     state.kept_frame = bridge.frame;
