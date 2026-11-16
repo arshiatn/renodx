@@ -664,7 +664,8 @@ renodx::utils::settings::Settings settings = {
         .label = "PsychoV30 (earlier Recommended)",
         .section = "Presets",
         .group = "preset-buttons-1",
-        .tooltip = "HDR (UC2 Extended / PsychoV30) with less bloom, the brazier and candle boosts.",
+        .tooltip = "HDR (UC2 Extended / PsychoV30) with less bloom, the brazier and candle boosts.\n"
+                   "Peak, Paper White, UI, Settings Mode and Output are kept.",
         .on_change = []() {
           ApplyResetPreset();
           renodx::utils::settings::UpdateSettings({
