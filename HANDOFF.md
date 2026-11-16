@@ -58,6 +58,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -149,7 +150,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R.U.S.E. after ruh_: merge ruse-whole-package into atn-mods (stop rule: DLAA pas ... | coordinator
 - Adopt S1 / S2: R.U.S.E. (`.first_start_key = "rendering_mode"`, drop its own Set ... | ru6_ / d1_, then the R
 - vf_ (started 02:0x): fix the Vanilla-exact FAILs: Shogun 2 flare00 / 02 / 03 spr ... | vf_
-- ATN DECIDES (Vanilla not exactly the game, by design today): Attila / Thrones le ... | ATN
+- PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, eve ... | coordinator
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
 - ht_: HDR audit R13 Vanilla-exact WARP tests with failing controls (Shogun 2 firs ... | ht_
 - Ryse next run: Time Each Pass + PresentMon with Skip the Game's Sun Shadow Maps ... | next Ryse data run / ATN
@@ -165,7 +166,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - [P] ATN DECIDES R1 Div1 mode 1 "UC2 Extended / PsychoV30" = UpgradeToneMap then ... | ATN
 - [P] ATN DECIDES R1 shoulders not identity below their start: Neutwo from 0 (grad ... | ATN
 - [P] ATN DECIDES R2 Shogun 2 pointlight01_0x57139F8D:258 saturate after HDR Firel ... | ATN
-- [P] ATN DECIDES R3 Attila + Thrones HDR show the gamma-2.0 picture as linear (no ... | ATN
+- ANSWERED 02:1x (2.2 in HDR, lg_ implementing). Owner: lg_. [P] ATN DECIDES R3 At ... | ATN
 - [P] ATN DECIDES R5 hue settings after PsychoV in legacy V30 / V31 modes (all TW ... | ATN
 - [P] ATN DECIDES R6 bloom: smoothing also in Rendering Mode SDR (Vanilla != game: ... | ATN
 - [P] ATN DECIDES Extended Saturation = RGB blend to grey, not OKLab chroma (WH2 : ... | ATN
@@ -1317,9 +1318,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         output through the R.U.S.E. proxy and S3 SET / SHOT. Owner: ru6_ / d1_, then the R.U.S.E. T-run
       - [ ] vf_ (started 02:0x): fix the Vanilla-exact FAILs: Shogun 2 flare00 / 02 / 03 sprite rotation (0.70-0.74), Rome
         Remastered bloom01 dither cast (0.0052); confirm Div1 FXAA EXACT after 35a37ac4; whole suite amd64 + x86. Owner: vf_
-      - [ ] ATN DECIDES (Vanilla not exactly the game, by design today): Attila / Thrones lens flares decode 2.2 / encode 2.0
+      - [x] ATN ANSWERED 02:1x: fix the Attila / Thrones lens flares (frame's own gamma, Vanilla exact); give Attila / Thrones
+        the 2.2 Gamma Correction in HDR like the other TW games; keep the bloom smoothing (R6 accepted as intended); keep
+        Gamma Correction on in the others. lg_ started 02:1x. (was) ATN DECIDES (Vanilla not exactly the game, by design today): Attila / Thrones lens flares decode 2.2 / encode 2.0
         in every mode (0.035); Gamma Correction on by default re-encodes 2.0 -> 2.2 in Rome II / WH1 / WH2 / Troy / Pharaoh
         Vanilla (0.027-0.035); the R6 bloom smoothing in SDR (up to 22 in WH2 t00). Make Vanilla = the game? Owner: ATN
+      - [ ] PC RESTART (ATN 02:1x, after 39+ h): ping ATN once every agent has finished, everything is merged, pushed and
+        HANDOFF is current (no running build / GPU job / game); installs after the restart. Owner: coordinator
       - [ ] In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), Shogun 2 highlights (V35 top
         now reaches Peak), WH2 with FXAA on; a trace that the DOF chain draws (Attila / Thrones / WH1) and its targets are
         16-bit; README lines for the fixes at release. Owner: next TW data runs / release round
@@ -1449,7 +1454,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: ATN
       - [ ] [P] ATN DECIDES R2 Shogun 2 pointlight01_0x57139F8D:258 saturate after HDR Firelight (low-quality lights).
         Owner: ATN
-      - [ ] [P] ATN DECIDES R3 Attila + Thrones HDR show the gamma-2.0 picture as linear (no 2.2 emulation; Shogun 2
+      - [ ] ANSWERED 02:1x (2.2 in HDR, lg_ implementing). Owner: lg_. [P] ATN DECIDES R3 Attila + Thrones HDR show the gamma-2.0 picture as linear (no 2.2 emulation; Shogun 2
         emulates it). Owner: ATN
       - [ ] [P] ATN DECIDES R5 hue settings after PsychoV in legacy V30 / V31 modes (all TW games, Rome R, Shogun 2, Ryse
         + Fire Hue, Tales, Div2 ApplyFireColor): V35 is fine everywhere. Owner: ATN
