@@ -1542,7 +1542,7 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Ray-Traced Ground Shadows (Experimental)",
         .section = SHADOWS_SECTION,
-        .tooltip = "Ray-traced sun shadows on the ground in place of the game's shadow maps (costs CPU and GPU time).\n"
+        .tooltip = "Ray-traced sun shadows on the ground, with the game's shadow maps (costs CPU and GPU time).\n"
                    "Needs Anti-Aliasing at DLAA, FSR or XeSS. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
@@ -1563,7 +1563,7 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Ray-Traced Object Shadows (Experimental)",
         .section = SHADOWS_SECTION,
-        .tooltip = "Ray-traced sun shadows on buildings, units and trees in place of the game's shadow maps (costs GPU time).\n"
+        .tooltip = "Ray-traced sun shadows on buildings, units and trees, with the game's shadow maps (costs GPU time).\n"
                    "Moving units' shadows are a frame late. Needs Ray-Traced Ground Shadows. Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,
@@ -1579,6 +1579,18 @@ void ConfigureAddon() {
       }
     }
   }
+  // Off, the rays keep the game's shadow maps (the darker of the two) until a run proves they hold the maps' casters.
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "RuseRaysReplaceShadowMaps",
+      .binding = &ruse::ray_tracing::state.replace_maps,
+      .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+      .default_value = 0.f,
+      .label = "Rays Replace Shadow Maps (Experimental)",
+      .section = SHADOWS_SECTION,
+      .tooltip = "On: the ray-traced shadows alone, in place of the game's shadow maps.\n"
+                 "Off: both, the darker of the two (no shadow of the game's is lost).",
+      .is_enabled = [] { return ruse::ray_tracing::state.ground; },
+  });
   // Attila's row (live): the helper leaves out the moving replayed draws (the replay's compact ones, rt_core's units)
   // past the range (metres: ray_tracing.hpp HELPER_METRES).
   settings.push_back(new renodx::utils::settings::Setting{

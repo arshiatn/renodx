@@ -41,13 +41,14 @@
 // and multiply into the sun's colour alone. After that copy, before the main pass draws (with the game's AA off at its
 // clear of the pre-pass's depth, which it draws into too; else at its first draw): the pre-pass's depth
 // (INTZ) into the bridge's shared depth, the last frame's draws into the scene in this frame's camera (CaptureScene), the
-// trace, and the traced visibility into the mask's red in place of the game's shadow-map term (the pre-pass writes only
-// that term there; a frame without a trace keeps the game's).
+// trace, and the traced visibility into the mask's red with the game's shadow-map term, the darker of the two (Rays
+// Replace Shadow Maps: in place of it; the pre-pass writes only that term there; a frame without a trace keeps the game's).
 // Objects (O1) shade with the game's shadow maps alone: their pixels have no depth before the main pass, so last frame's
 // main depth (kept at the bloom) goes into this frame's view over the ground's and the rays start from both; the object
 // shaders (patched_shaders.h) read the traced visibility at s15 by screen position in place of their shadow-map factor
-// (its alpha 1), an alpha-0 texel (the game's factor) when untraced. The ground's ambient occlusion (AO) comes from the
-// same trace: the terrain shaders read it at s14 into their ambient.
+// where its alpha is 1 (where the rays found the sun blocked; everywhere with Rays Replace Shadow Maps), an alpha-0 texel
+// (the game's factor) when untraced. The ground's ambient occlusion (AO) comes from the same trace: the terrain shaders
+// read it at s14 into their ambient.
 // Screen-space ground shadows (G2): Bend Studio's march (Attila's sss_setup / sss_bend) over the same depth, into the
 // mask by minimum with the game's shadow maps (off under the rays: one method a shadow). The ground's ambient occlusion
 // without rays: GT-VBAO
@@ -90,6 +91,9 @@ constexpr float BOUNCE_RANGE = 10.f;
 // After a frame without rays (the helper didn't trace, or no trace point) the next try this many frames on: the replay
 // records the frame before a try and the try's own, not every frame.
 constexpr uint32_t RAYS_RETRY_FRAMES = 60;
+// Without Rays Replace Shadow Maps the object shaders take the rays only where they found the sun blocked (below this
+// visibility: their umbra), the game's shadow-map factor elsewhere.
+constexpr float OBJECT_BLOCKED = 1.f / 16.f;
 
 using Microsoft::WRL::ComPtr;
 
@@ -104,6 +108,9 @@ struct State {
   uint32_t traced_bounce = 0;  // the Ground Light Bounce row's rays (restart; with the ground's): 1 rays, 2 path tracing
   bool traced_reflections = false;  // the Water Reflections row's rays (restart; with the ground's)
   float units_range = 0.f;  // the Units Ray Tracing Range row (live), metres; 0: every unit
+  // The Rays Replace Shadow Maps row (live): the rays in place of the game's shadow-map term; off, the darker of the two
+  // on the ground and the rays' umbra over the game's factor on objects (until a run proves the rays hold the maps' casters).
+  float replace_maps = 0.f;
   bool guides = false;  // either: the guide targets and the helper's guides
   bool failed = false;
   bool tracing = false;  // the last trace's answer, and its changes logged this start (a few: never a line a frame)
@@ -123,7 +130,11 @@ struct State {
   ComPtr<IDirect3DPixelShader9> depth_copy;
   ComPtr<IDirect3DPixelShader9> shadows;
   bridge::SharedTexture visibility;  // R32F: the traced sun visibility for the D3D9 pass
-  uint32_t visibility_frame = UINT32_MAX;  // the frame whose rays it holds (in place of the game's shadow maps then)
+  uint32_t visibility_frame = UINT32_MAX;  // the frame whose rays it holds (with or in place of the game's shadow maps then)
+  // The object shaders' s15 (RGBA16F: the visibility, alpha 1 where they take it) and its pass (rt_object_visibility).
+  bridge::SharedTexture object_visibility;
+  ComPtr<ID3D11ComputeShader> object_copy;
+  ComPtr<ID3D11Buffer> object_settings;
   ComPtr<ID3D11ShaderResourceView> depth_view;  // the bridge's shared depth
   ComPtr<ID3D11ComputeShader> copy;
   // O1: last frame's main depth with its camera (the inverse view-projection) and jitter (NDC), the rays' start depth
@@ -464,6 +475,10 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       made = bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_R32F, &state.occlusion, true)
              && (!state.bounce || SUCCEEDED(proxy->CreateShaderResourceView(state.occlusion.work.Get(), nullptr, state.occlusion_view.ReleaseAndGetAddressOf())));
     }
+    if (made && state.objects) {
+      made = bridge::MakeShared(proxy, host_ex.Get(), D3DFMT_A16B16G16R16F, &state.object_visibility, true)
+             && compute(__rt_object_visibility, &state.object_copy) && constants(16, &state.object_settings);
+    }
     if (made && (state.objects || state.reflections || state.guides)) {
       D3D11_TEXTURE2D_DESC desc = {
           .Width = bridge.width,
@@ -663,6 +678,13 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   if (visibility != nullptr) {
     run(state.copy.Get(), visibility, state.visibility.work_uav.Get());
     state.visibility_frame = bridge.frame;
+    if (state.objects) {
+      const std::array<float, 4> blocked = {(state.replace_maps != 0.f ? 2.f : OBJECT_BLOCKED), 0.f, 0.f, 0.f};
+      context->UpdateSubresource(state.object_settings.Get(), 0, nullptr, blocked.data(), 0, 0);
+      context->CSSetConstantBuffers(0, 1, state.object_settings.GetAddressOf());
+      run(state.object_copy.Get(), visibility, state.object_visibility.work_uav.Get());
+      context->CSSetConstantBuffers(0, 1, NO_CONSTANTS.data());
+    }
   } else {
     constexpr std::array<FLOAT, 4> LIT = {1.f, 1.f, 1.f, 1.f};
     context->ClearUnorderedAccessViewFloat(state.visibility.work_uav.Get(), LIT.data());
@@ -831,6 +853,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   context->CSSetUnorderedAccessViews(0, 1, NO_OUTPUTS.data(), nullptr);
   context->CSSetShader(nullptr, nullptr, 0);
   for (const auto& [shared, written] : {std::pair{&state.visibility, visibility != nullptr || state.bend},
+                                        std::pair{&state.object_visibility, visibility != nullptr && state.objects},
                                         std::pair{&state.occlusion, state.occlusion_frame == bridge.frame},
                                         std::pair{&state.ground_light, state.bounce_frame == bridge.frame},
                                         std::pair{&state.reflection, state.reflection_frame == bridge.frame}}) {
@@ -842,12 +865,13 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
 
   const std::array<IDirect3DSurface9*, 1> mask_target = {mask_surface.Get()};
   const std::array<IDirect3DBaseTexture9*, 1> shaded = {state.visibility.host.Get()};
-  if (visibility != nullptr) {
+  if (visibility != nullptr && state.replace_maps != 0.f) {
     // The rays in place of the game's shadow maps: the pre-pass (0x8588D239) writes only their term into the mask's red.
     // A frame without a trace keeps the game's.
     bridge::DrawQuad(host, mask_target, state.shadows.Get(), shaded, {}, {{D3DRS_COLORWRITEENABLE, D3DCOLORWRITEENABLE_RED}});
-  } else if (state.bend) {
-    // Bend with the game's shadow maps (the contact shadows they miss): the darker of the two.
+  } else if (visibility != nullptr || state.bend) {
+    // The rays or Bend with the game's shadow maps (the shadows they miss): the darker of the two. The rays keep the
+    // maps' term until a run proves they hold the maps' casters (the sprite-drawn imposters, off-screen casters).
     bridge::DrawQuad(host, mask_target, state.shadows.Get(), shaded, {},
                      {{D3DRS_ALPHABLENDENABLE, TRUE}, {D3DRS_SEPARATEALPHABLENDENABLE, FALSE}, {D3DRS_BLENDOP, D3DBLENDOP_MIN},
                       {D3DRS_SRCBLEND, D3DBLEND_ONE}, {D3DRS_DESTBLEND, D3DBLEND_ONE}, {D3DRS_COLORWRITEENABLE, D3DCOLORWRITEENABLE_RED}});
@@ -856,7 +880,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
 }
 
 // The patched shaders' textures, read by VPOS (point, clamped: one texel a pixel): s15 the sun visibility (the object
-// shaders' shadow: the rays' where its alpha is 1, the R32F texture's), s14 the ambient
+// shaders' shadow: the rays' where its alpha is 1, rt_object_visibility's), s14 the ambient
 // occlusion (the terrain's; with the bounce x it, yzw the light), s13 the reflection (the water's); white or
 // (1, 0, 0, 0) (the game's shading: alpha 0 keeps its shadow maps) unless `traced` this frame.
 inline void BindTraced(IDirect3DDevice9* host, bool traced) {
@@ -873,7 +897,7 @@ inline void BindTraced(IDirect3DDevice9* host, bool traced) {
   // shadow maps there without O1).
   if (state.objects || state.traced_bounce != 0) {
     const bool shadowed = state.objects && traced && state.visibility_frame == bridge::state.frame;
-    bind(15, shadowed ? state.visibility.host.Get() : state.unlit.Get());
+    bind(15, shadowed ? state.object_visibility.host.Get() : state.unlit.Get());
   }
   if (state.bounce) {
     bind(14, (traced && state.bounce_frame == bridge::state.frame) ? state.ground_light.host.Get() : state.unlit.Get());
@@ -1077,6 +1101,7 @@ inline void ReleaseHost() {
   state.bound_frame = UINT32_MAX;
   state.kept_frame = UINT32_MAX;
   state.visibility = {};
+  state.object_visibility = {};
   state.occlusion = {};
   state.ground_light = {};
   state.reflection = {};
@@ -1100,6 +1125,9 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   if (proxy) {
     twattila::rt_scene::OnDestroyDevice(device);
     state.visibility = {};
+    state.object_visibility = {};
+    state.object_copy.Reset();
+    state.object_settings.Reset();
     state.depth_view.Reset();
     state.copy.Reset();
     state.shadows.Reset();

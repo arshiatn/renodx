@@ -56,8 +56,11 @@
 //    trace point captures them (CaptureScene), the helper traces toward a low sun over +x, the visibility goes into the
 //    mask (the game's term 0.5 there before): where the CPU finds the plateau in a ground pixel's way to the sun the mask
 //    is shadowed (90% of those pixels), elsewhere lit (99%), in each of 24 traced frames (their first 16 captured as
-//    drawn, then kept as still meshes). In world units the helper's scene data left every triangle out (past 2e5 m):
-//    0 shadowed.
+//    drawn, then kept as still meshes); lit keeps the game's 0.5 (the darker of the two) in the first 16, the rays' 1
+//    with Rays Replace Shadow Maps in the last 8. The objects' s15 (rt_object_visibility): alpha 1 (the rays taken) in
+//    the plateau's shadow and 0 where the rays found the sun (the game's factor kept; the R32F visibility bound before
+//    read alpha 1 everywhere), 1 everywhere with Rays Replace Shadow Maps. In world units the helper's scene data left
+//    every triangle out (past 2e5 m): 0 shadowed.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d9.h>
@@ -1516,6 +1519,7 @@ int main(int argc, char** argv) {
       twattila::rt_scene::InstallReplayedScene(ruse::ray_tracing::HOST);
       rays = ruse::ray_tracing::State{};
       rays.ground = true;
+      rays.objects = true;
       rays.proxy_queue = &proxy_queue;
       rays.toward_sun = {static_cast<float>(toward_sun[0]), static_cast<float>(toward_sun[1]), static_cast<float>(toward_sun[2])};
       replay.enabled = true;
@@ -1531,12 +1535,18 @@ int main(int argc, char** argv) {
         size_t lit_right = 0;
         size_t lit_wrong = 0;
         double lit_red = 0;
+        bool replaced = false;
+        size_t object_alpha_wrong = 0;
+        size_t object_shadowed = 0;  // where the plateau blocks the sun: alpha 1 (the objects take the rays' shadow)
       };
       std::vector<Count> traced;
       const ULONGLONG started = GetTickCount64();
       for (int frame = 0; frame < 600 && traced.size() < 24 && GetTickCount64() - started < 30000; ++frame) {
+        // The last eight traced frames with Rays Replace Shadow Maps (the first ones keep the game's term: the darker).
+        rays.replace_maps = (traced.size() >= 16) ? 1.f : 0.f;
         // The game's present: rt_core's frame, last frame's draws to the replay, this frame's recording.
         bridge::OnPresent(host);
+        state.scene_depth = prepass_depth;  // as the scene draws set it (OnDraw): Evaluate makes the helper's set with the rays' textures
         ruse::ray_tracing::OnPresent();
         ruse::replay::Replay(std::span<const float>(state.camera).subspan(16, 16));
         replay.recording = ruse::ray_tracing::SceneWanted();
@@ -1565,7 +1575,7 @@ int main(int argc, char** argv) {
         host->SetDepthStencilSurface(nullptr);
         if (rays.visibility_frame == state.frame) {
           const std::vector<uint8_t> shaded = ReadHost(host, mask_surface.Get(), 4);
-          Count count;
+          Count count = {.replaced = rays.replace_maps != 0.f};
           size_t lit = 0;
           for (size_t index = 0; index < expected.size(); ++index) {
             if (expected[index] < 0) continue;
@@ -1587,6 +1597,15 @@ int main(int argc, char** argv) {
             }
           }
           count.lit_red /= static_cast<double>(std::max<size_t>(lit, 1));
+          // The objects' s15: x the visibility, alpha 1 where they take it (the rays' umbra; everywhere when replacing).
+          const std::vector<uint8_t> objects = ReadHost(host, rays.object_visibility.host_surface.Get(), 8);
+          for (size_t index = 0; index < expected.size(); ++index) {
+            const float sun = Half(objects, index * 4);
+            const float taken = Half(objects, (index * 4) + 3);
+            const bool want = count.replaced || sun < ruse::ray_tracing::OBJECT_BLOCKED;
+            if (taken != (want ? 1.f : 0.f)) ++count.object_alpha_wrong;
+            if (expected[index] == 0 && taken == 1.f) ++count.object_shadowed;
+          }
           traced.push_back(count);
         }
         // The bloom: the anti-aliasing (the bridge ready, the rays' inputs then).
@@ -1598,17 +1617,22 @@ int main(int argc, char** argv) {
       const size_t expected_shadowed = static_cast<size_t>(std::ranges::count(expected, 0));
       const size_t expected_lit = static_cast<size_t>(std::ranges::count(expected, 1));
       std::printf("Rays end to end: %zu traced frames in %llu ms; %s\n", traced.size(), GetTickCount64() - started, twattila::rt_scene::Status().c_str());
-      for (const size_t index : {size_t{0}, traced.size() - 1}) {
+      for (const size_t index : {size_t{0}, size_t{15}, traced.size() - 1}) {
         if (index >= traced.size()) continue;
         const Count& count = traced[index];
-        std::printf("  traced frame %zu (%s): shadowed %zu of %zu where the plateau blocks the sun (%zu lit there), lit %zu of %zu where it doesn't "
-                    "(%zu shadowed), the mask's lit red %.0f (the game's 128)\n",
-                    index + 1, (index < ruse::replay::PLACE_STILL_FRAMES ? "captured as drawn" : "kept"), count.shadowed_right, expected_shadowed,
-                    count.shadowed_wrong, count.lit_right, expected_lit, count.lit_wrong, count.lit_red);
+        std::printf("  traced frame %zu (%s, %s): shadowed %zu of %zu where the plateau blocks the sun (%zu lit there), lit %zu of %zu where it "
+                    "doesn't (%zu shadowed), the mask's lit red %.0f (the game's 128); objects' s15 alpha wrong %zu, taken in the shadow %zu\n",
+                    index + 1, (index < ruse::replay::PLACE_STILL_FRAMES ? "captured as drawn" : "kept"),
+                    (count.replaced ? "the rays replace the maps" : "the darker of the two"), count.shadowed_right, expected_shadowed,
+                    count.shadowed_wrong, count.lit_right, expected_lit, count.lit_wrong, count.lit_red, count.object_alpha_wrong,
+                    count.object_shadowed);
       }
-      CHECK(traced.size() >= 20 && expected_shadowed > 100 && expected_lit > 1000);
+      CHECK(traced.size() == 24 && expected_shadowed > 100 && expected_lit > 1000);
       for (const Count& count : traced) {
         CHECK(count.shadowed_right * 10 >= expected_shadowed * 9 && count.lit_right * 100 >= expected_lit * 99);
+        // Lit: the game's 0.5 kept, or the rays' 1 in its place.
+        CHECK(std::abs(count.lit_red - (count.replaced ? 255.0 : 128.0)) < 2.0);
+        CHECK(count.object_alpha_wrong == 0 && count.object_shadowed * 10 >= expected_shadowed * 9);
       }
       rays = ruse::ray_tracing::State{};
       replay.enabled = false;
