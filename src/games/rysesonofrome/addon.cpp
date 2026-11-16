@@ -214,6 +214,7 @@ renodx::utils::settings::Settings settings;
 struct RtSliders {
   float sun_shadows = 0.f;
   float softness = 0.5f;  // degrees of the sun's disk
+  float replace_sun_maps = 1.f;  // the rays' sun shadow alone in the mask's sun channels (contact_shadows.hpp)
   float skip_sun_maps = 0.f;  // shadow_skip.hpp's Choice
   float ambient_occlusion = 0.f;
   float ambient_range = 2.f;  // metres
@@ -252,6 +253,9 @@ struct RtSliders {
 bool ray_tracing_installed = false;
 // The rays' AO went into this frame's lighting (render thread; read at the present).
 std::atomic_bool rays_ambient_applied = false;
+// A near shadow mask permutation we don't replace (ShaderCache.pak: edgeMaskS at t5) drew since the start: the game's
+// edge mask (ps 0x292F2865) is drawn again for good (render thread).
+std::atomic_bool edge_mask_game_reader = false;
 constexpr uint32_t RAYS_TINT = 0x6BE0D8;
 
 // Path-Traced Ambient: with path tracing on the Light Bounce (its paths bring the sky), in place of the ray-traced AO too.
@@ -281,6 +285,7 @@ const PresetValues RAYS_OWN_KEYS = {
 };
 const PresetValues RAYS_RESET = {
     {"RayTracedShadowSoftness", 0.5f},
+    {"RayTracedReplaceShadowMaps", 0.f},
     {"RayTracedSkipSunShadowMaps", 0.f},
     {"RayTracedAmbientRange", 2.f},
     {"RayTracedAOQuarter", 0.f},
@@ -327,6 +332,8 @@ void BuildRuntimeData() {
       CustomShaderEntry(0x37ABF6CF),  // video00
       CustomShaderEntry(0xC1F889A4),  // video01 (alpha)
       CustomShaderEntry(0xD1106E8B),  // ssdo00 (SSDO; Ambient Occlusion GT-VBAO)
+      CustomShaderEntry(0xC17645D2),  // ssdo01 (ssdo00 with its depth samples from t5)
+      CustomShaderEntry(0xA65B60AF),  // ssdo02 (SSDO without the terrain's LSDO)
       CustomShaderEntry(0xE9264ADE),  // sunshadow00 (sun shadow mask, near cascades; Sun Shadow Softness)
       CustomShaderEntry(0xB5DC6E36),  // sunshadow01
       CustomShaderEntry(0xF2B4EF30),  // sunshadow02 (middle cascade)
@@ -354,7 +361,8 @@ void BuildRuntimeData() {
         if (rt_sliders.ambient_occlusion != 0.f && !PathAmbientWanted()) ambient_visibility = ambient;
       }
     }
-    // The rays' AO in place of the game's SSDO amount while ssdo00 left it out (the AO method 2), else the darker.
+    // The rays' AO in place of the game's SSDO amount while ssdo00 left it out (the AO method 2), else the darker; their
+    // sun shadow in place of the game's cascades' with Rays Replace Shadow Maps.
     const auto applied = rysesonofrome::contact_shadows::Apply(cmd_list,
                                                                {
                                                                    .length = shader_injection.contact_shadow_length,
@@ -362,7 +370,8 @@ void BuildRuntimeData() {
                                                                    .strength = shader_injection.contact_shadows,
                                                                    .frame = shader_injection.ssao_frame,
                                                                },
-                                                               sun_visibility, ambient_visibility, shader_injection.ao_method == 2.f);
+                                                               sun_visibility, ambient_visibility, shader_injection.ao_method == 2.f,
+                                                               rt_sliders.replace_sun_maps != 0.f);
     // Skip the Game's Sun Shadow Maps: the next frame's maps only with the rays' in this one's mask.
     if (applied.sun) rysesonofrome::shadow_skip::NoteRays();
     rays_ambient_applied.store(applied.ambient, std::memory_order_relaxed);
@@ -396,7 +405,30 @@ void BuildRuntimeData() {
                                        },
                                        shader_injection.light_bounce_denoise != 0.f);
   };
-  custom_shaders[0x897232B5] = {.crc32 = 0x897232B5, .on_replace = keep_shader, .on_draw = contact_shadows, .on_drawn = light_bounce};
+  // The same before and after its two permutations in ShaderCache.pak (rym_ census; not in a frame trace yet):
+  // 0x488BF732 (another sun specular term) and 0xCDB59F36 (no screen-space reflections: t6 unread). Their resources,
+  // slots and PER_BATCH are 0x897232B5's (fxc /dumpbin declarations and the cbuffer compared: only t6 missing in the
+  // second). The raised light limit's own lighting cs stays 0x897232B5's alone (graphics.hpp OnLightingDispatch).
+  for (const uint32_t tiled_lighting : {0x897232B5u, 0x488BF732u, 0xCDB59F36u}) {
+    custom_shaders[tiled_lighting] = {.crc32 = tiled_lighting, .on_replace = keep_shader, .on_draw = contact_shadows, .on_drawn = light_bounce};
+  }
+  // ps 0x292F2865 (R0 traces: three draws a frame at a quarter of the render size, before the near cascades' masks; two
+  // blurs after): the game's contact-hardening estimate, the blockers' mean distance over 16 map taps, into the edge mask
+  // that only the near mask passes read (t5 edgeMaskS) to widen their kernel. Under Sun Shadow Softness our sunshadow00 /
+  // 01 take PCSS's lit share in place of that kernel's, so the estimate goes unread: left out. Its permutations' unreplaced
+  // readers (the near masks with 8 / 4 taps or a per-pixel kernel scale) keep it for good once one draws.
+  const auto game_edge_reader = [](reshade::api::command_list*) {
+    if (!edge_mask_game_reader.exchange(true, std::memory_order_relaxed)) {
+      renodx::utils::log::i("[Ryse] A sun shadow mask pass the add-on doesn't replace reads the edge mask: ps 0x292F2865 draws always now.");
+    }
+    return true;
+  };
+  for (const uint32_t game_reader : {0x361344F1u, 0x3017167Du, 0x3D8309D7u, 0x51BA8CEAu, 0x954DEA3Cu, 0xC7EEE343u}) {
+    custom_shaders[game_reader] = {.crc32 = game_reader, .on_replace = keep_shader, .on_draw = game_edge_reader};
+  }
+  custom_shaders[0x292F2865] = {.crc32 = 0x292F2865, .on_replace = keep_shader, .on_draw = [](reshade::api::command_list*) {
+                                  return shader_injection.sun_shadow_softness == 0.f || edge_mask_game_reader.load(std::memory_order_relaxed);
+                                }};
   // The screen-space reflections' trace: left out while the traced reflections take its place.
   const auto reflection_trace = [](reshade::api::command_list*) {
     return !ray_tracing_installed || rysesonofrome::ray_tracing::OnReflectionTrace();
@@ -1140,6 +1172,16 @@ void BuildRuntimeData() {
                  }),
       ray_button("No RT/PT (Recommended)", "Every ray-traced effect off, their sliders kept (restart the game).",
                  [] { renodx::utils::settings::UpdateSettings(RAYS_OFF); }),
+      // Attila's and Tales' No RT/PT content (their screen-space methods in the rays' place), kept apart until GT-VBAO,
+      // the Light Bounce and the Contact Shadows have their in-game check: then the maintainer decides whether No RT/PT
+      // takes it.
+      ray_button("No RT/PT + Screen-Space (Experimental)",
+                 "Every ray-traced effect off (restart the game), in their place GT-VBAO, the Light Bounce and the\n"
+                 "Contact Shadows on.",
+                 [] {
+                   renodx::utils::settings::UpdateSettings(RAYS_OFF);
+                   renodx::utils::settings::UpdateSettings({{"ssao_mode", 1.f}, {"light_bounce", 1.f}, {"contact_shadows", 1.f}});
+                 }),
       ray_button("Reset", "Every ray-traced effect off, this section's sliders at their defaults (restart the game).", [] {
         renodx::utils::settings::UpdateSettings(RAYS_OFF);
         renodx::utils::settings::UpdateSettings(RAYS_RESET);
@@ -1151,7 +1193,7 @@ void BuildRuntimeData() {
           .default_value = 0.f,
           .label = "Ray-Traced Sun Shadows (restart)",
           .section = "Ray Tracing (Experimental)",
-          .tooltip = "Sun shadows from rays, with the game's: also where its shadow maps miss things.\n"
+          .tooltip = "Sun shadows from rays in place of the game's shadow maps.\n"
                      "Needs an RTX GPU and renodx-tw-dlaa64.exe next to the addon. Restart the game after turning on.",
           .labels = {"Off", "On"},
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
@@ -1166,6 +1208,21 @@ void BuildRuntimeData() {
           .min = 0.f,
           .max = 3.f,
           .format = "%.2f",
+          .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
+          .is_visible = twattila::dlaa_bridge::HelperInstalled,
+      },
+      // contact_shadows.hpp's replaces_sun (test/tw_ryse_sun_replace): off until an in-game coverage run shows the
+      // rays keep the casters out of view (the rays see the G-buffer's draws only); off, the darker of the two.
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedReplaceShadowMaps",
+          .binding = &rt_sliders.replace_sun_maps,
+          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .default_value = 0.f,
+          .label = "Rays Replace Shadow Maps",
+          .section = "Ray Tracing (Experimental)",
+          .tooltip = "On: the sun's shadow from the rays alone. Off: the darker of the rays' and the game's.\n"
+                     "On, what is out of view casts no sun shadow (the rays see what is on screen).",
+          .labels = {"Off", "On"},
           .is_enabled = [] { return rt_sliders.sun_shadows != 0.f; },
           .is_visible = twattila::dlaa_bridge::HelperInstalled,
       },
@@ -1740,6 +1797,7 @@ namespace back_buffer_fix {
 struct Data {
   reshade::api::device* device = nullptr;
   std::vector<uint64_t> old_buffers;  // earlier back buffers, the newest last
+  std::vector<uint64_t> views;        // the game's render target views of the back buffers (current and earlier)
   reshade::api::resource current = {0u};
   reshade::api::resource target = {0u};  // RenoDX's clone of the current back buffer, else itself
   reshade::api::resource_view rtv = {0u};
@@ -1751,13 +1809,19 @@ Data data;
 std::mutex mutex;
 std::atomic_bool check_after_present = false;
 // Read without the mutex on every bind and draw (the mutex only for back buffer binds): the current and earlier back
-// buffers (data.current, data.old_buffers), the immediate context and the game's last binding on it.
+// buffers (data.current, data.old_buffers), the game's views of them (data.views: a bind is matched by its view, no
+// lookup of the view's resource a bind), the immediate context and the game's last binding on it.
 constexpr size_t MAX_BACK_BUFFERS = 16;
+constexpr size_t MAX_BACK_BUFFER_VIEWS = 32;
 std::array<std::atomic<uint64_t>, MAX_BACK_BUFFERS> back_buffers = {};
+std::array<std::atomic<uint64_t>, MAX_BACK_BUFFER_VIEWS> back_buffer_views = {};
+// More of the game's back buffer views than back_buffer_views holds: each bind's view looked up again (as before).
+std::atomic_bool too_many_views = false;
 std::atomic<uint64_t> immediate_context = 0u;
 std::atomic_bool bound_back_buffer = false;
 
-// Caller holds the mutex: back_buffers from data (the oldest earlier ones dropped beyond MAX_BACK_BUFFERS).
+// Caller holds the mutex: back_buffers and back_buffer_views from data (the oldest earlier buffers dropped beyond
+// MAX_BACK_BUFFERS).
 void PublishBackBuffers() {
   if (data.old_buffers.size() >= MAX_BACK_BUFFERS) {
     data.old_buffers.erase(data.old_buffers.begin(), data.old_buffers.end() - (MAX_BACK_BUFFERS - 1));
@@ -1766,6 +1830,10 @@ void PublishBackBuffers() {
   back_buffers[index++].store(data.current.handle, std::memory_order_relaxed);
   for (const uint64_t buffer : data.old_buffers) back_buffers[index++].store(buffer, std::memory_order_relaxed);
   while (index < MAX_BACK_BUFFERS) back_buffers[index++].store(0u, std::memory_order_relaxed);
+  too_many_views.store(data.views.size() > MAX_BACK_BUFFER_VIEWS, std::memory_order_relaxed);
+  for (index = 0; index < MAX_BACK_BUFFER_VIEWS; ++index) {
+    back_buffer_views[index].store((index < data.views.size() ? data.views[index] : 0u), std::memory_order_relaxed);
+  }
 }
 
 // Caller holds the mutex.
@@ -1793,6 +1861,12 @@ void DestroyView() {
 bool IsBackBuffer(uint64_t resource) {
   return resource != 0u && std::ranges::any_of(back_buffers, [&](const std::atomic<uint64_t>& buffer) {
            return buffer.load(std::memory_order_relaxed) == resource;
+         });
+}
+
+bool IsBackBufferView(uint64_t view) {
+  return view != 0u && std::ranges::any_of(back_buffer_views, [&](const std::atomic<uint64_t>& known) {
+           return known.load(std::memory_order_relaxed) == view;
          });
 }
 
@@ -1856,17 +1930,38 @@ void OnInitResource(
   PublishBackBuffers();
 }
 
+// The game's render target views of a back buffer: its binds are known by the view.
+void OnInitResourceView(reshade::api::device*, reshade::api::resource resource, reshade::api::resource_usage usage_type,
+                        const reshade::api::resource_view_desc&, reshade::api::resource_view view) {
+  if (usage_type != reshade::api::resource_usage::render_target || !IsBackBuffer(resource.handle)) return;
+  const std::scoped_lock lock(mutex);
+  if (std::ranges::find(data.views, view.handle) == data.views.end()) data.views.push_back(view.handle);
+  PublishBackBuffers();
+}
+
+// A view's address may come back as another resource's view.
+void OnDestroyResourceView(reshade::api::device*, reshade::api::resource_view view) {
+  if (!IsBackBufferView(view.handle) && !too_many_views.load(std::memory_order_relaxed)) return;
+  const std::scoped_lock lock(mutex);
+  if (std::erase(data.views, view.handle) != 0) PublishBackBuffers();
+}
+
 void OnBindRenderTargets(
     reshade::api::command_list* cmd_list, uint32_t count, const reshade::api::resource_view* rtvs,
     reshade::api::resource_view dsv) {
   auto* device = cmd_list->get_device();
   if (device->get_api() != reshade::api::device_api::d3d11) return;
-  const uint64_t bound = (count != 0 && rtvs[0].handle != 0u) ? device->get_resource_from_view(rtvs[0]).handle : 0u;
-  const bool back_buffer = IsBackBuffer(bound);
+  const uint64_t view = (count != 0 ? rtvs[0].handle : 0u);
+  const bool back_buffer = (too_many_views.load(std::memory_order_relaxed)
+                                ? (view != 0u && IsBackBuffer(device->get_resource_from_view(rtvs[0]).handle))
+                                : IsBackBufferView(view));
   if (cmd_list->get_native() == immediate_context.load(std::memory_order_relaxed)) {
     bound_back_buffer.store(back_buffer, std::memory_order_relaxed);
   }
   if (!back_buffer) return;
+  // A view of a back buffer dropped from back_buffers (beyond MAX_BACK_BUFFERS) is no back buffer any more.
+  const uint64_t bound = device->get_resource_from_view(rtvs[0]).handle;
+  if (!IsBackBuffer(bound)) return;
 
   const std::scoped_lock lock(mutex);
 
@@ -2167,11 +2262,11 @@ void ConfigureAddon() {
           .key = "AntiAliasingTextureLodBiasTrilinear",
           .binding = &rysesonofrome::graphics::lod_bias_all_textures,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Texture LOD Bias on All Textures (Experimental)",
+          .default_value = 1.f,
+          .label = "Texture LOD Bias on All Textures",
           .section = AA_SECTION,
-          .tooltip = "Texture LOD bias also on the textures the game filters without anisotropy.\n"
-                     "Can shimmer.",
+          .tooltip = "Texture LOD Bias also on the textures the game filters without anisotropy (terrain, buildings).\n"
+                     "Off: those stay blurrier while the game renders below 100%.",
           .labels = {"Off", "On"},
           .is_visible = [] { return twattila::dlaa_bridge::HelperInstalled() && IsAdvancedSettings(); },
       },
@@ -2232,7 +2327,7 @@ bool AttachAddon() {
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   // Scripted runs (RENODX_TW_SET / SHOT / PROFILE, twattila/test_hooks.hpp): nothing without them. Their "trace" key writes
-  // the renodx_trace_now file graphics.hpp's present polls for.
+  // the renodx_trace_now file the frame trace looks for (talesofarise_dlss/frame_trace.hpp).
   twattila::test_hooks::Install(&settings, true, "[Ryse]");
   // Ray tracing on at launch: its scene's shaders kept from the start, the Light Bounce's trace through rays. Without the
   // helper nothing could be traced: the scene capture stays out (the game's own lighting, as with the rows off).
@@ -2277,6 +2372,8 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
   reshade::register_event<reshade::addon_event::destroy_swapchain>(back_buffer_fix::OnDestroySwapchain);
   reshade::register_event<reshade::addon_event::init_resource>(back_buffer_fix::OnInitResource);
+  reshade::register_event<reshade::addon_event::init_resource_view>(back_buffer_fix::OnInitResourceView);
+  reshade::register_event<reshade::addon_event::destroy_resource_view>(back_buffer_fix::OnDestroyResourceView);
   reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(back_buffer_fix::OnBindRenderTargets);
   reshade::register_event<reshade::addon_event::present>(back_buffer_fix::OnPresent);
   reshade::register_event<reshade::addon_event::draw>(back_buffer_fix::OnDraw);
@@ -2300,6 +2397,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(back_buffer_fix::OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::destroy_swapchain>(back_buffer_fix::OnDestroySwapchain);
   reshade::unregister_event<reshade::addon_event::init_resource>(back_buffer_fix::OnInitResource);
+  reshade::unregister_event<reshade::addon_event::init_resource_view>(back_buffer_fix::OnInitResourceView);
+  reshade::unregister_event<reshade::addon_event::destroy_resource_view>(back_buffer_fix::OnDestroyResourceView);
   reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(back_buffer_fix::OnBindRenderTargets);
   reshade::unregister_event<reshade::addon_event::present>(back_buffer_fix::OnPresent);
   reshade::unregister_event<reshade::addon_event::draw>(back_buffer_fix::OnDraw);

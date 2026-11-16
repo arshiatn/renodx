@@ -23,7 +23,8 @@
 // array, t32 its light list, b0 its camera), the sun's shadow mask gets short screen-space shadows toward the sun: which
 // slice and channels are the sun's from the light list (0x52C5E001), then a full-screen pass (0x52C5E002 / 0x52C5E003)
 // max-blended into slice 0 of the mask (1 = shadow). With ray tracing's sun visibility (ray_tracing.hpp) the same pass
-// also writes its shadow, the darker; with its ambient visibility, the lighting's directional occlusion (t5) too: added
+// also writes its shadow, the darker, or alone (Rays Replace Shadow Maps: rt_sun_keep first multiplies the sun's
+// channels by 0, the others by 1); with its ambient visibility, the lighting's directional occlusion (t5) too: added
 // to its amount where ssdo00 left the game's SSDO amount out (the AO method's 2: the rays' in its place, beside the
 // terrain's large-scale term), else the darker. In the addon's own context state; the game's is put back after.
 namespace rysesonofrome::contact_shadows {
@@ -45,12 +46,14 @@ struct Objects {
   ComPtr<ID3D11ComputeShader> find_sun;
   ComPtr<ID3D11VertexShader> vertex_shader;
   ComPtr<ID3D11PixelShader> pixel_shader;
+  ComPtr<ID3D11PixelShader> keep_shader;  // rt_sun_keep
   ComPtr<ID3D11Buffer> sun;
   ComPtr<ID3D11UnorderedAccessView> sun_uav;
   ComPtr<ID3D11ShaderResourceView> sun_srv;
   ComPtr<ID3D11Buffer> constants;
   ComPtr<ID3D11BlendState> max_blend;
   ComPtr<ID3D11BlendState> replacing_blend;  // max_blend with the occlusion's amount added
+  ComPtr<ID3D11BlendState> keep_blend;       // the mask times rt_sun_keep's output
   ComPtr<ID3D11RasterizerState> no_cull;
   ComPtr<ID3D11Resource> mask;  // the shadow mask array its slice-0 target is of
   ComPtr<ID3D11RenderTargetView> mask_target;
@@ -100,6 +103,17 @@ inline bool Create(ID3D11Device* device) {
   blend_desc.RenderTarget[1].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALPHA;
   D3D11_BLEND_DESC replacing_desc = blend_desc;
   replacing_desc.RenderTarget[1].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+  D3D11_BLEND_DESC keep_desc = {};
+  keep_desc.RenderTarget[0] = {
+      .BlendEnable = TRUE,
+      .SrcBlend = D3D11_BLEND_ZERO,
+      .DestBlend = D3D11_BLEND_SRC_COLOR,
+      .BlendOp = D3D11_BLEND_OP_ADD,
+      .SrcBlendAlpha = D3D11_BLEND_ZERO,
+      .DestBlendAlpha = D3D11_BLEND_SRC_ALPHA,
+      .BlendOpAlpha = D3D11_BLEND_OP_ADD,
+      .RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL,
+  };
   const D3D11_RASTERIZER_DESC rasterizer_desc = {.FillMode = D3D11_FILL_SOLID, .CullMode = D3D11_CULL_NONE};
   objects.failed =
       FAILED(device->QueryInterface(IID_PPV_ARGS(device1.GetAddressOf())))
@@ -108,12 +122,14 @@ inline bool Create(ID3D11Device* device) {
       || FAILED(device->CreateComputeShader(__0x52C5E001.data(), __0x52C5E001.size(), nullptr, objects.find_sun.GetAddressOf()))
       || FAILED(device->CreateVertexShader(__0x52C5E002.data(), __0x52C5E002.size(), nullptr, objects.vertex_shader.GetAddressOf()))
       || FAILED(device->CreatePixelShader(__0x52C5E003.data(), __0x52C5E003.size(), nullptr, objects.pixel_shader.GetAddressOf()))
+      || FAILED(device->CreatePixelShader(__rt_sun_keep.data(), __rt_sun_keep.size(), nullptr, objects.keep_shader.GetAddressOf()))
       || FAILED(device->CreateBuffer(&sun_desc, nullptr, objects.sun.GetAddressOf()))
       || FAILED(device->CreateUnorderedAccessView(objects.sun.Get(), &sun_uav_desc, objects.sun_uav.GetAddressOf()))
       || FAILED(device->CreateShaderResourceView(objects.sun.Get(), &sun_srv_desc, objects.sun_srv.GetAddressOf()))
       || FAILED(device->CreateBuffer(&constants_desc, nullptr, objects.constants.GetAddressOf()))
       || FAILED(device->CreateBlendState(&blend_desc, objects.max_blend.GetAddressOf()))
       || FAILED(device->CreateBlendState(&replacing_desc, objects.replacing_blend.GetAddressOf()))
+      || FAILED(device->CreateBlendState(&keep_desc, objects.keep_blend.GetAddressOf()))
       || FAILED(device->CreateRasterizerState(&rasterizer_desc, objects.no_cull.GetAddressOf()));
   return !objects.failed;
 }
@@ -129,9 +145,10 @@ struct Applied {
 // Before the tiled lighting's dispatch (its bindings set): the contact shadows (and the ray-traced sun's,
 // `sun_visibility`: 1 lit, at the depth's size; null: none) into the sun's shadow mask, the ray-traced ambient
 // (`ambient_visibility`: 1 open; null: none) into its directional occlusion, added to its amount when ssdo00 left the
-// game's SSDO amount out this frame (`replaces_ambient`), else the darker of the two.
+// game's SSDO amount out this frame (`replaces_ambient`), else the darker of the two. The traced sun's shadow alone in the
+// sun's channels with `replaces_sun` (the game's cascades' there dropped), else the darker of the two.
 inline Applied Apply(reshade::api::command_list* cmd_list, const Settings& settings, ID3D11ShaderResourceView* sun_visibility = nullptr,
-                     ID3D11ShaderResourceView* ambient_visibility = nullptr, bool replaces_ambient = false) {
+                     ID3D11ShaderResourceView* ambient_visibility = nullptr, bool replaces_ambient = false, bool replaces_sun = false) {
   using internal::objects;
   if ((settings.strength <= 0.f && sun_visibility == nullptr && ambient_visibility == nullptr)
       || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) {
@@ -230,11 +247,18 @@ inline Applied Apply(reshade::api::command_list* cmd_list, const Settings& setti
   ID3D11RenderTargetView* targets[] = {objects.mask_target.Get(), occlusion ? objects.occlusion_target.Get() : nullptr};
   context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   context->VSSetShader(objects.vertex_shader.Get(), nullptr, 0);
-  context->PSSetShader(objects.pixel_shader.Get(), nullptr, 0);
   context->PSSetShaderResources(0, 4, inputs);
   context->PSSetConstantBuffers(0, 2, constants);
   context->RSSetState(objects.no_cull.Get());
   context->RSSetViewports(1, &viewport);
+  // Rays Replace Shadow Maps: the sun's channels to 0 first (the others x 1), so the max below writes the rays'.
+  if (sun_visibility != nullptr && replaces_sun) {
+    context->PSSetShader(objects.keep_shader.Get(), nullptr, 0);
+    context->OMSetBlendState(objects.keep_blend.Get(), nullptr, 0xFFFFFFFF);
+    context->OMSetRenderTargets(1, targets, nullptr);
+    context->Draw(3, 0);
+  }
+  context->PSSetShader(objects.pixel_shader.Get(), nullptr, 0);
   context->OMSetBlendState((replaces_ambient ? objects.replacing_blend.Get() : objects.max_blend.Get()), nullptr, 0xFFFFFFFF);
   context->OMSetRenderTargets(2, targets, nullptr);
   context->Draw(3, 0);
