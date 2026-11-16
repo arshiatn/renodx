@@ -207,7 +207,7 @@ struct AaSliders {
   float frame_preset = 0.f;      // the driver's, A, B, C
   float frame_debug_view = 0.f;  // off, the HUD-less image, the UI layer
   float texture_lod_bias = 2.f;  // below 100%: off, matched, sharper (NVIDIA's), sharpest
-  float lod_bias_trilinear = 0.f;  // twattila/texture_lod_bias.hpp SetWrappingTrilinear
+  float lod_bias_trilinear = 1.f;  // twattila/texture_lod_bias.hpp SetWrappingTrilinear
   float debug_view = 0.f;        // UpscalingDebugView: 1 the motion the helper's upscaler gets
   float jitter = 1.f;            // the camera jitter the game leaves off with its DLSS
   float object_motion = 1.f;     // ships', sails', ropes' and water's motion vectors (object_velocity.hpp)
@@ -1673,8 +1673,9 @@ void BuildRuntimeData() {
              {"Off (the game's own)", "Matched (as sharp as at your resolution)", "Sharper (one step sharper; NVIDIA's recommendation)",
               "Sharpest (two steps sharper; can shimmer)"}),
       // Attila's key (twattila/texture_lod_bias.hpp SetWrappingTrilinear: the samplers filtered without anisotropy too).
-      toggle("AntiAliasingTextureLodBiasTrilinear", &aa_sliders.lod_bias_trilinear, 0.f, "Texture LOD bias on all textures (Experimental)",
-             aa_section, "Texture LOD bias also on the textures the game filters without anisotropy. Can shimmer.", {},
+      toggle("AntiAliasingTextureLodBiasTrilinear", &aa_sliders.lod_bias_trilinear, 1.f, "Texture LOD bias on all textures",
+             aa_section, "Texture LOD bias also on the textures the game filters without anisotropy (terrain, buildings).\n"
+             "Off: those stay blurrier while the upscaler renders below 100%.", {},
              [] { return aa_sliders.dlss_mode != 0.f && aa_sliders.texture_lod_bias != 0.f; }),
       new Setting{
           .value_type = SettingValueType::CUSTOM,
@@ -2370,7 +2371,6 @@ void ApplyGameRows() {
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  twattila::pass_timing::OnPresent(queue, "shogun2");
   // Before any setting is read this frame: the helper's DLSS never starts on another vendor's GPU, a saved one or a
   // preset's is its XeSS on Intel's, else its FSR (Attila's; HelperUpscaler's slider places 2 and 3, parsed to 6 and 7).
   // The game's DLSS (0) stays: the game runs it or not itself.
@@ -2753,7 +2753,7 @@ namespace {
 bool AttachAddon() {
   if (attached) return true;
   // Its draw and dispatch events before any other of the add-on's (pass_timing.hpp: their run order is registration order).
-  twattila::pass_timing::Install();
+  twattila::pass_timing::Install("shogun2");
 
   ConfigureAddon();
 

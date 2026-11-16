@@ -578,7 +578,6 @@ void OnPostDraw(reshade::api::command_list* cmd_list, uint32_t hash) {
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
-  twattila::pass_timing::OnPresent(queue, "romer");
   // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS
   // on Intel's, else FSR (Attila's).
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -2076,7 +2075,7 @@ void ConfigureAddon() {
 bool AttachAddon() {
   if (attached) return true;
   // Its draw and dispatch events before any other of the add-on's (pass_timing.hpp: their run order is registration order).
-  twattila::pass_timing::Install();
+  twattila::pass_timing::Install("romer");
 
   ConfigureAddon();
 
