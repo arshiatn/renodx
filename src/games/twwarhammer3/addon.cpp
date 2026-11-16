@@ -194,7 +194,7 @@ void ApplyPsychoRecommended2500() {
       {"distortion", 1.f},
       {"sharpening", 1.f},
       {"dof", 1.f},
-      {"sky_deband", 2.f},
+      {"sky_deband", 0.f},
   });
 }
 
@@ -2056,8 +2056,8 @@ void BuildRuntimeData() {
         .label = "Recommended",
         .section = "Presets",
         .group = "preset-line-2",
-        .tooltip = "HDR (PsychoV35), Video AutoHDR 0.20, Bloom 0.25 and Sky Debanding Medium; PsychoV30's Highlights 0.85\n"
-                   "and Hue Shift 2. The rest at its default.\n"
+        .tooltip = "HDR (PsychoV35), Video AutoHDR 0.20 and Bloom 0.25; PsychoV30's Highlights 0.85 and Hue Shift 2.\n"
+                   "The rest at its default.\n"
                    "Peak, Paper White, UI brightness, Settings Mode and output settings are kept.",
         .on_change = []() {
           ApplyPsychoRecommended2500();
@@ -4287,7 +4287,8 @@ bool AttachAddon() {
 
   // Rows saved at an old default, cleared once. Before v32 both hidden: fog's light nobody has seen at night, and dark
   // patches on rivers under rays. Before v45: NRD when Ray Reconstruction is off, the banners' light and colour on. Before
-  // revision 34: Fog Shadows, Specular Occlusion and Water Caustics on at the RT/PT preset's default.
+  // revision 34: Fog Shadows, Specular Occlusion and Water Caustics on at the RT/PT preset's default; Sky Debanding at Medium from
+  // Recommended (Output Auto applies it at Windows HDR on), now off in every preset.
   constexpr int SETTINGS_REVISION = 34;
   if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
     for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
@@ -4301,7 +4302,7 @@ bool AttachAddon() {
           reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
         }
       }
-      for (const char* key : {"RayTracedFogShadows", "RayTracedSpecularOcclusion", "WaterCaustics"}) {
+      for (const char* key : {"RayTracedFogShadows", "RayTracedSpecularOcclusion", "WaterCaustics", "sky_deband"}) {
         reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
       }
     }
