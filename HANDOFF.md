@@ -3,6 +3,11 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 (Tales + Expeditions round, ATN decides / checks): the look of Bend + GT-VBGI on by default; Tales camp
+  still runs the SSGI chain (an unproven reader there); RT shadows replacing the maps is unproven in both games, so
+  min(map, rays) stays for now: accept until a proof?; Expeditions Brightness 40 (neutral, the page-1 line) or 50 (the
+  developers' default: lifts shadows, dims HDR highlights)?; Tales Brightness 50 neutral by eye (Bandai's curve unread);
+  Expeditions Two Shadow Cascades Under Rays: CPU on a battle map + far off-screen shadows. Owner: ATN
 - [ ] NEW 11-16 (fix round, ATN decides): Thrones' preset turns on Steady Bounce Light and 128 torch lights (both
   Experimental) and Auto Thickness is on while labelled Experimental: keep or off?; Ryse's Recommended Video AutoHDR 0.25
   (as Shogun 2's) against the skill's 0.2; Path-Traced Ambient alone leaves the reflections without occlusion: Specular
@@ -185,6 +190,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound i ... | next Attila round
 - SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator 06:xx rao_ merged ad541a4f (RT AO replaces the g
 - dvf_ not done: VFX / indicator Experimental rows in both games (D1 633 FX_MAT an ... | next Divinity round / runs, ATN (VFX scope, C rows)
+- tex_ not done: Expeditions Video AutoHDR (NV12 convert ps 0x524CDCDF; needs one ... | next UE round, coordinator (release), shs_
 - ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
 - Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
@@ -1536,6 +1542,21 @@ heading text are in HANDOFF_ARCHIVE.md)
           hue shift after V30, Vanilla Calibrate curve-on-curve, UI sRGB decode. Next run: D2 Sun Shadow Softness at PCSS,
           page-1 lines, Time Each Pass file; D1 "applied" log lines for LightVolume / AA. Owner: next Divinity round / runs,
           ATN (VFX scope, C rows)
+        - [x] Tales + Expeditions MERGED 4346ab2f4 (tex_, 16 commits; amd64 builds exit 0 on its branch): vendor fallback,
+          Tales SSGI chain skipped under GT-VBGI / RT / PT (readers proven in 18 traces, 8 unproven readers turn it back on
+          for 30 frames, ~0.07 ms), Expeditions r.SSGI.Quality 0 under GT-VBGI / bounce, Bend + GT-VBGI on by default (ATN),
+          no per-frame counters, Tales LOD bias follows DrawScale, credits, page-1 lines (Tales Brightness 50, Expeditions
+          Brightness 40 = DisplayGamma 1), Expeditions Two Shadow Cascades Under Rays (Experimental off; cascades 2-3 =
+          34-55 % of the atlas indices, atlas 0.47-0.84 ms), tw_ue_patterns (23/23 + 4/4, controls fail). Tests:
+          tw_vanilla_exact 40 EXACT, tw_ue_sss_gi PASS both, tw_psychov35 PASS.
+        - [ ] tex_ not done: Expeditions Video AutoHDR (NV12 convert ps 0x524CDCDF; needs one trace while
+          Rome_MainMenuLoading.mp4 plays); Expeditions Modded Auto Exposure (eye adaptation ps 323FECA6, port + WARP); VFX /
+          indicator / sky lines (traces named in the ledgers); from the main round: V35 fit, Path-Traced Ambient,
+          vanilla_exact widening, R11G11B10 / LOD-bias censuses, one occlusion (192686A0 t1), double-work table, level-B
+          twins, 6 New_1 permutations, WARP of C38C91CD vs rt_sun texel 2, CSM caster proof; release_zip.py Detours licence
+          + a shared credits template (coordinator, release round); shared rows (WriteSun sun light, constant_mirror LOD bias
+          replaces c133.x instead of adding, frame_trace poll / name / slots, post_filters comment) sent to shs_. Owner: next
+          UE round, coordinator (release), shs_
         - [ ] ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB73442 / D9123DE1, vanilla coverage
           of pointlight00-39 / UI sprites / grass00-01 (the generic driver can't feed them); view_share Classify 24 unclear
           sun-PS rows a game (NEEDS A TRACE). The t46 x AO double-occlusion check was sent to WH3, WH1 / WH2, Troy / Pharaoh,
