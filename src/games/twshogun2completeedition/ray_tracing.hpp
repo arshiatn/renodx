@@ -796,6 +796,21 @@ inline void WaterSurface(reshade::api::command_list* cmd_list) {
   state.water_frame = traced ? state.frame : UINT64_MAX;
 }
 
+// The traced AO at t41 for the reflections' resolve (shaders/ssrresolve00; `bind` false: unbound) where the sun light draws
+// had it this frame (OnSunDraw's rule): the environment the resolve takes off the scene is then the one they added.
+inline void BindResolveAmbient(reshade::api::command_list* cmd_list, bool bind) {
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr) return;
+  bool ambient_occlusion = false;
+  if (bind) {
+    const std::unique_lock lock(internal::state.mutex);
+    ambient_occlusion = internal::state.settings.ambient_occlusion;
+  }
+  ID3D11ShaderResourceView* ambient = ambient_occlusion ? twattila::rt_scene::Visibilities()[1] : nullptr;
+  native->CSSetShaderResources(internal::VISIBILITY_SLOT + 1, 1, &ambient);
+}
+
 // rt_water_plane's mask at t45 (this frame's, where the rays left from the sea) for the resolve (`compute`) or the sea's
 // draw; `bind` false: unbound.
 inline void BindWaterMask(reshade::api::command_list* cmd_list, bool compute, bool bind) {

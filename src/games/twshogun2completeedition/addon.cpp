@@ -804,6 +804,7 @@ void BuildRuntimeData() {
     if (ray_tracing_installed) {
       twattila::rt_scene::BindReflections(cmd_list, true, true);
       twshogun2::ray_tracing::BindWaterMask(cmd_list, true, true);
+      twshogun2::ray_tracing::BindResolveAmbient(cmd_list, true);
     }
     return true;
   };
@@ -811,6 +812,7 @@ void BuildRuntimeData() {
     if (!ray_tracing_installed) return;
     twattila::rt_scene::BindReflections(cmd_list, true, false);
     twshogun2::ray_tracing::BindWaterMask(cmd_list, true, false);
+    twshogun2::ray_tracing::BindResolveAmbient(cmd_list, false);
     twshogun2::ray_tracing::KeepColor(cmd_list);
   };
   // Ray-Traced Water Reflections (ray_tracing.hpp OnSeaDraw): the sea's plane, the rays' reflections for shaders/ocean00-03.

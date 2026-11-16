@@ -9,6 +9,10 @@
 // environment) x confidence onto the scene, whose sun light already holds the environment's specular: with Specular
 // Occlusion bound (t46) the environment's closed share comes off too (scene + output: occluded environment +
 // confidence x (reflection - occluded environment)); unbound, the same math as the game's.
+// One occlusion a term (ATN 2026-11-16): under Specular Occlusion the occluded environment is the open one (the material's
+// own occlusion, the AO term 1) x the rays' t46, not the game's AO x t46. The environment taken off the scene is the one
+// the sun light draws added: with the rays' AO in place of the game's there (t41, rt_sun.hlsli RtInPlace), here too
+// (ray_tracing.hpp BindResolveAmbient). Unbound, the game's bytes.
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -75,6 +79,7 @@ RWTexture2D<float3> t_out_radiance : register(u0);
 // 3Dmigoto declarations
 #define cmp -
 #include "./ssr.hlsli"
+#include "./rt_sun.hlsli"
 #include "../../twattila/rt_reflection.hlsli"
 // Ray-Traced Water Reflections' mask (ray_tracing.hpp WaterSurface; unbound: 0): there the rays left from the sea above
 // this surface, so it keeps the environment alone (the sea drawn over it reflects them).
@@ -191,7 +196,7 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     const bool rt_reflected = RtReflectionsBound();
     const float4 rt_traced = (rt_reflected && t_rt_water.Load(int3(rt_texel, 0)) < 0.5f) ? t_rt_reflection.Load(int3(rt_texel, 0)) : 0.f;
     if (rt_reflected) r7.xyw = rt_traced.rgb;
-    r3.x = t_ssao.SampleLevel(s_ssao_s, r0.zw, 0).x;
+    r3.x = RtInPlace(t_rt_ambient, rt_texel, t_ssao.SampleLevel(s_ssao_s, r0.zw, 0).x);
     r0.y = (int)r3.y | 1;
     r0.x = 1;
     r0.xy = r2.yy ? r0.xy : r3.xy;
@@ -259,6 +264,9 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     }
     r1.xzw = r2.yyy ? r1.xzw : r3.xyw;
     r1.xzw = r1.xzw * r0.yzw;
+    // The environment with the AO term 1: the material's own occlusion (G-buffer constants z) alone, as below.
+    const float rt_material_occlusion = min(1, r2.z);
+    float3 rt_environment_open = (r5.y * (1 - rt_material_occlusion) + rt_material_occlusion) * r1.xzw * rt_material_occlusion;
     r0.x = min(r0.x, r2.z);
     r2.y = 1 + -r0.x;
     r2.y = r5.y * r2.y + r0.x;
@@ -267,10 +275,13 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
     if (r4.y != 0) {
       r3.xyw = r7.xyw * r2.xxx;
       r1.xzw = r1.xzw * r2.xxx;
+      rt_environment_open = rt_environment_open * r2.xxx;
     } else {
       r3.xyw = r7.xyw * r0.yzw;
     }
-    const float3 rt_open_environment = RtOccludedEnvironment(rt_texel, r1.xzw);
+    uint rt_occlusion_width, rt_occlusion_height;
+    t_rt_specular_occlusion.GetDimensions(rt_occlusion_width, rt_occlusion_height);
+    const float3 rt_open_environment = RtOccludedEnvironment(rt_texel, (rt_occlusion_width != 0u) ? rt_environment_open : r1.xzw);
     r0.x = -1 + r0.x;
     r0.x = r2.w * r0.x + 1;
     r0.y = 16.666666 * r3.z;
