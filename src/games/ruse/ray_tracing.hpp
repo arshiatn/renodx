@@ -139,6 +139,21 @@ struct State {
   bridge::SharedTexture object_visibility;
   ComPtr<ID3D11ComputeShader> object_copy;
   ComPtr<ID3D11Buffer> object_settings;
+  // Record Ray Tracing Profile (rt_core's; RENODX_TW_PROFILE): the CPU's QueryPerformanceCounter ticks in R.U.S.E.'s steps
+  // summed while it records (rt_core's CSV has its capture, trace and the helper's answers), one line when it ends.
+  struct Steps {
+    uint32_t frames = 0;
+    int64_t frame = 0;  // present to present
+    int64_t replay = 0;  // the replay's placements at the present
+    int64_t ground = 0;  // ShadeGround, with the next four
+    int64_t host_wait = 0;  // the D3D9 queue drained after the depth's copy
+    int64_t capture = 0;  // CaptureScene (rt_core's capture in it)
+    int64_t trace = 0;  // rt_core's Trace (the request)
+    int64_t proxy_wait = 0;  // the D3D11 queue (and the helper's trace it waits for) drained before the mask's pass
+    int64_t evaluate = 0;  // the anti-aliasing at the bloom (its own two waits)
+  } steps;
+  int64_t steps_present = 0;  // the last present's ticks while timed
+  bool steps_timed = false;
   ComPtr<ID3D11ShaderResourceView> depth_view;  // the bridge's shared depth
   ComPtr<ID3D11ComputeShader> copy;
   // O1: last frame's main depth with its camera (the inverse view-projection) and jitter (NDC), the rays' start depth
@@ -248,6 +263,11 @@ struct BendSettings {
   std::array<float, 3> padding = {};
 };
 
+// `ticks` while rt_core's profile records (its CpuTime adds a scope's time to them), else null (nothing timed).
+inline int64_t* Timed(int64_t* ticks) {
+  return twattila::rt_scene::internal::runtime.timed ? ticks : nullptr;
+}
+
 // Any row that shades the ground or the water from the main pass's first draw (ShadeGround).
 inline bool Shading() {
   return state.ground || state.bend || state.vbao || state.bounce || state.reflections;
@@ -333,6 +353,8 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   // nothing below runs (the depth's copy and its wait included).
   const bool rays = state.ground && bridge.frame >= state.rays_frame;
   if (!rays && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;
+  using twattila::rt_scene::internal::CpuTime;
+  const CpuTime ground_timed(Timed(&state.steps.ground));
   auto* host = reinterpret_cast<IDirect3DDevice9*>(cmd_list->get_device()->get_native());
   // The anti-aliasing's bridge once it runs; without it (GT-VBAO alone) its shared textures and passes only, tried once.
   if (!bridge.ready) {
@@ -546,7 +568,10 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   const std::array<IDirect3DSurface9*, 1> depth_target = {bridge.depth.host_surface.Get()};
   const std::array<IDirect3DBaseTexture9*, 1> depth_source = {prepass_depth.Get()};
   bridge::DrawQuad(host, depth_target, state.depth_copy.Get(), depth_source, {});
-  bridge::WaitHost(host);
+  {
+    const CpuTime waited(Timed(&state.steps.host_wait));
+    bridge::HandToProxy(host, context.Get());
+  }
 
   // The camera: the camera pass's inverse view-projection (rows acting on column vectors) and its inverse. The helper's
   // in metres (HELPER_METRES): the view-projection takes them (its x, y, z columns / the scale), the inverse gives them
@@ -672,8 +697,14 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   bool traced = false;
   if (rays) {
     twattila::rt_scene::WriteSun(context.Get(), state.toward_sun);
-    replay::CaptureScene(state.proxy_queue->get_immediate_command_list(), view_projection);
-    const bool answered = twattila::rt_scene::Trace(context.Get(), start_depth, camera);
+    {
+      const CpuTime captured(Timed(&state.steps.capture));
+      replay::CaptureScene(state.proxy_queue->get_immediate_command_list(), view_projection);
+    }
+    const bool answered = [&] {
+      const CpuTime requested(Timed(&state.steps.trace));
+      return twattila::rt_scene::Trace(context.Get(), start_depth, camera);
+    }();
     state.tried_frame = bridge.frame;
     state.rays_frame = bridge.frame + (answered ? 1u : RAYS_RETRY_FRAMES);
     if (answered) {
@@ -887,7 +918,10 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
       context->CopyResource(shared->proxy.Get(), shared->work.Get());
     }
   }
-  bridge::WaitProxy(proxy, context.Get());
+  {
+    const CpuTime waited(Timed(&state.steps.proxy_wait));
+    bridge::HandToHost(proxy, context.Get(), host);
+  }
 
   const std::array<IDirect3DSurface9*, 1> mask_target = {mask_surface.Get()};
   const std::array<IDirect3DBaseTexture9*, 1> shaded = {state.visibility.host.Get()};
@@ -1155,6 +1189,30 @@ inline void OnPresent() {
       .reuse_lean = state.traced_bounce == 2,
       .reuse_near = state.traced_bounce == 2,
   });
+  // The profile's steps: present to present while it records; at its end one line, each step's milliseconds a frame.
+  LARGE_INTEGER now;
+  QueryPerformanceCounter(&now);
+  const bool timed = twattila::rt_scene::internal::runtime.timed;
+  if (timed && state.steps_timed) {
+    state.steps.frame += now.QuadPart - state.steps_present;
+    ++state.steps.frames;
+  } else if (!timed && state.steps_timed) {
+    LARGE_INTEGER frequency;
+    QueryPerformanceFrequency(&frequency);
+    const auto ms = [&](int64_t ticks) {
+      return 1000.0 * static_cast<double>(ticks) / static_cast<double>(frequency.QuadPart) / static_cast<double>(std::max(state.steps.frames, 1u));
+    };
+    const State::Steps& steps = state.steps;
+    reshade::log::message(reshade::log::level::info,
+                          std::format("[R.U.S.E.] Ray tracing profile: {} frames, CPU ms a frame: frame {:.2f}, replay {:.2f}, ground passes {:.2f} "
+                                      "(D3D9 wait {:.2f}, capture {:.2f}, trace request {:.2f}, D3D11 and helper wait {:.2f}), anti-aliasing {:.2f}",
+                                      steps.frames, ms(steps.frame), ms(steps.replay), ms(steps.ground), ms(steps.host_wait), ms(steps.capture),
+                                      ms(steps.trace), ms(steps.proxy_wait), ms(steps.evaluate))
+                              .c_str());
+    state.steps = {};
+  }
+  state.steps_present = now.QuadPart;
+  state.steps_timed = timed;
 }
 
 // The game's device's objects (its shaders, the mask, the shared textures, the white texels) with its device and at its

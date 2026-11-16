@@ -168,6 +168,26 @@ inline void WaitProxy(ID3D11Device* proxy, ID3D11DeviceContext* context) {
   }
 }
 
+// W3 with the GPU Sync row: the destination's GPU waits for the source's writes (a KMT fence each way), else (no fences,
+// or a signal or wait refused) the CPU drains the source's queue. D3D9 to the proxy's D3D11 (HandToProxy) and back.
+inline void HandToProxy(IDirect3DDevice9* host, ID3D11DeviceContext* context) {
+  ComPtr<IDirect3DDevice9Ex> host_ex;
+  if (state.host_fence != nullptr && SUCCEEDED(host->QueryInterface(IID_PPV_ARGS(host_ex.GetAddressOf())))) {
+    const uint64_t value = renodx::utils::gpu_fence::QueueSignal(host_ex.Get(), state.host_fence.get());
+    if (value != renodx::utils::gpu_fence::NO_SIGNAL && renodx::utils::gpu_fence::QueueWait(context, state.host_fence.get(), value)) return;
+  }
+  WaitHost(host);
+}
+
+inline void HandToHost(ID3D11Device* proxy, ID3D11DeviceContext* context, IDirect3DDevice9* host) {
+  ComPtr<IDirect3DDevice9Ex> host_ex;
+  if (state.proxy_fence != nullptr && SUCCEEDED(host->QueryInterface(IID_PPV_ARGS(host_ex.GetAddressOf())))) {
+    const uint64_t value = renodx::utils::gpu_fence::QueueSignal(context, state.proxy_fence.get());
+    if (value != renodx::utils::gpu_fence::NO_SIGNAL && renodx::utils::gpu_fence::QueueWait(host_ex.Get(), state.proxy_fence.get(), value)) return;
+  }
+  WaitProxy(proxy, context);
+}
+
 // One full-screen D3D9 pass (W2) over the first target's size: the game's state kept as ReShade's own D3D9 passes keep it
 // (a state block plus the targets, depth and viewport, which it doesn't hold); `states` after the pass's own (a blend).
 inline void DrawQuad(IDirect3DDevice9* host, std::span<IDirect3DSurface9* const> targets, IDirect3DPixelShader9* shader,
@@ -385,13 +405,6 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
     state.reset = true;
     return;
   }
-  // W3: the destination's GPU waits for the source's writes (GPU Sync), else the CPU for the source's queue.
-  const auto hand_over = [](auto* source, renodx::utils::gpu_fence::Fence* fence, auto* destination) {
-    if (fence == nullptr) return false;
-    const uint64_t value = renodx::utils::gpu_fence::QueueSignal(source, fence);
-    return value != renodx::utils::gpu_fence::NO_SIGNAL && renodx::utils::gpu_fence::QueueWait(destination, fence, value);
-  };
-
   std::array<float, 40> constants = {};
   std::memcpy(constants.data(), state.camera.data(), sizeof(state.camera));
   constants[36] = static_cast<float>(state.width);
@@ -401,7 +414,7 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
                                                     state.motion.host_surface.Get()};
   const std::array<IDirect3DBaseTexture9*, 2> sources = {scene, depth.Get()};
   DrawQuad(host, inputs, state.prepare.Get(), sources, constants);
-  if (!hand_over(host_ex.Get(), state.host_fence.get(), context.Get())) WaitHost(host);
+  HandToProxy(host, context.Get());
   state.depth_frame = state.frame;
 
   auto& helper = twattila::dlaa_bridge::bridge;
@@ -458,7 +471,7 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
     state.generation_frame = state.frame;
   }
   context->CopyResource(state.output.proxy.Get(), helper.output.texture.Get());
-  if (!hand_over(context.Get(), state.proxy_fence.get(), host_ex.Get())) WaitProxy(proxy, context.Get());
+  HandToHost(proxy, context.Get(), host);
 
   const std::array<IDirect3DSurface9*, 1> target = {scene_surface.Get()};
   const std::array<IDirect3DBaseTexture9*, 1> result = {state.output.host.Get()};

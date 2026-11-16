@@ -70,6 +70,11 @@
 //    the plateau's shadow and 0 where the rays found the sun (the game's factor kept; the R32F visibility bound before
 //    read alpha 1 everywhere), 1 everywhere with Rays Replace Shadow Maps. In world units the helper's scene data left
 //    every triangle out (past 2e5 m): 0 shadowed.
+// 12b. The CPU's steps a frame at the game's scene draw count (run_rn3_rt_093315's capture line: 1,806 scene draws,
+//    1,654 kept, 152 captured): 1,654 still tiles and 152 moving 40 units a frame (512 triangles each) over the ground,
+//    recorded as the replay records them and traced each frame with object shadows, rt_core's profile on (ray_tracing.hpp's
+//    steps time with it); 60 frames after 40 to settle (the still ones kept after 16). Printed, every frame traced checked.
+//    No game GPU work here: the D3D9 wait is the harness's own pre-pass, the rest the add-on's and the helper's.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d9.h>
@@ -1728,6 +1733,32 @@ int main(int argc, char** argv) {
       constexpr std::array<uint16_t, 6> QUAD_INDICES = {0, 1, 2, 2, 1, 3};
       mirror(CORNERS, {reinterpret_cast<const uint8_t*>(QUAD.data()), reinterpret_cast<const uint8_t*>(QUAD.data()) + sizeof(QUAD)});
       mirror(INDICES, {reinterpret_cast<const uint8_t*>(QUAD_INDICES.data()), reinterpret_cast<const uint8_t*>(QUAD_INDICES.data()) + sizeof(QUAD_INDICES)});
+      // 12b's tiles: a 17 x 17 grid over the box (512 triangles).
+      constexpr uint64_t GRID = 0xB0F3;
+      constexpr uint64_t GRID_INDICES = 0xB0F4;
+      constexpr int GRID_SIDE = 17;
+      constexpr uint32_t GRID_INDEX_COUNT = (GRID_SIDE - 1) * (GRID_SIDE - 1) * 6;
+      {
+        std::vector<int16_t> corners;
+        std::vector<uint16_t> grid_indices;
+        for (int y = 0; y < GRID_SIDE; ++y) {
+          for (int x = 0; x < GRID_SIDE; ++x) {
+            corners.insert(corners.end(), {static_cast<int16_t>(x * 32767 / (GRID_SIDE - 1)), static_cast<int16_t>(y * 32767 / (GRID_SIDE - 1)), 0, 1});
+          }
+        }
+        for (int y = 0; y + 1 < GRID_SIDE; ++y) {
+          for (int x = 0; x + 1 < GRID_SIDE; ++x) {
+            const auto corner = static_cast<uint16_t>((y * GRID_SIDE) + x);
+            grid_indices.insert(grid_indices.end(), {corner, static_cast<uint16_t>(corner + 1), static_cast<uint16_t>(corner + GRID_SIDE),
+                                                     static_cast<uint16_t>(corner + GRID_SIDE), static_cast<uint16_t>(corner + 1),
+                                                     static_cast<uint16_t>(corner + GRID_SIDE + 1)});
+          }
+        }
+        const auto* corner_bytes = reinterpret_cast<const uint8_t*>(corners.data());
+        const auto* index_bytes = reinterpret_cast<const uint8_t*>(grid_indices.data());
+        mirror(GRID, {corner_bytes, corner_bytes + (corners.size() * sizeof(int16_t))});
+        mirror(GRID_INDICES, {index_bytes, index_bytes + (grid_indices.size() * sizeof(uint16_t))});
+      }
       const auto ground_shader = std::ranges::lower_bound(ruse::replay::SHADERS, ruse::replay::GROUND_SHADER, {}, &ruse::replay::ReplayShader::hash);
       REQUIRE(ground_shader != ruse::replay::SHADERS.end() && ground_shader->hash == ruse::replay::GROUND_SHADER);
       const auto record = [&](const Ground& box, uint64_t vertices = CORNERS, uint64_t indices = INDICES, uint32_t index_count = 6) {
@@ -1799,16 +1830,20 @@ int main(int argc, char** argv) {
         size_t object_alpha_wrong = 0;
         size_t object_shadowed = 0;  // where the plateau blocks the sun: alpha 1 (the objects take the rays' shadow)
       };
-      std::vector<Count> traced;
-      const ULONGLONG started = GetTickCount64();
-      for (int frame = 0; frame < 600 && traced.size() < 24 && GetTickCount64() - started < 30000; ++frame) {
-        // The last eight traced frames with Rays Replace Shadow Maps (the first ones keep the game's term: the darker).
-        rays.replace_maps = (traced.size() >= 16) ? 1.f : 0.f;
-        // The game's present: rt_core's frame, last frame's draws to the replay, this frame's recording.
+      // One frame as the game draws it: the present (rt_core's frame, last frame's draws to the replay, this frame's
+      // recording), the pre-pass (the ground and the plateau, with `tiles`, recorded as scene draws), the camera pass, the
+      // mask's copy (the game's shadow-map term: 0.5 everywhere), the trace point at the main pass's clear, the bloom's
+      // anti-aliasing (the bridge ready, the rays' inputs then); true when the rays traced it.
+      std::vector<Ground> tiles;
+      const auto play_frame = [&] {
         bridge::OnPresent(host);
         state.scene_depth = prepass_depth;  // as the scene draws set it (OnDraw): Evaluate makes the helper's set with the rays' textures
         ruse::ray_tracing::OnPresent();
-        ruse::replay::Replay(std::span<const float>(state.camera).subspan(16, 16));
+        {
+          // Timed as addon.cpp times it (rt_core's profile on: 12b).
+          const twattila::rt_scene::internal::CpuTime timed(ruse::ray_tracing::Timed(&rays.steps.replay));
+          ruse::replay::Replay(std::span<const float>(state.camera).subspan(16, 16));
+        }
         replay.recording = ruse::ray_tracing::SceneWanted();
         rays.sun_frame = state.frame;
         // The pre-pass: the ground and the plateau into its target and depth (recorded as scene draws), the camera pass,
@@ -1823,6 +1858,7 @@ int main(int argc, char** argv) {
         if (replay.recording) {
           record(ground);
           record(plateau);
+          for (const Ground& tile : tiles) record(tile, GRID, GRID_INDICES, GRID_INDEX_COUNT);
         }
         host->ColorFill(mask_surface.Get(), nullptr, D3DCOLOR_ARGB(255, 128, 128, 128));
         state.render_target = reinterpret_cast<uint64_t>(scratch_surface.Get());
@@ -1833,7 +1869,20 @@ int main(int argc, char** argv) {
         // The trace point: the main pass's clear of the pre-pass's depth.
         ruse::ray_tracing::OnClearDepthStencilView(&command_list, {prepass_depth}, &far_depth, nullptr, 0, nullptr);
         host->SetDepthStencilSurface(nullptr);
-        if (rays.visibility_frame == state.frame) {
+        host->BeginScene();
+        {
+          const twattila::rt_scene::internal::CpuTime timed(ruse::ray_tracing::Timed(&rays.steps.evaluate));
+          bridge::Evaluate(&command_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
+        }
+        host->EndScene();
+        return rays.visibility_frame == state.frame;
+      };
+      std::vector<Count> traced;
+      const ULONGLONG started = GetTickCount64();
+      for (int frame = 0; frame < 600 && traced.size() < 24 && GetTickCount64() - started < 30000; ++frame) {
+        // The last eight traced frames with Rays Replace Shadow Maps (the first ones keep the game's term: the darker).
+        rays.replace_maps = (traced.size() >= 16) ? 1.f : 0.f;
+        if (play_frame()) {
           const std::vector<uint8_t> shaded = ReadHost(host, mask_surface.Get(), 4);
           Count count = {.replaced = rays.replace_maps != 0.f};
           size_t lit = 0;
@@ -1868,10 +1917,6 @@ int main(int argc, char** argv) {
           }
           traced.push_back(count);
         }
-        // The bloom: the anti-aliasing (the bridge ready, the rays' inputs then).
-        host->BeginScene();
-        bridge::Evaluate(&command_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
-        host->EndScene();
         if (traced.empty()) Sleep(5);
       }
       const size_t expected_shadowed = static_cast<size_t>(std::ranges::count(expected, 0));
@@ -1894,6 +1939,52 @@ int main(int argc, char** argv) {
         CHECK(std::abs(count.lit_red - (count.replaced ? 255.0 : 128.0)) < 2.0);
         CHECK(count.object_alpha_wrong == 0 && count.object_shadowed * 10 >= expected_shadowed * 9);
       }
+
+      // 12b. The CPU's steps a frame at the game's scene draw count.
+      rays.replace_maps = 0.f;
+      constexpr int TILE_ROWS = 43;
+      constexpr int STILL_TILES = 1654;
+      constexpr int MOVING_TILES = 152;
+      const float spacing_x = (ground.box_max[0] - ground.box_min[0]) / TILE_ROWS;
+      const float spacing_y = (ground.box_max[1] - ground.box_min[1]) / TILE_ROWS;
+      for (int index = 0; index < STILL_TILES + MOVING_TILES; ++index) {
+        const float x = ground.box_min[0] + (spacing_x * static_cast<float>(index % TILE_ROWS));
+        const float y = ground.box_min[1] + (spacing_y * static_cast<float>(index / TILE_ROWS));
+        tiles.push_back({.box_min = {x, y, ground.box_min[2] + 100.f, 1.f},
+                         .box_max = {x + (0.8f * spacing_x), y + (0.8f * spacing_y), ground.box_min[2] + 100.f, 1.f},
+                         .height = ground.height + 100.0});
+      }
+      twattila::rt_scene::StartProfile();
+      constexpr int SETTLE_FRAMES = 40;
+      constexpr int BENCH_FRAMES = 60;
+      int bench_traced = 0;
+      int64_t answer_ticks = 0;
+      for (int frame = 0; frame < SETTLE_FRAMES + BENCH_FRAMES; ++frame) {
+        if (frame == SETTLE_FRAMES) {
+          rays.steps = {};
+          answer_ticks = twattila::dlaa_bridge::bridge.answer_ticks;
+        }
+        for (size_t moving = STILL_TILES; moving < tiles.size(); ++moving) {
+          tiles[moving].box_min[0] += 40.f;
+          tiles[moving].box_max[0] += 40.f;
+        }
+        if (play_frame() && frame >= SETTLE_FRAMES) ++bench_traced;
+      }
+      LARGE_INTEGER frequency;
+      QueryPerformanceFrequency(&frequency);
+      const ruse::ray_tracing::State::Steps& steps = rays.steps;
+      const auto step_ms = [&](int64_t ticks) {
+        return 1000.0 * static_cast<double>(ticks) / static_cast<double>(frequency.QuadPart) / static_cast<double>(std::max(steps.frames, 1u));
+      };
+      std::printf("CPU steps (%d still + %d moving tiles of %u triangles, %d of %d frames traced; %s): %u frames, ms a frame: frame %.2f, replay %.2f, "
+                  "ground passes %.2f (D3D9 wait %.2f, capture %.2f, trace request %.2f, D3D11 and helper wait %.2f), anti-aliasing %.2f, the "
+                  "helper's answers %.2f\n",
+                  STILL_TILES, MOVING_TILES, GRID_INDEX_COUNT / 3, bench_traced, BENCH_FRAMES, twattila::rt_scene::Status().c_str(), steps.frames,
+                  step_ms(steps.frame), step_ms(steps.replay), step_ms(steps.ground), step_ms(steps.host_wait), step_ms(steps.capture),
+                  step_ms(steps.trace), step_ms(steps.proxy_wait), step_ms(steps.evaluate),
+                  step_ms(twattila::dlaa_bridge::bridge.answer_ticks - answer_ticks));
+      CHECK(bench_traced == BENCH_FRAMES && steps.frames >= BENCH_FRAMES - 1);
+      tiles.clear();
       rays = ruse::ray_tracing::State{};
       replay.enabled = false;
       replay.rays = false;

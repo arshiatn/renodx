@@ -702,8 +702,11 @@ void OnPresentFrame(
       ruse::replay::state.log_next = true;
     }
   }
-  ruse::replay::Replay(ruse::bridge::state.camera_valid ? std::span<const float>(ruse::bridge::state.camera).subspan(16, 16)
-                                                       : std::span<const float>());
+  {
+    const twattila::rt_scene::internal::CpuTime timed(ruse::ray_tracing::Timed(&ruse::ray_tracing::state.steps.replay));
+    ruse::replay::Replay(ruse::bridge::state.camera_valid ? std::span<const float>(ruse::bridge::state.camera).subspan(16, 16)
+                                                         : std::span<const float>());
+  }
   // With the rays the next frame's scene draws are recorded only for a try that takes them: no replay work while they
   // don't trace.
   ruse::replay::state.recording = !ruse::replay::state.rays || ruse::ray_tracing::SceneWanted();
@@ -1410,7 +1413,11 @@ void ConfigureAddon() {
         custom_shaders[bloom] = {.crc32 = bloom, .on_draw = [](reshade::api::command_list* cmd_list) {
                                    ChooseUpscaler();
                                    ruse::ray_tracing::OnBloomStart(cmd_list);
-                                   ruse::bridge::Evaluate(cmd_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
+                                   {
+                                     const twattila::rt_scene::internal::CpuTime timed(
+                                         ruse::ray_tracing::Timed(&ruse::ray_tracing::state.steps.evaluate));
+                                     ruse::bridge::Evaluate(cmd_list, __bridge_quad, __bridge_prepare, __bridge_writeback);
+                                   }
                                    ruse::ray_tracing::OnBloom(cmd_list);
                                    return true;
                                  }};
@@ -1424,7 +1431,7 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Anti-Aliasing GPU Sync (Experimental)",
         .section = AA_SECTION,
-        .tooltip = "The GPU waits for the anti-aliasing instead of the CPU (faster when it works).\n"
+        .tooltip = "The GPU waits for the anti-aliasing and the ground's passes instead of the CPU (faster when it works).\n"
                    "Restart after changing this setting.",
         .labels = {"Off", "On"},
         .is_global = true,

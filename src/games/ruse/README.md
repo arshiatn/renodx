@@ -45,7 +45,7 @@ Each frame, before the bloom's first pass reads the resolved main target: a D3D9
 INTZ depth (Readable Scene Depth: the back-buffer-sized single-sample D24 surfaces made INTZ) and the camera's motion
 (the camera pass `0x88292FC6`'s matrices); the helper runs; a second pass writes the result back in the game's
 encoding. The scene draws get a Halton jitter in their camera registers c0-c3. GPU Sync waits on shared fences instead
-of the CPU. The GPU's vendor comes from the proxy's device: off NVIDIA's GPUs the row lists Game's / FSR / XeSS, and a
+of the CPU, at the anti-aliasing and at the trace point's two hand-overs (bridge.hpp HandToProxy / HandToHost). The GPU's vendor comes from the proxy's device: off NVIDIA's GPUs the row lists Game's / FSR / XeSS, and a
 saved DLAA runs (and is saved) as XeSS Native AA on Intel's, else FSR Native AA (one log line).
 
 The row sets the game's own MSAA to 1x (`Option.ini` MainRTAA 1: RUSE.exe pairs 1, 2, 4, 8, 8.5, 16, 16.5 with "1x"
