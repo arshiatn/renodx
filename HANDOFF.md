@@ -303,7 +303,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NEXT ROUNDS 11-16 (ATN ~10:4x: "start doing everything that is in next game and ... | coordinator
 - ATN 10:3x "Where are PT AO / PT GI for all the games?": every TW game, Shogun 2, ... | tpa_, next Divinity rounds
 - Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask ... | next Divinity 2 round
-- END-OF-BATCH BENCH (eob_, tools/tw/bench/end_of_batch_1116.md): helper115 vs hel ... | eob_, then coordinator
+- Bench script: constantinople_bench.ps1 checks build tools 3 times in a row; a bu ... | next shared round
+- Reset / No RT/PT cost (eob_ 11-16): Bend +0.96 ms and GT-VBAO / GT-VBGI +0.94 ms ... | next shared round
+- Rarer Objects bench: needs a siege-tower / ship view in the bench (none exists). ... | coordinator, next bench
 - RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
 - (hca_: AO done ad541a4f; GI / shadows / reflections per game: AUDIT 11-16 A4 / D ... | rao_, then the next replace round
 - In-game checks of the HDR bug fixes: Output SDR colours (BT.709 in V30 / V31), S ... | next TW data runs / release round
@@ -342,7 +344,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Port RayTracedBatchedUnits + RayTracedUnitsRange to Shogun 2 (SHARED STEP, after ... | GPU round after the install
 - Cosmetic: moved files keep "[Shogun 2 DLSS]" log tags; HLSL comments "(DLSS addo ... | coordinator, release round
 - (hca_: S4 b200df25 and S6 done; uem_ gone: the rest to shs2_) SHARED STEP owners ... | UE4 MERGE (uem_)
-- 128 torch lights' cost at night / burning city / WH3 / Pharaoh: a variant in the ... | coordinator, end-of-batch bench (torch-128 night / burning-c
+- (atn scene DONE 11-16 eob_: 32 / 64 / 128 lights 0.21 / 0.267 / 0.454 ms helper, ... | coordinator, end-of-batch bench (torch-128 night / burning-c
 - Rarer Objects needs a view with siege towers or ships (bench scene choice) Owner ... | coordinator, end-of-batch bench
 - After everything: one A/B of ATN's CPU set rule against an affinity rule of the ... | the bench, ATN's OK at the time
 - caster_census.py for Feral's engine (a depth-prepass scene_draw host, VSMain ent ... | coordinator, after parity round 2 (shared script)
@@ -1946,9 +1948,21 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask, RT AO / PT ambient replacing
         PPApplyAO, RT / PT GI replacing the IBL diffuse, RT reflections replacing IBL_Specular; the ledger's stacking lines)
         as Divinity 1's steps 9-10. Owner: next Divinity 2 round
-      - [ ] END-OF-BATCH BENCH (eob_, tools/tw/bench/end_of_batch_1116.md): helper115 vs helper116 at ATN's rows (GPU round
+      - [x] DONE 12:06 (eob_, 26 starts / 25 valid, ATN's files restored 0 mismatches; report
+        tools/tw/bench/end_of_batch_1116_report.md): helper116 in game: cache fill 0.155 -> 0.115 ms, reflections 1.29 ->
+        1.23 ms, whole helper ~-0.1 ms (the view is CPU-bound ~30 ms, fps no change beyond the spread); torch 32 / 64 / 128
+        lights 0.21 / 0.267 / 0.454 ms at the atn scene (no night scene); Rarer Objects not run (no scene); Reset / No RT/PT
+        ~1 ms slower than ATN's rows (game D3D11 frame +2.84 ms: Bend +0.96 at the sun lighting, GT-VBAO / GT-VBGI +0.94
+        at the SSAO resolve, the rest the game's shadow maps). END-OF-BATCH BENCH (eob_, tools/tw/bench/end_of_batch_1116.md): helper115 vs helper116 at ATN's rows (GPU round
         2 in game), torch-128 night / burning city, Rarer Objects if a siege-tower / ship scene exists. Report
         tools/tw/bench/end_of_batch_1116_report.md. Owner: eob_, then coordinator
+      - [ ] Bench script: constantinople_bench.ps1 checks build tools 3 times in a row; a build starting between the checks
+        stops the batch with a false "NOT RUN: build tools still running after 60 min" (cost eob_ a start). Also the set's
+        `Reset` label matched 4 buttons (every page's Reset pressed): give presets an exact label. Owner: next shared round
+      - [ ] Reset / No RT/PT cost (eob_ 11-16): Bend +0.96 ms and GT-VBAO / GT-VBGI +0.94 ms of the game's D3D11 frame at 4K
+        (one round, CPU-limited, command times include waits): an Nsight / harness per-pass look at both, then a cut if
+        any (same picture = on). Owner: next shared round
+      - [ ] Rarer Objects bench: needs a siege-tower / ship view in the bench (none exists). Owner: coordinator, next bench
       - [x] Skills 10:3x: game-port-method lessons c5b64d3f5 (gate per AA mode, a missing status line, in-game coverage
         before a replace default, cost without a visible change, load screenshots) + engines.md 6355c4c79 (Tales GI);
         zip Downloads\RenoDX_skills_2026-11-16.zip (48 files).
@@ -2450,7 +2464,8 @@ heading text are in HANDOFF_ARCHIVE.md)
     feedback_fable_review_end.md); the TW batch's end review stays (ATN asked for it)
 - [x] DONE 11-16 (END BENCH PART 1 + PART 2 done; its children have their own boxes): ATN 21:2x: ONE Constantinople bench after ALL CPU and GPU rounds of this batch (not after each): every round's
   candidates as variants against heapfix P, then the CPU set vs affinity A/B. Owner: coordinator, before the install
-  - [ ] 128 torch lights' cost at night / burning city / WH3 / Pharaoh: a variant in the end-of-batch bench Owner: coordinator, end-of-batch bench (torch-128 night / burning-city variant; WH3 / Pharaoh numbers from their data runs).
+  - [ ] (atn scene DONE 11-16 eob_: 32 / 64 / 128 lights 0.21 / 0.267 / 0.454 ms helper, fps no change; night / burning
+    city still open: no such bench scene) 128 torch lights' cost at night / burning city / WH3 / Pharaoh: a variant in the end-of-batch bench Owner: coordinator, end-of-batch bench (torch-128 night / burning-city variant; WH3 / Pharaoh numbers from their data runs).
   - [ ] Rarer Objects needs a view with siege towers or ships (bench scene choice) Owner: coordinator, end-of-batch bench.
   - [x] DONE 11-15 (END BENCH PART 1 (verdicts there)): Bench variants ready: tools/tw/bench/variants/cpu4_round4.json + cpu4_round4_plan.txt (P, sort, gather, x87keep,
     loopanim, memfast128; ~2.1 h for 3 scenes): in the single end-of-batch bench. If sort or gather is worse than P beyond
