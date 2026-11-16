@@ -3,6 +3,10 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 06:xx: from the run analysis: Bend + GT-VBGI defaults (Tales +0.31 / +0.27 ms, Expeditions +0.90 / +0.49
+  ms); Higher Precision Scene stays Experimental off?; Ryse far-facade ray shadows (rays darken far facades the maps leave
+  lit, up to 0.67 stop): keep or limit?; pick a Ryse redo save (sunlit, near hair, fog volume, torch interior). Pictures:
+  tools/tw/round_notes/an_1116/out. Owner: ATN
 - [x] ANSWERED 05:3x (ATN "Please do everything and the things that are left": my picks applied, sk4_ adding all 17 + V31 exception + no tooltip numbers; revert any in the morning). NEW 11-16 05:2x: which of the 17 Attila features missing from the skills to add (my pick: all 17), and 2 stale-line
   choices (V31 hue shift after PsychoV: rule exception (my pick) or drop it; K / M / L numbers in the tooltip: drop from
   the skill (my pick)). List: tools/tw/round_notes/attila_vs_skills_1116.md. Owner: ATN, then coordinator
@@ -165,6 +169,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Attila has no frame trace `on_demand` / `at_100` (Pharaoh, Rome II, WH3 have bot ... | next Attila round
 - Ryse / Tales / Expeditions lack Output Auto's first-start path + the HDR-on / of ... | next non-TW round
 - grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound i ... | next Attila round
+- SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any ... | coordinator
+- SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specula ... | SHARED STEP agent (after rao_)
+- RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116 ... | coordinator + per-game rounds
 - Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, G ... | rao_, then the next replace round
 - Attila features vs skills: sk3_ is comparing; then ATN decides which to add. Own ... | sk3_, then ATN
 - Tonight's run analysis: an_ is writing tools/tw/round_notes/runs_1116_analysis.m ... | coordinator
@@ -1474,6 +1481,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         (twattila/output_encoding.hpp, test/tw_output_encoding). Owner: next non-TW round
       - [ ] grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound is the game's" (100 m fade).
         Owner: next Attila round
+      - [ ] SKILL AUDIT 11-16 (ATN: "double check that every game of ours hasn't missed any of the skill sets"): reports per
+        game in tools/tw/round_notes/skill_audit_1116/<game>.md (attila, thrones, rome2, wh1, wh2, wh3, troy, pharaoh,
+        shogun2, romer, ryse, tales, expeditions, divinity1, divinity2, ruse); each table row is A (offline) / B (ATN in
+        game) / C (ATN decides) / W. Fix rounds after rao_ merges: one SHARED STEP agent (twattila / talesofarise_dlss /
+        utils) + one agent per game folder, every A row, each row a commit; B / C rows go to OPEN FOR ATN. Divinity started
+        early (dvf_, no rao_ overlap). Owner: coordinator
+      - [ ] SHARED STEP (from the audits): SetRaysPresetDefaults makes Fog Shadows + Specular Occlusion default on, so rays
+        run with every ray method off (Thrones, Rome II, Rome Remastered, WH1-3, Pharaoh, Troy; fix: both keys into
+        RAY_METHODS, graphics_page.hpp:46-47); ssr00/01/06/07 reflections occluded twice under RT Specular Occlusion and not
+        at all under Path-Traced Ambient alone (twattila/shaders/ssr00_0x66006BEA:174, 331-336); the game's AO blurs still
+        draw on a white target under RT AO / PT ambient (cost); Time Each Pass missing in Rome II, Thrones, Troy, Pharaoh,
+        Shogun 2, Rome Remastered, Divinity 2; credits template (GT-VBAO / GT-VBGI, auto thickness after Bjorn Ottosson,
+        Detours, SMAA / CMAA2 / FidelityFX SSSR, UE Extended by Marat) in every About page; rt_core.hpp:3926-3931 "helper
+        started again" on the helper's 10 s idle release = info, not WARN; talesofarise_dlss frame_trace.hpp:341 polls
+        renodx_trace_now every 60 presents on the game thread; Tales / Expeditions per-frame counters for the details panel.
+        Owner: SHARED STEP agent (after rao_)
+      - [ ] RUN ANALYSIS 11-16 (tools/tw/round_notes/runs_1116_analysis.md, pictures an_1116/out): D1 SSR never drew (the
+        exe dropped or ignored SSREnabled; keep the game's lsx after exit next time); D2 gamma slider does nothing in HDR
+        (PPGammaCorrection never draws); Higher Precision Scene darks +0.000..+0.026 stops, nothing broken, banding not
+        judged (no sky): needs a sky view, 2 starts each; Ryse PT ambient was never on (light_bounce=0; rd_ redoing), skip
+        0/1/2 no visible change in that view; Tales SSGI 17CE7BCD / 13BDD599 / 86CBF00A / 746654CA still dispatch under
+        GT-VBGI (0.07 ms, replace round); Expeditions r.SSGI.Quality not forced 0 under GT-VBGI (replace round); R.U.S.E.
+        rays idle in both T-runs (in-game MSAA 8x: DLAA row must turn MainRTAA off, plus a log line; then the T-run again
+        against an all-off start, keys: F1 for HDR shots). Its full Boxes list (coordinator / next rounds / ATN) is in the
+        report. Owner: coordinator + per-game rounds
       - [ ] Replace audit (ATN 2026-11-16: "Everything that we add, GT-VBAO, RT AO, PT AO, GT-VBGI, RT GI, PT GI, RT
         Shadows should always replace the game's own version"; skills c4ebedb8). AO: rao_ is fixing `rays_replace_ao =
         false` in Expeditions, Tales, Pharaoh, Rome II, Rome Remastered, Troy, WH1, WH2, WH3 (+ Ryse, Shogun 2,
