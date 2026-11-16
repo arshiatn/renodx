@@ -83,6 +83,9 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, a luminance curve then the clip).
 constexpr float HUE_CLIP_DEFAULT = 80.f;
 
+// Modded Auto Exposure: Sensitivity's default, in stops above the frame average (Attila's).
+constexpr float AUTO_EXPOSURE_HEADROOM_DEFAULT = 4.f;
+
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f;
 }
@@ -180,7 +183,7 @@ void ApplyResetPreset(float rendering_mode) {
       1.0f,  // filmgrain
       1.0f,  // some_indicators
       0.0f,  // auto_exposure_highlight_protection
-      1.0f,  // auto_exposure_highlight_headroom_stops
+      AUTO_EXPOSURE_HEADROOM_DEFAULT,  // auto_exposure_highlight_headroom_stops
       1.0f,  // vfx_fire_brightness
       1.0f,  // vfx_blood_splash_brightness
       1.0f,  // vfx_fog_brightness
@@ -709,7 +712,7 @@ void BuildRuntimeData() {
               0.0f,  // filmgrain
               1.0f,  // some_indicators
               1.0f,  // auto_exposure_highlight_protection
-              0.4f,  // auto_exposure_highlight_headroom_stops
+              1.3288f,  // auto_exposure_highlight_headroom_stops (0.4 decades before: the same look)
               6.0f,  // vfx_fire_brightness
               6.0f,  // vfx_blood_splash_brightness
               0.7f,  // vfx_fog_brightness
@@ -743,7 +746,7 @@ void BuildRuntimeData() {
               0.0f,  // filmgrain
               1.0f,  // some_indicators
               1.0f,  // auto_exposure_highlight_protection
-              0.4f,  // auto_exposure_highlight_headroom_stops
+              1.3288f,  // auto_exposure_highlight_headroom_stops (0.4 decades before: the same look)
               2.5f,  // vfx_fire_brightness
               3.0f,  // vfx_blood_splash_brightness
               0.7f,  // vfx_fog_brightness
@@ -1142,12 +1145,12 @@ void BuildRuntimeData() {
         .key = "auto_exposure_highlight_headroom_stops",
         .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
         .value_type = renodx::utils::settings::SettingValueType::FLOAT,
-        .default_value = 1.0f,
+        .default_value = AUTO_EXPOSURE_HEADROOM_DEFAULT,
         .label = "Modded Auto Exposure: Sensitivity",
         .section = "Extra (Experimental)",
         .tooltip = "Maximum metered highlight above the frame average, in stops. Lower values protect exposure more strongly. Higher values are closer to stock.",
-        .min = 0.0f,
-        .max = 2.0f,
+        .min = 1.0f,
+        .max = 8.0f,
         .format = "%.1f",
         .is_enabled = IsModdedAutoExposureEnabled,
     },
@@ -2538,7 +2541,7 @@ bool AttachAddon() {
   // Rows saved at an old default, cleared once per revision. 1: Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
   // here until what they act on is hooked: they show then at ATN's values. 2 (parity round): rows saved hidden at
   // SetRaysPresetDefaults' or the shared row's value, shown now at a default of their own here (Experimental, off).
-  constexpr int SETTINGS_REVISION = 2;
+  constexpr int SETTINGS_REVISION = 3;
   if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
     const auto clear = [](std::initializer_list<const char*> keys) {
       for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
@@ -2551,7 +2554,17 @@ bool AttachAddon() {
       clear({"RayTracedFarTreeShadows", "RayTracedLightImportance", "RayTracedPathKeptCube", "RayTracedSmokeQuality",
              "RayTracedSpriteShadows", "RayTracedSwayRange"});
     }
-    clear({"RayTracedFarTreeShadows", "RayTracedLightGlow", "RayTracedSpriteShadows", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
+    if (revision < 2) {
+      clear({"RayTracedFarTreeShadows", "RayTracedLightGlow", "RayTracedSpriteShadows", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
+    }
+    // 3: Modded Auto Exposure: Sensitivity was in decades of luminance, now stops: a saved value x log2(10), the same look.
+    if (revision < 3) {
+      for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
+        if (float decades = 0.f; reshade::get_config_value(nullptr, preset, "auto_exposure_highlight_headroom_stops", decades)) {
+          reshade::set_config_value(nullptr, preset, "auto_exposure_highlight_headroom_stops", decades * 3.32192809f);
+        }
+      }
+    }
     reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
   }
 
