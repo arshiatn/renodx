@@ -200,6 +200,14 @@ renodx::utils::settings::Settings settings = {
     //     .section = "Peak",
     //     .tooltip = "3 rectangles within a large one.\n\n- Left: Not Visible.\n- Middle: Barely Visible.\n- Right: Easily Visible.\n\n(Ofc, you can always set lower to personal pref.)",
     // },
+    // The modded modes' LUT ignores the game's Brightness / Contrast / HDR Max Nits / Paper White (frozen shaper domain,
+    // shared.h); its Gamma Correction is open past 1 (PPGammaCorrection not drawn at 1, divinity2.tsv).
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "The modded modes ignore the game's Brightness, Contrast and HDR sliders.\n"
+                 "Keep the game's Gamma Correction at 1.",
+        .section = "General",
+    },
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
