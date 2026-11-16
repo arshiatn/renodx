@@ -1857,6 +1857,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   rt_settings.shadows_only = rt_settings.sun_shadows && rays_replace_maps_row != 0.f && rays_skip_cascades_row != 0.f;
   rt_settings.casters_out_of_view = rt_settings.sun_shadows && rays_units_out_of_view_row != 0.f;
   rt_settings.terrain_outside_view = rays_hills_out_of_view_row != 0.f;
+  // Fog Shadows alone light no surface: no Ray Reconstruction for them (as Warhammer's, Warhammer III's and Pharaoh's).
+  rt_settings.cheap_fog_alone = true;
   twattila::texture_lod_bias::SetWrappingTrilinear(lod_bias_trilinear_row != 0.f);
   // Ray-traced shadows replace the screen-space ones too (Graphics 1 of 2's DXR: in place of Bend's).
   auto sss_settings = twattila::feature_settings::SssSettings(sss_sliders);
