@@ -1906,7 +1906,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   shader_injection.ssao_scale = twattila::ao_pass::ResolutionScale(shader_injection.ssao_resolution);
   // The rays' AO or the paths' in place of the game's (ssao01) and GT-VBAO's (not drawn), never on top of them (ATN
   // 2026-11-16), as Attila's and Thrones'.
-  shader_injection.rt_ambient_alone = (rt_settings.ambient_occlusion || rt_settings.path_ambient) ? 1.f : 0.f;
+  shader_injection.rt_ambient_alone = twattila::rt_scene::AmbientReplaced() ? 1.f : 0.f;
   shader_injection.ssao_frame =
       twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f && shader_injection.rt_ambient_alone == 0.f,
                                 shader_injection.ssao_temporal != 0.f, shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
