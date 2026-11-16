@@ -3,6 +3,12 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 (Shogun 2 / Rome Remastered / GPU rounds): Shogun 2 Rays Replace Shadow Maps stays Experimental off (far
+  soldiers / trees need their Experimental shadow rows, grass loses contact shadows, the cascades are still drawn: no cost
+  saved yet) - OK?; Auto Thickness "(Experimental)" but on by default (Shogun 2, Attila, Thrones, WH3): drop the label or
+  default off?; Shogun 2 Video AutoHDR 0.25 (skill 0.2, see the line above); unseen-surface local lights in paths cost
+  ~0.1 ms (dropping them is a look change): an Experimental row?; in game: the GPU round's two helper wins in Attila at
+  your rows. Owner: ATN
 - [ ] NEW 11-16 (WH3 round): in game (B): one trace of t00's g_gamma_output (GC level B until then), GC on / off in SDR +
   HDR, Bend + kept maps (contact shadows once), torch-lit scenes under rays (untraced lights are now unshadowed), metal with
   Spec Occlusion on. ATN decides (C): the Multiply row (Rays Replace off); terrain t7 kept under the rays;
@@ -198,6 +204,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - dvf_ not done: VFX / indicator Experimental rows in both games (D1 633 FX_MAT an ... | next Divinity round / runs, ATN (VFX scope, C rows)
 - tex_ not done: Expeditions Video AutoHDR (NV12 convert ps 0x524CDCDF; needs one ... | next UE round, coordinator (release), shs_
 - w3f_ not done: vanilla_exact over every WH3 shader + a lensflare00 control (~20 ... | next WH3 round, shs_
+- s2r_ not done: Rome Remastered Modded Auto Exposure (Feral's AE compute not iden ... | next Shogun 2 / Rome Remastered rounds and data runs
+- gpu2_ next wins: (1) paths at 128 registers (split trace / shade, or SASS livene ... | next GPU round, next ReSTIR round, tools owner
 - ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
 - Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
@@ -1576,6 +1584,31 @@ heading text are in HANDOFF_ARCHIVE.md)
           Grass RT range (row 16, boxed in the 17-row leftovers). Shared rows (contact_shadows_off route, per-light traced
           flag, RAY_METHODS, frame_gamma comment, DLSS scaled decode 2.2 vs WH3's 2.0) sent to shs_. Owner: next WH3 round,
           shs_
+        - [x] Shogun 2 + Rome Remastered MERGED 0bf6d320c (s2r_, 24 commits; amd64 builds OK; vanilla_exact conflict
+          resolved keeping both tables): vendor fallback (both), Time Each Pass (both), credits; Shogun 2 one occlusion per
+          term (resolve t41 in place, t46 x open environment, no AO on the resolve hit; GT-VBAO off under PT AO; WARP 0 apart,
+          controls caught), RT/PT on the shared RAYS_PRESET + 128 torches, Reflex / limit gates, Torch Shadows Follow the
+          Camera (Exp off), Lean ReSTIR default on, SER tooltip, Rays Replace Shadow Maps (Exp off; t51 0/1024 apart),
+          tw_shogun2_tweaks part 4 (12 patterns once, CONTROL 0); Rome Remastered FSR / XeSS through the helper, test hooks,
+          Bend off where the rays shadowed. Tests: tw_shogun2_shaders / tweaks, tw_romer_dlaa / rays PASS; tw_vanilla_exact
+          45 EXACT (Shogun2 7, Shogun2PS 17, RomeR 15, RomeRPS 6). dump_rr.cpp now dumps AA {0,5,6,7} (coordinator).
+        - [ ] s2r_ not done: Rome Remastered Modded Auto Exposure (Feral's AE compute not identified: trace 40, port, WARP);
+          skip Shogun 2's own line-sweep SSAO under the rays' AO (reader census first); Rome Remastered rays replacing the
+          cascades + texture LOD bias proof (NEEDS A TRACE, reader census); Shogun 2 old AO path + summed-area DOF blurs
+          (NEEDS A TRACE); PsychoV35 toe / settings matrix / scale census (harness); vanilla_exact 8 open (highlight00 /
+          ribbon00 inf, ssrcopy00 0.79: render-scale constants first; treevelocity00-03 by design; particlelight00,
+          pointlight00 / 01, vfxglow00 control missed); smoke shadow map WON'T (shogun2.tsv:38 / 113), Rome Remastered WON'T
+          rows and Gamma Correction row: second look. Owner: next Shogun 2 / Rome Remastered rounds and data runs
+        - [x] GPU ROUND 2 MERGED aa295fd32 (gpu2_; 4K harness, ATN's rows, Nsight base clocks): radiance cache fill by wave
+          (0.583 -> 0.462 ms), reflections without spills (0.701 -> 0.630, local memory 1.14 GB -> 0); whole helper 5.49 ->
+          5.33 ms; HARNESS_DUMP 43 modes / 264 outputs 0 differ. Helper changed: the next install needs a new helper number.
+        - [ ] gpu2_ next wins: (1) paths at 128 registers (split trace / shade, or SASS liveness; est. 0.2-0.3 ms); (2) reuse
+          near L2-bound 95.7 % (pack reservoirs / group-shared tile, ~0.2); (3) fill latency-bound (strided loads; harness
+          can't set RT_PATH_SUN_LIGHT: harness switch); (4) reflect_filter 0.36 ms L2 87 % (group-shared tile, ~0.1); (6) c3
+          only at REFLECT_ONE_SAMPLE (~-0.03, unproven); (7) trace / lights / fog RT-core bound (fewer rays = look risk,
+          numbers for ATN); (8) one more copy (0.16 ms); (10) ns_trace_run cleanup misses an exiting helper (empty Path),
+          one lingered ~20 min. Files: tools\tw\nsight runs gpu2_ns_*, scratchpad gpu2_c3_files. Owner: next GPU round,
+          next ReSTIR round, tools owner
         - [ ] ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB73442 / D9123DE1, vanilla coverage
           of pointlight00-39 / UI sprites / grass00-01 (the generic driver can't feed them); view_share Classify 24 unclear
           sun-PS rows a game (NEEDS A TRACE). The t46 x AO double-occlusion check was sent to WH3, WH1 / WH2, Troy / Pharaoh,
