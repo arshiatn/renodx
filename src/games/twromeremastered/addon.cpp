@@ -43,6 +43,7 @@
 #include "../twattila/frame_trace.hpp"
 #include "../twattila/graphics_page.hpp"
 #include "../twattila/output_encoding.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "../twattila/reflex.hpp"
 #include "../twattila/test_hooks.hpp"
@@ -575,8 +576,9 @@ void OnPostDraw(reshade::api::command_list* cmd_list, uint32_t hash) {
                                     viewport.Height, viewport.TopLeftX, viewport.TopLeftY, describe(target.Get()), describe(input.Get())));
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
+  twattila::pass_timing::OnPresent(queue, "romer");
   // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS
   // on Intel's, else FSR (Attila's).
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
@@ -1950,6 +1952,14 @@ void ConfigureAddon() {
           },
           .is_visible = IsAdvancedSettings,
       },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Time Each Pass (One Frame)",
+          .section = "Tools",
+          .tooltip = "The GPU's time of every pass of the next frame into romer_pass_timing.txt next to the game's exe.",
+          .on_change = [] { twattila::pass_timing::Request(); },
+          .is_visible = IsAdvancedSettings,
+      },
   });
 
   // Appended Settings (HDR10)
@@ -2057,6 +2067,8 @@ void ConfigureAddon() {
 
 bool AttachAddon() {
   if (attached) return true;
+  // Its draw and dispatch events before any other of the add-on's (pass_timing.hpp: their run order is registration order).
+  twattila::pass_timing::Install();
 
   ConfigureAddon();
 
@@ -2157,6 +2169,7 @@ void DetachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
 
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
+  twattila::pass_timing::Uninstall();
 
   attached = false;
 }
