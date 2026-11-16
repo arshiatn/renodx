@@ -1347,7 +1347,8 @@ void OnResolved(reshade::api::command_list* cmd_list) {
 
 // Point light shadows and fog shadows from rays: 8 light PS (fx_pointlight*: linear and smooth falloff, with and without the point
 // shadow map and the aux G-buffer) and the fog's 6 light PS (fx_battlefog, all traced after the sun). Our copies run only where
-// rt_scene's hook has just bound the rays' texture; otherwise the game's bytes do, and nothing here touches the picture.
+// rt_scene's hook has just bound the rays' texture; otherwise the game's bytes do, and nothing here touches the picture. The 4 with
+// the point shadow map run their unshadowed twin's copy (BuildRuntimeData): the rays' shadow replaces the map's.
 // The sun's mask (E6BCBA8A, before the sun draw and this frame's trace) the same, while rays cast the sun's shadow: lit cascades, no
 // contact march; smoke, clouds and the terrain's map stay. Fog, portraits and forward passes read the maps, so the casters still draw.
 // With the maps kept under ours (Bend Screen-Space Shadows, or the rays with Rays Replace Shadow Maps off) the game's own bytes draw
@@ -1807,6 +1808,13 @@ void BuildRuntimeData() {
     const uint32_t hash = traced_lights::SHADERS[index];
     traced_lights::codes[index] = custom_shaders[hash].code;
     custom_shaders[hash] = {.crc32 = hash, .on_inject = not_injected};
+  }
+  // The 4 light PS that read the game's point shadow map (B2453C88, 1315B4F2, BE7249F1, EE766574) take their unshadowed twin's
+  // copy under the rays (8AD6BFD4, EBF0B0A0, 2240F035, F551453C: the same constants, inputs and G-buffer slots, the map's
+  // b2 / t4 or t5 / s0 / s1 left out): the rays' torch shadows in place of the game's maps, not on top of them. The game's
+  // shadowed PS with its whole map lit draws its twin's light (tw_warhammer3_shaders part 5).
+  for (const auto& [shadowed, twin] : {std::pair{2, 0}, std::pair{3, 1}, std::pair{6, 4}, std::pair{7, 5}}) {
+    traced_lights::codes[shadowed] = traced_lights::codes[twin];
   }
   // Unit/Building Indicator Brightness: fx_indicator's colour passes (names.tsv; its VS 550C70F2), in no trace (no unit selected in
   // them): level B. Ours only off 1 in an HDR mode, else the game's bytes. Not fx_indicator_mboit (E01EE900 writes moments, no colour;
