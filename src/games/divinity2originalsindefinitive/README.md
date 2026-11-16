@@ -17,7 +17,20 @@ together. Do not combine these shaders with the previous addon binary.
 
 Presets: **Recommended** = PsychoV35 with Bloom 0.44; **Reset** = every image
 control at its default (Vanilla); **SDR (monitors without HDR)** = Off (turn the
-game's HDR off too). The PsychoV30 / Tweaked ACES presets stay until ATN decides.
+game's HDR off too). The PsychoV30 / Tweaked ACES presets (Recommended
+(PsychoV30), Recommended (Tweaked ACES), Closer to Native (PsychoV30)) stay until
+ATN decides. No preset writes Peak, Paper White, UI, Settings Mode or Output, and
+each tooltip says so.
+
+Page 1 starts with: the modded modes ignore the game's Brightness, Contrast and
+HDR sliders; keep the game's Gamma Correction at 1 (PPGammaCorrection is not
+drawn at 1; other values are still open).
+
+**Sun Shadow Softness (Experimental, Extra, default 1):** the game's own PCSS sun
+shadows (CascadedPCSS, every cascade / size variant and the orthographic camera's)
+take the sun's angle from `LightProperties.x`; the row scales its tangent, the
+light size that sets the blocker search and the penumbra, as Divinity 1's row
+does. 1 is the game's bytes.
 
 PsychoV35 replaces everything after the game's white balance and regional
 grading (the untonemapped scene-linear point, `t00` before the former V30 call),
@@ -196,6 +209,12 @@ and the inventory.
   `RENODX_TW_SET`'s `trace` key: `tales_frame_trace.txt` next to `EoCApp.exe`
   with every draw / dispatch, their formats, PPComputeLUT's cb0 (each LUT, HDR
   and the inventory's SDR) and PerView b12 at the sight pass.
+- **Time Each Pass (One Frame)** (Advanced, Debug): every pass's GPU time of the
+  next frame into `divinity2_pass_timing.txt` next to `EoCApp.exe`.
+- A removed device (GPU reset): `twattila/device_loss.hpp` lets the old chain go,
+  logs the reason and closes the game when no frame comes for 90 s with its window
+  in front; the
+  output stays HDR10 (no Output choice to decide).
 - `RENODX_TW_SET` / `RENODX_TW_SHOT` (or `renodx_test_hooks.txt` next to the exe)
   set rows and take screenshots in scripted runs.
 - ReShade: `dxgi.dll` in `DefEd\bin` today. Norbyte's Script Extender installs
@@ -204,7 +223,7 @@ and the inventory.
 
 ## Compare in game
 
-1. Choose the relevant **Neutral** preset to reset its grading and bloom.
+1. Press **Reset** to put every image control at its default.
 2. Use Paper White 203 and Peak 1000. For matching native UI, use its native
    brightness reference (300 in the supplied comparison).
 3. Compare Off at game Brightness 1 / Contrast approximately 1 with Vanilla,
@@ -215,24 +234,21 @@ and the inventory.
 5. Enable Fire Colour Correction and try its strength/hue on pink and orange
    fire, checking other bright red objects as well.
 
-The earlier personal presets retain their grading and bloom choices; they now
-use the calibrated gray references and start with optional fire correction off.
-The former "Native like" Psycho preset is labelled "My settings for (PsychoV30)"
-because its contrast settings are an artistic variation. Old persisted gray
-and matrix keys are no longer used. Existing grading keys are retained, so use
-Neutral when comparing the new defaults.
+Closer to Native (PsychoV30) is an artistic variation of PsychoV30 (contrast and
+cone response): press Reset before comparing defaults.
 
-## Validation limits
+## Tests (offline, WARP)
 
-CPU checks cover the native captured curve, upper-range calibration,
-gamut bounds, fire-correction luminance, neutral/bypass behaviour, gray-solver
-convergence on monotonic reference curves, control wiring and preservation of
-stock SDR/Off math. They do not substitute for compiling the full RenoDX
-addon/HLSL or testing the game. Neither the full framework nor an HLSL compiler
-is present in this workspace.
+- `test/tw_psychov35/part6_divinity2.ps1 -GameShaders <the game's cso folder>`:
+  Off's t00 / t01 against the game's bytes on the traced constants, every
+  mode's LUT, the SDR reference, PsychoV35's game-response fit.
+- `test/tw_d2_passes/run.ps1`: the PCSS sun shadows (8 variants) Vanilla exact
+  at Sun Shadow Softness 1 against the game's bytes, each with a wrong copy that
+  must fail; at 2 the shadow must change.
+- `test/tw_psychov30_nan`, `test/tw_output_encoding`, `test/tw_device_loss`,
+  `test/tw_draw_dispatch`: the shared PsychoV30 guards, the not-configured
+  Output, device loss and the fast draw dispatch.
 
-This update additionally checks that Vanilla's calibration header exactly
-matches the earlier expansion version, that the inventory routing and shared
-fire-colour math are unchanged, and that per-mode controls/presets are independent.
-The Vanilla fire-control addition also checks the zero-strength bypass, capture
-and output stages, and all three modes' independent preset resets/visibility.
+bloom00, ui00 and outlines00-02 have no exact test yet. The game's shaders
+(`tools/nontw/divinity2/shader_dump`) stay outside the repo. Nothing here is
+a substitute for a run in the game.

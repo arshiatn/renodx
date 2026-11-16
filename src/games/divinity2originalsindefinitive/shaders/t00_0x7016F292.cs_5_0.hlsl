@@ -18,7 +18,7 @@ RWTexture3D<unorm float4> LUT : register(u0);
 // 3Dmigoto declarations
 #define cmp -
 #include "../shared.h"
-#include "../psycho_test30.hlsli"
+#include "../../twattila/psycho_test30.hlsli"
 #include "../../twattila/psycho35.hlsli"
 #include "./vanilla.hlsli"
 #include "./vanillaplus.hlsli"

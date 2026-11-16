@@ -31,7 +31,9 @@
 #include "../../utils/settings.hpp"
 #include "../talesofarise_dlss/frame_trace.hpp"
 #include "../twattila/credits.hpp"
+#include "../twattila/device_loss.hpp"
 #include "../twattila/draw_dispatch.hpp"
+#include "../twattila/pass_timing.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
 
@@ -127,6 +129,7 @@ void ApplyResetPreset() {
       {"v35_mid_gray", 0.f},
       {"vanilla_per_channel_shoulder", 1.f},
       {"exact_lut_sampling", 0.f},
+      {"sun_shadow_softness", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
   renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
@@ -197,6 +200,14 @@ renodx::utils::settings::Settings settings = {
     //     .section = "Peak",
     //     .tooltip = "3 rectangles within a large one.\n\n- Left: Not Visible.\n- Middle: Barely Visible.\n- Right: Easily Visible.\n\n(Ofc, you can always set lower to personal pref.)",
     // },
+    // The modded modes' LUT ignores the game's Brightness / Contrast / HDR Max Nits / Paper White (frozen shaper domain,
+    // shared.h); its Gamma Correction is open past 1 (PPGammaCorrection not drawn at 1, divinity2.tsv).
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+        .label = "The modded modes ignore the game's Brightness, Contrast and HDR sliders.\n"
+                 "Keep the game's Gamma Correction at 1.",
+        .section = "General",
+    },
     new renodx::utils::settings::Setting{
         .key = "peak_white_nits",
         .binding = &shader_injection.peak_white_nits,
@@ -297,6 +308,8 @@ renodx::utils::settings::Settings settings = {
         .label = "Recommended (PsychoV30)",
         .section = "Presets",
         .group = "preset-buttons-1",
+        .tooltip = "Vanilla+ (PsychoV30) with Fire Colour Correction, Bloom 0.44.\n"
+                   "Peak, Paper White, UI, Settings Mode and Output are kept.",
         .on_change = []() {
             renodx::utils::settings::UpdateSetting("tonemap_type", 3.f);
             renodx::utils::settings::UpdateSetting("exposure", 1.00f);
@@ -315,6 +328,8 @@ renodx::utils::settings::Settings settings = {
         .label = "Recommended (Tweaked ACES)",
         .section = "Presets",
         .group = "preset-buttons-1",
+        .tooltip = "Vanilla+ (Tweaked ACES) with a little less contrast, Fire Colour Correction, Bloom 0.44.\n"
+                   "Peak, Paper White, UI, Settings Mode and Output are kept.",
         .on_change = []() {
             renodx::utils::settings::UpdateSetting("tonemap_type", 2.f);
             renodx::utils::settings::UpdateSetting("aces_tweaked_exposure", 1.f);
@@ -333,6 +348,8 @@ renodx::utils::settings::Settings settings = {
         .label = "Closer to Native (PsychoV30)",
         .section = "Presets",
         .group = "preset-buttons-2",
+        .tooltip = "Vanilla+ (PsychoV30) with contrast and colour closer to the game's, Bloom 0.44.\n"
+                   "Peak, Paper White, UI, Settings Mode and Output are kept.",
         .on_change = []() {
             renodx::utils::settings::UpdateSetting("tonemap_type", 3.f);
             renodx::utils::settings::UpdateSetting("exposure", 1.00f);
@@ -696,6 +713,18 @@ renodx::utils::settings::Settings settings = {
         .is_enabled = IsModded,
         .is_visible = IsAdvancedSettings,
     },
+    new renodx::utils::settings::Setting{
+        .key = "sun_shadow_softness",
+        .binding = &shader_injection.sun_shadow_softness,
+        .default_value = 1.f,
+        .label = "Sun Shadow Softness (Experimental)",
+        .section = "Extra",
+        .tooltip = "How soft the sun's shadows get away from what casts them. 1: the game's.",
+        .min = 0.25f,
+        .max = 3.f,
+        .format = "%.2f",
+        .is_visible = IsAdvancedSettings,
+    },
     // new renodx::utils::settings::Setting{
     //     .key = "vignette",
     //     .binding = &shader_injection.vignette,
@@ -798,8 +827,10 @@ void AppendConstants(reshade::api::command_list* cmd_list, bool compute, UINT sl
   talesofarise::frame_trace::internal::Append(line);
 }
 
-void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
+// Time Each Pass's frame and the frame trace's.
+void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
                uint32_t, const reshade::api::rect*) {
+  twattila::pass_timing::OnPresent(queue, "divinity2");
   talesofarise::frame_trace::OnPresent();
 }
 
@@ -941,9 +972,16 @@ void ConfigureAddon() {
           .is_visible = IsAdvancedSettings,
       },
       new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+          .label = "Time Each Pass (One Frame)",
+          .section = "Debug",
+          .tooltip = "The GPU's time of every pass of the next frame into divinity2_pass_timing.txt next to the game's exe.",
+          .on_change = []() { twattila::pass_timing::Request(); },
+          .is_visible = IsAdvancedSettings,
+      },
+      new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "RenoDX, PsychoV30, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                   "PsychoV30 and PsychoV35.",
+          .label = twattila::credits::RENODX_PSYCHO_V30_V35,
           .section = "About",
       },
       new renodx::utils::settings::Setting{
@@ -1048,6 +1086,8 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   switch (fdw_reason) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
+      // Time Each Pass: before every other draw hook (a skipped draw still gets its stamp).
+      twattila::pass_timing::Install();
 
       if (!initialized) {
         ConfigureAddon();
@@ -1056,9 +1096,13 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
         twattila::test_hooks::Install(&settings, true, "[Divinity 2]");
         initialized = true;
       }
+      // Before the swap chain mod (below): a removed device's chain let go, the no-frame limit and stall log after it. The
+      // output stays HDR10 (no Output choice to decide, no flip chain let go before the next).
+      twattila::device_loss::Install();
 
       break;
     case DLL_PROCESS_DETACH:
+      twattila::device_loss::Uninstall();
       twattila::test_hooks::Uninstall();
       reshade::unregister_event<reshade::addon_event::present>(OnPresent);
       talesofarise::frame_trace::Stop();
@@ -1077,6 +1121,9 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
   renodx::mods::shader::Use(fdw_reason, custom_shaders, &shader_injection);
   if (fdw_reason == DLL_PROCESS_ATTACH) {
     twattila::draw_dispatch::Use(fdw_reason);
+    twattila::device_loss::InstallLast();
+  } else if (fdw_reason == DLL_PROCESS_DETACH) {
+    twattila::pass_timing::Uninstall();
   }
 
   return TRUE;
