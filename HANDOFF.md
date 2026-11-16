@@ -167,6 +167,10 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] C: R.U.S.E. Rays Replace Shadow Maps: off now (darker of the two) until the A/B run shows the rays hold the maps' casters (sprite imposters, off-screen casters); then on, per your replace rule? (from: rur2_ 11-16)
 - [ ] C: R.U.S.E. map table: rays cost 24.58 ms (41 fps) vs 6.56 with DLAA alone. Keep them, or rays off above an eye height (a look change at the table)? (from: rur2_ 11-16)
 - [ ] C: R.U.S.E. Bend: +1.1 ms, no caster shadow in the harness. If Ground Debug View 2 shows nothing in game either, drop the row? (from: rur2_ 11-16)
+- [ ] C: Ryse V35 defaults: at the shipped defaults V35's grey is x2.05 the game's at 0.1 nit, x1.48 at 1, x1.18 at 5, x1.03 at 15 (chroma 4.1 % off); Contrast 1.15 / Shadows 1.35 / Saturation 1.00 lands within 4.8 % (x0.98-1.04, level B). Ship the fitted defaults? (from: rys2_ 11-16)
+- [ ] C: Ryse "Dark tones for L / M" (Experimental, off; Ryse's default preset is M): WH3 harness linear / sqrt: L 0.911 / 0.930, M 0.922 / 0.904, L dark detail 0.59 / 0.86. On for L only, both, or off? (from: rys2_ 11-16)
+- [ ] C: Ryse "No RT/PT + Screen-Space (Experimental)" button (GT-VBAO, Light Bounce, Contact Shadows, rys2_ 66594cc8e): should it become No RT/PT itself? (from: A7)
+- [ ] C: Ryse Rays Replace Shadow Maps: off now (out-of-view casters lose their sun shadow); on after the coverage run if it looks right? (from: C3)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -202,16 +206,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - WARP ramp for the four new SDR presets. Owner: next TW round | next TW round
 - README New: lines for Troy, WH2, Rome Remastered, Shogun 2, WH3. Owner: release ... | release round
 - ATN 02:3x (for later): per-game GitHub download links instead of the shared rele ... | release round
-- WARP ramp of the UE SDR encodes; Ryse's redundant renodx_trace_now poll; the Exp ... | UE4 / Ryse merge rounds
-- Ryse rays + RR in motion (s8b sat on the tutorial pause: still camera): a moving ... | next Ryse round (R2)
-- Ryse: cvars from the ini (system.cfg is read before the cvars exist: every line ... | next Ryse round
-- Ryse: helper round trip 2.5 (DLSS Quality) to 4.7 ms (DLAA) a frame against 0.25 ... | next Ryse round
-- Ryse FG 2x pacing: frames presented in pairs 0.15 ms apart, shown 2.7-9.3 ms, p9 ... | next Ryse round
-- Ryse: port 0x292F2865 (half-res shadow, every start). Owner: next Ryse round (wi ... | next Ryse round (with the families box)
+- (Ryse poll DONE rys2_ 60f88dbd1: no DeleteFileW every 60 presents, Advanced "Tra ... | UE4 / Ryse merge rounds
+- (rys2_ 11-16: NEEDS A RUN, in RYSE RUN below) Ryse rays + RR in motion (s8b sat ... | next Ryse round (R2)
+- (code already b454641ef (RENODX_TW_CVARS applied once the game's TAA is seen); t ... | next Ryse round
+- (rys2_ 11-16 analysis: frame minus GPU busy DLAA 4.72, DLSS Q 2.53, FSR Q 1.01, ... | next Ryse round
+- (rys2_ 11-16: Ryse-only (Expeditions / Tales pace evenly): game frames 18 / 8 ms ... | next Ryse round
 - tools/ingame/deploy.py:30 (_dlss zip entry) and tools/ryse/fg_camera_check.py (r ... | coordinator, release round
-- ATN DECIDES: Ryse's helper DLSS presets L/M get the sqrt feed (Attila's dark-ton ... | ATN after R0
-- WARP check of rt_specular_merge; switch to twattila/settings_pages.hpp once it d ... | next Ryse round
-- Port the new shader families (tools/nontw/ryse/rym_shaders: families.tsv): tonem ... | next Ryse round (after R0)
+- (row DONE rys2_ d39434650: "Dark tones for L / M" Experimental off; ATN decides, ... | ATN after R0
+- (rys2_ 11-16: WARP DONE d29bf211f + 4ca336eb8 (0.17 % at occlusion 0.55, 0.08 % ... | next Ryse round
+- (rys2_ 11-16: tiled lighting 0x488BF732 / 0xCDB59F36 hooked 35c2a45f8 (level B); ... | next Ryse round (after R0)
 - (tpa_ 11-16 plan: host on DEPTH_SHADERS / MASKED_SHADERS, WriteSun at 2084C889, ... | next UE round
 - ATN DECIDES: Tales' rays now need an upscaler on (before: also with the game's T ... | ATN
 - Dead files: talesofarise_dlss/rr_d3d12.hpp (no user), ngx_backend.hpp, 0x7A1E0D4 ... | coordinator, release round
@@ -253,7 +256,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (tw3_ 11-16 DONE: RomeR Modded Auto Exposure 0774c682f (Extra, off; off = game b ... | next Shogun 2 / Rome Remastered rounds and data runs
 - gpu2_ next wins: (1) paths at 128 registers (split trace / shade, or SASS livene ... | next GPU round, next ReSTIR round, tools owner
 - (WH3 shadowed point lights with RtLocalLightTraced DONE tw2_ 8c4e848c7, WARP par ... | next shared round, next WH3 round, release round
-- ryf_ not done: row 9 e_GsmLodsNum under the rays' sun (trace: which lod is the c ... | next Ryse round / data run
+- (rys2_ 11-16 DONE: live counters gated 532f739cb, back_buffer_fix by view 972715 ... | next Ryse round / data run
 - (tw2_ 11-16 DONE: Troy point lights 7b7dff2c4 ps_compare 7/7, Pharaoh 7e9972097 ... | next Troy / Pharaoh round, data run
 - (tw1_ 11-16 DONE: (a) Replace on by default WH1 / WH2 5d9810cd1, part 29 bit for ... | next WH1 / WH2 round
 - (rur2_ 11-16: RT debug view DONE 77ed43198 (Ground Debug View 1 mask / 2 sun vis ... | next R
@@ -294,16 +297,16 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (code DONE rur2_ 11-16, harness case 12 shadowed 1,276 / 1,276, lit 3,776+ / 3,7 ... | rur2_, then coordinator
 - A17b R.U.S.E. next run: atlas / bloom exclusion count, sprite / imposter stabili ... | coordinator
 - A18 test/tw_output_encoding: a Ryse case. Owner: shs2_ | shs2_
-- A20 Ryse windowed without a size: the window shows the add-on's size once. Owner ... | rys2_
 - (rur2_ 11-16: H2 RT part (case 12) + H3 O1 reprojection (6b) written + passing; ... | rur2_
 - (tw2_ 11-16: DrawScrub skip + Grass Trace button = SHARED STEP graphics_hooks Dr ... | tw2_, run
 - A23 rt_core.hpp:4059 prints an empty status before any request. Owner: gpu3_ | gpu3_
-- C3 Ryse: prove the rays overwriting the sun mask (dual-source split, the cascade ... | rys2_
+- (proof DONE rys2_ 80e414249: Rays Replace Shadow Maps row, rt_sun_keep before th ... | rys2_
 - (WH3 already DONE: Replace default since e8aaefcbe, WARP 4bdd913de 1 of 98304; R ... | tw2_
-- C6 Ryse: Texture LOD Bias on All Textures on by default, label without "(Experim ... | rys2_
 - (tpa_: D1f Expeditions tests build + 7/7 PASS 42a1b3b70 (UE SDR WARP ramp left); ... | those rounds
 - NEXT ROUNDS 11-16 (ATN ~10:4x: "start doing everything that is in next game and ... | coordinator
 - (Tales + Expeditions Path-Traced Ambient DONE tpa_ 99b372c7a / 170aa2058, Experi ... | tpa_, next Divinity rounds
+- RYSE RUN (rys2_ 11-16 NEEDS A RUN): rays + RR with a moving camera (shots + vide ... | coordinator (one game at a time)
+- Ryse next (rys2_ 11-16): upgraded-target reader census needs a log line per upgr ... | next Ryse round, shared round
 - R.U.S.E. RUN (rur2_ 11-16, near / map table / mid as run_rn3): 1. rays on vs DLA ... | coordinator (one game at a time)
 - R.U.S.E. next (rur2_ 11-16): Bend harness case with a solid caster + the 37-45 s ... | next R
 - SHARED STEP (rur2_ 11-16): dlaa_helper rt_scene_data WriteTriangle drops triangl ... | gpu3_ / next shared round
@@ -934,7 +937,7 @@ heading text are in HANDOFF_ARCHIVE.md)
     button + FULL_DOWNLOAD_NOTE text use github.com/arshiatn/renodx/releases?q=<its tag prefix>&expanded=true (one
     constant per game; the release titles / tags must keep the game's name). Owner: release round
     - [x] output_encoding's log lines say "[Total War]" in non-TW games: a log-name parameter. Owner: sdr_ (sent) DONE: MERGED 24cdfb9c (sdr_): output_encoding log_name, log names [Ryse] / [Tales] / [Rome].
-    - [ ] WARP ramp of the UE SDR encodes; Ryse's redundant renodx_trace_now poll; the Expeditions tests' include paths
+    - [ ] (Ryse poll DONE rys2_ 60f88dbd1: no DeleteFileW every 60 presents, Advanced "Trace one frame" button, scripted runs via a change notification; UE SDR ramp left = tpa_ box) WARP ramp of the UE SDR encodes; Ryse's redundant renodx_trace_now poll; the Expeditions tests' include paths
       (no build target). Owner: UE4 / Ryse merge rounds
     - [x] merged into "ATN 03:4x: Ryse / Tales / Expeditions are IN THIS BATCH" (was: "UE4 MERGE ROUND (one add-on each, Expeditions first): ue4_'s...")
   - [x] ATN 02:2x: the x64 render-list data runs (WH3, Pharaoh, Shogun 2: one short WPR run each, our own Faster Render
@@ -966,25 +969,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         loaded the checkpoint, 6 shots 16-66 s after RR began all normal (Colosseum, lit); RR preset 6, 2560 x 1440 ->
         3840 x 2160; DLSS Quality + rays + RR 76.1 fps (GPU busy 6.95, CPU busy 9.50 ms) vs 88.6 without rays; no
         device-lost lines, files restored, no dump. s8's black shot was the first frames.
-      - [ ] Ryse rays + RR in motion (s8b sat on the tutorial pause: still camera): a moving-camera look in R2.
+      - [ ] (rys2_ 11-16: NEEDS A RUN, in RYSE RUN below) Ryse rays + RR in motion (s8b sat on the tutorial pause: still camera): a moving-camera look in R2.
         Owner: next Ryse round (R2)
-      - [ ] Ryse: cvars from the ini (system.cfg is read before the cvars exist: every line "Unknown command"): a
+      - [ ] (code already b454641ef (RENODX_TW_CVARS applied once the game's TAA is seen); the run list = RYSE RUN) Ryse: cvars from the ini (system.cfg is read before the cvars exist: every line "Unknown command"): a
         [Ryse Debug] Cvars= key or test hooks through the console hook, for Low / Medium, AA modes, supersampling and
         r_ShadersLogCacheMisses / r_LogShaders runs (spec 3 + 4 not run). Owner: next Ryse round
-      - [ ] Ryse: helper round trip 2.5 (DLSS Quality) to 4.7 ms (DLAA) a frame against 0.25 game TAA, FSR 1.0, XeSS 1.6;
+      - [ ] (rys2_ 11-16 analysis: frame minus GPU busy DLAA 4.72, DLSS Q 2.53, FSR Q 1.01, XeSS Q 1.62, TAA 0.25 ms; no CPU wait; hand-off 0.32 ms, the rest = the helper's DLSS (preset L); s7 ran EngineQuality 0; run in RYSE RUN) Ryse: helper round trip 2.5 (DLSS Quality) to 4.7 ms (DLAA) a frame against 0.25 game TAA, FSR 1.0, XeSS 1.6;
         DLAA 52 fps vs native TAA 80: profile the wait. Owner: next Ryse round
-      - [ ] Ryse FG 2x pacing: frames presented in pairs 0.15 ms apart, shown 2.7-9.3 ms, p99 15.4 ms. Owner: next
+      - [ ] (rys2_ 11-16: Ryse-only (Expeditions / Tales pace evenly): game frames 18 / 8 ms alternate; run in RYSE RUN) Ryse FG 2x pacing: frames presented in pairs 0.15 ms apart, shown 2.7-9.3 ms, p99 15.4 ms. Owner: next
         Ryse round
-      - [ ] Ryse: port 0x292F2865 (half-res shadow, every start). Owner: next Ryse round (with the families box)
+      - [x] DONE rys2_ 6183e6bde (the contact-hardening edge mask, level A: skipped under Sun Shadow Softness, back for good if a near-mask permutation draws; part 2 0 of 4096 under PCSS, control 4096; ~0.05 ms unmeasured) Ryse: port 0x292F2865 (half-res shadow, every start). Owner: next Ryse round (with the families box)
       - [x] DONE (installs 12:10 / 13:5x / 17:37 used it): tw_install.py's Ryse entry (helper + rename aside of the old _dlss add-on by exact name; rym_ patched it,
         .bak_rym): dry run. Owner: coordinator at the install
       - [ ] tools/ingame/deploy.py:30 (_dlss zip entry) and tools/ryse/fg_camera_check.py (removed camera math):
         obsolete, update or retire. Owner: coordinator, release round
-      - [ ] ATN DECIDES: Ryse's helper DLSS presets L/M get the sqrt feed (Attila's dark-tone fix) or stay linear; the
+      - [ ] (row DONE rys2_ d39434650: "Dark tones for L / M" Experimental off; ATN decides, C line at the top) ATN DECIDES: Ryse's helper DLSS presets L/M get the sqrt feed (Attila's dark-tone fix) or stay linear; the
         helper's AutoExposure where Ryse gave exposure 1. Owner: ATN after R0
-      - [ ] WARP check of rt_specular_merge; switch to twattila/settings_pages.hpp once it drops the lighting_settings
+      - [ ] (rys2_ 11-16: WARP DONE d29bf211f + 4ca336eb8 (0.17 % at occlusion 0.55, 0.08 % open, control 288 %; first pixel row / column small clamp error); DevKit symlink already; LEFT: settings_pages switch = SHARED STEP (drop its lighting_settings.hpp include, lines 18, 37-38, 59)) WARP check of rt_specular_merge; switch to twattila/settings_pages.hpp once it drops the lighting_settings
         dependency; the DevKit symlink in Bin64. Owner: next Ryse round
-      - [ ] Port the new shader families (tools/nontw/ryse/rym_shaders: families.tsv): tonemap 0xC3970136 wrapper, TAA
+      - [ ] (rys2_ 11-16: tiled lighting 0x488BF732 / 0xCDB59F36 hooked 35c2a45f8 (level B); SSDO 0xC17645D2 / 0xA65B60AF carry the AO method 824c4e1f0; LEFT, in no dump (NEEDS A TRACE): TAA 0x6A057F66, tonemap 0xC3970136, SSDO 0x06EE6A8E, SSAO 0x4FB1027A / 0x3453A92B, the 14 sun masks, 0x44D3DE7F) Port the new shader families (tools/nontw/ryse/rym_shaders: families.tsv): tonemap 0xC3970136 wrapper, TAA
         0x6A057F66 (clamps HDR at 1), tiled lighting CS 0x488BF732 / 0xCDB59F36, SSDO 0x06EE6A8E / 0xA65B60AF /
         0xC17645D2 -> GT-VBAO, classic SSAO 0x4FB1027A + blur 0x3453A92B, 14 sun shadow masks -> PCSS, 0x44D3DE7F in
         game; half-res shadows trace first. Owner: next Ryse round (after R0)
@@ -1740,7 +1743,7 @@ heading text are in HANDOFF_ARCHIVE.md)
           (no PT ambient there) + the C38C91CD WARP; MSAA + DLSS + PT ambient edge (white AO without paths); Detours licence
           file missing from the release zips. Not run in game: Characters range at 50 / 100 m, Tales switch runs, a frame
           trace with the new code, Tales' own c133.x. Owner: next shared round, next WH3 round, release round
-        - [ ] ryf_ not done: row 9 e_GsmLodsNum under the rays' sun (trace: which lod is the cached far map, what a live 3 / 2
+        - [ ] (rys2_ 11-16 DONE: live counters gated 532f739cb, back_buffer_fix by view 97271555e, LOD bias shared module + main-view gate + AA Off below 100 % b83a7bf86, vanilla_exact 14 EXACT 92d1efd57, V35 fit 7909d2749; LEFT: reader census (needs upgrade logging), e_GsmLodsNum trace, the B in-game items) ryf_ not done: row 9 e_GsmLodsNum under the rays' sun (trace: which lod is the cached far map, what a live 3 / 2
           draws); LOD bias at AA Off below 100 % + main-view gate (without the gate shadow-map leaf holes sharpen);
           Advanced's live counters + back_buffer_fix's per-bind view lookup; vanilla-exact widening, reader census, V35 fit.
           B in game: R2 cost rerun for the skip, HUD hotkeys with RT on, r_SSII read-back 0 in the log, RENODX_TW_FAKE_VENDOR
@@ -1927,18 +1930,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] A17b R.U.S.E. next run: atlas / bloom exclusion count, sprite / imposter stability in motion (video). Owner:
           coordinator
         - [ ] A18 test/tw_output_encoding: a Ryse case. Owner: shs2_
-        - [ ] A20 Ryse windowed without a size: the window shows the add-on's size once. Owner: rys2_
+        - [x] DONE rys2_ 06096dd67 (1 present at the add-on's size instead of 31) A20 Ryse windowed without a size: the window shows the add-on's size once. Owner: rys2_
         - [ ] (rur2_ 11-16: H2 RT part (case 12) + H3 O1 reprojection (6b) written + passing; README already 452638c5b; unpatched: AO 0x4B1D1523 / 0xAFFF53E4 need a two-site patch, 0xE697765A / 0xF17D27A4 no ambient term, O1 0x8588D239 = mask pre-pass (covered), O1 0x1AD365A4 needs a temp register (check it draws), "4 water" not found in scene_patches.tsv; LEFT: those patches + one fixed cost scene (run: rated benchmark or autoreplay)) A21 R.U.S.E. audit lines: unpatched shaders (AO 2 + 2 terrain, O1 2 object PS, 4 water), H2 RT part and H3 O1
           reprojection tests, README stale (c200-c210, "Extended removed"), one fixed scene for costs. Owner: rur2_
         - [ ] (tw2_ 11-16: DrawScrub skip + Grass Trace button = SHARED STEP graphics_hooks DrawScrub 114B3F80 / ScrubUpdate 114B9300, then a grassy battle; particle fire / smoke at 50 % + artillery smoke trails = TW2 RUNS) A22 Rome II README "Not done": grass past every LOD skips DrawScrub + Grass Trace button, the particle rows'
           50 % fire / smoke trace, smoke shadows from artillery trails (or name them among the 8 NEEDS A TRACE rows). Owner:
           tw2_, run
         - [ ] A23 rt_core.hpp:4059 prints an empty status before any request. Owner: gpu3_
-        - [ ] C3 Ryse: prove the rays overwriting the sun mask (dual-source split, the cascade casters box), then default
+        - [ ] (proof DONE rys2_ 80e414249: Rays Replace Shadow Maps row, rt_sun_keep before the max blend, tw_ryse_sun_replace 0 of 3584 off, control 2200+; default set OFF by the coordinator (out-of-view casters lose their sun shadow: the skill's in-game coverage rule); LEFT: the coverage run, then the default) C3 Ryse: prove the rays overwriting the sun mask (dual-source split, the cascade casters box), then default
           (your 05:59 answer). Owner: rys2_
         - [ ] (WH3 already DONE: Replace default since e8aaefcbe, WARP 4bdd913de 1 of 98304; Rome II SHARED STEP: sun_replace_maps needs a sampler slot per hash (s1 slm / s0 skinlm) + an SRV-swap route for 16 SM4.1 / 3.0 shaders, rig tools/tw/rome2/sun_test) C4 WH3 / Rome II: prove Replace for the sun shadows, then default (your replace rule), as Troy / Pharaoh did.
           Owner: tw2_
-        - [ ] C6 Ryse: Texture LOD Bias on All Textures on by default, label without "(Experimental)" (your 05:55 answer;
+        - [x] DONE rys2_ c4e436ab1 (on by default, no "(Experimental)", the shared tooltip) C6 Ryse: Texture LOD Bias on All Textures on by default, label without "(Experimental)" (your 05:55 answer;
           addon.cpp:2166-2173, graphics.hpp:1110). Owner: rys2_
         - [x] DONE div1_ 9da00b28b (knee at 1 again; Smooth Grade Shoulder row Experimental off, in Reset; WARP row off = a6762afab^ 0 of 3,538,944 texels, control 0.26): C9 Divinity 1 grade shoulder (a6762afab, installed d1 v3): back to the previous default, the smooth shoulder as
           an Experimental row, off (unless you keep it: top). Owner: div1_
@@ -1963,6 +1966,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         (kept only under the Open Sky row); Divinity 1 / 2 have no ray tracing at all yet (rt_core host: the D1 steps
         9-10 box + a D2 one below); R.U.S.E. has a path-traced ground bounce, no separate PT AO. Owner: tpa_, next
         Divinity rounds
+      - [ ] RYSE RUN (rys2_ 11-16 NEEDS A RUN): rays + RR with a moving camera (shots + video, RR on / off); the cvar run
+        list (Low / Medium, every AA mode, supersampling, r_ShadersLogCacheMisses / r_LogShaders); DLAA + DLSS Quality with
+        presets K / M / L in one scene, PresentMon + RENODX_TW_PROFILE; FG pacing: RENODX_TW_PROFILE + PresentMon on both
+        processes, Reflex boost on / off, frame-limit variants; Rays Replace Shadow Maps on vs off: a caster just behind the
+        camera, screen edges while turning, near hair, fog shafts, far terrain, the mask's dark-pixel share; Time Each Pass
+        + PresentMon with Skip Off / Near / All (hair fringe, fog shafts, casters behind, PT Ambient vs the game, interiors,
+        skin); VFX rows (particle VS candidates trace) + every new row; which scenes draw the new permutations (a trace).
+        Owner: coordinator (one game at a time)
+      - [ ] Ryse next (rys2_ 11-16): upgraded-target reader census needs a log line per upgrade; RT reflections do nothing
+        under 0xCDB59F36 (never reads t6); tw_vanilla_exact sRGB-view input for post00/01/03, upscale00, taa00 (SHARED STEP).
+        Owner: next Ryse round, shared round
       - [ ] R.U.S.E. RUN (rur2_ 11-16, near / map table / mid as run_rn3): 1. rays on vs DLAA alone: tree / unit / tank
         shadows back, the lighter mask (+3.1 % near / +8.4 % mid) gone, Ground Debug View 1/2/3 shots, "Ground passes
         ready" + "Ray tracing profile" (RENODX_TW_PROFILE 30 s), Time Each Pass x3, PresentMon 25 s a view; 2. Rays Replace
