@@ -26,8 +26,12 @@
 #include <mutex>
 #include <string>
 #include <vector>
-#include "src/games/twattila/rt_scene.hpp"
+// rt_core alone (the cluster sets and their hooks): any game's embed folder that builds it serves. Case 8 with R.U.S.E.'s
+// (amd64, run.ps1 defines RENODX_TEST_RUSE_REPLAY): its replay's embeds and rt_core's share one embed\shaders.h.
+#include "src/games/twattila/rt_core.hpp"
+#ifdef RENODX_TEST_RUSE_REPLAY
 #include "src/games/ruse/bridge_replay.hpp"
+#endif
 #include "test/tw_particle_history/mock_reshade.hpp"
 
 using Microsoft::WRL::ComPtr;
@@ -240,6 +244,7 @@ int main() {
   // 8. R.U.S.E.'s draw replay: the proxy's mirror of a D3D9 index buffer, uploaded again by GetBuffer's native
   //    UpdateSubresource (ReShade hears none of it; case 2 is the control). The game's write (its bytes, its unmap count)
   //    then the next GetBuffer: the same buffer, the set marked, made again from B.
+#ifdef RENODX_TEST_RUSE_REPLAY
   {
     renodx::utils::device_proxy::proxy_device_reshade = &device;
     constexpr uint64_t GAME_BUFFER = 1;
@@ -264,6 +269,9 @@ int main() {
     ruse::replay::state.mirrors.clear();
     renodx::utils::device_proxy::proxy_device_reshade = nullptr;
   }
+#else
+  std::printf("8. R.U.S.E.'s replay: not built (x86: no R.U.S.E. target)\n");
+#endif
 
   {
     const std::unique_lock lock(runtime.mutex);
