@@ -370,6 +370,13 @@ std::atomic<uint64_t> seen_frames = 0;
 // Present (+1) at which the page's Upscaling Details were last drawn; timings are measured only then.
 std::atomic<uint64_t> overlay_frame = 0;
 
+// Upscaling Details drawn within the last 120 presents of `frame`: its timings and counters run only then (no per-frame
+// counters otherwise).
+inline bool DetailsShown(uint64_t frame) {
+  const uint64_t overlay = overlay_frame.load(std::memory_order_relaxed);
+  return overlay != 0 && frame + 1 - overlay < 120;
+}
+
 // Why NVIDIA's history restarted, and UE's jitter pattern length (frames until its first
 // offset repeats); NVIDIA wants at least 8 * (output / input)^2.
 struct Diagnostics {
@@ -977,15 +984,18 @@ bool Evaluate(Frame* frame, bool replace) {
     }
   }
   frame->values_validated = true;
-  if (const std::array<float, 2> jitter = pixel_jitter; diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 4096) {
-    if (diagnostics.jitter_frames > 4096) diagnostics.jitter_phases.store(0);
-    diagnostics.first_jitter = jitter;
-    diagnostics.jitter_frames = 1;
-  } else if (jitter == diagnostics.first_jitter) {
-    diagnostics.jitter_phases.store(diagnostics.jitter_frames);
-    diagnostics.jitter_frames = 1;
-  } else {
-    ++diagnostics.jitter_frames;
+  // The jitter's cycle only while Upscaling Details is drawn.
+  if (const std::array<float, 2> jitter = pixel_jitter; frame->measuring) {
+    if (diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 4096) {
+      if (diagnostics.jitter_frames > 4096) diagnostics.jitter_phases.store(0);
+      diagnostics.first_jitter = jitter;
+      diagnostics.jitter_frames = 1;
+    } else if (jitter == diagnostics.first_jitter) {
+      diagnostics.jitter_phases.store(diagnostics.jitter_frames);
+      diagnostics.jitter_frames = 1;
+    } else {
+      ++diagnostics.jitter_frames;
+    }
   }
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
@@ -1560,8 +1570,7 @@ constexpr auto OnCommand = [](Context& command) -> renodx::utils::command_action
     state.claimed_frame = state.frame;
   }
   // Timings only while the overlay is open, and not for one-time shader/NGX initialization.
-  const uint64_t overlay = overlay_frame.load();
-  frame->measuring = overlay != 0 && frame->frame + 1 - overlay < 120;
+  frame->measuring = DetailsShown(frame->frame);
   frame->sample_cpu = frame->measuring && runtime.last_frame != UINT64_MAX;
   if (frame->sample_cpu) runtime.performance.Begin(frame->context.Get());
   if (frame->from_mirror && replace_taa.load()) {
@@ -1735,7 +1744,9 @@ void DrawAtOutputSize(Command& command, const void*) {
   context->RSSetViewports(viewport_count, viewports.data());
   context->RSSetScissorRects(scissor_count, scissors.data());
   copy->frame = frame;
-  ++post.passes;
+  if (DetailsShown(frame)) {
+    ++post.passes;
+  }
   if (twattila::frame_generation::Wanted() && std::ranges::find(TONEMAPPER_SHADERS, command.matched_shader_hash) != TONEMAPPER_SHADERS.end()) {
     KeepFrame(context, copy->resource.Get());
   }
@@ -2140,7 +2151,9 @@ constexpr auto OnUpscale = []<DrawCommand Command>(Command& command) -> renodx::
   } else {
     context1->PSSetConstantBuffers1(0, 1, &game_buffer, &first_constant, &constant_count);
   }
-  ++post.upscales;
+  if (DetailsShown(frame)) {
+    ++post.upscales;
+  }
   return {.bypass = true};
 };
 

@@ -707,15 +707,18 @@ inline bool Evaluate(Frame* frame, bool replace) {
     }
   }
   frame->values_validated = true;
-  if (const std::array<float, 2> jitter = {taa[26][0], taa[26][1]}; diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 4096) {
-    if (diagnostics.jitter_frames > 4096) diagnostics.jitter_phases.store(0);
-    diagnostics.first_jitter = jitter;
-    diagnostics.jitter_frames = 1;
-  } else if (jitter == diagnostics.first_jitter) {
-    diagnostics.jitter_phases.store(diagnostics.jitter_frames);
-    diagnostics.jitter_frames = 1;
-  } else {
-    ++diagnostics.jitter_frames;
+  // The jitter's cycle only while Upscaling Details is drawn (no per-frame counters otherwise).
+  if (const std::array<float, 2> jitter = {taa[26][0], taa[26][1]}; frame->measuring) {
+    if (diagnostics.jitter_frames == 0 || diagnostics.jitter_frames > 4096) {
+      if (diagnostics.jitter_frames > 4096) diagnostics.jitter_phases.store(0);
+      diagnostics.first_jitter = jitter;
+      diagnostics.jitter_frames = 1;
+    } else if (jitter == diagnostics.first_jitter) {
+      diagnostics.jitter_phases.store(diagnostics.jitter_frames);
+      diagnostics.jitter_frames = 1;
+    } else {
+      ++diagnostics.jitter_frames;
+    }
   }
   ComPtr<ID3D11Device> device;
   context->GetDevice(device.GetAddressOf());
@@ -1926,14 +1929,8 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings,
           .value_type = SettingValueType::BUTTON,
           .label = "Trace One Frame",
           .section = TOOLS_SECTION,
-          .tooltip = "Writes tales_frame_trace.txt next to the game's exe about a second later, for bug reports.",
-          .on_change = [] {
-            // talesofarise_dlss/frame_trace.hpp looks for this marker at its presents.
-            std::wstring exe(32768, L'\0');
-            exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
-            std::ofstream(std::filesystem::path(exe).parent_path() / L"renodx_trace_now", std::ios::binary | std::ios::trunc);
-            renodx::utils::log::i("[Rome] Trace One Frame: renodx_trace_now written.");
-          },
+          .tooltip = "Writes the next frame's draws into a text file next to the game's exe, for bug reports.",
+          .on_change = [] { talesofarise::frame_trace::Request(); },
       },
       new Setting{
           .value_type = SettingValueType::CUSTOM,
