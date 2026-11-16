@@ -2,7 +2,7 @@
 #define DIVINITY_TONEMAPPERS_HLSLI_
 
 #include "./pragmap.hlsl"
-#include "../psycho_test30.hlsli"
+#include "../../twattila/psycho_test30.hlsli"
 #include "../../twattila/psycho35.hlsli"
 
 // UC2 Extended tone and grading paths; native SDR is handled by the pixel shader.
