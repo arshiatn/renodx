@@ -120,6 +120,7 @@ void ApplyResetPreset() {
       {"ui", 1.f},
       {"playerLightIntensity", 1.f},
       {"playerLightRadius", 1.f},
+      {"sun_shadow_softness", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
 }
@@ -873,6 +874,18 @@ renodx::utils::settings::Settings settings = {
         .format = "%.1f",
         .is_enabled = IsHDR,
         .is_visible = ShowHDRSettings,
+    },
+    new renodx::utils::settings::Setting{
+        .key = "sun_shadow_softness",
+        .binding = &shader_injection.sun_shadow_softness,
+        .default_value = 1.f,
+        .label = "Sun Shadow Softness (Experimental)",
+        .section = "Game-Specific Settings",
+        .tooltip = "How soft the sun's shadows get away from what casts them (Ultra shadows). 1: the game's.",
+        .min = 0.25f,
+        .max = 3.f,
+        .format = "%.2f",
+        .is_visible = IsAdvancedSettings,
     },
     new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::BUTTON,

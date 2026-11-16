@@ -44,6 +44,7 @@ struct ShaderInjectData {
   float v35_gamut_compression;     // 0 none (the display clips), 1 full
 
   float ext_hue_clip;              // HDR (Extended)'s Hue Clip Emulation, 0 - 1
+  float sun_shadow_softness;       // the sun's PCSS light size x this, 1 the game's
 };
 
 #define SI shader_injection
@@ -75,6 +76,7 @@ struct ShaderInjectData {
 
 //extra
 #define GODRAYS SI.godrays
+#define SUN_SHADOW_SOFTNESS SI.sun_shadow_softness
 #define LOCAL_LIGHT_INTENSITY (HDR == 1.f ? SI.local_light_intensity : 1.f)
 #define PLAYER_LIGHT_INTENSITY (HDR == 1.f ? SI.player_light_intensity : 1.f)
 

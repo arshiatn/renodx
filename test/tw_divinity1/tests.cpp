@@ -235,6 +235,7 @@ static divinity::ShaderInjectData Injection(float mode, float peak_nits, float h
       .v35_highlights = 1.f, .v35_shadows = 1.f, .v35_contrast = 1.f, .v35_highlight_contrast = 1.f,
       .v35_shadow_contrast = 1.f, .v35_flare = 0.f, .v35_saturation = 1.f, .v35_dechroma = 0.f,
       .v35_highlight_saturation = 1.f, .v35_roll_off = 1.f, .v35_gamut_compression = 1.f, .ext_hue_clip = hue_clip,
+      .sun_shadow_softness = 1.f,
   };
 }
 
