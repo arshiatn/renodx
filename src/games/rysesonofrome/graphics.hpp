@@ -2707,13 +2707,8 @@ void OnDestroyDevice(reshade::api::device* device) {
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   rysesonofrome::pixel_trace::OnPresent(queue);
-  // Debug: renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: tales_frame_trace.txt and
-  // the traced shaders; checked each second, the file removed).
-  if (static uint32_t presents = 0; ++presents % 60 == 0) {
-    if (DeleteFileW((talesofarise::frame_trace::internal::ExecutableFolder() / L"renodx_trace_now").c_str()) != 0) {
-      talesofarise::frame_trace::Request();
-    }
-  }
+  // The one-frame trace (Tales' frame_trace.hpp: ryse_frame_trace.txt): its button, or in a scripted run renodx_trace_now
+  // next to the exe (looked for there only when the exe's folder changes).
   talesofarise::frame_trace::OnPresent("ryse");
   const auto mode = requested_mode.load();
   bool changed;
@@ -3699,6 +3694,12 @@ inline void DrawAntiAliasing(bool advanced) {
   ImGui::Separator();
   if (ImGui::Button("Log one frame's passes after the TAA (debug, ReShade.log)")) {
     trace_requested.store(true);
+  }
+  if (ImGui::Button("Trace one frame (debug, ryse_frame_trace.txt next to the exe)")) {
+    talesofarise::frame_trace::Request();
+  }
+  if (const std::string status = talesofarise::frame_trace::Status(); !status.empty()) {
+    ImGui::TextWrapped("%s", status.c_str());
   }
   if (ImGui::Button("Save two upscaled frames' stages (debug, PNGs next to the exe)")) {
     capture_requested.store(true);

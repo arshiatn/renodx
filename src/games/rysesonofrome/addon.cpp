@@ -2232,7 +2232,7 @@ bool AttachAddon() {
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
   // Scripted runs (RENODX_TW_SET / SHOT / PROFILE, twattila/test_hooks.hpp): nothing without them. Their "trace" key writes
-  // the renodx_trace_now file graphics.hpp's present polls for.
+  // the renodx_trace_now file the frame trace looks for (talesofarise_dlss/frame_trace.hpp).
   twattila::test_hooks::Install(&settings, true, "[Ryse]");
   // Ray tracing on at launch: its scene's shaders kept from the start, the Light Bounce's trace through rays. Without the
   // helper nothing could be traced: the scene capture stays out (the game's own lighting, as with the rows off).
