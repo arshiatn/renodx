@@ -40,11 +40,13 @@ using renodx::utils::settings::SettingValueType;
 // The RT/PT preset (RAYS_PRESET) and Values: rays_preset.hpp.
 
 // RAYS_PRESET as a game's defaults of what the methods leave (Warhammer III, Pharaoh); the methods themselves (sun
-// shadows, Path-Traced AO, Global Illumination and its strength, reflections) stay off. Before Apply: the page's Reset
-// reads the defaults as it is built.
+// shadows, Path-Traced AO, Global Illumination and its strength, reflections) stay off, and so do the rows that start the
+// rays alone (Fog Shadows, Specular Occlusion: with an upscaler they traced with every method off). Before Apply: the
+// page's Reset reads the defaults as it is built.
 inline void SetRaysPresetDefaults(std::vector<Setting*>* settings) {
-  constexpr std::array<std::string_view, 5> RAY_METHODS = {"RayTracedSunShadows", "RayTracedPathAmbient", "RayTracedLightBounce",
-                                                           "light_bounce_strength", "RayTracedReflections"};
+  constexpr std::array<std::string_view, 7> RAY_METHODS = {"RayTracedSunShadows", "RayTracedPathAmbient", "RayTracedLightBounce",
+                                                           "light_bounce_strength", "RayTracedReflections", "RayTracedFogShadows",
+                                                           "RayTracedSpecularOcclusion"};
   for (Setting* setting : *settings) {
     const auto preset = std::ranges::find(RAYS_PRESET, setting->key, &Values::value_type::first);
     if (preset != RAYS_PRESET.end() && std::ranges::find(RAY_METHODS, setting->key) == RAY_METHODS.end()) {
@@ -439,7 +441,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   const auto gi_is = [b](int method) { return [b, method] { return GiMethodOf(b) == method; }; };
   const auto gi_traced = [b] { return GiMethodOf(b) >= GI_RAYS; };
   const auto reflections_are = [b](int method) { return [b, method] { return ReflectionMethodOf(b) == method; }; };
-  // Fog Shadows only where a fog is hooked (SetRaysPresetDefaults can leave the row on where none is).
+  // Fog Shadows only where a fog is hooked (the RT/PT preset can turn the row on where none is).
   const auto ray_traced = [b] {
     return feature_settings::Upscaling(*b.aa)
            && (ShadowMethodOf(b) == SHADOW_RAYS || AoMethodOf(b) >= AO_RAYS || GiMethodOf(b) >= GI_RAYS
