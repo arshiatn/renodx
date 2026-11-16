@@ -1,5 +1,20 @@
 # A Total War Saga: TROY (RenoDX HDR, ATN)
 
+### Every point light, one AO, Vanilla (2026-11-16 next round; built only, not run in game)
+
+- **Torch and Fire Shadows on every point light**: the game's 7 other point-light shaders (smooth / linear falloff,
+  slm / skinlm, with and without the point shadow map) read the rays as pointlight00 does. The 4 with the point shadow map
+  take the rays' shadow in place of the map's for a light the rays trace at the pixel and keep the map for the rest.
+  WARP (tools/tw/troy/point_light ps_compare, the game's bytes, nothing of ours bound): 7 of 7 the game's, 0 values off.
+- **The game's SSAO no longer runs under Ray-Traced AO** (one AO method): the rays' AO already stood alone in the sun's
+  slot; its four passes are now left out (their only reader is the sun draws' AO slot in all 27 traces). Under
+  Path-Traced AO the game's SSAO still runs (it shades the sun's cube reflection there).
+- Fixed: **Vanilla is the game's picture** for FXAA (the edge ends: 0.062 off before) and the blurred menu backgrounds
+  (0.037 off: decoded as sRGB, which the game doesn't do; they now look as the game shows them in every mode).
+  test/tw_vanilla_exact: both EXACT, the old ones FAIL.
+- In game: a night battle with torches and RT/PT on; Ray-Traced AO in a battle (the same corners, a little faster); the
+  main menu's blurred backgrounds and FXAA edges at Rendering Mode SDR against the game without the add-on.
+
 ### Fix round (2026-11-16; built only, not run in game)
 
 - **Rays Replace Shadow Maps on by default** (ATN: ours replaces the game's, one method per effect): under ray-traced sun
@@ -25,7 +40,7 @@
   rays' AO alone where they traced (`rt_ambient_combine`'s in-place path, `rt_core` Settings::ambient_alone, as Warhammer
   III's); before, it was the game's AO times the rays'. The page keeps GT-VBAO's setting under the rays (as Attila's): GT-VBAO
   isn't drawn under Ray-Traced or Path-Traced AO; under Path-Traced AO the game's SSAO still occludes the sun's cube
-  reflection, as before. The game's SSAO passes still run under the rays (unread by the sun draws): leaving them out needs a reader census of their output first.
+  reflection, as before. The game's SSAO passes still run under the rays (unread by the sun draws): leaving them out needs a reader census of their output first (done in the next round, above).
 - Proven offline: `fxc /dumpbin` of all 24 sun draws with an AO slot (LIGHT_BOUNCE_DRAWS): one read each, its red only;
   test/tw_warhammer_shaders part 15: the in-place combine's red is the traced visibility bit for bit, its other channels the
   multiplying combine's (CONTROL: the multiplying combine's red differs).
