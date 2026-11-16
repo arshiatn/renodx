@@ -546,7 +546,10 @@ std::atomic_bool log_post_sizes = true;
 
 void OnPostDraw(reshade::api::command_list* cmd_list, uint32_t hash) {
   post_drawn.store(true, std::memory_order_relaxed);
-  twattila::frame_trace::Mark(std::format("post pass {:08X}", hash));
+  // The mark's text only while a frame is traced (no string a draw otherwise).
+  if (twattila::frame_trace::Tracing()) {
+    twattila::frame_trace::Mark(std::format("post pass {:08X}", hash));
+  }
   if (!log_post_sizes.load(std::memory_order_relaxed) || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   // A texture view's size, format and samples ("none" without one).

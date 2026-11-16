@@ -647,8 +647,10 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   } else {
     report(std::format("on, {}x{}.", width, height));
   }
-  twattila::frame_trace::Mark(std::format("DLAA {}x{} to {}x{} jitter {} {}{}", width, height, output[0], output[1], camera.jitter[0],
-                                          camera.jitter[1], (continued ? "" : " reset")));
+  if (twattila::frame_trace::Tracing()) {
+    twattila::frame_trace::Mark(std::format("DLAA {}x{} to {}x{} jitter {} {}{}", width, height, output[0], output[1], camera.jitter[0],
+                                            camera.jitter[1], (continued ? "" : " reset")));
+  }
 }
 
 // Feral's upscaler (below 100%; its pixel shaders): DLSS's result this frame copied into its target in its place (true:
