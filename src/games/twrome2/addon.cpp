@@ -232,16 +232,24 @@ constexpr std::array<std::span<const uint8_t>, 2> RAY_TRACED_LIGHT_SHADERS = {__
 // together) and draws each particle as an instance of a quad (6 indices). In ATN's runs (proof level A):
 // impact_hit_generic_heavy 7DF7491E / 18FE5E2B (shaders/smokefromarrow00), fire_smoke_loop and campaign_fire_smoke_loop
 // AF6C187A / 085DDEDD, destruction_spawnmesh_heavy B6F63295 / B5D63E8A (explosionsmoke00); one rt_particle_quads build a
-// pair, with its pixel shader's alpha (WARP tools/tw/rome2/smoke_r3). The permutations of other shadow modes, 31C72F52 /
-// 7115DE09 (18FE5E2B's) and 803E1461 / CC3CB1B7 (B5D63E8A's), in no trace: the same slots and alpha (B, and on WARP). Fire
-// (explosion_heavy), the units' dust (terrain_impact, entity_terrain), trails and torches stay out.
+// pair, with its pixel shader's alpha (WARP tools/tw/rome2/smoke_r3). Every other shader model and quality of the three
+// (live in data_rome2.pack, in no trace: level B, on WARP): the same slots and alpha, they differ only in the fog's distance
+// clamp and in registers (fxc /dumpbin): impact_hit 31C72F52 / 7115DE09 (ps30_main_high_quality 4.1 / 3.0) and 7E4C1E86 /
+// 957E6AB7 / 88F69BA2 (ps30_main 5.0 / 4.1 / 3.0), campaign_fire_smoke_loop 8803D82E / BEDE8BDC (4.1 / 3.0), destruction
+// 803E1461 / CC3CB1B7 (ps30_main 3.0 / 4.1) and 449320EB / 414C76BF (high quality 3.0 / 4.1). fire_smoke_loop's own builds
+// (754C32FA, 1B14BAB1, E7DE2900, 4B3E94AE, 8B60D8A8; in no trace) draw with AF6C187A too but weigh only type 0 by
+// TEXCOORD2's w: they need a quad shader of their own (one a pixel shader: shared rt_core). Fire (explosion_heavy), the
+// units' dust (terrain_impact, entity_terrain), trails and torches stay out.
 constexpr std::array<twattila::rt_scene::SmokeVertexShader, 3> SMOKE_VERTEX_SHADERS = {{
     {.hash = 0x7DF7491E, .quad_shader = __rt_particle_quads_18FE5E2B},
     {.hash = 0xAF6C187A, .quad_shader = __rt_particle_quads_085DDEDD},
     {.hash = 0xB6F63295, .quad_shader = __rt_particle_quads_B5D63E8A},
 }};
-constexpr std::array<twattila::rt_scene::SmokePixelShader, 7> SMOKE_PIXEL_SHADERS = {
-    {{.hash = 0x18FE5E2B}, {.hash = 0x31C72F52}, {.hash = 0x7115DE09}, {.hash = 0x085DDEDD}, {.hash = 0xB5D63E8A}, {.hash = 0x803E1461}, {.hash = 0xCC3CB1B7}}};
+constexpr std::array<twattila::rt_scene::SmokePixelShader, 14> SMOKE_PIXEL_SHADERS = {{
+    {.hash = 0x18FE5E2B}, {.hash = 0x31C72F52}, {.hash = 0x7115DE09}, {.hash = 0x7E4C1E86}, {.hash = 0x957E6AB7}, {.hash = 0x88F69BA2},
+    {.hash = 0x085DDEDD}, {.hash = 0x8803D82E}, {.hash = 0xBEDE8BDC},
+    {.hash = 0xB5D63E8A}, {.hash = 0x803E1461}, {.hash = 0xCC3CB1B7}, {.hash = 0x449320EB}, {.hash = 0x414C76BF},
+}};
 
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
