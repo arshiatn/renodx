@@ -388,16 +388,22 @@ inline Layout* GetLayout(ID3D11Device* device, const Draw& draw) {
   return &made;
 }
 
-// A mirrored buffer on the proxy, uploaded again when the game wrote it since (null: never written by the game).
+// A mirrored buffer on the proxy, uploaded again when the game wrote it since (null: never written by the game). The
+// native UpdateSubresource passes ReShade by, so a buffer uploaded again is told to rt_core as an index write: a cluster
+// set built over it is rebuilt, not kept over the new indices (Rome Remastered's same-size rewrite).
 inline ID3D11Buffer* GetBuffer(ID3D11Device* device, ID3D11DeviceContext* context, uint64_t handle) {
   ID3D11Buffer* result = nullptr;
+  bool rewritten = false;
   state.mirrors.modify_if(handle, [&](auto& entry) {
     auto& [key, mirror] = entry;
     if (mirror.buffer == nullptr || mirror.uploaded != mirror.written) {
+      rewritten = mirror.buffer != nullptr;
+      // 16-byte multiples: compared at that size, or a mirror of another size was made anew at every upload.
+      const auto width = static_cast<UINT>((mirror.bytes.size() + 15) & ~size_t{15});
       D3D11_BUFFER_DESC desc = {};
       if (mirror.buffer != nullptr) mirror.buffer->GetDesc(&desc);
-      if (mirror.buffer == nullptr || desc.ByteWidth != mirror.bytes.size()) {
-        const D3D11_BUFFER_DESC made = {.ByteWidth = static_cast<UINT>((mirror.bytes.size() + 15) & ~size_t{15}), .Usage = D3D11_USAGE_DEFAULT,
+      if (mirror.buffer == nullptr || desc.ByteWidth != width) {
+        const D3D11_BUFFER_DESC made = {.ByteWidth = width, .Usage = D3D11_USAGE_DEFAULT,
                                         .BindFlags = D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_INDEX_BUFFER};
         mirror.buffer.Reset();
         if (FAILED(device->CreateBuffer(&made, nullptr, mirror.buffer.GetAddressOf()))) return;
@@ -408,6 +414,11 @@ inline ID3D11Buffer* GetBuffer(ID3D11Device* device, ID3D11DeviceContext* contex
     }
     result = mirror.buffer.Get();
   });
+  // Outside the mirrors' lock (rt_core takes its own).
+  if (rewritten && result != nullptr) {
+    twattila::rt_scene::internal::OnIndexWrite(renodx::utils::device_proxy::proxy_device_reshade, {reinterpret_cast<uint64_t>(result)}, 0,
+                                               UINT64_MAX);
+  }
   return result;
 }
 

@@ -64,10 +64,14 @@ struct State {
   bool guides = false;  // with the helper's guides (ray_tracing.hpp's traced bounce or reflections, restart)
   bool reflections = false;  // with the helper's reflections (ray_tracing.hpp's traced reflections, restart)
   bool failed = false;   // a step failed for good: no jitter, the game's picture
+  // The game's own anti-aliasing (MSAA) at this start: its scene depth's samples (0: single-sample). Its main pass then
+  // has no readable depth (only the ground pre-pass's is single-sample): no scene draws, the game's picture.
+  uint32_t game_samples = 0;
   bool ready = false;
   bool scene_closed = false;  // from the bloom to the present: no scene draws (the final post's and the UI's)
   bool jitter_written = false;
   bool reset = true;
+  uint32_t changes_logged = 0;  // the result's comings and goings logged this start (a few: never a line a frame)
   uint32_t frame = 0;
   uint32_t depth_frame = UINT32_MAX;  // the frame whose main depth `depth` holds (Evaluate's prepare pass)
   UINT width = 0;
@@ -224,6 +228,15 @@ inline void DrawQuad(IDirect3DDevice9* host, std::span<IDirect3DSurface9* const>
   host->SetViewport(&saved_viewport);
 }
 
+// The Anti-Aliasing row's upscaler, as the log names it.
+inline const char* UpscalerName() {
+  switch (state.upscaler) {
+    case twattila::dlaa_bridge::UPSCALER_FSR:  return "FSR Native AA";
+    case twattila::dlaa_bridge::UPSCALER_XESS: return "XeSS Native AA";
+    default:                                   return "DLAA";
+  }
+}
+
 // The helper's set on the proxy's device (the first starts the helper), frame generation's frames in the format its
 // present saw (none while it is off) and its backend the helper's choice; again each evaluation (made again when the
 // format changes).
@@ -327,6 +340,10 @@ inline bool Ready(IDirect3DDevice9* host, std::span<const uint8_t> quad, std::sp
   }
   state.failed = false;
   state.ready = true;
+  reshade::log::message(reshade::log::level::info,
+                        std::format("[R.U.S.E.] Anti-aliasing: {} ready at {}x{} ({})", UpscalerName(), state.width, state.height,
+                                    (state.host_fence != nullptr ? "GPU sync" : "CPU waits"))
+                            .c_str());
   return true;
 }
 
@@ -350,8 +367,20 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   auto* proxy = reinterpret_cast<ID3D11Device*>(renodx::utils::device_proxy::proxy_device_reshade->get_native());
   ComPtr<ID3D11DeviceContext> context;
   proxy->GetImmediateContext(context.GetAddressOf());
+  // The result coming or going (at most a few lines a start).
+  const auto log_change = [](const char* change) {
+    if (state.changes_logged > 8) return;
+    ++state.changes_logged;
+    reshade::log::message(reshade::log::level::info,
+                          std::format("[R.U.S.E.] Anti-aliasing: {} {}{}", UpscalerName(), change,
+                                      (state.changes_logged > 8 ? " (no more of these lines this start)" : ""))
+                              .c_str());
+  };
   // The helper gone: no result, so no jitter from the next frame (OnPresent) until one comes again.
   if (!PrepareHelper(proxy)) {
+    if (!state.reset) {
+      log_change("stopped (the helper is gone): the game's picture until it is back");
+    }
     state.reset = true;
     return;
   }
@@ -393,6 +422,9 @@ inline void Evaluate(reshade::api::command_list* cmd_list, std::span<const uint8
   const bool reset = state.reset;
   const bool evaluated = twattila::dlaa_bridge::Evaluate(context.Get(), state.width, state.height, state.jitter[0], state.jitter[1],
                                                          reset, 0u, nullptr, &view_to_clip);
+  if (evaluated == reset) {
+    log_change(evaluated ? "applied (its result written back into the scene)" : "gave no result: the game's picture until one comes");
+  }
   state.reset = !evaluated;
   if (!evaluated) return;
   // Frame generation's inputs (the helper's row vectors: the registers' transposes, without the jitter): this frame's
@@ -449,9 +481,10 @@ inline void OnDestroyDepthView(reshade::api::device*, reshade::api::resource_vie
   }
 }
 
-// The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth, before the bloom.
+// The main pass's and the ground pre-pass's draws: into a back-buffer-sized target with an INTZ depth, before the bloom;
+// none with the game's MSAA on (the pre-pass alone would be jittered and read).
 inline bool IsSceneDraw() {
-  return state.render_target_is_frame_sized && !state.scene_closed && state.depth_stencil != state.post_depth
+  return state.game_samples == 0 && state.render_target_is_frame_sized && !state.scene_closed && state.depth_stencil != state.post_depth
          && state.intz_depths.contains(state.depth_stencil);
 }
 
@@ -535,6 +568,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
     twattila::dlaa_bridge::Release();
   } else {
     state.intz_depths.clear();
+    state.game_samples = 0;
   }
 }
 
@@ -569,6 +603,8 @@ inline void KeepHudless(IDirect3DDevice9* host) {
                                 .c_str());
       return;
     }
+    reshade::log::message(reshade::log::level::info,
+                          std::format("[R.U.S.E.] Frame generation: the HUD-less image ready ({}x{})", desc.Width, desc.Height).c_str());
   }
   if (SUCCEEDED(host->StretchRect(source.Get(), nullptr, state.hudless.host_surface.Get(), nullptr, D3DTEXF_NONE))) {
     state.hudless_frame = state.frame;

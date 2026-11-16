@@ -33,7 +33,10 @@
 // 6. Grey and slope: an input ramp around the grey the game's SDR response puts at 0.18 (its display light is
 //    Brightness^2.2 X^Gamma, X the decoded graded scene), at the menu's, the median map's and the steepest map's Gamma /
 //    Brightness and HDRParam 1, 2, 4: every mode lands grey at 0.18 of Paper White; the slope at grey is Gamma in SDR and
-//    Extended, within 2% in V31 Native Tone and V35 (both after the response; Full Replacement's printed). Extended's
+//    Extended, within 2% in V31 Native Tone and V35 (both after the response; Full Replacement's printed). V35 against
+//    SDR from 8 stops under grey to 1 over it, the three grades: grey within 5 % and OkLab chroma at equal lightness
+//    within 5 % where SDR is unclipped (its toe and colour fit the game's chain); control that must fail both: V35's
+//    Contrast and Saturation 1.2. Extended's
 //    ramp within Peak, grey never darker. Markers (the 15 scene draws that undo the post's grade in advance, census C2):
 //    SDR gives their authored colour, Extended the same; the other modes' shift printed.
 // 7. Gamma Correction in every mode (Rome II, Warhammer I / II / III, Troy, Pharaoh: twattila/frame_gamma.hlsli) on each
@@ -1447,6 +1450,72 @@ static void TestRuse(const Shader& post) {
         if (mode.hdr == 1.f || mode.hdr == 3.f) CHECK(std::abs(slope - grade.gamma) <= 0.02f * grade.gamma);
       }
     }
+  }
+
+  // PsychoV35 under the anchor and its colour against SDR (hdr-review-rules: its toe darkens shadows under mid grey,
+  // measured below white before the defaults stay). Rows from 8 stops under the grade's grey to 1 over it (SDR's grey
+  // 0.18 x 2^-8 .. 2^1); the pattern's 48 hue columns and its white. Grey V35 over SDR at -8 .. -2 stops and -2 .. +1;
+  // OkLab chroma at equal lightness over SDR's where SDR is unclipped (channels under 0.95). Within 5 %: the defaults fit.
+  constexpr UINT WHITE_COLUMN = 48;  // PatternColumns: 12 hues x 4 saturations, then white
+  constexpr float FIRST_STOP = -8.f;
+  constexpr float RAMP_STOPS_PER_ROW = 9.f / (HEIGHT - 1);
+  for (const RuseGrade& grade : {RUSE_MENU_GRADE, RUSE_MEDIAN_GRADE, RUSE_STEEPEST_GRADE}) {
+    const float grey_input = std::pow(0.18f / std::pow(grade.brightness, 2.2f), 1.f / grade.gamma);
+    const auto scene = Scene(PatternColumns(), FIRST_STOP / grade.gamma, RAMP_STOPS_PER_ROW / grade.gamma, grey_input);
+    const auto sdr = RunRuse(post, scene, grade, 1.f, RuseInjection(0.f));
+    // Whether `si`'s V35 fits SDR here: {grey, chroma}, its numbers printed.
+    const auto fits = [&](const char* label, const ruse::ShaderInjectData& si) {
+      const auto v35 = RunRuse(post, scene, grade, 1.f, si);
+      std::array<float, 2> grey_low = {1e9f, 1e9f};
+      std::array<float, 2> grey_high = {0.f, 0.f};
+      for (UINT y = 0; y < HEIGHT; ++y) {
+        const float ratio = Luminance(v35[y * WIDTH + WHITE_COLUMN]) / Luminance(sdr[y * WIDTH + WHITE_COLUMN]);
+        const int band = (FIRST_STOP + RAMP_STOPS_PER_ROW * static_cast<float>(y) <= -2.f) ? 0 : 1;
+        grey_low[band] = std::min(grey_low[band], ratio);
+        grey_high[band] = std::max(grey_high[band], ratio);
+      }
+      double log_sum = 0.;
+      int count = 0;
+      float chroma_low = 1e9f;
+      float chroma_high = 0.f;
+      for (UINT column = 0; column < WHITE_COLUMN; ++column) {
+        double column_sum = 0.;
+        int column_count = 0;
+        for (UINT y = 0; y < HEIGHT; ++y) {
+          const Float3& reference = sdr[y * WIDTH + column];
+          if (std::max({reference[0], reference[1], reference[2]}) >= 0.95f) continue;
+          const Float3 sdr_lab = OkLab(reference);
+          // V35's chroma where its lightness is SDR's (both rise down the rows).
+          for (UINT j = 0; j + 1 < HEIGHT; ++j) {
+            const Float3 below = OkLab(v35[j * WIDTH + column]);
+            const Float3 above = OkLab(v35[(j + 1) * WIDTH + column]);
+            if (sdr_lab[0] < below[0] || sdr_lab[0] > above[0]) continue;
+            const float t = (above[0] > below[0]) ? (sdr_lab[0] - below[0]) / (above[0] - below[0]) : 0.f;
+            column_sum += std::log(std::lerp(std::hypot(below[1], below[2]), std::hypot(above[1], above[2]), t)
+                                   / std::hypot(sdr_lab[1], sdr_lab[2]));
+            ++column_count;
+            break;
+          }
+        }
+        if (column_count == 0) continue;
+        const float column_ratio = static_cast<float>(std::exp(column_sum / column_count));
+        chroma_low = std::min(chroma_low, column_ratio);
+        chroma_high = std::max(chroma_high, column_ratio);
+        log_sum += column_sum;
+        count += column_count;
+      }
+      const float chroma = static_cast<float>(std::exp(log_sum / std::max(count, 1)));
+      std::printf("6. %s, PsychoV35 (%s) against SDR: grey at -8 .. -2 stops x%.3f..x%.3f, -2 .. +1 x%.3f..x%.3f;\n"
+                  "   chroma at equal lightness where SDR is unclipped x%.3f (per colour x%.2f..x%.2f, %d points)\n",
+                  grade.name, label, grey_low[0], grey_high[0], grey_low[1], grey_high[1], chroma, chroma_low, chroma_high, count);
+      return std::pair{grey_low[0] >= 0.95f && grey_high[0] <= 1.05f && grey_low[1] >= 0.95f && grey_high[1] <= 1.05f,
+                       std::abs(chroma - 1.f) <= 0.05f};
+    };
+    CHECK(fits("its defaults", RuseInjection(3.f)) == std::pair(true, true));
+    // Control that must fail both: Contrast and Saturation 1.2.
+    auto control = RuseInjection(3.f);
+    control.v35_contrast = control.v35_saturation = 1.2f;
+    CHECK(fits("control: Contrast and Saturation 1.2", control) == std::pair(false, false));
   }
 
   // Extended's highlights: the 64 colours 2^-8 to 2^12 of white; each channel within Peak, grey never darker.

@@ -18,8 +18,11 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <format>
 #include <initializer_list>
+#include <memory>
 #include <span>
+#include <string>
 #include <utility>
 
 #include "../../utils/device_proxy.hpp"
@@ -37,13 +40,16 @@
 // it, StretchRect copies it into a texture whose red the 110 terrain and 94 water pixel shaders read by screen position
 // and multiply into the sun's colour alone. Right after that copy, at the main pass's first draw: the pre-pass's depth
 // (INTZ) into the bridge's shared depth, the last frame's draws into the scene in this frame's camera (CaptureScene), the
-// trace, and the traced visibility into the mask's red by minimum (the darker of the game's shadow and the rays').
+// trace, and the traced visibility into the mask's red in place of the game's shadow-map term (the pre-pass writes only
+// that term there; a frame without a trace keeps the game's).
 // Objects (O1) shade with the game's shadow maps alone: their pixels have no depth before the main pass, so last frame's
 // main depth (kept at the bloom) goes into this frame's view over the ground's and the rays start from both; the object
-// shaders (patched_shaders.h) read the traced visibility at s15 by screen position, a white texel when untraced. The
-// ground's ambient occlusion (AO) comes from the same trace: the terrain shaders read it at s14 into their ambient.
+// shaders (patched_shaders.h) read the traced visibility at s15 by screen position in place of their shadow-map factor
+// (its alpha 1), an alpha-0 texel (the game's factor) when untraced. The ground's ambient occlusion (AO) comes from the
+// same trace: the terrain shaders read it at s14 into their ambient.
 // Screen-space ground shadows (G2): Bend Studio's march (Attila's sss_setup / sss_bend) over the same depth, into the
-// same visibility by minimum, with the rays or alone. The ground's ambient occlusion without rays: GT-VBAO
+// mask by minimum with the game's shadow maps (off under the rays: one method a shadow). The ground's ambient occlusion
+// without rays: GT-VBAO
 // (ground_vbao.cs_5_0) over the same depth into the same occlusion texture, without the helper too (the bridge's
 // shared textures alone: MakeObjects). The ground's bounced light: GT-VBGI (ground_bounce.cs_5_0, the same march) with
 // last frame's scene as the light, which the terrain shaders add to their ambient, with the occlusion in the same s14
@@ -83,14 +89,17 @@ struct State {
   bool ground = false;  // the Ray-Traced Ground Shadows row (restart; with the anti-aliasing's helper)
   bool objects = false;  // the Ray-Traced Object Shadows row (restart; with the ground's)
   bool ambient = false;  // the Ray-Traced Ground Ambient Occlusion row (restart; with the ground's)
-  bool bend = false;  // the Screen-Space Ground Shadows row (restart; with the anti-aliasing's bridge)
+  bool bend = false;  // the Screen-Space Ground Shadows row (restart; with the anti-aliasing's bridge; off under `ground`)
   bool vbao = false;  // the Screen-Space Ground Ambient Occlusion row (restart; no helper needed)
   bool bounce = false;  // the Ground Light Bounce row (restart; with the anti-aliasing's bridge)
   bool reflections = false;  // the Water Reflections row (restart; with the anti-aliasing's bridge)
   uint32_t traced_bounce = 0;  // the Ground Light Bounce row's rays (restart; with the ground's): 1 rays, 2 path tracing
   bool traced_reflections = false;  // the Water Reflections row's rays (restart; with the ground's)
+  float units_range = 0.f;  // the Units Ray Tracing Range row (live), metres; 0: every unit
   bool guides = false;  // either: the guide targets and the helper's guides
   bool failed = false;
+  bool tracing = false;  // the last trace's answer, and its changes logged this start (a few: never a line a frame)
+  uint32_t changes_logged = 0;
   // This frame's pre-pass (the camera pass's target and depth), where its copy went (an IDirect3DTexture9), the sun.
   uint32_t camera_frame = UINT32_MAX;
   uint32_t mask_frame = UINT32_MAX;
@@ -104,6 +113,7 @@ struct State {
   ComPtr<IDirect3DPixelShader9> depth_copy;
   ComPtr<IDirect3DPixelShader9> shadows;
   bridge::SharedTexture visibility;  // R32F: the traced sun visibility for the D3D9 pass
+  uint32_t visibility_frame = UINT32_MAX;  // the frame whose rays it holds (in place of the game's shadow maps then)
   ComPtr<ID3D11ShaderResourceView> depth_view;  // the bridge's shared depth
   ComPtr<ID3D11ComputeShader> copy;
   // O1: last frame's main depth with its camera (the inverse view-projection) and jitter (NDC), the rays' start depth
@@ -216,6 +226,12 @@ struct BendSettings {
 // Any row that shades the ground or the water from the main pass's first draw (ShadeGround).
 inline bool Shading() {
   return state.ground || state.bend || state.vbao || state.bounce || state.reflections;
+}
+
+// Path-Traced Light Bounce once the helper replaces the game's ambient with the paths' (their frames of history): the
+// paths' blocked rays are the occlusion, so the AO rays and GT-VBAO, whose result the s14 texel drops then, don't run.
+inline bool PathsReplaceAmbient() {
+  return state.traced_bounce == 2 && twattila::rt_scene::internal::runtime.path_ambient_on;
 }
 
 inline const twattila::rt_scene::Host HOST = {
@@ -572,6 +588,20 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
     twattila::rt_scene::WriteSun(context.Get(), state.toward_sun);
     replay::CaptureScene(state.proxy_queue->get_immediate_command_list(), view_projection);
     traced = twattila::rt_scene::Trace(context.Get(), start_depth, camera);
+    if (traced != state.tracing && state.changes_logged <= 8) {
+      ++state.changes_logged;
+      reshade::log::message(
+          reshade::log::level::info,
+          std::format("[R.U.S.E.] Ray tracing: {}{}",
+                      (traced ? std::format("tracing (ground shadows{}{}{}{})", (state.objects ? ", object shadows" : ""),
+                                            (state.ambient ? ", ambient occlusion" : ""),
+                                            (state.traced_bounce == 1 ? ", Light Bounce" : (state.traced_bounce == 2 ? ", path-traced Light Bounce" : "")),
+                                            (state.traced_reflections ? ", water reflections" : ""))
+                              : std::string("not tracing (the helper's scene isn't ready): the game's shadows this frame")),
+                      (state.changes_logged > 8 ? " (no more of these lines this start)" : ""))
+              .c_str());
+    }
+    state.tracing = traced;
   }
   const auto [visibility, occlusion] = (traced ? twattila::rt_scene::Visibilities() : std::array<ID3D11ShaderResourceView*, 2>{});
   if (visibility == nullptr && !state.bend && !state.vbao && !state.bounce && !state.reflections) return false;
@@ -591,6 +621,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   };
   if (visibility != nullptr) {
     run(state.copy.Get(), visibility, state.visibility.work_uav.Get());
+    state.visibility_frame = bridge.frame;
   } else {
     constexpr std::array<FLOAT, 4> LIT = {1.f, 1.f, 1.f, 1.f};
     context->ClearUnorderedAccessViewFloat(state.visibility.work_uav.Get(), LIT.data());
@@ -651,8 +682,9 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   const bool bouncing = state.bounce && light_kept && !bounced;
   // GT-VBAO where the rays' ambient occlusion didn't run this frame; with the bounce GT-VBGI's march instead, its light
   // and the occlusion (the rays', else its own with the GT-VBAO row) in one texel. Their noise still without the upscaler
-  // (no frames to settle it). The bounce's light: this frame's clip to last frame's (c0-c3 x c4-c7, in doubles).
-  if (bouncing || (state.vbao && !rays_occlusion)) {
+  // (no frames to settle it). The bounce's light: this frame's clip to last frame's (c0-c3 x c4-c7, in doubles). Not
+  // GT-VBAO under the paths' ambient.
+  if (bouncing || (state.vbao && !rays_occlusion && !PathsReplaceAmbient())) {
     std::array<float, 32> settings = {
         p00, p11, depth_scale, depth_offset, size[0], size[1], size[2], size[3], VBAO_RADIUS, VBAO_THICKNESS, static_cast<float>(bridge.enabled ? (bridge.frame % 64u) : 0u), BOUNCE_STRENGTH,
     };
@@ -674,7 +706,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   }
   // The rays' bounce into the s14 texel with the occlusion: the rays', else GT-VBAO's just above (its own work copy).
   if (bounced) {
-    const bool replaced = state.traced_bounce == 2 && twattila::rt_scene::internal::runtime.path_ambient_on;
+    const bool replaced = PathsReplaceAmbient();
     ID3D11ShaderResourceView* bounce_occlusion = occlusion;
     if (!rays_occlusion) {
       bounce_occlusion = ((state.occlusion_frame == bridge.frame) ? state.occlusion_view.Get() : nullptr);
@@ -757,7 +789,7 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   context->CSSetShaderResources(0, 1, NO_VIEWS.data());
   context->CSSetUnorderedAccessViews(0, 1, NO_OUTPUTS.data(), nullptr);
   context->CSSetShader(nullptr, nullptr, 0);
-  for (const auto& [shared, written] : {std::pair{&state.visibility, state.ground || state.bend},
+  for (const auto& [shared, written] : {std::pair{&state.visibility, visibility != nullptr || state.bend},
                                         std::pair{&state.occlusion, state.occlusion_frame == bridge.frame},
                                         std::pair{&state.ground_light, state.bounce_frame == bridge.frame},
                                         std::pair{&state.reflection, state.reflection_frame == bridge.frame}}) {
@@ -767,9 +799,14 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   }
   bridge::WaitProxy(proxy, context.Get());
 
-  if (state.ground || state.bend) {
-    const std::array<IDirect3DSurface9*, 1> mask_target = {mask_surface.Get()};
-    const std::array<IDirect3DBaseTexture9*, 1> shaded = {state.visibility.host.Get()};
+  const std::array<IDirect3DSurface9*, 1> mask_target = {mask_surface.Get()};
+  const std::array<IDirect3DBaseTexture9*, 1> shaded = {state.visibility.host.Get()};
+  if (visibility != nullptr) {
+    // The rays in place of the game's shadow maps: the pre-pass (0x8588D239) writes only their term into the mask's red.
+    // A frame without a trace keeps the game's.
+    bridge::DrawQuad(host, mask_target, state.shadows.Get(), shaded, {}, {{D3DRS_COLORWRITEENABLE, D3DCOLORWRITEENABLE_RED}});
+  } else if (state.bend) {
+    // Bend with the game's shadow maps (the contact shadows they miss): the darker of the two.
     bridge::DrawQuad(host, mask_target, state.shadows.Get(), shaded, {},
                      {{D3DRS_ALPHABLENDENABLE, TRUE}, {D3DRS_SEPARATEALPHABLENDENABLE, FALSE}, {D3DRS_BLENDOP, D3DBLENDOP_MIN},
                       {D3DRS_SRCBLEND, D3DBLEND_ONE}, {D3DRS_DESTBLEND, D3DBLEND_ONE}, {D3DRS_COLORWRITEENABLE, D3DCOLORWRITEENABLE_RED}});
@@ -777,9 +814,10 @@ inline bool ShadeGround(reshade::api::command_list* cmd_list) {
   return true;
 }
 
-// The patched shaders' textures, read by VPOS (point, clamped: one texel a pixel): s15 the sun visibility (O1's object
-// shaders), s14 the ambient occlusion (the terrain's; with the bounce x it, yzw the light), s13 the reflection (the
-// water's); white or (1, 0, 0, 0) (the game's shading) unless `traced` this frame.
+// The patched shaders' textures, read by VPOS (point, clamped: one texel a pixel): s15 the sun visibility (the object
+// shaders' shadow: the rays' where its alpha is 1, the R32F texture's), s14 the ambient
+// occlusion (the terrain's; with the bounce x it, yzw the light), s13 the reflection (the water's); white or
+// (1, 0, 0, 0) (the game's shading: alpha 0 keeps its shadow maps) unless `traced` this frame.
 inline void BindTraced(IDirect3DDevice9* host, bool traced) {
   const auto bind = [host](DWORD stage, IDirect3DTexture9* texture) {
     host->SetTexture(stage, texture);
@@ -790,8 +828,11 @@ inline void BindTraced(IDirect3DDevice9* host, bool traced) {
     host->SetSamplerState(stage, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
     host->SetSamplerState(stage, D3DSAMP_SRGBTEXTURE, FALSE);
   };
-  if (state.objects) {
-    bind(15, traced ? state.visibility.host.Get() : state.unshadowed.Get());
+  // The object shaders with the shadow patch: O1's, or the object light set's with the rays' Light Bounce (the game's
+  // shadow maps there without O1).
+  if (state.objects || state.traced_bounce != 0) {
+    const bool shadowed = state.objects && traced && state.visibility_frame == bridge::state.frame;
+    bind(15, shadowed ? state.visibility.host.Get() : state.unlit.Get());
   }
   if (state.bounce) {
     bind(14, (traced && state.bounce_frame == bridge::state.frame) ? state.ground_light.host.Get() : state.unlit.Get());
@@ -863,7 +904,7 @@ inline void OnGuideDraw(reshade::api::command_list* cmd_list) {
     const auto found = std::ranges::lower_bound(table, pixel_shader, {}, &PatchedShader::hash);
     return found != table.end() && found->hash == pixel_shader;
   };
-  const bool lit = state.traced_bounce != 0 && (listed(GROUND_LIGHT_GUIDE_SHADERS) || (state.objects && listed(OBJECT_LIGHT_SHADERS)));
+  const bool lit = state.traced_bounce != 0 && (listed(GROUND_LIGHT_GUIDE_SHADERS) || listed(OBJECT_LIGHT_SHADERS));
   const bool water = state.traced_reflections && listed(WATER_REFLECTION_GUIDE_SHADERS);
   host->SetRenderState(D3DRS_COLORWRITEENABLE1, lit ? 0xF : 0);
   host->SetRenderState(D3DRS_COLORWRITEENABLE2, (lit || water) ? 0xF : 0);
@@ -898,8 +939,8 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
         texture->Reset();
       }
     };
-    make_texel(D3DCOLOR_ARGB(255, 255, 255, 255), &state.unshadowed);
-    make_texel(D3DCOLOR_ARGB(0, 255, 0, 0), &state.unlit);
+    make_texel(D3DCOLOR_ARGB(255, 255, 255, 255), std::addressof(state.unshadowed));
+    make_texel(D3DCOLOR_ARGB(0, 255, 0, 0), std::addressof(state.unlit));
     BindTraced(host, false);
   }
   // Path-Traced Ambient's sky: the game's ambient from the first terrain shader drawn (the next frame's trace takes it).
@@ -929,11 +970,11 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
   }
 }
 
-// The game's present: rt_core's new frame.
+// The game's present: rt_core's new frame (its AO rays off while the paths' ambient stands in for the occlusion).
 inline void OnPresent() {
   twattila::rt_scene::Update({
       .sun_shadows = state.ground,
-      .ambient_occlusion = state.ambient,
+      .ambient_occlusion = state.ambient && !PathsReplaceAmbient(),
       .ambient_range = AMBIENT_RANGE,
       .light_bounce = state.traced_bounce != 0,
       .light_bounce_rays = BOUNCE_RAYS,
@@ -941,6 +982,12 @@ inline void OnPresent() {
       .path_tracing = state.traced_bounce == 2,
       .path_ambient = state.traced_bounce == 2,
       .reflections = state.traced_reflections,
+      // Metres to world units (a unit a centimetre, as the ranges above; the T-run checks).
+      .units_range = state.units_range * 100.f,
+      // Lean and Near ReSTIR Reuse with path tracing: faster, the same look in tests (Lean on by default: ATN 11-16; Near
+      // as Ryse's and Shogun 2's defaults, reuse -46 %).
+      .reuse_lean = state.traced_bounce == 2,
+      .reuse_near = state.traced_bounce == 2,
   });
 }
 
