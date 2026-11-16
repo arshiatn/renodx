@@ -3,6 +3,9 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] NEW 11-16 (Rome II round): shadows default Multiply vs Replace (a trace first); morefire00 is x0.2 in SDR too (since
+  09-30): keep?; V35 toe at 1-15 nits x0.063-1, colour x1.22 (test black point 1e-4): OK?; Hue Clip 90 vs 80;
+  rays_preset_as_attila for Rome II?; a bench save for Faster Game CPU Code. Owner: ATN
 - [ ] NEW 11-16 (R.U.S.E. round): Recommended motion blur 0?; RT/PT scope; upscaler sub-rows; Ray Reconstruction for the
   rays (today DLAA preset K + our own denoise). Owner: ATN
 - [ ] NEW 11-16 (WH1 / WH2 round), in game: a river or lava with RT/PT (WH2 RT Water Reflections); wet stone with
@@ -133,7 +136,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
 - [ ] B: R.U.S.E. marker / map-interface colours in SDR / Extended / V35: look right? (from: "R.U.S.E. C2: 15 marker / map-interface draws ...")
-- [ ] B: Attila / Thrones 2.2 Gamma Correction in HDR: scene, UI, flares, video, FG HUD-less look right? (from: "Attila / Thrones 2.2 GC in HDR: ATN's in-game look ...")
+- [ ] B: Attila / Thrones / Rome II / WH1 / WH2 / Troy / Pharaoh / WH3 2.2 Gamma Correction in HDR (5f63ed7c, WH3 10eb0417): scene, UI, flares, video, FG HUD-less look right? (from: "Attila / Thrones 2.2 GC in HDR: ATN's in-game look ...")
 - [ ] B: HDR bug fixes: Output SDR colours (V30 / V31), Shogun 2 highlights up to Peak, WH2 with FXAA on: look right? (from: "In-game checks of the HDR bug fixes ...")
 - [ ] B: Rome Remastered: do keys / clicks still register after a long session? (from: "Rome Remastered input bug: ATN watches input ...")
 - [ ] B: DLSS migration list (old values kept, no red note, the game's DLSS as before, helper DLSS / FSR / XeSS / RR, FG + Reflex, RT / PT after restart, helper exe removed = no crash): all fine? (from: "In game (ATN's list): migration keeps the old DLSS values ...")
@@ -213,7 +216,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R.U.S.E.: Ray Reconstruction for the rays (today DLAA preset K + our own denoise ... | ATN decides, then the game's next round
 - R.U.S.E.: test hooks (RENODX_TW_SET) for scripted runs. twattila/test_hooks.hpp ... | next tools pass
 - R.U.S.E. runs (notes): the game ignores window close in battle (two tries, then ... | coordinator (notes for runs)
-- Attila / Thrones 2.2 GC in HDR: ATN's in-game look (scene, UI, flares, video, FG ... | ATN
+- Attila / Thrones / Rome II / WH1 / WH2 / Troy / Pharaoh / WH3 2.2 GC in HDR: ATN ... | ATN
 - AFTER THE RESTART, in order (nothing of this started before it): 1. DONE (non-TW ... | coordinator (steps 2, 4, 5), ATN (step 6)
 - Attila has no frame trace `on_demand` / `at_100` (Pharaoh, Rome II, WH3 have bot ... | next Attila round
 - grass_fade.hpp:36: unbound cb8 reads 0 = no fade, against the skill's "unbound i ... | next Attila round
@@ -229,6 +232,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - tpf_ not done: Torch / Fire Shadows on the 7 other point-light PS per game (14 W ... | next Troy / Pharaoh round, data run
 - w12_ not done: Rays Replace Shadow Maps as default (no WARP proof of the replace ... | next WH1 / WH2 round
 - rux_ not done: RT debug view, moving units under DLAA, combined O1 variant, Time ... | next R
+- r2fix_ not done: cut-outs (cut_out_shader capture versions first); Batched Unit ... | next Rome II round, shared round, data run
 - ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB7344 ... | next Attila round / data runs, per-game agents (t46)
 - Non-TW 17-row leftovers: Tales' path tracing always uses SER on DXR 1.2 (rt_shad ... | next GPU round (SER), next data runs (rest)
 - From sk4_ (skills update 3, 1e75898a / ec000d46 / 47a73741, zip 48 files): Phara ... | per-game rounds (SMAA / CMAA2, fallback), coordinator (READM
@@ -1494,7 +1498,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         every mode for Rome II / WH1 / WH2 / Troy / Pharaoh, reusing twattila/frame_gamma.hlsli (TW_FRAME_GAMMA, the
         proxy's decode, flares / UI / video adds in the frame's gamma, TW_TONE_MAP_PEAK + EmulateFrameGamma), GC check in
         tw_vanilla_exact per game, psychov35 parts per game, build32 Rome II. Owner: an agent AFTER THE RESTART (step 1b)
-      - [ ] Attila / Thrones 2.2 GC in HDR: ATN's in-game look (scene, UI, flares, video, FG HUD-less). Owner: ATN
+      - [ ] Attila / Thrones / Rome II / WH1 / WH2 / Troy / Pharaoh / WH3 2.2 GC in HDR: ATN's in-game look (scene, UI, flares,
+        video, FG HUD-less). Owner: ATN
       - [ ] AFTER THE RESTART, in order (nothing of this started before it):
         1. DONE (non-TW 03:2x: ruse u2, ryse fix57, tales v75, exr v33, d2 v2; TW install 05:0x: Attila v164, Rome II r7, Thrones r8, WH1 r9, WH2 v54, Troy v58, Pharaoh v71, WH3 v63, Shogun 2 v77, Rome Remastered v15, all on helper115): Build all (build32: Attila / Rome II / Thrones; build: the rest incl. Ryse / Tales / Expeditions / Div1 / Div2 /
            R.U.S.E.; the helper from atn-mods), stamp, install every game with tw_install (dry run, fresh backups, hashes):
@@ -1703,6 +1708,20 @@ heading text are in HANDOFF_ARCHIVE.md)
           click-loaded Continue): MainRTAA 1x against an all-off start; is MainRTDivider a render scale (then D6 + LOD bias);
           Gamma Correction (U1 box); shadow-map pass skip (off-screen casters / imposters); Units range zoomed out (is a world
           unit a centimetre?). Owner: next R.U.S.E. round, shared round, coordinator (T-run)
+        - [x] Rome II MERGED f5f1ba0b2 (r2fix_, 25 commits; build32 OK; page dump 489 rows, no key lost): Bend off under RT
+          sun shadows, torch hook on one atomic, DllMain TRUE, tooltips, credits::Methods (+ smaa), Time Each Pass, campaign
+          frames counted, smoke 7 -> 14 PS / water 3 -> 17 + shadow readers 3 -> 15 / point lights 2 -> 26 (WARP all pass;
+          lights 14 bit-identical, rest <= 2.4e-7, controls 41k-57k), Modded Auto Exposure in stops (x0.30103, 1-8, default
+          4, saved x log2(10) at revision 3), indicator HDR-only (SDR = game bytes), plain Recommended for Output Auto, preset
+          tooltips, page-1 order + video rows HDR-only, twrome2/shadow_cascades.hpp + tw_unit_shadows part 8, AO blurs
+          {41894C1F, 7DDD84A3}, vanilla_exact 21 -> 57 (53 EXACT, 4 accepted, 0 FAIL).
+        - [ ] r2fix_ not done: cut-outs (cut_out_shader capture versions first); Batched Unit Capture (no Rome II bone pack
+          hook; its row shows default 1 but does nothing: hide it); shared: a quad shader per SmokePixelShader for
+          fire_smoke_loop, a shadow patch route for the 18 SM3 water readers, unit patterns in the shared once-count test;
+          8 NEEDS A TRACE ledger rows (rome2.tsv) for a data run; ao-gi.md double-work rows (SSAO under RT AO gone, maps
+          under rays Multiply, Bend under rays off; costs need a Time Each Pass battle). B in game: Motion Debug View on the
+          campaign (scale 0.05), LOD bias log at 50 %, PT ambient blurs, auto exposure look at 1.33, level-B ports at SM3 /
+          SM4.1. Owner: next Rome II round, shared round, data run
         - [ ] ath_ not done: unclear-sun WARP 2x test (B6DA03C5 / 1B10DDD8), traces of 0FB73442 / D9123DE1, vanilla coverage
           of pointlight00-39 / UI sprites / grass00-01 (the generic driver can't feed them); view_share Classify 24 unclear
           sun-PS rows a game (NEEDS A TRACE). The t46 x AO double-occlusion check was sent to WH3, WH1 / WH2, Troy / Pharaoh,
