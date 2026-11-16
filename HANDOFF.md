@@ -172,6 +172,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [ ] C: Ryse "No RT/PT + Screen-Space (Experimental)" button (GT-VBAO, Light Bounce, Contact Shadows, rys2_ 66594cc8e): should it become No RT/PT itself? (from: A7)
 - [ ] C: Ryse Rays Replace Shadow Maps: off now (out-of-view casters lose their sun shadow); on after the coverage run if it looks right? (from: C3)
 - [ ] C: Attila PT GI: torches also bounce (torch light for on-screen hits too: warm bounce near fires, costs a light loop + shadow ray per hit; gpu3_ measures first)? Calibrate the unseen route's sky (-3 % left, median 0.79, a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
+- [ ] C: Divinity 2 Skip the Game's Shadow Maps: on by default under RT shadows (your 22:3x every-game rule) once the coverage run passes (962 of 3,526 city draws skipped)? Path-Traced Ambient into the RT/PT preset once a run shows it? (from: div2_ 11-16)
 - [ ] C: WH3: Fog in Reflections (Experimental, 0) into the RT/PT preset now that Water Reflections are on by default? (from: "ATN DECIDES (WH3, lost in the cleanup): Fog in Reflections ...")
 - [ ] B: Ryse rays + RR with a moving camera: look right? (from: "Ryse rays + RR in motion ...")
 - [ ] B: a cutscene with Cutscene Point Light Shadows + the new row; Half + RR past torches; a battle with 4-bone / dismember units under Batched Unit Capture: look right? (from: "In game (ATN's list, per batch): a cutscene with Cutscene Point Light Shadows ...")
@@ -234,8 +235,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN at the end (Divinity 1): drop or keep the legacy V30 / Pragmap modes. Owner: ... | ATN
 - ATN DECIDES (Divinity 2): "Exact Colour LUT (Experimental)", off: the game reads ... | ATN
 - Divinity 2 SHARED STEP: output_encoding needs a game-owned-output flag (Apply mu ... | coordinator (shared-steps round after the fix merge)
-- Divinity 2 later: D2-8b scene R11G11B10F -> RGBA16F (view cloning, Experimental ... | d2_ after R1b
-- Divinity 2 next run: what triggers the orthographic camera (tactical toggle?); A ... | next Divinity 2 run / ht_
+- (R13 exact DONE div2_ f81e8bf51: tw_vanilla_exact Divinity2 6 EXACT; LEFT: ortho ... | next Divinity 2 run / ht_
 - ATN at the end (Divinity 2): mid grey row's default; old presets / V30 keep or d ... | ATN
 - R.U.S.E. U1 run (after ReShade + the stamped add-on are installed on D:): Frame ... | coordinator (next game window, ATN's OK)
 - (Time Each Pass with D3D9 queries DONE rur2_ efc3c40ec, test 13; LEFT: HDR-only ... | ru_ / release round
@@ -275,7 +275,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - A1b Divinity 1 next run: Sun Shadow Softness 1 / 2 in a sunlit still view. Owner ... | coordinator (D1 run)
 - A1c Divinity runners: copy divinity_pass_timing.txt after each Time Each Pass pr ... | coordinator (run tooling)
 - A1d Why run_r2gamma_042527 wrote no frame trace at +300 s. Owner: coordinator | coordinator
-- A1e Divinity 2 clone route: does copy_resource redirect for the cloned R11G11B10 ... | div2_
+- (div2_ 11-16 offline: no fix needed, the clone route redirects copy_resource / c ... | div2_
 - A1f Divinity 2 SupportTool.exe dump at every close: the harness's close order, o ... | coordinator
 - A1h Tales run: keep the game open past +728 s so ue_back gets timed; still-view ... | coordinator
 - A1j UE runners: two pass-timing frames per segment, drop outliers. Owner: coordi ... | coordinator
@@ -305,6 +305,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - (Tales + Expeditions Path-Traced Ambient DONE tpa_ 99b372c7a / 170aa2058, Experi ... | tpa_, next Divinity rounds
 - SHADOW MAPS UNDER RT SHADOWS, every game (ATN 22:3x: "No shadow maps should run ... | rur2_ (R
 - V35 FIT, every game (ATN 22:3x: "Does the skill say to do it? If yes, then let's ... | rys2_ (Ryse), V35 fit round (the rest)
+- DIVINITY 2 RUN (div2_ 11-16, R1 Arx city save + a torch-lit interior): DLSS on ( ... | coordinator (one game at a time)
+- Divinity 2 next (div2_ 11-16): rt_guides CS (d1_rt_guides pattern: GBuffer1 norm ... | next Divinity 2 round
+- SHARED STEPS (div2_ 11-16): rt_core TraceLightBounce: one missed bounce frame re ... | shs2_ / next shared round
 - GPU3 RUNS (gpu3_ 11-16 NEEDS A RUN): 1. Attila Constantinople, ATN's rows, path- ... | coordinator (one game at a time)
 - GPU next (gpu3_ 11-16): Attila Nsight round DONE (whole frame 3.711 -> 3.607 ms, ... | next GPU round
 - RYSE RUN (rys2_ 11-16 NEEDS A RUN): rays + RR with a moving camera (shots + vide ... | coordinator (one game at a time)
@@ -324,7 +327,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - DIVINITY 1 RUN (div1_ 11-16 NEEDS A RUN, save T1, in-game AA off, helper next to ... | coordinator (one game at a time)
 - Divinity 1 next (div1_ 11-16): render scale below 100 % (view_share) + texture L ... | next Divinity 1 round
 - (tpa_'s spec: rt_scene::WriteSky(context, float4[6]) + a host-sky flag in Settin ... | shared round with tpa_'s result
-- Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask ... | next Divinity 2 round
+- (div2_ 11-16 DONE: RT sun shadows + RT AO cb2aad103, GI (One Bounce / ReSTIR GI, ... | next Divinity 2 round
 - Bench script: constantinople_bench.ps1 checks build tools 3 times in a row; a bu ... | next shared round
 - Reset / No RT/PT cost (eob_ 11-16): Bend +0.96 ms and GT-VBAO / GT-VBGI +0.94 ms ... | next shared round
 - Rarer Objects bench: needs a siege-tower / ship view in the bench (none exists). ... | coordinator, next bench
@@ -1268,7 +1271,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (shared-steps round after the fix merge)
       - [x] DONE 11-16 (a5d62b19, merged 1c1641ab): Divinity 2: the orthographic EoCSight_HDR 0x5C4137E2 (50-nit constants vs 300) needs a trace first. Owner:
         d2_ after R1b
-      - [ ] Divinity 2 later: D2-8b scene R11G11B10F -> RGBA16F (view cloning, Experimental off); D2-9 helper DLAA / FG /
+      - [x] DONE (D2-8b earlier, ledger DONE; D2-9 helper DLAA / FG / Reflex before PPApplyLUT + D2-11 RT sun into the R8 mask div2_ cb2aad103; shadow pass skip under RT bc3073964 Experimental off; their runs in DIVINITY 2 RUN) Divinity 2 later: D2-8b scene R11G11B10F -> RGBA16F (view cloning, Experimental off); D2-9 helper DLAA / FG /
         Reflex on the linear scene before PPApplyLUT; D2-11 RT host (RT sun into the R8 mask, shadow pass skipped under
         RT). Owner: d2_ after R1b
       - [x] DONE 00:13 (R1b agent, ATN loaded the Arx save, stamp "d2 v1 addon" via tw_install divinity2=1 --first;
@@ -1294,7 +1297,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (was) ATN DECIDES (Divinity 2, from the R1b shots): V30 / V35 shadows ~5x brighter than Off (0.05-1 nit pixels) and
         mid tones ~23 % less saturated (flatter than the game's ACES toe); Hue Clip default (80 kept; 60 closest on
         average, 80 best for fire / red). Owner: ATN
-      - [ ] Divinity 2 next run: what triggers the orthographic camera (tactical toggle?); A/B of Higher Precision Scene
+      - [ ] (R13 exact DONE div2_ f81e8bf51: tw_vanilla_exact Divinity2 6 EXACT; LEFT: orthographic trigger + Higher Precision Scene A/B run, gamma 1.2 analysis = an_) Divinity 2 next run: what triggers the orthographic camera (tactical toggle?); A/B of Higher Precision Scene
         (alpha readers, copies, inventory, back buffer through the proxy); gamma slider 1.2. R13 exact tests for bloom00,
         ui00, outlines00-02. Owner: next Divinity 2 run / ht_
         11-16: the gamma 1.2 run is done (run_r2gamma_042527, 04:25); its analysis (an_,
@@ -1887,7 +1890,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] A1c Divinity runners: copy divinity_pass_timing.txt after each Time Each Pass press; PresentMon with nothing
           presenting on top. Owner: coordinator (run tooling)
         - [ ] A1d Why run_r2gamma_042527 wrote no frame trace at +300 s. Owner: coordinator
-        - [ ] A1e Divinity 2 clone route: does copy_resource redirect for the cloned R11G11B10F scene copies (stale water /
+        - [ ] (div2_ 11-16 offline: no fix needed, the clone route redirects copy_resource / copy_texture_region (swapchain_v2.hpp:1277, resource_upgrade 4035 / 4039 / 2591), every traced copy cloned to cloned; LEFT: water / refraction under Higher Precision Scene in DIVINITY 2 RUN) A1e Divinity 2 clone route: does copy_resource redirect for the cloned R11G11B10F scene copies (stale water /
           refraction under Higher Precision Scene)? Owner: div2_
         - [ ] A1f Divinity 2 SupportTool.exe dump at every close: the harness's close order, or a plain quit too? Owner:
           coordinator
@@ -1978,6 +1981,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         SDR, fitted Contrast / Shadows / Saturation defaults with traced constants (Ryse first, level B now: x2.05 at 0.1
         nit -> within 4.8 %; Shogun 2 x2.5-6.2 lift, RomeR fine), WARP proof per game. Owner: rys2_ (Ryse), V35 fit round
         (the rest)
+      - [ ] DIVINITY 2 RUN (div2_ 11-16, R1 Arx city save + a torch-lit interior): DLSS on (the helper's upload line, DLAA /
+        FSR / XeSS A/B, the FXAA copy at in-game AntiAliasing 1, FG HUD-less); RT shadows + RT AO (sun direction vs the
+        game's shadows: KeepSun fix, Time Each Pass); Skip the Game's Shadow Maps on (oil / lava / fire / web: 27 forward
+        surfaces bind a _ShadowSampler at t6-t10, trace which; time saved, 962 of 3,526 city draws); GI at Strength 1
+        (rays + paths, city + interior); Path-Traced Ambient on (after ~2.5 s the ambient swaps, brightness vs the
+        game's); Higher Precision Scene water / refraction; the orthographic camera trigger. Owner: coordinator (one game
+        at a time)
+      - [ ] Divinity 2 next (div2_ 11-16): rt_guides CS (d1_rt_guides pattern: GBuffer1 normals, GBuffer2 base, GBuffer3
+        roughness / metal; unlocks RR + reflections); RT reflections (7 IBL specular shaders vanilla exact + DeferredSSR
+        off); render scale below 100 % (D2-10 viewport route); Graphics 2 of 2 / Shadow Map Size (D2-12, exe read first);
+        our TAA / CMAA2; GT-VBAO / GT-VBGI / Bend as the no-RT methods; Modded Auto Exposure (meter takes log2 above 2,
+        knee 4.3 stops over the 0.104 average: a run's numbers); vignette / fog / VFX half-resolution rows. Owner: next
+        Divinity 2 round
+      - [ ] SHARED STEPS (div2_ 11-16): rt_core TraceLightBounce: one missed bounce frame resets path_frames, so
+        path_ambient_on drops for 150 frames (2.5 s of the game's ambient) after any missed trace, every host: a grace
+        window as AmbientReplaced (30 frames); rt_bounce_prepare / resolve include ../expeditionsrome/0x7A1E0D48 / 49:
+        move into twattila as shared shaders; graphics_page GI tooltip names GT-VBGI / "soldiers" in games without them
+        (a Texts field); Fog Shadows row shows in D2 with no effect (has_fog_shadows flag); page_dump_d2_body.h helper-
+        present state. Owner: shs2_ / next shared round
       - [ ] GPU3 RUNS (gpu3_ 11-16 NEEDS A RUN): 1. Attila Constantinople, ATN's rows, path-traced GI: pan along the walls
         past torches, do off-screen corners still brighten then settle (f128a1cc1); 2. R.U.S.E. battle with rays: Record Ray
         Tracing Profile (A1k GPU cost) + the new garbage-triangles WARN line in ReShade.log; 3. Ryse or Expeditions with
@@ -2080,7 +2102,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         page label says "Graphics 1 of 2". Owner: next Divinity 1 round
       - [ ] (tpa_'s spec: rt_scene::WriteSky(context, float4[6]) + a host-sky flag in SettingsOf; today a non-TW host sets settings.path_ambient, writes 6 axis irradiances into rt_sun texels 3-8 (texel 3 w != 0 = sky, texel 4 = scale, texel 6 = 0 unless y-up), drops its own diffuse sky while runtime.path_ambient_on (under runtime.mutex), turns RT AO off) SHARED STEP: rt_core's path ambient works only for TW hosts (internal::ambient_cube): Path-Traced Ambient + RT /
         PT GI for non-TW hosts (Divinity 1 / 2, same gap as Tales / Expeditions, tpa_). Owner: shared round with tpa_'s result
-      - [ ] Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask, RT AO / PT ambient replacing
+      - [ ] (div2_ 11-16 DONE: RT sun shadows + RT AO cb2aad103, GI (One Bounce / ReSTIR GI, Strength row) + Path-Traced Ambient replacing PPApplyAO + the IBL diffuse 77078392b (Experimental off, tpa_'s route, no rt_core change), KeepSun fix (tested t0 = the 1x1 Exposure: sun direction only at LinearizeDepth); WARP tw_d2_helper 1-9 PASS; LEFT: RT reflections (rt_guides CS + 7 IBL specular shaders vanilla exact + DeferredSSR off), runs) Divinity 2: ray tracing (rt_core host: RT sun shadows into its CascadedPCSS mask, RT AO / PT ambient replacing
         PPApplyAO, RT / PT GI replacing the IBL diffuse, RT reflections replacing IBL_Specular; the ledger's stacking lines)
         as Divinity 1's steps 9-10. Owner: next Divinity 2 round
       - [x] DONE 12:06 (eob_, 26 starts / 25 valid, ATN's files restored 0 mismatches; report
