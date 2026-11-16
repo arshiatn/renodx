@@ -32,6 +32,9 @@
 //    Extended, within 2% in V31 Native Tone and V35 (both after the response; Full Replacement's printed). Extended's
 //    ramp within Peak, grey never darker. Markers (the 15 scene draws that undo the post's grade in advance, census C2):
 //    SDR gives their authored colour, Extended the same; the other modes' shift printed.
+// 7. Gamma Correction in every mode (Rome II, Warhammer I / II, Troy, Pharaoh: twattila/frame_gamma.hlsli) on each one's
+//    hdr_to_screen t01 against 242d6101's: off and Rendering Mode SDR the same picture, on the 2.2 display's decode
+//    within Peak (TestGammaCorrection).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -66,6 +69,22 @@ namespace wh3 {
 namespace rome2 {
 #include "src/games/twrome2/shared.h"
 }  // namespace rome2
+#undef SRC_TEMPLATE_SHARED_H_
+namespace wh1 {
+#include "src/games/twwarhammer/shared.h"
+}  // namespace wh1
+#undef SRC_TEMPLATE_SHARED_H_
+namespace wh2 {
+#include "src/games/twwarhammer2/shared.h"
+}  // namespace wh2
+#undef SRC_TEMPLATE_SHARED_H_
+namespace troy {
+#include "src/games/twtroy/shared.h"
+}  // namespace troy
+#undef SRC_TEMPLATE_SHARED_H_
+namespace pharaoh {
+#include "src/games/twpharaohdynasties/shared.h"
+}  // namespace pharaoh
 namespace ruse {
 #include "src/games/ruse/shared.h"
 }  // namespace ruse
@@ -623,8 +642,8 @@ static void TestBits(const std::map<std::string, Pair>& shaders) {
   int total_different = 0;
   for (const auto& [name, pair] : shaders) {
     // Rome II's t00 / t01: part 4's chain alone (run.ps1: no bit comparison); Attila's bindings here leave its black and white
-    // points unbound.
-    if (name.starts_with("r_")) continue;
+    // points unbound. The five games' t01 (g_): part 7 alone.
+    if (name.starts_with("r_") || name.starts_with("g_")) continue;
     const bool wh3_shader = name.starts_with("w_");
     const bool tone_mapper = (name == "a_t00" || name == "a_t09" || name == "a_t10");
     // Attila's hdr_to_screen since 2026-11-16: Gamma Correction acts in every Rendering Mode and Rendering Mode SDR's
@@ -930,7 +949,7 @@ static std::vector<Float3> RunRuse(const Shader& post, const std::vector<Float4>
 static float Wh3White(float burn) { return std::sqrt(1.f / burn - 0.999f); }
 
 static void CheckRamp(const char* label, const std::vector<Float3>& linear, float peak_nits, float ui_nits, bool sdr, bool gamut_fit,
-                      bool monotonic, int* failures_in_ramp) {
+                      bool monotonic, int* failures_in_ramp, const char* part = "3.") {
   int bad = 0;
   float highest_y = 0.f;
   float highest_channel = 0.f;
@@ -961,8 +980,8 @@ static void CheckRamp(const char* label, const std::vector<Float3>& linear, floa
   for (UINT y = 1; y < HEIGHT; ++y) {
     if (Luminance(linear[y * WIDTH + 48]) + 1e-6f < Luminance(linear[(y - 1) * WIDTH + 48])) ++darker;
   }
-  std::printf("3. %-58s highest Y %8.2f, channel %8.2f (limit %.0f), %d outside, grey darker %d\n", label, highest_y, highest_channel,
-              sdr ? 1.f : peak_nits, bad, darker);
+  std::printf("%s %-58s highest Y %8.2f, channel %8.2f (limit %.0f), %d outside, grey darker %d\n", part, label, highest_y,
+              highest_channel, sdr ? 1.f : peak_nits, bad, darker);
   *failures_in_ramp += bad + (monotonic ? darker : 0);
 }
 
@@ -1287,6 +1306,187 @@ static void TestRuse(const Shader& post) {
   }
 }
 
+// 7. Gamma Correction in every mode ////////////////////////////////////////////////////////////////////////////////
+
+// The hdr_to_screen t01 of a game whose frame is in its gamma (twattila/frame_gamma.hlsli), 242d6101's (before Gamma
+// Correction acted in its HDR modes) and this tree's.
+struct GammaGame {
+  const char* name;
+  const Pair* shader;
+  std::vector<float> modes;  // its Rendering Modes, PsychoV35 last
+  std::vector<uint8_t> (*injection)(float mode, float encoding, float correction, float peak);
+  Bindings bindings;
+};
+
+// The add-ons' defaults where a game has the slider; Extended's grading at identity; in-game gamma 2.0 (GammaBindings).
+template <typename T>
+static std::vector<uint8_t> GammaInjection(float mode, float encoding, float correction, float peak) {
+  T si = {};
+  si.peak_white_nits = peak;
+  si.diffuse_white_nits = 203.f;
+  si.graphics_white_nits = 203.f;
+  si.gamma_correction = correction;
+  si.swap_chain_encoding = encoding;
+  si.hdr = mode;
+  si.bloom = 1.f;
+  si.vignette = 1.f;
+  si.exposure = si.highlights = si.shadows = si.contrast = si.saturation = si.cone_response_exponent = 1.f;
+  si.hue_shift = 1.f;
+  si.v31_exposure = si.v31_highlights = si.v31_shadows = si.v31_contrast = 1.f;
+  si.v31_highlight_contrast = si.v31_shadow_contrast = si.v31_saturation = 1.f;
+  si.v31_highlight_saturation = 0.7f;
+  si.v31_roll_off = si.v31_gamut_compression = si.v31_gamut_compression_mode = 1.f;
+  si.v31_highlight_hue_shift = 0.04f;
+  si.v35_exposure = si.v35_highlights = si.v35_shadows = si.v35_contrast = 1.f;
+  si.v35_highlight_contrast = si.v35_shadow_contrast = si.v35_saturation = si.v35_highlight_saturation = 1.f;
+  si.v35_roll_off = si.v35_gamut_compression = 1.f;
+  si.hue_clip = 0.7f;
+  if constexpr (requires(T t) { t.godrays; }) {
+    si.godrays = 1.f;
+  }
+  if constexpr (requires(T t) { t.exposure_tpm; }) {
+    si.exposure_tpm = si.highlights_tpm = si.shadows_tpm = si.contrast_tpm = si.saturation_tpm = 1.f;
+  }
+  return Bytes(si);
+}
+
+// t01's inputs: the scene at its frame, an identity grade (colour matrix, LUTs), no fog of war, god rays or glow, in-game
+// gamma 2.0 (the games' default 20); Troy's and Pharaoh's post-processing bypassed (their tone mapper on the raw handoff).
+static Bindings GammaBindings(const std::vector<Float4>& scene) {
+  Bindings b = AttilaHdrToScreen(scene, true);
+  const auto zero = Texture2D(WIDTH, HEIGHT, std::vector<Float4>(WIDTH * HEIGHT, Float4{}));
+  b.views["god_rays_sampler"] = zero;
+  b.views["frame_texture"] = b.views["frame_sampler"];
+  b.views["gbuffer_channel_4_texture"] = b.views["gbuffer_channel_4_sampler"];
+  b.views["t_fog_of_war_mask"] = b.views["s_fog_of_war_mask"];
+  b.views["distortion_texture"] = zero;
+  for (const char* name : {"god_rays_texture", "glow_texture1", "grain_texture", "rain_texture", "t_shroud_clouds"}) b.views[name] = zero;
+  const auto lut = IdentityLut3D(32);
+  for (const char* name : {"lut_texture", "lut_texture_1", "lut_texture_2", "lut_texture_3"}) b.views[name] = lut;
+  b.words["lut_weights"] = F({1, 0, 0, 0, 0, 0, 0, 0, 0});
+  b.words["lut_strength"] = F({1.f});
+  b.words["overscan"] = F({1.f});
+  b.words["disable_post_processing"] = F({1.f});
+  b.words["post_processing_strength"] = F({1.f});
+  return b;
+}
+
+// a. Gamma Correction off (every mode) and Rendering Mode SDR: 242d6101's picture, the frame decoded with its gamma
+//    (TW_FRAME_GAMMA; 242d6101's frame: 2.2) within 1e-5 of each texel's brightest channel. Rendering Mode SDR on an HDR
+//    display swaps on and off (at in-game gamma 2.0): on is now the 2.2 display's decode, off the game's gamma 2.0 as
+//    linear. CONTROL: the HDR modes with it on against 242d6101's (which ignored it there) must differ.
+// b. Gamma Correction on in the HDR modes, Peak 1000 and 400 and SDR output, the scene ramp of part 3: BT.2020 and
+//    luminance within Peak (SDR output: luminance alone, the BT.709 channels past 1 are the tone mappers' own), grey
+//    never darker, and grey = (off at the corrected Peak, Peak^(1 / 1.1))^1.1 of the UI's white, within Peak. CONTROL:
+//    grey = off (no 2.2 decode) must miss it.
+// Printed: PsychoV35's grey at 1 %, 5 % and 18 % of Paper White (203 nits), off and on.
+static void TestGammaCorrection(const std::vector<GammaGame>& games) {
+  const auto columns = PatternColumns();
+  constexpr UINT GREY = 48;  // PatternColumns' grey
+  const auto frame_gamma = [](float mode, float encoding, float correction) {
+    return ((correction != 0.f) != (encoding == 2.f && mode < 0.5f)) ? 2.2f : 2.f;
+  };
+  const auto worst_difference = [](const std::vector<Float3>& a, const std::vector<Float3>& b) {
+    double worst = 0.0;
+    for (size_t i = 0; i < a.size(); ++i) {
+      const double brightest = std::max({1e-6f, std::abs(a[i][0]), std::abs(a[i][1]), std::abs(a[i][2])});
+      for (int c = 0; c < 3; ++c) worst = std::max(worst, std::abs(static_cast<double>(a[i][c]) - b[i][c]) / brightest);
+    }
+    return worst;
+  };
+  for (const auto& game : games) {
+    const auto run = [&](const Shader& shader, float mode, float encoding, float correction, float peak, float gamma) {
+      Bindings bindings = game.bindings;
+      bindings.injection = game.injection(mode, encoding, correction, peak);
+      std::vector<Float3> linear;
+      for (const auto& o : Draw(shader, bindings)) linear.push_back(Decode(o, gamma));
+      return linear;
+    };
+    double unchanged = 0.0;
+    double control = 0.0;
+    for (const float mode : game.modes) {
+      for (const float encoding : {0.f, 1.f, 2.f}) {
+        for (const float correction : {0.f, 1.f}) {
+          const auto after = run(game.shader->after, mode, encoding, correction, 1000.f, frame_gamma(mode, encoding, correction));
+          if (mode >= 0.5f && correction != 0.f) {
+            control = std::max(control, worst_difference(after, run(game.shader->before, mode, encoding, correction, 1000.f, 2.2f)));
+            continue;
+          }
+          const float before_correction = ((mode < 0.5f && encoding != 2.f) ? 1.f - correction : correction);
+          unchanged = std::max(unchanged, worst_difference(after, run(game.shader->before, mode, encoding, before_correction, 1000.f, 2.2f)));
+        }
+      }
+    }
+    std::printf("7a. %-8s off (every mode) and Rendering Mode SDR against 242d6101: worst %.3g; CONTROL on in HDR against 242d6101: %.3g\n",
+                game.name, unchanged, control);
+    CHECK(unchanged <= 1e-5);
+    CHECK(control > 1e-2);
+
+    int failures_in_ramp = 0;
+    double worst_grey = 0.0;
+    char worst_grey_at[96] = "";
+    double control_grey = 0.0;
+    const auto scene = Scene(columns, -8.f, 20.f / 47.f, 1.f);
+    Bindings ramp = game.bindings;
+    ramp.views["frame_sampler"] = ramp.views["frame_texture"] = Texture2D(WIDTH, HEIGHT, scene);
+    for (const auto& [peak, encoding] : {std::pair{1000.f, 1.f}, std::pair{400.f, 0.f}, std::pair{1000.f, 2.f}}) {
+      // SDR output: Peak, Paper White and UI all the display's white (the games' OutputShaderInjection).
+      const float corrected = 203.f * std::pow(std::max(peak / 203.f, 1.f), 2.f / 2.2f);
+      for (const float mode : game.modes) {
+        if (mode < 0.5f) continue;
+        Bindings bindings = ramp;
+        bindings.injection = game.injection(mode, encoding, 1.f, peak);
+        std::vector<Float3> on;
+        for (const auto& o : Draw(game.shader->after, bindings)) on.push_back(Decode(o, 2.2f));
+        bindings.injection = game.injection(mode, encoding, 0.f, corrected);
+        std::vector<Float3> off;
+        for (const auto& o : Draw(game.shader->after, bindings)) off.push_back(Decode(o, 2.f));
+        char label[96];
+        std::snprintf(label, sizeof(label), "%s mode %.0f, %.0f nits %s", game.name, mode, peak,
+                      encoding == 2.f ? "SDR" : (encoding == 0.f ? "HDR10" : "scRGB"));
+        // SDR output (Peak 1): the power never lifts a BT.709 channel past 1 (x^1.1 <= x there), so a channel past 1 is
+        // the tone mapper's own (PsychoV31's saturated blue, 1.8 % over with it off); luminance alone. The proxy clips it.
+        CheckRamp(label, on, peak, 203.f, encoding == 2.f, encoding != 2.f, true, &failures_in_ramp, "7b.");
+        // Grey within Peak (Extended lands 1e-4 past it at SDR's white, the power lifts that on).
+        const double grey_limit = (encoding == 2.f ? 1.0 : peak / 203.0);
+        for (UINT y = 0; y < HEIGHT; ++y) {
+          const float off_grey = off[y * WIDTH + GREY][1];
+          const float on_grey = on[y * WIDTH + GREY][1];
+          const double scale = std::max(1e-6f, on_grey);
+          const double error = std::abs(on_grey - std::min(std::pow(off_grey, 1.1), grey_limit)) / scale;
+          if (error > worst_grey) {
+            worst_grey = error;
+            std::snprintf(worst_grey_at, sizeof(worst_grey_at), " (mode %.0f, %s, row %u: off %.7g, on %.7g)", mode,
+                          encoding == 2.f ? "SDR" : (encoding == 0.f ? "HDR10" : "scRGB"), y, off_grey, on_grey);
+          }
+          if (off_grey > 0.05f && off_grey < 0.5f) control_grey = std::max(control_grey, std::abs(on_grey - off_grey) / scale);
+        }
+        if (mode != game.modes.back() || encoding != 1.f) continue;
+        // PsychoV35's grey at 1 %, 5 % and 18 % of Paper White, off's rows bracketing it (log-log between them).
+        std::printf("7b. %-8s PsychoV35 grey at Paper White 203:", game.name);
+        for (const float target : {0.01f, 0.05f, 0.18f}) {
+          for (UINT y = 0; y + 1 < HEIGHT; ++y) {
+            const float a = off[y * WIDTH + GREY][1];
+            const float b = off[(y + 1) * WIDTH + GREY][1];
+            if (!(a <= target && target < b)) continue;
+            const float t = std::log(target / a) / std::log(b / a);
+            const float shown = std::exp(std::log(on[y * WIDTH + GREY][1]) +
+                                         t * std::log(on[(y + 1) * WIDTH + GREY][1] / on[y * WIDTH + GREY][1]));
+            std::printf(" %.0f %% %.2f -> %.2f nits;", target * 100.f, target * 203.f, shown * 203.f);
+            break;
+          }
+        }
+        std::printf("\n");
+      }
+    }
+    std::printf("7b. %-8s grey = off^1.1: worst %.3g%s; CONTROL grey = off: %.3g\n", game.name, worst_grey, worst_grey_at,
+                control_grey);
+    CHECK(failures_in_ramp == 0);
+    CHECK(worst_grey <= 1e-4);
+    CHECK(control_grey > 1e-2);
+  }
+}
+
 int main(int argc, char** argv) {
   REQUIRE(argc >= 3);
   const std::filesystem::path before = argv[1];
@@ -1315,7 +1515,7 @@ int main(int argc, char** argv) {
 
   std::map<std::string, Pair> shaders;
   for (const char* name : {"a_t00", "a_t01", "a_t02", "a_t03", "a_t04", "a_t05", "a_t06", "a_t07", "a_t08", "a_t09", "a_t10", "w_t00", "r_t00",
-                           "r_t01"}) {
+                           "r_t01", "g_rome2", "g_wh1", "g_wh2", "g_troy", "g_pharaoh"}) {
     shaders[name] = {LoadPixelShader(before / (std::string(name) + ".cso")), LoadPixelShader(after / (std::string(name) + ".cso"))};
   }
   const bool report_only = (argc >= 4 && std::string(argv[3]) == "--report");
@@ -1329,6 +1529,16 @@ int main(int argc, char** argv) {
   if (!report_only) TestPsychoV35(chain);
   ReportHue(chain);
   if (!report_only) TestRuse(ruse_post);
+  if (!report_only) {
+    const Bindings gamma = GammaBindings(Scene(PatternColumns(), -6.f, 0.4f, 1.f));
+    TestGammaCorrection({
+        {"Rome II", &shaders["g_rome2"], {0.f, 1.f, 2.f, 3.f}, GammaInjection<rome2::ShaderInjectData>, gamma},
+        {"WH1", &shaders["g_wh1"], {0.f, 1.f, 2.f, 3.f}, GammaInjection<wh1::ShaderInjectData>, gamma},
+        {"WH2", &shaders["g_wh2"], {0.f, 1.f, 2.f, 3.f, 4.f}, GammaInjection<wh2::ShaderInjectData>, gamma},
+        {"Troy", &shaders["g_troy"], {0.f, 1.f, 2.f, 3.f, 4.f}, GammaInjection<troy::ShaderInjectData>, gamma},
+        {"Pharaoh", &shaders["g_pharaoh"], {0.f, 1.f, 2.f, 3.f, 4.f}, GammaInjection<pharaoh::ShaderInjectData>, gamma},
+    });
+  }
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
   return failures == 0 ? 0 : 1;
 }

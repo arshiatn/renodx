@@ -18,13 +18,17 @@
 // intended 2026-11-16, its size reported), FAIL.
 // Control (must fail): the game's bytes with each write to an output reading other components (x <-> y, or the next
 // component) against the game's own. Report: the game's float constants (arithmetic only) x 1.02 one at a time, how many the exact set sees.
-// Gamma Correction (games whose manifest line names their frame's gamma: Attila, Thrones of Britannia): the add-on's
-// shader alone, in Rendering Modes 0 - 3 at Paper White = UI and at twice UI, Gamma Correction off at the Peak the tone
+// Gamma Correction (games whose manifest line names their frame's gamma: Attila, Thrones of Britannia, Rome II, Warhammer
+// I / II, Troy, Pharaoh): the add-on's shader alone, in every Rendering Mode (the manifest's list: 0 - 3, Warhammer II,
+// Troy and Pharaoh 0 - 4 with Extended) at Paper White = UI and at twice UI, Gamma Correction off at the Peak the tone
 // mappers then take (Peak^(1 / 1.1) of Paper White) and on at Peak. Where it acts, on decoded at 2.2 must be
-// Paper White x (off decoded at the frame's gamma / Paper White)^1.1 at every texel (GAMMA_TOLERANCE of its brightest
-// channel): a 2.2 display's decode of the game's gamma 2.0 picture, Peak landing on Peak; where that is past Peak in
-// BT.2020 (a saturated highlight the power lifted), within Peak at its luminance. Control (must fail): on = off (no 2.2
-// decode) at the scene's grey.
+// Paper White x (off decoded at the frame's gamma / Paper White)^1.1 at every texel as the swap chain proxy shows it (in
+// BT.2020, below 0 clipped: a colour the grade or Extended leaves outside BT.2020; GAMMA_TOLERANCE of its brightest
+// channel; not where off itself jumps with its Peak 2e-6 up or down, nor near black, under 1e-4 of Paper White: on's
+// Peak^(1 / 1.1) in the shader is not off's to the bit, and PsychoV30's black cut-off and gamut candidates fall either
+// side for such bits): a 2.2 display's decode of the game's gamma 2.0 picture, Peak landing on Peak; where that is past
+// Peak in BT.2020 (a saturated highlight the power lifted), within Peak at its luminance. Control (must fail): on = off
+// (no 2.2 decode) at the scene's grey texel, its brightest channel.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -70,9 +74,8 @@ constexpr double TOLERANCE = 2.4e-4;
 constexpr uint32_t SENTINEL = 0xC0DEDBADu;  // a target texel no draw wrote (discard)
 
 // The add-on's settings for its Vanilla path where it has them: Rendering Mode SDR (Divinity 2: Off), every multiplier at
-// the game's 1, Paper White = UI (no scale), Gamma Correction off: it is a display emulation, on purpose not the game's
-// bytes (Rome II, Warhammer I / II, Troy, Pharaoh re-encode the in-game gamma 2.0 to 2.2 in Rendering Mode SDR; Attila
-// and Thrones of Britannia decode their gamma 2.0 frame as a 2.2 display in every mode: the Gamma Correction check).
+// the game's 1, Paper White = UI (no scale), Gamma Correction off: it is a display emulation (the TW games from Rome II
+// to Pharaoh decode their gamma 2.0 frame as a 2.2 display in every mode: the Gamma Correction check).
 constexpr std::pair<std::string_view, float> BASE_SETTINGS[] = {
     {"hdr", 0.f}, {"tonemap_type", 0.f}, {"peak_white_nits", 1000.f}, {"diffuse_white_nits", 203.f},
     {"graphics_white_nits", 203.f}, {"gamma_correction", 0.f}, {"swap_chain_encoding", 0.f}, {"bloom", 1.f},
@@ -85,7 +88,7 @@ constexpr std::pair<std::string_view, float> BASE_SETTINGS[] = {
 };
 
 // The Gamma Correction check's HDR modes on top: PsychoV30 / V31 / V35 at their defaults (twattila/psycho35_settings.hpp,
-// Attila's ApplyHDRPreset).
+// Attila's ApplyHDRPreset), Extended's grading (Warhammer II, Troy, Pharaoh) at identity.
 constexpr std::pair<std::string_view, float> HDR_SETTINGS[] = {
     {"purity_scale", 1.f}, {"hue_shift", 0.f}, {"v31_exposure", 1.f}, {"v31_highlights", 1.f}, {"v31_shadows", 1.f},
     {"v31_contrast", 1.f}, {"v31_highlight_contrast", 1.f}, {"v31_shadow_contrast", 1.f}, {"v31_saturation", 1.f},
@@ -93,6 +96,7 @@ constexpr std::pair<std::string_view, float> HDR_SETTINGS[] = {
     {"v31_gamut_compression_mode", 1.f}, {"v31_highlight_hue_shift", 0.04f}, {"v35_exposure", 1.f}, {"v35_highlights", 1.f},
     {"v35_shadows", 1.f}, {"v35_contrast", 1.f}, {"v35_highlight_contrast", 1.f}, {"v35_shadow_contrast", 1.f},
     {"v35_saturation", 1.f}, {"v35_roll_off", 1.f}, {"v35_gamut_compression", 1.f}, {"v35_highlight_saturation", 1.f},
+    {"exposure_tpm", 1.f}, {"highlights_tpm", 1.f}, {"shadows_tpm", 1.f}, {"contrast_tpm", 1.f}, {"saturation_tpm", 1.f},
 };
 constexpr double GAMMA_TOLERANCE = 1e-4;  // relative: the decodes' float rounding, the Peaks' last bit
 
@@ -916,6 +920,7 @@ struct Case {
   Settings settings;
   std::string registers;     // GameConstants' registers
   float frame_gamma = 0.f;   // the frame's gamma without Gamma Correction: the Gamma Correction check (0: none)
+  std::vector<float> modes = {0.f, 1.f, 2.f, 3.f};  // its Rendering Modes, PsychoV35 last
 };
 
 static std::vector<Case> ReadManifest(const std::filesystem::path& path) {
@@ -941,6 +946,12 @@ static std::vector<Case> ReadManifest(const std::filesystem::path& path) {
     }
     if (fields.size() >= 6) entry.registers = fields[5];
     if (fields.size() >= 7 && !fields[6].empty()) entry.frame_gamma = std::stof(fields[6]);
+    if (fields.size() >= 8 && !fields[7].empty()) {
+      entry.modes.clear();
+      std::stringstream modes(fields[7]);
+      std::string mode;
+      while (std::getline(modes, mode, ',')) entry.modes.push_back(std::stof(mode));
+    }
     cases.push_back(entry);
   }
   return cases;
@@ -1082,23 +1093,27 @@ int main(int argc, char** argv) {
       bool control_caught = true;
       double worst = 0.0;
       size_t limited = 0;  // texels past Peak in BT.2020 after the power: checked within Peak at their luminance
+      size_t unstable = 0;  // texels where off jumps with its Peak's last bits: not checked
+      size_t near_black = 0;  // texels under 1e-4 of Paper White: not checked
       char worst_at[192] = "";
-      std::array<double, 3> grey = {};  // Rendering Mode 3, Paper White = UI: off, on, the 2.2 decode of off's value (nits)
-      for (const float mode : {0.f, 1.f, 2.f, 3.f}) {
+      std::array<double, 3> grey = {};  // PsychoV35, Paper White = UI: off, on, the 2.2 decode of off's value (nits)
+      for (const float mode : entry.modes) {
         for (const float graphics : {DIFFUSE, DIFFUSE / 2.f}) {
           const double paper_white = DIFFUSE / graphics;
-          const auto draw = [&](float correction) {
+          const auto draw = [&](float correction, float peak) {
             Settings settings = entry.settings;
             for (const auto& [key, value] : HDR_SETTINGS) settings.emplace_back(std::string(key), value);
             settings.emplace_back("hdr", mode);
             settings.emplace_back("gamma_correction", correction);
             settings.emplace_back("graphics_white_nits", graphics);
-            settings.emplace_back("peak_white_nits", (correction != 0.f) ? PEAK : corrected_peak);
+            settings.emplace_back("peak_white_nits", peak);
             return run(addon.code, MakeSetup(game, addon, settings, entry.registers, false, bright_pass));
           };
-          const Output off = draw(0.f);
-          const Output on = draw(1.f);
+          const Output off = draw(0.f, corrected_peak);
+          const Output on = draw(1.f, PEAK);
           if (off.words.empty() || on.words.size() != off.words.size() || on.words[0] == off.words[0]) continue;
+          const Output off_up = draw(0.f, corrected_peak * (1.f + 2e-6f));
+          const Output off_down = draw(0.f, corrected_peak * (1.f - 2e-6f));
           acted = true;
           const auto& off_words = off.words[0];
           const auto& on_words = on.words[0];
@@ -1109,16 +1124,31 @@ int main(int argc, char** argv) {
             std::array<double, 3> on_linear = {};
             std::array<double, 3> expected = {};
             bool usable = true;
-            double brightest = 1e-6;
+            double off_brightest = 1e-6;
+            double off_moved = 0.0;
             for (size_t c = 0; c < 3; ++c) {
               usable = usable && off_words[texel + c] != SENTINEL && on_words[texel + c] != SENTINEL;
+              const double off_value = std::bit_cast<float>(off_words[texel + c]);
+              off_brightest = std::max(off_brightest, std::abs(off_value));
+              for (const Output* other : {&off_up, &off_down}) {
+                off_moved = std::max(off_moved, std::abs(std::bit_cast<float>(other->words[0][texel + c]) - off_value));
+              }
               off_linear[c] = sign_pow(std::bit_cast<float>(off_words[texel + c]), entry.frame_gamma);
               on_linear[c] = sign_pow(std::bit_cast<float>(on_words[texel + c]), 2.2);
               expected[c] = paper_white * sign_pow(off_linear[c] / paper_white, 2.2 / entry.frame_gamma);
               usable = usable && std::isfinite(off_linear[c]) && std::isfinite(on_linear[c]);
-              brightest = std::max(brightest, std::abs(expected[c]));
             }
             if (!usable) continue;
+            if (off_moved > GAMMA_TOLERANCE * off_brightest) {
+              ++unstable;
+              continue;
+            }
+            // Under 0.02 nits at 203: PsychoV30's black cut-off turns a colour grey at isolated Peak bits (Warhammer's t03
+            // texel 80 at 865.0 nits, not at 864 or 866, nor at 2e-6 either side of 865.06), so not caught above.
+            if (std::max({std::abs(off_linear[0]), std::abs(off_linear[1]), std::abs(off_linear[2])}) < 1e-4 * paper_white) {
+              ++near_black;
+              continue;
+            }
             // Past Peak in BT.2020 (a saturated highlight the power lifted): within Peak at its luminance instead.
             const auto bt2020_max = [](const std::array<double, 3>& c) {
               return std::max({0.6274040 * c[0] + 0.3292820 * c[1] + 0.0433136 * c[2], 0.0690970 * c[0] + 0.9195400 * c[1] + 0.0113612 * c[2],
@@ -1137,20 +1167,38 @@ int main(int argc, char** argv) {
               ++limited;
               continue;
             }
+            // As the swap chain proxy shows them: in BT.2020, below 0 clipped (the power keeps a negative channel's sign).
+            const auto shown = [](const std::array<double, 3>& c) {
+              return std::array<double, 3>{std::max(0.0, 0.6274040 * c[0] + 0.3292820 * c[1] + 0.0433136 * c[2]),
+                                           std::max(0.0, 0.0690970 * c[0] + 0.9195400 * c[1] + 0.0113612 * c[2]),
+                                           std::max(0.0, 0.0163916 * c[0] + 0.0880132 * c[1] + 0.8955950 * c[2])};
+            };
+            const auto on_shown = shown(on_linear);
+            const auto expected_shown = shown(expected);
+            const double brightest = std::max({1e-6, expected_shown[0], expected_shown[1], expected_shown[2]});
             for (size_t c = 0; c < 3; ++c) {
-              const double error = std::abs(on_linear[c] - expected[c]) / brightest;
+              const double error = std::abs(on_shown[c] - expected_shown[c]) / brightest;
               if (error <= worst) continue;
               worst = error;
-              std::snprintf(worst_at, sizeof(worst_at), " (worst: mode %.0f, Paper White %.0fx, texel %zu.%c: off %.6g, on %.6g, expected %.6g)", mode,
-                            paper_white, texel / 4, "xyz"[c], off_linear[c], on_linear[c], expected[c]);
+              std::snprintf(worst_at, sizeof(worst_at), " (worst: mode %.0f, Paper White %.0fx, texel %zu BT.2020 %c: on %.6g, expected %.6g)", mode,
+                            paper_white, texel / 4, "rgb"[c], on_shown[c], expected_shown[c]);
             }
           }
-          // The scene's grey (column 0, GREY_ROW), its green.
+          // The scene's grey (column 0, GREY_ROW): its green printed, the control on its brightest channel (Pharaoh's lens
+          // blood writes red alone).
           const size_t at = 4 * size_t{GREY_ROW} * WIDTH + 1;
           const double off_grey = sign_pow(std::bit_cast<float>(off_words[at]), entry.frame_gamma);
           const double on_grey = sign_pow(std::bit_cast<float>(on_words[at]), 2.2);
-          control_caught = control_caught && std::abs(on_grey - off_grey) > GAMMA_TOLERANCE * std::abs(off_grey);
-          if (mode == 3.f && graphics == DIFFUSE) {
+          size_t control_at = at;
+          for (const size_t c : {at - 1, at + 1}) {
+            if (std::abs(std::bit_cast<float>(off_words[c])) > std::abs(std::bit_cast<float>(off_words[control_at]))) {
+              control_at = c;
+            }
+          }
+          const double off_control = sign_pow(std::bit_cast<float>(off_words[control_at]), entry.frame_gamma);
+          const double on_control = sign_pow(std::bit_cast<float>(on_words[control_at]), 2.2);
+          control_caught = control_caught && std::abs(on_control - off_control) > GAMMA_TOLERANCE * std::abs(off_control);
+          if (mode == entry.modes.back() && graphics == DIFFUSE) {
             grey = {off_grey * graphics, on_grey * graphics, paper_white * sign_pow(off_grey / paper_white, 2.2 / entry.frame_gamma) * graphics};
           }
         }
@@ -1160,15 +1208,15 @@ int main(int argc, char** argv) {
         ++gamma_checked;
         if (!passed) ++gamma_failed;
         char line[768];
-        std::snprintf(line, sizeof(line), "%-12s %-34s %-4s worst %-8s grey (Rendering Mode 3, %.0f nits): off %.3f, on %.3f nits = 2.2 decode of off's value %.3f; %zu texels limited to Peak%s%s",
-                      entry.game.c_str(), entry.shader.c_str(), passed ? "ok" : "FAIL", Number(worst).c_str(), DIFFUSE, grey[0], grey[1], grey[2],
-                      limited, control_caught ? "" : " CONTROL NOT CAUGHT", passed ? "" : worst_at);
+        std::snprintf(line, sizeof(line), "%-12s %-34s %-4s worst %-8s grey (Rendering Mode %.0f, %.0f nits): off %.3f, on %.3f nits = 2.2 decode of off's value %.3f; %zu texels limited to Peak, %zu unstable, %zu near black%s%s",
+                      entry.game.c_str(), entry.shader.c_str(), passed ? "ok" : "FAIL", Number(worst).c_str(), entry.modes.back(), DIFFUSE, grey[0],
+                      grey[1], grey[2], limited, unstable, near_black, control_caught ? "" : " CONTROL NOT CAUGHT", passed ? "" : worst_at);
         gamma_lines.emplace_back(line);
       }
     }
   }
   if (!gamma_lines.empty()) {
-    std::printf("Gamma Correction: on decoded at 2.2 = Paper White x (off / Paper White)^1.1, Rendering Modes 0 - 3, Paper White 1x and 2x UI\n");
+    std::printf("Gamma Correction: on decoded at 2.2 = Paper White x (off / Paper White)^1.1, every Rendering Mode, Paper White 1x and 2x UI\n");
     for (const auto& line : gamma_lines) std::printf("%s\n", line.c_str());
   }
   std::printf("EXACT %d, accepted (R6: the bloom smoothing) %d, FAIL %d, control missed %d; Gamma Correction %d checked, %d failed\n", exact, r6,

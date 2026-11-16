@@ -7,7 +7,7 @@
 # -OutDir: where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\.
 # Run as x86 and amd64.
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [switch]$AllShaders, [switch]$ReportOnly, [string]$Before = 'd3d6425b',
-      [string]$OutDir = '')
+      [string]$OutDir = '', [string]$GammaBefore = '242d6101')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_psychov35'
@@ -80,6 +80,27 @@ foreach ($name in $toneMappers.Keys) {
   if ($a -ne $b) { $changed += $name }
 }
 Write-Host "Tone mappers whose bytes changed since ${Before}: $($changed -join ', ') (WARP compares their output)"
+
+# Part 7 (Gamma Correction in every mode): Rome II's, Warhammer I's / II's, Troy's and Pharaoh's hdr_to_screen t01 from this
+# tree and from $GammaBefore (the commit before it acted in their HDR modes).
+$gammaTree = Join-Path $testBuild 'gamma_before'
+if (Test-Path -LiteralPath $gammaTree) { Remove-Item -LiteralPath $gammaTree -Recurse -Force -Confirm:$false }
+New-Item -ItemType Directory -Force -Path $gammaTree | Out-Null
+$gammaArchive = Join-Path $testBuild 'gamma_before.tar'
+& git -C $repairRoot archive --output=$gammaArchive $GammaBefore src/games/twattila src/games/twrome2 src/games/twwarhammer `
+    src/games/twwarhammer2 src/games/twtroy src/games/twpharaohdynasties src/shaders src/mods src/utils
+if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
+& (Join-Path $env:SystemRoot 'System32\tar.exe') -xf $gammaArchive -C $gammaTree
+if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
+$gammaShaders = [ordered]@{
+  'g_rome2' = 'twrome2\shaders\t01_0x850AEE44.ps_4_0.hlsl'; 'g_wh1' = 'twwarhammer\shaders\t01_0x10759AE3.ps_4_0.hlsl'
+  'g_wh2' = 'twwarhammer2\shaders\t01_0x187C9C6D.ps_5_0.hlsl'; 'g_troy' = 'twtroy\shaders\t01_0x48DBD700.ps_5_0.hlsl'
+  'g_pharaoh' = 'twpharaohdynasties\shaders\t01_0x769869A4.ps_5_0.hlsl'
+}
+foreach ($name in $gammaShaders.Keys) {
+  Compile-Shader (Join-Path $gammaTree "src\games\$($gammaShaders[$name])") (Join-Path $beforeShaders "$name.cso") $false
+  Compile-Shader (Join-Path $repairRoot "src\games\$($gammaShaders[$name])") (Join-Path $afterShaders "$name.cso") $false
+}
 
 if ($AllShaders) {
   # Every other shader of both add-ons: the same bytes on both sides (the tone mappers' list above aside).
