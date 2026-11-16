@@ -54,6 +54,10 @@
 #include "./bridge.hpp"
 #include "./bridge_replay.hpp"
 #include "./ray_tracing.hpp"
+// RENODX_TW_PROFILE's action: rt_core's Record Ray Tracing Profile (no Total War ray-tracing scene here: rt_scene.hpp
+// pulls Attila's shaders). After ray_tracing.hpp, which brings rt_core.
+#define RENODX_TEST_HOOKS_PROFILE twattila::rt_scene::StartProfile
+#include "../twattila/test_hooks.hpp"
 #include "./shared.h"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -1878,6 +1882,9 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::reshade_present>(OnReShadePresent);
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
+  // Scripted runs (RENODX_TW_SET / SHOT / PROFILE or renodx_test_hooks.txt next to the exe; the proxy's runtime answers):
+  // nothing without them. Their "trace" key writes the renodx_trace_now file Frame Trace polls for.
+  twattila::test_hooks::Install(&settings, true, "[R.U.S.E.]");
   frame_injection = shader_injection;
 
   if (frame_trace_enabled) {
@@ -1991,6 +1998,7 @@ void DetachAddon() {
     renodx::utils::trace::Use(DLL_PROCESS_DETACH);
   }
 
+  twattila::test_hooks::Uninstall();
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
 
   attached = false;
