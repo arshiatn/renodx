@@ -967,11 +967,18 @@ int main(int argc, char** argv) {
     prepass(prepass_depth);
     main_draw();
     const bool drawn_shaded = rays.traced_frame == state.frame;
+    // The game's main pass bound: its target and the depth the clear is about to clear (the trace point samples it: its
+    // passes unbind it and give it back).
+    host->SetRenderTarget(0, main_surface.Get());
+    host->SetDepthStencilSurface(depth_surface.Get());
     ruse::ray_tracing::OnClearDepthStencilView(&command_list, {prepass_depth}, &far_depth, nullptr, 0, nullptr);
     const bool cleared_shaded = rays.traced_frame == state.frame && rays.occlusion_frame == state.frame;
     const bool same_at_clear = cleared_shaded && occlusion_now() == occlusion;
-    host->SetRenderTarget(0, main_surface.Get());
-    host->SetDepthStencilSurface(depth_surface.Get());
+    ComPtr<IDirect3DSurface9> bound_target;
+    ComPtr<IDirect3DSurface9> bound_depth;
+    host->GetRenderTarget(0, bound_target.GetAddressOf());
+    host->GetDepthStencilSurface(bound_depth.GetAddressOf());
+    CHECK(bound_target == main_surface && bound_depth == depth_surface);
     REQUIRE(SUCCEEDED(host->Clear(0, nullptr, D3DCLEAR_ZBUFFER, 0, far_depth, 0)));
     host->SetDepthStencilSurface(nullptr);
     const uint32_t shaded_frame = rays.occlusion_frame;
