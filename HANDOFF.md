@@ -61,6 +61,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 
 
 
+
 - Unit round: A1 (Attila UnitDistances[16] = 0 under Shadows Only, if the trace sh ... | coordinator
 - A2 sprite soldiers' 276 shadow draws into the sun map (submission code not found ... | coordinator, next CPU round (find the submission code in a t
 - NEXT BATCH: swaying grass shadows still flicker "a bit" with helper65 (ATN, 01:5 ... | ATN
@@ -144,7 +145,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R.U.S.E. D3D9 bridge Fable 5.2 High review when ru_ finishes it (ATN asked). Own ... | coordinator
 - ATN at the end (R.U.S.E.): Extended replacing V31 Native Tone or beside it; Hue ... | ATN
 - ATN 17:4x: in-game data runs of R.U.S.E., Divinity 1 and Divinity 2 BEFORE 20:00 ... | coordinator
-- Divinity 1 window-switch crash: d1f_ (started 01:5x) finds what holds the old fl ... | d1f_
+- MERGED fa089b0e 02:2x (d1f_ e1026a81): views unbound again at the window's next ... | d1f_
 - Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp cand ... | next Divinity 1 agent
 - tw_install.py's include scanner counts includes inside an #ifndef the add-on def ... | coordinator (tools)
 - ru_ (resumed): R.U.S.E. whole package (plan.md 10b) WITH O1 object RT shadows + ... | ru_ 20:5x on branch ruse-whole-package (not built): 01029a12
@@ -1246,7 +1247,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         12 device_loss consumers built. Divinity 1 step 1 swapchain crash fix + the rest of plan.md + Div1 R4 peak clamp + R13 tests.
       - CONTROL RUNS 01:49-01:5x (ATN, inside the Act 2/3 save, fullscreen -> fake fullscreen -> fullscreen): VANILLA no
         crash, RESHADE ONLY no crash, with our add-on CRASH (R1) -> the cause is ours (sent to d1f_).
-      - [ ] Divinity 1 window-switch crash: d1f_ (started 01:5x) finds what holds the old flip chain (view clones,
+      - [ ] MERGED fa089b0e 02:2x (d1f_ e1026a81): views unbound again at the window's next create + a safety net on DXGI's
+        own IDXGIFactory::CreateSwapChain (slot 10, Divinity opt-in only): a refused flip upgrade retries as the game's own
+        blt chain (SDR for that chain, logged). Root cause partly proven: the old flip chain still alive at the switch (most
+        likely the game's own view of the old back buffer). tw_d1_swapchain + tw_device_loss 3d PASS x86 + amd64; 14 add-ons
+        built. Re-test run started 02:2x (switch only; picture visible in fake fullscreen? HDR back after fullscreen?).
+        Owner: coordinator. Divinity 1 window-switch crash: d1f_ (started 01:5x) finds what holds the old flip chain (view clones,
         ReShade refs), releases it at destroy_swapchain, adds an E_ACCESSDENIED safety net (retry as the game's blt chain),
         extends tw_d1_swapchain; then a vanilla control run (no ReShade) and a re-run of the switch with ATN. Owner: d1f_
       - [ ] Divinity 1 offline from R1's traces: R7 RGBA8-upgrade readers, census clamp candidates, torch / fire values,
