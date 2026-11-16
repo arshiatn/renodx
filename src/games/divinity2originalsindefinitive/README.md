@@ -280,6 +280,8 @@ cone response): press Reset before comparing defaults.
   `test/tw_draw_dispatch`: the shared PsychoV30 guards, the not-configured
   Output, device loss and the fast draw dispatch.
 
-bloom00, ui00 and outlines00-02 have no exact test yet. The game's shaders
-(`tools/nontw/divinity2/shader_dump`) stay outside the repo. Nothing here is
+- `test/tw_vanilla_exact/run.ps1 -Games Divinity2`: t01, bloom00, ui00 and
+  the sight / outline passes outlines00-02 in Off against the game's bytes.
+
+The game's shaders (`tools/nontw/divinity2/shader_dump`) stay outside the repo. Nothing here is
 a substitute for a run in the game.
