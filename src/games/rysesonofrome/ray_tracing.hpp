@@ -9,6 +9,7 @@
 #include <wrl/client.h>
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -20,7 +21,10 @@
 
 #include "../../utils/directx.hpp"
 #include "./constant_mirror.hpp"
+#include "./rt_outside_view_uv_gs.h"
+#include "./shadow_skip.hpp"
 #include "./upscaling.hpp"
+#include "../twwarhammer3/rt_outside_view_gs.h"
 #include "../talesofarise_dlss/matrix.hpp"
 #include "../talesofarise_dlss/native_state.hpp"
 #include "../twattila/rt_core.hpp"
@@ -96,6 +100,8 @@ struct State {
   bool failed = false;
 };
 static State state;
+// Settings::casters_out_of_view as Update last set it (SceneDraw's depth-only draws return at once without it).
+static std::atomic_bool casters_out_of_view = false;
 // The tiled lighting's PER_BATCH: 8 float4 (c5 SSDOParams: x the lights', y the reflections', z the ambient's occlusion).
 constexpr UINT BATCH_BYTES = 8 * 16;
 constexpr UINT SSDO_REFLECTION_OFFSET = (5 * 16) + 4;
@@ -129,13 +135,23 @@ inline bool EnsureTexture(ID3D11Device* device, const std::array<UINT, 2>& size,
   return true;
 }
 
+// A sun map's draw (Host::cascade_target; which maps: shadow_skip::SunMap).
+inline bool SquareMap(const D3D11_TEXTURE2D_DESC& desc) {
+  return desc.Width == desc.Height && desc.ArraySize == 1;
+}
+
 // An opaque G-buffer draw (three RGBA16F targets and the depth, depth written, unblended): the bridge prepared for the
 // depth's size (upscaling.hpp; the render size), its pixel shader's alpha test (rt_core's SceneCoverage: leaves against their diffuse alpha), its vertex
-// shader skinned or not.
+// shader skinned or not. With Shadow Casters Out of View also a sun caster's (depth only into one of the sun's maps the game
+// draws every frame, shadow_skip::SunMap: the cascades and the characters' own, not the far map it keeps): rt_core's cascade
+// capture, every frame, its shadow vertex shader with the main view's matrix in PER_FRAME (Host::cascade_view_slot / _row) and
+// a triangle in the view collapsed (the G-buffer's draw has it): Warhammer III's rt_outside_view for the solid casters (ps
+// 0x78B445B5), rt_outside_view_uv for the alpha-tested ones (ps 0x9112241F: the diffuse map's alpha at TEXCOORD0).
 inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShader* shader) {
   std::array<ID3D11RenderTargetView*, 4> targets = {};
   ComPtr<ID3D11DepthStencilView> depth_view;
   native->OMGetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), depth_view.GetAddressOf());
+  const bool depth_only = targets[0] == nullptr;
   bool gbuffer = depth_view && targets[3] == nullptr;
   for (size_t index = 0; index < 3; ++index) {
     D3D11_RENDER_TARGET_VIEW_DESC desc = {};
@@ -144,6 +160,15 @@ inline bool SceneDraw(ID3D11DeviceContext* native, twattila::rt_scene::SceneShad
   }
   for (auto* target : targets) {
     if (target != nullptr) target->Release();
+  }
+  if (depth_only && depth_view && casters_out_of_view.load(std::memory_order_relaxed)) {
+    ComPtr<ID3D11Resource> map;
+    depth_view->GetResource(map.GetAddressOf());
+    if (!rysesonofrome::shadow_skip::SunMap(reinterpret_cast<uintptr_t>(map.Get()))) return false;
+    shader->cascade_keep = __rt_outside_view;
+    shader->cascade_keep_uv = __rys_outside_view_uv;
+    shader->dynamic = true;
+    return twattila::rt_scene::SceneCoverage(native, shader);
   }
   if (!gbuffer) return false;
   ComPtr<ID3D11DepthStencilState> depth_state;
@@ -219,6 +244,9 @@ inline const twattila::rt_scene::Host HOST = {
     },
     .capture_camera = internal::CaptureCamera,
     .scene_draw = internal::SceneDraw,
+    .cascade_view_slot = 2,
+    .cascade_view_row = 0,
+    .cascade_target = internal::SquareMap,
     .depth_at_render_size = true,
 };
 
@@ -533,6 +561,7 @@ inline void Update(const twattila::rt_scene::Settings& settings) {
     internal::state.settings = settings;
     ++internal::state.frame;
   }
+  internal::casters_out_of_view.store(settings.casters_out_of_view, std::memory_order_relaxed);
   twattila::rt_scene::Update(settings);
 }
 
