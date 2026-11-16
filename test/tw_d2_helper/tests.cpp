@@ -35,7 +35,11 @@
 //    display-size target (CONTROL: another size, nothing written); the G-buffer guides at the lighting draw: its diffuse
 //    and specular colours the game's own o1 / o0 under white cubes (a per-pixel camera ray, a LUT ramp), the world normal
 //    and roughness it lights with, none on the sky / unlit, once a frame (CONTROLS: F0 without the LUT, the rotation
-//    instead of its transpose).
+//    instead of its transpose); the rays' reflections over the game's own IBL specular (o0) at the lighting draw: met
+//    everywhere at the game's light gives o0 again, a share a of light 2 gives o0 x (1 + a), share 0 leaves it bit for
+//    bit, Specular Occlusion alone dims it by the open share (CONTROL: the rotation transposed); DeferredSSR not drawn and
+//    DeferredSSRCombine (0x0FA22D5A) replaced by its scene bit for bit under them (CONTROLS: the game's combine changes
+//    the scene; the reflections off: both the game's).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -1321,6 +1325,161 @@ int main(int argc, char** argv) {
     CHECK(f0_worst > .05 && turned_nearest > .1);
     bridge.guides = false;
     dlaa::guides = false;
+
+    // f. The rays' reflections into the IBL specular at the lighting draw (OnLighting; rt_core's Reflections answering
+    //    with this frame's textures as after a trace): over the game's own o0 under a white specular cube (its specular
+    //    colour x 1), the rays' light 1 met everywhere gives the game's o0 again (our specular colour = the game's); light 2
+    //    met at a share a gives o0 x (1 + a); a share 0 leaves it bit for bit; Specular Occlusion alone (the reflections
+    //    off) dims it by the open share. CONTROL: the View's rotation transposed (another normal, another N.V on the LUT).
+    const auto& game_specular = white_sky.first;
+    const auto specular_ibl = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE);
+    const auto specular_ibl_srv = Srv(specular_ibl.Get());
+    std::vector<std::array<uint16_t, 4>> reflection_texels(pixels);
+    std::vector<uint8_t> open_texels(pixels);
+    const auto make_traced = [&] {
+      twattila::dlaa_bridge::Texture traced;
+      traced.texture = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D11_BIND_SHADER_RESOURCE, reflection_texels.data(), WIDTH * 8);
+      traced.srv = Srv(traced.texture.Get());
+      return traced;
+    };
+    const auto reflect = [&](float light, const std::vector<float>& share, float open, bool reflections) {
+      for (size_t at = 0; at < pixels; ++at) {
+        reflection_texels[at] = {ToHalf(light), ToHalf(light), ToHalf(light), ToHalf(share[at])};
+        open_texels[at] = static_cast<uint8_t>(std::lround(open * 255.f));
+      }
+      bridge.rt_reflection = make_traced();
+      bridge.rt_specular.texture = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R8_UNORM, D3D11_BIND_SHADER_RESOURCE, open_texels.data(), WIDTH);
+      bridge.rt_specular.srv = Srv(bridge.rt_specular.texture.Get());
+      context->UpdateSubresource(specular_ibl.Get(), 0, nullptr, game_specular.data(), WIDTH * 16, 0);
+      runtime.settings.reflections = reflections;
+      runtime.settings.specular_occlusion = !reflections;
+      runtime.reflected_frame = runtime.frame;
+      runtime.reflected = true;
+      ray_state.settings.reflections = reflections;
+      ray_state.settings.specular_occlusion = !reflections;
+      ray_state.reflected_frame = UINT64_MAX;
+      context->OMSetRenderTargets(1, lighting_rtv.GetAddressOf(), nullptr);
+      const std::array<ID3D11ShaderResourceView*, 8> lighting_views = {exposure_one.Get(), nullptr, plane.normals.Get(), plane.base.Get(),
+                                                                       plane.surface.Get(), nullptr, plane.depth.Get(), specular_ibl_srv.Get()};
+      context->PSSetShaderResources(0, static_cast<UINT>(lighting_views.size()), lighting_views.data());
+      context->PSSetConstantBuffers(13, 1, frame_constants.GetAddressOf());
+      rays::OnLighting(&mock_list);
+      const std::array<ID3D11ShaderResourceView*, 8> no_lighting_views = {};
+      context->PSSetShaderResources(0, static_cast<UINT>(no_lighting_views.size()), no_lighting_views.data());
+      context->OMSetRenderTargets(0, nullptr, nullptr);
+      return ReadBack<Texel>(specular_ibl.Get(), WIDTH, HEIGHT);
+    };
+    // The worst of |out - expected| relative to the expected (at least 1e-3), RGB, over every pixel.
+    const auto off = [&](const std::vector<Texel>& out, const auto& expected) {
+      double worst = 0.;
+      for (size_t at = 0; at < pixels; ++at) {
+        for (int channel = 0; channel < 3; ++channel) {
+          const double want = expected(at, channel);
+          worst = std::max(worst, std::abs(out[at][channel] - want) / std::max(std::abs(want), 1e-3));
+        }
+      }
+      return worst;
+    };
+    std::vector<float> shares(pixels);
+    for (size_t at = 0; at < pixels; ++at) shares[at] = Half(ToHalf(static_cast<float>((at * 2654435761u) % 1000u) / 999.f));
+    const auto game_of = [&](size_t at, int channel) { return static_cast<double>(game_specular[at][channel]); };
+    const double met_off = off(reflect(1.f, std::vector<float>(pixels, 1.f), 1.f, true), game_of);
+    const double share_off = off(reflect(2.f, shares, 1.f, true), [&](size_t at, int channel) { return game_of(at, channel) * (1. + shares[at]); });
+    const bool none_kept = reflect(2.f, std::vector<float>(pixels, 0.f), 1.f, true) == game_specular;
+    const float open_value = 64.f / 255.f;
+    const double open_off = off(reflect(2.f, shares, open_value, false), [&](size_t at, int channel) { return game_of(at, channel) * open_value; });
+    // CONTROL: the View's rotation transposed.
+    for (int row = 0; row < 3; ++row) {
+      for (int column = 0; column < 3; ++column) state.camera.view[(row * 4) + column] = static_cast<float>(rotation[column][row]);
+    }
+    const double transposed_off = off(reflect(1.f, std::vector<float>(pixels, 1.f), 1.f, true), game_of);
+    state.camera = camera;
+    std::printf("reflections: met everywhere at the game's light, the game's o0 within %.2e; light 2 at a share a, o0 x (1 + a) within %.2e; "
+                "share 0 %s; Specular Occlusion alone, o0 x the open share within %.2e; CONTROL the rotation transposed %.3f off\n",
+                met_off, share_off, (none_kept ? "bit for bit" : "CHANGED"), open_off, transposed_off);
+    CHECK(met_off < 1e-4 && share_off < 1e-4 && none_kept && open_off < 1e-4);
+    CHECK(transposed_off > .01);
+
+    // g. DeferredSSR and DeferredSSRCombine (0x0FA22D5A, the census's bytes) under the rays' reflections: the march not
+    //    drawn, the combine's scene into its target bit for bit in its place. CONTROLS: the game's combine changes the
+    //    scene; Ray-Traced Reflections off: both the game's.
+    std::vector<uint8_t> combine_code;
+    {
+      std::ifstream file(census + "0x0FA22D5A.ps_5_0.cso", std::ios::binary);
+      combine_code.assign(std::istreambuf_iterator<char>(file), {});
+    }
+    REQUIRE(!combine_code.empty() && renodx::utils::hash::ComputeCRC32(combine_code.data(), combine_code.size()) == 0x0FA22D5A);
+    ComPtr<ID3D11PixelShader> combine;
+    REQUIRE(SUCCEEDED(device->CreatePixelShader(combine_code.data(), combine_code.size(), nullptr, combine.GetAddressOf())));
+    std::vector<Texel> scene_texels(pixels);
+    std::vector<Texel> marched_texels(pixels);
+    for (size_t at = 0; at < pixels; ++at) {
+      for (int channel = 0; channel < 3; ++channel) {
+        scene_texels[at][channel] = static_cast<float>(((at * 7) + (channel * 13)) % 97) / 31.f;
+        marched_texels[at][channel] = static_cast<float>(((at * 5) + (channel * 3)) % 89) / 17.f;
+      }
+      scene_texels[at][3] = 1.f;
+      marched_texels[at][3] = 1.f;
+    }
+    const auto scene_srv = Srv(MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_SHADER_RESOURCE, scene_texels.data(), WIDTH * 16).Get());
+    const auto marched_srv = Srv(MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_SHADER_RESOURCE, marched_texels.data(), WIDTH * 16).Get());
+    const auto combined = MakeTexture(WIDTH, HEIGHT, DXGI_FORMAT_R32G32B32A32_FLOAT, D3D11_BIND_RENDER_TARGET);
+    const auto combined_rtv = Rtv(combined.Get());
+    ray_state.settings.reflections = true;
+    const auto run_combine = [&](bool hooked, bool* replaced) {
+      constexpr std::array<float, 4> CLEAR = {-1.f, -1.f, -1.f, -1.f};
+      context->ClearRenderTargetView(combined_rtv.Get(), CLEAR.data());
+      const std::array<ID3D11ShaderResourceView*, 4> views = {scene_srv.Get(), marched_srv.Get(), marched_srv.Get(), plane.surface.Get()};
+      const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(WIDTH), .Height = static_cast<float>(HEIGHT), .MaxDepth = 1.f};
+      context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      context->IASetInputLayout(nullptr);
+      context->VSSetShader(sky_vertex.Get(), nullptr, 0);
+      context->PSSetShader(combine.Get(), nullptr, 0);
+      context->PSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+      context->PSSetSamplers(0, 1, sampler.GetAddressOf());
+      context->RSSetState(nullptr);
+      context->RSSetViewports(1, &viewport);
+      context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+      context->OMSetRenderTargets(1, combined_rtv.GetAddressOf(), nullptr);
+      *replaced = hooked && rays::ReplaceReflectionCombine(&mock_list);
+      if (!*replaced) context->Draw(3, 0);
+      const std::array<ID3D11ShaderResourceView*, 4> no_views = {};
+      context->PSSetShaderResources(0, static_cast<UINT>(no_views.size()), no_views.data());
+      context->OMSetRenderTargets(0, nullptr, nullptr);
+      return ReadBack<Texel>(combined.Get(), WIDTH, HEIGHT);
+    };
+    const auto march_skipped = [&] {
+      context->PSSetShaderResources(0, 1, plane.normals.GetAddressOf());
+      const bool skipped = rays::SkipReflectionMarch(&mock_list);
+      ID3D11ShaderResourceView* no_view = nullptr;
+      context->PSSetShaderResources(0, 1, &no_view);
+      return skipped;
+    };
+    bool replaced = false;
+    const auto copied = run_combine(true, &replaced);
+    const bool skipped = march_skipped();
+    bool game_replaced = true;
+    const auto game_combined = run_combine(false, &game_replaced);
+    ray_state.settings.reflections = false;
+    bool off_replaced = true;
+    run_combine(true, &off_replaced);
+    const bool off_skipped = march_skipped();
+    const bool copy_exact = std::ranges::equal(copied, scene_texels);
+    double game_changed = 0.;
+    for (size_t at = 0; at < pixels; ++at) {
+      for (int channel = 0; channel < 3; ++channel) game_changed = std::max(game_changed, static_cast<double>(std::abs(game_combined[at][channel] - scene_texels[at][channel])));
+    }
+    std::printf("screen-space reflections under the rays': march skipped %d, combine replaced %d with its scene %s; CONTROLS the game's combine "
+                "changes the scene by up to %.3f, the reflections off: skipped %d, replaced %d\n",
+                skipped, replaced, (copy_exact ? "bit for bit" : "DIFFERENT"), game_changed, off_skipped, off_replaced);
+    CHECK(skipped && replaced && copy_exact);
+    CHECK(!game_replaced && game_changed > .1 && !off_skipped && !off_replaced);
+    runtime.settings.reflections = false;
+    runtime.settings.specular_occlusion = false;
+    runtime.reflected = false;
+    ray_state.settings.specular_occlusion = false;
+    bridge.rt_reflection = {};
+    bridge.rt_specular = {};
 
     bridge.rt_sun.uav.Reset();
     bridge.rt_visibility.srv.Reset();
