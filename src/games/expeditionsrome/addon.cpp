@@ -552,7 +552,7 @@ void ConfigureAddon() {
                "and PsychoV35. UE Extended by Marat.",
       .section = "About",
   });
-  for (const char* line : {twattila::credits::ACES, twattila::credits::HELPER}) {
+  for (const char* line : {twattila::credits::ACES, talesofarise::hdr_only::EFFECTS_CREDITS, twattila::credits::HELPER}) {
     settings.push_back(new renodx::utils::settings::Setting{
         .value_type = renodx::utils::settings::SettingValueType::TEXT,
         .label = line,

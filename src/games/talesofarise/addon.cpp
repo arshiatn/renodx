@@ -874,6 +874,11 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = talesofarise::hdr_only::EFFECTS_CREDITS,
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = twattila::credits::HELPER,
           .section = "About",
       },
